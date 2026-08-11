@@ -112,6 +112,11 @@ The review loop SHALL terminate when a round k ≥ 1 records 0 BLOCKER findings,
 - **WHEN** the round cap is reached with 2 BLOCKERs still open
 - **THEN** the runner halts at the gate listing exactly those BLOCKERs and their evidence trails
 
+#### Scenario: Cap-hit with material-only
+
+- **WHEN** the round cap is reached with 0 BLOCKERs open but ≥1 MATERIAL finding in the round's post-resolution classifications
+- **THEN** the runner halts at the early gate listing each open MATERIAL finding (gap quote + resolver outcome) and a per-round burndown trajectory, and requires an explicit trajectory-reviewed acknowledgement before decomposition proceeds
+
 ### Requirement: Runner-materialized loop artifacts
 
 Agents SHALL NOT hand-write `review.md` or `assumptions.md`. Reviewers and resolvers SHALL emit schema-validated JSON sidecars (`findings-<k>.json`, `resolutions-<k>.json`, assumption records) into the run dir; the runner SHALL materialize the markdown artifacts into the change folder in the format the forked schema templates define. The materialized markdown SHALL pass `openspec validate` for the change. Materialized files SHALL carry a GENERATED header stating they are regenerated from sidecars and must not be hand-edited; human changes to their content SHALL flow through the gate file (`gate-<n>.md`) or the sidecars, never through direct edits.
@@ -189,6 +194,16 @@ The runner SHALL detect human hand edits to agent-authored artifacts (proposal, 
 
 - **WHEN** the human edited a spec scenario and design.md while gate-pending
 - **THEN** resume re-validates the change, logs the edits, runs the drift-check pass reconciling tasks.md, and includes the edit summary in the re-presented digest
+
+#### Scenario: Vacuous approval rejected
+
+- **WHEN** an early gate was presented because cap-hit fired with 0 BLOCKERs and 0 assumptions, and the human resumes without checking the trajectory-reviewed box
+- **THEN** the runner rejects the response naming the unchecked box, and no run state changes
+
+#### Scenario: Open MATERIAL finding veto with redirect
+
+- **WHEN** the human leaves an open-MATERIAL-finding box unchecked and writes `→ restructure D6 around a format-helper import` beneath it
+- **THEN** the runner records a veto with redirect for that finding, runs one resolver pass applying it, re-materializes artifacts, and re-presents `gate-<n+1>.md`
 
 ### Requirement: Adaptive depth profiles
 

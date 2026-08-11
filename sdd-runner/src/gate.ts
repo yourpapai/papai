@@ -65,6 +65,7 @@ export interface ResumeGateInput {
   readonly version: number
   readonly assumptions: readonly GateAssumption[]
   readonly blockers: readonly GateBlocker[]
+  readonly requiredAck?: string
 }
 
 export type GateOutcome =
@@ -75,7 +76,11 @@ export type GateOutcome =
 export async function resumeGate(deps: GateDeps, input: ResumeGateInput): Promise<GateOutcome> {
   const gateMdPath = path.join(deps.runDir, `gate-${input.version}.md`)
   const md = await readFile(gateMdPath, 'utf8')
-  const response = parseGateResponse(md, { assumptions: input.assumptions, blockers: input.blockers })
+  const response = parseGateResponse(md, {
+    assumptions: input.assumptions,
+    blockers: input.blockers,
+    ...(input.requiredAck === undefined ? {} : { requiredAck: input.requiredAck }),
+  })
   if (response.abort) {
     deps.emit({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: input.version })
     return { kind: 'aborted' }

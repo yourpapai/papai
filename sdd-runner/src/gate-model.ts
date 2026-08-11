@@ -7,6 +7,9 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import { formatTrajectoryBlock } from './renderer.js'
+import type { DigestRecord } from './replay.js'
+
 export type ArtifactHashes = Record<string, string>
 
 export async function recordArtifactHashes(changeDir: string, relPaths: readonly string[]): Promise<ArtifactHashes> {
@@ -43,6 +46,8 @@ export interface GateBlocker {
   readonly evidence: string
 }
 
+export type GateFinding = GateBlocker
+
 export interface GateDigestInput {
   readonly version: number
   readonly mode: 'early' | 'final'
@@ -50,6 +55,9 @@ export interface GateDigestInput {
   readonly runId: string
   readonly assumptions: readonly GateAssumption[]
   readonly blockers: readonly GateBlocker[]
+  readonly openMaterial: readonly GateFinding[]
+  readonly trajectory: readonly DigestRecord[]
+  readonly capHitFired: boolean
   readonly summary: string
   readonly costUsd: number
   readonly durationMs: number
@@ -78,6 +86,19 @@ export function writeGateDigest(input: GateDigestInput): string {
     for (const blocker of input.blockers) {
       lines.push('', `${blocker.id} ${blocker.gap}`, `evidence: ${blocker.evidence}`, '→ <answer or OVERRIDE>')
     }
+  }
+  if (input.mode === 'early' && input.openMaterial.length > 0) {
+    const trajectoryBlock = formatTrajectoryBlock(input.trajectory)
+    if (trajectoryBlock !== '') {
+      lines.push('', trajectoryBlock)
+    }
+    lines.push('', '### Open MATERIAL findings at cap (reviewed)')
+    for (const finding of input.openMaterial) {
+      lines.push('', `- [ ] ${finding.id} ${finding.gap}`, `  resolver: ${finding.evidence}`)
+    }
+  }
+  if (input.mode === 'early' && input.blockers.length === 0 && input.capHitFired) {
+    lines.push('', '### Trajectory reviewed', '', '- [ ] T1 I reviewed the trajectory and the open findings above')
   }
   lines.push('', '### Assumptions (blast-ranked)')
   for (const assumption of ranked) {
@@ -108,6 +129,7 @@ export interface GateResponse {
 export interface ExpectedGateContent {
   readonly assumptions: readonly GateAssumption[]
   readonly blockers: readonly GateBlocker[]
+  readonly requiredAck?: string
 }
 
 const OVERRIDE_TOKEN = 'OVERRIDE'
@@ -145,6 +167,14 @@ function processLine(
     state.pendingRedirectFor = checked ? null : id
     return
   }
+  const ackMatch = line.match(/^\s*-\s*\[([^\]]+)\]\s*(T\d+)\b/u)
+  if (ackMatch !== null) {
+    const checked = classifyBox(`[${ackMatch[1] ?? ''}]`)
+    if (checked === null) throw new Error(`gate response line ${lineNo}: ambiguous checkbox mark`)
+    const id = ackMatch[2] ?? ''
+    if (checked) state.checked.add(id)
+    return
+  }
   const arrowMatch = line.match(/^\s*→\s*(.+)$/u)
   if (arrowMatch !== null) {
     const payload = (arrowMatch[1] ?? '').trim()
@@ -169,6 +199,11 @@ function processLine(
 }
 
 function finalizeResponse(state: ParseState, expected: ExpectedGateContent): GateResponse {
+  if (expected.requiredAck !== undefined && !state.checked.has(expected.requiredAck)) {
+    throw new Error(
+      `gate response: required ack ${expected.requiredAck} not checked — check the trajectory-reviewed box to proceed`,
+    )
+  }
   const checkedAll = expected.assumptions.every((a) => state.checked.has(a.id))
   const answered = new Set(state.answers.map((a) => a.id))
   const unanswered = expected.blockers.filter((b) => !answered.has(b.id) && !state.override)

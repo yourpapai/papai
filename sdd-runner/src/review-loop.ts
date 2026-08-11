@@ -47,6 +47,7 @@ export interface ReviewLoopResult {
   readonly outcome: 'converged' | 'cap-hit'
   readonly rounds: number
   readonly openBlockers: readonly Resolution[]
+  readonly openMaterial: readonly Resolution[]
 }
 
 async function runLens(
@@ -136,9 +137,10 @@ async function runRound(
   deps.emit({ altitude: 'L2', type: 'convergence', round, verdict, counts })
   await deps.materialize(round)
   deps.emit({ altitude: 'L2', type: 'round_close', round, cap })
-  if (verdict === 'converged') return { outcome: 'converged', rounds: round, openBlockers: [] }
+  if (verdict === 'converged') return { outcome: 'converged', rounds: round, openBlockers: [], openMaterial: [] }
   const openBlockers = resolved.resolutions.filter((entry) => entry.class === 'BLOCKER')
-  if (round >= cap) return { outcome: 'cap-hit', rounds: round, openBlockers }
+  const openMaterial = resolved.resolutions.filter((entry) => entry.class === 'MATERIAL')
+  if (round >= cap) return { outcome: 'cap-hit', rounds: round, openBlockers, openMaterial }
   return runRound(deps, options, round + 1, cap, openBlockers.length)
 }
 

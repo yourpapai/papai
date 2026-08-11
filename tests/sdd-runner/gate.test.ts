@@ -75,6 +75,9 @@ describe('presentGate', () => {
       summary: 'add a thing',
       costUsd: 0.5,
       durationMs: 1000,
+      openMaterial: [],
+      trajectory: [],
+      capHitFired: false,
     })
     expect(result.gateMdPath).toBe(path.join(fixture.runDir, 'gate-1.md'))
     expect(fs.existsSync(result.gateMdPath)).toBe(true)
@@ -98,6 +101,9 @@ describe('resumeGate', () => {
       summary: 's',
       costUsd: 0,
       durationMs: 0,
+      openMaterial: [],
+      trajectory: [],
+      capHitFired: false,
     })
     const md = fs.readFileSync(path.join(fixture.runDir, 'gate-1.md'), 'utf8').replace('- [ ] A1', '- [x] A1')
     fs.writeFileSync(path.join(fixture.runDir, 'gate-1.md'), md)
@@ -126,6 +132,9 @@ describe('resumeGate', () => {
       summary: 's',
       costUsd: 0,
       durationMs: 0,
+      openMaterial: [],
+      trajectory: [],
+      capHitFired: false,
     })
     const md = fs
       .readFileSync(path.join(fixture.runDir, 'gate-1.md'), 'utf8')
@@ -157,6 +166,9 @@ describe('resumeGate', () => {
       summary: 's',
       costUsd: 0,
       durationMs: 0,
+      openMaterial: [],
+      trajectory: [],
+      capHitFired: false,
     })
     fs.writeFileSync(
       path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'),
@@ -186,6 +198,9 @@ describe('resumeGate', () => {
       summary: 's',
       costUsd: 0,
       durationMs: 0,
+      openMaterial: [],
+      trajectory: [],
+      capHitFired: false,
     })
     fs.writeFileSync(path.join(fixture.runDir, 'gate-1.md'), 'ABORT\n')
     const outcome = await resumeGate(fixture.deps, {

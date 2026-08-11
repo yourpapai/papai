@@ -16,9 +16,10 @@ import type { ExecGitFn, RunnerConfig } from './config.js'
 import { createEventBus } from './event-bus.js'
 import { appendEvent, readEvents } from './events.js'
 import type { AgentUsage, EventInput, SddEvent } from './events.js'
-import type { GateAssumption, GateBlocker } from './gate-model.js'
+import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
 import { presentGate } from './gate.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
+import { replayEvents } from './replay.js'
 import { ResolverOutputSchema } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { saveRunState } from './run-state.js'
@@ -78,6 +79,8 @@ export async function presentGateAt(
   const events = readEvents(logPathFor(state))
   const { costUsd, durationMs } = costAndDuration(events, state.createdAt, nowOf(deps))
   const assumptions = await gatherAssumptions(ctx.sidecarDir, reviewResult.rounds)
+  const findings = findingsOf(reviewResult)
+  const trajectory = replayEvents(logPathFor(state)).perRound
   const result = await presentGate(
     { emit: ctx.emit, runDir: state.runDir, changeDir: ctx.changeDir, driftCheck: () => Promise.resolve() },
     {
@@ -86,7 +89,10 @@ export async function presentGateAt(
       changeName: state.changeName,
       runId: state.runId,
       assumptions,
-      blockers: blockersOf(reviewResult),
+      blockers: findings.blockers,
+      openMaterial: findings.material,
+      trajectory,
+      capHitFired: reviewResult.outcome === 'cap-hit',
       summary: state.changeName,
       costUsd,
       durationMs,
@@ -124,11 +130,40 @@ export async function gatherAssumptions(sidecarDir: string, rounds: number): Pro
 }
 
 export function blockersOf(result: ReviewLoopResult): GateBlocker[] {
-  return result.openBlockers.map((entry) => ({
+  return findingsOf(result).blockers
+}
+
+export function findingsOf(result: ReviewLoopResult): { blockers: GateBlocker[]; material: GateFinding[] } {
+  const blockers = result.openBlockers.map((entry) => ({
     id: entry.id,
     gap: entry.id,
     evidence: entry.outcome ?? entry.justification ?? '',
   }))
+  const material = result.openMaterial.map((entry) => ({
+    id: entry.id,
+    gap: entry.id,
+    evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
+  }))
+  return { blockers, material }
+}
+
+export async function readReviewResultFromSidecars(
+  sidecarDir: string,
+  round: number,
+  outcome: 'converged' | 'cap-hit',
+): Promise<ReviewLoopResult> {
+  try {
+    const raw = await readFile(path.join(sidecarDir, `resolutions-${round}.json`), 'utf8')
+    const parsed = ResolverOutputSchema.parse(JSON.parse(raw))
+    return {
+      outcome,
+      rounds: round,
+      openBlockers: parsed.resolutions.filter((r) => r.class === 'BLOCKER'),
+      openMaterial: parsed.resolutions.filter((r) => r.class === 'MATERIAL'),
+    }
+  } catch {
+    return { outcome, rounds: round, openBlockers: [], openMaterial: [] }
+  }
 }
 
 export function costAndDuration(
@@ -143,7 +178,7 @@ export function costAndDuration(
 
 export async function applyConfirmAll(gateMdPath: string): Promise<void> {
   const md = await readFile(gateMdPath, 'utf8')
-  await writeFile(gateMdPath, md.replace(/- \[ \] (A\d+)/gu, '- [x] $1'))
+  await writeFile(gateMdPath, md.replace(/- \[ \] ([AT]\d+)/gu, '- [x] $1'))
 }
 
 export function buildDriftPrompt(files: readonly string[], tasksFile: string, cwd: string): string {

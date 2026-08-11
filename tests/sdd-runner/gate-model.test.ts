@@ -15,6 +15,7 @@ import {
   writeGateDigest,
 } from '../../sdd-runner/src/gate-model.js'
 import type { GateAssumption, GateBlocker } from '../../sdd-runner/src/gate-model.js'
+import type { DigestRecord } from '../../sdd-runner/src/replay.js'
 
 const tmpDirs: string[] = []
 
@@ -60,6 +61,9 @@ describe('writeGateDigest', () => {
       runId: 'run-1',
       assumptions: [assumption({ id: 'A2', blast_radius: 'whole bot' }), assumption()],
       blockers: [],
+      openMaterial: [],
+      trajectory: [],
+      capHitFired: false,
       summary: 'add a thing',
       costUsd: 0.42,
       durationMs: 120_000,
@@ -80,6 +84,9 @@ describe('writeGateDigest', () => {
       runId: 'run-1',
       assumptions: [assumption()],
       blockers: [blocker()],
+      openMaterial: [],
+      trajectory: [],
+      capHitFired: false,
       summary: 'add a thing',
       costUsd: 0.1,
       durationMs: 60_000,
@@ -87,6 +94,32 @@ describe('writeGateDigest', () => {
     expect(md).toContain('Early gate')
     expect(md).toContain('B1')
     expect(md).toContain('no rollback path')
+  })
+
+  it('renders a trajectory block and open MATERIAL findings when mode is early and openMaterial is non-empty', () => {
+    const trajectory: readonly DigestRecord[] = [
+      { round: 1, counts: { blocker: 0, material: 2, nitpick: 0 }, resolved: 1, dismissed: 0, verdict: 'open' },
+      { round: 2, counts: { blocker: 0, material: 1, nitpick: 0 }, resolved: 1, dismissed: 0, verdict: 'open' },
+    ]
+    const md = writeGateDigest({
+      version: 1,
+      mode: 'early',
+      changeName: 'add-thing',
+      runId: 'run-1',
+      assumptions: [],
+      blockers: [],
+      openMaterial: [{ id: 'F1', gap: 'F1', evidence: 'edited — gap narrowed' }],
+      trajectory,
+      capHitFired: true,
+      summary: 'add a thing',
+      costUsd: 0.1,
+      durationMs: 60_000,
+    })
+    expect(md).toContain('### Cap-hit trajectory')
+    expect(md).toContain('round 1: 0b 2m 0n · 1 resolved · 0 dismissed · open')
+    expect(md).toContain('round 2: 0b 1m 0n · 1 resolved · 0 dismissed · open')
+    expect(md).toContain('- [ ] F1')
+    expect(md).toContain('resolver: edited — gap narrowed')
   })
 })
 
@@ -136,5 +169,22 @@ describe('parseGateResponse', () => {
     const md = '## Gate\n\nABORT\n'
     const response = parseGateResponse(md, expected)
     expect(response.abort).toBe(true)
+  })
+
+  it('rejects a cap-hit early gate without the trajectory-reviewed ack naming T1', () => {
+    const md = '## Gate\n\n- [ ] T1 I reviewed the trajectory and the open findings above\n'
+    expect(() => parseGateResponse(md, { assumptions: [], blockers: [], requiredAck: 'T1' })).toThrow(/T1/u)
+  })
+
+  it('approves a cap-hit early gate when the T1 ack is checked and no assumptions or blockers are open', () => {
+    const md = '## Gate\n\n- [x] T1 I reviewed the trajectory and the open findings above\n'
+    const response = parseGateResponse(md, { assumptions: [], blockers: [], requiredAck: 'T1' })
+    expect(response.approved).toBe(true)
+  })
+
+  it('leaves the protocol unchanged when no requiredAck is set (final mode or blockers open)', () => {
+    const md = '## Gate\n\n- [x] A1\n- [x] A2\n'
+    const response = parseGateResponse(md, { ...expected, blockers: [] })
+    expect(response.approved).toBe(true)
   })
 })

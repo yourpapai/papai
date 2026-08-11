@@ -16,10 +16,12 @@ import {
   buildBus,
   buildDriftCheck,
   finalizeGate,
+  findingsOf,
   gatherAssumptions,
   logPathFor,
   nowOf,
   presentGateAt,
+  readReviewResultFromSidecars,
 } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
 import { resumeGate } from './gate.js'
@@ -245,6 +247,14 @@ export async function runGateResume(
   if (options.abort === true) await writeFile(gateMdPath, 'ABORT\n')
   else if (options.confirmAll === true) await applyConfirmAll(gateMdPath)
   const assumptions = await gatherAssumptions(sidecarDir, state.round)
+  const capHitFired = state.gate.mode === 'early'
+  const reviewResult = await readReviewResultFromSidecars(
+    sidecarDir,
+    state.round,
+    capHitFired ? 'cap-hit' : 'converged',
+  )
+  const findings = findingsOf(reviewResult)
+  const requiredAck = capHitFired && findings.blockers.length === 0 ? 'T1' : undefined
   const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
   const outcome = await resumeGate(
     {
@@ -253,7 +263,7 @@ export async function runGateResume(
       changeDir,
       driftCheck: buildDriftCheck(agent, state, changeDir, sidecarDir, deps.config.repoRoot),
     },
-    { version, assumptions, blockers: [] },
+    { version, assumptions, blockers: findings.blockers, ...(requiredAck === undefined ? {} : { requiredAck }) },
   )
   if (outcome.kind === 'aborted') return finalizeGate(deps, state, 'aborted', version)
   if (outcome.kind === 'approved') return finalizeGate(deps, state, 'completed', version)
@@ -262,9 +272,9 @@ export async function runGateResume(
     deps,
     state,
     { cwd: deps.config.repoRoot, changeDir, sidecarDir, emit },
-    { outcome: 'converged', rounds: state.round, openBlockers: [] },
+    reviewResult,
     next,
-    'final',
+    state.gate.mode,
   )
   return { runId, outcome: 'veto', version: next }
 }

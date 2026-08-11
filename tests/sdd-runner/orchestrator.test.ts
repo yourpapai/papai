@@ -44,7 +44,7 @@ interface Fixture {
   readonly spawnOrder: string[]
 }
 
-function makeFixture(): Fixture {
+function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
   const repoRoot = makeDir()
   const changeName = 'add-thing'
   const changeDir = path.join(repoRoot, 'openspec', 'changes', changeName)
@@ -63,6 +63,7 @@ function makeFixture(): Fixture {
     'decompose-tasks.json': JSON.stringify({ tasks_file: 'openspec/changes/add-thing/tasks.md' }),
     'atomicity.json': JSON.stringify({ split: 0, merged: 0 }),
     'drift.json': JSON.stringify({ tasks_file: 'openspec/changes/add-thing/tasks.md' }),
+    ...sidecarOverrides,
   }
   const artifacts: Record<string, string> = {
     'draft-proposal.json': path.join(changeDir, 'proposal.md'),
@@ -271,6 +272,40 @@ function createTrackingDriver(fixture: Fixture, calls: string[]): OpenSpecDriver
 }
 
 describe('runGateResume', () => {
+  it('halts at an early cap-hit gate with trajectory, open MATERIAL checkboxes, and T1 ack; rejects resume without T1', async () => {
+    const materialFinding = {
+      id: 'F1',
+      class: 'MATERIAL',
+      gap: 'design lacks rollback',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-1.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-2.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-3.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-3.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+    expect(started.halted).toBe('gate')
+
+    const gateMd = fs.readFileSync(started.gateMdPath, 'utf8')
+    expect(gateMd).toContain('### Cap-hit trajectory')
+    expect(gateMd).toContain('round 1:')
+    expect(gateMd).toContain('round 2:')
+    expect(gateMd).toContain('round 3:')
+    expect(gateMd).toContain('### Open MATERIAL findings at cap (reviewed)')
+    expect(gateMd).toContain('- [ ] F1')
+    expect(gateMd).toContain('resolver: edited — narrowed gap')
+    expect(gateMd).toContain('### Trajectory reviewed')
+    expect(gateMd).toContain('- [ ] T1')
+
+    await expect(runGateResume(fixture.deps, started.runId, {})).rejects.toThrow(/T1/u)
+  })
+
   it('marks the run completed on an approved gate', async () => {
     const fixture = makeFixture()
     const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })

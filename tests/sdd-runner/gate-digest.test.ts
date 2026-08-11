@@ -9,7 +9,13 @@ import os from 'node:os'
 import path from 'node:path'
 
 import type { SddEvent } from '../../sdd-runner/src/events.js'
-import { applyConfirmAll, blockersOf, buildDriftPrompt, costAndDuration } from '../../sdd-runner/src/gate-digest.js'
+import {
+  applyConfirmAll,
+  blockersOf,
+  buildDriftPrompt,
+  costAndDuration,
+  findingsOf,
+} from '../../sdd-runner/src/gate-digest.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 
 const tmpDirs: string[] = []
@@ -36,11 +42,33 @@ describe('blockersOf', () => {
         { id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' },
         { id: 'F2', class: 'BLOCKER', resolution: 'dismissed', justification: 'nope' },
       ],
+      openMaterial: [],
     }
     expect(blockersOf(result)).toEqual([
       { id: 'F1', gap: 'F1', evidence: 'defaulted' },
       { id: 'F2', gap: 'F2', evidence: 'nope' },
     ])
+  })
+})
+
+describe('findingsOf', () => {
+  it('maps open blockers and open material to gate finding entries', () => {
+    const result: ReviewLoopResult = {
+      outcome: 'cap-hit',
+      rounds: 3,
+      openBlockers: [{ id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' }],
+      openMaterial: [
+        { id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'gap narrowed' },
+        { id: 'F3', class: 'MATERIAL', resolution: 'dismissed', justification: 'answered in design' },
+      ],
+    }
+    expect(findingsOf(result)).toEqual({
+      blockers: [{ id: 'F1', gap: 'F1', evidence: 'defaulted' }],
+      material: [
+        { id: 'F2', gap: 'F2', evidence: 'edited — gap narrowed' },
+        { id: 'F3', gap: 'F3', evidence: 'dismissed — answered in design' },
+      ],
+    })
   })
 })
 

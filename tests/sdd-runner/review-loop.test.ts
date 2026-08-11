@@ -177,7 +177,7 @@ describe('runReviewLoop', () => {
       taskText: 'TASK TEXT SENTINEL - must never reach the reviewer',
       conventions: 'project conventions here',
     })
-    expect(result).toEqual({ outcome: 'converged', rounds: 1, openBlockers: [] })
+    expect(result).toEqual({ outcome: 'converged', rounds: 1, openBlockers: [], openMaterial: [] })
     const reviewerPrompt = promptOf(fixture, 'reviewer-1')
     expect(reviewerPrompt).toContain('improve things')
     expect(reviewerPrompt).toContain('project conventions here')
@@ -192,10 +192,11 @@ describe('runReviewLoop', () => {
 
   it('halts to the early gate with the open blockers when the cap is hit (S)', async () => {
     const dir = makeDir()
-    const blocker = resolution({ class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' })
+    const blocker = resolution({ id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' })
+    const material = resolution({ id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'gap narrowed' })
     const fixture = makeLoopFixture(dir, {
-      reviewer: [JSON.stringify({ findings: [finding({ class: 'BLOCKER' })] })],
-      resolver: [JSON.stringify({ resolutions: [blocker], assumptions: [] })],
+      reviewer: [JSON.stringify({ findings: [finding({ id: 'F1', class: 'BLOCKER' }), finding({ id: 'F2' })] })],
+      resolver: [JSON.stringify({ resolutions: [blocker, material], assumptions: [] })],
     })
     const result = await runReviewLoop(fixture.deps, {
       changeName: 'add-thing',
@@ -206,6 +207,7 @@ describe('runReviewLoop', () => {
     })
     expect(result.outcome).toBe('cap-hit')
     expect(result.openBlockers).toEqual([blocker])
+    expect(result.openMaterial).toEqual([material])
   })
 
   it('feeds the resolutions ledger to the next round reviewer', async () => {
