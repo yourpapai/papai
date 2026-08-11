@@ -26,13 +26,20 @@ export interface StatusResult {
   readonly isPlanningComplete: boolean
 }
 
+export interface InstructionDependency {
+  readonly id: string
+  readonly done?: boolean
+  readonly path?: string
+  readonly description?: string
+}
+
 export interface InstructionsResult {
   readonly instruction: string
   readonly template: string | undefined
   readonly rules: readonly string[]
   readonly resolvedOutputPath: string
   readonly existingOutputPaths: readonly string[]
-  readonly dependencies: readonly string[]
+  readonly dependencies: readonly InstructionDependency[]
 }
 
 export interface ValidateResult {
@@ -46,13 +53,20 @@ const StatusPayloadSchema = z.object({
   isPlanningComplete: z.boolean().optional(),
 })
 
+const InstructionDependencySchema = z.object({
+  id: z.string(),
+  done: z.boolean().optional(),
+  path: z.string().optional(),
+  description: z.string().optional(),
+})
+
 const InstructionsPayloadSchema = z.object({
   instruction: z.string(),
   template: z.string().optional(),
   rules: z.array(z.string()).optional(),
   resolvedOutputPath: z.string().min(1),
   existingOutputPaths: z.array(z.string()).optional(),
-  dependencies: z.array(z.string()).optional(),
+  dependencies: z.array(InstructionDependencySchema).optional(),
 })
 
 export interface OpenSpecDriver {

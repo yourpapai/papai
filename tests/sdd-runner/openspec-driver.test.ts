@@ -104,6 +104,20 @@ describe('instructions', () => {
     expect(invoked).toContain('--change add-thing')
     expect(invoked).toContain('--json')
   })
+
+  it('parses dependencies as structured objects (the real openspec CLI shape)', async () => {
+    const payload = JSON.stringify({
+      instruction: 'Create the specs.',
+      resolvedOutputPath: '/repo/openspec/changes/add-thing/specs/x/spec.md',
+      dependencies: [{ id: 'proposal', done: true, path: 'proposal.md', description: 'Initial proposal document' }],
+    })
+    const { exec } = fakeExec({ 'instructions specs': { stdout: payload } })
+    const driver = createOpenSpecDriver({ exec, cwd: '/repo' })
+    const result = await driver.instructions('specs', 'add-thing')
+    expect(result.dependencies).toEqual([
+      { id: 'proposal', done: true, path: 'proposal.md', description: 'Initial proposal document' },
+    ])
+  })
 })
 
 describe('validateStrict', () => {
