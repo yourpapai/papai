@@ -59,4 +59,4 @@ bun run sdd-runner:start -- gate resume <runId> [--confirm-all] [--abort]
 bun run sdd-runner:start -- report <runId> [--pr]
 ```
 
-Or via the thin wrapper: `/sdd:auto <task-file>`.
+Or via the thin wrapper: `/sdd:auto <task-file>` _(not yet implemented — intended papai chat command that shells out to `sdd-runner:start`; use the `bun run` form above for now)_.
