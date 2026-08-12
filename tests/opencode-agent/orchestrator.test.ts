@@ -325,7 +325,11 @@ interface Harness {
   io: PipelineIo
 }
 
-const SPEC_REPLY = JSON.stringify({ status: 'spec', spec: 'Add a retry wrapper around fetch.' })
+const SPEC_REPLY = JSON.stringify({
+  status: 'capture',
+  changeName: 'add-retries',
+  spec: 'Add a retry wrapper around fetch.',
+})
 const PLAN_REPLY = JSON.stringify({
   steps: [{ title: 'Write retry tests', files: ['tests/retry.test.ts'], verification: 'bun test' }],
   summary: 'One step.',
@@ -822,7 +826,7 @@ describe('phase 1 — triage', () => {
       '',
       '- `src/a.ts`',
     ].join('\n')
-    harness.io.replies = [JSON.stringify({ status: 'spec', spec })]
+    harness.io.replies = [JSON.stringify({ status: 'capture', changeName: 'add-retries', spec })]
 
     await runPipeline({ event: issueEvent(), deps: harness.deps })
 
@@ -995,7 +999,9 @@ describe('review conversation', () => {
   })
 
   test('/changes revises the spec and reports a new revision', async () => {
-    harness.io.replies = [JSON.stringify({ status: 'spec', spec: 'Use the existing helper.' })]
+    harness.io.replies = [
+      JSON.stringify({ status: 'capture', changeName: 'add-retries', spec: 'Use the existing helper.' }),
+    ]
 
     const result = await runPipeline({ event: comment('/changes use the existing helper'), deps: harness.deps })
 
@@ -1005,7 +1011,7 @@ describe('review conversation', () => {
   })
 
   test('/changes threads the maintainer feedback into the rewrite prompt', async () => {
-    harness.io.replies = [JSON.stringify({ status: 'spec', spec: 'revised' })]
+    harness.io.replies = [JSON.stringify({ status: 'capture', changeName: 'add-retries', spec: 'revised' })]
     await runPipeline({ event: comment('/changes use the existing helper'), deps: harness.deps })
 
     expect(String(harness.io.prompts.at(-1)?.prompt)).toContain('use the existing helper')
@@ -1021,7 +1027,10 @@ describe('review conversation', () => {
   })
 
   test('a plain comment classified as a change request revises the spec', async () => {
-    harness.io.replies = [JSON.stringify({ intent: 'changes' }), JSON.stringify({ status: 'spec', spec: 'revised' })]
+    harness.io.replies = [
+      JSON.stringify({ intent: 'changes' }),
+      JSON.stringify({ status: 'capture', changeName: 'add-retries', spec: 'revised' }),
+    ]
 
     await runPipeline({ event: comment('please use the existing helper instead'), deps: harness.deps })
 
@@ -1199,9 +1208,9 @@ describe('artefact revision numbering', () => {
 
   test('revising the spec twice still leaves the first plan at revision 1', async () => {
     await toDesignSpec(harness)
-    harness.io.replies = [JSON.stringify({ status: 'spec', spec: 'Second attempt.' })]
+    harness.io.replies = [JSON.stringify({ status: 'capture', changeName: 'add-retries', spec: 'Second attempt.' })]
     await runPipeline({ event: comment('/changes use the existing helper'), deps: harness.deps })
-    harness.io.replies = [JSON.stringify({ status: 'spec', spec: 'Third attempt.' })]
+    harness.io.replies = [JSON.stringify({ status: 'capture', changeName: 'add-retries', spec: 'Third attempt.' })]
     await runPipeline({ event: comment('/changes name the helper'), deps: harness.deps })
 
     expect(harness.io.posted.at(-1)).toContain('### Design spec (revision 3)')

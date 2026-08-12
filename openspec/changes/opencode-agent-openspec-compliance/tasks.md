@@ -42,13 +42,13 @@ Write/Edit TDD hook pipeline.
 
 ## 3. INIT_OR_CLARIFY: explore stance + capture policy
 
-- [ ] 3.1 Add failing tests for the structured triage outcome
+- [x] 3.1 Add failing tests for the structured triage outcome
   (`clarify | capture | answer` + kebab change name) parsed via
   `promptForJson`, and for the D9 association gate (auto-capture for
   OWNER/MEMBER/COLLABORATOR; consent comment otherwise; affirmative reply
   routed via `applyClarifyIntent` completes capture)
   — `bun test tests/opencode-agent/triggers.test.ts tests/opencode-agent/phases.test.ts`
-- [ ] 3.2 Implement the triage outcome + D9 gate + consent path; scaffold
+- [x] 3.2 Implement the triage outcome + D9 gate + consent path; scaffold
   the change (`new change` via driver) on capture
   — `bun test tests/opencode-agent/phases.test.ts`
 

@@ -82,12 +82,14 @@ export interface PromptContext {
 }
 
 export const TRIAGE_INSTRUCTIONS = [
-  'Decide whether the request below is specified well enough to implement without further input.',
+  'Decide whether the request below is a question, needs more detail, or is ready to capture as a change.',
   'Explore the repository before deciding — do not assume a file layout.',
-  'Reply with a single JSON object and nothing else:',
-  '{"status":"clarify","questions":["…"]} when you need maintainer input, or',
-  '{"status":"spec","spec":"<markdown design spec>"} when the request is actionable.',
-  'A spec must state: the goal, the files to touch, the intended behaviour change, and how it will be verified.',
+  'Reply with a single JSON object and nothing else. There are three outcomes:',
+  '{"status":"clarify","questions":["…"]} when you need maintainer input before you can act.',
+  '{"status":"capture","changeName":"kebab-case-name","spec":"<markdown design spec>"} when the request is actionable.',
+  '{"status":"answer","reply":"<markdown answer>"} when the request is a question, not work — answer it directly.',
+  '`changeName` must be kebab-case (lowercase letters, digits, hyphens) and name the change, not the issue.',
+  'A `spec` must state: the goal, the files to touch, the intended behaviour change, and how it will be verified.',
   'Ask questions only when a wrong guess would produce the wrong feature; prefer stating an assumption in the spec.',
 ].join('\n')
 
