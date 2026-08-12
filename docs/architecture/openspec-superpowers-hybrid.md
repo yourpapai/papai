@@ -159,6 +159,19 @@ remain the decision research. Porting individual legacy items into OpenSpec
 (one at a time: archive/adopt/seed/retire) is operationalized by
 [`docs/operations/legacy-migration-runbook.md`](../operations/legacy-migration-runbook.md).
 
+### opencode-agent — the last entry point
+
+`opencode-agent/` was the one entry point the migration above left untouched:
+its `PHASE_SKILLS` still routed triage to `brainstorming` and planning to
+`writing-plans`, producing freeform `AGENT_SPEC`/`AGENT_PLAN` blocks no
+`openspec validate` ever saw. The `opencode-agent-openspec-compliance` change
+brings it onto the same OpenSpec substrate as every other entry point — see
+`openspec/changes/opencode-agent-openspec-compliance/` for the full design
+(D1–D13): the folder is truth (comments are renders), `PHASE_SKILLS` rewired
+to `openspec-explore`/`openspec-propose`, `tasks.md` as the step source,
+steering-drift (D6), the merged-PR archive door (D7), and the deliberate
+`STATE_VERSION` bump that strands legacy issues onto a fresh restart (D12).
+
 ## 5. Open questions
 
 - Enable expanded profile for `/opsx:verify` + `/opsx:onboard`, or stay on core

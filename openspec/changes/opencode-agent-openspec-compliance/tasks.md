@@ -119,7 +119,7 @@ Write/Edit TDD hook pipeline.
 
 ## 9. Docs + full verification
 
-- [ ] 9.1 Update `opencode-agent/CLAUDE.md` (phase descriptions, artifact
+- [x] 9.1 Update `opencode-agent/CLAUDE.md` (phase descriptions, artifact
   model, new door, no-legacy policy), `opencode-agent/README.md` and
   `opencode-agent/ROADMAP.md` (open findings referencing blocks or the
   superpowers skill set), and
