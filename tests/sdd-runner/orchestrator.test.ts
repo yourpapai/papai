@@ -14,11 +14,16 @@ import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { readEvents } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
+import { presentGateAt } from '../../sdd-runner/src/gate-digest.js'
+import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
+import type { StageContext } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { runGateResume, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
-import type { OrchestratorDeps } from '../../sdd-runner/src/orchestrator.js'
+import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
+import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState } from '../../sdd-runner/src/run-state.js'
+import type { RunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
 
@@ -144,6 +149,15 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
     },
   }
   return { deps, repoRoot, changeName, changeDir, taskFile, rendered, stdoutLines, spawnOrder }
+}
+
+function glmFallbackResolver(
+  modelId: string,
+): { input: number; output: number; source: 'primary' | 'fallback' } | null {
+  const table: Record<string, { input: number; output: number; source: 'primary' | 'fallback' }> = {
+    'zai-coding-plan/glm-5.2': { input: 5, output: 15, source: 'fallback' },
+  }
+  return table[modelId] ?? null
 }
 
 describe('runStart', () => {
@@ -415,5 +429,76 @@ describe('runGateResume', () => {
     const hashes2 = HashesSchema.parse(JSON.parse(fs.readFileSync(path.join(runDir, 'gate-hashes-2.json'), 'utf8')))
     expect(hashes1['proposal.md']).not.toBe(hashes2['proposal.md'])
     expect(fixture.spawnOrder).toContain('veto-updater.json')
+  })
+})
+
+describe('presentGateAt cost fallback', () => {
+  it('reprices a zero-cost subscription run into a non-zero estimated gate line', async () => {
+    const repoRoot = makeDir()
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    const changeDir = path.join(repoRoot, 'openspec', 'changes', 'add-thing')
+    fs.mkdirSync(changeDir, { recursive: true })
+    fs.writeFileSync(path.join(changeDir, 'proposal.md'), '## Why\nseeded\n')
+
+    const now = new Date('2026-01-01T00:00:00.000Z')
+    const state: RunState = await createRunState({ workDir, repoRoot, changeName: 'add-thing' }, now)
+    const events = [
+      {
+        altitude: 'L1',
+        type: 'spawned',
+        agent: 'drafter-1',
+        role: 'drafter',
+        model: 'zai-coding-plan/glm-5.2',
+        seq: 1,
+        ts: now.toISOString(),
+      },
+      {
+        altitude: 'L1',
+        type: 'done',
+        agent: 'drafter-1',
+        usage: { inputTokens: 1_000_000, outputTokens: 500_000, reasoningTokens: 0, costUsd: 0, wallMs: 1000 },
+        seq: 2,
+        ts: now.toISOString(),
+      },
+    ]
+    fs.writeFileSync(path.join(state.runDir, 'events.ndjson'), events.map((e) => JSON.stringify(e)).join('\n') + '\n')
+
+    const deps: OrchestratorDeps = {
+      config: {
+        repoRoot,
+        workDir,
+        model: 'zai-coding-plan/glm-5.2',
+        models: {},
+        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+      },
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      driver: createOpenSpecDriver({
+        exec: () => Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }),
+        cwd: repoRoot,
+      }),
+      resolveCost: glmFallbackResolver,
+      now: () => new Date('2026-01-01T00:43:27.000Z'),
+    }
+    const ctx: StageContext = {
+      cwd: repoRoot,
+      changeDir,
+      sidecarDir: path.join(state.runDir, 'sidecars'),
+      emit: () => {},
+    }
+    const reviewResult: ReviewLoopResult = {
+      outcome: 'converged',
+      rounds: 1,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    }
+
+    const result = await presentGateAt(deps, state, ctx, reviewResult, 1, 'final')
+    const gateMd = fs.readFileSync(result.gateMdPath, 'utf8')
+
+    expect(gateMd).toContain('· estimated')
+    expect(gateMd).not.toContain('$0.00')
+    expect(gateMd).toMatch(/\$12\.50/u)
   })
 })

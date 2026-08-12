@@ -31,6 +31,19 @@ Three altitudes in `<runDir>/events.ndjson`:
 
 The event log is sufficient to rebuild the rendered view by replay alone.
 
+The L1 `done` event carries the model id (`done.model`) that produced its usage. Pre-change logs lacking the field are backfilled at reprice time from the agent→model map rebuilt by replaying `spawned` events.
+
+### Cost fallback
+
+`done.usage.costUsd` is the emit-time meter read; for subscription providers (e.g. `zai-coding-plan/glm-5.2`) it is `0` regardless of token volume. `aggregateUsage` (`usage-aggregate.ts`) runs a reprice pass before reducing: every zero-cost `done` event with tokens > 0 is repriced via `resolveCost` (`pricing.ts`), which fetches `https://metrics.dev/api.json` (60-min cache at `~/.cache/sdd-runner/models.json`) and resolves PRIMARY (configured provider's own non-zero price) → FALLBACK (median of non-zero entries across providers) → LAST RESORT (`null`). `reasoningTokens` fold into the input side of the recompute. Repricing is a no-op when emit-time cost is already non-zero, so an upstream fix composes without conflict.
+
+The gate's `### Cost / duration` line carries a marker:
+- **metered** — `costKnown: true`; cost came from the provider meter (emit-time non-zero) or a PRIMARY resolve.
+- **estimated** — `costKnown: false` with non-zero cost; a FALLBACK median was applied.
+- **unknown** — `costKnown: false` with zero cost; resolve fell through to LAST RESORT.
+
+Network/parsing failures are swallowed: the resolver returns `null` for every model, so the gate degrades to `$0.00 · <walls>s · unknown` rather than halting. Pricing is a comfort feature, never a correctness gate. The live renderer's status line still shows emit-time (metered) cost; only the gate digest shows the aggregate (repriced) cost — a documented asymmetry.
+
 ## Depth profiles
 
 - **S**: no design.md, 1 review round, no atomicity check. Expected path for small changes via `--depth S`.

@@ -19,12 +19,15 @@ import type { AgentUsage, EventInput, SddEvent } from './events.js'
 import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
 import { presentGate } from './gate.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
+import { loadDb } from './pricing.js'
+import { resolveCost } from './pricing.js'
 import { replayEvents } from './replay.js'
 import { ResolverOutputSchema } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { aggregateUsage } from './usage-aggregate.js'
+import type { ResolveCostFn } from './usage-aggregate.js'
 
 export interface OrchestratorDeps {
   readonly config: RunnerConfig
@@ -35,6 +38,7 @@ export interface OrchestratorDeps {
   readonly stdout?: (line: string) => void
   readonly conventions?: string
   readonly now?: () => Date
+  readonly resolveCost?: ResolveCostFn
 }
 
 export interface RunStartResult {
@@ -77,7 +81,8 @@ export async function presentGateAt(
   mode: 'early' | 'final',
 ): Promise<RunStartResult> {
   const events = readEvents(logPathFor(state))
-  const { costUsd, durationMs } = costAndDuration(events, state.createdAt, nowOf(deps))
+  const resolve = deps.resolveCost ?? (await buildResolveCost())
+  const { costUsd, durationMs, costKnown } = costAndDuration(events, state.createdAt, nowOf(deps), resolve)
   const assumptions = await gatherAssumptions(ctx.sidecarDir, reviewResult.rounds)
   const findings = findingsOf(reviewResult)
   const trajectory = replayEvents(logPathFor(state)).perRound
@@ -96,6 +101,7 @@ export async function presentGateAt(
       capHitFired: reviewResult.outcome === 'cap-hit',
       summary: state.changeName,
       costUsd,
+      costKnown,
       durationMs,
     },
   )
@@ -177,14 +183,24 @@ export async function readReviewResultFromSidecars(
   }
 }
 
+export async function buildResolveCost(): Promise<ResolveCostFn> {
+  try {
+    const db = await loadDb()
+    return (modelId: string) => resolveCost(modelId, db)
+  } catch {
+    return () => null
+  }
+}
+
 export function costAndDuration(
   events: readonly SddEvent[],
   createdAt: string,
   now: Date,
-): { costUsd: number; durationMs: number } {
-  const costUsd = aggregateUsage(events).costUsd
+  resolve: ResolveCostFn = () => null,
+): { costUsd: number; durationMs: number; costKnown: boolean } {
+  const usage = aggregateUsage(events, resolve)
   const durationMs = Math.max(0, now.getTime() - new Date(createdAt).getTime())
-  return { costUsd, durationMs }
+  return { costUsd: usage.costUsd, durationMs, costKnown: usage.costKnown }
 }
 
 export async function applyConfirmAll(gateMdPath: string): Promise<void> {

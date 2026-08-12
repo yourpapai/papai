@@ -61,7 +61,13 @@ export interface GateDigestInput {
   readonly capHitFired: boolean
   readonly summary: string
   readonly costUsd: number
+  readonly costKnown: boolean
   readonly durationMs: number
+}
+
+function costMarker(input: GateDigestInput): string {
+  if (input.costKnown) return 'metered'
+  return input.costUsd > 0 ? 'estimated' : 'unknown'
 }
 
 export function writeGateDigest(input: GateDigestInput): string {
@@ -80,7 +86,7 @@ export function writeGateDigest(input: GateDigestInput): string {
     '### Summary',
     input.summary,
     '',
-    `### Cost / duration · $${input.costUsd.toFixed(2)} · ${Math.round(input.durationMs / 1000)}s`,
+    `### Cost / duration · $${input.costUsd.toFixed(2)} · ${Math.round(input.durationMs / 1000)}s · ${costMarker(input)}`,
   ]
   if (input.blockers.length > 0) {
     lines.push('', '### Cap-hit blockers (answer or override)')

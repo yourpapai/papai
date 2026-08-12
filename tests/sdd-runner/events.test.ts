@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
+import { EventInputSchema } from '../../sdd-runner/src/events.js'
 
 const tmpDirs: string[] = []
 
@@ -113,5 +114,31 @@ describe('L2 semantic events', () => {
     const log = makeLog()
     appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1 }, at('00'))
     expect(readEvents(log)[0]).toMatchObject({ type: 'gate', mode: 'early', version: 1 })
+  })
+})
+
+describe('done event model field', () => {
+  const baseUsage = { inputTokens: 1, outputTokens: 2, reasoningTokens: 0, costUsd: 0, wallMs: 10 }
+
+  it('accepts a done event carrying its model', () => {
+    const parsed = EventInputSchema.parse({
+      altitude: 'L1',
+      type: 'done',
+      agent: 'reviewer-r1',
+      model: 'zai-coding-plan/glm-5.2',
+      usage: baseUsage,
+    })
+    expect(parsed).toMatchObject({ type: 'done', model: 'zai-coding-plan/glm-5.2' })
+  })
+
+  it('still accepts a done event without model (backward compat)', () => {
+    const parsed = EventInputSchema.parse({
+      altitude: 'L1',
+      type: 'done',
+      agent: 'reviewer-r1',
+      usage: baseUsage,
+    })
+    expect(parsed).toMatchObject({ type: 'done' })
+    expect(parsed).not.toHaveProperty('model')
   })
 })

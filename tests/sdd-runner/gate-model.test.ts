@@ -71,6 +71,7 @@ describe('writeGateDigest', () => {
       capHitFired: false,
       summary: 'add a thing',
       costUsd: 0.42,
+      costKnown: true,
       durationMs: 120_000,
     })
     expect(md).toContain('gate-1.md')
@@ -95,6 +96,7 @@ describe('writeGateDigest', () => {
       capHitFired: false,
       summary: 'add a thing',
       costUsd: 0.1,
+      costKnown: true,
       durationMs: 60_000,
     })
     expect(md).toContain('Early gate')
@@ -120,6 +122,7 @@ describe('writeGateDigest', () => {
       capHitFired: true,
       summary: 'add a thing',
       costUsd: 0.1,
+      costKnown: true,
       durationMs: 60_000,
     })
     expect(md).toContain('### Cap-hit trajectory')
@@ -146,6 +149,7 @@ describe('writeGateDigest', () => {
       capHitFired: false,
       summary: 'add a thing',
       costUsd: 0.42,
+      costKnown: true,
       durationMs: 120_000,
     })
     expect(md).toContain('### Nitpicks (informational)')

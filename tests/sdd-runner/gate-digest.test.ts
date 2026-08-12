@@ -16,6 +16,7 @@ import {
   costAndDuration,
   findingsOf,
 } from '../../sdd-runner/src/gate-digest.js'
+import { writeGateDigest } from '../../sdd-runner/src/gate-model.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 
 const tmpDirs: string[] = []
@@ -117,5 +118,37 @@ describe('buildDriftPrompt', () => {
     expect(prompt).toContain('design.md')
     expect(prompt).toContain('/abs/tasks.md')
     expect(prompt).toContain('.review-loop/drift.json')
+  })
+})
+
+describe('writeGateDigest cost marker', () => {
+  const base = {
+    version: 1,
+    mode: 'final' as const,
+    changeName: 'add-thing',
+    runId: 'run-1',
+    assumptions: [],
+    blockers: [],
+    openMaterial: [],
+    openNitpicks: [],
+    trajectory: [],
+    capHitFired: true,
+    summary: 'add a thing',
+    durationMs: 2607_000,
+  }
+
+  it('renders metered when costKnown is true', () => {
+    const md = writeGateDigest({ ...base, costUsd: 1.23, costKnown: true })
+    expect(md).toContain(`### Cost / duration · $1.23 · 2607s · metered`)
+  })
+
+  it('renders estimated when costKnown is false but cost is non-zero', () => {
+    const md = writeGateDigest({ ...base, costUsd: 1.23, costKnown: false })
+    expect(md).toContain(`### Cost / duration · $1.23 · 2607s · estimated`)
+  })
+
+  it('renders unknown when costKnown is false and cost is zero', () => {
+    const md = writeGateDigest({ ...base, costUsd: 0, costKnown: false })
+    expect(md).toContain(`### Cost / duration · $0.00 · 2607s · unknown`)
   })
 })
