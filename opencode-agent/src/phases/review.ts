@@ -30,18 +30,24 @@ import type { AgentState } from '../types.js'
  */
 export const handleReview: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
-  // The plan, exactly as the implementation phase reads it: the loop reviews
-  // the work against what was approved, read from the folder's `tasks.md`
-  // (design D1) rather than a block on the issue.
-  const plan = await planFromFolder(input)
-
   // Not optional, and this is the difference from the review that used to run
   // inside phase 3: that one always had the tree it had just written, while this
   // one usually runs in a job that implemented nothing at all, where the remote
   // branch is the only copy. `ensureBranch` fast-forwards an existing remote
   // branch and cuts a fresh one otherwise, so the same call serves both.
+  //
+  // It comes **first**, before the plan is read: the folder that plan is in is
+  // on this branch and nowhere else, and the job's workspace starts on the base
+  // branch (`actions/checkout` takes no ref — switching branches is this
+  // pipeline's job, not the workflow's). Reading it a line earlier read the base
+  // branch's `openspec/changes/`, where this change does not exist.
   const branch = branchNameFor(state.issueId)
   await deps.git.ensureBranch(branch, await deps.baseBranch())
+
+  // The plan, exactly as the implementation phase reads it: the loop reviews
+  // the work against what was approved, read from the folder's `tasks.md`
+  // (design D1) rather than a block on the issue.
+  const plan = await planFromFolder(input)
 
   const review = await deps.runReview(plan)
 

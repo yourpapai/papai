@@ -39,12 +39,18 @@ import type { StepWalk } from './implement-steps.js'
 export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
   if (state.changeName === null) throw new Error('REVIEW_AND_MUTATE reached without a changeName on the state')
+  // The branch first, then the plan: `openspec/changes/<name>/` is on
+  // `agent/issue-<n>` and nowhere else, and this job's workspace starts on the
+  // base branch — the workflow's `actions/checkout` names no ref, because
+  // switching branches is this pipeline's job. Read a line earlier, `tasks.md`
+  // is read out of the base branch's folder set, which does not carry this
+  // change at all.
+  const branch = branchNameFor(state.issueId)
+  await deps.git.ensureBranch(branch, await deps.baseBranch())
+
   const tasksPath = (await deps.openspec.instructions('tasks', state.changeName)).resolvedOutputPath
   const tasksMd = await deps.readFile(tasksPath)
   const steps = planBoxes(tasksMd)
-
-  const branch = branchNameFor(state.issueId)
-  await deps.git.ensureBranch(branch, await deps.baseBranch())
 
   const envelope = mintEnvelope()
   // Minted and composed once per handler, then handed to every step and to the

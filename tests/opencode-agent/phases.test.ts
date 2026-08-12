@@ -7,9 +7,15 @@ import { describe, expect, it } from 'bun:test'
 
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { ParsedCommand } from '../../opencode-agent/src/commands.js'
-import type { OpenSpecDriver } from '../../opencode-agent/src/openspec-driver.js'
+import type {
+  InstructionsResult,
+  OpenSpecDriver,
+  StatusResult,
+  ValidateResult,
+} from '../../opencode-agent/src/openspec-driver.js'
 import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
 import { handleAnswer } from '../../opencode-agent/src/phases/answer.js'
+import { handleImplement } from '../../opencode-agent/src/phases/implement.js'
 import { handlePlan } from '../../opencode-agent/src/phases/plan.js'
 import { handleReview } from '../../opencode-agent/src/phases/review.js'
 import { handleTriage } from '../../opencode-agent/src/phases/triage.js'
@@ -550,5 +556,118 @@ describe('handleReview · reads the plan from the folder (D1)', () => {
     // The review loop was handed the folder's tasks.md verbatim.
     expect(handed).toEqual([tasks])
     expect(io.reads).toEqual([`/repo/openspec/changes/${CHANGE}/tasks.md`])
+  })
+})
+
+/**
+ * Design D1 again, from the other side: the folder is truth, and a job that has
+ * not checked out the branch carrying it holds no truth at all.
+ *
+ * `actions/checkout` in `agent-pipeline.yml` takes no ref on purpose — the
+ * workspace starts on the base branch and `ensureBranch` is what moves it onto
+ * `agent/issue-<n>`. So `openspec/changes/<name>/` is *absent* until that call,
+ * and every phase after the capture that scaffolded it runs in a different job:
+ * capture parks at `DESIGN_SPEC`, and the `/approve` that enters `PLANNING`
+ * arrives whenever a maintainer types it, on a fresh runner.
+ *
+ * The stub deps cannot show that on their own — their driver answers the same
+ * whatever the workspace is checked out at — which is exactly how three handlers
+ * came to read the folder one line before switching to it. Run 31630109348 is
+ * what that costs: `openspec status` exited 1 with "Change 'context-vault-plugin'
+ * not found. Available changes: …", listing master's folders, and the run died
+ * with the plan undrafted.
+ */
+const startedOnBaseBranch = (input: PhaseInput): void => {
+  const { deps } = input
+  const { git, openspec, readFile } = deps
+  let onBranch = false
+
+  // What the OpenSpec CLI says about a change folder that is on another branch,
+  // and what `readFile` says about a path that is not in the tree: both are the
+  // absence of the same folder, so both refuse until the branch is checked out.
+  const refuse = (command: string): never => {
+    throw new Error(`${command} failed (exit 1): Change '${CHANGE}' not found.`)
+  }
+
+  deps.git = {
+    ...git,
+    ensureBranch: (branch: string, base: string): Promise<void> => {
+      onBranch = true
+      return git.ensureBranch(branch, base)
+    },
+  }
+  deps.openspec = {
+    ...openspec,
+    status: (changeName: string): Promise<StatusResult> =>
+      onBranch ? openspec.status(changeName) : refuse('openspec status'),
+    instructions: (artifactId: string, changeName: string): Promise<InstructionsResult> =>
+      onBranch ? openspec.instructions(artifactId, changeName) : refuse('openspec instructions'),
+    validateStrict: (changeName: string): Promise<ValidateResult> =>
+      onBranch ? openspec.validateStrict(changeName) : refuse('openspec validate --strict'),
+  }
+  deps.readFile = (filePath: string): Promise<string> => (onBranch ? readFile(filePath) : refuse(`reading ${filePath}`))
+}
+
+/** An input parked where `REVIEW_AND_MUTATE` is entered: an approved plan in the folder. */
+const implementInput = (tasks: string): { input: PhaseInput; io: StubIo } => {
+  const built = stubPhaseDeps({ replies: ['Implemented.'], selfLogin: AGENT_LOGIN })
+  built.deps.openspec = folderDriver(CHANGE)
+  built.io.readContents = { [`/repo/openspec/changes/${CHANGE}/tasks.md`]: tasks }
+  return {
+    input: {
+      state: planningState({ phase: 'REVIEW_AND_MUTATE' }),
+      issue: { number: 42, title: 'Add a retry helper', body: 'Please add a retry helper.' },
+      trigger: issueTrigger('OWNER'),
+      command: null,
+      thread: built.io.thread,
+      deps: built.deps,
+    },
+    io: built.io,
+  }
+}
+
+describe('a phase checks out the branch carrying the folder before it reads the folder', () => {
+  it('handlePlan drafts after ensureBranch, not before (run 31630109348)', async () => {
+    const built = wireDrafterInput([
+      JSON.stringify({ content: 'design body' }),
+      JSON.stringify({ content: 'tasks body' }),
+    ])
+    startedOnBaseBranch(built.input)
+
+    const outcome = await handlePlan(built.input)
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    // Not merely "ensureBranch was called": it was called *first*, before the
+    // drafter asked the driver anything. That order is the whole fix.
+    expect(built.io.gitCalls[0]).toBe('ensureBranch:agent/issue-42:main')
+  })
+
+  it('handleImplement reads the plan after ensureBranch, not before', async () => {
+    const built = implementInput('- [ ] Add the wrapper\n')
+    startedOnBaseBranch(built.input)
+
+    const outcome = await handleImplement(built.input)
+
+    expect(outcome.signal).toBe('CHANGES_COMMITTED')
+    expect(built.io.gitCalls[0]).toBe('ensureBranch:agent/issue-42:main')
+  })
+
+  it('handleReview reads the plan after ensureBranch, not before', async () => {
+    const tasks = '- [ ] Write retry tests\n- [ ] Add the wrapper\n'
+    const built = folderReadInput({ phase: 'CODE_REVIEW', folder: { tasks } })
+    startedOnBaseBranch(built.input)
+    const handed: string[] = []
+    built.input.deps.runReview = (plan: string): Promise<ReviewRunResult> => {
+      handed.push(plan)
+      return Promise.resolve({ outcome: 'passed', summary: '', exitCode: 0 })
+    }
+
+    const outcome = await handleReview(built.input)
+
+    expect(outcome.signal).toBe('REVIEW_DONE')
+    // The loop still gets the folder's plan — the read moved behind the
+    // checkout, it did not become a read of something else.
+    expect(handed).toEqual([tasks])
+    expect(built.io.gitCalls[0]).toBe('ensureBranch:agent/issue-42:main')
   })
 })
