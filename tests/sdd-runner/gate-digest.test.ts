@@ -9,13 +9,8 @@ import os from 'node:os'
 import path from 'node:path'
 
 import type { SddEvent } from '../../sdd-runner/src/events.js'
-import {
-  applyConfirmAll,
-  blockersOf,
-  buildDriftPrompt,
-  costAndDuration,
-  findingsOf,
-} from '../../sdd-runner/src/gate-digest.js'
+import { applyConfirmAll, blockersOf, costAndDuration, findingsOf } from '../../sdd-runner/src/gate-digest.js'
+import { writeGateDigest } from '../../sdd-runner/src/gate-model.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 
 const tmpDirs: string[] = []
@@ -110,12 +105,131 @@ describe('applyConfirmAll', () => {
   })
 })
 
-describe('buildDriftPrompt', () => {
-  it('names the edited files and the report write target', () => {
-    const prompt = buildDriftPrompt(['specs/thing/spec.md', 'design.md'], '/abs/tasks.md', '/abs')
-    expect(prompt).toContain('specs/thing/spec.md')
-    expect(prompt).toContain('design.md')
-    expect(prompt).toContain('/abs/tasks.md')
-    expect(prompt).toContain('.review-loop/drift.json')
+describe('writeGateDigest cost marker', () => {
+  const base = {
+    version: 1,
+    mode: 'final' as const,
+    changeName: 'add-thing',
+    runId: 'run-1',
+    assumptions: [],
+    blockers: [],
+    openMaterial: [],
+    openNitpicks: [],
+    trajectory: [],
+    capHitFired: true,
+    summary: 'add a thing',
+    durationMs: 2607_000,
+    changeDigest: { what: null, why: null, touches: null, hasTasks: false },
+  }
+
+  it('renders metered when costKnown is true', () => {
+    const md = writeGateDigest({ ...base, costUsd: 1.23, costKnown: true })
+    expect(md).toContain(`### Cost / duration · $1.23 · 2607s · metered`)
+  })
+
+  it('renders estimated when costKnown is false but cost is non-zero', () => {
+    const md = writeGateDigest({ ...base, costUsd: 1.23, costKnown: false })
+    expect(md).toContain(`### Cost / duration · $1.23 · 2607s · estimated`)
+  })
+
+  it('renders unknown when costKnown is false and cost is zero', () => {
+    const md = writeGateDigest({ ...base, costUsd: 0, costKnown: false })
+    expect(md).toContain(`### Cost / duration · $0.00 · 2607s · unknown`)
+  })
+})
+
+describe('writeGateDigest change digest section', () => {
+  const digestBase = {
+    version: 1,
+    changeName: 'add-thing',
+    runId: 'run-1',
+    blockers: [],
+    openMaterial: [],
+    openNitpicks: [],
+    trajectory: [],
+    capHitFired: false,
+    summary: 'add-thing',
+    costUsd: 1.5,
+    costKnown: true,
+    durationMs: 120_000,
+  }
+
+  it('renders ### Change digest between ### Summary and ### Cost / duration with the 5-tuple (task 2.1)', () => {
+    const md = writeGateDigest({
+      ...digestBase,
+      mode: 'final',
+      assumptions: [{ id: 'A1', text: 'guests read-only', blast_radius: 'group replies' }],
+      changeDigest: { what: 'X', why: 'Y', touches: ['file-a', 'file-b'], hasTasks: false },
+    })
+    const digestIdx = md.indexOf('### Change digest')
+    const summaryIdx = md.indexOf('### Summary')
+    const costIdx = md.indexOf('### Cost / duration')
+    expect(digestIdx).toBeGreaterThan(-1)
+    expect(summaryIdx).toBeLessThan(digestIdx)
+    expect(digestIdx).toBeLessThan(costIdx)
+    expect(md).toContain('- **WHAT**: X')
+    expect(md).toContain('- **WHY**: Y')
+    expect(md).toContain('- **TOUCHES**: file-a, file-b')
+    expect(md).toMatch(/- \*\*RISKS\*\*: see "[^"]+" below/u)
+    expect(md).toMatch(/- \*\*BLAST\*\*: see "[^"]+" below/u)
+  })
+
+  it('renders placeholders for null fields, mode-aware RISKS, and BLAST on empty assumptions (task 2.2)', () => {
+    const earlyMd = writeGateDigest({
+      ...digestBase,
+      mode: 'early',
+      assumptions: [],
+      changeDigest: { what: null, why: null, touches: null, hasTasks: false },
+    })
+    expect(earlyMd).toContain('- **WHAT**: _(no "Why" section in proposal.md)_')
+    expect(earlyMd).toContain('- **WHY**: _(no "Why" section in proposal.md)_')
+    expect(earlyMd).toContain('- **TOUCHES**: _(no "Impact" section in proposal.md)_')
+    expect(earlyMd).toContain('- **RISKS**: see "Open MATERIAL findings at cap" below')
+    expect(earlyMd).toContain('- **BLAST**: _(no assumptions logged)_')
+
+    const finalMd = writeGateDigest({
+      ...digestBase,
+      mode: 'final',
+      assumptions: [{ id: 'A1', text: 'x', blast_radius: 'y' }],
+      changeDigest: { what: null, why: null, touches: null, hasTasks: false },
+    })
+    expect(finalMd).toContain('- **RISKS**: see "Nitpicks (informational)" below')
+    expect(finalMd).toContain('- **BLAST**: see "Assumptions (blast-ranked)" below')
+  })
+})
+
+describe('writeGateDigest ### Extend section', () => {
+  const base = {
+    version: 1,
+    changeName: 'add-thing',
+    runId: 'run-1',
+    assumptions: [],
+    blockers: [],
+    openMaterial: [],
+    openNitpicks: [],
+    trajectory: [],
+    summary: 'add a thing',
+    costUsd: 0.1,
+    costKnown: true,
+    durationMs: 60_000,
+    changeDigest: { what: null, why: null, touches: null, hasTasks: false },
+  }
+
+  it('renders ### Extend with the → RUN 1 MORE directive at an early cap-hit gate', () => {
+    const md = writeGateDigest({ ...base, mode: 'early', capHitFired: true })
+    expect(md).toContain('### Extend')
+    expect(md).toContain('→ RUN 1 MORE')
+    expect(md).toContain('runs one more review round, then re-gates')
+  })
+
+  it('does not render an ### Extend section at a final gate even when capHitFired is true', () => {
+    const md = writeGateDigest({ ...base, mode: 'final', capHitFired: true })
+    expect(md).not.toContain('### Extend')
+    expect(md).not.toContain('→ RUN 1 MORE')
+  })
+
+  it('does not render an ### Extend section at an early gate when capHitFired is false', () => {
+    const md = writeGateDigest({ ...base, mode: 'early', capHitFired: false })
+    expect(md).not.toContain('### Extend')
   })
 })

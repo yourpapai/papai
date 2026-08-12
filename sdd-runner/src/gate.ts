@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { createHash } from 'node:crypto'
 import { existsSync, readdirSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -10,13 +11,37 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import type { EventInput } from './events.js'
-import { detectHandEdits, parseGateResponse, recordArtifactHashes, writeGateDigest } from './gate-model.js'
+import { parseGateResponse, writeGateDigest } from './gate-model.js'
 import type { GateAssumption, GateBlocker, GateDigestInput } from './gate-model.js'
 
 const HashesSchema = z.record(z.string(), z.string())
 
 const AGENT_ARTIFACT_GLOBS = ['proposal.md', 'design.md', 'tasks.md']
 const DRIFT_PREFIX = 'specs/'
+
+export type ArtifactHashes = Record<string, string>
+
+export async function recordArtifactHashes(changeDir: string, relPaths: readonly string[]): Promise<ArtifactHashes> {
+  const entries = await Promise.all(
+    relPaths.map(async (rel): Promise<[string, string | null]> => {
+      try {
+        const content = await readFile(path.join(changeDir, rel), 'utf8')
+        return [rel, createHash('sha256').update(content).digest('hex')]
+      } catch {
+        return [rel, null]
+      }
+    }),
+  )
+  const hashes: ArtifactHashes = {}
+  for (const [rel, hash] of entries) {
+    if (hash !== null) hashes[rel] = hash
+  }
+  return hashes
+}
+
+export function detectHandEdits(before: ArtifactHashes, after: ArtifactHashes): string[] {
+  return Object.keys(after).filter((rel) => before[rel] !== after[rel])
+}
 
 export interface GateDeps {
   readonly emit: (event: EventInput) => void
@@ -67,12 +92,14 @@ export interface ResumeGateInput {
   readonly blockers: readonly GateBlocker[]
   readonly findings?: readonly GateBlocker[]
   readonly requiredAck?: string
+  readonly gateMode: 'early' | 'final'
 }
 
 export type GateOutcome =
   | { readonly kind: 'approved' }
   | { readonly kind: 'veto'; readonly vetoes: readonly { readonly id: string; readonly redirect?: string }[] }
   | { readonly kind: 'aborted' }
+  | { readonly kind: 'extend' }
 
 export async function resumeGate(deps: GateDeps, input: ResumeGateInput): Promise<GateOutcome> {
   const gateMdPath = path.join(deps.runDir, `gate-${input.version}.md`)
@@ -82,10 +109,15 @@ export async function resumeGate(deps: GateDeps, input: ResumeGateInput): Promis
     blockers: input.blockers,
     ...(input.findings === undefined ? {} : { findings: input.findings }),
     ...(input.requiredAck === undefined ? {} : { requiredAck: input.requiredAck }),
+    gateMode: input.gateMode,
   })
   if (response.abort) {
     deps.emit({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: input.version })
     return { kind: 'aborted' }
+  }
+  if (response.extend) {
+    deps.emit({ altitude: 'L2', type: 'gate', action: 'answered', mode: input.gateMode, version: input.version })
+    return { kind: 'extend' }
   }
   const beforeRaw = await readFile(path.join(deps.runDir, `gate-hashes-${input.version}.json`), 'utf8')
   const before = HashesSchema.parse(JSON.parse(beforeRaw))

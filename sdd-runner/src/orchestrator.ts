@@ -10,19 +10,11 @@ import type { AgentLayerDeps } from './agent-layer.js'
 import { deriveChangeName } from './config.js'
 import { runAtomicity, runDecompose } from './decompose.js'
 import { runDraft } from './draft.js'
+import { buildDriftCheck } from './drift.js'
 import type { DepthProfile, EventInput } from './events.js'
-import {
-  applyConfirmAll,
-  buildBus,
-  buildDriftCheck,
-  finalizeGate,
-  findingsOf,
-  gatherAssumptions,
-  logPathFor,
-  nowOf,
-  presentGateAt,
-  readReviewResultFromSidecars,
-} from './gate-digest.js'
+import { prepareResumeInput, runExtendRound } from './extend-round.js'
+import type { RunGateResumeResult } from './extend-round.js'
+import { applyConfirmAll, buildBus, finalizeGate, findingsOf, logPathFor, nowOf, presentGateAt } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
 import { resumeGate, vetoRedirects } from './gate.js'
 import { runIntake } from './intake.js'
@@ -31,13 +23,14 @@ import type { Verbosity } from './renderer.js'
 import { replayEvents } from './replay.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
-import { createRunState, loadRunState, saveRunState } from './run-state.js'
+import { createRunState, loadRunState, resolveRoundCap, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { deriveResumePoint } from './run-state.js'
 import { createStageMachine } from './stage-machine.js'
 import { runVetoUpdater, updateAssumptionsFromVetoes } from './veto-updater.js'
 
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
+export type { RunGateResumeResult } from './extend-round.js'
 
 export interface StartOptions {
   readonly taskFile: string
@@ -108,12 +101,6 @@ export async function runResume(deps: OrchestratorDeps, runId: string): Promise<
   return { runId, halted: 'gate', gateMdPath: gate.gateMdPath, version: gate.version }
 }
 
-interface FreshInput {
-  readonly taskText: string
-  readonly changeName: string
-  readonly depthOverride?: DepthProfile
-}
-
 async function runFreshPipeline(
   deps: OrchestratorDeps,
   state: RunState,
@@ -135,14 +122,15 @@ async function runPostReviewToGate(
   env: PipelineEnv,
   depth: DepthProfile,
   reviewResult: ReviewLoopResult,
+  version: number = 1,
 ): Promise<RunStartResult> {
   const { deps, state, machine, ctx } = env
-  if (reviewResult.outcome === 'cap-hit') return presentGateAt(deps, state, ctx, reviewResult, 1, 'early')
+  if (reviewResult.outcome === 'cap-hit') return presentGateAt(deps, state, ctx, reviewResult, version, 'early')
   await runDecomposeStages(env, depth)
   state.stage = 'gate'
   let gateResult!: RunStartResult
   await machine.runStage('gate', async () => {
-    gateResult = await presentGateAt(deps, state, ctx, reviewResult, 1, 'final')
+    gateResult = await presentGateAt(deps, state, ctx, reviewResult, version, 'final')
   })
   return gateResult
 }
@@ -166,6 +154,7 @@ async function runPlanningStages(env: PipelineEnv): Promise<{ depth: DepthProfil
     )
     depth = result.depth
     state.depth = depth
+    state.roundCap = resolveRoundCap({ depth, roundCap: undefined })
   })
   await saveRunState(state, nowOf(deps))
   await machine.runStage('draft', () =>
@@ -229,29 +218,6 @@ export interface GateResumeOptions {
   readonly abort?: boolean
 }
 
-export interface RunGateResumeResult {
-  readonly runId: string
-  readonly outcome: 'approved' | 'aborted' | 'veto'
-  readonly version: number
-}
-
-async function prepareResumeInput(
-  sidecarDir: string,
-  round: number,
-  gateMode: 'early' | 'final',
-): Promise<{
-  assumptions: readonly { id: string; text: string; blast_radius: string }[]
-  reviewResult: ReviewLoopResult
-  requiredAck: string | undefined
-}> {
-  const assumptions = await gatherAssumptions(sidecarDir, round)
-  const capHitFired = gateMode === 'early'
-  const reviewResult = await readReviewResultFromSidecars(sidecarDir, round, capHitFired ? 'cap-hit' : 'converged')
-  const findings = findingsOf(reviewResult)
-  const requiredAck = capHitFired && findings.blockers.length === 0 ? 'T1' : undefined
-  return { assumptions, reviewResult, requiredAck }
-}
-
 export async function runGateResume(
   deps: OrchestratorDeps,
   runId: string,
@@ -280,12 +246,14 @@ export async function runGateResume(
       version,
       assumptions,
       blockers: findings.blockers,
+      gateMode: state.gate.mode,
       ...(findings.material.length > 0 ? { findings: findings.material } : {}),
       ...(requiredAck === undefined ? {} : { requiredAck }),
     },
   )
   if (outcome.kind === 'aborted') return finalizeGate(deps, state, 'aborted', version)
   if (outcome.kind === 'approved') return finalizeGate(deps, state, 'completed', version)
+  if (outcome.kind === 'extend') return runExtendRound(deps, state, emit, agent, version)
   const vetoes = vetoRedirects(outcome)
   const ctx: StageContext = { cwd: deps.config.repoRoot, changeDir, sidecarDir, emit }
   await updateAssumptionsFromVetoes(sidecarDir, state.round, vetoes)

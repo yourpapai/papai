@@ -10,8 +10,11 @@ import path from 'node:path'
 
 import { EventInputSchema } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
+import type { ChangeDigest } from '../../sdd-runner/src/gate-digest-extract.js'
 import { presentGate, resumeGate, vetoRedirects } from '../../sdd-runner/src/gate.js'
 import type { GateDeps } from '../../sdd-runner/src/gate.js'
+
+const NULL_DIGEST: ChangeDigest = { what: null, why: null, touches: null, hasTasks: false }
 
 const tmpDirs: string[] = []
 
@@ -74,11 +77,13 @@ describe('presentGate', () => {
       blockers: [],
       summary: 'add a thing',
       costUsd: 0.5,
+      costKnown: true,
       durationMs: 1000,
       openMaterial: [],
       openNitpicks: [],
       trajectory: [],
       capHitFired: false,
+      changeDigest: NULL_DIGEST,
     })
     expect(result.gateMdPath).toBe(path.join(fixture.runDir, 'gate-1.md'))
     expect(fs.existsSync(result.gateMdPath)).toBe(true)
@@ -101,11 +106,13 @@ describe('resumeGate', () => {
       blockers: [],
       summary: 's',
       costUsd: 0,
+      costKnown: false,
       durationMs: 0,
       openMaterial: [],
       openNitpicks: [],
       trajectory: [],
       capHitFired: false,
+      changeDigest: NULL_DIGEST,
     })
     const md = fs.readFileSync(path.join(fixture.runDir, 'gate-1.md'), 'utf8').replace('- [ ] A1', '- [x] A1')
     fs.writeFileSync(path.join(fixture.runDir, 'gate-1.md'), md)
@@ -113,6 +120,7 @@ describe('resumeGate', () => {
       version: 1,
       assumptions: [{ id: 'A1', text: 'x', blast_radius: 'y' }],
       blockers: [],
+      gateMode: 'final',
     })
     expect(outcome.kind).toBe('approved')
     expect(fixture.driftCalls).toHaveLength(0)
@@ -133,11 +141,13 @@ describe('resumeGate', () => {
       blockers: [],
       summary: 's',
       costUsd: 0,
+      costKnown: false,
       durationMs: 0,
       openMaterial: [],
       openNitpicks: [],
       trajectory: [],
       capHitFired: false,
+      changeDigest: NULL_DIGEST,
     })
     const md = fs
       .readFileSync(path.join(fixture.runDir, 'gate-1.md'), 'utf8')
@@ -151,6 +161,7 @@ describe('resumeGate', () => {
         { id: 'A2', text: 'second', blast_radius: 'w' },
       ],
       blockers: [],
+      gateMode: 'final',
     })
     expect(outcome.kind).toBe('veto')
     expect(vetoRedirects(outcome)).toEqual([{ id: 'A1', redirect: 'narrow it to dm-only' }])
@@ -168,11 +179,13 @@ describe('resumeGate', () => {
       blockers: [],
       summary: 's',
       costUsd: 0,
+      costKnown: false,
       durationMs: 0,
       openMaterial: [],
       openNitpicks: [],
       trajectory: [],
       capHitFired: false,
+      changeDigest: NULL_DIGEST,
     })
     fs.writeFileSync(
       path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'),
@@ -184,6 +197,7 @@ describe('resumeGate', () => {
       version: 1,
       assumptions: [{ id: 'A1', text: 'x', blast_radius: 'y' }],
       blockers: [],
+      gateMode: 'final',
     })
     expect(outcome.kind).toBe('approved')
     expect(fixture.driftCalls[0]).toContain('specs/thing/spec.md')
@@ -201,18 +215,42 @@ describe('resumeGate', () => {
       blockers: [],
       summary: 's',
       costUsd: 0,
+      costKnown: false,
       durationMs: 0,
       openMaterial: [],
       openNitpicks: [],
       trajectory: [],
       capHitFired: false,
+      changeDigest: NULL_DIGEST,
     })
     fs.writeFileSync(path.join(fixture.runDir, 'gate-1.md'), 'ABORT\n')
     const outcome = await resumeGate(fixture.deps, {
       version: 1,
       assumptions: [{ id: 'A1', text: 'x', blast_radius: 'y' }],
       blockers: [],
+      gateMode: 'final',
     })
     expect(outcome.kind).toBe('aborted')
+  })
+
+  it('returns extend when the human writes RUN 1 MORE at an early gate', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    fs.writeFileSync(path.join(fixture.runDir, 'gate-1.md'), '→ RUN 1 MORE\n')
+    const outcome = await resumeGate(fixture.deps, {
+      version: 1,
+      assumptions: [],
+      blockers: [],
+      gateMode: 'early',
+    })
+    expect(outcome.kind).toBe('extend')
+    expect(fixture.emitted).toHaveLength(1)
+    expect(fixture.emitted[0]).toMatchObject({
+      type: 'gate',
+      action: 'answered',
+      altitude: 'L2',
+      mode: 'early',
+      version: 1,
+    })
   })
 })

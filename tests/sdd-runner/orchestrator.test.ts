@@ -14,11 +14,16 @@ import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { readEvents } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
+import { presentGateAt } from '../../sdd-runner/src/gate-digest.js'
+import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
+import type { StageContext } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { runGateResume, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
-import type { OrchestratorDeps } from '../../sdd-runner/src/orchestrator.js'
+import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
+import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState } from '../../sdd-runner/src/run-state.js'
+import type { RunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
 
@@ -144,6 +149,15 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
     },
   }
   return { deps, repoRoot, changeName, changeDir, taskFile, rendered, stdoutLines, spawnOrder }
+}
+
+function glmFallbackResolver(
+  modelId: string,
+): { input: number; output: number; source: 'primary' | 'fallback' } | null {
+  const table: Record<string, { input: number; output: number; source: 'primary' | 'fallback' }> = {
+    'zai-coding-plan/glm-5.2': { input: 5, output: 15, source: 'fallback' },
+  }
+  return table[modelId] ?? null
 }
 
 describe('runStart', () => {
@@ -415,5 +429,291 @@ describe('runGateResume', () => {
     const hashes2 = HashesSchema.parse(JSON.parse(fs.readFileSync(path.join(runDir, 'gate-hashes-2.json'), 'utf8')))
     expect(hashes1['proposal.md']).not.toBe(hashes2['proposal.md'])
     expect(fixture.spawnOrder).toContain('veto-updater.json')
+  })
+
+  it('extends by one round on → RUN 1 MORE at an early cap-hit gate (task 5.1)', async () => {
+    const materialFinding = {
+      id: 'F1',
+      class: 'MATERIAL',
+      gap: 'design lacks rollback',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-1.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-2.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-3.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-3.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-4.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-4.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
+    const gate1Path = path.join(runDir, 'gate-1.md')
+    fs.writeFileSync(gate1Path, '→ RUN 1 MORE\n')
+
+    const result = await runGateResume(fixture.deps, started.runId, {})
+    expect(result.outcome).toBe('extend')
+    expect(result.version).toBe(2)
+    expect(result.gateMdPath).toBeDefined()
+
+    const state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.roundCap).toBe(4)
+    expect(state.round).toBe(4)
+    expect(state.gate).toEqual({ mode: 'early', version: 2 })
+
+    const events = readEvents(path.join(runDir, 'events.ndjson'))
+    const round4 = events.filter((e) => e.type === 'round_open').filter((e) => (e as { round: number }).round === 4)
+    expect(round4).toHaveLength(1)
+    expect(round4[0]).toMatchObject({ type: 'round_open', round: 4, cap: 4 })
+
+    expect(fs.existsSync(path.join(runDir, 'gate-2.md'))).toBe(true)
+    const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('round 4:')
+  })
+
+  it('flows into decompose + final gate when the extended round converges (task 5.2)', async () => {
+    const materialFinding = {
+      id: 'F1',
+      class: 'MATERIAL',
+      gap: 'design lacks rollback',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    const convergedResolution = { id: 'F1', class: 'NITPICK', resolution: 'edited', outcome: 'specs clarified' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-1.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-2.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-3.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-3.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-4.json': JSON.stringify({ findings: [] }),
+      'resolutions-4.json': JSON.stringify({ resolutions: [convergedResolution], assumptions: [] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
+    fs.writeFileSync(path.join(runDir, 'gate-1.md'), '→ RUN 1 MORE\n')
+
+    const result = await runGateResume(fixture.deps, started.runId, {})
+    expect(result.outcome).toBe('extend')
+    expect(result.version).toBe(2)
+
+    const state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.roundCap).toBe(4)
+    expect(state.round).toBe(4)
+    expect(state.gate).toEqual({ mode: 'final', version: 2 })
+
+    const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('Final gate')
+    expect(fixture.spawnOrder).toContain('decompose-tasks.json')
+    expect(fixture.spawnOrder).toContain('atomicity.json')
+  })
+
+  it('repeated extend bumps roundCap each time and appends a trajectory row (task 5.3)', async () => {
+    const materialFinding = {
+      id: 'F1',
+      class: 'MATERIAL',
+      gap: 'design lacks rollback',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-1.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-2.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-3.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-3.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
+
+    fs.writeFileSync(path.join(runDir, 'gate-1.md'), '→ RUN 1 MORE\n')
+    const first = await runGateResume(fixture.deps, started.runId, {})
+    expect(first.outcome).toBe('extend')
+    expect(first.version).toBe(2)
+    let state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.roundCap).toBe(2)
+
+    fs.writeFileSync(path.join(runDir, 'gate-2.md'), '→ RUN 1 MORE\n')
+    const second = await runGateResume(fixture.deps, started.runId, {})
+    expect(second.outcome).toBe('extend')
+    expect(second.version).toBe(3)
+
+    state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.roundCap).toBe(3)
+    expect(state.round).toBe(3)
+    expect(state.gate).toEqual({ mode: 'early', version: 3 })
+
+    const gate3 = fs.readFileSync(path.join(runDir, 'gate-3.md'), 'utf8')
+    expect(gate3).toContain('round 1:')
+    expect(gate3).toContain('round 2:')
+    expect(gate3).toContain('round 3:')
+  })
+})
+
+describe('presentGateAt cost fallback', () => {
+  it('reprices a zero-cost subscription run into a non-zero estimated gate line', async () => {
+    const repoRoot = makeDir()
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    const changeDir = path.join(repoRoot, 'openspec', 'changes', 'add-thing')
+    fs.mkdirSync(changeDir, { recursive: true })
+    fs.writeFileSync(path.join(changeDir, 'proposal.md'), '## Why\nseeded\n')
+
+    const now = new Date('2026-01-01T00:00:00.000Z')
+    const state: RunState = await createRunState({ workDir, repoRoot, changeName: 'add-thing' }, now)
+    const events = [
+      {
+        altitude: 'L1',
+        type: 'spawned',
+        agent: 'drafter-1',
+        role: 'drafter',
+        model: 'zai-coding-plan/glm-5.2',
+        seq: 1,
+        ts: now.toISOString(),
+      },
+      {
+        altitude: 'L1',
+        type: 'done',
+        agent: 'drafter-1',
+        usage: { inputTokens: 1_000_000, outputTokens: 500_000, reasoningTokens: 0, costUsd: 0, wallMs: 1000 },
+        seq: 2,
+        ts: now.toISOString(),
+      },
+    ]
+    fs.writeFileSync(path.join(state.runDir, 'events.ndjson'), events.map((e) => JSON.stringify(e)).join('\n') + '\n')
+
+    const deps: OrchestratorDeps = {
+      config: {
+        repoRoot,
+        workDir,
+        model: 'zai-coding-plan/glm-5.2',
+        models: {},
+        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+      },
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      driver: createOpenSpecDriver({
+        exec: () => Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }),
+        cwd: repoRoot,
+      }),
+      resolveCost: glmFallbackResolver,
+      now: () => new Date('2026-01-01T00:43:27.000Z'),
+    }
+    const ctx: StageContext = {
+      cwd: repoRoot,
+      changeDir,
+      sidecarDir: path.join(state.runDir, 'sidecars'),
+      emit: () => {},
+    }
+    const reviewResult: ReviewLoopResult = {
+      outcome: 'converged',
+      rounds: 1,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    }
+
+    const result = await presentGateAt(deps, state, ctx, reviewResult, 1, 'final')
+    const gateMd = fs.readFileSync(result.gateMdPath, 'utf8')
+
+    expect(gateMd).toContain('· estimated')
+    expect(gateMd).not.toContain('$0.00')
+    expect(gateMd).toMatch(/\$12\.50/u)
+  })
+})
+
+describe('presentGateAt change digest', () => {
+  const PROPOSAL = [
+    '## Why',
+    '',
+    'The slug is useless at the gate. A human needs context fast.',
+    '',
+    '## Impact',
+    '',
+    '- **Code**: `src/a.ts` (new)',
+    '',
+  ].join('\n')
+  const DESIGN = ['## Risks / Trade-offs', '', '- misparse degrades to placeholder', ''].join('\n')
+
+  async function setup(opts: { withTasksMd: boolean }): Promise<{
+    deps: OrchestratorDeps
+    state: RunState
+    ctx: StageContext
+  }> {
+    const repoRoot = makeDir()
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    const changeDir = path.join(repoRoot, 'openspec', 'changes', 'add-thing')
+    fs.mkdirSync(changeDir, { recursive: true })
+    fs.writeFileSync(path.join(changeDir, 'proposal.md'), PROPOSAL)
+    fs.writeFileSync(path.join(changeDir, 'design.md'), DESIGN)
+    if (opts.withTasksMd) {
+      const lines: string[] = ['## 1. Section', '']
+      for (let i = 1; i <= 8; i++) lines.push(`- [x] 1.${i} done`)
+      for (let i = 9; i <= 12; i++) lines.push(`- [ ] 1.${i} todo`)
+      fs.writeFileSync(path.join(changeDir, 'tasks.md'), `${lines.join('\n')}\n`)
+    }
+    const now = new Date('2026-01-01T00:00:00.000Z')
+    const state = await createRunState({ workDir, repoRoot, changeName: 'add-thing' }, now)
+    fs.mkdirSync(path.join(state.runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(state.runDir, 'events.ndjson'), '')
+    const deps: OrchestratorDeps = {
+      config: {
+        repoRoot,
+        workDir,
+        model: 'test-model',
+        models: {},
+        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+      },
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      driver: createOpenSpecDriver({
+        exec: () => Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }),
+        cwd: repoRoot,
+      }),
+      now: () => new Date('2026-01-01T00:00:10.000Z'),
+    }
+    const ctx: StageContext = {
+      cwd: repoRoot,
+      changeDir,
+      sidecarDir: path.join(state.runDir, 'sidecars'),
+      emit: () => {},
+    }
+    return { deps, state, ctx }
+  }
+
+  const reviewResult: ReviewLoopResult = {
+    outcome: 'converged',
+    rounds: 1,
+    openBlockers: [],
+    openMaterial: [],
+    openNitpicks: [],
+  }
+
+  it('threads a populated change digest (what/why/touches) with hasTasks false when tasks.md is absent (task 3.1)', async () => {
+    const { deps, state, ctx } = await setup({ withTasksMd: false })
+    const result = await presentGateAt(deps, state, ctx, reviewResult, 1, 'early')
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+
+    expect(md).toContain('### Change digest')
+    expect(md).toContain('- **WHAT**: The slug is useless at the gate. A human needs context fast.')
+    expect(md).toContain('- **WHY**: The slug is useless at the gate. A human needs context fast.')
+    expect(md).toContain('- **TOUCHES**: **Code**: `src/a.ts` (new)')
+    expect(md).not.toMatch(/tasks: \d+\/\d+/u)
+  })
+
+  it('threads tasks: done/total into TOUCHES when tasks.md is present (task 3.2)', async () => {
+    const { deps, state, ctx } = await setup({ withTasksMd: true })
+    const result = await presentGateAt(deps, state, ctx, reviewResult, 1, 'final')
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+
+    expect(md).toContain('- **TOUCHES**: **Code**: `src/a.ts` (new), tasks: 8/12')
+    expect(md).toContain('- **RISKS**: see "Nitpicks (informational)" below')
   })
 })

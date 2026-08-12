@@ -149,6 +149,12 @@ async function runRound(
   return runRound(deps, options, round + 1, cap, openBlockers.length)
 }
 
-export function runReviewLoop(deps: ReviewLoopDeps, options: ReviewLoopOptions): Promise<ReviewLoopResult> {
-  return runRound(deps, options, 1, ROUND_CAPS[options.depth], 0)
+export function runReviewLoop(
+  deps: ReviewLoopDeps,
+  options: ReviewLoopOptions,
+  entry: { readonly startRound?: number; readonly cap?: number } = {},
+): Promise<ReviewLoopResult> {
+  const startRound = entry.startRound ?? 1
+  const cap = entry.cap ?? ROUND_CAPS[options.depth]
+  return runRound(deps, options, startRound, cap, 0)
 }

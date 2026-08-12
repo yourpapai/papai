@@ -5,15 +5,41 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import type { AgentUsage, SddEvent } from '../../sdd-runner/src/events.js'
+import type { AgentUsage, DoneEvent, SddEvent } from '../../sdd-runner/src/events.js'
+import type { ResolvedCost } from '../../sdd-runner/src/pricing.js'
 import { aggregateUsage } from '../../sdd-runner/src/usage-aggregate.js'
-
-function doneEvent(usage: AgentUsage, seq: number): SddEvent {
-  return { altitude: 'L1', type: 'done', agent: 'reviewer-r1', usage, seq, ts: '2026-01-01T00:00:00.000Z' }
-}
+import { repriceEvent } from '../../sdd-runner/src/usage-aggregate.js'
+import { repriceEvents } from '../../sdd-runner/src/usage-aggregate.js'
 
 function makeUsage(overrides: Partial<AgentUsage> = {}): AgentUsage {
   return { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0, ...overrides }
+}
+
+function doneEvent(usage: AgentUsage, seq: number, model?: string): DoneEvent {
+  const base: DoneEvent = {
+    altitude: 'L1',
+    type: 'done',
+    agent: 'reviewer-r1',
+    usage,
+    seq,
+    ts: '2026-01-01T00:00:00.000Z',
+  }
+  if (model !== undefined) return { ...base, model }
+  return base
+}
+
+function doneAt(events: readonly SddEvent[], idx: number): DoneEvent {
+  const event = events[idx]
+  if (event === undefined || event.type !== 'done') throw new Error(`expected done event at ${idx}`)
+  return event
+}
+
+function resolverFrom(table: Record<string, ResolvedCost>): (modelId: string) => ResolvedCost | null {
+  return (modelId) => table[modelId] ?? null
+}
+
+function spawnedEvent(agent: string, model: string, seq: number): SddEvent {
+  return { altitude: 'L1', type: 'spawned', agent, role: 'reviewer', model, seq, ts: '2026-01-01T00:00:00.000Z' }
 }
 
 describe('aggregateUsage', () => {
@@ -28,6 +54,7 @@ describe('aggregateUsage', () => {
       reasoningTokens: 15,
       costUsd: 0.75,
       wallMs: 3000,
+      costKnown: true,
     })
   })
 
@@ -42,6 +69,7 @@ describe('aggregateUsage', () => {
       reasoningTokens: 0,
       costUsd: 0,
       wallMs: 0,
+      costKnown: false,
     })
   })
 
@@ -52,6 +80,162 @@ describe('aggregateUsage', () => {
       reasoningTokens: 0,
       costUsd: 0,
       wallMs: 0,
+      costKnown: true,
     })
+  })
+})
+
+describe('repriceEvent', () => {
+  it('recomputes costUsd from token counts when the event was zero-cost', () => {
+    const event = doneEvent(
+      makeUsage({ inputTokens: 1_000_000, outputTokens: 1_000_000, reasoningTokens: 0, costUsd: 0 }),
+      1,
+    )
+    const repriced = repriceEvent(event, { input: 5, output: 15 })
+    expect(repriced.usage.costUsd).toBe(20)
+  })
+
+  it('returns the event unchanged when it was already metered', () => {
+    const event = doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 1_000_000, costUsd: 0.42 }), 1)
+    expect(repriceEvent(event, { input: 5, output: 15 })).toBe(event)
+  })
+
+  it('returns the event unchanged when there are no tokens (no division by zero)', () => {
+    const event = doneEvent(makeUsage({ inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 }), 1)
+    expect(repriceEvent(event, { input: 5, output: 15 })).toBe(event)
+  })
+
+  it('folds reasoning tokens into the input-side cost', () => {
+    const event = doneEvent(makeUsage({ inputTokens: 0, outputTokens: 0, reasoningTokens: 1_000_000, costUsd: 0 }), 1)
+    const repriced = repriceEvent(event, { input: 5, output: 15 })
+    expect(repriced.usage.costUsd).toBe(5)
+  })
+})
+
+describe('repriceEvents', () => {
+  it('backfills a missing model from the spawned map and reprices', () => {
+    const resolve = resolverFrom({ 'sub/m': { input: 5, output: 15, source: 'fallback' } })
+    const events: SddEvent[] = [
+      spawnedEvent('reviewer-r1', 'sub/m', 1),
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 }), 2),
+    ]
+    const { events: repriced, costKnown } = repriceEvents(events, resolve)
+    expect(costKnown).toBe(false)
+    const done = doneAt(repriced, 1)
+    expect(done.usage.costUsd).toBe(5)
+    expect(done.model).toBe('sub/m')
+  })
+
+  it('uses the done event own model when present', () => {
+    const resolve = resolverFrom({ 'paid/m': { input: 2, output: 4, source: 'primary' } })
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 1_000_000, costUsd: 0 }), 1, 'paid/m'),
+    ]
+    const { events: repriced, costKnown } = repriceEvents(events, resolve)
+    expect(costKnown).toBe(true)
+    expect(doneAt(repriced, 0).usage.costUsd).toBe(6)
+  })
+
+  it('marks costKnown false when resolve falls through to LAST RESORT', () => {
+    const resolve = (): ResolvedCost | null => null
+    const events: SddEvent[] = [
+      spawnedEvent('reviewer-r1', 'weird/none', 1),
+      doneEvent(makeUsage({ inputTokens: 500_000, outputTokens: 0, costUsd: 0 }), 2),
+    ]
+    const { events: repriced, costKnown } = repriceEvents(events, resolve)
+    expect(costKnown).toBe(false)
+    expect(doneAt(repriced, 1).usage.costUsd).toBe(0)
+  })
+
+  it('returns zero-token done events unchanged without invoking resolve', () => {
+    let calls = 0
+    const resolve = (): ResolvedCost | null => {
+      calls++
+      return null
+    }
+    const event = doneEvent(makeUsage({ inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 }), 1, 'paid/m')
+    const { events: repriced, costKnown } = repriceEvents([event], resolve)
+    expect(repriced[0]).toBe(event)
+    expect(costKnown).toBe(true)
+    expect(calls).toBe(0)
+  })
+
+  it('reprices partial-token done events, exercising each operand of the zero-token guard', () => {
+    const resolve = resolverFrom({ 'paid/m': { input: 5, output: 15, source: 'primary' } })
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 0, outputTokens: 1_000_000, reasoningTokens: 0, costUsd: 0 }), 1, 'paid/m'),
+      doneEvent(makeUsage({ inputTokens: 0, outputTokens: 0, reasoningTokens: 1_000_000, costUsd: 0 }), 2, 'paid/m'),
+    ]
+    const { events: repriced, costKnown } = repriceEvents(events, resolve)
+    expect(doneAt(repriced, 0).usage.costUsd).toBe(15)
+    expect(doneAt(repriced, 1).usage.costUsd).toBe(5)
+    expect(costKnown).toBe(true)
+  })
+
+  it('marks costKnown false and skips resolve when no model is resolvable', () => {
+    let calls = 0
+    const resolve = (): ResolvedCost | null => {
+      calls++
+      return null
+    }
+    const event = doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 }), 1)
+    const { events: repriced, costKnown } = repriceEvents([event], resolve)
+    expect(repriced[0]).toBe(event)
+    expect(costKnown).toBe(false)
+    expect(calls).toBe(0)
+  })
+
+  it('uses a null resolver by default, marking unknown-model cost as unknown', () => {
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 }), 1, 'unknown/m'),
+    ]
+    const { events: repriced, costKnown } = repriceEvents(events)
+    expect(costKnown).toBe(false)
+    expect(doneAt(repriced, 0).usage.costUsd).toBe(0)
+  })
+})
+
+describe('aggregateUsage reprice integration', () => {
+  it('reprices zero-cost subscription events and reports an estimated (costKnown=false) total', () => {
+    const resolve = resolverFrom({ 'zai-coding-plan/glm-5.2': { input: 5, output: 15, source: 'fallback' } })
+    const events: SddEvent[] = [
+      spawnedEvent('reviewer-r1', 'zai-coding-plan/glm-5.2', 1),
+      doneEvent(
+        makeUsage({ inputTokens: 1_000_000, outputTokens: 1_000_000, reasoningTokens: 0, costUsd: 0, wallMs: 1000 }),
+        2,
+      ),
+    ]
+    const usage = aggregateUsage(events, resolve)
+    expect(usage.costUsd).toBe(20)
+    expect(usage.costKnown).toBe(false)
+  })
+
+  it('reports costKnown=true when every repriced event resolved via the primary entry', () => {
+    const resolve = resolverFrom({ 'paid/m': { input: 5, output: 15, source: 'primary' } })
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0, wallMs: 1000 }), 1, 'paid/m'),
+    ]
+    const usage = aggregateUsage(events, resolve)
+    expect(usage.costUsd).toBe(5)
+    expect(usage.costKnown).toBe(true)
+  })
+
+  it('reports costKnown=false with zero cost when resolve returns null', () => {
+    const resolve = (): ResolvedCost | null => null
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0, wallMs: 1000 }), 1, 'weird/none'),
+    ]
+    const usage = aggregateUsage(events, resolve)
+    expect(usage.costUsd).toBe(0)
+    expect(usage.costKnown).toBe(false)
+  })
+
+  it('defaults to a null resolver when none is passed, reporting costKnown false', () => {
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0, wallMs: 1000 }), 1, 'unknown/m'),
+    ]
+    const usage = aggregateUsage(events)
+    expect(usage.costUsd).toBe(0)
+    expect(usage.costKnown).toBe(false)
   })
 })

@@ -82,6 +82,7 @@ const DoneEvent = z.object({
   altitude: z.literal('L1'),
   type: z.literal('done'),
   agent: z.string().min(1),
+  model: z.string().min(1).optional(),
   usage: AgentUsageSchema,
 })
 
@@ -213,6 +214,8 @@ export const SddEventSchema = z.discriminatedUnion('type', [
   HumanEditsEvent.extend(StampShape),
 ])
 export type SddEvent = z.infer<typeof SddEventSchema>
+
+export type DoneEvent = Extract<SddEvent, { type: 'done' }>
 
 function nextSeq(logPath: string): number {
   if (!fs.existsSync(logPath)) return 1

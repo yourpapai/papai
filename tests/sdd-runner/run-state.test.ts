@@ -10,7 +10,14 @@ import path from 'node:path'
 
 import { appendEvent } from '../../sdd-runner/src/events.js'
 import type { ReplayState } from '../../sdd-runner/src/replay.js'
-import { createRunState, deriveResumePoint, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
+import { ROUND_CAPS } from '../../sdd-runner/src/review-model.js'
+import {
+  createRunState,
+  deriveResumePoint,
+  loadRunState,
+  resolveRoundCap,
+  saveRunState,
+} from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
 
@@ -65,6 +72,7 @@ describe('createRunState + loadRunState', () => {
     expect(state.stage).toBe('intake')
     expect(state.depth).toBeNull()
     expect(state.round).toBe(0)
+    expect(state.roundCap).toBe(ROUND_CAPS.S)
     expect(state.gate).toBeNull()
     expect(state.status).toBe('running')
     expect(fs.existsSync(path.join(state.runDir, 'state.json'))).toBe(true)
@@ -92,6 +100,42 @@ describe('saveRunState', () => {
     await saveRunState({ ...mid, stage: 'gate', gate: { mode: 'early', version: 1 } })
     const gated = await loadRunState(workDir, created.runId)
     expect(gated.gate).toEqual({ mode: 'early', version: 1 })
+  })
+})
+
+describe('roundCap', () => {
+  it('loadRunState populates roundCap from ROUND_CAPS[depth] when the field is missing', async () => {
+    const workDir = makeWorkDir()
+    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    await saveRunState({ ...created, depth: 'M', round: 3, roundCap: undefined })
+    const loaded = await loadRunState(workDir, created.runId)
+    expect(loaded.roundCap).toBe(ROUND_CAPS.M)
+  })
+
+  it('preserves an explicit roundCap when present through a round-trip', async () => {
+    const workDir = makeWorkDir()
+    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    await saveRunState({ ...created, depth: 'M', round: 3, roundCap: 4 })
+    const loaded = await loadRunState(workDir, created.runId)
+    expect(loaded.roundCap).toBe(4)
+    await saveRunState({ ...loaded, round: 4 })
+    const reloaded = await loadRunState(workDir, created.runId)
+    expect(reloaded.roundCap).toBe(4)
+  })
+
+  it('resolveRoundCap returns the explicit cap when set, else ROUND_CAPS[depth]', () => {
+    expect(resolveRoundCap({ depth: 'M', roundCap: 5 })).toBe(5)
+    expect(resolveRoundCap({ depth: 'M', roundCap: undefined })).toBe(ROUND_CAPS.M)
+    expect(resolveRoundCap({ depth: 'S', roundCap: undefined })).toBe(ROUND_CAPS.S)
+    expect(resolveRoundCap({ depth: null, roundCap: undefined })).toBe(ROUND_CAPS.S)
+  })
+
+  it('loadRunState rejects a non-positive roundCap in the persisted state', async () => {
+    const workDir = makeWorkDir()
+    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    const valid = fs.readFileSync(created.statePath, 'utf8')
+    fs.writeFileSync(created.statePath, valid.replace(/"roundCap":\s*\d+/u, '"roundCap":0'))
+    await expect(loadRunState(workDir, created.runId)).rejects.toThrow(/state\.json/u)
   })
 })
 

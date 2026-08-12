@@ -283,4 +283,42 @@ describe('runReviewLoop', () => {
     const gapOccurrences = resolverPrompt.split('the proposal never names the scope id').length - 1
     expect(gapOccurrences).toBe(1)
   })
+
+  it('honors { startRound, cap } to re-enter at a bumped cap, emitting only that round_open and threading the prior cap-hit ledger', async () => {
+    const dir = makeDir()
+    fs.mkdirSync(path.join(dir, 'sidecars'), { recursive: true })
+    const priorLedgerMarker = 'PRIOR-LEDGER-MARKER-FROM-ROUND-3'
+    const priorResolution = {
+      id: 'F1',
+      class: 'BLOCKER',
+      resolution: 'assumed',
+      outcome: priorLedgerMarker,
+    }
+    fs.writeFileSync(
+      path.join(dir, 'sidecars', 'resolutions-3.json'),
+      JSON.stringify({ resolutions: [priorResolution], assumptions: [] }),
+    )
+    const fixture = makeLoopFixture(dir, {
+      reviewer: [JSON.stringify({ findings: [] })],
+      resolver: [NO_BLOCKERS_RESOLUTIONS],
+    })
+    const result = await runReviewLoop(
+      fixture.deps,
+      {
+        changeName: 'add-thing',
+        changeDir: fixture.changeDir,
+        depth: 'M',
+        taskText: 'x',
+        conventions: 'y',
+      },
+      { startRound: 4, cap: 4 },
+    )
+    expect(result.outcome).toBe('converged')
+    expect(result.rounds).toBe(4)
+    const roundOpens = fixture.emitted.filter((e) => e.type === 'round_open')
+    expect(roundOpens).toHaveLength(1)
+    expect(roundOpens[0]).toMatchObject({ type: 'round_open', round: 4, cap: 4 })
+    const reviewerPrompt = promptOf(fixture, 'reviewer-1')
+    expect(reviewerPrompt).toContain(priorLedgerMarker)
+  })
 })
