@@ -13,30 +13,30 @@ Write/Edit TDD hook pipeline.
 
 ## 1. OpenSpec driver + probes
 
-- [ ] 1.1 Add failing tests for an openspec CLI driver (`status --json`,
+- [x] 1.1 Add failing tests for an openspec CLI driver (`status --json`,
   `instructions --json`, `new change`, `validate --strict`, retry ≤2 with
   the validation complaint attached) in `tests/opencode-agent/openspec-driver.test.ts`
   — `bun test tests/opencode-agent/openspec-driver.test.ts`
-- [ ] 1.2 Implement `opencode-agent/src/openspec-driver.ts` (DI'd shell
+- [x] 1.2 Implement `opencode-agent/src/openspec-driver.ts` (DI'd shell
   seam, argv vectors with `shell: false`, zod-decoded JSON output)
   — `bun test tests/opencode-agent/openspec-driver.test.ts`
-- [ ] 1.3 Add failing tests for the `openspec/` root probe in
+- [x] 1.3 Add failing tests for the `openspec/` root probe in
   `config-discovery` (present → compliant mode; absent → stand-down
   comment + `warn`, fail-closed per D10)
   — `bun test tests/opencode-agent/config-discovery.test.ts`
-- [ ] 1.4 Implement the probe (D10), the stand-down path, and the
+- [x] 1.4 Implement the probe (D10), the stand-down path, and the
   deliberate `STATE_VERSION` bump (D12): legacy state blocks rejected →
   restore finds nothing → issue restarts fresh
   — `bun test tests/opencode-agent/state-manager.test.ts tests/opencode-agent/config-discovery.test.ts`
 
 ## 2. Skill rewiring
 
-- [ ] 2.1 Add failing tests for the reworked `PHASE_SKILLS` table (D4:
+- [x] 2.1 Add failing tests for the reworked `PHASE_SKILLS` table (D4:
   `INIT_OR_CLARIFY`→`openspec-explore`, `PLANNING`→`openspec-propose`,
   execution skills unchanged, `brainstorming`/`writing-plans`/
   `executing-plans` gone) and for loader root precedence (D11):
   in-repo openspec trees first-hit-win — `bun test tests/opencode-agent/obra-skills.test.ts`
-- [ ] 2.2 Implement `PHASE_SKILLS` + loader roots (`.opencode/skills/`,
+- [x] 2.2 Implement `PHASE_SKILLS` + loader roots (`.opencode/skills/`,
   then `.agents/skills/`, then superpowers roots)
   — `bun test tests/opencode-agent/obra-skills.test.ts`
 

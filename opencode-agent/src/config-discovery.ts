@@ -33,6 +33,36 @@ import type { Env } from './config-values.js'
 /** This repository's own review-loop workspace, when the checkout has one. */
 const REVIEW_LOOP_ENTRY = 'review-loop/src/cli.ts'
 
+/** The directory whose presence makes this checkout OpenSpec-compliant (D10). */
+const OPENSPEC_ROOT = 'openspec'
+
+/**
+ * The two answers the `openspec/` root probe can return — design D10.
+ *
+ * `compliant` is the ordinary mode in a repo that has adopted OpenSpec; the
+ * reworked pipeline runs. `stand-down` is the fail-closed posture for a foreign
+ * repo without an `openspec/` tree: the agent posts one clear comment naming the
+ * remedy (e.g. `openspec init`) and does no work, because every artefact path in
+ * the compliant pipeline assumes that tree exists. The agent never scaffolds
+ * OpenSpec into a repo that has not adopted it.
+ */
+export type OpenSpecMode = { readonly mode: 'compliant' } | { readonly mode: 'stand-down'; readonly reason: string }
+
+/** The comment the stand-down door posts, kept beside the verdict it explains. */
+export const STAND_DOWN_REASON =
+  'This repository has no `openspec/` tree, so the agent cannot run its OpenSpec-compliant pipeline. Run `openspec init` (or adopt OpenSpec) to enable it; until then the agent is standing down.'
+
+/**
+ * Resolves whether this checkout is OpenSpec-compliant.
+ *
+ * Same testable ladder shape as {@link resolveReviewCommand}: an injected
+ * `exists` callback keeps the probe testable without a filesystem, and the path
+ * is checked at the repo root only — a nested `openspec/` (say, under `src/`)
+ * is a different directory and must not satisfy the probe.
+ */
+export const resolveOpenSpecMode = (repoRoot: string, exists: (filePath: string) => boolean): OpenSpecMode =>
+  exists(path.join(repoRoot, OPENSPEC_ROOT)) ? { mode: 'compliant' } : { mode: 'stand-down', reason: STAND_DOWN_REASON }
+
 /**
  * Resolves the review command.
  *

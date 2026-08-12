@@ -125,12 +125,13 @@ describe('renderStatus', () => {
     expect(rowFor(body, 'Pull request')).toBe('| 📦 Pull request | ⬜ |')
   })
 
-  test('reads each artefact’s revision rather than recounting it', () => {
-    // The two counters were split apart because one number could not honestly
-    // label two artefacts; this table is the second place that would go wrong.
-    const body = renderStatus(view({ state: state({ phase: 'REVIEW_AND_MUTATE', specRevision: 3, planRevision: 1 }) }))
+  test('the plan row carries the plan-identity token; the design row carries no counter', () => {
+    // Under the OpenSpec rework the proposal lives in the folder whose history
+    // *is* its revision, so the "Design spec" row reports no counter and only
+    // the plan row carries the machine's plan-identity token (`planRevision`).
+    const body = renderStatus(view({ state: state({ phase: 'REVIEW_AND_MUTATE', planRevision: 1 }) }))
 
-    expect(rowFor(body, 'Design spec')).toContain('· revision 3')
+    expect(rowFor(body, 'Design spec')).not.toContain('· revision')
     expect(rowFor(body, 'Planning')).toContain('· revision 1')
   })
 
@@ -200,7 +201,7 @@ describe('renderStatus', () => {
     // `COMPLETE` alone says only that the conversation is over. Claiming every
     // step finished on an issue cancelled during spec review would be a lie the
     // table tells about work nobody did.
-    const cancelled = state({ phase: 'COMPLETE', specRevision: 1 })
+    const cancelled = state({ phase: 'COMPLETE', changeName: 'captured-but-unplanned' })
 
     const body = renderStatus(view({ state: cancelled, live: false }))
 

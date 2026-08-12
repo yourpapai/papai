@@ -5,7 +5,7 @@
 
 import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -60,6 +60,17 @@ const writeEvent = async (name: string, payload: unknown): Promise<string> => {
 
 const transcriptPath = (repoRoot: string): string => path.join(repoRoot, TRANSCRIPT_DIR, TRANSCRIPT_FILE)
 
+/**
+ * Gives a temp repoRoot an `openspec/` tree so the D10 probe reports compliant
+ * and the run proceeds past the stand-down door. These tests exercise the
+ * transcript lifecycle, not the probe, so they opt into the compliant path
+ * rather than plant the directory the probe would find on a real checkout.
+ */
+const compliantRoot = async (repoRoot: string): Promise<string> => {
+  await mkdir(path.join(repoRoot, 'openspec'), { recursive: true })
+  return repoRoot
+}
+
 /** A logger that records its lines, on a fixed clock so two runs compare equal. */
 const recording = (level: 'info' | 'warn', config: ReturnType<typeof loadConfig>): { log: Logger; lines: string[] } => {
   const lines: string[] = []
@@ -68,7 +79,7 @@ const recording = (level: 'info' | 'warn', config: ReturnType<typeof loadConfig>
 
 describe('runCli transcript lifecycle', () => {
   test('a keyless run warns exactly once and writes no file', async () => {
-    const repoRoot = path.join(workDir, 'keyless')
+    const repoRoot = await compliantRoot(path.join(workDir, 'keyless'))
     const eventPath = await writeEvent('keyless', BOT_EVENT)
     const config = loadConfig({ ...ENV }, repoRoot)
     const { log, lines } = recording('info', config)
@@ -85,7 +96,7 @@ describe('runCli transcript lifecycle', () => {
   })
 
   test('a keyed run leaves the transcript file and scrubs the key from the environment', async () => {
-    const repoRoot = path.join(workDir, 'keyed')
+    const repoRoot = await compliantRoot(path.join(workDir, 'keyed'))
     const eventPath = await writeEvent('keyed', BOT_EVENT)
     const live = { ...ENV, AGENT_LOG_KEY: KEY_B64 }
 
@@ -109,7 +120,7 @@ describe('runCli transcript lifecycle', () => {
     const eventPath = await writeEvent('identical', BOT_EVENT)
 
     const runWith = async (extra: Record<string, string>, name: string): Promise<string[]> => {
-      const repoRoot = path.join(workDir, name)
+      const repoRoot = await compliantRoot(path.join(workDir, name))
       const config = loadConfig({ ...ENV, ...extra }, repoRoot)
       const { log, lines } = recording('info', config)
       await runCli({

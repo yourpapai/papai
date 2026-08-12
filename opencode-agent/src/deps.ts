@@ -15,6 +15,7 @@ import type { Logger } from './logger.js'
 import { loadPhaseSkills } from './obra-skills.js'
 import type { SkillDocument } from './obra-skills.js'
 import { opencodeConfigEnv } from './openai-config.js'
+import { createOpenSpecDriver } from './openspec-driver.js'
 import type { PhaseDeps, RunReview } from './phase-context.js'
 import { runReviewLoop } from './review-runner.js'
 import type { CommandRunner } from './shell.js'
@@ -134,6 +135,7 @@ export const assembleDeps = ({
     git,
     runCheck: makeCheckRunner(run, config),
     runReview: makeReviewRunner(run, config, log),
+    openspec: createOpenSpecDriver({ runner: run, cwd: config.repoRoot }),
     agent: agent.get,
     tokensUsed: agent.tokensUsed,
     skills: makeSkillLoader(config, log),

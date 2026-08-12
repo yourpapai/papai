@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { renderArtifact, SPEC_MARKER } from '../artifacts.js'
+import { findArtifact, renderArtifact, SPEC_MARKER } from '../artifacts.js'
 import { promptForJson } from '../ask-json.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
@@ -24,6 +24,15 @@ const triageSchema = z.discriminatedUnion('status', [
  * Re-entered whenever a maintainer requests changes to a spec, in which case
  * their feedback is threaded into the prompt and the spec is rewritten rather
  * than regenerated from scratch.
+ *
+ * > Bridge note. The full OpenSpec capture model (design D9: a
+ * > `clarify | capture | answer` triage outcome, association-gated
+ * > auto-capture, and scaffolding a real `openspec/changes/<name>/` folder on
+ * > `agent/issue-<n>`) lands in the focused S3 pass. Until then this handler
+ * > keeps the existing spec-posting behaviour, but emits `CAPTURED` (the signal
+ * > the reworked spine renamed from `SPEC_POSTED`) and derives the revision
+ * > from the thread rather than the retired `specRevision` counter — so the
+ * > tree compiles against the new spine without keeping a dead state field.
  */
 export const handleTriage: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, issue, state } = input
@@ -59,15 +68,22 @@ export const handleTriage: PhaseHandler = async (input): Promise<PhaseOutcome> =
 
   // One local feeds both the visible heading and the hidden block, so the number
   // a maintainer reads and the number the next job reads back cannot drift
-  // apart. `SPEC_POSTED` bumps `specRevision` to exactly this value, and counts
-  // only specs — the shared counter it replaced had the first plan on a fresh
-  // issue call itself revision 2.
-  const revision = state.specRevision + 1
+  // apart. Under the OpenSpec rework the revision counter left the state block
+  // (the proposal's history is the folder's commits), so it is derived here from
+  // the thread's own latest spec block — the one place that number was always
+  // read from before.
+  const revision = await nextRevision(input)
   return {
-    signal: 'SPEC_POSTED',
+    signal: 'CAPTURED',
     comment: renderSpec(decision.spec, revision),
     blocks: [renderArtifact(SPEC_MARKER, decision.spec, revision)],
   }
+}
+
+/** The previous spec block's revision plus one, or 1 for the first spec on the thread. */
+const nextRevision = async (input: PhaseInput): Promise<number> => {
+  const latest = findArtifact(input.thread, await input.deps.selfLogin(), SPEC_MARKER)
+  return (latest?.revision ?? 0) + 1
 }
 
 /** The maintainer's `/changes` argument, when this run was triggered by one. */

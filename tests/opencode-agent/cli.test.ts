@@ -388,7 +388,7 @@ describe('runCli', () => {
         id: 1,
         user: { login: 'agent-bot' },
         body: `stopped\n\n<!-- AGENT_STATE: ${JSON.stringify({
-          v: 1,
+          v: 3,
           phase: 'FAILED',
           issueId: 42,
           resumeFrom: 'PLANNING',
@@ -420,6 +420,36 @@ describe('runCli', () => {
     expect(github.posted[0]).not.toContain(token)
   })
 
+  test('stands down with one comment when the checkout has no openspec/ tree (design D10)', async () => {
+    // The agent runs in repos other than papai. A checkout without an
+    // `openspec/` root cannot run the compliant pipeline, and the agent never
+    // scaffolds OpenSpec into a foreign repo: it posts one clear comment naming
+    // the remedy and exits without spawning the OpenCode server. The temp
+    // `workDir` has no `openspec/`, so pointing `--repo-root` at it triggers the
+    // probe's stand-down verdict.
+    const eventPath = await writeEvent('stand-down', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 'Add retries', body: 'Please add retries.', author_association: 'OWNER' },
+      comment: { id: 2, body: 'go ahead', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const github = recordPosts([])
+    const result = await runCli({
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment', '--repo-root', workDir],
+      env,
+      logger: silentLogger,
+      octokit: { fetch: github.fetch },
+    })
+
+    expect(result.status).toBe('skipped')
+    expect(result.reported).toBe(true)
+    expect(github.posted).toHaveLength(1)
+    expect(github.posted[0]).toContain('openspec')
+    expect(github.posted[0]).toContain('standing down')
+  })
+
   test('a real run acknowledges the comment that triggered it', async () => {
     // End to end through `contain`, `assembleDeps` and the real Octokit
     // adapter. The recorded lesson of this workspace (ROADMAP S2-6, S3-3, S3-9)
@@ -430,7 +460,7 @@ describe('runCli', () => {
       {
         id: 1,
         user: { login: 'agent-bot' },
-        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 3, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
       },
     ]
     const eventPath = await writeEvent('reaction', {
@@ -473,7 +503,7 @@ describe('runCli', () => {
       {
         id: 1,
         user: { login: 'agent-bot' },
-        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 3, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
       },
     ]
     const eventPath = await writeEvent('labels', {
@@ -525,7 +555,7 @@ describe('runCli', () => {
         id: 1,
         user: { login: 'agent-bot' },
         body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({
-          v: 2,
+          v: 3,
           phase: 'DESIGN_SPEC',
           issueId: 42,
           tokensSpent: 60_000,
@@ -569,7 +599,7 @@ describe('runCli', () => {
         id: 1,
         user: { login: 'agent-bot' },
         body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({
-          v: 2,
+          v: 3,
           phase: 'DESIGN_SPEC',
           issueId: 42,
           tokensSpent: 60_000,
@@ -602,7 +632,7 @@ describe('runCli', () => {
       {
         id: 1,
         user: { login: 'agent-bot' },
-        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 3, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
       },
     ]
     const eventPath = await writeEvent('labels-none', {
@@ -634,7 +664,7 @@ describe('runCli', () => {
       {
         id: 1,
         user: { login: 'agent-bot' },
-        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 3, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
       },
     ]
     const eventPath = await writeEvent('labels-403', {
@@ -668,7 +698,7 @@ describe('runCli', () => {
       {
         id: 1,
         user: { login: 'agent-bot' },
-        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
+        body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 3, phase: 'DESIGN_SPEC', issueId: 42 })} -->`,
       },
     ]
     const eventPath = await writeEvent('reaction-403', {
@@ -708,7 +738,7 @@ describe('runCli', () => {
         id: 1,
         user: { login: 'agent-bot' },
         body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({
-          v: 2,
+          v: 3,
           phase: 'FAILED',
           issueId: 42,
           resumeFrom: 'PLANNING',
@@ -774,7 +804,7 @@ describe('runCli', () => {
         id: 1,
         user: { login: 'agent-bot' },
         body: `parked\n\n<!-- AGENT_STATE: ${JSON.stringify({
-          v: 2,
+          v: 3,
           phase: 'FAILED',
           issueId: 42,
           resumeFrom: 'PLANNING',
@@ -852,7 +882,7 @@ describe('runCli', () => {
     {
       id: 1,
       user: { login: 'agent-bot' },
-      body: `stopped\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 2, phase: 'COMPLETE', issueId: 42 })} -->`,
+      body: `stopped\n\n<!-- AGENT_STATE: ${JSON.stringify({ v: 3, phase: 'COMPLETE', issueId: 42 })} -->`,
     },
   ]
 

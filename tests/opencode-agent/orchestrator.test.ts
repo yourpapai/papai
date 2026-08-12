@@ -215,6 +215,11 @@ interface PipelineIo {
   reviewCalls: string[]
   /** What `runReview` rejects with, when set: the loop crashing rather than exiting red. */
   reviewError: Error | null
+  /** OpenSpec CLI driver call log + canned responses (design D3). */
+  openspecCalls: string[]
+  openspecStatus: import('../../opencode-agent/src/openspec-driver.js').StatusResult
+  openspecInstructions: import('../../opencode-agent/src/openspec-driver.js').InstructionsResult
+  openspecValidate: import('../../opencode-agent/src/openspec-driver.js').ValidateResult
   /** What `git` would report as the remote's default branch. */
   detectedBranch: string | null
   /**
@@ -370,6 +375,18 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     statusError: null,
     postError: null,
     nowMs: RUN_NOW_MS,
+    // OpenSpec driver fakes (design D3): safe defaults, overridden per-test.
+    openspecCalls: [],
+    openspecStatus: { schemaName: 'spec-driven', artifacts: {}, isPlanningComplete: false },
+    openspecInstructions: {
+      instruction: '',
+      template: undefined,
+      rules: [],
+      resolvedOutputPath: '',
+      existingOutputPaths: [],
+      dependencies: [],
+    },
+    openspecValidate: { ok: true, output: '' },
   }
 
   let nextCommentId = 100
@@ -550,6 +567,32 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // the server reads what a closed server answers.
     tokensUsed: () => agent.tokensUsed(),
     skills: () => Promise.resolve([]),
+    // The OpenSpec CLI driver fake (design D3). Records every call into `io` so
+    // the capture/drafter/archive tests can assert the protocol; returns safe
+    // defaults so a run that reaches it before its test sets up a canned
+    // response degrades rather than crashes.
+    openspec: {
+      newChange: (changeName) => {
+        io.openspecCalls.push(`newChange:${changeName}`)
+        return Promise.resolve({ changeName })
+      },
+      status: (changeName) => {
+        io.openspecCalls.push(`status:${changeName}`)
+        return Promise.resolve(io.openspecStatus)
+      },
+      instructions: (artifactId, changeName) => {
+        io.openspecCalls.push(`instructions:${artifactId}:${changeName}`)
+        return Promise.resolve(io.openspecInstructions)
+      },
+      validateStrict: (changeName) => {
+        io.openspecCalls.push(`validate:${changeName}`)
+        return Promise.resolve(io.openspecValidate)
+      },
+      archive: (changeName) => {
+        io.openspecCalls.push(`archive:${changeName}`)
+        return Promise.resolve()
+      },
+    },
     baseBranch: () => Promise.resolve(BASE_BRANCH),
     selfLogin: () => Promise.resolve(AGENT_LOGIN),
     // The same clock the status reporter reads, so a test that moves time moves it
@@ -1000,7 +1043,9 @@ describe('review conversation', () => {
 
     expect(result.status).toBe('waiting')
     expect(harness.io.posted[0]).toContain('### Answer')
-    expect(latestPostedState(harness)?.specRevision).toBe(1)
+    // Answering is phase-neutral and rewrites no artefact: it stays in DESIGN_SPEC
+    // (where the captured proposal is under review) rather than re-planning.
+    expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
   })
 })
 
@@ -1113,7 +1158,7 @@ describe('plan review gate', () => {
     await runPipeline({ event: comment('/changes split step 1'), deps: harness.deps })
 
     expect(harness.io.posted[0]).toContain('### Plan (revision 2)')
-    expect(latestPostedState(harness)).toMatchObject({ phase: 'PLAN_REVIEW', specRevision: 1, planRevision: 2 })
+    expect(latestPostedState(harness)).toMatchObject({ phase: 'PLAN_REVIEW', planRevision: 2 })
   })
 
   test('/approve on the plan cascades through implementation and delivery', async () => {
@@ -1149,7 +1194,7 @@ describe('artefact revision numbering', () => {
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(harness.io.posted[0]).toContain('### Plan (revision 1)')
-    expect(latestPostedState(harness)).toMatchObject({ specRevision: 1, planRevision: 1 })
+    expect(latestPostedState(harness)).toMatchObject({ planRevision: 1 })
   })
 
   test('revising the spec twice still leaves the first plan at revision 1', async () => {
@@ -1166,7 +1211,10 @@ describe('artefact revision numbering', () => {
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(harness.io.posted[0]).toContain('### Plan (revision 1)')
-    expect(latestPostedState(harness)).toMatchObject({ specRevision: 3, planRevision: 1 })
+    expect(latestPostedState(harness)).toMatchObject({ planRevision: 1 })
+    // The spec block keeps its own revision in the thread (the folder's history
+    // under the full D1 rework); the state block no longer carries a spec counter.
+    expect(findArtifact(harness.io.thread, AGENT_LOGIN, SPEC_MARKER)?.revision).toBe(3)
   })
 
   test('revising the plan reaches revision 2 while the spec stays where it was', async () => {
@@ -1180,28 +1228,7 @@ describe('artefact revision numbering', () => {
     // written from the same local as the heading, so they cannot disagree.
     expect(findArtifact(harness.io.thread, AGENT_LOGIN, PLAN_MARKER)?.revision).toBe(2)
     expect(findArtifact(harness.io.thread, AGENT_LOGIN, SPEC_MARKER)?.revision).toBe(1)
-    expect(latestPostedState(harness)).toMatchObject({ specRevision: 1, planRevision: 2 })
-  })
-
-  test('a state block written before the counters split still drives the pipeline', async () => {
-    // Both fields default, so the split needed no `STATE_VERSION` bump and this
-    // issue is not stranded mid-conversation. What it loses is the old shared
-    // count, which was a sum of two artefacts and never the count of either —
-    // so its plan starts at 1, which is the number this change exists to make
-    // true.
-    const legacy = `<!-- ${STATE_MARKER}: {"v":2,"phase":"DESIGN_SPEC","issueId":${ISSUE},"revision":3} -->`
-    harness.io.thread.push({
-      id: 800,
-      body: [`earlier`, legacy, renderArtifact(SPEC_MARKER, 'Add a retry wrapper around fetch.', 3)].join('\n\n'),
-      authorLogin: AGENT_LOGIN,
-    })
-    harness.io.replies = [PLAN_REPLY]
-
-    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
-
-    expect(result.status).toBe('waiting')
-    expect(harness.io.posted[0]).toContain('### Plan (revision 1)')
-    expect(latestPostedState(harness)).toMatchObject({ phase: 'PLAN_REVIEW', specRevision: 0, planRevision: 1 })
+    expect(latestPostedState(harness)).toMatchObject({ planRevision: 2 })
   })
 })
 

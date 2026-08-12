@@ -95,7 +95,7 @@ import type { AgentState, Phase, TransitionSignal } from './types.js'
  * is worse than waiting for the `/continue` that finishes it.
  */
 const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
-  INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', SPEC_POSTED: 'DESIGN_SPEC' },
+  INIT_OR_CLARIFY: { NEEDS_CLARIFICATION: 'INIT_OR_CLARIFY', CAPTURED: 'DESIGN_SPEC' },
   DESIGN_SPEC: { CHANGES_REQUESTED: 'INIT_OR_CLARIFY', APPROVED: 'PLANNING' },
   PLANNING: { PLAN_POSTED: 'PLAN_REVIEW' },
   PLAN_REVIEW: { CHANGES_REQUESTED: 'PLANNING', APPROVED: 'REVIEW_AND_MUTATE' },
@@ -163,20 +163,16 @@ const failTransition = (state: AgentState, patch: Partial<AgentState>): Partial<
 })
 
 /**
- * The artefact counter this move bumps, if it rewrites an artefact at all.
+ * The plan-identity token this move bumps, if it rewrites the plan at all.
  *
- * Spec and plan are counted apart because the heading each handler renders reads
- * as "the Nth version of *this* artefact" and cannot be read as anything else.
- * One counter serving both had them interleave, so the first plan on
- * every issue announced itself as revision 2 — and revision 3 if the spec had
- * been revised once first.
- *
- * A branch per signal rather than a lookup table with a computed key: the two
- * artefacts are the whole list, and naming the fields keeps a mistyped one a
+ * Under the OpenSpec rework (design D1) only `PLAN_POSTED` bumps a counter, and
+ * that counter is the plan-identity token `state.planRevision` documents — not
+ * an artifact revision. The former `SPEC_POSTED` branch is gone: the proposal
+ * lives in the folder and nothing counts spec revisions. A branch per signal
+ * rather than a lookup table with a computed key keeps a mistyped field a
  * compile error rather than a counter that silently never moves.
  */
 const revisionBump = (state: AgentState, signal: TransitionSignal): Partial<AgentState> => {
-  if (signal === 'SPEC_POSTED') return { specRevision: state.specRevision + 1 }
   if (signal === 'PLAN_POSTED') return { planRevision: state.planRevision + 1 }
   return {}
 }

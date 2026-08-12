@@ -935,16 +935,21 @@ describe('obra-skills', () => {
     }
   })
 
-  test('every named skill is one that exists upstream', () => {
-    // A hand-copied snapshot of obra/superpowers @ 44c9b2d, so this catches a
-    // typo in PHASE_SKILLS — not upstream drift, which it cannot see. The real
-    // guard against a bad checkout is `bun run opencode-agent:verify-skills`,
-    // which the workflow runs against the actual fetched files.
-    const upstreamAt44c9b2d = new Set([
+  test('every named skill is one that exists upstream or in-repo', () => {
+    // A hand-copied snapshot of obra/superpowers @ 44c9b2d plus this repo's own
+    // OpenSpec skills, so this catches a typo in PHASE_SKILLS — not upstream
+    // drift, which it cannot see. The real guard against a bad checkout is
+    // `bun run opencode-agent:verify-skills`, which the workflow runs against
+    // the actual fetched files. D4 routes two phases onto the in-repo OpenSpec
+    // skills (`openspec-explore`, `openspec-propose`), which live under
+    // `.opencode/skills/` rather than the obra/superpowers checkout.
+    const knownSkills = new Set([
       'brainstorming',
       'dispatching-parallel-agents',
       'executing-plans',
       'finishing-a-development-branch',
+      'openspec-explore',
+      'openspec-propose',
       'receiving-code-review',
       'requesting-code-review',
       'subagent-driven-development',
@@ -959,7 +964,7 @@ describe('obra-skills', () => {
 
     for (const phase of PHASES) {
       for (const name of [...PHASE_SKILLS[phase].required, ...PHASE_SKILLS[phase].optional]) {
-        expect(upstreamAt44c9b2d.has(name), `${phase} asks for unknown skill ${name}`).toBe(true)
+        expect(knownSkills.has(name), `${phase} asks for unknown skill ${name}`).toBe(true)
       }
     }
   })
@@ -971,7 +976,7 @@ describe('obra-skills', () => {
       read: () => Promise.reject(new Error('ENOENT')),
     })
 
-    await expect(attempt).rejects.toThrow('writing-plans')
+    await expect(attempt).rejects.toThrow('openspec-propose')
   })
 
   test('drops the YAML frontmatter before inlining a skill', async () => {

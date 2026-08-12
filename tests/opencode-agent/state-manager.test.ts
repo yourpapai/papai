@@ -71,7 +71,7 @@ describe('blocks', () => {
 
 describe('serializeState / extractState', () => {
   test('round-trips a full state through the hidden comment block', () => {
-    const state = transition(initialState(42), 'SPEC_POSTED')
+    const state = transition(initialState(42), 'CAPTURED')
 
     expect(extractState(serializeState(state))).toEqual(state)
   })
@@ -91,11 +91,11 @@ describe('serializeState / extractState', () => {
     expect(extractState(body)?.issueId).toBe(9)
   })
 
-  test('applies schema defaults to a minimal state block', () => {
-    const parsed = extractState(`<!-- ${STATE_MARKER}: {"phase":"INIT_OR_CLARIFY","issueId":5} -->`)
+  test('applies schema defaults to a minimal current-version state block', () => {
+    const parsed = extractState(`<!-- ${STATE_MARKER}: {"v":3,"phase":"INIT_OR_CLARIFY","issueId":5} -->`)
 
     expect(parsed).toEqual({
-      v: 1,
+      v: STATE_VERSION,
       phase: 'INIT_OR_CLARIFY',
       issueId: 5,
       resumeFrom: null,
@@ -105,14 +105,18 @@ describe('serializeState / extractState', () => {
       reviewAttempts: 0,
       // Defaulted for the same reason, and 0 reads as "a small diff": it is
       // below every threshold `LINES_RANGE` lets an operator set, so a block
-      // written before the count existed recommends nothing.
+      // written without the count recommends nothing.
       changedLines: 0,
       // The plan-step cursor, defaulted for the same reason: 0 is "start at the
-      // first step", which is what every block written before it existed means.
+      // first step", which is what every block written without it means.
       stepsDone: 0,
-      specRevision: 0,
+      // The captured change folder, defaulted to `null` (uncaptured) for the
+      // same reason: a block is free to omit any field the schema can supply.
+      changeName: null,
+      // The plan-identity token, defaulted for the same reason. `specRevision`
+      // is gone under the OpenSpec rework — the proposal lives in the folder.
       planRevision: 0,
-      // Defaulted, which is why adding it needed no STATE_VERSION bump.
+      // Defaulted: a block is free to omit any field the schema can supply.
       tokensSpent: 0,
       lastError: null,
       prUrl: null,
@@ -120,47 +124,27 @@ describe('serializeState / extractState', () => {
     })
   })
 
-  test('a block written before the revision counters split still restores', () => {
-    // The two counters replaced one shared `revision`, and both default, so no
-    // STATE_VERSION bump was needed and an issue mid-conversation is not
-    // stranded. The old key is dropped rather than mapped onto either field: it
-    // was the sum of both artefacts' revisions and never the count of either.
-    const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"DESIGN_SPEC","issueId":5,"revision":3} -->`
+  test('drops an unknown key carried by a current-version block', () => {
+    // zod strips unknown keys, so a block that carries a stray field still
+    // restores. (Pre-D12 this was tested with a v2 block carrying the retired
+    // shared `revision`; the field-default intent is preserved here on a
+    // current-version block, and the legacy-version rejection is covered below.)
+    const block = `<!-- ${STATE_MARKER}: {"v":3,"phase":"DESIGN_SPEC","issueId":5,"revision":3} -->`
 
-    expect(extractState(older)).toMatchObject({ phase: 'DESIGN_SPEC', specRevision: 0, planRevision: 0 })
-    expect(extractState(older)).not.toHaveProperty('revision')
+    expect(extractState(block)).toMatchObject({ phase: 'DESIGN_SPEC', planRevision: 0 })
+    expect(extractState(block)).not.toHaveProperty('revision')
+    expect(extractState(block)).not.toHaveProperty('specRevision')
   })
 
-  test('a block written before a field existed still restores', () => {
-    // Fields are added with defaults precisely so a live issue is not stranded
-    // mid-flight by a deploy. `ciBudgetReported` is the most recent addition.
-    const older = `<!-- ${STATE_MARKER}: {"phase":"COMPLETE","issueId":5,"ciAttempts":3} -->`
+  test('applies defaults for fields omitted from a current-version block', () => {
+    // Fields are added with defaults so a current block is free to omit them.
+    const block = `<!-- ${STATE_MARKER}: {"v":3,"phase":"COMPLETE","issueId":5,"ciAttempts":3} -->`
 
-    expect(extractState(older)).toMatchObject({ phase: 'COMPLETE', ciAttempts: 3, ciBudgetReported: false })
-  })
-
-  test('a v2 block written before the review budget existed still restores', () => {
-    // `CODE_REVIEW` and `reviewAttempts` arrived together, and neither needed a
-    // `STATE_VERSION` bump: the phase is an *added* enum member, which no old
-    // block names, and the counter defaults. An issue delivered before the
-    // deploy is therefore reviewable straight away rather than stranded.
-    const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"COMPLETE","issueId":5,"prNumber":7} -->`
-
-    expect(extractState(older)).toMatchObject({ phase: 'COMPLETE', prNumber: 7, reviewAttempts: 0 })
-  })
-
-  test('a v2 block written before the plan-step cursor existed still restores', () => {
-    // `stepsDone` is additive with a default, so no `STATE_VERSION` bump — a bump
-    // strands every in-flight issue, and there is nothing here it would protect
-    // against: 0 means "start at the first step", and the plans those issues carry
-    // have no steps anyway, so they run as one turn exactly as they always did.
-    const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"REVIEW_AND_MUTATE","issueId":5} -->`
-
-    expect(extractState(older)).toMatchObject({ phase: 'REVIEW_AND_MUTATE', stepsDone: 0 })
+    expect(extractState(block)).toMatchObject({ phase: 'COMPLETE', ciAttempts: 3, ciBudgetReported: false })
   })
 
   test('stamps the current version on every write', () => {
-    expect(transition(initialState(1), 'SPEC_POSTED').v).toBe(STATE_VERSION)
+    expect(transition(initialState(1), 'CAPTURED').v).toBe(STATE_VERSION)
   })
 
   test.each([
@@ -173,51 +157,77 @@ describe('serializeState / extractState', () => {
   })
 })
 
-describe('a block written before the planning phase was renamed', () => {
-  test('restores EXECUTION_PLAN as the phase that replaced it', () => {
-    // `PLANNING` was `EXECUTION_PLAN`, and a phase name is written into every
-    // state block — so the rename is a persisted-shape change, and an unmigrated
-    // one would have `z.enum` reject the block outright: the scan would walk
-    // past it to an older comment, or start the conversation over.
-    const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"EXECUTION_PLAN","issueId":5} -->`
+describe('legacy state blocks are rejected (design D12)', () => {
+  test('a v2 block is rejected outright, so the scan restarts the issue fresh', () => {
+    // The opencode-agent rework retires `AGENT_SPEC`/`AGENT_PLAN` and moves
+    // planning onto a real openspec folder; a v2 state describes a pipeline
+    // that no longer exists. Rather than carry a dual format, the schema rejects
+    // every older `v`, the restore scan finds nothing valid, and the issue
+    // starts over at `INIT_OR_CLARIFY` under the compliant pipeline.
+    const legacy = `<!-- ${STATE_MARKER}: {"v":2,"phase":"REVIEW_AND_MUTATE","issueId":5,"stepsDone":3} -->`
 
-    expect(extractState(older)?.phase).toBe('PLANNING')
+    expect(extractState(legacy)).toBeNull()
   })
 
-  test('migrates the resume point too, so a parked failure is still resumable', () => {
-    // The field that would fail latest and quietest: an issue parked in FAILED
-    // carries the phase `/retry` re-enters, and a block rejected for naming the
-    // old one takes the resume point with it.
-    const parked = `<!-- ${STATE_MARKER}: {"v":2,"phase":"FAILED","issueId":5,"resumeFrom":"EXECUTION_PLAN"} -->`
-
-    expect(extractState(parked)?.resumeFrom).toBe('PLANNING')
+  test('a block that omits the version is rejected (no implicit v1)', () => {
+    // Pre-versioning blocks used to default to v1; D12 dropped the default, so a
+    // versionless block now fails the literal the schema requires.
+    expect(extractState(`<!-- ${STATE_MARKER}: {"phase":"COMPLETE","issueId":5} -->`)).toBeNull()
   })
 
-  test('needs no STATE_VERSION bump, so an in-flight issue is not stranded', () => {
-    const older = `<!-- ${STATE_MARKER}: {"v":2,"phase":"EXECUTION_PLAN","issueId":5,"tokensSpent":900} -->`
+  test('a v2 block naming the retired EXECUTION_PLAN phase is not migrated — the version gate rejects first', () => {
+    // The phase-rename migration (`LEGACY_PHASE_NAMES`) is unreachable from disk
+    // under D12: a legacy block dies at `v` before `phaseName` ever runs, so the
+    // restart happens rather than a migration of a state this code no longer
+    // serves. The migration transform itself is still covered below on a
+    // current-version block.
+    const legacy = `<!-- ${STATE_MARKER}: {"v":2,"phase":"EXECUTION_PLAN","issueId":5,"tokensSpent":900} -->`
 
-    // Everything else about the block is believed, including the spend — the
-    // one field a stranded issue would hand back to the next runner as zero.
-    expect(extractState(older)?.tokensSpent).toBe(900)
+    expect(extractState(legacy)).toBeNull()
+  })
+
+  test('findLatestState walks past a legacy block to a current one, or starts over', () => {
+    const agent = 'agent-bot'
+    const thread = [
+      comment(agent, `<!-- ${STATE_MARKER}: {"v":2,"phase":"PLANNING","issueId":5} -->`),
+      comment(agent, renderStateComment(' restarted', initialState(5))),
+    ]
+
+    // The newest comment is a valid current block; the v2 block behind it is
+    // skipped. Reverse the order and the scan finds nothing valid.
+    expect(findLatestState(thread, agent, 5)?.phase).toBe('INIT_OR_CLARIFY')
+    expect(findLatestState([thread[0]!], agent, 5)).toBeNull()
+  })
+})
+
+describe('the phase-name schema transform (still exercised on current-version blocks)', () => {
+  test('a current-version block naming the retired phase is still migrated', () => {
+    // D12 made the migration unreachable from disk (legacy `v` rejects first),
+    // but the transform remains in the schema. No real v3 block carries the old
+    // name; this covers the machinery so it cannot rot silently, and so a future
+    // removal is a deliberate decision rather than an accident.
+    const block = `<!-- ${STATE_MARKER}: {"v":3,"phase":"EXECUTION_PLAN","issueId":5} -->`
+
+    expect(extractState(block)?.phase).toBe('PLANNING')
   })
 
   test('a phase name that was never a phase is still rejected', () => {
     // The migration is a lookup over one retired name, not a loosening: a block
     // is attacker-editable text, and anything else must fail the enum as before.
-    expect(extractState(`<!-- ${STATE_MARKER}: {"v":2,"phase":"WHATEVER","issueId":5} -->`)).toBeNull()
+    expect(extractState(`<!-- ${STATE_MARKER}: {"v":3,"phase":"WHATEVER","issueId":5} -->`)).toBeNull()
   })
 
   test('an inherited property name is not a migration', () => {
     // Read through `Object.hasOwn`, never `in`: `'toString' in LEGACY_PHASE_NAMES`
     // is true through the prototype, and the value it would substitute is a
     // function.
-    expect(extractState(`<!-- ${STATE_MARKER}: {"v":2,"phase":"toString","issueId":5} -->`)).toBeNull()
-    expect(extractState(`<!-- ${STATE_MARKER}: {"v":2,"phase":"constructor","issueId":5} -->`)).toBeNull()
+    expect(extractState(`<!-- ${STATE_MARKER}: {"v":3,"phase":"toString","issueId":5} -->`)).toBeNull()
+    expect(extractState(`<!-- ${STATE_MARKER}: {"v":3,"phase":"constructor","issueId":5} -->`)).toBeNull()
   })
 
   test('a state the machine writes now carries the new name', () => {
-    // The other half of "no bump": blocks written after the rename must not
-    // keep the old spelling alive, or the migration becomes permanent.
+    // Blocks written after the rename must not keep the old spelling alive, or
+    // the migration becomes permanent.
     expect(transition(at('DESIGN_SPEC'), 'APPROVED').phase).toBe('PLANNING')
   })
 })
@@ -235,7 +245,7 @@ describe('state blocks survive hostile payload text', () => {
 
   test('a spec full of markdown rules and arrows still restores its state', () => {
     const spec = '## Goal\n\n---\n\n```mermaid\ngraph TD\n  A --> B\n```'
-    const state = transition(initialState(9), 'SPEC_POSTED')
+    const state = transition(initialState(9), 'CAPTURED')
     const body = [renderStateComment(`### Design spec\n\n${spec}`, state), renderArtifact(SPEC_MARKER, spec, 1)].join(
       '\n\n',
     )
@@ -357,7 +367,7 @@ describe('artifacts', () => {
 describe('transition', () => {
   test('walks the happy path end to end, through both review gates', () => {
     let state = initialState(42)
-    state = transition(state, 'SPEC_POSTED')
+    state = transition(state, 'CAPTURED')
     expect(state.phase).toBe('DESIGN_SPEC')
 
     state = transition(state, 'APPROVED')
@@ -376,38 +386,38 @@ describe('transition', () => {
     expect(state.phase).toBe('COMPLETE')
   })
 
-  test('bumps an artefact revision only when that artefact is rewritten', () => {
-    const spec = transition(initialState(1), 'SPEC_POSTED')
-    expect(spec).toMatchObject({ specRevision: 1, planRevision: 0 })
+  test('the plan-identity token bumps only when the plan is rewritten', () => {
+    // Under the OpenSpec rework (D1) only `PLAN_POSTED` bumps a counter, and
+    // that counter is the plan-identity token, not an artefact revision: the
+    // proposal's history is the folder's commits, and capturing it (`CAPTURED`)
+    // moves no counter at all.
+    const captured = transition(initialState(1), 'CAPTURED')
+    expect(captured).toMatchObject({ planRevision: 0 })
 
-    const approved = transition(spec, 'APPROVED')
-    expect(approved).toMatchObject({ specRevision: 1, planRevision: 0 })
+    const approved = transition(captured, 'APPROVED')
+    expect(approved).toMatchObject({ planRevision: 0 })
 
-    // The plan's first revision is 1, not 2. One counter served both, so the
-    // first plan on every issue was labelled with the spec's count
-    // plus its own.
-    expect(transition(approved, 'PLAN_POSTED')).toMatchObject({ specRevision: 1, planRevision: 1 })
+    expect(transition(approved, 'PLAN_POSTED')).toMatchObject({ planRevision: 1 })
   })
 
-  test('revising one artefact never moves the other one’s number', () => {
-    const twiceSpecced = transition(
-      transition(transition(initialState(1), 'SPEC_POSTED'), 'CHANGES_REQUESTED'),
-      'SPEC_POSTED',
+  test('re-capturing never moves the plan token, but re-planning does', () => {
+    const twiceCaptured = transition(
+      transition(transition(initialState(1), 'CAPTURED'), 'CHANGES_REQUESTED'),
+      'CAPTURED',
     )
-    const planned = transition(transition(twiceSpecced, 'APPROVED'), 'PLAN_POSTED')
-    expect(planned).toMatchObject({ specRevision: 2, planRevision: 1 })
+    const planned = transition(transition(twiceCaptured, 'APPROVED'), 'PLAN_POSTED')
+    expect(planned).toMatchObject({ planRevision: 1 })
 
     const replanned = transition(transition(planned, 'CHANGES_REQUESTED'), 'PLAN_POSTED')
-    expect(replanned).toMatchObject({ specRevision: 2, planRevision: 2 })
+    expect(replanned).toMatchObject({ planRevision: 2 })
   })
 
   test('a question is a self-loop that changes nothing else', () => {
-    const spec = transition(initialState(1), 'SPEC_POSTED')
-    const answered = transition(spec, 'ANSWERED')
+    const captured = transition(initialState(1), 'CAPTURED')
+    const answered = transition(captured, 'ANSWERED')
 
     expect(answered.phase).toBe('DESIGN_SPEC')
-    expect(answered.specRevision).toBe(spec.specRevision)
-    expect(answered.planRevision).toBe(spec.planRevision)
+    expect(answered.planRevision).toBe(captured.planRevision)
   })
 
   test.each<Phase>([...PHASES])('a question asked in %s is answered where it stands', (phase) => {
@@ -417,14 +427,13 @@ describe('transition', () => {
     // COMPLETE, FAILED or anywhere mid-pipeline threw InvalidTransitionError out
     // of the pipeline with the model turn already paid for. FAILED mattered
     // most: it is the phase a maintainer asks "why did this fail?" in.
-    const before: AgentState = { ...at(phase), attempts: 2, specRevision: 3, planRevision: 2, ciAttempts: 1 }
+    const before: AgentState = { ...at(phase), attempts: 2, planRevision: 2, ciAttempts: 1 }
     const answered = transition(before, 'ANSWERED')
 
     expect(canTransition(phase, 'ANSWERED')).toBe(true)
     expect(answered.phase).toBe(phase)
-    // No artefact was rewritten and no CI round was spent, but a handler did
+    // No plan was rewritten and no CI round was spent, but a handler did
     // succeed — the same patch the three table rows used to produce.
-    expect(answered.specRevision).toBe(3)
     expect(answered.planRevision).toBe(2)
     expect(answered.ciAttempts).toBe(1)
     expect(answered.attempts).toBe(0)
@@ -449,7 +458,7 @@ describe('transition', () => {
   test('rejects a signal the current phase does not accept', () => {
     expect(() => transition(initialState(1), 'APPROVED')).toThrow(InvalidTransitionError)
     expect(() => transition(at('DESIGN_SPEC'), 'PLAN_POSTED')).toThrow(InvalidTransitionError)
-    expect(() => transition(at('PLAN_REVIEW'), 'SPEC_POSTED')).toThrow(InvalidTransitionError)
+    expect(() => transition(at('PLAN_REVIEW'), 'CAPTURED')).toThrow(InvalidTransitionError)
   })
 
   test('FAILED records the resume phase, the error and an attempt', () => {
@@ -485,7 +494,7 @@ describe('transition', () => {
   test.each<[TransitionSignal, Phase]>([
     ['NEEDS_CLARIFICATION', 'INIT_OR_CLARIFY'],
     ['ANSWERED', 'INIT_OR_CLARIFY'],
-    ['SPEC_POSTED', 'INIT_OR_CLARIFY'],
+    ['CAPTURED', 'INIT_OR_CLARIFY'],
     ['CHANGES_REQUESTED', 'DESIGN_SPEC'],
     ['APPROVED', 'DESIGN_SPEC'],
     ['PLAN_POSTED', 'PLANNING'],
@@ -734,7 +743,7 @@ describe('transition', () => {
 
   test('returns a new object rather than mutating the input', () => {
     const before = initialState(42)
-    const after = transition(before, 'SPEC_POSTED')
+    const after = transition(before, 'CAPTURED')
 
     expect(before.phase).toBe('INIT_OR_CLARIFY')
     expect(after).not.toBe(before)
