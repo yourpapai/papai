@@ -30,7 +30,7 @@ export default {
   // standalone developer tools with their own check suites
   // (<workspace>:lint/typecheck/format:check/test) run separately in
   // check:full. knip-bun cannot resolve their .js-extension imports.
-  ignoreWorkspaces: ['review-loop', 'mutation-improve', 'opencode-agent'],
+  ignoreWorkspaces: ['review-loop', 'mutation-improve', 'opencode-agent', 'sdd-runner'],
 
   compilers: { '.svelte': svelteCompiler },
 

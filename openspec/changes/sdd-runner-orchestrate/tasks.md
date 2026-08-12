@@ -1,0 +1,34 @@
+## 1. Event subscription bus + emit-dep migration (design O2)
+
+- [x] 1.1 Failing tests for an `EventBus` (`createEventBus(emit → subscribers[])`) in `tests/sdd-runner/event-bus.test.ts`: emit fans out to all subscribers in subscription order; subscribers receive the event object verbatim; a throwing subscriber does not block siblings (caught + surfaced via a side channel). Then implement `sdd-runner/src/event-bus.ts`. Verification: `bun test tests/sdd-runner/event-bus.test.ts`
+- [x] 1.2 Migrate stage-module deps from `logPath` + direct `appendEvent` to a single `emit: (event) => void`. Test-first: update `tests/sdd-runner/{intake,review-loop,stage-machine,gate}.test.ts` to assert `emit` is called with the expected L2 event (not that the file was written). Edit `intake.ts`, `review-loop.ts`, `stage-machine.ts`, `gate.ts` to take `emit` and drop `logPath`/direct `appendEvent`. `appendEvent` becomes a subscriber wired by the orchestrator (group 4). Verification: `bun test tests/sdd-runner tests/sdd-runner/review-model.test.ts`
+
+## 2. L1 emission + F1 seam fix (design O3, O4)
+
+- [x] 2.1 Failing tests in `tests/sdd-runner/agent-layer.test.ts`: `runStageAgent` invokes `emit` with `spawned` (label, role) before `runAgent`, `retrying` (reason stall|validation) on retry, and `done`+usage (inputTokens/outputTokens/reasoningTokens/costUsd/wallMs, label) on success. Update `agent-layer.ts` `AgentLayerDeps` to add `emit`; emit at the three points (retry already has `onRetryEvent` — route it through `emit`). Verification: `bun test tests/sdd-runner/agent-layer.test.ts`
+- [x] 2.2 Failing test for the F1 seam: with `cwd = repoRoot` and a fake spawn that writes the agent file under `<cwd>/.review-loop/<basename>`, assert the parsed sidecar lands at `path.join(sidecarDir, basename)` (absolute), no file is created at `path.join(process.cwd(), basename)`, and a subsequent `guardWorkingTree` porcelain check finds no path outside `openspec/changes/`. Then fix: in `agent-layer.ts` pass `outputPath: path.join(sidecarDir, basename)` (absolute) into `runStageAgent` options, and delete `persistSidecar` (now redundant — `runAgent` copies straight to sidecarDir). Update `intake.ts`/`draft.ts`/`decompose.ts`/`review-loop.ts` call sites that passed relative basenames. `review-loop/src/*` untouched (D14). Verification: `bun test tests/sdd-runner/agent-layer.test.ts tests/sdd-runner/{intake,draft,decompose,review-loop}.test.ts`
+
+## 3. Cost/duration aggregation (design O6)
+
+- [x] 3.1 Failing tests in `tests/sdd-runner/usage-aggregate.test.ts` for `aggregateUsage(events: SddEvent[])` → `{ inputTokens, outputTokens, reasoningTokens, costUsd, wallMs }`: sums `done` events' usage; ignores non-L1 events; returns zeros for empty input. Implement in `sdd-runner/src/events.ts` (or a sibling). Verification: `bun test tests/sdd-runner/usage-aggregate.test.ts`
+
+## 4. Orchestrator — start, resume, state persistence (design O1)
+
+- [x] 4.1 Failing tests in `tests/sdd-runner/orchestrator.test.ts` for `runStart`: with a fake spawn (scripted sidecars), a fake `OpenSpecDriver` (scripted instructions/status/validate), a fake `execGit` (clean porcelain), and a temp repoRoot — `runStart` calls intake→draft→review→decompose→atomicity in order, persists `state.json` at each stage boundary (assert `stage` field advances), wires `appendEvent` and a collecting renderer as bus subscribers (assert both receive an L2 `stage_enter`), and reaches the gate with `status: 'running'` + `gate: { mode: 'final', version: 1 }`. Implement `sdd-runner/src/orchestrator.ts` `runStart`. Verification: `bun test tests/sdd-runner/orchestrator.test.ts`
+- [x] 4.2 Failing tests for `runResume`: given a `state.json` halted mid-stage and the matching `events.ndjson`, `runResume` reconstructs the resume point (reuse `deriveResumePoint`) and continues from the correct stage/round without redoing completed stages (assert the fake driver's `instructions` is not called for already-done artifacts). Implement `runResume`. Verification: `bun test tests/sdd-runner/orchestrator.test.ts`
+
+## 5. Gate orchestration, drift-check, --wait (design O7, O8)
+
+- [x] 5.1 Failing tests: `runStart` reaching the gate writes `gate-1.md`, records `gate-hashes-1.json`, and (without `--wait`) prints the digest + `gate resume <runId>` and exits with the documented code; (with `--wait`) blocks on stdin and proceeds to `resumeGate` inline on EOF. `runGateResume` parses the edited `gate-1.md` into a `GateResponse`, runs the drift-check resolver pass when specs/design hashes changed (assert one fake-spawn resolver call scoped to tasks.md reconciliation), and re-presents `gate-2.md` on veto / sets `status: 'completed'` on approve / `status: 'aborted'` on abort. Implement gate orchestration in `orchestrator.ts`; wire `driftCheck` to a `runStageAgent({ role: 'resolver' })` pass. Verification: `bun test tests/sdd-runner/orchestrator.test.ts`
+
+## 6. runReport module (design O5)
+
+- [x] 6.1 Failing tests in `tests/sdd-runner/report.test.ts` for `buildReport({ readEvents, readChangeDir, execGit, runId, changeName, branch, pr })`: with scripted ndjson (rounds, convergence verdict, depth classification with rationale, gate trajectory), a change folder fixture (tasks.md checkboxes), and a scripted `git log` — the body states rounds/findings/depth/lenses-run, names what scrutiny did NOT happen (e.g. skeptic lens not run for M profile), lists per-section commits from the git log, and (with `pr`) emits the PR framing with honest archive status. Implement `sdd-runner/src/report.ts`. Verification: `bun test tests/sdd-runner/report.test.ts`
+
+## 7. CLI dispatch main() + index.ts entry (design O1, O8)
+
+- [x] 7.1 Failing tests in `tests/sdd-runner/cli.test.ts` for `main(argv, deps)`: routes `start` → `runStart`, `resume` → `runResume`, `gate resume` → `runGateResume` (with `--confirm-all`/`--abort` sugar editing the gate file), `report` → `buildReport` (+ stdout for plain, PR body for `--pr`). `deps` injected (fake orchestrator/report) so dispatch is unit-tested without spawn. Implement `main()` in `cli.ts`; make `index.ts` the entry that reads `process.argv` and loads config via `loadRunnerConfig`. Verification: `bun test tests/sdd-runner/cli.test.ts` and `bun run sdd-runner:start -- --help` (smoke)
+
+## 8. Final gate
+
+- [x] 8.1 Run `bun run sdd-runner:test && bun run sdd-runner:typecheck && bun run sdd-runner:lint && bun run sdd-runner:format:check`; run `openspec validate sdd-runner-orchestrate --strict`; run `bun check:full` (full suite + per-check evidence in `reports/checks/<name>.log`); confirm `openspec validate auto-sdd-pipeline --strict` still passes. Update `docs/architecture/sdd-pipeline.md` (note: orchestration + report wiring landed; commands now functional) and the `CLAUDE.md`/`AGENTS.md` index row if wording shifts. Verification: all check logs green + both validates clean

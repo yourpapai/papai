@@ -188,7 +188,8 @@ const scanTestFiles = (projectRoot: string): string[] => {
  * mapping in `.hooks/tdd/test-resolver.mjs` (`findTestFile` / `suggestTestPath`). For
  * `src/chat/mattermost/file-helpers.ts` this returns `tests/chat/mattermost`; for `src/history.ts`
  * it returns `tests` (top-level); for `plugins/foo/bar.ts` → `tests/plugins/foo`;
- * for `review-loop/src/x.ts` → `tests/review-loop`; for `client/a/b.ts` → `tests/client/a`.
+ * for `review-loop/src/x.ts` → `tests/review-loop`; for `sdd-runner/src/x.ts` → `tests/sdd-runner`;
+ * for `client/a/b.ts` → `tests/client/a`.
  */
 const samePackageTestDir = (srcRel: string): string => {
   const forward = srcRel.replace(/\\/gu, '/')
@@ -202,6 +203,10 @@ const samePackageTestDir = (srcRel: string): string => {
   if (forward.startsWith('review-loop/src/')) {
     const withoutPrefix = forward.replace(/^review-loop\/src\//u, '')
     return path.join('tests', 'review-loop', dirOf(withoutPrefix))
+  }
+  if (forward.startsWith('sdd-runner/src/')) {
+    const withoutPrefix = forward.replace(/^sdd-runner\/src\//u, '')
+    return path.join('tests', 'sdd-runner', dirOf(withoutPrefix))
   }
   if (forward.startsWith('src/')) {
     const withoutSrc = forward.replace(/^src\//u, '')

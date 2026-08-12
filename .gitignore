@@ -64,6 +64,9 @@ crvy-rprtr-*.json
 # Mutation improve runner state
 .mutation-improve/
 
+# SDD runner state
+.sdd-runner/
+
 codeindex/.codeindex/
 papai-local.tar
 client/assets

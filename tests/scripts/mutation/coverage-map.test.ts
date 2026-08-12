@@ -28,6 +28,8 @@ describe('samePackageTestDir — src↔tests package mapping (all roots)', () =>
     ['plugins/task-provider-kaneo/client.ts', 'tests/plugins/task-provider-kaneo'],
     ['review-loop/src/index.ts', 'tests/review-loop'],
     ['review-loop/src/lib/util.ts', 'tests/review-loop/lib'],
+    ['sdd-runner/src/index.ts', 'tests/sdd-runner'],
+    ['sdd-runner/src/stages/intake.ts', 'tests/sdd-runner/stages'],
     ['scripts/foo.ts', 'tests'],
   ]
   for (const [input, expected] of cases) {

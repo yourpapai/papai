@@ -20,13 +20,14 @@ export function isTestFile(filePath) {
  * @returns {boolean} True if this is a gateable implementation file
  */
 export function isGateableImplFile(filePath, projectRoot) {
-  // Must be under src/, client/, plugins/, or review-loop/src/, match IMPL_PATTERN, and NOT match TEST_PATTERN
+  // Must be under src/, client/, plugins/, review-loop/src/, or sdd-runner/src/, match IMPL_PATTERN, and NOT match TEST_PATTERN
   const rel = path.relative(projectRoot, path.resolve(projectRoot, filePath))
   const isSrc = rel.startsWith('src/') || rel.startsWith('src\\')
   const isClient = rel.startsWith('client/') || rel.startsWith('client\\')
   const isPlugins = rel.startsWith('plugins/') || rel.startsWith('plugins\\')
   const isReviewLoop = rel.startsWith('review-loop/src/') || rel.startsWith('review-loop\\src\\')
-  if (!isSrc && !isClient && !isPlugins && !isReviewLoop) return false
+  const isSddRunner = rel.startsWith('sdd-runner/src/') || rel.startsWith('sdd-runner\\src\\')
+  if (!isSrc && !isClient && !isPlugins && !isReviewLoop && !isSddRunner) return false
   if (!IMPL_PATTERN.test(rel)) return false
   if (TEST_PATTERN.test(rel)) return false
   return true
@@ -56,6 +57,13 @@ export function suggestTestPath(implRelPath) {
     const ext = path.extname(withoutPrefix)
     const base = withoutPrefix.slice(0, -ext.length)
     return path.join('tests', 'review-loop', `${base}.test${ext}`)
+  }
+  // sdd-runner/src/foo.ts → tests/sdd-runner/foo.test.ts
+  if (implRelPath.startsWith('sdd-runner/src/') || implRelPath.startsWith('sdd-runner\\src\\')) {
+    const withoutPrefix = implRelPath.replace(/^sdd-runner[/\\]src[/\\]/u, '')
+    const ext = path.extname(withoutPrefix)
+    const base = withoutPrefix.slice(0, -ext.length)
+    return path.join('tests', 'sdd-runner', `${base}.test${ext}`)
   }
   // src/foo/bar.ts → tests/foo/bar.test.ts (strip src/ prefix)
   const withoutSrc = implRelPath.replace(/^src[/\\]/u, '')
@@ -103,6 +111,18 @@ export function findTestFile(implAbsPath, projectRoot) {
 
     for (const suffix of ['.test', '.spec']) {
       const candidate = path.join(projectRoot, 'tests', 'review-loop', `${base}${suffix}${ext}`)
+      if (fs.existsSync(candidate)) return candidate
+    }
+  }
+
+  // sdd-runner/src/foo.ts → tests/sdd-runner/foo.test.ts
+  if (rel.startsWith('sdd-runner/src/') || rel.startsWith('sdd-runner\\src\\')) {
+    const withoutPrefix = rel.replace(/^sdd-runner[/\\]src[/\\]/u, '')
+    const ext = path.extname(withoutPrefix)
+    const base = withoutPrefix.slice(0, -ext.length)
+
+    for (const suffix of ['.test', '.spec']) {
+      const candidate = path.join(projectRoot, 'tests', 'sdd-runner', `${base}${suffix}${ext}`)
       if (fs.existsSync(candidate)) return candidate
     }
   }
@@ -159,6 +179,11 @@ export function resolveImplPath(testRelPath) {
     if (dir === 'review-loop' || dir.startsWith('review-loop/') || dir.startsWith('review-loop\\')) {
       const withoutReviewLoop = dir.replace(/^review-loop[/\\]?/u, '')
       return path.join('review-loop', 'src', withoutReviewLoop, `${base}${ext}`)
+    }
+    // tests/sdd-runner/foo.test.ts → sdd-runner/src/foo.ts
+    if (dir === 'sdd-runner' || dir.startsWith('sdd-runner/') || dir.startsWith('sdd-runner\\')) {
+      const withoutSddRunner = dir.replace(/^sdd-runner[/\\]?/u, '')
+      return path.join('sdd-runner', 'src', withoutSddRunner, `${base}${ext}`)
     }
     // tests/foo/bar.test.ts → src/foo/bar.ts (prepend src/)
     return path.join('src', dir, `${base}${ext}`)

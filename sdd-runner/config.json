@@ -1,0 +1,10 @@
+{
+  "repoRoot": ".",
+  "workDir": ".sdd-runner",
+  "model": "zai-coding-plan/glm-5.2",
+  "timeouts": {
+    "wallClockMs": 1800000,
+    "inactivityMs": 600000
+  },
+  "budgetUsd": 25
+}
