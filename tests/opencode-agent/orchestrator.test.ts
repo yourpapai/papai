@@ -5,15 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import {
-  findArtifact,
-  findHandoff,
-  findPlan,
-  HANDOFF_MARKER,
-  PLAN_MARKER,
-  renderArtifact,
-  SPEC_MARKER,
-} from '../../opencode-agent/src/artifacts.js'
+import { findHandoff, HANDOFF_MARKER, renderArtifact } from '../../opencode-agent/src/artifacts.js'
 import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
@@ -55,6 +47,29 @@ const ISSUE = 42
 const RUN_NOW_MS = Date.UTC(2026, 7, 7, 14, 2)
 const BASE_BRANCH = 'trunk'
 const OPENING_TAG = /<untrusted_input source="[^"]*" id="([^"]+)">/u
+
+/**
+ * The change name every capture in this suite scaffolds, matching `SPEC_REPLY`.
+ * The folder is truth (design D1): the plan lives in `tasks.md` on the branch,
+ * not in an `AGENT_PLAN` block, so the harness seeds the folder rather than the
+ * thread wherever a previous job would already have drafted it.
+ */
+const CHANGE_NAME = 'add-retries'
+
+/** Resolved path of one artifact under the change folder, as the driver reports it. */
+const folderArtifactPath = (changeName: string, artifactId: string): string =>
+  `/repo/openspec/changes/${changeName}/${artifactId}.md`
+
+/** The folder's `tasks.md` — what `REVIEW_AND_MUTATE` walks and `/review` reads. */
+const TASKS_PATH = folderArtifactPath(CHANGE_NAME, 'tasks')
+
+/**
+ * A `tasks.md` of `count` unchecked boxes, the shape `REVIEW_AND_MUTATE` walks.
+ * Titles mirror the old `planReply` so a step-wise assertion can still tell
+ * which step a prompt is about.
+ */
+const tasksMarkdown = (count: number): string =>
+  Array.from({ length: count }, (_value, index) => `- [ ] Step ${index + 1} work`).join('\n')
 
 /** A newer state block for a different issue, as a comment edit could plant. */
 const PLANTED_STATE: AgentState = { ...initialState(7), phase: 'PLAN_REVIEW' }
@@ -220,6 +235,13 @@ interface PipelineIo {
   openspecStatus: import('../../opencode-agent/src/openspec-driver.js').StatusResult
   openspecInstructions: import('../../opencode-agent/src/openspec-driver.js').InstructionsResult
   openspecValidate: import('../../opencode-agent/src/openspec-driver.js').ValidateResult
+  /**
+   * The change folder's read surface (design D1). `writeFile` lands here and a
+   * later `readFile` of the same path answers it, so the folder is shared across
+   * the phases of one capture the way a branch's tree is shared across one job.
+   * Seeded directly by `seedTasks` for tests that fast-forward past planning.
+   */
+  readContents: Record<string, string>
   /** What `git` would report as the remote's default branch. */
   detectedBranch: string | null
   /**
@@ -391,6 +413,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       dependencies: [],
     },
     openspecValidate: { ok: true, output: '' },
+    readContents: {},
   }
 
   let nextCommentId = 100
@@ -571,12 +594,20 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // the server reads what a closed server answers.
     tokensUsed: () => agent.tokensUsed(),
     skills: () => Promise.resolve([]),
-    writeFile: (_path: string, _content: string) => Promise.resolve(),
-    readFile: (_path: string) => Promise.resolve(''),
+    writeFile: (path: string, content: string): Promise<void> => {
+      // Recorded into the read surface so a later `readFile` of the same path
+      // answers what this run wrote — the folder is truth, and a handler that
+      // writes the proposal (triage) and one that reads it (/ask) share it.
+      io.readContents[path] = content
+      return Promise.resolve()
+    },
+    readFile: (path: string): Promise<string> => Promise.resolve(io.readContents[path] ?? ''),
     // The OpenSpec CLI driver fake (design D3). Records every call into `io` so
     // the capture/drafter/archive tests can assert the protocol; returns safe
     // defaults so a run that reaches it before its test sets up a canned
-    // response degrades rather than crashes.
+    // response degrades rather than crashes. `instructions` resolves a real
+    // per-artifact path under the change folder so the folder-read phases find
+    // the file `writeFile`/`seedTasks` placed there.
     openspec: {
       newChange: (changeName) => {
         io.openspecCalls.push(`newChange:${changeName}`)
@@ -588,7 +619,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       },
       instructions: (artifactId, changeName) => {
         io.openspecCalls.push(`instructions:${artifactId}:${changeName}`)
-        return Promise.resolve(io.openspecInstructions)
+        return Promise.resolve({
+          ...io.openspecInstructions,
+          resolvedOutputPath: folderArtifactPath(changeName, artifactId),
+        })
       },
       validateStrict: (changeName) => {
         io.openspecCalls.push(`validate:${changeName}`)
@@ -680,21 +714,30 @@ const latestPostedState = (harness: Harness): AgentState | null => {
   return last === undefined ? null : extractState(last)
 }
 
-/** A state block an earlier job left on the thread, as a later job reads it back. */
+/**
+ * A state block an earlier job left on the thread, as a later job reads it back.
+ *
+ * `changeName` defaults to {@link CHANGE_NAME} because every state past
+ * `INIT_OR_CLARIFY` has been captured into that folder — a test seeding the
+ * opening phase passes `changeName: null` explicitly.
+ */
 const seedState = (harness: Harness, patch: Partial<AgentState>): void => {
-  const prior: AgentState = { ...initialState(ISSUE), ...patch }
+  const prior: AgentState = { ...initialState(ISSUE), changeName: CHANGE_NAME, ...patch }
   harness.io.thread.push({ id: 800, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
 }
 
 /**
- * An approved plan an earlier job left on the thread.
+ * The approved plan an earlier job drafted into the folder, as a later job reads
+ * it back from `tasks.md` (design D1 — the folder is truth).
  *
- * `CODE_REVIEW` reads it back the same way `REVIEW_AND_MUTATE` does — the review
- * loop is handed the plan, not the issue — so a seeded state alone is not enough
- * to reach that handler.
+ * `REVIEW_AND_MUTATE` walks these checkboxes and `CODE_REVIEW` reads the file
+ * verbatim, so a seeded state alone is not enough to reach either handler: the
+ * branch carries the plan, and the harness's read surface stands in for the
+ * branch. Defaults to a single step so a delivery test gets a one-turn
+ * implementation; step-wise tests pass their own.
  */
-const seedPlan = (harness: Harness, text = 'Write retry tests'): void => {
-  harness.io.thread.push({ id: 801, body: renderArtifact(PLAN_MARKER, text, 1), authorLogin: AGENT_LOGIN })
+const seedTasks = (harness: Harness, tasks = '- [ ] Write retry tests'): void => {
+  harness.io.readContents[TASKS_PATH] = `${tasks}\n`
 }
 
 /** Keeps the "did a run return a state?" narrowing out of the test bodies. */
@@ -729,30 +772,32 @@ const toDesignSpec = async (harness: Harness): Promise<void> => {
 }
 
 /**
- * A plan of `count` steps, as the planning turn reports it.
- *
- * The titles are numbered so a test can tell which step a prompt is about, which is
- * the whole assertion of a step-wise implementation.
+ * `tasks.md` content of `count` unchecked boxes, the shape `REVIEW_AND_MUTATE`
+ * walks (design D5). Titles mirror the old `planReply` so a step-wise assertion
+ * can still tell which step a prompt is about.
  */
-const planReply = (count: number): string =>
-  JSON.stringify({
-    steps: Array.from({ length: count }, (_value, index) => ({
-      title: `Step ${index + 1} work`,
-      files: [`src/step-${index + 1}.ts`],
-      verification: 'bun test',
-    })),
-    summary: `${count} steps.`,
-  })
+const tasksForSteps = (count: number): string => tasksMarkdown(count)
 
-/** Drives an issue as far as PLAN_REVIEW, optionally with a plan of several steps. */
-const toPlanReview = async (harness: Harness, plan: string = PLAN_REPLY): Promise<void> => {
+/**
+ * Drives an issue as far as PLAN_REVIEW and seeds the folder's `tasks.md`.
+ *
+ * The PLANNING drafter loop runs against the (empty) canned `openspec status`,
+ * finds nothing ready to draft, commits the scaffold and signals `PLAN_POSTED`;
+ * the plan content lives in `tasks.md`, which the harness seeds for whichever
+ * phase follows. `steps` controls how many checkboxes `REVIEW_AND_MUTATE` will
+ * walk (default one → a one-turn implementation, matching the pre-folder shape).
+ */
+const toPlanReview = async (harness: Harness, steps = 1): Promise<void> => {
   await toDesignSpec(harness)
-  harness.io.replies = [plan]
   await runPipeline({ event: comment('/approve'), deps: harness.deps })
+  seedTasks(harness, tasksForSteps(steps))
   harness.io.posted.length = 0
   harness.io.reactions.length = 0
   harness.io.reactionRemovals.length = 0
   harness.io.reactionLog.length = 0
+  // The scaffold commit (capture) and the drafter commit (PLANNING) are setup,
+  // not the phase under test — a delivery test counts implement's commits alone.
+  harness.io.gitCalls.length = 0
   harness.io.edits.length = 0
 }
 
@@ -800,20 +845,22 @@ describe('phase 1 — triage', () => {
     harness = makeHarness()
   })
 
-  test('posts a design spec and parks in DESIGN_SPEC', async () => {
+  test('captures the issue and parks in DESIGN_SPEC', async () => {
     harness.io.replies = [SPEC_REPLY]
 
     const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
-    expect(harness.io.posted[0]).toContain('### Design spec')
+    expect(harness.io.posted[0]).toContain('### Captured')
     expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
+    expect(latestPostedState(harness)?.changeName).toBe(CHANGE_NAME)
   })
 
-  test('persists a spec whose markdown could forge the block delimiters', async () => {
+  test('persists a proposal whose markdown could forge the block delimiters', async () => {
     // Horizontal rules broke the original heading-scraping recovery; `-->`
-    // broke the block channel that replaced it. A real design spec contains
-    // both — a mermaid diagram is `A --> B`.
+    // broke the block channel that replaced it. A real proposal contains
+    // both — a mermaid diagram is `A --> B`. The folder write carries it
+    // verbatim, the way a later `/ask` or PLANNING turn reads it back.
     const spec = [
       '## Goal',
       '',
@@ -834,8 +881,9 @@ describe('phase 1 — triage', () => {
 
     await runPipeline({ event: issueEvent(), deps: harness.deps })
 
-    // Read it back the way a later job does, not by string surgery.
-    expect(findArtifact(harness.io.thread, AGENT_LOGIN, SPEC_MARKER)?.text).toBe(spec)
+    // The proposal lives in the folder now (design D1), written verbatim —
+    // read back the way a later `/ask` does, not by scraping the comment.
+    expect(harness.io.readContents[folderArtifactPath(CHANGE_NAME, 'proposal')]).toBe(`${spec}\n`)
     expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
   })
 
@@ -936,7 +984,7 @@ describe('chatter while the agent is clarifying', () => {
 
     expect(result.status).toBe('waiting')
     expect(String(harness.io.prompts[0]?.prompt)).toContain('Classify this comment')
-    expect(harness.io.posted[0]).toContain('### Design spec')
+    expect(harness.io.posted[0]).toContain('### Captured')
     expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
   })
 
@@ -950,7 +998,7 @@ describe('chatter while the agent is clarifying', () => {
     const result = await runPipeline({ event: comment('The HTTP client.'), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
-    expect(harness.io.posted[0]).toContain('### Design spec')
+    expect(harness.io.posted[0]).toContain('### Captured')
     expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
   })
 
@@ -1002,7 +1050,7 @@ describe('review conversation', () => {
     expect(String(harness.io.prompts.at(-1)?.prompt)).toContain('why that file?')
   })
 
-  test('/changes revises the spec and reports a new revision', async () => {
+  test('/changes revises the proposal in the folder and re-captures', async () => {
     harness.io.replies = [
       JSON.stringify({ status: 'capture', changeName: 'add-retries', spec: 'Use the existing helper.' }),
     ]
@@ -1010,7 +1058,10 @@ describe('review conversation', () => {
     const result = await runPipeline({ event: comment('/changes use the existing helper'), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
-    expect(harness.io.posted[0]).toContain('Design spec (revision 2)')
+    expect(harness.io.posted[0]).toContain('### Captured')
+    // The revised proposal landed in the folder (design D1) — the comment names
+    // it, and a later `/ask` or PLANNING turn reads it back from there.
+    expect(harness.io.readContents[folderArtifactPath(CHANGE_NAME, 'proposal')]).toContain('Use the existing helper.')
     expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
   })
 
@@ -1038,7 +1089,8 @@ describe('review conversation', () => {
 
     await runPipeline({ event: comment('please use the existing helper instead'), deps: harness.deps })
 
-    expect(harness.io.posted[0]).toContain('Design spec (revision 2)')
+    expect(harness.io.posted[0]).toContain('### Captured')
+    expect(harness.io.readContents[folderArtifactPath(CHANGE_NAME, 'proposal')]).toContain('revised')
   })
 
   test('a plain comment classified as approval proceeds to planning', async () => {
@@ -1154,14 +1206,19 @@ describe('plan review gate', () => {
 
   test('/approve on the spec stops at the plan rather than implementing', async () => {
     await toDesignSpec(harness)
-    harness.io.replies = [PLAN_REPLY]
 
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
     expect(headings(harness)).toEqual(['### Plan (revision 1)'])
     expect(latestPostedState(harness)?.phase).toBe('PLAN_REVIEW')
-    expect(harness.io.gitCalls).toEqual([`ensureBranch:agent/issue-${ISSUE}:${BASE_BRANCH}`])
+    // PLANNING drafts onto the branch and pushes (design D2): the artefacts
+    // survive the job because they are committed, not carried in a block.
+    expect(harness.io.gitCalls).toEqual([
+      `ensureBranch:agent/issue-${ISSUE}:${BASE_BRANCH}`,
+      `commit:docs(openspec): draft artifacts for ${CHANGE_NAME}`,
+      `push:agent/issue-${ISSUE}`,
+    ])
   })
 
   test('/changes on the plan re-plans without touching the spec', async () => {
@@ -1202,7 +1259,6 @@ describe('artefact revision numbering', () => {
 
   test('the first plan is revision 1', async () => {
     await toDesignSpec(harness)
-    harness.io.replies = [PLAN_REPLY]
 
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
@@ -1211,36 +1267,30 @@ describe('artefact revision numbering', () => {
   })
 
   test('revising the spec twice still leaves the first plan at revision 1', async () => {
+    // The proposal lives in the folder now (design D1), so a spec revision is a
+    // re-capture that re-writes `proposal.md` — it never bumps the plan-identity
+    // token. What survives the rework is the invariant these tests existed for:
+    // spec edits and the plan counter are independent.
     await toDesignSpec(harness)
     harness.io.replies = [JSON.stringify({ status: 'capture', changeName: 'add-retries', spec: 'Second attempt.' })]
     await runPipeline({ event: comment('/changes use the existing helper'), deps: harness.deps })
     harness.io.replies = [JSON.stringify({ status: 'capture', changeName: 'add-retries', spec: 'Third attempt.' })]
     await runPipeline({ event: comment('/changes name the helper'), deps: harness.deps })
-
-    expect(harness.io.posted.at(-1)).toContain('### Design spec (revision 3)')
+    expect(latestPostedState(harness)?.planRevision).toBe(0)
 
     harness.io.posted.length = 0
-    harness.io.replies = [PLAN_REPLY]
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(harness.io.posted[0]).toContain('### Plan (revision 1)')
     expect(latestPostedState(harness)).toMatchObject({ planRevision: 1 })
-    // The spec block keeps its own revision in the thread (the folder's history
-    // under the full D1 rework); the state block no longer carries a spec counter.
-    expect(findArtifact(harness.io.thread, AGENT_LOGIN, SPEC_MARKER)?.revision).toBe(3)
   })
 
   test('revising the plan reaches revision 2 while the spec stays where it was', async () => {
     await toPlanReview(harness)
-    harness.io.replies = [PLAN_REPLY]
 
     await runPipeline({ event: comment('/changes split step 1'), deps: harness.deps })
 
     expect(harness.io.posted[0]).toContain('### Plan (revision 2)')
-    // Read back the way the next job does: the hidden block's `revision` is
-    // written from the same local as the heading, so they cannot disagree.
-    expect(findArtifact(harness.io.thread, AGENT_LOGIN, PLAN_MARKER)?.revision).toBe(2)
-    expect(findArtifact(harness.io.thread, AGENT_LOGIN, SPEC_MARKER)?.revision).toBe(1)
     expect(latestPostedState(harness)).toMatchObject({ planRevision: 2 })
   })
 })
@@ -1495,7 +1545,9 @@ describe('implementation and delivery', () => {
   test('persists the plan so a later job reads it back verbatim', async () => {
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
-    expect(harness.io.thread.some((entry) => entry.body.includes(PLAN_MARKER))).toBe(true)
+    // The plan lives in `tasks.md` on the branch (design D1): a later job reads
+    // it back from the folder, not from a block on the issue.
+    expect(harness.io.readContents[TASKS_PATH]).toContain('Step 1 work')
   })
 })
 
@@ -1542,7 +1594,9 @@ describe('/review — the review loop as a command', () => {
   test('hands the loop the approved plan, not the issue body', async () => {
     await runPipeline({ event: comment('/review'), deps: harness.deps })
 
-    expect(harness.io.reviewCalls[0]).toContain('Write retry tests')
+    // The loop reads the plan from the folder's `tasks.md` verbatim (design D1)
+    // — the step the implementation walked, not the issue body the plan came from.
+    expect(harness.io.reviewCalls[0]).toContain('Step 1 work')
   })
 
   test('refreshes the pull request with what the review found', async () => {
@@ -1697,7 +1751,7 @@ describe('/review — where it does not apply', () => {
   test('raising the ceiling makes the refused review run, which is what makes the notice honest', async () => {
     harness = makeHarness({ maxReviewAttempts: 2 })
     seedState(harness, { phase: 'COMPLETE', prUrl: 'https://example.test/pull/7', prNumber: 7, reviewAttempts: 2 })
-    seedPlan(harness)
+    seedTasks(harness)
     await runPipeline({ event: comment('/review'), deps: harness.deps })
 
     harness.deps.config.maxReviewAttempts = 3
@@ -2355,7 +2409,7 @@ describe('commands and budgets', () => {
 
     expect(result.status).toBe('waiting')
     expect(result.state?.phase).toBe('DESIGN_SPEC')
-    expect(harness.io.posted.at(-1)).toContain('### Design spec')
+    expect(harness.io.posted.at(-1)).toContain('### Captured')
   })
 
   test('a single malformed reply is repaired rather than failing the run', async () => {
@@ -2367,7 +2421,7 @@ describe('commands and budgets', () => {
     const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
-    expect(harness.io.posted.at(-1)).toContain('### Design spec')
+    expect(harness.io.posted.at(-1)).toContain('### Captured')
     expect(harness.io.prompts).toHaveLength(2)
     expect(String(harness.io.prompts[1]?.prompt)).toContain('could not be used')
   })
@@ -2392,7 +2446,7 @@ describe('commands and budgets', () => {
     const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
-    expect(harness.io.posted[0]).toContain('### Design spec')
+    expect(harness.io.posted[0]).toContain('### Captured')
   })
 
   test('an exhausted retry budget is reported on the issue, not swallowed', async () => {
@@ -2489,7 +2543,7 @@ describe('the retry budget', () => {
     const result = await runPipeline({ event: comment('/retry'), deps: harness.deps })
 
     expect(result.status).toBe('waiting')
-    expect(harness.io.posted.at(-1)).toContain('### Design spec')
+    expect(harness.io.posted.at(-1)).toContain('### Captured')
     expect(latestPostedState(harness)?.phase).toBe('DESIGN_SPEC')
   })
 
@@ -2554,8 +2608,10 @@ describe('the token budget', () => {
     harness.io.tokensUsed = 900
     harness.io.replies = [SPEC_REPLY]
     await runPipeline({ event: issueEvent(), deps: harness.deps })
-    harness.io.replies = [PLAN_REPLY]
     const planned = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    // The drafter wrote `tasks.md` onto the branch; seed it for the implement
+    // run that follows, the way the working tree carries it across jobs.
+    seedTasks(harness)
     harness.io.posted.length = 0
 
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
@@ -3545,7 +3601,7 @@ describe('implementing the plan a step at a time', () => {
     // An Actions working tree dies with the job, so a commit nobody pushed until the
     // end of the phase is a commit the job's death takes with it.
     const harness = makeHarness()
-    await toPlanReview(harness, planReply(3))
+    await toPlanReview(harness, 3)
     harness.io.prompts.length = 0
     harness.io.replies = ['one', 'two', 'three']
 
@@ -3564,7 +3620,7 @@ describe('implementing the plan a step at a time', () => {
 
   test('asks for one step at a time, naming which', async () => {
     const harness = makeHarness()
-    await toPlanReview(harness, planReply(3))
+    await toPlanReview(harness, 3)
     harness.io.prompts.length = 0
     harness.io.replies = ['one', 'two', 'three']
 
@@ -3583,7 +3639,7 @@ describe('implementing the plan a step at a time', () => {
     // one commit per phase and is a three-fold under-report now. It means "lines this
     // run's implementation committed, across its steps".
     const harness = makeHarness()
-    await toPlanReview(harness, planReply(3))
+    await toPlanReview(harness, 3)
     harness.io.replies = ['one', 'two', 'three']
 
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
@@ -3595,7 +3651,7 @@ describe('implementing the plan a step at a time', () => {
     // Each step is guarded and committed on its own, so a step whose turn touched no
     // file is an ordinary outcome — the plan is not finished, and the run carries on.
     const harness = makeHarness()
-    await toPlanReview(harness, planReply(2))
+    await toPlanReview(harness, 2)
     harness.io.replies = ['nothing to do', 'two']
     cleanFirstCommit(harness)
 
@@ -3607,19 +3663,20 @@ describe('implementing the plan a step at a time', () => {
     expect(latestPostedState(harness)?.changedLines).toBe(7)
   })
 
-  test('a plan with no steps runs in one turn, exactly as before steps existed', async () => {
-    // Live issues carry plans approved before this stage, and the fallback is
-    // permanent: nothing can invent steps for a document a maintainer signed off on.
+  test('a tasks.md with no unchecked boxes fails fast rather than running a phantom turn', async () => {
+    // Under D5 the plan is `tasks.md`; a folder whose tasks are all done (or one
+    // that has none) is a malformed change, not a plan to run in one turn. The
+    // walk finds nothing to do and the phase reports noChanges — the same
+    // verdict a plan whose every step committed nothing reaches — rather than
+    // paying for a model turn over an empty document.
     const harness = makeHarness()
     seedState(harness, { phase: 'PLAN_REVIEW', planRevision: 1 })
-    seedPlan(harness)
-    harness.io.replies = ['Implemented.']
+    seedTasks(harness, '- [x] already done\n')
 
-    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
-    expect(harness.io.prompts).toHaveLength(1)
-    expect(harness.io.prompts[0]?.prompt).not.toContain('step 1 of')
-    expect(writes(harness)).toEqual([`commit:feat(agent): implement issue #${ISSUE}`, `push:agent/issue-${ISSUE}`])
+    expect(result.status).toBe('failed')
+    expect(harness.io.prompts).toHaveLength(0)
   })
 
   test('stops cleanly between steps rather than starting one it cannot finish', async () => {
@@ -3627,7 +3684,7 @@ describe('implementing the plan a step at a time', () => {
     // cascade's own check would have let this through — and not enough for another
     // step, which is exactly the window where a step would be cut off mid-file.
     const harness = withClock(40 * MINUTE)
-    await toPlanReview(harness, planReply(3))
+    await toPlanReview(harness, 3)
     harness.io.prompts.length = 0
     harness.io.replies = ['one', 'two', 'three']
     burnClockOnPush(harness, 36 * MINUTE)
@@ -3656,7 +3713,7 @@ describe('implementing the plan a step at a time', () => {
     // The cursor is why the park costs nothing: without it a continuation would redo
     // the steps already on the branch, paying for them twice.
     const harness = withClock(40 * MINUTE)
-    await toPlanReview(harness, planReply(3))
+    await toPlanReview(harness, 3)
     harness.io.replies = ['one', 'two', 'three']
     burnClockOnPush(harness, 36 * MINUTE)
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
@@ -3683,7 +3740,7 @@ describe('implementing the plan a step at a time', () => {
     // Stage 2's path, now with a step to name. The handoff is an account of one step
     // rather than of a whole plan, so the prompt that asks for it has to say which.
     const harness = makeHarness({ wrapUpMs: 30_000 })
-    await toPlanReview(harness, planReply(3))
+    await toPlanReview(harness, 3)
     harness.io.prompts.length = 0
     harness.io.promptFailures = [null, turnDeadlineError(1_800_000, PROGRESS)]
     harness.io.replies = ['one', HANDOFF]
@@ -3709,9 +3766,8 @@ describe('implementing the plan a step at a time', () => {
     // so a cursor carried across would skip work nobody has done — the same argument
     // that retires the handoff on a plan revision.
     const harness = makeHarness()
-    await toPlanReview(harness, planReply(3))
+    await toPlanReview(harness, 3)
     seedState(harness, { phase: 'PLAN_REVIEW', planRevision: 1, stepsDone: 4 })
-    harness.io.replies = [planReply(2)]
 
     await runPipeline({ event: comment('/changes make it smaller'), deps: harness.deps })
 
@@ -3725,7 +3781,7 @@ describe('implementing the plan a step at a time', () => {
     // it is about. Carried further it would arrive as a report about finished work,
     // framed as context for work that has not started.
     const harness = makeHarness({ wrapUpMs: 30_000 })
-    await toPlanReview(harness, planReply(3))
+    await toPlanReview(harness, 3)
     harness.io.promptFailures = [outOfTime()]
     harness.io.replies = [HANDOFF]
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
@@ -3746,7 +3802,7 @@ describe('implementing the plan a step at a time', () => {
     // the same conclusion. Walking from the top is recoverable: the finished steps
     // commit nothing and the run carries on.
     const harness = makeHarness()
-    await toPlanReview(harness, planReply(2))
+    await toPlanReview(harness, 2)
     seedState(harness, { phase: 'PLAN_REVIEW', planRevision: 1, stepsDone: 99 })
     harness.io.prompts.length = 0
     harness.io.replies = ['one', 'two']
@@ -3758,15 +3814,14 @@ describe('implementing the plan a step at a time', () => {
   })
 
   test('the plan comment a maintainer approves lists the steps the run will walk', async () => {
-    // One value renders the comment and fills the block, so the plan somebody
-    // approved and the steps the implementation walks cannot disagree.
+    // The plan the maintainer approves and the steps the implementation walks are
+    // one value now: `tasks.md` in the folder (design D5). The comment points at
+    // the folder; the steps live there, so the two cannot disagree.
     const harness = makeHarness()
-    await toPlanReview(harness, planReply(2))
+    await toPlanReview(harness, 2)
 
-    const posted = harness.io.thread.map((entry) => entry.body).join('\n')
-    expect(posted).toContain('1. **Step 1 work**')
-    expect(posted).toContain('2. **Step 2 work**')
-    expect(findPlan(harness.io.thread, AGENT_LOGIN)?.steps).toHaveLength(2)
+    expect(harness.io.readContents[TASKS_PATH]).toContain('Step 1 work')
+    expect(harness.io.readContents[TASKS_PATH]).toContain('Step 2 work')
   })
 
   test('tells the model a clock may stop it, without depending on the answer', async () => {
@@ -3774,7 +3829,7 @@ describe('implementing the plan a step at a time', () => {
     // only biases a turn toward leaving the tree committable. Every bound that
     // matters is enforced outside the model.
     const harness = makeHarness()
-    await toPlanReview(harness, planReply(2))
+    await toPlanReview(harness, 2)
     harness.io.prompts.length = 0
     harness.io.replies = ['one', 'two']
 
@@ -3893,7 +3948,7 @@ describe('a commit the repository refuses', () => {
 
   test('repairs each refused step of a plan on its own', async () => {
     const harness = makeHarness()
-    await toPlanReview(harness, planReply(2))
+    await toPlanReview(harness, 2)
     harness.io.prompts.length = 0
     harness.io.replies = ['one', 'fixed one', 'two', 'fixed two']
     // Every commit is refused once: step 1, its repair, step 2, its repair.
@@ -4104,10 +4159,12 @@ describe('reactions — the acknowledgement does not outlive the run', () => {
 
   test('😕 replaces it when the run breaks', async () => {
     const harness = makeHarness()
-    await toDesignSpec(harness)
-    harness.io.replies = ['not json at all']
+    // A malformed triage reply breaks the run: triage asks via `promptForJson`
+    // (which re-asks once), so two non-JSON replies fail the phase. PLANNING no
+    // longer prompts for a plan, so the break has to be upstream of it.
+    harness.io.replies = ['not json at all', 'still not json']
 
-    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
 
     expect(result.status).toBe('failed')
     expect(reactionsOf(harness)).toEqual(['eyes', 'confused'])
