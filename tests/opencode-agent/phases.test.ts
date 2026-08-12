@@ -5,10 +5,12 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { SPEC_MARKER, findArtifact } from '../../opencode-agent/src/artifacts.js'
+import { PLAN_MARKER, findArtifact } from '../../opencode-agent/src/artifacts.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { ParsedCommand } from '../../opencode-agent/src/commands.js'
+import type { OpenSpecDriver } from '../../opencode-agent/src/openspec-driver.js'
 import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
+import { handlePlan } from '../../opencode-agent/src/phases/plan.js'
 import { handleTriage } from '../../opencode-agent/src/phases/triage.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
@@ -32,10 +34,6 @@ import type { StubIo } from './test-helpers.js'
  */
 
 const AGENT_LOGIN = 'agent-bot'
-
-/** The blocks a handler returned, as a thread `findArtifact` can walk. Module-level so the `??` is not "in test". */
-const blocksAsThread = (outcome: { blocks?: readonly string[] }): IssueComment[] =>
-  (outcome.blocks ?? []).map((body, index) => ({ id: index + 1, body, authorLogin: AGENT_LOGIN }))
 
 const baseState = (issueId = 42, over: Partial<AgentState> = {}): AgentState => ({
   v: 3,
@@ -137,11 +135,14 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
     const outcome = await handleTriage(input)
 
     expect(outcome.signal).toBe('CAPTURED')
-    expect(io.openspecCalls).toEqual(['newChange:add-retry-helper:spec-driven'])
+    expect(io.openspecCalls).toEqual([
+      'newChange:add-retry-helper:spec-driven',
+      'instructions:proposal:add-retry-helper',
+    ])
     expect(outcome.patch?.changeName).toBe('add-retry-helper')
-    // Bridge: the SPEC block still carries the spec text so PLANNING (not yet
-    // reworked) can read it. Slice B retires this block.
-    expect(findArtifact(blocksAsThread(outcome), AGENT_LOGIN, SPEC_MARKER)?.text).toContain('Add retries.')
+    // The spec is the proposal now: written into the folder, not a SPEC block.
+    expect(outcome.blocks).toBeUndefined()
+    expect(io.writes.some((w) => w.content.includes('Add retries.'))).toBe(true)
   })
 
   it.each(['MEMBER', 'COLLABORATOR'])('auto-captures for %s', async (association) => {
@@ -153,7 +154,7 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
     const outcome = await handleTriage(input)
 
     expect(outcome.signal).toBe('CAPTURED')
-    expect(io.openspecCalls).toEqual([`newChange:add-thing:spec-driven`])
+    expect(io.openspecCalls).toEqual([`newChange:add-thing:spec-driven`, `instructions:proposal:add-thing`])
   })
 
   it('posts a consent comment and parks (NEEDS_CLARIFICATION) for an untrusted author', async () => {
@@ -184,8 +185,158 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
     const outcome = await handleTriage(input)
 
     expect(outcome.signal).toBe('CAPTURED')
-    expect(io.openspecCalls).toEqual(['newChange:add-retry-helper:spec-driven'])
+    expect(io.openspecCalls).toEqual([
+      'newChange:add-retry-helper:spec-driven',
+      'instructions:proposal:add-retry-helper',
+    ])
     // Two prompts: the rejected reply, then the repaired one.
     expect(io.prompts).toHaveLength(2)
+  })
+})
+
+/**
+ * Design D3 — the PLANNING drafter loop, and D1 — the folder is truth.
+ *
+ * PLANNING reads the change's status from the folder, drafts each pending
+ * artifact (typed instruction → model composes → write → `validate --strict`
+ * → retry ≤2 with the complaint), commits confined to the folder, and signals
+ * `PLAN_POSTED`. The retired `AGENT_PLAN` block is gone — the plan lives in
+ * `tasks.md` on the branch.
+ */
+
+const CHANGE = 'add-retry-helper'
+
+/** A driver whose status evolves as the drafter writes each artifact. */
+const evolvingDriver = (drafted: Set<string>): OpenSpecDriver => ({
+  newChange: (n: string): Promise<{ changeName: string }> => Promise.resolve({ changeName: n }),
+  archive: (): Promise<void> => Promise.resolve(),
+  validateStrict: (): Promise<{ ok: boolean; output: string }> => Promise.resolve({ ok: true, output: '' }),
+  instructions: (
+    artifactId: string,
+  ): Promise<import('../../opencode-agent/src/openspec-driver.js').InstructionsResult> =>
+    Promise.resolve({
+      instruction: `Draft the ${artifactId}.`,
+      template: undefined,
+      rules: [],
+      resolvedOutputPath: `/repo/openspec/changes/${CHANGE}/${artifactId}.md`,
+      existingOutputPaths: [],
+      dependencies: [],
+    }),
+  status: (): Promise<import('../../opencode-agent/src/openspec-driver.js').StatusResult> => {
+    const artifacts: Record<string, string> = {
+      proposal: 'done',
+      design: drafted.has('design') ? 'done' : 'ready',
+      tasks: drafted.has('tasks') ? 'done' : drafted.has('design') ? 'ready' : 'blocked',
+    }
+    return Promise.resolve({
+      schemaName: 'spec-driven',
+      artifacts,
+      isPlanningComplete: drafted.has('design') && drafted.has('tasks'),
+    })
+  },
+})
+
+const planningState = (over: Partial<AgentState> = {}): AgentState => ({
+  v: 3,
+  phase: 'PLANNING',
+  issueId: 42,
+  resumeFrom: null,
+  attempts: 0,
+  ciAttempts: 0,
+  ciBudgetReported: false,
+  reviewAttempts: 0,
+  changedLines: 0,
+  stepsDone: 0,
+  changeName: CHANGE,
+  planRevision: 0,
+  tokensSpent: 0,
+  lastError: null,
+  prUrl: null,
+  prNumber: null,
+  ...over,
+})
+
+/** The artifact id a write path points at (`/x/design.md` → `design`). Module-level so the `?.`/`??` is not "in test". */
+const artifactIdOf = (path: string): string => {
+  const base = path.split('/').pop() ?? ''
+  return base.replace(/\.md$/u, '')
+}
+
+interface WireOptions {
+  validate?: (call: number) => { ok: boolean; output: string }
+  done?: string[]
+}
+
+/** Wires a drafter input whose driver status evolves as the model writes each artifact. */
+const wireDrafterInput = (replies: string[], opts: WireOptions = {}): { input: PhaseInput; io: StubIo } => {
+  const tracked = new Set<string>(['proposal', ...(opts.done ?? [])])
+  const built = stubPhaseDeps({ replies, selfLogin: AGENT_LOGIN })
+  const base = evolvingDriver(tracked)
+  const driver: OpenSpecDriver =
+    opts.validate === undefined
+      ? base
+      : (() => {
+          let calls = 0
+          return { ...base, validateStrict: () => Promise.resolve(opts.validate!(calls++)) }
+        })()
+  built.deps.openspec = driver
+  built.deps.writeFile = (path: string, content: string): Promise<void> => {
+    built.io.writes.push({ path, content })
+    tracked.add(artifactIdOf(path))
+    return Promise.resolve()
+  }
+  return {
+    input: {
+      state: planningState(),
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: issueTrigger('OWNER'),
+      command: null,
+      thread: built.io.thread,
+      deps: built.deps,
+    },
+    io: built.io,
+  }
+}
+
+const validateFailsOnce = (call: number): { ok: boolean; output: string } =>
+  call === 0 ? { ok: false, output: 'design.md: missing Deltas section' } : { ok: true, output: '' }
+
+describe('handlePlan · drafter loop (D3)', () => {
+  it('drafts each pending artifact, writes it to the folder, and signals PLAN_POSTED', async () => {
+    const { input, io } = wireDrafterInput([
+      JSON.stringify({ content: 'design body' }),
+      JSON.stringify({ content: 'tasks body' }),
+    ])
+
+    const outcome = await handlePlan(input)
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    // The drafter wrote design then tasks, in dependency order.
+    expect(io.writes.map((w) => w.path)).toEqual([
+      `/repo/openspec/changes/${CHANGE}/design.md`,
+      `/repo/openspec/changes/${CHANGE}/tasks.md`,
+    ])
+    // The plan lives in the folder now — no AGENT_PLAN block rides on the issue.
+    expect(findArtifact(io.thread, AGENT_LOGIN, PLAN_MARKER)).toBeNull()
+    expect(outcome.blocks).toBeUndefined()
+    // A new plan bumps the plan-identity token.
+    expect(outcome.patch?.planRevision).toBe(1)
+  })
+
+  it('retries once when validate --strict fails, attaching the complaint', async () => {
+    // Only design pending (tasks already done) so the loop drafts one artifact.
+    const { input, io } = wireDrafterInput(
+      [JSON.stringify({ content: 'first attempt' }), JSON.stringify({ content: 'repaired attempt' })],
+      { done: ['tasks'], validate: validateFailsOnce },
+    )
+
+    const outcome = await handlePlan(input)
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    // First validate failed → re-asked with the complaint. Two model turns, two
+    // writes (validate reads the folder, so each attempt is written before it).
+    expect(io.prompts).toHaveLength(2)
+    expect(io.writes).toHaveLength(2)
+    expect(io.writes.at(-1)?.content).toBe('repaired attempt')
   })
 })

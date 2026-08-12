@@ -65,7 +65,7 @@ Write/Edit TDD hook pipeline.
 
 ## 5. PLANNING + parks on real artifacts
 
-- [ ] 5.1 Add failing tests for the PLANNING drafter loop (D3): typed
+- [x] 5.1 Add failing tests for the PLANNING drafter loop (D3): typed
   instruction → model composes per template → `validate --strict` → retry
   ≤2; digest rendering from the folder (D1) with revision display metadata
   — `bun test tests/opencode-agent/phases.test.ts`

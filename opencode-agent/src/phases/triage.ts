@@ -5,7 +5,6 @@
 
 import { z } from 'zod'
 
-import { findArtifact, renderArtifact, SPEC_MARKER } from '../artifacts.js'
 import { promptForJson } from '../ask-json.js'
 import { branchNameFor } from '../git.js'
 import { MAINTAINER_ASSOCIATIONS } from '../guardrails.js'
@@ -111,6 +110,10 @@ const triageRequest = async (
  * everybody else. The association is the *current trigger's* — so an untrusted
  * issue author parks behind consent, and the maintainer whose affirmative reply
  * re-runs triage passes the gate on the re-run and captures.
+ *
+ * On auto-capture the design spec the model produced is written to the folder's
+ * `proposal.md` — the folder is truth (D1), so no `AGENT_SPEC` block rides on
+ * the issue. The scaffold commit (D2) carries it.
  */
 const captureOutcome = async (
   input: PhaseInput,
@@ -124,17 +127,12 @@ const captureOutcome = async (
   }
 
   await deps.openspec.newChange(decision.changeName, OPENSPEC_SCHEMA)
+  const proposalPath = (await deps.openspec.instructions('proposal', decision.changeName)).resolvedOutputPath
+  await deps.writeFile(proposalPath, `${decision.spec.trim()}\n`)
   await scaffoldOnBranch(input, decision.changeName)
-  // One local feeds both the visible heading and the hidden block, so the number
-  // a maintainer reads and the number the next job reads back cannot drift
-  // apart. Under the OpenSpec rework the revision counter left the state block
-  // (the proposal's history is the folder's commits), so it is derived here from
-  // the thread's own latest spec block — the bridge shape, retired in slice B.
-  const revision = await nextRevision(input)
   return {
     signal: 'CAPTURED',
-    comment: renderCapture(decision.changeName, decision.spec, revision),
-    blocks: [renderArtifact(SPEC_MARKER, decision.spec, revision)],
+    comment: renderCapture(decision.changeName, decision.spec),
     patch: { changeName: decision.changeName },
   }
 }
@@ -173,12 +171,6 @@ const authorAssociation = (trigger: TriggerEvent): string => {
   return 'NONE'
 }
 
-/** The previous spec block's revision plus one, or 1 for the first spec on the thread. */
-const nextRevision = async (input: PhaseInput): Promise<number> => {
-  const latest = findArtifact(input.thread, await input.deps.selfLogin(), SPEC_MARKER)
-  return (latest?.revision ?? 0) + 1
-}
-
 /** The maintainer's `/changes` argument, when this run was triggered by one. */
 const changeRequest = (input: PhaseInput): string | null => {
   const { command } = input
@@ -215,15 +207,15 @@ const renderConsent = (changeName: string): string =>
     'Reply to confirm (or describe what should change), and I will pick it up from there.',
   ].join('\n')
 
-const renderCapture = (changeName: string, spec: string, revision: number): string =>
+const renderCapture = (changeName: string, spec: string): string =>
   [
-    `### Design spec (revision ${revision})`,
+    `### Captured: ${changeName}`,
     '',
-    `Captured into \`openspec/changes/${changeName}/\`.`,
+    `Captured into \`openspec/changes/${changeName}/\`. The proposal drafted from the issue:`,
     '',
     spec.trim(),
     '',
-    '**What now?** `/approve` to plan the work, `/changes <what to change>` to revise this spec,',
+    '**What now?** `/approve` to plan the work, `/changes <what to change>` to revise the proposal,',
     '`/ask <question>` to ask about it, or `/cancel` to stop. A plain reply works too — I will',
     'read it as a question unless it clearly asks for changes.',
   ].join('\n')

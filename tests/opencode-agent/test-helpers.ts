@@ -122,6 +122,8 @@ export interface StubIo {
   thread: IssueComment[]
   /** Git operations invoked, in order (`op:arg`). */
   gitCalls: string[]
+  /** Artifact writes via `writeFile` (`path::content-preview`). */
+  writes: { path: string; content: string }[]
 }
 
 export interface StubPhaseDepsOptions {
@@ -171,6 +173,7 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     edits: [],
     thread: [...(options.thread ?? [])],
     gitCalls: [],
+    writes: [],
   }
   const replies = options.replies ?? []
   const login = options.selfLogin ?? 'agent-bot'
@@ -296,6 +299,10 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     agent: (): Promise<OpenCodeAgent> => Promise.resolve(agent),
     tokensUsed: (): Promise<number> => Promise.resolve(0),
     skills: (): Promise<SkillDocument[]> => Promise.resolve([...(options.skills ?? [])]),
+    writeFile: (filePath: string, content: string): Promise<void> => {
+      io.writes.push({ path: filePath, content })
+      return Promise.resolve()
+    },
     openspec,
     baseBranch: (): Promise<string> => Promise.resolve('main'),
     selfLogin: (): Promise<string> => Promise.resolve(login),

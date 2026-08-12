@@ -52,6 +52,12 @@ export interface PhaseDeps {
   tokensUsed: () => Promise<number>
   skills: (phase: Phase) => Promise<SkillDocument[]>
   /**
+   * Writes composed artifact content to a resolved path under the change folder
+   * (design D3). The drafter asks the model for content and hands it here; the
+   * diff guard's `outsidePrefix` confines what the subsequent commit keeps.
+   */
+  writeFile: (filePath: string, content: string) => Promise<void>
+  /**
    * The OpenSpec CLI driver (design D3): the thin TS seam over `openspec new
    * change` / `status --json` / `instructions --json` / `validate --strict` /
    * `archive`. Injected like every other external boundary so the whole state

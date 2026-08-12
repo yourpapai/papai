@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { writeFile as writeFileNode } from 'node:fs/promises'
+
 import type { AgentHandle } from './agent-handle.js'
 import type { CheckRunner } from './check-loop.js'
 import { createCiGroups } from './ci-groups.js'
@@ -139,6 +141,7 @@ export const assembleDeps = ({
     agent: agent.get,
     tokensUsed: agent.tokensUsed,
     skills: makeSkillLoader(config, log),
+    writeFile: (filePath, content) => writeFileNode(filePath, content, 'utf8'),
     baseBranch: memoize(() =>
       resolveBaseBranch(env, { fromEvent: event.defaultBranch, fromGit: () => git.defaultBranch() }),
     ),
