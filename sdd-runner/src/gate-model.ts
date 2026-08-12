@@ -3,36 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
-
+import type { ChangeDigest } from './gate-digest-extract.js'
 import { formatTrajectoryBlock } from './renderer.js'
 import type { DigestRecord } from './replay.js'
-
-export type ArtifactHashes = Record<string, string>
-
-export async function recordArtifactHashes(changeDir: string, relPaths: readonly string[]): Promise<ArtifactHashes> {
-  const entries = await Promise.all(
-    relPaths.map(async (rel): Promise<[string, string | null]> => {
-      try {
-        const content = await readFile(path.join(changeDir, rel), 'utf8')
-        return [rel, createHash('sha256').update(content).digest('hex')]
-      } catch {
-        return [rel, null]
-      }
-    }),
-  )
-  const hashes: ArtifactHashes = {}
-  for (const [rel, hash] of entries) {
-    if (hash !== null) hashes[rel] = hash
-  }
-  return hashes
-}
-
-export function detectHandEdits(before: ArtifactHashes, after: ArtifactHashes): string[] {
-  return Object.keys(after).filter((rel) => before[rel] !== after[rel])
-}
 
 export interface GateAssumption {
   readonly id: string
@@ -63,11 +36,41 @@ export interface GateDigestInput {
   readonly costUsd: number
   readonly costKnown: boolean
   readonly durationMs: number
+  readonly changeDigest: ChangeDigest
 }
 
 function costMarker(input: GateDigestInput): string {
   if (input.costKnown) return 'metered'
   return input.costUsd > 0 ? 'estimated' : 'unknown'
+}
+
+const NO_WHY = '_(no "Why" section in proposal.md)_'
+const NO_IMPACT = '_(no "Impact" section in proposal.md)_'
+const NO_ASSUMPTIONS = '_(no assumptions logged)_'
+
+/**
+ * Render the `### Change digest` subsection — a 5-tuple (WHAT/WHY/TOUCHES/
+ * RISKS/BLAST) so a human opening the gate MD can grasp the change at a glance.
+ * WHAT/WHY/TOUCHES come from `extractChangeDigest`; RISKS/BLAST reference
+ * sections already rendered elsewhere in the gate (mode-aware for RISKS, since
+ * the early gate shows "Open MATERIAL findings at cap" and the final gate shows
+ * "Nitpicks (informational)"). Missing fields render one-line placeholders.
+ */
+export function renderChangeDigest(digest: ChangeDigest, mode: 'early' | 'final', hasAssumptions: boolean): string[] {
+  const what = digest.what ?? NO_WHY
+  const why = digest.why ?? NO_WHY
+  const touches = digest.touches !== null && digest.touches.length > 0 ? digest.touches.join(', ') : NO_IMPACT
+  const risksTarget = mode === 'early' ? 'Open MATERIAL findings at cap' : 'Nitpicks (informational)'
+  const blast = hasAssumptions ? 'see "Assumptions (blast-ranked)" below' : NO_ASSUMPTIONS
+  return [
+    '### Change digest',
+    '',
+    `- **WHAT**: ${what}`,
+    `- **WHY**: ${why}`,
+    `- **TOUCHES**: ${touches}`,
+    `- **RISKS**: see "${risksTarget}" below`,
+    `- **BLAST**: ${blast}`,
+  ]
 }
 
 export function writeGateDigest(input: GateDigestInput): string {
@@ -86,8 +89,15 @@ export function writeGateDigest(input: GateDigestInput): string {
     '### Summary',
     input.summary,
     '',
+    ...renderChangeDigest(input.changeDigest, input.mode, input.assumptions.length > 0),
+    '',
     `### Cost / duration · $${input.costUsd.toFixed(2)} · ${Math.round(input.durationMs / 1000)}s · ${costMarker(input)}`,
   ]
+  appendGateSections(lines, input, ranked)
+  return lines.join('\n')
+}
+
+function appendGateSections(lines: string[], input: GateDigestInput, ranked: readonly GateAssumption[]): void {
   if (input.blockers.length > 0) {
     lines.push('', '### Cap-hit blockers (answer or override)')
     for (const blocker of input.blockers) {
@@ -118,7 +128,6 @@ export function writeGateDigest(input: GateDigestInput): string {
     lines.push('', `- [ ] ${assumption.id} ${assumption.text}`, `  blast radius: ${assumption.blast_radius}`)
   }
   lines.push('', '### Resume', `gate resume ${input.runId}`)
-  return lines.join('\n')
 }
 
 export interface GateVeto {

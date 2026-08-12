@@ -8,14 +8,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import {
-  detectHandEdits,
-  parseGateResponse,
-  recordArtifactHashes,
-  writeGateDigest,
-} from '../../sdd-runner/src/gate-model.js'
+import type { ChangeDigest } from '../../sdd-runner/src/gate-digest-extract.js'
+import { parseGateResponse, writeGateDigest } from '../../sdd-runner/src/gate-model.js'
 import type { GateAssumption, GateBlocker, GateFinding } from '../../sdd-runner/src/gate-model.js'
+import { detectHandEdits, recordArtifactHashes } from '../../sdd-runner/src/gate.js'
 import type { DigestRecord } from '../../sdd-runner/src/replay.js'
+
+const NULL_DIGEST: ChangeDigest = { what: null, why: null, touches: null, hasTasks: false }
 
 const tmpDirs: string[] = []
 
@@ -73,6 +72,7 @@ describe('writeGateDigest', () => {
       costUsd: 0.42,
       costKnown: true,
       durationMs: 120_000,
+      changeDigest: NULL_DIGEST,
     })
     expect(md).toContain('gate-1.md')
     expect(md).toContain('Final gate')
@@ -98,6 +98,7 @@ describe('writeGateDigest', () => {
       costUsd: 0.1,
       costKnown: true,
       durationMs: 60_000,
+      changeDigest: NULL_DIGEST,
     })
     expect(md).toContain('Early gate')
     expect(md).toContain('B1')
@@ -124,6 +125,7 @@ describe('writeGateDigest', () => {
       costUsd: 0.1,
       costKnown: true,
       durationMs: 60_000,
+      changeDigest: NULL_DIGEST,
     })
     expect(md).toContain('### Cap-hit trajectory')
     expect(md).toContain('round 1: 0b 2m 0n · 1 resolved · 0 dismissed · open')
@@ -151,6 +153,7 @@ describe('writeGateDigest', () => {
       costUsd: 0.42,
       costKnown: true,
       durationMs: 120_000,
+      changeDigest: NULL_DIGEST,
     })
     expect(md).toContain('### Nitpicks (informational)')
     expect(md).toContain('F1')

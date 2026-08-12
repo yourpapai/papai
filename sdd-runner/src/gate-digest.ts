@@ -3,19 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { z } from 'zod'
-
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
-import { agentWritePath } from '../../review-loop/src/agent-runner.js'
-import { runStageAgent } from './agent-layer.js'
-import type { AgentLayerDeps } from './agent-layer.js'
 import type { ExecGitFn, RunnerConfig } from './config.js'
 import { createEventBus } from './event-bus.js'
 import { appendEvent, readEvents } from './events.js'
-import type { AgentUsage, EventInput, SddEvent } from './events.js'
+import type { EventInput, SddEvent } from './events.js'
+import { extractChangeDigest } from './gate-digest-extract.js'
+import type { ChangeDigest } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
 import { presentGate } from './gate.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
@@ -86,6 +84,7 @@ export async function presentGateAt(
   const assumptions = await gatherAssumptions(ctx.sidecarDir, reviewResult.rounds)
   const findings = findingsOf(reviewResult)
   const trajectory = replayEvents(logPathFor(state)).perRound
+  const changeDigest = await readChangeDigest(ctx.changeDir)
   const result = await presentGate(
     { emit: ctx.emit, runDir: state.runDir, changeDir: ctx.changeDir, driftCheck: () => Promise.resolve() },
     {
@@ -103,6 +102,7 @@ export async function presentGateAt(
       costUsd,
       costKnown,
       durationMs,
+      changeDigest,
     },
   )
   state.gate = { mode, version }
@@ -113,7 +113,50 @@ export async function presentGateAt(
   return { runId: state.runId, halted: 'gate', gateMdPath: result.gateMdPath, version }
 }
 
-export const DriftReportSchema = z.object({ tasks_file: z.string().min(1) })
+async function readFileSafe(filePath: string): Promise<string> {
+  try {
+    return await readFile(filePath, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+function countTaskCheckboxes(tasksMd: string): { done: number; total: number } {
+  let done = 0
+  let total = 0
+  for (const line of tasksMd.split('\n')) {
+    const checked = /^\s*- \[x\]/iu.test(line)
+    const unchecked = /^\s*- \[ \]/iu.test(line)
+    if (checked || unchecked) {
+      total += 1
+      if (checked) done += 1
+    }
+  }
+  return { done, total }
+}
+
+/**
+ * Build the change digest rendered in the gate MD by reading proposal.md /
+ * design.md from the change dir and checking tasks.md existence (mode signal:
+ * absent at the early gate, present at the final gate). Missing files degrade
+ * to null fields rendered as placeholders.
+ */
+export async function readChangeDigest(changeDir: string): Promise<ChangeDigest> {
+  const [proposalMd, designMd] = await Promise.all([
+    readFileSafe(path.join(changeDir, 'proposal.md')),
+    readFileSafe(path.join(changeDir, 'design.md')),
+  ])
+  const tasksPath = path.join(changeDir, 'tasks.md')
+  const hasTasksMd = existsSync(tasksPath)
+  let tasksDone: number | undefined
+  let tasksTotal: number | undefined
+  if (hasTasksMd) {
+    const counts = countTaskCheckboxes(await readFileSafe(tasksPath))
+    tasksDone = counts.done
+    tasksTotal = counts.total
+  }
+  return extractChangeDigest({ proposalMd, designMd, hasTasksMd, tasksDone, tasksTotal })
+}
 
 export async function gatherAssumptions(sidecarDir: string, rounds: number): Promise<GateAssumption[]> {
   const indices = Array.from({ length: rounds }, (_, i) => i + 1)
@@ -206,41 +249,6 @@ export function costAndDuration(
 export async function applyConfirmAll(gateMdPath: string): Promise<void> {
   const md = await readFile(gateMdPath, 'utf8')
   await writeFile(gateMdPath, md.replace(/- \[ \] ([AFT]\d+)/gu, '- [x] $1'))
-}
-
-export function buildDriftPrompt(files: readonly string[], tasksFile: string, cwd: string): string {
-  const report = agentWritePath(cwd, 'drift.json')
-  return [
-    'You are the drift-check resolver. The human edited these agent-authored artifacts at the gate:',
-    ...files.map((f) => `- ${f}`),
-    '',
-    `Reconcile tasks.md at ${tasksFile} so it stays consistent with the edited artifacts.`,
-    `Write JSON to ${report}: {"tasks_file": "<path relative to repo root>"}`,
-  ].join('\n')
-}
-
-export type UsageTotals = AgentUsage
-
-export function buildDriftCheck(
-  agent: AgentLayerDeps,
-  state: RunState,
-  changeDir: string,
-  sidecarDir: string,
-  repoRoot: string,
-): (files: readonly string[]) => Promise<void> {
-  return async (files) => {
-    await runStageAgent(agent, {
-      role: 'resolver',
-      changeName: state.changeName,
-      cwd: repoRoot,
-      prompt: buildDriftPrompt(files, path.join(changeDir, 'tasks.md'), repoRoot),
-      outputPath: 'drift.json',
-      outputSchema: DriftReportSchema,
-      label: 'drift',
-      logPath: path.join(sidecarDir, 'logs', 'drift.log'),
-      sidecarDir,
-    })
-  }
 }
 
 export async function finalizeGate(

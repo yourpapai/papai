@@ -502,3 +502,92 @@ describe('presentGateAt cost fallback', () => {
     expect(gateMd).toMatch(/\$12\.50/u)
   })
 })
+
+describe('presentGateAt change digest', () => {
+  const PROPOSAL = [
+    '## Why',
+    '',
+    'The slug is useless at the gate. A human needs context fast.',
+    '',
+    '## Impact',
+    '',
+    '- **Code**: `src/a.ts` (new)',
+    '',
+  ].join('\n')
+  const DESIGN = ['## Risks / Trade-offs', '', '- misparse degrades to placeholder', ''].join('\n')
+
+  async function setup(opts: { withTasksMd: boolean }): Promise<{
+    deps: OrchestratorDeps
+    state: RunState
+    ctx: StageContext
+  }> {
+    const repoRoot = makeDir()
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    const changeDir = path.join(repoRoot, 'openspec', 'changes', 'add-thing')
+    fs.mkdirSync(changeDir, { recursive: true })
+    fs.writeFileSync(path.join(changeDir, 'proposal.md'), PROPOSAL)
+    fs.writeFileSync(path.join(changeDir, 'design.md'), DESIGN)
+    if (opts.withTasksMd) {
+      const lines: string[] = ['## 1. Section', '']
+      for (let i = 1; i <= 8; i++) lines.push(`- [x] 1.${i} done`)
+      for (let i = 9; i <= 12; i++) lines.push(`- [ ] 1.${i} todo`)
+      fs.writeFileSync(path.join(changeDir, 'tasks.md'), `${lines.join('\n')}\n`)
+    }
+    const now = new Date('2026-01-01T00:00:00.000Z')
+    const state = await createRunState({ workDir, repoRoot, changeName: 'add-thing' }, now)
+    fs.mkdirSync(path.join(state.runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(state.runDir, 'events.ndjson'), '')
+    const deps: OrchestratorDeps = {
+      config: {
+        repoRoot,
+        workDir,
+        model: 'test-model',
+        models: {},
+        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+      },
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      driver: createOpenSpecDriver({
+        exec: () => Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }),
+        cwd: repoRoot,
+      }),
+      now: () => new Date('2026-01-01T00:00:10.000Z'),
+    }
+    const ctx: StageContext = {
+      cwd: repoRoot,
+      changeDir,
+      sidecarDir: path.join(state.runDir, 'sidecars'),
+      emit: () => {},
+    }
+    return { deps, state, ctx }
+  }
+
+  const reviewResult: ReviewLoopResult = {
+    outcome: 'converged',
+    rounds: 1,
+    openBlockers: [],
+    openMaterial: [],
+    openNitpicks: [],
+  }
+
+  it('threads a populated change digest (what/why/touches) with hasTasks false when tasks.md is absent (task 3.1)', async () => {
+    const { deps, state, ctx } = await setup({ withTasksMd: false })
+    const result = await presentGateAt(deps, state, ctx, reviewResult, 1, 'early')
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+
+    expect(md).toContain('### Change digest')
+    expect(md).toContain('- **WHAT**: The slug is useless at the gate. A human needs context fast.')
+    expect(md).toContain('- **WHY**: The slug is useless at the gate. A human needs context fast.')
+    expect(md).toContain('- **TOUCHES**: **Code**: `src/a.ts` (new)')
+    expect(md).not.toMatch(/tasks: \d+\/\d+/u)
+  })
+
+  it('threads tasks: done/total into TOUCHES when tasks.md is present (task 3.2)', async () => {
+    const { deps, state, ctx } = await setup({ withTasksMd: true })
+    const result = await presentGateAt(deps, state, ctx, reviewResult, 1, 'final')
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+
+    expect(md).toContain('- **TOUCHES**: **Code**: `src/a.ts` (new), tasks: 8/12')
+    expect(md).toContain('- **RISKS**: see "Nitpicks (informational)" below')
+  })
+})

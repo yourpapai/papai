@@ -10,8 +10,11 @@ import path from 'node:path'
 
 import { EventInputSchema } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
+import type { ChangeDigest } from '../../sdd-runner/src/gate-digest-extract.js'
 import { presentGate, resumeGate, vetoRedirects } from '../../sdd-runner/src/gate.js'
 import type { GateDeps } from '../../sdd-runner/src/gate.js'
+
+const NULL_DIGEST: ChangeDigest = { what: null, why: null, touches: null, hasTasks: false }
 
 const tmpDirs: string[] = []
 
@@ -80,6 +83,7 @@ describe('presentGate', () => {
       openNitpicks: [],
       trajectory: [],
       capHitFired: false,
+      changeDigest: NULL_DIGEST,
     })
     expect(result.gateMdPath).toBe(path.join(fixture.runDir, 'gate-1.md'))
     expect(fs.existsSync(result.gateMdPath)).toBe(true)
@@ -108,6 +112,7 @@ describe('resumeGate', () => {
       openNitpicks: [],
       trajectory: [],
       capHitFired: false,
+      changeDigest: NULL_DIGEST,
     })
     const md = fs.readFileSync(path.join(fixture.runDir, 'gate-1.md'), 'utf8').replace('- [ ] A1', '- [x] A1')
     fs.writeFileSync(path.join(fixture.runDir, 'gate-1.md'), md)
@@ -141,6 +146,7 @@ describe('resumeGate', () => {
       openNitpicks: [],
       trajectory: [],
       capHitFired: false,
+      changeDigest: NULL_DIGEST,
     })
     const md = fs
       .readFileSync(path.join(fixture.runDir, 'gate-1.md'), 'utf8')
@@ -177,6 +183,7 @@ describe('resumeGate', () => {
       openNitpicks: [],
       trajectory: [],
       capHitFired: false,
+      changeDigest: NULL_DIGEST,
     })
     fs.writeFileSync(
       path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'),
@@ -211,6 +218,7 @@ describe('resumeGate', () => {
       openNitpicks: [],
       trajectory: [],
       capHitFired: false,
+      changeDigest: NULL_DIGEST,
     })
     fs.writeFileSync(path.join(fixture.runDir, 'gate-1.md'), 'ABORT\n')
     const outcome = await resumeGate(fixture.deps, {

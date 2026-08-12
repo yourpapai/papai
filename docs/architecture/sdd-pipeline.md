@@ -63,6 +63,22 @@ The gate is enterable at two points: an early cap-hit presentation (before decom
 
 Bare approve with open blockers fails — override must be explicit.
 
+### Change digest
+
+Every `gate-<n>.md` carries a `### Change digest` section between `### Summary` (the slug, a stable machine-readable anchor) and `### Cost / duration`, so a human opening the gate can answer "what is this change and what does it touch" in seconds without opening `proposal.md`/`design.md`. It is extract-only (no agent spawn) and pure-additive — the parser, checkbox semantics, and resume contract are unaffected.
+
+The section renders a 5-tuple sourced from existing artifacts (`extractChangeDigest` in `gate-digest-extract.ts`; threaded in by `readChangeDigest` from `presentGateAt`):
+
+| Field   | Source                                          | Tolerance on missing                              |
+| ------- | ----------------------------------------------- | ------------------------------------------------- |
+| WHAT    | First 1–2 sentences of `proposal.md` `## Why`   | `_(no "Why" section in proposal.md)_`             |
+| WHY     | Full `proposal.md` `## Why`                     | `_(no "Why" section in proposal.md)_`             |
+| TOUCHES | Bullets under `proposal.md` `## Impact`         | `_(no "Impact" section in proposal.md)_`          |
+| RISKS   | Reference to an already-rendered findings block | Mode-aware (see below)                            |
+| BLAST   | Reference to the assumptions block              | `_(no assumptions logged)_` when the list is empty |
+
+Mode-aware rendering: at the **early** (cap-hit) gate TOUCHES carries no task line and RISKS points at `### Open MATERIAL findings at cap`; at the **final** gate TOUCHES gains a trailing `tasks: <done>/<total>` entry parsed from `tasks.md` and RISKS points at `### Nitpicks (informational)`. Only ATX headings (`## Why`) are recognized; setext-style headings and empty/malformed sections degrade to a placeholder rather than failing the gate.
+
 ### MATERIAL-only cap-hit path
 
 When the round cap is reached with 0 BLOCKERs but ≥1 MATERIAL finding still open, the early gate surfaces additional content so the human can distinguish a converging loop from a stuck one:

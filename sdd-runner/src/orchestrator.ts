@@ -10,11 +10,11 @@ import type { AgentLayerDeps } from './agent-layer.js'
 import { deriveChangeName } from './config.js'
 import { runAtomicity, runDecompose } from './decompose.js'
 import { runDraft } from './draft.js'
+import { buildDriftCheck } from './drift.js'
 import type { DepthProfile, EventInput } from './events.js'
 import {
   applyConfirmAll,
   buildBus,
-  buildDriftCheck,
   finalizeGate,
   findingsOf,
   gatherAssumptions,
