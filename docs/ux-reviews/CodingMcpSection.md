@@ -138,7 +138,8 @@ Severity-ranked, highest first.
 ### [Low] Status and error regions mount with their announcement already inside them
 
 - **Id:** coding-mcp-live-region-mounts-with-text
-- **Status:** open
+- **Status:** fixed
+- **Resolved:** live-region adoption, commit 3445701a9
 - **Dimension:** 6. Accessibility
 - **Where visible:** Not visible in a still frame — source-confirmed
 - **Source:** `client/settings/sections/CodingMcpSection.svelte:178`, `:179`, `:187` — each is `{#if x !== null}<p role="alert">{x}</p>{/if}`, so the live region is created with its text rather than filled after mount

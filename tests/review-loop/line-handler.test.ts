@@ -122,12 +122,16 @@ describe('createLineHandler reporter wiring', () => {
     expect(stats.snapshot().perLabel['drain']?.input).toBe(10)
   })
 
-  test('tool progress goes to reporter.slot and dispose clears it', async () => {
+  test('tool progress goes to reporter.slot and dispose commits it with a done marker', async () => {
     const cwd = makeTempDir('line-handler-slot-')
     const slots: Array<readonly [string, string | null]> = []
+    const commits: Array<readonly [string, string | undefined]> = []
     const reporter = makeReporter({
       slot: (key, line) => {
         slots.push([key, line] as const)
+      },
+      commit: (key, line) => {
+        commits.push([key, line] as const)
       },
     })
     const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
@@ -139,6 +143,125 @@ describe('createLineHandler reporter wiring', () => {
       }),
     )
     expect(slots.some(matchesDrainRead)).toBe(true)
+    await handler.dispose()
+    expect(commits).toHaveLength(1)
+    expect(commits[0]![0]).toBe('drain')
+    expect(commits[0]![1]).toContain('\u2713')
+    expect(commits[0]![1]).toContain('read')
+    expect(slots.every(([, line]) => line !== null)).toBe(true)
+  })
+
+  test('commitOnDispose:false leaves the slot live (no commit, no clear)', async () => {
+    const cwd = makeTempDir('line-handler-keep-')
+    const slots: Array<readonly [string, string | null]> = []
+    const commits: Array<readonly [string, string | undefined]> = []
+    const reporter = makeReporter({
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+      commit: (key, line) => {
+        commits.push([key, line] as const)
+      },
+    })
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      reporter,
+      slotKey: 'iter',
+      commitOnDispose: false,
+    })
+    handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
+    handler.onLine(
+      JSON.stringify({
+        type: 'tool_use',
+        part: { tool: 'read', callID: 'c1', state: { status: 'running', input: { filePath: '/a/cli.ts' } } },
+      }),
+    )
+    await handler.dispose()
+    expect(commits).toEqual([])
+    expect(slots).toHaveLength(1)
+    expect(slots.every(([, line]) => line !== null)).toBe(true)
+  })
+
+  test('slotKey overrides the slot identity', async () => {
+    const cwd = makeTempDir('line-handler-key-')
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter = makeReporter({
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    })
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      reporter,
+      slotKey: 'iter',
+      commitOnDispose: false,
+    })
+    handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
+    handler.onLine(
+      JSON.stringify({
+        type: 'tool_use',
+        part: { tool: 'read', callID: 'c1', state: { status: 'running', input: { filePath: '/a/cli.ts' } } },
+      }),
+    )
+    expect(slots).toHaveLength(1)
+    expect(slots.every(([key]) => key === 'iter')).toBe(true)
+    await handler.dispose()
+  })
+
+  test('step_finish emits no permanent event, but re-renders the live line with cumulative tokens', async () => {
+    const cwd = makeTempDir('line-handler-tokens-')
+    const events: string[] = []
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter = makeReporter({
+      event: (msg) => {
+        events.push(msg)
+      },
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    })
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
+    handler.onLine(
+      JSON.stringify({
+        type: 'step_finish',
+        part: { reason: 'stop', tokens: { input: 5, output: 2, reasoning: 1 }, cost: 0 },
+      }),
+    )
+    expect(events).toEqual([])
+    const last = slots[slots.length - 1]![1]!
+    expect(last).toContain('in 5 / out 2')
+    await handler.dispose()
+  })
+
+  test('an agent that died before its first step clears the slot instead of committing', async () => {
+    const cwd = makeTempDir('line-handler-unstarted-')
+    const slots: Array<readonly [string, string | null]> = []
+    const commits: Array<readonly [string, string | undefined]> = []
+    const reporter = makeReporter({
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+      commit: (key, line) => {
+        commits.push([key, line] as const)
+      },
+    })
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    await handler.dispose()
+    expect(commits).toEqual([])
+    expect(slots).toEqual([['drain', null]])
+  })
+
+  test('a reporter without commit falls back to clearing the slot on dispose', async () => {
+    const cwd = makeTempDir('line-handler-nocommit-')
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter = makeReporter({
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    })
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
     await handler.dispose()
     expect(slots[slots.length - 1]).toEqual(['drain', null])
   })

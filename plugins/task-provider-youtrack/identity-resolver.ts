@@ -25,13 +25,11 @@ export function createYouTrackIdentityResolver(config: YouTrackConfig): YouTrack
 
       try {
         const users = await listYouTrackUsers(config, query, limit ?? 10)
-        return users.map(
-          (u): IdentityUser => ({
-            id: u.id,
-            login: u.login ?? u.id,
-            name: u.name ?? u.login ?? u.id,
-          }),
-        )
+        return users.map((u): IdentityUser => ({
+          id: u.id,
+          login: u.login ?? u.id,
+          name: u.name ?? u.login ?? u.id,
+        }))
       } catch (error) {
         log.error(
           { error: error instanceof Error ? error.message : String(error), query },

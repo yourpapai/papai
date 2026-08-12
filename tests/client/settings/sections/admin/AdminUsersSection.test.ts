@@ -380,7 +380,7 @@ describe('AdminUsersSection', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!.click()
     await drain()
-    expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('.status-error')!.textContent).not.toBe('')
     expect(target.querySelector('[data-testid="user-remove-42"]')).not.toBeNull()
     void unmount(component)
   })
@@ -737,7 +737,7 @@ describe('AdminUsersSection', () => {
     target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
     expect(target.querySelector('.modal')).not.toBeNull()
-    expect(target.querySelector('.modal .status-error')).not.toBeNull()
+    expect(target.querySelector('.modal .status-error')!.textContent).not.toBe('')
     void unmount(component)
   })
 
@@ -764,7 +764,9 @@ describe('AdminUsersSection', () => {
     const toggle = target.querySelector<HTMLButtonElement>('[data-testid="open-access-toggle"]')!
     expect(toggle.disabled).toBe(true)
     expect(toggle.textContent).toContain('Unavailable')
-    expect(target.querySelector('[data-testid="open-access-error"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="open-access-error"]')!.textContent).toContain(
+      'Could not read the open DM access setting',
+    )
     void unmount(component)
   })
 
@@ -906,6 +908,7 @@ describe('AdminUsersSection', () => {
     await drain()
     const line = target.querySelector('.status-success')!
     expect(line.getAttribute('role')).toBe('status')
+    expect(line.textContent).toContain('User unblocked.')
     void unmount(component)
   })
 
@@ -922,7 +925,9 @@ describe('AdminUsersSection', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!.click()
     await drain()
-    expect(target.querySelector('.status-error')!.getAttribute('role')).toBe('alert')
+    const line = target.querySelector('.status-error')!
+    expect(line.getAttribute('role')).toBe('alert')
+    expect(line.textContent).not.toBe('')
     void unmount(component)
   })
 
@@ -934,6 +939,23 @@ describe('AdminUsersSection', () => {
     await drain()
     expect(target.textContent).toContain('No users yet')
     expect(target.textContent).toContain('Add one above')
+    void unmount(component)
+  })
+
+  test('the section status and error regions are mounted and empty on a clean load', async () => {
+    setMockFetch(openAccessOffMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const err = target.querySelector<HTMLElement>('.status-error')!
+    const ok = target.querySelector<HTMLElement>('.status-success')!
+    expect(err.getAttribute('role')).toBe('alert')
+    expect(err.getAttribute('aria-live')).toBe('assertive')
+    expect(err.textContent).toBe('')
+    expect(ok.getAttribute('role')).toBe('status')
+    expect(ok.getAttribute('aria-live')).toBe('polite')
+    expect(ok.textContent).toBe('')
     void unmount(component)
   })
 })

@@ -7,6 +7,7 @@
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import ErrorState from '../../shared/ui/ErrorState.svelte'
+  import IconButton from '../../shared/ui/IconButton.svelte'
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import SegmentedControl from '../../shared/ui/SegmentedControl.svelte'
   import {
@@ -17,6 +18,10 @@
     withdrawAnalytics,
   } from '../analytics-fetchers.js'
   import type { AnalyticsPreferencesResponse } from '../fetcher-schemas-analytics.js'
+  import SettingsFieldShell from '../components/SettingsFieldShell.svelte'
+  import LiveRegion from '../../shared/ui/LiveRegion.svelte'
+  import { formatFetchError } from '../../shared/format-error.js'
+  import { deleteStatusMessage, laneHint, RIGHTS_UNAVAILABLE_TEXT } from './analytics-preferences-copy.js'
 
   const CHOICE_OPTIONS = [
     { value: 'allow', label: 'Allow' },
@@ -28,19 +33,34 @@
   let actionError: string | null = $state(null)
   let announcement: string | null = $state(null)
   let busy = $state(false)
+  let loading = $state(false)
   let confirming: 'withdraw' | 'delete' | null = $state(null)
+  let laneErrors = $state<{ localLongitudinal: string | null; externalPseudonymous: string | null }>({
+    localLongitudinal: null,
+    externalPseudonymous: null,
+  })
 
-  function messageFrom(err: unknown): string {
-    return err instanceof Error ? err.message : String(err)
-  }
-
+  // No re-entrancy guard here: `load` runs inside an `$effect`, so reading `loading` before
+  // setting it would make that effect depend on state it writes and re-trigger itself forever.
+  // A second click is prevented by the refresh button's own `busy` styling, which is how the
+  // sibling personal sections handle it.
   async function load(): Promise<void> {
     loadError = null
     actionError = null
+    announcement = null
+    loading = true
     try {
       data = await fetchAnalyticsPreferences()
     } catch (err) {
-      loadError = messageFrom(err)
+      const message = formatFetchError(err)
+      // First load (no data yet): the failure replaces the whole section with `ErrorState`.
+      // Refresh (data already present): keep showing the stale-but-known data and surface the
+      // failure through the alert `LiveRegion` that's already mounted in that branch, instead of
+      // silently discarding what loaded successfully before.
+      if (data === null) loadError = message
+      else actionError = message
+    } finally {
+      loading = false
     }
   }
 
@@ -52,19 +72,31 @@
     try {
       announcement = await action()
     } catch (err) {
-      actionError = messageFrom(err)
+      actionError = formatFetchError(err)
     } finally {
       busy = false
     }
   }
 
+  // Not routed through `run`: a failed save belongs under the control that failed, not in
+  // the shared alert below the destructive actions, and the control silently snaps back to
+  // its stored value — so the message has to say the setting did not change.
   async function choose(lane: 'localLongitudinal' | 'externalPseudonymous', value: string): Promise<void> {
     if (value !== 'allow' && value !== 'deny') return
-    await run(async () => {
+    if (busy) return
+    laneErrors = { ...laneErrors, [lane]: null }
+    actionError = null
+    announcement = null
+    busy = true
+    try {
       const preference = await putAnalyticsPreferences({ [lane]: value })
       if (data !== null) data = { ...data, preference }
-      return 'Preference saved.'
-    })
+      announcement = 'Preference saved.'
+    } catch (err) {
+      laneErrors = { ...laneErrors, [lane]: `${formatFetchError(err)} The setting was not changed.` }
+    } finally {
+      busy = false
+    }
   }
 
   function downloadJson(filename: string, payload: unknown): void {
@@ -96,21 +128,26 @@
   }
 
   async function confirmDelete(): Promise<void> {
-    await run(async () => {
+    if (busy) return
+    actionError = null
+    announcement = null
+    busy = true
+    try {
       const result = await deleteAnalyticsData()
       confirming = null
-      return `Deletion ${result.status} (analytics only).`
-    })
+      const message = deleteStatusMessage(result.status)
+      if (message.tone === 'alert') actionError = message.text
+      else announcement = message.text
+    } catch (err) {
+      actionError = formatFetchError(err)
+    } finally {
+      busy = false
+    }
   }
 
-  const effectiveText = $derived(
-    data === null
-      ? ''
-      : `Local longitudinal: ${data.preference.localLongitudinal} · External pseudonymous: ${data.preference.externalPseudonymous}` +
-          (data.preference.effectiveAtMs === null
-            ? ''
-            : ` · effective ${new Date(data.preference.effectiveAtMs).toLocaleString()}`),
-  )
+  // Captured once per mount: the hint's legitimate-interest branch compares against the
+  // policy's effective date, which does not move while the section is open.
+  const nowMs = Date.now()
 
   $effect(() => {
     void load()
@@ -118,7 +155,19 @@
 </script>
 
 <section id="analytics" class="settings-section">
-  <PageHeader eyebrow="Personal" title="Analytics" />
+  <PageHeader
+    eyebrow="Personal"
+    title="Analytics"
+    sub="These choices apply to your own account only — never to a group or another member.">
+    {#snippet action()}
+      <IconButton
+        label="Refresh"
+        glyph="⟳"
+        busy={loading}
+        onClick={() => void load()}
+        testid="analytics-refresh" />
+    {/snippet}
+  </PageHeader>
 
   {#if loadError !== null && data === null}
     <ErrorState title="Couldn't load analytics preferences" message={loadError} onRetry={() => void load()} />
@@ -130,42 +179,81 @@
       {#if data.notice.policyVersion !== null}· Policy v{data.notice.policyVersion}{/if}
     </p>
     <p class="settings-section__caption" data-testid="analytics-explanation">{data.explanation}</p>
-    <p class="settings-section__caption">These choices apply to your own account only — never to a group or another member.</p>
+    {#if !data.subjectRightsAvailable}
+      <p class="settings-section__caption" data-testid="analytics-rights-unavailable">{RIGHTS_UNAVAILABLE_TEXT}</p>
+    {/if}
 
-    <div class="settings-field">
-      <span class="settings-field__label" id="analytics-local-label">Local longitudinal analytics</span>
-      <SegmentedControl
-        options={CHOICE_OPTIONS}
-        value={data.preference.localLongitudinal}
-        ariaLabel="Local longitudinal analytics"
-        ariaDescribedBy="analytics-local-label"
-        testidPrefix="analytics-local"
-        disabled={busy || !data.subjectRightsAvailable}
-        onChange={(value) => void choose('localLongitudinal', value)} />
-    </div>
+    <SettingsFieldShell
+      label="Local longitudinal analytics"
+      editorOpen={false}
+      testid="analytics-field-local"
+      error={laneErrors.localLongitudinal ?? undefined}
+      hint={data.subjectRightsAvailable
+        ? laneHint({
+            lane: 'localLongitudinal',
+            value: data.preference.localLongitudinal,
+            effectiveAtMs: data.preference.effectiveAtMs,
+            lawfulBasisMode: data.notice.lawfulBasisMode,
+            policyEffectiveAtMs: data.notice.policyEffectiveAtMs,
+            nowMs,
+          })
+        : undefined}>
+      {#snippet head(describedBy)}
+        <SegmentedControl
+          options={CHOICE_OPTIONS}
+          value={data.preference.localLongitudinal}
+          ariaLabel="Local longitudinal analytics"
+          ariaDescribedBy={describedBy}
+          testidPrefix="analytics-local"
+          disabled={busy || !data.subjectRightsAvailable}
+          busy={busy}
+          onChange={(value) => void choose('localLongitudinal', value)} />
+      {/snippet}
+    </SettingsFieldShell>
 
-    <div class="settings-field">
-      <span class="settings-field__label" id="analytics-external-label">External pseudonymous analytics</span>
-      <SegmentedControl
-        options={CHOICE_OPTIONS}
-        value={data.preference.externalPseudonymous}
-        ariaLabel="External pseudonymous analytics"
-        ariaDescribedBy="analytics-external-label"
-        testidPrefix="analytics-external"
-        disabled={busy || !data.subjectRightsAvailable}
-        onChange={(value) => void choose('externalPseudonymous', value)} />
-    </div>
-
-    <p class="settings-section__caption" data-testid="analytics-effective">{effectiveText}</p>
+    <SettingsFieldShell
+      label="External pseudonymous analytics"
+      editorOpen={false}
+      testid="analytics-field-external"
+      error={laneErrors.externalPseudonymous ?? undefined}
+      hint={data.subjectRightsAvailable
+        ? laneHint({
+            lane: 'externalPseudonymous',
+            value: data.preference.externalPseudonymous,
+            effectiveAtMs: data.preference.effectiveAtMs,
+            lawfulBasisMode: data.notice.lawfulBasisMode,
+            policyEffectiveAtMs: data.notice.policyEffectiveAtMs,
+            nowMs,
+          })
+        : undefined}>
+      {#snippet head(describedBy)}
+        <SegmentedControl
+          options={CHOICE_OPTIONS}
+          value={data.preference.externalPseudonymous}
+          ariaLabel="External pseudonymous analytics"
+          ariaDescribedBy={describedBy}
+          testidPrefix="analytics-external"
+          disabled={busy || !data.subjectRightsAvailable}
+          busy={busy}
+          onChange={(value) => void choose('externalPseudonymous', value)} />
+      {/snippet}
+    </SettingsFieldShell>
 
     <div class="settings-actions">
-      <Btn variant="outline" size="sm" disabled={busy} testid="analytics-export" onClick={() => void exportData()}>
+      <Btn
+        variant="outline"
+        size="sm"
+        disabled={busy || !data.subjectRightsAvailable}
+        busy={busy}
+        testid="analytics-export"
+        onClick={() => void exportData()}>
         {#snippet children()}Export analytics data{/snippet}
       </Btn>
       <Btn
         variant="outline"
         size="sm"
         disabled={busy || !data.subjectRightsAvailable}
+        busy={busy}
         testid="analytics-withdraw"
         onClick={() => (confirming = 'withdraw')}>
         {#snippet children()}Withdraw consent{/snippet}
@@ -174,18 +262,15 @@
         variant="danger"
         size="sm"
         disabled={busy || !data.subjectRightsAvailable}
+        busy={busy}
         testid="analytics-delete"
         onClick={() => (confirming = 'delete')}>
         {#snippet children()}Delete analytics data{/snippet}
       </Btn>
     </div>
 
-    {#if actionError !== null}
-      <p class="status-error" role="alert" data-testid="analytics-error">{actionError}</p>
-    {/if}
-    {#if announcement !== null}
-      <p class="status-success" role="status" data-testid="analytics-success">{announcement}</p>
-    {/if}
+    <LiveRegion tone="alert" message={actionError} testid="analytics-error" />
+    <LiveRegion tone="status" message={announcement} testid="analytics-success" />
   {/if}
 </section>
 
@@ -222,14 +307,12 @@
     color: var(--text-dim);
     line-height: 1.45;
   }
-  .settings-field {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+  :global(.settings-section#analytics [data-testid^='analytics-field-']) {
     margin-bottom: var(--gap-inline);
   }
-  .settings-field__label {
-    font-size: 13px;
+  /* The caption block and the first field are two different things; separate them on the
+     section rhythm (--gap-field), not the within-block one (--gap-inline). */
+  :global(.settings-section#analytics [data-testid='analytics-field-local']) {
+    margin-top: var(--gap-field);
   }
 </style>

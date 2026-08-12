@@ -72,7 +72,10 @@ papai-local.tar
 client/assets
 
 # opencode local config
-.opencode/
+.opencode/*
+!.opencode/commands/
+!.opencode/skills/
+!.opencode/plugins/
 opencode.json
 
 # process bookkeeping a probe or a background server leaves behind — also

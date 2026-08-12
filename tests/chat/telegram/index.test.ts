@@ -442,30 +442,23 @@ describe('TelegramChatProvider', () => {
         registeredHandler = handler
       }
       Reflect.set(provider as object, 'checkAdminStatus', (): Promise<boolean> => Promise.resolve(true))
-      Reflect.set(
-        provider as object,
-        'extractMessage',
-        (): Promise<IncomingMessage> =>
-          Promise.resolve({
-            user: { id: '42', username: 'alice', isAdmin: true },
-            contextId: '100',
-            contextType: 'group',
-            isMentioned: true,
-            text: '/setup',
-            platformInstanceId: 'telegram-secondary',
-            threadId: '5',
-          }),
-      )
-      Reflect.set(
-        provider as object,
-        'buildReplyFn',
-        (): ReplyFn => ({
-          text: async (): Promise<void> => {},
-          formatted: async (): Promise<void> => {},
-          buttons: (): Promise<undefined> => Promise.resolve(undefined),
-          typing: (): void => {},
+      Reflect.set(provider as object, 'extractMessage', (): Promise<IncomingMessage> =>
+        Promise.resolve({
+          user: { id: '42', username: 'alice', isAdmin: true },
+          contextId: '100',
+          contextType: 'group',
+          isMentioned: true,
+          text: '/setup',
+          platformInstanceId: 'telegram-secondary',
+          threadId: '5',
         }),
       )
+      Reflect.set(provider as object, 'buildReplyFn', (): ReplyFn => ({
+        text: async (): Promise<void> => {},
+        formatted: async (): Promise<void> => {},
+        buttons: (): Promise<undefined> => Promise.resolve(undefined),
+        typing: (): void => {},
+      }))
       let auth: AuthorizationResult | undefined
       provider.registerCommand('setup', (_msg, _reply, commandAuth): Promise<void> => {
         auth = commandAuth

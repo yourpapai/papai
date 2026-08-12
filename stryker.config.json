@@ -2,7 +2,8 @@
   "testRunner": "bun",
   "appendPlugins": ["@hughescr/stryker-bun-runner"],
   "bun": {
-    "timeout": 120000
+    "timeout": 120000,
+    "bunArgs": ["--timeout=30000"]
   },
   "mutate": [
     "src/providers/**/*.ts",

@@ -138,7 +138,8 @@ describe('field-context', () => {
     expect(field.children.length).toBe(3)
     expect(field.children[1]).toBe(controls[0])
     expect(controls[0]!.querySelector('[data-testid="hint-input"]')).not.toBeNull()
-    expect(field.children[2]!.classList.contains('ui-field__hint')).toBe(true)
+    expect(field.children[2]!.classList.contains('ui-field__msg')).toBe(true)
+    expect(field.children[2]!.querySelector('.ui-field__hint')!.textContent).toContain('https only')
     void unmount(c)
   })
 
@@ -152,18 +153,27 @@ describe('field-context', () => {
     expect(field.children.length).toBe(3)
     expect(field.children[1]).toBe(controls[0])
     expect(controls[0]!.querySelector('[data-testid="hint-input"]')).not.toBeNull()
-    expect(field.children[2]!.classList.contains('ui-field__error')).toBe(true)
+    // The error now lives inside the message box rather than being the third child itself,
+    // so that the always-mounted region and the hint can share one grid row.
+    expect(field.children[2]!.classList.contains('ui-field__msg')).toBe(true)
+    expect(field.children[2]!.querySelector('.ui-field__error')!.textContent).toBe('boom')
     void unmount(c)
   })
 
-  test('wraps the children slot in a single control element as the second and last child when neither hint nor error is set', () => {
+  test('wraps the children slot in a single control element as the second child when neither hint nor error is set', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!
     const c = mount(FieldHintFixture, { target, props: {} })
     const field = target.querySelector<HTMLElement>('.ui-field')!
     const controls = field.querySelectorAll(':scope > .ui-field__control')
     expect(controls.length).toBe(1)
-    expect(field.children.length).toBe(2)
+    // The message box is unconditional now — it holds the always-mounted error region even
+    // when there is nothing to say, which is the whole point of the change.
+    expect(field.children.length).toBe(3)
+    expect(field.children[2]!.classList.contains('ui-field__msg')).toBe(true)
+    // Trimmed: Svelte leaves a whitespace text node between the LiveRegion and the {#if
+    // hint} anchor comment for the untouched source formatting; the box still says nothing.
+    expect(field.children[2]!.textContent.trim()).toBe('')
     expect(field.children[1]).toBe(controls[0])
     expect(controls[0]!.querySelector('[data-testid="hint-input"]')).not.toBeNull()
     void unmount(c)

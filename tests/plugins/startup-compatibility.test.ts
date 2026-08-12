@@ -79,9 +79,8 @@ const capabilitySetForId = (capabilities: Record<string, Set<ChatCapability>>, i
 
 describe('startup plugin compatibility collection', () => {
   test('builds compatibility entries from active task and platform instances', async () => {
-    const router = new ChatRouter(
-      (_id, _type, _config): ChatProvider =>
-        createMockChat({ capabilities: new Set<ChatCapability>(['messages.buttons']) }),
+    const router = new ChatRouter((_id, _type, _config): ChatProvider =>
+      createMockChat({ capabilities: new Set<ChatCapability>(['messages.buttons']) }),
     )
     router.addInstance('telegram-a', 'telegram', { token: 'x' })
     await router.startInstance('telegram-a')
@@ -99,8 +98,8 @@ describe('startup plugin compatibility collection', () => {
   })
 
   test('includes chat capabilities from configured platform instances before router startup', () => {
-    const router = new ChatRouter(
-      (): ChatProvider => createMockChat({ capabilities: new Set<ChatCapability>(['messages.buttons']) }),
+    const router = new ChatRouter((): ChatProvider =>
+      createMockChat({ capabilities: new Set<ChatCapability>(['messages.buttons']) }),
     )
     router.addInstance('telegram-a', 'telegram', { token: 'x' })
 
@@ -115,8 +114,8 @@ describe('startup plugin compatibility collection', () => {
       'discord-a': new Set<ChatCapability>(['users.resolve']),
       'telegram-a': new Set<ChatCapability>(['messages.buttons']),
     }
-    const router = new ChatRouter(
-      (id): ChatProvider => createMockChat({ capabilities: capabilitySetForId(chatCapabilities, id) }),
+    const router = new ChatRouter((id): ChatProvider =>
+      createMockChat({ capabilities: capabilitySetForId(chatCapabilities, id) }),
     )
     router.addInstance('telegram-a', 'telegram', { token: 'x' })
     router.addInstance('discord-a', 'discord', { token: 'x' })
@@ -135,8 +134,8 @@ describe('startup plugin compatibility collection', () => {
   })
 
   test('treats active database platform rows with stopped router instances as having no chat capabilities', async () => {
-    const router = new ChatRouter(
-      (): ChatProvider => createMockChat({ capabilities: new Set<ChatCapability>(['messages.buttons']) }),
+    const router = new ChatRouter((): ChatProvider =>
+      createMockChat({ capabilities: new Set<ChatCapability>(['messages.buttons']) }),
     )
     router.addInstance('telegram-a', 'telegram', { token: 'x' })
     await router.stopInstance('telegram-a')

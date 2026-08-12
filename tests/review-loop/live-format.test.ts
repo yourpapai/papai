@@ -9,7 +9,6 @@ import {
   activitySummary,
   formatDuration,
   formatLiveLine,
-  formatStepFooter,
   formatTokenCount,
   formatToolArg,
   truncate,
@@ -100,37 +99,42 @@ describe('formatToolArg', () => {
 
 describe('formatLiveLine', () => {
   test('renders label, tool, arg, elapsed, count', () => {
-    const line = formatLiveLine('fixer', 'edit', 'cli.ts', 42000, 3)
+    const line = formatLiveLine('fixer', 'edit', 'cli.ts', 42000, 3, { input: 0, output: 0 })
     expect(line).toContain('fixer')
     expect(line).toContain('edit cli.ts')
     expect(line).toContain('42s')
     expect(line).toContain('3 tools')
   })
   test('no tool yet shows thinking', () => {
-    expect(formatLiveLine('reviewer', '', '', 2000, 0)).toContain('thinking')
+    expect(formatLiveLine('reviewer', '', '', 2000, 0, { input: 0, output: 0 })).toContain('thinking')
   })
   test('renders exact line with singular tool count', () => {
-    expect(formatLiveLine('reviewer', 'read', 'a.ts', 1000, 1)).toBe(
+    expect(formatLiveLine('reviewer', 'read', 'a.ts', 1000, 1, { input: 0, output: 0 })).toBe(
       `  reviewer   \u25B6 read a.ts \u00B7 1s \u00B7 1 tool`,
     )
   })
   test('renders exact line when arg is empty', () => {
-    expect(formatLiveLine('fixer', 'edit', '', 5000, 2)).toBe(`  fixer      \u25B6 edit \u00B7 5s \u00B7 2 tools`)
-  })
-})
-
-describe('formatStepFooter', () => {
-  test('renders summary with tokens', () => {
-    const footer = formatStepFooter('reviewer', 18000, 4, { input: 13373, output: 31 })
-    expect(footer).toContain('reviewer')
-    expect(footer).toContain('18s')
-    expect(footer).toContain('4 tools')
-    expect(footer).toContain('in 13373 / out 31')
-  })
-  test('renders exact footer with singular tool count', () => {
-    expect(formatStepFooter('reviewer', 18000, 1, { input: 13373, output: 31 })).toBe(
-      `  reviewer \u2713 18s \u00B7 1 tool \u00B7 in 13373 / out 31`,
+    expect(formatLiveLine('fixer', 'edit', '', 5000, 2, { input: 0, output: 0 })).toBe(
+      `  fixer      \u25B6 edit \u00B7 5s \u00B7 2 tools`,
     )
+  })
+  test('appends cumulative tokens once non-zero', () => {
+    expect(formatLiveLine('improve', 'bash', 'bun test', 5000, 41, { input: 850_000, output: 12_000 })).toBe(
+      `  improve    \u25B6 bash bun test \u00B7 5s \u00B7 41 tools \u00B7 in 850.0k / out 12.0k`,
+    )
+  })
+  test('hides the token segment while both counts are zero', () => {
+    expect(formatLiveLine('improve', 'read', 'a.ts', 5000, 1, { input: 0, output: 0 })).not.toContain('in ')
+  })
+  test('shows the token segment when only output is zero', () => {
+    expect(formatLiveLine('improve', 'read', 'a.ts', 5000, 1, { input: 5, output: 0 })).toContain('in 5 / out 0')
+  })
+  test('shows the token segment when only input is zero', () => {
+    expect(formatLiveLine('improve', 'read', 'a.ts', 5000, 1, { input: 0, output: 2 })).toContain('in 0 / out 2')
+  })
+  test('done=true swaps the arrow for a check mark', () => {
+    const line = formatLiveLine('improve', 'read', 'a.ts', 5000, 1, { input: 5, output: 2 }, true)
+    expect(line).toBe(`  improve    \u2713 read a.ts \u00B7 5s \u00B7 1 tool \u00B7 in 5 / out 2`)
   })
 })
 

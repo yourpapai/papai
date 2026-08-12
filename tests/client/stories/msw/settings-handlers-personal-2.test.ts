@@ -8,7 +8,9 @@ import { describe, expect, test } from 'bun:test'
 import type { HttpHandler } from 'msw'
 
 import {
+  analyticsLegitimateInterestHandlers,
   analyticsPreferencesHandlers,
+  analyticsRightsUnavailableHandlers,
   analyticsWithdrawalInProgressHandlers,
   configHandlers,
   releaseSubscriptionHandlers,
@@ -83,5 +85,17 @@ describe('personal settings msw handlers (part 2)', () => {
     const paths = pathsOf(analyticsWithdrawalInProgressHandlers)
     expect(paths.some((p) => p.includes('/settings/api/analytics/preferences'))).toBe(true)
     expect(paths.some((p) => p.includes('/settings/api/analytics/delete'))).toBe(true)
+  })
+
+  test('analyticsRightsUnavailableHandlers covers the preferences GET', () => {
+    expect(
+      pathsOf(analyticsRightsUnavailableHandlers).some((p) => p.includes('/settings/api/analytics/preferences')),
+    ).toBe(true)
+  })
+
+  test('analyticsLegitimateInterestHandlers covers the preferences GET', () => {
+    expect(
+      pathsOf(analyticsLegitimateInterestHandlers).some((p) => p.includes('/settings/api/analytics/preferences')),
+    ).toBe(true)
   })
 })

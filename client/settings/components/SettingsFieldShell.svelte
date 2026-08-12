@@ -12,6 +12,7 @@
   import type { Snippet } from 'svelte'
 
   import { setFieldError, setFieldLabelId } from '../../shared/ui/field-context.js'
+  import LiveRegion from '../../shared/ui/LiveRegion.svelte'
 
   interface Props {
     label: string
@@ -63,14 +64,17 @@
          context published here isn't visible in the parent's snippet scope. Pass the
          error id explicitly instead, and only when the error `<p>` below actually
          renders — otherwise the control would get an aria-describedby pointing at
-         nothing. -->
-    {@render head?.(error ? errorId : undefined)}
+         nothing. When no error is showing, hand down the hint id instead, so a head
+         control is described by the field's own status line rather than by nothing. -->
+    {@render head?.(error ? errorId : hint ? hintId : undefined)}
   </div>
   {#if editor && editorOpen}
     <div class="settings-field__editor">{@render editor(labelId)}</div>
   {/if}
-  {#if error}<p class="settings-field__error" id={errorId} role="alert">{error}</p>
-  {:else if hint}<p class="settings-field__hint" id={hintId}>{hint}</p>{/if}
+  <div class="settings-field__msg">
+    <LiveRegion tone="alert" message={error ?? null} id={errorId} class="settings-field__error" />
+    {#if !error && hint}<p class="settings-field__hint" id={hintId}>{hint}</p>{/if}
+  </div>
   {@render footer?.()}
 </div>
 
@@ -109,7 +113,10 @@
     flex: 1;
     min-width: 200px;
   }
-  .settings-field__error {
+  /* :global because the class is handed to LiveRegion, and a class passed to a child
+     component does not pick up this component's scoped styles. Scoped to the message box
+     so it stays a SettingsFieldShell rule rather than an app-wide one. */
+  .settings-field__msg :global(.settings-field__error) {
     margin: 0;
     color: var(--danger);
     font-size: 12px;
@@ -118,5 +125,12 @@
     margin: 0;
     color: var(--text-muted);
     font-size: 12px;
+  }
+  /* The region stays mounted so a screen reader can hear it change, which means it is
+     still a grid child when it holds no text -- and a zero-height grid child consumes a
+     full row gap. It cannot be display:none'd or visibility:hidden'd without leaving the
+     accessibility tree, so cancel the gap instead of removing the box. */
+  .settings-field__msg:not(:has(*:not(:empty))) {
+    margin-top: calc(-1 * var(--gap-tight));
   }
 </style>
