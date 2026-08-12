@@ -132,3 +132,7 @@ Shape queries with `kinds` (e.g. `["function_declaration", ...]`) and `scopeTier
 ## Security
 
 `bun security` (local Semgrep) / `bun security:ci`. Covers OWASP-style issues, TS/JS pitfalls, and AI/LLM concerns (prompt-injection-adjacent unsafe fetch, accidental secret exposure).
+
+## Workflow files
+
+`bun workflows:lint` (pinned, checksum-verified actionlint; also the `Workflow Lint` CI job). An invalid workflow is **not** a red build — GitHub rejects the file, starts no job, and every other check stays green, so this is the only thing that catches one. Suppressions live in `.github/actionlint.yaml`, path-scoped and each carrying the run that proves actionlint is wrong there. Note that `if: >-` opens a folded scalar: a `#` line inside it folds into the expression instead of being a comment, which is what broke `agent-pipeline.yml`.

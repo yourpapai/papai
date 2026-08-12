@@ -62,6 +62,7 @@
     "format:check": "oxfmt --check . --ignore-path=.oxfmtignore",
     "security": "bun run scripts/run-semgrep.ts",
     "security:ci": "bun run scripts/run-semgrep.ts --ci",
+    "workflows:lint": "bun run scripts/run-actionlint.ts",
     "test": "bun scripts/test/run-cli.ts",
     "test:serial": "bun scripts/test/run-cli.ts --serial",
     "test:raw": "bun test --parallel",
