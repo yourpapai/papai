@@ -100,7 +100,27 @@ async function main(): Promise<void> {
     // point — a gate that took a list would not see a newly added workflow.
     // `.github/actionlint.yaml` is picked up from the repository root, and
     // carries the path-scoped suppressions with the reason for each.
-    const result = await $`${binary} -color`.nothrow()
+    //
+    // shellcheck and pyflakes are actionlint's optional external linters, run
+    // against `run:` blocks when those binaries happen to be on PATH. Both are
+    // disabled, for two reasons.
+    //
+    // The first is that this gate has to give one answer everywhere. Those
+    // integrations are silently on where the binary exists and silently off
+    // where it does not — ubuntu-latest ships shellcheck and a dev container
+    // may not, so the same commit passes locally and fails in CI. Pinning the
+    // actionlint binary and then leaving what it runs up to the host defeats
+    // the pin.
+    //
+    // The second is scope. A bad `run:` block is a red job, which CI already
+    // reports; this gate exists for the failure that reports nothing at all.
+    // Turning it on cost 12 findings across four workflows nobody had touched,
+    // all style or info except two warnings on deploy.yml's ssh block that were
+    // both wrong: the literal `~` is a remote path the server expands, and the
+    // unquoted heredoc is what interpolates the runner's secrets before they
+    // are sent. "Fixing" either would have broken the deploy.
+    const args = ['-color', '-shellcheck=', '-pyflakes=']
+    const result = await $`${binary} ${args}`.nothrow()
 
     if (result.exitCode === 0) {
       console.log('✅ Workflow lint passed')

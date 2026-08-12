@@ -136,3 +136,5 @@ Shape queries with `kinds` (e.g. `["function_declaration", ...]`) and `scopeTier
 ## Workflow files
 
 `bun workflows:lint` (pinned, checksum-verified actionlint; also the `Workflow Lint` CI job). An invalid workflow is **not** a red build — GitHub rejects the file, starts no job, and every other check stays green, so this is the only thing that catches one. Suppressions live in `.github/actionlint.yaml`, path-scoped and each carrying the run that proves actionlint is wrong there. Note that `if: >-` opens a folded scalar: a `#` line inside it folds into the expression instead of being a comment, which is what broke `agent-pipeline.yml`.
+
+The shellcheck/pyflakes integrations are deliberately **off**: they run only where those binaries happen to be installed, so leaving them on makes the gate answer differently on a laptop than on a runner — and a bad `run:` block is already a red job, which is the opposite of what this gate is for.
