@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { findArtifact, PLAN_MARKER, renderArtifact, SPEC_MARKER } from '../../opencode-agent/src/artifacts.js'
+import { HANDOFF_MARKER, REPORT_MARKER, findArtifact, renderArtifact } from '../../opencode-agent/src/artifacts.js'
 import { readBlock, renderBlock, stripBlocks } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import { hasHandler } from '../../opencode-agent/src/cascade.js'
@@ -243,15 +243,18 @@ describe('state blocks survive hostile payload text', () => {
     expect(extractState(renderStateComment('### Run failed', failed))).toEqual(failed)
   })
 
-  test('a spec full of markdown rules and arrows still restores its state', () => {
-    const spec = '## Goal\n\n---\n\n```mermaid\ngraph TD\n  A --> B\n```'
+  test('an artefact full of markdown rules and arrows still restores its state', () => {
+    // The proposal/spec no longer rides in a block (it lives in the folder under
+    // D1), but a report or handoff still can, and the restore scan must walk
+    // past any hidden block whose payload would confuse a brittle parser.
+    const report = '## Report\n\n---\n\n```mermaid\ngraph TD\n  A --> B\n```'
     const state = transition(initialState(9), 'CAPTURED')
-    const body = [renderStateComment(`### Design spec\n\n${spec}`, state), renderArtifact(SPEC_MARKER, spec, 1)].join(
+    const body = [renderStateComment(`### Report\n\n${report}`, state), renderArtifact(REPORT_MARKER, report, 1)].join(
       '\n\n',
     )
 
     expect(extractState(body)).toEqual(state)
-    expect(findArtifact([comment(agent, body)], agent, SPEC_MARKER)?.text).toBe(spec)
+    expect(findArtifact([comment(agent, body)], agent, REPORT_MARKER)?.text).toBe(report)
   })
 })
 
@@ -329,38 +332,40 @@ describe('findLatestState', () => {
 describe('artifacts', () => {
   const agent = 'agent-bot'
 
-  test('recovers a spec containing markdown rules verbatim', () => {
-    const spec = '## Goal\n\nDo the thing.\n\n---\n\n## Files\n\n- `src/a.ts`'
+  test('recovers a report containing markdown rules verbatim', () => {
+    const report = '## Report\n\nDo the thing.\n\n---\n\n## Files\n\n- `src/a.ts`'
     const body = [
-      `### Design spec\n\n${spec}\n\n---\n\nReply /approve`,
+      `### Report\n\n${report}\n\n---\n\nReply /review`,
       renderStateComment('', initialState(1)),
-      renderArtifact(SPEC_MARKER, spec, 1),
+      renderArtifact(REPORT_MARKER, report, 1),
     ].join('\n\n')
 
-    expect(findArtifact([comment(agent, body)], agent, SPEC_MARKER)?.text).toBe(spec)
+    expect(findArtifact([comment(agent, body)], agent, REPORT_MARKER)?.text).toBe(report)
   })
 
-  test('keeps spec and plan apart in one thread', () => {
+  test('keeps a report and a handoff apart in one thread', () => {
     const thread = [
-      comment(agent, renderArtifact(SPEC_MARKER, 'the spec', 1), 1),
-      comment(agent, renderArtifact(PLAN_MARKER, 'the plan', 1), 2),
+      comment(agent, renderArtifact(REPORT_MARKER, 'the report', 1), 1),
+      comment(agent, renderArtifact(HANDOFF_MARKER, 'the handoff', 1), 2),
     ]
 
-    expect(findArtifact(thread, agent, SPEC_MARKER)?.text).toBe('the spec')
-    expect(findArtifact(thread, agent, PLAN_MARKER)?.text).toBe('the plan')
+    expect(findArtifact(thread, agent, REPORT_MARKER)?.text).toBe('the report')
+    expect(findArtifact(thread, agent, HANDOFF_MARKER)?.text).toBe('the handoff')
   })
 
   test('takes the newest revision of an artefact', () => {
     const thread = [
-      comment(agent, renderArtifact(SPEC_MARKER, 'v1', 1), 1),
-      comment(agent, renderArtifact(SPEC_MARKER, 'v2', 2), 2),
+      comment(agent, renderArtifact(REPORT_MARKER, 'v1', 1), 1),
+      comment(agent, renderArtifact(REPORT_MARKER, 'v2', 2), 2),
     ]
 
-    expect(findArtifact(thread, agent, SPEC_MARKER)).toEqual({ text: 'v2', revision: 2 })
+    expect(findArtifact(thread, agent, REPORT_MARKER)).toEqual({ text: 'v2', revision: 2 })
   })
 
   test('ignores an artefact planted by someone else', () => {
-    expect(findArtifact([comment('attacker', renderArtifact(SPEC_MARKER, 'evil', 1))], agent, SPEC_MARKER)).toBeNull()
+    expect(
+      findArtifact([comment('attacker', renderArtifact(REPORT_MARKER, 'evil', 1))], agent, REPORT_MARKER),
+    ).toBeNull()
   })
 })
 

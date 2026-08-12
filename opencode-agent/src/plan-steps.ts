@@ -6,24 +6,17 @@
 import { z } from 'zod'
 
 /**
- * What a plan is, as **data** rather than as prose.
+ * What a plan is, under design D5: `tasks.md` checkboxes.
  *
- * The planning phase has always asked the model for JSON — `promptForJson`, one
- * re-ask on a validation complaint — and then thrown the structure away, keeping
- * only the markdown it rendered from it. That was fine while the implementation was
- * one turn for the whole plan; it is not fine now that the unit of work is a step,
- * because the alternative to carrying the steps is recovering them from the
- * markdown. Scraping prose to recover an artefact is the oldest rule in this
- * workspace and it exists because heading-and-trailer scraping silently truncated
- * specs at their first `---` rule.
+ * The plan no longer travels as a JSON steps object rendered into a comment and
+ * a hidden block — the folder is truth (D1), and `tasks.md` is the plan's only
+ * shape. `REVIEW_AND_MUTATE` walks its checkboxes one turn at a time and ticks
+ * each box in the same commit as the step's work; this module owns the parser
+ * that turns the file into the ordered box list the walk reads, plus the
+ * `PlanStep`/`describeStep` the implement prompt still borrows to phrase a turn.
  *
- * So the steps travel in the plan block beside the text (`artifacts.ts`), and the
- * text a maintainer reads is **rendered from them** ({@link renderPlanMarkdown}).
- * One value feeds the comment and the block, so the plan somebody approved and the
- * steps the implementation walks cannot disagree.
- *
- * A leaf on purpose: this module imports nothing but zod, so `artifacts.ts` can own
- * the block round trip without either file importing the other.
+ * A leaf on purpose: this module imports nothing but zod, so nothing here can
+ * pull the pipeline's graph in by accident.
  */
 
 export const planStepSchema = z.object({
@@ -40,12 +33,6 @@ export type PlanStep = z.infer<typeof planStepSchema>
  * A cap because every step is a model turn plus a commit plus a push: a plan of two
  * hundred "steps" is not a finer plan, it is a plan whose steps are single edits,
  * and walking it would spend a whole job's clock on the overhead between them.
- * Enforced on the **ask** rather than on the read, which is what makes it cheap:
- * `promptForJson` re-asks once with zod's own complaint attached ("expected array to
- * have <=25 items"), so the ordinary outcome is a coarser breakdown from the same
- * planning turn. A planner that will not coarsen twice fails the phase, where a
- * maintainer's `/changes` is the remedy — deliberately louder than truncating the
- * list, which would post a plan whose second half nobody would ever implement.
  *
  * Twenty-five because it is comfortably more than any plan this pipeline has
  * produced and comfortably fewer than a job can walk: at the observed few minutes a
@@ -53,23 +40,6 @@ export type PlanStep = z.infer<typeof planStepSchema>
  * a plan that wanted splitting into issues.
  */
 export const MAX_PLAN_STEPS = 25
-
-/**
- * The plan the planner is asked for.
- *
- * `min(1)` is a decision and not a formality: a planning turn that reports no steps
- * has not planned, and the phase must say so rather than fall through to a one-shot
- * implementation of a document with nothing in it. That is the opposite reading from
- * a plan *block* with no steps, which is a legacy record and runs as one turn — the
- * difference being that one is a model failing now and the other is a maintainer
- * having approved something before steps existed.
- */
-export const executionPlanSchema = z.object({
-  steps: z.array(planStepSchema).min(1).max(MAX_PLAN_STEPS),
-  summary: z.string().default(''),
-})
-
-export type ExecutionPlan = z.infer<typeof executionPlanSchema>
 
 /**
  * Where in a plan a run was, for the two readers that have to be told.
@@ -87,25 +57,6 @@ export interface StepMarker {
   number: number
   total: number
   title: string
-}
-
-const filesLine = (step: PlanStep): string =>
-  step.files.length === 0 ? '_(no files declared)_' : step.files.map((file) => `\`${file}\``).join(', ')
-
-const verificationLine = (step: PlanStep): string =>
-  step.verification.trim() === '' ? '_(not stated)_' : step.verification.trim()
-
-/** The plan as markdown: the comment a maintainer approves, rendered from the steps. */
-export const renderPlanMarkdown = (plan: ExecutionPlan): string => {
-  const steps = plan.steps.map(
-    (step, index) =>
-      `${index + 1}. **${step.title}**\n   - Files: ${filesLine(step)}\n   - Verified by: ${verificationLine(step)}`,
-  )
-
-  const sections: string[] = []
-  if (plan.summary.trim() !== '') sections.push(plan.summary.trim())
-  sections.push(steps.join('\n'))
-  return sections.join('\n\n')
 }
 
 /**
