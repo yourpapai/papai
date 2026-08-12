@@ -232,4 +232,25 @@ describe('resumeGate', () => {
     })
     expect(outcome.kind).toBe('aborted')
   })
+
+  it('returns extend when the human writes RUN 1 MORE at an early gate', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    fs.writeFileSync(path.join(fixture.runDir, 'gate-1.md'), '→ RUN 1 MORE\n')
+    const outcome = await resumeGate(fixture.deps, {
+      version: 1,
+      assumptions: [],
+      blockers: [],
+      gateMode: 'early',
+    })
+    expect(outcome.kind).toBe('extend')
+    expect(fixture.emitted).toHaveLength(1)
+    expect(fixture.emitted[0]).toMatchObject({
+      type: 'gate',
+      action: 'answered',
+      altitude: 'L2',
+      mode: 'early',
+      version: 1,
+    })
+  })
 })

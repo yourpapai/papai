@@ -146,6 +146,53 @@ describe('repriceEvents', () => {
     expect(costKnown).toBe(false)
     expect(doneAt(repriced, 1).usage.costUsd).toBe(0)
   })
+
+  it('returns zero-token done events unchanged without invoking resolve', () => {
+    let calls = 0
+    const resolve = (): ResolvedCost | null => {
+      calls++
+      return null
+    }
+    const event = doneEvent(makeUsage({ inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 }), 1, 'paid/m')
+    const { events: repriced, costKnown } = repriceEvents([event], resolve)
+    expect(repriced[0]).toBe(event)
+    expect(costKnown).toBe(true)
+    expect(calls).toBe(0)
+  })
+
+  it('reprices partial-token done events, exercising each operand of the zero-token guard', () => {
+    const resolve = resolverFrom({ 'paid/m': { input: 5, output: 15, source: 'primary' } })
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 0, outputTokens: 1_000_000, reasoningTokens: 0, costUsd: 0 }), 1, 'paid/m'),
+      doneEvent(makeUsage({ inputTokens: 0, outputTokens: 0, reasoningTokens: 1_000_000, costUsd: 0 }), 2, 'paid/m'),
+    ]
+    const { events: repriced, costKnown } = repriceEvents(events, resolve)
+    expect(doneAt(repriced, 0).usage.costUsd).toBe(15)
+    expect(doneAt(repriced, 1).usage.costUsd).toBe(5)
+    expect(costKnown).toBe(true)
+  })
+
+  it('marks costKnown false and skips resolve when no model is resolvable', () => {
+    let calls = 0
+    const resolve = (): ResolvedCost | null => {
+      calls++
+      return null
+    }
+    const event = doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 }), 1)
+    const { events: repriced, costKnown } = repriceEvents([event], resolve)
+    expect(repriced[0]).toBe(event)
+    expect(costKnown).toBe(false)
+    expect(calls).toBe(0)
+  })
+
+  it('uses a null resolver by default, marking unknown-model cost as unknown', () => {
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 }), 1, 'unknown/m'),
+    ]
+    const { events: repriced, costKnown } = repriceEvents(events)
+    expect(costKnown).toBe(false)
+    expect(doneAt(repriced, 0).usage.costUsd).toBe(0)
+  })
 })
 
 describe('aggregateUsage reprice integration', () => {
@@ -179,6 +226,15 @@ describe('aggregateUsage reprice integration', () => {
       doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0, wallMs: 1000 }), 1, 'weird/none'),
     ]
     const usage = aggregateUsage(events, resolve)
+    expect(usage.costUsd).toBe(0)
+    expect(usage.costKnown).toBe(false)
+  })
+
+  it('defaults to a null resolver when none is passed, reporting costKnown false', () => {
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0, wallMs: 1000 }), 1, 'unknown/m'),
+    ]
+    const usage = aggregateUsage(events)
     expect(usage.costUsd).toBe(0)
     expect(usage.costKnown).toBe(false)
   })

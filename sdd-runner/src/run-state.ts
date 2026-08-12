@@ -78,7 +78,7 @@ export async function createRunState(input: CreateRunStateInput, now: Date = new
     stage: 'intake',
     depth,
     round,
-    roundCap: resolveRoundCap({ depth }),
+    roundCap: ROUND_CAPS.S,
     gate: null,
     status: 'running',
     createdAt: now.toISOString(),

@@ -72,6 +72,7 @@ describe('createRunState + loadRunState', () => {
     expect(state.stage).toBe('intake')
     expect(state.depth).toBeNull()
     expect(state.round).toBe(0)
+    expect(state.roundCap).toBe(ROUND_CAPS.S)
     expect(state.gate).toBeNull()
     expect(state.status).toBe('running')
     expect(fs.existsSync(path.join(state.runDir, 'state.json'))).toBe(true)
@@ -127,6 +128,14 @@ describe('roundCap', () => {
     expect(resolveRoundCap({ depth: 'M', roundCap: undefined })).toBe(ROUND_CAPS.M)
     expect(resolveRoundCap({ depth: 'S', roundCap: undefined })).toBe(ROUND_CAPS.S)
     expect(resolveRoundCap({ depth: null, roundCap: undefined })).toBe(ROUND_CAPS.S)
+  })
+
+  it('loadRunState rejects a non-positive roundCap in the persisted state', async () => {
+    const workDir = makeWorkDir()
+    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    const valid = fs.readFileSync(created.statePath, 'utf8')
+    fs.writeFileSync(created.statePath, valid.replace(/"roundCap":\s*\d+/u, '"roundCap":0'))
+    await expect(loadRunState(workDir, created.runId)).rejects.toThrow(/state\.json/u)
   })
 })
 
