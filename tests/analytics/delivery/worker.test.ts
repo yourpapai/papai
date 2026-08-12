@@ -647,13 +647,11 @@ describe('worker generation and cutover fencing', () => {
       ...deps,
       transport: (): Promise<PinnedSendOutcome> => {
         entered.resolve()
-        return gate.promise.then(
-          (): PinnedSendOutcome => ({
-            kind: 'delivered',
-            status: 200,
-            receiptHash: 'f'.repeat(64),
-          }),
-        )
+        return gate.promise.then((): PinnedSendOutcome => ({
+          kind: 'delivered',
+          status: 200,
+          receiptHash: 'f'.repeat(64),
+        }))
       },
     }
     const tick = runDeliveryWorkerTick({ nowMs: NOW }, deps)
@@ -709,13 +707,11 @@ describe('worker generation and cutover fencing', () => {
       ...deps,
       transport: (): Promise<PinnedSendOutcome> => {
         entered.resolve()
-        return gate.promise.then(
-          (): PinnedSendOutcome => ({
-            kind: 'delivered',
-            status: 200,
-            receiptHash: 'f'.repeat(64),
-          }),
-        )
+        return gate.promise.then((): PinnedSendOutcome => ({
+          kind: 'delivered',
+          status: 200,
+          receiptHash: 'f'.repeat(64),
+        }))
       },
     }
     const tick = runDeliveryWorkerTick({ nowMs: NOW }, deps)
