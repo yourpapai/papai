@@ -161,6 +161,35 @@ export const parseTaskCheckboxes = (markdown: string): TaskCheckbox[] => {
 }
 
 /**
+ * One unchecked `tasks.md` box, as `REVIEW_AND_MUTATE` walks it.
+ *
+ * `number`/`total` are the marker a maintainer reads ("step 3 of 5") — counted
+ * among the **unchecked** boxes only, since checked ones are finished work.
+ * `line` is the 1-based file line the box-check edit targets.
+ */
+export interface TaskStep {
+  number: number
+  total: number
+  text: string
+  line: number
+}
+
+/**
+ * The unchecked boxes the run will walk, numbered absolutely (1-based among the
+ * unchecked). The walk's own cursor (`state.stepsDone`) slices into this list,
+ * so a resume starts at the first box a previous stop did not reach.
+ */
+export const taskStepsFromCheckboxes = (boxes: readonly TaskCheckbox[]): TaskStep[] => {
+  const pending = boxes.filter((box) => !box.checked)
+  return pending.map((box, index) => ({
+    number: index + 1,
+    total: pending.length,
+    text: box.text,
+    line: box.line,
+  }))
+}
+
+/**
  * The box-check edit for a line: `[ ]` → `[x] on its way into the step's commit.
  * Rewrites only the marker, so an indented sub-item keeps its indentation and
  * the text after the marker is untouched.

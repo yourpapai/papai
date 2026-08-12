@@ -58,6 +58,11 @@ export interface PhaseDeps {
    */
   writeFile: (filePath: string, content: string) => Promise<void>
   /**
+   * Reads a file under the change folder. `REVIEW_AND_MUTATE` reads `tasks.md`
+   * to walk its checkboxes and to check each box in the step's commit (D5).
+   */
+  readFile: (filePath: string) => Promise<string>
+  /**
    * The OpenSpec CLI driver (design D3): the thin TS seam over `openspec new
    * change` / `status --json` / `instructions --json` / `validate --strict` /
    * `archive`. Injected like every other external boundary so the whole state

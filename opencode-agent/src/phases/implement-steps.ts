@@ -7,7 +7,8 @@ import { isTurnDeadline } from '../errors.js'
 import type { PipelineError } from '../errors.js'
 import { buildImplementPrompt } from '../implement-prompts.js'
 import type { PhaseInput } from '../phase-context.js'
-import type { PlanStep, StepMarker } from '../plan-steps.js'
+import { checkBoxText } from '../plan-steps.js'
+import type { StepMarker, TaskStep } from '../plan-steps.js'
 import type { UntrustedEnvelope } from '../prompts.js'
 import { msToDeadline, timeForAnotherStep } from '../time-budget.js'
 import { commitStep } from './implement-commit.js'
@@ -74,12 +75,14 @@ export interface StepWalkInput {
   input: PhaseInput
   /** Branch the steps commit onto — already checked out by the handler. */
   branch: string
-  /** The approved plan as markdown, which every step's prompt carries as context. */
+  /** The approved plan as markdown (the folder's `tasks.md`), carried as context in every step's prompt. */
   plan: string
-  /** The steps to walk; empty means one turn for the whole plan. */
-  steps: readonly PlanStep[]
-  /** Steps of this plan a previous job already finished. */
+  /** The unchecked `tasks.md` boxes to walk this run (design D5). */
+  steps: readonly TaskStep[]
+  /** Steps of this plan a previous job already finished (cursor into the unchecked list). */
   from: number
+  /** Resolved path to `tasks.md`, so each step's commit can check its box (D5). */
+  tasksPath: string
   /**
    * The handler's one envelope and the system prompt built from it.
    *
@@ -126,27 +129,28 @@ export interface StepWalk {
   stopped: PipelineError | null
 }
 
-/** One unit of work: a declared step, or `null` for the whole plan at once. */
-type Unit = PlanStep | null
+/** One unit of work: an unchecked `tasks.md` box. */
+type Unit = TaskStep
 
 export const walkPlanSteps = (walk: StepWalkInput): Promise<StepWalk> => {
   const from = cursor(walk)
-  const units: readonly Unit[] = walk.steps.length === 0 ? [null] : walk.steps.slice(from)
+  const units: readonly Unit[] = walk.steps.slice(from)
   return step({ ...walk, from }, units, 0, { lines: 0, commits: 0, repairs: 0 })
 }
 
 /**
  * Where to start, with a cursor that names no step in this plan sent back to the top.
  *
- * A state block is attacker-editable text, and a cursor past the end of the plan would
- * leave the walk with nothing to do — reported as "finished the plan without touching
- * a single file", parked in `FAILED`, and unrecoverable, because every `/retry` would
- * reach the same conclusion. Starting over is the same answer `resumeTransition` gives
- * a hand-edited block that names no resume point, and it is safe: the steps already on
- * the branch are done, so their turns commit nothing and the walk carries on.
+ * A state block is attacker-editable text, and a cursor past the end of the
+ * unchecked list would leave the walk with nothing to do — reported as "finished
+ * the plan without touching a single file", parked in `FAILED`, and unrecoverable,
+ * because every `/retry` would reach the same conclusion. Starting over is the
+ * same answer `resumeTransition` gives a hand-edited block that names no resume
+ * point, and it is safe: the boxes already checked on the branch are skipped by
+ * the parser, so their turns commit nothing and the walk carries on.
  */
 const cursor = (walk: StepWalkInput): number => {
-  if (walk.steps.length === 0 || walk.from < walk.steps.length) return walk.from
+  if (walk.from < walk.steps.length) return walk.from
 
   walk.input.deps.log.warn(
     { issue: walk.input.state.issueId, stepsDone: walk.from, steps: walk.steps.length },
@@ -172,7 +176,7 @@ const step = async (walk: StepWalkInput, units: readonly Unit[], index: number, 
   if (unit === undefined) return { kind: 'finished', ...tally, done: walk.from + index, step: null, stopped: null }
 
   const { deps } = walk.input
-  const marker = markerFor(walk, unit, index)
+  const marker = markerFor(unit)
   // `spent` defaults to the tally this step began with, and is passed explicitly by
   // the one exit that happens after a commit attempt has been paid for.
   const at = (kind: StepWalk['kind'], stopped: PipelineError | null, spent: Tally = tally): StepWalk => ({
@@ -183,14 +187,10 @@ const step = async (walk: StepWalkInput, units: readonly Unit[], index: number, 
     stopped,
   })
 
-  // The gate, and it is asked only of a declared step. A plan with no steps is one
-  // indivisible turn: refusing to start it would cost the run everything that turn
-  // would have written, where starting it and being interrupted keeps what it wrote.
-  // With steps there is a boundary to stop on, so the same clock costs nothing.
   const toDeadline = msToDeadline(deps.config, deps.now())
-  if (unit !== null && toDeadline !== null && !timeForAnotherStep(toDeadline, deps.config)) {
+  if (toDeadline !== null && !timeForAnotherStep(toDeadline, deps.config)) {
     deps.log.warn(
-      { issue: walk.input.state.issueId, step: marker?.number, of: marker?.total, toDeadline },
+      { issue: walk.input.state.issueId, step: marker.number, of: marker.total, toDeadline },
       'Out of time for another plan step; stopping between steps with the branch pushed',
     )
     return at('out-of-time', null)
@@ -198,6 +198,12 @@ const step = async (walk: StepWalkInput, units: readonly Unit[], index: number, 
 
   const stopped = await promptForStep(walk, marker, unit, index === 0)
   if (stopped !== null) return at('interrupted', stopped)
+
+  // Design D5: check this step's box in `tasks.md` so the box-check lands in the
+  // same commit as the step's work. The model implements; the pipeline ticks the
+  // box — the folder is the plan's only shape, and a box nobody checks is a step
+  // nobody can see is done.
+  await checkBoxInFile(walk, unit)
 
   const committed = await commitStep(walk, marker)
   const spent: Tally = { ...tally, repairs: tally.repairs + committed.repairs }
@@ -215,9 +221,21 @@ const step = async (walk: StepWalkInput, units: readonly Unit[], index: number, 
   })
 }
 
-/** Where this unit sits in the plan, one-based, and `null` when the plan has no steps. */
-const markerFor = (walk: StepWalkInput, unit: Unit, index: number): StepMarker | null =>
-  unit === null ? null : { number: walk.from + index + 1, total: walk.steps.length, title: unit.title }
+/** The marker a maintainer reads for this box, from the TaskStep's own count. */
+const markerFor = (unit: TaskStep): StepMarker => ({ number: unit.number, total: unit.total, title: unit.text })
+
+/**
+ * Reads `tasks.md`, ticks this step's box, writes it back. One line edited, by
+ * the line number the parser recorded, so an indented sub-item keeps its
+ * indentation and the rest of the file is untouched.
+ */
+const checkBoxInFile = async (walk: StepWalkInput, unit: TaskStep): Promise<void> => {
+  const content = await walk.input.deps.readFile(walk.tasksPath)
+  const lines = content.split('\n')
+  const target = lines[unit.line - 1]
+  if (target !== undefined) lines[unit.line - 1] = checkBoxText(target)
+  await walk.input.deps.writeFile(walk.tasksPath, lines.join('\n'))
+}
 
 /**
  * One step's turn, and `null` unless the clock stopped it part-way through.
@@ -235,8 +253,8 @@ const markerFor = (walk: StepWalkInput, unit: Unit, index: number): StepMarker |
  */
 const promptForStep = async (
   walk: StepWalkInput,
-  marker: StepMarker | null,
-  unit: Unit,
+  marker: StepMarker,
+  unit: TaskStep,
   first: boolean,
 ): Promise<PipelineError | null> => {
   const agent = await walk.input.deps.agent()
@@ -248,7 +266,14 @@ const promptForStep = async (
         envelope: walk.envelope,
         issueNumber: walk.input.state.issueId,
         plan: walk.plan,
-        step: marker === null || unit === null ? null : { ...marker, step: unit },
+        // A `tasks.md` box carries its text but not named files or a verification
+        // command; the model derives both from the approved plan it is shown.
+        step: {
+          number: marker.number,
+          total: marker.total,
+          title: unit.text,
+          step: { title: unit.text, files: [], verification: '' },
+        },
         handoff: first ? walk.handoff : null,
       }),
       agent: 'build',

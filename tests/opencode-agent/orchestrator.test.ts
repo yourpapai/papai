@@ -572,6 +572,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     tokensUsed: () => agent.tokensUsed(),
     skills: () => Promise.resolve([]),
     writeFile: (_path: string, _content: string) => Promise.resolve(),
+    readFile: (_path: string) => Promise.resolve(''),
     // The OpenSpec CLI driver fake (design D3). Records every call into `io` so
     // the capture/drafter/archive tests can assert the protocol; returns safe
     // defaults so a run that reaches it before its test sets up a canned

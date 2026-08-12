@@ -84,11 +84,11 @@ Write/Edit TDD hook pipeline.
 
 ## 6. REVIEW_AND_MUTATE on tasks.md
 
-- [ ] 6.1 Add failing tests for walking `tasks.md` checkboxes as the step
+- [x] 6.1 Add failing tests for walking `tasks.md` checkboxes as the step
   source (D5), box checked in the same commit as the step's work, drift from
   a cursor past the end
   — `bun test tests/opencode-agent/plan-steps.test.ts tests/opencode-agent/implement-steps.test.ts`
-- [ ] 6.2 Implement the checkbox step source (D5)
+- [x] 6.2 Implement the checkbox step source (D5)
   — `bun test tests/opencode-agent/implement-steps.test.ts`
 - [ ] 6.3 Add failing tests for steering-drift: scope-affecting steering in
   `REVIEW_AND_MUTATE` triggers an artifact-update turn (edit → validate →

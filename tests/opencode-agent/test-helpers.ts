@@ -124,6 +124,13 @@ export interface StubIo {
   gitCalls: string[]
   /** Artifact writes via `writeFile` (`path::content-preview`). */
   writes: { path: string; content: string }[]
+  /** File reads via `readFile`, in order. Tests seed `readContents` to reply. */
+  reads: string[]
+  /**
+   * Content the fake `readFile` returns, keyed by path; absent paths return ''.
+   * Set by a test before driving a handler that reads (e.g. tasks.md).
+   */
+  readContents: Record<string, string>
 }
 
 export interface StubPhaseDepsOptions {
@@ -174,6 +181,8 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     thread: [...(options.thread ?? [])],
     gitCalls: [],
     writes: [],
+    reads: [],
+    readContents: {},
   }
   const replies = options.replies ?? []
   const login = options.selfLogin ?? 'agent-bot'
@@ -301,7 +310,12 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     skills: (): Promise<SkillDocument[]> => Promise.resolve([...(options.skills ?? [])]),
     writeFile: (filePath: string, content: string): Promise<void> => {
       io.writes.push({ path: filePath, content })
+      io.readContents[filePath] = content
       return Promise.resolve()
+    },
+    readFile: (filePath: string): Promise<string> => {
+      io.reads.push(filePath)
+      return Promise.resolve(io.readContents[filePath] ?? '')
     },
     openspec,
     baseBranch: (): Promise<string> => Promise.resolve('main'),
