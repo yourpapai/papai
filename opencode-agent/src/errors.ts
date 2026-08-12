@@ -39,15 +39,6 @@ export class PipelineError extends Error {
   }
 }
 
-export const missingSpecError = (issueNumber: number): PipelineError =>
-  new PipelineError(
-    'MISSING_SPEC',
-    `No approved design spec found on issue #${issueNumber}. Was the spec comment deleted?`,
-  )
-
-export const missingPlanError = (issueNumber: number): PipelineError =>
-  new PipelineError('MISSING_PLAN', `No plan found on issue #${issueNumber}. Was the plan comment deleted?`)
-
 export const noChangesError = (issueNumber: number): PipelineError =>
   new PipelineError(
     'NO_CHANGES',

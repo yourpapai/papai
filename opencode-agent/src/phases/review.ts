@@ -3,8 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { PLAN_MARKER, renderArtifact, REPORT_MARKER, requireArtifact } from '../artifacts.js'
-import { missingPlanError } from '../errors.js'
+import { renderArtifact, REPORT_MARKER } from '../artifacts.js'
 import { branchNameFor } from '../git.js'
 import { fence } from '../markdown.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
@@ -32,8 +31,9 @@ import type { AgentState } from '../types.js'
 export const handleReview: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
   // The plan, exactly as the implementation phase reads it: the loop reviews
-  // the work against what was approved, not against the issue's prose.
-  const plan = requireArtifact(input.thread, await deps.selfLogin(), PLAN_MARKER, () => missingPlanError(state.issueId))
+  // the work against what was approved, read from the folder's `tasks.md`
+  // (design D1) rather than a block on the issue.
+  const plan = await planFromFolder(input)
 
   // Not optional, and this is the difference from the review that used to run
   // inside phase 3: that one always had the tree it had just written, while this
@@ -64,20 +64,27 @@ export const handleReview: PhaseHandler = async (input): Promise<PhaseOutcome> =
   const verdict = reviewLine(review)
   const report = renderReport(review, applied, verdict)
   await refreshPullRequest(input, report)
-  // Both writes are the handler's, and neither breaks its contract: a handler
-  // returns a signal, a comment and blocks and never writes state or decides the
-  // next phase, and these do neither — they are decoration around a result that
-  // is already fixed by the time they run. The orchestrator is the wrong home
-  // for the second one in particular: it posts the run's *account* on the issue
-  // and knows nothing of review outcomes, so putting this there would mean
-  // widening `PhaseOutcome` to carry a verdict the cascade cannot read, for one
-  // phase out of six. What that costs is ordering: the note names a report the
-  // orchestrator has not posted yet, which is exactly why it points at the
-  // **issue** and not at a comment — an issue is there to be read the moment the
-  // pointer is written, and a comment id would not be.
+  // The note lives in the handler rather than the orchestrator because it carries
+  // a verdict the cascade cannot read, and it points at the **issue** rather than
+  // a comment id: the report the note names is posted by the orchestrator after
+  // this handler returns, so an issue (always readable) is the only stable link.
   await noteReview(deps, input.trigger, { issueNumber: state.issueId, verdict, applied })
 
   return { signal: 'REVIEW_DONE', comment: report, blocks: [reportBlock(report, state)] }
+}
+
+/**
+ * The approved plan, read from the folder's `tasks.md` (design D1).
+ *
+ * Same read the implementation phase makes: the loop reviews the work against
+ * what was approved, not against the issue's prose, and the approved plan lives
+ * on the branch now rather than in an `AGENT_PLAN` block on the issue.
+ */
+const planFromFolder = async (input: PhaseInput): Promise<string> => {
+  const { deps, state } = input
+  if (state.changeName === null) throw new Error('CODE_REVIEW reached without a changeName on the state')
+  const tasksPath = (await deps.openspec.instructions('tasks', state.changeName)).resolvedOutputPath
+  return deps.readFile(tasksPath)
 }
 
 /**

@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { findArtifact, PLAN_MARKER, SPEC_MARKER } from '../artifacts.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { ANSWER_INSTRUCTIONS, buildAnswerPrompt } from '../prompts.js'
@@ -51,11 +50,23 @@ const questionText = (input: PhaseInput): string => {
   return '(the maintainer left no question text)'
 }
 
-/** The spec or plan the maintainer is most likely asking about. */
+/**
+ * The artefact the maintainer is most likely asking about, read straight from
+ * the change folder (design D1 — the folder is truth).
+ *
+ * At `PLAN_REVIEW` the artefact under review is the plan (`tasks.md`); at
+ * `DESIGN_SPEC` it is the proposal. `changeName` is set on every state that
+ * reaches either park (capture puts it there), so a `null` here is a hand-edit
+ * rather than an ordinary shape, and the answer proceeds without the grounding
+ * rather than throwing — the question still reaches the model, which has the
+ * issue body and the thread to reason from.
+ */
 const artifactUnderReview = async (input: PhaseInput): Promise<string | null> => {
-  const marker = input.state.phase === 'PLAN_REVIEW' ? PLAN_MARKER : SPEC_MARKER
-  const artifact = findArtifact(input.thread, await input.deps.selfLogin(), marker)
-  return artifact === null ? null : artifact.text
+  const { deps, state } = input
+  if (state.changeName === null) return null
+  const artifactId = state.phase === 'PLAN_REVIEW' ? 'tasks' : 'proposal'
+  const path = (await deps.openspec.instructions(artifactId, state.changeName)).resolvedOutputPath
+  return deps.readFile(path)
 }
 
 const NEXT_STEPS: Record<string, string> = {

@@ -6,7 +6,6 @@
 import type { IssueComment } from './blocks.js'
 import { clipTail } from './check-loop.js'
 import type { CheckFailure } from './check-loop.js'
-import { MAX_PLAN_STEPS } from './plan-steps.js'
 import { CHECK_OUTPUT_BUDGET, renderThread, shareBudget } from './prompt-budget.js'
 import type { Phase } from './types.js'
 
@@ -105,41 +104,6 @@ export const buildTriagePrompt = (context: PromptContext, feedback: string | nul
     sections.push(
       'A maintainer reviewed your previous design spec and asked for these changes. Rewrite the spec to address them:',
       context.envelope.wrap('requested-changes', feedback),
-    )
-  }
-
-  return sections.join('\n\n')
-}
-
-export interface PlanPromptInput {
-  envelope: UntrustedEnvelope
-  issueNumber: number
-  spec: string
-  branch: string
-  feedback: string | null
-}
-
-export const buildPlanPrompt = (input: PlanPromptInput): string => {
-  const sections = [
-    `The design spec below was approved by a maintainer for issue #${input.issueNumber}.`,
-    input.envelope.wrap('approved-spec', input.spec),
-    `Work happens on branch \`${input.branch}\`.`,
-    'Produce a granular implementation plan as a single JSON object and nothing else:',
-    '{"steps":[{"title":"…","files":["…"],"verification":"…"}],"summary":"…"}',
-    'Each step must be independently verifiable and touch a named set of files.',
-    'Order steps so tests land before or alongside the implementation they cover.',
-    // Said up front rather than left to the schema's re-ask, which would cost a
-    // second planning turn to learn it. The *why* is the part that shapes the answer:
-    // a step is a model turn plus a commit plus a push, so a step per edit spends the
-    // job's clock on the boundaries between them rather than on the work.
-    `Use at most ${MAX_PLAN_STEPS} steps: each one is implemented by its own model turn and committed on its own, ` +
-      'so make every step a coherent unit of work rather than a single edit.',
-  ]
-
-  if (input.feedback !== null) {
-    sections.push(
-      'A maintainer reviewed your previous plan and asked for these changes. Rewrite the plan to address them:',
-      input.envelope.wrap('requested-changes', input.feedback),
     )
   }
 

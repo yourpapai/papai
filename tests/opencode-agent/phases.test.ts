@@ -5,13 +5,15 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { PLAN_MARKER, findArtifact } from '../../opencode-agent/src/artifacts.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { ParsedCommand } from '../../opencode-agent/src/commands.js'
 import type { OpenSpecDriver } from '../../opencode-agent/src/openspec-driver.js'
 import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
+import { handleAnswer } from '../../opencode-agent/src/phases/answer.js'
 import { handlePlan } from '../../opencode-agent/src/phases/plan.js'
+import { handleReview } from '../../opencode-agent/src/phases/review.js'
 import { handleTriage } from '../../opencode-agent/src/phases/triage.js'
+import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
@@ -316,9 +318,10 @@ describe('handlePlan · drafter loop (D3)', () => {
       `/repo/openspec/changes/${CHANGE}/design.md`,
       `/repo/openspec/changes/${CHANGE}/tasks.md`,
     ])
-    // The plan lives in the folder now — no AGENT_PLAN block rides on the issue.
-    expect(findArtifact(io.thread, AGENT_LOGIN, PLAN_MARKER)).toBeNull()
+    // The plan lives in the folder now — no AGENT_PLAN block rides on the
+    // issue, and the handler posts nothing to the thread itself.
     expect(outcome.blocks).toBeUndefined()
+    expect(io.thread).toEqual([])
     // A new plan bumps the plan-identity token.
     expect(outcome.patch?.planRevision).toBe(1)
   })
@@ -338,5 +341,126 @@ describe('handlePlan · drafter loop (D3)', () => {
     expect(io.prompts).toHaveLength(2)
     expect(io.writes).toHaveLength(2)
     expect(io.writes.at(-1)?.content).toBe('repaired attempt')
+  })
+})
+
+/**
+ * Design D1 — the folder is truth. `/ask` and `/review` no longer read a
+ * `AGENT_SPEC`/`AGENT_PLAN` block off the thread; they read the artifact the
+ * review is parked on straight out of `openspec/changes/<name>/`. These drive
+ * the two readers through `PhaseDeps` directly and pin the folder read.
+ */
+
+const folderDriver = (change: string): OpenSpecDriver => ({
+  newChange: (n: string): Promise<{ changeName: string }> => Promise.resolve({ changeName: n }),
+  archive: (): Promise<void> => Promise.resolve(),
+  validateStrict: (): Promise<{ ok: boolean; output: string }> => Promise.resolve({ ok: true, output: '' }),
+  status: (): Promise<import('../../opencode-agent/src/openspec-driver.js').StatusResult> =>
+    Promise.resolve({ schemaName: 'spec-driven', artifacts: {}, isPlanningComplete: true }),
+  instructions: (
+    artifactId: string,
+  ): Promise<import('../../opencode-agent/src/openspec-driver.js').InstructionsResult> =>
+    Promise.resolve({
+      instruction: `Draft the ${artifactId}.`,
+      template: undefined,
+      rules: [],
+      resolvedOutputPath: `/repo/openspec/changes/${change}/${artifactId}.md`,
+      existingOutputPaths: [],
+      dependencies: [],
+    }),
+})
+
+interface FolderReadOptions {
+  phase: 'DESIGN_SPEC' | 'PLAN_REVIEW' | 'CODE_REVIEW'
+  /** Content the folder read returns, keyed by artifact id (`proposal`, `tasks`). */
+  folder?: Record<string, string>
+  replies?: string[]
+  thread?: IssueComment[]
+}
+
+const folderReadInput = (options: FolderReadOptions): { input: PhaseInput; io: StubIo } => {
+  const built = stubPhaseDeps({ replies: options.replies ?? [''], selfLogin: AGENT_LOGIN, thread: options.thread })
+  built.deps.openspec = folderDriver(CHANGE)
+  built.io.readContents = {}
+  for (const [artifactId, content] of Object.entries(options.folder ?? {})) {
+    built.io.readContents[`/repo/openspec/changes/${CHANGE}/${artifactId}.md`] = content
+  }
+  const state = planningState({ phase: options.phase, changeName: CHANGE })
+  const trigger: TriggerEvent = {
+    kind: 'issue',
+    eventName: 'issue_comment',
+    action: 'created',
+    senderLogin: 'maintainer',
+    senderType: 'User',
+    authorAssociation: 'OWNER',
+    issueNumber: 42,
+    issueTitle: 'Add a retry helper',
+    issueBody: 'Please add a retry helper.',
+    isPullRequest: false,
+    commentBody: '/ask what is the plan?',
+    commentId: 1,
+    repositoryOwner: 'acme',
+    defaultBranch: 'main',
+  }
+  return {
+    input: {
+      state,
+      issue: { number: 42, title: 'Add a retry helper', body: 'Please add a retry helper.' },
+      trigger,
+      command: { command: '/ask', argument: 'what is the plan?' } as ParsedCommand,
+      thread: built.io.thread,
+      deps: built.deps,
+    },
+    io: built.io,
+  }
+}
+
+describe('handleAnswer · reads the artefact under review from the folder (D1)', () => {
+  it('at DESIGN_SPEC, reads proposal.md and grounds the answer in it', async () => {
+    const { input, io } = folderReadInput({
+      phase: 'DESIGN_SPEC',
+      folder: { proposal: '# Goal\n\nAdd a retry helper with exponential backoff.' },
+      replies: ['It will back off exponentially.'],
+    })
+
+    const outcome = await handleAnswer(input)
+
+    expect(outcome.signal).toBe('ANSWERED')
+    // The proposal content reached the prompt; no SPEC block read occurs.
+    expect(io.prompts[0]?.prompt).toContain('exponential backoff')
+    expect(io.reads).toEqual([`/repo/openspec/changes/${CHANGE}/proposal.md`])
+  })
+
+  it('at PLAN_REVIEW, reads tasks.md and grounds the answer in it', async () => {
+    const { input, io } = folderReadInput({
+      phase: 'PLAN_REVIEW',
+      folder: { tasks: '- [ ] Write retry tests\n- [ ] Add the wrapper\n' },
+      replies: ['Two steps.'],
+    })
+
+    const outcome = await handleAnswer(input)
+
+    expect(outcome.signal).toBe('ANSWERED')
+    expect(io.prompts[0]?.prompt).toContain('Add the wrapper')
+    expect(io.reads).toEqual([`/repo/openspec/changes/${CHANGE}/tasks.md`])
+  })
+})
+
+describe('handleReview · reads the plan from the folder (D1)', () => {
+  it('hands the loop the tasks.md content, not a block on the thread', async () => {
+    const tasks = '- [ ] Write retry tests\n- [ ] Add the wrapper\n'
+    const { input, io } = folderReadInput({ phase: 'CODE_REVIEW', folder: { tasks } })
+    const handed: string[] = []
+    input.deps.runReview = (plan: string): Promise<ReviewRunResult> => {
+      handed.push(plan)
+      return Promise.resolve({ outcome: 'passed', summary: '', exitCode: 0 })
+    }
+
+    const outcome = await handleReview(input)
+
+    expect(outcome.signal).toBe('REVIEW_DONE')
+    // The review loop was handed the folder's tasks.md verbatim.
+    expect(handed).toEqual([tasks])
+    expect(io.reads).toEqual([`/repo/openspec/changes/${CHANGE}/tasks.md`])
   })
 })
