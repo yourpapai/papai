@@ -6,24 +6,17 @@
 import { z } from 'zod'
 
 /**
- * What a plan is, as **data** rather than as prose.
+ * What a plan is, under design D5: `tasks.md` checkboxes.
  *
- * The planning phase has always asked the model for JSON — `promptForJson`, one
- * re-ask on a validation complaint — and then thrown the structure away, keeping
- * only the markdown it rendered from it. That was fine while the implementation was
- * one turn for the whole plan; it is not fine now that the unit of work is a step,
- * because the alternative to carrying the steps is recovering them from the
- * markdown. Scraping prose to recover an artefact is the oldest rule in this
- * workspace and it exists because heading-and-trailer scraping silently truncated
- * specs at their first `---` rule.
+ * The plan no longer travels as a JSON steps object rendered into a comment and
+ * a hidden block — the folder is truth (D1), and `tasks.md` is the plan's only
+ * shape. `REVIEW_AND_MUTATE` walks its checkboxes one turn at a time and ticks
+ * each box in the same commit as the step's work; this module owns the parser
+ * that turns the file into the ordered box list the walk reads, plus the
+ * `PlanStep`/`describeStep` the implement prompt still borrows to phrase a turn.
  *
- * So the steps travel in the plan block beside the text (`artifacts.ts`), and the
- * text a maintainer reads is **rendered from them** ({@link renderPlanMarkdown}).
- * One value feeds the comment and the block, so the plan somebody approved and the
- * steps the implementation walks cannot disagree.
- *
- * A leaf on purpose: this module imports nothing but zod, so `artifacts.ts` can own
- * the block round trip without either file importing the other.
+ * A leaf on purpose: this module imports nothing but zod, so nothing here can
+ * pull the pipeline's graph in by accident.
  */
 
 export const planStepSchema = z.object({
@@ -40,12 +33,6 @@ export type PlanStep = z.infer<typeof planStepSchema>
  * A cap because every step is a model turn plus a commit plus a push: a plan of two
  * hundred "steps" is not a finer plan, it is a plan whose steps are single edits,
  * and walking it would spend a whole job's clock on the overhead between them.
- * Enforced on the **ask** rather than on the read, which is what makes it cheap:
- * `promptForJson` re-asks once with zod's own complaint attached ("expected array to
- * have <=25 items"), so the ordinary outcome is a coarser breakdown from the same
- * planning turn. A planner that will not coarsen twice fails the phase, where a
- * maintainer's `/changes` is the remedy — deliberately louder than truncating the
- * list, which would post a plan whose second half nobody would ever implement.
  *
  * Twenty-five because it is comfortably more than any plan this pipeline has
  * produced and comfortably fewer than a job can walk: at the observed few minutes a
@@ -53,23 +40,6 @@ export type PlanStep = z.infer<typeof planStepSchema>
  * a plan that wanted splitting into issues.
  */
 export const MAX_PLAN_STEPS = 25
-
-/**
- * The plan the planner is asked for.
- *
- * `min(1)` is a decision and not a formality: a planning turn that reports no steps
- * has not planned, and the phase must say so rather than fall through to a one-shot
- * implementation of a document with nothing in it. That is the opposite reading from
- * a plan *block* with no steps, which is a legacy record and runs as one turn — the
- * difference being that one is a model failing now and the other is a maintainer
- * having approved something before steps existed.
- */
-export const executionPlanSchema = z.object({
-  steps: z.array(planStepSchema).min(1).max(MAX_PLAN_STEPS),
-  summary: z.string().default(''),
-})
-
-export type ExecutionPlan = z.infer<typeof executionPlanSchema>
 
 /**
  * Where in a plan a run was, for the two readers that have to be told.
@@ -89,25 +59,6 @@ export interface StepMarker {
   title: string
 }
 
-const filesLine = (step: PlanStep): string =>
-  step.files.length === 0 ? '_(no files declared)_' : step.files.map((file) => `\`${file}\``).join(', ')
-
-const verificationLine = (step: PlanStep): string =>
-  step.verification.trim() === '' ? '_(not stated)_' : step.verification.trim()
-
-/** The plan as markdown: the comment a maintainer approves, rendered from the steps. */
-export const renderPlanMarkdown = (plan: ExecutionPlan): string => {
-  const steps = plan.steps.map(
-    (step, index) =>
-      `${index + 1}. **${step.title}**\n   - Files: ${filesLine(step)}\n   - Verified by: ${verificationLine(step)}`,
-  )
-
-  const sections: string[] = []
-  if (plan.summary.trim() !== '') sections.push(plan.summary.trim())
-  sections.push(steps.join('\n'))
-  return sections.join('\n\n')
-}
-
 /**
  * One step, as the prompt that implements it states it.
  *
@@ -123,6 +74,89 @@ export const describeStep = (step: PlanStep): string =>
 
 /** Longest a commit subject may be, which is git's own convention rather than a rule. */
 const SUBJECT_LIMIT = 72
+
+/**
+ * One `tasks.md` checkbox, as `REVIEW_AND_MUTATE` walks it (design D5).
+ *
+ * `line` is the 1-based line number in the file, so the box-check edit (`- [ ]`
+ * → `- [x]`) targets the exact line. `checked` is the state the parser read —
+ * the walk checks each box in the same commit as the step's work.
+ */
+export interface TaskCheckbox {
+  line: number
+  text: string
+  checked: boolean
+}
+
+const CHECKBOX = /^(\s*)- \[([ x])\] (.*)$/u
+
+/**
+ * Parses a `tasks.md` body into its ordered checkbox list.
+ *
+ * The walk reads the unchecked boxes from `state.stepsDone`; everything else
+ * (prose, headings, `---` rules) is ignored. Indented sub-item checkboxes are
+ * included — they are real steps a maintainer can break work into — and keep
+ * their indentation in the edit because {@link checkBoxText} rewrites only the
+ * `[ ]` marker.
+ */
+export const parseTaskCheckboxes = (markdown: string): TaskCheckbox[] => {
+  const boxes: TaskCheckbox[] = []
+  const lines = markdown.split('\n')
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = CHECKBOX.exec(lines[index] ?? '')
+    if (match === null) continue
+    const checked = match[2] === 'x'
+    boxes.push({ line: index + 1, text: match[3]?.trim() ?? '', checked })
+  }
+  return boxes
+}
+
+/**
+ * One `tasks.md` checkbox with its **absolute** position in the plan, as
+ * `REVIEW_AND_MUTATE` walks it (design D5).
+ *
+ * `number`/`total` are the marker a maintainer reads ("step 3 of 5"), counted
+ * among **every** box in the file — checked or not — so the number a step
+ * carries is stable across a run that checks the boxes ahead of it. `line` is
+ * the 1-based file line the box-check edit targets; `checked` is the state the
+ * parser read, which the walk treats as "done" and skips without a turn.
+ */
+export interface PlanBox {
+  number: number
+  total: number
+  text: string
+  line: number
+  checked: boolean
+}
+
+/**
+ * Every checkbox in a `tasks.md`, in file order, with absolute numbering.
+ *
+ * The walk reads the file once and visits each box by absolute index: a checked
+ * box is done and is skipped (the box-check is the persistence), an unchecked
+ * one gets a turn. Numbering among all boxes — not just the unchecked ones — is
+ * what keeps "step 3 of 5" honest on a `/continue` that arrives after steps 1
+ * and 2 have had their boxes ticked; numbering among the unchecked alone would
+ * re-label the third as the first and hide which step the cursor is on.
+ */
+export const planBoxes = (markdown: string): PlanBox[] => {
+  const checkboxes = parseTaskCheckboxes(markdown)
+  const total = checkboxes.length
+  return checkboxes.map((box, index) => ({
+    number: index + 1,
+    total,
+    text: box.text,
+    line: box.line,
+    checked: box.checked,
+  }))
+}
+
+/**
+ * The box-check edit for a line: `[ ]` → `[x] on its way into the step's commit.
+ * Rewrites only the marker, so an indented sub-item keeps its indentation and
+ * the text after the marker is untouched.
+ */
+export const checkBoxText = (line: string): string => line.replace(/^(\s*- \[) \]/u, '$1x]')
 
 /**
  * A step's title, safe to put in a commit subject.

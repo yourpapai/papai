@@ -76,7 +76,22 @@ export interface CiTriggerEvent {
   defaultBranch: string | null
 }
 
-export type TriggerEvent = IssueTriggerEvent | CiTriggerEvent | PullRequestTriggerEvent
+/**
+ * A merged PR on an agent branch — the archive door (D7). A system event (no
+ * sender): `pull_request.closed(merged)` runs `ARCHIVE`. Fully parsed from the
+ * payload, since `head.ref` rides on a `pull_request` webhook.
+ */
+export interface PrMergedTriggerEvent {
+  kind: 'pr-merged'
+  eventName: string
+  prNumber: number
+  issueNumber: number
+  baseBranch: string
+  fromThisRepository: boolean
+  defaultBranch: string | null
+}
+
+export type TriggerEvent = IssueTriggerEvent | CiTriggerEvent | PullRequestTriggerEvent | PrMergedTriggerEvent
 
 /** What {@link parseTriggerEvent} yields: an event, or one still short an issue. */
 export type ParsedTrigger = TriggerEvent | PendingPullRequestEvent
@@ -235,19 +250,50 @@ const parsePullRequestEvent = (eventName: string, payload: unknown): PendingPull
 }
 
 /**
- * Normalizes a raw webhook payload. Returns `null` when the payload carries
- * nothing the pipeline acts on — an unrelated branch, a run with no branch, a
- * dispatch with no issue — which the caller treats as "nothing to do".
- *
- * A pull-request comment is tried first and yields a
- * {@link PendingPullRequestEvent}, the one shape this function cannot finish:
- * the issue it belongs to is only knowable from the API.
+ * Normalizes a raw webhook payload, or `null` when it carries nothing the
+ * pipeline acts on. A `pull_request` webhook (D7) finishes here; an
+ * `issue_comment` yields a `PendingPullRequestEvent` (its issue needs the API).
  */
 export const parseTriggerEvent = (eventName: string, payload: unknown): ParsedTrigger | null => {
   if (eventName === 'workflow_run' || eventName === 'check_suite') return parseCiEvent(eventName, payload)
+  if (eventName === 'pull_request') return parsePrMergedEvent(eventName, payload)
   return parseIssueOrPullRequest(eventName, payload)
 }
 
 const parseIssueOrPullRequest = (eventName: string, payload: unknown): ParsedTrigger | null =>
   (eventName === 'issue_comment' ? parsePullRequestEvent(eventName, payload) : null) ??
   parseIssueEvent(eventName, payload)
+
+const prMergedSchema = z.object({
+  action: z.literal('closed'),
+  pull_request: z.object({
+    merged: z.literal(true),
+    number: z.number().int().positive(),
+    head: z.object({
+      ref: z.string().min(1),
+      repo: z.object({ full_name: z.string().default('') }).optional(),
+    }),
+    base: z.object({ ref: z.string().min(1) }),
+  }),
+  repository: z.object({ full_name: z.string().default(''), default_branch: z.string().min(1).optional() }).optional(),
+})
+
+/** `pull_request.closed(merged)` on an agent branch — the archive door (D7). */
+const parsePrMergedEvent = (eventName: string, payload: unknown): PrMergedTriggerEvent | null => {
+  const parsed = prMergedSchema.safeParse(payload)
+  if (!parsed.success) return null
+  const { pull_request: pr, repository } = parsed.data
+  const issueNumber = issueNumberFromBranch(pr.head.ref)
+  if (issueNumber === null) return null
+  const headFullName = pr.head.repo?.full_name ?? ''
+  const repoFullName = repository?.full_name ?? ''
+  return {
+    kind: 'pr-merged',
+    eventName,
+    prNumber: pr.number,
+    issueNumber,
+    baseBranch: pr.base.ref,
+    fromThisRepository: headFullName.length > 0 && headFullName === repoFullName,
+    defaultBranch: repository?.default_branch ?? null,
+  }
+}

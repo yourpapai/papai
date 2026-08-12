@@ -106,6 +106,9 @@ const STEP_OF: Record<Phase, number | null> = {
   // the branch is pushed and the pull request open before either can start.
   CODE_REVIEW: 4,
   CI_FIX: 4,
+  // The archive door (D7) runs after delivery, on the base branch — past the
+  // pipeline's milestones, like COMPLETE.
+  ARCHIVE: null,
   COMPLETE: null,
   FAILED: null,
   INCOMPLETE: null,
@@ -148,7 +151,7 @@ const stepIndex = (state: AgentState): number => {
   if (state.prUrl !== null) return RUN_STEPS.length
 
   if (state.planRevision > 0) return PLAN_STEP
-  return state.specRevision > 0 ? SPEC_STEP : 0
+  return state.changeName === null ? 0 : SPEC_STEP
 }
 
 /**
@@ -170,13 +173,13 @@ const stepMark = (index: number, current: number, view: StatusView): string => {
 /**
  * The revision this row's artefact is on.
  *
- * Read from `specRevision` and `planRevision`, never recounted: the two counters
- * were split apart precisely because one number could not honestly label two
- * artefacts, and a table that re-derived them would be the second place that
- * went wrong.
+ * Only the plan row carries a revision now: under the OpenSpec rework the
+ * proposal lives in the `openspec/changes/<name>/` folder whose history *is*
+ * its revision (a rendered digest says so), so the "Design spec" row reports no
+ * counter. `planRevision` remains the machine's plan-identity token, read here
+ * for the row it has always labelled.
  */
 const revisionNote = (index: number, state: AgentState): string => {
-  if (index === SPEC_STEP && state.specRevision > 0) return ` · revision ${state.specRevision}`
   if (index === PLAN_STEP && state.planRevision > 0) return ` · revision ${state.planRevision}`
   return ''
 }

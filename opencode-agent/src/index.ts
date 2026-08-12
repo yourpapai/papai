@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
@@ -10,6 +11,7 @@ import { pathToFileURL } from 'node:url'
 import type { AgentHandle } from './agent-handle.js'
 import type { CliArgs, MainOptions } from './cli-args.js'
 import { parseArgs } from './cli-args.js'
+import { resolveOpenSpecMode } from './config-discovery.js'
 import { loadConfig } from './config.js'
 import type { PipelineConfig } from './config.js'
 import { contain } from './contain.js'
@@ -122,6 +124,55 @@ const runPipelineLifecycle = async (input: LifecycleInput): Promise<RunResult> =
 }
 
 /**
+ * The fail-closed door for a checkout with no `openspec/` tree (design D10).
+ *
+ * Posts one clear comment naming the remedy and stands down: the agent never
+ * scaffolds OpenSpec into a foreign repo, and with `AGENT_SPEC`/`AGENT_PLAN`
+ * retired (D12) there is no legacy block mode to fall back to. Called before
+ * `contain`, so no OpenCode server spawns for a run that will do no work.
+ */
+const postStandDown = async (
+  reason: string,
+  issueNumber: number,
+  github: GitHubApi,
+  log: Logger,
+): Promise<RunResult> => {
+  log.warn({ mode: 'stand-down', issue: issueNumber }, 'No openspec/ tree; posting stand-down and exiting')
+  await github.createComment(issueNumber, reason)
+  return { status: 'skipped', reason: 'stand-down: no openspec/ tree', state: null, reported: true }
+}
+
+/**
+ * Resolves the event this run acts on, and the two early-exit doors that can
+ * close before any work starts: a payload this pipeline ignores, and the
+ * OpenSpec stand-down (design D10) for a checkout with no `openspec/` tree.
+ *
+ * Returning a discriminated union keeps `runCli` under `max-lines-per-function`
+ * without spreading the door logic across the entry point. The probe lives here
+ * rather than in `loadConfig` because this is its sole consumer, and folding it
+ * into config would grow that file past `max-lines` for a single call site.
+ */
+type DoorResolution =
+  | { readonly kind: 'door'; readonly result: RunResult }
+  | { readonly kind: 'event'; readonly event: TriggerEvent }
+
+const resolveEventOrDoor = async (args: CliArgs, github: GitHubApi, log: Logger): Promise<DoorResolution> => {
+  const event = await readEvent(args, github, log)
+  if (event === null) {
+    return {
+      kind: 'door',
+      result: { status: 'skipped', reason: 'Payload carries nothing to act on', state: null, reported: false },
+    }
+  }
+
+  const mode = resolveOpenSpecMode(args.repoRoot, existsSync)
+  if (mode.mode === 'stand-down')
+    return { kind: 'door', result: await postStandDown(mode.reason, event.issueNumber, github, log) }
+
+  return { kind: 'event', event }
+}
+
+/**
  * Entry point shared by the Action and by local `--event-path` runs.
  *
  * Returns a {@link RunResult} rather than exiting so the same call is drivable
@@ -145,12 +196,9 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
   // Before the event is even known, because resolving a pull-request comment to
   // its issue is an API call — see {@link ContainInput.github}.
   const github = githubFor(config, secrets, options)
-  const event = await readEvent(args, github, log)
-  if (event === null) {
-    // No marker: nothing was posted, and nothing needs one — this exits 0, so
-    // the fallback step is out of scope either way.
-    return { status: 'skipped', reason: 'Payload carries nothing to act on', state: null, reported: false }
-  }
+  const resolved = await resolveEventOrDoor(args, github, log)
+  if (resolved.kind === 'door') return resolved.result
+  const { event } = resolved
 
   // After the event is known: a payload this pipeline ignores must not spend
   // the one keyless warning — or create the empty artefact — on a run that was

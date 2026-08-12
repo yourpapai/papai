@@ -202,8 +202,8 @@ export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
   model: required(env, 'LLM_MODEL'),
 })
 
-/** Skill roots searched in order; the vendored superpowers checkout wins. */
-const DEFAULT_SKILL_ROOTS = ['.superpowers/skills', '.claude/skills'] as const
+/** Loader roots, first-hit-wins (D11): in-repo OpenSpec trees first, then the pinned superpowers checkout. */
+const DEFAULT_SKILL_ROOTS = ['.opencode/skills', '.agents/skills', '.superpowers/skills', '.claude/skills'] as const
 
 /**
  * Builds the URL of the run this process is executing in.

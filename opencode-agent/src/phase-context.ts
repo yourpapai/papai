@@ -13,6 +13,7 @@ import type { GitHubApi } from './github.js'
 import type { Logger } from './logger.js'
 import type { SkillDocument } from './obra-skills.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
+import type { OpenSpecDriver } from './openspec-driver.js'
 import type { ReviewRunResult } from './review-runner.js'
 import type { StatusReporter } from './status-reporter.js'
 import type { TriggerEvent } from './trigger-events.js'
@@ -50,6 +51,24 @@ export interface PhaseDeps {
    */
   tokensUsed: () => Promise<number>
   skills: (phase: Phase) => Promise<SkillDocument[]>
+  /**
+   * Writes composed artifact content to a resolved path under the change folder
+   * (design D3). The drafter asks the model for content and hands it here; the
+   * diff guard's `outsidePrefix` confines what the subsequent commit keeps.
+   */
+  writeFile: (filePath: string, content: string) => Promise<void>
+  /**
+   * Reads a file under the change folder. `REVIEW_AND_MUTATE` reads `tasks.md`
+   * to walk its checkboxes and to check each box in the step's commit (D5).
+   */
+  readFile: (filePath: string) => Promise<string>
+  /**
+   * The OpenSpec CLI driver (design D3): the thin TS seam over `openspec new
+   * change` / `status --json` / `instructions --json` / `validate --strict` /
+   * `archive`. Injected like every other external boundary so the whole state
+   * machine runs against a fake in tests.
+   */
+  openspec: OpenSpecDriver
   /**
    * Branch new work forks from and pull requests target. Memoized and lazy:
    * resolving it can cost a round trip to the remote, and a run stopped by a

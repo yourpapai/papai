@@ -7,6 +7,18 @@ See LICENSE in the project root for details.
 
 # opencode-agent — follow-up roadmap
 
+> **OpenSpec rework.** The `opencode-agent-openspec-compliance` change rewired
+> this workspace onto the repo's OpenSpec substrate: `PHASE_SKILLS` routes to
+> `openspec-explore`/`openspec-propose` (not `brainstorming`/`writing-plans`),
+> the `AGENT_SPEC`/`AGENT_PLAN` artefact blocks are retired in favour of a real
+> `openspec/changes/<name>/` folder on `agent/issue-<n>` (D1), `tasks.md` is the
+> implementation step source (D5), a merged PR is the archive door (D7), and a
+> deliberate `STATE_VERSION` bump (D12) strands legacy issues onto a fresh
+> restart. Findings below that reference the retired blocks or the old skill
+> names are historical — they describe what the audit found and how it was
+> fixed, and the fix has since been superseded by the folder model. The full
+> design is `openspec/changes/opencode-agent-openspec-compliance/design.md`.
+
 > **Status.** This began as a report-only audit; much of it has since been fixed.
 > Resolved items are marked **[FIXED]** inline, each with what was verified and —
 > where it applies — what the first attempt at the fix got wrong. All of **S1**,

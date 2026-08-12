@@ -82,6 +82,21 @@ export class GitError extends Error {
 export interface Git {
   ensureBranch(branch: string, base: string): Promise<void>
   /**
+   * Force-resets `branch` to `base`, discarding any prior commits on it (D12).
+   *
+   * Used by the capture scaffold: a restarted issue whose `agent/issue-<n>`
+   * branch already carries partial legacy work must start from zero, not adopt
+   * the old diff. Force-pushes so the remote reflects the reset — then the
+   * scaffold's own commit and push are an ordinary fast-forward from base.
+   */
+  resetBranchToBase(branch: string, base: string): Promise<void>
+  /**
+   * Deletes the remote branch (D9 cancel cleanup). A mis-capture's branch +
+   * change folder are the work being undone; `git push origin --delete` removes
+   * them from the remote. The local checkout dies with the job.
+   */
+  deleteRemoteBranch(branch: string): Promise<void>
+  /**
    * Commits every change; resolves `null` when the tree was already clean.
    *
    * That return is the only "did anything change?" answer the pipeline needs —
@@ -217,6 +232,23 @@ export const createGit = (options: GitOptions): Git => {
 
   return {
     ensureBranch: (branch, base) => ensureBranch(git, gitOrThrow, branch, base),
+    resetBranchToBase: async (branch, base) => {
+      await gitOrThrow('fetch', 'origin', base)
+      // `-B` force-resets the local branch to `origin/<base>`, discarding any
+      // prior commits on it — restart means from zero (D12).
+      await gitOrThrow('checkout', '-B', branch, `origin/${base}`)
+      // Force-push so the remote reflects the reset; the scaffold's own push is
+      // then an ordinary fast-forward.
+      await gitOrThrow('push', '--force', '-u', 'origin', branch)
+    },
+    deleteRemoteBranch: (branch) =>
+      // `--delete` is idempotent against a branch that was never pushed: a
+      // pre-capture `/cancel` has no branch to remove, and a missing ref is not
+      // an error this pipeline needs to surface.
+      gitOrThrow('push', 'origin', '--delete', branch).then(
+        () => undefined,
+        () => undefined,
+      ),
     commitAll: (message) => commitAll(gitOrThrow, options, message),
     salvageAll: (message) => salvageAll(gitOrThrow, options, message),
     push: async (branch, pushOptions) => {

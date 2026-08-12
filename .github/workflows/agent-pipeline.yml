@@ -25,6 +25,14 @@ on:
   workflow_run:
     workflows: ['CI']
     types: [completed]
+  # Design D7 — the archive door: a merged pull request on `agent/issue-<n>`
+  # runs the `ARCHIVE` phase, which archives the change folder as a follow-up
+  # commit on the base branch. `closed` fires for every close; the in-process
+  # guardrail checks `merged` and the agent branch, so an unmerged close or a
+  # foreign fork never boots a runner with the keys mounted (the `if:` below
+  # mirrors that filter).
+  pull_request:
+    types: [closed]
 
 permissions:
   contents: write
@@ -111,13 +119,23 @@ jobs:
        github.event.issue.pull_request == null &&
        github.event.sender.type != 'Bot' &&
        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.issue.author_association))
-      ||
-      (github.event_name == 'issue_comment' &&
-       github.event.action == 'created' &&
-       github.event.issue.pull_request != null &&
-       contains(github.event.comment.body, '/review') &&
-       github.event.sender.type != 'Bot' &&
-       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
+       ||
+       (github.event_name == 'issue_comment' &&
+        github.event.action == 'created' &&
+        github.event.issue.pull_request != null &&
+        contains(github.event.comment.body, '/review') &&
+        github.event.sender.type != 'Bot' &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
+       ||
+       # Design D7 — the archive door. A merged pull request on an agent branch
+       # whose head is this repository. The in-process parse checks the same four
+       # things; this arm keeps a fork's `agent/issue-42` or an unmerged close
+       # from ever booting a runner with the API keys mounted.
+       (github.event_name == 'pull_request' &&
+        github.event.action == 'closed' &&
+        github.event.pull_request.merged == true &&
+        startsWith(github.event.pull_request.head.ref, 'agent/issue-') &&
+        github.event.pull_request.head_repository.full_name == github.repository)
 
     steps:
       # The one fact a pull-request comment's payload does not carry. Every block
@@ -182,7 +200,12 @@ jobs:
         id: issue
         env:
           ISSUE_NUMBER: ${{ github.event.issue.pull_request == null && github.event.issue.number || '' }}
-          HEAD_BRANCH: ${{ steps.head.outputs.branch || github.event.workflow_run.head_branch }}
+          # Three event kinds name their issue three ways. An issue event carries
+          # the number directly; a `workflow_run` carries the branch that went
+          # red; a `pull_request` webhook (the archive door, D7) carries its own
+          # `head.ref`. The script below parses `agent/issue-<n>` from whichever
+          # branch this resolves to.
+          HEAD_BRANCH: ${{ steps.head.outputs.branch || github.event.workflow_run.head_branch || github.event.pull_request.head.ref }}
         run: |
           number="$ISSUE_NUMBER"
           if [ -z "$number" ]; then
@@ -339,6 +362,14 @@ jobs:
         run: |
           bun add --global opencode-ai@1.18.7
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      # Design D3/D7 — the openspec CLI drives the planning protocol (`new
+      # change`, `status --json`, `instructions --json`, `validate --strict`) and
+      # the archive door. Pinned like every other third-party surface this
+      # pipeline trusts: a moving ref would change the planning contract under
+      # review.
+      - name: Install the OpenSpec CLI
+        run: bun add --global @fission-ai/openspec@1.8.0
 
       # `id:` is load-bearing, not decoration: the pipeline writes
       # `reported=true` to $GITHUB_OUTPUT for every path that has already put a

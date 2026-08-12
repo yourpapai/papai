@@ -30,7 +30,12 @@ export { LEGACY_PHASE_NAMES, PHASES, WAITING_PHASES } from './phase-names.js'
  */
 export const TRANSITION_SIGNALS = [
   'NEEDS_CLARIFICATION',
-  'SPEC_POSTED',
+  // Was `SPEC_POSTED` when the design spec travelled in an `AGENT_SPEC` block.
+  // Renamed under the OpenSpec rework (design D1): triage no longer posts a
+  // spec block, it *captures* the issue as an `openspec/changes/<name>/` folder
+  // (scaffolded, branched and pushed as commit #1 — D2), then parks at
+  // `DESIGN_SPEC` for a human to review a rendered digest of that folder.
+  'CAPTURED',
   'CHANGES_REQUESTED',
   'ANSWERED',
   'APPROVED',
@@ -41,6 +46,11 @@ export const TRANSITION_SIGNALS = [
   'CI_FIXED',
   'REVIEW_REQUESTED',
   'REVIEW_DONE',
+  // Design D7 — the archive door. A merged pull request on `agent/issue-<n>`
+  // moves COMPLETE → ARCHIVE; the handler runs `openspec archive` as a
+  // follow-up commit on master and signals ARCHIVED back to COMPLETE.
+  'PR_MERGED',
+  'ARCHIVED',
   'CANCELLED',
   'FAILED',
   'RETRY',
@@ -50,8 +60,20 @@ export const TRANSITION_SIGNALS = [
 
 export type TransitionSignal = (typeof TRANSITION_SIGNALS)[number]
 
-/** Bumped when the persisted shape changes in a way old blocks cannot satisfy. */
-export const STATE_VERSION = 2
+/**
+ * Bumped when the persisted shape changes in a way old blocks cannot satisfy.
+ *
+ * v3 is a **deliberate stranding** (design D12): the opencode-agent rework
+ * retires `AGENT_SPEC`/`AGENT_PLAN` artefact blocks outright and moves planning
+ * onto a real `openspec/changes/<name>/` folder, so an in-flight issue's legacy
+ * state describes a pipeline that no longer exists. Rather than carry a dual
+ * format, v2 blocks are rejected by the schema, the restore scan finds nothing
+ * valid, and the issue restarts at `INIT_OR_CLARIFY` under the compliant
+ * pipeline (with its `agent/issue-<n>` branch reset — D12). The migration
+ * precedent avoided bumps because stranding was the cost; here stranding is the
+ * chosen behaviour, and restart-with-reset is the recovery path.
+ */
+export const STATE_VERSION = 3
 
 /**
  * The durable state carried between ephemeral CI jobs. Serialized verbatim into
@@ -63,8 +85,14 @@ export const STATE_VERSION = 2
  * a multi-kilobyte spec each time would bloat the thread.
  */
 export const agentStateSchema = z.object({
-  /** Absent on v1 blocks written before versioning; those are treated as v1. */
-  v: z.number().int().min(1).default(1),
+  /**
+   * Must equal {@link STATE_VERSION} exactly. There is no default and no
+   * tolerance for an older `v`: a mismatched block is rejected so the restore
+   * scan walks past it (D12), which is the mechanism that strands legacy issues
+   * onto a fresh restart under the compliant pipeline rather than reading a
+   * state that describes a pipeline this code no longer runs.
+   */
+  v: z.literal(STATE_VERSION),
   phase: phaseName,
   issueId: z.number().int().positive(),
   // No `branch`: it is exactly `agent/issue-<issueId>`, every phase recomputes
@@ -163,27 +191,38 @@ export const agentStateSchema = z.object({
    */
   stepsDone: z.number().int().min(0).default(0),
   /**
-   * Revisions of the design spec and of the plan, counted apart.
+   * The OpenSpec change folder this issue was captured into — the kebab name
+   * triage reported and `openspec new change` scaffolded.
    *
-   * One shared counter used to serve both, bumped on `SPEC_POSTED` and on
-   * `PLAN_POSTED` alike while each handler rendered it into its own heading, so
-   * the two numbers interleaved. On an issue that ran straight through, the
-   * first spec a maintainer ever saw was "revision 1" and the first plan
-   * "revision 2"; revise the spec once beforehand and that same first plan was
-   * "revision 3". A revision number on a heading is read as "the Nth version of
-   * this artefact" — there is nothing else it could mean — so neither figure
-   * meant what it said.
+   * `null` until `INIT_OR_CLARIFY` converges on a capture (design D9), then the
+   * folder name for the rest of the issue's life. The branch is still derived
+   * from `issueId` (`agent/issue-<n>`), never persisted; this names the folder
+   * *inside* `openspec/changes/` on that branch, which is the one thing the
+   * issue number does not determine. Set on `CAPTURED` and read by every phase
+   * that writes or renders the folder's artifacts.
    *
-   * Both carry defaults, so a block written before the split still parses and
-   * needs no `STATE_VERSION` bump, which would strand every in-flight issue (see
-   * the README's migration note). The old `revision` key is dropped as an
-   * unknown one, exactly as `approved` and `updatedAt` were. The price is that
-   * an issue mid-conversation across the change restarts both counts at 1, and
-   * that is the deliberate choice: the number it was carrying is a sum of two
-   * artefacts' revisions and was never the count of either, so carrying it into
-   * one of the new fields would preserve nothing but the wrong answer.
+   * Needs no `STATE_VERSION` bump of its own — v3 is brand new under D12, and
+   * the field defaults so any v3 block written before it existed still parses.
    */
-  specRevision: z.number().int().min(0).default(0),
+  changeName: z.string().nullable().default(null),
+  /**
+   * The plan-identity token: which version of the folder's `tasks.md` the
+   * machine is on.
+   *
+   * Under the OpenSpec rework (design D1) the *content* of the plan no longer
+   * lives in an `AGENT_PLAN` block — it lives in `tasks.md` on the branch, which
+   * `REVIEW_AND_MUTATE` walks checkbox by checkbox (D5). What state still needs
+   * is a machine identity for "a new plan happened", so the wall-clock handoff
+   * (`findHandoff`) retires across a re-plan and the implementation report stamps
+   * which plan it executed. This counter is that token, bumped by `PLAN_POSTED`
+   * alone. It is a machine identity, not an artifact revision: the artifact's
+   * real history is the branch's commits, and rendered digests say so.
+   *
+   * The former companion `specRevision` is gone: the proposal lives in the
+   * folder and `DESIGN_SPEC` reviews a digest of it, so nothing counts spec
+   * revisions any more. Dropping it needed no `STATE_VERSION` bump — v3 is new,
+   * and the field defaulted anyway.
+   */
   planRevision: z.number().int().min(0).default(0),
   /**
    * Model tokens this issue has consumed, across every job it has run.

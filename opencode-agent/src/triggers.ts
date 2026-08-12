@@ -7,14 +7,15 @@ import { renderExhausted, renderReviewsExhausted } from './budget-notices.js'
 import { applyCiTrigger } from './ci-trigger.js'
 import { acceptedCommands, commandApplies, COMMAND_SIGNALS } from './commands.js'
 import type { ParsedCommand, SlashCommand } from './commands.js'
-import { applyClarifyIntent, applyIntent, readAndSkip } from './comment-intent.js'
+import { applyClarifyIntent, applyIntent, applySteeringIntent, readAndSkip } from './comment-intent.js'
 import { react } from './feedback.js'
+import { branchNameFor } from './git.js'
 import type { PhaseInput } from './phase-context.js'
 import { postAndAppend, renderRefusedCommand } from './run-report.js'
 import { canTransition } from './transitions.js'
 import { moveOrSkip, skip } from './trigger-outcome.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
-import { WAITING_PHASES } from './types.js'
+import { errorMessage, WAITING_PHASES } from './types.js'
 
 /**
  * Turning a trigger — a slash command, a plain comment, a red CI run — into the
@@ -52,15 +53,43 @@ export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   const { state, trigger, command } = input
 
   if (trigger.kind === 'ci') return applyCiTrigger(input)
+  // Design D7 — the archive door: a merged PR on `agent/issue-<n>` moves
+  // COMPLETE → ARCHIVE. Routed before the issue-conversation branches because
+  // it is a fourth event kind, not a command — `moveOrSkip` turns the refusal
+  // (anything other than COMPLETE) into the same quiet skip the CI path uses for
+  // a red run that arrives in a phase with no branch to fix.
+  if (trigger.kind === 'pr-merged') return Promise.resolve(applyArchiveTrigger(input))
   // Before the command branch below, not folded into it: a pull request is a
   // narrower door onto the same commands, and the narrowing is what §6.2 of the
   // plan settles. Everything after this line is the issue conversation.
   if (trigger.kind === 'pull-request') return applyPullRequestCommand(input, command)
   if (command !== null) return applyCommand(input, command)
   if (state.phase === 'INIT_OR_CLARIFY') return applyClarifyIntent(input)
+  // Design D6 — a plain comment mid-implementation is read as steering: a
+  // scope-affecting change routes back to PLANNING for an artifact-update turn
+  // before implementation continues. Before the generic skip below, not folded
+  // into it, because implementation is the one phase where prose can change
+  // scope — everywhere else a non-waiting, non-clarify phase has nothing for a
+  // plain comment to act on.
+  if (state.phase === 'REVIEW_AND_MUTATE') return applySteeringIntent(input)
   if (!WAITING_PHASES.has(state.phase)) return readAndSkip(input, `No actionable command while in ${state.phase}`)
 
   return applyIntent(input)
+}
+
+/**
+ * The archive door (D7): a merged PR moves `COMPLETE` → `ARCHIVE`.
+ *
+ * `moveOrSkip` turns anything other than COMPLETE into a quiet skip with a
+ * reason: a merged-PR event that arrives mid-pipeline, before delivery, has no
+ * archive to run (the folder is still being drafted against), and a second
+ * merge on an already-archived issue finds no `ARCHIVE` row from `COMPLETE` and
+ * is skipped the same way. No comment is posted on a skip, mirroring the CI
+ * path: the event is machine noise the issue does not need to hear about.
+ */
+export const applyArchiveTrigger = (input: PhaseInput): TriggerOutcome => {
+  const { state, deps } = input
+  return moveOrSkip(state, 'PR_MERGED', deps, 'a merged pull request')
 }
 
 /** The one command a pull request accepts. See {@link applyPullRequestCommand}. */
@@ -98,7 +127,7 @@ const applyPullRequestCommand = (input: PhaseInput, command: ParsedCommand | nul
   return applyCommand(input, command)
 }
 
-const applyCommand = (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
+const applyCommand = async (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
   const { state, deps } = input
   // Always available: answering asks nothing of the state machine, so there is
   // no phase in which it can be the wrong thing to do. The machine now agrees —
@@ -141,9 +170,26 @@ const applyCommand = (input: PhaseInput, command: ParsedCommand): Promise<Trigge
   }
 
   const outcome = moveOrSkip(state, signal, deps, command.command)
-  if (outcome.halt === null) return Promise.resolve(outcome)
+  if (outcome.halt !== null) return refuseCommand(input, command.command, outcome.halt.reason)
+  // D9 — `/cancel` gains branch + change-folder cleanup (the mis-capture's work).
+  await afterCommandCleanup(input, command)
+  return outcome
+}
 
-  return refuseCommand(input, command.command, outcome.halt.reason)
+/**
+ * Side effects a successful command carries beyond the state move. Today only
+ * `/cancel` (D9): delete the `agent/issue-<n>` branch a mis-capture pushed, so
+ * the work is gone rather than orphaned. Only when capture happened.
+ */
+const afterCommandCleanup = async (input: PhaseInput, command: ParsedCommand): Promise<void> => {
+  if (command.command !== '/cancel' || input.state.changeName === null) return
+  const { deps, state } = input
+  try {
+    await deps.git.deleteRemoteBranch(branchNameFor(state.issueId))
+    deps.log.info({ issue: state.issueId }, 'Deleted the agent branch for /cancel')
+  } catch (error) {
+    deps.log.warn({ issue: state.issueId, error: errorMessage(error) }, 'Could not delete the agent branch for /cancel')
+  }
 }
 
 /**

@@ -7,7 +7,8 @@ import { isTurnDeadline } from '../errors.js'
 import type { PipelineError } from '../errors.js'
 import { buildImplementPrompt } from '../implement-prompts.js'
 import type { PhaseInput } from '../phase-context.js'
-import type { PlanStep, StepMarker } from '../plan-steps.js'
+import { checkBoxText } from '../plan-steps.js'
+import type { PlanBox, StepMarker } from '../plan-steps.js'
 import type { UntrustedEnvelope } from '../prompts.js'
 import { msToDeadline, timeForAnotherStep } from '../time-budget.js'
 import { commitStep } from './implement-commit.js'
@@ -74,12 +75,20 @@ export interface StepWalkInput {
   input: PhaseInput
   /** Branch the steps commit onto — already checked out by the handler. */
   branch: string
-  /** The approved plan as markdown, which every step's prompt carries as context. */
+  /** The approved plan as markdown (the folder's `tasks.md`), carried as context in every step's prompt. */
   plan: string
-  /** The steps to walk; empty means one turn for the whole plan. */
-  steps: readonly PlanStep[]
-  /** Steps of this plan a previous job already finished. */
+  /** Every `tasks.md` checkbox, in file order, with absolute numbering (design D5). */
+  steps: readonly PlanBox[]
+  /**
+   * Absolute index of the box a previous job finished (a count of steps done),
+   * so a resume starts at the next box. The cursor is reconciled with the
+   * boxes' own `checked` state — a ticked box is skipped without a turn — which
+   * is why a `/continue` that arrives after a between-steps park lands on the
+   * right box even though the boxes ahead of it have been ticked.
+   */
   from: number
+  /** Resolved path to `tasks.md`, so each step's commit can check its box (D5). */
+  tasksPath: string
   /**
    * The handler's one envelope and the system prompt built from it.
    *
@@ -126,27 +135,24 @@ export interface StepWalk {
   stopped: PipelineError | null
 }
 
-/** One unit of work: a declared step, or `null` for the whole plan at once. */
-type Unit = PlanStep | null
-
 export const walkPlanSteps = (walk: StepWalkInput): Promise<StepWalk> => {
-  const from = cursor(walk)
-  const units: readonly Unit[] = walk.steps.length === 0 ? [null] : walk.steps.slice(from)
-  return step({ ...walk, from }, units, 0, { lines: 0, commits: 0, repairs: 0 })
+  const start = cursor(walk)
+  return step(walk, start, false, { lines: 0, commits: 0, repairs: 0 })
 }
 
 /**
  * Where to start, with a cursor that names no step in this plan sent back to the top.
  *
- * A state block is attacker-editable text, and a cursor past the end of the plan would
- * leave the walk with nothing to do — reported as "finished the plan without touching
- * a single file", parked in `FAILED`, and unrecoverable, because every `/retry` would
- * reach the same conclusion. Starting over is the same answer `resumeTransition` gives
- * a hand-edited block that names no resume point, and it is safe: the steps already on
- * the branch are done, so their turns commit nothing and the walk carries on.
+ * A state block is attacker-editable text, and a cursor past the end of the plan
+ * would leave the walk with nothing to do — reported as "finished the plan
+ * without touching a single file", parked in `FAILED`, and unrecoverable,
+ * because every `/retry` would reach the same conclusion. Starting over is the
+ * same answer `resumeTransition` gives a hand-edited block that names no resume
+ * point, and it is safe: the boxes already checked on the branch are skipped by
+ * the walk, so their turns commit nothing and the run carries on.
  */
 const cursor = (walk: StepWalkInput): number => {
-  if (walk.steps.length === 0 || walk.from < walk.steps.length) return walk.from
+  if (walk.from < walk.steps.length) return walk.from
 
   walk.input.deps.log.warn(
     { issue: walk.input.state.issueId, stepsDone: walk.from, steps: walk.steps.length },
@@ -162,42 +168,48 @@ interface Tally {
 }
 
 /**
- * One unit, then the rest — or a stop.
+ * One box, then the rest — or a stop. Visits boxes by absolute index; a checked
+ * box is done and is skipped without a turn.
  *
- * Tail recursion rather than a loop because the repo forbids awaiting in a loop body,
- * and the same shape the phase cascade itself uses for the same reason.
+ * Tail recursion rather than a loop because the repo forbids awaiting in a loop
+ * body, and the same shape the phase cascade itself uses for the same reason.
+ * `ranStep` carries whether any step has prompted yet this run, so the handoff
+ * reaches the first step actually worked and not a box skipped past at the top.
  */
-const step = async (walk: StepWalkInput, units: readonly Unit[], index: number, tally: Tally): Promise<StepWalk> => {
-  const unit = units[index]
-  if (unit === undefined) return { kind: 'finished', ...tally, done: walk.from + index, step: null, stopped: null }
+const step = async (walk: StepWalkInput, i: number, ranStep: boolean, tally: Tally): Promise<StepWalk> => {
+  const box = walk.steps[i]
+  if (box === undefined) return { kind: 'finished', ...tally, done: i, step: null, stopped: null }
+  if (box.checked) return step(walk, i + 1, ranStep, tally)
 
   const { deps } = walk.input
-  const marker = markerFor(walk, unit, index)
+  const marker = markerFor(box)
   // `spent` defaults to the tally this step began with, and is passed explicitly by
   // the one exit that happens after a commit attempt has been paid for.
   const at = (kind: StepWalk['kind'], stopped: PipelineError | null, spent: Tally = tally): StepWalk => ({
     kind,
     ...spent,
-    done: walk.from + index,
+    done: i,
     step: marker,
     stopped,
   })
 
-  // The gate, and it is asked only of a declared step. A plan with no steps is one
-  // indivisible turn: refusing to start it would cost the run everything that turn
-  // would have written, where starting it and being interrupted keeps what it wrote.
-  // With steps there is a boundary to stop on, so the same clock costs nothing.
   const toDeadline = msToDeadline(deps.config, deps.now())
-  if (unit !== null && toDeadline !== null && !timeForAnotherStep(toDeadline, deps.config)) {
+  if (toDeadline !== null && !timeForAnotherStep(toDeadline, deps.config)) {
     deps.log.warn(
-      { issue: walk.input.state.issueId, step: marker?.number, of: marker?.total, toDeadline },
+      { issue: walk.input.state.issueId, step: marker.number, of: marker.total, toDeadline },
       'Out of time for another plan step; stopping between steps with the branch pushed',
     )
     return at('out-of-time', null)
   }
 
-  const stopped = await promptForStep(walk, marker, unit, index === 0)
+  const stopped = await promptForStep(walk, marker, box, !ranStep)
   if (stopped !== null) return at('interrupted', stopped)
+
+  // Design D5: check this step's box in `tasks.md` so the box-check lands in the
+  // same commit as the step's work. The model implements; the pipeline ticks the
+  // box — the folder is the plan's only shape, and a box nobody checks is a step
+  // nobody can see is done.
+  await checkBoxInFile(walk, box)
 
   const committed = await commitStep(walk, marker)
   const spent: Tally = { ...tally, repairs: tally.repairs + committed.repairs }
@@ -208,16 +220,28 @@ const step = async (walk: StepWalkInput, units: readonly Unit[], index: number, 
   // stops leave by the one door `settleWalk` already knows about.
   if (committed.stopped !== null) return at('interrupted', committed.stopped, spent)
 
-  return step(walk, units, index + 1, {
+  return step(walk, i + 1, true, {
     ...spent,
     lines: spent.lines + (committed.totals?.lines ?? 0),
     commits: spent.commits + (committed.totals === null ? 0 : 1),
   })
 }
 
-/** Where this unit sits in the plan, one-based, and `null` when the plan has no steps. */
-const markerFor = (walk: StepWalkInput, unit: Unit, index: number): StepMarker | null =>
-  unit === null ? null : { number: walk.from + index + 1, total: walk.steps.length, title: unit.title }
+/** The marker a maintainer reads for this box, from the PlanBox's own count. */
+const markerFor = (box: PlanBox): StepMarker => ({ number: box.number, total: box.total, title: box.text })
+
+/**
+ * Reads `tasks.md`, ticks this step's box, writes it back. One line edited, by
+ * the line number the parser recorded, so an indented sub-item keeps its
+ * indentation and the rest of the file is untouched.
+ */
+const checkBoxInFile = async (walk: StepWalkInput, box: PlanBox): Promise<void> => {
+  const content = await walk.input.deps.readFile(walk.tasksPath)
+  const lines = content.split('\n')
+  const target = lines[box.line - 1]
+  if (target !== undefined) lines[box.line - 1] = checkBoxText(target)
+  await walk.input.deps.writeFile(walk.tasksPath, lines.join('\n'))
+}
 
 /**
  * One step's turn, and `null` unless the clock stopped it part-way through.
@@ -235,8 +259,8 @@ const markerFor = (walk: StepWalkInput, unit: Unit, index: number): StepMarker |
  */
 const promptForStep = async (
   walk: StepWalkInput,
-  marker: StepMarker | null,
-  unit: Unit,
+  marker: StepMarker,
+  box: PlanBox,
   first: boolean,
 ): Promise<PipelineError | null> => {
   const agent = await walk.input.deps.agent()
@@ -248,7 +272,14 @@ const promptForStep = async (
         envelope: walk.envelope,
         issueNumber: walk.input.state.issueId,
         plan: walk.plan,
-        step: marker === null || unit === null ? null : { ...marker, step: unit },
+        // A `tasks.md` box carries its text but not named files or a verification
+        // command; the model derives both from the approved plan it is shown.
+        step: {
+          number: marker.number,
+          total: marker.total,
+          title: box.text,
+          step: { title: box.text, files: [], verification: '' },
+        },
         handoff: first ? walk.handoff : null,
       }),
       agent: 'build',

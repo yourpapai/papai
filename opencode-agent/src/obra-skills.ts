@@ -20,23 +20,33 @@ export interface SkillDocument {
 }
 
 /**
- * Skills each phase asks for, by their directory name in obra/superpowers.
+ * Skills each phase asks for, by their directory name on the loader roots.
  *
  * `required` skills fail the phase when they are missing rather than degrading
- * silently — a planning phase without `writing-plans` is not the pipeline
- * anyone configured. `optional` ones are nice-to-have context.
+ * silently — a planning phase without its skill is not the pipeline anyone
+ * configured. `optional` ones are nice-to-have context.
  *
- * `subagent-driven-development` and `writing-skills` are deliberately absent:
- * both are large (26–28 KB) and neither applies to a single-session CI run.
+ * Reworked (design D4) onto the repo's own OpenSpec skills: `INIT_OR_CLARIFY`
+ * takes `openspec-explore` (the triage/clarify stance) and `PLANNING` takes
+ * `openspec-propose` (the proposal/drafter loop), replacing `brainstorming` and
+ * `writing-plans`. The retired `brainstorming`, `writing-plans` and
+ * `executing-plans` names are gone entirely: `executing-plans` was subsumed by
+ * the `tasks.md` step source, and the other two by the OpenSpec workflow.
+ *
+ * Execution skills are unchanged on the apply layer — `REVIEW_AND_MUTATE` keeps
+ * `test-driven-development` + `verification-before-completion`, and `CI_FIX`
+ * keeps `systematic-debugging`. `subagent-driven-development` and
+ * `writing-skills` are deliberately absent: both are large and neither applies
+ * to a single-session CI run.
  */
 export const PHASE_SKILLS: Record<Phase, { required: readonly string[]; optional: readonly string[] }> = {
-  INIT_OR_CLARIFY: { required: ['brainstorming'], optional: ['writing-plans'] },
+  INIT_OR_CLARIFY: { required: ['openspec-explore'], optional: [] },
   DESIGN_SPEC: { required: [], optional: [] },
-  PLANNING: { required: ['writing-plans'], optional: ['executing-plans'] },
+  PLANNING: { required: ['openspec-propose'], optional: [] },
   PLAN_REVIEW: { required: [], optional: [] },
   REVIEW_AND_MUTATE: {
     required: ['test-driven-development'],
-    optional: ['executing-plans', 'verification-before-completion'],
+    optional: ['verification-before-completion'],
   },
   PR_DELIVERY: { required: [], optional: [] },
   // Empty on purpose: `CODE_REVIEW` shells out to the `review-loop/` workspace
@@ -44,6 +54,10 @@ export const PHASE_SKILLS: Record<Phase, { required: readonly string[]; optional
   // into nothing.
   CODE_REVIEW: { required: [], optional: [] },
   CI_FIX: { required: ['systematic-debugging'], optional: ['test-driven-development'] },
+  // Empty like `CODE_REVIEW`: archiving is a CLI file move the handler drives,
+  // not content the model composes, so no OpenCode session boots and no skill
+  // is inlined.
+  ARCHIVE: { required: [], optional: [] },
   COMPLETE: { required: [], optional: [] },
   FAILED: { required: [], optional: [] },
   // Empty like every other phase with no handler: nothing runs in `INCOMPLETE`, so

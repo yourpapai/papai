@@ -11,17 +11,24 @@ findings: `ROADMAP.md`.
 ## Shape
 
 - One CI job = one call to `runCli`. State lives in hidden blocks on the issue,
-  not on disk: `AGENT_STATE` for the machine, `AGENT_SPEC` / `AGENT_PLAN` /
-  `AGENT_REPORT` / `AGENT_HANDOFF` for the artefacts. `AGENT_STATUS` is the odd one out — it marks
+  not on disk: `AGENT_STATE` for the machine, `AGENT_REPORT` / `AGENT_HANDOFF`
+  for the report and the wall-clock handoff. The design spec and the plan used
+  to travel here too (`AGENT_SPEC` / `AGENT_PLAN`); under the OpenSpec rework
+  (design D1 — the folder is truth, comments are renders) they live in
+  `openspec/changes/<name>/` on `agent/issue-<n>`, and the human parks review
+  rendered digests of that folder. `AGENT_STATUS` is the odd one out — it marks
   the run's live status comment so `renderThread` can leave it out of a prompt,
   and it is read by nothing else.
 - An event is parsed before it is judged: `src/trigger-events.ts` says what a raw
   payload **is** and `src/guardrails.ts` whether the pipeline may act on it. That
   split is not tidiness — it is what lets `src/pr-trigger.ts` finish a parse
   without importing the policy layer that will judge the finished event, which
-  would be a cycle. There are **three** doors, not two: an issue event, a red CI
-  run, and a comment typed on a pull request, which is the one `parseTriggerEvent`
-  cannot finish alone (`src/github-pulls.ts` reads the head that names its issue).
+  would be a cycle. There are **four** doors, not three: an issue event, a red CI
+  run, a comment typed on a pull request (the one `parseTriggerEvent` cannot
+  finish alone — `src/github-pulls.ts` reads the head that names its issue), and
+  a merged pull request (`pull_request.closed(merged)`, the archive door D7 —
+  `src/phases/archive.ts` runs `openspec archive` as a follow-up commit on the
+  base branch).
   `src/agent-handle.ts` holds the memoized OpenCode session `index.ts` used to
   own, which also ends `deps.ts` importing back from the module it was split from.
 - `src/triggers.ts` decides _whether and where_ an event moves the state — it
@@ -107,25 +114,20 @@ findings: `ROADMAP.md`.
 - **Never scrape prose to recover an artefact.** Spec, plan, report and the
   wall-clock handoff travel in hidden blocks via `blocks.ts` / `artifacts.ts`.
   Heading-and-trailer scraping silently truncated specs at their first `---` rule;
-  do not reintroduce it. The plan is the case that had to grow a second half: its
-  block carries the ordered **steps** beside the text, and the text is _rendered from
-  them_ by `renderPlanMarkdown`, so the comment a maintainer approved and the list the
-  implementation walks cannot disagree. Reading the steps back out of the markdown
-  would be that same bug on a new surface, which is why `findPlan` exists and why a
-  `steps` field the schema cannot vouch for degrades to **no steps at all** rather than
-  to the steps it could parse — half a plan read as a whole plan is the failure being
-  avoided, and no steps is a shape this pipeline already runs correctly.
-- **Each artefact counts its own revisions.** `specRevision` and `planRevision`
-  are separate fields and each handler renders and stores one of them, from a
-  single local so the visible heading and the hidden block cannot disagree. They
-  were one shared `revision` bumped by both `SPEC_POSTED` and `PLAN_POSTED`, so
-  the counts interleaved and the first plan on every issue announced
-  itself as revision 2 — revision 3 if the spec had been revised once first —
-  which is not a reading "the Nth version of this artefact" allows. The report
-  block stamps `planRevision`: it records which plan was implemented, and no
-  signal bumps a report counter. Splitting them needed no `STATE_VERSION` bump
-  because both fields default; the old key is dropped rather than mapped onto
-  either, since it was a sum and never a count of either artefact.
+  do not reintroduce it. The design spec and the plan **used to** travel in
+  `AGENT_SPEC` / `AGENT_PLAN` blocks; under the OpenSpec rework (design D1) they
+  live in `openspec/changes/<name>/` on the branch, the human parks review
+  rendered digests (`renderDigest` in `artifacts.ts`), and `REVIEW_AND_MUTATE`
+  walks `tasks.md` checkboxes as the step source (D5). The retired block names
+  and their revision counters (`specRevision`) are gone; no legacy restore path
+  exists, and in-flight issues restart under the `STATE_VERSION` bump (D12).
+- **The plan counts one identity token, not two artefact revisions.** Under D1
+  only `planRevision` remains — a machine identity for "a new plan happened",
+  bumped by `PLAN_POSTED` alone, not an artefact revision. The former
+  `specRevision` is gone: the proposal lives in the folder and `DESIGN_SPEC`
+  reviews a digest of it, so nothing counts spec revisions. The report block
+  stamps `planRevision`: it records which plan was implemented, and no signal
+  bumps a report counter.
 - **A phase rename is a persisted-shape change, and is migrated rather than
   bumped.** `PLANNING` was `EXECUTION_PLAN`; the name is written into every
   `AGENT_STATE` block as `phase` and `resumeFrom`, so an unmigrated rename has

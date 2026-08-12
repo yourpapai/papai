@@ -207,3 +207,44 @@ export const applyClarifyIntent = async (input: PhaseInput): Promise<TriggerOutc
   // waits for answers to its own questions.
   return readAndSkip(input, 'Comment needs no action')
 }
+
+/**
+ * Reads a plain comment that arrives while the agent is implementing
+ * (`REVIEW_AND_MUTATE`), as steering-drift (design D6).
+ *
+ * Implementation is not interrupted for anything less than a scope-affecting
+ * change: a comment classified `changes` routes back to `PLANNING` for an
+ * artifact-update turn (edit → validate → commit) before implementation
+ * continues, so the folder cannot rot relative to the conversation. Everything
+ * else — chatter, a question, an approve — skips with a 👍, because the cost of
+ * interrupting an implementation run for an ambiguity is higher than the cost of
+ * a maintainer typing `/ask` to ask the question for real. That is the opposite
+ * default from {@link applyIntent}, where answering is cheap and re-planning is
+ * expensive; here re-planning is the *point*, and the bar to reach it is a
+ * positive `changes` verdict the classifier has to actively choose.
+ *
+ * The budget gate sits *before* the classifier, for the same reason as
+ * {@link applyIntent}: the classifier is the one turn whose spend a skip never
+ * writes down, so the ceiling stops it rather than paying to learn what to say.
+ */
+export const applySteeringIntent = async (input: PhaseInput): Promise<TriggerOutcome> => {
+  const { state, trigger, deps } = input
+  const body = trigger.kind === 'issue' ? trigger.commentBody : null
+  if (body === null || body.trim().length === 0) return readAndSkip(input, 'Empty comment')
+
+  const spent = await totalTokens(deps, state.tokensSpent)
+  if (!withinBudget(spent, deps.config)) {
+    deps.log.warn(
+      { issue: state.issueId, phase: state.phase, spent, limit: deps.config.maxTokens },
+      'Over budget: not paying to classify a steering comment',
+    )
+    return readAndSkip(input, 'Over budget; not classifying a steering comment')
+  }
+
+  const intent = await classifyComment({ body, phase: state.phase, deps, state })
+  deps.log.info({ intent, phase: state.phase }, 'Classified a maintainer comment while implementing')
+
+  if (intent !== 'changes') return readAndSkip(input, `Comment classified as ${intent}; not scope-affecting`)
+
+  return moveOrSkip(state, 'CHANGES_REQUESTED', deps, 'steering-drift')
+}

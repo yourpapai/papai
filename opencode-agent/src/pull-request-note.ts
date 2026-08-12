@@ -97,6 +97,10 @@ export const noteTarget = (trigger: TriggerEvent): number | null => {
       // is also non-null by construction on this kind, so there is no
       // unreachable branch here to keep honest.
       return trigger.prNumber
+    case 'pr-merged':
+      // The archive door reports on the issue, not the pull request that
+      // triggered it — the PR is closed, and the issue is where state lives.
+      return null
     default:
       return unreachable(trigger)
   }

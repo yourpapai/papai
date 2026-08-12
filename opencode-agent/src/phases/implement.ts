@@ -3,12 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { findHandoff, renderArtifact, REPORT_MARKER, requirePlan } from '../artifacts.js'
-import { missingPlanError, noChangesError } from '../errors.js'
+import { findHandoff, renderArtifact, REPORT_MARKER } from '../artifacts.js'
+import { noChangesError } from '../errors.js'
 import { branchNameFor } from '../git.js'
 import { IMPLEMENT_INSTRUCTIONS } from '../implement-prompts.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
+import { planBoxes } from '../plan-steps.js'
 import { msToDeadline } from '../time-budget.js'
 import { renderStoppedBetweenSteps } from '../time-notices.js'
 import { stopPartWayThrough } from '../turn-stop.js'
@@ -37,7 +38,10 @@ import type { StepWalk } from './implement-steps.js'
  */
 export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
-  const plan = requirePlan(input.thread, await deps.selfLogin(), () => missingPlanError(state.issueId))
+  if (state.changeName === null) throw new Error('REVIEW_AND_MUTATE reached without a changeName on the state')
+  const tasksPath = (await deps.openspec.instructions('tasks', state.changeName)).resolvedOutputPath
+  const tasksMd = await deps.readFile(tasksPath)
+  const steps = planBoxes(tasksMd)
 
   const branch = branchNameFor(state.issueId)
   await deps.git.ensureBranch(branch, await deps.baseBranch())
@@ -58,11 +62,11 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
   const walk = await walkPlanSteps({
     input,
     branch,
-    plan: plan.text,
-    steps: plan.steps,
-    // Where a previous job's stop left the plan. `0` for a fresh implementation and
-    // for every plan that has no steps.
+    plan: tasksMd,
+    steps,
+    // Where a previous job's stop left the plan. `0` for a fresh implementation.
     from: state.stepsDone,
+    tasksPath,
     envelope,
     system,
     // A note the *previous* out-of-time run wrote about this same plan. Read through
@@ -71,7 +75,7 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
     handoff: findHandoff(input.thread, await deps.selfLogin(), state.planRevision),
   })
 
-  return settleWalk({ input, branch, system, total: plan.steps.length, walk })
+  return settleWalk({ input, branch, system, total: steps.length, walk })
 }
 
 interface Settlement {

@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { writeFile as writeFileNode, readFile as readFileNode } from 'node:fs/promises'
+
 import type { AgentHandle } from './agent-handle.js'
 import type { CheckRunner } from './check-loop.js'
 import { createCiGroups } from './ci-groups.js'
@@ -15,6 +17,7 @@ import type { Logger } from './logger.js'
 import { loadPhaseSkills } from './obra-skills.js'
 import type { SkillDocument } from './obra-skills.js'
 import { opencodeConfigEnv } from './openai-config.js'
+import { createOpenSpecDriver } from './openspec-driver.js'
 import type { PhaseDeps, RunReview } from './phase-context.js'
 import { runReviewLoop } from './review-runner.js'
 import type { CommandRunner } from './shell.js'
@@ -134,9 +137,12 @@ export const assembleDeps = ({
     git,
     runCheck: makeCheckRunner(run, config),
     runReview: makeReviewRunner(run, config, log),
+    openspec: createOpenSpecDriver({ runner: run, cwd: config.repoRoot }),
     agent: agent.get,
     tokensUsed: agent.tokensUsed,
     skills: makeSkillLoader(config, log),
+    writeFile: (filePath, content) => writeFileNode(filePath, content, 'utf8'),
+    readFile: (filePath) => readFileNode(filePath, 'utf8'),
     baseBranch: memoize(() =>
       resolveBaseBranch(env, { fromEvent: event.defaultBranch, fromGit: () => git.defaultBranch() }),
     ),

@@ -25,38 +25,40 @@ hidden HTML blocks:
 - `<!-- AGENT_STATE: … -->` — phase and counters. Written afresh with every
   comment the pipeline posts, and rewritten **in place** by a run that spent
   model tokens and had nothing to post.
-- `<!-- AGENT_SPEC: … -->` — the current design spec.
-- `<!-- AGENT_PLAN: … -->` — the current implementation plan, as **both** the
-  markdown a maintainer approved and the ordered steps it was rendered from. The
-  implementation walks those steps; it never parses the markdown back, which is the
-  rule the whole block channel exists for. A plan block without them — every plan
-  approved before they were carried — is implemented in one turn, permanently.
 - `<!-- AGENT_REPORT: … -->` — the newest report. The implementation one, until
   a `/review` writes its own under the same marker: the scan takes the newest
   block of a marker, and that is what a later pull-request refresh presents, so
   the body and the thread cannot end up telling different stories.
+- `<!-- AGENT_HANDOFF: … -->` — the wall-clock handoff a `/continue` reads.
 - `<!-- AGENT_STATUS: … -->` — the odd one out: it marks a run's live status
   comment so the prompt layer can leave that comment out, and nothing else reads
   it. It is deliberately not `AGENT_STATE`, or the restore scan would have two
   sources of truth.
 
-Artefacts get their own blocks rather than being scraped back out of the visible
-markdown. That is not a style preference: a spec is model-written markdown full
-of headings and `---` rules, and any heading-and-trailer scraping truncates it at
-the first horizontal rule.
+The design spec and the plan **used to** travel in `AGENT_SPEC` / `AGENT_PLAN`
+blocks. Under the OpenSpec rework (design D1 — the folder is truth, comments are
+renders) they live in `openspec/changes/<name>/` on `agent/issue-<n>`:
 
-The spec and the plan are numbered **separately**, each by its own revisions: the
-first spec is "Design spec (revision 1)" and the first plan is "Plan
-(revision 1)", whether or not the spec was revised on the way there. `AGENT_STATE`
-carries a counter each (`specRevision`, `planRevision`), and the number in a
-heading is the number in that artefact's own block — one value renders both. A
-single shared counter used to bump on either artefact, so the numbers interleaved
-and the first plan on a straight-through issue called itself revision 2. Both
-counters default, so blocks written before the split still parse; an issue
-mid-conversation across that change restarts its counts at 1, because the number
-it was carrying was the sum of two artefacts and never the count of either.
-`AGENT_REPORT` carries the revision of the plan it implemented — provenance, not
-a count of reports.
+- `proposal.md` — the captured goal, drafted by triage and reviewed at the
+  `DESIGN_SPEC` park via a rendered digest.
+- `design.md`, `tasks.md` — drafted by the `PLANNING` loop (`status --json` →
+  compose → `validate --strict` → retry ≤2), reviewed at `PLAN_REVIEW`.
+- `tasks.md` is the implementation's step source (D5): `REVIEW_AND_MUTATE`
+  walks its checkboxes, ticking each box in the same commit as the step's work.
+
+Artefacts get their own blocks (or their own folder) rather than being scraped
+back out of the visible markdown. That is not a style preference: a spec is
+model-written markdown full of headings and `---` rules, and any
+heading-and-trailer scraping truncates it at the first horizontal rule.
+
+`AGENT_STATE` carries one artefact-identity token — `planRevision` — bumped by
+`PLAN_POSTED` alone. The former `specRevision` is gone: the proposal lives in
+the folder and `DESIGN_SPEC` reviews a digest of it, so nothing counts spec
+revisions. The report block stamps `planRevision`: it records which plan was
+implemented, and no signal bumps a report counter. A deliberate `STATE_VERSION`
+bump (D12) retires the legacy `AGENT_SPEC`/`AGENT_PLAN` blocks outright —
+in-flight issues restart under the compliant pipeline rather than carrying a
+dual format.
 
 Blocks are read back byte-exact, and a payload cannot forge its own delimiter:
 `<` and `>` are escaped as JSON unicode escapes before serialization, so text

@@ -6,6 +6,7 @@
 import type { MachineInput, PhaseHandler, PhaseOutcome } from './phase-context.js'
 import { failAnswer, failRun } from './phase-failure.js'
 import { handleAnswer } from './phases/answer.js'
+import { handleArchive } from './phases/archive.js'
 import { handleCiFix } from './phases/ci-fix.js'
 import { handleDeliver } from './phases/deliver.js'
 import { handleImplement } from './phases/implement.js'
@@ -48,6 +49,7 @@ const HANDLERS: Partial<Record<Phase, PhaseHandler>> = {
   PR_DELIVERY: handleDeliver,
   CODE_REVIEW: handleReview,
   CI_FIX: handleCiFix,
+  ARCHIVE: handleArchive,
 }
 
 /**
