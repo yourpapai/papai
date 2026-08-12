@@ -4,8 +4,9 @@
 // See LICENSE in the project root for details.
 
 import type { ChangeDigest } from './gate-digest-extract.js'
-import { formatTrajectoryBlock } from './renderer.js'
 import type { DigestRecord } from './replay.js'
+
+export { renderChangeDigest, writeGateDigest } from './gate-render.js'
 
 export interface GateAssumption {
   readonly id: string
@@ -39,97 +40,6 @@ export interface GateDigestInput {
   readonly changeDigest: ChangeDigest
 }
 
-function costMarker(input: GateDigestInput): string {
-  if (input.costKnown) return 'metered'
-  return input.costUsd > 0 ? 'estimated' : 'unknown'
-}
-
-const NO_WHY = '_(no "Why" section in proposal.md)_'
-const NO_IMPACT = '_(no "Impact" section in proposal.md)_'
-const NO_ASSUMPTIONS = '_(no assumptions logged)_'
-
-/**
- * Render the `### Change digest` subsection — a 5-tuple (WHAT/WHY/TOUCHES/
- * RISKS/BLAST) so a human opening the gate MD can grasp the change at a glance.
- * WHAT/WHY/TOUCHES come from `extractChangeDigest`; RISKS/BLAST reference
- * sections already rendered elsewhere in the gate (mode-aware for RISKS, since
- * the early gate shows "Open MATERIAL findings at cap" and the final gate shows
- * "Nitpicks (informational)"). Missing fields render one-line placeholders.
- */
-export function renderChangeDigest(digest: ChangeDigest, mode: 'early' | 'final', hasAssumptions: boolean): string[] {
-  const what = digest.what ?? NO_WHY
-  const why = digest.why ?? NO_WHY
-  const touches = digest.touches !== null && digest.touches.length > 0 ? digest.touches.join(', ') : NO_IMPACT
-  const risksTarget = mode === 'early' ? 'Open MATERIAL findings at cap' : 'Nitpicks (informational)'
-  const blast = hasAssumptions ? 'see "Assumptions (blast-ranked)" below' : NO_ASSUMPTIONS
-  return [
-    '### Change digest',
-    '',
-    `- **WHAT**: ${what}`,
-    `- **WHY**: ${why}`,
-    `- **TOUCHES**: ${touches}`,
-    `- **RISKS**: see "${risksTarget}" below`,
-    `- **BLAST**: ${blast}`,
-  ]
-}
-
-export function writeGateDigest(input: GateDigestInput): string {
-  const ranked = [...input.assumptions].sort((a, b) => b.blast_radius.localeCompare(a.blast_radius))
-  const lines: string[] = [
-    `<!-- gate-${input.version}.md -->`,
-    '',
-    input.mode === 'early'
-      ? `## Early gate (cap hit) — change ${input.changeName}`
-      : `## Final gate — change ${input.changeName}`,
-    '',
-    'Check every assumption box to approve. Leave a box unchecked to veto (optional `→ <redirect>` beneath).',
-    'Answer a cap-hit blocker with `→ <answer>` beneath it, or `→ OVERRIDE` to override.',
-    'Write `ABORT` on its own line to abort.',
-    '',
-    '### Summary',
-    input.summary,
-    '',
-    ...renderChangeDigest(input.changeDigest, input.mode, input.assumptions.length > 0),
-    '',
-    `### Cost / duration · $${input.costUsd.toFixed(2)} · ${Math.round(input.durationMs / 1000)}s · ${costMarker(input)}`,
-  ]
-  appendGateSections(lines, input, ranked)
-  return lines.join('\n')
-}
-
-function appendGateSections(lines: string[], input: GateDigestInput, ranked: readonly GateAssumption[]): void {
-  if (input.blockers.length > 0) {
-    lines.push('', '### Cap-hit blockers (answer or override)')
-    for (const blocker of input.blockers) {
-      lines.push('', `${blocker.id} ${blocker.gap}`, `evidence: ${blocker.evidence}`, '→ <answer or OVERRIDE>')
-    }
-  }
-  if (input.mode === 'early' && input.openMaterial.length > 0) {
-    const trajectoryBlock = formatTrajectoryBlock(input.trajectory)
-    if (trajectoryBlock !== '') {
-      lines.push('', trajectoryBlock)
-    }
-    lines.push('', '### Open MATERIAL findings at cap (reviewed)')
-    for (const finding of input.openMaterial) {
-      lines.push('', `- [ ] ${finding.id} ${finding.gap}`, `  resolver: ${finding.evidence}`)
-    }
-  }
-  if (input.mode === 'early' && input.blockers.length === 0 && input.capHitFired) {
-    lines.push('', '### Trajectory reviewed', '', '- [ ] T1 I reviewed the trajectory and the open findings above')
-  }
-  if (input.openNitpicks.length > 0) {
-    lines.push('', '### Nitpicks (informational)')
-    for (const nitpick of input.openNitpicks) {
-      lines.push('', `- ${nitpick.id} ${nitpick.gap}`, `  resolver: ${nitpick.evidence}`)
-    }
-  }
-  lines.push('', '### Assumptions (blast-ranked)')
-  for (const assumption of ranked) {
-    lines.push('', `- [ ] ${assumption.id} ${assumption.text}`, `  blast radius: ${assumption.blast_radius}`)
-  }
-  lines.push('', '### Resume', `gate resume ${input.runId}`)
-}
-
 export interface GateVeto {
   readonly id: string
   readonly redirect?: string
@@ -144,6 +54,7 @@ export interface GateResponse {
   readonly approved: boolean
   readonly abort: boolean
   readonly override: boolean
+  readonly extend: boolean
   readonly vetoes: readonly GateVeto[]
   readonly answers: readonly GateAnswer[]
 }
@@ -153,9 +64,17 @@ export interface ExpectedGateContent {
   readonly blockers: readonly GateBlocker[]
   readonly findings?: readonly GateFinding[]
   readonly requiredAck?: string
+  /**
+   * Gate presentation mode. The `→ RUN 1 MORE` extend directive is accepted
+   * only at an early (cap-hit) gate; at a final gate (or when unspecified) it
+   * is rejected with a clear error.
+   */
+  readonly gateMode?: 'early' | 'final'
 }
 
 const OVERRIDE_TOKEN = 'OVERRIDE'
+const RUN_DIRECTIVE_RE = /^\s*→\s*RUN 1 MORE\s*$/u
+const RUN_LIKE_RE = /^\s*→\s*RUN\b/u
 
 function classifyBox(mark: string): boolean | null {
   if (mark === '[x]' || mark === '[X]') return true
@@ -169,6 +88,7 @@ interface ParseState {
   checked: Set<string>
   pendingRedirectFor: string | null
   override: boolean
+  extend: boolean
 }
 
 function processVetoBox(
@@ -191,6 +111,43 @@ function processVetoBox(
   return true
 }
 
+function processArrowLine(
+  state: ParseState,
+  line: string,
+  lineNo: number,
+  prevLine: string,
+  payload: string,
+  blockerIds: Set<string>,
+  gateMode: 'early' | 'final' | undefined,
+): void {
+  if (RUN_DIRECTIVE_RE.test(line)) {
+    if (gateMode !== 'early') {
+      throw new Error(`gate response line ${lineNo}: → RUN 1 MORE is not valid at a final gate (cap-hit only)`)
+    }
+    state.extend = true
+    return
+  }
+  if (RUN_LIKE_RE.test(line)) {
+    throw new Error(`gate response line ${lineNo}: → RUN directive not recognized (only "→ RUN 1 MORE" is accepted)`)
+  }
+  if (payload === OVERRIDE_TOKEN) {
+    state.override = true
+    return
+  }
+  if (state.pendingRedirectFor !== null) {
+    const last = state.vetoes[state.vetoes.length - 1]
+    if (last !== undefined && last.id === state.pendingRedirectFor) last.redirect = payload
+    state.pendingRedirectFor = null
+    return
+  }
+  const blockerId = prevLine.match(/^\s*(B\d+)\b/u)?.[1] ?? ''
+  if (blockerIds.has(blockerId)) {
+    state.answers.push({ id: blockerId, answer: payload })
+    return
+  }
+  throw new Error(`gate response line ${lineNo}: → line with no preceding assumption or blocker`)
+}
+
 function processLine(
   state: ParseState,
   line: string,
@@ -199,6 +156,7 @@ function processLine(
   assumptionIds: Set<string>,
   blockerIds: Set<string>,
   findingIds: Set<string>,
+  gateMode: 'early' | 'final' | undefined,
 ): void {
   if (processVetoBox(state, line, lineNo, /^\s*-\s*\[([^\]]+)\]\s*(A\d+)\b/u, assumptionIds, 'assumption')) return
   if (processVetoBox(state, line, lineNo, /^\s*-\s*\[([^\]]+)\]\s*(F\d+)\b/u, findingIds, 'finding')) return
@@ -212,28 +170,16 @@ function processLine(
   }
   const arrowMatch = line.match(/^\s*→\s*(.+)$/u)
   if (arrowMatch !== null) {
-    const payload = (arrowMatch[1] ?? '').trim()
-    if (payload === OVERRIDE_TOKEN) {
-      state.override = true
-      return
-    }
-    if (state.pendingRedirectFor !== null) {
-      const last = state.vetoes[state.vetoes.length - 1]
-      if (last !== undefined && last.id === state.pendingRedirectFor) last.redirect = payload
-      state.pendingRedirectFor = null
-      return
-    }
-    const blockerId = prevLine.match(/^\s*(B\d+)\b/u)?.[1] ?? ''
-    if (blockerIds.has(blockerId)) {
-      state.answers.push({ id: blockerId, answer: payload })
-      return
-    }
-    throw new Error(`gate response line ${lineNo}: → line with no preceding assumption or blocker`)
+    processArrowLine(state, line, lineNo, prevLine, (arrowMatch[1] ?? '').trim(), blockerIds, gateMode)
+    return
   }
   state.pendingRedirectFor = null
 }
 
 function finalizeResponse(state: ParseState, expected: ExpectedGateContent): GateResponse {
+  if (state.extend) {
+    return { approved: false, abort: false, override: false, extend: true, vetoes: [], answers: [] }
+  }
   if (expected.requiredAck !== undefined && !state.checked.has(expected.requiredAck)) {
     throw new Error(
       `gate response: required ack ${expected.requiredAck} not checked — check the trajectory-reviewed box to proceed`,
@@ -248,20 +194,43 @@ function finalizeResponse(state: ParseState, expected: ExpectedGateContent): Gat
     )
   }
   const approved = checkedAll && unanswered.length === 0 && state.vetoes.length === 0
-  return { approved, abort: false, override: state.override, vetoes: state.vetoes, answers: state.answers }
+  return {
+    approved,
+    abort: false,
+    override: state.override,
+    extend: false,
+    vetoes: state.vetoes,
+    answers: state.answers,
+  }
 }
 
 export function parseGateResponse(markdown: string, expected: ExpectedGateContent): GateResponse {
   if (/^\s*ABORT\s*$/mu.test(markdown)) {
-    return { approved: false, abort: true, override: false, vetoes: [], answers: [] }
+    return { approved: false, abort: true, override: false, extend: false, vetoes: [], answers: [] }
   }
   const lines = markdown.split('\n')
   const assumptionIds = new Set(expected.assumptions.map((a) => a.id))
   const blockerIds = new Set(expected.blockers.map((b) => b.id))
   const findingIds = new Set((expected.findings ?? []).map((f) => f.id))
-  const state: ParseState = { vetoes: [], answers: [], checked: new Set(), pendingRedirectFor: null, override: false }
+  const state: ParseState = {
+    vetoes: [],
+    answers: [],
+    checked: new Set(),
+    pendingRedirectFor: null,
+    override: false,
+    extend: false,
+  }
   lines.forEach((line, index) => {
-    processLine(state, line, index + 1, lines[index - 1] ?? '', assumptionIds, blockerIds, findingIds)
+    processLine(
+      state,
+      line,
+      index + 1,
+      lines[index - 1] ?? '',
+      assumptionIds,
+      blockerIds,
+      findingIds,
+      expected.gateMode,
+    )
   })
   return finalizeResponse(state, expected)
 }

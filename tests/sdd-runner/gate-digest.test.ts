@@ -197,3 +197,39 @@ describe('writeGateDigest change digest section', () => {
     expect(finalMd).toContain('- **BLAST**: see "Assumptions (blast-ranked)" below')
   })
 })
+
+describe('writeGateDigest ### Extend section', () => {
+  const base = {
+    version: 1,
+    changeName: 'add-thing',
+    runId: 'run-1',
+    assumptions: [],
+    blockers: [],
+    openMaterial: [],
+    openNitpicks: [],
+    trajectory: [],
+    summary: 'add a thing',
+    costUsd: 0.1,
+    costKnown: true,
+    durationMs: 60_000,
+    changeDigest: { what: null, why: null, touches: null, hasTasks: false },
+  }
+
+  it('renders ### Extend with the → RUN 1 MORE directive at an early cap-hit gate', () => {
+    const md = writeGateDigest({ ...base, mode: 'early', capHitFired: true })
+    expect(md).toContain('### Extend')
+    expect(md).toContain('→ RUN 1 MORE')
+    expect(md).toContain('runs one more review round, then re-gates')
+  })
+
+  it('does not render an ### Extend section at a final gate even when capHitFired is true', () => {
+    const md = writeGateDigest({ ...base, mode: 'final', capHitFired: true })
+    expect(md).not.toContain('### Extend')
+    expect(md).not.toContain('→ RUN 1 MORE')
+  })
+
+  it('does not render an ### Extend section at an early gate when capHitFired is false', () => {
+    const md = writeGateDigest({ ...base, mode: 'early', capHitFired: false })
+    expect(md).not.toContain('### Extend')
+  })
+})

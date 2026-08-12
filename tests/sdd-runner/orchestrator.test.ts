@@ -430,6 +430,132 @@ describe('runGateResume', () => {
     expect(hashes1['proposal.md']).not.toBe(hashes2['proposal.md'])
     expect(fixture.spawnOrder).toContain('veto-updater.json')
   })
+
+  it('extends by one round on → RUN 1 MORE at an early cap-hit gate (task 5.1)', async () => {
+    const materialFinding = {
+      id: 'F1',
+      class: 'MATERIAL',
+      gap: 'design lacks rollback',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-1.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-2.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-3.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-3.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-4.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-4.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
+    const gate1Path = path.join(runDir, 'gate-1.md')
+    fs.writeFileSync(gate1Path, '→ RUN 1 MORE\n')
+
+    const result = await runGateResume(fixture.deps, started.runId, {})
+    expect(result.outcome).toBe('extend')
+    expect(result.version).toBe(2)
+    expect(result.gateMdPath).toBeDefined()
+
+    const state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.roundCap).toBe(4)
+    expect(state.round).toBe(4)
+    expect(state.gate).toEqual({ mode: 'early', version: 2 })
+
+    const events = readEvents(path.join(runDir, 'events.ndjson'))
+    const round4 = events.filter((e) => e.type === 'round_open').filter((e) => (e as { round: number }).round === 4)
+    expect(round4).toHaveLength(1)
+    expect(round4[0]).toMatchObject({ type: 'round_open', round: 4, cap: 4 })
+
+    expect(fs.existsSync(path.join(runDir, 'gate-2.md'))).toBe(true)
+    const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('round 4:')
+  })
+
+  it('flows into decompose + final gate when the extended round converges (task 5.2)', async () => {
+    const materialFinding = {
+      id: 'F1',
+      class: 'MATERIAL',
+      gap: 'design lacks rollback',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    const convergedResolution = { id: 'F1', class: 'NITPICK', resolution: 'edited', outcome: 'specs clarified' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-1.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-2.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-3.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-3.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-4.json': JSON.stringify({ findings: [] }),
+      'resolutions-4.json': JSON.stringify({ resolutions: [convergedResolution], assumptions: [] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
+    fs.writeFileSync(path.join(runDir, 'gate-1.md'), '→ RUN 1 MORE\n')
+
+    const result = await runGateResume(fixture.deps, started.runId, {})
+    expect(result.outcome).toBe('extend')
+    expect(result.version).toBe(2)
+
+    const state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.roundCap).toBe(4)
+    expect(state.round).toBe(4)
+    expect(state.gate).toEqual({ mode: 'final', version: 2 })
+
+    const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('Final gate')
+    expect(fixture.spawnOrder).toContain('decompose-tasks.json')
+    expect(fixture.spawnOrder).toContain('atomicity.json')
+  })
+
+  it('repeated extend bumps roundCap each time and appends a trajectory row (task 5.3)', async () => {
+    const materialFinding = {
+      id: 'F1',
+      class: 'MATERIAL',
+      gap: 'design lacks rollback',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-1.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-2.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-3.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-3.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
+
+    fs.writeFileSync(path.join(runDir, 'gate-1.md'), '→ RUN 1 MORE\n')
+    const first = await runGateResume(fixture.deps, started.runId, {})
+    expect(first.outcome).toBe('extend')
+    expect(first.version).toBe(2)
+    let state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.roundCap).toBe(2)
+
+    fs.writeFileSync(path.join(runDir, 'gate-2.md'), '→ RUN 1 MORE\n')
+    const second = await runGateResume(fixture.deps, started.runId, {})
+    expect(second.outcome).toBe('extend')
+    expect(second.version).toBe(3)
+
+    state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.roundCap).toBe(3)
+    expect(state.round).toBe(3)
+    expect(state.gate).toEqual({ mode: 'early', version: 3 })
+
+    const gate3 = fs.readFileSync(path.join(runDir, 'gate-3.md'), 'utf8')
+    expect(gate3).toContain('round 1:')
+    expect(gate3).toContain('round 2:')
+    expect(gate3).toContain('round 3:')
+  })
 })
 
 describe('presentGateAt cost fallback', () => {

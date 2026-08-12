@@ -92,12 +92,14 @@ export interface ResumeGateInput {
   readonly blockers: readonly GateBlocker[]
   readonly findings?: readonly GateBlocker[]
   readonly requiredAck?: string
+  readonly gateMode: 'early' | 'final'
 }
 
 export type GateOutcome =
   | { readonly kind: 'approved' }
   | { readonly kind: 'veto'; readonly vetoes: readonly { readonly id: string; readonly redirect?: string }[] }
   | { readonly kind: 'aborted' }
+  | { readonly kind: 'extend' }
 
 export async function resumeGate(deps: GateDeps, input: ResumeGateInput): Promise<GateOutcome> {
   const gateMdPath = path.join(deps.runDir, `gate-${input.version}.md`)
@@ -107,10 +109,15 @@ export async function resumeGate(deps: GateDeps, input: ResumeGateInput): Promis
     blockers: input.blockers,
     ...(input.findings === undefined ? {} : { findings: input.findings }),
     ...(input.requiredAck === undefined ? {} : { requiredAck: input.requiredAck }),
+    gateMode: input.gateMode,
   })
   if (response.abort) {
     deps.emit({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: input.version })
     return { kind: 'aborted' }
+  }
+  if (response.extend) {
+    deps.emit({ altitude: 'L2', type: 'gate', action: 'answered', mode: input.gateMode, version: input.version })
+    return { kind: 'extend' }
   }
   const beforeRaw = await readFile(path.join(deps.runDir, `gate-hashes-${input.version}.json`), 'utf8')
   const before = HashesSchema.parse(JSON.parse(beforeRaw))

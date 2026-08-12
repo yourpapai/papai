@@ -120,6 +120,7 @@ describe('resumeGate', () => {
       version: 1,
       assumptions: [{ id: 'A1', text: 'x', blast_radius: 'y' }],
       blockers: [],
+      gateMode: 'final',
     })
     expect(outcome.kind).toBe('approved')
     expect(fixture.driftCalls).toHaveLength(0)
@@ -160,6 +161,7 @@ describe('resumeGate', () => {
         { id: 'A2', text: 'second', blast_radius: 'w' },
       ],
       blockers: [],
+      gateMode: 'final',
     })
     expect(outcome.kind).toBe('veto')
     expect(vetoRedirects(outcome)).toEqual([{ id: 'A1', redirect: 'narrow it to dm-only' }])
@@ -195,6 +197,7 @@ describe('resumeGate', () => {
       version: 1,
       assumptions: [{ id: 'A1', text: 'x', blast_radius: 'y' }],
       blockers: [],
+      gateMode: 'final',
     })
     expect(outcome.kind).toBe('approved')
     expect(fixture.driftCalls[0]).toContain('specs/thing/spec.md')
@@ -225,6 +228,7 @@ describe('resumeGate', () => {
       version: 1,
       assumptions: [{ id: 'A1', text: 'x', blast_radius: 'y' }],
       blockers: [],
+      gateMode: 'final',
     })
     expect(outcome.kind).toBe('aborted')
   })

@@ -263,3 +263,27 @@ describe('parseGateResponse', () => {
     expect(response.approved).toBe(true)
   })
 })
+
+describe('parseGateResponse → RUN 1 MORE (extend directive)', () => {
+  it('produces extend: true at an early gate when → RUN 1 MORE appears on its own line', () => {
+    const md = '## Early gate\n\n→ RUN 1 MORE\n'
+    const response = parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'early' })
+    expect(response.extend).toBe(true)
+    expect(response.approved).toBe(false)
+  })
+
+  it('throws at a final gate naming the line and explaining extend is cap-hit-only', () => {
+    const md = '## Final gate\n\n→ RUN 1 MORE\n'
+    expect(() => parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'final' })).toThrow(
+      /RUN 1 MORE.*final gate.*cap-hit/u,
+    )
+  })
+
+  it('rejects → RUN 2 MORE, → RUN MORE, and → RUN 1 MORE x with an error naming the line', () => {
+    const invalid = ['→ RUN 2 MORE', '→ RUN MORE', '→ RUN 1 MORE x']
+    for (const line of invalid) {
+      const md = `## Early gate\n\n${line}\n`
+      expect(() => parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'early' })).toThrow(/line/u)
+    }
+  })
+})
