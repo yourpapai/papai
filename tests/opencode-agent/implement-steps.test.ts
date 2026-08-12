@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
 import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { walkPlanSteps } from '../../opencode-agent/src/phases/implement-steps.js'
-import { parseTaskCheckboxes, taskStepsFromCheckboxes, checkBoxText } from '../../opencode-agent/src/plan-steps.js'
+import { checkBoxText, planBoxes } from '../../opencode-agent/src/plan-steps.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
@@ -69,7 +69,7 @@ const makeWalk = (
 ): { run: () => ReturnType<typeof walkPlanSteps>; io: ReturnType<typeof stubPhaseDeps>['io'] } => {
   const built = stubPhaseDeps({ replies, selfLogin: AGENT_LOGIN })
   built.io.readContents[TASKS_PATH] = TASKS_MD
-  const steps = taskStepsFromCheckboxes(parseTaskCheckboxes(TASKS_MD))
+  const steps = planBoxes(TASKS_MD)
   const input: PhaseInput = {
     state: reviewState({ stepsDone: from }),
     issue: { number: 42, title: 'Add retries', body: 'b' },
@@ -129,8 +129,11 @@ describe('walkPlanSteps · tasks.md checkboxes (D5)', () => {
     const walk = await run()
 
     expect(walk.kind).toBe('finished')
+    // Only one box was worked this run: the second real step. The pre-checked
+    // 'scaffold' box is skipped without a turn, and the cursor (from = 1) started
+    // the walk at the second box rather than re-walking the first.
     expect(io.prompts).toHaveLength(1)
-    expect(walk.done).toBe(2)
+    expect(walk.commits).toBe(1)
   })
 
   it('the box-check uses checkBoxText (indented sub-items keep their indentation)', () => {

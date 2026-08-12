@@ -9,7 +9,7 @@ import { branchNameFor } from '../git.js'
 import { IMPLEMENT_INSTRUCTIONS } from '../implement-prompts.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
-import { parseTaskCheckboxes, taskStepsFromCheckboxes } from '../plan-steps.js'
+import { planBoxes } from '../plan-steps.js'
 import { msToDeadline } from '../time-budget.js'
 import { renderStoppedBetweenSteps } from '../time-notices.js'
 import { stopPartWayThrough } from '../turn-stop.js'
@@ -41,7 +41,7 @@ export const handleImplement: PhaseHandler = async (input): Promise<PhaseOutcome
   if (state.changeName === null) throw new Error('REVIEW_AND_MUTATE reached without a changeName on the state')
   const tasksPath = (await deps.openspec.instructions('tasks', state.changeName)).resolvedOutputPath
   const tasksMd = await deps.readFile(tasksPath)
-  const steps = taskStepsFromCheckboxes(parseTaskCheckboxes(tasksMd))
+  const steps = planBoxes(tasksMd)
 
   const branch = branchNameFor(state.issueId)
   await deps.git.ensureBranch(branch, await deps.baseBranch())

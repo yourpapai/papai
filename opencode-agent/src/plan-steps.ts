@@ -161,31 +161,42 @@ export const parseTaskCheckboxes = (markdown: string): TaskCheckbox[] => {
 }
 
 /**
- * One unchecked `tasks.md` box, as `REVIEW_AND_MUTATE` walks it.
+ * One `tasks.md` checkbox with its **absolute** position in the plan, as
+ * `REVIEW_AND_MUTATE` walks it (design D5).
  *
- * `number`/`total` are the marker a maintainer reads ("step 3 of 5") — counted
- * among the **unchecked** boxes only, since checked ones are finished work.
- * `line` is the 1-based file line the box-check edit targets.
+ * `number`/`total` are the marker a maintainer reads ("step 3 of 5"), counted
+ * among **every** box in the file — checked or not — so the number a step
+ * carries is stable across a run that checks the boxes ahead of it. `line` is
+ * the 1-based file line the box-check edit targets; `checked` is the state the
+ * parser read, which the walk treats as "done" and skips without a turn.
  */
-export interface TaskStep {
+export interface PlanBox {
   number: number
   total: number
   text: string
   line: number
+  checked: boolean
 }
 
 /**
- * The unchecked boxes the run will walk, numbered absolutely (1-based among the
- * unchecked). The walk's own cursor (`state.stepsDone`) slices into this list,
- * so a resume starts at the first box a previous stop did not reach.
+ * Every checkbox in a `tasks.md`, in file order, with absolute numbering.
+ *
+ * The walk reads the file once and visits each box by absolute index: a checked
+ * box is done and is skipped (the box-check is the persistence), an unchecked
+ * one gets a turn. Numbering among all boxes — not just the unchecked ones — is
+ * what keeps "step 3 of 5" honest on a `/continue` that arrives after steps 1
+ * and 2 have had their boxes ticked; numbering among the unchecked alone would
+ * re-label the third as the first and hide which step the cursor is on.
  */
-export const taskStepsFromCheckboxes = (boxes: readonly TaskCheckbox[]): TaskStep[] => {
-  const pending = boxes.filter((box) => !box.checked)
-  return pending.map((box, index) => ({
+export const planBoxes = (markdown: string): PlanBox[] => {
+  const checkboxes = parseTaskCheckboxes(markdown)
+  const total = checkboxes.length
+  return checkboxes.map((box, index) => ({
     number: index + 1,
-    total: pending.length,
+    total,
     text: box.text,
     line: box.line,
+    checked: box.checked,
   }))
 }
 
