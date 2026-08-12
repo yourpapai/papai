@@ -255,6 +255,30 @@ describe('the job condition', () => {
   })
 })
 
+/** Every `if:` the document carries, job conditions and step conditions alike. */
+const everyCondition: Array<[where: string, expression: string]> = Object.entries(workflow.jobs).flatMap(
+  ([id, job]) => [
+    [`jobs.${id}.if`, job.if] as [string, string],
+    ...job.steps.map((step, index): [string, string] => [`jobs.${id}.steps[${index}].if`, step.if]),
+  ],
+)
+
+describe('a condition is expression text, not YAML', () => {
+  test('no `if:` folds a `#` comment line into its expression', () => {
+    // `if: >-` opens a folded block scalar, and inside one a `#` line is not a
+    // comment — it folds into the expression. GitHub then fails to lex the
+    // condition and rejects the *whole file*: run 31602129342 died that way,
+    // with zero jobs, `failure` a second after it started, and the file path
+    // where the workflow name should have been. Every other assertion here
+    // stayed green through it, because `Bun.YAML.parse` reads that `#` as
+    // ordinary text and so does every YAML parser. Commentary about an arm goes
+    // above the `if:` key, where `#` means what it looks like it means.
+    const folded = everyCondition.filter(([, expression]) => expression.includes('#')).map(([where]) => where)
+
+    expect(folded).toEqual([])
+  })
+})
+
 /** The group the workflow computes for a resolved issue number: the agent job's
  *  template, with `needs.resolve.outputs.branch` filled in the way the resolve
  *  job's own `branch` output fills it. */
