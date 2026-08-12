@@ -134,14 +134,16 @@ export function getConfigFieldsForContext(contextId: string): readonly ConfigFie
   if (descriptor === undefined) return [...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]
 
   const providerFields = descriptor.contextConfigSchema
-    .map((field): ConfigField => ({
-      key: field.key,
-      storageKey: storageKeyForProviderField(descriptor, field),
-      label: field.label,
-      required: field.required,
-      sensitive: field.sensitive,
-      kind: 'provider-context',
-    }))
+    .map(
+      (field): ConfigField => ({
+        key: field.key,
+        storageKey: storageKeyForProviderField(descriptor, field),
+        label: field.label,
+        required: field.required,
+        sensitive: field.sensitive,
+        kind: 'provider-context',
+      }),
+    )
     .filter((field) => field.storageKey !== KANEO_PLUGIN_WORKSPACE_KEY)
 
   return [...providerFields, ...pluginFields, ...PREFERENCE_FIELDS, ...AI_OUTPUT_FIELDS]

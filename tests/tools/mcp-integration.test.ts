@@ -21,8 +21,8 @@ const CONTEXT = 'test-mcp-integration-user'
 mockLogger()
 
 const buildMcpToolSetSpy = mock((_contextId: string): Promise<ToolSet> => Promise.resolve({}))
-const buildPluginMcpToolSetSpy = mock((_ids: string[], _desc: unknown, _pool: unknown): Promise<ToolSet> =>
-  Promise.resolve({}),
+const buildPluginMcpToolSetSpy = mock(
+  (_ids: string[], _desc: unknown, _pool: unknown): Promise<ToolSet> => Promise.resolve({}),
 )
 
 function expectTaskProvider(runtimeContext: { taskProvider?: { getTask(taskId: string): Promise<unknown> } }): {

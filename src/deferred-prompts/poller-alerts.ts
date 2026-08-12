@@ -259,8 +259,9 @@ export async function pollAlertsOnce(
   const userLimit = pLimit(MAX_CONCURRENT_USERS)
   const results = await Promise.allSettled(
     [...byInstance.entries()].map(([configContextId, contextGroups]) =>
-      userLimit((): Promise<void> =>
-        executeAlertsForInstance(configContextId, contextGroups, chat, buildProviderFn, now, deps.resolveScope),
+      userLimit(
+        (): Promise<void> =>
+          executeAlertsForInstance(configContextId, contextGroups, chat, buildProviderFn, now, deps.resolveScope),
       ),
     ),
   )

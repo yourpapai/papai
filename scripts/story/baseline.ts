@@ -93,10 +93,12 @@ async function loadBaselineFiles(
   const limit = pLimit(GIT_BLOB_CONCURRENCY)
   return Promise.all(
     entries.map((entry) =>
-      limit(async (): Promise<LoadedStoryFile> => ({
-        path: entry.path,
-        bytes: await gitBytes(root, ['cat-file', 'blob', entry.object], `Cannot read baseline blob ${entry.path}`),
-      })),
+      limit(
+        async (): Promise<LoadedStoryFile> => ({
+          path: entry.path,
+          bytes: await gitBytes(root, ['cat-file', 'blob', entry.object], `Cannot read baseline blob ${entry.path}`),
+        }),
+      ),
     ),
   )
 }

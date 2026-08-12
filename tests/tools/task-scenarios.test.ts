@@ -239,14 +239,15 @@ describe('Task Scenarios', () => {
         listTasks: mock(() =>
           Promise.resolve([{ id: 'task-1', title: 'Regular task', status: 'todo', url: 'https://test.com/task/1' }]),
         ),
-        getTask: mock((): Promise<Task> =>
-          Promise.resolve({
-            id: 'task-1',
-            title: 'Regular task',
-            status: 'todo',
-            relations: [{ type: 'related', taskId: 'task-99' }],
-            url: 'https://test.com/task/1',
-          }),
+        getTask: mock(
+          (): Promise<Task> =>
+            Promise.resolve({
+              id: 'task-1',
+              title: 'Regular task',
+              status: 'todo',
+              relations: [{ type: 'related', taskId: 'task-99' }],
+              url: 'https://test.com/task/1',
+            }),
         ),
       })
 

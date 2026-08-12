@@ -71,8 +71,8 @@ describe('score-reader', () => {
   })
 
   test('measureMutationScore throws when exec exits non-zero, even if a stale report exists', async () => {
-    const exec = mock((): Promise<ExecResult> =>
-      Promise.resolve({ exitCode: 1, stdout: '', stderr: 'stryker crashed' }),
+    const exec = mock(
+      (): Promise<ExecResult> => Promise.resolve({ exitCode: 1, stdout: '', stderr: 'stryker crashed' }),
     )
     await expect(
       measureMutationScore({ exec, readReport: () => reportWith(10, 0) }, 'reports/paired', 'src/foo.ts'),
