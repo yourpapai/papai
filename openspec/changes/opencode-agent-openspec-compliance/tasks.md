@@ -54,12 +54,12 @@ Write/Edit TDD hook pipeline.
 
 ## 4. Branch-from-first-spec + artifact writes
 
-- [ ] 4.1 Add failing tests for capture-time branch creation
+- [x] 4.1 Add failing tests for capture-time branch creation
   (`agent/issue-<n>` + folder scaffold as commit #1) and for the diff-guard
   named-prefix grant limiting planner/spec turns to
   `openspec/changes/<change-name>/` (D8), protected-paths staging unchanged
   — `bun test tests/opencode-agent/git-commit.test.ts tests/opencode-agent/diff-guard.test.ts`
-- [ ] 4.2 Implement branch-from-first-spec (D2) and the prefix grant;
+- [x] 4.2 Implement branch-from-first-spec (D2) and the prefix grant;
   capability profile for artifact-writing turns (deny-by-default + named
   grant) — `bun test tests/opencode-agent/diff-guard.test.ts tests/opencode-agent/openai-config.test.ts`
 

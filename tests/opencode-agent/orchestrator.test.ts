@@ -717,10 +717,12 @@ const toDesignSpec = async (harness: Harness): Promise<void> => {
   harness.io.posted.length = 0
   // Reactions and status edits too: these helpers exist to put an issue in a
   // starting position, and what the setup runs acknowledged is not part of the
-  // test that follows.
+  // test that follows. Git calls too — capture now branches and pushes the
+  // scaffold (D2), which is setup, not the phase under test.
   harness.io.reactions.length = 0
   harness.io.reactionRemovals.length = 0
   harness.io.reactionLog.length = 0
+  harness.io.gitCalls.length = 0
   harness.io.edits.length = 0
 }
 

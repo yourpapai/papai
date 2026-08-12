@@ -63,6 +63,16 @@ const WRITE_TOOLS = [
   'external_directory',
 ] as const
 
+/**
+ * Design D8 — the one tool an artifact-writing (planner/spec) turn needs beyond
+ * reading. The drafter composes proposal/spec/design/tasks content and writes it
+ * into `openspec/changes/<name>/`; the diff guard's `outsidePrefix` confines
+ * what survives staging to that folder, so a write anywhere else is refused even
+ * though the tool itself is granted. No `bash`: composing artefacts is not
+ * running commands, and the two execution profiles (`build`) keep that.
+ */
+const PROPOSE_TOOLS = ['edit'] as const
+
 const grant = (tools: readonly string[]): Record<string, 'allow' | 'deny'> => ({
   '*': 'deny',
   ...Object.fromEntries(tools.map((tool) => [tool, 'allow'])),
@@ -73,6 +83,9 @@ export const READ_ONLY_PERMISSION = grant(READ_TOOLS)
 
 /** Everything above plus editing and running commands. */
 export const WRITE_PERMISSION = grant([...READ_TOOLS, ...WRITE_TOOLS])
+
+/** Reading plus editing, scoped by the diff guard to the change folder (D8). */
+export const PROPOSE_PERMISSION = grant([...READ_TOOLS, ...PROPOSE_TOOLS])
 
 export const buildOpencodeConfig = (settings: OpenAiSettings): Config => ({
   $schema: 'https://opencode.ai/config.json',
@@ -95,6 +108,9 @@ export const buildOpencodeConfig = (settings: OpenAiSettings): Config => ({
     // successful injection during the two *review* gates, before a maintainer
     // has approved anything, cannot reach the working tree at all.
     plan: { permission: READ_ONLY_PERMISSION },
+    // The artefact-drafting turns (design D8): read plus edit, confined by the
+    // diff guard to `openspec/changes/<change-name>/`. No `bash`.
+    propose: { permission: PROPOSE_PERMISSION },
     // Implementation and CI repair, and the review-loop subprocesses: `opencode
     // run` without `--agent` resolves to the primary agent, which
     // `opencode agent list` reports as `build`.

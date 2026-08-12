@@ -5,7 +5,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { inspectSalvage, inspectStaged, measure, parseNumstat } from '../../opencode-agent/src/diff-guard.js'
+import {
+  inspectSalvage,
+  inspectStaged,
+  measure,
+  outsidePrefix,
+  parseNumstat,
+} from '../../opencode-agent/src/diff-guard.js'
 import type { DiffLimits, DiffVerdict, SalvageVerdict, StagedFile } from '../../opencode-agent/src/diff-guard.js'
 import { createGit, credentialEnv } from '../../opencode-agent/src/git.js'
 import type { GitOptions, Salvage } from '../../opencode-agent/src/git.js'
@@ -658,5 +664,41 @@ describe('salvageAll drops what a push cannot carry', () => {
 
     expect(await createGit(guardedGit(run, LIMITS)).salvageAll('msg')).toEqual({ kind: 'clean' })
     expect(calls.some((call) => call.includes('commit'))).toBe(false)
+  })
+})
+
+/**
+ * Design D8 — the diff-guard named-prefix grant.
+ *
+ * Planner/spec turns are confined to `openspec/changes/<change-name>/`: a file a
+ * drafter turn writes outside that prefix is denied, exactly the shape
+ * sdd-runner's guard takes. This is the pure predicate the confined commit path
+ * reads; the protected-paths staging beside it is unchanged.
+ */
+describe('outsidePrefix (D8)', () => {
+  test('returns nothing when every path is under the change folder', () => {
+    expect(
+      outsidePrefix(
+        ['openspec/changes/add-x/proposal.md', 'openspec/changes/add-x/tasks.md'],
+        'openspec/changes/add-x/',
+      ),
+    ).toEqual([])
+  })
+
+  test('returns paths outside the change folder', () => {
+    expect(
+      outsidePrefix(['openspec/changes/add-x/proposal.md', 'src/a.ts', 'README.md'], 'openspec/changes/add-x/'),
+    ).toEqual(['src/a.ts', 'README.md'])
+  })
+
+  test('normalises a prefix without a trailing slash', () => {
+    expect(outsidePrefix(['openspec/changes/add-x/proposal.md'], 'openspec/changes/add-x')).toEqual([])
+  })
+
+  test('respects segment boundaries — a sibling change name is outside', () => {
+    // `add-xtras` shares the `add-x` prefix string but is a different folder.
+    expect(outsidePrefix(['openspec/changes/add-xtras/proposal.md'], 'openspec/changes/add-x/')).toEqual([
+      'openspec/changes/add-xtras/proposal.md',
+    ])
   })
 })

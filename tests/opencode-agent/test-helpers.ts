@@ -120,6 +120,8 @@ export interface StubIo {
   edits: { id: number; body: string }[]
   /** The thread the fake GitHub API surfaces to the next read. */
   thread: IssueComment[]
+  /** Git operations invoked, in order (`op:arg`). */
+  gitCalls: string[]
 }
 
 export interface StubPhaseDepsOptions {
@@ -168,6 +170,7 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     posted: [],
     edits: [],
     thread: [...(options.thread ?? [])],
+    gitCalls: [],
   }
   const replies = options.replies ?? []
   const login = options.selfLogin ?? 'agent-bot'
@@ -253,10 +256,22 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
   }
 
   const git: Git = {
-    ensureBranch: (_branch: string, _base: string): Promise<void> => Promise.resolve(),
-    commitAll: (_message: string): Promise<StagedTotals | null> => Promise.resolve({ files: 0, lines: 0 }),
-    salvageAll: (_message: string): Promise<Salvage> => Promise.resolve({ kind: 'clean' }),
-    push: (_branch: string, _options?: PushOptions): Promise<void> => Promise.resolve(),
+    ensureBranch: (branch: string, base: string): Promise<void> => {
+      io.gitCalls.push(`ensureBranch:${branch}:${base}`)
+      return Promise.resolve()
+    },
+    commitAll: (message: string): Promise<StagedTotals | null> => {
+      io.gitCalls.push(`commit:${message.split('\n')[0]}`)
+      return Promise.resolve({ files: 1, lines: 1 })
+    },
+    salvageAll: (message: string): Promise<Salvage> => {
+      io.gitCalls.push(`salvage:${message.split('\n')[0]}`)
+      return Promise.resolve({ kind: 'clean' })
+    },
+    push: (branch: string, _options?: PushOptions): Promise<void> => {
+      io.gitCalls.push(`push:${branch}`)
+      return Promise.resolve()
+    },
     defaultBranch: (): Promise<string | null> => Promise.resolve('main'),
   }
 

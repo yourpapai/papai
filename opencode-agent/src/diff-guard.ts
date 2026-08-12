@@ -175,3 +175,19 @@ export const inspectSalvage = (
 }
 
 const paths = (files: readonly StagedFile[]): string[] => files.map((file) => file.path)
+
+/**
+ * Design D8 — which staged paths fall **outside** the change folder a turn was
+ * granted write access to.
+ *
+ * Planner/spec turns are scoped to `openspec/changes/<change-name>/`: the
+ * confined commit path refuses anything this returns, the same shape
+ * sdd-runner's guard takes. A path is under the prefix only when the prefix
+ * ends on a segment boundary, so a sibling change (`add-x` vs `add-xtras`) is
+ * correctly outside. The prefix is normalised with a trailing slash so callers
+ * may spell it either way.
+ */
+export const outsidePrefix = (staged: readonly string[], prefix: string): string[] => {
+  const root = prefix.endsWith('/') ? prefix : `${prefix}/`
+  return staged.filter((path) => !path.startsWith(root))
+}

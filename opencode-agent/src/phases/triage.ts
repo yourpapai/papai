@@ -7,6 +7,7 @@ import { z } from 'zod'
 
 import { findArtifact, renderArtifact, SPEC_MARKER } from '../artifacts.js'
 import { promptForJson } from '../ask-json.js'
+import { branchNameFor } from '../git.js'
 import { MAINTAINER_ASSOCIATIONS } from '../guardrails.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { AgentPromptRequest } from '../opencode-adapter.js'
@@ -123,6 +124,7 @@ const captureOutcome = async (
   }
 
   await deps.openspec.newChange(decision.changeName, OPENSPEC_SCHEMA)
+  await scaffoldOnBranch(input, decision.changeName)
   // One local feeds both the visible heading and the hidden block, so the number
   // a maintainer reads and the number the next job reads back cannot drift
   // apart. Under the OpenSpec rework the revision counter left the state block
@@ -135,6 +137,23 @@ const captureOutcome = async (
     blocks: [renderArtifact(SPEC_MARKER, decision.spec, revision)],
     patch: { changeName: decision.changeName },
   }
+}
+
+/**
+ * Design D2 — the scaffold is durable the moment capture converges.
+ *
+ * Creates `agent/issue-<n>` off the configured base, commits the scaffolded
+ * folder as commit #1, and pushes, so planning artefacts survive the Actions
+ * runner without travelling in hidden blocks. `openspec new change` has already
+ * written the folder into the working tree; the untracked files carry across
+ * the branch switch and land in this commit.
+ */
+const scaffoldOnBranch = async (input: PhaseInput, changeName: string): Promise<void> => {
+  const { deps, state } = input
+  const branch = branchNameFor(state.issueId)
+  await deps.git.ensureBranch(branch, await deps.baseBranch())
+  await deps.git.commitAll(`chore(openspec): scaffold ${changeName}`)
+  await deps.git.push(branch)
 }
 
 /** The OpenSpec schema every agent change is scaffolded under. */
