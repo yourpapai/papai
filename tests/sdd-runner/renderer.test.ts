@@ -225,4 +225,22 @@ describe('createRenderer (integration smoke)', () => {
     expect(joined).not.toContain('\r')
     expect(joined).toContain('reviewer-r1 done')
   })
+
+  it('renderEvent stays callable when detached from its instance (event-bus subscription pattern)', () => {
+    const output: string[] = []
+    const stream = {
+      write(chunk: string): boolean {
+        output.push(chunk)
+        return true
+      },
+      isTTY: false,
+    }
+    const renderer = createRenderer(stream, 'normal')
+    const detached = renderer.renderEvent
+    expect(() => {
+      detached({ altitude: 'L2', type: 'stage_enter', stage: 'intake' })
+      detached({ altitude: 'L2', type: 'stage_exit', stage: 'intake' })
+    }).not.toThrow()
+    expect(output.join('')).toContain('intake')
+  })
 })

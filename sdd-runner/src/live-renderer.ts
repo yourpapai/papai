@@ -64,7 +64,7 @@ export class DynamicRenderer implements Renderer {
     this.folder = folder ?? createReplayFolder()
   }
 
-  renderState(state: ReplayState): void {
+  renderState = (state: ReplayState): void => {
     if (!this.tty) {
       this.writeSafe(`${renderPipelineMap(state).join('\n')}\n`)
       return
@@ -72,7 +72,7 @@ export class DynamicRenderer implements Renderer {
     this.writeBlock(renderPipelineMap(state))
   }
 
-  renderEvent(event: EventInput): void {
+  renderEvent = (event: EventInput): void => {
     this.folder.fold(event)
     this.track(event)
     if (!this.tty) {

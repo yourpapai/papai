@@ -116,13 +116,13 @@ export class LineRenderer implements Renderer {
     this.folder = folder ?? createReplayFolder()
   }
 
-  renderState(state: ReplayState): void {
+  renderState = (state: ReplayState): void => {
     const lines = renderPipelineMap(state)
     const block = lines.join('\n')
     this.stream.write(`${block}\n`)
   }
 
-  renderEvent(event: EventInput): void {
+  renderEvent = (event: EventInput): void => {
     this.folder.fold(event)
     if (event.type === 'round_close') {
       const perRound = this.folder.state.perRound
