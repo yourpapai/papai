@@ -10,8 +10,9 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import { DepthProfileSchema, StageIdSchema } from './events.js'
-import type { StageId } from './events.js'
+import type { DepthProfile, StageId } from './events.js'
 import type { ReplayState } from './replay.js'
+import { ROUND_CAPS } from './review-model.js'
 
 export const PersistedRunStateSchema = z.object({
   runId: z.string().min(1),
@@ -21,6 +22,7 @@ export const PersistedRunStateSchema = z.object({
   stage: StageIdSchema,
   depth: DepthProfileSchema.nullable(),
   round: z.number().int().nonnegative(),
+  roundCap: z.number().int().positive().optional(),
   gate: z.object({ mode: z.enum(['early', 'final']), version: z.number().int().positive() }).nullable(),
   status: z.enum(['running', 'completed', 'aborted', 'failed']),
   createdAt: z.string().min(1),
@@ -32,6 +34,17 @@ export type PersistedRunState = z.infer<typeof PersistedRunStateSchema>
 export interface RunState extends PersistedRunState {
   readonly runDir: string
   readonly statePath: string
+}
+
+/**
+ * Resolve the effective round cap for a run state. An explicit `roundCap`
+ * (set by an extend directive) wins; otherwise the depth profile's static
+ * `ROUND_CAPS` entry is used. A null depth defaults to `S` (matching the
+ * pre-classification intake stage), preserving prior behavior.
+ */
+export function resolveRoundCap(state: { depth: DepthProfile | null; roundCap?: number }): number {
+  if (state.roundCap !== undefined) return state.roundCap
+  return ROUND_CAPS[state.depth ?? 'S']
 }
 
 export interface ResumePoint {
@@ -55,14 +68,17 @@ export async function createRunState(input: CreateRunStateInput, now: Date = new
   const runId = input.runId ?? makeRunId(now)
   const runDir = path.join(input.workDir, 'runs', runId)
   await mkdir(runDir, { recursive: true })
+  const depth = null
+  const round = 0
   const state: RunState = {
     runId,
     repoRoot: input.repoRoot,
     workDir: input.workDir,
     changeName: input.changeName,
     stage: 'intake',
-    depth: null,
-    round: 0,
+    depth,
+    round,
+    roundCap: resolveRoundCap({ depth }),
     gate: null,
     status: 'running',
     createdAt: now.toISOString(),
@@ -75,7 +91,8 @@ export async function createRunState(input: CreateRunStateInput, now: Date = new
 }
 
 function toRunState(persisted: PersistedRunState, runDir: string): RunState {
-  return { ...persisted, runDir, statePath: path.join(runDir, 'state.json') }
+  const roundCap = resolveRoundCap(persisted)
+  return { ...persisted, roundCap, runDir, statePath: path.join(runDir, 'state.json') }
 }
 
 export async function loadRunState(workDir: string, runId: string): Promise<RunState> {
