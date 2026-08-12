@@ -74,7 +74,7 @@ Write/Edit TDD hook pipeline.
   `AGENT_SPEC`/`AGENT_PLAN` blocks outright (no legacy restore path —
   in-flight issues restart via the `STATE_VERSION` bump, D12)
   — `bun test tests/opencode-agent/phases.test.ts tests/opencode-agent/artifacts.test.ts`
-- [ ] 5.3 Sweep every remaining reader of the retired `AGENT_SPEC`/
+- [x] 5.3 Sweep every remaining reader of the retired `AGENT_SPEC`/
   `AGENT_PLAN` blocks and their revision counters (`specRevision`,
   `planRevision`): prompts that envelope spec/plan text, PR body rendering,
   status/progress tables, report block stamping, `findPlan`/`findHandoff`
