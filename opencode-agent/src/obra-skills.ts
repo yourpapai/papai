@@ -54,6 +54,10 @@ export const PHASE_SKILLS: Record<Phase, { required: readonly string[]; optional
   // into nothing.
   CODE_REVIEW: { required: [], optional: [] },
   CI_FIX: { required: ['systematic-debugging'], optional: ['test-driven-development'] },
+  // Empty like `CODE_REVIEW`: archiving is a CLI file move the handler drives,
+  // not content the model composes, so no OpenCode session boots and no skill
+  // is inlined.
+  ARCHIVE: { required: [], optional: [] },
   COMPLETE: { required: [], optional: [] },
   FAILED: { required: [], optional: [] },
   // Empty like every other phase with no handler: nothing runs in `INCOMPLETE`, so

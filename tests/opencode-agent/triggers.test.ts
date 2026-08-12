@@ -7,7 +7,8 @@ import { describe, expect, it } from 'bun:test'
 
 import { applyClarifyIntent } from '../../opencode-agent/src/comment-intent.js'
 import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
-import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import type { PrMergedTriggerEvent, TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { applyArchiveTrigger } from '../../opencode-agent/src/triggers.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
 
@@ -131,5 +132,59 @@ describe('applyClarifyIntent · consent completion (D9)', () => {
     // halt: null → triage runs. No classifier prompt was spent.
     expect(outcome.halt).toBeNull()
     expect(recording.io.prompts).toHaveLength(0)
+  })
+})
+
+describe('applyArchiveTrigger · the merged-PR door (D7)', () => {
+  const archiveState = (over: Partial<AgentState> = {}): AgentState => ({
+    ...baseState(),
+    phase: 'COMPLETE',
+    changeName: 'add-retries',
+    prNumber: 7,
+    ...over,
+  })
+
+  const mergedPrTrigger = (): PrMergedTriggerEvent => ({
+    kind: 'pr-merged',
+    eventName: 'pull_request',
+    prNumber: 7,
+    issueNumber: 42,
+    baseBranch: 'main',
+    fromThisRepository: true,
+    defaultBranch: 'main',
+  })
+
+  it('moves COMPLETE → ARCHIVE for a merged agent-branch pull request', () => {
+    const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
+    const input: PhaseInput = {
+      state: archiveState(),
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: mergedPrTrigger(),
+      command: null,
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+
+    const outcome = applyArchiveTrigger(input)
+
+    expect(outcome.state.phase).toBe('ARCHIVE')
+    expect(outcome.halt).toBeNull()
+  })
+
+  it('skips a merge event that arrives anywhere but COMPLETE', () => {
+    const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
+    const input: PhaseInput = {
+      state: archiveState({ phase: 'PLAN_REVIEW' }),
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: mergedPrTrigger(),
+      command: null,
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+
+    const outcome = applyArchiveTrigger(input)
+
+    expect(outcome.halt?.status).toBe('skipped')
+    expect(outcome.state.phase).toBe('PLAN_REVIEW')
   })
 })

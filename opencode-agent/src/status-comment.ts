@@ -106,6 +106,9 @@ const STEP_OF: Record<Phase, number | null> = {
   // the branch is pushed and the pull request open before either can start.
   CODE_REVIEW: 4,
   CI_FIX: 4,
+  // The archive door (D7) runs after delivery, on the base branch — past the
+  // pipeline's milestones, like COMPLETE.
+  ARCHIVE: null,
   COMPLETE: null,
   FAILED: null,
   INCOMPLETE: null,

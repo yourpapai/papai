@@ -62,6 +62,7 @@ export const PHASES = [
   'PR_DELIVERY',
   'CODE_REVIEW',
   'CI_FIX',
+  'ARCHIVE',
   'COMPLETE',
   'FAILED',
   'INCOMPLETE',

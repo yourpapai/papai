@@ -99,14 +99,14 @@ const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
   DESIGN_SPEC: { CHANGES_REQUESTED: 'INIT_OR_CLARIFY', APPROVED: 'PLANNING' },
   PLANNING: { PLAN_POSTED: 'PLAN_REVIEW' },
   PLAN_REVIEW: { CHANGES_REQUESTED: 'PLANNING', APPROVED: 'REVIEW_AND_MUTATE' },
-  // Design D6 — steering-drift: a scope-affecting comment during implementation
-  // routes back to PLANNING for an artifact-update turn before implementation
-  // continues, so the folder cannot rot relative to the conversation.
+  // D6 — steering-drift: a scope-affecting comment mid-implementation routes to PLANNING.
   REVIEW_AND_MUTATE: { CHANGES_REQUESTED: 'PLANNING', CHANGES_COMMITTED: 'PR_DELIVERY' },
   PR_DELIVERY: { PR_OPENED: 'COMPLETE', CI_FAILED: 'CI_FIX' },
   CODE_REVIEW: { REVIEW_DONE: 'COMPLETE' },
   CI_FIX: { CI_FIXED: 'COMPLETE' },
-  COMPLETE: { CI_FAILED: 'CI_FIX', REVIEW_REQUESTED: 'CODE_REVIEW' },
+  // D7 — archive door: merged PR → ARCHIVE → COMPLETE. Never persisted as waiting.
+  ARCHIVE: { ARCHIVED: 'COMPLETE' },
+  COMPLETE: { CI_FAILED: 'CI_FIX', REVIEW_REQUESTED: 'CODE_REVIEW', PR_MERGED: 'ARCHIVE' },
   FAILED: {},
   INCOMPLETE: {},
 }
@@ -130,6 +130,7 @@ const TIME_STOPPABLE: ReadonlySet<Phase> = new Set<Phase>([
   'PR_DELIVERY',
   'CODE_REVIEW',
   'CI_FIX',
+  'ARCHIVE',
 ])
 
 /**

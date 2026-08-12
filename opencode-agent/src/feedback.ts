@@ -84,6 +84,9 @@ export const reactionTarget = (trigger: TriggerEvent): ReactionTarget | null => 
         : { kind: 'comment', id: trigger.commentId }
     case 'pull-request':
       return { kind: 'comment', id: trigger.commentId }
+    case 'pr-merged':
+      // A system event — nobody typed a comment to acknowledge.
+      return null
     default:
       return unreachable(trigger)
   }

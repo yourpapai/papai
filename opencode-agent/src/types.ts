@@ -46,6 +46,11 @@ export const TRANSITION_SIGNALS = [
   'CI_FIXED',
   'REVIEW_REQUESTED',
   'REVIEW_DONE',
+  // Design D7 — the archive door. A merged pull request on `agent/issue-<n>`
+  // moves COMPLETE → ARCHIVE; the handler runs `openspec archive` as a
+  // follow-up commit on master and signals ARCHIVED back to COMPLETE.
+  'PR_MERGED',
+  'ARCHIVED',
   'CANCELLED',
   'FAILED',
   'RETRY',

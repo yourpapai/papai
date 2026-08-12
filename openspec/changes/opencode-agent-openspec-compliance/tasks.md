@@ -99,12 +99,12 @@ Write/Edit TDD hook pipeline.
 
 ## 7. Archive door
 
-- [ ] 7.1 Add failing tests for the `pull_request.closed(merged)` trigger:
+- [x] 7.1 Add failing tests for the `pull_request.closed(merged)` trigger:
   parse → guardrails → resolve issue via head branch (existing door
   pattern), foreign-repo refusal, `ARCHIVE` phase running
   `openspec archive` as a follow-up commit on master (D7)
   — `bun test tests/opencode-agent/pr-trigger.test.ts tests/opencode-agent/triggers.test.ts`
-- [ ] 7.2 Implement the trigger + `ARCHIVE` phase + workflow YAML job;
+- [x] 7.2 Implement the trigger + `ARCHIVE` phase + workflow YAML job;
   install + pin the `openspec` CLI in `agent-pipeline.yml` beside the
   `opencode` CLI — `bun test tests/opencode-agent/pr-trigger.test.ts`
 

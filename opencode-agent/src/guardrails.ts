@@ -6,7 +6,7 @@
 import { unreachable } from './errors.js'
 import { branchNameFor } from './git.js'
 import type { PullRequestRefusal, PullRequestTriggerEvent } from './pr-trigger.js'
-import type { CiTriggerEvent, IssueTriggerEvent, TriggerEvent } from './trigger-events.js'
+import type { CiTriggerEvent, IssueTriggerEvent, PrMergedTriggerEvent, TriggerEvent } from './trigger-events.js'
 
 /**
  * Whether the pipeline may act on an event it has already understood.
@@ -164,10 +164,24 @@ const evaluatePullRequestGuardrails = (event: PullRequestTriggerEvent, options: 
   checkSender(event, options)
 
 /**
+ * A merged pull request is a system event — nobody typed a command — so the
+ * sender rules do not apply. The one structural guard the archive door (D7)
+ * needs is the foreign-repo check, for the same reason the CI path needs it:
+ * `head.ref` is attacker-controlled, and a fork whose branch is named
+ * `agent/issue-42` must not archive into this repository.
+ */
+const evaluatePrMergedGuardrails = (event: PrMergedTriggerEvent): GuardrailDecision => {
+  if (!event.fromThisRepository) {
+    return deny('PR_FOREIGN_REPOSITORY', 'Merged pull request came from another repository, not this one')
+  }
+  return { allowed: true }
+}
+
+/**
  * Applies every abort rule for the event's kind, in the order a reviewer
  * expects.
  *
- * A `switch` rather than the ternary this was: with three kinds, a fallthrough
+ * A `switch` rather than the ternary this was: with four kinds, a fallthrough
  * arm silently buckets whichever one is added next into the rules written for
  * another, and an exhaustive switch makes that a compile error instead.
  */
@@ -179,6 +193,8 @@ export const evaluateGuardrails = (event: TriggerEvent, options: GuardrailOption
       return evaluateCiGuardrails(event, options)
     case 'pull-request':
       return evaluatePullRequestGuardrails(event, options)
+    case 'pr-merged':
+      return evaluatePrMergedGuardrails(event)
     default:
       return unreachable(event)
   }

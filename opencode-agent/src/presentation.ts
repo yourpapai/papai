@@ -99,6 +99,7 @@ export const PRESENTATION_KEYS = [
   'PR_DELIVERY',
   'CODE_REVIEW',
   'CI_FIX',
+  'ARCHIVE',
   'COMPLETE:delivered',
   'COMPLETE:cancelled',
   'FAILED',
@@ -170,6 +171,12 @@ export const PRESENTATION: Record<PresentationKey, PhasePresentation> = {
     label: { suffix: 'ci-fixing', color: BLUE },
     whoseTurn: 'agent',
     headline: 'Repairing red checks',
+  },
+  ARCHIVE: {
+    glyph: '📦',
+    label: { suffix: 'archiving', color: BLUE },
+    whoseTurn: 'agent',
+    headline: 'Archiving the merged change',
   },
   'COMPLETE:delivered': {
     glyph: '✅',

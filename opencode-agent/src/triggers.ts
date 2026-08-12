@@ -52,6 +52,12 @@ export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   const { state, trigger, command } = input
 
   if (trigger.kind === 'ci') return applyCiTrigger(input)
+  // Design D7 — the archive door: a merged PR on `agent/issue-<n>` moves
+  // COMPLETE → ARCHIVE. Routed before the issue-conversation branches because
+  // it is a fourth event kind, not a command — `moveOrSkip` turns the refusal
+  // (anything other than COMPLETE) into the same quiet skip the CI path uses for
+  // a red run that arrives in a phase with no branch to fix.
+  if (trigger.kind === 'pr-merged') return Promise.resolve(applyArchiveTrigger(input))
   // Before the command branch below, not folded into it: a pull request is a
   // narrower door onto the same commands, and the narrowing is what §6.2 of the
   // plan settles. Everything after this line is the issue conversation.
@@ -68,6 +74,21 @@ export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   if (!WAITING_PHASES.has(state.phase)) return readAndSkip(input, `No actionable command while in ${state.phase}`)
 
   return applyIntent(input)
+}
+
+/**
+ * The archive door (D7): a merged PR moves `COMPLETE` → `ARCHIVE`.
+ *
+ * `moveOrSkip` turns anything other than COMPLETE into a quiet skip with a
+ * reason: a merged-PR event that arrives mid-pipeline, before delivery, has no
+ * archive to run (the folder is still being drafted against), and a second
+ * merge on an already-archived issue finds no `ARCHIVE` row from `COMPLETE` and
+ * is skipped the same way. No comment is posted on a skip, mirroring the CI
+ * path: the event is machine noise the issue does not need to hear about.
+ */
+export const applyArchiveTrigger = (input: PhaseInput): TriggerOutcome => {
+  const { state, deps } = input
+  return moveOrSkip(state, 'PR_MERGED', deps, 'a merged pull request')
 }
 
 /** The one command a pull request accepts. See {@link applyPullRequestCommand}. */

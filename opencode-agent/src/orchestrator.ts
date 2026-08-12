@@ -156,6 +156,8 @@ const triggerCommand = (event: TriggerEvent): ParsedCommand | null => {
       return parseSlashCommand(event.commentBody)
     case 'pull-request':
       return parseSlashCommand(event.commentBody)
+    case 'pr-merged':
+      return null
     default:
       return unreachable(event)
   }
