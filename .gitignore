@@ -93,3 +93,6 @@ opencode.json
 # opencode-agent: vendored superpowers checkout + generated run inputs
 .superpowers/
 .opencode-agent/
+
+# pinned actionlint binary, fetched and checksum-verified by scripts/run-actionlint.ts
+.actionlint/

@@ -109,6 +109,16 @@ jobs:
     # API call and is not attempted here. And the arm above keeps its
     # `pull_request == null`: it is what still drops a pull-request comment
     # carrying no `/review`.
+    #
+    # The fourth arm is Design D7's archive door: a merged pull request on an
+    # agent branch whose head is this repository. The in-process parse checks the
+    # same four things; this arm keeps a fork's `agent/issue-42` or an unmerged
+    # close from ever booting a runner with the API keys mounted.
+    #
+    # Everything below `if:` is a folded block scalar, so a `#` line in there is
+    # not a YAML comment — it folds into the expression, and GitHub rejects the
+    # whole file with no job ever starting. Commentary on the arms goes here,
+    # above the key.
     if: >-
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'failure' &&
@@ -127,10 +137,6 @@ jobs:
         github.event.sender.type != 'Bot' &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
        ||
-       # Design D7 — the archive door. A merged pull request on an agent branch
-       # whose head is this repository. The in-process parse checks the same four
-       # things; this arm keeps a fork's `agent/issue-42` or an unmerged close
-       # from ever booting a runner with the API keys mounted.
        (github.event_name == 'pull_request' &&
         github.event.action == 'closed' &&
         github.event.pull_request.merged == true &&

@@ -1,0 +1,41 @@
+# actionlint configuration. Read by `bun workflows:lint` (scripts/run-actionlint.ts)
+# and by the "Workflow Lint" job in ci.yml.
+#
+# The gate exists because a workflow file is the one thing in this repository
+# that CI cannot check by running it. An invalid one is not a red build — GitHub
+# rejects the file, starts no job, and reports a run that is `failure` a second
+# after it began with the file path where the workflow name should be. Nothing
+# else goes red, so the merge looks clean. That is exactly how the `#`-inside-a
+# -folded-block-scalar bug in agent-pipeline.yml's `if:` shipped and left the
+# OpenCode agent dead from 2026-08-09 to 2026-08-12, across every trigger,
+# noticed only because somebody opened the Actions tab.
+#
+# Suppressions are path-scoped on purpose. A global `-ignore` would hide the
+# same class of error everywhere it is genuinely wrong, and both entries below
+# are cases where actionlint is stricter than GitHub actually is — each was
+# checked against a real run before being written down, and each says which one.
+
+paths:
+  .github/workflows/ci.yml:
+    ignore:
+      # `queue` is a documented `concurrency` property — `single` (default) and
+      # `max` ("up to 100 jobs or workflow runs can be pending in the
+      # concurrency group"). actionlint 1.7.7 predates it and knows only `group`
+      # and `cancel-in-progress`. The key parses and takes effect: on 07ad7f9
+      # the job that carries it, "Mutation Testing (changed-files baseline
+      # seed)", ran to success (CI run 31602130473).
+      - 'unexpected key "queue" for "concurrency" section'
+
+  .github/workflows/agent-pipeline.yml:
+    ignore:
+      # `timeout-minutes: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 90 }}`. actionlint
+      # wants a number and `vars` is typed string; GitHub coerces. Proven by run
+      # 31328255566 on 278d0db, which carries this exact line and whose "Run
+      # agent pipeline" job started and completed normally.
+      #
+      # The expression stays in this spelling rather than a `fromJSON(…)` one
+      # because the *same* text is forwarded to the pipeline as the
+      # `AGENT_JOB_TIMEOUT_MINUTES` env value, which is what makes the ceiling
+      # one value instead of two kept in step by hand. `workflow.test.ts` pins
+      # that the two are identical.
+      - 'must be number but found type string'
