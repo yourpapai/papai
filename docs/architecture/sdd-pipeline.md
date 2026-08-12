@@ -59,6 +59,7 @@ The gate is enterable at two points: an early cap-hit presentation (before decom
 - Check every assumption box to **approve**.
 - Leave a box unchecked to **veto** (optional `→ <redirect>` beneath).
 - Answer a cap-hit blocker with `→ <answer>` or `→ OVERRIDE`.
+- Write `→ RUN 1 MORE` on its own line to **extend** an early cap-hit gate by one round (early-gate only).
 - Write `ABORT` on its own line to abort.
 
 Bare approve with open blockers fails — override must be explicit.
@@ -101,6 +102,33 @@ A veto triggers exactly one resolver pass before the gate is re-presented at `ga
 4. **Re-presentation** — `presentGateAt` re-materializes `assumptions.md` from the updated sidecar and writes `gate-<n+1>.md` with new artifact hashes, cost/duration, and `state.gate.mode` preserved (early → early, final → final). The outcome is `'veto'` with `version: n+1`.
 
 `vetoRedirects(outcome)` (`gate.ts`) is the wiring point: it pulls the veto list from the gate outcome and feeds the updater. Repeated vetoes converge only when the human approves — each cycle produces a content-different `gate-<n+1>.md` because the updater rewrites the affected artifacts.
+
+### Extend directive (`→ RUN 1 MORE`)
+
+At an **early** cap-hit gate the human may write `→ RUN 1 MORE` on its own line. The runner bumps the effective round cap by 1, executes exactly one more review round, and re-presents the gate at `gate-<n+1>.md`. This is **Shape B — extend-and-re-cap**: one decision binds one round of spend; repeated extends require writing the directive again at each successive gate. The directive is rejected at a final gate (post-convergence there is nothing to extend) and only the literal `→ RUN 1 MORE` is accepted — `→ RUN 2 MORE`, `→ RUN MORE`, etc. are rejected with an error naming the line, leaving room for future parameterization without silently accepting typos.
+
+**State** — a new optional `state.roundCap` field defaults to `ROUND_CAPS[depth]` and is bumped by each extend:
+
+```
+state.depth     classification (S/M/L) — set once at intake, never mutates
+state.roundCap  current ceiling       — starts at ROUND_CAPS[depth], grows on extend
+```
+
+The depth profile and the cap are distinct: an M-profile run that extends three times has `state.depth = 'M'` and `state.roundCap = 6`. The depth governs lens escalation (`M gains skeptic when blockers remain after round 2`); the cap only bounds the loop. Overloading `depth` would conflate a classification with a counter and silently change the lens mix.
+
+**Carry-forward** — the extended round reads `resolutions-<state.round>.json` as its prior ledger via the existing `readResolutionsLedger` sidecar mechanics, so already-resolved findings stay resolved. The runner re-enters the review loop at `state.round + 1` with the bumped cap (`runReviewLoop({ startRound, cap })`); rounds already executed are never re-run, so `events.ndjson` and the trajectory block stay append-only.
+
+**Worked example** — an M-profile run cap-hits at round 3:
+
+```
+gate-1.md  trajectory: round 1 · round 2 · round 3            (cap = 3)
+           ↓ human writes → RUN 1 MORE
+gate-2.md  trajectory: round 1 · round 2 · round 3 · round 4  (cap = 4, still cap-hit)
+           ↓ human writes → RUN 1 MORE
+gate-3.md  trajectory: round 1 · … · round 5                  (cap = 5, converged → final gate)
+```
+
+Each extend appends exactly one trajectory row and bumps the cap by 1. When an extended round converges, the run flows into decompose → atomicity → final gate at the same `gate-<n+1>.md` version, exactly as a fresh `runPostReviewToGate` would. The `runGateResume` outcome is `'extend'` with `version: n+1` and the new `gateMdPath`, distinguishing "we ran another round" from approve/veto/abort for the CLI and event log.
 
 ### Nitpicks at the final gate
 
