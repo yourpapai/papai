@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import { applyClarifyIntent } from '../../opencode-agent/src/comment-intent.js'
 import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
 import type { PrMergedTriggerEvent, TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
-import { applyArchiveTrigger } from '../../opencode-agent/src/triggers.js'
+import { applyArchiveTrigger, applyTrigger } from '../../opencode-agent/src/triggers.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
 
@@ -186,5 +186,44 @@ describe('applyArchiveTrigger · the merged-PR door (D7)', () => {
 
     expect(outcome.halt?.status).toBe('skipped')
     expect(outcome.state.phase).toBe('PLAN_REVIEW')
+  })
+})
+
+describe('applyTrigger · /cancel cleanup (D9)', () => {
+  it('deletes the remote agent branch when /cancel succeeds', async () => {
+    const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
+    const input: PhaseInput = {
+      state: baseState({ phase: 'PLAN_REVIEW', changeName: 'add-x' }),
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: commentTrigger('/cancel', 'OWNER'),
+      command: { command: '/cancel', argument: '' },
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+
+    const outcome = await applyTrigger(input)
+
+    expect(outcome.state.phase).toBe('COMPLETE')
+    // The branch + its change folder are the work of a mis-capture; /cancel
+    // removes them rather than leaving an orphaned agent branch behind.
+    expect(recording.io.gitCalls).toContain('deleteRemoteBranch:agent/issue-42')
+  })
+
+  it('cancels cleanly when there is no branch to delete (pre-capture)', async () => {
+    const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
+    const input: PhaseInput = {
+      state: baseState({ phase: 'INIT_OR_CLARIFY', changeName: null }),
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: commentTrigger('/cancel', 'OWNER'),
+      command: { command: '/cancel', argument: '' },
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+
+    const outcome = await applyTrigger(input)
+
+    expect(outcome.state.phase).toBe('COMPLETE')
+    // No branch was ever created, so no deletion is attempted.
+    expect(recording.io.gitCalls).not.toContain('deleteRemoteBranch:agent/issue-42')
   })
 })

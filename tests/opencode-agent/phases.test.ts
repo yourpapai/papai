@@ -211,6 +211,21 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
     expect(outcome.comment).toContain('Add retries.')
     expect(outcome.comment).toContain('agent/issue-42')
   })
+
+  it('resets agent/issue-<n> to base before the scaffold commit (D12 restart)', async () => {
+    // A restart lands on an issue whose agent/issue-<n> branch already exists
+    // (partial legacy work). The scaffold resets the branch to base so the new
+    // capture starts from zero rather than adopting the old diff.
+    const { input, io } = makeInput({
+      association: 'OWNER',
+      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec' })],
+    })
+
+    await handleTriage(input)
+
+    // resetBranchToBase, not ensureBranch — restart means from zero.
+    expect(io.gitCalls).toContain('resetBranchToBase:agent/issue-42:main')
+  })
 })
 
 /**

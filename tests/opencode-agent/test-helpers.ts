@@ -272,6 +272,14 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       io.gitCalls.push(`ensureBranch:${branch}:${base}`)
       return Promise.resolve()
     },
+    resetBranchToBase: (branch: string, base: string): Promise<void> => {
+      io.gitCalls.push(`resetBranchToBase:${branch}:${base}`)
+      return Promise.resolve()
+    },
+    deleteRemoteBranch: (branch: string): Promise<void> => {
+      io.gitCalls.push(`deleteRemoteBranch:${branch}`)
+      return Promise.resolve()
+    },
     commitAll: (message: string): Promise<StagedTotals | null> => {
       io.gitCalls.push(`commit:${message.split('\n')[0]}`)
       return Promise.resolve({ files: 1, lines: 1 })

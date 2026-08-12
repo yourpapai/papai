@@ -9,12 +9,13 @@ import { acceptedCommands, commandApplies, COMMAND_SIGNALS } from './commands.js
 import type { ParsedCommand, SlashCommand } from './commands.js'
 import { applyClarifyIntent, applyIntent, applySteeringIntent, readAndSkip } from './comment-intent.js'
 import { react } from './feedback.js'
+import { branchNameFor } from './git.js'
 import type { PhaseInput } from './phase-context.js'
 import { postAndAppend, renderRefusedCommand } from './run-report.js'
 import { canTransition } from './transitions.js'
 import { moveOrSkip, skip } from './trigger-outcome.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
-import { WAITING_PHASES } from './types.js'
+import { errorMessage, WAITING_PHASES } from './types.js'
 
 /**
  * Turning a trigger — a slash command, a plain comment, a red CI run — into the
@@ -126,7 +127,7 @@ const applyPullRequestCommand = (input: PhaseInput, command: ParsedCommand | nul
   return applyCommand(input, command)
 }
 
-const applyCommand = (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
+const applyCommand = async (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
   const { state, deps } = input
   // Always available: answering asks nothing of the state machine, so there is
   // no phase in which it can be the wrong thing to do. The machine now agrees —
@@ -169,9 +170,26 @@ const applyCommand = (input: PhaseInput, command: ParsedCommand): Promise<Trigge
   }
 
   const outcome = moveOrSkip(state, signal, deps, command.command)
-  if (outcome.halt === null) return Promise.resolve(outcome)
+  if (outcome.halt !== null) return refuseCommand(input, command.command, outcome.halt.reason)
+  // D9 — `/cancel` gains branch + change-folder cleanup (the mis-capture's work).
+  await afterCommandCleanup(input, command)
+  return outcome
+}
 
-  return refuseCommand(input, command.command, outcome.halt.reason)
+/**
+ * Side effects a successful command carries beyond the state move. Today only
+ * `/cancel` (D9): delete the `agent/issue-<n>` branch a mis-capture pushed, so
+ * the work is gone rather than orphaned. Only when capture happened.
+ */
+const afterCommandCleanup = async (input: PhaseInput, command: ParsedCommand): Promise<void> => {
+  if (command.command !== '/cancel' || input.state.changeName === null) return
+  const { deps, state } = input
+  try {
+    await deps.git.deleteRemoteBranch(branchNameFor(state.issueId))
+    deps.log.info({ issue: state.issueId }, 'Deleted the agent branch for /cancel')
+  } catch (error) {
+    deps.log.warn({ issue: state.issueId, error: errorMessage(error) }, 'Could not delete the agent branch for /cancel')
+  }
 }
 
 /**

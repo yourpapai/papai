@@ -143,18 +143,21 @@ const captureOutcome = async (
 }
 
 /**
- * Design D2 — the scaffold is durable the moment capture converges.
+ * Design D2 — the scaffold is durable the moment capture converges, and D12 —
+ * a restart starts from zero.
  *
- * Creates `agent/issue-<n>` off the configured base, commits the scaffolded
- * folder as commit #1, and pushes, so planning artefacts survive the Actions
- * runner without travelling in hidden blocks. `openspec new change` has already
- * written the folder into the working tree; the untracked files carry across
- * the branch switch and land in this commit.
+ * Creates `agent/issue-<n>` off the configured base, force-resetting any prior
+ * branch to base first (a restarted issue's branch may carry partial legacy
+ * work that must not be adopted), commits the scaffolded folder as commit #1,
+ * and pushes, so planning artefacts survive the Actions runner without
+ * travelling in hidden blocks. `openspec new change` has already written the
+ * folder into the working tree; the untracked files carry across the branch
+ * switch and land in this commit.
  */
 const scaffoldOnBranch = async (input: PhaseInput, changeName: string): Promise<void> => {
   const { deps, state } = input
   const branch = branchNameFor(state.issueId)
-  await deps.git.ensureBranch(branch, await deps.baseBranch())
+  await deps.git.resetBranchToBase(branch, await deps.baseBranch())
   await deps.git.commitAll(`chore(openspec): scaffold ${changeName}`)
   await deps.git.push(branch)
 }

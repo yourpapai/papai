@@ -537,6 +537,14 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.gitCalls.push(`ensureBranch:${branch}:${base}`)
       return Promise.resolve()
     },
+    resetBranchToBase: (branch, base) => {
+      io.gitCalls.push(`ensureBranch:${branch}:${base}`)
+      return Promise.resolve()
+    },
+    deleteRemoteBranch: (branch) => {
+      io.gitCalls.push(`deleteRemoteBranch:${branch}`)
+      return Promise.resolve()
+    },
     commitAll: (message) => {
       io.gitCalls.push(`commit:${message.split('\n')[0]}`)
       return Promise.resolve(io.committedTotals)
@@ -661,6 +669,8 @@ const hostileGit = (): Git => {
 
   return {
     ensureBranch: (): Promise<void> => refuse('ensureBranch'),
+    resetBranchToBase: (): Promise<void> => refuse('resetBranchToBase'),
+    deleteRemoteBranch: (): Promise<void> => refuse('deleteRemoteBranch'),
     commitAll: (): Promise<StagedTotals | null> => refuse('commit'),
     salvageAll: (): Promise<Salvage> => refuse('salvage'),
     push: (): Promise<void> => refuse('push'),
@@ -2325,11 +2335,15 @@ describe('commands and budgets', () => {
     expect(cancelled.status).toBe('completed')
     expect(harness.io.posted).toHaveLength(1)
     expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
+    // D9 — /cancel deletes the agent branch (the mis-capture's work is gone).
+    expect(harness.io.gitCalls).toContain('deleteRemoteBranch:agent/issue-42')
 
     harness.io.posted.length = 0
+    harness.io.gitCalls.length = 0
     const after = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
     expect(after.status).toBe('skipped')
+    // The /approve alone produces no git work — the cancel is durable.
     expect(harness.io.gitCalls).toEqual([])
   })
 

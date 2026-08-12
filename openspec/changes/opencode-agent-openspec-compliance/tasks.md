@@ -110,11 +110,11 @@ Write/Edit TDD hook pipeline.
 
 ## 8. Restart + cancel cleanup
 
-- [ ] 8.1 Add failing tests for restart semantics (D12): a restarted issue
+- [x] 8.1 Add failing tests for restart semantics (D12): a restarted issue
   whose `agent/issue-<n>` branch already exists resets the branch to base
   before the scaffold commit; and for `/cancel` gaining branch +
   change-folder cleanup (D9) — `bun test tests/opencode-agent/triggers.test.ts`
-- [ ] 8.2 Implement restart-with-reset + cancel cleanup
+- [x] 8.2 Implement restart-with-reset + cancel cleanup
   — `bun test tests/opencode-agent/triggers.test.ts`
 
 ## 9. Docs + full verification

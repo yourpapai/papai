@@ -82,10 +82,12 @@ describe('handleTriage · capture · branch-from-first-spec (D2)', () => {
     const outcome = await handleTriage(input)
 
     expect(outcome.signal).toBe('CAPTURED')
-    // The scaffold is durable: branch → commit → push, in that order, on the
-    // agent's own branch off the configured base.
+    // The scaffold is durable: reset-to-base → commit → push, in that order, on
+    // the agent's own branch off the configured base. `resetBranchToBase` (D12)
+    // rather than `ensureBranch`: a restarted issue's branch may carry partial
+    // legacy work, and the new capture starts from zero.
     expect(recording.io.gitCalls).toEqual([
-      'ensureBranch:agent/issue-42:main',
+      'resetBranchToBase:agent/issue-42:main',
       'commit:chore(openspec): scaffold add-retry-helper',
       'push:agent/issue-42',
     ])
