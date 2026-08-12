@@ -126,5 +126,5 @@ Write/Edit TDD hook pipeline.
   `docs/architecture/openspec-superpowers-hybrid.md` routing table
   (opencode-agent entry now points at this change)
   — `bun run format:check`
-- [ ] 9.2 Run full `bun test`, `bun run typecheck`, `bun run lint`
+- [x] 9.2 Run full `bun test`, `bun run typecheck`, `bun run lint`
   — `bun run test && bun run typecheck && bun run lint`
