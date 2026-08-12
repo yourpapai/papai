@@ -17,6 +17,7 @@ import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import {
   executionPlanSchema,
   MAX_PLAN_STEPS,
+  parseTaskCheckboxes,
   renderPlanMarkdown,
   stepSubject,
 } from '../../opencode-agent/src/plan-steps.js'
@@ -148,5 +149,52 @@ describe('the commit subject a step earns', () => {
     const long = stepSubject('x'.repeat(200))
 
     expect(long.length).toBeLessThanOrEqual(72)
+  })
+})
+
+/**
+ * Design D5 — tasks.md is the plan's only shape.
+ *
+ * `REVIEW_AND_MUTATE` walks the change's `tasks.md` checkboxes; each step's
+ * commit checks its box in the same commit. These tests pin the parser that
+ * turns the file into the ordered checkbox list the walk reads, including the
+ * line number the box-check edit needs.
+ */
+describe('parseTaskCheckboxes (D5)', () => {
+  const TASKS_MD = [
+    '# Tasks: add retries',
+    '',
+    '- [x] 1.1 Add failing tests',
+    '- [ ] 1.2 Implement the wrapper',
+    '  - [ ] 1.2.1 Handle the timeout case',
+    '- [ ] 1.3 Verify',
+    '',
+    'Some prose note that is not a checkbox.',
+  ].join('\n')
+
+  test('returns the checkboxes in file order with their checked state', () => {
+    const boxes = parseTaskCheckboxes(TASKS_MD)
+    expect(boxes.map((b) => b.text)).toEqual([
+      '1.1 Add failing tests',
+      '1.2 Implement the wrapper',
+      '1.2.1 Handle the timeout case',
+      '1.3 Verify',
+    ])
+    expect(boxes.map((b) => b.checked)).toEqual([true, false, false, false])
+  })
+
+  test('records the 1-based line number so the box-check edit targets the right line', () => {
+    const boxes = parseTaskCheckboxes(TASKS_MD)
+    expect(boxes.map((b) => b.line)).toEqual([3, 4, 5, 6])
+  })
+
+  test('ignores lines that are not checkboxes', () => {
+    const boxes = parseTaskCheckboxes('just prose\n- [ ] a real task\nmore prose')
+    expect(boxes).toHaveLength(1)
+    expect(boxes[0]?.text).toBe('a real task')
+  })
+
+  test('returns an empty list for a tasks.md with no checkboxes', () => {
+    expect(parseTaskCheckboxes('# Tasks\n\nNo steps yet.')).toEqual([])
   })
 })

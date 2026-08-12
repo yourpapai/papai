@@ -125,6 +125,49 @@ export const describeStep = (step: PlanStep): string =>
 const SUBJECT_LIMIT = 72
 
 /**
+ * One `tasks.md` checkbox, as `REVIEW_AND_MUTATE` walks it (design D5).
+ *
+ * `line` is the 1-based line number in the file, so the box-check edit (`- [ ]`
+ * → `- [x]`) targets the exact line. `checked` is the state the parser read —
+ * the walk checks each box in the same commit as the step's work.
+ */
+export interface TaskCheckbox {
+  line: number
+  text: string
+  checked: boolean
+}
+
+const CHECKBOX = /^(\s*)- \[([ x])\] (.*)$/u
+
+/**
+ * Parses a `tasks.md` body into its ordered checkbox list.
+ *
+ * The walk reads the unchecked boxes from `state.stepsDone`; everything else
+ * (prose, headings, `---` rules) is ignored. Indented sub-item checkboxes are
+ * included — they are real steps a maintainer can break work into — and keep
+ * their indentation in the edit because {@link checkBoxText} rewrites only the
+ * `[ ]` marker.
+ */
+export const parseTaskCheckboxes = (markdown: string): TaskCheckbox[] => {
+  const boxes: TaskCheckbox[] = []
+  const lines = markdown.split('\n')
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = CHECKBOX.exec(lines[index] ?? '')
+    if (match === null) continue
+    const checked = match[2] === 'x'
+    boxes.push({ line: index + 1, text: match[3]?.trim() ?? '', checked })
+  }
+  return boxes
+}
+
+/**
+ * The box-check edit for a line: `[ ]` → `[x] on its way into the step's commit.
+ * Rewrites only the marker, so an indented sub-item keeps its indentation and
+ * the text after the marker is untouched.
+ */
+export const checkBoxText = (line: string): string => line.replace(/^(\s*- \[) \]/u, '$1x]')
+
+/**
  * A step's title, safe to put in a commit subject.
  *
  * One line and clamped. Not a safety boundary — commits are spawned as an argv
