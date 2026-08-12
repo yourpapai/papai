@@ -99,7 +99,10 @@ const TRANSITIONS: Record<Phase, Partial<Record<TransitionSignal, Phase>>> = {
   DESIGN_SPEC: { CHANGES_REQUESTED: 'INIT_OR_CLARIFY', APPROVED: 'PLANNING' },
   PLANNING: { PLAN_POSTED: 'PLAN_REVIEW' },
   PLAN_REVIEW: { CHANGES_REQUESTED: 'PLANNING', APPROVED: 'REVIEW_AND_MUTATE' },
-  REVIEW_AND_MUTATE: { CHANGES_COMMITTED: 'PR_DELIVERY' },
+  // Design D6 — steering-drift: a scope-affecting comment during implementation
+  // routes back to PLANNING for an artifact-update turn before implementation
+  // continues, so the folder cannot rot relative to the conversation.
+  REVIEW_AND_MUTATE: { CHANGES_REQUESTED: 'PLANNING', CHANGES_COMMITTED: 'PR_DELIVERY' },
   PR_DELIVERY: { PR_OPENED: 'COMPLETE', CI_FAILED: 'CI_FIX' },
   CODE_REVIEW: { REVIEW_DONE: 'COMPLETE' },
   CI_FIX: { CI_FIXED: 'COMPLETE' },

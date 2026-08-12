@@ -7,7 +7,7 @@ import { renderExhausted, renderReviewsExhausted } from './budget-notices.js'
 import { applyCiTrigger } from './ci-trigger.js'
 import { acceptedCommands, commandApplies, COMMAND_SIGNALS } from './commands.js'
 import type { ParsedCommand, SlashCommand } from './commands.js'
-import { applyClarifyIntent, applyIntent, readAndSkip } from './comment-intent.js'
+import { applyClarifyIntent, applyIntent, applySteeringIntent, readAndSkip } from './comment-intent.js'
 import { react } from './feedback.js'
 import type { PhaseInput } from './phase-context.js'
 import { postAndAppend, renderRefusedCommand } from './run-report.js'
@@ -58,6 +58,13 @@ export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   if (trigger.kind === 'pull-request') return applyPullRequestCommand(input, command)
   if (command !== null) return applyCommand(input, command)
   if (state.phase === 'INIT_OR_CLARIFY') return applyClarifyIntent(input)
+  // Design D6 — a plain comment mid-implementation is read as steering: a
+  // scope-affecting change routes back to PLANNING for an artifact-update turn
+  // before implementation continues. Before the generic skip below, not folded
+  // into it, because implementation is the one phase where prose can change
+  // scope — everywhere else a non-waiting, non-clarify phase has nothing for a
+  // plain comment to act on.
+  if (state.phase === 'REVIEW_AND_MUTATE') return applySteeringIntent(input)
   if (!WAITING_PHASES.has(state.phase)) return readAndSkip(input, `No actionable command while in ${state.phase}`)
 
   return applyIntent(input)

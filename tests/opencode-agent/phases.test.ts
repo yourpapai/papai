@@ -381,6 +381,40 @@ describe('handlePlan · drafter loop (D3)', () => {
     expect(outcome.comment).toContain('agent/issue-42')
     expect(io.reads).toContain(`/repo/openspec/changes/${CHANGE}/tasks.md`)
   })
+
+  it('threads a steering comment into the artifact-update turn (D6)', async () => {
+    // Re-entering PLANNING from a steering comment in REVIEW_AND_MUTATE: the
+    // maintainer's scope-affecting prose reaches the drafter prompt so the model
+    // revises the artifacts rather than re-drafting them blind. The folder cannot
+    // rot relative to the conversation.
+    const built = wireDrafterInput(
+      [JSON.stringify({ content: '- [ ] Write retry tests\n- [ ] Also add structured logging\n' })],
+      { done: ['tasks'] },
+    )
+    const steerTrigger: TriggerEvent = {
+      kind: 'issue',
+      eventName: 'issue_comment',
+      action: 'created',
+      senderLogin: 'maintainer',
+      senderType: 'User',
+      authorAssociation: 'OWNER',
+      issueNumber: 42,
+      issueTitle: 'Add a retry helper',
+      issueBody: 'Please add a retry helper.',
+      isPullRequest: false,
+      commentBody: 'Also add structured logging to each retry.',
+      commentId: 7,
+      repositoryOwner: 'acme',
+      defaultBranch: 'main',
+    }
+    const { io } = built
+    const outcome = await handlePlan({ ...built.input, trigger: steerTrigger, command: null })
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    // The steering feedback reached the drafter's prompt — the artifact-update
+    // turn is grounded in the maintainer's scope change, not a blind re-draft.
+    expect(io.prompts.some((p) => p.prompt.includes('structured logging'))).toBe(true)
+  })
 })
 
 /**

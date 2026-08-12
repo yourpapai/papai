@@ -43,9 +43,13 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
   if (state.changeName === null) throw new Error('PLANNING reached without a changeName on the state')
   const changeName = state.changeName
   const branch = branchNameFor(state.issueId)
-  deps.log.info({ issue: state.issueId, change: changeName, branch }, 'Drafting change artifacts')
+  const feedback = revisionFeedback(input)
+  deps.log.info(
+    { issue: state.issueId, change: changeName, branch, revising: feedback !== null },
+    'Drafting change artifacts',
+  )
 
-  await draftUntilComplete(input)
+  await draftUntilComplete(input, feedback)
   await deps.git.ensureBranch(branch, await deps.baseBranch())
   await deps.git.commitAll(`docs(openspec): draft artifacts for ${changeName}`)
   await deps.git.push(branch)
@@ -64,6 +68,27 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
 }
 
 /**
+ * The maintainer feedback a re-draft is grounded in, or `null` for a fresh plan.
+ *
+ * Two channels reach PLANNING with feedback: `/changes <argument>` from a
+ * waiting phase, and a plain steering comment (design D6) that arrived
+ * mid-implementation and routed back here. Both tell the drafter what to revise;
+ * a first plan (`/approve` out of `DESIGN_SPEC`) carries neither, and the
+ * drafter composes from the instruction alone.
+ */
+const revisionFeedback = (input: PhaseInput): string | null => {
+  const { command, trigger } = input
+  if (command !== null && command.command === '/changes' && command.argument.length > 0) {
+    return command.argument
+  }
+  if (command === null && trigger.kind === 'issue') {
+    const body = trigger.commentBody
+    if (body !== null && body.trim().length > 0) return body.trim()
+  }
+  return null
+}
+
+/**
  * Resolves the change's `tasks.md` path from the folder and reads it back, the
  * same read the implementation and review phases make of the approved plan.
  */
@@ -77,21 +102,26 @@ const readTasksArtifact = async (input: PhaseInput, changeName: string): Promise
  * planning complete. Re-reads status after each artifact so a dependent one
  * (tasks blocked on design) becomes draftable the moment its dependency lands.
  *
+ * `feedback` is the maintainer's revision request when PLANNING was re-entered
+ * via `/changes` or a steering comment (D6); it threads into every artifact's
+ * draft prompt so a re-draft revises against it rather than composing blind.
+ *
  * Tail recursion rather than a loop body: the repo forbids `await` inside a
  * loop, and the drafter is inherently sequential — each artifact's status
  * depends on the previous one landing in the folder.
  */
-const draftUntilComplete = async (input: PhaseInput): Promise<void> => {
+const draftUntilComplete = async (input: PhaseInput, feedback: string | null): Promise<void> => {
   const changeName = input.state.changeName
   if (changeName === null) throw new Error('PLANNING reached without a changeName on the state')
   const status = await input.deps.openspec.status(changeName)
-  return draftNext(input, changeName, status, 0)
+  return draftNext(input, changeName, status, feedback, 0)
 }
 
 const draftNext = async (
   input: PhaseInput,
   changeName: string,
   status: import('../openspec-driver.js').StatusResult,
+  feedback: string | null,
   depth: number,
 ): Promise<void> => {
   if (status.isPlanningComplete) return
@@ -100,9 +130,9 @@ const draftNext = async (
   if (next === null) return
 
   const instruction = await input.deps.openspec.instructions(next, changeName)
-  await composeAndValidate(input, instruction, null)
+  await composeAndValidate(input, instruction, null, feedback)
   const refreshed = await input.deps.openspec.status(changeName)
-  return draftNext(input, changeName, refreshed, depth + 1)
+  return draftNext(input, changeName, refreshed, feedback, depth + 1)
 }
 
 /** The first artifact whose status is `ready` (draftable now), or null. */
@@ -125,9 +155,10 @@ const composeAndValidate = async (
   input: PhaseInput,
   instruction: InstructionsResult,
   complaint: string | null,
+  feedback: string | null,
 ): Promise<void> => {
   const { deps } = input
-  const content = await composeArtifact(input, instruction, complaint)
+  const content = await composeArtifact(input, instruction, complaint, feedback)
   await deps.writeFile(instruction.resolvedOutputPath, content)
 
   const changeName = input.state.changeName
@@ -139,18 +170,20 @@ const composeAndValidate = async (
     // Second attempt still invalid: the strict complaint is the failure reason.
     throw new Error(`openspec validate --strict failed after retry: ${verdict.output}`)
   }
-  await composeAndValidate(input, instruction, verdict.output)
+  await composeAndValidate(input, instruction, verdict.output, feedback)
 }
 
 /**
  * Asks the model for the artifact content. `complaint` is null on the first
  * attempt and the validate-strict output on the repair, so the model sees what
- * it got wrong.
+ * it got wrong. `feedback` is the maintainer's revision request when the draft
+ * is a re-plan (D6), null on a fresh plan.
  */
 const composeArtifact = async (
   input: PhaseInput,
   instruction: InstructionsResult,
   complaint: string | null,
+  feedback: string | null,
 ): Promise<string> => {
   const { deps } = input
   const envelope = mintEnvelope()
@@ -167,7 +200,7 @@ const composeArtifact = async (
         nonce: envelope.nonce,
         instructions: PROPOSE_INSTRUCTIONS,
       }),
-      prompt: draftPrompt(envelope, instruction, complaint),
+      prompt: draftPrompt(envelope, instruction, complaint, feedback),
       agent: 'propose',
     },
   })
@@ -178,6 +211,7 @@ const draftPrompt = (
   envelope: UntrustedEnvelope,
   instruction: InstructionsResult,
   complaint: string | null,
+  feedback: string | null,
 ): string => {
   const sections = [
     `Instruction: ${instruction.instruction}`,
@@ -185,6 +219,13 @@ const draftPrompt = (
     instruction.rules.length === 0 ? '' : `Rules:\n${instruction.rules.map((rule) => `- ${rule}`).join('\n')}`,
     `Write to: ${instruction.resolvedOutputPath}`,
   ].filter((section) => section.length > 0)
+
+  if (feedback !== null) {
+    sections.push(
+      'A maintainer requested the following changes — revise the artifact to address them (design D6: the folder cannot rot relative to the conversation).',
+      envelope.wrap('revision-feedback', feedback),
+    )
+  }
 
   if (complaint !== null) {
     sections.push(

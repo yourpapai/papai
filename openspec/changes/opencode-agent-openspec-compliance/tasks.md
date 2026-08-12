@@ -90,11 +90,11 @@ Write/Edit TDD hook pipeline.
   — `bun test tests/opencode-agent/plan-steps.test.ts tests/opencode-agent/implement-steps.test.ts`
 - [x] 6.2 Implement the checkbox step source (D5)
   — `bun test tests/opencode-agent/implement-steps.test.ts`
-- [ ] 6.3 Add failing tests for steering-drift: scope-affecting steering in
+- [x] 6.3 Add failing tests for steering-drift: scope-affecting steering in
   `REVIEW_AND_MUTATE` triggers an artifact-update turn (edit → validate →
   commit) before implementation continues (D6)
   — `bun test tests/opencode-agent/comment-intent.test.ts tests/opencode-agent/phases.test.ts`
-- [ ] 6.4 Implement steering-drift (D6)
+- [x] 6.4 Implement steering-drift (D6)
   — `bun test tests/opencode-agent/phases.test.ts`
 
 ## 7. Archive door
