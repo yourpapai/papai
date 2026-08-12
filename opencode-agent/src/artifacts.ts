@@ -36,6 +36,23 @@ export const REPORT_MARKER = 'AGENT_REPORT'
  */
 export const HANDOFF_MARKER = 'AGENT_HANDOFF'
 
+/**
+ * Input to {@link renderDigest}: where the artifact lives on the branch, and
+ * the machine identity a park tracks (if any).
+ */
+export interface DigestMeta {
+  /** The OpenSpec change folder the artifact was read from. */
+  readonly changeName: string
+  /** The branch carrying the folder — the artifact's real history (its commits). */
+  readonly branch: string
+  /**
+   * The plan-identity token, when the digest is rendered at `PLAN_REVIEW`.
+   * `null` at `DESIGN_SPEC`: the proposal has no revision counter (the retired
+   * `specRevision` is gone), so its history is the branch's commits alone.
+   */
+  readonly revision: number | null
+}
+
 const artifactSchema = z.object({
   text: z.string().min(1),
   revision: z.number().int().min(0).default(0),
@@ -46,6 +63,40 @@ export type Artifact = z.infer<typeof artifactSchema>
 /** Renders the hidden block that carries an artefact to the next job. */
 export const renderArtifact = (marker: string, text: string, revision: number): string =>
   renderBlock(marker, { text, revision })
+
+/**
+ * Renders a folder artifact as a park digest (design D1: the folder is truth;
+ * comments are renders).
+ *
+ * The two human parks (`DESIGN_SPEC`, `PLAN_REVIEW`) each show a snapshot of
+ * what landed in `openspec/changes/<name>/` — the proposal at `DESIGN_SPEC`,
+ * `tasks.md` at `PLAN_REVIEW` — read straight back from the folder rather than
+ * remembered from the model reply. The digest carries the branch as the history
+ * of record (the folder's commits are the artifact's real history) and, for the
+ * plan, the revision token the machine uses to tell two plans apart.
+ *
+ * It does not carry the artifact itself as truth: a rendered snapshot that
+ * pretended to be the artifact would be two truths, exactly the drift the
+ * `AGENT_SPEC`/`AGENT_PLAN` blocks retired. The content rides inside a
+ * `<details>` block so a long tasks.md does not dominate the issue thread, and
+ * it is the content read from the folder verbatim — the park reviews what the
+ * branch carries, not a paraphrase of it.
+ */
+export const renderDigest = (content: string, meta: DigestMeta): string => {
+  const history =
+    meta.revision === null
+      ? `openspec/changes/${meta.changeName}/ on \`${meta.branch}\``
+      : `openspec/changes/${meta.changeName}/ on \`${meta.branch}\` · plan revision ${meta.revision}`
+  return [
+    '<details><summary>Folder digest</summary>',
+    '',
+    `Source of truth: \`${history}\`.`,
+    '',
+    content.trim(),
+    '',
+    '</details>',
+  ].join('\n')
+}
 
 /** Reads the newest agent-authored artefact of this kind; `null` when absent. */
 export const findArtifact = (thread: readonly IssueComment[], agentLogin: string, marker: string): Artifact | null => {

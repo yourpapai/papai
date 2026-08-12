@@ -69,7 +69,7 @@ Write/Edit TDD hook pipeline.
   instruction → model composes per template → `validate --strict` → retry
   ≤2; digest rendering from the folder (D1) with revision display metadata
   — `bun test tests/opencode-agent/phases.test.ts`
-- [ ] 5.2 Implement the drafter loop; `DESIGN_SPEC`/`PLAN_REVIEW` parks
+- [x] 5.2 Implement the drafter loop; `DESIGN_SPEC`/`PLAN_REVIEW` parks
   render digests of real proposal/specs/design/tasks; retire
   `AGENT_SPEC`/`AGENT_PLAN` blocks outright (no legacy restore path —
   in-flight issues restart via the `STATE_VERSION` bump, D12)

@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { renderDigest } from '../artifacts.js'
 import { promptForJson } from '../ask-json.js'
 import { branchNameFor } from '../git.js'
 import { MAINTAINER_ASSOCIATIONS } from '../guardrails.js'
@@ -130,9 +131,13 @@ const captureOutcome = async (
   const proposalPath = (await deps.openspec.instructions('proposal', decision.changeName)).resolvedOutputPath
   await deps.writeFile(proposalPath, `${decision.spec.trim()}\n`)
   await scaffoldOnBranch(input, decision.changeName)
+  // The park digest is a render of the folder, not a memory of the model reply:
+  // the proposal is read straight back from where it landed (design D1). The
+  // branch carries the real history; the comment is a snapshot of it.
+  const proposal = await deps.readFile(proposalPath)
   return {
     signal: 'CAPTURED',
-    comment: renderCapture(decision.changeName, decision.spec),
+    comment: renderCapture(decision.changeName, proposal, branchNameFor(state.issueId)),
     patch: { changeName: decision.changeName },
   }
 }
@@ -207,13 +212,13 @@ const renderConsent = (changeName: string): string =>
     'Reply to confirm (or describe what should change), and I will pick it up from there.',
   ].join('\n')
 
-const renderCapture = (changeName: string, spec: string): string =>
+const renderCapture = (changeName: string, proposal: string, branch: string): string =>
   [
     `### Captured: ${changeName}`,
     '',
     `Captured into \`openspec/changes/${changeName}/\`. The proposal drafted from the issue:`,
     '',
-    spec.trim(),
+    renderDigest(proposal, { changeName, branch, revision: null }),
     '',
     '**What now?** `/approve` to plan the work, `/changes <what to change>` to revise the proposal,',
     '`/ask <question>` to ask about it, or `/cancel` to stop. A plain reply works too — I will',

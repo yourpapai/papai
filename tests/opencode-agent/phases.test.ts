@@ -194,6 +194,23 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
     // Two prompts: the rejected reply, then the repaired one.
     expect(io.prompts).toHaveLength(2)
   })
+
+  it('renders the DESIGN_SPEC digest from the folder (D1): reads proposal.md back after writing it', async () => {
+    const { input, io } = makeInput({
+      association: 'OWNER',
+      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: '# Goal\n\nAdd retries.' })],
+    })
+
+    const outcome = await handleTriage(input)
+
+    expect(outcome.signal).toBe('CAPTURED')
+    // The comment is a render of the folder, not a memory of the model reply:
+    // the proposal is read back after being written, and the digest carries the
+    // branch as the history of record (D1).
+    expect(io.reads).toEqual(['/repo/x.md'])
+    expect(outcome.comment).toContain('Add retries.')
+    expect(outcome.comment).toContain('agent/issue-42')
+  })
 })
 
 /**
@@ -284,6 +301,10 @@ const wireDrafterInput = (replies: string[], opts: WireOptions = {}): { input: P
   built.deps.openspec = driver
   built.deps.writeFile = (path: string, content: string): Promise<void> => {
     built.io.writes.push({ path, content })
+    // The folder is truth (D1): a write lands in the folder, and a later read
+    // of the same path returns what landed. Mirror the default stub's contract
+    // so the drafter's writes are what the digest reads back.
+    built.io.readContents[path] = content
     tracked.add(artifactIdOf(path))
     return Promise.resolve()
   }
@@ -341,6 +362,24 @@ describe('handlePlan · drafter loop (D3)', () => {
     expect(io.prompts).toHaveLength(2)
     expect(io.writes).toHaveLength(2)
     expect(io.writes.at(-1)?.content).toBe('repaired attempt')
+  })
+
+  it('renders the PLAN_REVIEW digest from the folder (D1): includes tasks.md read back', async () => {
+    const { input, io } = wireDrafterInput([
+      JSON.stringify({ content: 'design body' }),
+      JSON.stringify({ content: '- [ ] Write retry tests\n- [ ] Add the wrapper\n' }),
+    ])
+
+    const outcome = await handlePlan(input)
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    // The plan digest is a render of the folder's tasks.md, read back after the
+    // drafter wrote it (D1) — not a memory of the model reply. The revision
+    // token (the machine's plan identity) and the branch ride out as metadata.
+    expect(outcome.comment).toContain('Write retry tests')
+    expect(outcome.comment).toContain('Add the wrapper')
+    expect(outcome.comment).toContain('agent/issue-42')
+    expect(io.reads).toContain(`/repo/openspec/changes/${CHANGE}/tasks.md`)
   })
 })
 

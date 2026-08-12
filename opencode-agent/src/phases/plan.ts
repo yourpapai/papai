@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { renderDigest } from '../artifacts.js'
 import { promptForJson } from '../ask-json.js'
 import { branchNameFor } from '../git.js'
 import { composeSystemPrompt } from '../obra-skills.js'
@@ -49,12 +50,26 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
   await deps.git.commitAll(`docs(openspec): draft artifacts for ${changeName}`)
   await deps.git.push(branch)
 
+  // The plan digest is a render of the folder's tasks.md, read straight back
+  // from where the drafter wrote it (design D1) — not a memory of the model
+  // reply. The revision token is the machine's plan identity; the branch's
+  // commits are the artifact's real history, and the digest says so.
+  const tasks = await readTasksArtifact(input, changeName)
   return {
     signal: 'PLAN_POSTED',
-    comment: renderPlanComment(changeName, branch, state.planRevision + 1),
+    comment: renderPlanComment(changeName, branch, state.planRevision + 1, tasks),
     // The plan's identity token bumps; its content lives on the branch.
     patch: { planRevision: state.planRevision + 1, stepsDone: 0 },
   }
+}
+
+/**
+ * Resolves the change's `tasks.md` path from the folder and reads it back, the
+ * same read the implementation and review phases make of the approved plan.
+ */
+const readTasksArtifact = async (input: PhaseInput, changeName: string): Promise<string> => {
+  const tasksPath = (await input.deps.openspec.instructions('tasks', changeName)).resolvedOutputPath
+  return input.deps.readFile(tasksPath)
 }
 
 /**
@@ -180,11 +195,13 @@ const draftPrompt = (
   return sections.join('\n\n')
 }
 
-const renderPlanComment = (changeName: string, branch: string, revision: number): string =>
+const renderPlanComment = (changeName: string, branch: string, revision: number, tasks: string): string =>
   [
     `### Plan (revision ${revision})`,
     '',
     `Change \`${changeName}\` is fully drafted in \`openspec/changes/${changeName}/\` on \`${branch}\`.`,
+    '',
+    renderDigest(tasks, { changeName, branch, revision }),
     '',
     '**What now?** `/approve` to implement the plan, `/changes <what to change>` to revise it,',
     '`/ask <question>` to ask about it, or `/cancel` to stop.',
