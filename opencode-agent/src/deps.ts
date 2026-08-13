@@ -3,7 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { writeFile as writeFileNode, readFile as readFileNode } from 'node:fs/promises'
+import { mkdir, writeFile as writeFileNode, readFile as readFileNode } from 'node:fs/promises'
+import path from 'node:path'
 
 import type { AgentHandle } from './agent-handle.js'
 import type { CheckRunner } from './check-loop.js'
@@ -31,6 +32,21 @@ import type { Phase } from './types.js'
  * Split from `index.ts`, which owns the CLI entry — flags, credential
  * containment and process lifetime. The two change for different reasons.
  */
+
+/**
+ * Writes an artifact, creating the directories it needs.
+ *
+ * `openspec new change` scaffolds a folder holding `.openspec.yaml` and nothing
+ * else, so every artifact but the flat ones is the first thing in its directory
+ * — a delta spec lands at `specs/<capability-path>/spec.md`, up to two levels
+ * deep, and a bare `writeFile` there fails with the same `ENOENT` the glob path
+ * failed with. The drafter chooses the path (`glob-output.ts` judges it), so
+ * this is the one place that can know the directory has to exist.
+ */
+const writeArtifactFile = async (filePath: string, content: string): Promise<void> => {
+  await mkdir(path.dirname(filePath), { recursive: true })
+  await writeFileNode(filePath, content, 'utf8')
+}
 
 const makeCheckRunner =
   (run: CommandRunner, config: PipelineConfig): CheckRunner =>
@@ -141,7 +157,7 @@ export const assembleDeps = ({
     agent: agent.get,
     tokensUsed: agent.tokensUsed,
     skills: makeSkillLoader(config, log),
-    writeFile: (filePath, content) => writeFileNode(filePath, content, 'utf8'),
+    writeFile: (filePath, content) => writeArtifactFile(filePath, content),
     readFile: (filePath) => readFileNode(filePath, 'utf8'),
     baseBranch: memoize(() =>
       resolveBaseBranch(env, { fromEvent: event.defaultBranch, fromGit: () => git.defaultBranch() }),
