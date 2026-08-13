@@ -27,7 +27,7 @@ Test-first order per design.md §10: every implementation file under `src/` or `
 - [x] 4.1 Write failing reducer tests (outline extraction, stage matrix draft/approved/in-progress/done incl. `archive/` prefix, progress from checkbox counts) under `tests/context-vault/reducer.test.ts` — `bun test tests/context-vault/reducer.test.ts`
 - [x] 4.2 Implement `src/context-vault/reducer.ts` and wire it into the push path before raw text is discarded — `bun test tests/context-vault/reducer.test.ts tests/context-vault/push-route.test.ts`
 - [x] 4.3 Write failing summarization-queue tests (semantic new-hash enqueue, mechanical-only no enqueue, debounce collapse, failure keeps previous summary, DI-seamed `generateText` with central/BYOK cred resolution) under `tests/context-vault/summarizer.test.ts` — `bun test tests/context-vault/summarizer.test.ts`
-- [ ] 4.4 Implement `src/context-vault/summarizer.ts` following the `long-term-memory/extractor.ts` DI pattern; no raw text persisted after summarization — `bun test tests/context-vault/summarizer.test.ts && bun run lint`
+- [x] 4.4 Implement `src/context-vault/summarizer.ts` following the `long-term-memory/extractor.ts` DI pattern; no raw text persisted after summarization — `bun test tests/context-vault/summarizer.test.ts && bun run lint`
 
 ## 5. Plugin facade and chat tools
 

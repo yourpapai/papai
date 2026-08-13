@@ -16,6 +16,7 @@ import {
 import { getDrizzleDb } from '../db/drizzle.js'
 import { logger } from '../logger.js'
 import { reduceSpec, type ReduceFileInput, type ReducedSpec } from './reducer.js'
+import { enqueueSpecSummarization, type EnqueueSummarizationInput, type SummarizerFileInput } from './summarizer.js'
 
 const log = logger.child({ scope: 'context-vault:spec-store' })
 
@@ -38,6 +39,16 @@ export interface ApplyPushResult {
   specId: string
   changedPaths: string[]
   deletedPaths: string[]
+}
+
+export interface ApplyPushDeps {
+  enqueueSummarization: (input: EnqueueSummarizationInput) => void
+}
+
+const defaultApplyPushDeps: ApplyPushDeps = {
+  enqueueSummarization: (input) => {
+    enqueueSpecSummarization(input)
+  },
 }
 
 const specIdOf = (repo: string, changeName: string): string => `${repo}:${changeName}`
@@ -166,16 +177,22 @@ const buildReduceInput = (input: ApplyPushInput, remaining: readonly ContextVaul
   return files
 }
 
-export function applyPush(configContextId: string, input: ApplyPushInput): ApplyPushResult {
+export function applyPush(
+  configContextId: string,
+  input: ApplyPushInput,
+  deps: ApplyPushDeps = defaultApplyPushDeps,
+): ApplyPushResult {
   const specId = specIdOf(input.repo, input.changeName)
   const existingByPath = new Map(listFiles(configContextId, specId).map((f) => [f.path, f]))
 
   const changedPaths: string[] = []
+  const changedFiles: SummarizerFileInput[] = []
   for (const file of input.files) {
     const existing = existingByPath.get(file.path)
     if (existing !== undefined && existing.hash === file.hash) continue
     applyFile(configContextId, specId, file, existing !== undefined)
     changedPaths.push(file.path)
+    changedFiles.push({ path: file.path, kind: file.kind, text: file.text })
   }
 
   const deletedPaths: string[] = []
@@ -193,6 +210,10 @@ export function applyPush(configContextId: string, input: ApplyPushInput): Apply
     upsertSpec(configContextId, input, specId, reduced)
   }
   touchIndexerState(configContextId)
+
+  if (changedFiles.length > 0) {
+    deps.enqueueSummarization({ configContextId, specId, changeName: input.changeName, changedFiles })
+  }
 
   log.info(
     { configContextId, specId, changed: changedPaths.length, deleted: deletedPaths.length },

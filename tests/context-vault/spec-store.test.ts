@@ -3,11 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { and, eq } from 'drizzle-orm'
 
-import { applyPush, type PushFileInput } from '../../src/context-vault/spec-store.js'
+import { applyPush, type ApplyPushDeps, type PushFileInput } from '../../src/context-vault/spec-store.js'
+import type { EnqueueSummarizationInput } from '../../src/context-vault/summarizer.js'
 import {
   contextVaultFiles,
   contextVaultIndexerState,
@@ -280,6 +281,63 @@ describe('context-vault spec-store', () => {
     const spec = getSpec(CTX_A, 'papai:x')
     expect(spec?.stage).toBe('in-progress')
     expect(spec?.progressPct).toBe(50)
+  })
+
+  test('push enqueues summarization with exactly the files that arrived with a new hash', () => {
+    const enqueueSummarization = mock((input: EnqueueSummarizationInput): void => {
+      void input
+    })
+    const deps: ApplyPushDeps = { enqueueSummarization }
+    applyPush(
+      CTX_A,
+      {
+        repo: 'papai',
+        changeName: 'x',
+        files: [
+          { path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# P v1\n' },
+          { path: 'a/tasks.md', kind: 'tasks', hash: 'h2', mtime: 1, text: '- [ ] one\n' },
+        ],
+        deletions: [],
+      },
+      deps,
+    )
+    applyPush(
+      CTX_A,
+      {
+        repo: 'papai',
+        changeName: 'x',
+        files: [
+          { path: 'a/proposal.md', kind: 'proposal', hash: 'h1-new', mtime: 2, text: '# P v2\n' },
+          { path: 'a/tasks.md', kind: 'tasks', hash: 'h2', mtime: 1, text: '- [ ] one\n' },
+        ],
+        deletions: [],
+      },
+      deps,
+    )
+
+    expect(enqueueSummarization).toHaveBeenCalledTimes(2)
+    const second = enqueueSummarization.mock.calls[1]?.[0]
+    expect(second?.configContextId).toBe(CTX_A)
+    expect(second?.specId).toBe('papai:x')
+    expect(second?.changeName).toBe('x')
+    expect(second?.changedFiles).toEqual([{ path: 'a/proposal.md', kind: 'proposal', text: '# P v2\n' }])
+  })
+
+  test('a re-push with identical hashes enqueues no summarization', () => {
+    const enqueueSummarization = mock((input: EnqueueSummarizationInput): void => {
+      void input
+    })
+    const deps: ApplyPushDeps = { enqueueSummarization }
+    const input = {
+      repo: 'papai',
+      changeName: 'x',
+      files: [{ path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# P\n' }],
+      deletions: [] as string[],
+    }
+    applyPush(CTX_A, input, deps)
+    applyPush(CTX_A, input, deps)
+
+    expect(enqueueSummarization).toHaveBeenCalledTimes(1)
   })
 
   test('re-push preserves an existing LLM-written summary', () => {
