@@ -20,7 +20,7 @@ Test-first order per design.md §10: every implementation file under `src/` or `
 - [x] 3.1 Write failing spec-store tests (upsert by `(config_context_id, id, path)` with hash no-op, deletions, empty-shell spec drop, indexer_state `last_push_at`) under `tests/context-vault/spec-store.test.ts` — `bun test tests/context-vault/spec-store.test.ts`
 - [x] 3.2 Implement `src/context-vault/spec-store.ts` — `bun test tests/context-vault/spec-store.test.ts`
 - [x] 3.3 Write failing push-route tests (bearer auth via token hash, revoked/unknown → uniform 401, strict Zod body validation, body size cap, idempotent re-push, cross-context isolation) under `tests/context-vault/push-route.test.ts` — `bun test tests/context-vault/push-route.test.ts`
-- [ ] 3.4 Implement `src/context-vault/push-route.ts` and mount `POST /api/context-vault/push` in the public capability lane of `src/debug/server.ts` before the auth gate — `bun test tests/context-vault/push-route.test.ts tests/debug && bun run typecheck`
+- [x] 3.4 Implement `src/context-vault/push-route.ts` and mount `POST /api/context-vault/push` in the public capability lane of `src/debug/server.ts` before the auth gate — `bun test tests/context-vault/push-route.test.ts tests/debug && bun run typecheck`
 
 ## 4. Stage/progress reducer and summarization worker
 
