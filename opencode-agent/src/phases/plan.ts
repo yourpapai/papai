@@ -3,16 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
-
 import { renderDigest } from '../artifacts.js'
-import { promptForJson } from '../ask-json.js'
 import { branchNameFor } from '../git.js'
-import { composeSystemPrompt } from '../obra-skills.js'
 import type { InstructionsResult } from '../openspec-driver.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
-import type { UntrustedEnvelope } from '../prompts.js'
-import { mintEnvelope } from './envelope.js'
+import { mapSeries } from '../sequence.js'
+import { composeArtifact } from './plan-draft.js'
+import type { DraftedFile } from './plan-draft.js'
 
 /**
  * Phase 2 — the PLANNING drafter loop (design D3).
@@ -27,16 +24,10 @@ import { mintEnvelope } from './envelope.js'
  * writes it, so the model's edit capability is not exercised — but the profile
  * is the one a future model-writes-files drafter would take, and the diff
  * guard's `outsidePrefix` confines whatever lands in the index to the folder.
+ *
+ * `plan-draft.ts` owns the model half — which reply shape an artifact takes, and
+ * where a **glob** artifact's files are allowed to land.
  */
-
-const draftReplySchema = z.object({ content: z.string().min(1) })
-
-const PROPOSE_INSTRUCTIONS = [
-  'You are drafting one artifact of an OpenSpec change folder.',
-  'Use the instruction, template and rules below; the artifact must satisfy `openspec validate --strict`.',
-  'Reply with a single JSON object and nothing else: {"content":"<markdown>"}',
-  'Write only the artifact asked for. Do not invent capabilities or deltas the change does not claim.',
-].join('\n')
 
 export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
@@ -155,9 +146,17 @@ const readyArtifact = (artifacts: Record<string, string>): string | null => {
 const MAX_DRAFT_ITERATIONS = 16
 
 /**
- * Composes one artifact, writes it, and validates the change. On a validation
- * failure re-asks **once** with the complaint attached, exactly the
- * `promptForJson` pattern generalised to the validate-strict verdict.
+ * Composes one artifact, writes it, and validates the change. On a rejection
+ * re-asks **once** with the complaint attached, exactly the `promptForJson`
+ * pattern generalised to the validate-strict verdict.
+ *
+ * Two things can be wrong with a draft and both take the same retry: the content
+ * (`openspec validate --strict` says so) and, for a glob artifact, the paths the
+ * model chose for it (`glob-output.ts` says so, before anything is written).
+ * They are one complaint channel rather than two because the remedy is
+ * identical — ask again, saying what was wrong — and because a second failure
+ * mode with its own escape hatch is how the drafter would acquire a path that
+ * fails silently.
  */
 const composeAndValidate = async (
   input: PhaseInput,
@@ -165,83 +164,31 @@ const composeAndValidate = async (
   complaint: string | null,
   feedback: string | null,
 ): Promise<void> => {
-  const { deps } = input
-  const content = await composeArtifact(input, instruction, complaint, feedback)
-  await deps.writeFile(instruction.resolvedOutputPath, content)
-
-  const changeName = input.state.changeName
-  if (changeName === null) return
-  const verdict = await deps.openspec.validateStrict(changeName)
-  if (verdict.ok) return
+  const composed = await composeArtifact(input, instruction, complaint, feedback)
+  const problem = composed.ok ? await writeAndValidate(input, composed.files) : composed.complaint
+  if (problem === null) return
 
   if (complaint !== null) {
-    // Second attempt still invalid: the strict complaint is the failure reason.
-    throw new Error(`openspec validate --strict failed after retry: ${verdict.output}`)
+    // Second attempt still rejected: that rejection is the failure reason.
+    throw new Error(`the drafter's second attempt was rejected: ${problem}`)
   }
-  await composeAndValidate(input, instruction, verdict.output, feedback)
+  await composeAndValidate(input, instruction, problem, feedback)
 }
 
 /**
- * Asks the model for the artifact content. `complaint` is null on the first
- * attempt and the validate-strict output on the repair, so the model sees what
- * it got wrong. `feedback` is the maintainer's revision request when the draft
- * is a re-plan (D6), null on a fresh plan.
+ * Writes what the model composed and asks the CLI what it thinks; `null` when
+ * the change validates, and the complaint to re-ask with when it does not.
+ *
+ * Sequential rather than concurrent: the files share a working tree, which is
+ * the reason everything else in this pipeline that iterates does too.
  */
-const composeArtifact = async (
-  input: PhaseInput,
-  instruction: InstructionsResult,
-  complaint: string | null,
-  feedback: string | null,
-): Promise<string> => {
-  const { deps } = input
-  const envelope = mintEnvelope()
-  const reply = await promptForJson({
-    agent: await deps.agent(),
-    schema: draftReplySchema,
-    envelope,
-    log: deps.log,
-    request: {
-      system: composeSystemPrompt({
-        phase: 'PLANNING',
-        skills: await deps.skills('PLANNING'),
-        repoRoot: deps.config.repoRoot,
-        nonce: envelope.nonce,
-        instructions: PROPOSE_INSTRUCTIONS,
-      }),
-      prompt: draftPrompt(envelope, instruction, complaint, feedback),
-      agent: 'propose',
-    },
-  })
-  return reply.content
-}
+const writeAndValidate = async (input: PhaseInput, files: readonly DraftedFile[]): Promise<string | null> => {
+  await mapSeries(files, (file) => input.deps.writeFile(file.path, file.content))
 
-const draftPrompt = (
-  envelope: UntrustedEnvelope,
-  instruction: InstructionsResult,
-  complaint: string | null,
-  feedback: string | null,
-): string => {
-  const sections = [
-    `Instruction: ${instruction.instruction}`,
-    instruction.template === undefined ? '' : envelope.wrap('template', instruction.template),
-    instruction.rules.length === 0 ? '' : `Rules:\n${instruction.rules.map((rule) => `- ${rule}`).join('\n')}`,
-    `Write to: ${instruction.resolvedOutputPath}`,
-  ].filter((section) => section.length > 0)
-
-  if (feedback !== null) {
-    sections.push(
-      'A maintainer requested the following changes — revise the artifact to address them (design D6: the folder cannot rot relative to the conversation).',
-      envelope.wrap('revision-feedback', feedback),
-    )
-  }
-
-  if (complaint !== null) {
-    sections.push(
-      'Your previous draft failed `openspec validate --strict` with the complaint below. Revise the artifact so it validates.',
-      envelope.wrap('validate-complaint', complaint),
-    )
-  }
-  return sections.join('\n\n')
+  const changeName = input.state.changeName
+  if (changeName === null) return null
+  const verdict = await input.deps.openspec.validateStrict(changeName)
+  return verdict.ok ? null : `openspec validate --strict failed: ${verdict.output}`
 }
 
 const renderPlanComment = (changeName: string, branch: string, revision: number, tasks: string): string =>

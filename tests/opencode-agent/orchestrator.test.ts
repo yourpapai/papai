@@ -409,6 +409,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       template: undefined,
       rules: [],
       resolvedOutputPath: '',
+      changeDir: undefined,
       existingOutputPaths: [],
       dependencies: [],
     },

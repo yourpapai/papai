@@ -155,6 +155,7 @@ const emptyInstructions = (): InstructionsResult => ({
   template: undefined,
   rules: [],
   resolvedOutputPath: '/repo/x.md',
+  changeDir: undefined,
   existingOutputPaths: [],
   dependencies: [],
 })

@@ -139,6 +139,30 @@ findings: `ROADMAP.md`.
   `phases.test.ts` refuses every driver call and every `readFile` until
   `ensureBranch` has been called, so a phase that reads too early fails the test
   the way it failed the run.
+- **An artifact's output path is not always a file, and a pattern is judged
+  rather than written.** Three of the `spec-driven` schema's four artifacts
+  resolve to a path the drafter can hand to `writeFile`; `specs` does not. A
+  change carries one delta spec per capability, so `openspec instructions specs`
+  answers with `<changeDir>/specs/**/*.md` — a **pattern** — and only the
+  proposal knows how many files that is. `phases/plan.ts` wrote it verbatim and
+  run 31664928683 died at PLANNING on `ENOENT … /specs/**/*.md`, after paying for
+  the turn that composed the content. So a glob artifact takes the second reply
+  shape in `phases/plan-draft.ts` (`{"files":[{"path","content"}]}`, paths
+  relative to the change folder, which is how the artifact instruction the model
+  is reading spells them) and `glob-output.ts` judges each path before anything
+  is written. Three things not to undo. A refused path is a **complaint**, not a
+  throw: it rides the retry that already exists for the `validate --strict`
+  verdict, because "you wrote outside `specs/`" is exactly what a second ask
+  fixes and failing outright discards a paid-for turn over a filename. The
+  judging is **containment plus the pattern's extension**, not a `**` matcher —
+  what protects the tree is that the file lands under the directory the pattern
+  collects from, and a hand-rolled picomatch would add no refusal. And it is
+  **all or nothing**: one bad path in a reply discards the whole reply, or
+  `validate --strict` would judge a half-written folder and the retry's complaint
+  would be about files that had already landed. `deps.writeFile` creates parent
+  directories for the same reason the pattern broke — `openspec new change`
+  scaffolds a folder holding `.openspec.yaml` and nothing else, so
+  `specs/<capability-path>/spec.md` is the first thing in its directory.
 - **The plan counts one identity token, not two artefact revisions.** Under D1
   only `planRevision` remains — a machine identity for "a new plan happened",
   bumped by `PLAN_POSTED` alone, not an artefact revision. The former

@@ -51,6 +51,22 @@ export interface InstructionsResult {
   readonly template: string | undefined
   readonly rules: readonly string[]
   readonly resolvedOutputPath: string
+  /**
+   * The change folder, when the CLI reported one.
+   *
+   * Only one artifact needs it and that is the point: the `spec-driven` schema's
+   * `specs` artifact resolves to a **pattern** (`<changeDir>/specs/**\/*.md`),
+   * because a change carries one delta spec per capability, so the drafter has
+   * to choose the concrete paths — and it chooses them relative to this, which
+   * is how the artifact instruction itself spells them
+   * (`specs/<capability-path>/spec.md`).
+   *
+   * Optional rather than required, like every other field here but
+   * `resolvedOutputPath`: every phase reads `instructions`, so a field only the
+   * glob artifact needs must not be what fails them all on a CLI that stops
+   * emitting it. `glob-output.ts` derives a base when it is absent.
+   */
+  readonly changeDir: string | undefined
   readonly existingOutputPaths: readonly string[]
   readonly dependencies: readonly InstructionDependency[]
 }
@@ -89,6 +105,7 @@ const InstructionsPayloadSchema = z.object({
   template: z.string().optional(),
   rules: z.array(z.string()).optional(),
   resolvedOutputPath: z.string().min(1),
+  changeDir: z.string().min(1).optional(),
   existingOutputPaths: z.array(z.string()).optional(),
   dependencies: z.array(InstructionDependencySchema).optional(),
 })
@@ -146,6 +163,7 @@ export function createOpenSpecDriver(deps: OpenSpecDriverDeps): OpenSpecDriver {
         template: payload.template,
         rules: payload.rules ?? [],
         resolvedOutputPath: payload.resolvedOutputPath,
+        changeDir: payload.changeDir,
         existingOutputPaths: payload.existingOutputPaths ?? [],
         dependencies: payload.dependencies ?? [],
       }
