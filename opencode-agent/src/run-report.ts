@@ -11,6 +11,7 @@ import { outcomeHeading } from './outcomes.js'
 import type { PhaseInput } from './phase-context.js'
 import { phaseHeading, presentationFor } from './presentation.js'
 import { renderStateComment } from './state-manager.js'
+import { persistState } from './state-persist.js'
 import type { AgentState, Phase } from './types.js'
 
 /**
@@ -28,6 +29,24 @@ import type { AgentState, Phase } from './types.js'
  */
 
 /**
+ * The one line every issue comment gains once a pull request has taken the
+ * commands over.
+ *
+ * Almost everything this file renders ends by naming a command — "reply
+ * `/retry`", "reply `/cancel`", "raise the ceiling and reply `/review`" — and
+ * every one of those became wrong in the same way the day the issue started
+ * refusing commands: the advice is right, the page it is written on is not. The
+ * alternative was to thread a "where" through eight renderers and their
+ * signatures, where each one could forget; this is the same statement made once,
+ * on the write they all share, from the state they are all posted with.
+ *
+ * Empty while there is no pull request, which is most of an issue's life and all
+ * of a cancelled one's — so a run that never delivers reads exactly as it did.
+ */
+const commandPointer = (state: AgentState): string =>
+  state.prUrl === null ? '' : `\n\n_Commands for this issue go on its pull request: ${state.prUrl}_`
+
+/**
  * Posts a comment and mirrors it into the in-memory thread, so a later phase in
  * the same job can read an artefact the earlier phase just wrote without
  * re-fetching the issue.
@@ -40,7 +59,7 @@ export const postAndAppend = async (
   blocks?: readonly string[],
 ): Promise<IssueComment[]> => {
   const artifacts = blocks === undefined || blocks.length === 0 ? '' : `\n\n${blocks.join('\n\n')}`
-  const rendered = `${renderStateComment(body, state)}${artifacts}`
+  const rendered = `${renderStateComment(`${body}${commandPointer(state)}`, state)}${artifacts}`
 
   const posted = await input.deps.github.createComment(input.issue.number, rendered)
   // The recorded author, not the one the pipeline believes in: if they differ,
@@ -48,6 +67,51 @@ export const postAndAppend = async (
   reportIdentityDrift(await input.deps.selfLogin(), posted.authorLogin, input.deps.log)
 
   return [...thread, { id: posted.id, body: rendered, authorLogin: posted.authorLogin }]
+}
+
+/**
+ * Posts a reply to the surface the question was typed on.
+ *
+ * A question is the one thing this pipeline says that is *not* about the state
+ * of the work: it moves no phase, spends no attempt and produces no artefact, so
+ * it belongs in the conversation it answers rather than in the record. Typed on
+ * the issue it goes to the issue, exactly as before; typed on a pull request it
+ * goes there, where the person who asked is looking.
+ *
+ * Three things this must not do, and the shape follows from them.
+ *
+ * It must not put a **state block** on a pull request. `findLatestState` scans
+ * one thread and would never see it, so a block there is a second source of
+ * truth by construction — which is why this is not `postAndAppend` with a
+ * different number, but a plain comment plus {@link persistState}, the write
+ * that rewrites the issue's newest block *in place* and posts nothing. The spend
+ * is the one thing a question really does change, and it is still recorded.
+ *
+ * It must not post **twice**. A copy on the issue "for the record" would be two
+ * accounts of one exchange, free to disagree, on a page nobody asked anything on.
+ *
+ * And it must not swallow a **failed post**: the answer is the work here, so a
+ * rejected `createComment` throws exactly as it does on the issue path, leaving
+ * `reported` unset and the workflow's fallback comment in scope. Only the state
+ * rewrite beside it is best-effort, for the reason `persistState` states.
+ *
+ * The accepted cost is that a question answered on a pull request is invisible to
+ * the next run's prompt — `renderThread` reads the issue thread — so the model
+ * will not remember having answered it. That is the same trade the state block
+ * makes in the other direction, and a conversation about a diff is the one this
+ * pipeline can most afford to forget.
+ */
+export const postAnswer = async (
+  thread: readonly IssueComment[],
+  input: PhaseInput,
+  body: string,
+  state: AgentState,
+): Promise<readonly IssueComment[]> => {
+  if (input.trigger.kind !== 'pull-request') return postAndAppend(thread, input, body, state)
+
+  await input.deps.github.createComment(input.trigger.prNumber, body)
+  await persistState(input.deps, thread, state)
+  return thread
 }
 
 /**

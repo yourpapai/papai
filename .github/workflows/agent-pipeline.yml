@@ -619,6 +619,14 @@ jobs:
       # runner timeout, a cancelled job, a config error thrown before the first
       # comment could be posted, a crash.
       #
+      # It posts on the **issue** even for an issue whose commands have moved to
+      # its pull request, and that is the one place that asymmetry is right: this
+      # step speaks for the runs where the pipeline never got far enough to
+      # restore any state at all, so whether a pull request exists is precisely
+      # what it cannot know. The issue number is the one fact `resolve` computed
+      # before this job existed. What it *can* get right is the advice, which
+      # named a surface that would now refuse it.
+      #
       # `if: failure()` alone did not select that, though the comment here used
       # to claim it did. It selects every red job, and six pipeline paths exit 1
       # only *after* posting their own report — `failRun` and `failAnswer`, both
@@ -671,7 +679,7 @@ jobs:
           printf '%s\n\n%s\n\n%s\n' \
             '### Agent job did not finish' \
             "The workflow run failed or was cancelled before or during the pipeline. Logs: $RUN_URL" \
-            'The issue state is unchanged; reply `/retry` once the cause is addressed.' \
+            'The issue state is unchanged. Reply `/retry` once the cause is addressed — on the pull request, if this issue has one open.' \
             > /tmp/agent-failure.md
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/agent-failure.md
 

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { MachineInput } from './phase-context.js'
-import { postAndAppend, renderAnswerFailure, renderFailure } from './run-report.js'
+import { postAndAppend, postAnswer, renderAnswerFailure, renderFailure } from './run-report.js'
 import type { RunResult } from './run-result.js'
 import { recordSpend } from './token-budget.js'
 import { transition } from './transitions.js'
@@ -80,7 +80,10 @@ export const failAnswer = async (input: MachineInput, error: unknown): Promise<R
   deps.log.error({ issue: state.issueId, phase: state.phase, error: message }, 'Answering a question failed')
 
   const carried = { ...state, ...(await recordSpend(input)) }
-  await postAndAppend(thread, input, renderAnswerFailure(state.phase, message), carried)
+  // Where the question was asked, like the answer itself: a maintainer watching
+  // a pull request for a reply must not be left with silence because the apology
+  // went to a page they are not reading.
+  await postAnswer(thread, input, renderAnswerFailure(state.phase, message), carried)
 
   return { status: 'failed', reason: message, state: carried, reported: true }
 }

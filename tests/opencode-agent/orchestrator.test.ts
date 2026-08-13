@@ -1172,6 +1172,17 @@ describe('answering outside the review gates', () => {
     },
   )
 
+  test('says nothing about a pull request while there is none', async () => {
+    // Most of an issue's life, and all of a cancelled one's: the pointer is
+    // empty, so those comments read exactly as they always did.
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+    harness.io.replies = ['Because the retry helper already exists there.']
+
+    await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).not.toContain('Commands for this issue')
+  })
+
   test('/ask in FAILED answers without disturbing the parked failure', async () => {
     // The phase a maintainer most wants to ask a question in, and the one the
     // crash hurt most: the run had already failed, so this was the only thing
@@ -1622,6 +1633,18 @@ describe('/review — the review loop as a command', () => {
     expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
   })
 
+  test('every comment it posts on the issue says where commands go', async () => {
+    // Almost every comment this pipeline writes ends by naming a command, and
+    // all of them became wrong in the same way when the issue stopped accepting
+    // them — right advice, wrong page. Said once, on the write they share, from
+    // the state they are posted with, rather than threaded through eight
+    // renderers where any one of them could forget.
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.posted.at(-1)).toContain('Commands for this issue go on its pull request')
+    expect(harness.io.posted.at(-1)).toContain('https://example.test/pull/7')
+  })
+
   test('the same command typed on the issue is refused and points at the pull request', async () => {
     // Not "does not apply": `/review` applies perfectly and would have worked
     // one page over, and telling a maintainer otherwise is how they conclude the
@@ -1910,12 +1933,12 @@ describe('/review — typed on the pull request', () => {
     expect(harness.io.prTitles.at(-1)).toContain('Add retries')
   })
 
-  test('takes /ask, and answers it on the issue where the record lives', async () => {
-    // The door used to refuse this, on the argument that a conversation on the
-    // pull request would be answered somewhere else. That argument survives —
-    // the answer still goes to the issue, because that is the thread the restore
-    // scan reads — but refusing it does not: with the issue refusing commands
-    // too, `/ask` would have had nowhere left to be typed at all.
+  test('takes /ask, and answers it where it was asked', async () => {
+    // The door used to refuse this, on the argument that the answer would land
+    // somewhere the asker is not looking. Refusing it stopped making sense once
+    // the issue refused commands too — `/ask` would have had nowhere left to be
+    // typed — so the answer moved instead: a reply goes back to the surface the
+    // question came from.
     harness.io.replies = ['It retries three times, with backoff.']
 
     const result = await runPipeline({ event: prComment('/ask how many retries?'), deps: harness.deps })
@@ -1923,7 +1946,39 @@ describe('/review — typed on the pull request', () => {
     // `waiting`: answering moves no phase — it is a side conversation about work
     // that lives elsewhere, which is exactly why `/ask` is accepted everywhere.
     expect(result.status).toBe('waiting')
-    expect(harness.io.posted.at(-1)).toContain('It retries three times')
+    expect(harness.io.prNotes.at(-1)).toContain('It retries three times')
+    // And nowhere else. A second copy on the issue is two accounts of one
+    // exchange, and the issue is not where the question was asked.
+    expect(harness.io.posted.some((body) => body.includes('It retries three times'))).toBe(false)
+  })
+
+  test('the answer it posts there carries no state block', async () => {
+    // The invariant the whole split rests on: `findLatestState` scans the issue
+    // thread, so a block on the pull request is a second source of truth it
+    // cannot see. The spend is recorded by rewriting the issue's newest block in
+    // place instead — a write that posts nothing.
+    harness.io.replies = ['It retries three times, with backoff.']
+    const before = harness.io.edits.length
+
+    await runPipeline({ event: prComment('/ask how many retries?'), deps: harness.deps })
+
+    expect(harness.io.prNotes.at(-1)).not.toContain('AGENT_STATE')
+    // The rewrite, not merely some edit: the issue's newest block is where the
+    // restore scan will read this run's spend back from.
+    expect(harness.io.edits.length).toBeGreaterThan(before)
+    expect(harness.io.edits.at(-1)?.body).toContain('AGENT_STATE')
+  })
+
+  test('a failed answer is reported where the question was asked too', async () => {
+    // The failure path is the one that matters most here: a maintainer watching
+    // the pull request for a reply must not be left with silence because the
+    // apology went to a page they are not reading.
+    harness.deps.agent = (): Promise<OpenCodeAgent> => Promise.reject(new Error('the model endpoint rejected it'))
+
+    const result = await runPipeline({ event: prComment('/ask how many retries?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.prNotes.at(-1)).toContain('the model endpoint rejected it')
   })
 
   test.each([['/approve'], ['/retry']])(

@@ -14,7 +14,7 @@ import { handlePlan } from './phases/plan.js'
 import { handleReview } from './phases/review.js'
 import { handleTriage } from './phases/triage.js'
 import { presentationFor } from './presentation.js'
-import { postAndAppend, renderSettled } from './run-report.js'
+import { postAndAppend, postAnswer, renderSettled } from './run-report.js'
 import type { RunResult } from './run-result.js'
 import { stopIfOutOfTime } from './time-budget.js'
 import { recordSpend, stopIfOverBudget } from './token-budget.js'
@@ -134,7 +134,12 @@ export const driveMachine = async (input: MachineInput): Promise<RunResult> => {
   if (!attempt.ok) return input.answer ? failAnswer(input, attempt.error) : failRun(input, attempt.error)
 
   const { outcome, next } = attempt
-  const grown = await postAndAppend(thread, input, outcome.comment, next, outcome.blocks)
+  // An answer goes back to the surface the question was typed on; everything
+  // else is the record and goes to the issue. `handleAnswer` is the one handler
+  // that returns no blocks, which is what makes that split expressible at all.
+  const grown = input.answer
+    ? await postAnswer(thread, input, outcome.comment, next)
+    : await postAndAppend(thread, input, outcome.comment, next, outcome.blocks)
 
   if (PAUSE_SIGNALS.has(outcome.signal)) {
     return { status: 'waiting', reason: `Waiting for a maintainer in ${next.phase}`, state: next, reported: true }

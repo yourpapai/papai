@@ -299,7 +299,18 @@ findings: `ROADMAP.md`.
   block on a pull request is a second source of truth that scan cannot see. That
   split is why this is two functions rather than one `target()` every caller
   reads — the day the two questions are answered by one function is the day a
-  state block lands on a pull request. Three consequences not to undo. The label
+  state block lands on a pull request. **An answer is the exception, and it is
+  the exception because it is not a record at all**: `/ask` moves no phase,
+  spends no attempt and writes no artefact, so `postAnswer` replies on the
+  surface the question was typed on — a plain comment carrying no block, with
+  the spend written through `state-persist.ts`, which rewrites the issue's
+  newest block in place and posts nothing. Its accepted cost is that a question
+  answered on a pull request is invisible to the next run's prompt, since
+  `renderThread` reads the issue thread. Every other comment stays on the issue
+  and gains one line from `postAndAppend` naming where commands go: almost all
+  of them end by inviting one, and all of those became right-advice-wrong-page
+  at once — said on the write they share rather than threaded through eight
+  renderers, where any one of them could forget. Three consequences not to undo. The label
   reconcile **clears the issue** when it writes the pull request, because a copy
   left behind would freeze at whatever the state was that day and no later
   reconcile would ever look at it again. `applyPullRequestCommand` no longer

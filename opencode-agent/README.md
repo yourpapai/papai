@@ -185,13 +185,22 @@ no note at all — a pointer to the page you are already reading is noise — an
 is decided from the trigger kind, in `src/pull-request-note.ts`, because the phase
 cannot tell the two doors apart.
 
-**`/ask` from a pull request used to be deliberately absent**, on the argument
-that its answer would land on the issue while the reader was looking at the diff.
-That answer still lands on the issue — the record does not move — but refusing it
-no longer follows: with commands on the issue refused too, `/ask` would have had
-nowhere at all to be typed. `applyPullRequestCommand` now hands every command to
-`applyCommand`, which is the one place that decides what a state accepts, so the
-two doors cannot disagree about it.
+**`/ask` is answered where it was asked.** It used to be refused from a pull
+request altogether, on the argument that its answer would land on the issue while
+the reader was looking at the diff. With commands on the issue refused too that
+left it nowhere to be typed, so the answer moved instead: `postAnswer` replies on
+the surface the question came from. It is the one exception to "the record stays
+on the issue", and only because a question is not a record — it moves no phase,
+spends no attempt and writes no artefact, so the comment carries no state block
+and the spend is written through `state-persist.ts`, which rewrites the issue's
+newest block in place without posting. The cost is that a question answered on a
+pull request is invisible to the next run's prompt, since `renderThread` reads the
+issue thread.
+
+Every other comment still goes to the issue, and gains one line naming where
+commands go while a pull request is open. Almost all of them end by inviting one
+— "reply `/retry`", "raise the ceiling and reply `/review`" — and every one of
+those became right-advice-wrong-page the day the issue started refusing commands.
 
 `/review` is also the first command `COMPLETE` has ever accepted, and the only
 one whose availability the transition table cannot decide alone. `COMPLETE` is
