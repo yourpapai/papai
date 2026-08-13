@@ -248,18 +248,21 @@ describe('renderStatus', () => {
 interface StatusIo {
   created: string[]
   edits: { id: number; body: string }[]
+  /** Which issue or pull request each comment was opened against. */
+  createdOn: number[]
   createError: Error | null
   editError: Error | null
   nowMs: number
 }
 
 const statusHarness = (overrides: Partial<PipelineConfig> = {}): { io: StatusIo; deps: StatusDeps } => {
-  const io: StatusIo = { created: [], edits: [], createError: null, editError: null, nowMs: STARTED }
+  const io: StatusIo = { created: [], createdOn: [], edits: [], createError: null, editError: null, nowMs: STARTED }
 
   const deps: StatusDeps = {
     github: {
-      createComment: (_issueNumber, body): Promise<PostedComment> => {
+      createComment: (issueNumber, body): Promise<PostedComment> => {
         if (io.createError !== null) return Promise.reject(io.createError)
+        io.createdOn.push(issueNumber)
         io.created.push(body)
         return Promise.resolve({ id: 900, url: 'https://example.test/c/900', authorLogin: AGENT_LOGIN })
       },
@@ -526,5 +529,31 @@ describe('persistState', () => {
     await persistState(persistDeps(edits), thread, state({ phase: 'DESIGN_SPEC', tokensSpent: 3 }))
 
     expect(edits[0]?.id).toBe(1)
+  })
+})
+
+/**
+ * Which page the live status comment opens on.
+ *
+ * The comment is about the *run happening now* — a progress table, edited as it
+ * moves — and once a pull request exists that is the page somebody watches while
+ * it happens. The record is the other half and does not move: the report and the
+ * `AGENT_STATE` block stay on the issue, where `findLatestState` scans.
+ */
+describe('createStatusReporter · where the comment lives', () => {
+  test('opens on the issue while there is no pull request', async () => {
+    const { io, deps } = statusHarness()
+
+    await createStatusReporter(deps).start(state({ phase: 'PLANNING' }))
+
+    expect(io.createdOn).toEqual([ISSUE])
+  })
+
+  test('opens on the pull request once one exists', async () => {
+    const { io, deps } = statusHarness()
+
+    await createStatusReporter(deps).start(state({ phase: 'CI_FIX', prNumber: 7, prUrl: 'https://x.test/pull/7' }))
+
+    expect(io.createdOn).toEqual([7])
   })
 })

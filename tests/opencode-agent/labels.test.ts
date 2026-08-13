@@ -233,3 +233,80 @@ describe('settleLabels', () => {
     expect(writes(io)).toEqual(['create:agent:needs-you:d4a72c', '+agent:needs-you', '-agent:working'])
   })
 })
+
+/**
+ * Where the labels go once there is a diff to look at.
+ *
+ * An issue whose work is all in a pull request is a page nobody opens: the
+ * branch, the checks and the merge button are on the pull request, so that is
+ * where "is the agent working, or is it waiting on me" has to be readable from a
+ * list view. Moving them is only half of it — the copy left on the issue would
+ * be frozen at whatever the state was when the pull request opened, and nothing
+ * would ever come back for it.
+ */
+describe('reconcileLabels · after a pull request exists', () => {
+  const ISSUE_NUMBER = 42
+  const PR_NUMBER = 7
+
+  const twoTargets = (
+    seed: Record<number, readonly string[]>,
+  ): [LabelDeps, { calls: string[]; labels: Record<number, string[]> }] => {
+    const labels: Record<number, string[]> = { [ISSUE_NUMBER]: [], [PR_NUMBER]: [] }
+    for (const [number, names] of Object.entries(seed)) labels[Number(number)] = [...names]
+    const calls: string[] = []
+
+    const github: LabelApi = {
+      listLabels: (number): Promise<string[]> => {
+        calls.push(`list:${number}`)
+        return Promise.resolve([...(labels[number] ?? [])])
+      },
+      addLabels: (number, names): Promise<void> => {
+        calls.push(`+${number}:${names.join(',')}`)
+        labels[number] = [...(labels[number] ?? []), ...names]
+        return Promise.resolve()
+      },
+      removeLabel: (number, name): Promise<void> => {
+        calls.push(`-${number}:${name}`)
+        labels[number] = (labels[number] ?? []).filter((existing) => existing !== name)
+        return Promise.resolve()
+      },
+      createLabel: (): Promise<void> => Promise.resolve(),
+    }
+    const log: Logger = { debug: (): void => {}, info: (): void => {}, warn: (): void => {}, error: (): void => {} }
+
+    return [
+      { github, log, config: { labelPrefix: 'agent:' } },
+      { calls, labels },
+    ]
+  }
+
+  /** An issue still carrying the labels an earlier, pre-pull-request run left. */
+  const delivered = (): ReturnType<typeof twoTargets> =>
+    twoTargets({ [ISSUE_NUMBER]: ['agent:implementing', 'agent:working'], [PR_NUMBER]: [] })
+
+  test('labels the pull request, not the issue', async () => {
+    const [deps, io] = delivered()
+
+    await reconcileLabels(deps, { ...stateIn('REVIEW_AND_MUTATE'), prNumber: PR_NUMBER }, 'working')
+
+    expect(io.labels[PR_NUMBER]).toEqual(['agent:implementing', 'agent:working'])
+  })
+
+  test('takes the agent labels off the issue, so it cannot freeze mid-run', async () => {
+    const [deps, io] = delivered()
+
+    await reconcileLabels(deps, { ...stateIn('REVIEW_AND_MUTATE'), prNumber: PR_NUMBER }, 'working')
+
+    expect(io.labels[ISSUE_NUMBER]).toEqual([])
+    expect(io.calls).toContain(`-${ISSUE_NUMBER}:agent:working`)
+  })
+
+  test('leaves labels the pipeline did not put there alone, on both', async () => {
+    const [deps, io] = twoTargets({ [ISSUE_NUMBER]: ['bug', 'agent:working'], [PR_NUMBER]: ['needs-triage'] })
+
+    await reconcileLabels(deps, { ...stateIn('COMPLETE'), prNumber: PR_NUMBER }, 'waiting')
+
+    expect(io.labels[ISSUE_NUMBER]).toEqual(['bug'])
+    expect(io.labels[PR_NUMBER]).toContain('needs-triage')
+  })
+})

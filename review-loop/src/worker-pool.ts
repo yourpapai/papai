@@ -23,6 +23,19 @@ export interface Worker {
 export interface WorkerPoolHooks {
   onMergeDiff?: (workerId: number, diff: DiffStats) => void
   warn?: (message: string) => void
+  /**
+   * Called after a fix reaches the primary branch, **under the primary lock**.
+   *
+   * Under the lock deliberately: its one caller fast-forwards the checkout onto
+   * this branch, and a second worker merging into the branch while that runs is
+   * the race the lock already exists to prevent. It is awaited for the same
+   * reason — a hook that returned before it finished would put the two merges
+   * back in parallel through a longer route.
+   *
+   * Whatever it does, it must not throw: this is a fix that has already been
+   * accepted, and the merge that matters happens again in `finalizeRun`.
+   */
+  onPrimaryAdvanced?: (branch: string) => Promise<void>
 }
 
 export interface WorkerPool {
@@ -109,6 +122,9 @@ function mergeWorkerIntoPrimary(
         `[worker-${worker.id}] merge diff stats failed: ${error instanceof Error ? error.message : String(error)}`,
       )
     }
+    // After the diff and still inside the lock: this is where a fix stops being
+    // local to the run and becomes something a caller can push.
+    await hooks.onPrimaryAdvanced?.(primaryBranch)
     return { ok: true }
   })
 }

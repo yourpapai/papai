@@ -6,7 +6,7 @@
 import { renderAnswerOverBudget, renderOverBudget } from './budget-notices.js'
 import type { PipelineConfig } from './config.js'
 import type { MachineInput, PhaseDeps } from './phase-context.js'
-import { postAndAppend } from './run-report.js'
+import { postAndAppend, postAnswer } from './run-report.js'
 import type { RunResult } from './run-result.js'
 import { transition } from './transitions.js'
 import type { AgentState } from './types.js'
@@ -165,7 +165,7 @@ const answerOverBudget = async (input: MachineInput, spent: number, reason: stri
   const { state, deps, thread } = input
   const carried = { ...state, ...spendPatch(spent, {}) }
 
-  await postAndAppend(thread, input, renderAnswerOverBudget(spent, deps.config.maxTokens, state.phase), carried)
+  await postAnswer(thread, input, renderAnswerOverBudget(spent, deps.config.maxTokens, state.phase), carried)
 
   return { status: 'failed', reason, state: carried, reported: true }
 }

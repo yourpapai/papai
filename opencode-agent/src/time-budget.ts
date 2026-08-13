@@ -5,7 +5,7 @@
 
 import type { PipelineConfig } from './config.js'
 import type { MachineInput } from './phase-context.js'
-import { postAndAppend } from './run-report.js'
+import { postAndAppend, postAnswer } from './run-report.js'
 import type { RunResult } from './run-result.js'
 import { renderAnswerOutOfTime, renderOutOfTime } from './time-notices.js'
 import { recordSpend } from './token-budget.js'
@@ -228,7 +228,7 @@ const answerOutOfTime = async (input: MachineInput, toDeadline: number, reason: 
   const carried = { ...state, ...(await recordSpend(input)) }
 
   const notice = renderAnswerOutOfTime(toDeadline, deps.config.teardownReserveMs, state.phase)
-  await postAndAppend(thread, input, notice, carried)
+  await postAnswer(thread, input, notice, carried)
 
   return { status: 'waiting', reason, state: carried, reported: true }
 }

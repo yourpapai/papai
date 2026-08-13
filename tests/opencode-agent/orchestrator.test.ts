@@ -226,6 +226,8 @@ interface PipelineIo {
   /** Tokens the fake session reports as spent this job. */
   tokensUsed: number
   reviewResult: ReviewRunResult
+  /** What `git rev-parse HEAD` answers; constant unless a test moves it. */
+  headSha: string
   /** Every plan the review loop was handed, in order — `/review` is now a phase. */
   reviewCalls: string[]
   /** What `runReview` rejects with, when set: the loop crashing rather than exiting red. */
@@ -306,6 +308,15 @@ interface PipelineIo {
    */
   labels: string[]
   /**
+   * What the **pull request** carries, once the run has one.
+   *
+   * Two sets, because the reconcile now writes two targets: the labels a state
+   * implies go on the pull request from the moment one exists, and the issue's
+   * copy is cleared so it cannot freeze at whatever the state was that day. One
+   * shared set could not tell those apart — the clear would undo the move.
+   */
+  prLabels: string[]
+  /**
    * Every label *write*, in order, and deliberately not folded into `labels`:
    * the point of a diff is what it did not ask for, and a set that ends up
    * right cannot tell a single add from a clear-and-reapply.
@@ -373,7 +384,8 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     checkResults: new Map(),
     replies: [],
     tokensUsed: 0,
-    reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0 },
+    reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0, failure: null },
+    headSha: 'head-sha',
     reviewCalls: [],
     reviewError: null,
     detectedBranch: BASE_BRANCH,
@@ -392,6 +404,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     reactionLog: [],
     reactionError: null,
     labels: [],
+    prLabels: [],
     labelWrites: [],
     labelsCreated: [],
     labelReads: 0,
@@ -409,6 +422,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       template: undefined,
       rules: [],
       resolvedOutputPath: '',
+      changeDir: undefined,
       existingOutputPaths: [],
       dependencies: [],
     },
@@ -514,17 +528,20 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // Reading is not a write, so it is not recorded as one — but it does fail
     // when the token cannot see the issue at all, which is a real 403 and the
     // one that reaches the reconcile before it has decided anything.
-    listLabels: () => {
+    listLabels: (issueNumber) => {
       io.labelReads += 1
-      return io.labelError === null ? Promise.resolve([...io.labels]) : Promise.reject(io.labelError)
+      const held = issueNumber === ISSUE ? io.labels : io.prLabels
+      return io.labelError === null ? Promise.resolve([...held]) : Promise.reject(io.labelError)
     },
-    addLabels: (_issueNumber, names) =>
+    addLabels: (issueNumber, names) =>
       label(`+${names.join(',')}`, () => {
-        io.labels.push(...names.filter((name) => !io.labels.includes(name)))
+        const held = issueNumber === ISSUE ? io.labels : io.prLabels
+        held.push(...names.filter((name) => !held.includes(name)))
       }),
-    removeLabel: (_issueNumber, name) =>
+    removeLabel: (issueNumber, name) =>
       label(`-${name}`, () => {
-        io.labels = io.labels.filter((existing) => existing !== name)
+        if (issueNumber === ISSUE) io.labels = io.labels.filter((existing) => existing !== name)
+        else io.prLabels = io.prLabels.filter((existing) => existing !== name)
       }),
     createLabel: (name, color) =>
       label(`create:${name}`, () => {
@@ -558,6 +575,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       return Promise.resolve()
     },
     defaultBranch: () => Promise.resolve(io.detectedBranch),
+    // Constant, which is the ordinary case: the review loop is a fake here, so
+    // nothing moves the branch behind the pipeline's back. A test that wants the
+    // opposite overrides this — see the review-phase tests in `phases.test.ts`.
+    headSha: () => Promise.resolve(io.headSha),
   }
 
   const agent: OpenCodeAgent = {
@@ -675,6 +696,7 @@ const hostileGit = (): Git => {
     salvageAll: (): Promise<Salvage> => refuse('salvage'),
     push: (): Promise<void> => refuse('push'),
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
+    headSha: (): Promise<string> => refuse('rev-parse'),
   }
 }
 
@@ -1150,6 +1172,17 @@ describe('answering outside the review gates', () => {
     },
   )
 
+  test('says nothing about a pull request while there is none', async () => {
+    // Most of an issue's life, and all of a cancelled one's: the pointer is
+    // empty, so those comments read exactly as they always did.
+    seedState(harness, { phase: 'DESIGN_SPEC' })
+    harness.io.replies = ['Because the retry helper already exists there.']
+
+    await runPipeline({ event: comment('/ask why that file?'), deps: harness.deps })
+
+    expect(harness.io.posted[0]).not.toContain('Commands for this issue')
+  })
+
   test('/ask in FAILED answers without disturbing the parked failure', async () => {
     // The phase a maintainer most wants to ask a question in, and the one the
     // crash hurt most: the run had already failed, so this was the only thing
@@ -1568,6 +1601,14 @@ describe('implementation and delivery', () => {
  * `/retry` re-ran the model turn that had already succeeded. It is a phase of
  * its own now, entered by `/review` from `COMPLETE` and returning there.
  */
+/**
+ * `/review`, typed where the diff is.
+ *
+ * On the pull request rather than on the issue, and not by preference: once a
+ * pull request exists it is the surface this issue is driven from, so a command
+ * typed on the issue is refused and pointed here. What the run *answers* on is
+ * still the issue — see the door's own describe below.
+ */
 describe('/review — the review loop as a command', () => {
   let harness: Harness
 
@@ -1577,7 +1618,7 @@ describe('/review — the review loop as a command', () => {
   })
 
   test('runs the loop over the pushed branch and returns to COMPLETE', async () => {
-    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
     expect(result.status).toBe('completed')
     expect(harness.io.reviewCalls).toHaveLength(1)
@@ -1592,17 +1633,33 @@ describe('/review — the review loop as a command', () => {
     expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
   })
 
-  test('draws no note on the pull request, because the report is already here', async () => {
-    // Decided from the trigger kind and not from the phase: `CODE_REVIEW` is
-    // reached identically through both doors, so a phase test would put a
-    // pointer on the pull request for a maintainer already reading the report.
-    await runPipeline({ event: comment('/review'), deps: harness.deps })
+  test('every comment it posts on the issue says where commands go', async () => {
+    // Almost every comment this pipeline writes ends by naming a command, and
+    // all of them became wrong in the same way when the issue stopped accepting
+    // them — right advice, wrong page. Said once, on the write they share, from
+    // the state they are posted with, rather than threaded through eight
+    // renderers where any one of them could forget.
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
-    expect(harness.io.prNotes).toEqual([])
+    expect(harness.io.posted.at(-1)).toContain('Commands for this issue go on its pull request')
+    expect(harness.io.posted.at(-1)).toContain('https://example.test/pull/7')
+  })
+
+  test('the same command typed on the issue is refused and points at the pull request', async () => {
+    // Not "does not apply": `/review` applies perfectly and would have worked
+    // one page over, and telling a maintainer otherwise is how they conclude the
+    // agent is broken. The state does not move and the loop does not run.
+    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+
+    expect(result.status).toBe('skipped')
+    expect(harness.io.reviewCalls).toEqual([])
+    expect(harness.io.posted.at(-1)).toContain('belongs on the pull request')
+    expect(harness.io.posted.at(-1)).toContain('https://example.test/pull/7')
+    expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
   })
 
   test('hands the loop the approved plan, not the issue body', async () => {
-    await runPipeline({ event: comment('/review'), deps: harness.deps })
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
     // The loop reads the plan from the folder's `tasks.md` verbatim (design D1)
     // — the step the implementation walked, not the issue body the plan came from.
@@ -1614,7 +1671,7 @@ describe('/review — the review loop as a command', () => {
     // exactly what a freshly opened one would. The handler passes the report it
     // has just built rather than reading it back: `postAndAppend` runs in the
     // orchestrator *after* the handler returns.
-    await runPipeline({ event: comment('/review'), deps: harness.deps })
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
     expect(harness.io.prBodies.at(-1)).toContain(`Closes #${ISSUE}`)
     expect(harness.io.prBodies.at(-1)).toContain('Review report')
@@ -1627,7 +1684,7 @@ describe('/review — the review loop as a command', () => {
     // and another round off `AGENT_MAX_REVIEW_ATTEMPTS` — for a failed body edit.
     harness.deps.github.updatePullRequest = (): Promise<void> => Promise.reject(new Error('422 Unprocessable'))
 
-    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
     expect(result.status).toBe('completed')
     expect(harness.io.posted.at(-1)).toContain('Review report')
@@ -1637,7 +1694,7 @@ describe('/review — the review loop as a command', () => {
   test('a review that throws leaves the pull request open and parks in CODE_REVIEW', async () => {
     harness.io.reviewError = new Error('the review loop exploded')
 
-    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
     // The branch was pushed by phase 3 and the pull request opened by phase 4,
@@ -1652,11 +1709,11 @@ describe('/review — the review loop as a command', () => {
 
   test('/retry after a failed review re-runs the review and re-implements nothing', async () => {
     harness.io.reviewError = new Error('the review loop exploded')
-    await runPipeline({ event: comment('/review'), deps: harness.deps })
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
     harness.io.reviewError = null
     harness.io.posted.length = 0
 
-    const retried = await runPipeline({ event: comment('/retry'), deps: harness.deps })
+    const retried = await runPipeline({ event: prComment('/retry'), deps: harness.deps })
 
     expect(retried.status).toBe('completed')
     expect(harness.io.reviewCalls).toHaveLength(2)
@@ -1669,12 +1726,17 @@ describe('/review — the review loop as a command', () => {
   test('a red review is reported and still reaches COMPLETE', async () => {
     // CI on the pull request is the gate, and the CI-fix loop is what acts on
     // it; a red review is a finding, not a blocker.
-    harness.io.reviewResult = { outcome: 'failed', summary: 'two issues left open', exitCode: 1 }
+    harness.io.reviewResult = {
+      outcome: 'failed',
+      summary: 'two issues left open',
+      exitCode: 1,
+      failure: 'the review loop exited 1',
+    }
 
-    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
     expect(result.status).toBe('completed')
-    expect(harness.io.posted[0]).toContain('❌ exited 1')
+    expect(harness.io.posted[0]).toContain('❌ the review loop exited 1')
     expect(harness.io.posted[0]).toContain('two issues left open')
     expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
   })
@@ -1682,9 +1744,14 @@ describe('/review — the review loop as a command', () => {
   test('reports a repository with no review loop as unconfigured, not as red', async () => {
     // A checkout without the workspace has no review configured; that is not a
     // review that failed, and calling it one made every run elsewhere red.
-    harness.io.reviewResult = { outcome: 'unavailable', summary: 'No review loop is configured.', exitCode: 0 }
+    harness.io.reviewResult = {
+      outcome: 'unavailable',
+      summary: 'No review loop is configured.',
+      exitCode: 0,
+      failure: null,
+    }
 
-    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
     expect(result.status).toBe('completed')
     expect(harness.io.posted[0]).toContain('not configured for this repository')
@@ -1696,7 +1763,7 @@ describe('/review — the review loop as a command', () => {
     // to hear, so it is reported and the phase still completes.
     harness.deps.git.commitAll = (): Promise<StagedTotals | null> => Promise.resolve(null)
 
-    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
     expect(result.status).toBe('completed')
     expect(harness.io.gitCalls).not.toContain(`push:agent/issue-${ISSUE}`)
@@ -1733,7 +1800,7 @@ describe('/review — where it does not apply', () => {
     async (phase) => {
       seedState(harness, { phase, prUrl: 'https://example.test/pull/7', prNumber: 7 })
 
-      const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+      const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
       expect(result.status).toBe('skipped')
       expect(harness.io.reviewCalls).toEqual([])
@@ -1750,7 +1817,7 @@ describe('/review — where it does not apply', () => {
     harness = makeHarness({ maxReviewAttempts: 2 })
     seedState(harness, { phase: 'COMPLETE', prUrl: 'https://example.test/pull/7', prNumber: 7, reviewAttempts: 2 })
 
-    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
     expect(result.status).toBe('failed')
     expect(harness.io.reviewCalls).toEqual([])
@@ -1762,12 +1829,12 @@ describe('/review — where it does not apply', () => {
     harness = makeHarness({ maxReviewAttempts: 2 })
     seedState(harness, { phase: 'COMPLETE', prUrl: 'https://example.test/pull/7', prNumber: 7, reviewAttempts: 2 })
     seedTasks(harness)
-    await runPipeline({ event: comment('/review'), deps: harness.deps })
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
     harness.deps.config.maxReviewAttempts = 3
     harness.io.posted.length = 0
 
-    const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
     expect(result.status).toBe('completed')
     expect(harness.io.reviewCalls).toHaveLength(1)
@@ -1820,11 +1887,16 @@ describe('/review — typed on the pull request', () => {
   })
 
   test('a red loop is what the note says it is', async () => {
-    harness.io.reviewResult = { outcome: 'failed', summary: 'two issues left open', exitCode: 1 }
+    harness.io.reviewResult = {
+      outcome: 'failed',
+      summary: 'two issues left open',
+      exitCode: 1,
+      failure: 'the review loop exited 1',
+    }
 
     await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
-    expect(harness.io.prNotes[0]).toContain('❌ exited 1')
+    expect(harness.io.prNotes[0]).toContain('❌ the review loop exited 1')
   })
 
   test('a note the pull request will not take costs the review nothing', async () => {
@@ -1861,12 +1933,60 @@ describe('/review — typed on the pull request', () => {
     expect(harness.io.prTitles.at(-1)).toContain('Add retries')
   })
 
-  test.each([['/approve'], ['/cancel'], ['/retry'], ['/ask why that file?']])(
-    'refuses %p, because a pull request accepts one command',
+  test('takes /ask, and answers it where it was asked', async () => {
+    // The door used to refuse this, on the argument that the answer would land
+    // somewhere the asker is not looking. Refusing it stopped making sense once
+    // the issue refused commands too — `/ask` would have had nowhere left to be
+    // typed — so the answer moved instead: a reply goes back to the surface the
+    // question came from.
+    harness.io.replies = ['It retries three times, with backoff.']
+
+    const result = await runPipeline({ event: prComment('/ask how many retries?'), deps: harness.deps })
+
+    // `waiting`: answering moves no phase — it is a side conversation about work
+    // that lives elsewhere, which is exactly why `/ask` is accepted everywhere.
+    expect(result.status).toBe('waiting')
+    expect(harness.io.prNotes.at(-1)).toContain('It retries three times')
+    // And nowhere else. A second copy on the issue is two accounts of one
+    // exchange, and the issue is not where the question was asked.
+    expect(harness.io.posted.some((body) => body.includes('It retries three times'))).toBe(false)
+  })
+
+  test('the answer it posts there carries no state block', async () => {
+    // The invariant the whole split rests on: `findLatestState` scans the issue
+    // thread, so a block on the pull request is a second source of truth it
+    // cannot see. The spend is recorded by rewriting the issue's newest block in
+    // place instead — a write that posts nothing.
+    harness.io.replies = ['It retries three times, with backoff.']
+    const before = harness.io.edits.length
+
+    await runPipeline({ event: prComment('/ask how many retries?'), deps: harness.deps })
+
+    expect(harness.io.prNotes.at(-1)).not.toContain('AGENT_STATE')
+    // The rewrite, not merely some edit: the issue's newest block is where the
+    // restore scan will read this run's spend back from.
+    expect(harness.io.edits.length).toBeGreaterThan(before)
+    expect(harness.io.edits.at(-1)?.body).toContain('AGENT_STATE')
+  })
+
+  test('a failed answer is reported where the question was asked too', async () => {
+    // The failure path is the one that matters most here: a maintainer watching
+    // the pull request for a reply must not be left with silence because the
+    // apology went to a page they are not reading.
+    harness.deps.agent = (): Promise<OpenCodeAgent> => Promise.reject(new Error('the model endpoint rejected it'))
+
+    const result = await runPipeline({ event: prComment('/ask how many retries?'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(harness.io.prNotes.at(-1)).toContain('the model endpoint rejected it')
+  })
+
+  test.each([['/approve'], ['/retry']])(
+    'refuses %p on its merits, not because of the surface it was typed on',
     async (body) => {
-      // Unreachable through the resolver, which drops anything but `/review`
-      // before it makes an API call — this is the door itself holding the same
-      // line, so a second way in cannot widen the surface by accident.
+      // The door takes every command now; what turns these down is the phase.
+      // `COMPLETE` accepts neither, and the refusal says exactly that — with the
+      // list of what does work, derived from the transition table.
       const result = await runPipeline({ event: prComment(body), deps: harness.deps })
 
       expect(result.status).toBe('skipped')
@@ -4546,14 +4666,20 @@ describe('labels — the state at a glance', () => {
     expect(harness.io.labels).not.toContain('agent:working')
   })
 
-  test('a delivered issue is labelled done, a cancelled one stopped', async () => {
+  test('a delivered issue is labelled done on its pull request, a cancelled one stopped on the issue', async () => {
+    // The delivered one has somewhere better to say it. Its labels move to the
+    // pull request the moment one exists — that is the page carrying the branch,
+    // the checks and the merge button — and the issue's copy is cleared rather
+    // than left frozen at `agent:implementing` for ever. A cancelled issue never
+    // opened one, so it keeps its own.
     const delivered = makeHarness()
     await driveDelivery(delivered)
 
     const cancelled = makeHarness()
     await toComplete(cancelled)
 
-    expect(delivered.io.labels).toEqual(['agent:done'])
+    expect(delivered.io.prLabels).toEqual(['agent:done'])
+    expect(delivered.io.labels).toEqual([])
     expect(cancelled.io.labels).toEqual(['agent:stopped'])
   })
 

@@ -132,6 +132,35 @@ describe('openspec driver · instructions', () => {
     ])
   })
 
+  it('carries `changeDir`, which is what a glob output path is resolved against', async () => {
+    // Recorded from `openspec instructions specs --change <name> --json` on the
+    // pinned 1.8.0: the `specs` artifact resolves to a **pattern**, and the
+    // change folder beside it is the base the drafter's per-capability paths are
+    // relative to. Without it the drafter wrote the pattern itself and PLANNING
+    // died on ENOENT.
+    const payload = JSON.stringify({
+      instruction: 'Create specification files.',
+      changeDir: '/repo/openspec/changes/add-thing',
+      outputPath: 'specs/**/*.md',
+      resolvedOutputPath: '/repo/openspec/changes/add-thing/specs/**/*.md',
+    })
+    const { runner } = fakeRunner({ 'instructions specs': { stdout: payload } })
+    const driver = createOpenSpecDriver(deps(runner))
+    const result = await driver.instructions('specs', 'add-thing')
+    expect(result.changeDir).toBe('/repo/openspec/changes/add-thing')
+    expect(result.resolvedOutputPath).toBe('/repo/openspec/changes/add-thing/specs/**/*.md')
+  })
+
+  it('leaves `changeDir` undefined when the CLI omits it, rather than rejecting the payload', async () => {
+    // Every phase reads `instructions`, so a field that is merely useful must
+    // never be the thing that fails them all on a CLI that stops emitting it.
+    const payload = JSON.stringify({ instruction: 'Do the thing.', resolvedOutputPath: '/repo/x.md' })
+    const { runner } = fakeRunner({ 'instructions design': { stdout: payload } })
+    const driver = createOpenSpecDriver(deps(runner))
+    const result = await driver.instructions('design', 'add-thing')
+    expect(result.changeDir).toBeUndefined()
+  })
+
   it('defaults template/rules/paths to empty when the CLI omits them', async () => {
     const payload = JSON.stringify({ instruction: 'Do the thing.', resolvedOutputPath: '/repo/x.md' })
     const { runner } = fakeRunner({ 'instructions design': { stdout: payload } })

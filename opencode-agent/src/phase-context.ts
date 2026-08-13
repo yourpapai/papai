@@ -27,7 +27,13 @@ export interface IssueContext {
 }
 
 export interface RunReview {
-  (plan: string): Promise<ReviewRunResult>
+  /**
+   * @param onFixMerged Called each time the loop reports a fix landing on the
+   * working branch, while it is still running. The phase pushes on it — the
+   * pipeline holds the credential and the loop's subprocesses must never see
+   * it, so "make it durable" cannot happen inside the loop.
+   */
+  (plan: string, onFixMerged?: () => void): Promise<ReviewRunResult>
 }
 
 /**

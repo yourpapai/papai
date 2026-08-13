@@ -6,12 +6,13 @@
 import { renderExhausted, renderReviewsExhausted } from './budget-notices.js'
 import { applyCiTrigger } from './ci-trigger.js'
 import { acceptedCommands, commandApplies, COMMAND_SIGNALS } from './commands.js'
-import type { ParsedCommand, SlashCommand } from './commands.js'
+import type { ParsedCommand } from './commands.js'
 import { applyClarifyIntent, applyIntent, applySteeringIntent, readAndSkip } from './comment-intent.js'
+import { commandSurface } from './feedback-target.js'
 import { react } from './feedback.js'
 import { branchNameFor } from './git.js'
 import type { PhaseInput } from './phase-context.js'
-import { postAndAppend, renderRefusedCommand } from './run-report.js'
+import { postAndAppend, renderCommandElsewhere, renderRefusedCommand } from './run-report.js'
 import { canTransition } from './transitions.js'
 import { moveOrSkip, skip } from './trigger-outcome.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
@@ -63,6 +64,11 @@ export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
   // narrower door onto the same commands, and the narrowing is what §6.2 of the
   // plan settles. Everything after this line is the issue conversation.
   if (trigger.kind === 'pull-request') return applyPullRequestCommand(input, command)
+  // Everything below here is the issue conversation, and once a pull request
+  // exists the issue is no longer where this run is driven from — see
+  // `feedback-target.ts`. The refusal is about the *surface*, not the command:
+  // it names the pull request and posts nothing else.
+  if (command !== null && commandSurface(state, 'issue') === 'elsewhere') return commandBelongsOnPr(input, command)
   if (command !== null) return applyCommand(input, command)
   if (state.phase === 'INIT_OR_CLARIFY') return applyClarifyIntent(input)
   // Design D6 — a plain comment mid-implementation is read as steering: a
@@ -92,25 +98,23 @@ export const applyArchiveTrigger = (input: PhaseInput): TriggerOutcome => {
   return moveOrSkip(state, 'PR_MERGED', deps, 'a merged pull request')
 }
 
-/** The one command a pull request accepts. See {@link applyPullRequestCommand}. */
-const PULL_REQUEST_COMMAND: SlashCommand = '/review'
-
 /**
- * Narrows the pull-request door to that command, then hands the rest over.
+ * The pull-request door, which takes the same commands the issue does.
  *
- * Both refusals below are unreachable today by construction:
- * `resolvePullRequestTrigger` produces this kind only for a body
- * `parseSlashCommand` read as `/review`, so a comment carrying anything else
- * never becomes an event at all. They are here because "the pull request accepts
- * one command" is a decision (§6.2 — `/ask` there would widen the surface from a
- * command naming a branch the agent owns to a conversation, and its answer would
- * still land on the issue), and a decision enforced only by the layer that
- * happens to filter first is one a second door quietly repeals.
+ * It used to take `/review` and nothing else. That narrowing was right while the
+ * issue was still the surface a maintainer drove the agent from; it is wrong now
+ * that a delivered issue refuses commands and points here, because the two rules
+ * together would leave `/retry`, `/cancel` and `/ask` with nowhere to be typed.
  *
- * Everything past the narrowing goes through {@link applyCommand}, deliberately:
- * the `prNumber !== null` predicate, the review budget and the list a refusal
- * offers are one seam in `commands.ts` with two readers, and a pull-request door
- * that restated any of them would be a second spelling free to disagree.
+ * Everything goes through {@link applyCommand}, deliberately: the `prNumber`
+ * predicate, both budgets and the list a refusal offers are one seam in
+ * `commands.ts` with two readers, and a pull-request door that restated any of
+ * them would be a second spelling free to disagree.
+ *
+ * The `null` branch is unreachable by construction — `resolvePullRequestTrigger`
+ * produces this kind only for a body `parseSlashCommand` read as a command — and
+ * stays because a decision enforced only by whichever layer filters first is one
+ * a second door quietly repeals.
  */
 const applyPullRequestCommand = (input: PhaseInput, command: ParsedCommand | null): Promise<TriggerOutcome> => {
   const { state, deps } = input
@@ -120,11 +124,33 @@ const applyPullRequestCommand = (input: PhaseInput, command: ParsedCommand | nul
     return Promise.resolve({ state, halt: skip(state, 'A pull-request comment carrying no command'), answer: false })
   }
 
-  if (command.command !== PULL_REQUEST_COMMAND) {
-    return refuseCommand(input, command.command, `${command.command} is not accepted on a pull request`)
-  }
-
   return applyCommand(input, command)
+}
+
+/**
+ * The reply to a command typed on the issue after the pull request took over.
+ *
+ * Its own function rather than a branch of {@link refuseCommand}, for the reason
+ * `refuseExhausted` is its own: the sentence is different in kind. That one says
+ * "this phase does not accept that", which here would be a lie — the command is
+ * perfectly good and would have worked one page over. This one says where, and
+ * says nothing about the state, which has not moved.
+ *
+ * A `skipped` run, not a failure: nothing broke and nothing was spent. `reported`
+ * is true, because the issue does carry this run's account of what it did — it
+ * declined to act, and said so.
+ */
+const commandBelongsOnPr = async (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
+  const { state, thread, deps } = input
+  deps.log.warn(
+    { issue: state.issueId, pr: state.prNumber, command: command.command },
+    'Refused a command typed on the issue: the pull request is where this issue is driven now',
+  )
+
+  await react(deps, input.trigger, 'confused')
+  await postAndAppend(thread, input, renderCommandElsewhere(command.command, state.prUrl), state)
+
+  return { state, halt: skip(state, `${command.command} belongs on the pull request`, true), answer: false }
 }
 
 const applyCommand = async (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {

@@ -17,6 +17,13 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    # Runaway guard, not a budget. A job with no `timeout-minutes` inherits
+    # GitHub's own 360-minute ceiling, so a stalled `docker build` layer pull
+    # holds a concurrency slot for six hours and the run reports nothing until
+    # it does. Observed 69s on 2026-08-13; every value in this file is that
+    # measurement rounded up hard, deliberately loose enough that a slow runner
+    # is never what turns the build red.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -56,6 +63,8 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    # Observed 65s. Semgrep's rule download is the part that can hang.
+    timeout-minutes: 15
     permissions:
       actions: read
       contents: read
@@ -84,6 +93,8 @@ jobs:
   workflows:
     name: Workflow Lint
     runs-on: ubuntu-latest
+    # Observed 11s. The only slow path is the pinned actionlint download.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -99,6 +110,11 @@ jobs:
     name: Checks
     needs: build
     runs-on: ubuntu-latest
+    # Observed 3m03s; CLAUDE.md budgets the serial suite at ~3-4 min plus ~65s of
+    # lint/typecheck/knip/format. Loose enough that a single pathologically slow
+    # test file is a slow build rather than a red one — the perf budgets this job
+    # enables (PAPAI_PERF_BUDGETS) are what fail on real timing regressions.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -130,6 +146,9 @@ jobs:
     name: Hermetic Full-Stack Stories
     needs: build
     runs-on: ubuntu-24.04
+    # Observed 2m52s. The sandbox image pull is the unbounded part — a registry
+    # stall is exactly the failure this guard is for.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -231,6 +250,13 @@ jobs:
   mutation-testing:
     name: Mutation Testing (paired, changed files)
     runs-on: ubuntu-latest
+    # The loosest guard in this file, and the one that most needed a guard at all:
+    # this was the longest unbounded job in CI, observed at 39m13s on a large PR
+    # against 21s on a one-file merge. Runtime scales with the changed-file count,
+    # so the value is sized off the worst run seen rather than the median — tight
+    # enough that a wedged Stryker worker pool cannot sit for six hours, loose
+    # enough that a genuinely large PR is not failed for being large.
+    timeout-minutes: 90
     # Blocking PR gate. A changed file fails only if it has a recorded baseline
     # entry in scripts/mutation/baseline.json and drops below it. Files new to
     # scope (first-touch) warn and are seeded by the master mutation-baseline job.
@@ -260,6 +286,11 @@ jobs:
   mutation-baseline:
     name: Mutation Testing (changed-files baseline seed)
     runs-on: ubuntu-latest
+    # Same tool and the same variance as the paired gate above, so the same value.
+    # It matters more here than the runtime suggests: `queue: max` keeps every
+    # merge's seed alive, so one wedged job at the six-hour ceiling stalls the
+    # baseline queue behind it rather than just losing its own slot.
+    timeout-minutes: 90
     # Serialize baseline seeds across CI runs. queue: max keeps every merge's job
     # alive: the default (single) lets a newer run cancel a pending one, which
     # would silently lose that merge's seed. Group is workflow-scoped because

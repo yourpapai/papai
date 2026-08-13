@@ -69,7 +69,7 @@ export interface PendingPullRequestEvent extends PullRequestCommentFields {
 }
 
 /**
- * A resolved pull-request comment: a maintainer's `/review`, on a pull request
+ * A resolved pull-request comment: a maintainer's command, on a pull request
  * whose branch names the issue this run will answer on.
  *
  * A third member of `TriggerEvent` and deliberately not a flag on
@@ -84,16 +84,23 @@ export interface PullRequestTriggerEvent extends PullRequestCommentFields {
 }
 
 /**
- * The one command a pull request accepts.
+ * This door used to admit `/review` and nothing else, on the argument that a
+ * wider surface turns a command naming a branch into a conversation whose answer
+ * lands somewhere else.
  *
- * `/ask` from a pull request is a natural request and would be almost free once
- * this door exists, and it stays out deliberately: it widens the surface from
- * "one command naming a branch the agent owns" to "a conversation", and its
- * answer would still be posted on the issue — confusing in a way `/review` is
- * not, since `/review`'s real output is commits on the branch the reader is
- * already looking at.
+ * What changed is the other end: once a pull request exists it is the surface the
+ * agent labels, reports progress on and is watched from, and `triggers.ts` now
+ * refuses commands typed on the *issue* there. One command through this door and
+ * a refusal through the other would leave `/retry`, `/cancel` and `/ask` with
+ * nowhere at all to be typed. So the parse is "does this carry a command", and
+ * which commands the state accepts is decided once, by `applyCommand`, for both
+ * doors — a narrowing here would be a second, quieter answer to a question that
+ * already has one.
+ *
+ * The cheap-filter property this ordering exists for is unchanged: a comment
+ * with no command still costs one parse and no API call, which is what keeps
+ * every ordinary code-review comment on every pull request free.
  */
-const REVIEW_COMMAND = '/review'
 
 /**
  * Why a pull-request comment got no further than this module.
@@ -117,10 +124,10 @@ const refuse = (log: Logger, pending: PendingPullRequestEvent, code: PullRequest
  *
  * In this order, and the order is the point:
  *
- * 1. **`/review`, or nothing.** Parsed with `parseSlashCommand`, which requires
- *    the command to start a line and ignores fenced blocks, so quoting the
- *    agent's own instructions does not fire it. Anything else is dropped with no
- *    API call at all — every pull request in a repository gets ordinary review
+ * 1. **A slash command, or nothing.** Parsed with `parseSlashCommand`, which
+ *    requires the command to start a line and ignores fenced blocks, so quoting
+ *    the agent's own instructions does not fire it. Anything else is dropped with
+ *    no API call at all — every pull request in a repository gets ordinary review
  *    comments, and this is the filter that keeps every one of them free.
  * 2. **The head, from the API**, because nothing on the payload carries it.
  * 3. **The head repository is this one, or refuse.** This is the fork guard and
@@ -152,11 +159,11 @@ export const resolvePullRequestTrigger = async (
   log: Logger,
 ): Promise<PullRequestTriggerEvent | null> => {
   const command = parseSlashCommand(pending.commentBody)
-  if (command === null || command.command !== REVIEW_COMMAND) {
+  if (command === null) {
     // Not a `warn`, unlike every other exit here: this is the expected outcome
     // for almost every comment on almost every pull request, and it is what the
     // step above it buys — a log line rather than a lookup.
-    log.debug({ code: 'PR_NO_COMMAND', pr: pending.prNumber }, `Pull-request comment carries no ${REVIEW_COMMAND}`)
+    log.debug({ code: 'PR_NO_COMMAND', pr: pending.prNumber }, 'Pull-request comment carries no slash command')
     return null
   }
 

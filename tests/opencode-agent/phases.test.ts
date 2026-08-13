@@ -7,9 +7,15 @@ import { describe, expect, it } from 'bun:test'
 
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { ParsedCommand } from '../../opencode-agent/src/commands.js'
-import type { OpenSpecDriver } from '../../opencode-agent/src/openspec-driver.js'
+import type {
+  InstructionsResult,
+  OpenSpecDriver,
+  StatusResult,
+  ValidateResult,
+} from '../../opencode-agent/src/openspec-driver.js'
 import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
 import { handleAnswer } from '../../opencode-agent/src/phases/answer.js'
+import { handleImplement } from '../../opencode-agent/src/phases/implement.js'
 import { handlePlan } from '../../opencode-agent/src/phases/plan.js'
 import { handleReview } from '../../opencode-agent/src/phases/review.js'
 import { handleTriage } from '../../opencode-agent/src/phases/triage.js'
@@ -240,6 +246,30 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
 
 const CHANGE = 'add-retry-helper'
 
+const CHANGE_DIR = `/repo/openspec/changes/${CHANGE}`
+
+/**
+ * What `openspec instructions <id> --change <name> --json` answers, recorded
+ * from the pinned 1.8.0 for the `spec-driven` schema.
+ *
+ * `specs` is the one that is not a file: a change carries one delta spec per
+ * capability, so its `resolvedOutputPath` is the pattern `specs/**\/*.md`. The
+ * fake said `specs.md` like every other artifact, which is why nothing here
+ * noticed the drafter writing the pattern verbatim until run 31664928683 died on
+ * `ENOENT ... /specs/**\/*.md` at PLANNING.
+ */
+const instructionsFor = (
+  artifactId: string,
+): import('../../opencode-agent/src/openspec-driver.js').InstructionsResult => ({
+  instruction: `Draft the ${artifactId}.`,
+  template: undefined,
+  rules: [],
+  resolvedOutputPath: artifactId === 'specs' ? `${CHANGE_DIR}/specs/**/*.md` : `${CHANGE_DIR}/${artifactId}.md`,
+  changeDir: CHANGE_DIR,
+  existingOutputPaths: [],
+  dependencies: [],
+})
+
 /** A driver whose status evolves as the drafter writes each artifact. */
 const evolvingDriver = (drafted: Set<string>): OpenSpecDriver => ({
   newChange: (n: string): Promise<{ changeName: string }> => Promise.resolve({ changeName: n }),
@@ -248,24 +278,19 @@ const evolvingDriver = (drafted: Set<string>): OpenSpecDriver => ({
   instructions: (
     artifactId: string,
   ): Promise<import('../../opencode-agent/src/openspec-driver.js').InstructionsResult> =>
-    Promise.resolve({
-      instruction: `Draft the ${artifactId}.`,
-      template: undefined,
-      rules: [],
-      resolvedOutputPath: `/repo/openspec/changes/${CHANGE}/${artifactId}.md`,
-      existingOutputPaths: [],
-      dependencies: [],
-    }),
+    Promise.resolve(instructionsFor(artifactId)),
   status: (): Promise<import('../../opencode-agent/src/openspec-driver.js').StatusResult> => {
+    // The real schema's dependency order: proposal → specs → design → tasks.
     const artifacts: Record<string, string> = {
       proposal: 'done',
-      design: drafted.has('design') ? 'done' : 'ready',
+      specs: drafted.has('specs') ? 'done' : 'ready',
+      design: drafted.has('design') ? 'done' : drafted.has('specs') ? 'ready' : 'blocked',
       tasks: drafted.has('tasks') ? 'done' : drafted.has('design') ? 'ready' : 'blocked',
     }
     return Promise.resolve({
       schemaName: 'spec-driven',
       artifacts,
-      isPlanningComplete: drafted.has('design') && drafted.has('tasks'),
+      isPlanningComplete: drafted.has('specs') && drafted.has('design') && drafted.has('tasks'),
     })
   },
 })
@@ -290,8 +315,15 @@ const planningState = (over: Partial<AgentState> = {}): AgentState => ({
   ...over,
 })
 
-/** The artifact id a write path points at (`/x/design.md` → `design`). Module-level so the `?.`/`??` is not "in test". */
+/**
+ * The artifact id a write path points at (`/x/design.md` → `design`).
+ *
+ * A delta spec lands at `specs/<capability-path>/spec.md`, so the id is the
+ * folder there rather than the filename — the glob artifact is the one whose
+ * files are not named after it. Module-level so the `?.`/`??` is not "in test".
+ */
 const artifactIdOf = (path: string): string => {
+  if (path.startsWith(`${CHANGE_DIR}/specs/`)) return 'specs'
   const base = path.split('/').pop() ?? ''
   return base.replace(/\.md$/u, '')
 }
@@ -342,6 +374,7 @@ const validateFailsOnce = (call: number): { ok: boolean; output: string } =>
 describe('handlePlan · drafter loop (D3)', () => {
   it('drafts each pending artifact, writes it to the folder, and signals PLAN_POSTED', async () => {
     const { input, io } = wireDrafterInput([
+      JSON.stringify({ files: [{ path: 'specs/retry/spec.md', content: 'spec body' }] }),
       JSON.stringify({ content: 'design body' }),
       JSON.stringify({ content: 'tasks body' }),
     ])
@@ -349,8 +382,11 @@ describe('handlePlan · drafter loop (D3)', () => {
     const outcome = await handlePlan(input)
 
     expect(outcome.signal).toBe('PLAN_POSTED')
-    // The drafter wrote design then tasks, in dependency order.
+    // The drafter wrote specs, design then tasks, in dependency order — and the
+    // glob artifact landed at the concrete per-capability path it chose, not at
+    // the pattern the driver resolved.
     expect(io.writes.map((w) => w.path)).toEqual([
+      `/repo/openspec/changes/${CHANGE}/specs/retry/spec.md`,
       `/repo/openspec/changes/${CHANGE}/design.md`,
       `/repo/openspec/changes/${CHANGE}/tasks.md`,
     ])
@@ -363,10 +399,10 @@ describe('handlePlan · drafter loop (D3)', () => {
   })
 
   it('retries once when validate --strict fails, attaching the complaint', async () => {
-    // Only design pending (tasks already done) so the loop drafts one artifact.
+    // Only design pending (specs and tasks already done) so the loop drafts one artifact.
     const { input, io } = wireDrafterInput(
       [JSON.stringify({ content: 'first attempt' }), JSON.stringify({ content: 'repaired attempt' })],
-      { done: ['tasks'], validate: validateFailsOnce },
+      { done: ['specs', 'tasks'], validate: validateFailsOnce },
     )
 
     const outcome = await handlePlan(input)
@@ -379,8 +415,62 @@ describe('handlePlan · drafter loop (D3)', () => {
     expect(io.writes.at(-1)?.content).toBe('repaired attempt')
   })
 
+  it('writes one file per capability for the glob artifact, never the pattern itself', async () => {
+    // The failure of run 31664928683: `specs` resolves to `specs/**\/*.md`, the
+    // drafter wrote that string, and PLANNING died on ENOENT after paying for
+    // the turn that composed the content. The paths are the model's to choose
+    // here — one per capability — and TypeScript's to judge and write.
+    const { input, io } = wireDrafterInput(
+      [
+        JSON.stringify({
+          files: [
+            { path: 'specs/retry-helper/spec.md', content: '## ADDED Requirements' },
+            { path: 'specs/identity/user-auth/spec.md', content: '## MODIFIED Requirements' },
+          ],
+        }),
+      ],
+      { done: ['design', 'tasks'] },
+    )
+
+    const outcome = await handlePlan(input)
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    expect(io.writes.map((w) => w.path)).toEqual([
+      `/repo/openspec/changes/${CHANGE}/specs/retry-helper/spec.md`,
+      `/repo/openspec/changes/${CHANGE}/specs/identity/user-auth/spec.md`,
+    ])
+  })
+
+  it('re-asks with a complaint when a drafted spec path escapes the change folder, writing nothing', async () => {
+    // A path is the other thing a draft can get wrong, and it takes the same one
+    // retry the validate-strict verdict takes. All-or-nothing: the first
+    // attempt's good file is not written either, or the retry's complaint would
+    // be about a folder that had already half-landed.
+    const { input, io } = wireDrafterInput(
+      [
+        JSON.stringify({
+          files: [
+            { path: 'specs/retry-helper/spec.md', content: 'fine' },
+            { path: '../../../../etc/passwd', content: 'not fine' },
+          ],
+        }),
+        JSON.stringify({ files: [{ path: 'specs/retry-helper/spec.md', content: 'repaired' }] }),
+      ],
+      { done: ['design', 'tasks'] },
+    )
+
+    const outcome = await handlePlan(input)
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    expect(io.prompts).toHaveLength(2)
+    expect(io.prompts.at(-1)?.prompt).toContain('../../../../etc/passwd')
+    expect(io.writes.map((w) => w.path)).toEqual([`/repo/openspec/changes/${CHANGE}/specs/retry-helper/spec.md`])
+    expect(io.writes.at(-1)?.content).toBe('repaired')
+  })
+
   it('renders the PLAN_REVIEW digest from the folder (D1): includes tasks.md read back', async () => {
     const { input, io } = wireDrafterInput([
+      JSON.stringify({ files: [{ path: 'specs/retry/spec.md', content: 'spec body' }] }),
       JSON.stringify({ content: 'design body' }),
       JSON.stringify({ content: '- [ ] Write retry tests\n- [ ] Add the wrapper\n' }),
     ])
@@ -404,7 +494,7 @@ describe('handlePlan · drafter loop (D3)', () => {
     // rot relative to the conversation.
     const built = wireDrafterInput(
       [JSON.stringify({ content: '- [ ] Write retry tests\n- [ ] Also add structured logging\n' })],
-      { done: ['tasks'] },
+      { done: ['specs', 'tasks'] },
     )
     const steerTrigger: TriggerEvent = {
       kind: 'issue',
@@ -453,6 +543,7 @@ const folderDriver = (change: string): OpenSpecDriver => ({
       template: undefined,
       rules: [],
       resolvedOutputPath: `/repo/openspec/changes/${change}/${artifactId}.md`,
+      changeDir: `/repo/openspec/changes/${change}`,
       existingOutputPaths: [],
       dependencies: [],
     }),
@@ -541,7 +632,7 @@ describe('handleReview · reads the plan from the folder (D1)', () => {
     const handed: string[] = []
     input.deps.runReview = (plan: string): Promise<ReviewRunResult> => {
       handed.push(plan)
-      return Promise.resolve({ outcome: 'passed', summary: '', exitCode: 0 })
+      return Promise.resolve({ outcome: 'passed', summary: '', exitCode: 0, failure: null })
     }
 
     const outcome = await handleReview(input)
@@ -550,5 +641,210 @@ describe('handleReview · reads the plan from the folder (D1)', () => {
     // The review loop was handed the folder's tasks.md verbatim.
     expect(handed).toEqual([tasks])
     expect(io.reads).toEqual([`/repo/openspec/changes/${CHANGE}/tasks.md`])
+  })
+})
+
+/**
+ * The findings are commits, and a commit on an Actions runner is worth nothing
+ * until it is pushed.
+ *
+ * The loop merges its own branch into the checkout itself, so by the time this
+ * handler runs the tree is *clean* and the work is in `HEAD` — which is why
+ * asking `commitAll` whether anything changed answered "no" and the push was
+ * skipped, on every review that found something. The branch, and the pull
+ * request, showed the implementation and nothing else.
+ */
+/** Successive answers, repeating the last one — a `??` outside any test body. */
+const queued = (values: readonly string[]): (() => string) => {
+  const remaining = [...values]
+  let last = values.at(-1) ?? ''
+  return (): string => {
+    last = remaining.shift() ?? last
+    return last
+  }
+}
+
+describe('handleReview · pushes what the loop merged', () => {
+  const reviewInput = (
+    passing: boolean,
+    failure: string | null = null,
+  ): ReturnType<typeof folderReadInput> & { pushes: () => string[] } => {
+    const built = folderReadInput({ phase: 'CODE_REVIEW', folder: { tasks: '- [ ] one\n' } })
+    built.input.state = { ...built.input.state, prNumber: 7, prUrl: 'https://example.invalid/pull/7' }
+    built.input.deps.runReview = (): Promise<ReviewRunResult> =>
+      Promise.resolve({
+        outcome: passing ? 'passed' : 'failed',
+        summary: 'summary',
+        exitCode: passing ? 0 : 1,
+        failure,
+      })
+    return { ...built, pushes: (): string[] => built.io.gitCalls.filter((call) => call.startsWith('push:')) }
+  }
+
+  it('pushes when the loop advanced the branch and left a clean tree', async () => {
+    const built = reviewInput(true)
+    // What the loop actually leaves behind: its merge is already committed, so
+    // there is nothing for `commitAll` to stage.
+    built.input.deps.git.commitAll = (): Promise<null> => Promise.resolve(null)
+    const heads = queued(['before', 'after'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+
+    const outcome = await handleReview(built.input)
+
+    expect(built.pushes()).toEqual(['push:agent/issue-42'])
+    expect(outcome.comment).toContain('pushed')
+  })
+
+  it('pushes nothing when the loop changed nothing at all', async () => {
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<null> => Promise.resolve(null)
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve('same')
+
+    await handleReview(built.input)
+
+    expect(built.pushes()).toEqual([])
+  })
+
+  it('pushes each fix as the loop publishes it, not only at the end', async () => {
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<null> => Promise.resolve(null)
+    const heads = queued(['start', 'fix-1', 'fix-2', 'fix-2'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+    built.input.deps.runReview = async (_plan: string, onFixMerged?: () => void): Promise<ReviewRunResult> => {
+      onFixMerged?.()
+      onFixMerged?.()
+      // The loop is still running here; the pushes must already have happened by
+      // the time it returns, which is what makes them survive a killed runner.
+      await Promise.resolve()
+      return { outcome: 'passed', summary: '', exitCode: 0, failure: null }
+    }
+
+    await handleReview(built.input)
+
+    expect(built.pushes()).toEqual(['push:agent/issue-42', 'push:agent/issue-42'])
+  })
+
+  it('names why a failed loop failed, in the report and on the pull request', async () => {
+    const built = reviewInput(false, "the loop's own build gate failed at the end of the run")
+
+    const outcome = await handleReview(built.input)
+
+    expect(outcome.comment).toContain('build gate')
+    const updated = built.io.pullRequestUpdates.at(-1)
+    expect(updated?.body).toContain('build gate')
+  })
+})
+
+/**
+ * Design D1 again, from the other side: the folder is truth, and a job that has
+ * not checked out the branch carrying it holds no truth at all.
+ *
+ * `actions/checkout` in `agent-pipeline.yml` takes no ref on purpose — the
+ * workspace starts on the base branch and `ensureBranch` is what moves it onto
+ * `agent/issue-<n>`. So `openspec/changes/<name>/` is *absent* until that call,
+ * and every phase after the capture that scaffolded it runs in a different job:
+ * capture parks at `DESIGN_SPEC`, and the `/approve` that enters `PLANNING`
+ * arrives whenever a maintainer types it, on a fresh runner.
+ *
+ * The stub deps cannot show that on their own — their driver answers the same
+ * whatever the workspace is checked out at — which is exactly how three handlers
+ * came to read the folder one line before switching to it. Run 31630109348 is
+ * what that costs: `openspec status` exited 1 with "Change 'context-vault-plugin'
+ * not found. Available changes: …", listing master's folders, and the run died
+ * with the plan undrafted.
+ */
+const startedOnBaseBranch = (input: PhaseInput): void => {
+  const { deps } = input
+  const { git, openspec, readFile } = deps
+  let onBranch = false
+
+  // What the OpenSpec CLI says about a change folder that is on another branch,
+  // and what `readFile` says about a path that is not in the tree: both are the
+  // absence of the same folder, so both refuse until the branch is checked out.
+  const refuse = (command: string): never => {
+    throw new Error(`${command} failed (exit 1): Change '${CHANGE}' not found.`)
+  }
+
+  deps.git = {
+    ...git,
+    ensureBranch: (branch: string, base: string): Promise<void> => {
+      onBranch = true
+      return git.ensureBranch(branch, base)
+    },
+  }
+  deps.openspec = {
+    ...openspec,
+    status: (changeName: string): Promise<StatusResult> =>
+      onBranch ? openspec.status(changeName) : refuse('openspec status'),
+    instructions: (artifactId: string, changeName: string): Promise<InstructionsResult> =>
+      onBranch ? openspec.instructions(artifactId, changeName) : refuse('openspec instructions'),
+    validateStrict: (changeName: string): Promise<ValidateResult> =>
+      onBranch ? openspec.validateStrict(changeName) : refuse('openspec validate --strict'),
+  }
+  deps.readFile = (filePath: string): Promise<string> => (onBranch ? readFile(filePath) : refuse(`reading ${filePath}`))
+}
+
+/** An input parked where `REVIEW_AND_MUTATE` is entered: an approved plan in the folder. */
+const implementInput = (tasks: string): { input: PhaseInput; io: StubIo } => {
+  const built = stubPhaseDeps({ replies: ['Implemented.'], selfLogin: AGENT_LOGIN })
+  built.deps.openspec = folderDriver(CHANGE)
+  built.io.readContents = { [`/repo/openspec/changes/${CHANGE}/tasks.md`]: tasks }
+  return {
+    input: {
+      state: planningState({ phase: 'REVIEW_AND_MUTATE' }),
+      issue: { number: 42, title: 'Add a retry helper', body: 'Please add a retry helper.' },
+      trigger: issueTrigger('OWNER'),
+      command: null,
+      thread: built.io.thread,
+      deps: built.deps,
+    },
+    io: built.io,
+  }
+}
+
+describe('a phase checks out the branch carrying the folder before it reads the folder', () => {
+  it('handlePlan drafts after ensureBranch, not before (run 31630109348)', async () => {
+    const built = wireDrafterInput([
+      JSON.stringify({ files: [{ path: 'specs/retry/spec.md', content: 'spec body' }] }),
+      JSON.stringify({ content: 'design body' }),
+      JSON.stringify({ content: 'tasks body' }),
+    ])
+    startedOnBaseBranch(built.input)
+
+    const outcome = await handlePlan(built.input)
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    // Not merely "ensureBranch was called": it was called *first*, before the
+    // drafter asked the driver anything. That order is the whole fix.
+    expect(built.io.gitCalls[0]).toBe('ensureBranch:agent/issue-42:main')
+  })
+
+  it('handleImplement reads the plan after ensureBranch, not before', async () => {
+    const built = implementInput('- [ ] Add the wrapper\n')
+    startedOnBaseBranch(built.input)
+
+    const outcome = await handleImplement(built.input)
+
+    expect(outcome.signal).toBe('CHANGES_COMMITTED')
+    expect(built.io.gitCalls[0]).toBe('ensureBranch:agent/issue-42:main')
+  })
+
+  it('handleReview reads the plan after ensureBranch, not before', async () => {
+    const tasks = '- [ ] Write retry tests\n- [ ] Add the wrapper\n'
+    const built = folderReadInput({ phase: 'CODE_REVIEW', folder: { tasks } })
+    startedOnBaseBranch(built.input)
+    const handed: string[] = []
+    built.input.deps.runReview = (plan: string): Promise<ReviewRunResult> => {
+      handed.push(plan)
+      return Promise.resolve({ outcome: 'passed', summary: '', exitCode: 0, failure: null })
+    }
+
+    const outcome = await handleReview(built.input)
+
+    expect(outcome.signal).toBe('REVIEW_DONE')
+    // The loop still gets the folder's plan — the read moved behind the
+    // checkout, it did not become a read of something else.
+    expect(handed).toEqual([tasks])
+    expect(built.io.gitCalls[0]).toBe('ensureBranch:agent/issue-42:main')
   })
 })

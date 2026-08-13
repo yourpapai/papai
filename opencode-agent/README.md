@@ -122,9 +122,22 @@ moves the phase and the handler runs behind it in the same job, exactly as
 | `/continue`                 | `INCOMPLETE`                 | Pick up the phase the job ran out of time for                  |
 | `/cancel`                   | anything but `COMPLETE`      | Stop for good — a cancelled issue cannot be restarted          |
 
-**`/review` has two doors and one answer.** It is typed on the issue, where every
-other command works, or on the pull request, which is where the diff actually is.
-The pull request is the narrower door: it accepts `/review` and nothing else.
+**Where a command is typed depends on whether a pull request exists.** Until one
+does, the issue is the only surface and every command is typed there. From the
+moment `state.prNumber` is set, the pull request takes over: it is where the diff,
+the checks and the merge button are, so it is where the live status comment opens,
+where the `agent:*` labels are reconciled, and where commands are accepted. A
+command typed on the issue after that is refused with a comment naming the pull
+request — not "does not apply", which would be false twice over, since the command
+applies perfectly and would have worked one page over. `src/feedback-target.ts`
+holds both halves of that rule.
+
+**The record does not move.** `AGENT_STATE` and `AGENT_REPORT` stay in hidden
+blocks on the **issue**, whichever surface the command arrived on, because
+`findLatestState` scans exactly one thread and a block on a pull request would be
+a second source of truth that scan cannot see. So a `/review` typed on the pull
+request is answered by a report on the issue and a short note on the pull request
+pointing at it — see below.
 
 A comment typed on a pull request has to name its issue before anything else in
 this pipeline can run, and the payload does not carry one —
@@ -134,10 +147,12 @@ branch, exactly as it is for a red CI run: `head.ref` is `agent/issue-<n>`, and
 (`src/pr-trigger.ts`) reads the head through the API and recovers the issue from
 it, in an order that is the design rather than a preference:
 
-1. **`/review`, or nothing.** Parsed by the same `parseSlashCommand` the issue
-   path uses, so a command has to start a line and a fenced block is ignored.
-   Every other comment on every pull request in the repository is dropped here,
-   with no API call at all — which is the whole reason the test comes first.
+1. **A slash command, or nothing.** Parsed by the same `parseSlashCommand` the
+   issue path uses, so a command has to start a line and a fenced block is
+   ignored. Every other comment on every pull request in the repository is
+   dropped here, with no API call at all — which is the whole reason the test
+   comes first. The door used to admit `/review` alone; it cannot now that the
+   issue refuses commands, or `/retry` and `/cancel` would have nowhere to go.
 2. **The head, from the API**, because nothing on the payload carries it.
 3. **The head repository is this one**, or `PR_FOREIGN_REPOSITORY` — the fork
    guard, and the one check here that is not bookkeeping. See **Guardrails**.
@@ -170,14 +185,22 @@ no note at all — a pointer to the page you are already reading is noise — an
 is decided from the trigger kind, in `src/pull-request-note.ts`, because the phase
 cannot tell the two doors apart.
 
-**`/ask` from a pull request is deliberately absent**, though it would have been
-nearly free once this door existed. It widens the surface from "one command naming
-a branch the agent owns" to a conversation, and its answer would still be posted
-on the issue — confusing in a way `/review` is not, since `/review`'s real output
-is commits on the branch the reader is already looking at. `applyPullRequestCommand`
-refuses everything else anyway, although the resolver means nothing else can reach
-it: a decision enforced only by whichever layer filters first is one a second door
-quietly repeals.
+**`/ask` is answered where it was asked.** It used to be refused from a pull
+request altogether, on the argument that its answer would land on the issue while
+the reader was looking at the diff. With commands on the issue refused too that
+left it nowhere to be typed, so the answer moved instead: `postAnswer` replies on
+the surface the question came from. It is the one exception to "the record stays
+on the issue", and only because a question is not a record — it moves no phase,
+spends no attempt and writes no artefact, so the comment carries no state block
+and the spend is written through `state-persist.ts`, which rewrites the issue's
+newest block in place without posting. The cost is that a question answered on a
+pull request is invisible to the next run's prompt, since `renderThread` reads the
+issue thread.
+
+Every other comment still goes to the issue, and gains one line naming where
+commands go while a pull request is open. Almost all of them end by inviting one
+— "reply `/retry`", "raise the ceiling and reply `/review`" — and every one of
+those became right-advice-wrong-page the day the issue started refusing commands.
 
 `/review` is also the first command `COMPLETE` has ever accepted, and the only
 one whose availability the transition table cannot decide alone. `COMPLETE` is
@@ -569,14 +592,39 @@ the `git add`, the commit, the push, the comment, the state block and the label 
 stop still has to do, against an observed tail of about ten seconds.
 
 With the shrink in place the per-turn cap is free to be generous, and it now is:
-`AGENT_TIMEOUT_MS` defaults to an **hour** rather than the half-hour above. The
-30-minute default outlived the defect that made it dangerous and became the
+`AGENT_TIMEOUT_MS` defaults to **ninety minutes** rather than the half-hour above.
+The 30-minute default outlived the defect that made it dangerous and became the
 opposite problem — with the job ceiling at 90 it was the _only_ bound long runs
 ever reached, and three consecutive live runs ended at the same 33 minutes of
 wall clock, each one a single turn aborted at its cap, wrapped up and parked with
 an hour of paid-for runner unspent. Raising it cannot recreate D3, because the
 `min` above is what stands between a turn and the runner: a turn opened late gets
 what is left of the job minus the two slices, whatever this is set to.
+
+The pair has since moved together a second time, and that is the thing to
+remember when changing either. The job ceiling is **300 minutes** now, and at that
+size an hour-long turn cap was the binding bound again for the first four hours of
+every job — the same smallness one scale up, and the shape a phase that is one
+_indivisible_ turn would have died of: a plan with no steps, or
+`REVIEW_AND_MUTATE`, aborting at its cap and parking with hours of runner unspent.
+Raising the ceiling without raising the cap buys much less than it looks like it
+does.
+
+300 rather than the 360 GitHub allows, because `timeout-minutes` may only ever
+_lower_ the hosted-runner cap: a larger value is ignored and the job is killed at
+360 regardless. At exactly 360 the deadline this pipeline derives would land
+_after_ the one GitHub enforces — `AGENT_JOB_STARTED_MS` is recorded a few seconds
+into the job — so the stop would be cut off doing the one thing it exists to do.
+300 leaves a full hour of real slack over the three-minute reserve.
+
+What made 90 worth changing was a measurement rather than a preference. Run
+`31669199768` parked "out of time" after 87m33s on **step 12 of a 30-step plan**,
+having spent 736k of a 5 000 000-token ceiling: time ran out, tokens were nowhere
+near, and the remedy the notice suggests is this variable. At the ~7.7 minutes a
+step that run averaged, that plan wants about four hours. On a public repository
+standard runners are free, so a longer ceiling costs no minutes — what a long job
+spends is a concurrency slot and, because `cancel-in-progress` is `false`, this
+issue's serialization group.
 
 **A wall-clock stop is a ceiling reached, not work that broke**, and the pipeline
 says so in the vocabulary it already had: ⛔ rather than ❌, and a park in
@@ -1426,9 +1474,9 @@ cannot drift.
 | `AGENT_MAX_ATTEMPTS`                       | no       | `5`                                             | Failures before `/retry` stops resuming                |
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                             |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                            |
-| `AGENT_TIMEOUT_MS`                         | no       | `3600000`                                       | Timeout for one model turn, and for each subprocess    |
+| `AGENT_TIMEOUT_MS`                         | no       | `5400000`                                       | Timeout for one model turn, and for each subprocess    |
 | `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                         | Epoch ms this job began; the workflow's first step     |
-| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset — no job deadline                         | The job's own ceiling, shared with `timeout-minutes:`  |
+| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset here; `300` from the workflow             | The job's own ceiling, shared with `timeout-minutes:`  |
 | `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                        | Held back from the job so a time stop can report       |
 | `AGENT_WRAP_UP_MS`                         | no       | `120000`                                        | The model's slice of a stop: finish up and hand over   |
 | `AGENT_MAX_TOKENS`                         | no       | `5000000`                                       | Model tokens one issue may spend, across all its jobs  |
@@ -1484,7 +1532,12 @@ an extra digit puts it past any job's life, removing the bound instead. Both are
 positive integers that used to be accepted.
 `AGENT_JOB_TIMEOUT_MINUTES` accepts 1–1 440 and is the same repository variable the
 workflow's own `timeout-minutes:` reads — deliberately one value with two readers,
-since the pair kept in step by hand is the defect S5-11 records.
+since the pair kept in step by hand is the defect S5-11 records. The range is wider
+than a hosted runner can honour on purpose: it cannot tell a hosted runner (capped
+at 360 minutes) from a self-hosted one (five days), so a value over 360 loads here
+and is then ignored by GitHub, which kills the job at 360 anyway. On hosted runners
+treat 360 as the hard ceiling and leave room under it — the workflow's own fallback
+of 300 is where that room is taken.
 `AGENT_TEARDOWN_RESERVE_MS` accepts 1 000–1 800 000: below a second the reserve
 cannot post the comment and write the state block it exists for, and above half an
 hour it is larger than most jobs and stops every run before any phase begins.
@@ -1726,7 +1779,7 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/agent-handle.ts`                         | The OpenCode session's lifetime within one job                          |
 | `src/orchestrator.ts`                         | The state machine: guardrails and the phase cascade                     |
 | `src/trigger-events.ts`                       | What a raw webhook payload becomes, for each of the three kinds         |
-| `src/pr-trigger.ts`                           | Resolving a `/review` typed on a pull request back to its issue         |
+| `src/pr-trigger.ts`                           | Resolving a command typed on a pull request back to its issue           |
 | `src/triggers.ts`                             | Turning a command or comment into the state move to make                |
 | `src/ci-trigger.ts`                           | Whether a red check run buys a fix round, a notice, or nothing          |
 | `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                    |
@@ -1736,6 +1789,7 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/presentation.ts`                         | One glyph, label, headline and whose-turn per state an issue can be in  |
 | `src/outcomes.ts`                             | The second vocabulary: one glyph per outcome a comment announces        |
 | `src/feedback.ts` / `src/labels.ts`           | The reaction channel, and the label reconcile                           |
+| `src/feedback-target.ts`                      | Which of the issue and its pull request a run speaks on, and takes from |
 | `src/status-comment.ts` / `-reporter.ts`      | What the run's live comment says, and when it is edited                 |
 | `src/state-persist.ts`                        | Recording what a run spent without posting a comment                    |
 | `src/step-output.ts`                          | The one thing a run tells the rest of its own workflow job              |

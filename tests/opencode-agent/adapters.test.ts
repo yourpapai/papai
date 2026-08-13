@@ -1616,7 +1616,7 @@ describe('config', () => {
     expect(loadConfig({ ...baseEnv, AGENT_MAX_ATTEMPTS: raw }, '/repo').maxAttempts).toBe(5)
   })
 
-  test('gives one turn an hour by default, not half of one', () => {
+  test('gives one turn ninety minutes by default, not half an hour', () => {
     // The default used to be 30 minutes, and that number — not the job's 90-minute
     // ceiling — is what every long run actually stopped on: three consecutive runs
     // ended at the same 33 minutes of wall clock, each one a single turn aborted at
@@ -1628,7 +1628,13 @@ describe('config', () => {
     // takes the *smaller* of the two: a turn opened late in the job still gets what
     // is left of it minus the reserve and the wrap-up, so raising this can lengthen
     // a turn that has room and can never let one outlive the runner.
-    expect(loadConfig(baseEnv, '/repo').agentTimeoutMs).toBe(3_600_000)
+    // Raised again, 60 to 90, for the reason it went 30 to 60 — and this time the
+    // number it has to stay ahead of moved first. The job ceiling is 300 minutes
+    // now, so `min(this, time left − reserve − wrap-up)` picks *this* for the first
+    // four hours of every job: a phase that is one indivisible turn — a plan with
+    // no steps, or REVIEW_AND_MUTATE — would abort at the cap and park with hours
+    // of runner unspent, which is the 30-against-90 defect one scale up.
+    expect(loadConfig(baseEnv, '/repo').agentTimeoutMs).toBe(5_400_000)
   })
 
   /** Two facts a runner knows and nothing else does, as the workflow forwards them. */

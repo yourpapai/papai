@@ -148,7 +148,19 @@ export const contain = (input: ContainInput): Contained => {
   const agent = memoizeAgent(() => create(sessionOptions({ input, contained, status, clock })))
 
   const env = options.env
-  const deps = assembleDeps({ config: contained, secrets, event, env, run, log, agent, github, status, now: clock })
+  const deps = assembleDeps({
+    config: contained,
+    secrets,
+    event,
+    env,
+    run,
+    log,
+    agent,
+    github,
+    status,
+    now: clock,
+    transcript: input.transcript,
+  })
 
   return { proxy, agent, deps }
 }

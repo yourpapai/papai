@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { PipelineConfig } from './config.js'
+import { feedbackTarget } from './feedback-target.js'
 import type { GitHubApi } from './github.js'
 import type { Logger } from './logger.js'
 import type { ProgressSnapshot } from './progress.js'
@@ -172,9 +173,15 @@ const open = async (run: RunStatus, state: AgentState): Promise<void> => {
   run.live = true
 
   const body = renderStatus(viewOf(run, state))
+  // The pull request once one exists — see `feedback-target.ts`. This is the one
+  // comment in the pipeline that is *about the run happening now* rather than
+  // about the issue, and once there is a diff, the page somebody is watching
+  // while it happens is the pull request. The report and the state block stay on
+  // the issue either way: they are the record, and the restore scan reads exactly
+  // one thread.
   const posted = await attempt(
     run,
-    () => run.deps.github.createComment(state.issueId, body),
+    () => run.deps.github.createComment(feedbackTarget(state), body),
     'Could not open the status comment; this run reports only when it ends',
   )
   if (posted === null) return

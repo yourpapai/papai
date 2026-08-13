@@ -121,6 +121,48 @@ findings: `ROADMAP.md`.
   walks `tasks.md` checkboxes as the step source (D5). The retired block names
   and their revision counters (`specRevision`) are gone; no legacy restore path
   exists, and in-flight issues restart under the `STATE_VERSION` bump (D12).
+- **`ensureBranch` comes before the first read of the folder, in every phase that
+  reads one.** The workflow's `actions/checkout` names no ref and must not grow
+  one — `ARCHIVE` commits to the base branch, capture cuts a branch that does not
+  exist yet, and a checkout pinned to `agent/issue-<n>` fails outright on the
+  first event of an issue. So a job's workspace **starts on the base branch**, and
+  `openspec/changes/<name>/` — scaffolded and pushed by whichever earlier job
+  captured the issue — is not in it until `deps.git.ensureBranch` switches
+  branches. Every phase after capture runs in a different job by construction:
+  capture parks at `DESIGN_SPEC` and the `/approve` that enters `PLANNING` arrives
+  whenever a maintainer types it. `PLANNING`, `REVIEW_AND_MUTATE` and
+  `CODE_REVIEW` each read the folder one line **before** that call and each died
+  the same way — `openspec status` exit 1, "Change '<name>' not found", followed by
+  a list of the base branch's changes that reads like the folder was never
+  scaffolded. The ordering is not visible to a stub whose driver answers the same
+  on any branch, which is how three handlers acquired the same defect; the fake in
+  `phases.test.ts` refuses every driver call and every `readFile` until
+  `ensureBranch` has been called, so a phase that reads too early fails the test
+  the way it failed the run.
+- **An artifact's output path is not always a file, and a pattern is judged
+  rather than written.** Three of the `spec-driven` schema's four artifacts
+  resolve to a path the drafter can hand to `writeFile`; `specs` does not. A
+  change carries one delta spec per capability, so `openspec instructions specs`
+  answers with `<changeDir>/specs/**/*.md` — a **pattern** — and only the
+  proposal knows how many files that is. `phases/plan.ts` wrote it verbatim and
+  run 31664928683 died at PLANNING on `ENOENT … /specs/**/*.md`, after paying for
+  the turn that composed the content. So a glob artifact takes the second reply
+  shape in `phases/plan-draft.ts` (`{"files":[{"path","content"}]}`, paths
+  relative to the change folder, which is how the artifact instruction the model
+  is reading spells them) and `glob-output.ts` judges each path before anything
+  is written. Three things not to undo. A refused path is a **complaint**, not a
+  throw: it rides the retry that already exists for the `validate --strict`
+  verdict, because "you wrote outside `specs/`" is exactly what a second ask
+  fixes and failing outright discards a paid-for turn over a filename. The
+  judging is **containment plus the pattern's extension**, not a `**` matcher —
+  what protects the tree is that the file lands under the directory the pattern
+  collects from, and a hand-rolled picomatch would add no refusal. And it is
+  **all or nothing**: one bad path in a reply discards the whole reply, or
+  `validate --strict` would judge a half-written folder and the retry's complaint
+  would be about files that had already landed. `deps.writeFile` creates parent
+  directories for the same reason the pattern broke — `openspec new change`
+  scaffolds a folder holding `.openspec.yaml` and nothing else, so
+  `specs/<capability-path>/spec.md` is the first thing in its directory.
 - **The plan counts one identity token, not two artefact revisions.** Under D1
   only `planRevision` remains — a machine identity for "a new plan happened",
   bumped by `PLAN_POSTED` alone, not an artefact revision. The former
@@ -186,6 +228,31 @@ findings: `ROADMAP.md`.
   optional for the same reason the split is: this review usually runs in a job
   that implemented nothing, so the remote branch is the only copy of the work.
   `check-loop.ts` exists only for CI fixing, which the workspace does not cover.
+  **What the loop produces is pushed by the branch, not by the commit.** The loop
+  commits its fixes in its own worktree and merges them into this checkout itself,
+  so `commitAll` — which reports only what _this process_ staged — answers `null`
+  whether the loop found nothing or found twenty things, and reading that as
+  "nothing to apply" left every finding it ever made unpushed on a branch in a
+  checkout about to be deleted. `phases/review-push.ts` asks the **branch**
+  instead (`git.headSha` either side of the loop) and pushes when it moved; a
+  commit this process made needs no second opinion and is pushed on that alone.
+  It also pushes **as each fix lands**, on the `[review-loop] published` marker
+  the loop prints: `mergeEachFix` in the generated config makes the loop merge per
+  fix instead of once at the end behind its build gate, and the push stays on this
+  side of the pipe because the credential must never be visible to a subprocess
+  whose children the model controls. Everything the loop prints is repeated into
+  the **public** Actions log as it arrives and into the **encrypted** transcript
+  unabridged — and `review-transcript.ts` folds the loop's own `trace.jsonl` in
+  after the child exits, which is this phase's equivalent of the tool activity the
+  implement phase feeds the transcript from. It is encrypted rather than uploaded
+  as a file for the reason the transcript exists: an Actions artefact is
+  downloadable by anyone with repository read access — a subprocess that runs for an hour in silence is indistinguishable
+  from a hang, which is how run 31704544065 came to be cancelled at minute 60 with
+  nothing to show for it. A failed loop is described by `describeFailure`, never by
+  its exit code: a build gate, a runner deadline, a missing binary, an unresolvable
+  plan path and a merge conflict are all `exit 1`, and each has a different remedy.
+  The loop's own deadline is `turnTimeoutMs`, the same shrink-to-fit-the-job bound
+  a model turn gets, so it stops while the pipeline can still report it.
   In that loop the first round runs every check — one repair prompt seeing every
   failure fixes more than a fail-fast round would — and later rounds re-run only
   what failed. Only a **full** pass may return `passed`: a narrowed round has not
@@ -197,9 +264,9 @@ findings: `ROADMAP.md`.
   `resolvePullRequestTrigger` in `pr-trigger.ts` recovers the issue from the head
   branch, `agent/issue-<n>`, the same link a red CI run travels; that costs an API
   call, which is why it is a second step and not a branch of the pure
-  `parseTriggerEvent`. Its **order is the design**: the `/review` test is free and
-  comes first, so every ordinary code-review comment on every pull request in the
-  repository is dropped with no lookup at all — the head lookup that follows is
+  `parseTriggerEvent`. Its **order is the design**: the slash-command test is free
+  and comes first, so every ordinary code-review comment on every pull request in
+  the repository is dropped with no lookup at all — the head lookup that follows is
   not free, so nothing may be moved in front of it and nothing that reads its
   answer may be moved behind. The fork check is the one to get right. `head.ref`
   is attacker-controlled, so a pull request opened from a fork whose branch is
@@ -220,9 +287,40 @@ findings: `ROADMAP.md`.
   a compile error rather than a silent bucketing. The report and the state block
   still go to the issue whichever door was used, and that is not a preference: a
   block on the pull request is a second source of truth the restore scan cannot
-  see. `applyPullRequestCommand` keeps refusing everything but `/review` even
-  though the resolver means nothing else can reach it, because a decision enforced
-  only by whichever layer filters first is one a second door quietly repeals.
+  see.
+- **Once a pull request exists, it is the surface — but not the record.**
+  `feedback-target.ts` holds both halves. The **live** channels move the moment
+  `prNumber` is set: the status comment opens on the pull request, the labels are
+  reconciled there, and `commandSurface` refuses a command typed on the issue with
+  a reply naming where to type it — not "does not apply", which would be false
+  twice over, since the command applies perfectly and would have worked one page
+  over. The **record** does not move: `AGENT_STATE` and `AGENT_REPORT` stay in
+  blocks on the issue, because `findLatestState` scans exactly one thread and a
+  block on a pull request is a second source of truth that scan cannot see. That
+  split is why this is two functions rather than one `target()` every caller
+  reads — the day the two questions are answered by one function is the day a
+  state block lands on a pull request. **An answer is the exception, and it is
+  the exception because it is not a record at all**: `/ask` moves no phase,
+  spends no attempt and writes no artefact, so `postAnswer` replies on the
+  surface the question was typed on — a plain comment carrying no block, with
+  the spend written through `state-persist.ts`, which rewrites the issue's
+  newest block in place and posts nothing. Its accepted cost is that a question
+  answered on a pull request is invisible to the next run's prompt, since
+  `renderThread` reads the issue thread. Every other comment stays on the issue
+  and gains one line from `postAndAppend` naming where commands go: almost all
+  of them end by inviting one, and all of those became right-advice-wrong-page
+  at once — said on the write they share rather than threaded through eight
+  renderers, where any one of them could forget. Three consequences not to undo. The label
+  reconcile **clears the issue** when it writes the pull request, because a copy
+  left behind would freeze at whatever the state was that day and no later
+  reconcile would ever look at it again. `applyPullRequestCommand` no longer
+  narrows to `/review`: with the issue refusing commands, a narrowing there would
+  leave `/retry`, `/cancel` and `/ask` nowhere at all to be typed, and which
+  commands a state accepts is `applyCommand`'s one answer for both doors. And the
+  workflow's pull-request arm names **every** command in `SLASH_COMMANDS` (checked
+  against it by `workflow.test.ts`) while the label cleanup step reaches both the
+  issue and the pull request, since which of the two carries a stranded
+  `agent:working` depends on how far the killed run got.
 - **One model endpoint.** Everything goes through `openai-config.ts`; there are
   no provider-specific keys and no second place a model is named. OpenCode is
   never handed the real key: `provider-proxy.ts` holds it and `contain()` in

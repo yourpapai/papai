@@ -15,6 +15,7 @@ import { createIssueLedger, loadIssueLedger, type IssueLedger } from './issue-le
 import { LiveRenderer, type RendererStream } from './live-renderer.js'
 import { runReviewLoop, type ReviewLoopResult } from './loop-controller.js'
 import type { ProgressReporter } from './progress-log.js'
+import { poolHooks } from './publish-fix.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { RunStats, PersistedStatsSchema, type PersistedStats } from './run-stats.js'
 import { realSpawn } from './spawn.js'
@@ -275,14 +276,7 @@ export async function runCli(argv: readonly string[], stdout: RendererStream = p
   const exec = createShellExec(runState.worktreePath, config.checkCommand, config.buildTimeoutMs)
   const trace = createFileTraceLogger(runState.tracePath)
   await cleanWorkerWorktrees(runState.worktreePath, args.resumeRunId)
-  const pool = await createWorkerPool(config, runState, {
-    onMergeDiff: (workerId, diff) => {
-      log.diff(`worker-${workerId}`, diff)
-    },
-    warn: (message) => {
-      log.event(message)
-    },
-  })
+  const pool = await createWorkerPool(config, runState, poolHooks(config, log))
 
   try {
     await executeReviewLoop(config, runState, ledger, exec, log, trace, pool, !args.noInspect, startedAt)

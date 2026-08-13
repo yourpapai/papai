@@ -12,6 +12,7 @@ import { noteReview } from '../pull-request-note.js'
 import type { ReviewOutcome, ReviewRunResult } from '../review-runner.js'
 import { errorMessage } from '../types.js'
 import type { AgentState } from '../types.js'
+import { createPush } from './review-push.js'
 
 /**
  * The `review-loop/` workspace, as a phase of its own.
@@ -30,34 +31,26 @@ import type { AgentState } from '../types.js'
  */
 export const handleReview: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
-  // The plan, exactly as the implementation phase reads it: the loop reviews
-  // the work against what was approved, read from the folder's `tasks.md`
-  // (design D1) rather than a block on the issue.
-  const plan = await planFromFolder(input)
-
   // Not optional, and this is the difference from the review that used to run
   // inside phase 3: that one always had the tree it had just written, while this
   // one usually runs in a job that implemented nothing at all, where the remote
   // branch is the only copy. `ensureBranch` fast-forwards an existing remote
   // branch and cuts a fresh one otherwise, so the same call serves both.
+  //
+  // It comes **first**, before the plan is read: the folder that plan is in is
+  // on this branch and nowhere else, and the job's workspace starts on the base
+  // branch (`actions/checkout` takes no ref — switching branches is this
+  // pipeline's job, not the workflow's). Reading it a line earlier read the base
+  // branch's `openspec/changes/`, where this change does not exist.
   const branch = branchNameFor(state.issueId)
   await deps.git.ensureBranch(branch, await deps.baseBranch())
 
-  const review = await deps.runReview(plan)
+  // The plan, exactly as the implementation phase reads it: the loop reviews
+  // the work against what was approved, read from the folder's `tasks.md`
+  // (design D1) rather than a block on the issue.
+  const plan = await planFromFolder(input)
 
-  // A clean tree is a **result**, not a failure: it means the loop found nothing
-  // to change, which is the outcome a reviewer most wants to hear. So it is
-  // reported and the phase still completes — and nothing is pushed, because
-  // there is nothing to push.
-  //
-  // `commitAll` hands back the totals it measured, and this phase deliberately
-  // does nothing with them: `changedLines` sizes the recommendation to run
-  // *this*, so a review updating it would have the hint describe the diff after
-  // the second pass it was arguing for.
-  const applied = (await deps.git.commitAll(reviewMessage(state.issueId))) !== null
-  if (applied) await deps.git.push(branch)
-
-  deps.log.info({ issue: state.issueId, branch, review: review.outcome, applied }, 'Review finished')
+  const { review, applied } = await runAndKeep(input, plan, branch)
 
   // One reading of the outcome table, handed to both renderers, so the note and
   // the report cannot describe the same loop differently.
@@ -71,6 +64,52 @@ export const handleReview: PhaseHandler = async (input): Promise<PhaseOutcome> =
   await noteReview(deps, input.trigger, { issueNumber: state.issueId, verdict, applied })
 
   return { signal: 'REVIEW_DONE', comment: report, blocks: [reportBlock(report, state)] }
+}
+
+/**
+ * Runs the loop and keeps whatever it produced, however it ended.
+ *
+ * A clean tree is a **result**, not a failure: it means the loop found nothing
+ * to change, which is the outcome a reviewer most wants to hear.
+ *
+ * But a clean tree is *also* what the loop leaves behind when it found plenty:
+ * it commits its fixes in its own worktree and merges them into this checkout
+ * itself, so `commitAll` — which reports only what *this process* staged —
+ * answers `null` for both. Reading that as "nothing to apply" is what left every
+ * finding the loop ever made unpushed, on a branch in a checkout that dies with
+ * the job. So the question is asked of the **branch**: did `HEAD` move, by
+ * anyone's hand, since before the loop ran.
+ *
+ * `commitAll` still runs, for whatever the loop left uncommitted, and this phase
+ * deliberately does nothing with the totals it hands back: `changedLines` sizes
+ * the recommendation to run *this*, so a review updating it would have the hint
+ * describe the diff after the second pass it was arguing for.
+ */
+const runAndKeep = async (
+  input: PhaseInput,
+  plan: string,
+  branch: string,
+): Promise<{ review: ReviewRunResult; applied: boolean }> => {
+  const { deps, state } = input
+
+  // Opened before the loop, because what it measures is the loop: the branch as
+  // it stood before any finding was applied.
+  const durable = createPush(input, branch)
+  const review = await deps.runReview(plan, durable.onFixMerged)
+  // Every push the loop's markers asked for, before anything reads the branch:
+  // they are issued on a chain rather than awaited at the call site, so that a
+  // fix becomes durable as it lands rather than at the end of the hour.
+  await durable.settled()
+
+  const staged = await deps.git.commitAll(reviewMessage(state.issueId))
+  const applied = await durable.push(staged !== null)
+
+  deps.log.info(
+    { issue: state.issueId, branch, review: review.outcome, applied, staged: staged !== null },
+    'Review finished',
+  )
+
+  return { review, applied }
 }
 
 /**
@@ -147,9 +186,13 @@ const reportBlock = (report: string, state: AgentState): string =>
 const reviewMessage = (issueNumber: number): string =>
   `fix(agent): apply review-loop findings for issue #${issueNumber}\n\nRefs #${issueNumber}`
 
-const REVIEW_LINE: Record<ReviewOutcome, (exitCode: number) => string> = {
+const REVIEW_LINE: Record<ReviewOutcome, (review: ReviewRunResult) => string> = {
   passed: () => '✅ clean',
-  failed: (exitCode) => `❌ exited ${exitCode}`,
+  // The exit code alone was the whole verdict here, and it is the one thing
+  // nobody can act on: a build gate, a runner deadline, a missing binary and an
+  // unresolvable plan path are all `exited 1`. `describeFailure` names which,
+  // and the fallback keeps the old wording for a failure it cannot classify.
+  failed: (review) => `❌ ${review.failure ?? `exited ${review.exitCode}`}`,
   // Not a failure: this repository simply has no review loop configured, and
   // saying "❌" for that would report every run elsewhere as permanently red.
   unavailable: () => '— not configured for this repository',
@@ -163,7 +206,7 @@ const REVIEW_LINE: Record<ReviewOutcome, (exitCode: number) => string> = {
  * for exactly this reason: one table with two readers cannot disagree with
  * itself, and a second table over `ReviewOutcome` eventually would.
  */
-const reviewLine = (review: ReviewRunResult): string => REVIEW_LINE[review.outcome](review.exitCode)
+const reviewLine = (review: ReviewRunResult): string => REVIEW_LINE[review.outcome](review)
 
 /**
  * A red loop is reported and does not block, exactly as it did inside phase 3.
@@ -179,6 +222,13 @@ const renderReport = (review: ReviewRunResult, applied: boolean, verdict: string
     `- Review loop: ${verdict}`,
     `- Findings applied: ${applied ? 'pushed as further commits on the branch' : 'nothing to apply'}`,
   ]
+
+  // Said once more, in its own line, when the loop broke *and* kept something:
+  // the verdict above reads as the loop's own summary of the review, and a
+  // reader who sees findings on the branch needs to know they are partial.
+  if (review.outcome === 'failed' && applied) {
+    lines.push('', 'The loop stopped early — what it had already fixed is on the branch, the rest is not.')
+  }
 
   if (review.outcome !== 'unavailable') {
     lines.push(
