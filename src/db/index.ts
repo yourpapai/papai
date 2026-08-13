@@ -86,6 +86,7 @@ import { migration072AnalyticsFoundation } from './migrations/072_analytics_foun
 import { migration073AnalyticsGovernance } from './migrations/073_analytics_governance.js'
 import { migration074AnalyticsDelivery } from './migrations/074_analytics_delivery.js'
 import { migration075AnalyticsMaterializations } from './migrations/075_analytics_materializations.js'
+import { migration076ContextVault } from './migrations/076_context_vault.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -196,6 +197,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration073AnalyticsGovernance,
   migration074AnalyticsDelivery,
   migration075AnalyticsMaterializations,
+  migration076ContextVault,
 ]
 
 export const initDb = (): void => {
