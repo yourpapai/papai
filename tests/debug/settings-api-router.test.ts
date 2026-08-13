@@ -40,6 +40,15 @@ describe('routeSettingsApi', () => {
     expect(res?.status).toBe(401)
   })
 
+  test('routes /settings/api/context-vault/tokens (401 without a session)', async () => {
+    const res = await routeSettingsApi(
+      new Request('https://x/settings/api/context-vault/tokens'),
+      new URL('https://x/settings/api/context-vault/tokens'),
+    )
+    expect(res).not.toBeNull()
+    expect(res?.status).toBe(401)
+  })
+
   test('routes /settings/api/byok (401 without a session)', async () => {
     const res = await routeSettingsApi(
       new Request('https://x/settings/api/byok'),
