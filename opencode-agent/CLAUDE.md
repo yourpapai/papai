@@ -121,6 +121,24 @@ findings: `ROADMAP.md`.
   walks `tasks.md` checkboxes as the step source (D5). The retired block names
   and their revision counters (`specRevision`) are gone; no legacy restore path
   exists, and in-flight issues restart under the `STATE_VERSION` bump (D12).
+- **`ensureBranch` comes before the first read of the folder, in every phase that
+  reads one.** The workflow's `actions/checkout` names no ref and must not grow
+  one — `ARCHIVE` commits to the base branch, capture cuts a branch that does not
+  exist yet, and a checkout pinned to `agent/issue-<n>` fails outright on the
+  first event of an issue. So a job's workspace **starts on the base branch**, and
+  `openspec/changes/<name>/` — scaffolded and pushed by whichever earlier job
+  captured the issue — is not in it until `deps.git.ensureBranch` switches
+  branches. Every phase after capture runs in a different job by construction:
+  capture parks at `DESIGN_SPEC` and the `/approve` that enters `PLANNING` arrives
+  whenever a maintainer types it. `PLANNING`, `REVIEW_AND_MUTATE` and
+  `CODE_REVIEW` each read the folder one line **before** that call and each died
+  the same way — `openspec status` exit 1, "Change '<name>' not found", followed by
+  a list of the base branch's changes that reads like the folder was never
+  scaffolded. The ordering is not visible to a stub whose driver answers the same
+  on any branch, which is how three handlers acquired the same defect; the fake in
+  `phases.test.ts` refuses every driver call and every `readFile` until
+  `ensureBranch` has been called, so a phase that reads too early fails the test
+  the way it failed the run.
 - **The plan counts one identity token, not two artefact revisions.** Under D1
   only `planRevision` remains — a machine identity for "a new plan happened",
   bumped by `PLAN_POSTED` alone, not an artefact revision. The former

@@ -49,8 +49,16 @@ export const handlePlan: PhaseHandler = async (input): Promise<PhaseOutcome> => 
     'Drafting change artifacts',
   )
 
-  await draftUntilComplete(input, feedback)
+  // Before the drafter reads anything. The change folder was scaffolded by the
+  // job that captured the issue and pushed to `agent/issue-<n>`; this job — the
+  // one a maintainer's `/approve` started, minutes or days later — begins on the
+  // base branch, because the workflow's `actions/checkout` names no ref and
+  // moving onto the branch is this pipeline's own job. Drafting first asked
+  // `openspec status` about a change the base branch has never heard of, and the
+  // CLI answered by listing the changes it could see, exit 1.
   await deps.git.ensureBranch(branch, await deps.baseBranch())
+
+  await draftUntilComplete(input, feedback)
   await deps.git.commitAll(`docs(openspec): draft artifacts for ${changeName}`)
   await deps.git.push(branch)
 
