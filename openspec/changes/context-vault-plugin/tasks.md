@@ -10,7 +10,7 @@ Test-first order per design.md §10: every implementation file under `src/` or `
 
 ## 2. Token store and settings routes
 
-- [ ] 2.1 Write failing token-store tests (create returns plaintext once + stores only SHA-256 hash, list masked, revoke, per-config-context isolation, `last_used_at` update) under `tests/context-vault/token-store.test.ts` — `bun test tests/context-vault/token-store.test.ts`
+- [x] 2.1 Write failing token-store tests (create returns plaintext once + stores only SHA-256 hash, list masked, revoke, per-config-context isolation, `last_used_at` update) under `tests/context-vault/token-store.test.ts` — `bun test tests/context-vault/token-store.test.ts`
 - [ ] 2.2 Implement `src/context-vault/token-store.ts` (generation via `crypto.randomBytes`, hash-only persistence, timing-safe verify resolving to config-context) — `bun test tests/context-vault/token-store.test.ts`
 - [ ] 2.3 Write failing route tests for `GET/POST/DELETE /settings/api/context-vault/tokens` (session auth required, CSRF, context-scope resolution, plaintext-once create response) under `tests/settings/context-vault-tokens-routes.test.ts` — `bun test tests/settings/context-vault-tokens-routes.test.ts`
 - [ ] 2.4 Implement `src/debug/settings/context-vault-tokens-routes.ts` mirroring `coding-repos-routes.ts` and mount it in `src/debug/settings-api-router.ts` — `bun test tests/settings/context-vault-tokens-routes.test.ts && bun run lint`
