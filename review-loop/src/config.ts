@@ -26,6 +26,12 @@ export const ReviewLoopConfigSchema = z.object({
   buildTimeoutMs: z.number().int().min(0).default(600_000),
   checkCommand: z.string().min(1).default('bun check:full'),
   poolSize: z.number().int().positive().default(3),
+  /**
+   * Merge each accepted fix into the checkout as it lands, instead of once at
+   * the end behind the build gate. Off by default — see `publish-fix.ts` for
+   * why an unattended CI run wants it on and a laptop does not.
+   */
+  mergeEachFix: z.boolean().default(false),
   reviewer: AgentConfigSchema,
   fixer: AgentConfigSchema,
   inspector: AgentConfigSchema.optional(),

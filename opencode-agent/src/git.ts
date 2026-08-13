@@ -125,6 +125,17 @@ export interface Git {
   push(branch: string, options?: PushOptions): Promise<void>
   /** The remote's default branch, or `null` when the checkout cannot tell. */
   defaultBranch(): Promise<string | null>
+  /**
+   * The commit the checkout is on.
+   *
+   * The one question `commitAll` cannot answer: it reports what *this process*
+   * staged, and the review loop commits and merges through git of its own — so
+   * to the pipeline its findings look like a clean tree with nothing to do. Two
+   * reads either side of the loop are what tell "the loop found nothing" from
+   * "the loop found plenty and it is all sitting unpushed on a runner about to
+   * be deleted".
+   */
+  headSha(): Promise<string>
 }
 
 export interface PushOptions {
@@ -256,5 +267,6 @@ export const createGit = (options: GitOptions): Git => {
       await gitOrThrow('push', ...verify, '-u', 'origin', branch)
     },
     defaultBranch: () => defaultBranch(git),
+    headSha: () => gitOrThrow('rev-parse', 'HEAD').then((result) => result.stdout.trim()),
   }
 }

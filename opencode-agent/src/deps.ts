@@ -20,9 +20,11 @@ import type { SkillDocument } from './obra-skills.js'
 import { opencodeConfigEnv } from './openai-config.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { PhaseDeps, RunReview } from './phase-context.js'
+import type { TranscriptSink } from './progress.js'
 import { runReviewLoop } from './review-runner.js'
 import type { CommandRunner } from './shell.js'
 import type { StatusReporter } from './status-reporter.js'
+import { turnTimeoutMs } from './time-budget.js'
 import type { TriggerEvent } from './trigger-events.js'
 import type { Phase } from './types.js'
 
@@ -53,9 +55,17 @@ const makeCheckRunner =
   (check) =>
     run(check.argv, { cwd: config.repoRoot, timeoutMs: config.agentTimeoutMs })
 
+interface ReviewRunnerInput {
+  run: CommandRunner
+  config: PipelineConfig
+  log: Logger
+  now: () => number
+  transcript: TranscriptSink | undefined
+}
+
 const makeReviewRunner =
-  (run: CommandRunner, config: PipelineConfig, log: Logger): RunReview =>
-  (plan) =>
+  ({ run, config, log, now, transcript }: ReviewRunnerInput): RunReview =>
+  (plan, onFixMerged) =>
     runReviewLoop({
       settings: {
         repoRoot: config.repoRoot,
@@ -70,7 +80,13 @@ const makeReviewRunner =
       run,
       env: opencodeConfigEnv(config.openai),
       log,
-      timeoutMs: config.agentTimeoutMs,
+      // Shrunk to fit what is left of the job, exactly as a model turn's bound
+      // is and for the same reason: `AGENT_TIMEOUT_MS` alone let the loop run
+      // past the moment the runner is taken away, which posts nothing at all.
+      // A loop stopped by its own deadline is a failure the pipeline can report.
+      timeoutMs: turnTimeoutMs(config, now()),
+      transcript,
+      onFixMerged,
     })
 
 const makeSkillLoader = (config: PipelineConfig, log: Logger): ((phase: Phase) => Promise<SkillDocument[]>) => {
@@ -122,6 +138,16 @@ export interface DepsInput {
    * runs, and three readers of one clock have to be one clock.
    */
   now: () => number
+  /**
+   * The encrypted transcript, when the run has a key.
+   *
+   * Here as well as on the session, because the review phase opens no session:
+   * its work happens in `opencode run` subprocesses, so the only account of it
+   * this process ever sees is what they print — and without this the phase that
+   * can spend the whole job left nothing in the artefact a maintainer is told
+   * to read.
+   */
+  transcript?: TranscriptSink
 }
 
 export const assembleDeps = ({
@@ -135,6 +161,7 @@ export const assembleDeps = ({
   github,
   status,
   now,
+  transcript,
 }: DepsInput): PhaseDeps => {
   const git = createGit({
     run,
@@ -152,7 +179,7 @@ export const assembleDeps = ({
     status,
     git,
     runCheck: makeCheckRunner(run, config),
-    runReview: makeReviewRunner(run, config, log),
+    runReview: makeReviewRunner({ run, config, log, now, transcript }),
     openspec: createOpenSpecDriver({ runner: run, cwd: config.repoRoot }),
     agent: agent.get,
     tokensUsed: agent.tokensUsed,

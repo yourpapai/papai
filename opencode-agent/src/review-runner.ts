@@ -9,7 +9,8 @@ import path from 'node:path'
 import type { Logger } from './logger.js'
 import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
-import type { CommandResult, CommandRunner } from './shell.js'
+import type { TranscriptSink } from './progress.js'
+import type { CommandResult, CommandRunner, OutputStream } from './shell.js'
 
 /**
  * Drives the repository's own `review-loop/` workspace instead of a bespoke
@@ -55,6 +56,14 @@ export const buildReviewLoopConfig = (settings: ReviewLoopSettings): Record<stri
     buildTimeoutMs: settings.agentTimeoutMs,
     poolSize: settings.poolSize,
     checkCommand: settings.checkCommand,
+    // The one setting this pipeline needs and a laptop does not. The loop's
+    // ordinary shape is one atomic merge at the very end, behind a build gate —
+    // which on an Actions runner means a job that dies at minute 59, or a gate
+    // that goes red, takes every fix with it: the commits live on a branch in a
+    // checkout that is about to be deleted. Publishing each fix onto the working
+    // branch as it lands is what lets `phases/review.ts` push it while the loop
+    // is still running.
+    mergeEachFix: true,
     reviewer: agent,
     fixer: agent,
     matcher: agent,
@@ -77,7 +86,22 @@ export interface ReviewRunResult {
   /** The loop's own summary block, or the tail of its output when it crashed. */
   summary: string
   exitCode: number
+  /**
+   * One sentence naming *how* a failed loop failed, or `null` when it did not.
+   *
+   * The exit code alone is not an account of anything: a build gate that went
+   * red, a runner deadline, a missing `bun`, a plan path that does not resolve
+   * and a merge conflict are all `exit 1` with sixty lines of tail, and each has
+   * a different remedy. See {@link describeFailure}.
+   */
+  failure: string | null
 }
+
+/** Where the loop's inputs land. A seam, so a test needs no filesystem. */
+export type WriteReviewInputs = (
+  settings: ReviewLoopSettings,
+  plan: string,
+) => Promise<{ planPath: string; configPath: string }>
 
 export interface RunReviewLoopOptions {
   settings: ReviewLoopSettings
@@ -88,9 +112,46 @@ export interface RunReviewLoopOptions {
   env: Record<string, string>
   log: Logger
   timeoutMs: number
+  /**
+   * The maintainer-only transcript, when the run has an `AGENT_LOG_KEY`.
+   *
+   * The implement phase feeds this from the OpenCode event stream; the review
+   * phase opens no session at all, so without this its hour of work left no
+   * trace in the one artefact a maintainer debugging a run is told to read.
+   */
+  transcript?: TranscriptSink
+  /**
+   * Called each time the loop reports a fix landing on the working branch.
+   *
+   * The loop merges its own branch into the checkout as each fix passes
+   * ({@link buildReviewLoopConfig}'s `mergeEachFix`); pushing that is the
+   * caller's business, because the credential belongs to the pipeline and must
+   * never reach a subprocess the model can read the environment of.
+   */
+  onFixMerged?: () => void
+  /** Injected so a test can run the loop without touching a filesystem. */
+  writeInputs?: WriteReviewInputs
+  now?: () => number
 }
 
 const SUMMARY_TAIL_LINES = 60
+
+/**
+ * The marker the loop prints when a fix is on the working branch.
+ *
+ * A line rather than a file or an exit code, because the loop is a subprocess
+ * with one stream back to here and this has to arrive *while it runs* — the
+ * whole point is that the fix is durable before the thing that kills the job
+ * happens. `review-loop/src/cli.ts` writes it; the two are tested against this
+ * constant on both sides.
+ */
+export const FIX_MERGED_MARKER = '[review-loop] published'
+
+/** Longest line this repeats into the world-readable Actions log. */
+const PUBLIC_LINE_MAX = 500
+
+/** Longest line the encrypted transcript keeps. Generous — it is a debugging aid. */
+const TRANSCRIPT_LINE_MAX = 4_000
 
 /**
  * `review-loop` prints its summary to stdout before finalizing, so the tail of
@@ -120,6 +181,78 @@ export const writeReviewInputs = async (
   return { planPath, configPath }
 }
 
+/** The last line of `text` that says anything, or `null` for text that says nothing. */
+const lastMeaningfulLine = (text: string): string | null => {
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  return lines.at(-1) ?? null
+}
+
+const minutes = (ms: number): string => `${Math.round(ms / 60_000)}m`
+
+/**
+ * What went wrong, in one sentence a maintainer can act on — or `null` for a
+ * loop that did not fail.
+ *
+ * Every branch here answers a failure that used to reach the issue as `exited 1`
+ * beside sixty lines of tail, which names neither the cause nor the remedy. The
+ * order matters: the deadline is asked first because a killed child's exit code
+ * is whatever the signal left behind and says nothing, and the two sentences the
+ * loop itself writes are matched before the fallback because they are the only
+ * ones that already know why they lost the work.
+ */
+export const describeFailure = (result: CommandResult, timeoutMs: number): string | null => {
+  if (result.exitCode === 0) return null
+
+  if (result.timedOut === true) {
+    return `the review loop timed out after ${minutes(timeoutMs)} and was killed; nothing it had not already published is lost`
+  }
+
+  if (result.exitCode === 127) {
+    return `the review command could not be started (${lastMeaningfulLine(result.stderr) ?? 'no output'})`
+  }
+
+  const combined = `${result.stdout}\n${result.stderr}`
+  if (combined.includes('Final build check failed')) {
+    return "the loop's own build gate failed at the end of the run, so it merged nothing further"
+  }
+  if (combined.includes('Merge conflict while bringing')) {
+    return 'the loop could not merge its branch back: it conflicts with the working branch'
+  }
+
+  const said = lastMeaningfulLine(result.stderr) ?? lastMeaningfulLine(result.stdout)
+  return said === null
+    ? `the review loop exited ${result.exitCode} silently`
+    : `the review loop exited ${result.exitCode}: ${said}`
+}
+
+/**
+ * Repeats one line of the loop into the two places it belongs.
+ *
+ * The **public** Actions log, because a subprocess that runs for an hour and
+ * prints nothing is indistinguishable from a hang and gets cancelled — which is
+ * exactly what happened to the review of #268. The loop's non-TTY output is its
+ * own progress vocabulary (rounds, decisions, counts) rather than model text,
+ * and the logger redacts this pipeline's credentials by value on the way out.
+ *
+ * And the **encrypted** transcript, unabridged, for the same reason the implement
+ * phase feeds one: the public log is bounded on purpose, and a maintainer holding
+ * the key should not have to guess what the bound removed.
+ */
+const reportLine = (options: RunReviewLoopOptions, now: () => number, line: string, stream: OutputStream): void => {
+  options.log.info({ source: 'review-loop', stream }, line.slice(0, PUBLIC_LINE_MAX))
+  options.transcript?.write({
+    time: new Date(now()).toISOString(),
+    tool: 'review-loop',
+    status: stream,
+    detail: line.slice(0, TRANSCRIPT_LINE_MAX),
+    durationMs: null,
+  })
+  if (line.startsWith(FIX_MERGED_MARKER)) options.onFixMerged?.()
+}
+
 /**
  * Runs the review loop over the working tree. A non-zero exit is not thrown
  * here: the caller decides whether a red loop blocks delivery, and either way
@@ -127,22 +260,40 @@ export const writeReviewInputs = async (
  */
 export const runReviewLoop = async (options: RunReviewLoopOptions): Promise<ReviewRunResult> => {
   const { settings, log } = options
+  const now = options.now ?? ((): number => Date.now())
 
   if (settings.command === null) {
     log.warn({ repoRoot: settings.repoRoot }, 'No review loop configured; skipping the review')
-    return { outcome: 'unavailable', summary: 'No review loop is configured for this repository.', exitCode: 0 }
+    return {
+      outcome: 'unavailable',
+      summary: 'No review loop is configured for this repository.',
+      exitCode: 0,
+      failure: null,
+    }
   }
 
-  const { planPath, configPath } = await writeReviewInputs(settings, options.plan)
-  log.info({ planPath, configPath, maxRounds: settings.maxRounds }, 'Starting review loop')
+  const write = options.writeInputs ?? writeReviewInputs
+  const { planPath, configPath } = await write(settings, options.plan)
+  log.info(
+    { planPath, configPath, maxRounds: settings.maxRounds, timeoutMs: options.timeoutMs },
+    'Starting review loop',
+  )
 
   const result = await options.run(
     [...settings.command, '--config', configPath, '--plan', planPath, '--repo', settings.repoRoot],
-    { cwd: settings.repoRoot, env: options.env, timeoutMs: options.timeoutMs },
+    {
+      cwd: settings.repoRoot,
+      env: options.env,
+      timeoutMs: options.timeoutMs,
+      onOutput: (line, stream): void => {
+        reportLine(options, now, line, stream)
+      },
+    },
   )
 
   const summary = extractSummary(result)
-  log.info({ exitCode: result.exitCode }, 'Review loop finished')
+  const failure = describeFailure(result, options.timeoutMs)
+  log.info({ exitCode: result.exitCode, timedOut: result.timedOut === true, failure }, 'Review loop finished')
 
-  return { outcome: result.exitCode === 0 ? 'passed' : 'failed', summary, exitCode: result.exitCode }
+  return { outcome: result.exitCode === 0 ? 'passed' : 'failed', summary, exitCode: result.exitCode, failure }
 }

@@ -228,6 +228,27 @@ findings: `ROADMAP.md`.
   optional for the same reason the split is: this review usually runs in a job
   that implemented nothing, so the remote branch is the only copy of the work.
   `check-loop.ts` exists only for CI fixing, which the workspace does not cover.
+  **What the loop produces is pushed by the branch, not by the commit.** The loop
+  commits its fixes in its own worktree and merges them into this checkout itself,
+  so `commitAll` — which reports only what _this process_ staged — answers `null`
+  whether the loop found nothing or found twenty things, and reading that as
+  "nothing to apply" left every finding it ever made unpushed on a branch in a
+  checkout about to be deleted. `phases/review-push.ts` asks the **branch**
+  instead (`git.headSha` either side of the loop) and pushes when it moved; a
+  commit this process made needs no second opinion and is pushed on that alone.
+  It also pushes **as each fix lands**, on the `[review-loop] published` marker
+  the loop prints: `mergeEachFix` in the generated config makes the loop merge per
+  fix instead of once at the end behind its build gate, and the push stays on this
+  side of the pipe because the credential must never be visible to a subprocess
+  whose children the model controls. Everything the loop prints is repeated into
+  the **public** Actions log as it arrives and into the **encrypted** transcript
+  unabridged — a subprocess that runs for an hour in silence is indistinguishable
+  from a hang, which is how run 31704544065 came to be cancelled at minute 60 with
+  nothing to show for it. A failed loop is described by `describeFailure`, never by
+  its exit code: a build gate, a runner deadline, a missing binary, an unresolvable
+  plan path and a merge conflict are all `exit 1`, and each has a different remedy.
+  The loop's own deadline is `turnTimeoutMs`, the same shrink-to-fit-the-job bound
+  a model turn gets, so it stops while the pipeline can still report it.
   In that loop the first round runs every check — one repair prompt seeing every
   failure fixes more than a fail-fast round would — and later rounds re-run only
   what failed. Only a **full** pass may return `passed`: a narrowed round has not

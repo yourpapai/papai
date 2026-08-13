@@ -6,6 +6,14 @@
 
 Agent subprocess guards live in `src/spawn.ts` + `src/agent-runner.ts`: besides the wall-clock `timeout`, an optional `inactivityTimeoutMs` watchdog kills a child that produces no stdout (hung LLM stream) and reports `stalled: true`; `runAgent` retries a stall once but never retries a wall-clock timeout. Callers opt in by passing `inactivityTimeoutMs` through `RunAgentOptions` (mutation-improve wires it from `agent.inactivityTimeoutMs`; review-loop's own config does not yet).
 
+`mergeEachFix` (config, default off) moves the merge back into the checkout from
+"once at the end, behind the build gate" to "each fix, as it is accepted", and
+prints `[review-loop] published …` when it does — see `src/publish-fix.ts`. It is
+for unattended runs whose checkout is deleted when the job ends: there, an atomic
+merge means a red build gate or a killed runner takes every accepted fix with it,
+and the marker is what lets the caller push. The hook runs under the pool's
+primary lock and never throws; `finalizeRun` still does the final merge.
+
 ## Storage / Artifacts
 
 - The default `workDir` is `.review-loop/` relative to `repoRoot` (see `config.example.json`). The directory is created on demand via `mkdir`.

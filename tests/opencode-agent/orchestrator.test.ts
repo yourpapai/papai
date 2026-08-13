@@ -226,6 +226,8 @@ interface PipelineIo {
   /** Tokens the fake session reports as spent this job. */
   tokensUsed: number
   reviewResult: ReviewRunResult
+  /** What `git rev-parse HEAD` answers; constant unless a test moves it. */
+  headSha: string
   /** Every plan the review loop was handed, in order — `/review` is now a phase. */
   reviewCalls: string[]
   /** What `runReview` rejects with, when set: the loop crashing rather than exiting red. */
@@ -373,7 +375,8 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     checkResults: new Map(),
     replies: [],
     tokensUsed: 0,
-    reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0 },
+    reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0, failure: null },
+    headSha: 'head-sha',
     reviewCalls: [],
     reviewError: null,
     detectedBranch: BASE_BRANCH,
@@ -559,6 +562,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       return Promise.resolve()
     },
     defaultBranch: () => Promise.resolve(io.detectedBranch),
+    // Constant, which is the ordinary case: the review loop is a fake here, so
+    // nothing moves the branch behind the pipeline's back. A test that wants the
+    // opposite overrides this — see the review-phase tests in `phases.test.ts`.
+    headSha: () => Promise.resolve(io.headSha),
   }
 
   const agent: OpenCodeAgent = {
@@ -676,6 +683,7 @@ const hostileGit = (): Git => {
     salvageAll: (): Promise<Salvage> => refuse('salvage'),
     push: (): Promise<void> => refuse('push'),
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
+    headSha: (): Promise<string> => refuse('rev-parse'),
   }
 }
 
@@ -1670,12 +1678,17 @@ describe('/review — the review loop as a command', () => {
   test('a red review is reported and still reaches COMPLETE', async () => {
     // CI on the pull request is the gate, and the CI-fix loop is what acts on
     // it; a red review is a finding, not a blocker.
-    harness.io.reviewResult = { outcome: 'failed', summary: 'two issues left open', exitCode: 1 }
+    harness.io.reviewResult = {
+      outcome: 'failed',
+      summary: 'two issues left open',
+      exitCode: 1,
+      failure: 'the review loop exited 1',
+    }
 
     const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
 
     expect(result.status).toBe('completed')
-    expect(harness.io.posted[0]).toContain('❌ exited 1')
+    expect(harness.io.posted[0]).toContain('❌ the review loop exited 1')
     expect(harness.io.posted[0]).toContain('two issues left open')
     expect(latestPostedState(harness)?.phase).toBe('COMPLETE')
   })
@@ -1683,7 +1696,12 @@ describe('/review — the review loop as a command', () => {
   test('reports a repository with no review loop as unconfigured, not as red', async () => {
     // A checkout without the workspace has no review configured; that is not a
     // review that failed, and calling it one made every run elsewhere red.
-    harness.io.reviewResult = { outcome: 'unavailable', summary: 'No review loop is configured.', exitCode: 0 }
+    harness.io.reviewResult = {
+      outcome: 'unavailable',
+      summary: 'No review loop is configured.',
+      exitCode: 0,
+      failure: null,
+    }
 
     const result = await runPipeline({ event: comment('/review'), deps: harness.deps })
 
@@ -1821,11 +1839,16 @@ describe('/review — typed on the pull request', () => {
   })
 
   test('a red loop is what the note says it is', async () => {
-    harness.io.reviewResult = { outcome: 'failed', summary: 'two issues left open', exitCode: 1 }
+    harness.io.reviewResult = {
+      outcome: 'failed',
+      summary: 'two issues left open',
+      exitCode: 1,
+      failure: 'the review loop exited 1',
+    }
 
     await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
-    expect(harness.io.prNotes[0]).toContain('❌ exited 1')
+    expect(harness.io.prNotes[0]).toContain('❌ the review loop exited 1')
   })
 
   test('a note the pull request will not take costs the review nothing', async () => {
