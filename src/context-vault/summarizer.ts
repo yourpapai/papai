@@ -133,10 +133,10 @@ const resolveModel = (job: PendingJob): LanguageModel | null => {
 }
 
 const runJob = async (job: PendingJob): Promise<void> => {
-  const model = resolveModel(job)
-  if (model === null) return
-  const prompt = buildPrompt(job.input.specId, job.texts)
   try {
+    const model = resolveModel(job)
+    if (model === null) return
+    const prompt = buildPrompt(job.input.specId, job.texts)
     const result = await job.deps.generateText({ model, prompt })
     const summary = parseSpecSummary(result.text)
     storeSummary(job.input.configContextId, job.input.specId, summary)

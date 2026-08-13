@@ -26,6 +26,11 @@ const PushResponseSchema = z.object({
 
 const ErrorResponseSchema = z.object({ error: z.string() })
 
+// The real summarization queue holds a 15s debounce timer; injecting a no-op keeps
+// route tests from leaking it past their own teardown.
+const handlePush = (req: Request): Promise<Response> =>
+  handleContextVaultPush(req, { enqueueSummarization: () => undefined })
+
 interface PushBody {
   repo: string
   changeName: string
@@ -73,13 +78,13 @@ describe('context-vault push route', () => {
   })
 
   test('missing Authorization header returns 401', async () => {
-    const res = await handleContextVaultPush(push(null, validBody()))
+    const res = await handlePush(push(null, validBody()))
     expect(res.status).toBe(401)
     ErrorResponseSchema.parse(await res.json())
   })
 
   test('unknown token returns the same uniform 401', async () => {
-    const res = await handleContextVaultPush(push('f'.repeat(64), validBody()))
+    const res = await handlePush(push('f'.repeat(64), validBody()))
     expect(res.status).toBe(401)
     ErrorResponseSchema.parse(await res.json())
   })
@@ -87,20 +92,20 @@ describe('context-vault push route', () => {
   test('revoked token returns the same uniform 401', async () => {
     const created = createToken(CTX_A, 'indexer')
     revokeToken(CTX_A, created.tokenId)
-    const res = await handleContextVaultPush(push(created.plaintext, validBody()))
+    const res = await handlePush(push(created.plaintext, validBody()))
     expect(res.status).toBe(401)
     ErrorResponseSchema.parse(await res.json())
   })
 
   test('malformed Authorization scheme returns 401', async () => {
     const created = createToken(CTX_A, 'indexer')
-    const res = await handleContextVaultPush(push(null, validBody(), { Authorization: `Token ${created.plaintext}` }))
+    const res = await handlePush(push(null, validBody(), { Authorization: `Token ${created.plaintext}` }))
     expect(res.status).toBe(401)
   })
 
   test('invalid JSON body returns 400', async () => {
     const created = createToken(CTX_A, 'indexer')
-    const res = await handleContextVaultPush(push(created.plaintext, '{not json'))
+    const res = await handlePush(push(created.plaintext, '{not json'))
     expect(res.status).toBe(400)
     ErrorResponseSchema.parse(await res.json())
   })
@@ -108,15 +113,13 @@ describe('context-vault push route', () => {
   test('schema violations return 422', async () => {
     const created = createToken(CTX_A, 'indexer')
 
-    const missingRepo = await handleContextVaultPush(
-      push(created.plaintext, { changeName: 'x', files: [], deletions: [] }),
-    )
+    const missingRepo = await handlePush(push(created.plaintext, { changeName: 'x', files: [], deletions: [] }))
     expect(missingRepo.status).toBe(422)
 
-    const extraField = await handleContextVaultPush(push(created.plaintext, { ...validBody(), evil: true }))
+    const extraField = await handlePush(push(created.plaintext, { ...validBody(), evil: true }))
     expect(extraField.status).toBe(422)
 
-    const badFile = await handleContextVaultPush(
+    const badFile = await handlePush(
       push(created.plaintext, { repo: 'r', changeName: 'c', files: [{ path: 'a.md' }], deletions: [] }),
     )
     expect(badFile.status).toBe(422)
@@ -138,14 +141,14 @@ describe('context-vault push route', () => {
       ],
       deletions: [],
     }
-    const res = await handleContextVaultPush(push(created.plaintext, huge))
+    const res = await handlePush(push(created.plaintext, huge))
     expect(res.status).toBe(413)
     ErrorResponseSchema.parse(await res.json())
   })
 
   test('valid push stores rows under the token config context', async () => {
     const created = createToken(CTX_A, 'indexer')
-    const res = await handleContextVaultPush(push(created.plaintext, validBody()))
+    const res = await handlePush(push(created.plaintext, validBody()))
     expect(res.status).toBe(200)
     const body = PushResponseSchema.parse(await res.json())
     expect(body.specId).toBe('papai:context-vault-plugin')
@@ -155,8 +158,8 @@ describe('context-vault push route', () => {
 
   test('re-push with identical content is idempotent', async () => {
     const created = createToken(CTX_A, 'indexer')
-    await handleContextVaultPush(push(created.plaintext, validBody()))
-    const second = await handleContextVaultPush(push(created.plaintext, validBody()))
+    await handlePush(push(created.plaintext, validBody()))
+    const second = await handlePush(push(created.plaintext, validBody()))
     expect(second.status).toBe(200)
     const body = PushResponseSchema.parse(await second.json())
     expect(body.changedPaths).toEqual([])
@@ -167,7 +170,7 @@ describe('context-vault push route', () => {
     const tokenA = createToken(CTX_A, 'indexer-a')
     createToken(CTX_B, 'indexer-b')
 
-    const res = await handleContextVaultPush(push(tokenA.plaintext, validBody()))
+    const res = await handlePush(push(tokenA.plaintext, validBody()))
     expect(res.status).toBe(200)
     expect(specExists(CTX_A, 'papai:context-vault-plugin')).toBe(true)
     expect(specExists(CTX_B, 'papai:context-vault-plugin')).toBe(false)
@@ -175,7 +178,7 @@ describe('context-vault push route', () => {
 
   test('non-POST method returns 405', async () => {
     const created = createToken(CTX_A, 'indexer')
-    const res = await handleContextVaultPush(
+    const res = await handlePush(
       new Request('https://x/api/context-vault/push', {
         method: 'GET',
         headers: { Authorization: `Bearer ${created.plaintext}` },

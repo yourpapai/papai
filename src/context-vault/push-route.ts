@@ -6,7 +6,7 @@
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
-import { applyPush } from './spec-store.js'
+import { applyPush, type ApplyPushDeps } from './spec-store.js'
 import { verifyToken } from './token-store.js'
 
 const log = logger.child({ scope: 'context-vault:push-route' })
@@ -49,7 +49,7 @@ const extractBearer = (req: Request): string | null => {
  * of the debug server, before the auth gate: the vault bearer token is the only
  * credential. Unknown, revoked, and malformed tokens all get a uniform 401.
  */
-export async function handleContextVaultPush(req: Request): Promise<Response> {
+export async function handleContextVaultPush(req: Request, deps: Partial<ApplyPushDeps> = {}): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'method not allowed' })
 
   const bearer = extractBearer(req)
@@ -75,7 +75,7 @@ export async function handleContextVaultPush(req: Request): Promise<Response> {
   const body = PushBodySchema.safeParse(parsed)
   if (!body.success) return json(422, { error: 'invalid request' })
 
-  const result = applyPush(verified.configContextId, body.data)
+  const result = applyPush(verified.configContextId, body.data, deps)
   log.info({ configContextId: verified.configContextId, specId: result.specId }, 'Context vault push accepted')
   return json(200, { ok: true, ...result })
 }

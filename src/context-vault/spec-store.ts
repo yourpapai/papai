@@ -180,8 +180,9 @@ const buildReduceInput = (input: ApplyPushInput, remaining: readonly ContextVaul
 export function applyPush(
   configContextId: string,
   input: ApplyPushInput,
-  deps: ApplyPushDeps = defaultApplyPushDeps,
+  deps: Partial<ApplyPushDeps> = {},
 ): ApplyPushResult {
+  const mergedDeps: ApplyPushDeps = { ...defaultApplyPushDeps, ...deps }
   const specId = specIdOf(input.repo, input.changeName)
   const existingByPath = new Map(listFiles(configContextId, specId).map((f) => [f.path, f]))
 
@@ -212,7 +213,7 @@ export function applyPush(
   touchIndexerState(configContextId)
 
   if (changedFiles.length > 0) {
-    deps.enqueueSummarization({ configContextId, specId, changeName: input.changeName, changedFiles })
+    mergedDeps.enqueueSummarization({ configContextId, specId, changeName: input.changeName, changedFiles })
   }
 
   log.info(

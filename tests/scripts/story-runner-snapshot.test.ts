@@ -99,6 +99,7 @@ function fixture(): string {
   mkdirSync(path.join(root, 'scripts/story'), { recursive: true })
   mkdirSync(path.join(root, 'src'), { recursive: true })
   mkdirSync(path.join(root, 'plugins/example'), { recursive: true })
+  mkdirSync(path.join(root, 'context-vault-indexer'), { recursive: true })
   mkdirSync(path.join(root, 'public'), { recursive: true })
   writeFileSync(path.join(root, 'tests/stories/preload.ts'), 'captured preload')
   writeFileSync(path.join(root, 'tests/stories/example.story.test.ts'), `scenario('captured', async () => {})\n`)
@@ -111,6 +112,7 @@ function fixture(): string {
   writeFileSync(path.join(root, 'src/live.ts'), 'production v1')
   symlinkSync('live.ts', path.join(root, 'src/alias.ts'))
   writeFileSync(path.join(root, 'plugins/example/plugin.json'), '{"name":"example"}')
+  writeFileSync(path.join(root, 'context-vault-indexer/lock.ts'), 'lock source')
   writeFileSync(path.join(root, 'public/settings.js'), 'settings asset')
   writeFileSync(path.join(root, 'package.json'), '{"name":"story-fixture"}')
   writeFileSync(path.join(root, 'bun.lock'), 'lockfile')
@@ -127,6 +129,7 @@ function fixture(): string {
     'scripts',
     'src',
     'plugins',
+    'context-vault-indexer',
     'public',
     'package.json',
     'bun.lock',

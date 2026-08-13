@@ -96,12 +96,17 @@ const getSpec = (ctx: string, id: string): ContextVaultSpecRow | undefined =>
     .get()
 
 const seedSpec = (changeName = 'x'): void => {
-  applyPush(CTX, {
-    repo: 'papai',
-    changeName,
-    files: [{ path: `a/${changeName}/proposal.md`, kind: 'proposal', hash: 'h1', mtime: 1, text: '# P\n' }],
-    deletions: [],
-  })
+  // No-op enqueue: seeding must not schedule the production debounced summarizer.
+  applyPush(
+    CTX,
+    {
+      repo: 'papai',
+      changeName,
+      files: [{ path: `a/${changeName}/proposal.md`, kind: 'proposal', hash: 'h1', mtime: 1, text: '# P\n' }],
+      deletions: [],
+    },
+    { enqueueSummarization: () => undefined },
+  )
 }
 
 const presetSummary = (specId: string, oneLine: string, summary: string): void => {
@@ -170,6 +175,30 @@ describe('context-vault summarizer', () => {
     const prompt = generateText.mock.calls[0]?.[0].prompt
     expect(prompt).toContain('papai:x')
     expect(prompt).toContain('UNIQUE PROPOSAL BODY')
+  })
+
+  test('a throwing credential resolver keeps the previous summary and drains cleanly', async () => {
+    seedSpec()
+    presetSummary('papai:x', 'previous one-liner', 'previous summary')
+    const generateText = mock((args: GenerateTextArgs) => {
+      void args
+      return Promise.resolve({ text: '{"one_line":"o","summary":"s"}' })
+    })
+    const { deps, fireAll } = makeDeps({
+      generateText,
+      resolveConfig: (): never => {
+        throw new Error('database is gone')
+      },
+    })
+
+    enqueueSpecSummarization(enqueueInput([{ path: 'a/x/proposal.md', kind: 'proposal', text: '# V2\n' }]), deps)
+    fireAll()
+    await drainSpecSummarizations()
+
+    expect(generateText).not.toHaveBeenCalled()
+    const spec = getSpec(CTX, 'papai:x')
+    expect(spec?.oneLine).toBe('previous one-liner')
+    expect(spec?.summary).toBe('previous summary')
   })
 
   test('a mechanical-only change enqueues no summarization', async () => {

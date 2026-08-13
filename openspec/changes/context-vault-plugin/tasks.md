@@ -57,4 +57,4 @@ Test-first order per design.md §10: every implementation file under `src/` or `
 ## 9. Final verification and docs
 
 - [x] 9.1 Update `docs/architecture/plugins.md` (new facade permission) and add the feature page under `docs/architecture/`; cross-link from `CLAUDE.md` doc index if warranted — `bun run lint`
-- [ ] 9.2 Run full gate: `bun run test`, `bun run typecheck`, `bun run lint`, `bun check:full` — `bun check:full`
+- [x] 9.2 Run full gate: `bun run test`, `bun run typecheck`, `bun run lint`, `bun check:full` — `bun check:full`

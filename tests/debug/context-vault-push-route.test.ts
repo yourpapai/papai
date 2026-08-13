@@ -13,11 +13,13 @@ import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const CTX = 'pi:telegram:grp:push'
 
+// tasks.md is a mechanical kind, so the mounted route's production summarization
+// queue is never engaged and no debounce timer leaks past this suite.
 const validBody = (): string =>
   JSON.stringify({
     repo: 'papai',
     changeName: 'context-vault-plugin',
-    files: [{ path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1710000000000, text: '# P\n' }],
+    files: [{ path: 'a/tasks.md', kind: 'tasks', hash: 'h1', mtime: 1710000000000, text: '- [ ] one\n' }],
     deletions: [],
   })
 
