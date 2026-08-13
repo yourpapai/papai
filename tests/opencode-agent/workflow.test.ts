@@ -495,6 +495,19 @@ describe('steps', () => {
     )
   })
 
+  test('builds the client bundles before the pipeline runs `bun test`', () => {
+    // The CI-fix loop's default `test` check runs `bun test` in this job's
+    // workspace, and the debug server/smoke suites throw when public/ has no
+    // bundles. ci.yml's jobs satisfy that precondition with the build-output
+    // artifact; this job has no such download, so it builds them itself.
+    expect(step('client bundles').run).toContain('build:client')
+
+    const names = steps.map((candidate) => candidate.name.toLowerCase())
+    expect(names.findIndex((name) => name.includes('client bundles'))).toBeLessThan(
+      names.findIndex((name) => name.includes('agent pipeline')),
+    )
+  })
+
   test('installs the opencode CLI the review-loop workspace shells out to', () => {
     expect(step('opencode cli').run).toContain('opencode-ai')
   })
