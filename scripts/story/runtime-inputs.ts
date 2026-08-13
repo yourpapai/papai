@@ -18,7 +18,7 @@ import {
   toPosix,
 } from './inputs.js'
 
-export const REQUIRED_RUNTIME_DIRECTORY_ROOTS = ['src', 'plugins'] as const
+export const REQUIRED_RUNTIME_DIRECTORY_ROOTS = ['src', 'plugins', 'context-vault-indexer'] as const
 const OPTIONAL_RUNTIME_DIRECTORY_ROOTS = ['public'] as const
 export const REQUIRED_RUNTIME_FILE_ROOTS = ['package.json', 'bun.lock'] as const
 const RUNTIME_FILE_ROOTS = new Set<string>(REQUIRED_RUNTIME_FILE_ROOTS)
