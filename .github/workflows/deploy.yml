@@ -17,6 +17,10 @@ jobs:
     name: Build & Push
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    # Multi-tag build and a GHCR push with a gha cache on both ends. Looser than
+    # CI's `build` because this one actually uploads layers, and a slow registry
+    # is the ordinary case rather than the failure.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -70,6 +74,11 @@ jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
+    # One SSH session against the production host. The guard is for an unreachable
+    # host holding the connection open — and note this bound covers the SSH step
+    # only, not the environment approval that gates the job, which GitHub allows
+    # to wait 30 days and `timeout-minutes` does not count.
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read

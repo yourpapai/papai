@@ -538,8 +538,22 @@ describe('steps', () => {
     // hand — and a live run died 30 minutes into a healthy turn with 59 minutes of
     // runner it was never allowed to use. Byte-for-byte the same expression, so a
     // change to one is a change to both.
-    expect(agentJob['timeout-minutes']).toBe('${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 90 }}')
+    expect(agentJob['timeout-minutes']).toBe('${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 300 }}')
     expect(step('agent pipeline').env['AGENT_JOB_TIMEOUT_MINUTES']).toBe(agentJob['timeout-minutes'])
+  })
+
+  test('the fallback ceiling leaves room under the runner’s own six-hour cap', () => {
+    // GitHub kills a hosted job at 360 minutes and `timeout-minutes` can only
+    // *lower* that — a larger value is ignored, and the job dies with nothing
+    // posted. So the fallback has to be a number this pipeline can stop inside of,
+    // and "inside" means more than the teardown reserve: the derived deadline is
+    // built from a step that runs a few seconds after the job did, so at 360 the
+    // pipeline's own clock would sit *behind* the runner's and the stop would be
+    // cut off doing the one thing it exists to do.
+    const fallback = Number(/\|\|\s*(\d+)\s*\}\}/u.exec(agentJob['timeout-minutes'])?.[1])
+
+    expect(fallback).toBeGreaterThan(0)
+    expect(fallback).toBeLessThanOrEqual(330)
   })
 
   test('records the job’s start before anything that takes time', () => {
