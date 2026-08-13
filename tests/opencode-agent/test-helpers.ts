@@ -122,6 +122,8 @@ export interface StubIo {
   thread: IssueComment[]
   /** Git operations invoked, in order (`op:arg`). */
   gitCalls: string[]
+  /** Pull-request bodies written via `updatePullRequest`, in order. */
+  pullRequestUpdates: PullRequestPresentation[]
   /** Artifact writes via `writeFile` (`path::content-preview`). */
   writes: { path: string; content: string }[]
   /** File reads via `readFile`, in order. Tests seed `readContents` to reply. */
@@ -181,6 +183,7 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     edits: [],
     thread: [...(options.thread ?? [])],
     gitCalls: [],
+    pullRequestUpdates: [],
     writes: [],
     reads: [],
     readContents: {},
@@ -245,7 +248,10 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       Promise.resolve({ ref: '', repoFullName: '', state: 'open' }),
     createPullRequest: (_input: PullRequestInput): Promise<PullRequestRef> =>
       Promise.resolve({ number: 7, url: 'https://example.test/pull/7' }),
-    updatePullRequest: (_number: number, _patch: PullRequestPresentation): Promise<void> => Promise.resolve(),
+    updatePullRequest: (_number: number, patch: PullRequestPresentation): Promise<void> => {
+      io.pullRequestUpdates.push(patch)
+      return Promise.resolve()
+    },
   }
 
   const github: GitHubApi = {
@@ -294,13 +300,17 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       return Promise.resolve()
     },
     defaultBranch: (): Promise<string | null> => Promise.resolve('main'),
+    headSha: (): Promise<string> => {
+      io.gitCalls.push('headSha')
+      return Promise.resolve('head-sha')
+    },
   }
 
   const runCheck: CheckRunner = (_check: CheckSpec): Promise<CommandResult> =>
     Promise.resolve({ command: '', stdout: '', stderr: '', exitCode: 0 })
 
   const runReview: RunReview = (_plan: string): Promise<ReviewRunResult> =>
-    Promise.resolve({ outcome: 'passed', summary: '', exitCode: 0 })
+    Promise.resolve({ outcome: 'passed', summary: '', exitCode: 0, failure: null })
 
   const groups: CiGroups = {
     startGroup: (_headline: string): void => {},

@@ -205,6 +205,62 @@ test('mergeWorkerIntoPrimary reports numstat diff via onMergeDiff hook', async (
   await pool.close()
 })
 
+test('mergeWorkerIntoPrimary publishes the primary branch under the same lock', async () => {
+  const repoRoot = makeTempDir('pool-')
+  const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 1 })
+  const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+  await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
+
+  const published: string[] = []
+  const pool = await createWorkerPool(config, runState, {
+    onPrimaryAdvanced: (branch: string) => {
+      published.push(branch)
+      return Promise.resolve()
+    },
+  })
+  const worker = await pool.acquire('src/a.ts')
+  writeFileSync(path.join(worker.worktreePath, 'src-a.ts'), 'one\n')
+  await execGit(worker.worktreePath, ['add', '.'])
+  await execGit(worker.worktreePath, ['commit', '-m', 'worker change'])
+
+  expect((await pool.mergeWorkerIntoPrimary(worker)).ok).toBe(true)
+  expect(published).toEqual([`review-loop/${runState.runId}`])
+
+  await pool.close()
+})
+
+test('a merge that conflicts publishes nothing', async () => {
+  const repoRoot = makeTempDir('pool-')
+  const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 2 })
+  const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+  await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
+
+  const published: string[] = []
+  const pool = await createWorkerPool(config, runState, {
+    onPrimaryAdvanced: () => {
+      published.push('published')
+      return Promise.resolve()
+    },
+  })
+
+  // Two workers editing the same line of the same file: the second rebase
+  // conflicts, so nothing reaches the primary branch and nothing is announced.
+  const first = await pool.acquire('src/a.ts')
+  writeFileSync(path.join(first.worktreePath, 'shared.ts'), 'from-first\n')
+  await execGit(first.worktreePath, ['add', '.'])
+  await execGit(first.worktreePath, ['commit', '-m', 'first'])
+  const second = await pool.acquire('src/b.ts')
+  writeFileSync(path.join(second.worktreePath, 'shared.ts'), 'from-second\n')
+  await execGit(second.worktreePath, ['add', '.'])
+  await execGit(second.worktreePath, ['commit', '-m', 'second'])
+
+  expect((await pool.mergeWorkerIntoPrimary(first)).ok).toBe(true)
+  expect((await pool.mergeWorkerIntoPrimary(second)).ok).toBe(false)
+  expect(published).toEqual(['published'])
+
+  await pool.close()
+})
+
 test('mergeWorkerIntoPrimary without hooks still merges', async () => {
   const repoRoot = makeTempDir('pool-')
   const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 1 })

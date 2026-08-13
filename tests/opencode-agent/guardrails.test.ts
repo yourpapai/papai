@@ -358,18 +358,33 @@ describe('resolvePullRequestTrigger', () => {
     expect(resolved).toEqual(pullRequestEvent())
   })
 
-  test.each([['looks good to me'], ['/approve'], ['/ask why that file?'], ['/retry'], ['']])(
-    'drops %p with no API call at all',
+  test.each([['looks good to me'], ['nice, ship it'], ['']])('drops %p with no API call at all', async (body) => {
+    // The cheap filter that keeps every ordinary code-review comment free.
+    // Every pull request in a repository gets them; without this, every one of
+    // them would cost a pull-request lookup before being thrown away.
+    const api = lookup(head())
+
+    expect(
+      await resolvePullRequestTrigger(pendingPullRequest({ commentBody: body }), api.github, silentLogger()),
+    ).toBeNull()
+    expect(api.calls()).toBe(0)
+  })
+
+  test.each([['/approve'], ['/ask why that file?'], ['/retry'], ['/cancel']])(
+    'resolves %p, because the pull request is where an issue with one is driven from',
     async (body) => {
-      // The cheap filter that keeps every ordinary code-review comment free.
-      // Every pull request in a repository gets them; without this, every one of
-      // them would cost a pull-request lookup before being thrown away.
+      // The door used to admit `/review` alone. It cannot any more: commands
+      // typed on the issue are refused once a pull request exists, so a
+      // narrowing here would leave these with nowhere to be typed at all.
       const api = lookup(head())
 
-      expect(
-        await resolvePullRequestTrigger(pendingPullRequest({ commentBody: body }), api.github, silentLogger()),
-      ).toBeNull()
-      expect(api.calls()).toBe(0)
+      const resolved = await resolvePullRequestTrigger(
+        pendingPullRequest({ commentBody: body }),
+        api.github,
+        silentLogger(),
+      )
+
+      expect(resolved).toMatchObject({ kind: 'pull-request', issueNumber: 42 })
     },
   )
 

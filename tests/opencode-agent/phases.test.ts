@@ -632,7 +632,7 @@ describe('handleReview · reads the plan from the folder (D1)', () => {
     const handed: string[] = []
     input.deps.runReview = (plan: string): Promise<ReviewRunResult> => {
       handed.push(plan)
-      return Promise.resolve({ outcome: 'passed', summary: '', exitCode: 0 })
+      return Promise.resolve({ outcome: 'passed', summary: '', exitCode: 0, failure: null })
     }
 
     const outcome = await handleReview(input)
@@ -641,6 +641,97 @@ describe('handleReview · reads the plan from the folder (D1)', () => {
     // The review loop was handed the folder's tasks.md verbatim.
     expect(handed).toEqual([tasks])
     expect(io.reads).toEqual([`/repo/openspec/changes/${CHANGE}/tasks.md`])
+  })
+})
+
+/**
+ * The findings are commits, and a commit on an Actions runner is worth nothing
+ * until it is pushed.
+ *
+ * The loop merges its own branch into the checkout itself, so by the time this
+ * handler runs the tree is *clean* and the work is in `HEAD` — which is why
+ * asking `commitAll` whether anything changed answered "no" and the push was
+ * skipped, on every review that found something. The branch, and the pull
+ * request, showed the implementation and nothing else.
+ */
+/** Successive answers, repeating the last one — a `??` outside any test body. */
+const queued = (values: readonly string[]): (() => string) => {
+  const remaining = [...values]
+  let last = values.at(-1) ?? ''
+  return (): string => {
+    last = remaining.shift() ?? last
+    return last
+  }
+}
+
+describe('handleReview · pushes what the loop merged', () => {
+  const reviewInput = (
+    passing: boolean,
+    failure: string | null = null,
+  ): ReturnType<typeof folderReadInput> & { pushes: () => string[] } => {
+    const built = folderReadInput({ phase: 'CODE_REVIEW', folder: { tasks: '- [ ] one\n' } })
+    built.input.state = { ...built.input.state, prNumber: 7, prUrl: 'https://example.invalid/pull/7' }
+    built.input.deps.runReview = (): Promise<ReviewRunResult> =>
+      Promise.resolve({
+        outcome: passing ? 'passed' : 'failed',
+        summary: 'summary',
+        exitCode: passing ? 0 : 1,
+        failure,
+      })
+    return { ...built, pushes: (): string[] => built.io.gitCalls.filter((call) => call.startsWith('push:')) }
+  }
+
+  it('pushes when the loop advanced the branch and left a clean tree', async () => {
+    const built = reviewInput(true)
+    // What the loop actually leaves behind: its merge is already committed, so
+    // there is nothing for `commitAll` to stage.
+    built.input.deps.git.commitAll = (): Promise<null> => Promise.resolve(null)
+    const heads = queued(['before', 'after'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+
+    const outcome = await handleReview(built.input)
+
+    expect(built.pushes()).toEqual(['push:agent/issue-42'])
+    expect(outcome.comment).toContain('pushed')
+  })
+
+  it('pushes nothing when the loop changed nothing at all', async () => {
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<null> => Promise.resolve(null)
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve('same')
+
+    await handleReview(built.input)
+
+    expect(built.pushes()).toEqual([])
+  })
+
+  it('pushes each fix as the loop publishes it, not only at the end', async () => {
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<null> => Promise.resolve(null)
+    const heads = queued(['start', 'fix-1', 'fix-2', 'fix-2'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+    built.input.deps.runReview = async (_plan: string, onFixMerged?: () => void): Promise<ReviewRunResult> => {
+      onFixMerged?.()
+      onFixMerged?.()
+      // The loop is still running here; the pushes must already have happened by
+      // the time it returns, which is what makes them survive a killed runner.
+      await Promise.resolve()
+      return { outcome: 'passed', summary: '', exitCode: 0, failure: null }
+    }
+
+    await handleReview(built.input)
+
+    expect(built.pushes()).toEqual(['push:agent/issue-42', 'push:agent/issue-42'])
+  })
+
+  it('names why a failed loop failed, in the report and on the pull request', async () => {
+    const built = reviewInput(false, "the loop's own build gate failed at the end of the run")
+
+    const outcome = await handleReview(built.input)
+
+    expect(outcome.comment).toContain('build gate')
+    const updated = built.io.pullRequestUpdates.at(-1)
+    expect(updated?.body).toContain('build gate')
   })
 })
 
@@ -745,7 +836,7 @@ describe('a phase checks out the branch carrying the folder before it reads the 
     const handed: string[] = []
     built.input.deps.runReview = (plan: string): Promise<ReviewRunResult> => {
       handed.push(plan)
-      return Promise.resolve({ outcome: 'passed', summary: '', exitCode: 0 })
+      return Promise.resolve({ outcome: 'passed', summary: '', exitCode: 0, failure: null })
     }
 
     const outcome = await handleReview(built.input)

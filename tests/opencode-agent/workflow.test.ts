@@ -10,6 +10,7 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import { SLASH_COMMANDS } from '../../opencode-agent/src/commands.js'
 import { DEFAULT_LABEL_PREFIX } from '../../opencode-agent/src/config.js'
 import { issueNumberFromBranch } from '../../opencode-agent/src/git.js'
 import { WORKING_LABEL } from '../../opencode-agent/src/presentation.js'
@@ -189,33 +190,44 @@ describe('the job condition', () => {
     expect(issueArm).toContain('github.event.issue.pull_request == null')
   })
 
-  test('admits a maintainer /review typed on a pull request, and nothing else', () => {
+  test('admits a maintainer command typed on a pull request, and nothing else', () => {
     // The whole arm, clause by clause, because each clause refuses one thing and
     // a `toContain` per clause could not tell a missing one from a reordered one:
     //
     //   - `issue_comment` + `created` refuse an `issue_comment.edited` — an
     //     already-read command must not re-fire when its comment is edited;
     //   - `pull_request != null` is what makes this the pull-request door;
-    //   - the `/review` `contains` refuses every ordinary code-review comment,
-    //     and every pull request in a repository gets those. It is a first-pass
-    //     filter only: `parseSlashCommand` re-parses, requires the command to
-    //     start a line and ignores fenced blocks, and none of that is expressible
-    //     here. The arm exists so an event that will be dropped anyway never
-    //     boots a runner;
+    //   - the command `contains` group refuses every ordinary code-review
+    //     comment, and every pull request in a repository gets those. It is a
+    //     first-pass filter only: `parseSlashCommand` re-parses, requires the
+    //     command to start a line and ignores fenced blocks, and none of that is
+    //     expressible here. The arm exists so an event that will be dropped
+    //     anyway never boots a runner. Every command is named, not `/review`
+    //     alone: the pull request is the surface an issue with one is driven
+    //     from, so a narrower filter would strand `/retry` and `/cancel`;
     //   - `sender.type` refuses a bot, and the association refuses a
     //     non-maintainer.
     //
     // Everything `resolvePullRequestTrigger` refuses — a fork, a closed or merged
     // pull request, a branch the agent does not own — needs an API call and is
     // deliberately not attempted here.
-    expect(clausesOf(pullRequestArm)).toEqual([
+    const clauses = clausesOf(pullRequestArm)
+    expect([clauses[0], clauses[1], clauses[2], clauses.at(-2), clauses.at(-1)]).toEqual([
       "github.event_name == 'issue_comment'",
       "github.event.action == 'created'",
       'github.event.issue.pull_request != null',
-      "contains(github.event.comment.body, '/review')",
       "github.event.sender.type != 'Bot'",
       'contains(fromJSON(\'["OWNER", "MEMBER", "COLLABORATOR"]\'), github.event.comment.author_association)',
     ])
+    // The middle clause is the command group, and it is checked against the
+    // vocabulary rather than against a copy of itself: a command added to
+    // `SLASH_COMMANDS` and forgotten here is a command that silently never boots
+    // a runner from a pull request, which looks exactly like the agent ignoring
+    // somebody.
+    const commandGroup = clauses.slice(3, -2).join(' && ')
+    for (const command of SLASH_COMMANDS) {
+      expect(commandGroup).toContain(`contains(github.event.comment.body, '${command}')`)
+    }
   })
 
   test('reads the commenter rights on a pull request, never the fallback the issue arm uses', () => {

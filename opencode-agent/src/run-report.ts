@@ -11,6 +11,7 @@ import { outcomeHeading } from './outcomes.js'
 import type { PhaseInput } from './phase-context.js'
 import { phaseHeading, presentationFor } from './presentation.js'
 import { renderStateComment } from './state-manager.js'
+import { persistState } from './state-persist.js'
 import type { AgentState, Phase } from './types.js'
 
 /**
@@ -28,6 +29,24 @@ import type { AgentState, Phase } from './types.js'
  */
 
 /**
+ * The one line every issue comment gains once a pull request has taken the
+ * commands over.
+ *
+ * Almost everything this file renders ends by naming a command — "reply
+ * `/retry`", "reply `/cancel`", "raise the ceiling and reply `/review`" — and
+ * every one of those became wrong in the same way the day the issue started
+ * refusing commands: the advice is right, the page it is written on is not. The
+ * alternative was to thread a "where" through eight renderers and their
+ * signatures, where each one could forget; this is the same statement made once,
+ * on the write they all share, from the state they are all posted with.
+ *
+ * Empty while there is no pull request, which is most of an issue's life and all
+ * of a cancelled one's — so a run that never delivers reads exactly as it did.
+ */
+const commandPointer = (state: AgentState): string =>
+  state.prUrl === null ? '' : `\n\n_Commands for this issue go on its pull request: ${state.prUrl}_`
+
+/**
  * Posts a comment and mirrors it into the in-memory thread, so a later phase in
  * the same job can read an artefact the earlier phase just wrote without
  * re-fetching the issue.
@@ -40,7 +59,7 @@ export const postAndAppend = async (
   blocks?: readonly string[],
 ): Promise<IssueComment[]> => {
   const artifacts = blocks === undefined || blocks.length === 0 ? '' : `\n\n${blocks.join('\n\n')}`
-  const rendered = `${renderStateComment(body, state)}${artifacts}`
+  const rendered = `${renderStateComment(`${body}${commandPointer(state)}`, state)}${artifacts}`
 
   const posted = await input.deps.github.createComment(input.issue.number, rendered)
   // The recorded author, not the one the pipeline believes in: if they differ,
@@ -48,6 +67,51 @@ export const postAndAppend = async (
   reportIdentityDrift(await input.deps.selfLogin(), posted.authorLogin, input.deps.log)
 
   return [...thread, { id: posted.id, body: rendered, authorLogin: posted.authorLogin }]
+}
+
+/**
+ * Posts a reply to the surface the question was typed on.
+ *
+ * A question is the one thing this pipeline says that is *not* about the state
+ * of the work: it moves no phase, spends no attempt and produces no artefact, so
+ * it belongs in the conversation it answers rather than in the record. Typed on
+ * the issue it goes to the issue, exactly as before; typed on a pull request it
+ * goes there, where the person who asked is looking.
+ *
+ * Three things this must not do, and the shape follows from them.
+ *
+ * It must not put a **state block** on a pull request. `findLatestState` scans
+ * one thread and would never see it, so a block there is a second source of
+ * truth by construction — which is why this is not `postAndAppend` with a
+ * different number, but a plain comment plus {@link persistState}, the write
+ * that rewrites the issue's newest block *in place* and posts nothing. The spend
+ * is the one thing a question really does change, and it is still recorded.
+ *
+ * It must not post **twice**. A copy on the issue "for the record" would be two
+ * accounts of one exchange, free to disagree, on a page nobody asked anything on.
+ *
+ * And it must not swallow a **failed post**: the answer is the work here, so a
+ * rejected `createComment` throws exactly as it does on the issue path, leaving
+ * `reported` unset and the workflow's fallback comment in scope. Only the state
+ * rewrite beside it is best-effort, for the reason `persistState` states.
+ *
+ * The accepted cost is that a question answered on a pull request is invisible to
+ * the next run's prompt — `renderThread` reads the issue thread — so the model
+ * will not remember having answered it. That is the same trade the state block
+ * makes in the other direction, and a conversation about a diff is the one this
+ * pipeline can most afford to forget.
+ */
+export const postAnswer = async (
+  thread: readonly IssueComment[],
+  input: PhaseInput,
+  body: string,
+  state: AgentState,
+): Promise<readonly IssueComment[]> => {
+  if (input.trigger.kind !== 'pull-request') return postAndAppend(thread, input, body, state)
+
+  await input.deps.github.createComment(input.trigger.prNumber, body)
+  await persistState(input.deps, thread, state)
+  return thread
 }
 
 /**
@@ -83,7 +147,10 @@ export const renderClosing = (state: AgentState): string =>
         `The work is in ${state.prUrl}.`,
         '',
         'If that pull request goes red I will still pick it up and push a fix.',
-        'Reply **`/review`** here to run the review loop over the branch and push whatever it finds.',
+        // Named there rather than here on purpose: with a pull request open, a
+        // command typed on this issue is refused and pointed at it — see
+        // `feedback-target.ts` — so inviting one here would be inviting a refusal.
+        'Comment **`/review`** *on the pull request* to run the review loop over the branch and push what it finds.',
       ].join('\n')
 
 /**
@@ -138,6 +205,31 @@ export const renderSettled = (state: AgentState): string =>
  * The accepted list is derived from the transition table rather than written
  * out here, so it cannot drift away from what the machine will actually take.
  */
+/**
+ * The reply to a command typed in the right words on the wrong page.
+ *
+ * Separate from {@link renderRefusedCommand} because that one's sentence — "I am
+ * parked in `X`, which does not accept it" — would be false here twice over: the
+ * phase accepts the command perfectly well, and nothing about the state is the
+ * reason. The only fact worth saying is where to type it again, so that is the
+ * whole comment.
+ *
+ * The pull request is named by URL when there is one and by nothing at all when
+ * there is not, which cannot happen — `commandSurface` returns `elsewhere` only
+ * when `prNumber` is set, and `prUrl` is written beside it — but a renderer that
+ * cannot be handed a broken state is one fewer thing to check.
+ */
+export const renderCommandElsewhere = (command: string, prUrl: string | null): string =>
+  [
+    outcomeHeading('COMMAND_REFUSED', `\`${command}\` belongs on the pull request now`),
+    '',
+    prUrl === null
+      ? 'This issue has a pull request open, and that is where I take commands from once one exists.'
+      : `This issue's work is in ${prUrl}, and that is where I take commands from once a pull request is open.`,
+    '',
+    `Type \`${command}\` there instead. Nothing has changed here — the report and the state still live on this issue.`,
+  ].join('\n')
+
 export const renderRefusedCommand = (command: string, phase: Phase, accepted: readonly string[]): string =>
   [
     outcomeHeading('COMMAND_REFUSED', `\`${command}\` does not apply right now`),

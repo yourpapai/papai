@@ -52,6 +52,7 @@ export function createReviewLoopConfigFixture(
     workDir: path.join(repoRoot, '.review-loop'),
     maxRounds: 5,
     maxNoProgressRounds: 2,
+    mergeEachFix: false,
     agentTimeoutMs: 600_000,
     buildTimeoutMs: 600_000,
     checkCommand: 'bun check:full',
