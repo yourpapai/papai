@@ -15,6 +15,7 @@ import {
 } from '../db/context-vault-schema.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { logger } from '../logger.js'
+import { reduceSpec, type ReduceFileInput, type ReducedSpec } from './reducer.js'
 
 const log = logger.child({ scope: 'context-vault:spec-store' })
 
@@ -56,10 +57,11 @@ const computeSourceHash = (files: readonly ContextVaultFileRow[]): string => {
   return digest.digest('hex')
 }
 
-const upsertSpec = (configContextId: string, input: ApplyPushInput, specId: string): void => {
+const upsertSpec = (configContextId: string, input: ApplyPushInput, specId: string, reduced: ReducedSpec): void => {
   const files = listFiles(configContextId, specId)
   const mtime = files.reduce((max, f) => Math.max(max, f.mtime), 0)
   const sourceHash = computeSourceHash(files)
+  const outline = JSON.stringify(reduced.outline)
   const existing = getDrizzleDb()
     .select({ id: contextVaultSpecs.id })
     .from(contextVaultSpecs)
@@ -74,8 +76,9 @@ const upsertSpec = (configContextId: string, input: ApplyPushInput, specId: stri
         repo: input.repo,
         changeName: input.changeName,
         oneLine: '',
-        stage: 'draft',
-        progressPct: 0,
+        outline,
+        stage: reduced.stage,
+        progressPct: reduced.progressPct,
         mtime,
         sourceHash,
       })
@@ -84,7 +87,7 @@ const upsertSpec = (configContextId: string, input: ApplyPushInput, specId: stri
   }
   getDrizzleDb()
     .update(contextVaultSpecs)
-    .set({ mtime, sourceHash })
+    .set({ outline, stage: reduced.stage, progressPct: reduced.progressPct, mtime, sourceHash })
     .where(and(eq(contextVaultSpecs.configContextId, configContextId), eq(contextVaultSpecs.id, specId)))
     .run()
 }
@@ -148,6 +151,21 @@ const deleteFile = (configContextId: string, specId: string, path: string): void
     .run()
 }
 
+const buildReduceInput = (input: ApplyPushInput, remaining: readonly ContextVaultFileRow[]): ReduceFileInput[] => {
+  const kindByPath = new Map(remaining.map((f) => [f.path, f.kind]))
+  const leftovers = new Set(kindByPath.keys())
+  const files: ReduceFileInput[] = []
+  for (const f of input.files) {
+    if (!leftovers.has(f.path)) continue
+    leftovers.delete(f.path)
+    files.push({ path: f.path, kind: f.kind, text: f.text })
+  }
+  for (const path of [...leftovers].sort((a, b) => a.localeCompare(b))) {
+    files.push({ path, kind: kindByPath.get(path) ?? '', text: undefined })
+  }
+  return files
+}
+
 export function applyPush(configContextId: string, input: ApplyPushInput): ApplyPushResult {
   const specId = specIdOf(input.repo, input.changeName)
   const existingByPath = new Map(listFiles(configContextId, specId).map((f) => [f.path, f]))
@@ -171,7 +189,8 @@ export function applyPush(configContextId: string, input: ApplyPushInput): Apply
   if (remaining.length === 0) {
     deleteSpecShell(configContextId, specId)
   } else {
-    upsertSpec(configContextId, input, specId)
+    const reduced = reduceSpec({ changeName: input.changeName, files: buildReduceInput(input, remaining) })
+    upsertSpec(configContextId, input, specId, reduced)
   }
   touchIndexerState(configContextId)
 

@@ -174,6 +174,114 @@ describe('context-vault spec-store', () => {
     expect(getIndexerState(CTX_B)).toBeUndefined()
   })
 
+  test('push derives outline, stage, and progress from the pushed texts before they are discarded', () => {
+    applyPush(CTX_A, {
+      repo: 'papai',
+      changeName: 'x',
+      files: [{ path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# Proposal\n\n## Why\n' }],
+      deletions: [],
+    })
+    let spec = getSpec(CTX_A, 'papai:x')
+    expect(spec?.stage).toBe('draft')
+    expect(spec?.progressPct).toBe(0)
+    expect(JSON.parse(String(spec?.outline))).toEqual(['# Proposal', '## Why'])
+
+    applyPush(CTX_A, {
+      repo: 'papai',
+      changeName: 'x',
+      files: [
+        { path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# Proposal\n\n## Why\n' },
+        { path: 'a/design.md', kind: 'design', hash: 'h2', mtime: 2, text: '# Design\n' },
+        { path: 'a/tasks.md', kind: 'tasks', hash: 'h3', mtime: 3, text: '- [x] one\n- [ ] two\n' },
+      ],
+      deletions: [],
+    })
+    spec = getSpec(CTX_A, 'papai:x')
+    expect(spec?.stage).toBe('in-progress')
+    expect(spec?.progressPct).toBe(50)
+    expect(JSON.parse(String(spec?.outline))).toEqual(['# Proposal', '## Why', '# Design'])
+  })
+
+  test('stage reaches done when every tasks checkbox is ticked', () => {
+    applyPush(CTX_A, {
+      repo: 'papai',
+      changeName: 'x',
+      files: [
+        { path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# P\n' },
+        { path: 'a/tasks.md', kind: 'tasks', hash: 'h3', mtime: 3, text: '- [x] one\n- [x] two\n' },
+      ],
+      deletions: [],
+    })
+    const spec = getSpec(CTX_A, 'papai:x')
+    expect(spec?.stage).toBe('done')
+    expect(spec?.progressPct).toBe(100)
+  })
+
+  test('a change pushed from an archive/ path is reported done', () => {
+    applyPush(CTX_A, {
+      repo: 'papai',
+      changeName: 'x',
+      files: [
+        {
+          path: 'openspec/changes/archive/x/tasks.md',
+          kind: 'tasks',
+          hash: 'h1',
+          mtime: 1,
+          text: '- [ ] never\n',
+        },
+      ],
+      deletions: [],
+    })
+    const spec = getSpec(CTX_A, 'papai:x')
+    expect(spec?.stage).toBe('done')
+    expect(spec?.progressPct).toBe(100)
+  })
+
+  test('deleting the tasks file recomputes the stage from the remaining kinds', () => {
+    applyPush(CTX_A, {
+      repo: 'papai',
+      changeName: 'x',
+      files: [
+        { path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# P\n' },
+        { path: 'a/design.md', kind: 'design', hash: 'h2', mtime: 2, text: '# D\n' },
+        { path: 'a/tasks.md', kind: 'tasks', hash: 'h3', mtime: 3, text: '- [x] one\n- [ ] two\n' },
+      ],
+      deletions: [],
+    })
+    expect(getSpec(CTX_A, 'papai:x')?.stage).toBe('in-progress')
+
+    applyPush(CTX_A, {
+      repo: 'papai',
+      changeName: 'x',
+      files: [
+        { path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# P\n' },
+        { path: 'a/design.md', kind: 'design', hash: 'h2', mtime: 2, text: '# D\n' },
+      ],
+      deletions: ['a/tasks.md'],
+    })
+    const spec = getSpec(CTX_A, 'papai:x')
+    expect(spec?.stage).toBe('approved')
+    expect(spec?.progressPct).toBe(0)
+    expect(JSON.parse(String(spec?.outline))).toEqual(['# P', '# D'])
+  })
+
+  test('re-push with identical hashes keeps the derived values', () => {
+    const input = {
+      repo: 'papai',
+      changeName: 'x',
+      files: [
+        { path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# P\n' },
+        { path: 'a/tasks.md', kind: 'tasks', hash: 'h3', mtime: 3, text: '- [x] one\n- [ ] two\n' },
+      ],
+      deletions: [] as string[],
+    }
+    applyPush(CTX_A, input)
+    applyPush(CTX_A, input)
+    const spec = getSpec(CTX_A, 'papai:x')
+    expect(spec?.stage).toBe('in-progress')
+    expect(spec?.progressPct).toBe(50)
+  })
+
   test('re-push preserves an existing LLM-written summary', () => {
     applyPush(CTX_A, {
       repo: 'papai',
