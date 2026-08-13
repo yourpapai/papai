@@ -110,6 +110,10 @@ export function runtimeCtx(
       resolveMcpTokens: () => ({}),
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
+    contextVault: {
+      list: () => ({ specs: [], meta: { lastPushAt: null } }),
+      get: () => ({ ok: false, reason: 'not-found' }),
+    },
   } as PluginToolRuntimeContext
 }
 
@@ -157,6 +161,10 @@ export function runtimeCtxWithKv(
       resolveMcpTokens: () => ({}),
     },
     codingRepos: codingRepos ?? defaultCodingRepos(),
+    contextVault: {
+      list: () => ({ specs: [], meta: { lastPushAt: null } }),
+      get: () => ({ ok: false, reason: 'not-found' }),
+    },
   } as PluginToolRuntimeContext
 }
 

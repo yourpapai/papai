@@ -15,6 +15,7 @@ import type {
 } from '../providers/registry.js'
 import type { TaskCapability, ProviderConfigField, TaskProvider, TaskProviderTrait } from '../providers/types.js'
 import type { PluginAttachmentFacade, PluginAttachmentRecord } from './attachment-types.js'
+import type { ContextVaultGetResult, ContextVaultListFilter, ContextVaultListResult } from './context-vault-facade.js'
 import type { PluginAdminConfig } from './context.js'
 import type { PluginContext } from './context.js'
 import type { PluginIdentityFacade } from './identity-facade.js'
@@ -78,6 +79,11 @@ export type PluginToolRuntimeContext = {
   codingRepos: {
     list(): { name: string; baseBranch: string }[]
     get(name: string): CodingRepoEntry | null
+  }
+  /** Read-only access to the context vault, gated on the `contextVault.read` permission. */
+  contextVault: {
+    list(filter?: ContextVaultListFilter): ContextVaultListResult
+    get(idOrName: string): ContextVaultGetResult
   }
 }
 
