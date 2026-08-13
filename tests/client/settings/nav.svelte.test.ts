@@ -50,7 +50,7 @@ describe('buildNavGroups', () => {
     ])
   })
 
-  test('Advanced holds the ten integration sections and is collapsible', () => {
+  test('Advanced holds the eleven integration sections and is collapsible', () => {
     const advanced = buildNavGroups(personal, false).find((g) => g.key === 'advanced')!
     expect(advanced.kicker).toBe('Advanced')
     expect(advanced.collapsible).toBe(true)
@@ -64,6 +64,7 @@ describe('buildNavGroups', () => {
       'coding-mcp',
       'code-host',
       'repos',
+      'context-vault',
       'mcp',
       'plugins',
     ])
@@ -158,7 +159,7 @@ describe('section id derivation', () => {
     expect(ids).toContain('profile')
     expect(ids).toContain('memory')
     expect(ids).toContain('instances')
-    expect(ids).toHaveLength(4 + 10 + 16)
+    expect(ids).toHaveLength(4 + 11 + 16)
   })
 
   test('mountedSectionIds omits collapsed groups and grows as they expand', () => {
@@ -175,7 +176,7 @@ describe('section id derivation', () => {
 describe('groupHint', () => {
   test('lists the first three labels and counts the rest', () => {
     const advanced = buildNavGroups(personal, false).find((g) => g.key === 'advanced')!
-    expect(groupHint(advanced.items)).toBe('Memory, AI output, Identity + 7 more')
+    expect(groupHint(advanced.items)).toBe('Memory, AI output, Identity + 8 more')
   })
 
   test('three or fewer items get no overflow count', () => {

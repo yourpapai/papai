@@ -39,7 +39,7 @@ Test-first order per design.md §10: every implementation file under `src/` or `
 ## 6. Settings SPA
 
 - [x] 6.1 Write failing client tests for the "Context Vault tokens" section (list masked, create shows plaintext once, revoke) under `tests/client/settings/` — `bun test:client`
-- [ ] 6.2 Implement the section in `client/settings/` reusing the coding-repos fetch/panel patterns — `bun test:client && bun build:client`
+- [x] 6.2 Implement the section in `client/settings/` reusing the coding-repos fetch/panel patterns — `bun test:client && bun build:client`
 
 ## 7. Indexer package
 

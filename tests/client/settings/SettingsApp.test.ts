@@ -168,7 +168,7 @@ describe('SettingsApp', () => {
     const component = mountApp()
     await drain()
     const toggle = document.querySelector<HTMLElement>('[data-testid="advanced-toggle"]')!
-    expect(toggle.textContent).toContain('Memory, AI output, Identity + 7 more')
+    expect(toggle.textContent).toContain('Memory, AI output, Identity + 8 more')
     void unmount(component)
   })
 
