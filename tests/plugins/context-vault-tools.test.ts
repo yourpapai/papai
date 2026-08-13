@@ -14,9 +14,10 @@ import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from 
 import { applyPush } from '../../src/context-vault/spec-store.js'
 import { contextVaultSpecs } from '../../src/db/context-vault-schema.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { buildContextVaultFacade } from '../../src/plugins/context-vault-facade.js'
 import type { PluginContext, PluginRegistration } from '../../src/plugins/context.js'
 import { namespacedToolName } from '../../src/plugins/contribution-names.js'
-import { buildContextVaultFacade } from '../../src/plugins/context-vault-facade.js'
+import { getPluginToolInputSchema } from '../../src/plugins/input-schema.js'
 import type { PluginTool, PluginToolRuntimeContext } from '../../src/plugins/types.js'
 import { applyGuestReadOnlyFilter, applyToolPreferences } from '../../src/tools/index.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
@@ -72,6 +73,7 @@ const activatePlugin = (): Map<string, PluginTool> => {
     kv: { get: () => undefined, set: () => {}, delete: () => {}, list: () => [] },
     log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
     registration,
+    adminConfig: { get: () => undefined },
   }
   factory().activate(ctx)
   return tools
@@ -109,14 +111,17 @@ const makeRuntimeCtx = (storageCtx: string): PluginToolRuntimeContext => ({
 const runTool = (tool: PluginTool, input: unknown, runtimeCtx: PluginToolRuntimeContext): Promise<unknown> =>
   tool.execute(input, runtimeCtx, { toolCallId: 'c1', messages: [], context: {} })
 
-const toSdkTool = (tool: PluginTool, runtimeCtx: PluginToolRuntimeContext): NonNullable<ToolSet[string]> => {
-  if (tool.inputSchema === undefined) throw new Error('tool must declare an inputSchema')
-  return {
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-    execute: (input: unknown, opts: ToolExecutionOptions<unknown>) => tool.execute(input, runtimeCtx, opts),
-  }
+const requireSdkExecute = (toolSet: ToolSet, name: string): NonNullable<NonNullable<ToolSet[string]>['execute']> => {
+  const execute = toolSet[name]?.execute
+  if (execute === undefined) throw new Error(`sdk tool ${name} must keep execute`)
+  return execute
 }
+
+const toSdkTool = (tool: PluginTool, runtimeCtx: PluginToolRuntimeContext): NonNullable<ToolSet[string]> => ({
+  description: tool.description,
+  inputSchema: getPluginToolInputSchema(tool),
+  execute: (input: unknown, opts: ToolExecutionOptions<unknown>) => tool.execute(input, runtimeCtx, opts),
+})
 
 const ListOutputSchema = z.looseObject({
   specs: z.array(z.looseObject({ id: z.string() })),
@@ -165,7 +170,9 @@ describe('context-vault plugin tools', () => {
     seedSpec('papai', 'beta', 200, true)
     const tools = activatePlugin()
 
-    const result = ListOutputSchema.parse(await runTool(requireTool(tools, 'list_agent_specs'), {}, makeRuntimeCtx(THREAD_CTX)))
+    const result = ListOutputSchema.parse(
+      await runTool(requireTool(tools, 'list_agent_specs'), {}, makeRuntimeCtx(THREAD_CTX)),
+    )
 
     expect(result.specs.map((s) => s.id)).toEqual(['papai:alpha', 'papai:beta'])
     expect(result.specs[0]).toMatchObject({ repo: 'papai', name: 'alpha', stage: 'draft', progressPct: 0, mtime: 100 })
@@ -196,7 +203,11 @@ describe('context-vault plugin tools', () => {
     presetSummary('papai:alpha', 'vault one-liner', 'vault summary')
     const tools = activatePlugin()
 
-    const result = await runTool(requireTool(tools, 'get_agent_spec'), { id: 'papai:alpha' }, makeRuntimeCtx(THREAD_CTX))
+    const result = await runTool(
+      requireTool(tools, 'get_agent_spec'),
+      { id: 'papai:alpha' },
+      makeRuntimeCtx(THREAD_CTX),
+    )
 
     expect(result).toMatchObject({
       ok: true,
@@ -265,16 +276,17 @@ describe('context-vault plugin tools', () => {
     setToolPrefs(PREFS_CTX, { domainDefaults: {}, toolOverrides: { [LIST_WIRE]: 'ask' } })
 
     const confirmed = applyToolPreferences(toolSet, PREFS_CTX, () => Promise.resolve('allow' as const))
-    const confirmedExecute = confirmed[LIST_WIRE]?.execute
-    if (confirmedExecute === undefined) throw new Error('ask-wrapped tool must keep execute')
+    const confirmedExecute = requireSdkExecute(confirmed, LIST_WIRE)
     const out = ListOutputSchema.parse(
-      await confirmedExecute({ _permission_reason: 'need spec status' }, { toolCallId: 't1', messages: [], context: {} }),
+      await confirmedExecute(
+        { _permission_reason: 'need spec status' },
+        { toolCallId: 't1', messages: [], context: {} },
+      ),
     )
     expect(out.specs.map((s) => s.id)).toEqual(['papai:alpha'])
 
     const noGate = applyToolPreferences(toolSet, PREFS_CTX, undefined)
-    const deniedExecute = noGate[LIST_WIRE]?.execute
-    if (deniedExecute === undefined) throw new Error('ask-wrapped tool must keep execute')
+    const deniedExecute = requireSdkExecute(noGate, LIST_WIRE)
     const deniedOut: unknown = await deniedExecute(
       { _permission_reason: 'need spec status' },
       { toolCallId: 't2', messages: [], context: {} },

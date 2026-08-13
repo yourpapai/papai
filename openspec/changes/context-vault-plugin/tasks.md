@@ -33,7 +33,7 @@ Test-first order per design.md §10: every implementation file under `src/` or `
 
 - [x] 5.1 Write failing facade tests (`contextVault.read` permission gate, storage-context → config-context mapping, list/get read shapes, bare-name uniqueness + collision candidate list) under `tests/plugins/context-vault-facade.test.ts` — `bun test tests/plugins/context-vault-facade.test.ts`
 - [x] 5.2 Implement the facade in `src/plugins/tool-runtime.ts` (mirroring `buildCodingReposFacade`) and register the `contextVault.read` permission in `src/plugins/types.ts` — `bun test tests/plugins/context-vault-facade.test.ts && bun run typecheck`
-- [ ] 5.3 Write failing tool tests (`list_agent_specs` filters + freshness meta, `get_agent_spec` summary/outline/meta, null task instance OK, tool_prefs allow/ask/deny incl. `ask` confirmation, guest read-only eligibility) under `tests/plugins/context-vault-tools.test.ts` — `bun test tests/plugins/context-vault-tools.test.ts`
+- [x] 5.3 Write failing tool tests (`list_agent_specs` filters + freshness meta, `get_agent_spec` summary/outline/meta, null task instance OK, tool_prefs allow/ask/deny incl. `ask` confirmation, guest read-only eligibility) under `tests/plugins/context-vault-tools.test.ts` — `bun test tests/plugins/context-vault-tools.test.ts`
 - [ ] 5.4 Create `plugins/context-vault/` (`plugin.json` with the two contributed tools + `storageScope: 'group'`, `index.ts` registering both tools) — `bun test tests/plugins/context-vault-tools.test.ts && bun run typecheck`
 
 ## 6. Settings SPA

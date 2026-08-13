@@ -100,7 +100,8 @@ export type PluginTool = {
   /** Stable behavioral identifier independent of the production wire name. */
   capabilityId?: string
   description: string
-  inputSchema?: z.ZodType
+  /** Zod schema, or a raw JSON-schema object (wrapped via ai.jsonSchema by getPluginToolInputSchema). */
+  inputSchema?: z.ZodType | Record<string, unknown>
   execute: (
     input: unknown,
     runtimeContext: PluginToolRuntimeContext,
