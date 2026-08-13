@@ -6,7 +6,7 @@ Test-first order per design.md §10: every implementation file under `src/` or `
 
 - [x] 1.1 Write failing migration test `tests/db/migrations/076_context_vault.test.ts` asserting the four tables, PKs, and the `token_hash` index — `bun test tests/db/migrations/076_context_vault.test.ts`
 - [x] 1.2 Create migration `src/db/migrations/076_context_vault.ts` (`context_vault_tokens`, `context_vault_specs`, `context_vault_files`, `context_vault_indexer_state`) and register it in `src/db/index.ts` — `bun test tests/db/migrations/076_context_vault.test.ts`
-- [ ] 1.3 Add drizzle twin `src/db/context-vault-schema.ts` with a schema-validation test — `bun test tests/db/context-vault-schema.test.ts && bun run typecheck`
+- [x] 1.3 Add drizzle twin `src/db/context-vault-schema.ts` with a schema-validation test — `bun test tests/db/context-vault-schema.test.ts && bun run typecheck`
 
 ## 2. Token store and settings routes
 
