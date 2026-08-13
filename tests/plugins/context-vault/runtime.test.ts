@@ -5,12 +5,12 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import factory from '../../../plugins/context-vault/index.js'
+import { registerContextVault } from '../../../plugins/context-vault/runtime.js'
 import type { PluginContext, PluginRegistration } from '../../../src/plugins/context.js'
 import type { PluginTool } from '../../../src/plugins/types.js'
 
-describe('context-vault plugin module', () => {
-  test('activates and registers list_agent_specs and get_agent_spec', () => {
+describe('context-vault runtime registration', () => {
+  test('registerContextVault registers both vault tools with capability ids', () => {
     const tools = new Map<string, PluginTool>()
     const registration: PluginRegistration = {
       registerTool: (tool: PluginTool) => {
@@ -32,7 +32,7 @@ describe('context-vault plugin module', () => {
       adminConfig: { get: () => undefined },
     }
 
-    void factory().activate(ctx)
+    registerContextVault(ctx)
 
     expect([...tools.keys()].toSorted()).toEqual(['get_agent_spec', 'list_agent_specs'])
     expect(tools.get('list_agent_specs')?.capabilityId).toBe('context-vault.specs.list')

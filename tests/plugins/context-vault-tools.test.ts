@@ -75,7 +75,7 @@ const activatePlugin = (): Map<string, PluginTool> => {
     registration,
     adminConfig: { get: () => undefined },
   }
-  factory().activate(ctx)
+  void factory().activate(ctx)
   return tools
 }
 

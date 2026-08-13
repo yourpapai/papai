@@ -51,7 +51,7 @@ Test-first order per design.md §10: every implementation file under `src/` or `
 
 ## 8. Story-tier integration
 
-- [ ] 8.1 Add story: push → index updated → tools return freshness meta; revoke token → push rejected — `bun test:stories`
+- [x] 8.1 Add story: push → index updated → tools return freshness meta; revoke token → push rejected — `bun test:stories`
 - [ ] 8.2 Add story: two plugin activations → exactly one daemon (lock singleton through the adapter seam) — `bun test:stories`
 
 ## 9. Final verification and docs

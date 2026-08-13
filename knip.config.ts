@@ -109,6 +109,7 @@ export default {
     // Plugin runtime bridges loaded via import.meta.require(); declaring them
     // entries lets knip trace their static imports (provider clients, config).
     'plugins/audio-transcribe/runtime.ts!',
+    'plugins/context-vault/runtime.ts!',
     'plugins/task-provider-kaneo/auto-provision.ts!',
     // Test-seam shims: re-export test-only symbols so tests have an explicit
     // import site; see the *.testing.ts ignoreIssues glob below.

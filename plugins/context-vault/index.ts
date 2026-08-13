@@ -3,92 +3,47 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
+// The entry point must stay free of bare-module (e.g. `zod`) and out-of-plugin
+// static imports: the discovery scanner walks the entry graph and rejects both.
+// All real logic lives in `./runtime.ts`, loaded at activation time via
+// `import.meta.require`, whose targets the scanner treats as opaque. This
+// mirrors the `audio-transcribe` plugin's lazy-require pattern.
 
-import type { SpecStage } from '../../src/context-vault/reducer.js'
-import type { ContextVaultListFilter } from '../../src/plugins/context-vault-facade.js'
-import type { PluginContext } from '../../src/plugins/context.js'
-import type { PluginToolRuntimeContext } from '../../src/plugins/types.js'
+type PluginContextLike = {
+  log: {
+    info(metadata: Record<string, unknown>, message: string): void
+  }
+}
 
-const SPEC_STAGES = ['draft', 'approved', 'in-progress', 'done'] as const
+type PluginInstanceLike = {
+  activate(ctx: PluginContextLike): Promise<void> | void
+}
 
-const listInputJsonSchema = {
-  type: 'object',
-  properties: {
-    repo: { type: 'string', description: 'Only specs pushed for this repository name' },
-    status: {
-      type: 'string',
-      enum: [...SPEC_STAGES],
-      description: 'Only specs currently at this stage',
-    },
-    changedSince: {
-      type: 'integer',
-      minimum: 0,
-      description: 'Only specs whose latest file mtime is at or after this epoch-ms timestamp',
-    },
-  },
-  additionalProperties: false,
-} as const
+type ContextVaultRuntimeModule = {
+  registerContextVault(ctx: PluginContextLike): void
+}
 
-const getInputJsonSchema = {
-  type: 'object',
-  properties: {
-    id: {
-      type: 'string',
-      description: "Full 'repo:change-name' id, or a bare change name when unique across repos",
-    },
-  },
-  required: ['id'],
-  additionalProperties: false,
-} as const
+const requireModule = import.meta.require
 
-const ListInputSchema = z.strictObject({
-  repo: z.string().min(1).optional(),
-  status: z.enum(SPEC_STAGES).optional(),
-  changedSince: z.number().int().nonnegative().optional(),
-})
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
 
-const GetInputSchema = z.strictObject({
-  id: z.string().min(1),
-})
+function isContextVaultRuntimeModule(value: unknown): value is ContextVaultRuntimeModule {
+  return isRecord(value) && typeof value['registerContextVault'] === 'function'
+}
 
-const toFilter = (parsed: z.infer<typeof ListInputSchema>): ContextVaultListFilter => ({
-  ...(parsed.repo === undefined ? {} : { repo: parsed.repo }),
-  ...(parsed.status === undefined ? {} : { status: parsed.status as SpecStage }),
-  ...(parsed.changedSince === undefined ? {} : { changedSince: parsed.changedSince }),
-})
+function getRuntimeModule(): ContextVaultRuntimeModule {
+  const moduleValue: unknown = requireModule('./runtime.js')
+  if (!isContextVaultRuntimeModule(moduleValue)) {
+    throw new Error('Invalid context-vault runtime module contract')
+  }
+  return moduleValue
+}
 
-const executeList = (input: unknown, runtimeContext: PluginToolRuntimeContext): Promise<unknown> =>
-  Promise.resolve().then(() => {
-    const parsed = ListInputSchema.parse(input)
-    return runtimeContext.contextVault.list(toFilter(parsed))
-  })
-
-const executeGet = (input: unknown, runtimeContext: PluginToolRuntimeContext): Promise<unknown> =>
-  Promise.resolve().then(() => {
-    const parsed = GetInputSchema.parse(input)
-    return runtimeContext.contextVault.get(parsed.id)
-  })
-
-const factory = (): { activate(ctx: PluginContext): void } => ({
-  activate(ctx: PluginContext): void {
-    ctx.log.info({}, 'context-vault plugin activated')
-
-    ctx.registration.registerTool({
-      name: 'list_agent_specs',
-      description:
-        'List coding-session spec changes pushed to the context vault, with stage, task progress, and freshness metadata',
-      inputSchema: listInputJsonSchema,
-      execute: executeList,
-    })
-
-    ctx.registration.registerTool({
-      name: 'get_agent_spec',
-      description:
-        'Read one context-vault spec change: one-line summary, detailed summary, outline, stage, progress, and freshness metadata',
-      inputSchema: getInputJsonSchema,
-      execute: executeGet,
-    })
+const factory = (): PluginInstanceLike => ({
+  activate(ctx: PluginContextLike): void {
+    getRuntimeModule().registerContextVault(ctx)
   },
 })
 
