@@ -19,6 +19,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Tag, changelog and a GitHub release — minutes of work. The guard is for a
+    # `bun add -g git-cliff` that hangs on a registry stall, which on a
+    # workflow_dispatch job nobody is watching is six hours of held runner.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

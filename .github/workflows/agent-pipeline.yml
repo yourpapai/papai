@@ -260,7 +260,21 @@ jobs:
     # happened. A **repository variable** rather than a workflow-level `env`
     # because `vars` is available to a job-level `timeout-minutes` and `env` is
     # not, which is the whole reason one spelling is expressible at all.
-    timeout-minutes: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 90 }}
+    #
+    # 300 rather than the 90 it read before, and rather than the 360 GitHub allows.
+    # 90 was measurably the binding bound: run 31669199768 parked "out of time"
+    # after 87m33s on step 12 of a 30-step plan, having spent 736k of a 5M token
+    # ceiling — time ran out, tokens were nowhere near. At ~7.7 minutes a step that
+    # plan needs about four hours, and on a public repository standard runners are
+    # free, so the minutes cost nothing; what a long job spends is a concurrency
+    # slot and this issue's serialization group.
+    #
+    # Not 360, which is the runner's own hard cap: `timeout-minutes` may only lower
+    # it, and at 360 the deadline this pipeline derives would land *after* the one
+    # GitHub enforces — the start is recorded by the step below, a few seconds into
+    # the job — so the stop would be killed mid-post, which is the silence the
+    # derived deadline exists to prevent. 300 keeps a full hour of real slack.
+    timeout-minutes: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 300 }}
 
     # The only gate left here, and it is deliberate rather than a leftover: the
     # filter ran on the door above, and what this adds is that a run whose issue
@@ -435,7 +449,7 @@ jobs:
           # With either unset there is no job deadline and the pipeline behaves
           # exactly as it did before, bounded by `AGENT_TIMEOUT_MS` alone.
           AGENT_JOB_STARTED_MS: ${{ steps.started.outputs.epoch }}
-          AGENT_JOB_TIMEOUT_MINUTES: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 90 }}
+          AGENT_JOB_TIMEOUT_MINUTES: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 300 }}
           AGENT_TEARDOWN_RESERVE_MS: ${{ vars.AGENT_TEARDOWN_RESERVE_MS }}
           # The middle slice of that clock: what a turn stopped part-way through gets
           # to finish the file it is in and say where it stopped. Held back from the

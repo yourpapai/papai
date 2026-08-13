@@ -569,14 +569,39 @@ the `git add`, the commit, the push, the comment, the state block and the label 
 stop still has to do, against an observed tail of about ten seconds.
 
 With the shrink in place the per-turn cap is free to be generous, and it now is:
-`AGENT_TIMEOUT_MS` defaults to an **hour** rather than the half-hour above. The
-30-minute default outlived the defect that made it dangerous and became the
+`AGENT_TIMEOUT_MS` defaults to **ninety minutes** rather than the half-hour above.
+The 30-minute default outlived the defect that made it dangerous and became the
 opposite problem — with the job ceiling at 90 it was the _only_ bound long runs
 ever reached, and three consecutive live runs ended at the same 33 minutes of
 wall clock, each one a single turn aborted at its cap, wrapped up and parked with
 an hour of paid-for runner unspent. Raising it cannot recreate D3, because the
 `min` above is what stands between a turn and the runner: a turn opened late gets
 what is left of the job minus the two slices, whatever this is set to.
+
+The pair has since moved together a second time, and that is the thing to
+remember when changing either. The job ceiling is **300 minutes** now, and at that
+size an hour-long turn cap was the binding bound again for the first four hours of
+every job — the same smallness one scale up, and the shape a phase that is one
+_indivisible_ turn would have died of: a plan with no steps, or
+`REVIEW_AND_MUTATE`, aborting at its cap and parking with hours of runner unspent.
+Raising the ceiling without raising the cap buys much less than it looks like it
+does.
+
+300 rather than the 360 GitHub allows, because `timeout-minutes` may only ever
+_lower_ the hosted-runner cap: a larger value is ignored and the job is killed at
+360 regardless. At exactly 360 the deadline this pipeline derives would land
+_after_ the one GitHub enforces — `AGENT_JOB_STARTED_MS` is recorded a few seconds
+into the job — so the stop would be cut off doing the one thing it exists to do.
+300 leaves a full hour of real slack over the three-minute reserve.
+
+What made 90 worth changing was a measurement rather than a preference. Run
+`31669199768` parked "out of time" after 87m33s on **step 12 of a 30-step plan**,
+having spent 736k of a 5 000 000-token ceiling: time ran out, tokens were nowhere
+near, and the remedy the notice suggests is this variable. At the ~7.7 minutes a
+step that run averaged, that plan wants about four hours. On a public repository
+standard runners are free, so a longer ceiling costs no minutes — what a long job
+spends is a concurrency slot and, because `cancel-in-progress` is `false`, this
+issue's serialization group.
 
 **A wall-clock stop is a ceiling reached, not work that broke**, and the pipeline
 says so in the vocabulary it already had: ⛔ rather than ❌, and a park in
@@ -1426,9 +1451,9 @@ cannot drift.
 | `AGENT_MAX_ATTEMPTS`                       | no       | `5`                                             | Failures before `/retry` stops resuming                |
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                             |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                            |
-| `AGENT_TIMEOUT_MS`                         | no       | `3600000`                                       | Timeout for one model turn, and for each subprocess    |
+| `AGENT_TIMEOUT_MS`                         | no       | `5400000`                                       | Timeout for one model turn, and for each subprocess    |
 | `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                         | Epoch ms this job began; the workflow's first step     |
-| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset — no job deadline                         | The job's own ceiling, shared with `timeout-minutes:`  |
+| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset here; `300` from the workflow             | The job's own ceiling, shared with `timeout-minutes:`  |
 | `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                        | Held back from the job so a time stop can report       |
 | `AGENT_WRAP_UP_MS`                         | no       | `120000`                                        | The model's slice of a stop: finish up and hand over   |
 | `AGENT_MAX_TOKENS`                         | no       | `5000000`                                       | Model tokens one issue may spend, across all its jobs  |
@@ -1484,7 +1509,12 @@ an extra digit puts it past any job's life, removing the bound instead. Both are
 positive integers that used to be accepted.
 `AGENT_JOB_TIMEOUT_MINUTES` accepts 1–1 440 and is the same repository variable the
 workflow's own `timeout-minutes:` reads — deliberately one value with two readers,
-since the pair kept in step by hand is the defect S5-11 records.
+since the pair kept in step by hand is the defect S5-11 records. The range is wider
+than a hosted runner can honour on purpose: it cannot tell a hosted runner (capped
+at 360 minutes) from a self-hosted one (five days), so a value over 360 loads here
+and is then ignored by GitHub, which kills the job at 360 anyway. On hosted runners
+treat 360 as the hard ceiling and leave room under it — the workflow's own fallback
+of 300 is where that room is taken.
 `AGENT_TEARDOWN_RESERVE_MS` accepts 1 000–1 800 000: below a second the reserve
 cannot post the comment and write the state block it exists for, and above half an
 hour it is larger than most jobs and stops every run before any phase begins.

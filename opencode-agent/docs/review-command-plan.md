@@ -47,12 +47,19 @@ after the review loop has finished.
 
 ### 1.1 The window, measured in configuration
 
-`agentTimeoutMs` (`AGENT_TIMEOUT_MS`, default 30 minutes) is applied three
-times over: as the deadline on the implementation model turn (`deadline.ts`), as
-the subprocess timeout on the whole review loop (`deps.ts:36-54` →
-`review-runner.ts:141`), and as the review loop's own per-agent and per-build
-timeout (`buildReviewLoopConfig`). Above that sits `timeout-minutes: 90` on the
-job. The review loop is configured with `maxRounds: 4` and `poolSize: 2` by
+`agentTimeoutMs` (`AGENT_TIMEOUT_MS`, default 90 minutes — 30 when this was
+written) is applied three times over: as the deadline on the implementation model
+turn (`deadline.ts`), as the subprocess timeout on the whole review loop
+(`deps.ts:36-54` → `review-runner.ts:141`), and as the review loop's own per-agent
+and per-build timeout (`buildReviewLoopConfig`). Above that sits
+`timeout-minutes: 300` on the job.
+
+Worth noting while these numbers move: only the **first** of those three uses is
+shrunk to fit the job's remaining clock (`turnTimeoutMs`, via the session's
+`timeoutMs` thunk). The review loop's subprocess and per-agent bounds read the raw
+`agentTimeoutMs`, so raising the default widens them too, and a review phase
+entered late in a job can hold a subprocess past the job's own deadline — the
+phase gate only asks before the phase, not inside it. The review loop is configured with `maxRounds: 4` and `poolSize: 2` by
 default.
 
 The honest reading: a small change buys one model turn of implementation and
