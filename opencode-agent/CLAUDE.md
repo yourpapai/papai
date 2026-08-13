@@ -242,7 +242,11 @@ findings: `ROADMAP.md`.
   side of the pipe because the credential must never be visible to a subprocess
   whose children the model controls. Everything the loop prints is repeated into
   the **public** Actions log as it arrives and into the **encrypted** transcript
-  unabridged — a subprocess that runs for an hour in silence is indistinguishable
+  unabridged — and `review-transcript.ts` folds the loop's own `trace.jsonl` in
+  after the child exits, which is this phase's equivalent of the tool activity the
+  implement phase feeds the transcript from. It is encrypted rather than uploaded
+  as a file for the reason the transcript exists: an Actions artefact is
+  downloadable by anyone with repository read access — a subprocess that runs for an hour in silence is indistinguishable
   from a hang, which is how run 31704544065 came to be cancelled at minute 60 with
   nothing to show for it. A failed loop is described by `describeFailure`, never by
   its exit code: a build gate, a runner deadline, a missing binary, an unresolvable

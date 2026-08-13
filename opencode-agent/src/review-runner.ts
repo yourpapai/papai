@@ -10,7 +10,9 @@ import type { Logger } from './logger.js'
 import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import type { TranscriptSink } from './progress.js'
-import type { CommandResult, CommandRunner, OutputStream } from './shell.js'
+import { collectLoopTranscript, realTranscriptFiles, reportLine } from './review-transcript.js'
+import type { TranscriptFiles } from './review-transcript.js'
+import type { CommandResult, CommandRunner } from './shell.js'
 
 /**
  * Drives the repository's own `review-loop/` workspace instead of a bespoke
@@ -131,27 +133,12 @@ export interface RunReviewLoopOptions {
   onFixMerged?: () => void
   /** Injected so a test can run the loop without touching a filesystem. */
   writeInputs?: WriteReviewInputs
+  /** The same seam for the trace collection that follows the run. */
+  files?: TranscriptFiles
   now?: () => number
 }
 
 const SUMMARY_TAIL_LINES = 60
-
-/**
- * The marker the loop prints when a fix is on the working branch.
- *
- * A line rather than a file or an exit code, because the loop is a subprocess
- * with one stream back to here and this has to arrive *while it runs* — the
- * whole point is that the fix is durable before the thing that kills the job
- * happens. `review-loop/src/cli.ts` writes it; the two are tested against this
- * constant on both sides.
- */
-export const FIX_MERGED_MARKER = '[review-loop] published'
-
-/** Longest line this repeats into the world-readable Actions log. */
-const PUBLIC_LINE_MAX = 500
-
-/** Longest line the encrypted transcript keeps. Generous — it is a debugging aid. */
-const TRANSCRIPT_LINE_MAX = 4_000
 
 /**
  * `review-loop` prints its summary to stdout before finalizing, so the tail of
@@ -229,31 +216,6 @@ export const describeFailure = (result: CommandResult, timeoutMs: number): strin
 }
 
 /**
- * Repeats one line of the loop into the two places it belongs.
- *
- * The **public** Actions log, because a subprocess that runs for an hour and
- * prints nothing is indistinguishable from a hang and gets cancelled — which is
- * exactly what happened to the review of #268. The loop's non-TTY output is its
- * own progress vocabulary (rounds, decisions, counts) rather than model text,
- * and the logger redacts this pipeline's credentials by value on the way out.
- *
- * And the **encrypted** transcript, unabridged, for the same reason the implement
- * phase feeds one: the public log is bounded on purpose, and a maintainer holding
- * the key should not have to guess what the bound removed.
- */
-const reportLine = (options: RunReviewLoopOptions, now: () => number, line: string, stream: OutputStream): void => {
-  options.log.info({ source: 'review-loop', stream }, line.slice(0, PUBLIC_LINE_MAX))
-  options.transcript?.write({
-    time: new Date(now()).toISOString(),
-    tool: 'review-loop',
-    status: stream,
-    detail: line.slice(0, TRANSCRIPT_LINE_MAX),
-    durationMs: null,
-  })
-  if (line.startsWith(FIX_MERGED_MARKER)) options.onFixMerged?.()
-}
-
-/**
  * Runs the review loop over the working tree. A non-zero exit is not thrown
  * here: the caller decides whether a red loop blocks delivery, and either way
  * the summary belongs on the issue.
@@ -295,5 +257,25 @@ export const runReviewLoop = async (options: RunReviewLoopOptions): Promise<Revi
   const failure = describeFailure(result, options.timeoutMs)
   log.info({ exitCode: result.exitCode, timedOut: result.timedOut === true, failure }, 'Review loop finished')
 
+  await collectTrace(options, now)
+
   return { outcome: result.exitCode === 0 ? 'passed' : 'failed', summary, exitCode: result.exitCode, failure }
+}
+
+/**
+ * The loop's own trace, taken after the child is gone and before this workspace
+ * is: it is the review phase's equivalent of the tool activity the implement
+ * phase feeds the transcript from, and it lives in a directory the runner
+ * deletes. Skipped entirely on a keyless run, which is the ordinary case.
+ */
+const collectTrace = async (options: RunReviewLoopOptions, now: () => number): Promise<void> => {
+  if (options.transcript === undefined) return
+
+  await collectLoopTranscript({
+    workDir: path.join(options.settings.repoRoot, AGENT_WORK_DIR, 'review-loop'),
+    transcript: options.transcript,
+    files: options.files ?? realTranscriptFiles,
+    log: options.log,
+    now,
+  })
 }

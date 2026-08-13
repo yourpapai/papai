@@ -92,6 +92,33 @@ describe('runReviewLoop output', () => {
     expect(rows[0]?.detail).toBe('[round 1/2] Reviewing...')
   })
 
+  test("collects the loop's own trace, which is the review phase's tool activity", async () => {
+    const rows: TranscriptRow[] = []
+
+    await runReviewLoop({
+      settings: settings(),
+      plan: '- [ ] one',
+      run: replaying(['[round 1/2] Reviewing...']),
+      env: {},
+      log: recordingLogger().logger,
+      timeoutMs: 1_000,
+      transcript: {
+        write: (row): void => {
+          rows.push(row)
+        },
+      },
+      files: {
+        listRuns: () => Promise.resolve(['2026-08-13T09-00-00-000Z-bbbb']),
+        readText: () => Promise.resolve('{"event":"fix_complete"}\n'),
+      },
+      writeInputs: () => Promise.resolve({ planPath: '/tmp/plan.md', configPath: '/tmp/config.json' }),
+    })
+
+    // The phase opens no OpenCode session, so without this the artefact a
+    // maintainer is told to read said nothing about the hour the loop spent.
+    expect(rows.map((row) => row.tool)).toEqual(['review-loop', 'review-loop-trace'])
+  })
+
   test('calls back when the loop says a fix landed on the branch', async () => {
     let merged = 0
 
