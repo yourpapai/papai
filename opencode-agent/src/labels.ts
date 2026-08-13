@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { PipelineConfig } from './config.js'
+import { feedbackTarget } from './feedback-target.js'
 import type { LabelApi } from './github-labels.js'
 import type { Logger } from './logger.js'
 import { NEEDS_YOU_LABEL, presentationFor, WORKING_LABEL } from './presentation.js'
@@ -104,6 +105,11 @@ export const desiredLabels = (state: AgentState, stance: RunStance, prefix: stri
  * Labels outside the prefix are never touched, in either direction. They are the
  * repository's own, this pipeline did not put them there, and removing one is
  * the worst thing this module could do.
+ *
+ * *Which* thing gets labelled is {@link feedbackTarget}'s answer: the pull
+ * request once one exists, because that is the surface a maintainer watches from
+ * the moment there is a diff, and an issue in a list view saying `agent:working`
+ * about work that lives in a pull request sends them to the wrong page.
  */
 export const reconcileLabels = async (deps: LabelDeps, state: AgentState, stance: RunStance): Promise<void> => {
   const prefix = deps.config.labelPrefix
@@ -144,23 +150,42 @@ export const settleLabels = async (deps: LabelDeps, result: RunResult, fallback:
   return result
 }
 
+/**
+ * Reconciles one target, then — when the labels have moved to a pull request —
+ * clears the issue.
+ *
+ * The clear is not tidiness. `desiredLabels` is what the state implies *on the
+ * surface a maintainer is watching*, and once a pull request exists that surface
+ * is the pull request; leaving the issue's copy behind would freeze it at
+ * whatever the state was the moment the pull request opened — `agent:working` on
+ * an issue nothing is working, for good, since no later reconcile would ever
+ * look at it again. Asking for an empty desired set on the issue reuses the
+ * repair the diff already is.
+ */
 const applyDiff = async (deps: LabelDeps, prefix: string, state: AgentState, stance: RunStance): Promise<void> => {
-  const current = await deps.github.listLabels(state.issueId)
-  const desired = desiredLabels(state, stance, prefix)
+  const target = feedbackTarget(state)
+  await diffOne(deps, prefix, target, desiredLabels(state, stance, prefix))
+  if (target !== state.issueId) await diffOne(deps, prefix, state.issueId, [])
+}
+
+const diffOne = async (
+  deps: LabelDeps,
+  prefix: string,
+  target: number,
+  desired: readonly QualifiedLabel[],
+): Promise<void> => {
+  const current = await deps.github.listLabels(target)
 
   const missing = desired.filter((label) => !current.includes(label.name))
   const stale = current.filter((name) => name.startsWith(prefix) && !desired.some((label) => label.name === name))
   if (missing.length === 0 && stale.length === 0) return
 
-  await addLabels(deps, state.issueId, missing)
+  await addLabels(deps, target, missing)
   // One at a time: there is no bulk delete, and the repo forbids awaiting in a
   // loop body.
-  await mapSeries(stale, (name) => deps.github.removeLabel(state.issueId, name))
+  await mapSeries(stale, (name) => deps.github.removeLabel(target, name))
 
-  deps.log.debug(
-    { issue: state.issueId, added: missing.map((label) => label.name), removed: stale },
-    'Reconciled the issue labels',
-  )
+  deps.log.debug({ target, added: missing.map((label) => label.name), removed: stale }, 'Reconciled the labels')
 }
 
 /**

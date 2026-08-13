@@ -260,9 +260,9 @@ findings: `ROADMAP.md`.
   `resolvePullRequestTrigger` in `pr-trigger.ts` recovers the issue from the head
   branch, `agent/issue-<n>`, the same link a red CI run travels; that costs an API
   call, which is why it is a second step and not a branch of the pure
-  `parseTriggerEvent`. Its **order is the design**: the `/review` test is free and
-  comes first, so every ordinary code-review comment on every pull request in the
-  repository is dropped with no lookup at all — the head lookup that follows is
+  `parseTriggerEvent`. Its **order is the design**: the slash-command test is free
+  and comes first, so every ordinary code-review comment on every pull request in
+  the repository is dropped with no lookup at all — the head lookup that follows is
   not free, so nothing may be moved in front of it and nothing that reads its
   answer may be moved behind. The fork check is the one to get right. `head.ref`
   is attacker-controlled, so a pull request opened from a fork whose branch is
@@ -283,9 +283,29 @@ findings: `ROADMAP.md`.
   a compile error rather than a silent bucketing. The report and the state block
   still go to the issue whichever door was used, and that is not a preference: a
   block on the pull request is a second source of truth the restore scan cannot
-  see. `applyPullRequestCommand` keeps refusing everything but `/review` even
-  though the resolver means nothing else can reach it, because a decision enforced
-  only by whichever layer filters first is one a second door quietly repeals.
+  see.
+- **Once a pull request exists, it is the surface — but not the record.**
+  `feedback-target.ts` holds both halves. The **live** channels move the moment
+  `prNumber` is set: the status comment opens on the pull request, the labels are
+  reconciled there, and `commandSurface` refuses a command typed on the issue with
+  a reply naming where to type it — not "does not apply", which would be false
+  twice over, since the command applies perfectly and would have worked one page
+  over. The **record** does not move: `AGENT_STATE` and `AGENT_REPORT` stay in
+  blocks on the issue, because `findLatestState` scans exactly one thread and a
+  block on a pull request is a second source of truth that scan cannot see. That
+  split is why this is two functions rather than one `target()` every caller
+  reads — the day the two questions are answered by one function is the day a
+  state block lands on a pull request. Three consequences not to undo. The label
+  reconcile **clears the issue** when it writes the pull request, because a copy
+  left behind would freeze at whatever the state was that day and no later
+  reconcile would ever look at it again. `applyPullRequestCommand` no longer
+  narrows to `/review`: with the issue refusing commands, a narrowing there would
+  leave `/retry`, `/cancel` and `/ask` nowhere at all to be typed, and which
+  commands a state accepts is `applyCommand`'s one answer for both doors. And the
+  workflow's pull-request arm names **every** command in `SLASH_COMMANDS` (checked
+  against it by `workflow.test.ts`) while the label cleanup step reaches both the
+  issue and the pull request, since which of the two carries a stranded
+  `agent:working` depends on how far the killed run got.
 - **One model endpoint.** Everything goes through `openai-config.ts`; there are
   no provider-specific keys and no second place a model is named. OpenCode is
   never handed the real key: `provider-proxy.ts` holds it and `contain()` in

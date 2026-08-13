@@ -11,11 +11,12 @@ name: OpenCode Issue Agent
 # drop what does not apply, cheaply and with a reason in the log.
 #
 # On a **pull request** the trade runs the other way and the third arm of the
-# condition below does filter on the body. There is no conversation to strand
-# there: `/review` is the only command that door accepts, while every pull
-# request in a repository collects ordinary code-review comments, and each one
-# of those would otherwise start a job and buy an API call reading the pull
-# request's head.
+# condition below does filter on the body — on *every* command, not on `/review`
+# alone, because once a pull request exists it is the surface the issue is driven
+# from and a command typed on the issue is refused and pointed here. What is
+# still dropped is prose: every pull request in a repository collects ordinary
+# code-review comments, and each one would otherwise start a job and buy an API
+# call reading the pull request's head.
 on:
   issues:
     types: [opened]
@@ -95,12 +96,20 @@ jobs:
     #
     # The third arm is the pull-request door, and it mirrors what the pipeline
     # now accepts: `parsePullRequestEvent`'s shape filter, the resolver's
-    # `/review` test, and `checkSender`. Four things about it are deliberate.
+    # slash-command test, and `checkSender`. It admits **every** command rather
+    # than `/review` alone, because a pull request is now the surface an issue
+    # with one is driven from — `commandSurface` refuses a command typed on the
+    # issue there — so a narrower arm here would leave `/retry`, `/cancel` and
+    # `/ask` with nowhere to be typed at all. The list is spelled out one
+    # `contains` at a time because GitHub expressions have no way to ask "does
+    # this string start with any of these"; `workflow.test.ts` checks it against
+    # `SLASH_COMMANDS` so a new command cannot be added to the vocabulary and
+    # forgotten here. Four things about it are deliberate.
     # It reads `github.event.comment.author_association` outright, with none of
     # the `|| issue.author_association` fallback the arm above uses — that
     # payload always carries a comment, `parsePullRequestEvent` takes the
     # commenter's rights, and the pull request's own author has nothing to do
-    # with who may command the agent from it. The `contains(…, '/review')` is a
+    # with who may command the agent from it. The `contains` group is a
     # first-pass filter only: `parseSlashCommand` re-parses, requires the
     # command to start a line and ignores fenced code blocks, and none of that
     # is expressible here — the arm exists so an event that will be dropped
@@ -108,7 +117,7 @@ jobs:
     # closed or merged pull request, a branch the agent does not own — needs an
     # API call and is not attempted here. And the arm above keeps its
     # `pull_request == null`: it is what still drops a pull-request comment
-    # carrying no `/review`.
+    # carrying no command at all.
     #
     # The fourth arm is Design D7's archive door: a merged pull request on an
     # agent branch whose head is this repository. The in-process parse checks the
@@ -133,7 +142,13 @@ jobs:
        (github.event_name == 'issue_comment' &&
         github.event.action == 'created' &&
         github.event.issue.pull_request != null &&
-        contains(github.event.comment.body, '/review') &&
+        (contains(github.event.comment.body, '/approve') ||
+         contains(github.event.comment.body, '/changes') ||
+         contains(github.event.comment.body, '/ask') ||
+         contains(github.event.comment.body, '/retry') ||
+         contains(github.event.comment.body, '/cancel') ||
+         contains(github.event.comment.body, '/review') ||
+         contains(github.event.comment.body, '/continue')) &&
         github.event.sender.type != 'Bot' &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
        ||
@@ -687,6 +702,15 @@ jobs:
           # one. The empty test in the body stays — it is what makes this script
           # runnable on its own, and the test suite runs it.
           ISSUE_NUMBER: ${{ needs.resolve.outputs.issue }}
+          # The branch this run belongs to, which is the only handle this step
+          # has on the *pull request*. Once one exists the reconcile writes its
+          # labels there rather than on the issue (see `feedback-target.ts`), so
+          # a cleanup that only reached the issue would leave the marker exactly
+          # where it is now most likely to be. Resolved from the branch rather
+          # than passed down, because no event payload carries a pull request
+          # number for a run triggered from the issue or from CI.
+          BRANCH: ${{ needs.resolve.outputs.branch }}
+          GH_REPO: ${{ github.repository }}
           # Read exactly the way `labelPrefix()` in src/config-values.ts reads
           # it: trimmed, defaulted, and `none` compared case-insensitively. A
           # repository that switched labelling off must not have this step reach
@@ -718,4 +742,19 @@ jobs:
           # second thing Semgrep's bash grammar gives up on here.
           if ! gh issue edit "$ISSUE_NUMBER" --remove-label "${prefix}working"; then
             echo "Could not remove ${prefix}working; the next run's reconcile takes it off."
+          fi
+
+          # And on the pull request, which is where the marker lives once one is
+          # open. Both, not one or the other: which of the two carries it depends
+          # on how far the run got before it was killed, and this step cannot
+          # know that. Every part of this is best-effort — no branch, no open
+          # pull request, or a lookup that fails, are all "nothing to clean up".
+          if [ -z "$BRANCH" ]; then
+            exit 0
+          fi
+          pr="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' || true)"
+          if [ -n "$pr" ]; then
+            if ! gh pr edit "$pr" --remove-label "${prefix}working"; then
+              echo "Could not remove ${prefix}working from that pull request; the next run's reconcile takes it off."
+            fi
           fi

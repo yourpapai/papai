@@ -122,9 +122,22 @@ moves the phase and the handler runs behind it in the same job, exactly as
 | `/continue`                 | `INCOMPLETE`                 | Pick up the phase the job ran out of time for                  |
 | `/cancel`                   | anything but `COMPLETE`      | Stop for good — a cancelled issue cannot be restarted          |
 
-**`/review` has two doors and one answer.** It is typed on the issue, where every
-other command works, or on the pull request, which is where the diff actually is.
-The pull request is the narrower door: it accepts `/review` and nothing else.
+**Where a command is typed depends on whether a pull request exists.** Until one
+does, the issue is the only surface and every command is typed there. From the
+moment `state.prNumber` is set, the pull request takes over: it is where the diff,
+the checks and the merge button are, so it is where the live status comment opens,
+where the `agent:*` labels are reconciled, and where commands are accepted. A
+command typed on the issue after that is refused with a comment naming the pull
+request — not "does not apply", which would be false twice over, since the command
+applies perfectly and would have worked one page over. `src/feedback-target.ts`
+holds both halves of that rule.
+
+**The record does not move.** `AGENT_STATE` and `AGENT_REPORT` stay in hidden
+blocks on the **issue**, whichever surface the command arrived on, because
+`findLatestState` scans exactly one thread and a block on a pull request would be
+a second source of truth that scan cannot see. So a `/review` typed on the pull
+request is answered by a report on the issue and a short note on the pull request
+pointing at it — see below.
 
 A comment typed on a pull request has to name its issue before anything else in
 this pipeline can run, and the payload does not carry one —
@@ -134,10 +147,12 @@ branch, exactly as it is for a red CI run: `head.ref` is `agent/issue-<n>`, and
 (`src/pr-trigger.ts`) reads the head through the API and recovers the issue from
 it, in an order that is the design rather than a preference:
 
-1. **`/review`, or nothing.** Parsed by the same `parseSlashCommand` the issue
-   path uses, so a command has to start a line and a fenced block is ignored.
-   Every other comment on every pull request in the repository is dropped here,
-   with no API call at all — which is the whole reason the test comes first.
+1. **A slash command, or nothing.** Parsed by the same `parseSlashCommand` the
+   issue path uses, so a command has to start a line and a fenced block is
+   ignored. Every other comment on every pull request in the repository is
+   dropped here, with no API call at all — which is the whole reason the test
+   comes first. The door used to admit `/review` alone; it cannot now that the
+   issue refuses commands, or `/retry` and `/cancel` would have nowhere to go.
 2. **The head, from the API**, because nothing on the payload carries it.
 3. **The head repository is this one**, or `PR_FOREIGN_REPOSITORY` — the fork
    guard, and the one check here that is not bookkeeping. See **Guardrails**.
@@ -170,14 +185,13 @@ no note at all — a pointer to the page you are already reading is noise — an
 is decided from the trigger kind, in `src/pull-request-note.ts`, because the phase
 cannot tell the two doors apart.
 
-**`/ask` from a pull request is deliberately absent**, though it would have been
-nearly free once this door existed. It widens the surface from "one command naming
-a branch the agent owns" to a conversation, and its answer would still be posted
-on the issue — confusing in a way `/review` is not, since `/review`'s real output
-is commits on the branch the reader is already looking at. `applyPullRequestCommand`
-refuses everything else anyway, although the resolver means nothing else can reach
-it: a decision enforced only by whichever layer filters first is one a second door
-quietly repeals.
+**`/ask` from a pull request used to be deliberately absent**, on the argument
+that its answer would land on the issue while the reader was looking at the diff.
+That answer still lands on the issue — the record does not move — but refusing it
+no longer follows: with commands on the issue refused too, `/ask` would have had
+nowhere at all to be typed. `applyPullRequestCommand` now hands every command to
+`applyCommand`, which is the one place that decides what a state accepts, so the
+two doors cannot disagree about it.
 
 `/review` is also the first command `COMPLETE` has ever accepted, and the only
 one whose availability the transition table cannot decide alone. `COMPLETE` is
@@ -1756,7 +1770,7 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/agent-handle.ts`                         | The OpenCode session's lifetime within one job                          |
 | `src/orchestrator.ts`                         | The state machine: guardrails and the phase cascade                     |
 | `src/trigger-events.ts`                       | What a raw webhook payload becomes, for each of the three kinds         |
-| `src/pr-trigger.ts`                           | Resolving a `/review` typed on a pull request back to its issue         |
+| `src/pr-trigger.ts`                           | Resolving a command typed on a pull request back to its issue           |
 | `src/triggers.ts`                             | Turning a command or comment into the state move to make                |
 | `src/ci-trigger.ts`                           | Whether a red check run buys a fix round, a notice, or nothing          |
 | `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                    |
@@ -1766,6 +1780,7 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/presentation.ts`                         | One glyph, label, headline and whose-turn per state an issue can be in  |
 | `src/outcomes.ts`                             | The second vocabulary: one glyph per outcome a comment announces        |
 | `src/feedback.ts` / `src/labels.ts`           | The reaction channel, and the label reconcile                           |
+| `src/feedback-target.ts`                      | Which of the issue and its pull request a run speaks on, and takes from |
 | `src/status-comment.ts` / `-reporter.ts`      | What the run's live comment says, and when it is edited                 |
 | `src/state-persist.ts`                        | Recording what a run spent without posting a comment                    |
 | `src/step-output.ts`                          | The one thing a run tells the rest of its own workflow job              |

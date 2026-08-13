@@ -83,7 +83,10 @@ export const renderClosing = (state: AgentState): string =>
         `The work is in ${state.prUrl}.`,
         '',
         'If that pull request goes red I will still pick it up and push a fix.',
-        'Reply **`/review`** here to run the review loop over the branch and push whatever it finds.',
+        // Named there rather than here on purpose: with a pull request open, a
+        // command typed on this issue is refused and pointed at it — see
+        // `feedback-target.ts` — so inviting one here would be inviting a refusal.
+        'Comment **`/review`** *on the pull request* to run the review loop over the branch and push what it finds.',
       ].join('\n')
 
 /**
@@ -138,6 +141,31 @@ export const renderSettled = (state: AgentState): string =>
  * The accepted list is derived from the transition table rather than written
  * out here, so it cannot drift away from what the machine will actually take.
  */
+/**
+ * The reply to a command typed in the right words on the wrong page.
+ *
+ * Separate from {@link renderRefusedCommand} because that one's sentence — "I am
+ * parked in `X`, which does not accept it" — would be false here twice over: the
+ * phase accepts the command perfectly well, and nothing about the state is the
+ * reason. The only fact worth saying is where to type it again, so that is the
+ * whole comment.
+ *
+ * The pull request is named by URL when there is one and by nothing at all when
+ * there is not, which cannot happen — `commandSurface` returns `elsewhere` only
+ * when `prNumber` is set, and `prUrl` is written beside it — but a renderer that
+ * cannot be handed a broken state is one fewer thing to check.
+ */
+export const renderCommandElsewhere = (command: string, prUrl: string | null): string =>
+  [
+    outcomeHeading('COMMAND_REFUSED', `\`${command}\` belongs on the pull request now`),
+    '',
+    prUrl === null
+      ? 'This issue has a pull request open, and that is where I take commands from once one exists.'
+      : `This issue's work is in ${prUrl}, and that is where I take commands from once a pull request is open.`,
+    '',
+    `Type \`${command}\` there instead. Nothing has changed here — the report and the state still live on this issue.`,
+  ].join('\n')
+
 export const renderRefusedCommand = (command: string, phase: Phase, accepted: readonly string[]): string =>
   [
     outcomeHeading('COMMAND_REFUSED', `\`${command}\` does not apply right now`),
