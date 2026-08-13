@@ -46,7 +46,7 @@ Test-first order per design.md §10: every implementation file under `src/` or `
 - [x] 7.1 Write failing lock-file singleton tests (live lock no-op, dead-PID/expired-heartbeat reclaim, concurrent contenders, injected clock/fs) under `tests/context-vault-indexer/lock.test.ts` — `bun test tests/context-vault-indexer/lock.test.ts`
 - [x] 7.2 Implement `context-vault-indexer/lock.ts` — `bun test tests/context-vault-indexer/lock.test.ts`
 - [x] 7.3 Write failing daemon tests (scan detects changed/deleted `*.md`, persisted hash map survives restart, delta push payload shape, backoff on push failure) under `tests/context-vault-indexer/daemon.test.ts` — `bun test tests/context-vault-indexer/daemon.test.ts`
-- [ ] 7.4 Implement `context-vault-indexer/daemon.ts` (periodic scan, hash-map persistence, `fetch` push with bearer token) — `bun test tests/context-vault-indexer/daemon.test.ts`
+- [x] 7.4 Implement `context-vault-indexer/daemon.ts` (periodic scan, hash-map persistence, `fetch` push with bearer token) — `bun test tests/context-vault-indexer/daemon.test.ts`
 - [ ] 7.5 Implement `context-vault-indexer/adapters/opencode.ts` (activation performs lock check, spawns detached daemon, never watches in-process) with an adapter test — `bun test tests/context-vault-indexer && bun run typecheck`
 
 ## 8. Story-tier integration

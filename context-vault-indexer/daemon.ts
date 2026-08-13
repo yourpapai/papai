@@ -162,3 +162,34 @@ export async function scanOnce(config: DaemonConfig, deps: DaemonDeps): Promise<
 
   return { scanned: current.length, pushedChanges: final.pushedChanges, failedChanges: final.failedChanges }
 }
+
+export type RunDaemonOptions = {
+  intervalMs: number
+  signal: AbortSignal
+}
+
+/**
+ * Periodic scan loop. Chained promise scheduling rather than an awaited loop so
+ * no pending frame accumulates across iterations of a long-lived process.
+ * Resolves once the abort signal fires.
+ */
+export function runDaemon(config: DaemonConfig, deps: DaemonDeps, options: RunDaemonOptions): Promise<void> {
+  return new Promise((resolve) => {
+    const tick = (): void => {
+      if (options.signal.aborted) {
+        resolve()
+        return
+      }
+      void scanOnce(config, deps)
+        .then(() => (options.signal.aborted ? undefined : deps.sleep(options.intervalMs)))
+        .then(() => {
+          if (options.signal.aborted) {
+            resolve()
+            return
+          }
+          tick()
+        })
+    }
+    tick()
+  })
+}

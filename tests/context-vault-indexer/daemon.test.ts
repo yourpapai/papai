@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 
 import {
+  runDaemon,
   scanOnce,
   type DaemonConfig,
   type DaemonDeps,
@@ -96,6 +97,23 @@ const SavedStateSchema = z.object({
 })
 
 const savedStateAt = (fs: FakeDaemonFs, index: number, fallback: string): string => fs.savedStates[index] ?? fallback
+
+// Fake fs that aborts the controller once listMarkdownFiles has been called `abortAfter` times.
+const makeAbortingFs = (controller: AbortController, abortAfter: number): { fs: FakeDaemonFs; scans: () => number } => {
+  const base = makeFakeFs({ [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha\n', 100) })
+  let scans = 0
+  return {
+    scans: () => scans,
+    fs: {
+      ...base,
+      listMarkdownFiles: (dir: string) => {
+        scans += 1
+        if (scans >= abortAfter) controller.abort()
+        return base.listMarkdownFiles(dir)
+      },
+    },
+  }
+}
 
 const PushBodySchema = z.object({
   repo: z.string(),
@@ -279,5 +297,19 @@ describe('context-vault-indexer daemon scanOnce', () => {
     expect(result.scanned).toBe(1)
     expect(pushes).toHaveLength(1)
     expect(bodyOf(pushes[0]!).changeName).toBe('alpha')
+  })
+})
+
+describe('runDaemon', () => {
+  test('rescans on each interval tick until the abort signal fires', async () => {
+    const controller = new AbortController()
+    const { fs, scans } = makeAbortingFs(controller, 2)
+    const { deps, pushes, sleeps } = makeDeps(fs)
+
+    await runDaemon(CONFIG, deps, { intervalMs: 5_000, signal: controller.signal })
+
+    expect(scans()).toBe(2)
+    expect(pushes).toHaveLength(1)
+    expect(sleeps).toEqual([5_000])
   })
 })
