@@ -2206,6 +2206,119 @@ describe('CI fixing', () => {
   })
 
   /**
+   * Run 31779566286, as a test.
+   *
+   * The round diagnosed the failure correctly — the `test` check needed setup
+   * `agent-pipeline.yml` did not do — wrote the one file a push cannot carry,
+   * had it dropped at staging, and reported "Pushed a fix: no — nothing
+   * changed". CI stayed red on the same failure, the next red run bought another
+   * round, and the pull request's whole `ciAttempts` budget went on two rounds
+   * that each announced they had done nothing.
+   */
+  const blockedCommit = (dropped: string[]): void => {
+    harness.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'blocked', dropped })
+  }
+
+  /** The round's report, as a string whichever way the post list came out. */
+  const report = (): string => String(harness.io.posted[0])
+
+  test('a round whose only fix a push cannot carry says so, and names the file', async () => {
+    blockedCommit(['.github/workflows/agent-pipeline.yml'])
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(report()).toContain('.github/workflows/agent-pipeline.yml')
+    expect(report()).not.toContain('nothing changed')
+  })
+
+  test('and tells the maintainer the fix exists but is theirs to apply', async () => {
+    // The only move left. Without it the report names a file and leaves the
+    // reader to work out that a human has to do something, which is how the
+    // same round ran three times.
+    blockedCommit(['.github/workflows/agent-pipeline.yml'])
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(report()).toContain('by hand')
+  })
+
+  test('a green verdict on a round that pushed nothing is scoped to the job', async () => {
+    // "Local checks: ✅ green" beside "Pushed a fix: no" reads as "all fine".
+    // It was true of the runner the repair turn had just run `build:client` and
+    // `docker pull` on, and false of the branch, which nothing had touched.
+    blockedCommit(['.github/workflows/agent-pipeline.yml'])
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(report()).toContain('this job')
+    expect(report()).toContain('the branch is unchanged')
+  })
+
+  test('records the blocked path in the state block, not only in the comment', async () => {
+    // Asserted on the persisted state rather than the prose: a state that is
+    // never posted never happened, and the next round reads the block.
+    blockedCommit(['.github/workflows/agent-pipeline.yml'])
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.ciBlockedPaths).toEqual(['.github/workflows/agent-pipeline.yml'])
+  })
+
+  test("the next round's prompt names what the last one could not push", async () => {
+    // The loop this closes. Without it every round re-derives the same blocked
+    // edit from the same red check, because nothing in its context says the last
+    // round already tried exactly that.
+    blockedCommit(['.github/workflows/agent-pipeline.yml'])
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    harness.io.checkResults.set('lint', { command: 'lint', exitCode: 1, stdout: 'lint blew up', stderr: '' })
+    harness.io.prompts.length = 0
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(String(harness.io.prompts[0]?.prompt)).toContain('.github/workflows/agent-pipeline.yml')
+  })
+
+  test('a round that pushes clears the blocked paths the last one recorded', async () => {
+    // Otherwise a stale path follows the pull request around for ever, warning
+    // every later round off an edit nothing is blocking any more.
+    blockedCommit(['.github/workflows/agent-pipeline.yml'])
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+    harness.deps.git.commitAll = (): Promise<CommitOutcome> =>
+      Promise.resolve({ kind: 'committed', totals: { files: 1, lines: 4 }, dropped: [] })
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.ciBlockedPaths).toEqual([])
+  })
+
+  test('a blocked round that left checks red does not also claim it changed nothing', async () => {
+    // Two statements that cannot both be true. "I changed nothing" describes a
+    // round that wrote nothing; this one wrote a fix and could not deliver it.
+    harness.io.checkResults.set('test', { command: 'test', exitCode: 1, stdout: 'still failing', stderr: '' })
+    blockedCommit(['.github/workflows/agent-pipeline.yml'])
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(report()).not.toContain('I changed nothing')
+  })
+
+  test('a partial drop is reported even though the round did push', async () => {
+    // The case that misleads: work landed, so every other signal reads as
+    // success while part of the fix is silently absent.
+    harness.deps.git.commitAll = (): Promise<CommitOutcome> =>
+      Promise.resolve({
+        kind: 'committed',
+        totals: { files: 1, lines: 4 },
+        dropped: ['.github/workflows/agent-pipeline.yml'],
+      })
+
+    await runPipeline({ event: ciEvent(), deps: harness.deps })
+
+    expect(report()).toContain('.github/workflows/agent-pipeline.yml')
+    expect(report()).toContain('Pushed a fix: yes')
+  })
+
+  /**
    * The checks this phase reproduces are the ones **CI** ran; the ones a commit has to
    * satisfy are the repository's own, over the staged files, and they are not the same
    * set — so a round that got every configured check green can still be turned away at

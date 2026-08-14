@@ -1404,7 +1404,7 @@ describe('buildCiFixPrompt', () => {
     // `check-loop.ts` caps each failure at 8k on the way in, which bounds one
     // log and nothing else: three red checks put 24k into every repair round,
     // and the round budget re-sends that prompt each time.
-    const prompt = buildCiFixPrompt(envelope, [failure('lint', 8000), failure('typecheck', 8000)], 1, 1000)
+    const prompt = buildCiFixPrompt(envelope, [failure('lint', 8000), failure('typecheck', 8000)], 1, [], 1000)
 
     // 'Z' appears nowhere in the surrounding instructions, so this counts the
     // check output alone.
@@ -1412,7 +1412,7 @@ describe('buildCiFixPrompt', () => {
   })
 
   test('spends the budget on the failure that actually has output', () => {
-    const prompt = buildCiFixPrompt(envelope, [failure('lint', 20), failure('test', 8000)], 1, 1000)
+    const prompt = buildCiFixPrompt(envelope, [failure('lint', 20), failure('test', 8000)], 1, [], 1000)
 
     expect(prompt).toContain('## lint (exit 1)')
     // The short one is whole; the long one got what it left behind.
@@ -1421,14 +1421,14 @@ describe('buildCiFixPrompt', () => {
   })
 
   test('still names every failing check when the output is clipped', () => {
-    const prompt = buildCiFixPrompt(envelope, [failure('lint', 8000), failure('test', 8000)], 1, 100)
+    const prompt = buildCiFixPrompt(envelope, [failure('lint', 8000), failure('test', 8000)], 1, [], 100)
 
     expect(prompt).toContain('## lint (exit 1)')
     expect(prompt).toContain('## test (exit 1)')
   })
 
   test('keeps each clipped output inside its own envelope', () => {
-    const prompt = buildCiFixPrompt(envelope, [failure('lint', 8000), failure('test', 8000)], 1, 200)
+    const prompt = buildCiFixPrompt(envelope, [failure('lint', 8000), failure('test', 8000)], 1, [], 200)
 
     // Two failures, two envelopes — clipping must not cut through a delimiter.
     expect(prompt.split('</untrusted_input:abc123>')).toHaveLength(3)

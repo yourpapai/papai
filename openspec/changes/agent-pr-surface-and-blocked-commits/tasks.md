@@ -45,21 +45,25 @@ restore path. Each group is independently verifiable and commits on its own.
 
 ## 3. The CI-fix report tells the truth (D3, D6)
 
-- [ ] 3.1 Failing test: `renderCiReport` names the blocked file and says a
+- [x] 3.1 Failing test: `renderCiReport` names the blocked file and says a
       maintainer must apply it by hand; it never prints "nothing changed" when
       `dropped` is non-empty; and with nothing pushed it scopes the green
-      verdict to the job rather than the branch.
-      `bun test tests/opencode-agent/phases.test.ts`
-- [ ] 3.2 Rewrite `renderCiReport` against the union from 2.2. Keep the two
-      run links and the attempt counter as they are.
-      `bun test tests/opencode-agent/phases.test.ts`
-- [ ] 3.3 Failing test: a dropped path is recorded in `AGENT_STATE`, and the
-      next round's CI-fix prompt names it as already blocked. Assert the
-      persisted state, not just the rendered prompt.
-      `bun test tests/opencode-agent/phases.test.ts`
-- [ ] 3.4 Carry the dropped path through the state block and into
-      `buildCiFixPrompt`. Additive field with a default — no `STATE_VERSION`
-      bump. `bun test tests/opencode-agent/state.test.ts && bun run typecheck`
+      verdict to the job rather than the branch. Driven end to end through
+      `runPipeline` in the CI-fixing suite.
+      `bun test tests/opencode-agent/orchestrator.test.ts`
+- [x] 3.2 Rewrite `renderCiReport` against the union from 2.2. Keep the two
+      run links and the attempt counter as they are. The still-red branch
+      needed the same treatment — it claimed "I changed nothing" for a round
+      whose fix was dropped.
+      `bun test tests/opencode-agent/orchestrator.test.ts`
+- [x] 3.3 Failing test: a dropped path is recorded in `AGENT_STATE`, and the
+      next round's CI-fix prompt names it as already blocked. Asserted on the
+      persisted state, plus that a round which pushes clears it.
+      `bun test tests/opencode-agent/orchestrator.test.ts`
+- [x] 3.4 Carry the dropped path through the state block (`ciBlockedPaths`) and
+      into `buildCiFixPrompt`. Additive field with a default — no
+      `STATE_VERSION` bump.
+      `bun test tests/opencode-agent/ && bun run typecheck`
 
 ## 4. The pull request becomes the surface (D4)
 

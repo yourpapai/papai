@@ -131,6 +131,29 @@ export const agentStateSchema = z.object({
    */
   reviewAttempts: z.number().int().min(0).default(0),
   /**
+   * Paths the last CI-fix round wrote and could not push, so the next round is
+   * told before it re-derives them.
+   *
+   * A red check has one root cause, and every round diagnoses it afresh from the
+   * same output — so when the fix lands on a file `stageAllowed` drops, each
+   * round writes the same edit, drops it, and reports having done nothing. Run
+   * 31779566286 spent a pull request's whole `ciAttempts` budget that way, on
+   * two consecutive rounds whose only edit was `agent-pipeline.yml`.
+   *
+   * Rewritten by **every** round rather than accumulated, and cleared by one that
+   * pushes: it is a fact about the round just run, not a history. A path that
+   * stayed blocked is written again by the round that hit it, and a stale entry
+   * would warn later rounds off an edit nothing is blocking any more.
+   *
+   * Deliberately not a reason to *refuse* the next round — the maintainer may
+   * have applied the file by hand between the two, and only running the checks
+   * can tell. It is `AGENT_MAX_CI_ATTEMPTS` that bounds the bouncing.
+   *
+   * Needs no `STATE_VERSION` bump — it defaults, exactly as `changedLines` and
+   * `stepsDone` do, and a bump strands every issue in flight.
+   */
+  ciBlockedPaths: z.array(z.string()).default([]),
+  /**
    * Lines the implementation commit changed, as the diff guard measured them.
    *
    * The pipeline already held this figure and threw it away: `guardStaged` folds
