@@ -48,17 +48,6 @@ export interface PipelineConfig {
   reviewPoolSize: number
   agentTimeoutMs: number
   /**
-   * Ceiling on **the whole review loop**, which is a phase rather than a turn.
-   *
-   * Kept apart from {@link agentTimeoutMs} because the two bound different
-   * things and want opposite sizes: that one is what catches a model turn which
-   * will never answer, so it must stay small enough to detect one, while this
-   * covers rounds of reviewer, fixer, inspector and build-gate subprocesses that
-   * legitimately take hours. Bounding the loop by the turn cap killed the review
-   * phase at 90 minutes with most of the job unspent — see `reviewBudget`.
-   */
-  reviewTimeoutMs: number
-  /**
    * Epoch ms at which this **job** is killed by its own `timeout-minutes`, or
    * `null` when nothing has said.
    *

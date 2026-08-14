@@ -72,33 +72,6 @@ export const TIMEOUT_RANGE: IntRange = { min: 1_000, max: 7_200_000 }
 export const DEFAULT_TURN_TIMEOUT_MS = 5_400_000
 
 /**
- * Four hours for the whole review loop, and one minute to one day for the range.
- *
- * A separate knob from {@link DEFAULT_TURN_TIMEOUT_MS} because it answers a
- * different question. That one is the cap on a single uninterrupted model turn,
- * and its size is bounded from *above* by its second job — past a point, a cap
- * large enough never to interrupt real work no longer detects a turn that will
- * never answer. The review loop has no such second job: it is a phase made of
- * dozens of separately-bounded subprocesses, each already caught by its own
- * `agentTimeoutMs`, so the only thing this has to be is large enough not to cut
- * an honest run in half.
- *
- * Four hours is under the five the workflow's own `timeout-minutes` allows, so on
- * a runner the job's clock — not this — is what a long review actually reaches,
- * and `reviewBudget` shrinks the loop to fit whatever is left of it. It matters
- * on its own only for a run with no job deadline at all, which is every local
- * `--event-path` invocation.
- *
- * The range's floor is a minute, below which the loop cannot finish opening a
- * worktree, let alone review anything. Its ceiling is a day, matching
- * {@link JOB_MINUTES_RANGE}: a value beyond the job it runs inside cannot bound
- * anything, and one beyond a day is not a bound anybody meant to set.
- */
-export const DEFAULT_REVIEW_TIMEOUT_MS = 14_400_000
-
-export const REVIEW_TIMEOUT_RANGE: IntRange = { min: 60_000, max: 86_400_000 }
-
-/**
  * When the job began, as epoch milliseconds, from the runner rather than from an
  * operator.
  *

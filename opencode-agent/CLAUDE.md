@@ -270,8 +270,10 @@ findings: `ROADMAP.md`.
   of separately-bounded subprocesses across several rounds. Bounded by the turn cap,
   run 31803380299 was killed at exactly 90 minutes with one finding of six fixed and
   three hours of job left. So the loop gets what is left of the **job's** clock less
-  the teardown reserve (capped by `AGENT_REVIEW_TIMEOUT_MS`), and it gets it as
-  **two** bounds: `softMs` is handed to the loop in its config as `runTimeoutMs`, and
+  the teardown reserve — `AGENT_JOB_TIMEOUT_MINUTES` is its only ceiling, and a
+  second one of the review's own was tried and removed: any value small enough to
+  feel safe under the job becomes the only bound a review ever reaches, which is
+  this same defect wearing a different number. It gets it as **two** bounds: `softMs` is handed to the loop in its config as `runTimeoutMs`, and
   `hardMs` — a `AGENT_WRAP_UP_MS` slice later — is the kill behind it. The loop stops
   itself at the soft one between two issues, publishes, writes its summary and exits
   **75**, which `reviewOutcome` reads as `stopped`: not `failed`, because nothing
