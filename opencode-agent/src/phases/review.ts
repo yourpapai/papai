@@ -8,7 +8,6 @@ import { branchNameFor } from '../git.js'
 import { fence } from '../markdown.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { renderPresentation } from '../pull-request-body.js'
-import { noteReview } from '../pull-request-note.js'
 import type { ReviewOutcome, ReviewRunResult } from '../review-runner.js'
 import { errorMessage } from '../types.js'
 import type { AgentState } from '../types.js'
@@ -52,17 +51,15 @@ export const handleReview: PhaseHandler = async (input): Promise<PhaseOutcome> =
 
   const { review, applied } = await runAndKeep(input, plan, branch)
 
-  // One reading of the outcome table, handed to both renderers, so the note and
-  // the report cannot describe the same loop differently.
   const verdict = reviewLine(review)
   const report = renderReport(review, applied, verdict)
   await refreshPullRequest(input, report)
-  // The note lives in the handler rather than the orchestrator because it carries
-  // a verdict the cascade cannot read, and it points at the **issue** rather than
-  // a comment id: the report the note names is posted by the orchestrator after
-  // this handler returns, so an issue (always readable) is the only stable link.
-  await noteReview(deps, input.trigger, { issueNumber: state.issueId, verdict, applied })
-
+  // No pointer comment beside this any more. `noteReview` existed for exactly one
+  // reason — a `/review` typed on the pull request had its report posted to the
+  // issue, so the page the maintainer was reading needed a line saying where the
+  // verdict went. Under D4 the report is posted here, on this pull request, and a
+  // note pointing at the issue would send a reader to a page that no longer has
+  // it. The module went with it.
   return { signal: 'REVIEW_DONE', comment: report, blocks: [reportBlock(report, state)] }
 }
 

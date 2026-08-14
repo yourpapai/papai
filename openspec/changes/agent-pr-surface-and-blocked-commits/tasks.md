@@ -67,28 +67,43 @@ restore path. Each group is independently verifiable and commits on its own.
 
 ## 4. The pull request becomes the surface (D4)
 
-- [ ] 4.1 Failing test: with `prNumber` set, `postAndAppend` writes body and
-      block to the pull request; with it null, to the issue. Assert the number
-      the transport was called with. `bun test tests/opencode-agent/report.test.ts`
-- [ ] 4.2 Point `postAndAppend` at `feedbackTarget(state)`.
-      `bun test tests/opencode-agent/report.test.ts`
-- [ ] 4.3 Failing test: `findLatestState` restores from a block written to the
-      pull request, takes the newest across both threads by creation time, and
-      still restores an issue-only history unchanged (the in-flight case).
-      `bun test tests/opencode-agent/state.test.ts`
-- [ ] 4.4 Implement the two-pass scan in `state-manager.ts`: issue first, then
-      the thread its newest block names, merged by creation time. One extra
-      read, and only once a pull request exists.
-      `bun test tests/opencode-agent/state.test.ts`
-- [ ] 4.5 Failing test: `renderThread` merges both threads in order and still
-      drops `AGENT_STATUS`-marked comments before the window is taken.
-      `bun test tests/opencode-agent/prompt-budget.test.ts`
-- [ ] 4.6 Merge both threads in `renderThread`, filtering by marker as now.
-      `bun test tests/opencode-agent/prompt-budget.test.ts`
-- [ ] 4.7 Collapse `postAnswer`'s pull-request branch into the general rule,
-      leaving only the `persistState` half it still needs. Assert an answer
-      posts once, carries no block, and still records the spend.
-      `bun test tests/opencode-agent/report.test.ts`
+- [x] 4.1 Failing test: with `prNumber` set, `postAndAppend` writes body and
+      block to the pull request; with it null, to the issue. The harness gained a
+      real second thread (`io.prThread`) first — a one-thread fake would have let
+      the two-pass restore pass without ever doing the second read.
+      `bun test tests/opencode-agent/orchestrator.test.ts`
+- [x] 4.2 Point `postAndAppend` at `feedbackTarget(input.state)` — the state the
+      phase *started* from, not the one it produced. Addressing it with the new
+      state posted the very block that first records `prNumber` to the pull
+      request it names, leaving the issue with nothing that had ever heard of it
+      and the two-pass scan with no way in. The one-comment lag puts the handover
+      on the issue, which is where a reader wants it.
+      `bun test tests/opencode-agent/orchestrator.test.ts`
+- [x] 4.3 Failing test: a later job restores from a block written to the pull
+      request, and an issue-only history still restores unchanged (in-flight).
+      `bun test tests/opencode-agent/orchestrator.test.ts`
+- [x] 4.4 Implement the two-pass read as `readThread` in `orchestrator.ts`, not
+      in `state-manager.ts`: that module takes a comment list and is pure, and
+      the second *fetch* is the orchestrator's. Merged issue-then-pull-request by
+      construction rather than by timestamp — every block on the pull request was
+      written after the last one on the issue, and a hand-edited issue block
+      loses to the machine's newer one.
+      `bun test tests/opencode-agent/orchestrator.test.ts`
+- [x] 4.5 Failing test: a comment made on the pull request reaches the model's
+      conversation window, asserted through an `/ask` prompt rather than through
+      the thread array. `bun test tests/opencode-agent/orchestrator.test.ts`
+- [x] 4.6 No change needed — `renderThread` reads the thread the run assembled,
+      so `readThread`'s merge reaches it. 4.5 is what proves that rather than
+      assuming it.
+- [x] 4.7 Reviewed and deliberately **not** collapsed. `postAnswer`'s branch is
+      on the trigger, and under D4 the two now agree — `commandSurface` refuses
+      issue commands once a pull request exists — but keeping it on the trigger
+      says what the function is for (reply where the question was asked) rather
+      than deriving it from a rule two modules away. Its doc comment was stale in
+      two places and is corrected. Removed `pull-request-note.ts` instead: it
+      existed solely to tell a pull-request reader which issue the report went
+      to, and the report is now on the pull request.
+      `bun test tests/opencode-agent/`
 
 ## 5. The review loop's push is guarded (D5)
 

@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { IssueComment } from './blocks.js'
 import { driveMachine, hasHandler } from './cascade.js'
 import { parseSlashCommand } from './commands.js'
 import type { ParsedCommand } from './commands.js'
@@ -16,6 +17,7 @@ import { findLatestState, initialState } from './state-manager.js'
 import type { TriggerEvent } from './trigger-events.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
 import { applyTrigger } from './triggers.js'
+import type { AgentState } from './types.js'
 
 export interface RunOptions {
   event: TriggerEvent
@@ -74,6 +76,52 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
   return result
 }
 
+/** The conversation this run reads, and the state restored out of it. */
+interface RestoredThread {
+  thread: readonly IssueComment[]
+  restored: AgentState
+}
+
+/**
+ * Reads the conversation, in two passes once there is a pull request to read.
+ *
+ * Design D4 moved every comment onto the pull request the moment one exists, and
+ * this is the half that keeps that safe. `findLatestState` scans one list, so a
+ * block written to the pull request is invisible to a scan of the issue — which
+ * is precisely why the record could not move before.
+ *
+ * The **issue is read first, always**, and that ordering is what makes the second
+ * pass possible rather than circular: `prNumber` is itself a field of a state
+ * block, so the only way to learn which second thread to read is to restore from
+ * the thread that needs no lookup. The issue always carries blocks from before
+ * the pull request existed — capture, design, planning and the delivery that
+ * first recorded `prNumber` all happen while there is nothing else to write to —
+ * so the first pass can always bootstrap the second.
+ *
+ * The merge is **issue then pull request**, by construction rather than by
+ * timestamp. Blocks are appended in order within a thread, and every block on the
+ * pull request was written after the last one on the issue, because the write
+ * moves there the moment `prNumber` is set and never moves back. Walking the
+ * concatenation newest-first therefore walks real time. It also fails in the
+ * safe direction: a block someone hand-edited onto the issue after delivery
+ * loses to the machine's own newer one, rather than overriding it.
+ *
+ * One extra read, and only after a pull request exists. A thread that names none
+ * behaves exactly as it did before, which is what leaves in-flight issues
+ * unstranded and makes the change need no `STATE_VERSION` bump.
+ */
+const readThread = async (event: TriggerEvent, deps: PhaseDeps): Promise<RestoredThread> => {
+  const login = await deps.selfLogin()
+  const issueThread = await deps.github.listIssueComments(event.issueNumber)
+  const fromIssue = findLatestState(issueThread, login, event.issueNumber)
+  if (fromIssue === null) return { thread: issueThread, restored: initialState(event.issueNumber) }
+  const prNumber = fromIssue.prNumber
+  if (prNumber === null) return { thread: issueThread, restored: fromIssue }
+
+  const thread = [...issueThread, ...(await deps.github.listIssueComments(prNumber))]
+  return { thread, restored: findLatestState(thread, login, event.issueNumber) ?? fromIssue }
+}
+
 /**
  * Everything a trigger the guardrails let through does.
  *
@@ -86,8 +134,7 @@ export const runPipeline = async (options: RunOptions): Promise<RunResult> => {
  * when it ends, whatever the outcome, and neither fact is known to a phase.
  */
 const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunResult> => {
-  const thread = await deps.github.listIssueComments(event.issueNumber)
-  const restored = findLatestState(thread, await deps.selfLogin(), event.issueNumber) ?? initialState(event.issueNumber)
+  const { thread, restored } = await readThread(event, deps)
   const issue = await resolveIssue(event, deps)
   const command = triggerCommand(event)
 
