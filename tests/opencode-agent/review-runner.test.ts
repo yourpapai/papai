@@ -15,6 +15,8 @@ import {
 } from '../../opencode-agent/src/review-runner.js'
 import type { ReviewLoopSettings, ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { CommandResult, CommandRunner, RunOptions } from '../../opencode-agent/src/shell.js'
+import { STOPPED_EXIT_CODE } from '../../review-loop/src/cli.js'
+import { ReviewLoopConfigSchema } from '../../review-loop/src/config.js'
 
 /** A logger that keeps what it was told, so "it reached the CI log" is assertable. */
 const recordingLogger = (): { logger: Logger; lines: Array<{ message: string; fields: LogFields }> } => {
@@ -276,5 +278,31 @@ describe('runReviewLoop outcomes', () => {
 
     expect(review.outcome).toBe('failed')
     expect(review.failure).not.toBeNull()
+  })
+})
+
+/**
+ * The pipe between the two workspaces, checked from the middle rather than from
+ * each end.
+ *
+ * `buildReviewLoopConfig` writes a JSON file that another workspace's Zod schema
+ * parses in another process, and `REVIEW_STOPPED_EXIT_CODE` is one number spelled
+ * in two files. Every other contract of this kind here (`FIX_PUBLISHED_MARKER`)
+ * has a test on each side and nothing in the middle, so a renamed field passes
+ * both suites and fails only on a runner, an hour into a real review.
+ */
+describe('the config handed to review-loop', () => {
+  test('is one the review-loop workspace actually accepts', () => {
+    const parsed = ReviewLoopConfigSchema.parse(
+      buildReviewLoopConfig(settings({ softStopMs: 120_000, commitAuthor: { name: 'a[bot]', email: 'a@b.invalid' } })),
+    )
+
+    expect(parsed.runTimeoutMs).toBe(120_000)
+    expect(parsed.commitAuthor).toEqual({ name: 'a[bot]', email: 'a@b.invalid' })
+    expect(parsed.mergeEachFix).toBe(true)
+  })
+
+  test('agrees with the loop on which exit code means "I stopped"', () => {
+    expect(REVIEW_STOPPED_EXIT_CODE).toBe(STOPPED_EXIT_CODE)
   })
 })

@@ -146,6 +146,16 @@ async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetri
     return finishRound(deps, metrics, round, 0, collector, 'clean')
   }
 
+  // Asked here as well as at the end of the round, because the reviewer is the
+  // long pole — seven minutes in the run this comes from — so the budget most
+  // often runs out *inside* it. Everything past this line spawns another agent or
+  // waits on one, and a loop that has agreed to stop must not start either: the
+  // slice its caller held back pays for publishing and finalizing, not for a
+  // matcher whose answer nothing left in this run will read.
+  if ((deps.stop?.requested() ?? null) !== null) {
+    return finishRound(deps, metrics, round, 0, collector, 'stopped')
+  }
+
   const matched = await runMatchAndRecord(deps, round, newIssues, collector)
   emitMatchComplete(deps.trace, round, matched.newCount, matched.matchedCount)
 
@@ -159,16 +169,27 @@ async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetri
   const fixedThisRound = await runProcessPendingIssues(deps, round, collector, pending)
   deps.log.log(`[round ${round}] Fixed ${fixedThisRound}/${pending.length} issues`)
 
-  const newNoProgress = fixedThisRound === 0 ? deps.runState.noProgressRounds + 1 : 0
-  deps.runState.noProgressRounds = newNoProgress
-  await saveRunState(deps.runState)
-  await saveIssueLedger(deps.ledger)
-
-  const ending = roundEnding(deps, round, newNoProgress)
+  const ending = roundEnding(deps, round, await recordProgress(deps, fixedThisRound))
   if (ending !== null) return finishRound(deps, metrics, round, matched.newCount, collector, ending)
 
   pushRoundMetric(deps, metrics, round, matched.newCount, collector)
   return runRound(round + 1, deps, metrics)
+}
+
+/**
+ * Persists what the round changed and answers how many rounds have now fixed
+ * nothing — the figure {@link roundEnding} judges.
+ *
+ * Both writes happen here rather than at the end of the run, and that is what a
+ * resumed run reads: the cursor and the ledger on disk are the whole of what
+ * survives this process.
+ */
+async function recordProgress(deps: ReviewLoopDeps, fixedThisRound: number): Promise<number> {
+  const noProgressRounds = fixedThisRound === 0 ? deps.runState.noProgressRounds + 1 : 0
+  deps.runState.noProgressRounds = noProgressRounds
+  await saveRunState(deps.runState)
+  await saveIssueLedger(deps.ledger)
+  return noProgressRounds
 }
 
 /**
@@ -201,18 +222,47 @@ function roundEnding(
   return null
 }
 
-export function runReviewLoop(deps: ReviewLoopDeps): Promise<ReviewLoopResult> {
+export async function runReviewLoop(deps: ReviewLoopDeps): Promise<ReviewLoopResult> {
   const nextRound = deps.runState.currentRound + 1
   // A stop that is already asked for when the run is entered — a resume onto a
   // runner with minutes left, a signal during startup — must not open a reviewer
   // whose findings nothing will have time to fix.
   if ((deps.stop?.requested() ?? null) !== null) {
     emitLoopEnd(deps.trace, deps.runState.currentRound, 'stopped', [])
-    return Promise.resolve(terminalResult(deps, 'stopped', deps.runState.currentRound, []))
+    return terminalResult(deps, 'stopped', deps.runState.currentRound, [])
   }
   if (nextRound > deps.config.maxRounds) {
     emitLoopEnd(deps.trace, deps.runState.currentRound, 'max_rounds', [])
-    return Promise.resolve(terminalResult(deps, 'max_rounds', deps.runState.currentRound, []))
+    return terminalResult(deps, 'max_rounds', deps.runState.currentRound, [])
   }
-  return runRound(nextRound, deps, [])
+
+  const metrics: RoundMetric[] = []
+  try {
+    return await runRound(nextRound, deps, metrics)
+  } catch (error) {
+    return failedOrStopped(deps, metrics, error)
+  }
+}
+
+/**
+ * A throw during a stop is the stop, not a failure.
+ *
+ * The stop is honoured at boundaries, so something is nearly always **running**
+ * when the budget expires — and what happens to it next is that its own timeout,
+ * capped by that same budget, kills it and `runAgent` throws. Let that escape and
+ * the run exits 1 with no summary, no metrics and no exit code its caller can
+ * tell from a broken loop: an hour of published fixes reported as a crash.
+ *
+ * Narrow on purpose. With no stop asked for, the throw is what it has always been
+ * and leaves by the same door, because a reviewer that cannot start and a run that
+ * ran out of time are not the same news. The metrics of the rounds that finished
+ * ride out with it — they are already on disk in the trace, and dropping them here
+ * would make the summary of a stopped run poorer than the trace beside it.
+ */
+function failedOrStopped(deps: ReviewLoopDeps, metrics: RoundMetric[], error: unknown): ReviewLoopResult {
+  if ((deps.stop?.requested() ?? null) === null) throw error
+
+  deps.log.log(`[done] stopped — the run was cut short: ${error instanceof Error ? error.message : String(error)}`)
+  emitLoopEnd(deps.trace, deps.runState.currentRound, 'stopped', metrics)
+  return terminalResult(deps, 'stopped', deps.runState.currentRound, metrics)
 }

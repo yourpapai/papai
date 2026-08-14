@@ -20,7 +20,7 @@ import { readPersistedRunStats, writeRunArtifacts } from './run-artifacts.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { RunStats } from './run-stats.js'
 import { realSpawn } from './spawn.js'
-import { createStopController, type StopController, type StopReason } from './stop-controller.js'
+import { createStopController, remainingBudget, type StopController, type StopReason } from './stop-controller.js'
 import { createFileTraceLogger, type TraceLogger } from './trace-log.js'
 import { createWorkerPool, type WorkerPool } from './worker-pool.js'
 import {
@@ -229,7 +229,10 @@ export async function runCli(argv: readonly string[], stdout: RendererStream = p
   const { runState, ledger, log, exec, trace, pool } = await openRun(config, args, stdout)
 
   const stop = createStopController({
-    runTimeoutMs: config.runTimeoutMs,
+    // Measured from when this process started, not from here: cutting the
+    // worktrees above is minutes of `bun install` on a cold runner, and a budget
+    // that ignored them would expire after the caller's kill rather than before.
+    runTimeoutMs: remainingBudget(config.runTimeoutMs, Date.now() - startedAt),
     onStop: (reason) => {
       log.event(`${STOP_MARKER} ${STOP_NOTICE[reason]}`)
     },

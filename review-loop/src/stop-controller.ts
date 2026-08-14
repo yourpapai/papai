@@ -66,6 +66,24 @@ export interface StopControllerOptions {
   onRepeatedSignal?: () => void
 }
 
+/**
+ * The budget with the run's own setup already taken off it.
+ *
+ * The budget belongs to the **caller**, and a caller counts from the moment it
+ * spawns this process. Opening a run is not free — a `git worktree add` and a
+ * `bun install` for the primary worktree and for every pool worker — so a budget
+ * armed when that finishes expires that much later than the caller expects, and
+ * the kill sitting a wrap-up slice behind it lands first. The soft stop the whole
+ * arrangement exists for would then never fire on exactly the slow runs it is
+ * for.
+ *
+ * Never `0` for a run that had a budget: `0` is how {@link createStopController}
+ * spells "no budget at all", so a run whose setup outlived its budget would come
+ * back unbounded instead of stopping at once.
+ */
+export const remainingBudget = (runTimeoutMs: number, elapsedMs: number): number =>
+  runTimeoutMs <= 0 ? 0 : Math.max(1, runTimeoutMs - elapsedMs)
+
 const SIGNALS: readonly StopSignal[] = ['SIGINT', 'SIGTERM']
 
 const processHost: StopHost = {

@@ -5,7 +5,12 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { createStopController, type StopHost, type StopSignal } from '../../review-loop/src/stop-controller.js'
+import {
+  createStopController,
+  remainingBudget,
+  type StopHost,
+  type StopSignal,
+} from '../../review-loop/src/stop-controller.js'
 
 /** A host with no clock and no signals of its own, so a test can fire both by hand. */
 function fakeHost(): StopHost & { fire: () => void; raise: (signal: StopSignal) => void; armed: () => number | null } {
@@ -124,5 +129,26 @@ describe('createStopController', () => {
 
     expect(host.armed()).toBeNull()
     expect(stop.requested()).toBeNull()
+  })
+})
+
+describe('remainingBudget', () => {
+  test('charges the run for the time it spent getting ready', () => {
+    // The budget is the caller's, and the caller starts counting when it spawns
+    // this process — not when the worktrees are cut. Opening a run is a
+    // `git worktree add` plus a `bun install` per pool worker, which is minutes
+    // on a cold runner, and a budget armed after that expires *after* the caller's
+    // kill: the soft stop the whole arrangement exists for never happens.
+    expect(remainingBudget(90_000, 20_000)).toBe(70_000)
+  })
+
+  test('stops at once when setup outlived the budget, rather than not at all', () => {
+    // Never 0: a zero budget is how the controller spells "no budget", so the run
+    // it was meant to stop immediately would instead run unbounded.
+    expect(remainingBudget(90_000, 120_000)).toBe(1)
+  })
+
+  test('leaves "no budget" alone, however long the setup took', () => {
+    expect(remainingBudget(0, 120_000)).toBe(0)
   })
 })

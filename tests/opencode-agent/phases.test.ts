@@ -742,6 +742,10 @@ describe('handleReview · pushes what the loop merged', () => {
     expect(outcome.comment).not.toContain('❌')
     expect(outcome.comment).toContain('stopped early')
     expect(outcome.comment).toContain('pushed')
+    // The implementation's own out-of-time notice names the command that picks
+    // the work back up; a review that stopped has to do the same, or the only
+    // move a maintainer is left with is guessing.
+    expect(outcome.comment).toContain('/review')
   })
 
   it('names why a failed loop failed, in the report and on the pull request', async () => {
