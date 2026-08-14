@@ -15,6 +15,7 @@ import type { EventInput, SddEvent } from './events.js'
 import { extractChangeDigest } from './gate-digest-extract.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
+import type { Prompter } from './gate-session.js'
 import { presentGate } from './gate.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { loadDb } from './pricing.js'
@@ -37,6 +38,8 @@ export interface OrchestratorDeps {
   readonly conventions?: string
   readonly now?: () => Date
   readonly resolveCost?: ResolveCostFn
+  readonly interactive?: () => boolean
+  readonly makePrompter?: () => Prompter
 }
 
 export interface RunStartResult {
@@ -109,7 +112,7 @@ export async function presentGateAt(
   state.status = 'running'
   await saveRunState(state, nowOf(deps))
   deps.stdout?.(path.relative(deps.config.repoRoot, result.gateMdPath))
-  deps.stdout?.(`gate resume ${state.runId}`)
+  deps.stdout?.(`Next: sdd-runner gate resume ${state.runId}`)
   return { runId: state.runId, halted: 'gate', gateMdPath: result.gateMdPath, version }
 }
 

@@ -8,6 +8,7 @@ import type { EventInput } from './events.js'
 import { DynamicRenderer } from './live-renderer.js'
 import { createReplayFolder } from './replay.js'
 import type { DigestRecord, ReplayFolder, ReplayState } from './replay.js'
+import type { ResolveCostFn } from './usage-aggregate.js'
 
 export type Verbosity = 'brief' | 'normal' | 'debug'
 
@@ -19,6 +20,7 @@ export interface RendererStream {
 
 export interface RendererOptions {
   readonly dynamic?: boolean
+  readonly resolveCost?: ResolveCostFn
 }
 
 export const MIDDLE_DOT = '\u00B7'
@@ -144,7 +146,7 @@ export class LineRenderer implements Renderer {
 export function createRenderer(stream: RendererStream, verbosity: Verbosity, opts?: RendererOptions): Renderer {
   const wantsDynamic = opts?.dynamic !== false
   if (wantsDynamic && stream.isTTY === true && verbosity !== 'brief') {
-    return new DynamicRenderer(stream, verbosity)
+    return new DynamicRenderer(stream, verbosity, undefined, opts?.resolveCost)
   }
   return new LineRenderer(stream, verbosity)
 }

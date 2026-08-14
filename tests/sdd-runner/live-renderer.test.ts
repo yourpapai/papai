@@ -7,6 +7,7 @@ import { describe, expect, it } from 'bun:test'
 
 import type { EventInput } from '../../sdd-runner/src/events.js'
 import { DynamicRenderer } from '../../sdd-runner/src/live-renderer.js'
+import type { ResolvedCost } from '../../sdd-runner/src/pricing.js'
 
 interface MemoryStreamOptions {
   readonly isTTY: boolean
@@ -45,6 +46,19 @@ const RESOLVER_DONE: EventInput = {
   usage: { inputTokens: 5000, outputTokens: 1200, reasoningTokens: 10, costUsd: 0.01, wallMs: 1000 },
 }
 
+/**
+ * Extract the status (footer) line from the last rendered block: it is always the
+ * final line of a `writeBlock` emission, i.e. everything after the last
+ * `\n` + ERASE_LINE boundary. The trailing duration segment is normalized because
+ * it depends on wall-clock time.
+ */
+function lastStatusLine(out: string): string {
+  const marker = '\n\u001b[2K'
+  const idx = out.lastIndexOf(marker)
+  const line = idx === -1 ? out : out.slice(idx + marker.length)
+  return line.replace(/\d+(m\d{2})?s$/u, 'DUR')
+}
+
 describe('DynamicRenderer', () => {
   it('redraws a pipeline map + slot + status block on each event against a TTY stream', () => {
     const stream = new MemoryStream({ isTTY: true, columns: 80 })
@@ -52,6 +66,13 @@ describe('DynamicRenderer', () => {
     renderer.renderEvent(REVIEW_STAGE_ENTER)
     renderer.renderEvent(ROUND_OPEN_1_3)
     renderer.renderEvent(RESOLVER_TOOL_USE)
+    renderer.renderEvent({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'resolver-r1',
+      tokens: { input: 5000, output: 1200, reasoning: 10 },
+      costUsd: 0.01,
+    })
     renderer.renderEvent(RESOLVER_DONE)
 
     const out = stream.chunks.join('')
@@ -72,5 +93,115 @@ describe('DynamicRenderer', () => {
     const out = stream.chunks.join('')
     expect(out).not.toContain('\u001b[2K')
     expect(out).not.toContain('\r')
+  })
+})
+
+describe('DynamicRenderer cost estimation', () => {
+  const GLM_MODEL = 'zai-coding-plan/glm-5.2'
+  const PRICED: ResolvedCost = { input: 1, output: 2, source: 'primary' }
+  const resolvePriced = (modelId: string): ResolvedCost | null => (modelId === GLM_MODEL ? PRICED : null)
+
+  const SPAWNED_GLM: EventInput = {
+    altitude: 'L1',
+    type: 'spawned',
+    agent: 'resolver-r1',
+    role: 'reviewer',
+    model: GLM_MODEL,
+  }
+  // ((1000 + 100) * 1 + 500 * 2) / 1_000_000 = 0.0021
+  const UNMETERED_STEP: EventInput = {
+    altitude: 'L0',
+    type: 'step_finish',
+    agent: 'resolver-r1',
+    tokens: { input: 1000, output: 500, reasoning: 100 },
+    costUsd: 0,
+  }
+  const METERED_STEP: EventInput = {
+    altitude: 'L0',
+    type: 'step_finish',
+    agent: 'resolver-r1',
+    tokens: { input: 2000, output: 300, reasoning: 0 },
+    costUsd: 0.01,
+  }
+
+  function makeTty(): MemoryStream {
+    return new MemoryStream({ isTTY: true, columns: 120 })
+  }
+
+  it('estimates an unmetered step from the spawned model and prefixes the footer with ~$', () => {
+    const stream = makeTty()
+    const renderer = new DynamicRenderer(stream, 'normal', undefined, resolvePriced)
+    renderer.renderEvent(SPAWNED_GLM)
+    renderer.renderEvent(UNMETERED_STEP)
+    expect(stream.chunks.join('')).toContain('~$0.0021')
+  })
+
+  it('renders a metered step cost with a plain $ prefix (no tilde)', () => {
+    const stream = makeTty()
+    const renderer = new DynamicRenderer(stream, 'normal', undefined, resolvePriced)
+    renderer.renderEvent(SPAWNED_GLM)
+    renderer.renderEvent(METERED_STEP)
+    const out = stream.chunks.join('')
+    expect(out).toContain('$0.0100')
+    expect(out).not.toContain('~$')
+  })
+
+  it('hides the cost segment when the resolver returns null', () => {
+    const stream = makeTty()
+    const renderer = new DynamicRenderer(stream, 'normal', undefined, () => null)
+    renderer.renderEvent(SPAWNED_GLM)
+    renderer.renderEvent(UNMETERED_STEP)
+    const out = stream.chunks.join('')
+    expect(out).not.toContain('$')
+    expect(out).toContain('in 1.0k / out 500')
+  })
+
+  it('marks the footer ~$ when metered and estimated steps mix', () => {
+    const stream = makeTty()
+    const renderer = new DynamicRenderer(stream, 'normal', undefined, resolvePriced)
+    renderer.renderEvent(SPAWNED_GLM)
+    renderer.renderEvent(METERED_STEP)
+    renderer.renderEvent(UNMETERED_STEP)
+    expect(stream.chunks.join('')).toContain('~$0.0121')
+  })
+
+  it('renders a byte-identical footer when no resolver is passed', () => {
+    const stream = makeTty()
+    const renderer = new DynamicRenderer(stream, 'normal')
+    renderer.renderEvent(SPAWNED_GLM)
+    renderer.renderEvent(UNMETERED_STEP)
+    expect(lastStatusLine(stream.chunks.join(''))).toBe('  status     in 1.0k / out 500 \u00B7 DUR')
+  })
+})
+
+describe('DynamicRenderer totals accounting', () => {
+  it('counts step deltas once when done repeats their cumulative usage', () => {
+    const stream = new MemoryStream({ isTTY: true, columns: 120 })
+    const renderer = new DynamicRenderer(stream, 'normal')
+    renderer.renderEvent({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'resolver-r1',
+      tokens: { input: 1000, output: 200, reasoning: 0 },
+      costUsd: 0.005,
+    })
+    renderer.renderEvent({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'resolver-r1',
+      tokens: { input: 500, output: 100, reasoning: 0 },
+      costUsd: 0.003,
+    })
+    renderer.renderEvent({
+      altitude: 'L1',
+      type: 'done',
+      agent: 'resolver-r1',
+      usage: { inputTokens: 1500, outputTokens: 300, reasoningTokens: 0, costUsd: 0.008, wallMs: 1000 },
+    })
+    const status = lastStatusLine(stream.chunks.join(''))
+    expect(status).toContain('in 1.5k / out 300')
+    expect(status).toContain('$0.0080')
+    expect(status).not.toContain('3.0k')
+    expect(status).not.toContain('$0.0160')
   })
 })

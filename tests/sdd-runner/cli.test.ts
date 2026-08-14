@@ -6,7 +6,13 @@
 import { describe, expect, it } from 'bun:test'
 
 import { main, parseCliArgs } from '../../sdd-runner/src/cli.js'
-import type { CliHarness } from '../../sdd-runner/src/cli.js'
+import type { CliCommand, CliHarness } from '../../sdd-runner/src/cli.js'
+import type { PendingGateEntry } from '../../sdd-runner/src/run-state.js'
+
+function asGateCommand(cmd: CliCommand): Extract<CliCommand, { readonly subcommand: 'gate' }> {
+  if (cmd.subcommand !== 'gate') throw new Error('expected a gate command')
+  return cmd
+}
 
 describe('parseCliArgs', () => {
   it('parses start with a task file and depth override', () => {
@@ -18,6 +24,24 @@ describe('parseCliArgs', () => {
   it('parses start with verbosity flag', () => {
     const cmd = parseCliArgs(['start', 'task.md', '--verbosity', 'debug'])
     expect(cmd).toMatchObject({ verbosity: 'debug' })
+  })
+
+  it('maps every depth and verbosity value to itself', () => {
+    for (const depth of ['S', 'M', 'L'] as const) {
+      expect(parseCliArgs(['start', 'task.md', '--depth', depth])).toMatchObject({ depth })
+    }
+    for (const verbosity of ['brief', 'normal', 'debug'] as const) {
+      expect(parseCliArgs(['start', 'task.md', '--verbosity', verbosity])).toMatchObject({ verbosity })
+    }
+  })
+
+  it('rejects start without a task file', () => {
+    expect(() => parseCliArgs(['start'])).toThrow(/task file/u)
+  })
+
+  it('rejects invalid --depth and --verbosity values naming the flag and value', () => {
+    expect(() => parseCliArgs(['start', 'task.md', '--depth', 'Q'])).toThrow(/invalid --depth: Q/u)
+    expect(() => parseCliArgs(['start', 'task.md', '--verbosity', 'loud'])).toThrow(/invalid --verbosity: loud/u)
   })
 
   it('defaults verbosity to normal', () => {
@@ -44,13 +68,110 @@ describe('parseCliArgs', () => {
     expect(cmd).toMatchObject({ subcommand: 'gate', runId: 'run-456', abort: true })
   })
 
+  it('parses gate resume with --extend', () => {
+    const cmd = parseCliArgs(['gate', 'resume', 'run-1', '--extend'])
+    expect(cmd).toMatchObject({ subcommand: 'gate', runId: 'run-1', extend: true })
+  })
+
+  it('parses repeatable --veto flags splitting on the first = only', () => {
+    const cmd = parseCliArgs([
+      'gate',
+      'resume',
+      'run-1',
+      '--veto',
+      'A1=redirect=https://example.com',
+      '--veto',
+      'F2=narrow the gap',
+    ])
+    expect(cmd).toMatchObject({
+      vetoes: [
+        { id: 'A1', redirect: 'redirect=https://example.com' },
+        { id: 'F2', redirect: 'narrow the gap' },
+      ],
+    })
+  })
+
+  it('rejects --veto without a value', () => {
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--veto'])).toThrow(/--veto/u)
+  })
+
+  it('rejects --veto values without an = or with an empty id', () => {
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--veto', 'plain'])).toThrow(/--veto expects/u)
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--veto', '=x'])).toThrow(/--veto expects/u)
+  })
+
+  it('omits the redirect when the --veto value ends at =', () => {
+    const cmd = asGateCommand(parseCliArgs(['gate', 'resume', 'run-1', '--veto', 'A1=']))
+    expect(cmd.vetoes[0]).toStrictEqual({ id: 'A1' })
+  })
+
+  it('rejects unknown flags on gate resume', () => {
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--bogus'])).toThrow(/unknown flag: --bogus/u)
+  })
+
+  it('requires the resume verb after gate', () => {
+    expect(() => parseCliArgs(['gate', 'bogus'])).toThrow(/gate requires/u)
+  })
+
+  it('requires a run id for gate resume', () => {
+    expect(() => parseCliArgs(['gate', 'resume'])).toThrow(/requires a run id/u)
+  })
+
+  it('rejects --extend combined with --confirm-all, --veto, or --abort', () => {
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--extend', '--confirm-all'])).toThrow(/--extend/u)
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--extend', '--abort'])).toThrow(/--extend/u)
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--extend', '--veto', 'A1=x'])).toThrow(/--extend/u)
+  })
+
+  it('parses a bare gate command with no run id', () => {
+    expect(parseCliArgs(['gate'])).toStrictEqual({
+      subcommand: 'gate',
+      runId: null,
+      confirmAll: false,
+      abort: false,
+      extend: false,
+      vetoes: [],
+    })
+  })
+
+  it('rejects a bare gate command that carries decision flags', () => {
+    expect(() => parseCliArgs(['gate', '--confirm-all'])).toThrow(/gate resume/u)
+  })
+
+  it('parses continue with a run id', () => {
+    const cmd = parseCliArgs(['continue', 'run-7'])
+    expect(cmd).toMatchObject({ subcommand: 'continue', runId: 'run-7' })
+  })
+
+  it('parses continue without a run id', () => {
+    const cmd = parseCliArgs(['continue'])
+    expect(cmd).toStrictEqual({ subcommand: 'continue', runId: null })
+  })
+
+  it('rejects extra args on continue', () => {
+    expect(() => parseCliArgs(['continue', 'run-1', '--x'])).toThrow(/unknown flag/u)
+  })
+
+  it('requires a run id for resume', () => {
+    expect(() => parseCliArgs(['resume'])).toThrow(/requires a run id/u)
+  })
+
+  it('requires a run id for report', () => {
+    expect(() => parseCliArgs(['report'])).toThrow(/requires a run id/u)
+  })
+
+  it('defaults report --pr off and rejects unknown report flags', () => {
+    expect(parseCliArgs(['report', 'run-1'])).toStrictEqual({ subcommand: 'report', runId: 'run-1', pr: false })
+    expect(() => parseCliArgs(['report', 'run-1', '--bogus'])).toThrow(/unknown flag/u)
+  })
+
   it('parses report with --pr', () => {
     const cmd = parseCliArgs(['report', 'run-1', '--pr'])
     expect(cmd).toMatchObject({ subcommand: 'report', runId: 'run-1', pr: true })
   })
 
   it('throws on missing subcommand', () => {
-    expect(() => parseCliArgs([])).toThrow(/subcommand/u)
+    expect(() => parseCliArgs([])).toThrow(/missing subcommand/u)
   })
 
   it('throws on unknown subcommand', () => {
@@ -58,7 +179,7 @@ describe('parseCliArgs', () => {
   })
 })
 
-function makeHarness(calls: string[]): CliHarness {
+function makeHarness(calls: string[], pending: PendingGateEntry[] = []): CliHarness {
   return {
     runStart: (options) => {
       calls.push(`start:${options.taskFile}:${options.depthOverride ?? '-'}:${options.verbosity ?? '-'}`)
@@ -69,9 +190,15 @@ function makeHarness(calls: string[]): CliHarness {
       return Promise.resolve({ runId, halted: 'gate' })
     },
     runGateResume: (runId, options) => {
-      calls.push(`gate:${runId}:${options.confirmAll ?? false}:${options.abort ?? false}`)
+      const vetoes = options.vetoes === undefined ? 'none' : options.vetoes.map((veto) => veto.id).join('+')
+      calls.push(`gate:${runId}:${options.confirmAll ?? false}:${options.abort ?? false}:${vetoes}`)
       return Promise.resolve({ runId, outcome: 'approved', version: 1 })
     },
+    runContinue: (runId) => {
+      calls.push(`continue:${runId ?? '-'}`)
+      return Promise.resolve({ runId: runId ?? 'run-1', routed: 'gate' })
+    },
+    listPendingGates: () => Promise.resolve(pending),
     buildReport: (runId, pr) => {
       calls.push(`report:${runId}:${pr}`)
       return Promise.resolve(`body for ${runId}`)
@@ -101,7 +228,7 @@ describe('main', () => {
     await main(['resume', 'run-9'], makeHarness(calls))
     await main(['gate', 'resume', 'run-9', '--confirm-all'], makeHarness(calls))
     expect(calls).toContain('resume:run-9')
-    expect(calls).toContain('gate:run-9:true:false')
+    expect(calls).toContain('gate:run-9:true:false:none')
   })
 
   it('routes report and prints the body; --pr propagates', async () => {
@@ -109,5 +236,43 @@ describe('main', () => {
     await main(['report', 'run-2', '--pr'], makeHarness(calls))
     expect(calls).toContain('report:run-2:true')
     expect(calls.some((c) => c.startsWith('out:body for run-2'))).toBe(true)
+  })
+
+  it('routes continue with and without a run id', async () => {
+    const calls: string[] = []
+    await main(['continue', 'run-4'], makeHarness(calls))
+    await main(['continue'], makeHarness(calls))
+    expect(calls).toContain('continue:run-4')
+    expect(calls).toContain('continue:-')
+  })
+
+  it('forwards --veto decisions to runGateResume', async () => {
+    const calls: string[] = []
+    await main(['gate', 'resume', 'run-9', '--veto', 'A1=narrow it', '--veto', 'F2='], makeHarness(calls))
+    expect(calls).toContain('gate:run-9:false:false:A1+F2')
+  })
+
+  it('lists pending gates on a bare gate command without resuming anything', async () => {
+    const calls: string[] = []
+    const pending: PendingGateEntry[] = [
+      {
+        runId: 'run-1',
+        changeName: 'add-x',
+        gateMode: 'early',
+        gateVersion: 2,
+        updatedAt: '2026-02-01T00:00:00.000Z',
+      },
+    ]
+    const code = await main(['gate'], makeHarness(calls, pending))
+    expect(code).toBe(0)
+    expect(calls).toContain('out:gate-pending: run-1  (add-x, gate v2, updated 2026-02-01T00:00:00.000Z)')
+    expect(calls).toContain('out:  sdd-runner gate resume run-1')
+    expect(calls.every((line) => !line.startsWith('gate:'))).toBe(true)
+  })
+
+  it('says so when no runs await gate decisions', async () => {
+    const calls: string[] = []
+    await main(['gate'], makeHarness(calls))
+    expect(calls).toContain('out:no runs await gate decisions')
   })
 })

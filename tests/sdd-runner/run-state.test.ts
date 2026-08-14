@@ -9,15 +9,19 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { appendEvent } from '../../sdd-runner/src/events.js'
+import type { DepthProfile } from '../../sdd-runner/src/events.js'
 import type { ReplayState } from '../../sdd-runner/src/replay.js'
 import { ROUND_CAPS } from '../../sdd-runner/src/review-model.js'
 import {
   createRunState,
   deriveResumePoint,
+  listPendingGates,
   loadRunState,
   resolveRoundCap,
+  resolveRunId,
   saveRunState,
 } from '../../sdd-runner/src/run-state.js'
+import type { PersistedRunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
 
@@ -25,6 +29,12 @@ function makeWorkDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-runstate-'))
   tmpDirs.push(dir)
   return dir
+}
+
+async function errorOf(promise: Promise<unknown>): Promise<Error> {
+  const failure = await promise.catch((error: unknown) => error)
+  if (!(failure instanceof Error)) throw new Error('expected the promise to reject with an Error')
+  return failure
 }
 
 afterEach(() => {
@@ -81,11 +91,23 @@ describe('createRunState + loadRunState', () => {
     expect(loaded).toEqual(state)
   })
 
-  it('rejects a corrupt state.json', async () => {
+  it('builds the run id from the ISO timestamp with colons and dots dashed plus an 8-char uuid prefix', async () => {
+    const workDir = makeWorkDir()
+    const state = await createRunState(
+      { workDir, repoRoot: '/repo', changeName: 'add-thing' },
+      new Date('2026-03-04T05:06:07.891Z'),
+    )
+    expect(state.runId).toMatch(/^2026-03-04T05-06-07-891Z-[0-9a-f]{8}$/u)
+  })
+
+  it('rejects a corrupt state.json naming the run and preserving the cause', async () => {
     const workDir = makeWorkDir()
     const state = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
     fs.writeFileSync(path.join(state.runDir, 'state.json'), '{"runId": 42}')
-    await expect(loadRunState(workDir, state.runId)).rejects.toThrow(/state\.json/u)
+    const failure = await errorOf(loadRunState(workDir, state.runId))
+    expect(failure.message).toMatch(/state\.json/u)
+    expect(failure.message).toContain(state.runId)
+    expect(failure.cause).toBeDefined()
   })
 })
 
@@ -138,6 +160,22 @@ describe('roundCap', () => {
     await expect(loadRunState(workDir, created.runId)).rejects.toThrow(/state\.json/u)
   })
 })
+
+function createSeeded(workDir: string): PersistedRunState {
+  return {
+    runId: 'seeded-run',
+    repoRoot: '/repo',
+    workDir,
+    changeName: 'add-thing',
+    stage: 'review' as const,
+    depth: null as DepthProfile | null,
+    round: 0,
+    gate: null,
+    status: 'running' as const,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }
+}
 
 describe('deriveResumePoint', () => {
   it('resumes at the gate when gate-pending, preserving mode and round', async () => {
@@ -266,6 +304,77 @@ describe('deriveResumePoint', () => {
     const arts = artifacts({ proposal: 'done', specs: 'done', review: 'done', tasks: 'done' })
     expect(deriveResumePoint(state, arts, converged).stage).toBe('gate')
   })
+
+  it('resumes at decompose when a settled review left tasks.md missing with no final gate presented (task 3.1)', () => {
+    const workDir = makeWorkDir()
+    const settled: ReplayState = {
+      ...emptyReplay,
+      lastVerdict: {
+        round: 3,
+        verdict: 'open',
+        counts: { blocker: 0, material: 1, nitpick: 0 },
+        resolved: 2,
+        dismissed: 1,
+      },
+      gate: { mode: 'early', version: 1, answered: true },
+    }
+    const state = {
+      ...createSeeded(workDir),
+      depth: 'M' as const,
+      stage: 'review' as const,
+      round: 3,
+      gate: null,
+    }
+    const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'blocked' })
+    expect(deriveResumePoint(state, arts, settled)).toMatchObject({ stage: 'decompose', round: 3 })
+  })
+
+  it('resumes at atomicity when tasks.md exists at depth != S but the atomicity report is absent (task 3.1)', () => {
+    const workDir = makeWorkDir()
+    const settled: ReplayState = {
+      ...emptyReplay,
+      lastVerdict: {
+        round: 2,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 1 },
+        resolved: 1,
+        dismissed: 0,
+      },
+    }
+    const state = {
+      ...createSeeded(workDir),
+      depth: 'M' as const,
+      stage: 'decompose' as const,
+      round: 2,
+      gate: null,
+    }
+    const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'done' })
+    expect(deriveResumePoint(state, arts, settled)).toMatchObject({ stage: 'atomicity', round: 2 })
+  })
+
+  it('keeps gate-pending for a run whose final gate was presented (pin, task 3.1)', () => {
+    const workDir = makeWorkDir()
+    const presented: ReplayState = {
+      ...emptyReplay,
+      lastVerdict: {
+        round: 2,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+        resolved: 0,
+        dismissed: 0,
+      },
+      gate: { mode: 'final', version: 1, answered: false },
+    }
+    const state = {
+      ...createSeeded(workDir),
+      depth: 'M' as const,
+      stage: 'gate' as const,
+      round: 2,
+      gate: { mode: 'final' as const, version: 1 },
+    }
+    const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'done' })
+    expect(deriveResumePoint(state, arts, presented)).toMatchObject({ stage: 'gate', round: 2 })
+  })
 })
 
 describe('event replay integration', () => {
@@ -282,5 +391,90 @@ describe('event replay integration', () => {
     expect(replay.stages.intake).toBe('done')
     expect(replay.stages.draft).toBe('active')
     expect(replay.depth).toBe('S')
+  })
+})
+
+async function seedRun(
+  workDir: string,
+  runId: string,
+  opts: { gate?: { mode: 'early' | 'final'; version: number } | null; changeName?: string; updatedAt?: string },
+): Promise<void> {
+  const created = await createRunState({
+    workDir,
+    repoRoot: '/repo',
+    changeName: opts.changeName ?? 'add-thing',
+    runId,
+  })
+  const gate = opts.gate === undefined ? { mode: 'early' as const, version: 1 } : opts.gate
+  const stamp = opts.updatedAt ?? created.updatedAt
+  await saveRunState({ ...created, gate, updatedAt: stamp }, new Date(stamp))
+}
+
+describe('listPendingGates', () => {
+  it('scans runs/*/state.json, keeps only gate-pending runs, and returns change name, gate version, and wait time sorted by recency', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'run-old', {
+      gate: { mode: 'early', version: 1 },
+      changeName: 'old-change',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })
+    await seedRun(workDir, 'run-new', {
+      gate: { mode: 'final', version: 3 },
+      changeName: 'new-change',
+      updatedAt: '2026-02-01T00:00:00.000Z',
+    })
+    await seedRun(workDir, 'run-done', { gate: null, updatedAt: '2026-03-01T00:00:00.000Z' })
+
+    const pending = await listPendingGates(workDir)
+    expect(pending.map((entry) => entry.runId)).toEqual(['run-new', 'run-old'])
+    expect(pending[0]).toMatchObject({ runId: 'run-new', changeName: 'new-change', gateVersion: 3 })
+    expect(pending[1]).toMatchObject({ runId: 'run-old', changeName: 'old-change', gateVersion: 1 })
+  })
+
+  it('returns an empty list when no runs exist', async () => {
+    expect(await listPendingGates(makeWorkDir())).toEqual([])
+  })
+})
+
+describe('resolveRunId', () => {
+  it('accepts an exact id', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
+    expect(await resolveRunId(workDir, '2026-01-01T00-00-00-000Z-abcd1234')).toBe('2026-01-01T00-00-00-000Z-abcd1234')
+  })
+
+  it('accepts an unambiguous prefix among known runs (gate-pending or not)', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
+    await seedRun(workDir, '2026-02-01T00-00-00-000Z-ffff0000', { gate: null })
+    expect(await resolveRunId(workDir, '2026-01-01T00')).toBe('2026-01-01T00-00-00-000Z-abcd1234')
+    expect(await resolveRunId(workDir, '2026-02')).toBe('2026-02-01T00-00-00-000Z-ffff0000')
+  })
+
+  it('accepts an exact id even when it is also a prefix of another run id', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'run-1', { gate: { mode: 'early', version: 1 } })
+    await seedRun(workDir, 'run-1-extended', { gate: { mode: 'final', version: 1 } })
+    expect(await resolveRunId(workDir, 'run-1')).toBe('run-1')
+  })
+
+  it('fails on an unknown id naming the input', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
+    const resolution = resolveRunId(workDir, 'nope')
+    await expect(resolution).rejects.toThrow(/unknown run id/iu)
+    await expect(resolution).rejects.toThrow(/nope/u)
+  })
+
+  it('fails on an ambiguous prefix listing every matching candidate id', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
+    await seedRun(workDir, '2026-01-01T00-00-00-000Z-ffff0000', { gate: { mode: 'final', version: 1 } })
+    const message = (await errorOf(resolveRunId(workDir, '2026-01-01'))).message
+    expect(message).toMatch(/ambiguous/iu)
+    expect(message).toContain('abcd1234')
+    expect(message).toContain('ffff0000')
+    // one candidate per line, order-free: both candidate lines start with the shared timestamp prefix
+    expect(message.match(/\n {2}2026-01-01/gu)).toHaveLength(2)
   })
 })

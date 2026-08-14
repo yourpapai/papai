@@ -11,11 +11,15 @@ import { renderPipelineMap } from './renderer.js'
 import type { Renderer, RendererStream, Verbosity } from './renderer.js'
 import { createReplayFolder } from './replay.js'
 import type { ReplayFolder, ReplayState } from './replay.js'
+import type { ResolveCostFn } from './usage-aggregate.js'
 
 const ARROW = '\u25B6'
 const ERASE_LINE = '\u001b[2K'
 const CURSOR_DOWN = '\u001b[1B'
 const ELLIPSIS = '\u2026'
+const TOKEN_SCALE = 1_000_000
+
+type StepFinishInput = Extract<EventInput, { type: 'step_finish' }>
 
 function cursorUp(n: number): string {
   return `\u001b[${n}A`
@@ -54,14 +58,19 @@ export class DynamicRenderer implements Renderer {
   private readonly folder: ReplayFolder
   private readonly slots = new Map<string, string>()
   private readonly totals = { input: 0, output: 0, reasoning: 0, cost: 0 }
+  private readonly agentModels = new Map<string, string>()
+  private costEstimated = false
+  private readonly resolveCost: ResolveCostFn | undefined
 
   constructor(
     private readonly stream: RendererStream,
     private readonly verbosity: Verbosity,
     folder?: ReplayFolder,
+    resolveCost?: ResolveCostFn,
   ) {
     this.tty = stream.isTTY === true
     this.folder = folder ?? createReplayFolder()
+    this.resolveCost = resolveCost
   }
 
   renderState = (state: ReplayState): void => {
@@ -91,18 +100,34 @@ export class DynamicRenderer implements Renderer {
         event.agent,
         arg === undefined ? `${event.agent} ${ARROW} ${event.tool}` : `${event.agent} ${ARROW} ${event.tool} ${arg}`,
       )
+    } else if (event.type === 'spawned') {
+      this.agentModels.set(event.agent, event.model)
     } else if (event.type === 'done') {
       this.slots.delete(event.agent)
-      this.totals.input += event.usage.inputTokens
-      this.totals.output += event.usage.outputTokens
-      this.totals.reasoning += event.usage.reasoningTokens
-      this.totals.cost += event.usage.costUsd
     } else if (event.type === 'step_finish') {
       this.totals.input += event.tokens.input
       this.totals.output += event.tokens.output
       this.totals.reasoning += event.tokens.reasoning
-      this.totals.cost += event.costUsd
+      this.totals.cost += event.costUsd + this.estimateStepCost(event)
     }
+  }
+
+  /**
+   * Display-time estimate for an unmetered step, using the `spawned`-event
+   * agent→model association and the same formula as `repriceEvent` so live and
+   * gate figures agree. Returns 0 (today's behavior) when no resolver was
+   * injected, the model is unknown, or pricing cannot resolve it.
+   */
+  private estimateStepCost(event: StepFinishInput): number {
+    if (this.resolveCost === undefined || event.costUsd > 0) return 0
+    const { input, output, reasoning } = event.tokens
+    if (input === 0 && output === 0 && reasoning === 0) return 0
+    const model = this.agentModels.get(event.agent)
+    if (model === undefined) return 0
+    const resolved = this.resolveCost(model)
+    if (resolved === null) return 0
+    this.costEstimated = true
+    return ((input + reasoning) * resolved.input + output * resolved.output) / TOKEN_SCALE
   }
 
   private statusLine(): string {
@@ -112,7 +137,7 @@ export class DynamicRenderer implements Renderer {
     if (this.totals.input > 0 || this.totals.output > 0) {
       parts.push(`in ${formatTokenCount(this.totals.input)} / out ${formatTokenCount(this.totals.output)}`)
     }
-    if (this.totals.cost > 0) parts.push(`$${this.totals.cost.toFixed(4)}`)
+    if (this.totals.cost > 0) parts.push(`${this.costEstimated ? '~' : ''}$${this.totals.cost.toFixed(4)}`)
     if (this.startedAt !== 0) parts.push(formatDuration(Date.now() - this.startedAt))
     if (parts.length === 0) return ''
     return `  ${'status'.padEnd(10)} ${parts.join(` ${MIDDLE_DOT} `)}`
