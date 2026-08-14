@@ -51,6 +51,16 @@ const makeFakeFs = (files: Record<string, FakeFile>, state: string | null = null
   }
 }
 
+// Fake fs wrapping a base whose readFile reports null for the given absolute
+// paths while listMarkdownFiles still lists them (a transient read failure).
+const makeUnreadableFs = (base: FakeDaemonFs, unreadablePaths: string[]): FakeDaemonFs => {
+  const unreadable = new Set(unreadablePaths)
+  return {
+    ...base,
+    readFile: (path: string) => (unreadable.has(path) ? null : base.readFile(path)),
+  }
+}
+
 type PushScriptEntry = { ok: boolean; status: number } | { reject: string }
 type PushScript = PushScriptEntry[]
 
@@ -272,6 +282,27 @@ describe('context-vault-indexer daemon scanOnce', () => {
     expect(body.changeName).toBe('alpha')
     expect(body.files).toEqual([])
     expect(body.deletions).toEqual(['alpha/tasks.md'])
+  })
+
+  test('a transient read failure on a still-listed file is not pushed as a deletion', async () => {
+    const base = makeFakeFs(
+      {
+        [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha\n', 100),
+        [`${SPEC_DIR}/alpha/tasks.md`]: file('- [ ] one\n', 101),
+      },
+      persistedState({
+        'alpha/proposal.md': { hash: sha256('# Alpha\n'), mtime: 100 },
+        'alpha/tasks.md': { hash: sha256('- [ ] one\n'), mtime: 101 },
+      }),
+    )
+    const fs = makeUnreadableFs(base, [`${SPEC_DIR}/alpha/tasks.md`])
+    const { deps, pushes } = makeDeps(fs)
+
+    const result = await scanOnce(CONFIG, deps)
+
+    expect(result).toEqual({ scanned: 1, pushedChanges: 0, failedChanges: 0 })
+    expect(pushes).toHaveLength(0)
+    expect(fs.savedStates).toHaveLength(0)
   })
 
   test('the persisted hash map survives a restart: the next scan sees no delta', async () => {

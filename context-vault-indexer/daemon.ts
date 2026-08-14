@@ -97,15 +97,25 @@ const parseState = (raw: string | null): Record<string, FileEntry> => {
   }
 }
 
-const scanCurrent = (config: DaemonConfig, fs: DaemonFs): CurrentFile[] => {
-  const out: CurrentFile[] = []
+type ScanCurrentResult = { files: CurrentFile[]; listed: Set<string> }
+
+const scanCurrent = (config: DaemonConfig, fs: DaemonFs): ScanCurrentResult => {
+  const files: CurrentFile[] = []
+  const listed = new Set<string>()
   for (const rel of fs.listMarkdownFiles(config.specDir)) {
     if (changeNameOf(rel) === null) continue
+    listed.add(rel)
     const text = fs.readFile(`${config.specDir}/${rel}`)
-    if (text === null) continue
-    out.push({ path: rel, text, hash: sha256Hex(text), mtime: fs.statMtime(`${config.specDir}/${rel}`) })
+    if (text === null) {
+      logger.warn(
+        { path: rel },
+        'context-vault indexer could not read a listed file; keeping persisted state this scan',
+      )
+      continue
+    }
+    files.push({ path: rel, text, hash: sha256Hex(text), mtime: fs.statMtime(`${config.specDir}/${rel}`) })
   }
-  return out
+  return { files, listed }
 }
 
 const attemptPush = async (
@@ -163,12 +173,11 @@ const processChange = async (
 }
 
 export async function scanOnce(config: DaemonConfig, deps: DaemonDeps): Promise<ScanResult> {
-  const current = scanCurrent(config, deps.fs)
+  const { files: current, listed } = scanCurrent(config, deps.fs)
   const persisted = parseState(deps.fs.readState())
 
-  const currentPaths = new Set(current.map((f) => f.path))
   const changed = current.filter((f) => persisted[f.path]?.hash !== f.hash)
-  const deleted = Object.keys(persisted).filter((path) => !currentPaths.has(path))
+  const deleted = Object.keys(persisted).filter((path) => !listed.has(path))
 
   const changeNames = [
     ...new Set(
