@@ -3,22 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { AgentLayerDeps } from './agent-layer.js'
 import { deriveChangeName } from './config.js'
-import { runAtomicity, runDecompose } from './decompose.js'
 import { runDraft } from './draft.js'
-import { buildDriftCheck } from './drift.js'
 import type { DepthProfile, EventInput } from './events.js'
-import { prepareResumeInput, runExtendRound } from './extend-round.js'
-import type { RunGateResumeResult } from './extend-round.js'
-import { applyConfirmAll, buildBus, finalizeGate, findingsOf, logPathFor, nowOf, presentGateAt } from './gate-digest.js'
+import { buildBus, logPathFor, nowOf, presentGateAt } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
-import { resumeGate, vetoRedirects } from './gate.js'
 import { runIntake } from './intake.js'
 import { createMaterializer } from './materialize.js'
+import { runPostConvergenceTail } from './post-review-tail.js'
 import type { Verbosity } from './renderer.js'
 import { replayEvents } from './replay.js'
 import { runReviewLoop } from './review-loop.js'
@@ -27,10 +23,10 @@ import { createRunState, loadRunState, resolveRoundCap, saveRunState } from './r
 import type { RunState } from './run-state.js'
 import { deriveResumePoint } from './run-state.js'
 import { createStageMachine } from './stage-machine.js'
-import { runVetoUpdater, updateAssumptionsFromVetoes } from './veto-updater.js'
 
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
-export type { RunGateResumeResult } from './extend-round.js'
+export type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
+export { runGateResume } from './extend-round.js'
 
 export interface StartOptions {
   readonly taskFile: string
@@ -51,90 +47,6 @@ interface FreshInput {
   readonly depthOverride?: DepthProfile
 }
 
-export async function runStart(deps: OrchestratorDeps, options: StartOptions): Promise<RunStartResult> {
-  const taskText = await readFile(options.taskFile, 'utf8')
-  const changeName = deriveChangeName(options.taskFile, taskText)
-  const state = await createRunState(
-    { workDir: deps.config.workDir, repoRoot: deps.config.repoRoot, changeName },
-    nowOf(deps),
-  )
-  const emit = buildBus(deps, logPathFor(state))
-  return runFreshPipeline(deps, state, emit, { taskText, changeName, depthOverride: options.depthOverride })
-}
-
-export async function runResume(deps: OrchestratorDeps, runId: string): Promise<RunResumeResult> {
-  const state = await loadRunState(deps.config.workDir, runId)
-  const emit = buildBus(deps, logPathFor(state))
-  if (state.gate !== null) return { runId, halted: 'gate-pending' }
-  const status = await deps.driver.status(state.changeName)
-  const resume = deriveResumePoint(state, status.artifacts, replayEvents(logPathFor(state)))
-  const depth = state.depth ?? 'S'
-  const cwd = deps.config.repoRoot
-  const sidecarDir = path.join(state.runDir, 'sidecars')
-  const changeDir = path.join(cwd, 'openspec', 'changes', state.changeName)
-  const machine = createStageMachine({ emit })
-  const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
-  const ctx: StageContext = { cwd, changeDir, sidecarDir, emit }
-  const env: PipelineEnv = {
-    deps,
-    state,
-    machine,
-    agent,
-    ctx,
-    input: { changeName: state.changeName, depthOverride: depth, taskText: '' },
-  }
-  if (resume.stage !== 'review') {
-    throw new Error(`resume from stage '${resume.stage}' (${resume.reason}) is not supported yet`)
-  }
-  const materialize = createMaterializer(sidecarDir, changeDir)
-  let reviewResult!: ReviewLoopResult
-  await machine.runStage('review', async () => {
-    reviewResult = await runReviewLoop(
-      { agent, emit, sidecarDir, cwd, materialize },
-      { changeName: state.changeName, changeDir, depth, taskText: '', conventions: deps.conventions ?? '' },
-    )
-    state.round = reviewResult.rounds
-  })
-  state.stage = 'review'
-  await saveRunState(state, nowOf(deps))
-  const gate = await runPostReviewToGate(env, depth, reviewResult)
-  return { runId, halted: 'gate', gateMdPath: gate.gateMdPath, version: gate.version }
-}
-
-async function runFreshPipeline(
-  deps: OrchestratorDeps,
-  state: RunState,
-  emit: (event: EventInput) => void,
-  input: FreshInput,
-): Promise<RunStartResult> {
-  const cwd = deps.config.repoRoot
-  const sidecarDir = path.join(state.runDir, 'sidecars')
-  const changeDir = path.join(cwd, 'openspec', 'changes', input.changeName)
-  const machine = createStageMachine({ emit })
-  const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
-  const ctx: StageContext = { cwd, changeDir, sidecarDir, emit }
-  const env: PipelineEnv = { deps, state, machine, agent, ctx, input }
-  const { depth, reviewResult } = await runPlanningStages(env)
-  return runPostReviewToGate(env, depth, reviewResult)
-}
-
-async function runPostReviewToGate(
-  env: PipelineEnv,
-  depth: DepthProfile,
-  reviewResult: ReviewLoopResult,
-  version: number = 1,
-): Promise<RunStartResult> {
-  const { deps, state, machine, ctx } = env
-  if (reviewResult.outcome === 'cap-hit') return presentGateAt(deps, state, ctx, reviewResult, version, 'early')
-  await runDecomposeStages(env, depth)
-  state.stage = 'gate'
-  let gateResult!: RunStartResult
-  await machine.runStage('gate', async () => {
-    gateResult = await presentGateAt(deps, state, ctx, reviewResult, version, 'final')
-  })
-  return gateResult
-}
-
 interface PipelineEnv {
   readonly deps: OrchestratorDeps
   readonly state: RunState
@@ -144,7 +56,81 @@ interface PipelineEnv {
   readonly input: FreshInput
 }
 
+export async function runStart(deps: OrchestratorDeps, options: StartOptions): Promise<RunStartResult> {
+  const taskText = await readFile(options.taskFile, 'utf8')
+  const changeName = deriveChangeName(options.taskFile, taskText)
+  const state = await createRunState(
+    { workDir: deps.config.workDir, repoRoot: deps.config.repoRoot, changeName },
+    nowOf(deps),
+  )
+  const emit = buildBus(deps, logPathFor(state))
+  const env = buildPipelineEnv(deps, state, emit, {
+    taskText,
+    changeName,
+    depthOverride: options.depthOverride,
+  })
+  const { depth, reviewResult } = await runPlanningStages(env)
+  return runPostReviewToGate(env, depth, reviewResult)
+}
+
+export async function runResume(deps: OrchestratorDeps, runId: string): Promise<RunResumeResult> {
+  const state = await loadRunState(deps.config.workDir, runId)
+  const emit = buildBus(deps, logPathFor(state))
+  if (state.gate !== null) return { runId, halted: 'gate-pending' }
+  const status = await deps.driver.status(state.changeName)
+  const resume = deriveResumePoint(state, status.artifacts, replayEvents(logPathFor(state)))
+  const depth = state.depth ?? 'S'
+  const env = buildPipelineEnv(deps, state, emit, { taskText: '', changeName: state.changeName, depthOverride: depth })
+  if (resume.stage !== 'review') {
+    throw new Error(`resume from stage '${resume.stage}' (${resume.reason}) is not supported yet`)
+  }
+  const reviewResult = await runReviewStage(env, depth, '')
+  state.stage = 'review'
+  await saveRunState(state, nowOf(deps))
+  const gate = await runPostReviewToGate(env, depth, reviewResult)
+  return { runId, halted: 'gate', gateMdPath: gate.gateMdPath, version: gate.version }
+}
+
+function buildPipelineEnv(
+  deps: OrchestratorDeps,
+  state: RunState,
+  emit: (event: EventInput) => void,
+  input: FreshInput,
+): PipelineEnv {
+  const cwd = deps.config.repoRoot
+  const sidecarDir = path.join(state.runDir, 'sidecars')
+  const changeDir = path.join(cwd, 'openspec', 'changes', input.changeName)
+  const machine = createStageMachine({ emit })
+  const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
+  const ctx: StageContext = { cwd, changeDir, sidecarDir, emit }
+  return { deps, state, machine, agent, ctx, input }
+}
+
+function runPostReviewToGate(
+  env: PipelineEnv,
+  depth: DepthProfile,
+  reviewResult: ReviewLoopResult,
+  version: number = 1,
+): Promise<RunStartResult> {
+  const { deps, state, ctx, agent } = env
+  if (reviewResult.outcome === 'cap-hit') return presentGateAt(deps, state, ctx, reviewResult, version, 'early')
+  return runPostConvergenceTail({ deps, state, ctx, agent, depth, reviewResult, version })
+}
+
 async function runPlanningStages(env: PipelineEnv): Promise<{ depth: DepthProfile; reviewResult: ReviewLoopResult }> {
+  const { deps, state } = env
+  const depth = await runIntakeStage(env)
+  await saveRunState(state, nowOf(deps))
+  await runDraftStage(env, depth)
+  state.stage = 'draft'
+  await saveRunState(state, nowOf(deps))
+  const reviewResult = await runReviewStage(env, depth, env.input.taskText)
+  state.stage = 'review'
+  await saveRunState(state, nowOf(deps))
+  return { depth, reviewResult }
+}
+
+async function runIntakeStage(env: PipelineEnv): Promise<DepthProfile> {
   const { deps, state, machine, agent, ctx, input } = env
   let depth: DepthProfile = input.depthOverride ?? 'S'
   await machine.runStage('intake', async () => {
@@ -156,7 +142,11 @@ async function runPlanningStages(env: PipelineEnv): Promise<{ depth: DepthProfil
     state.depth = depth
     state.roundCap = resolveRoundCap({ depth, roundCap: undefined })
   })
-  await saveRunState(state, nowOf(deps))
+  return depth
+}
+
+async function runDraftStage(env: PipelineEnv, depth: DepthProfile): Promise<void> {
+  const { deps, machine, agent, ctx, input } = env
   await machine.runStage('draft', () =>
     runDraft(
       {
@@ -169,8 +159,10 @@ async function runPlanningStages(env: PipelineEnv): Promise<{ depth: DepthProfil
       { changeName: input.changeName, taskText: input.taskText, depth },
     ),
   )
-  state.stage = 'draft'
-  await saveRunState(state, nowOf(deps))
+}
+
+async function runReviewStage(env: PipelineEnv, depth: DepthProfile, taskText: string): Promise<ReviewLoopResult> {
+  const { deps, state, machine, agent, ctx, input } = env
   const materialize = createMaterializer(ctx.sidecarDir, ctx.changeDir)
   let reviewResult!: ReviewLoopResult
   await machine.runStage('review', async () => {
@@ -180,88 +172,11 @@ async function runPlanningStages(env: PipelineEnv): Promise<{ depth: DepthProfil
         changeName: input.changeName,
         changeDir: ctx.changeDir,
         depth,
-        taskText: input.taskText,
+        taskText,
         conventions: deps.conventions ?? '',
       },
     )
     state.round = reviewResult.rounds
   })
-  state.stage = 'review'
-  await saveRunState(state, nowOf(deps))
-  return { depth, reviewResult }
-}
-
-async function runDecomposeStages(env: PipelineEnv, depth: DepthProfile): Promise<void> {
-  const { deps, state, machine, agent, ctx, input } = env
-  await machine.runStage('decompose', () =>
-    runDecompose(
-      { driver: deps.driver, agent, sidecarDir: ctx.sidecarDir, cwd: ctx.cwd },
-      { changeName: input.changeName },
-    ),
-  )
-  state.stage = 'decompose'
-  await saveRunState(state, nowOf(deps))
-  if (depth !== 'S') {
-    await machine.runStage('atomicity', async () => {
-      await runAtomicity(
-        { driver: deps.driver, agent, sidecarDir: ctx.sidecarDir, cwd: ctx.cwd },
-        { changeName: input.changeName, depth },
-      )
-    })
-    state.stage = 'atomicity'
-    await saveRunState(state, nowOf(deps))
-  }
-}
-
-export interface GateResumeOptions {
-  readonly confirmAll?: boolean
-  readonly abort?: boolean
-}
-
-export async function runGateResume(
-  deps: OrchestratorDeps,
-  runId: string,
-  options: GateResumeOptions,
-): Promise<RunGateResumeResult> {
-  const state = await loadRunState(deps.config.workDir, runId)
-  if (state.gate === null) throw new Error(`run ${runId} is not gate-pending`)
-  const emit = buildBus(deps, logPathFor(state))
-  const version = state.gate.version
-  const changeDir = path.join(deps.config.repoRoot, 'openspec', 'changes', state.changeName)
-  const sidecarDir = path.join(state.runDir, 'sidecars')
-  const gateMdPath = path.join(state.runDir, `gate-${version}.md`)
-  if (options.abort === true) await writeFile(gateMdPath, 'ABORT\n')
-  else if (options.confirmAll === true) await applyConfirmAll(gateMdPath)
-  const { assumptions, reviewResult, requiredAck } = await prepareResumeInput(sidecarDir, state.round, state.gate.mode)
-  const findings = findingsOf(reviewResult)
-  const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
-  const outcome = await resumeGate(
-    {
-      emit,
-      runDir: state.runDir,
-      changeDir,
-      driftCheck: buildDriftCheck(agent, state, changeDir, sidecarDir, deps.config.repoRoot),
-    },
-    {
-      version,
-      assumptions,
-      blockers: findings.blockers,
-      gateMode: state.gate.mode,
-      ...(findings.material.length > 0 ? { findings: findings.material } : {}),
-      ...(requiredAck === undefined ? {} : { requiredAck }),
-    },
-  )
-  if (outcome.kind === 'aborted') return finalizeGate(deps, state, 'aborted', version)
-  if (outcome.kind === 'approved') return finalizeGate(deps, state, 'completed', version)
-  if (outcome.kind === 'extend') return runExtendRound(deps, state, emit, agent, version)
-  const vetoes = vetoRedirects(outcome)
-  const ctx: StageContext = { cwd: deps.config.repoRoot, changeDir, sidecarDir, emit }
-  await updateAssumptionsFromVetoes(sidecarDir, state.round, vetoes)
-  const driftCheck = buildDriftCheck(agent, state, changeDir, sidecarDir, deps.config.repoRoot)
-  const { filesUpdated } = await runVetoUpdater({ driver: deps.driver, agent }, state, ctx, vetoes)
-  const driftFiles = filesUpdated.filter((file) => file.includes('specs/') || file.endsWith('tasks.md'))
-  if (driftFiles.length > 0) await driftCheck(driftFiles)
-  const next = version + 1
-  await presentGateAt(deps, state, ctx, reviewResult, next, state.gate.mode)
-  return { runId, outcome: 'veto', version: next }
+  return reviewResult
 }
