@@ -245,29 +245,31 @@ export function applyPush(
 
   const changedPaths: string[] = []
   const changedFiles: SummarizerFileInput[] = []
-  for (const file of input.files) {
-    const existing = existingByPath.get(file.path)
-    if (existing !== undefined && existing.hash === file.hash) continue
-    applyFile(configContextId, specId, file, existing !== undefined)
-    changedPaths.push(file.path)
-    changedFiles.push({ path: file.path, kind: file.kind, text: file.text })
-  }
-
   const deletedPaths: string[] = []
-  for (const path of input.deletions) {
-    if (!existingByPath.has(path)) continue
-    deleteFile(configContextId, specId, path)
-    deletedPaths.push(path)
-  }
+  getDrizzleDb().transaction(() => {
+    for (const file of input.files) {
+      const existing = existingByPath.get(file.path)
+      if (existing !== undefined && existing.hash === file.hash) continue
+      applyFile(configContextId, specId, file, existing !== undefined)
+      changedPaths.push(file.path)
+      changedFiles.push({ path: file.path, kind: file.kind, text: file.text })
+    }
 
-  const remaining = listFiles(configContextId, specId)
-  if (remaining.length === 0) {
-    deleteSpecShell(configContextId, specId)
-  } else {
-    const reduced = aggregateSpec({ changeName: input.changeName, files: buildAggregateInput(input, remaining) })
-    upsertSpec(configContextId, input, specId, reduced)
-  }
-  touchIndexerState(configContextId)
+    for (const path of input.deletions) {
+      if (!existingByPath.has(path)) continue
+      deleteFile(configContextId, specId, path)
+      deletedPaths.push(path)
+    }
+
+    const remaining = listFiles(configContextId, specId)
+    if (remaining.length === 0) {
+      deleteSpecShell(configContextId, specId)
+    } else {
+      const reduced = aggregateSpec({ changeName: input.changeName, files: buildAggregateInput(input, remaining) })
+      upsertSpec(configContextId, input, specId, reduced)
+    }
+    touchIndexerState(configContextId)
+  })
 
   maybeEnqueueSummarization(configContextId, specId, input, changedFiles, deletedPaths, mergedDeps)
 
