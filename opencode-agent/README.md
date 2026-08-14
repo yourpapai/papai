@@ -1465,7 +1465,7 @@ cannot drift.
 | `AGENT_REVIEW_COMMAND`                     | no       | detected                                        | JSON argv running the review loop; `none` disables it  |
 | `AGENT_CHECKS`                             | no       | lint / typecheck / test                         | JSON `[{ "name", "argv" }]` the CI-fix phase runs      |
 | `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                             | review-loop rounds                                     |
-| `AGENT_REVIEW_POOL_SIZE`                   | no       | `2`                                             | review-loop worker pool                                |
+| `AGENT_REVIEW_POOL_SIZE`                   | no       | `1`                                             | review-loop worker pool                                |
 | `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                             | Repair rounds per CI-fix job                           |
 | `AGENT_COMMIT_REPAIR_MAX_ROUNDS`           | no       | `3`                                             | Commit attempts when the repo's own checks refuse one  |
 | `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                           |
@@ -1513,7 +1513,11 @@ Every numeric knob is validated as an integer **and range-checked**, because
 rejecting non-integers only closes "not a number", never "a number that cannot
 work". Round counts accept 1–20, `AGENT_TIMEOUT_MS` accepts 1 000–7 200 000 (one
 second to two hours), `AGENT_MAX_TOKENS` accepts 50 000–1 000 000 000, and
-`AGENT_REVIEW_POOL_SIZE` accepts 1–16. `AGENT_TIMEOUT_MS=1`
+`AGENT_REVIEW_POOL_SIZE` accepts 1–16, and defaults to the bottom of that
+range deliberately: a review-loop worker is an `opencode run` **plus** a full
+`AGENT_CHECK_COMMAND`, so on a stock 4-vCPU runner two of them overlap into an
+OOM that takes the runner down before the pipeline can post anything. Raise it
+only where the build gate is cheap enough to overlap. `AGENT_TIMEOUT_MS=1`
 is a positive integer that kills every subprocess after a millisecond, so the
 pipeline reports every check as failing; `AGENT_REVIEW_MAX_ROUNDS=9007199254740991`
 is a positive integer that removes the bound the knob exists to impose. A
