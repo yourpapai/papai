@@ -56,6 +56,8 @@ export function writeGateDigest(input: GateDigestInput): string {
     'Answer a cap-hit blocker with `→ <answer>` beneath it, or `→ OVERRIDE` to override.',
     'Write `ABORT` on its own line to abort.',
     '',
+    ...renderDecisions(input.mode),
+    '',
     '### Summary',
     input.summary,
     '',
@@ -65,6 +67,26 @@ export function writeGateDigest(input: GateDigestInput): string {
   ]
   appendGateSections(lines, input, ranked)
   return lines.join('\n')
+}
+
+/**
+ * Render the `### Decisions` block: every decision line names its downstream
+ * effect, so no approval is consequence-blind. At an early (cap-hit) gate
+ * approval continues the pipeline into decomposition, atomicity checking, and
+ * a final gate; at the final gate approval completes the run.
+ */
+export function renderDecisions(mode: 'early' | 'final'): string[] {
+  const approve =
+    mode === 'early'
+      ? '- **approve** — continues to task decomposition, atomicity checking, and a final gate (BREAKING: no longer stops the run here)'
+      : '- **approve** — completes the run with the full artifact set (proposal, specs, design, tasks)'
+  return [
+    '### Decisions',
+    '',
+    approve,
+    '- **veto** (leave a box unchecked) — runs one resolver pass on the redirects, then re-gates',
+    '- **abort** (`ABORT` on its own line) — ends the run without completing; the only early exit that spends nothing further',
+  ]
 }
 
 function appendGateSections(lines: string[], input: GateDigestInput, ranked: readonly GateAssumption[]): void {

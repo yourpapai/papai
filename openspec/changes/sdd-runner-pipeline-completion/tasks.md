@@ -34,8 +34,8 @@ Test-first throughout: failing test before the implementation it covers.
 
 ## 4. Gate copy states consequences (Decision 4)
 
-- [ ] 4.1 Add failing tests in `tests/sdd-runner/gate-render.test.ts`: the early gate states that approving continues to decomposition, atomicity, and a final gate, and that extending runs one more review round; the final gate states that approving completes the run. Verify: `bun test tests/sdd-runner/gate-render.test.ts` (red)
-- [ ] 4.2 Update the gate renderer copy until 4.1 is green; confirm the parser is untouched (existing `gate-model` tests stay green). Verify: `bun test tests/sdd-runner/gate-render.test.ts tests/sdd-runner/gate-model.test.ts`
+- [x] 4.1 Add failing tests in `tests/sdd-runner/gate-render.test.ts`: the early gate states that approving continues to decomposition, atomicity, and a final gate, and that extending runs one more review round; the final gate states that approving completes the run. Verify: `bun test tests/sdd-runner/gate-render.test.ts` (red)
+- [x] 4.2 Update the gate renderer copy until 4.1 is green; confirm the parser is untouched (existing `gate-model` tests stay green). Verify: `bun test tests/sdd-runner/gate-render.test.ts tests/sdd-runner/gate-model.test.ts`
 
 ## 5. Docs + full verification
 

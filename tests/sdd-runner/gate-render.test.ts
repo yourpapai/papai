@@ -6,6 +6,23 @@
 import { describe, expect, it } from 'bun:test'
 
 import { renderChangeDigest, writeGateDigest } from '../../sdd-runner/src/gate-render.js'
+import type { GateDigestInput } from '../../sdd-runner/src/gate-render.js'
+
+const decisionBase: Omit<GateDigestInput, 'mode' | 'capHitFired'> = {
+  version: 1,
+  changeName: 'add-thing',
+  runId: 'run-1',
+  assumptions: [],
+  blockers: [],
+  openMaterial: [],
+  openNitpicks: [],
+  trajectory: [],
+  summary: 'add a thing',
+  costUsd: 0,
+  costKnown: false,
+  durationMs: 0,
+  changeDigest: { what: null, why: null, touches: null, hasTasks: false },
+}
 
 describe('gate-render module surface', () => {
   it('renderChangeDigest returns the 5-tuple with placeholders for null fields', () => {
@@ -34,5 +51,25 @@ describe('gate-render module surface', () => {
     })
     expect(md).toContain('<!-- gate-1.md -->')
     expect(md).toContain('gate resume run-1')
+  })
+
+  it('early gate states that approving continues to decomposition, atomicity, and a final gate (task 4.1)', () => {
+    const md = writeGateDigest({ ...decisionBase, mode: 'early', capHitFired: true })
+    expect(md).toContain('### Decisions')
+    expect(md).toMatch(/approve.*continues.*decompos/u)
+    expect(md).toMatch(/atomicity/u)
+    expect(md).toMatch(/final gate/u)
+  })
+
+  it('early gate states that extending runs one more review round (task 4.1)', () => {
+    const md = writeGateDigest({ ...decisionBase, mode: 'early', capHitFired: true })
+    expect(md).toContain('→ RUN 1 MORE')
+    expect(md).toMatch(/runs one more review round/u)
+  })
+
+  it('final gate states that approving completes the run (task 4.1)', () => {
+    const md = writeGateDigest({ ...decisionBase, mode: 'final', capHitFired: false })
+    expect(md).toContain('### Decisions')
+    expect(md).toMatch(/approve.*completes the run/u)
   })
 })
