@@ -120,8 +120,15 @@ describe('buildSummary verdict', () => {
   test('a stopped run says so before anything else, and keeps the counts', () => {
     const ledger = ledgerOf(makeRecord('closed'), makeRecord('discovered'))
     const summary = buildSummary(inputOf({ doneReason: 'stopped', rounds: 1, ledger }))
-    expect(summary).toContain('Review loop stopped early')
-    expect(summary).toContain('1 open')
+    // The whole sentence, because every part of it is load-bearing: a reader who
+    // takes these counts for a final verdict draws the opposite conclusion from
+    // the one the run supports.
+    expect(summary.split('\n')[0]).toBe('Review loop stopped early: out of time after 1 round — 1 open (1 fixed).')
+  })
+
+  test('a stopped run that found nothing leaves the breakdown off rather than empty', () => {
+    const summary = buildSummary(inputOf({ doneReason: 'stopped', rounds: 2, ledger: { issues: {} } }))
+    expect(summary.split('\n')[0]).toBe('Review loop stopped early: out of time after 2 rounds — 0 open.')
   })
 
   test('issues remaining leads with the open count', () => {

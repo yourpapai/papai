@@ -294,6 +294,8 @@ interface RunCliFixture {
   repoPath: string
   workDir: string
   runCliWithPath: (args: string[]) => Promise<CliOutcome>
+  /** Everything the run printed, so its notices are assertable rather than assumed. */
+  output: () => string
   getRunDir: () => string
 }
 
@@ -347,12 +349,13 @@ function setupRunCliFixtures(
   writeFileSync(scriptPath, createFakeOpencodeScript(scenarioPath))
   chmodSync(scriptPath, 0o755)
 
+  const stream = captureStream()
   const runCliWithPath = async (args: string[]): Promise<CliOutcome> => {
     const oldPath = process.env['PATH']
     process.env['PATH'] = `${binDir}:${oldPath}`
     process.env['FAKE_OPENCODE_SCENARIO'] = scenarioPath
     try {
-      return await runCli(args, captureStream())
+      return await runCli(args, stream)
     } finally {
       process.env['PATH'] = oldPath
       delete process.env['FAKE_OPENCODE_SCENARIO']
@@ -366,7 +369,7 @@ function setupRunCliFixtures(
     return path.join(runRoot, entries[0]!)
   }
 
-  return { dir, configPath, planPath, repoPath, workDir, runCliWithPath, getRunDir }
+  return { dir, configPath, planPath, repoPath, workDir, runCliWithPath, getRunDir, output: stream.text }
 }
 
 async function createResumableRunState(
@@ -727,7 +730,132 @@ describe('runCli commit identity', () => {
   })
 })
 
+/**
+ * A resumed run whose worktree is still on disk, which is the only way to reach
+ * `prepareWorktree`'s other two branches. Stopped at once by a spent budget, so
+ * the worktree survives the run and can be looked at: a run that finishes merges
+ * and removes it.
+ */
+async function resumableDirtyRun(runId: string): Promise<{ fixture: RunCliFixture; worktreePath: string }> {
+  const fixture = setupRunCliFixtures({ poolSize: 1, extraConfig: { runTimeoutMs: 1 } })
+  const worktreePath = path.join(fixture.workDir, 'worktrees', runId)
+  await createResumableRunState(fixture.repoPath, fixture.workDir, fixture.planPath, runId)
+  await execGit(fixture.repoPath, ['worktree', 'add', worktreePath, '-b', `review-loop/${runId}`])
+  // A scenario with a finding in it: a review that comes back clean is a run that
+  // *finished*, and a finished run merges its worktree and removes it.
+  writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(oneFixScenario()))
+  return { fixture, worktreePath }
+}
+
+describe('runCli on a worktree a previous run left behind', () => {
+  test('keeps uncommitted work it was not told to discard, and says so', async () => {
+    const { fixture, worktreePath } = await resumableDirtyRun('2026-07-15T10-30-00-000Z-dirty')
+    writeFileSync(path.join(worktreePath, 'stray.ts'), 'half a fix\n')
+    const warn = spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await fixture.runCliWithPath([
+      '--config',
+      fixture.configPath,
+      '--plan',
+      fixture.planPath,
+      '--resume-run',
+      '2026-07-15T10-30-00-000Z-dirty',
+    ])
+
+    expect(warn.mock.calls.flat().join(' ')).toContain('Pass --reset-worktree to discard them before resuming')
+    expect(existsSync(path.join(worktreePath, 'stray.ts'))).toBe(true)
+  })
+
+  test('discards it when told to reset', async () => {
+    const { fixture, worktreePath } = await resumableDirtyRun('2026-07-15T10-30-00-000Z-reset')
+    writeFileSync(path.join(worktreePath, 'stray.ts'), 'half a fix\n')
+
+    await fixture.runCliWithPath([
+      '--config',
+      fixture.configPath,
+      '--plan',
+      fixture.planPath,
+      '--resume-run',
+      '2026-07-15T10-30-00-000Z-reset',
+      '--reset-worktree',
+    ])
+
+    expect(existsSync(path.join(worktreePath, 'stray.ts'))).toBe(false)
+  })
+
+  test('says nothing about a worktree that is clean', async () => {
+    const { fixture } = await resumableDirtyRun('2026-07-15T10-30-00-000Z-clean')
+    const warn = spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await fixture.runCliWithPath([
+      '--config',
+      fixture.configPath,
+      '--plan',
+      fixture.planPath,
+      '--resume-run',
+      '2026-07-15T10-30-00-000Z-clean',
+    ])
+
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('uncommitted changes')
+  })
+})
+
 describe('runCli under a run budget', () => {
+  test('says why it stopped, and where the fixes it kept are', async () => {
+    const fixture = setupRunCliFixtures({ poolSize: 1, extraConfig: { runTimeoutMs: 1 } })
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(oneFixScenario()))
+
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+
+    const runId = path.basename(fixture.getRunDir())
+    // The caller of this loop reads its stdout, and a maintainer reads it after
+    // the fact: both need the reason and the branch, not just an exit code.
+    expect(fixture.output()).toContain('[review-loop] stopped: out of time for this run')
+    expect(fixture.output()).toContain(`accepted fixes are on review-loop/${runId}; merge it by hand`)
+  })
+
+  test('says instead that the fixes are already published, when they are', async () => {
+    const fixture = setupRunCliFixtures({
+      poolSize: 1,
+      extraConfig: { runTimeoutMs: 1, mergeEachFix: true },
+    })
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(oneFixScenario()))
+
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+
+    expect(fixture.output()).toContain('every accepted fix is already on the working branch')
+    expect(fixture.output()).not.toContain('merge it by hand')
+  })
+
+  test('a budget it has not spent stops nothing', async () => {
+    // The budget counts from the start of the *process*, so the arithmetic that
+    // charges setup to it has to subtract rather than add: an hour's budget on a
+    // run that takes seconds must leave the run alone.
+    const fixture = setupRunCliFixtures({ poolSize: 1, extraConfig: { runTimeoutMs: 3_600_000 } })
+    const scenario = { reviewerIssues: [JSON.stringify({ issues: [] })], fixerResults: [] }
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(scenario))
+
+    const outcome = await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+
+    expect(outcome.exitCode).toBe(0)
+    expect(fixture.output()).not.toContain('[review-loop] stopped:')
+  })
+
+  test('reports the wall clock it actually took', async () => {
+    // `Date.now() - startedAt`: the sign of that subtraction is the difference
+    // between a duration and an epoch, and both print without complaint.
+    const fixture = setupRunCliFixtures({ poolSize: 1 })
+    const scenario = { reviewerIssues: [JSON.stringify({ issues: [] })], fixerResults: [] }
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(scenario))
+
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+
+    const summary = readFileSync(path.join(fixture.getRunDir(), 'summary.txt'), 'utf8')
+    const wall = /Duration: (?<value>[\d.]+)(?<unit>s|m|ms)/u.exec(summary)?.groups
+    expect(wall?.['unit']).toBe('s')
+    expect(Number(wall?.['value'])).toBeLessThan(600)
+  })
+
   test('stops itself, keeps its artifacts and skips the final build gate', async () => {
     const fixture = setupRunCliFixtures({
       poolSize: 1,
