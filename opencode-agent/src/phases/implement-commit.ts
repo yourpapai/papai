@@ -8,6 +8,7 @@ import type { CommitRejection } from '../commit-repair.js'
 import type { StagedTotals } from '../diff-guard.js'
 import { isTurnDeadline } from '../errors.js'
 import type { PipelineError } from '../errors.js'
+import { droppedBy } from '../git-commit.js'
 import type { PhaseInput } from '../phase-context.js'
 import { stepSubject } from '../plan-steps.js'
 import type { StepMarker } from '../plan-steps.js'
@@ -44,6 +45,15 @@ export interface StepCommitInput {
 export interface StepCommit {
   /** `null` for a tree that was already clean, and for a commit the clock stopped. */
   totals: StagedTotals | null
+  /**
+   * Paths this step wrote that a push cannot carry, dropped at staging.
+   *
+   * Carried per step rather than derived at the end, because a drop and a clean
+   * tree are the same `null` totals and the walk has no other way to tell them
+   * apart. Issue #240 lost two runs to a plan whose last step edited
+   * `agent-pipeline.yml`; the drop kept the rest, and said so only to the log.
+   */
+  dropped: readonly string[]
   /** Repair turns this commit bought — `0` when the first attempt was accepted. */
   repairs: number
   /** The typed deadline failure, when a repair turn was what the clock stopped. */
@@ -83,7 +93,10 @@ export const commitStep = async (walk: StepCommitInput, marker: StepMarker | nul
       issue: walk.input.state.issueId,
     })
 
-    if (committed === null) return { totals: null, repairs: paid.repairs, stopped: null }
+    // `blocked` and `clean` take the same branch — there is nothing to push
+    // either way — but only one of them has anything to tell a maintainer.
+    if (committed.kind !== 'committed')
+      return { totals: null, dropped: droppedBy(committed), repairs: paid.repairs, stopped: null }
 
     await deps.git.push(walk.branch)
     deps.log.info(
@@ -91,19 +104,20 @@ export const commitStep = async (walk: StepCommitInput, marker: StepMarker | nul
         issue: walk.input.state.issueId,
         branch: walk.branch,
         step: marker?.number,
-        files: committed.files,
-        lines: committed.lines,
+        files: committed.totals.files,
+        lines: committed.totals.lines,
+        dropped: committed.dropped,
         repairs: paid.repairs,
       },
       'Step committed and pushed',
     )
-    return { totals: committed, repairs: paid.repairs, stopped: null }
+    return { totals: committed.totals, dropped: committed.dropped, repairs: paid.repairs, stopped: null }
   } catch (error) {
     // The same split `promptForStep` makes, for the same reason: a ceiling reached is
     // not the work breaking, and only the deadline may start a salvage. Every other
     // rejection — the refusal that outlived its rounds included — still ends the run.
     if (!isTurnDeadline(error)) throw error
-    return { totals: null, repairs: paid.repairs, stopped: error }
+    return { totals: null, dropped: [], repairs: paid.repairs, stopped: error }
   }
 }
 

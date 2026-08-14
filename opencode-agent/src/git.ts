@@ -3,9 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { DiffLimits, StagedTotals } from './diff-guard.js'
+import type { DiffLimits } from './diff-guard.js'
 import { commitAll, salvageAll } from './git-commit.js'
-import type { GitFn, Salvage } from './git-commit.js'
+import type { CommitOutcome, GitFn, Salvage } from './git-commit.js'
 import type { Logger } from './logger.js'
 import type { CommandResult, CommandRunner } from './shell.js'
 
@@ -97,7 +97,7 @@ export interface Git {
    */
   deleteRemoteBranch(branch: string): Promise<void>
   /**
-   * Commits every change; resolves `null` when the tree was already clean.
+   * Commits every change, as one of the three outcomes in {@link CommitOutcome}.
    *
    * That return is the only "did anything change?" answer the pipeline needs —
    * a separate probe would just be a second `git status` reading the same tree.
@@ -105,8 +105,16 @@ export interface Git {
    * index between `git add --all` and the commit, so the one figure that says
    * whether a diff is worth reviewing is already computed here, and returning it
    * costs nothing where re-deriving it later would cost a second checkout.
+   *
+   * It also carries **what it could not carry**. This used to be
+   * `StagedTotals | null`, where `null` meant both "the tree was already clean"
+   * and "everything the turn wrote is a file the remote refuses" — and a caller
+   * with one bit reported the second as the first. That is run 31779566286: two
+   * CI-fix rounds whose only edit was `.github/workflows/agent-pipeline.yml`,
+   * each announcing "nothing changed", until the pull request's `ciAttempts`
+   * budget was spent on a branch nothing had touched.
    */
-  commitAll(message: string): Promise<StagedTotals | null>
+  commitAll(message: string): Promise<CommitOutcome>
   /**
    * The same commit for a tree a wall-clock stop is trying to keep: hooks
    * bypassed, size caps demoted to a report, secrets and binaries still refused.

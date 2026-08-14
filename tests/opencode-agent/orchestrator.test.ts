@@ -12,6 +12,7 @@ import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
 import { diffGuardError, turnDeadlineError } from '../../opencode-agent/src/errors.js'
+import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import { GitError } from '../../opencode-agent/src/git.js'
 import type { Git, Salvage } from '../../opencode-agent/src/git.js'
 import type { PullRequestHead, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github-pulls.js'
@@ -39,6 +40,17 @@ import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
+
+/**
+ * The harness's measured totals as the outcome `commitAll` answers with.
+ *
+ * Keeps `StubIo.committedTotals` a plain size — which is all any test here sets —
+ * while the seam speaks the union. A stub that dropped nothing is the right
+ * default: the protected-path cases are `diff-guard.test.ts`'s, driven through
+ * real git argv rather than through this fake.
+ */
+const asOutcome = (totals: StagedTotals | null): CommitOutcome =>
+  totals === null ? { kind: 'clean' } : { kind: 'committed', totals, dropped: [] }
 /**
  * The clock every fake in a harness reads, so a job deadline can be expressed
  * relative to it. A constant rather than the real clock: the whole point of the
@@ -564,7 +576,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     },
     commitAll: (message) => {
       io.gitCalls.push(`commit:${message.split('\n')[0]}`)
-      return Promise.resolve(io.committedTotals)
+      return Promise.resolve(asOutcome(io.committedTotals))
     },
     salvageAll: (message) => {
       io.gitCalls.push(`salvage:${message.split('\n')[0]}`)
@@ -692,7 +704,7 @@ const hostileGit = (): Git => {
     ensureBranch: (): Promise<void> => refuse('ensureBranch'),
     resetBranchToBase: (): Promise<void> => refuse('resetBranchToBase'),
     deleteRemoteBranch: (): Promise<void> => refuse('deleteRemoteBranch'),
-    commitAll: (): Promise<StagedTotals | null> => refuse('commit'),
+    commitAll: (): Promise<CommitOutcome> => refuse('commit'),
     salvageAll: (): Promise<Salvage> => refuse('salvage'),
     push: (): Promise<void> => refuse('push'),
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
@@ -718,9 +730,9 @@ const hookRefusal = (stderr: string): GitError =>
  */
 const refuseFirstCommits = (harness: Harness, refusals: number, stderr: string): void => {
   const left = { count: refusals }
-  harness.deps.git.commitAll = (message): Promise<StagedTotals | null> => {
+  harness.deps.git.commitAll = (message): Promise<CommitOutcome> => {
     harness.io.gitCalls.push(`commit:${message.split('\n')[0]}`)
-    if (left.count === 0) return Promise.resolve(harness.io.committedTotals)
+    if (left.count === 0) return Promise.resolve(asOutcome(harness.io.committedTotals))
     left.count -= 1
     return Promise.reject(hookRefusal(stderr))
   }
@@ -729,10 +741,10 @@ const refuseFirstCommits = (harness: Harness, refusals: number, stderr: string):
 /** A git that refuses each distinct commit message once — one refusal per plan step. */
 const refuseEachCommitOnce = (harness: Harness, stderr: string): void => {
   const refused = new Set<string>()
-  harness.deps.git.commitAll = (message): Promise<StagedTotals | null> => {
+  harness.deps.git.commitAll = (message): Promise<CommitOutcome> => {
     const subject = message.split('\n')[0] ?? ''
     harness.io.gitCalls.push(`commit:${subject}`)
-    if (refused.has(subject)) return Promise.resolve(harness.io.committedTotals)
+    if (refused.has(subject)) return Promise.resolve(asOutcome(harness.io.committedTotals))
     refused.add(subject)
     return Promise.reject(hookRefusal(stderr))
   }
@@ -1531,7 +1543,7 @@ describe('implementation and delivery', () => {
 
   test('fails when the agent produced no file changes', async () => {
     // A clean tree is what `commitAll` reports, not something asked separately.
-    harness.deps.git.commitAll = (): Promise<StagedTotals | null> => Promise.resolve(null)
+    harness.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
 
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
@@ -1761,7 +1773,7 @@ describe('/review — the review loop as a command', () => {
   test('a clean tree is a result, not a failure', async () => {
     // The loop finding nothing to change is the outcome a reviewer most wants
     // to hear, so it is reported and the phase still completes.
-    harness.deps.git.commitAll = (): Promise<StagedTotals | null> => Promise.resolve(null)
+    harness.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
 
     const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
@@ -3710,10 +3722,10 @@ describe('implementing the plan a step at a time', () => {
    */
   const cleanFirstCommit = (harness: Harness): void => {
     let commits = 0
-    harness.deps.git.commitAll = (message): Promise<StagedTotals | null> => {
+    harness.deps.git.commitAll = (message): Promise<CommitOutcome> => {
       commits += 1
       harness.io.gitCalls.push(`commit:${message.split('\n')[0]}`)
-      return Promise.resolve(commits === 1 ? null : { files: 1, lines: 7 })
+      return Promise.resolve(commits === 1 ? { kind: 'clean' } : asOutcome({ files: 1, lines: 7 }))
     }
   }
 
@@ -4126,7 +4138,7 @@ describe('a commit the repository refuses', () => {
     await toPlanReview(harness)
     harness.io.prompts.length = 0
     harness.io.replies = ['Implemented.']
-    harness.deps.git.commitAll = (): Promise<StagedTotals | null> =>
+    harness.deps.git.commitAll = (): Promise<CommitOutcome> =>
       Promise.reject(diffGuardError('a credential value appears in the staged diff'))
 
     const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })

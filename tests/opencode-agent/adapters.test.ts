@@ -2436,10 +2436,10 @@ describe('createGit', () => {
     expect(calls).toContainEqual(['git', 'checkout', '-B', 'agent/issue-1', 'origin/agent/issue-1'])
   })
 
-  test('reports a clean tree by returning null, and stages nothing', async () => {
+  test('reports a clean tree as `clean`, and stages nothing', async () => {
     const { calls, run } = captureGit()
 
-    expect(await createGit(gitOptions(run)).commitAll('msg')).toBeNull()
+    expect(await createGit(gitOptions(run)).commitAll('msg')).toEqual({ kind: 'clean' })
     expect(calls.some((call) => call.includes('commit'))).toBe(false)
     expect(calls.some((call) => call.includes('add'))).toBe(false)
   })

@@ -102,7 +102,7 @@ const runAndKeep = async (
   await durable.settled()
 
   const staged = await deps.git.commitAll(reviewMessage(state.issueId))
-  const applied = await durable.push(staged !== null)
+  const applied = await durable.push(staged.kind === 'committed')
 
   deps.log.info(
     { issue: state.issueId, branch, review: review.outcome, applied, staged: staged !== null },

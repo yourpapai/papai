@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { clipTail, truncateOutput } from './check-loop.js'
-import type { StagedTotals } from './diff-guard.js'
+import type { CommitOutcome } from './git-commit.js'
 import { GitError } from './git.js'
 import type { Logger } from './logger.js'
 import { CHECK_OUTPUT_BUDGET } from './prompt-budget.js'
@@ -67,7 +67,7 @@ export type RepairCommitFn = (rejection: CommitRejection, round: number) => Prom
 
 export interface CommitRepairInput {
   /** Stages, guards and commits — `Git.commitAll` bound to this commit's message. */
-  commit: () => Promise<StagedTotals | null>
+  commit: () => Promise<CommitOutcome>
   repair: RepairCommitFn
   /**
    * Commit attempts, including the first. `1` disables repair entirely and
@@ -86,17 +86,18 @@ const rejectionOf = (error: GitError): CommitRejection => ({
 /**
  * Commits, and on a refusal hands what the repository printed back to the model.
  *
- * Resolves what {@link CommitRepairInput.commit} resolves — `null` for a tree that
- * was already clean, which is an ordinary outcome and never something to repair.
- * Rejects with the last refusal once the rounds are spent.
+ * Resolves what {@link CommitRepairInput.commit} resolves — `clean` for a tree that
+ * was already clean and `blocked` for one whose every written file the remote
+ * refuses, both ordinary outcomes and neither something to repair. Rejects with
+ * the last refusal once the rounds are spent.
  *
  * Tail recursion rather than a loop, for the repo lint that forbids awaiting in a
  * loop body, and bounded by `maxRounds` rather than by the recursion.
  */
-export const commitWithRepair = (input: CommitRepairInput): Promise<StagedTotals | null> => {
+export const commitWithRepair = (input: CommitRepairInput): Promise<CommitOutcome> => {
   const maxRounds = Math.max(1, input.maxRounds)
 
-  const attempt = async (round: number): Promise<StagedTotals | null> => {
+  const attempt = async (round: number): Promise<CommitOutcome> => {
     try {
       return await input.commit()
     } catch (error) {

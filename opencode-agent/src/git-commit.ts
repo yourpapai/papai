@@ -41,6 +41,41 @@ export type Salvage =
   | { kind: 'refused'; reason: string }
   | { kind: 'committed'; totals: StagedTotals; overCap: string | null }
 
+/**
+ * What an ordinary commit did, as three outcomes rather than a value and a null.
+ *
+ * The same argument {@link Salvage} makes, one function over. `StagedTotals |
+ * null` gave a caller one bit and made `null` mean two opposite things: a turn
+ * that wrote nothing, and a turn whose every written file the remote will not
+ * take. Run 31779566286 is what the second costs when it is spelled as the
+ * first — a correct CI diagnosis, written to `.github/workflows/`, dropped at
+ * staging and reported as "nothing changed", twice, until `ciAttempts` ran out.
+ *
+ * `dropped` rides on **`committed`** as well, and that is the member most worth
+ * having it on: a partial drop pushes real work, so every other signal the run
+ * emits reads as success while part of the change is silently absent.
+ *
+ * `blocked` is not a failure. Nothing threw, the tree is exactly as
+ * `stageAllowed` left it, and the remedy — apply it by hand, or grant the
+ * permission — belongs to a maintainer rather than to a retry.
+ */
+export type CommitOutcome =
+  | { kind: 'clean' }
+  | { kind: 'blocked'; dropped: string[] }
+  | { kind: 'committed'; totals: StagedTotals; dropped: string[] }
+
+/**
+ * The totals a caller wanting only the size needs, `null` when nothing was
+ * committed. Keeps `changedLines`' one accumulation site from having to narrow
+ * the union itself, without giving anyone back the ambiguity it replaced.
+ */
+export const committedTotals = (outcome: CommitOutcome): StagedTotals | null =>
+  outcome.kind === 'committed' ? outcome.totals : null
+
+/** Whatever a commit left undeliverable, on any of the three outcomes. */
+export const droppedBy = (outcome: CommitOutcome): readonly string[] =>
+  outcome.kind === 'clean' ? [] : outcome.dropped
+
 /** One `git …` invocation that throws on a non-zero exit. */
 export type GitFn = (...argv: readonly string[]) => Promise<CommandResult>
 
@@ -187,22 +222,18 @@ const commit = (gitOrThrow: GitFn, options: GitOptions, message: string, extra: 
     message,
   )
 
-export const commitAll = async (
-  gitOrThrow: GitFn,
-  options: GitOptions,
-  message: string,
-): Promise<StagedTotals | null> => {
+export const commitAll = async (gitOrThrow: GitFn, options: GitOptions, message: string): Promise<CommitOutcome> => {
   const status = await gitOrThrow('status', '--porcelain')
-  if (status.stdout.trim().length === 0) return null
+  if (status.stdout.trim().length === 0) return { kind: 'clean' }
 
   const { staged, dropped } = await stageAllowed(gitOrThrow, options)
   // Only when the drop is what emptied it: a `status`-dirty tree that stages no
   // measurable change is an existing shape, and it still commits as it did.
-  if (staged.length === 0 && dropped.length > 0) return null
+  if (staged.length === 0 && dropped.length > 0) return { kind: 'blocked', dropped }
 
   const totals = await guardStaged(gitOrThrow, options, staged)
   await commit(gitOrThrow, options, message, [])
-  return totals
+  return { kind: 'committed', totals, dropped }
 }
 
 /**

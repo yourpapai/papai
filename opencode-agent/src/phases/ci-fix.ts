@@ -6,6 +6,7 @@
 import { formatFailures, runCheckLoop } from '../check-loop.js'
 import type { CheckLoopResult } from '../check-loop.js'
 import { buildCommitRepairPrompt, commitWithRepair } from '../commit-repair.js'
+import { droppedBy } from '../git-commit.js'
 import { branchNameFor } from '../git.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { OpenCodeAgent } from '../opencode-adapter.js'
@@ -66,10 +67,13 @@ export const handleCiFix: PhaseHandler = async (input): Promise<PhaseOutcome> =>
     },
   })
 
-  const pushed = await commitAndPush(input, branch, { agent, envelope, system })
-  deps.log.info({ issue: state.issueId, branch, passed: outcome.passed, pushed }, 'CI fix round finished')
+  const commit = await commitAndPush(input, branch, { agent, envelope, system })
+  deps.log.info(
+    { issue: state.issueId, branch, passed: outcome.passed, pushed: commit.pushed, dropped: commit.dropped },
+    'CI fix round finished',
+  )
 
-  return { signal: 'CI_FIXED', comment: renderCiReport(input, outcome, pushed, deps.config.runUrl) }
+  return { signal: 'CI_FIXED', comment: renderCiReport(input, outcome, commit, deps.config.runUrl) }
 }
 
 /** The session and the two things every prompt in this phase is composed against. */
@@ -89,7 +93,7 @@ interface Turn {
  * treatment as the implementation's commit, and the same session: this one has the
  * repair in its context already.
  */
-const commitAndPush = async (input: PhaseInput, branch: string, turn: Turn): Promise<boolean> => {
+const commitAndPush = async (input: PhaseInput, branch: string, turn: Turn): Promise<RoundCommit> => {
   const { deps, state } = input
   const committed = await commitWithRepair({
     commit: () => deps.git.commitAll(`fix(agent): repair CI for issue #${state.issueId}\n\nRefs #${state.issueId}`),
@@ -104,10 +108,22 @@ const commitAndPush = async (input: PhaseInput, branch: string, turn: Turn): Pro
     log: deps.log,
     issue: state.issueId,
   })
-  if (committed === null) return false
+  if (committed.kind !== 'committed') return { pushed: false, dropped: droppedBy(committed) }
 
   await deps.git.push(branch)
-  return true
+  return { pushed: true, dropped: committed.dropped }
+}
+
+/**
+ * What the round's commit came to, as the report needs it.
+ *
+ * A boolean was enough while "nothing was pushed" had one meaning. It has two:
+ * the round changed nothing, and the round wrote only files the remote refuses.
+ * The second is what run 31779566286 reported as the first, three times.
+ */
+interface RoundCommit {
+  pushed: boolean
+  dropped: readonly string[]
 }
 
 /** The red run that brought the pipeline here; absent unless CI triggered it. */
@@ -131,10 +147,11 @@ const runLines = (red: string | null, agent: string | null): readonly string[] =
 const renderCiReport = (
   input: PhaseInput,
   outcome: CheckLoopResult,
-  pushed: boolean,
+  commit: RoundCommit,
   agentRunUrl: string | null,
 ): string => {
   const { state, deps } = input
+  const { pushed } = commit
   const lines = [
     `### CI fix attempt ${state.ciAttempts} of ${deps.config.maxCiAttempts}`,
     '',

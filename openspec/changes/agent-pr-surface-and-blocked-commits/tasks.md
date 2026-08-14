@@ -26,18 +26,22 @@ restore path. Each group is independently verifiable and commits on its own.
 
 ## 2. `commitAll` reports what it dropped (D1)
 
-- [ ] 2.1 Failing test: `commitAll` answers `blocked` with the dropped paths
+- [x] 2.1 Failing test: `commitAll` answers `blocked` with the dropped paths
       when a turn wrote only `.github/workflows/…`, `clean` for an untouched
       tree, and `committed` carrying both totals and a non-empty `dropped` for a
-      partial drop. `bun test tests/opencode-agent/git-commit.test.ts`
-- [ ] 2.2 Replace `StagedTotals | null` with the three-member union in
-      `git-commit.ts`, mirroring `Salvage`'s shape and its comment's reasoning.
+      partial drop. Lives in `diff-guard.test.ts`, where the `commitAll` +
+      protected-path cases already are, driven through real git argv.
+      `bun test tests/opencode-agent/diff-guard.test.ts`
+- [x] 2.2 Replace `StagedTotals | null` with `CommitOutcome` in
+      `git-commit.ts`, mirroring `Salvage`'s shape and its comment's reasoning,
+      with `committedTotals`/`droppedBy` so callers need not narrow by hand.
       `bun run typecheck`
-- [ ] 2.3 Update every caller — `phases/implement-commit.ts`, `phases/ci-fix.ts`,
+- [x] 2.3 Update every caller — `phases/implement-commit.ts`, `phases/ci-fix.ts`,
       `phases/review.ts`, `commit-repair.ts` — keeping `changedLines` riding out
-      on the `committed` member so the state block is unchanged. Assert the
-      state block still records `changedLines` after a partial drop.
-      `bun test tests/opencode-agent/phases.test.ts && bun run typecheck`
+      on the `committed` member so the state block is unchanged. `StepCommit`
+      gains `dropped` so the implement walk can tell a blocked step from a clean
+      one, which was the same `null` before.
+      `bun test tests/opencode-agent/ && bun run typecheck`
 
 ## 3. The CI-fix report tells the truth (D3, D6)
 
