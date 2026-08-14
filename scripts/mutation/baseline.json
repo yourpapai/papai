@@ -209,7 +209,7 @@
   "sdd-runner/src/materialize.ts": 0.5137614678899083,
   "sdd-runner/src/openspec-driver.ts": 0.7297297297297297,
   "sdd-runner/src/orchestrator.ts": 0.7077922077922078,
-  "sdd-runner/src/pricing.ts": 0.6,
+  "sdd-runner/src/pricing.ts": 0.628099173553719,
   "sdd-runner/src/renderer.ts": 0.5951219512195122,
   "sdd-runner/src/replay.ts": 0.8315789473684211,
   "sdd-runner/src/report.ts": 0.48214285714285715,
