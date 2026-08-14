@@ -15,6 +15,7 @@ import { parseCliArgs } from './cli.js'
 import { discoverBranch, loadRunnerConfig } from './config.js'
 import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
+import { buildResolveCost } from './gate-digest.js'
 import { readlinePrompter, stdinIsInteractive } from './gate-session.js'
 import type { Prompter } from './gate-session.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
@@ -103,7 +104,8 @@ async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness
   const config = await loadRunnerConfig(configPath)
   const driver: OpenSpecDriver = createOpenSpecDriver({ exec: shellExec(config.repoRoot), cwd: config.repoRoot })
   const execGit = makeExecGit()
-  const renderer = createRenderer(process.stdout, verbosity)
+  const resolveCost = await buildResolveCost()
+  const renderer = createRenderer(process.stdout, verbosity, { resolveCost })
   const orchestratorDeps = {
     config,
     spawn: realSpawn,

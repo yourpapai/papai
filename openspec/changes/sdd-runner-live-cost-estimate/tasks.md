@@ -6,9 +6,9 @@
 
 ## 2. Wiring
 
-- [ ] 2.1 Add failing tests to `tests/sdd-runner/renderer.test.ts`: `createRenderer` forwards `opts.resolveCost` to `DynamicRenderer` (observable via an estimated-cost footer on a TTY fake stream) and ignores it for `LineRenderer`. Verify: `bun test tests/sdd-runner/renderer.test.ts` (fails)
-- [ ] 2.2 Extend `RendererOptions` with `resolveCost?: ResolveCostFn` in `sdd-runner/src/renderer.ts` and thread it into the `DynamicRenderer` constructor in `createRenderer`. Verify: `bun test tests/sdd-runner/renderer.test.ts tests/sdd-runner/live-renderer.test.ts`
-- [ ] 2.3 In `sdd-runner/src/index.ts` `buildHarness`, call `await buildResolveCost()` once and pass the resolver via `createRenderer(process.stdout, verbosity, { resolveCost })`. Verify: `bun run sdd-runner:typecheck` and `bun test tests/sdd-runner/index.test.ts`
+- [x] 2.1 Add failing tests to `tests/sdd-runner/renderer.test.ts`: `createRenderer` forwards `opts.resolveCost` to `DynamicRenderer` (observable via an estimated-cost footer on a TTY fake stream) and ignores it for `LineRenderer`. Verify: `bun test tests/sdd-runner/renderer.test.ts` (fails)
+- [x] 2.2 Extend `RendererOptions` with `resolveCost?: ResolveCostFn` in `sdd-runner/src/renderer.ts` and thread it into the `DynamicRenderer` constructor in `createRenderer`. Verify: `bun test tests/sdd-runner/renderer.test.ts tests/sdd-runner/live-renderer.test.ts`
+- [x] 2.3 In `sdd-runner/src/index.ts` `buildHarness`, call `await buildResolveCost()` once and pass the resolver via `createRenderer(process.stdout, verbosity, { resolveCost })`. Verify: `bun run sdd-runner:typecheck` and `bun test tests/sdd-runner/index.test.ts`
 
 ## 3. Full verification and docs
 

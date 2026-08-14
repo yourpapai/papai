@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
+import type { ResolvedCost } from '../../sdd-runner/src/pricing.js'
 import {
   createRenderer,
   formatBurndownLine,
@@ -242,5 +243,65 @@ describe('createRenderer (integration smoke)', () => {
       detached({ altitude: 'L2', type: 'stage_exit', stage: 'intake' })
     }).not.toThrow()
     expect(output.join('')).toContain('intake')
+  })
+})
+
+describe('createRenderer resolveCost threading', () => {
+  const MODEL = 'zai-coding-plan/glm-5.2'
+  const resolvePriced = (modelId: string): ResolvedCost | null =>
+    modelId === MODEL ? { input: 1, output: 2, source: 'primary' } : null
+
+  function ttyStream(): {
+    output: string[]
+    stream: { write(chunk: string): boolean; isTTY: boolean; columns: number }
+  } {
+    const output: string[] = []
+    return {
+      output,
+      stream: {
+        write(chunk: string): boolean {
+          output.push(chunk)
+          return true
+        },
+        isTTY: true,
+        columns: 120,
+      },
+    }
+  }
+
+  it('forwards opts.resolveCost to DynamicRenderer (estimated footer visible on a TTY stream)', () => {
+    const { output, stream } = ttyStream()
+    const renderer = createRenderer(stream, 'normal', { resolveCost: resolvePriced })
+    renderer.renderEvent({ altitude: 'L1', type: 'spawned', agent: 'resolver-r1', role: 'reviewer', model: MODEL })
+    renderer.renderEvent({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'resolver-r1',
+      tokens: { input: 1000, output: 500, reasoning: 100 },
+      costUsd: 0,
+    })
+    expect(output.join('')).toContain('~$0.0021')
+  })
+
+  it('ignores opts.resolveCost for LineRenderer (byte-frozen output, no estimated cost)', () => {
+    const { output, stream } = ttyStream()
+    const renderer = createRenderer(stream, 'normal', { dynamic: false, resolveCost: resolvePriced })
+    renderer.renderEvent({ altitude: 'L1', type: 'spawned', agent: 'resolver-r1', role: 'reviewer', model: MODEL })
+    renderer.renderEvent({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'resolver-r1',
+      tokens: { input: 1000, output: 500, reasoning: 100 },
+      costUsd: 0,
+    })
+    renderer.renderEvent({
+      altitude: 'L1',
+      type: 'done',
+      agent: 'resolver-r1',
+      usage: { inputTokens: 1000, outputTokens: 500, reasoningTokens: 100, costUsd: 0, wallMs: 1000 },
+    })
+    const joined = output.join('')
+    expect(joined).not.toContain('~$')
+    expect(joined).toContain('resolver-r1 done \u00B7 in 1.0k out 500 \u00B7 $0.0000')
   })
 })
