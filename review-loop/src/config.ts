@@ -24,6 +24,23 @@ export const ReviewLoopConfigSchema = z.object({
   maxNoProgressRounds: z.number().int().positive().default(2),
   agentTimeoutMs: z.number().int().min(0).default(600_000),
   buildTimeoutMs: z.number().int().min(0).default(600_000),
+  /**
+   * Wall clock for the **whole run**, after which the loop stops itself — as
+   * opposed to `agentTimeoutMs`, which bounds one subprocess.
+   *
+   * `0` is no budget, and it is the default because a laptop already has the
+   * bound that matters: somebody watching, who can press Ctrl-C. An unattended
+   * run has neither, and the caller's own deadline arrives as a kill that takes
+   * the summary, the ledger and the un-published fixes with it. See
+   * `stop-controller.ts` for what the loop does with the answer.
+   */
+  runTimeoutMs: z.number().int().min(0).default(0),
+  /**
+   * Who the loop's commits are by. Absent means "whoever git already thinks",
+   * which is right on a developer's machine and impossible on a bare runner —
+   * see `git-identity.ts`.
+   */
+  commitAuthor: z.object({ name: z.string().min(1), email: z.string().min(1) }).optional(),
   checkCommand: z.string().min(1).default('bun check:full'),
   poolSize: z.number().int().positive().default(3),
   /**

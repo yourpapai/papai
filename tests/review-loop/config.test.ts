@@ -110,6 +110,58 @@ describe('ReviewLoopConfigSchema', () => {
     expect(parsed.pricing).toBeUndefined()
   })
 
+  test('accepts an optional commit author, absent by default', () => {
+    const withAuthor = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+      commitAuthor: { name: 'opencode-agent[bot]', email: 'agent@users.noreply.github.com' },
+    })
+    const without = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+    })
+
+    expect(withAuthor.commitAuthor).toEqual({ name: 'opencode-agent[bot]', email: 'agent@users.noreply.github.com' })
+    expect(without.commitAuthor).toBeUndefined()
+  })
+
+  test('rejects a commit author missing half of itself', () => {
+    expect(() =>
+      ReviewLoopConfigSchema.parse({
+        workDir: '.review-loop',
+        reviewer: { model: 'm1' },
+        fixer: { model: 'm2' },
+        matcher: { model: 'm3' },
+        commitAuthor: { name: 'opencode-agent[bot]' },
+      }),
+    ).toThrow()
+  })
+
+  test('runTimeoutMs defaults to 0, which is no budget at all', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+    })
+    expect(parsed.runTimeoutMs).toBe(0)
+  })
+
+  test('accepts a run budget the loop stops itself at', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+      runTimeoutMs: 5_400_000,
+    })
+    expect(parsed.runTimeoutMs).toBe(5_400_000)
+  })
+
   test('rejects a malformed pricing entry', () => {
     expect(() =>
       ReviewLoopConfigSchema.parse({

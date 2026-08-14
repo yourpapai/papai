@@ -12,6 +12,7 @@ import { emitFixComplete, tallyDecision, truncate, type RoundCollector } from '.
 import { emitDecision } from './progress-log.js'
 import type { ProgressReporter } from './progress-log.js'
 import type { RunState } from './run-state.js'
+import type { StopController } from './stop-controller.js'
 import type { TraceLogger } from './trace-log.js'
 import type { Worker, WorkerPool } from './worker-pool.js'
 
@@ -27,6 +28,8 @@ export interface IssueProcessorDeps {
   trace: TraceLogger
   pool: WorkerPool
   inspect?: boolean
+  /** The run's bound, asked between issues rather than during one. */
+  stop?: StopController
   /** Override the ledger-save function (default: real `saveIssueLedger`). Tests use this to observe concurrency. */
   saveLedger?: (ledger: IssueLedger) => Promise<void>
 }
@@ -126,6 +129,12 @@ function makeDispatcher(args: {
 }): () => Promise<void> {
   const { deps, round, collector, pending, save, onFixed, nextIndex } = args
   const dispatchNext = async (): Promise<void> => {
+    // Between two issues is where a stop is free: the previous fix is committed,
+    // build-checked, merged and — under `mergeEachFix` — already published, and
+    // the next one has not begun. Taking one more issue here is what a run that
+    // is out of time cannot afford: the fixer alone can spend twenty minutes,
+    // and the caller's kill would land in the middle of it.
+    if ((deps.stop?.requested() ?? null) !== null) return
     const index = nextIndex()
     if (index >= pending.length) return
     const record = pending[index]!

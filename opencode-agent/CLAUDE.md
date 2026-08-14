@@ -263,8 +263,24 @@ findings: `ROADMAP.md`.
   nothing to show for it. A failed loop is described by `describeFailure`, never by
   its exit code: a build gate, a runner deadline, a missing binary, an unresolvable
   plan path and a merge conflict are all `exit 1`, and each has a different remedy.
-  The loop's own deadline is `turnTimeoutMs`, the same shrink-to-fit-the-job bound
-  a model turn gets, so it stops while the pipeline can still report it.
+  The loop's own deadline is **`reviewBudget`, not `turnTimeoutMs`**, and that
+  distinction is the difference between the phase getting its job and getting 90
+  minutes of it: the turn cap bounds one uninterrupted model turn and is held small
+  enough to still detect a turn that will never answer, while this phase is dozens
+  of separately-bounded subprocesses across several rounds. Bounded by the turn cap,
+  run 31803380299 was killed at exactly 90 minutes with one finding of six fixed and
+  three hours of job left. So the loop gets what is left of the **job's** clock less
+  the teardown reserve — `AGENT_JOB_TIMEOUT_MINUTES` is its only ceiling, and a
+  second one of the review's own was tried and removed: any value small enough to
+  feel safe under the job becomes the only bound a review ever reaches, which is
+  this same defect wearing a different number. It gets it as **two** bounds: `softMs` is handed to the loop in its config as `runTimeoutMs`, and
+  `hardMs` — a `AGENT_WRAP_UP_MS` slice later — is the kill behind it. The loop stops
+  itself at the soft one between two issues, publishes, writes its summary and exits
+  **75**, which `reviewOutcome` reads as `stopped`: not `failed`, because nothing
+  broke and its fixes are on the branch, and not `passed`, because it did not finish.
+  The generated config also carries `commitAuthor` — the same identity this
+  pipeline's own commits use — without which every commit the loop makes fails on a
+  runner with _Author identity unknown_.
   In that loop the first round runs every check — one repair prompt seeing every
   failure fixes more than a fail-fast round would — and later rounds re-run only
   what failed. Only a **full** pass may return `passed`: a narrowed round has not

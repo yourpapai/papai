@@ -6,6 +6,25 @@
 
 Agent subprocess guards live in `src/spawn.ts` + `src/agent-runner.ts`: besides the wall-clock `timeout`, an optional `inactivityTimeoutMs` watchdog kills a child that produces no stdout (hung LLM stream) and reports `stalled: true`; `runAgent` retries a stall once but never retries a wall-clock timeout. Callers opt in by passing `inactivityTimeoutMs` through `RunAgentOptions` (mutation-improve wires it from `agent.inactivityTimeoutMs`; review-loop's own config does not yet).
 
+A run has a **soft stop** of its own (`src/stop-controller.ts`): `runTimeoutMs`
+(config, `0` = no budget) and `SIGINT`/`SIGTERM` both ask the loop to stop, and it
+honours that between two issues and between two rounds — the boundaries where the
+fix in hand is committed, build-checked, merged and, under `mergeEachFix`,
+published. A stopped run writes its artifacts, **skips `finalizeRun`** (a
+multi-minute build gate whose only possible outcome, on a run out of time, is to
+throw away what the stop existed to keep), prints `[review-loop] stopped:` and
+exits **75** — neither 0 nor 1, because the loop neither finished nor broke.
+`doneReason: 'stopped'` rides out through `summary.txt` and `metrics.json`. A
+second signal exits 130. `opencode-agent` sets `runTimeoutMs` from the job's own
+clock and kills the child a wrap-up slice later; see its `reviewBudget`.
+
+`commitAuthor` (config, optional) is applied as `GIT_AUTHOR_*`/`GIT_COMMITTER_*`
+on the process at startup (`src/git-identity.ts`), so every git child — commit,
+rebase, merge, and the fixer subprocess's own commits — inherits it. Absent means
+"whoever git already thinks", which is right on a laptop and impossible on a
+hosted runner: with no `user.name` anywhere, `git commit` fails outright with
+_Author identity unknown_ and the fix is recorded as `needs_human`.
+
 `mergeEachFix` (config, default off) moves the merge back into the checkout from
 "once at the end, behind the build gate" to "each fix, as it is accepted", and
 prints `[review-loop] published …` when it does — see `src/publish-fix.ts`. It is
