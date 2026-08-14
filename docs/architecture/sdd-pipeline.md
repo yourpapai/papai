@@ -42,7 +42,7 @@ The gate's `### Cost / duration` line carries a marker:
 - **estimated** — `costKnown: false` with non-zero cost; a FALLBACK median was applied.
 - **unknown** — `costKnown: false` with zero cost; resolve fell through to LAST RESORT.
 
-Network/parsing failures are swallowed: the resolver returns `null` for every model, so the gate degrades to `$0.00 · <walls>s · unknown` rather than halting. Pricing is a comfort feature, never a correctness gate. The live renderer's status line still shows emit-time (metered) cost; only the gate digest shows the aggregate (repriced) cost — a documented asymmetry.
+Network/parsing failures are swallowed: the resolver returns `null` for every model, so the gate degrades to `$0.00 · <walls>s · unknown` rather than halting. Pricing is a comfort feature, never a correctness gate. The live renderer's status line applies the same resolver at display time (see Live rendering) with a `~$` marker for estimated figures; only the gate digest shows the aggregate (repriced) cost with the full tristate marker.
 
 ## Depth profiles
 
@@ -194,7 +194,7 @@ Or via the thin wrapper: `/sdd:auto <task-file>` _(not yet implemented — inten
 - **Dynamic (TTY, `normal`/`debug`)** — `DynamicRenderer` (`sdd-runner/src/live-renderer.ts`) redraws a fixed-position block on every event instead of scrolling. Three zones:
   - **Pipeline map** (top) — the output of `renderPipelineMap(state)`, finally exercised live (it was tested but never called pre-change). One line per stage with `✓ done` / `▶ active (round n/cap)` / `· pending` / `— skipped` markers.
   - **Slot lines** (middle) — one per active agent, driven by the new L0 `tool_use` events: `<agent> ▶ <tool> <arg?>`. Cleared on that agent's `done`.
-  - **Status line** (bottom) — `round n/cap · in <tok> / out <tok> · $<cost> · <elapsed>`, accumulated from `done` and `step_finish` events.
+  - **Status line** (bottom) — `round n/cap · in <tok> / out <tok> · [$|~$]<cost> · <elapsed>`, accumulated from `step_finish` deltas only (the `done` event clears the agent's slot but no longer adds to totals — its `usage` is the sum of the same deltas, so counting both double-counted tokens and cost). Cost is metered (`$`, from `step_finish.costUsd`) unless any estimate contributed, in which case the marker is `~$`: `buildHarness` loads the models.dev pricing DB once (`buildResolveCost()`) and injects the resolver into `DynamicRenderer`, which prices each unmetered step (`costUsd: 0`, tokens > 0) via the agent's `spawned` model using the same `repriceEvent` formula as the gate. Estimation is display-time only — persisted events stay raw, and an unresolvable model or missing DB hides the segment exactly as before.
   The L0 events reach the renderer through a `ProgressReporter` adapter (`agent-reporter.ts`) wired into the `runAgent` call at `agent-layer.ts`; `slot()` parses the review-loop slot line and emits `tool_use`, `usage()` emits `step_finish`, and the other reporter methods are no-ops (the renderer owns the block). ANSI primitives are inlined from `review-loop/src/live-renderer.ts` rather than imported cross-workspace; the `shared-tui-renderer` proposal can consolidate them later.
 - **Line (non-TTY / `--verbosity brief`)** — `LineRenderer` (`renderer.ts`), byte-identical to the pre-change append-only output. This is the CI / pipe / log-file contract; the TTY check is hard-gated so a redirect never gets ANSI escapes. The one additive change for both modes: `done` now renders `<agent> done · in <tok> out <tok> · $<cost>` instead of bare `<agent> done`.
 

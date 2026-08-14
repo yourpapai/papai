@@ -12,5 +12,5 @@
 
 ## 3. Full verification and docs
 
-- [ ] 3.1 Update `docs/architecture/sdd-pipeline.md`: note the live footer's estimated-cost segment (`~$` marker, display-time only, events stay raw). Verify: `openspec validate sdd-runner-live-cost-estimate --strict`
-- [ ] 3.2 Run full gates: `bun run test`, `bun run typecheck`, `bun run sdd-runner:lint`, `bun run sdd-runner:format:check`. Verify: all green
+- [x] 3.1 Update `docs/architecture/sdd-pipeline.md`: note the live footer's estimated-cost segment (`~$` marker, display-time only, events stay raw). Verify: `openspec validate sdd-runner-live-cost-estimate --strict`
+- [x] 3.2 Run full gates: `bun run test`, `bun run typecheck`, `bun run sdd-runner:lint`, `bun run sdd-runner:format:check`. Verify: all green
