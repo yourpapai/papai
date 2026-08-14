@@ -55,18 +55,21 @@ describe('buildNavGroups', () => {
     expect(advanced.kicker).toBe('Advanced')
     expect(advanced.collapsible).toBe(true)
     expect(advanced.danger).toBe(false)
-    expect(advanced.items.map((i) => i.id)).toEqual([
-      'memory',
-      'ai-output',
-      'identity',
-      'byok',
-      'coding-credentials',
-      'coding-mcp',
-      'code-host',
-      'repos',
-      'context-vault',
-      'mcp',
-      'plugins',
+    // Labels are pinned alongside ids, not just counted for uniqueness: a label is the only
+    // thing the jump menu shows, so an emptied one is invisible to an id-only assertion and to
+    // the uniqueness check below (one empty string is still unique).
+    expect(advanced.items).toEqual([
+      { id: 'memory', label: 'Memory' },
+      { id: 'ai-output', label: 'AI output' },
+      { id: 'identity', label: 'Identity' },
+      { id: 'byok', label: 'BYOK LLM' },
+      { id: 'coding-credentials', label: 'Coding sessions' },
+      { id: 'coding-mcp', label: 'Coding MCP servers' },
+      { id: 'code-host', label: 'Code host' },
+      { id: 'repos', label: 'Repositories' },
+      { id: 'context-vault', label: 'Context Vault' },
+      { id: 'mcp', label: 'MCP' },
+      { id: 'plugins', label: 'Plugins' },
     ])
   })
 
