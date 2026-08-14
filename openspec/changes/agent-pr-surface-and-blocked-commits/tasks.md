@@ -121,11 +121,15 @@ restore path. Each group is independently verifiable and commits on its own.
 
 ## 6. Verification and docs
 
-- [ ] 6.1 Restate the two affected local rules in `opencode-agent/CLAUDE.md` —
-      the protected-paths rule (drops are now reported, not only logged) and the
-      surface rule (the pull request carries the record too, and the scan reads
-      both threads) — and update `opencode-agent/README.md` where it describes
-      where a run comments.
+- [x] 6.1 Restate the affected local rules in `opencode-agent/CLAUDE.md` — the
+      protected-paths rule (drops are reported, not only logged; the new
+      "`null` is not a verdict" rule beside it), the surface rule (the pull
+      request carries the record, `readThread` reads both threads), the
+      pull-request-door rule and the feedback-channel rule (`noteReview` gone,
+      `dropUnpushable` in its place) — plus the module map for `run-post.ts` and
+      `git-revert.ts`. Same in `opencode-agent/README.md`: the ephemeral-state
+      section, the surface section, the file table, and "Files the agent cannot
+      commit".
 - [ ] 6.2 Full gate: `bun test`, `bun run typecheck`, `bun run lint`,
       `bun run format:check`.
 - [ ] 6.3 `bun run test:mutate:changed` — the per-file ratchet is blocking in
