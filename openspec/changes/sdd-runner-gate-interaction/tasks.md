@@ -25,8 +25,8 @@ failing test before the implementation it covers.
 
 ## 3. Pending-gate discovery + run-id resolution (Decision 3)
 
-- [ ] 3.1 Add failing tests in `tests/sdd-runner/run-state.test.ts`: `listPendingGates` scans `runs/*/state.json`, keeps only gate-pending runs, and returns change name, gate version, and wait time sorted by recency; `resolveRunId` accepts exact ids and unambiguous prefixes, and fails on unknown ids and on ambiguous prefixes with the candidate ids listed. Verify: `bun test tests/sdd-runner/run-state.test.ts` (red)
-- [ ] 3.2 Implement `listPendingGates` and `resolveRunId` until 3.1 is green. Verify: `bun test tests/sdd-runner/run-state.test.ts`
+- [x] 3.1 Add failing tests in `tests/sdd-runner/run-state.test.ts`: `listPendingGates` scans `runs/*/state.json`, keeps only gate-pending runs, and returns change name, gate version, and wait time sorted by recency; `resolveRunId` accepts exact ids and unambiguous prefixes, and fails on unknown ids and on ambiguous prefixes with the candidate ids listed. Verify: `bun test tests/sdd-runner/run-state.test.ts` (red)
+- [x] 3.2 Implement `listPendingGates` and `resolveRunId` until 3.1 is green. Verify: `bun test tests/sdd-runner/run-state.test.ts`
 
 ## 4. CLI verbs, flags, and wiring (Decisions 4-5)
 

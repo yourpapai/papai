@@ -15,8 +15,10 @@ import { ROUND_CAPS } from '../../sdd-runner/src/review-model.js'
 import {
   createRunState,
   deriveResumePoint,
+  listPendingGates,
   loadRunState,
   resolveRoundCap,
+  resolveRunId,
   saveRunState,
 } from '../../sdd-runner/src/run-state.js'
 import type { PersistedRunState } from '../../sdd-runner/src/run-state.js'
@@ -371,5 +373,76 @@ describe('event replay integration', () => {
     expect(replay.stages.intake).toBe('done')
     expect(replay.stages.draft).toBe('active')
     expect(replay.depth).toBe('S')
+  })
+})
+
+async function seedRun(
+  workDir: string,
+  runId: string,
+  opts: { gate?: { mode: 'early' | 'final'; version: number } | null; changeName?: string; updatedAt?: string },
+): Promise<void> {
+  const created = await createRunState({
+    workDir,
+    repoRoot: '/repo',
+    changeName: opts.changeName ?? 'add-thing',
+    runId,
+  })
+  const gate = opts.gate === undefined ? { mode: 'early' as const, version: 1 } : opts.gate
+  const stamp = opts.updatedAt ?? created.updatedAt
+  await saveRunState({ ...created, gate, updatedAt: stamp }, new Date(stamp))
+}
+
+describe('listPendingGates', () => {
+  it('scans runs/*/state.json, keeps only gate-pending runs, and returns change name, gate version, and wait time sorted by recency', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'run-old', {
+      gate: { mode: 'early', version: 1 },
+      changeName: 'old-change',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })
+    await seedRun(workDir, 'run-new', {
+      gate: { mode: 'final', version: 3 },
+      changeName: 'new-change',
+      updatedAt: '2026-02-01T00:00:00.000Z',
+    })
+    await seedRun(workDir, 'run-done', { gate: null, updatedAt: '2026-03-01T00:00:00.000Z' })
+
+    const pending = await listPendingGates(workDir)
+    expect(pending.map((entry) => entry.runId)).toEqual(['run-new', 'run-old'])
+    expect(pending[0]).toMatchObject({ runId: 'run-new', changeName: 'new-change', gateVersion: 3 })
+    expect(pending[1]).toMatchObject({ runId: 'run-old', changeName: 'old-change', gateVersion: 1 })
+  })
+
+  it('returns an empty list when no runs exist', async () => {
+    expect(await listPendingGates(makeWorkDir())).toEqual([])
+  })
+})
+
+describe('resolveRunId', () => {
+  it('accepts an exact id', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
+    expect(await resolveRunId(workDir, '2026-01-01T00-00-00-000Z-abcd1234')).toBe('2026-01-01T00-00-00-000Z-abcd1234')
+  })
+
+  it('accepts an unambiguous prefix among known runs (gate-pending or not)', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
+    await seedRun(workDir, '2026-02-01T00-00-00-000Z-ffff0000', { gate: null })
+    expect(await resolveRunId(workDir, '2026-01-01T00')).toBe('2026-01-01T00-00-00-000Z-abcd1234')
+    expect(await resolveRunId(workDir, '2026-02')).toBe('2026-02-01T00-00-00-000Z-ffff0000')
+  })
+
+  it('fails on an unknown id naming the input', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
+    await expect(resolveRunId(workDir, 'nope')).rejects.toThrow(/nope/u)
+  })
+
+  it('fails on an ambiguous prefix listing every matching candidate id', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
+    await seedRun(workDir, '2026-01-01T00-00-00-000Z-ffff0000', { gate: { mode: 'final', version: 1 } })
+    await expect(resolveRunId(workDir, '2026-01-01')).rejects.toThrow(/abcd1234.*ffff0000/su)
   })
 })
