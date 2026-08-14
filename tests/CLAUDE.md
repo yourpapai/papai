@@ -217,4 +217,6 @@ coverage variant in the `stories` job and never writes the floor.
 For accurate mutation scores that bypass the runner's static-bucket artifact,
 use `bun test:mutate:file <path>` for focused work, `bun test:mutate:changed`
 for changed files, and `bun test:mutate` for the configured full mutate scope
-(see `scripts/mutation/README.md`).
+(see `scripts/mutation/README.md`). `test:mutate:changed` reuses scores recorded
+by an earlier run for files whose source, tests and toolchain all hash the same,
+so a repeat run is near-instant; `--no-score-cache` re-measures everything.

@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { loadDb } from '../../sdd-runner/src/pricing.js'
+import { MODELS_DEV_FETCH_TIMEOUT_MS, MODELS_DEV_URL } from '../../sdd-runner/src/pricing.js'
 import { parseModelId } from '../../sdd-runner/src/pricing.js'
 import { resolveCost } from '../../sdd-runner/src/pricing.js'
 import type { ModelsDevDb } from '../../sdd-runner/src/pricing.js'
@@ -51,7 +52,11 @@ function cost(input: number, output: number): { input: number; output: number } 
 }
 
 function inputCostOf(db: ModelsDevDb, provider: string, model: string): number {
-  return db[provider]!.models[model]!.cost.input
+  // `cost` is optional in the schema (models.dev ships hundreds of entries without one), so a
+  // missing price is a real possibility here rather than a type-system formality.
+  const entry = db[provider]?.models[model]?.cost
+  if (entry === undefined) throw new Error(`no cost recorded for ${provider}/${model}`)
+  return entry.input
 }
 
 function buildFixture(): ModelsDevDb {
@@ -140,6 +145,88 @@ describe('loadDb', () => {
     })
     expect(fetched).toBe(1)
     expect(inputCostOf(result, 'p', 'm')).toBe(9)
+  })
+
+  /**
+   * The defect that made the wrong URL invisible even after it was fixed: models.dev publishes
+   * hundreds of entries with no `cost` at all, and a schema that required it rejected the whole
+   * database over any one of them. `loadDb` caught the parse error and returned `{}`, so a fully
+   * reachable, fully valid pricing table resolved every model to "unknown" with nothing logged.
+   */
+  it('keeps a priced model when a sibling entry has no cost at all', async () => {
+    const dir = makeDir()
+    const result = await loadDb({
+      cachePath: path.join(dir, 'models.json'),
+      now: () => new Date(),
+      fetchImpl: () =>
+        Promise.resolve(
+          JSON.stringify({
+            p: {
+              models: {
+                priced: { cost: { input: 3, output: 6 } },
+                unpriced: { name: 'a local model with no pricing' },
+              },
+            },
+          }),
+        ),
+    })
+    expect(Object.keys(result)).toEqual(['p'])
+    expect(inputCostOf(result, 'p', 'priced')).toBe(3)
+    expect(resolveCost('p/unpriced', result)).toBeNull()
+  })
+
+  // Provider objects carry id/env/npm/name/doc alongside models; unknown keys must not reject.
+  it('tolerates the provider metadata models.dev ships alongside models', async () => {
+    const dir = makeDir()
+    const result = await loadDb({
+      cachePath: path.join(dir, 'models.json'),
+      now: () => new Date(),
+      fetchImpl: () =>
+        Promise.resolve(
+          JSON.stringify({
+            p: {
+              id: 'p',
+              env: ['P_API_KEY'],
+              npm: '@ai-sdk/openai-compatible',
+              name: 'Provider',
+              doc: 'https://example.invalid/docs',
+              models: { m: { cost: { input: 1, output: 2 } } },
+            },
+          }),
+        ),
+    })
+    expect(inputCostOf(result, 'p', 'm')).toBe(1)
+  })
+
+  /**
+   * Pins the domain. `metrics.dev` — one character's worth of difference from the intended
+   * host — is a parked lander that answers 200 with HTML, so the failure was totally silent:
+   * parse throws, loadDb returns {}, every cost reads as unknown, nothing logs. Every other
+   * test here injects `fetchImpl`, so this constant is the only thing left to assert against.
+   */
+  it('points at the models.dev pricing API, not a lookalike domain', () => {
+    expect(MODELS_DEV_URL).toBe('https://models.dev/api.json')
+  })
+
+  // Cost is decoration on a gate summary; a hanging pricing host must not hold the gate.
+  it('bounds the pricing fetch', () => {
+    expect(MODELS_DEV_FETCH_TIMEOUT_MS).toBeGreaterThan(0)
+    expect(MODELS_DEV_FETCH_TIMEOUT_MS).toBeLessThanOrEqual(30_000)
+  })
+
+  /**
+   * The exact shape the wrong URL produced: a 200 whose body is an HTML lander. It must
+   * degrade to an empty db rather than throwing, but note what that means — an unreachable or
+   * wrong pricing source is indistinguishable from a priced model with no entry.
+   */
+  it('degrades to an empty db when the response is not the pricing JSON', async () => {
+    const dir = makeDir()
+    const result = await loadDb({
+      cachePath: path.join(dir, 'models.json'),
+      now: () => new Date(),
+      fetchImpl: () => Promise.resolve('<!DOCTYPE html><html><head></head></html>'),
+    })
+    expect(result).toEqual({})
   })
 
   it('falls back to the stale cache when the refetch fails', async () => {

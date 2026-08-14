@@ -5,8 +5,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { mergeReports, survivingMutantIds } from '../../../scripts/mutation/score-merger.js'
-import type { StrykerReport } from '../../../scripts/mutation/score-merger.js'
+import {
+  combineMergedScores,
+  isMergedScore,
+  mergeReports,
+  survivingMutantIds,
+} from '../../../scripts/mutation/score-merger.js'
+import type { MergedScore, StrykerReport } from '../../../scripts/mutation/score-merger.js'
 
 const makeReport = (statuses: string[]): StrykerReport => ({
   files: {
@@ -135,5 +140,105 @@ describe('survivingMutantIds', () => {
       files: { 'src/x.ts': { mutants: [{ status: 'Survived' }, { id: 'x1', status: 'Survived' }] } },
     }
     expect(survivingMutantIds(report)).toEqual(['x1'])
+  })
+})
+
+describe('combineMergedScores', () => {
+  const score = (over: Partial<MergedScore>): MergedScore => ({
+    killed: 0,
+    survived: 0,
+    noCoverage: 0,
+    timeout: 0,
+    compileError: 0,
+    ignored: 0,
+    runtimeError: 0,
+    pending: 0,
+    total: 0,
+    scored: 0,
+    score: 0,
+    ...over,
+  })
+
+  test('returns all-zero counts for an empty input, matching mergeReports([])', () => {
+    expect(combineMergedScores([])).toEqual(mergeReports([]))
+  })
+
+  // The two files deliberately carry DIFFERENT mutant counts. An implementation that
+  // averaged the per-file `score` fields would return 0.75 here; pooling the mutants
+  // the way mergeReports does returns 7/10. A fixture with equal counts cannot tell
+  // the two apart, which is exactly how an averaging bug survives review.
+  test('pools mutants across files rather than averaging their scores', () => {
+    const small = score({ killed: 1, survived: 1, total: 2, scored: 2, score: 0.5 })
+    const large = score({ killed: 6, survived: 2, total: 8, scored: 8, score: 0.75 })
+    const out = combineMergedScores([small, large])
+    expect(out.killed).toBe(7)
+    expect(out.survived).toBe(3)
+    expect(out.scored).toBe(10)
+    expect(out.score).toBe(0.7)
+  })
+
+  test('counts timeouts in the numerator, as mergeReports does', () => {
+    const out = combineMergedScores([score({ killed: 1, timeout: 1, survived: 2, total: 4, scored: 4, score: 0.5 })])
+    expect(out.score).toBe(0.5)
+  })
+
+  test('sums the non-scoring buckets without letting them reach the score', () => {
+    const out = combineMergedScores([
+      score({ killed: 1, compileError: 2, ignored: 3, runtimeError: 4, pending: 5, total: 15, scored: 1, score: 1 }),
+      score({ killed: 1, compileError: 1, ignored: 1, runtimeError: 1, pending: 1, total: 5, scored: 1, score: 1 }),
+    ])
+    expect(out.compileError).toBe(3)
+    expect(out.ignored).toBe(4)
+    expect(out.runtimeError).toBe(5)
+    expect(out.pending).toBe(6)
+    expect(out.total).toBe(20)
+    expect(out.score).toBe(1)
+  })
+
+  test('yields 0 rather than NaN when nothing is scoreable', () => {
+    const out = combineMergedScores([score({ ignored: 3, total: 3 }), score({ pending: 1, total: 1 })])
+    expect(out.scored).toBe(0)
+    expect(out.score).toBe(0)
+  })
+})
+
+describe('isMergedScore', () => {
+  const valid: MergedScore = {
+    killed: 1,
+    survived: 1,
+    noCoverage: 0,
+    timeout: 0,
+    compileError: 0,
+    ignored: 0,
+    runtimeError: 0,
+    pending: 0,
+    total: 2,
+    scored: 2,
+    score: 0.5,
+  }
+
+  test('accepts a real merged score', () => {
+    expect(isMergedScore(valid)).toBe(true)
+  })
+
+  test('rejects non-objects', () => {
+    expect(isMergedScore(null)).toBe(false)
+    expect(isMergedScore(undefined)).toBe(false)
+    expect(isMergedScore('0.5')).toBe(false)
+    expect(isMergedScore([valid])).toBe(false)
+  })
+
+  test('rejects a score missing any count field', () => {
+    const { timeout: _timeout, ...missing } = valid
+    expect(isMergedScore(missing)).toBe(false)
+  })
+
+  // A cache file is arbitrary JSON from a previous run's environment; NaN/Infinity
+  // round-trip as null through JSON but a hand-edited file can carry anything, and a
+  // non-finite score would poison every comparison the ratchet makes.
+  test('rejects non-finite and non-numeric fields', () => {
+    expect(isMergedScore({ ...valid, score: Number.NaN })).toBe(false)
+    expect(isMergedScore({ ...valid, killed: Number.POSITIVE_INFINITY })).toBe(false)
+    expect(isMergedScore({ ...valid, scored: '2' })).toBe(false)
   })
 })
