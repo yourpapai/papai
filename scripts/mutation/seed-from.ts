@@ -154,3 +154,36 @@ const maybeBun = (globalThis as typeof globalThis & { readonly Bun: BunLike | un
 if (maybeBun !== undefined && import.meta.path === maybeBun.main) {
   process.exit(main(maybeBun))
 }
+
+/**
+ * Seed the baseline from a changed-files run, PRESERVING existing entries for
+ * files that were not re-measured (unlike a full-run ratchet). Used by the
+ * master seed command (`--update-baseline`): measures only changed files but
+ * must not erase the rest of the baseline. Returns the resulting entry count.
+ */
+export const seedBaseline = (baselinePath: string, perFile: readonly PerFileScore[]): number => {
+  const existing = loadBaseline(baselinePath) ?? {}
+  const latest = buildBaselineFromPerFile(perFile)
+  const merged = seedMerge(existing, latest)
+  writeBaseline(baselinePath, merged)
+  return Object.keys(merged).length
+}
+
+/**
+ * Master seed flow: ratchet the baseline from the run's per-file scores and
+ * persist those scores next to the paired reports. The CI commit step replays
+ * the scores file onto a fresh master tip whenever the initial push races a
+ * concurrent master update, so the Stryker run never has to be repeated.
+ * Always writes the scores file even when `perFile` is empty (a seed run that
+ * measured no targets), so the re-seed step always has an artifact to read.
+ * Returns the seeded baseline entry count.
+ */
+export const runUpdateBaseline = (input: {
+  readonly baselinePath: string
+  readonly reportDir: string
+  readonly perFile: readonly PerFileScore[]
+}): number => {
+  const count = seedBaseline(input.baselinePath, input.perFile)
+  writeScoresFile(path.join(input.reportDir, SCORES_FILE), input.perFile)
+  return count
+}

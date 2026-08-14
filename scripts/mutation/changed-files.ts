@@ -7,12 +7,21 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
 import { isGateableImplFile } from '../../.hooks/tdd/test-resolver.mjs'
-import { buildBaselineFromPerFile, loadBaseline, seedMerge, writeBaseline } from './baseline.js'
-import type { BaselineMap, PerFileScore } from './baseline.js'
+import { loadBaseline } from './baseline.js'
+import type { BaselineMap } from './baseline.js'
 import { resolveChangedFilesGates } from './gates.js'
+import type { GateInput } from './gates.js'
+import {
+  combineIncrementalResult,
+  formatIncrementalPlan,
+  logFirstMeasurements,
+  measureOnlyWhatIsNeeded,
+} from './incremental-run.js'
+import type { IncrementalDeps } from './incremental-run.js'
+import { createIncrementalDeps } from './incremental-run.js'
 import { pairedRun } from './paired-run.js'
 import type { PairedRunInput, PairedRunResult } from './paired-run.js'
-import { SCORES_FILE, writeScoresFile } from './seed-from.js'
+import { runUpdateBaseline } from './seed-from.js'
 
 export interface ChangedFilesDeps {
   readonly runGit: (args: readonly string[]) => string
@@ -33,6 +42,7 @@ type ChangedFilesCliArgs =
       readonly noRatchet: boolean
       readonly verbose: boolean
       readonly updateBaseline: boolean
+      readonly noScoreCache: boolean
     }
   | { readonly kind: 'usageError'; readonly reason: string }
 
@@ -48,6 +58,12 @@ export interface ChangedFilesRunInput {
   readonly baseRef: string
   readonly baseline: BaselineMap
   readonly verbose: boolean | undefined
+  /**
+   * Carried-over score wiring, or `undefined` to measure every target — which is exactly the
+   * behavior this runner had before incremental measurement existed. `--no-score-cache` and
+   * `--update-baseline` both resolve to `undefined`.
+   */
+  readonly incremental: IncrementalDeps | undefined
   readonly deps: ChangedFilesRunDeps | undefined
 }
 
@@ -110,11 +126,20 @@ const resolveRunDeps = (deps: ChangedFilesRunDeps | undefined): ChangedFilesRunD
   return deps
 }
 
+// Value flags match by prefix (they carry `=value`); boolean flags match EXACTLY. Matching
+// booleans by prefix too would quietly accept `--no-score-caches` and then ignore it — a
+// mistyped flag that silently fails to apply is the worst outcome for a gate, because the run
+// still goes green while doing something other than what was asked.
+const VALUE_FLAGS = ['--base=', '--threshold=']
+const BOOLEAN_FLAGS = ['--no-ratchet', '--verbose', '--update-baseline', '--no-score-cache']
+
+const isKnownArg = (arg: string): boolean =>
+  VALUE_FLAGS.some((flag) => arg.startsWith(flag)) || BOOLEAN_FLAGS.includes(arg)
+
 export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesCliArgs => {
-  const knownFlags = ['--base=', '--threshold=', '--no-ratchet', '--verbose', '--update-baseline']
-  const unknownArg = argv.find((arg) => arg.startsWith('-') && !knownFlags.some((f) => arg.startsWith(f)))
+  const unknownArg = argv.find((arg) => arg.startsWith('-') && !isKnownArg(arg))
   if (unknownArg !== undefined) return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
-  const positionalArg = argv.find((arg) => !knownFlags.some((f) => arg.startsWith(f) || arg === f.replace('=', '')))
+  const positionalArg = argv.find((arg) => !isKnownArg(arg))
   if (positionalArg !== undefined) {
     return { kind: 'usageError', reason: `unexpected positional argument ${positionalArg}` }
   }
@@ -139,70 +164,56 @@ export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesC
     noRatchet: argv.includes('--no-ratchet'),
     verbose: argv.includes('--verbose'),
     updateBaseline: argv.includes('--update-baseline'),
+    noScoreCache: argv.includes('--no-score-cache'),
   }
 }
 
-export const changedFilesRun = async (input: ChangedFilesRunInput): Promise<PairedRunResult | null> => {
+/**
+ * Measure the branch diff and hand the gate its input.
+ *
+ * The target list is always the WHOLE branch diff vs the base ref — that is what keeps the
+ * verdict whole-branch. What the incremental split decides is only which of those targets
+ * Stryker is asked to run; the rest arrive from scores recorded by an earlier run on this
+ * branch. A regression measured two pushes ago is therefore still in `perFile`, and still
+ * fails the gate, even on a push that touched nothing near it.
+ */
+export const changedFilesRun = async (input: ChangedFilesRunInput): Promise<GateInput | null> => {
   const deps = resolveRunDeps(input.deps)
   const targets = deps.selectTargets(input.baseRef, input.projectRoot)
   if (targets.length === 0) {
+    // Still record: the flush writes the store even when empty, so the CI save step always
+    // has a file to save rather than warning about a missing path.
+    input.incremental?.record([])
     deps.log(`No changed mutation targets vs ${input.baseRef}; nothing to measure.`)
-    return Promise.resolve(null)
+    return null
   }
 
   deps.log(`Changed mutation targets vs ${input.baseRef}:`)
   targets.forEach((target) => {
     deps.log(`- ${target}`)
   })
-  const result = await deps.runPaired({
+
+  const plan = input.incremental?.plan(targets) ?? { toMeasure: targets, reused: [] }
+  if (input.incremental !== undefined) {
+    formatIncrementalPlan(plan).forEach((line) => {
+      deps.log(line)
+    })
+  }
+
+  const fresh = await measureOnlyWhatIsNeeded({
+    runPaired: deps.runPaired,
     projectRoot: input.projectRoot,
     reportDir: input.reportDir,
-    sourceFiles: targets,
     verbose: input.verbose === true,
-    deps: undefined,
+    toMeasure: plan.toMeasure,
   })
-  for (const entry of result.perFile) {
-    if (entry.merged.scored === 0) continue
-    if (input.baseline[entry.sourceFile] === undefined) {
-      deps.log(
-        `First measurement for ${entry.sourceFile}: score ${entry.merged.score.toFixed(4)} — seeded; future PRs enforce ≥ this.`,
-      )
-    }
-  }
+  // Record BEFORE gating. A failing run must still persist what it measured, or the next push
+  // re-measures the regression from scratch and the gate forgets it — which is the whole point.
+  input.incremental?.record(fresh.perFile)
+
+  const result = combineIncrementalResult({ fresh, reused: plan.reused })
+  logFirstMeasurements(result.perFile, input.baseline, deps.log)
   return result
-}
-
-/**
- * Seed the baseline from a changed-files run, PRESERVING existing entries for
- * files that were not re-measured (unlike a full-run ratchet). Used by the
- * master seed command (`--update-baseline`): measures only changed files but
- * must not erase the rest of the baseline. Returns the resulting entry count.
- */
-export const seedBaseline = (baselinePath: string, perFile: readonly PerFileScore[]): number => {
-  const existing = loadBaseline(baselinePath) ?? {}
-  const latest = buildBaselineFromPerFile(perFile)
-  const merged = seedMerge(existing, latest)
-  writeBaseline(baselinePath, merged)
-  return Object.keys(merged).length
-}
-
-/**
- * Master seed flow: ratchet the baseline from the run's per-file scores and
- * persist those scores next to the paired reports. The CI commit step replays
- * the scores file onto a fresh master tip whenever the initial push races a
- * concurrent master update, so the Stryker run never has to be repeated.
- * Always writes the scores file even when `perFile` is empty (a seed run that
- * measured no targets), so the re-seed step always has an artifact to read.
- * Returns the seeded baseline entry count.
- */
-export const runUpdateBaseline = (input: {
-  readonly baselinePath: string
-  readonly reportDir: string
-  readonly perFile: readonly PerFileScore[]
-}): number => {
-  const count = seedBaseline(input.baselinePath, input.perFile)
-  writeScoresFile(path.join(input.reportDir, SCORES_FILE), input.perFile)
-  return count
 }
 
 const main = async (bun: BunLike): Promise<number> => {
@@ -210,7 +221,7 @@ const main = async (bun: BunLike): Promise<number> => {
   if (parsed.kind === 'usageError') {
     console.error(parsed.reason)
     console.error(
-      'Usage: bun scripts/mutation/changed-files.ts [--base=REF] [--threshold=N] [--no-ratchet] [--update-baseline] [--verbose]',
+      'Usage: bun scripts/mutation/changed-files.ts [--base=REF] [--threshold=N] [--no-ratchet] [--update-baseline] [--no-score-cache] [--verbose]',
     )
     return 2
   }
@@ -219,12 +230,16 @@ const main = async (bun: BunLike): Promise<number> => {
   const baselinePath = path.join(projectRoot, BASELINE_FILE)
   const reportDir = path.join(projectRoot, DEFAULT_REPORT_DIR)
   const baseline = loadBaseline(baselinePath) ?? {}
+  // Reuse is off for a baseline seed: the committed floor must only ever come from a score
+  // measured in the run that seeds it, never from one carried over from an earlier run.
+  const reuseDisabled = parsed.noScoreCache || parsed.updateBaseline
   const result = await changedFilesRun({
     projectRoot,
     reportDir,
     baseRef: parsed.baseRef,
     baseline,
     verbose: parsed.verbose,
+    incremental: reuseDisabled ? undefined : createIncrementalDeps({ projectRoot, reportDir }),
     deps: undefined,
   })
   if (parsed.updateBaseline) {
