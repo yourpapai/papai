@@ -116,6 +116,25 @@ const makeAbortingFs = (controller: AbortController, abortAfter: number): { fs: 
   }
 }
 
+// Fake fs whose first listMarkdownFiles call throws (a rejected scan tick),
+// and whose second call aborts the controller so the daemon loop ends.
+const makeFailOnceThenAbortFs = (controller: AbortController): { fs: FakeDaemonFs; scans: () => number } => {
+  const base = makeFakeFs({ [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha\n', 100) })
+  let scans = 0
+  return {
+    scans: () => scans,
+    fs: {
+      ...base,
+      listMarkdownFiles: (dir: string) => {
+        scans += 1
+        if (scans === 1) throw new Error('disk read failed')
+        controller.abort()
+        return base.listMarkdownFiles(dir)
+      },
+    },
+  }
+}
+
 const PushBodySchema = z.object({
   repo: z.string(),
   changeName: z.string(),
@@ -384,5 +403,16 @@ describe('runDaemon', () => {
     await runDaemon(CONFIG, deps, { intervalMs: 5_000, signal: controller.signal })
 
     expect(lockFs.files.get(LOCK_PATH)).toBe(foreign)
+  })
+
+  test('a rejected scan tick is logged and the loop keeps scanning', async () => {
+    const controller = new AbortController()
+    const { fs, scans } = makeFailOnceThenAbortFs(controller)
+    const { deps, sleeps } = makeDeps(fs)
+
+    await runDaemon(CONFIG, deps, { intervalMs: 5_000, signal: controller.signal })
+
+    expect(scans()).toBe(2)
+    expect(sleeps).toEqual([5_000])
   })
 })

@@ -5,9 +5,12 @@
 
 import { createHash } from 'node:crypto'
 
+import pino from 'pino'
 import { z } from 'zod'
 
 import { refreshIndexerHeartbeat, type LockDeps } from './lock.js'
+
+const logger = pino({ base: undefined, timestamp: pino.stdTimeFunctions.isoTime })
 
 export type DaemonFs = {
   /** Relative paths of every `*.md` file under dir, sorted. */
@@ -198,6 +201,12 @@ export function runDaemon(config: DaemonConfig, deps: DaemonDeps, options: RunDa
         refreshIndexerHeartbeat(deps.heartbeat.lockPath, deps.heartbeat.pid, deps.heartbeat.lock)
       }
       void scanOnce(config, deps)
+        .catch((error: unknown) => {
+          logger.error(
+            { error: error instanceof Error ? error.message : String(error) },
+            'context-vault indexer scan tick failed; continuing after interval',
+          )
+        })
         .then(() => (options.signal.aborted ? undefined : deps.sleep(options.intervalMs)))
         .then(() => {
           if (options.signal.aborted) {
