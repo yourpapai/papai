@@ -11,6 +11,7 @@ import { composeSystemPrompt } from '../obra-skills.js'
 import type { InstructionsResult } from '../openspec-driver.js'
 import type { PhaseInput } from '../phase-context.js'
 import type { UntrustedEnvelope } from '../prompts.js'
+import { PROTECTED_PATHS_RULE } from '../protected-paths.js'
 import { mintEnvelope } from './envelope.js'
 
 /**
@@ -58,24 +59,32 @@ export type ComposedArtifact =
   | { readonly ok: true; readonly files: readonly DraftedFile[] }
   | { readonly ok: false; readonly complaint: string }
 
-const PROPOSE_INSTRUCTIONS = [
+/**
+ * Exported for `instructions.test.ts`. A drafting phase writes only into the
+ * change folder, so it cannot commit a workflow itself — but it can *plan* one,
+ * and a plan whose step edits `.github/workflows/` is a step the implement phase
+ * will write and the commit will drop. The rule is cheaper stated here.
+ */
+export const PROPOSE_INSTRUCTIONS = [
   'You are drafting one artifact of an OpenSpec change folder.',
   'Use the instruction, template and rules below; the artifact must satisfy `openspec validate --strict`.',
   'Reply with a single JSON object and nothing else: {"content":"<markdown>"}',
   'Write only the artifact asked for. Do not invent capabilities or deltas the change does not claim.',
+  PROTECTED_PATHS_RULE,
 ].join('\n')
 
 /**
  * The same standing instructions for an artifact whose output path is a pattern:
  * the reply carries the files, each with the path it belongs at.
  */
-const PROPOSE_FILES_INSTRUCTIONS = [
+export const PROPOSE_FILES_INSTRUCTIONS = [
   'You are drafting one artifact of an OpenSpec change folder.',
   'This artifact is a set of files, not a single document: the instruction below says how many and where.',
   'Use the instruction, template and rules below; the artifact must satisfy `openspec validate --strict`.',
   'Reply with a single JSON object and nothing else: {"files":[{"path":"<path>","content":"<markdown>"}]}',
   'Each path is relative to the change folder named in the prompt. Do not use absolute paths or `..`.',
   'Write only the artifact asked for. Do not invent capabilities or deltas the change does not claim.',
+  PROTECTED_PATHS_RULE,
 ].join('\n')
 
 export const composeArtifact = async (

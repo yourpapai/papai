@@ -12,13 +12,21 @@ import type { OpenCodeAgent } from '../opencode-adapter.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildCiFixPrompt } from '../prompts.js'
 import type { UntrustedEnvelope } from '../prompts.js'
+import { PROTECTED_PATHS_RULE } from '../protected-paths.js'
 import { mintEnvelope } from './envelope.js'
 
-const CI_FIX_INSTRUCTIONS = [
+/**
+ * Exported for `instructions.test.ts`, which asserts every phase that can write
+ * a file offers the protected-paths rule. This phase is the one that had no
+ * copy of it, and is the likeliest to need it: a red job's root cause is often
+ * the workflow that ran it.
+ */
+export const CI_FIX_INSTRUCTIONS = [
   'Continuous integration is red on a pull request you opened. Diagnose and fix the root cause.',
   'Reproduce the failure from the check output before changing anything.',
   'Never weaken, skip, or delete a test to make a check pass, and never add lint-disable or type-ignore comments.',
   'If the failure is unrelated to this branch, say so in your summary rather than papering over it.',
+  PROTECTED_PATHS_RULE,
 ].join('\n')
 
 /**

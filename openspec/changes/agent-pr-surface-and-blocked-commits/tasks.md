@@ -12,15 +12,17 @@ restore path. Each group is independently verifiable and commits on its own.
 
 ## 1. The prompts state the rule (D2)
 
-- [ ] 1.1 Failing test: `CI_FIX_INSTRUCTIONS` and `plan-draft.ts`'s two
-      instruction blocks each mention `.github/workflows/`. Assert against all
-      four instruction constants at once so a fifth phase cannot be added
-      without the rule. `bun test tests/opencode-agent/prompts.test.ts`
-- [ ] 1.2 Add the clause to `CI_FIX_INSTRUCTIONS` (`phases/ci-fix.ts`),
+- [x] 1.1 Failing test: `CI_FIX_INSTRUCTIONS` and `plan-draft.ts`'s two
+      instruction blocks each carry the rule. Asserted against all four
+      instruction constants at once, and against a shared constant rather than
+      a phrase, so a softened copy cannot pass.
+      `bun test tests/opencode-agent/instructions.test.ts`
+- [x] 1.2 Add the clause to `CI_FIX_INSTRUCTIONS` (`phases/ci-fix.ts`),
       `PROPOSE_INSTRUCTIONS` and `PROPOSE_FILES_INSTRUCTIONS`
-      (`phases/plan-draft.ts`), wording it as `IMPLEMENT_INSTRUCTIONS` does —
-      the rule, plus "say in your reply exactly what a maintainer should apply
-      by hand". `bun test tests/opencode-agent/prompts.test.ts`
+      (`phases/plan-draft.ts`). Extracted as `PROTECTED_PATHS_RULE` in
+      `protected-paths.ts` — the module that already owns why the rule exists —
+      so all four phases share one wording.
+      `bun test tests/opencode-agent/instructions.test.ts`
 
 ## 2. `commitAll` reports what it dropped (D1)
 
