@@ -14,12 +14,12 @@ import {
   changedFilesRun,
   parseChangedFilesCliArgs,
   runUpdateBaseline,
-  resolveErroredGate,
   seedBaseline,
   selectChangedMutationTargets,
   type ChangedFilesDeps,
   type ChangedFilesRunDeps,
 } from '../../../scripts/mutation/changed-files.js'
+import { resolveErroredGate } from '../../../scripts/mutation/gates.js'
 
 const makeDeps = (gitOutput: string, isGateableImpl: ChangedFilesDeps['isGateableImpl']): ChangedFilesDeps => ({
   runGit: mock(() => gitOutput),
