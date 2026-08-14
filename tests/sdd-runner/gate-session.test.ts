@@ -5,7 +5,8 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { runGateSession, scriptedPrompter } from '../../sdd-runner/src/gate-session.js'
+import { renderDecisions } from '../../sdd-runner/src/gate-render.js'
+import { runGateSession, scriptedPrompter, consequenceLines } from '../../sdd-runner/src/gate-session.js'
 import type { GateSessionView } from '../../sdd-runner/src/gate-session.js'
 import { desugarFlags } from '../../sdd-runner/src/gate-session.js'
 
@@ -112,6 +113,35 @@ describe('desugarFlags (task 4.5)', () => {
     await expect(desugarFlags({ confirmAll: false, vetoes: [] }, view(), writer)).rejects.toThrow(
       /confirm-all|--veto|file/u,
     )
+  })
+})
+
+describe('shared consequence copy (task 5.1)', () => {
+  it('prints decision-menu consequence lines from the same source the gate file uses (early wording matches)', () => {
+    const fileMd = renderDecisions('early').join('\n')
+    const sessionMd = consequenceLines({ ...view(), gateMode: 'early' }).join('\n')
+    const sharedPhrase = 'continues to task decomposition, atomicity checking, and a final gate'
+    expect(sessionMd).toContain(sharedPhrase)
+    expect(fileMd).toContain(sharedPhrase)
+    expect(sessionMd).toContain('runs one more review round, then re-gates')
+    expect(fileMd).toContain('runs one more review round, then re-gates')
+  })
+
+  it('final-gate wording matches between the session menu and the gate file', () => {
+    const fileLines = renderDecisions('final')
+    const sessionLines = consequenceLines({ ...view(), gateMode: 'final' })
+    expect(sessionLines.join('\n')).toContain('completes the run with the full artifact set')
+    expect(fileLines.join('\n')).toContain('completes the run with the full artifact set')
+    expect(sessionLines.join('\n')).not.toContain('extend — runs one more review round')
+  })
+
+  it('the session walkthrough prints the shared consequence lines before the decision prompt', async () => {
+    const { deps, transcript } = makeDeps(['a', 'a', 'a', 'approve'])
+    await runGateSession(deps)
+    const menuIndex = transcript.findIndex((line) => line.includes('completes the run with the full artifact set'))
+    const decisionPromptIndex = transcript.findIndex((line) => line.includes('? decision (approve'))
+    expect(menuIndex).toBeGreaterThan(-1)
+    expect(menuIndex).toBeLessThan(decisionPromptIndex)
   })
 })
 

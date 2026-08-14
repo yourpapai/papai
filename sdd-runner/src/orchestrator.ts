@@ -11,7 +11,6 @@ import type { AgentLayerDeps } from './agent-layer.js'
 import { deriveChangeName } from './config.js'
 import { runDraft } from './draft.js'
 import type { DepthProfile, EventInput } from './events.js'
-import { runGateResume } from './extend-round.js'
 import { buildBus, logPathFor, nowOf, presentGateAt, readReviewResultFromSidecars } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
 import { runIntake } from './intake.js'
@@ -21,14 +20,7 @@ import type { Verbosity } from './renderer.js'
 import { replayEvents } from './replay.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
-import {
-  createRunState,
-  listPendingGates,
-  loadRunState,
-  resolveRoundCap,
-  resolveRunId,
-  saveRunState,
-} from './run-state.js'
+import { createRunState, loadRunState, resolveRoundCap, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { deriveResumePoint } from './run-state.js'
 import { createStageMachine } from './stage-machine.js'
@@ -36,6 +28,7 @@ import { createStageMachine } from './stage-machine.js'
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 export type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
 export { runGateResume } from './extend-round.js'
+export { runContinue } from './continue.js'
 
 export interface StartOptions {
   readonly taskFile: string
@@ -130,59 +123,6 @@ export async function runResume(deps: OrchestratorDeps, runId: string): Promise<
     return { runId, halted: 'gate', gateMdPath: gate.gateMdPath, version: gate.version }
   }
   throw new Error(`resume from stage '${resume.stage}' (${resume.reason}) is not supported yet`)
-}
-
-/**
- * `continue` is a pure router (Decision 4): gate-pending → the gate flow
- * (`runGateResume` with no flags — interactive session on a TTY, hand-edited
- * file otherwise); interrupted mid-stage → `runResume`; completed → a pointer
- * to the report. Without an id, discovery picks the single pending/active
- * run, or lists the candidates when several exist.
- */
-export async function runContinue(deps: OrchestratorDeps, runId: string | null): Promise<RunContinueResult> {
-  if (runId === null) {
-    const picked = await pickContinueRun(deps)
-    if (picked === null) return { runId: null, routed: 'list' }
-    return runContinue(deps, picked)
-  }
-  const resolved = await resolveRunId(deps.config.workDir, runId)
-  const state = await loadRunState(deps.config.workDir, resolved)
-  if (state.gate !== null) {
-    const gate = await runGateResume(deps, resolved, {})
-    return {
-      runId: resolved,
-      routed: 'gate',
-      ...(gate.gateMdPath === undefined ? {} : { gateMdPath: gate.gateMdPath, version: gate.version }),
-    }
-  }
-  if (state.status === 'completed') {
-    deps.stdout?.(`run ${resolved} is completed — report: sdd-runner report ${resolved}`)
-    return { runId: resolved, routed: 'report' }
-  }
-  const resumed = await runResume(deps, resolved)
-  return {
-    runId: resolved,
-    routed: 'resume',
-    ...(resumed.gateMdPath === undefined ? {} : { gateMdPath: resumed.gateMdPath, version: resumed.version }),
-  }
-}
-
-/**
- * Discovery for a bare `continue`: exactly one gate-pending run routes to it;
- * several print the per-run gate commands and route nowhere (the operator
- * picks); none is an error (there is nothing obvious to continue).
- */
-async function pickContinueRun(deps: OrchestratorDeps): Promise<string | null> {
-  const pending = await listPendingGates(deps.config.workDir)
-  if (pending.length === 1) return pending[0]?.runId ?? null
-  if (pending.length > 1) {
-    deps.stdout?.('several runs await gate decisions:')
-    for (const entry of pending) {
-      deps.stdout?.(`  sdd-runner gate resume ${entry.runId}  (${entry.changeName}, gate v${entry.gateVersion})`)
-    }
-    return null
-  }
-  throw new Error('no gate-pending runs found — pass a run id, or use `sdd-runner resume <runId>`')
 }
 
 function nextGateVersion(state: RunState): number {

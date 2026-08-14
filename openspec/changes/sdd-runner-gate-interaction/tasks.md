@@ -41,8 +41,8 @@ failing test before the implementation it covers.
 
 ## 5. Session decision menu + shared consequence copy (Decision 6)
 
-- [ ] 5.1 Add a failing test: the session's decision menu prints consequence lines from the same mode-conditional copy source the gate file uses (early vs final wording matches; no duplicated strings). Verify: `bun test tests/sdd-runner/gate-session.test.ts` (red)
-- [ ] 5.2 Extract the consequence-lines helper from `gate-render.ts` into a shared module consumed by both the file renderer and the session until 5.1 is green and existing render tests stay green. Verify: `bun test tests/sdd-runner/gate-render.test.ts tests/sdd-runner/gate-session.test.ts`
+- [x] 5.1 Add a failing test: the session's decision menu prints consequence lines from the same mode-conditional copy source the gate file uses (early vs final wording matches; no duplicated strings). Verify: `bun test tests/sdd-runner/gate-session.test.ts` (red)
+- [x] 5.2 Extract the consequence-lines helper from `gate-render.ts` into a shared module consumed by both the file renderer and the session until 5.1 is green and existing render tests stay green. Verify: `bun test tests/sdd-runner/gate-render.test.ts tests/sdd-runner/gate-session.test.ts`
 
 ## 6. Docs + full verification
 

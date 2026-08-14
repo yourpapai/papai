@@ -7,6 +7,7 @@ import { renderGateAnswers, responseFromAnswers } from './gate-answers.js'
 import type { GateAck, GateAnswerItem, GateAnswers, GateBlockerAnswer } from './gate-answers.js'
 import { parseGateResponse } from './gate-model.js'
 import type { ExpectedGateContent, GateResponse } from './gate-model.js'
+import { decisionConsequences } from './gate-render.js'
 import type { Prompter } from './prompter.js'
 
 export type { Prompter } from './prompter.js'
@@ -89,14 +90,16 @@ async function promptAck(prompter: Prompter, ack: { id: string; text: string }):
   return promptAck(prompter, ack)
 }
 
+/**
+ * The decision-menu consequence lines, rendered from the same
+ * mode-conditional phrases the gate file's `### Decisions` block uses — one
+ * copy source, two front-ends (Decision 6).
+ */
 export function consequenceLines(view: GateSessionView): string[] {
-  const approve =
-    view.gateMode === 'early'
-      ? 'approve — continues to task decomposition, atomicity checking, and a final gate'
-      : 'approve — completes the run with the full artifact set'
-  const lines = ['Decision:', `  ${approve}`]
-  if (view.gateMode === 'early') lines.push('  extend — runs one more review round, then re-gates')
-  lines.push('  abort — ends the run without completing')
+  const c = decisionConsequences(view.gateMode)
+  const lines = ['Decision:', `  approve — ${c.approve}`]
+  if (c.extend !== null) lines.push(`  extend — ${c.extend}`)
+  lines.push(`  abort — ${c.abort}`)
   return lines
 }
 
