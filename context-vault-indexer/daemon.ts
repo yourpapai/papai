@@ -110,7 +110,16 @@ const attemptPush = async (
   maxAttempts: number,
   baseMs: number,
 ): Promise<boolean> => {
-  const outcome = await deps.push(config.pushUrl, config.token, body)
+  let outcome: PushOutcome
+  try {
+    outcome = await deps.push(config.pushUrl, config.token, body)
+  } catch (error) {
+    logger.warn(
+      { error: error instanceof Error ? error.message : String(error), attempt },
+      'context-vault indexer push rejected; treating as retryable failure',
+    )
+    outcome = { ok: false, status: 0 }
+  }
   if (outcome.ok) return true
   if (attempt >= maxAttempts) return false
   await deps.sleep(baseMs * 2 ** (attempt - 1))

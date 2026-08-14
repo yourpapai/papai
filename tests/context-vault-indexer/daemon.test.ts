@@ -51,7 +51,8 @@ const makeFakeFs = (files: Record<string, FakeFile>, state: string | null = null
   }
 }
 
-type PushScript = { ok: boolean; status: number }[]
+type PushScriptEntry = { ok: boolean; status: number } | { reject: string }
+type PushScript = PushScriptEntry[]
 
 const makeDeps = (
   fs: FakeDaemonFs,
@@ -60,6 +61,11 @@ const makeDeps = (
   const pushes: PushCall[] = []
   const sleeps: number[] = []
   let index = 0
+  const resolveEntry = (entry: PushScriptEntry | undefined): Promise<{ ok: boolean; status: number }> => {
+    if (entry === undefined) return Promise.resolve({ ok: false, status: 500 })
+    if ('reject' in entry) return Promise.reject(new Error(entry.reject))
+    return Promise.resolve(entry)
+  }
   return {
     pushes,
     sleeps,
@@ -67,9 +73,9 @@ const makeDeps = (
       fs,
       push: (url: string, bearer: string, body: string) => {
         pushes.push({ url, bearer, body })
-        const outcome = script[Math.min(index, script.length - 1)]
+        const entry = script[Math.min(index, script.length - 1)]
         index += 1
-        return Promise.resolve(outcome ?? { ok: false, status: 500 })
+        return resolveEntry(entry)
       },
       sleep: (ms: number) => {
         sleeps.push(ms)
@@ -312,6 +318,25 @@ describe('context-vault-indexer daemon scanOnce', () => {
     expect(fs.savedStates).toHaveLength(1)
   })
 
+  test('a rejecting push is retried with backoff and does not skip remaining changes', async () => {
+    const fs = makeFakeFs({
+      [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha\n', 100),
+      [`${SPEC_DIR}/beta/proposal.md`]: file('# Beta\n', 200),
+    })
+    const { deps, pushes, sleeps } = makeDeps(fs, [
+      { reject: 'connect ECONNREFUSED' },
+      { reject: 'connect ECONNREFUSED' },
+      { ok: true, status: 200 },
+    ])
+
+    const result = await scanOnce(CONFIG, deps)
+
+    expect(pushes).toHaveLength(4)
+    expect(sleeps).toEqual([1_000, 2_000])
+    expect(result).toEqual({ scanned: 2, pushedChanges: 2, failedChanges: 0 })
+    expect(fs.savedStates).toHaveLength(1)
+  })
+
   test('a change whose push keeps failing is not persisted and reports as failed', async () => {
     const fs = makeFakeFs({
       [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha\n', 100),
@@ -322,6 +347,21 @@ describe('context-vault-indexer daemon scanOnce', () => {
     const result = await scanOnce(CONFIG, deps)
 
     expect(result).toEqual({ scanned: 2, pushedChanges: 0, failedChanges: 2 })
+    expect(sleeps).toEqual([1_000, 2_000, 1_000, 2_000])
+    expect(fs.savedStates).toHaveLength(0)
+  })
+
+  test('a push that keeps rejecting exhausts retries and reports as failed without throwing', async () => {
+    const fs = makeFakeFs({
+      [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha\n', 100),
+      [`${SPEC_DIR}/beta/proposal.md`]: file('# Beta\n', 200),
+    })
+    const { deps, pushes, sleeps } = makeDeps(fs, [{ reject: 'getaddrinfo ENOTFOUND' }])
+
+    const result = await scanOnce(CONFIG, deps)
+
+    expect(result).toEqual({ scanned: 2, pushedChanges: 0, failedChanges: 2 })
+    expect(pushes).toHaveLength(6)
     expect(sleeps).toEqual([1_000, 2_000, 1_000, 2_000])
     expect(fs.savedStates).toHaveLength(0)
   })
