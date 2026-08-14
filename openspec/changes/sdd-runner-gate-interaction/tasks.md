@@ -46,5 +46,5 @@ failing test before the implementation it covers.
 
 ## 6. Docs + full verification
 
-- [ ] 6.1 Rewrite the gate-protocol section of `docs/architecture/sdd-pipeline.md`: the interactive session as the primary path, the hand-edited file as the power path, `continue`, the flag reference, and pending-gate discovery. Verify: `bunx openspec validate sdd-runner-gate-interaction --strict`
-- [ ] 6.2 Run the full gates. Verify: `bun test && bun run typecheck && bun run lint`
+- [x] 6.1 Rewrite the gate-protocol section of `docs/architecture/sdd-pipeline.md`: the interactive session as the primary path, the hand-edited file as the power path, `continue`, the flag reference, and pending-gate discovery. Verify: `bunx openspec validate sdd-runner-gate-interaction --strict`
+- [x] 6.2 Run the full gates. Verify: `bun test && bun run typecheck && bun run lint`
