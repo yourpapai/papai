@@ -185,6 +185,12 @@ const reviewMessage = (issueNumber: number): string =>
 
 const REVIEW_LINE: Record<ReviewOutcome, (review: ReviewRunResult) => string> = {
   passed: () => '✅ clean',
+  // Deliberately not ❌. The loop reached the budget the pipeline gave it and
+  // stopped **itself** — between two issues, with the fix in hand committed,
+  // built, merged and published — so nothing was killed and nothing was lost
+  // that it had finished. The old report for this run read "timed out and was
+  // killed", which sent a maintainer looking for work that is on the branch.
+  stopped: () => '⏱️ stopped early at its time budget; what it had fixed is on the branch',
   // The exit code alone was the whole verdict here, and it is the one thing
   // nobody can act on: a build gate, a runner deadline, a missing binary and an
   // unresolvable plan path are all `exited 1`. `describeFailure` names which,
@@ -204,6 +210,37 @@ const REVIEW_LINE: Record<ReviewOutcome, (review: ReviewRunResult) => string> = 
  * itself, and a second table over `ReviewOutcome` eventually would.
  */
 const reviewLine = (review: ReviewRunResult): string => REVIEW_LINE[review.outcome](review)
+
+/**
+ * What a run that did not finish owes its reader: what is on the branch, and what
+ * to type next.
+ *
+ * The first line is said once more, in its own paragraph, when the loop ended
+ * early *and* kept something — the verdict above reads as the loop's own summary
+ * of the review, and a reader who sees findings on the branch needs to know they
+ * are partial.
+ *
+ * The second names the next move, which is the same courtesy the implementation's
+ * out-of-time notice pays with `/continue`. It says **again** rather than
+ * "resume" because that is what happens: the loop's ledger lives in a runner that
+ * is now gone, so a second `/review` starts over — over the branch as it now
+ * stands, published fixes included, which is what makes starting over something
+ * other than repeating itself.
+ */
+const partialWork = (review: ReviewRunResult, applied: boolean): readonly string[] => [
+  ...((review.outcome === 'failed' || review.outcome === 'stopped') && applied
+    ? ['', 'The loop stopped early — what it had already fixed is on the branch, the rest is not.']
+    : []),
+  ...(review.outcome === 'stopped'
+    ? [
+        '',
+        'Reply `/review` to run it again on a fresh job with a full clock. It starts over rather than resuming — ' +
+          'its ledger died with this runner — but it reads the branch as it now stands, published fixes included. ' +
+          'If it keeps stopping here, raise the `AGENT_JOB_TIMEOUT_MINUTES` repository variable, which is the clock ' +
+          'this budget is carved out of.',
+      ]
+    : []),
+]
 
 /**
  * A red loop is reported and does not block, exactly as it did inside phase 3.
@@ -234,12 +271,7 @@ const renderReport = (
         ]),
   ]
 
-  // Said once more, in its own line, when the loop broke *and* kept something:
-  // the verdict above reads as the loop's own summary of the review, and a
-  // reader who sees findings on the branch needs to know they are partial.
-  if (review.outcome === 'failed' && applied) {
-    lines.push('', 'The loop stopped early — what it had already fixed is on the branch, the rest is not.')
-  }
+  lines.push(...partialWork(review, applied))
 
   if (review.outcome !== 'unavailable') {
     lines.push(

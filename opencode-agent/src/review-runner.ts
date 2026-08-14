@@ -10,9 +10,18 @@ import type { Logger } from './logger.js'
 import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import type { TranscriptSink } from './progress.js'
+import { describeFailure, extractSummary, reviewOutcome, type ReviewRunResult } from './review-outcome.js'
 import { collectLoopTranscript, realTranscriptFiles, reportLine } from './review-transcript.js'
 import type { TranscriptFiles } from './review-transcript.js'
-import type { CommandResult, CommandRunner } from './shell.js'
+import type { CommandRunner } from './shell.js'
+
+export {
+  describeFailure,
+  extractSummary,
+  REVIEW_STOPPED_EXIT_CODE,
+  type ReviewOutcome,
+  type ReviewRunResult,
+} from './review-outcome.js'
 
 /**
  * Drives the repository's own `review-loop/` workspace instead of a bespoke
@@ -39,23 +48,44 @@ export interface ReviewLoopSettings {
   maxRounds: number
   poolSize: number
   agentTimeoutMs: number
+  /**
+   * The budget the loop is **told** about, shorter than the one it is killed at.
+   *
+   * See `reviewBudget`: the gap between the two is what publishing the last fix,
+   * writing the summary and printing it costs, and handing the loop the shorter
+   * figure is the difference between a stop it carries out and a kill it is
+   * subjected to.
+   */
+  softStopMs: number
+  /**
+   * Who the loop's commits are by — the same identity this pipeline's own
+   * commits carry.
+   *
+   * Not decoration. A hosted runner has no `user.name` in any config file, so
+   * `git commit` inside the loop's worktree fails with *Author identity unknown*
+   * and the fix is recorded as `needs_human` with git's advice pasted into the
+   * reasoning. Run 31803380299 lost an accepted `high`-severity finding exactly
+   * that way, having already paid for the turn that wrote it.
+   */
+  commitAuthor: { name: string; email: string }
 }
 
-/**
- * Builds `review-loop`'s config. Every agent role gets the same model because
- * the pipeline is configured with exactly one endpoint; the workspace's ability
- * to mix models per role is deliberately left unused rather than invented here.
- */
 export const buildReviewLoopConfig = (settings: ReviewLoopSettings): Record<string, unknown> => {
-  const agent = { model: modelRef(settings.openai), extraArgs: [], timeoutMs: settings.agentTimeoutMs }
+  // No subprocess may outlive the run it is part of. The loop honours its stop
+  // *between* issues, so a fixer already running when the budget expires is
+  // waited for — and a fixer bounded by the pipeline's turn cap could be waited
+  // for an hour past the point the loop agreed to stop, which is the whole
+  // budget spent on one subprocess nobody will read the result of.
+  const subprocessTimeoutMs = Math.min(settings.agentTimeoutMs, settings.softStopMs)
+  const agent = { model: modelRef(settings.openai), extraArgs: [], timeoutMs: subprocessTimeoutMs }
 
   return {
     repoRoot: settings.repoRoot,
     workDir: path.join(AGENT_WORK_DIR, 'review-loop'),
     maxRounds: settings.maxRounds,
     maxNoProgressRounds: 2,
-    agentTimeoutMs: settings.agentTimeoutMs,
-    buildTimeoutMs: settings.agentTimeoutMs,
+    agentTimeoutMs: subprocessTimeoutMs,
+    buildTimeoutMs: subprocessTimeoutMs,
     poolSize: settings.poolSize,
     checkCommand: settings.checkCommand,
     // The one setting this pipeline needs and a laptop does not. The loop's
@@ -66,37 +96,16 @@ export const buildReviewLoopConfig = (settings: ReviewLoopSettings): Record<stri
     // branch as it lands is what lets `phases/review.ts` push it while the loop
     // is still running.
     mergeEachFix: true,
+    // The loop's own deadline, shorter than the kill that backs it. It stops
+    // between issues and between rounds — the two boundaries where the fix in
+    // hand is committed, built, merged and published — and finalizes there.
+    runTimeoutMs: settings.softStopMs,
+    commitAuthor: settings.commitAuthor,
     reviewer: agent,
     fixer: agent,
     matcher: agent,
     inspector: agent,
   }
-}
-
-/**
- * `unavailable` is a distinct outcome, not a failure.
- *
- * The review loop is this repository's own workspace, so a checkout that does
- * not have it is not a repository whose review failed — it is one with no review
- * configured. Collapsing the two made every run in any other repository report a
- * permanently red review whose summary read `Module not found`.
- */
-export type ReviewOutcome = 'passed' | 'failed' | 'unavailable'
-
-export interface ReviewRunResult {
-  outcome: ReviewOutcome
-  /** The loop's own summary block, or the tail of its output when it crashed. */
-  summary: string
-  exitCode: number
-  /**
-   * One sentence naming *how* a failed loop failed, or `null` when it did not.
-   *
-   * The exit code alone is not an account of anything: a build gate that went
-   * red, a runner deadline, a missing `bun`, a plan path that does not resolve
-   * and a merge conflict are all `exit 1` with sixty lines of tail, and each has
-   * a different remedy. See {@link describeFailure}.
-   */
-  failure: string | null
 }
 
 /** Where the loop's inputs land. A seam, so a test needs no filesystem. */
@@ -138,19 +147,6 @@ export interface RunReviewLoopOptions {
   now?: () => number
 }
 
-const SUMMARY_TAIL_LINES = 60
-
-/**
- * `review-loop` prints its summary to stdout before finalizing, so the tail of
- * stdout is the summary even on the runs that later fail their build gate —
- * which is exactly when the summary is worth reading.
- */
-export const extractSummary = (result: CommandResult, tailLines = SUMMARY_TAIL_LINES): string => {
-  const combined = `${result.stdout}\n${result.stderr}`.trim()
-  if (combined.length === 0) return '(review-loop produced no output)'
-  return combined.split('\n').slice(-tailLines).join('\n')
-}
-
 /** Writes the generated plan and config, returning their paths. */
 export const writeReviewInputs = async (
   settings: ReviewLoopSettings,
@@ -166,53 +162,6 @@ export const writeReviewInputs = async (
   await writeFile(configPath, `${JSON.stringify(buildReviewLoopConfig(settings), null, 2)}\n`, 'utf8')
 
   return { planPath, configPath }
-}
-
-/** The last line of `text` that says anything, or `null` for text that says nothing. */
-const lastMeaningfulLine = (text: string): string | null => {
-  const lines = text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-  return lines.at(-1) ?? null
-}
-
-const minutes = (ms: number): string => `${Math.round(ms / 60_000)}m`
-
-/**
- * What went wrong, in one sentence a maintainer can act on — or `null` for a
- * loop that did not fail.
- *
- * Every branch here answers a failure that used to reach the issue as `exited 1`
- * beside sixty lines of tail, which names neither the cause nor the remedy. The
- * order matters: the deadline is asked first because a killed child's exit code
- * is whatever the signal left behind and says nothing, and the two sentences the
- * loop itself writes are matched before the fallback because they are the only
- * ones that already know why they lost the work.
- */
-export const describeFailure = (result: CommandResult, timeoutMs: number): string | null => {
-  if (result.exitCode === 0) return null
-
-  if (result.timedOut === true) {
-    return `the review loop timed out after ${minutes(timeoutMs)} and was killed; nothing it had not already published is lost`
-  }
-
-  if (result.exitCode === 127) {
-    return `the review command could not be started (${lastMeaningfulLine(result.stderr) ?? 'no output'})`
-  }
-
-  const combined = `${result.stdout}\n${result.stderr}`
-  if (combined.includes('Final build check failed')) {
-    return "the loop's own build gate failed at the end of the run, so it merged nothing further"
-  }
-  if (combined.includes('Merge conflict while bringing')) {
-    return 'the loop could not merge its branch back: it conflicts with the working branch'
-  }
-
-  const said = lastMeaningfulLine(result.stderr) ?? lastMeaningfulLine(result.stdout)
-  return said === null
-    ? `the review loop exited ${result.exitCode} silently`
-    : `the review loop exited ${result.exitCode}: ${said}`
 }
 
 /**
@@ -247,6 +196,11 @@ export const runReviewLoop = async (options: RunReviewLoopOptions): Promise<Revi
       cwd: settings.repoRoot,
       env: options.env,
       timeoutMs: options.timeoutMs,
+      // The loop handles `SIGTERM` as a request to stop between issues, which is
+      // what its own soft budget already asked of it a wrap-up slice ago. This
+      // deadline is the answer to a loop that did not honour that, so it has to
+      // be one nothing can absorb.
+      killSignal: 'SIGKILL',
       onOutput: (line, stream): void => {
         reportLine(options, now, line, stream)
       },
@@ -255,11 +209,12 @@ export const runReviewLoop = async (options: RunReviewLoopOptions): Promise<Revi
 
   const summary = extractSummary(result)
   const failure = describeFailure(result, options.timeoutMs)
-  log.info({ exitCode: result.exitCode, timedOut: result.timedOut === true, failure }, 'Review loop finished')
+  const outcome = reviewOutcome(result.exitCode)
+  log.info({ exitCode: result.exitCode, outcome, timedOut: result.timedOut === true, failure }, 'Review loop finished')
 
   await collectTrace(options, now)
 
-  return { outcome: result.exitCode === 0 ? 'passed' : 'failed', summary, exitCode: result.exitCode, failure }
+  return { outcome, summary, exitCode: result.exitCode, failure }
 }
 
 /**

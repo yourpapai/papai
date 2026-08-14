@@ -147,6 +147,59 @@ export const turnTimeoutMs = (config: TimeBudgetConfig, nowMs: number): number =
   return Math.max(1, Math.min(config.agentTimeoutMs, forWork))
 }
 
+/** The two bounds a review loop runs under: when it stops itself, and when it is killed. */
+export interface ReviewBudget {
+  /** The wall clock after which the child is killed outright. */
+  hardMs: number
+  /** The shorter budget the loop is *given*, so it can stop on its own terms. */
+  softMs: number
+}
+
+/**
+ * What the review loop is allowed to spend, which is **the job**, less what the
+ * stop costs.
+ *
+ * `turnTimeoutMs` used to answer this too, and the mismatch cost the review phase
+ * most of its runner. That cap bounds one uninterrupted **model turn** — 90
+ * minutes, held there because past a point a cap large enough never to interrupt
+ * real work no longer detects a turn that will never answer. The review loop is
+ * not a turn: it is dozens of subprocesses across several rounds, each already
+ * bounded by `agentTimeoutMs` individually, and a single round of
+ * review-fix-build on a real diff costs half an hour by itself. Run 31803380299
+ * was killed at exactly 90 minutes with one finding of six fixed and hours of job
+ * left, which is what a turn cap looks like when it is asked a question about a
+ * phase.
+ *
+ * So there is **one** ceiling here and it is `AGENT_JOB_TIMEOUT_MINUTES` — the
+ * same value the workflow's own `timeout-minutes:` reads — less the teardown
+ * reserve, which is the arithmetic every other phase already gets from
+ * `timeForAnotherPhase`. A second ceiling of the review's own was tried and was
+ * the same defect wearing a different number: any value small enough to feel safe
+ * under the job is a value that becomes the only bound a review ever reaches, and
+ * one large enough never to bind is not a ceiling at all. Raising how long a
+ * review may run is therefore raising the job's own minutes, which is the one
+ * place where that decision is already made once and read by both.
+ *
+ * With **no job deadline** — every `--event-path` run, which has no Actions job to
+ * derive one from — the configured turn cap stands alone, exactly as it bounded
+ * this loop before any of this existed.
+ *
+ * The **soft** bound exists for the reason the turn's wrap-up slice does: a bound
+ * that arrives as a kill takes whatever was in flight, while a bound the loop is
+ * told about is one it can finish a fix under, publish, write its summary and
+ * exit for. `wrapUpMs` is the gap between them, reused rather than re-invented
+ * because it is the same quantity — what a stop costs to carry out — measured in
+ * a different phase.
+ */
+export const reviewBudget = (config: TimeBudgetConfig, nowMs: number): ReviewBudget => {
+  const toDeadline = msToDeadline(config, nowMs)
+  // Clamped for `turnTimeoutMs`' reason: `withDeadline` reads a non-positive
+  // budget as "no bound at all", so a job already inside its reserve would hand
+  // the loop an unbounded run instead of the immediate stop it needs.
+  const hardMs = toDeadline === null ? config.agentTimeoutMs : Math.max(1, toDeadline - config.teardownReserveMs)
+  return { hardMs, softMs: Math.max(1, hardMs - config.wrapUpMs) }
+}
+
 /**
  * Stops a run that cannot afford the phase in front of it, or `null` when it may
  * carry on.

@@ -10,8 +10,8 @@ import type { IntRange } from './config-values.js'
  * the values which cannot work.
  *
  * Split out of `config-values.ts` when that file passed `max-lines`, and the seam
- * is the one the overflow pointed at rather than an arbitrary cut: these six are
- * the only knobs whose values are *about each other*. A turn is handed
+ * is the one the overflow pointed at rather than an arbitrary cut: these are the
+ * only knobs whose values are *about each other*. A turn is handed
  * `min(DEFAULT_TURN_TIMEOUT_MS, timeLeft − RESERVE − WRAP_UP)` where `timeLeft`
  * comes from `EPOCH_MS_RANGE` and `JOB_MINUTES_RANGE`, so a change to any one of
  * them is a question about the other five — and the prose that answers it was

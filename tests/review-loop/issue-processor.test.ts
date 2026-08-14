@@ -15,6 +15,7 @@ import type { ReviewerIssue, Verdict } from '../../review-loop/src/issue-schema.
 import { newCollector, type RoundCollector } from '../../review-loop/src/loop-trace.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
+import type { StopReason } from '../../review-loop/src/stop-controller.js'
 import { createCapturingTraceLogger, type TraceEvent } from '../../review-loop/src/trace-log.js'
 import { execGit } from '../../review-loop/src/worktree.js'
 import {
@@ -661,5 +662,58 @@ describe('sanitizeSubject', () => {
 
   test('slices to at most 100 characters', () => {
     expect(sanitizeSubject('x'.repeat(150)).length).toBe(100)
+  })
+})
+
+describe('processPendingIssues under a stop request', () => {
+  test('finishes the issue in hand and takes no further one', async () => {
+    const repoRoot = makeTempDir('issue-proc-stop-')
+    const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 1 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupRepo(runState.worktreePath)
+
+    const pending = ['rec-1', 'rec-2', 'rec-3'].map((id) => {
+      const record = { ...buildRecord(), id }
+      ledger.snapshot.issues[id] = record
+      return record
+    })
+
+    let stopReason: StopReason | null = null
+    const fixerCallCount = { current: 0 }
+    const inner = mockSpawnForFixerAndInspector({ fixerCallCount })
+    // The budget runs out while the first fixer is running, which is the only
+    // moment worth testing: mid-issue, with more issues queued behind it.
+    const spawn: SpawnFn = async (command, args, opts) => {
+      const result = await inner(command, args, opts)
+      stopReason = 'budget'
+      return result
+    }
+
+    const fixed = await processPendingIssues(
+      {
+        config,
+        runState,
+        ledger,
+        spawn,
+        exec: passingExec,
+        log: silentReporter(),
+        trace: createCapturingTraceLogger().logger,
+        pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+        inspect: false,
+        stop: { requested: () => stopReason, request: () => undefined, dispose: () => undefined },
+      },
+      1,
+      newCollector(),
+      pending,
+    )
+
+    expect(fixerCallCount.current).toBe(1)
+    expect(fixed).toBe(1)
+    // The two it never reached are still open, which is what the summary reports
+    // and what a resumed run would pick up.
+    expect(ledger.snapshot.issues['rec-3']?.status).toBe('discovered')
   })
 })

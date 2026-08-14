@@ -222,7 +222,7 @@ export function emitRoundSummary(trace: TraceLogger, metric: RoundMetric): void 
 export function emitLoopEnd(
   trace: TraceLogger,
   round: number,
-  doneReason: 'clean' | 'max_rounds' | 'no_progress',
+  doneReason: 'clean' | 'max_rounds' | 'no_progress' | 'stopped',
   metrics: readonly RoundMetric[],
 ): void {
   void trace.append({

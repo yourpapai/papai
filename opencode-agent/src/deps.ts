@@ -24,7 +24,7 @@ import type { TranscriptSink } from './progress.js'
 import { runReviewLoop } from './review-runner.js'
 import type { CommandRunner } from './shell.js'
 import type { StatusReporter } from './status-reporter.js'
-import { turnTimeoutMs } from './time-budget.js'
+import { reviewBudget } from './time-budget.js'
 import type { TriggerEvent } from './trigger-events.js'
 import type { Phase } from './types.js'
 
@@ -65,8 +65,15 @@ interface ReviewRunnerInput {
 
 const makeReviewRunner =
   ({ run, config, log, now, transcript }: ReviewRunnerInput): RunReview =>
-  (plan, onFixMerged) =>
-    runReviewLoop({
+  (plan, onFixMerged) => {
+    // Two bounds, not one. The loop is given `softMs` and stops itself at it,
+    // between two issues, with everything in hand committed and published; the
+    // `hardMs` kill behind it is what answers a loop too wedged to honour that.
+    // Both come off the **job's** clock rather than off the per-turn cap — see
+    // `reviewBudget`, and run 31803380299 for what the turn cap cost here.
+    const budget = reviewBudget(config, now())
+
+    return runReviewLoop({
       settings: {
         repoRoot: config.repoRoot,
         command: config.reviewCommand,
@@ -75,19 +82,18 @@ const makeReviewRunner =
         maxRounds: config.reviewMaxRounds,
         poolSize: config.reviewPoolSize,
         agentTimeoutMs: config.agentTimeoutMs,
+        softStopMs: budget.softMs,
+        commitAuthor: { name: config.commitAuthorName, email: config.commitAuthorEmail },
       },
       plan,
       run,
       env: opencodeConfigEnv(config.openai),
       log,
-      // Shrunk to fit what is left of the job, exactly as a model turn's bound
-      // is and for the same reason: `AGENT_TIMEOUT_MS` alone let the loop run
-      // past the moment the runner is taken away, which posts nothing at all.
-      // A loop stopped by its own deadline is a failure the pipeline can report.
-      timeoutMs: turnTimeoutMs(config, now()),
+      timeoutMs: budget.hardMs,
       transcript,
       onFixMerged,
     })
+  }
 
 const makeSkillLoader = (config: PipelineConfig, log: Logger): ((phase: Phase) => Promise<SkillDocument[]>) => {
   const cache = new Map<Phase, Promise<SkillDocument[]>>()

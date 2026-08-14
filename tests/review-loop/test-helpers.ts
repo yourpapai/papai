@@ -55,6 +55,7 @@ export function createReviewLoopConfigFixture(
     mergeEachFix: false,
     agentTimeoutMs: 600_000,
     buildTimeoutMs: 600_000,
+    runTimeoutMs: 0,
     checkCommand: 'bun check:full',
     poolSize: 3,
     reviewer: {
