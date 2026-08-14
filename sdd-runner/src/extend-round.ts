@@ -10,7 +10,6 @@ import type { AgentLayerDeps } from './agent-layer.js'
 import { buildDriftCheck } from './drift.js'
 import type { EventInput } from './events.js'
 import {
-  applyConfirmAll,
   buildBus,
   finalizeGate,
   findingsOf,
@@ -21,6 +20,9 @@ import {
   readReviewResultFromSidecars,
 } from './gate-digest.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
+import type { GateAssumption, GateFinding } from './gate-model.js'
+import { desugarFlags, readlinePrompter, runGateSession } from './gate-session.js'
+import type { GateSessionView } from './gate-session.js'
 import { resumeGate, vetoRedirects } from './gate.js'
 import { createMaterializer } from './materialize.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
@@ -32,7 +34,7 @@ import { runVetoUpdater, updateAssumptionsFromVetoes } from './veto-updater.js'
 
 export interface RunGateResumeResult {
   readonly runId: string
-  readonly outcome: 'approved' | 'aborted' | 'veto' | 'extend'
+  readonly outcome: 'approved' | 'aborted' | 'veto' | 'extend' | 'abandoned'
   readonly version: number
   readonly gateMdPath?: string
 }
@@ -40,6 +42,8 @@ export interface RunGateResumeResult {
 export interface GateResumeOptions {
   readonly confirmAll?: boolean
   readonly abort?: boolean
+  readonly extend?: boolean
+  readonly vetoes?: readonly { readonly id: string; readonly redirect?: string }[]
 }
 
 export async function prepareResumeInput(
@@ -127,6 +131,78 @@ export interface GateResumeContext {
   readonly agent: AgentLayerDeps
 }
 
+function buildSessionView(
+  state: RunState,
+  assumptions: readonly GateAssumption[],
+  findings: { blockers: GateFinding[]; material: GateFinding[] },
+  requiredAck: string | undefined,
+): GateSessionView {
+  return {
+    gateMode: state.gate?.mode ?? 'final',
+    items: [
+      ...findings.material.map((finding) => ({
+        kind: 'finding' as const,
+        id: finding.id,
+        text: finding.gap,
+        evidence: finding.evidence,
+        blastRadius: '',
+      })),
+      ...assumptions.map((assumption) => ({
+        kind: 'assumption' as const,
+        id: assumption.id,
+        text: assumption.text,
+        evidence: '',
+        blastRadius: assumption.blast_radius,
+      })),
+    ],
+    blockers: state.gate?.mode === 'early' ? findings.blockers : [],
+    requiredAck: buildAck(requiredAck),
+  }
+}
+
+const ACK_TEXT = 'I reviewed the trajectory and the open findings above'
+
+function buildAck(requiredAck: string | undefined): { id: string; text: string } | null {
+  const ack = requiredAck === undefined ? null : { id: requiredAck, text: ACK_TEXT }
+  return ack
+}
+
+/**
+ * Front half of the gate resume: TTY with no decision flags → interactive
+ * session (abandoned sessions write nothing and short-circuit); decision
+ * flags → flag desugaring; otherwise the hand-edited file path (no writes —
+ * `resumeGate` parses whatever is on disk).
+ */
+async function collectGateDecision(
+  deps: OrchestratorDeps,
+  options: GateResumeOptions,
+  view: GateSessionView,
+  gateMdPath: string,
+): Promise<boolean> {
+  const hasDecisionFlags =
+    options.abort === true ||
+    options.confirmAll === true ||
+    options.extend === true ||
+    (options.vetoes?.length ?? 0) > 0
+  if (hasDecisionFlags) {
+    await desugarFlags(options, view, (md) => writeFile(gateMdPath, md))
+    return true
+  }
+  const interactive = deps.interactive?.() === true
+  if (interactive) {
+    const session = await runGateSession({
+      prompter: deps.makePrompter?.() ?? readlinePrompter({ input: process.stdin, output: process.stdout }),
+      view,
+      writeGateMd: (md) => writeFile(gateMdPath, md),
+    })
+    if (session.status === 'abandoned') {
+      deps.stdout?.('gate session abandoned — nothing written, the gate remains pending')
+      return false
+    }
+  }
+  return true
+}
+
 export async function runGateResume(
   deps: OrchestratorDeps,
   runId: string,
@@ -139,10 +215,11 @@ export async function runGateResume(
   const changeDir = path.join(deps.config.repoRoot, 'openspec', 'changes', state.changeName)
   const sidecarDir = path.join(state.runDir, 'sidecars')
   const gateMdPath = path.join(state.runDir, `gate-${version}.md`)
-  if (options.abort === true) await writeFile(gateMdPath, 'ABORT\n')
-  else if (options.confirmAll === true) await applyConfirmAll(gateMdPath)
   const { assumptions, reviewResult, requiredAck } = await prepareResumeInput(sidecarDir, state.round, state.gate.mode)
   const findings = findingsOf(reviewResult)
+  const view = buildSessionView(state, assumptions, findings, requiredAck)
+  const proceed = await collectGateDecision(deps, options, view, gateMdPath)
+  if (!proceed) return { runId: state.runId, outcome: 'abandoned', version }
   const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
   const ctx: GateResumeContext = { deps, state, emit, version, changeDir, sidecarDir, agent }
   const outcome = await resumeGate(

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'bun:test'
 
 import { runGateSession, scriptedPrompter } from '../../sdd-runner/src/gate-session.js'
 import type { GateSessionView } from '../../sdd-runner/src/gate-session.js'
+import { desugarFlags } from '../../sdd-runner/src/gate-session.js'
 
 const ACK_TEXT = 'I reviewed the trajectory and the open findings above'
 
@@ -47,6 +48,72 @@ function makeDeps(
     written,
   }
 }
+
+describe('desugarFlags (task 4.5)', () => {
+  it('--confirm-all accepts all items then each --veto un-accepts its id with the redirect', async () => {
+    const written: string[] = []
+    const answers = await desugarFlags(
+      {
+        confirmAll: true,
+        vetoes: [{ id: 'A1', redirect: 'dm-only' }],
+      },
+      view(),
+      (md) => {
+        written.push(md)
+        return Promise.resolve()
+      },
+    )
+    expect(answers.status).toBe('answered')
+    expect(written).toHaveLength(1)
+    expect(written[0]).toContain('- [ ] A1')
+    expect(written[0]).toContain('→ dm-only')
+    expect(written[0]).toContain('- [x] A2')
+    expect(written[0]).toContain('- [x] F1')
+  })
+
+  it('--confirm-all answers every blocker with OVERRIDE and affirms the ack', async () => {
+    const written: string[] = []
+    const answers = await desugarFlags(
+      { confirmAll: true },
+      {
+        ...view(),
+        gateMode: 'early',
+        blockers: [{ id: 'B1', gap: 'no rollback path', evidence: '' }],
+        requiredAck: { id: 'T1', text: ACK_TEXT },
+      },
+      (md) => {
+        written.push(md)
+        return Promise.resolve()
+      },
+    )
+    expect(answers.status).toBe('answered')
+    expect(written[0]).toContain('→ OVERRIDE')
+    expect(written[0]).toContain('- [x] T1')
+  })
+
+  it('fails on an unknown veto id before writing anything', async () => {
+    const written: string[] = []
+    const writer = (md: string): Promise<void> => {
+      written.push(md)
+      return Promise.resolve()
+    }
+    await expect(
+      desugarFlags({ confirmAll: true, vetoes: [{ id: 'Z9', redirect: 'x' }] }, view(), writer),
+    ).rejects.toThrow(/Z9/u)
+    expect(written).toHaveLength(0)
+  })
+
+  it('requires --confirm-all or a veto for a pure flag invocation to be meaningful', async () => {
+    const written: string[] = []
+    const writer = (md: string): Promise<void> => {
+      written.push(md)
+      return Promise.resolve()
+    }
+    await expect(desugarFlags({ confirmAll: false, vetoes: [] }, view(), writer)).rejects.toThrow(
+      /confirm-all|--veto|file/u,
+    )
+  })
+})
 
 describe('runGateSession walkthrough', () => {
   it('covers every finding and assumption with accept/veto/inspect and records an inline redirect', async () => {

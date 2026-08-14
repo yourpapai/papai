@@ -3,68 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import * as readline from 'node:readline/promises'
-
 import { renderGateAnswers, responseFromAnswers } from './gate-answers.js'
 import type { GateAck, GateAnswerItem, GateAnswers, GateBlockerAnswer } from './gate-answers.js'
 import { parseGateResponse } from './gate-model.js'
 import type { ExpectedGateContent, GateResponse } from './gate-model.js'
+import type { Prompter } from './prompter.js'
 
-export interface Prompter {
-  readonly say: (line: string) => void
-  readonly ask: (prompt: string) => Promise<string | null>
-}
-
-/**
- * Test/scripting prompter: `ask` pulls the next pre-scripted answer (or `null`
- * when the script is exhausted, standing in for EOF); every exchange is
- * recorded into `transcript` so tests can assert on the walkthrough.
- */
-export function scriptedPrompter(answers: readonly string[]): { prompter: Prompter; transcript: string[] } {
-  const transcript: string[] = []
-  const queue = [...answers]
-  const prompter: Prompter = {
-    say: (line) => {
-      transcript.push(line)
-    },
-    ask: (prompt) => {
-      transcript.push(`? ${prompt}`)
-      const next = queue.shift()
-      if (next === undefined) return Promise.resolve(null)
-      transcript.push(`> ${next}`)
-      return Promise.resolve(next)
-    },
-  }
-  return { prompter, transcript }
-}
-
-export interface ReadlineStreams {
-  readonly input: NodeJS.ReadStream
-  readonly output: NodeJS.WritableStream
-}
-
-/**
- * Thin `node:readline` adapter (no new deps). Behavior lives in the session
- * and is covered via `scriptedPrompter`; this only wires the terminal I/O.
- */
-export function readlinePrompter(streams: ReadlineStreams): Prompter {
-  let terminal: readline.Interface | null = null
-  const openTerminal = (): readline.Interface => {
-    terminal ??= readline.createInterface({ input: streams.input, output: streams.output })
-    return terminal
-  }
-  return {
-    say: (line) => {
-      streams.output.write(`${line}\n`)
-    },
-    ask: (prompt) => openTerminal().question(`${prompt} `),
-  }
-}
-
-/** Interactive mode is entered only when stdin is a TTY (flags always win). */
-export function stdinIsInteractive(input: NodeJS.ReadStream = process.stdin): boolean {
-  return input.isTTY ?? false
-}
+export type { Prompter } from './prompter.js'
+export { readlinePrompter, scriptedPrompter, stdinIsInteractive } from './prompter.js'
 
 export interface GateSessionItem {
   readonly kind: 'assumption' | 'finding'
@@ -245,6 +191,74 @@ async function collectItems(
   return collectItems(prompter, items, index + 1, [...acc, answer])
 }
 
+export interface FlagDecisionInput {
+  readonly confirmAll?: boolean
+  readonly abort?: boolean
+  readonly extend?: boolean
+  readonly vetoes?: readonly { readonly id: string; readonly redirect?: string }[]
+}
+
+/**
+ * Desugar decision flags to the same answers the session collects (Decision
+ * 5): `--confirm-all` accepts every item, answers every blocker with
+ * OVERRIDE, and affirms the ack; each `--veto <id>=<redirect>` then
+ * un-accepts its item with the redirect. Unknown veto ids fail before
+ * anything is written. No flags at all is not a decision — the hand-edited
+ * file path handles that case.
+ */
+export function desugarFlags(
+  flags: FlagDecisionInput,
+  view: GateSessionView,
+  writeGateMd: (md: string) => Promise<void>,
+): Promise<GateSessionResult> {
+  if (flags.abort === true) {
+    return settleAnswers({ items: [], blockerAnswers: [], acks: [], decision: 'abort' }, view, writeGateMd)
+  }
+  if (flags.extend === true) {
+    return settleAnswers({ items: [], blockerAnswers: [], acks: [], decision: 'extend' }, view, writeGateMd)
+  }
+  if (flags.confirmAll !== true) {
+    return Promise.reject(
+      new Error('no decision flags given — pass --confirm-all/--veto/--abort/--extend, or hand-edit the gate file'),
+    )
+  }
+  const known = new Set(view.items.map((item) => item.id))
+  for (const veto of flags.vetoes ?? []) {
+    if (!known.has(veto.id)) {
+      return Promise.reject(new Error(`unknown veto id: ${veto.id} (not in this gate's item set)`))
+    }
+  }
+  const items: GateAnswerItem[] = view.items.map((item) => {
+    const veto = (flags.vetoes ?? []).find((candidate) => candidate.id === item.id)
+    if (veto === undefined) return { kind: item.kind, id: item.id, text: item.text, accepted: true }
+    return {
+      kind: item.kind,
+      id: item.id,
+      text: item.text,
+      accepted: false,
+      ...(veto.redirect === undefined ? {} : { redirect: veto.redirect }),
+    }
+  })
+  const blockerAnswers = view.blockers.map((blocker) => ({ id: blocker.id, gap: blocker.gap, answer: 'OVERRIDE' }))
+  const ack = view.requiredAck
+  const acks = ack === null ? [] : [{ id: ack.id, text: ack.text }]
+  return settleAnswers({ items, blockerAnswers, acks, decision: 'approve' }, view, writeGateMd)
+}
+
+async function settleAnswers(
+  answers: GateAnswers,
+  view: GateSessionView,
+  writeGateMd: (md: string) => Promise<void>,
+): Promise<GateSessionResult> {
+  const md = renderGateAnswers(answers)
+  const parsed = parseGateResponse(md, expectedContent(view))
+  if (!sameResponse(parsed, responseFromAnswers(answers))) {
+    throw new Error('answer self-check failed: rendered answers parse back as a different outcome')
+  }
+  await writeGateMd(md)
+  return { status: 'answered', decision: answers.decision, gateMd: md }
+}
+
 /**
  * Interactive gate session (Decisions 1-2): walk every finding/assumption
  * (accept / veto+redirect / inspect), answer cap-hit blockers, affirm the
@@ -265,11 +279,5 @@ export async function runGateSession(deps: GateSessionDeps): Promise<GateSession
     acks: collected.acks,
     decision: collected.decision,
   }
-  const md = renderGateAnswers(answers)
-  const parsed = parseGateResponse(md, expectedContent(view))
-  if (!sameResponse(parsed, responseFromAnswers(answers))) {
-    throw new Error('gate session self-check failed: rendered answers parse back as a different outcome')
-  }
-  await deps.writeGateMd(md)
-  return { status: 'answered', decision: collected.decision, gateMd: md }
+  return settleAnswers(answers, view, deps.writeGateMd)
 }

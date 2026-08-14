@@ -44,6 +44,58 @@ describe('parseCliArgs', () => {
     expect(cmd).toMatchObject({ subcommand: 'gate', runId: 'run-456', abort: true })
   })
 
+  it('parses gate resume with --extend', () => {
+    const cmd = parseCliArgs(['gate', 'resume', 'run-1', '--extend'])
+    expect(cmd).toMatchObject({ subcommand: 'gate', runId: 'run-1', extend: true })
+  })
+
+  it('parses repeatable --veto flags splitting on the first = only', () => {
+    const cmd = parseCliArgs([
+      'gate',
+      'resume',
+      'run-1',
+      '--veto',
+      'A1=redirect=https://example.com',
+      '--veto',
+      'F2=narrow the gap',
+    ])
+    expect(cmd).toMatchObject({
+      vetoes: [
+        { id: 'A1', redirect: 'redirect=https://example.com' },
+        { id: 'F2', redirect: 'narrow the gap' },
+      ],
+    })
+  })
+
+  it('rejects --veto without a value', () => {
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--veto'])).toThrow(/--veto/u)
+  })
+
+  it('rejects --extend combined with --confirm-all, --veto, or --abort', () => {
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--extend', '--confirm-all'])).toThrow(/--extend/u)
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--extend', '--abort'])).toThrow(/--extend/u)
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--extend', '--veto', 'A1=x'])).toThrow(/--extend/u)
+  })
+
+  it('parses a bare gate command with no run id', () => {
+    const cmd = parseCliArgs(['gate'])
+    expect(cmd).toMatchObject({ subcommand: 'gate', runId: null })
+  })
+
+  it('rejects a bare gate command that carries decision flags', () => {
+    expect(() => parseCliArgs(['gate', '--confirm-all'])).toThrow(/gate resume/u)
+  })
+
+  it('parses continue with a run id', () => {
+    const cmd = parseCliArgs(['continue', 'run-7'])
+    expect(cmd).toMatchObject({ subcommand: 'continue', runId: 'run-7' })
+  })
+
+  it('parses continue without a run id', () => {
+    const cmd = parseCliArgs(['continue'])
+    expect(cmd).toMatchObject({ subcommand: 'continue' })
+  })
+
   it('parses report with --pr', () => {
     const cmd = parseCliArgs(['report', 'run-1', '--pr'])
     expect(cmd).toMatchObject({ subcommand: 'report', runId: 'run-1', pr: true })
@@ -72,6 +124,11 @@ function makeHarness(calls: string[]): CliHarness {
       calls.push(`gate:${runId}:${options.confirmAll ?? false}:${options.abort ?? false}`)
       return Promise.resolve({ runId, outcome: 'approved', version: 1 })
     },
+    runContinue: (runId) => {
+      calls.push(`continue:${runId ?? '-'}`)
+      return Promise.resolve({ runId: runId ?? 'run-1', routed: 'gate' })
+    },
+    listPendingGates: () => Promise.resolve([]),
     buildReport: (runId, pr) => {
       calls.push(`report:${runId}:${pr}`)
       return Promise.resolve(`body for ${runId}`)
@@ -109,5 +166,13 @@ describe('main', () => {
     await main(['report', 'run-2', '--pr'], makeHarness(calls))
     expect(calls).toContain('report:run-2:true')
     expect(calls.some((c) => c.startsWith('out:body for run-2'))).toBe(true)
+  })
+
+  it('routes continue with and without a run id', async () => {
+    const calls: string[] = []
+    await main(['continue', 'run-4'], makeHarness(calls))
+    await main(['continue'], makeHarness(calls))
+    expect(calls).toContain('continue:run-4')
+    expect(calls).toContain('continue:-')
   })
 })

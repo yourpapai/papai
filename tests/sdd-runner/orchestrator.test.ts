@@ -19,7 +19,9 @@ import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import type { StageContext } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
-import { runGateResume, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
+import { runContinue, runGateResume, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
+import { scriptedPrompter } from '../../sdd-runner/src/prompter.js'
+import type { Prompter } from '../../sdd-runner/src/prompter.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState } from '../../sdd-runner/src/run-state.js'
@@ -466,6 +468,227 @@ function requireGateMdPath(result: { readonly gateMdPath?: string }): string {
   if (result.gateMdPath === undefined) throw new Error('expected gateMdPath on the result')
   return result.gateMdPath
 }
+
+describe('runResume gate-pending loudness (task 4.3)', () => {
+  it('prints that the run awaits a gate decision plus the exact gate command with the run id', async () => {
+    const fixture = makeFixture()
+    const started = await runStart(fixture.deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+    })
+    const result = await runResume(fixture.deps, started.runId)
+    expect(result.halted).toBe('gate-pending')
+    expect(fixture.stdoutLines.some((l) => l.includes('awaits a gate decision'))).toBe(true)
+    expect(fixture.stdoutLines.includes(`sdd-runner gate resume ${started.runId}`)).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes(started.runId))).toBe(true)
+  })
+
+  it('halting at a gate prints a copy-pasteable next-step line with the full resume command and run id', async () => {
+    const fixture = makeFixture()
+    const started = await runStart(fixture.deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+    })
+    expect(fixture.stdoutLines.includes(`Next: sdd-runner gate resume ${started.runId}`)).toBe(true)
+  })
+})
+
+describe('runContinue routing (task 4.7)', () => {
+  it('routes a gate-pending run into the gate flow', async () => {
+    const fixture = makeFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const result = await runContinue(fixture.deps, started.runId)
+    expect(result.routed).toBe('gate')
+    expect(result.runId).toBe(started.runId)
+  })
+
+  it('routes a completed run to a report pointer', async () => {
+    const fixture = makeFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    await runGateResume(fixture.deps, started.runId, { confirmAll: true })
+    const result = await runContinue(fixture.deps, started.runId)
+    expect(result.routed).toBe('report')
+    expect(fixture.stdoutLines.some((l) => l.includes(`sdd-runner report ${started.runId}`))).toBe(true)
+  })
+
+  it('routes an interrupted mid-stage run to stage resume', async () => {
+    const fixture = makeFixture()
+    const workDir = fixture.deps.config.workDir
+    const runId = 'cont-mid'
+    const runDir = path.join(workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.mkdirSync(path.join(fixture.changeDir, 'specs', 'thing'), { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'), '## ADDED Requirements\n')
+    fs.writeFileSync(
+      path.join(runDir, 'events.ndjson'),
+      [
+        { altitude: 'L2', type: 'stage_enter', stage: 'intake', seq: 1, ts: '2026-01-01T00:00:00.000Z' },
+        {
+          altitude: 'L2',
+          type: 'depth',
+          profile: 'S',
+          rationale: 'override',
+          source: 'override',
+          seq: 2,
+          ts: '2026-01-01T00:00:00.000Z',
+        },
+        { altitude: 'L2', type: 'stage_exit', stage: 'intake', seq: 3, ts: '2026-01-01T00:00:00.000Z' },
+        { altitude: 'L2', type: 'stage_enter', stage: 'draft', seq: 4, ts: '2026-01-01T00:00:00.000Z' },
+        { altitude: 'L2', type: 'stage_exit', stage: 'draft', seq: 5, ts: '2026-01-01T00:00:00.000Z' },
+      ]
+        .map((e) => JSON.stringify(e))
+        .join('\n') + '\n',
+    )
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir,
+          changeName: fixture.changeName,
+          stage: 'draft',
+          depth: 'S',
+          round: 0,
+          gate: null,
+          status: 'running',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    const calls: string[] = []
+    const trackingDriver = createTrackingDriver(fixture, calls)
+    const deps: OrchestratorDeps = { ...fixture.deps, driver: trackingDriver }
+    const result = await runContinue(deps, runId)
+    expect(result.routed).toBe('resume')
+    expect(result.runId).toBe(runId)
+  })
+
+  it('with no id, a single pending/active run routes directly', async () => {
+    const fixture = makeFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const result = await runContinue(fixture.deps, null)
+    expect(result.routed).toBe('gate')
+    expect(result.runId).toBe(started.runId)
+  })
+
+  it('with no id and several candidate runs, lists them instead of guessing (non-TTY)', async () => {
+    const fixture = makeFixture()
+    const first = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const fixture2 = makeFixture()
+    const second = await runStart(fixture2.deps, { taskFile: fixture2.taskFile, depthOverride: 'S' })
+    fs.cpSync(
+      path.join(fixture2.deps.config.workDir, 'runs', second.runId),
+      path.join(fixture.deps.config.workDir, 'runs', second.runId),
+      { recursive: true },
+    )
+    const result = await runContinue(fixture.deps, null)
+    expect(result.routed).toBe('list')
+    expect(fixture.stdoutLines.some((l) => l.includes(first.runId))).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes(second.runId))).toBe(true)
+  })
+})
+
+describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
+  function gatedFixture(): Fixture {
+    const assumption = {
+      id: 'A1',
+      text: 'guests stay read-only',
+      basis: 'default',
+      confidence: 'medium',
+      blast_radius: 'group replies',
+      status: 'open',
+    }
+    const fixture = makeFixture({
+      'resolutions-1.json': JSON.stringify({ resolutions: [], assumptions: [assumption] }),
+    })
+    return fixture
+  }
+
+  it('non-TTY with no flags parses the hand-edited file and never prompts', async () => {
+    const fixture = gatedFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const result = await runGateResume(fixture.deps, started.runId, {})
+    expect(result.outcome).toBe('veto')
+  })
+
+  it('--confirm-all with --veto A1=<redirect> writes the equivalent hand-edited file', async () => {
+    const fixture = gatedFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const result = await runGateResume(fixture.deps, started.runId, {
+      confirmAll: true,
+      vetoes: [{ id: 'A1', redirect: 'narrowed to dm-only' }],
+    })
+    expect(result.outcome).toBe('veto')
+    expect(result.version).toBe(2)
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
+    const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('- [ ] A1 narrowed to dm-only')
+  })
+
+  it('an unknown veto id fails before any pipeline action', async () => {
+    const fixture = gatedFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const spawnCount = fixture.spawnOrder.length
+    await expect(
+      runGateResume(fixture.deps, started.runId, { confirmAll: true, vetoes: [{ id: 'Z9' }] }),
+    ).rejects.toThrow(/Z9/u)
+    expect(fixture.spawnOrder.length).toBe(spawnCount)
+  })
+
+  it('--extend desugars to the extend directive outcome', async () => {
+    const materialFinding = {
+      id: 'F1',
+      class: 'MATERIAL',
+      gap: 'design lacks rollback',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-1.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-2.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-3.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-3.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-4.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-4.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+    const result = await runGateResume(fixture.deps, started.runId, { extend: true })
+    expect(result.outcome).toBe('extend')
+    expect(result.version).toBe(2)
+  })
+
+  it('--abort writes ABORT without prompting', async () => {
+    const fixture = gatedFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const result = await runGateResume(fixture.deps, started.runId, { abort: true })
+    expect(result.outcome).toBe('aborted')
+    const state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.status).toBe('aborted')
+  })
+
+  it('a TTY with no decision flags runs the interactive session and writes its answers', async () => {
+    const fixture = gatedFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const { prompter } = scriptedPrompter(['a', 'approve'])
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      interactive: (): boolean => true,
+      makePrompter: (): Prompter => prompter,
+    }
+    const result = await runGateResume(deps, started.runId, {})
+    expect(result.outcome).toBe('approved')
+    const state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.status).toBe('completed')
+  })
+})
 
 describe('runGateResume', () => {
   it('halts at an early cap-hit gate with trajectory, open MATERIAL checkboxes, and T1 ack; rejects resume without T1', async () => {

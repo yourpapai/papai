@@ -15,23 +15,29 @@ import { parseCliArgs } from './cli.js'
 import { discoverBranch, loadRunnerConfig } from './config.js'
 import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
+import { readlinePrompter, stdinIsInteractive } from './gate-session.js'
+import type { Prompter } from './gate-session.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
-import { runGateResume, runResume, runStart } from './orchestrator.js'
+import { runContinue, runGateResume, runResume, runStart } from './orchestrator.js'
 import { createRenderer } from './renderer.js'
 import type { Verbosity } from './renderer.js'
 import { buildReport } from './report.js'
 import type { ChangeDirSummary, ReportInput } from './report.js'
-import { loadRunState } from './run-state.js'
+import { listPendingGates, loadRunState, resolveRunId } from './run-state.js'
 
 export const USAGE = [
   'sdd-runner — autonomous SDD pipeline',
   '',
   'Usage:',
   '  sdd-runner start <task-file> [--depth S|M|L] [--verbosity brief|normal|debug]',
+  '  sdd-runner continue [runId]',
   '  sdd-runner resume <runId>',
-  '  sdd-runner gate resume <runId> [--confirm-all] [--abort]',
+  '  sdd-runner gate [resume <runId> [--confirm-all] [--extend] [--veto <id>=<redirect>]... [--abort]]',
   '  sdd-runner report <runId> [--pr]',
+  '',
+  'On a terminal, `gate resume <runId>` (or `continue`) opens an interactive gate session.',
+  'Without a TTY, pass decision flags or hand-edit the gate file. Bare `gate` lists pending gates.',
 ].join('\n')
 
 export async function readChangeSummary(repoRoot: string, changeName: string): Promise<ChangeDirSummary> {
@@ -107,11 +113,18 @@ async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness
     stdout: (line: string): void => {
       process.stdout.write(`${line}\n`)
     },
+    interactive: (): boolean => stdinIsInteractive(),
+    makePrompter: (): Prompter => readlinePrompter({ input: process.stdin, output: process.stdout }),
   }
   return {
     runStart: (options) => runStart(orchestratorDeps, options),
     runResume: (runId) => runResume(orchestratorDeps, runId),
-    runGateResume: (runId, options) => runGateResume(orchestratorDeps, runId, options),
+    runGateResume: async (runId, options) => {
+      const resolved = await resolveRunId(config.workDir, runId)
+      return runGateResume(orchestratorDeps, resolved, options)
+    },
+    runContinue: (runId) => runContinue(orchestratorDeps, runId),
+    listPendingGates: () => listPendingGates(config.workDir),
     buildReport: async (runId, pr) => {
       const state = await loadRunState(config.workDir, runId)
       const branch = await discoverBranch(execGit, config.repoRoot)

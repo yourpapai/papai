@@ -30,14 +30,14 @@ failing test before the implementation it covers.
 
 ## 4. CLI verbs, flags, and wiring (Decisions 4-5)
 
-- [ ] 4.1 Add failing tests in `tests/sdd-runner/cli.test.ts`: parse `--extend`; repeatable `--veto <id>=<redirect>` splitting on the first `=`; `--extend` rejected in combination with `--confirm-all`/`--veto`/`--abort`; bare `gate`; `continue` with and without a run id. Verify: `bun test tests/sdd-runner/cli.test.ts` (red)
-- [ ] 4.2 Implement the CLI parsing (including USAGE text in `index.ts`) until 4.1 is green. Verify: `bun test tests/sdd-runner/cli.test.ts tests/sdd-runner/index.test.ts`
-- [ ] 4.3 Add failing tests: `resume` on a gate-pending run prints that the run awaits a gate decision plus the exact gate command with the run id (no silent exit); halting at a gate prints a next-step line carrying the full resume command and run id. Verify: `bun test tests/sdd-runner/orchestrator.test.ts` (red)
-- [ ] 4.4 Implement the loud gate-pending message and the halt next-step line until 4.3 is green. Verify: `bun test tests/sdd-runner/orchestrator.test.ts`
-- [ ] 4.5 Add failing tests for the flag desugar: `--confirm-all` accepts all items then each `--veto` un-accepts its id with the redirect; an unknown veto id fails before any pipeline action; non-TTY input never prompts and acts on flags/file alone. Verify: `bun test tests/sdd-runner/gate-session.test.ts tests/sdd-runner/orchestrator.test.ts` (red)
-- [ ] 4.6 Wire the gate-resume entry: TTY with no decision flags → interactive session; otherwise the flags/file path — until 4.5 is green. Verify: `bun test tests/sdd-runner/gate-session.test.ts tests/sdd-runner/orchestrator.test.ts && bun run sdd-runner:typecheck`
-- [ ] 4.7 Add failing tests for `continue`: routes gate-pending → gate flow, interrupted-mid-stage → stage resume, completed → report pointer; with no id, a single pending/active run routes directly and several produce the picker on TTY or a plain list otherwise. Verify: `bun test tests/sdd-runner/cli.test.ts tests/sdd-runner/orchestrator.test.ts` (red)
-- [ ] 4.8 Implement the `continue` router until 4.7 is green. Verify: `bun test tests/sdd-runner`
+- [x] 4.1 Add failing tests in `tests/sdd-runner/cli.test.ts`: parse `--extend`; repeatable `--veto <id>=<redirect>` splitting on the first `=`; `--extend` rejected in combination with `--confirm-all`/`--veto`/`--abort`; bare `gate`; `continue` with and without a run id. Verify: `bun test tests/sdd-runner/cli.test.ts` (red)
+- [x] 4.2 Implement the CLI parsing (including USAGE text in `index.ts`) until 4.1 is green. Verify: `bun test tests/sdd-runner/cli.test.ts tests/sdd-runner/index.test.ts`
+- [x] 4.3 Add failing tests: `resume` on a gate-pending run prints that the run awaits a gate decision plus the exact gate command with the run id (no silent exit); halting at a gate prints a next-step line carrying the full resume command and run id. Verify: `bun test tests/sdd-runner/orchestrator.test.ts` (red)
+- [x] 4.4 Implement the loud gate-pending message and the halt next-step line until 4.3 is green. Verify: `bun test tests/sdd-runner/orchestrator.test.ts`
+- [x] 4.5 Add failing tests for the flag desugar: `--confirm-all` accepts all items then each `--veto` un-accepts its id with the redirect; an unknown veto id fails before any pipeline action; non-TTY input never prompts and acts on flags/file alone. Verify: `bun test tests/sdd-runner/gate-session.test.ts tests/sdd-runner/orchestrator.test.ts` (red)
+- [x] 4.6 Wire the gate-resume entry: TTY with no decision flags → interactive session; otherwise the flags/file path — until 4.5 is green. Verify: `bun test tests/sdd-runner/gate-session.test.ts tests/sdd-runner/orchestrator.test.ts && bun run sdd-runner:typecheck`
+- [x] 4.7 Add failing tests for `continue`: routes gate-pending → gate flow, interrupted-mid-stage → stage resume, completed → report pointer; with no id, a single pending/active run routes directly and several produce the picker on TTY or a plain list otherwise. Verify: `bun test tests/sdd-runner/cli.test.ts tests/sdd-runner/orchestrator.test.ts` (red)
+- [x] 4.8 Implement the `continue` router until 4.7 is green. Verify: `bun test tests/sdd-runner`
 
 ## 5. Session decision menu + shared consequence copy (Decision 6)
 
