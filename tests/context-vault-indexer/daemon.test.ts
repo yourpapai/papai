@@ -429,6 +429,40 @@ describe('runDaemon', () => {
     expect(readLockRecordAt(lockFs, LOCK_PATH)).toEqual({ pid: 5555, heartbeatAt: 105_000 })
   })
 
+  test('keeps the heartbeat fresh when the scan interval exceeds the heartbeat TTL', async () => {
+    const LOCK_PATH = `/state/${LOCK_FILE_NAME}`
+    const lockFs = makeFakeLockFs({ [LOCK_PATH]: JSON.stringify({ pid: 5555, heartbeatAt: 0 }) })
+    let clock = 100_000
+    const heartbeats: number[] = []
+    const countingLockFs: LockFileSystem = {
+      ...lockFs,
+      write: (path: string, contents: string) => {
+        heartbeats.push(clock)
+        lockFs.write(path, contents)
+      },
+    }
+    const lock: LockDeps = { fs: countingLockFs, isPidAlive: () => true, now: () => clock, ttlMs: 10_000 }
+
+    const controller = new AbortController()
+    const { fs, scans } = makeAbortingFs(controller, 2)
+    const base = makeDeps(fs)
+    const sleepAndAdvance = (ms: number): Promise<void> => {
+      clock += ms
+      return base.deps.sleep(ms)
+    }
+    const deps: DaemonDeps = {
+      ...base.deps,
+      sleep: sleepAndAdvance,
+      heartbeat: { lockPath: LOCK_PATH, pid: 5555, lock },
+    }
+
+    await runDaemon(CONFIG, deps, { intervalMs: 30_000, signal: controller.signal })
+
+    expect(scans()).toBe(2)
+    expect(heartbeats).toEqual([100_000, 105_000, 110_000, 115_000, 120_000, 125_000, 130_000])
+    expect(readLockRecordAt(lockFs, LOCK_PATH)).toEqual({ pid: 5555, heartbeatAt: 130_000 })
+  })
+
   test('does not touch a lock held by another pid', async () => {
     const LOCK_PATH = `/state/${LOCK_FILE_NAME}`
     const foreign = JSON.stringify({ pid: 1111, heartbeatAt: 0 })

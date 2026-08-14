@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 import pino from 'pino'
 import { z } from 'zod'
 
-import { refreshIndexerHeartbeat, type LockDeps } from './lock.js'
+import { DEFAULT_HEARTBEAT_TTL_MS, refreshIndexerHeartbeat, type LockDeps } from './lock.js'
 
 const logger = pino({ base: undefined, timestamp: pino.stdTimeFunctions.isoTime })
 
@@ -38,8 +38,9 @@ export type DaemonConfig = {
 
 /**
  * Lock ownership seam: the daemon holds the singleton lock under its own pid
- * and rewrites `heartbeatAt` on every scan tick, so the lock outlives the
- * short-lived plugin process that spawned it.
+ * and rewrites `heartbeatAt` on its own cadence (at least twice per heartbeat
+ * TTL, independent of the scan interval), so the lock outlives the short-lived
+ * plugin process that spawned it.
  */
 export type DaemonHeartbeat = {
   lockPath: string
@@ -198,9 +199,16 @@ export type RunDaemonOptions = {
  * Periodic scan loop. Chained promise scheduling rather than an awaited loop so
  * no pending frame accumulates across iterations of a long-lived process.
  * Resolves once the abort signal fires.
+ *
+ * The heartbeat is refreshed on its own cadence — at least twice per heartbeat
+ * TTL — decoupled from `intervalMs`, so a scan interval longer than the TTL
+ * never lets a live daemon's lock look reclaimable.
  */
 export function runDaemon(config: DaemonConfig, deps: DaemonDeps, options: RunDaemonOptions): Promise<void> {
   return new Promise((resolve) => {
+    const heartbeatTtlMs = deps.heartbeat?.lock.ttlMs ?? DEFAULT_HEARTBEAT_TTL_MS
+    const stepMs = deps.heartbeat ? Math.min(options.intervalMs, Math.floor(heartbeatTtlMs / 2)) : options.intervalMs
+    let sinceScanMs = options.intervalMs
     const tick = (): void => {
       if (options.signal.aborted) {
         resolve()
@@ -209,15 +217,20 @@ export function runDaemon(config: DaemonConfig, deps: DaemonDeps, options: RunDa
       if (deps.heartbeat) {
         refreshIndexerHeartbeat(deps.heartbeat.lockPath, deps.heartbeat.pid, deps.heartbeat.lock)
       }
-      void scanOnce(config, deps)
-        .catch((error: unknown) => {
-          logger.error(
-            { error: error instanceof Error ? error.message : String(error) },
-            'context-vault indexer scan tick failed; continuing after interval',
-          )
-        })
-        .then(() => (options.signal.aborted ? undefined : deps.sleep(options.intervalMs)))
+      const scanDue = sinceScanMs >= options.intervalMs
+      const scanned = scanDue
+        ? scanOnce(config, deps).catch((error: unknown) => {
+            logger.error(
+              { error: error instanceof Error ? error.message : String(error) },
+              'context-vault indexer scan tick failed; continuing after interval',
+            )
+          })
+        : Promise.resolve()
+      if (scanDue) sinceScanMs = 0
+      void scanned
+        .then(() => (options.signal.aborted ? undefined : deps.sleep(stepMs)))
         .then(() => {
+          sinceScanMs += stepMs
           if (options.signal.aborted) {
             resolve()
             return
