@@ -31,6 +31,12 @@ function makeWorkDir(): string {
   return dir
 }
 
+async function errorOf(promise: Promise<unknown>): Promise<Error> {
+  const failure = await promise.catch((error: unknown) => error)
+  if (!(failure instanceof Error)) throw new Error('expected the promise to reject with an Error')
+  return failure
+}
+
 afterEach(() => {
   while (tmpDirs.length > 0) {
     const dir = tmpDirs.pop()
@@ -85,11 +91,23 @@ describe('createRunState + loadRunState', () => {
     expect(loaded).toEqual(state)
   })
 
-  it('rejects a corrupt state.json', async () => {
+  it('builds the run id from the ISO timestamp with colons and dots dashed plus an 8-char uuid prefix', async () => {
+    const workDir = makeWorkDir()
+    const state = await createRunState(
+      { workDir, repoRoot: '/repo', changeName: 'add-thing' },
+      new Date('2026-03-04T05:06:07.891Z'),
+    )
+    expect(state.runId).toMatch(/^2026-03-04T05-06-07-891Z-[0-9a-f]{8}$/u)
+  })
+
+  it('rejects a corrupt state.json naming the run and preserving the cause', async () => {
     const workDir = makeWorkDir()
     const state = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
     fs.writeFileSync(path.join(state.runDir, 'state.json'), '{"runId": 42}')
-    await expect(loadRunState(workDir, state.runId)).rejects.toThrow(/state\.json/u)
+    const failure = await errorOf(loadRunState(workDir, state.runId))
+    expect(failure.message).toMatch(/state\.json/u)
+    expect(failure.message).toContain(state.runId)
+    expect(failure.cause).toBeDefined()
   })
 })
 
@@ -433,20 +451,30 @@ describe('resolveRunId', () => {
     expect(await resolveRunId(workDir, '2026-02')).toBe('2026-02-01T00-00-00-000Z-ffff0000')
   })
 
+  it('accepts an exact id even when it is also a prefix of another run id', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'run-1', { gate: { mode: 'early', version: 1 } })
+    await seedRun(workDir, 'run-1-extended', { gate: { mode: 'final', version: 1 } })
+    expect(await resolveRunId(workDir, 'run-1')).toBe('run-1')
+  })
+
   it('fails on an unknown id naming the input', async () => {
     const workDir = makeWorkDir()
     await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
-    await expect(resolveRunId(workDir, 'nope')).rejects.toThrow(/nope/u)
+    const resolution = resolveRunId(workDir, 'nope')
+    await expect(resolution).rejects.toThrow(/unknown run id/iu)
+    await expect(resolution).rejects.toThrow(/nope/u)
   })
 
   it('fails on an ambiguous prefix listing every matching candidate id', async () => {
     const workDir = makeWorkDir()
     await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
     await seedRun(workDir, '2026-01-01T00-00-00-000Z-ffff0000', { gate: { mode: 'final', version: 1 } })
-    // readdir order is filesystem-dependent, so assert both candidates are listed without pinning their order.
-    const resolution = resolveRunId(workDir, '2026-01-01')
-    await expect(resolution).rejects.toThrow(/ambiguous/iu)
-    await expect(resolution).rejects.toThrow(/abcd1234/u)
-    await expect(resolution).rejects.toThrow(/ffff0000/u)
+    const message = (await errorOf(resolveRunId(workDir, '2026-01-01'))).message
+    expect(message).toMatch(/ambiguous/iu)
+    expect(message).toContain('abcd1234')
+    expect(message).toContain('ffff0000')
+    // one candidate per line, order-free: both candidate lines start with the shared timestamp prefix
+    expect(message.match(/\n {2}2026-01-01/gu)).toHaveLength(2)
   })
 })

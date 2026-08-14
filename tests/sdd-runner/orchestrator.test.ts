@@ -20,6 +20,7 @@ import type { StageContext } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { runContinue, runGateResume, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
+import type { RunGateResumeResult } from '../../sdd-runner/src/orchestrator.js'
 import { scriptedPrompter } from '../../sdd-runner/src/prompter.js'
 import type { Prompter } from '../../sdd-runner/src/prompter.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
@@ -688,6 +689,34 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
     const state = await loadRunState(fixture.deps.config.workDir, started.runId)
     expect(state.status).toBe('completed')
   })
+
+  it('--veto without --confirm-all counts as a decision flag and is rejected by flag desugaring', async () => {
+    const fixture = gatedFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    await expect(runGateResume(fixture.deps, started.runId, { vetoes: [{ id: 'A1' }] })).rejects.toThrow(
+      /no decision flags/u,
+    )
+  })
+
+  it('an abandoned interactive session writes nothing and leaves the gate pending', async () => {
+    const fixture = gatedFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
+    const gate1Path = path.join(runDir, 'gate-1.md')
+    const before = fs.readFileSync(gate1Path, 'utf8')
+    const { prompter } = scriptedPrompter([])
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      interactive: (): boolean => true,
+      makePrompter: (): Prompter => prompter,
+    }
+    const result = await runGateResume(deps, started.runId, {})
+    expect(result.outcome).toBe('abandoned')
+    expect(fixture.stdoutLines.some((line) => line.includes('gate session abandoned'))).toBe(true)
+    expect(fs.readFileSync(gate1Path, 'utf8')).toBe(before)
+    const state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.gate).toEqual({ mode: 'final', version: 1 })
+  })
 })
 
 describe('runGateResume', () => {
@@ -784,6 +813,10 @@ describe('runGateResume', () => {
     const result = await runGateResume(fixture.deps, started.runId, {})
     expect(result.outcome).toBe('veto')
     expect(result.version).toBe(2)
+
+    // a veto at an early cap-hit gate re-presents an early gate, not a final one
+    const gate2 = fs.readFileSync(path.join(fixture.deps.config.workDir, 'runs', started.runId, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('Early gate')
   })
 
   it('marks the run completed on an approved gate', async () => {
@@ -1274,6 +1307,60 @@ describe('runGateResume', () => {
     expect(gate3).toContain('round 2:')
     expect(gate3).toContain('round 3:')
   })
+
+  it('rejects resuming a run that is not gate-pending', async () => {
+    const fixture = makeFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    await runGateResume(fixture.deps, started.runId, { confirmAll: true })
+    await expect(runGateResume(fixture.deps, started.runId, {})).rejects.toThrow(/not gate-pending/u)
+  })
+
+  async function vetoAtFinalGate(
+    vetoUpdaterFiles: string[],
+  ): Promise<{ fixture: Fixture; result: RunGateResumeResult; spawnsAfterVeto: string[] }> {
+    const assumption = {
+      id: 'A1',
+      text: 'guests stay read-only',
+      basis: 'default',
+      confidence: 'medium',
+      blast_radius: 'group replies',
+      status: 'open',
+    }
+    const fixture = makeFixture({
+      'resolutions-1.json': JSON.stringify({ resolutions: [], assumptions: [assumption] }),
+      'veto-updater.json': JSON.stringify({ files_updated: vetoUpdaterFiles }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const gate1Path = path.join(fixture.deps.config.workDir, 'runs', started.runId, 'gate-1.md')
+    const gate1 = fs.readFileSync(gate1Path, 'utf8')
+    fs.writeFileSync(
+      gate1Path,
+      gate1.replace('- [ ] A1 guests stay read-only', '- [ ] A1 guests stay read-only\n→ narrower'),
+    )
+    const before = fixture.spawnOrder.length
+    const result = await runGateResume(fixture.deps, started.runId, {})
+    expect(result.outcome).toBe('veto')
+    return { fixture, result, spawnsAfterVeto: fixture.spawnOrder.slice(before) }
+  }
+
+  it('skips the drift resolver when the veto updater touched only non-spec files', async () => {
+    const { spawnsAfterVeto } = await vetoAtFinalGate(['openspec/changes/add-thing/proposal.md'])
+    expect(spawnsAfterVeto).toContain('veto-updater.json')
+    expect(spawnsAfterVeto).not.toContain('drift.json')
+  })
+
+  it('runs the drift resolver when the veto updater touched a spec file', async () => {
+    const { spawnsAfterVeto } = await vetoAtFinalGate([
+      'openspec/changes/add-thing/proposal.md',
+      'openspec/changes/add-thing/specs/thing/spec.md',
+    ])
+    expect(spawnsAfterVeto).toContain('drift.json')
+  })
+
+  it('runs the drift resolver when the veto updater touched tasks.md', async () => {
+    const { spawnsAfterVeto } = await vetoAtFinalGate(['openspec/changes/add-thing/tasks.md'])
+    expect(spawnsAfterVeto).toContain('drift.json')
+  })
 })
 
 describe('presentGateAt cost fallback', () => {
@@ -1441,5 +1528,123 @@ describe('presentGateAt change digest', () => {
 
     expect(md).toContain('- **TOUCHES**: **Code**: `src/a.ts` (new), tasks: 8/12')
     expect(md).toContain('- **RISKS**: see "Nitpicks (informational)" below')
+  })
+})
+
+describe('runResume hardening', () => {
+  it('reports gate-pending without a stdout dep and never crashes', async () => {
+    const fixture = makeFixture()
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const deps: OrchestratorDeps = { ...fixture.deps, stdout: undefined }
+    const result = await runResume(deps, started.runId)
+    expect(result.halted).toBe('gate-pending')
+  })
+
+  it('refuses to resume from a stage the post-review branches do not cover', async () => {
+    const fixture = makeFixture()
+    const workDir = fixture.deps.config.workDir
+    const runId = 'seeded-draft'
+    const runDir = path.join(workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    const now = '2026-01-01T00:00:00.000Z'
+    fs.writeFileSync(
+      path.join(runDir, 'events.ndjson'),
+      [
+        { altitude: 'L2', type: 'stage_enter', stage: 'intake', seq: 1, ts: now },
+        { altitude: 'L2', type: 'depth', profile: 'S', rationale: 'override', source: 'override', seq: 2, ts: now },
+        { altitude: 'L2', type: 'stage_exit', stage: 'intake', seq: 3, ts: now },
+      ]
+        .map((e) => JSON.stringify(e))
+        .join('\n') + '\n',
+    )
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir,
+          changeName: fixture.changeName,
+          stage: 'intake',
+          depth: 'S',
+          round: 0,
+          gate: null,
+          status: 'running',
+          createdAt: now,
+          updatedAt: now,
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    await expect(runResume(fixture.deps, runId)).rejects.toThrow(/not supported yet/u)
+  })
+
+  it('derives the next gate version from existing gate-*.md files, ignoring lookalikes', async () => {
+    const fixture = makeFixture()
+    const workDir = fixture.deps.config.workDir
+    const runId = 'seeded-versioned'
+    const runDir = path.join(workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.mkdirSync(path.join(fixture.changeDir, 'specs', 'thing'), { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'design.md'), '## Context\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'), '## ADDED Requirements\n')
+    fs.writeFileSync(
+      path.join(runDir, 'sidecars', 'resolutions-1.json'),
+      JSON.stringify({ resolutions: [], assumptions: [] }),
+    )
+    const now = '2026-01-01T00:00:00.000Z'
+    const events = [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake', seq: 1, ts: now },
+      { altitude: 'L2', type: 'depth', profile: 'M', rationale: 'override', source: 'override', seq: 2, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'intake', seq: 3, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'draft', seq: 4, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'draft', seq: 5, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'review', seq: 6, ts: now },
+      { altitude: 'L2', type: 'round_open', round: 1, cap: 3, seq: 7, ts: now },
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 1,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+        seq: 8,
+        ts: now,
+      },
+      { altitude: 'L2', type: 'round_close', round: 1, cap: 3, seq: 9, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'review', seq: 10, ts: now },
+      { altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1, seq: 11, ts: now },
+      { altitude: 'L2', type: 'gate', action: 'answered', mode: 'early', version: 1, seq: 12, ts: now },
+    ]
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), events.map((e) => JSON.stringify(e)).join('\n') + '\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir,
+          changeName: fixture.changeName,
+          stage: 'review',
+          depth: 'M',
+          round: 1,
+          gate: null,
+          status: 'running',
+          createdAt: now,
+          updatedAt: now,
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    for (const name of ['gate-1.md', 'gate-10.md', 'gate-50.md.bak', 'notgate-99.md', 'gate-x.md']) {
+      fs.writeFileSync(path.join(runDir, name), 'stale\n')
+    }
+    const deps: OrchestratorDeps = { ...fixture.deps, driver: createSettledDriver(fixture) }
+    const result = await runResume(deps, runId)
+    expect(result.halted).toBe('gate')
+    expect(result.version).toBe(11)
+    expect(fs.readFileSync(requireGateMdPath(result), 'utf8')).toContain('Final gate')
   })
 })
