@@ -12,6 +12,7 @@ import { isBaselineMap } from '../../../scripts/mutation/baseline.js'
 import type { PerFileScore } from '../../../scripts/mutation/baseline.js'
 import {
   changedFilesRun,
+  isGeneratedSourceFile,
   parseChangedFilesCliArgs,
   selectChangedMutationTargets,
   type ChangedFilesDeps,
@@ -93,6 +94,21 @@ describe('selectChangedMutationTargets', () => {
     expect(result).toEqual(['src/a.ts', 'src/m.ts', 'src/z.ts'])
   })
 
+  test('drops generated modules even when the gateable predicate accepts them', () => {
+    const deps = makeDeps(
+      ['src/analytics/generated/tool-slugs.ts', 'src/analytics/tool-slug-generation.ts'].join('\n'),
+      () => true,
+    )
+
+    const result = selectChangedMutationTargets({
+      baseRef: 'origin/master',
+      projectRoot: '/repo',
+      deps,
+    })
+
+    expect(result).toEqual(['src/analytics/tool-slug-generation.ts'])
+  })
+
   test('returns empty list for empty git output', () => {
     const deps = makeDeps('', () => true)
 
@@ -150,6 +166,21 @@ describe('selectChangedMutationTargets', () => {
     })
 
     expect(runGit).toHaveBeenCalledWith(['diff', '--name-only', '--diff-filter=ACMRT', 'origin/master...HEAD'])
+  })
+})
+
+describe('isGeneratedSourceFile', () => {
+  test('matches a "generated" directory segment at any depth, on either separator', () => {
+    expect(isGeneratedSourceFile('src/analytics/generated/tool-slugs.ts')).toBe(true)
+    expect(isGeneratedSourceFile('generated/tool-slugs.ts')).toBe(true)
+    expect(isGeneratedSourceFile('src\\analytics\\generated\\tool-slugs.ts')).toBe(true)
+  })
+
+  test('does not match a segment that merely contains "generated"', () => {
+    expect(isGeneratedSourceFile('src/analytics/tool-slug-generation.ts')).toBe(false)
+    expect(isGeneratedSourceFile('src/analytics/generated.ts')).toBe(false)
+    expect(isGeneratedSourceFile('src/generated-slugs/index.ts')).toBe(false)
+    expect(isGeneratedSourceFile('src/regenerated/index.ts')).toBe(false)
   })
 })
 
