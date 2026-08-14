@@ -443,6 +443,10 @@ describe('resolveRunId', () => {
     const workDir = makeWorkDir()
     await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
     await seedRun(workDir, '2026-01-01T00-00-00-000Z-ffff0000', { gate: { mode: 'final', version: 1 } })
-    await expect(resolveRunId(workDir, '2026-01-01')).rejects.toThrow(/abcd1234.*ffff0000/su)
+    // readdir order is filesystem-dependent, so assert both candidates are listed without pinning their order.
+    const resolution = resolveRunId(workDir, '2026-01-01')
+    await expect(resolution).rejects.toThrow(/ambiguous/iu)
+    await expect(resolution).rejects.toThrow(/abcd1234/u)
+    await expect(resolution).rejects.toThrow(/ffff0000/u)
   })
 })
