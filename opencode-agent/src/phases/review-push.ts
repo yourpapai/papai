@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { PhaseInput } from '../phase-context.js'
+import { protectedAmong } from '../protected-paths.js'
 import { errorMessage } from '../types.js'
 
 /**
@@ -37,6 +38,8 @@ export interface DurablePush {
    * for one would make a push conditional on a read that is allowed to fail.
    */
   push: (committed: boolean) => Promise<boolean>
+  /** Paths reverted because a push could not carry them, across every push made. */
+  blocked: () => readonly string[]
 }
 
 /**
@@ -56,8 +59,45 @@ const readHead = async (input: PhaseInput): Promise<string | null> => {
   }
 }
 
+/**
+ * Takes back out anything the loop committed that a push cannot carry.
+ *
+ * `stageAllowed` guards every commit *this process* makes, and it is not on this
+ * path at all: the loop commits in its own worktree and merges the result, so
+ * those files never pass through an index this pipeline stages. Left alone they
+ * reach `git push`, which GitHub refuses for the whole push — and the branch is
+ * the only copy of the findings, on a runner about to be deleted.
+ *
+ * Reverting rather than refusing, for the reason `stageAllowed` drops rather
+ * than refuses: refusing here loses exactly the work the remote would have lost.
+ *
+ * Best-effort, and that is a judgement about which failure is worse. If the
+ * revert itself breaks, the push that follows is the one GitHub was always going
+ * to refuse — the same outcome as before this existed — whereas letting it throw
+ * would turn a review that found real problems into a failed run. What it must
+ * not do is stay quiet: the paths it reverted ride out into the phase's report.
+ */
+const dropUnpushable = async (input: PhaseInput, since: string, blocked: string[]): Promise<void> => {
+  const { deps, state } = input
+  try {
+    const unpushable = protectedAmong(await deps.git.changedSince(since))
+    if (unpushable.length === 0) return
+
+    await deps.git.revertPaths(since, unpushable)
+    blocked.push(...unpushable.filter((path) => !blocked.includes(path)))
+  } catch (error) {
+    deps.log.warn(
+      { issue: state.issueId, error: errorMessage(error) },
+      'Could not revert what this pipeline cannot push; the push may be refused',
+    )
+  }
+}
+
 export const createPush = (input: PhaseInput, branch: string): DurablePush => {
   const { deps, state } = input
+  // Accumulated across every push this loop makes, because the marker fires per
+  // fix and only the last one reaches the report.
+  const blocked: string[] = []
   // Read now — before the loop is started by the caller — because what every
   // comparison below means is "since the review began".
   let pushedAt: Promise<string | null> = readHead(input)
@@ -68,6 +108,7 @@ export const createPush = (input: PhaseInput, branch: string): DurablePush => {
     const [last, head] = await Promise.all([pushedAt, readHead(input)])
     if (!committed && last !== null && head !== null && last === head) return advanced
 
+    if (last !== null) await dropUnpushable(input, last, blocked)
     await deps.git.push(branch)
     pushedAt = Promise.resolve(head)
     advanced = true
@@ -89,5 +130,6 @@ export const createPush = (input: PhaseInput, branch: string): DurablePush => {
     },
     settled: (): Promise<void> => chain,
     push: (committed) => pushIfMoved(committed),
+    blocked: (): readonly string[] => blocked,
   }
 }

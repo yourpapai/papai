@@ -6,7 +6,7 @@
 import { renderCiExhausted } from './budget-notices.js'
 import { branchNameFor } from './git.js'
 import type { PhaseInput } from './phase-context.js'
-import { postAndAppend } from './run-report.js'
+import { postAndAppend } from './run-post.js'
 import { canTransition, markCiBudgetReported, transition } from './transitions.js'
 import { skip } from './trigger-outcome.js'
 import type { TriggerOutcome } from './trigger-outcome.js'

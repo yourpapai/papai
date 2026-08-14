@@ -4,7 +4,8 @@
 // See LICENSE in the project root for details.
 
 import type { MachineInput } from './phase-context.js'
-import { postAndAppend, postAnswer, renderAnswerFailure, renderFailure } from './run-report.js'
+import { postAndAppend, postAnswer } from './run-post.js'
+import { renderAnswerFailure, renderFailure } from './run-report.js'
 import type { RunResult } from './run-result.js'
 import { recordSpend } from './token-budget.js'
 import { transition } from './transitions.js'

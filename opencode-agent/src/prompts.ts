@@ -110,10 +110,31 @@ export const buildTriagePrompt = (context: PromptContext, feedback: string | nul
   return sections.join('\n\n')
 }
 
+/**
+ * What a round is told about the last round's blocked edit.
+ *
+ * Not enveloped, and it is worth saying why: these paths came from
+ * `PROTECTED_PREFIXES` matched against this pipeline's own staged diff, so the
+ * text is the pipeline's, not a contributor's. Nothing a model wrote reaches it.
+ *
+ * Phrased as a fact plus the only remaining move. A bare "do not edit this"
+ * leaves a model that has correctly diagnosed a workflow problem with no way to
+ * report it, which is the state every round of run 31779566286 was in.
+ */
+const blockedPathsNote = (paths: readonly string[]): readonly string[] => {
+  if (paths.length === 0) return []
+  return [
+    `A previous round already wrote a fix touching ${paths.map((path) => `\`${path}\``).join(', ')}, and it ` +
+      'was dropped at commit — this pipeline cannot push those paths. Do not write them again. If that is ' +
+      'genuinely the only fix, change nothing and say so in your summary, naming what a maintainer should apply.',
+  ]
+}
+
 export const buildCiFixPrompt = (
   envelope: UntrustedEnvelope,
   failures: readonly CheckFailure[],
   round: number,
+  blocked: readonly string[] = [],
   budget = CHECK_OUTPUT_BUDGET,
 ): string => {
   const shares = shareBudget(
@@ -123,6 +144,7 @@ export const buildCiFixPrompt = (
 
   return [
     `Continuous integration is red on this branch (repair round ${round}). Fix the root cause in the working tree.`,
+    ...blockedPathsNote(blocked),
     // Check output is untrusted: a failing test prints whatever its source says,
     // and that source can come from a contributor. It used to go in raw, inside
     // a bare fence it could close, with only a *note* about it enveloped — the

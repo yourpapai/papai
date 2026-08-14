@@ -8,7 +8,7 @@ import type { CheckRunner, CheckSpec } from '../../opencode-agent/src/check-loop
 import type { CiGroups } from '../../opencode-agent/src/ci-groups.js'
 import { DEFAULT_CHECKS } from '../../opencode-agent/src/config-values.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
-import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
+import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import type { Salvage } from '../../opencode-agent/src/git-commit.js'
 import type { Git, PushOptions } from '../../opencode-agent/src/git.js'
 import type { LabelApi } from '../../opencode-agent/src/github-labels.js'
@@ -287,9 +287,9 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       io.gitCalls.push(`deleteRemoteBranch:${branch}`)
       return Promise.resolve()
     },
-    commitAll: (message: string): Promise<StagedTotals | null> => {
+    commitAll: (message: string): Promise<CommitOutcome> => {
       io.gitCalls.push(`commit:${message.split('\n')[0]}`)
-      return Promise.resolve({ files: 1, lines: 1 })
+      return Promise.resolve({ kind: 'committed', totals: { files: 1, lines: 1 }, dropped: [] })
     },
     salvageAll: (message: string): Promise<Salvage> => {
       io.gitCalls.push(`salvage:${message.split('\n')[0]}`)
@@ -300,6 +300,14 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       return Promise.resolve()
     },
     defaultBranch: (): Promise<string | null> => Promise.resolve('main'),
+    changedSince: (sha: string): Promise<string[]> => {
+      io.gitCalls.push(`changedSince:${sha}`)
+      return Promise.resolve([])
+    },
+    revertPaths: (sha: string, paths: readonly string[]): Promise<void> => {
+      io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
+      return Promise.resolve()
+    },
     headSha: (): Promise<string> => {
       io.gitCalls.push('headSha')
       return Promise.resolve('head-sha')

@@ -48,6 +48,24 @@ export const isProtectedPath = (path: string): boolean => PROTECTED_PREFIXES.som
  */
 export const protectedAmong = (paths: readonly string[]): string[] => paths.filter(isProtectedPath)
 
+/**
+ * The rule as every phase that can write a file states it, in one place.
+ *
+ * One constant rather than a line copied into each phase's instructions: four
+ * copies are four chances to soften one of them, and the phase that had no copy
+ * at all — `CI_FIX`, the one whose root cause most often *is* the workflow — is
+ * what run 31779566286 cost three rounds and a spent `ciAttempts` budget.
+ *
+ * "Say what a maintainer should apply by hand" is the load-bearing half. When
+ * the fix genuinely is a workflow edit there is no other move available to the
+ * model, and a rule that only forbids leaves it re-deriving the same blocked
+ * edit every round.
+ */
+export const PROTECTED_PATHS_RULE =
+  "Never create or edit a file under .github/workflows/ — this pipeline's token cannot push one, and the " +
+  'refusal discards the whole commit. If the work needs a workflow change, do the rest and say in your reply ' +
+  'exactly what a maintainer should apply by hand.'
+
 /** What the log and the model are told when a staged change set carried some. */
 export const protectedPathsNotice = (dropped: readonly string[]): string =>
   `Dropped ${dropped.length} file(s) this pipeline's token cannot push: ${dropped.join(', ')}. ` +

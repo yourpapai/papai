@@ -17,6 +17,7 @@ const state = (over: Partial<AgentState> = {}): AgentState => ({
   ciAttempts: 0,
   ciBudgetReported: false,
   reviewAttempts: 0,
+  ciBlockedPaths: [],
   changedLines: 0,
   stepsDone: 0,
   changeName: 'add-retries',
