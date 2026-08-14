@@ -63,7 +63,15 @@ const toSummary = (row: ContextVaultSpecRow): ContextVaultSpecSummary => ({
 })
 
 const toDetail = (row: ContextVaultSpecRow): ContextVaultSpecDetail => {
-  const parsed = OutlineSchema.safeParse(row.outline === null ? [] : JSON.parse(row.outline))
+  let raw: unknown = []
+  if (row.outline !== null) {
+    try {
+      raw = JSON.parse(row.outline)
+    } catch {
+      raw = []
+    }
+  }
+  const parsed = OutlineSchema.safeParse(raw)
   return { ...toSummary(row), summary: row.summary, outline: parsed.success ? parsed.data : [] }
 }
 
