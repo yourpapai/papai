@@ -104,6 +104,7 @@ const buildPrompt = (specId: string, texts: ReadonlyMap<string, string>): string
 interface PendingJob {
   input: EnqueueSummarizationInput
   texts: Map<string, string>
+  sourceHash: string
   timer: ReturnType<typeof setTimeout> | null
   deps: SummarizerDeps
 }
@@ -113,13 +114,25 @@ const inFlight = new Set<Promise<void>>()
 
 const keyOf = (configContextId: string, specId: string): string => `${configContextId}\n${specId}`
 
-const storeSummary = (configContextId: string, specId: string, result: SpecSummaryResult): void => {
+const readSourceHash = (configContextId: string, specId: string): string | undefined =>
   getDrizzleDb()
-    .update(contextVaultSpecs)
-    .set({ oneLine: result.one_line, summary: result.summary })
+    .select({ sourceHash: contextVaultSpecs.sourceHash })
+    .from(contextVaultSpecs)
     .where(and(eq(contextVaultSpecs.configContextId, configContextId), eq(contextVaultSpecs.id, specId)))
-    .run()
-}
+    .get()?.sourceHash
+
+const storeSummary = (
+  configContextId: string,
+  specId: string,
+  sourceHash: string,
+  result: SpecSummaryResult,
+): boolean =>
+  getDrizzleDb()
+    .$client.query<{ changes: number }, [string, string, string, string, string]>(
+      `UPDATE context_vault_specs SET one_line = ?, summary = ?
+       WHERE config_context_id = ? AND id = ? AND source_hash = ?`,
+    )
+    .run(result.one_line, result.summary, configContextId, specId, sourceHash).changes > 0
 
 const resolveModel = (job: PendingJob): LanguageModel | null => {
   const resolved = job.deps.resolveConfig(job.input.configContextId)
@@ -140,8 +153,18 @@ const runJob = async (job: PendingJob): Promise<void> => {
     const prompt = buildPrompt(job.input.specId, job.texts)
     const result = await job.deps.generateText({ model, prompt })
     const summary = parseSpecSummary(result.text)
-    storeSummary(job.input.configContextId, job.input.specId, summary)
-    log.info({ configContextId: job.input.configContextId, specId: job.input.specId }, 'Context vault spec summarized')
+    const stored = storeSummary(job.input.configContextId, job.input.specId, job.sourceHash, summary)
+    if (stored) {
+      log.info(
+        { configContextId: job.input.configContextId, specId: job.input.specId },
+        'Context vault spec summarized',
+      )
+    } else {
+      log.info(
+        { configContextId: job.input.configContextId, specId: job.input.specId },
+        'Context vault summary dropped: superseded by a newer push',
+      )
+    }
   } catch (error) {
     log.warn(
       {
@@ -183,7 +206,17 @@ export function enqueueSpecSummarization(input: EnqueueSummarizationInput, deps:
     return
   }
 
-  const job: PendingJob = { input, texts, timer: null, deps }
+  const sourceHash = readSourceHash(input.configContextId, input.specId)
+  if (sourceHash === undefined) {
+    log.warn(
+      { configContextId: input.configContextId, specId: input.specId },
+      'Context vault summarization skipped: spec row missing',
+    )
+    pending.delete(key)
+    return
+  }
+
+  const job: PendingJob = { input, texts, sourceHash, timer: null, deps }
   job.timer = deps.schedule(() => {
     startJob(key, job)
   }, deps.debounceMs)
