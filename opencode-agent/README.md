@@ -1477,39 +1477,39 @@ used by the in-process SDK session _and_, via `OPENCODE_CONFIG_CONTENT`, by the
 `opencode run` subprocesses the review loop spawns — one definition, so the two
 cannot drift.
 
-| Variable                                   | Required | Default                                         | Purpose                                                |
-| ------------------------------------------ | -------- | ----------------------------------------------- | ------------------------------------------------------ |
-| `LLM_API_KEY`                              | yes      | —                                               | Model credentials                                      |
-| `LLM_MODEL`                                | yes      | —                                               | Model name, e.g. `gpt-5`                               |
-| `LLM_BASE_URL`                             | yes      | —                                               | Any OpenAI-compatible endpoint                         |
-| `GITHUB_TOKEN`                             | no       | the job's own `secrets.GITHUB_TOKEN`            | Comments, branches, pull requests; see below           |
-| `GITHUB_REPOSITORY`                        | no       | the job's own `owner/repo`                      | `owner/repo`; see below                                |
-| `AGENT_SELF_LOGIN`                         | no       | derived from the token                          | Login the agent posts as; see above                    |
-| `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`                          | This workflow's name, for the CI recursion guard       |
-| `AGENT_BASE_BRANCH`                        | no       | detected                                        | Branch the PR targets; see below                       |
-| `AGENT_CHECK_COMMAND`                      | no       | `bun run lint && bun run typecheck && bun test` | review-loop's build gate                               |
-| `AGENT_REVIEW_COMMAND`                     | no       | detected                                        | JSON argv running the review loop; `none` disables it  |
-| `AGENT_CHECKS`                             | no       | lint / typecheck / test                         | JSON `[{ "name", "argv" }]` the CI-fix phase runs      |
-| `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                             | review-loop rounds                                     |
-| `AGENT_REVIEW_POOL_SIZE`                   | no       | `1`                                             | review-loop worker pool                                |
-| `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                             | Repair rounds per CI-fix job                           |
-| `AGENT_COMMIT_REPAIR_MAX_ROUNDS`           | no       | `3`                                             | Commit attempts when the repo's own checks refuse one  |
-| `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                           |
-| `AGENT_MAX_REVIEW_ATTEMPTS`                | no       | `3`                                             | `/review` rounds per pull request                      |
-| `AGENT_REVIEW_HINT_LINES`                  | no       | `200`                                           | Diff size at which a delivery recommends `/review`     |
-| `AGENT_MAX_ATTEMPTS`                       | no       | `5`                                             | Failures before `/retry` stops resuming                |
-| `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                             |
-| `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                            |
-| `AGENT_TIMEOUT_MS`                         | no       | `5400000`                                       | Timeout for one model turn, and for each subprocess    |
-| `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                         | Epoch ms this job began; the workflow's first step     |
-| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset here; `300` from the workflow             | The job's own ceiling, shared with `timeout-minutes:`  |
-| `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                        | Held back from the job so a time stop can report       |
-| `AGENT_WRAP_UP_MS`                         | no       | `120000`                                        | The model's slice of a stop: finish up and hand over   |
-| `AGENT_MAX_TOKENS`                         | no       | `5000000`                                       | Model tokens one issue may spend, across all its jobs  |
-| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                        |
-| `AGENT_LABEL_PREFIX`                       | no       | `agent:`                                        | Namespace for the status labels; `none` disables them  |
-| `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                       |
-| `AGENT_LOG_KEY`                            | no       | unset — no transcript                           | Secret: base64 32 bytes; encrypts the debug transcript |
+| Variable                                   | Required | Default                              | Purpose                                                |
+| ------------------------------------------ | -------- | ------------------------------------ | ------------------------------------------------------ |
+| `LLM_API_KEY`                              | yes      | —                                    | Model credentials                                      |
+| `LLM_MODEL`                                | yes      | —                                    | Model name, e.g. `gpt-5`                               |
+| `LLM_BASE_URL`                             | yes      | —                                    | Any OpenAI-compatible endpoint                         |
+| `GITHUB_TOKEN`                             | no       | the job's own `secrets.GITHUB_TOKEN` | Comments, branches, pull requests; see below           |
+| `GITHUB_REPOSITORY`                        | no       | the job's own `owner/repo`           | `owner/repo`; see below                                |
+| `AGENT_SELF_LOGIN`                         | no       | derived from the token               | Login the agent posts as; see above                    |
+| `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`               | This workflow's name, for the CI recursion guard       |
+| `AGENT_BASE_BRANCH`                        | no       | detected                             | Branch the PR targets; see below                       |
+| `AGENT_CHECK_COMMAND`                      | no       | `bun check:full`                     | review-loop's build gate                               |
+| `AGENT_REVIEW_COMMAND`                     | no       | detected                             | JSON argv running the review loop; `none` disables it  |
+| `AGENT_CHECKS`                             | no       | `bun run` lint / typecheck / test    | JSON `[{ "name", "argv" }]` the CI-fix phase runs      |
+| `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                  | review-loop rounds                                     |
+| `AGENT_REVIEW_POOL_SIZE`                   | no       | `1`                                  | review-loop worker pool                                |
+| `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                  | Repair rounds per CI-fix job                           |
+| `AGENT_COMMIT_REPAIR_MAX_ROUNDS`           | no       | `3`                                  | Commit attempts when the repo's own checks refuse one  |
+| `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                  | CI-fix jobs per pull request                           |
+| `AGENT_MAX_REVIEW_ATTEMPTS`                | no       | `3`                                  | `/review` rounds per pull request                      |
+| `AGENT_REVIEW_HINT_LINES`                  | no       | `200`                                | Diff size at which a delivery recommends `/review`     |
+| `AGENT_MAX_ATTEMPTS`                       | no       | `5`                                  | Failures before `/retry` stops resuming                |
+| `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                | Files one commit may carry                             |
+| `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                              | Lines one commit may change                            |
+| `AGENT_TIMEOUT_MS`                         | no       | `5400000`                            | Timeout for one model turn, and for each subprocess    |
+| `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline              | Epoch ms this job began; the workflow's first step     |
+| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset here; `300` from the workflow  | The job's own ceiling, shared with `timeout-minutes:`  |
+| `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                             | Held back from the job so a time stop can report       |
+| `AGENT_WRAP_UP_MS`                         | no       | `120000`                             | The model's slice of a stop: finish up and hand over   |
+| `AGENT_MAX_TOKENS`                         | no       | `5000000`                            | Model tokens one issue may spend, across all its jobs  |
+| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                | Commit identity                                        |
+| `AGENT_LABEL_PREFIX`                       | no       | `agent:`                             | Namespace for the status labels; `none` disables them  |
+| `AGENT_LOG_LEVEL`                          | no       | `info`                               | `debug`, `info`, `warn`, `error`                       |
+| `AGENT_LOG_KEY`                            | no       | unset — no transcript                | Secret: base64 32 bytes; encrypts the debug transcript |
 
 `LLM_MODEL` and `LLM_BASE_URL` are both required rather than defaulted: with a
 model gateway that is not necessarily OpenAI's own, there is no base URL or

@@ -21,11 +21,32 @@ import { ConfigError } from './config-values.js'
 /** One check the CI-fix loop runs, declared as `{ name, argv }` in `AGENT_CHECKS`. */
 const checkSpecSchema = z.object({ name: z.string().min(1), argv: z.array(z.string().min(1)).min(1) })
 
-/** Checks the CI-fix loop runs when the repo does not declare its own. */
+/**
+ * Checks the CI-fix loop runs when the repo does not declare its own.
+ *
+ * Each one is spelled as the command a **contributor** runs, and the test entry
+ * is the one that was not. `bun test` and `bun run test` are not two ways of
+ * saying the same thing: the second goes through `scripts/test/run-cli.ts`,
+ * which builds the gitignored `public/` bundles `tests/debug/` fails without,
+ * picks serial when `CI` is set (bare `--parallel` OOMs a 4-vCPU runner), passes
+ * the per-test `--timeout` bun ignores from `bunfig.toml`, and leaves a report
+ * behind. A loop reproducing CI with the bare form diverges from it in four
+ * ways at once.
+ *
+ * That is worse than failing to reproduce, because it produces failures to
+ * repair that nobody else can see. Run 31779566286 spent a pull request's whole
+ * `ciAttempts` budget on one: the missing bundles read as a defect in
+ * `agent-pipeline.yml`, the fix went to a path a push from this token cannot
+ * carry, and the round reported "nothing changed" — three times, while the one
+ * genuinely failing test on the branch went unexamined.
+ *
+ * A repository whose suite is spelled differently overrides all of this with
+ * `AGENT_CHECKS`; these are a fallback, not a policy.
+ */
 export const DEFAULT_CHECKS: readonly CheckSpec[] = [
   { name: 'lint', argv: ['bun', 'run', 'lint'] },
   { name: 'typecheck', argv: ['bun', 'run', 'typecheck'] },
-  { name: 'test', argv: ['bun', 'test'] },
+  { name: 'test', argv: ['bun', 'run', 'test'] },
 ]
 
 /**
