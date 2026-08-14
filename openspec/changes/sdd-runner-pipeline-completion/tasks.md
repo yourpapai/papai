@@ -39,5 +39,5 @@ Test-first throughout: failing test before the implementation it covers.
 
 ## 5. Docs + full verification
 
-- [ ] 5.1 Update `docs/architecture/sdd-pipeline.md`: approve-continues semantics, severity-based convergence, resume stage coverage, and the breaking-change note for early-gate approval. Verify: `bunx openspec validate sdd-runner-pipeline-completion --strict`
-- [ ] 5.2 Run the full gates. Verify: `bun test && bun run typecheck && bun run lint`
+- [x] 5.1 Update `docs/architecture/sdd-pipeline.md`: approve-continues semantics, severity-based convergence, resume stage coverage, and the breaking-change note for early-gate approval. Verify: `bunx openspec validate sdd-runner-pipeline-completion --strict`
+- [x] 5.2 Run the full gates. Verify: `bun test && bun run typecheck && bun run lint`

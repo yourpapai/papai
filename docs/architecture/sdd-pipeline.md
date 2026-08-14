@@ -17,7 +17,7 @@ INTAKE → DRAFT → REVIEW LOOP → DECOMPOSE → ATOMICITY → GATE → (exit)
 
 - **Intake**: depth classification (S/M/L), change scaffolding via `openspec new change`.
 - **Draft**: proposal, specs, design per the `auto-sdd` schema DAG.
-- **Review loop**: fresh-spawned reviewer agents per round, resolver pass, convergence predicate (0 BLOCKER, 0 MATERIAL, ≤3 NITPICK over post-resolution JSON).
+- **Review loop**: fresh-spawned reviewer agents per round, resolver pass, convergence predicate (0 BLOCKER, 0 MATERIAL, ≤3 NITPICK over post-resolution JSON). A nitpick-only cap-hit is treated as converged (see "Severity-based convergence" under Gate protocol).
 - **Decompose**: tasks.md generation.
 - **Atomicity**: split/merge tasks (skipped at S).
 - **Gate**: single human gate with checkbox protocol.
@@ -63,6 +63,31 @@ The gate is enterable at two points: an early cap-hit presentation (before decom
 - Write `ABORT` on its own line to abort.
 
 Bare approve with open blockers fails — override must be explicit.
+
+Every presentation carries a `### Decisions` block naming each decision's downstream effect, so no approval is consequence-blind.
+
+### Approve-continues semantics (**BREAKING**)
+
+Approving an **early** (cap-hit) gate no longer finalizes the run. It means "I accept the remaining findings as resolved — proceed": the pipeline continues into decompose → atomicity (depth ≠ S) → a **final** gate presented at `gate-<n+1>.md`, exactly as a converged review loop would (shared post-convergence tail, `post-review-tail.ts`). The human approved the *design* at the early gate; the final gate is where they sign off the *task list* — its digest renders `tasks: <done>/<total>`. Skipping it would trade one consequence-blind approval for another.
+
+Consequences:
+
+- No approval path produces a `completed` run without `tasks.md`. `completed` is reached only via final-gate approval; `aborted` is the only non-completing exit.
+- The final gate after an early approval carries the next gate version (`n+1`), preserving the versioned audit trail.
+- A stop-early outcome remains available as `ABORT`, which honestly records that the run did not complete.
+
+### Severity-based convergence
+
+A cap-hit round with **zero open BLOCKERs and zero open MATERIALs** — nitpicks only, each resolved or dismissed — is treated as converged at the orchestrator level (`runPostReviewToGate`) and flows into decompose → atomicity → final gate **without presenting an early gate**. The review loop itself keeps reporting `cap-hit`; reclassification lives in the orchestrator so the loop's semantics and sidecar formats are untouched. A cap-hit round with any open BLOCKER or MATERIAL still presents the early gate for human sign-off — unresolved blocker/material findings are never auto-accepted.
+
+### Resume
+
+`resume` re-enters at the interrupted stage, derived from artifacts and the event log rather than persisted stage pointers (`deriveResumePoint` — self-healing when `state.json` drifted from reality):
+
+- A pending gate short-circuits: the run is reported `gate-pending` and the operator is directed to the gate flow (`gate resume <runId>`).
+- The review loop counts as settled when a converged verdict is recorded, an early gate was answered by a human (approve = human-decree convergence), or the pipeline already entered decompose (severity convergence).
+- Missing `tasks.md` after a settled review → resume at `decompose`; `tasks.md` present at depth ≠ S without a recorded atomicity stage → resume at `atomicity`. Both continuations source the review result from the `resolutions-<round>.json` sidecars (`readReviewResultFromSidecars`) and run the shared post-convergence tail to the final gate, numbered after the highest existing `gate-<n>.md`.
+- Stages are idempotent by construction (decompose rewrites `tasks.md` wholesale; atomicity rewrites in place), so a spurious re-run after a crash-between-artifacts is wasted tokens, not corruption.
 
 ### Change digest
 
