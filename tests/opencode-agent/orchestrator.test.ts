@@ -251,6 +251,8 @@ interface PipelineIo {
   reviewResult: ReviewRunResult
   /** What `git rev-parse HEAD` answers; constant unless a test moves it. */
   headSha: string
+  /** What `changedSince` reports the loop's own commits touched. */
+  changedPaths: string[]
   /** Every plan the review loop was handed, in order — `/review` is now a phase. */
   reviewCalls: string[]
   /** What `runReview` rejects with, when set: the loop crashing rather than exiting red. */
@@ -410,6 +412,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     tokensUsed: 0,
     reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0, failure: null },
     headSha: 'head-sha',
+    changedPaths: [],
     reviewCalls: [],
     reviewError: null,
     detectedBranch: BASE_BRANCH,
@@ -614,6 +617,14 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // nothing moves the branch behind the pipeline's back. A test that wants the
     // opposite overrides this — see the review-phase tests in `phases.test.ts`.
     headSha: () => Promise.resolve(io.headSha),
+    changedSince: (sha) => {
+      io.gitCalls.push(`changedSince:${sha}`)
+      return Promise.resolve([...io.changedPaths])
+    },
+    revertPaths: (sha, paths) => {
+      io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
+      return Promise.resolve()
+    },
   }
 
   const agent: OpenCodeAgent = {
@@ -732,6 +743,8 @@ const hostileGit = (): Git => {
     push: (): Promise<void> => refuse('push'),
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
     headSha: (): Promise<string> => refuse('rev-parse'),
+    changedSince: (): Promise<string[]> => refuse('diff --name-only'),
+    revertPaths: (): Promise<void> => refuse('revert'),
   }
 }
 
@@ -1660,9 +1673,14 @@ describe('/review — the review loop as a command', () => {
     // `ensureBranch` first, and it is not optional: unlike the review that used
     // to run inside phase 3, this one usually runs in a job that implemented
     // nothing, so the remote branch is the only copy of the work.
+    // `changedSince` sits between the commit and the push, and belongs in this
+    // exact-sequence assertion rather than beside it: the whole point of the
+    // guard is that nothing reaches `push` before it has been asked what the
+    // loop's own commits touched.
     expect(harness.io.gitCalls).toEqual([
       `ensureBranch:agent/issue-${ISSUE}:${BASE_BRANCH}`,
       `commit:fix(agent): apply review-loop findings for issue #${ISSUE}`,
+      'changedSince:head-sha',
       `push:agent/issue-${ISSUE}`,
     ])
     expect(latestPostedState(harness)).toMatchObject({ phase: 'COMPLETE', reviewAttempts: 1 })
@@ -1916,6 +1934,41 @@ describe('/review — typed on the pull request', () => {
     expect(harness.io.prNotes).toHaveLength(1)
     expect(harness.io.prNotes[0]).toContain('Review report')
     expect(harness.io.prNotes[0]).toContain('✅ clean')
+  })
+
+  test('reverts a workflow file the loop committed, and still pushes the rest', async () => {
+    // The loop commits in its own worktree and merges, so `stageAllowed` never
+    // sees those files and the guard that protects every other commit is not on
+    // this path at all. Without this the push is refused outright and every
+    // finding the loop made dies with the runner.
+    harness.io.headSha = 'moved'
+    harness.io.changedPaths = ['src/a.ts', '.github/workflows/agent-pipeline.yml']
+
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    // Reverted against the sha the branch was on when the review began, which is
+    // the only point the loop's own commits can be measured from.
+    expect(harness.io.gitCalls).toContain('revertPaths:moved:.github/workflows/agent-pipeline.yml')
+    expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}`)
+  })
+
+  test('leaves an ordinary set of findings alone, asking git nothing extra', async () => {
+    harness.io.headSha = 'moved'
+    harness.io.changedPaths = ['src/a.ts', 'tests/a.test.ts']
+
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.gitCalls.some((call) => call.startsWith('revertPaths:'))).toBe(false)
+    expect(harness.io.gitCalls).toContain(`push:agent/issue-${ISSUE}`)
+  })
+
+  test('says on the pull request what it had to leave out', async () => {
+    harness.io.headSha = 'moved'
+    harness.io.changedPaths = ['.github/workflows/agent-pipeline.yml']
+
+    await runPipeline({ event: prComment('/review'), deps: harness.deps })
+
+    expect(harness.io.prNotes.join('\n')).toContain('.github/workflows/agent-pipeline.yml')
   })
 
   test('a red loop is what the report says it is', async () => {

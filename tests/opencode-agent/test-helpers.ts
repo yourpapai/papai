@@ -300,6 +300,14 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       return Promise.resolve()
     },
     defaultBranch: (): Promise<string | null> => Promise.resolve('main'),
+    changedSince: (sha: string): Promise<string[]> => {
+      io.gitCalls.push(`changedSince:${sha}`)
+      return Promise.resolve([])
+    },
+    revertPaths: (sha: string, paths: readonly string[]): Promise<void> => {
+      io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
+      return Promise.resolve()
+    },
     headSha: (): Promise<string> => {
       io.gitCalls.push('headSha')
       return Promise.resolve('head-sha')

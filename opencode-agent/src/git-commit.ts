@@ -203,14 +203,19 @@ const stageAllowed = async (gitOrThrow: GitFn, options: GitOptions): Promise<Sta
   return { staged: staged.filter((file) => !blocked.includes(file.path)), dropped: blocked }
 }
 
-const stdoutLines = (stdout: string): string[] =>
+export const stdoutLines = (stdout: string): string[] =>
   stdout
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
 
 /** The commit itself, identity stamped, with whatever extra flags the path needs. */
-const commit = (gitOrThrow: GitFn, options: GitOptions, message: string, extra: readonly string[]): Promise<unknown> =>
+export const commit = (
+  gitOrThrow: GitFn,
+  options: GitOptions,
+  message: string,
+  extra: readonly string[],
+): Promise<unknown> =>
   gitOrThrow(
     '-c',
     `user.name=${options.authorName}`,

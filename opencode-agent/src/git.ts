@@ -6,6 +6,7 @@
 import type { DiffLimits } from './diff-guard.js'
 import { commitAll, salvageAll } from './git-commit.js'
 import type { CommitOutcome, GitFn, Salvage } from './git-commit.js'
+import { revertPaths } from './git-revert.js'
 import type { Logger } from './logger.js'
 import type { CommandResult, CommandRunner } from './shell.js'
 
@@ -144,6 +145,16 @@ export interface Git {
    * be deleted".
    */
   headSha(): Promise<string>
+  /**
+   * Paths the commits between `sha` and `HEAD` touched — the review loop's own
+   * question, since nothing this process staged describes what the loop merged.
+   */
+  changedSince(sha: string): Promise<string[]>
+  /**
+   * Restores `paths` to their content at `sha` and commits that — the staging
+   * guard's move for a change that is already history. See `git-revert.ts`.
+   */
+  revertPaths(sha: string, paths: readonly string[]): Promise<void>
 }
 
 export interface PushOptions {
@@ -276,5 +287,13 @@ export const createGit = (options: GitOptions): Git => {
     },
     defaultBranch: () => defaultBranch(git),
     headSha: () => gitOrThrow('rev-parse', 'HEAD').then((result) => result.stdout.trim()),
+    changedSince: (sha) =>
+      gitOrThrow('diff', '--name-only', `${sha}..HEAD`).then((result) =>
+        result.stdout
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0),
+      ),
+    revertPaths: (sha, paths) => revertPaths(gitOrThrow, options, sha, paths),
   }
 }

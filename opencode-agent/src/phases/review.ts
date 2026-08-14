@@ -49,10 +49,10 @@ export const handleReview: PhaseHandler = async (input): Promise<PhaseOutcome> =
   // (design D1) rather than a block on the issue.
   const plan = await planFromFolder(input)
 
-  const { review, applied } = await runAndKeep(input, plan, branch)
+  const { review, applied, blocked } = await runAndKeep(input, plan, branch)
 
   const verdict = reviewLine(review)
-  const report = renderReport(review, applied, verdict)
+  const report = renderReport(review, applied, verdict, blocked)
   await refreshPullRequest(input, report)
   // No pointer comment beside this any more. `noteReview` existed for exactly one
   // reason — a `/review` typed on the pull request had its report posted to the
@@ -86,7 +86,7 @@ const runAndKeep = async (
   input: PhaseInput,
   plan: string,
   branch: string,
-): Promise<{ review: ReviewRunResult; applied: boolean }> => {
+): Promise<{ review: ReviewRunResult; applied: boolean; blocked: readonly string[] }> => {
   const { deps, state } = input
 
   // Opened before the loop, because what it measures is the loop: the branch as
@@ -106,7 +106,7 @@ const runAndKeep = async (
     'Review finished',
   )
 
-  return { review, applied }
+  return { review, applied, blocked: durable.blocked() }
 }
 
 /**
@@ -212,12 +212,26 @@ const reviewLine = (review: ReviewRunResult): string => REVIEW_LINE[review.outco
  * finding the loop could not fix is something for a human to read, not a reason
  * to park an issue whose work is already pushed.
  */
-const renderReport = (review: ReviewRunResult, applied: boolean, verdict: string): string => {
+const renderReport = (
+  review: ReviewRunResult,
+  applied: boolean,
+  verdict: string,
+  blocked: readonly string[],
+): string => {
   const lines = [
     '### Review report',
     '',
     `- Review loop: ${verdict}`,
     `- Findings applied: ${applied ? 'pushed as further commits on the branch' : 'nothing to apply'}`,
+    // Said here rather than only in the log, for the reason the CI-fix report
+    // says it: a fix that exists and cannot be delivered is the one outcome a
+    // maintainer has to act on, and it is invisible from the diff.
+    ...(blocked.length === 0
+      ? []
+      : [
+          `- Reverted before pushing: ${blocked.map((path) => `\`${path}\``).join(', ')} — a push from this ` +
+            'pipeline cannot carry them. Apply by hand if the finding is wanted.',
+        ]),
   ]
 
   // Said once more, in its own line, when the loop broke *and* kept something:

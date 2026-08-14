@@ -107,12 +107,17 @@ restore path. Each group is independently verifiable and commits on its own.
 
 ## 5. The review loop's push is guarded (D5)
 
-- [ ] 5.1 Failing test: `review-push.ts` reverts a protected path the loop
+- [x] 5.1 Failing test: `review-push.ts` reverts a protected path the loop
       committed and pushes the rest; an untouched-by-protected-paths branch
-      pushes unchanged. `bun test tests/opencode-agent/review.test.ts`
-- [ ] 5.2 Diff against the last pushed sha before pushing, commit the revert of
-      just those paths, and report what was reverted.
-      `bun test tests/opencode-agent/review.test.ts`
+      pushes unchanged and asks git nothing extra; and the review report names
+      what was reverted. `bun test tests/opencode-agent/orchestrator.test.ts`
+- [x] 5.2 Diff against the sha the branch was on when the review began
+      (`Git.changedSince`), revert just the protected paths as a further commit
+      (`Git.revertPaths`, in the new `git-revert.ts` — the only operation here
+      that undoes rather than creates), and carry them into the report.
+      Best-effort: if the revert breaks, the push is the one GitHub was always
+      going to refuse, where throwing would fail a review that found real
+      problems. `bun test tests/opencode-agent/orchestrator.test.ts`
 
 ## 6. Verification and docs
 
