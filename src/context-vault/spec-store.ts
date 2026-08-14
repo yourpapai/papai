@@ -184,7 +184,12 @@ const artifactsOf = (file: PushFileInput): StoredArtifacts => {
 
 const parseStoredOutline = (raw: string | null): string[] | null => {
   if (raw === null) return null
-  const parsed: unknown = JSON.parse(raw)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
   if (!Array.isArray(parsed)) return null
   return parsed.filter((h): h is string => typeof h === 'string')
 }

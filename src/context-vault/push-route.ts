@@ -108,7 +108,16 @@ export async function handleContextVaultPush(req: Request, deps: Partial<ApplyPu
   const body = PushBodySchema.safeParse(parsed)
   if (!body.success) return json(422, { error: 'invalid request' })
 
-  const result = applyPush(verified.configContextId, body.data, deps)
+  let result
+  try {
+    result = applyPush(verified.configContextId, body.data, deps)
+  } catch (error) {
+    log.error(
+      { configContextId: verified.configContextId, error: error instanceof Error ? error.message : String(error) },
+      'Context vault push failed',
+    )
+    return json(500, { error: 'internal error' })
+  }
   log.info({ configContextId: verified.configContextId, specId: result.specId }, 'Context vault push accepted')
   return json(200, { ok: true, ...result })
 }
