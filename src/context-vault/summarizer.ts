@@ -110,7 +110,7 @@ interface PendingJob {
 const pending = new Map<string, PendingJob>()
 const inFlight = new Set<Promise<void>>()
 
-const keyOf = (configContextId: string, specId: string): string => `${configContextId}${specId}`
+const keyOf = (configContextId: string, specId: string): string => `${configContextId}\n${specId}`
 
 const storeSummary = (configContextId: string, specId: string, result: SpecSummaryResult): void => {
   getDrizzleDb()
