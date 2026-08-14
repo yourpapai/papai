@@ -45,6 +45,39 @@ const extractBearer = (req: Request): string | null => {
 }
 
 /**
+ * Reads the request body with a hard byte cap so an oversized payload is
+ * aborted while streaming instead of being fully buffered first. Returns null
+ * when the body exceeds the cap (or declares a Content-Length above it).
+ */
+const readBodyCapped = async (req: Request): Promise<string | null> => {
+  const contentLength = req.headers.get('Content-Length')
+  if (contentLength !== null) {
+    const declared = Number(contentLength)
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null
+  }
+  if (req.body === null) return ''
+  const chunks: Uint8Array[] = []
+  let total = 0
+  let exceeded = false
+  for await (const chunk of req.body) {
+    total += chunk.byteLength
+    if (total > MAX_BODY_BYTES) {
+      exceeded = true
+      break
+    }
+    chunks.push(chunk)
+  }
+  if (exceeded) return null
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(bytes)
+}
+
+/**
  * Handles `POST /api/context-vault/push`. Mounted in the public capability lane
  * of the debug server, before the auth gate: the vault bearer token is the only
  * credential. Unknown, revoked, and malformed tokens all get a uniform 401.
@@ -60,8 +93,8 @@ export async function handleContextVaultPush(req: Request, deps: Partial<ApplyPu
   const verified = verifyToken(bearer)
   if (verified === null) return unauthorized()
 
-  const raw = await req.text()
-  if (raw.length > MAX_BODY_BYTES) {
+  const raw = await readBodyCapped(req)
+  if (raw === null) {
     log.warn({ configContextId: verified.configContextId }, 'Context vault push rejected: body too large')
     return json(413, { error: 'body too large' })
   }

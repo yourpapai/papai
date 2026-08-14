@@ -146,6 +146,27 @@ describe('context-vault push route', () => {
     ErrorResponseSchema.parse(await res.json())
   })
 
+  test('oversized streamed body without Content-Length returns 413', async () => {
+    const created = createToken(CTX_A, 'indexer')
+    const chunk = new Uint8Array(256 * 1024)
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller): void {
+        for (let i = 0; i < 8; i += 1) controller.enqueue(chunk)
+        controller.close()
+      },
+    })
+    const init = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${created.plaintext}` },
+      body: stream,
+      duplex: 'half',
+    } as RequestInit
+    const req = new Request('https://x/api/context-vault/push', init)
+    const res = await handlePush(req)
+    expect(res.status).toBe(413)
+    ErrorResponseSchema.parse(await res.json())
+  })
+
   test('valid push stores rows under the token config context', async () => {
     const created = createToken(CTX_A, 'indexer')
     const res = await handlePush(push(created.plaintext, validBody()))
