@@ -19,9 +19,9 @@ failing test before the implementation it covers.
 
 ## 2. Prompter + session flow (Decisions 1-2)
 
-- [ ] 2.1 Add failing tests in `tests/sdd-runner/gate-session.test.ts` (new) over a scripted prompter: walkthrough covers every finding and assumption with accept/veto/inspect; inspect prints the item's evidence and blast radius; veto collects the redirect inline; a cap-hit blocker prompts for a free-text answer or explicit override; approve is unavailable until T1 is affirmed and all blockers are answered; abandoning the session before the final decision writes nothing. Verify: `bun test tests/sdd-runner/gate-session.test.ts` (red)
-- [ ] 2.2 Implement `sdd-runner/src/gate-session.ts` — the `prompter` interface, `scriptedPrompter`, and the session flow ending in gate-answers generation + the write-then-parse self-check — until 2.1 is green. Verify: `bun test tests/sdd-runner/gate-session.test.ts`
-- [ ] 2.3 Add the `readlinePrompter` adapter (`node:readline`, no new deps) and TTY detection, wired as the default prompter; keep it thin (behavior is covered via the scripted prompter). Verify: `bun run sdd-runner:typecheck && bun run sdd-runner:lint`
+- [x] 2.1 Add failing tests in `tests/sdd-runner/gate-session.test.ts` (new) over a scripted prompter: walkthrough covers every finding and assumption with accept/veto/inspect; inspect prints the item's evidence and blast radius; veto collects the redirect inline; a cap-hit blocker prompts for a free-text answer or explicit override; approve is unavailable until T1 is affirmed and all blockers are answered; abandoning the session before the final decision writes nothing. Verify: `bun test tests/sdd-runner/gate-session.test.ts` (red)
+- [x] 2.2 Implement `sdd-runner/src/gate-session.ts` — the `prompter` interface, `scriptedPrompter`, and the session flow ending in gate-answers generation + the write-then-parse self-check — until 2.1 is green. Verify: `bun test tests/sdd-runner/gate-session.test.ts`
+- [x] 2.3 Add the `readlinePrompter` adapter (`node:readline`, no new deps) and TTY detection, wired as the default prompter; keep it thin (behavior is covered via the scripted prompter). Verify: `bun run sdd-runner:typecheck && bun run sdd-runner:lint`
 
 ## 3. Pending-gate discovery + run-id resolution (Decision 3)
 
