@@ -130,7 +130,14 @@ restore path. Each group is independently verifiable and commits on its own.
       `git-revert.ts`. Same in `opencode-agent/README.md`: the ephemeral-state
       section, the surface section, the file table, and "Files the agent cannot
       commit".
-- [ ] 6.2 Full gate: `bun test`, `bun run typecheck`, `bun run lint`,
-      `bun run format:check`.
-- [ ] 6.3 `bun run test:mutate:changed` — the per-file ratchet is blocking in
-      CI, and this change rewrites branch-heavy renderers and a scan.
+- [x] 6.2 Full gate: `bun run test` (1367 files, 13,934 tests, 13,931 pass, 0
+      fail, 3 skip), `bun run typecheck`, `bun run lint`, `bun run format:check`,
+      `bun run knip` — all clean.
+- [x] 6.3 `bun run test:mutate:changed` — reports "No changed mutation targets;
+      nothing to measure", and that is correct rather than a miss:
+      `isGateableImplFile` scopes the ratchet to `src/`, `client/`, `plugins/`,
+      `review-loop/src/` and `sdd-runner/src/`, and every file this change
+      touches is under `opencode-agent/src/` or `tests/opencode-agent/`. The
+      task assumed a gate that does not cover this workspace. Note the base:
+      `origin/master` in a fresh clone is far behind the branch point, so it
+      judges ~880 unrelated files — use the commit the branch was cut from.
