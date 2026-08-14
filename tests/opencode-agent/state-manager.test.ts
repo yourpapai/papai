@@ -103,6 +103,9 @@ describe('serializeState / extractState', () => {
       ciAttempts: 0,
       ciBudgetReported: false,
       reviewAttempts: 0,
+      // Empty is the truthful reading of a block written before this existed:
+      // no round has reported an edit it could not push.
+      ciBlockedPaths: [],
       // Defaulted for the same reason, and 0 reads as "a small diff": it is
       // below every threshold `LINES_RANGE` lets an operator set, so a block
       // written without the count recommends nothing.

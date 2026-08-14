@@ -10,9 +10,11 @@ findings: `ROADMAP.md`.
 
 ## Shape
 
-- One CI job = one call to `runCli`. State lives in hidden blocks on the issue,
-  not on disk: `AGENT_STATE` for the machine, `AGENT_REPORT` / `AGENT_HANDOFF`
-  for the report and the wall-clock handoff. The design spec and the plan used
+- One CI job = one call to `runCli`. State lives in hidden blocks on the
+  conversation, not on disk: `AGENT_STATE` for the machine, `AGENT_REPORT` /
+  `AGENT_HANDOFF` for the report and the wall-clock handoff. On the issue until
+  a pull request exists and on the pull request after that, with `readThread`
+  reading both — see the surface rule below. The design spec and the plan used
   to travel here too (`AGENT_SPEC` / `AGENT_PLAN`); under the OpenSpec rework
   (design D1 — the folder is truth, comments are renders) they live in
   `openspec/changes/<name>/` on `agent/issue-<n>`, and the human parks review
@@ -62,6 +64,16 @@ findings: `ROADMAP.md`.
   renders the one pull request body both it and `handleDeliver` present, and
   takes the report as **text** because a handler cannot read its own block back —
   `postAndAppend` runs in the orchestrator after the handler returns.
+  What the pipeline _says_ and what it _posts_ are two modules: `src/run-report.ts`
+  renders (a failure, a park, a refusal, a closing) and `src/run-post.ts` holds the
+  two writes — `postAndAppend`, the only durable one and the only place a state
+  block is appended, and `postAnswer`, the one comment deliberately not a record.
+  A renderer changes when the wording does; a write changes when the answer to
+  "which page, and does it carry the record" does. The same split one layer down in
+  git: `src/git-commit.ts` decides what a commit about to be made may contain and
+  enforces it by unstaging, while `src/git-revert.ts` is that rule arriving too late
+  — for the review loop's already-merged commits, where the only move left is a
+  further commit.
 - Feedback on the issue that is not a comment lives apart from the machine that
   causes it: `src/presentation.ts` owns the one phase glyph/label/headline table
   every renderer reads and `src/outcomes.ts` the second vocabulary beside it — the
@@ -258,9 +270,11 @@ findings: `ROADMAP.md`.
   what failed. Only a **full** pass may return `passed`: a narrowed round has not
   looked at the checks it skipped since before a repair edited the tree.
 - **The pull-request door resolves before it acts, and its lookup is not
-  swallowed.** State lives in hidden blocks on the **issue** and `findLatestState`
-  scans the issue thread, so a comment typed on a pull request names nothing this
-  pipeline can restore — `github.event.issue.number` there is the _pull request_.
+  swallowed.** A restore starts from the **issue** — that is where the blocks
+  written before a pull request existed live, and `readThread` needs one of them
+  to learn which second thread to read — so a comment typed on a pull request
+  names nothing this pipeline can restore: `github.event.issue.number` there is
+  the _pull request_.
   `resolvePullRequestTrigger` in `pr-trigger.ts` recovers the issue from the head
   branch, `agent/issue-<n>`, the same link a red CI run travels; that costs an API
   call, which is why it is a second step and not a branch of the pure
@@ -285,42 +299,64 @@ findings: `ROADMAP.md`.
   phase the wrong document under the right field names. Every `kind` test is an
   exhaustive `switch` for the same reason, with `unreachable` making a fourth kind
   a compile error rather than a silent bucketing. The report and the state block
-  still go to the issue whichever door was used, and that is not a preference: a
-  block on the pull request is a second source of truth the restore scan cannot
-  see.
-- **Once a pull request exists, it is the surface — but not the record.**
-  `feedback-target.ts` holds both halves. The **live** channels move the moment
-  `prNumber` is set: the status comment opens on the pull request, the labels are
-  reconciled there, and `commandSurface` refuses a command typed on the issue with
-  a reply naming where to type it — not "does not apply", which would be false
-  twice over, since the command applies perfectly and would have worked one page
-  over. The **record** does not move: `AGENT_STATE` and `AGENT_REPORT` stay in
-  blocks on the issue, because `findLatestState` scans exactly one thread and a
-  block on a pull request is a second source of truth that scan cannot see. That
-  split is why this is two functions rather than one `target()` every caller
-  reads — the day the two questions are answered by one function is the day a
-  state block lands on a pull request. **An answer is the exception, and it is
-  the exception because it is not a record at all**: `/ask` moves no phase,
-  spends no attempt and writes no artefact, so `postAnswer` replies on the
-  surface the question was typed on — a plain comment carrying no block, with
-  the spend written through `state-persist.ts`, which rewrites the issue's
-  newest block in place and posts nothing. Its accepted cost is that a question
-  answered on a pull request is invisible to the next run's prompt, since
-  `renderThread` reads the issue thread. Every other comment stays on the issue
-  and gains one line from `postAndAppend` naming where commands go: almost all
-  of them end by inviting one, and all of those became right-advice-wrong-page
-  at once — said on the write they share rather than threaded through eight
-  renderers, where any one of them could forget. Three consequences not to undo. The label
-  reconcile **clears the issue** when it writes the pull request, because a copy
-  left behind would freeze at whatever the state was that day and no later
-  reconcile would ever look at it again. `applyPullRequestCommand` no longer
-  narrows to `/review`: with the issue refusing commands, a narrowing there would
-  leave `/retry`, `/cancel` and `/ask` nowhere at all to be typed, and which
-  commands a state accepts is `applyCommand`'s one answer for both doors. And the
-  workflow's pull-request arm names **every** command in `SLASH_COMMANDS` (checked
-  against it by `workflow.test.ts`) while the label cleanup step reaches both the
-  issue and the pull request, since which of the two carries a stranded
-  `agent:working` depends on how far the killed run got.
+  and the state block go wherever `feedbackTarget` says, which after delivery is
+  the pull request — safe now that `readThread` reads both threads, and _not_
+  safe before it, which is why this used to say the opposite.
+- **Once a pull request exists, it is the surface — record included.**
+  `feedback-target.ts` says where, and `feedbackTarget` is now the answer for
+  **every** write: the status comment, the labels, and every comment
+  `postAndAppend` makes, block and all. `commandSurface` is the other half —
+  a command typed on the issue is refused with a reply naming where to type it,
+  not "does not apply", which would be false twice over since the command applies
+  perfectly and would have worked one page over.
+  The record used to be the exception, and the reason was mechanical rather than
+  editorial: `findLatestState` scans one list, so a block on the pull request was
+  a second source of truth that scan could never see. **So the scan moved with
+  the comments.** `readThread` in `orchestrator.ts` reads the issue, and if its
+  newest block names a `prNumber`, reads that thread too and takes the newest
+  block across both. Four things not to undo.
+  The **issue is read first, always**: `prNumber` is itself a field of a state
+  block, so the only way to learn which second thread to read is to restore from
+  the one that needs no lookup.
+  `postAndAppend` addresses `feedbackTarget(**input.state**)` — the state the
+  phase started from, not the one it produced. Addressing it with the new state
+  posts the very block that first records `prNumber` to the pull request it
+  names, leaving the issue with nothing that has ever heard of it and the scan
+  with no way in; the one-comment lag puts the handover on the issue, which is
+  where a reader wants it anyway.
+  The merge is **issue then pull request by construction**, not by timestamp:
+  every block on the pull request was written after the last one on the issue,
+  because the write moves there the moment `prNumber` is set and never moves
+  back. It also fails safe — a block hand-edited onto the issue after delivery
+  loses to the machine's own newer one.
+  And there is **no `STATE_VERSION` bump and no migration**: an issue with no
+  pull request behaves exactly as it did, so nothing in flight is stranded.
+  Rollback is one-way in the narrow sense `INCOMPLETE`'s was — older code reads
+  the issue only and would miss blocks written to the pull request meanwhile.
+  **An answer is still not a record**: `/ask` moves no phase, spends no attempt
+  and writes no artefact, so `postAnswer` posts a plain comment carrying no block
+  and writes the spend through `state-persist.ts`, which rewrites the newest
+  block in place and posts nothing. Its branch stays on the **trigger** rather
+  than on `feedbackTarget` — the two now agree, since `commandSurface` refuses
+  issue commands once a pull request exists, but the trigger says what the
+  function is for (reply where the question was asked) instead of deriving it
+  from a rule two modules away that would have to keep agreeing.
+  `pull-request-note.ts` is **gone**, and its absence is the change in one line:
+  it existed only to tell a pull-request reader which issue the report had been
+  posted to, and the report is now on the pull request.
+  Every comment still gains one line from `postAndAppend` naming where commands
+  go — said on the write they share rather than threaded through eight renderers,
+  where any one of them could forget. Three older consequences still hold. The
+  label reconcile **clears the issue** when it writes the pull request, because a
+  copy left behind would freeze at whatever the state was that day and no later
+  reconcile would ever look at it again. `applyPullRequestCommand` does not narrow
+  to `/review`: with the issue refusing commands, a narrowing there would leave
+  `/retry`, `/cancel` and `/ask` nowhere at all to be typed, and which commands a
+  state accepts is `applyCommand`'s one answer for both doors. And the workflow's
+  pull-request arm names **every** command in `SLASH_COMMANDS` (checked against it
+  by `workflow.test.ts`) while the label cleanup step reaches both the issue and
+  the pull request, since which of the two carries a stranded `agent:working`
+  depends on how far the killed run got.
 - **One model endpoint.** Everything goes through `openai-config.ts`; there are
   no provider-specific keys and no second place a model is named. OpenCode is
   never handed the real key: `provider-proxy.ts` holds it and `contain()` in
@@ -558,25 +594,20 @@ not permitted to create or approve pull requests` is a repository or
   the same door read the other way and takes the same catch —
   `reconcileLabels` in `labels.ts`, `attempt` in `status-reporter.ts`,
   `persistState` in `state-persist.ts`, `refreshPullRequest` in
-  `phases/review.ts` and `noteReview` in `pull-request-note.ts` are the only
-  functions in their modules that call GitHub, and each catches every rejection
-  and degrades it to a
+  `phases/review.ts` and `dropUnpushable` in `phases/review-push.ts` are the only
+  functions in their modules that call GitHub or git, and each catches every
+  rejection and degrades it to a
   `warn`; a caller reaches the same `RunResult` and the same **persisted state**
-  it would have reached with the channel absent. `noteReview` is the newest and
-  the one that leaves the issue entirely: it posts the two-line pointer a
-  `/review` typed on a **pull request** earns — the loop's verdict, whether the
-  findings became commits, and the `#n` where the report and the state block went
-  — and it fires on the trigger **kind**, in a `switch` beside `feedback.ts`'s,
-  never on the phase, since `CODE_REVIEW` is reached identically through both
-  doors and a phase test would draw a pointer for a maintainer already reading the
-  report. It is its own module rather than a second `try` beside
-  `refreshPullRequest` for the reason the rule states, and `RunResult` is absent
-  from its signature the way it is from `StatusReporter.finish`: `reported` means
-  "the issue carries this run's account of what happened" and gates the workflow's
-  fallback comment, so a note on the pull request — which that comment neither
-  reads nor could reach — must leave the flag **unreachable**, not merely
-  untouched. An edit that wanted to set it would have to change the interface
-  first. `refreshPullRequest` is the one that shows what the rule is about,
+  it would have reached with the channel absent. `dropUnpushable` is the newest,
+  and the one where "best-effort" is a judgement about which failure is worse
+  rather than about decoration: if the revert breaks, the push that follows is
+  the one GitHub was always going to refuse — exactly the outcome that existed
+  before the guard — where throwing would turn a review that found real problems
+  into a failed run. It still must not be silent, so what it reverted rides out
+  into the phase's report. (`noteReview` in `pull-request-note.ts` used to head
+  this list and is gone: it pointed a pull-request reader at the issue the report
+  had gone to, and the report is now on the pull request.)
+  `refreshPullRequest` is the one that shows what the rule is about,
   because the very same `updatePullRequest` is not decoration everywhere:
   in `handleDeliver` it **is** the work, so a rejection there is correctly fatal
   and correctly resumed from `PR_DELIVERY`. In the review phase the loop has run
@@ -747,12 +778,37 @@ not permitted to create or approve pull requests` is a repository or
   ever, and a turn that wrote nothing else would hand `git commit` an empty index
   to fail on — which is why `stageAllowed` returns what it dropped as well as
   what is left, and why an emptied index reports "nothing to commit" instead. And
-  the prompts state the rule (`IMPLEMENT_INSTRUCTIONS`, `PLAN_INSTRUCTIONS`) so a
-  well-behaved turn never writes such a file, but a rule the model has to
-  remember is not a guardrail — the prompts are the courtesy, the staging step is
-  the mechanism. Widening `PROTECTED_PREFIXES` is a privilege decision: an agent
-  that can rewrite `agent-pipeline.yml` can rewrite the permissions, concurrency
-  group and secret wiring that bound it, in a job that job itself defines.
+  the prompts state the rule — `PROTECTED_PATHS_RULE` in `protected-paths.ts`,
+  carried verbatim by all four instruction blocks that can write a file
+  (`IMPLEMENT_INSTRUCTIONS`, `CI_FIX_INSTRUCTIONS` and `plan-draft.ts`'s two) and
+  asserted against the constant by `instructions.test.ts`, so a softened copy
+  cannot pass — but a rule the model has to remember is not a guardrail: the
+  prompts are the courtesy, the staging step is the mechanism. Widening
+  `PROTECTED_PREFIXES` is a privilege decision: an agent that can rewrite
+  `agent-pipeline.yml` can rewrite the permissions, concurrency group and secret
+  wiring that bound it, in a job that job itself defines.
+- **A drop is reported, never only logged, and `null` is not a verdict.**
+  `commitAll` answers `CommitOutcome` — `clean | blocked | committed` — because
+  `StagedTotals | null` made `null` mean both "the tree was already clean" and
+  "everything the turn wrote is a file the remote refuses", and a caller holding
+  one bit reported the second as the first. Run 31779566286 is the cost: a
+  correct CI diagnosis whose only edit was `agent-pipeline.yml`, dropped at
+  staging, reported as "Pushed a fix: no — nothing changed", twice, until the
+  pull request's `ciAttempts` budget was gone. `dropped` rides on **`committed`**
+  too — a partial drop pushes real work, so every other signal reads as success
+  while part of the change is silently absent. Three consequences to keep. The
+  CI-fix report names the file and says a maintainer must apply it by hand,
+  because `/retry` cannot reach the remedy — another round re-derives the same
+  edit. A green verdict on a round that pushed **nothing** is scoped to the job,
+  not the branch: the repair turn holds `bash`, and run 31779566286 got its green
+  by running `build:client` and `docker pull` on its own runner. And
+  `ciBlockedPaths` carries the path into the next round's prompt, rewritten each
+  round rather than accumulated, so a round that pushes clears a path a
+  maintainer has since applied by hand. The review loop needs its own guard
+  (`git-revert.ts`, driven from `review-push.ts`): its fixes are commits it makes
+  in a worktree of its own and merges, so they never pass through an index
+  `stageAllowed` sees, and a protected path there fails the **push** rather than
+  being dropped.
 - **A process artefact is not a deliverable, and that is enforced at staging
   too.** `stray-paths.ts` names `*.pid`, `*.sock` and `nohup.out`, and
   `stageAllowed` takes them back out of the index alongside the protected paths.

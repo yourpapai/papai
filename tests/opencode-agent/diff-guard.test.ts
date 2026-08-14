@@ -13,6 +13,7 @@ import {
   parseNumstat,
 } from '../../opencode-agent/src/diff-guard.js'
 import type { DiffLimits, DiffVerdict, SalvageVerdict, StagedFile } from '../../opencode-agent/src/diff-guard.js'
+import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import { createGit, credentialEnv } from '../../opencode-agent/src/git.js'
 import type { GitOptions, Salvage } from '../../opencode-agent/src/git.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
@@ -41,6 +42,9 @@ const file = (path: string, lines: number | null = 1): StagedFile => ({ path, li
 /** The reason a verdict carries, or '' when it passed. Keeps the narrowing out
  *  of the test bodies, per repo lint. */
 const reasonOf = (verdict: DiffVerdict): string => (verdict.ok ? '' : verdict.reason)
+
+/** What a commit outcome dropped, without a narrowing in the test body. */
+const droppedOf = (outcome: CommitOutcome): readonly string[] => (outcome.kind === 'clean' ? [] : outcome.dropped)
 
 /** The same two readings of a salvage verdict, for the same reason. */
 const refusalOf = (verdict: SalvageVerdict): string => (verdict.ok ? '' : verdict.reason)
@@ -299,7 +303,11 @@ describe('commitAll runs the guard', () => {
   test('commits a change set inside the limits', async () => {
     const { calls, run } = captureGit({ ...DIRTY, 'git diff --cached --numstat': '3\t1\tsrc/a.ts' })
 
-    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({ files: 1, lines: 4 })
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({
+      kind: 'committed',
+      totals: { files: 1, lines: 4 },
+      dropped: [],
+    })
     expect(calls.some((call) => call.includes('commit'))).toBe(true)
   })
 
@@ -312,7 +320,11 @@ describe('commitAll runs the guard', () => {
     const numstat = ['3\t1\tsrc/a.ts', '10\t2\ttests/a.test.ts'].join('\n')
     const { run } = captureGit({ ...DIRTY, 'git diff --cached --numstat': numstat })
 
-    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({ files: 2, lines: 16 })
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({
+      kind: 'committed',
+      totals: { files: 2, lines: 16 },
+      dropped: [],
+    })
   })
 
   test('refuses, unstages, and never commits when the guard trips', async () => {
@@ -339,10 +351,10 @@ describe('commitAll runs the guard', () => {
   test('does not stage or inspect anything when the tree is clean', async () => {
     const { calls, run } = captureGit({})
 
-    // `null` rather than zero totals: a tree with nothing to commit and a commit
+    // `clean` rather than zero totals: a tree with nothing to commit and a commit
     // that changed nothing are different answers, and only the first is one the
     // implementation phase turns into a failure.
-    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toBeNull()
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({ kind: 'clean' })
     expect(calls.some((call) => call.includes('--cached'))).toBe(false)
   })
 
@@ -468,6 +480,13 @@ const MIXED = {
   'git ls-tree --name-only HEAD -- .github/workflows/agent-pipeline.yml': '.github/workflows/agent-pipeline.yml\n',
 }
 
+/** A turn whose every staged path is one a push cannot carry. */
+const ONLY_BLOCKED = {
+  ...DIRTY,
+  'git diff --cached --numstat': '9\t0\t.github/workflows/agent-pipeline.yml',
+  'git ls-tree --name-only HEAD -- .github/workflows/agent-pipeline.yml': '.github/workflows/agent-pipeline.yml\n',
+}
+
 /** The same, where the workflow file is one the model created. */
 const NEW_WORKFLOW = {
   ...DIRTY,
@@ -481,8 +500,24 @@ describe('commitAll drops what a push cannot carry', () => {
 
     // 3+1 from src/a.ts alone: the workflow file's 9 lines are not in the commit
     // and must not be in the figure the state block carries either.
-    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({ files: 1, lines: 4 })
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({
+      kind: 'committed',
+      totals: { files: 1, lines: 4 },
+      dropped: ['.github/workflows/agent-pipeline.yml'],
+    })
     expect(calls.some((call) => call.includes('commit'))).toBe(true)
+  })
+
+  test('a partial drop still names what was dropped, which is the case that misleads', async () => {
+    // Work *was* pushed, so every other signal this run emits reads as success
+    // while part of the fix silently is not there. `committed` carrying nothing
+    // about the drop is how a half-applied repair looks identical to a whole one.
+    const { run } = captureGit(MIXED)
+
+    const outcome = await createGit(guardedGit(run, LIMITS)).commitAll('msg')
+
+    expect(outcome.kind).toBe('committed')
+    expect(droppedOf(outcome)).toEqual(['.github/workflows/agent-pipeline.yml'])
   })
 
   test('unstages and restores a tracked workflow file, so the next step cannot re-stage it', async () => {
@@ -516,18 +551,30 @@ describe('commitAll drops what a push cannot carry', () => {
     expect(warns.join('\n')).toContain('workflows')
   })
 
-  test('a turn that wrote only a workflow file reports nothing to commit, never an empty index', async () => {
+  test('a turn that wrote only a workflow file is blocked, never an empty index', async () => {
     // `git commit` on an empty index exits non-zero, which would reach
     // `commit-repair` and spend its rounds on a tree no repair can change.
-    const onlyBlocked = {
-      ...DIRTY,
-      'git diff --cached --numstat': '9\t0\t.github/workflows/agent-pipeline.yml',
-      'git ls-tree --name-only HEAD -- .github/workflows/agent-pipeline.yml': '.github/workflows/agent-pipeline.yml\n',
-    }
-    const { calls, run } = captureGit(onlyBlocked)
+    //
+    // `blocked` rather than `clean` is the whole point of the union: this is
+    // run 31779566286, where a correct diagnosis written to the one file a push
+    // cannot carry was reported as "nothing changed" — twice, on consecutive
+    // rounds, until `ciAttempts` was spent.
+    const { calls, run } = captureGit(ONLY_BLOCKED)
 
-    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toBeNull()
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({
+      kind: 'blocked',
+      dropped: ['.github/workflows/agent-pipeline.yml'],
+    })
     expect(calls.some((call) => call.includes('commit'))).toBe(false)
+  })
+
+  test('a tree that was never dirty is clean, which is not the same answer', async () => {
+    // The distinction the old `null` could not make. A clean tree means the turn
+    // wrote nothing; a blocked one means it wrote something undeliverable, and
+    // only the second has a remedy worth telling anyone about.
+    const { run } = captureGit({ ...DIRTY, 'git status --porcelain': '' })
+
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({ kind: 'clean' })
   })
 
   test('leaves an ordinary change set alone, asking git nothing extra', async () => {
@@ -593,7 +640,11 @@ describe('commitAll drops what a process left behind', () => {
   test('commits the real work and measures only the real work', async () => {
     const { run } = captureGit(WITH_STRAY)
 
-    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({ files: 1, lines: 4 })
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({
+      kind: 'committed',
+      totals: { files: 1, lines: 4 },
+      dropped: ['serve3.pid'],
+    })
   })
 
   test('removes the pid file, so the next step does not re-stage it for ever', async () => {
@@ -606,12 +657,17 @@ describe('commitAll drops what a process left behind', () => {
   })
 
   test('a turn that left only a pid file has committed nothing, and says so', async () => {
-    // The whole point: `null` is what reaches `walk.commits === 0` and becomes
+    // The whole point: no totals is what reaches `walk.commits === 0` and becomes
     // `noChangesError`. Issue #239 got `{ files: 1, lines: 1 }` here and opened
-    // a pull request on it.
+    // a pull request on it. `blocked` rather than `clean`, because the pid file
+    // *was* written — the walk treats both as "nothing to push", and only this
+    // one has something to say about why.
     const { calls, run } = captureGit(ONLY_STRAY)
 
-    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toBeNull()
+    expect(await createGit(guardedGit(run, LIMITS)).commitAll('msg')).toEqual({
+      kind: 'blocked',
+      dropped: ['serve3.pid'],
+    })
     expect(calls.some((call) => call.includes('commit'))).toBe(false)
   })
 

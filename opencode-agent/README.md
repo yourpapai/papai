@@ -19,8 +19,9 @@ short-lived job; nothing long-polls.
 
 ## How the ephemeral model works
 
-An Actions job has no memory of the previous one, so state lives on the issue in
-hidden HTML blocks:
+An Actions job has no memory of the previous one, so state lives on the
+conversation in hidden HTML blocks — on the issue until a pull request exists,
+and on the pull request after that:
 
 - `<!-- AGENT_STATE: … -->` — phase and counters. Written afresh with every
   comment the pipeline posts, and rewritten **in place** by a run that spent
@@ -132,12 +133,22 @@ request — not "does not apply", which would be false twice over, since the com
 applies perfectly and would have worked one page over. `src/feedback-target.ts`
 holds both halves of that rule.
 
-**The record does not move.** `AGENT_STATE` and `AGENT_REPORT` stay in hidden
-blocks on the **issue**, whichever surface the command arrived on, because
-`findLatestState` scans exactly one thread and a block on a pull request would be
-a second source of truth that scan cannot see. So a `/review` typed on the pull
-request is answered by a report on the issue and a short note on the pull request
-pointing at it — see below.
+**The record moves with it.** `AGENT_STATE` and `AGENT_REPORT` used to stay on the
+issue whichever surface the command arrived on, for a mechanical reason rather than
+an editorial one: `findLatestState` scans one list, so a block on the pull request
+was a second source of truth that scan could never see. The scan moved instead.
+`readThread` reads the issue, and if its newest block names a `prNumber`, reads that
+thread too and takes the newest block across both — one extra read, only after a
+pull request exists, so an issue with none behaves exactly as it did and nothing in
+flight is stranded.
+
+Two details keep that from being circular. The **issue is read first, always**,
+because `prNumber` is itself a field of a state block and only the thread that needs
+no lookup can bootstrap the other. And `postAndAppend` addresses the state the phase
+**started from**, not the one it produced — otherwise the very block that first
+records `prNumber` would be posted to the pull request it names, leaving the issue
+with nothing that had ever heard of it. That one-comment lag puts the handover
+comment on the issue, which is where a reader wants it.
 
 A comment typed on a pull request has to name its issue before anything else in
 this pipeline can run, and the payload does not carry one —
@@ -169,21 +180,16 @@ the run is about, and the fork guard reads its answer, so a rejection has to
 leave the job red rather than become a skip indistinguishable from a comment
 nobody typed.
 
-**The report and the state block still go to the issue**, whichever door the
-command came through, and that asymmetry is not going to change: `findLatestState`
-scans the issue thread, so a block posted on the pull request would be a second
-source of truth the restore scan cannot see. What the pull request gets instead is
-the 👀 on the comment that was typed, the review's findings as further commits on
-its branch, and a short note saying what the loop concluded, whether anything was
-applied, and which issue carries the full report. That note is best-effort in one
-function like every other feedback channel, and it is deliberately not a second
-copy of the report: two accounts of one run are two things that can disagree. It
-points at the **issue** rather than at the report comment because the handler
-places it before the orchestrator posts that comment, so a link to the comment
-would name something that does not exist yet. A `/review` typed on the issue draws
-no note at all — a pointer to the page you are already reading is noise — and that
-is decided from the trigger kind, in `src/pull-request-note.ts`, because the phase
-cannot tell the two doors apart.
+**The report and the state block go where the reader is** — the pull request, once
+one exists, whichever door the command came through. So a `/review` typed on the
+pull request is answered on the pull request: the 👀 on the comment that was typed,
+the findings as further commits on its branch, and the report itself, block and all.
+
+This used to be the other way round, and the difference is worth recording. The
+report went to the issue and the pull request got a short note pointing at it,
+because the restore scan could only read one thread. `src/pull-request-note.ts` was
+that note and is gone: with the report on the pull request, a pointer would send a
+reader to a page that no longer has it.
 
 **`/ask` is answered where it was asked.** It used to be refused from a pull
 request altogether, on the argument that its answer would land on the issue while
@@ -1316,15 +1322,35 @@ back out of the index between `git add --all` and the diff guard, on the
 ordinary commit and on the salvage alike. The file is **dropped, not refused** —
 refusing would lose the same work the remote would have lost — its working-tree
 copy is reverted (or removed, if the model created it) so the next step cannot
-stage it again, and the drop is reported at `warn` naming every path, because a
-guardrail nobody sees fire is indistinguishable from a model that quietly failed
-to make the edit. A turn that wrote _only_ such a file reports nothing to commit
-rather than handing `git commit` an empty index.
+stage it again, and the drop is reported — at `warn`, **and to the maintainer**,
+because a guardrail nobody sees fire is indistinguishable from a model that
+quietly failed to make the edit.
 
-`IMPLEMENT_INSTRUCTIONS` and the planning instructions both state the rule, so a
-well-behaved turn never writes one and a plan never contains a step that would.
-That is the courtesy; the staging step is the mechanism, and it is where the
-model has no say.
+That reporting is the part run 31779566286 was missing, and it cost a pull
+request's whole CI-fix budget. `commitAll` answers `clean | blocked | committed`
+rather than `StagedTotals | null`, so "the tree was already clean" and
+"everything the turn wrote is a file the remote refuses" stop being the same
+answer; `dropped` rides on `committed` too, since a partial drop pushes real work
+and every other signal then reads as success. The CI-fix report names the file
+and says a maintainer must apply it by hand — `/retry` cannot reach the remedy,
+because another round re-derives the same edit — and `ciBlockedPaths` carries the
+path into the next round's prompt so it stops trying. A green check verdict on a
+round that pushed nothing is scoped to **this job**, not to the branch: the
+repair turn holds `bash`, and that run got its green by running `build:client`
+and `docker pull` on its own runner before re-running the tests.
+
+The review loop needs a guard of its own (`src/git-revert.ts`, driven from
+`review-push.ts`): its fixes are commits it makes in a worktree and merges, so
+they never pass through an index `stageAllowed` sees. Those paths are reverted as
+a further commit before the push, and named in the review report.
+
+Every instruction block that can write a file states the rule — `IMPLEMENT`,
+`CI_FIX` and both planning blocks, sharing one `PROTECTED_PATHS_RULE` constant so
+a copy cannot be softened — and `instructions.test.ts` asserts it against that
+constant. `CI_FIX` was the phase that had no copy of it and is the likeliest to
+want one, since a red job's root cause is often the workflow that ran it. That is
+the courtesy; the staging step is the mechanism, and it is where the model has no
+say.
 
 **If you want the agent to change its own workflow**, grant the App behind
 `AGENT_GITHUB_TOKEN` the `workflows: write` permission, re-install it, and drop
@@ -1451,39 +1477,39 @@ used by the in-process SDK session _and_, via `OPENCODE_CONFIG_CONTENT`, by the
 `opencode run` subprocesses the review loop spawns — one definition, so the two
 cannot drift.
 
-| Variable                                   | Required | Default                                         | Purpose                                                |
-| ------------------------------------------ | -------- | ----------------------------------------------- | ------------------------------------------------------ |
-| `LLM_API_KEY`                              | yes      | —                                               | Model credentials                                      |
-| `LLM_MODEL`                                | yes      | —                                               | Model name, e.g. `gpt-5`                               |
-| `LLM_BASE_URL`                             | yes      | —                                               | Any OpenAI-compatible endpoint                         |
-| `GITHUB_TOKEN`                             | no       | the job's own `secrets.GITHUB_TOKEN`            | Comments, branches, pull requests; see below           |
-| `GITHUB_REPOSITORY`                        | no       | the job's own `owner/repo`                      | `owner/repo`; see below                                |
-| `AGENT_SELF_LOGIN`                         | no       | derived from the token                          | Login the agent posts as; see above                    |
-| `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`                          | This workflow's name, for the CI recursion guard       |
-| `AGENT_BASE_BRANCH`                        | no       | detected                                        | Branch the PR targets; see below                       |
-| `AGENT_CHECK_COMMAND`                      | no       | `bun run lint && bun run typecheck && bun test` | review-loop's build gate                               |
-| `AGENT_REVIEW_COMMAND`                     | no       | detected                                        | JSON argv running the review loop; `none` disables it  |
-| `AGENT_CHECKS`                             | no       | lint / typecheck / test                         | JSON `[{ "name", "argv" }]` the CI-fix phase runs      |
-| `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                             | review-loop rounds                                     |
-| `AGENT_REVIEW_POOL_SIZE`                   | no       | `1`                                             | review-loop worker pool                                |
-| `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                             | Repair rounds per CI-fix job                           |
-| `AGENT_COMMIT_REPAIR_MAX_ROUNDS`           | no       | `3`                                             | Commit attempts when the repo's own checks refuse one  |
-| `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                             | CI-fix jobs per pull request                           |
-| `AGENT_MAX_REVIEW_ATTEMPTS`                | no       | `3`                                             | `/review` rounds per pull request                      |
-| `AGENT_REVIEW_HINT_LINES`                  | no       | `200`                                           | Diff size at which a delivery recommends `/review`     |
-| `AGENT_MAX_ATTEMPTS`                       | no       | `5`                                             | Failures before `/retry` stops resuming                |
-| `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                           | Files one commit may carry                             |
-| `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                         | Lines one commit may change                            |
-| `AGENT_TIMEOUT_MS`                         | no       | `5400000`                                       | Timeout for one model turn, and for each subprocess    |
-| `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                         | Epoch ms this job began; the workflow's first step     |
-| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset here; `300` from the workflow             | The job's own ceiling, shared with `timeout-minutes:`  |
-| `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                        | Held back from the job so a time stop can report       |
-| `AGENT_WRAP_UP_MS`                         | no       | `120000`                                        | The model's slice of a stop: finish up and hand over   |
-| `AGENT_MAX_TOKENS`                         | no       | `5000000`                                       | Model tokens one issue may spend, across all its jobs  |
-| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                           | Commit identity                                        |
-| `AGENT_LABEL_PREFIX`                       | no       | `agent:`                                        | Namespace for the status labels; `none` disables them  |
-| `AGENT_LOG_LEVEL`                          | no       | `info`                                          | `debug`, `info`, `warn`, `error`                       |
-| `AGENT_LOG_KEY`                            | no       | unset — no transcript                           | Secret: base64 32 bytes; encrypts the debug transcript |
+| Variable                                   | Required | Default                              | Purpose                                                |
+| ------------------------------------------ | -------- | ------------------------------------ | ------------------------------------------------------ |
+| `LLM_API_KEY`                              | yes      | —                                    | Model credentials                                      |
+| `LLM_MODEL`                                | yes      | —                                    | Model name, e.g. `gpt-5`                               |
+| `LLM_BASE_URL`                             | yes      | —                                    | Any OpenAI-compatible endpoint                         |
+| `GITHUB_TOKEN`                             | no       | the job's own `secrets.GITHUB_TOKEN` | Comments, branches, pull requests; see below           |
+| `GITHUB_REPOSITORY`                        | no       | the job's own `owner/repo`           | `owner/repo`; see below                                |
+| `AGENT_SELF_LOGIN`                         | no       | derived from the token               | Login the agent posts as; see above                    |
+| `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`               | This workflow's name, for the CI recursion guard       |
+| `AGENT_BASE_BRANCH`                        | no       | detected                             | Branch the PR targets; see below                       |
+| `AGENT_CHECK_COMMAND`                      | no       | `bun check:full`                     | review-loop's build gate                               |
+| `AGENT_REVIEW_COMMAND`                     | no       | detected                             | JSON argv running the review loop; `none` disables it  |
+| `AGENT_CHECKS`                             | no       | `bun run` lint / typecheck / test    | JSON `[{ "name", "argv" }]` the CI-fix phase runs      |
+| `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                  | review-loop rounds                                     |
+| `AGENT_REVIEW_POOL_SIZE`                   | no       | `1`                                  | review-loop worker pool                                |
+| `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                  | Repair rounds per CI-fix job                           |
+| `AGENT_COMMIT_REPAIR_MAX_ROUNDS`           | no       | `3`                                  | Commit attempts when the repo's own checks refuse one  |
+| `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                  | CI-fix jobs per pull request                           |
+| `AGENT_MAX_REVIEW_ATTEMPTS`                | no       | `3`                                  | `/review` rounds per pull request                      |
+| `AGENT_REVIEW_HINT_LINES`                  | no       | `200`                                | Diff size at which a delivery recommends `/review`     |
+| `AGENT_MAX_ATTEMPTS`                       | no       | `5`                                  | Failures before `/retry` stops resuming                |
+| `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                | Files one commit may carry                             |
+| `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                              | Lines one commit may change                            |
+| `AGENT_TIMEOUT_MS`                         | no       | `5400000`                            | Timeout for one model turn, and for each subprocess    |
+| `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline              | Epoch ms this job began; the workflow's first step     |
+| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset here; `300` from the workflow  | The job's own ceiling, shared with `timeout-minutes:`  |
+| `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                             | Held back from the job so a time stop can report       |
+| `AGENT_WRAP_UP_MS`                         | no       | `120000`                             | The model's slice of a stop: finish up and hand over   |
+| `AGENT_MAX_TOKENS`                         | no       | `5000000`                            | Model tokens one issue may spend, across all its jobs  |
+| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                | Commit identity                                        |
+| `AGENT_LABEL_PREFIX`                       | no       | `agent:`                             | Namespace for the status labels; `none` disables them  |
+| `AGENT_LOG_LEVEL`                          | no       | `info`                               | `debug`, `info`, `warn`, `error`                       |
+| `AGENT_LOG_KEY`                            | no       | unset — no transcript                | Secret: base64 32 bytes; encrypts the debug transcript |
 
 `LLM_MODEL` and `LLM_BASE_URL` are both required rather than defaulted: with a
 model gateway that is not necessarily OpenAI's own, there is no base URL or
@@ -1786,10 +1812,10 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/pr-trigger.ts`                           | Resolving a command typed on a pull request back to its issue           |
 | `src/triggers.ts`                             | Turning a command or comment into the state move to make                |
 | `src/ci-trigger.ts`                           | Whether a red check run buys a fix round, a notice, or nothing          |
-| `src/run-report.ts`                           | Everything the orchestrator writes back to the issue                    |
+| `src/run-report.ts`                           | What the orchestrator says: a failure, a park, a refusal, a closing     |
+| `src/run-post.ts`                             | The two writes: the durable one that carries the record, and an answer  |
 | `src/budget-notices.ts`                       | What a run says when a ceiling stopped it and nothing broke             |
 | `src/pull-request-body.ts`                    | The pull request's own body, for a delivery and after a review alike    |
-| `src/pull-request-note.ts`                    | What a run says where the command was typed, not where it answers       |
 | `src/presentation.ts`                         | One glyph, label, headline and whose-turn per state an issue can be in  |
 | `src/outcomes.ts`                             | The second vocabulary: one glyph per outcome a comment announces        |
 | `src/feedback.ts` / `src/labels.ts`           | The reaction channel, and the label reconcile                           |

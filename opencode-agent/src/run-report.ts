@@ -3,116 +3,28 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { IssueComment } from './blocks.js'
 import { acceptedCommands } from './commands.js'
-import { reportIdentityDrift } from './identity.js'
 import { fence } from './markdown.js'
 import { outcomeHeading } from './outcomes.js'
-import type { PhaseInput } from './phase-context.js'
 import { phaseHeading, presentationFor } from './presentation.js'
-import { renderStateComment } from './state-manager.js'
-import { persistState } from './state-persist.js'
 import type { AgentState, Phase } from './types.js'
 
 /**
- * Everything the orchestrator writes back to the issue.
+ * What the orchestrator *says* — a failure, a park, a refusal, a closing.
  *
  * Split out because the state machine and the way it narrates itself change for
- * different reasons — and because every one of these functions ends in the same
- * `postAndAppend`, which is the pipeline's only durable write.
+ * different reasons. Every one of these renderers ends up at `postAndAppend`,
+ * which used to live here too and now lives in `run-post.ts`: the surface move
+ * (design D4) pushed this file past `max-lines`, and the seam it broke along is
+ * the one this sentence already drew. A renderer changes when the wording does;
+ * a write changes when the answer to "which page, and does it carry the record"
+ * does, which is a question about the restore scan rather than about prose.
  *
  * What a **bound reached** says lives next door in `budget-notices.ts`, along a
  * seam `presentation.ts` had already drawn: ❌ means the work broke, ⛔ means a
  * ceiling stopped a run in which nothing broke at all. This file is the first
- * half — a failure, a park, a refusal, a closing — and it moved when a fourth
- * budget notice would not fit beside the others.
+ * half, and it moved when a fourth budget notice would not fit beside the others.
  */
-
-/**
- * The one line every issue comment gains once a pull request has taken the
- * commands over.
- *
- * Almost everything this file renders ends by naming a command — "reply
- * `/retry`", "reply `/cancel`", "raise the ceiling and reply `/review`" — and
- * every one of those became wrong in the same way the day the issue started
- * refusing commands: the advice is right, the page it is written on is not. The
- * alternative was to thread a "where" through eight renderers and their
- * signatures, where each one could forget; this is the same statement made once,
- * on the write they all share, from the state they are all posted with.
- *
- * Empty while there is no pull request, which is most of an issue's life and all
- * of a cancelled one's — so a run that never delivers reads exactly as it did.
- */
-const commandPointer = (state: AgentState): string =>
-  state.prUrl === null ? '' : `\n\n_Commands for this issue go on its pull request: ${state.prUrl}_`
-
-/**
- * Posts a comment and mirrors it into the in-memory thread, so a later phase in
- * the same job can read an artefact the earlier phase just wrote without
- * re-fetching the issue.
- */
-export const postAndAppend = async (
-  thread: readonly IssueComment[],
-  input: PhaseInput,
-  body: string,
-  state: AgentState,
-  blocks?: readonly string[],
-): Promise<IssueComment[]> => {
-  const artifacts = blocks === undefined || blocks.length === 0 ? '' : `\n\n${blocks.join('\n\n')}`
-  const rendered = `${renderStateComment(`${body}${commandPointer(state)}`, state)}${artifacts}`
-
-  const posted = await input.deps.github.createComment(input.issue.number, rendered)
-  // The recorded author, not the one the pipeline believes in: if they differ,
-  // the in-job mirror would otherwise disagree with what a later job reads back.
-  reportIdentityDrift(await input.deps.selfLogin(), posted.authorLogin, input.deps.log)
-
-  return [...thread, { id: posted.id, body: rendered, authorLogin: posted.authorLogin }]
-}
-
-/**
- * Posts a reply to the surface the question was typed on.
- *
- * A question is the one thing this pipeline says that is *not* about the state
- * of the work: it moves no phase, spends no attempt and produces no artefact, so
- * it belongs in the conversation it answers rather than in the record. Typed on
- * the issue it goes to the issue, exactly as before; typed on a pull request it
- * goes there, where the person who asked is looking.
- *
- * Three things this must not do, and the shape follows from them.
- *
- * It must not put a **state block** on a pull request. `findLatestState` scans
- * one thread and would never see it, so a block there is a second source of
- * truth by construction — which is why this is not `postAndAppend` with a
- * different number, but a plain comment plus {@link persistState}, the write
- * that rewrites the issue's newest block *in place* and posts nothing. The spend
- * is the one thing a question really does change, and it is still recorded.
- *
- * It must not post **twice**. A copy on the issue "for the record" would be two
- * accounts of one exchange, free to disagree, on a page nobody asked anything on.
- *
- * And it must not swallow a **failed post**: the answer is the work here, so a
- * rejected `createComment` throws exactly as it does on the issue path, leaving
- * `reported` unset and the workflow's fallback comment in scope. Only the state
- * rewrite beside it is best-effort, for the reason `persistState` states.
- *
- * The accepted cost is that a question answered on a pull request is invisible to
- * the next run's prompt — `renderThread` reads the issue thread — so the model
- * will not remember having answered it. That is the same trade the state block
- * makes in the other direction, and a conversation about a diff is the one this
- * pipeline can most afford to forget.
- */
-export const postAnswer = async (
-  thread: readonly IssueComment[],
-  input: PhaseInput,
-  body: string,
-  state: AgentState,
-): Promise<readonly IssueComment[]> => {
-  if (input.trigger.kind !== 'pull-request') return postAndAppend(thread, input, body, state)
-
-  await input.deps.github.createComment(input.trigger.prNumber, body)
-  await persistState(input.deps, thread, state)
-  return thread
-}
 
 /**
  * The comment that ends a run in `COMPLETE`.

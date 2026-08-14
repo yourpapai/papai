@@ -6,7 +6,7 @@
 import { renderAnswerOverBudget, renderOverBudget } from './budget-notices.js'
 import type { PipelineConfig } from './config.js'
 import type { MachineInput, PhaseDeps } from './phase-context.js'
-import { postAndAppend, postAnswer } from './run-report.js'
+import { postAndAppend, postAnswer } from './run-post.js'
 import type { RunResult } from './run-result.js'
 import { transition } from './transitions.js'
 import type { AgentState } from './types.js'

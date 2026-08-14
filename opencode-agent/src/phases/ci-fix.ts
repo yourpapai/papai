@@ -6,19 +6,28 @@
 import { formatFailures, runCheckLoop } from '../check-loop.js'
 import type { CheckLoopResult } from '../check-loop.js'
 import { buildCommitRepairPrompt, commitWithRepair } from '../commit-repair.js'
+import { droppedBy } from '../git-commit.js'
 import { branchNameFor } from '../git.js'
 import { composeSystemPrompt } from '../obra-skills.js'
 import type { OpenCodeAgent } from '../opencode-adapter.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildCiFixPrompt } from '../prompts.js'
 import type { UntrustedEnvelope } from '../prompts.js'
+import { PROTECTED_PATHS_RULE } from '../protected-paths.js'
 import { mintEnvelope } from './envelope.js'
 
-const CI_FIX_INSTRUCTIONS = [
+/**
+ * Exported for `instructions.test.ts`, which asserts every phase that can write
+ * a file offers the protected-paths rule. This phase is the one that had no
+ * copy of it, and is the likeliest to need it: a red job's root cause is often
+ * the workflow that ran it.
+ */
+export const CI_FIX_INSTRUCTIONS = [
   'Continuous integration is red on a pull request you opened. Diagnose and fix the root cause.',
   'Reproduce the failure from the check output before changing anything.',
   'Never weaken, skip, or delete a test to make a check pass, and never add lint-disable or type-ignore comments.',
   'If the failure is unrelated to this branch, say so in your summary rather than papering over it.',
+  PROTECTED_PATHS_RULE,
 ].join('\n')
 
 /**
@@ -54,14 +63,28 @@ export const handleCiFix: PhaseHandler = async (input): Promise<PhaseOutcome> =>
         { issue: state.issueId, round, checks: failures.map((failure) => failure.name) },
         'Repairing red checks',
       )
-      await agent.prompt({ system, prompt: buildCiFixPrompt(envelope, failures, round), agent: 'build' })
+      await agent.prompt({
+        system,
+        prompt: buildCiFixPrompt(envelope, failures, round, state.ciBlockedPaths),
+        agent: 'build',
+      })
     },
   })
 
-  const pushed = await commitAndPush(input, branch, { agent, envelope, system })
-  deps.log.info({ issue: state.issueId, branch, passed: outcome.passed, pushed }, 'CI fix round finished')
+  const commit = await commitAndPush(input, branch, { agent, envelope, system })
+  deps.log.info(
+    { issue: state.issueId, branch, passed: outcome.passed, pushed: commit.pushed, dropped: commit.dropped },
+    'CI fix round finished',
+  )
 
-  return { signal: 'CI_FIXED', comment: renderCiReport(input, outcome, pushed, deps.config.runUrl) }
+  return {
+    signal: 'CI_FIXED',
+    comment: renderCiReport(input, outcome, commit, deps.config.runUrl),
+    // Rewritten every round, never accumulated: this says what *this* round
+    // could not push, so a round that pushed clears a path a maintainer has
+    // since applied by hand.
+    patch: { ciBlockedPaths: [...commit.dropped] },
+  }
 }
 
 /** The session and the two things every prompt in this phase is composed against. */
@@ -81,7 +104,7 @@ interface Turn {
  * treatment as the implementation's commit, and the same session: this one has the
  * repair in its context already.
  */
-const commitAndPush = async (input: PhaseInput, branch: string, turn: Turn): Promise<boolean> => {
+const commitAndPush = async (input: PhaseInput, branch: string, turn: Turn): Promise<RoundCommit> => {
   const { deps, state } = input
   const committed = await commitWithRepair({
     commit: () => deps.git.commitAll(`fix(agent): repair CI for issue #${state.issueId}\n\nRefs #${state.issueId}`),
@@ -96,10 +119,22 @@ const commitAndPush = async (input: PhaseInput, branch: string, turn: Turn): Pro
     log: deps.log,
     issue: state.issueId,
   })
-  if (committed === null) return false
+  if (committed.kind !== 'committed') return { pushed: false, dropped: droppedBy(committed) }
 
   await deps.git.push(branch)
-  return true
+  return { pushed: true, dropped: committed.dropped }
+}
+
+/**
+ * What the round's commit came to, as the report needs it.
+ *
+ * A boolean was enough while "nothing was pushed" had one meaning. It has two:
+ * the round changed nothing, and the round wrote only files the remote refuses.
+ * The second is what run 31779566286 reported as the first, three times.
+ */
+interface RoundCommit {
+  pushed: boolean
+  dropped: readonly string[]
 }
 
 /** The red run that brought the pipeline here; absent unless CI triggered it. */
@@ -120,27 +155,91 @@ const runLines = (red: string | null, agent: string | null): readonly string[] =
   ...(agent === null ? [] : [`- This repair ran in: ${agent}`]),
 ]
 
+/**
+ * What the round's checks proved, which is less than it used to claim.
+ *
+ * A round that pushed nothing leaves the branch exactly as CI found it, so a
+ * green verdict is a fact about **this job** and not about the code anyone will
+ * merge — and the gap between those two is not pedantic. The repair turn holds
+ * `bash`: run 31779566286 got its green by running `bun run build:client` and
+ * `docker pull` on its own runner, then re-running the tests. Nothing in the
+ * loop can see that, so the honest move is to say which of the two the verdict
+ * describes rather than to imply the stronger one.
+ */
+const verdictLine = (outcome: CheckLoopResult, pushed: boolean): string => {
+  const rounds = `after ${outcome.rounds} round(s)`
+  if (!outcome.passed) return `- Local checks: ❌ still red ${rounds}`
+  return pushed
+    ? `- Local checks: ✅ green ${rounds}`
+    : `- Local checks: ✅ green in this job ${rounds} — but nothing was pushed, so the branch is unchanged`
+}
+
+/** Whether the round pushed, and — when it did not — which of the two reasons. */
+const pushedLine = (commit: RoundCommit): string => {
+  if (commit.pushed) return '- Pushed a fix: yes'
+  return commit.dropped.length === 0
+    ? '- Pushed a fix: no — nothing changed'
+    : '- Pushed a fix: no — the fix exists, but this pipeline cannot push it'
+}
+
+/**
+ * The paragraph a blocked round earns, and the reason this phase reports at all.
+ *
+ * Three things it has to say, because leaving any one of them out is what let
+ * the same round run three times: which file, that the work was really done, and
+ * that applying it is a maintainer's job rather than something `/retry` reaches.
+ * A `/retry` here buys another job that re-derives the same blocked edit — the
+ * remedy is outside the pipeline entirely.
+ */
+const blockedNote = (dropped: readonly string[]): readonly string[] => {
+  if (dropped.length === 0) return []
+  return [
+    '',
+    `I wrote a fix, but it touches ${dropped.map((path) => `\`${path}\``).join(', ')} — which this pipeline's ` +
+      'token cannot push, so it was left out of the commit rather than discarding everything else with it.',
+    '',
+    'Apply it by hand, or grant the GitHub App the `workflows` permission. Replying `/retry` will not help: ' +
+      'another round reaches the same edit and drops it again.',
+  ]
+}
+
+/**
+ * What a round that left checks red says about why.
+ *
+ * "I changed nothing" is only true of a round that wrote nothing. A round whose
+ * fix was dropped changed plenty and delivered none of it, and telling that
+ * maintainer the agent sat on its hands sends them looking for the wrong
+ * problem — the note above has already said where the fix went.
+ */
+const stillRedNote = (commit: RoundCommit): string => {
+  if (commit.pushed)
+    return 'I could not get every check green. The pull request has my partial fix; the remaining failures are below.'
+  return commit.dropped.length > 0
+    ? 'The checks below are still red, and the fix I wrote is not on the branch for the reason above.'
+    : 'I could not reproduce or fix the failure locally, so I changed nothing.'
+}
+
 const renderCiReport = (
   input: PhaseInput,
   outcome: CheckLoopResult,
-  pushed: boolean,
+  commit: RoundCommit,
   agentRunUrl: string | null,
 ): string => {
   const { state, deps } = input
+  const { pushed } = commit
   const lines = [
     `### CI fix attempt ${state.ciAttempts} of ${deps.config.maxCiAttempts}`,
     '',
     ...runLines(redRunUrl(input), agentRunUrl),
-    `- Local checks: ${outcome.passed ? '✅ green' : '❌ still red'} after ${outcome.rounds} round(s)`,
-    `- Pushed a fix: ${pushed ? 'yes' : 'no — nothing changed'}`,
+    verdictLine(outcome, pushed),
+    pushedLine(commit),
+    ...blockedNote(commit.dropped),
   ]
 
   if (!outcome.passed) {
     lines.push(
       '',
-      pushed
-        ? 'I could not get every check green. The pull request has my partial fix; the remaining failures are below.'
-        : 'I could not reproduce or fix the failure locally, so I changed nothing.',
+      stillRedNote(commit),
       '',
       '<details><summary>Remaining failures</summary>',
       '',

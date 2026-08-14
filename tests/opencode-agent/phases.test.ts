@@ -7,6 +7,7 @@ import { describe, expect, it } from 'bun:test'
 
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { ParsedCommand } from '../../opencode-agent/src/commands.js'
+import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import type {
   InstructionsResult,
   OpenSpecDriver,
@@ -52,6 +53,7 @@ const baseState = (issueId = 42, over: Partial<AgentState> = {}): AgentState => 
   ciAttempts: 0,
   ciBudgetReported: false,
   reviewAttempts: 0,
+  ciBlockedPaths: [],
   changedLines: 0,
   stepsDone: 0,
   changeName: null,
@@ -304,6 +306,7 @@ const planningState = (over: Partial<AgentState> = {}): AgentState => ({
   ciAttempts: 0,
   ciBudgetReported: false,
   reviewAttempts: 0,
+  ciBlockedPaths: [],
   changedLines: 0,
   stepsDone: 0,
   changeName: CHANGE,
@@ -685,7 +688,7 @@ describe('handleReview · pushes what the loop merged', () => {
     const built = reviewInput(true)
     // What the loop actually leaves behind: its merge is already committed, so
     // there is nothing for `commitAll` to stage.
-    built.input.deps.git.commitAll = (): Promise<null> => Promise.resolve(null)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
     const heads = queued(['before', 'after'])
     built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
 
@@ -697,7 +700,7 @@ describe('handleReview · pushes what the loop merged', () => {
 
   it('pushes nothing when the loop changed nothing at all', async () => {
     const built = reviewInput(true)
-    built.input.deps.git.commitAll = (): Promise<null> => Promise.resolve(null)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
     built.input.deps.git.headSha = (): Promise<string> => Promise.resolve('same')
 
     await handleReview(built.input)
@@ -707,7 +710,7 @@ describe('handleReview · pushes what the loop merged', () => {
 
   it('pushes each fix as the loop publishes it, not only at the end', async () => {
     const built = reviewInput(true)
-    built.input.deps.git.commitAll = (): Promise<null> => Promise.resolve(null)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
     const heads = queued(['start', 'fix-1', 'fix-2', 'fix-2'])
     built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
     built.input.deps.runReview = async (_plan: string, onFixMerged?: () => void): Promise<ReviewRunResult> => {

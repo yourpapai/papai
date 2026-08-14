@@ -7,15 +7,15 @@ import { describe, expect, test } from 'bun:test'
 
 import { buildCommitRepairPrompt, commitWithRepair } from '../../opencode-agent/src/commit-repair.js'
 import type { CommitRejection } from '../../opencode-agent/src/commit-repair.js'
-import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
 import { diffGuardError } from '../../opencode-agent/src/errors.js'
+import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import { GitError } from '../../opencode-agent/src/git.js'
 import { createLogger } from '../../opencode-agent/src/logger.js'
 import { createEnvelope } from '../../opencode-agent/src/prompts.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
 
 const ISSUE = 240
-const TOTALS: StagedTotals = { files: 3, lines: 42 }
+const TOTALS: CommitOutcome = { kind: 'committed', totals: { files: 3, lines: 42 }, dropped: [] }
 
 const log = createLogger({ level: 'error', sink: () => {} })
 
@@ -52,7 +52,7 @@ const refusal = (stderr = HOOK_OUTPUT, stdout = ''): GitError => {
 const flaky = (
   refusals: number,
   error: GitError = refusal(),
-): { commit: () => Promise<StagedTotals | null>; attempts: number[] } => {
+): { commit: () => Promise<CommitOutcome>; attempts: number[] } => {
   const state = { left: refusals }
   const attempts: number[] = []
   return {
@@ -89,7 +89,7 @@ describe('commitWithRepair', () => {
     const repairs: number[] = []
 
     const committed = await commitWithRepair({
-      commit: () => Promise.resolve(null),
+      commit: () => Promise.resolve({ kind: 'clean' } as const),
       repair: (_rejection, round) => {
         repairs.push(round)
         return Promise.resolve()
@@ -99,7 +99,7 @@ describe('commitWithRepair', () => {
       issue: ISSUE,
     })
 
-    expect(committed).toBeNull()
+    expect(committed).toEqual({ kind: 'clean' })
     expect(repairs).toEqual([])
   })
 
