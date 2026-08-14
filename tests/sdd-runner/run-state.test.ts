@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { appendEvent } from '../../sdd-runner/src/events.js'
+import type { DepthProfile } from '../../sdd-runner/src/events.js'
 import type { ReplayState } from '../../sdd-runner/src/replay.js'
 import { ROUND_CAPS } from '../../sdd-runner/src/review-model.js'
 import {
@@ -18,6 +19,7 @@ import {
   resolveRoundCap,
   saveRunState,
 } from '../../sdd-runner/src/run-state.js'
+import type { PersistedRunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
 
@@ -138,6 +140,22 @@ describe('roundCap', () => {
     await expect(loadRunState(workDir, created.runId)).rejects.toThrow(/state\.json/u)
   })
 })
+
+function createSeeded(workDir: string): PersistedRunState {
+  return {
+    runId: 'seeded-run',
+    repoRoot: '/repo',
+    workDir,
+    changeName: 'add-thing',
+    stage: 'review' as const,
+    depth: null as DepthProfile | null,
+    round: 0,
+    gate: null,
+    status: 'running' as const,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }
+}
 
 describe('deriveResumePoint', () => {
   it('resumes at the gate when gate-pending, preserving mode and round', async () => {
@@ -265,6 +283,77 @@ describe('deriveResumePoint', () => {
     }
     const arts = artifacts({ proposal: 'done', specs: 'done', review: 'done', tasks: 'done' })
     expect(deriveResumePoint(state, arts, converged).stage).toBe('gate')
+  })
+
+  it('resumes at decompose when a settled review left tasks.md missing with no final gate presented (task 3.1)', () => {
+    const workDir = makeWorkDir()
+    const settled: ReplayState = {
+      ...emptyReplay,
+      lastVerdict: {
+        round: 3,
+        verdict: 'open',
+        counts: { blocker: 0, material: 1, nitpick: 0 },
+        resolved: 2,
+        dismissed: 1,
+      },
+      gate: { mode: 'early', version: 1, answered: true },
+    }
+    const state = {
+      ...createSeeded(workDir),
+      depth: 'M' as const,
+      stage: 'review' as const,
+      round: 3,
+      gate: null,
+    }
+    const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'blocked' })
+    expect(deriveResumePoint(state, arts, settled)).toMatchObject({ stage: 'decompose', round: 3 })
+  })
+
+  it('resumes at atomicity when tasks.md exists at depth != S but the atomicity report is absent (task 3.1)', () => {
+    const workDir = makeWorkDir()
+    const settled: ReplayState = {
+      ...emptyReplay,
+      lastVerdict: {
+        round: 2,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 1 },
+        resolved: 1,
+        dismissed: 0,
+      },
+    }
+    const state = {
+      ...createSeeded(workDir),
+      depth: 'M' as const,
+      stage: 'decompose' as const,
+      round: 2,
+      gate: null,
+    }
+    const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'done' })
+    expect(deriveResumePoint(state, arts, settled)).toMatchObject({ stage: 'atomicity', round: 2 })
+  })
+
+  it('keeps gate-pending for a run whose final gate was presented (pin, task 3.1)', () => {
+    const workDir = makeWorkDir()
+    const presented: ReplayState = {
+      ...emptyReplay,
+      lastVerdict: {
+        round: 2,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+        resolved: 0,
+        dismissed: 0,
+      },
+      gate: { mode: 'final', version: 1, answered: false },
+    }
+    const state = {
+      ...createSeeded(workDir),
+      depth: 'M' as const,
+      stage: 'gate' as const,
+      round: 2,
+      gate: { mode: 'final' as const, version: 1 },
+    }
+    const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'done' })
+    expect(deriveResumePoint(state, arts, presented)).toMatchObject({ stage: 'gate', round: 2 })
   })
 })
 

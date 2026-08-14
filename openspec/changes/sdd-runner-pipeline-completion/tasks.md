@@ -27,10 +27,10 @@ Test-first throughout: failing test before the implementation it covers.
 
 ## 3. Resume covers post-review stages (Decision 3)
 
-- [ ] 3.1 Add failing tests in `tests/sdd-runner/run-state.test.ts` for `deriveResumePoint`: missing `tasks.md` with no final gate presented → `decompose`; present `tasks.md` with depth ≠ S and no atomicity report → `atomicity`; presented final gate → `gate-pending` (pin existing). Verify: `bun test tests/sdd-runner/run-state.test.ts` (red)
-- [ ] 3.2 Implement the new resume-point derivation (artifact/sidecar-evidence based, no new persisted fields) until 3.1 is green. Verify: `bun test tests/sdd-runner/run-state.test.ts`
-- [ ] 3.3 Add a failing test in `tests/sdd-runner/orchestrator.test.ts`: `runResume` re-enters at decompose (or atomicity) and continues to the final gate, sourcing the review result via `readReviewResultFromSidecars`; the `not supported yet` throw is gone for these stages. Verify: `bun test tests/sdd-runner/orchestrator.test.ts` (red)
-- [ ] 3.4 Implement the `runResume` stage dispatch until 3.3 is green. Verify: `bun test tests/sdd-runner/orchestrator.test.ts && bun run sdd-runner:typecheck`
+- [x] 3.1 Add failing tests in `tests/sdd-runner/run-state.test.ts` for `deriveResumePoint`: missing `tasks.md` with no final gate presented → `decompose`; present `tasks.md` with depth ≠ S and no atomicity report → `atomicity`; presented final gate → `gate-pending` (pin existing). Verify: `bun test tests/sdd-runner/run-state.test.ts` (red)
+- [x] 3.2 Implement the new resume-point derivation (artifact/sidecar-evidence based, no new persisted fields) until 3.1 is green. Verify: `bun test tests/sdd-runner/run-state.test.ts`
+- [x] 3.3 Add a failing test in `tests/sdd-runner/orchestrator.test.ts`: `runResume` re-enters at decompose (or atomicity) and continues to the final gate, sourcing the review result via `readReviewResultFromSidecars`; the `not supported yet` throw is gone for these stages. Verify: `bun test tests/sdd-runner/orchestrator.test.ts` (red)
+- [x] 3.4 Implement the `runResume` stage dispatch until 3.3 is green. Verify: `bun test tests/sdd-runner/orchestrator.test.ts && bun run sdd-runner:typecheck`
 
 ## 4. Gate copy states consequences (Decision 4)
 
