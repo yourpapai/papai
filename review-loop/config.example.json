@@ -5,8 +5,10 @@
   "maxNoProgressRounds": 2,
   "agentTimeoutMs": 600000,
   "buildTimeoutMs": 600000,
+  "runTimeoutMs": 0,
   "poolSize": 3,
   "checkCommand": "bun check:full",
+  "commitAuthor": { "name": "review-loop[bot]", "email": "review-loop@users.noreply.github.com" },
   "reviewer": {
     "model": "ollama-cloud/kimi-k2.6:cloud",
     "extraArgs": [],

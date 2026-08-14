@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { withDeadline } from '../../opencode-agent/src/deadline.js'
 import {
   msToDeadline,
+  reviewBudget,
   timeForAnotherPhase,
   timeForAnotherStep,
   turnTimeoutMs,
@@ -29,6 +30,7 @@ const MINUTE = 60_000
 
 const budget = (overrides: Partial<TimeBudgetConfig> = {}): TimeBudgetConfig => ({
   agentTimeoutMs: 30 * MINUTE,
+  reviewTimeoutMs: 6 * 60 * MINUTE,
   jobDeadlineMs: NOW + 90 * MINUTE,
   teardownReserveMs: 3 * MINUTE,
   wrapUpMs: 2 * MINUTE,
@@ -161,5 +163,50 @@ describe('turnTimeoutMs', () => {
     const budgetLeft = turnTimeoutMs(budget(), NOW + 90 * MINUTE)
 
     await expect(withDeadline(forever, budgetLeft, () => new Error('out of time'))).rejects.toThrow('out of time')
+  })
+})
+
+describe('reviewBudget', () => {
+  test('hands the loop what is left of the job, not one turn’s cap', () => {
+    // The defect this replaced: the review loop was bounded by `turnTimeoutMs`,
+    // so a phase that legitimately runs for hours was killed at the 90 minutes
+    // that bound *one model turn* — with two of the job's five hours unspent.
+    const config = budget({ agentTimeoutMs: 90 * MINUTE, jobDeadlineMs: NOW + 300 * MINUTE })
+
+    expect(reviewBudget(config, NOW).hardMs).toBe((300 - 3) * MINUTE)
+  })
+
+  test('holds a wrap-up slice back, so the loop stops before it is killed', () => {
+    const config = budget({ jobDeadlineMs: NOW + 300 * MINUTE })
+    const { hardMs, softMs } = reviewBudget(config, NOW)
+
+    // The soft bound is the one the loop is given; the hard one is the kill that
+    // follows if it does not honour it, and the gap is what publishing, writing
+    // the summary and printing it costs.
+    expect(hardMs - softMs).toBe(2 * MINUTE)
+  })
+
+  test('falls back to its own cap when the job has no deadline at all', () => {
+    // Every `--event-path` run: there is no job clock to divide up, so the
+    // configured review cap stands alone.
+    const config = budget({ jobDeadlineMs: null, reviewTimeoutMs: 4 * 60 * MINUTE })
+
+    expect(reviewBudget(config, NOW).hardMs).toBe(4 * 60 * MINUTE)
+  })
+
+  test('never exceeds its own cap, however much of the job is left', () => {
+    const config = budget({ jobDeadlineMs: NOW + 300 * MINUTE, reviewTimeoutMs: 60 * MINUTE })
+
+    expect(reviewBudget(config, NOW).hardMs).toBe(60 * MINUTE)
+  })
+
+  test('clamps to a positive bound inside the reserve, rather than disabling itself', () => {
+    // `withDeadline` treats a non-positive budget as "no bound at all", so a job
+    // already inside its teardown reserve would hand the loop an *unbounded* run
+    // — the exact opposite of what the shrinking is for.
+    const { hardMs, softMs } = reviewBudget(budget({ jobDeadlineMs: NOW + MINUTE }), NOW)
+
+    expect(hardMs).toBeGreaterThan(0)
+    expect(softMs).toBeGreaterThan(0)
   })
 })

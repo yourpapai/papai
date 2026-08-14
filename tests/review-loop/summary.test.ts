@@ -117,6 +117,13 @@ describe('buildSummary verdict', () => {
     expect(summary).toContain('Review loop finished: done — 5 issues: 3 fixed, 1 needs human, 1 rejected.')
   })
 
+  test('a stopped run says so before anything else, and keeps the counts', () => {
+    const ledger = ledgerOf(makeRecord('closed'), makeRecord('discovered'))
+    const summary = buildSummary(inputOf({ doneReason: 'stopped', rounds: 1, ledger }))
+    expect(summary).toContain('Review loop stopped early')
+    expect(summary).toContain('1 open')
+  })
+
   test('issues remaining leads with the open count', () => {
     const ledger = ledgerOf(makeRecord('closed'), makeRecord('verified'), makeRecord('discovered'))
     const summary = buildSummary(inputOf({ doneReason: 'no_progress', rounds: 3, ledger }))

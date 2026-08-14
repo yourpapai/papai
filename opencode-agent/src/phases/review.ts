@@ -185,6 +185,12 @@ const reviewMessage = (issueNumber: number): string =>
 
 const REVIEW_LINE: Record<ReviewOutcome, (review: ReviewRunResult) => string> = {
   passed: () => '✅ clean',
+  // Deliberately not ❌. The loop reached the budget the pipeline gave it and
+  // stopped **itself** — between two issues, with the fix in hand committed,
+  // built, merged and published — so nothing was killed and nothing was lost
+  // that it had finished. The old report for this run read "timed out and was
+  // killed", which sent a maintainer looking for work that is on the branch.
+  stopped: () => '⏱️ stopped early at its time budget; what it had fixed is on the branch',
   // The exit code alone was the whole verdict here, and it is the one thing
   // nobody can act on: a build gate, a runner deadline, a missing binary and an
   // unresolvable plan path are all `exited 1`. `describeFailure` names which,
@@ -237,7 +243,7 @@ const renderReport = (
   // Said once more, in its own line, when the loop broke *and* kept something:
   // the verdict above reads as the loop's own summary of the review, and a
   // reader who sees findings on the branch needs to know they are partial.
-  if (review.outcome === 'failed' && applied) {
+  if ((review.outcome === 'failed' || review.outcome === 'stopped') && applied) {
     lines.push('', 'The loop stopped early — what it had already fixed is on the branch, the rest is not.')
   }
 

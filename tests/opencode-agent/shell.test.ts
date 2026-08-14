@@ -69,6 +69,19 @@ describe('runCommand', () => {
     expect(result.exitCode).not.toBe(0)
   })
 
+  test('kills with the signal the caller asked for, so a handler cannot absorb it', async () => {
+    // The review loop installs a SIGTERM handler and treats it as "finish the fix
+    // in hand and stop" — right for a Ctrl-C, and wrong for the deadline behind
+    // its own soft stop, where finishing one more fixer would outlive the runner.
+    const result = await runCommand(['bash', '-c', 'trap "" TERM; sleep 5'], {
+      cwd: process.cwd(),
+      timeoutMs: 100,
+      killSignal: 'SIGKILL',
+    })
+
+    expect(result.timedOut).toBe(true)
+  }, 10_000)
+
   test('leaves timedOut false for a command that exited on its own', async () => {
     const result = await runCommand(['bash', '-c', 'exit 3'], { cwd: process.cwd(), timeoutMs: 60_000 })
 

@@ -239,10 +239,12 @@ export { DEFAULT_CHECKS, parseChecks } from './check-spec.js'
 // none: they moved to `config-clock-values.ts` because their prose outgrew this
 // file, not because callers should start naming a second module for them.
 export {
+  DEFAULT_REVIEW_TIMEOUT_MS,
   DEFAULT_TURN_TIMEOUT_MS,
   EPOCH_MS_RANGE,
   JOB_MINUTES_RANGE,
   RESERVE_RANGE,
+  REVIEW_TIMEOUT_RANGE,
   TIMEOUT_RANGE,
   WRAP_UP_RANGE,
 } from './config-clock-values.js'

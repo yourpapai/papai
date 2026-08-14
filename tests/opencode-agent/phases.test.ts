@@ -727,6 +727,23 @@ describe('handleReview · pushes what the loop merged', () => {
     expect(built.pushes()).toEqual(['push:agent/issue-42', 'push:agent/issue-42'])
   })
 
+  it('reports a loop that stopped at its budget as stopped, not as a failure', async () => {
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
+    const heads = queued(['before', 'after'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+    built.input.deps.runReview = (): Promise<ReviewRunResult> =>
+      Promise.resolve({ outcome: 'stopped', summary: 'summary', exitCode: 75, failure: null })
+
+    const outcome = await handleReview(built.input)
+
+    // The old report for this run said "❌ … timed out and was killed", which is
+    // wrong twice: nothing was killed, and its findings are on the branch.
+    expect(outcome.comment).not.toContain('❌')
+    expect(outcome.comment).toContain('stopped early')
+    expect(outcome.comment).toContain('pushed')
+  })
+
   it('names why a failed loop failed, in the report and on the pull request', async () => {
     const built = reviewInput(false, "the loop's own build gate failed at the end of the run")
 

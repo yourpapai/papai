@@ -440,12 +440,13 @@ cover it.
 
 ## What bounds a run
 
-Six bounds, each on a different kind of runaway.
+Seven bounds, each on a different kind of runaway.
 
 | Bound            | Where                                                                                                          | What it stops                                                                                                      |
 | ---------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Prompt size      | `prompt-budget.ts`                                                                                             | 12k characters of thread, and 12k across _all_ failing checks, per prompt                                          |
 | Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                                                   | A turn that never answers — and one merely too slow, whose work is kept                                            |
+| Review duration  | `AGENT_REVIEW_TIMEOUT_MS`, applied in `time-budget.ts`                                                         | A review loop outliving its job — it is told to stop first, and killed only if it does not                         |
 | Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                                                       | A job dying on `timeout-minutes` with nothing posted at all                                                        |
 | Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                                                                 | A single 429 or 5xx failing the phase                                                                              |
 | Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, and a tree the repository will never accept |
@@ -1501,6 +1502,7 @@ cannot drift.
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                | Files one commit may carry                             |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                              | Lines one commit may change                            |
 | `AGENT_TIMEOUT_MS`                         | no       | `5400000`                            | Timeout for one model turn, and for each subprocess    |
+| `AGENT_REVIEW_TIMEOUT_MS`                  | no       | `14400000`                           | Ceiling on the whole review loop, which is not a turn  |
 | `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline              | Epoch ms this job began; the workflow's first step     |
 | `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset here; `300` from the workflow  | The job's own ceiling, shared with `timeout-minutes:`  |
 | `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                             | Held back from the job so a time stop can report       |
@@ -1549,6 +1551,21 @@ pipeline reports every check as failing; `AGENT_REVIEW_MAX_ROUNDS=90071992547409
 is a positive integer that removes the bound the knob exists to impose. A
 rejection names the range, so a legitimate need for a wider one is not a
 guessing game.
+
+`AGENT_REVIEW_TIMEOUT_MS` accepts 60 000–86 400 000 (a minute to a day) and is a
+separate knob from `AGENT_TIMEOUT_MS` because the two bound different things and
+want opposite sizes. That one caps a single uninterrupted model turn, and cannot
+grow without losing its second job — a cap large enough never to interrupt real
+work no longer detects a turn that will never answer. The review loop is a
+**phase**: rounds of reviewer, fixer, inspector and build-gate subprocesses, each
+already bounded by `AGENT_TIMEOUT_MS` individually. Bounding the loop by the turn
+cap killed it at ninety minutes with one finding of six fixed and three hours of
+job left. What a run on a runner actually reaches is the job's own clock, since
+`reviewBudget` hands the loop whatever is left of it less the teardown reserve;
+this value caps that, and stands alone only where there is no job deadline at all.
+The loop is given the budget **minus `AGENT_WRAP_UP_MS`** and stops itself there —
+between two issues, with the fix in hand committed, built, merged and published —
+and the full budget is the kill that backs that up.
 
 The three job-clock knobs are read the same way and are worth reading together.
 `AGENT_JOB_STARTED_MS` and `AGENT_JOB_TIMEOUT_MINUTES` have **no defaults**,

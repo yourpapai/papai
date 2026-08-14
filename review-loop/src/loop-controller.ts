@@ -3,20 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { agentWritePath, runAgent, type SpawnFn } from './agent-runner.js'
 import type { ShellExecFn } from './build-checker.js'
-import type { ReviewLoopConfig } from './config.js'
-import {
-  applyMatchedIssues,
-  closeUnreportedFixed,
-  saveIssueLedger,
-  type IssueLedger,
-  type LedgerIssueRecord,
-} from './issue-ledger.js'
-import { matchIssues } from './issue-matcher.js'
+import { saveIssueLedger, type IssueLedger, type LedgerIssueRecord } from './issue-ledger.js'
 import { processPendingIssues } from './issue-processor.js'
-import { ReviewerIssuesSchema } from './issue-schema.js'
-import type { IssueMatch, ReviewerIssue } from './issue-schema.js'
 import {
   emitLoopEnd,
   emitMatchComplete,
@@ -24,35 +13,43 @@ import {
   emitRoundStart,
   emitRoundSummary,
   newCollector,
-  tallyPhaseMs,
   tallyReviewerIssues,
-  tallyUsage,
   type RoundCollector,
 } from './loop-trace.js'
-import type { ProgressReporter } from './progress-log.js'
-import { buildReviewPrompt } from './prompt-templates.js'
-import { saveRunState, type RunState } from './run-state.js'
-import type { RoundMetric, TraceLogger } from './trace-log.js'
+import {
+  filterActionable,
+  runMatchAndRecord,
+  runReviewStep,
+  TERMINAL_STATUSES,
+  type RoundAgentDeps,
+} from './review-round.js'
+import { saveRunState } from './run-state.js'
+import type { StopController } from './stop-controller.js'
+import type { RoundMetric } from './trace-log.js'
 import type { WorkerPool } from './worker-pool.js'
 
-const TERMINAL_STATUSES = new Set<LedgerIssueRecord['status']>(['rejected', 'already_fixed', 'needs_human'])
-
-const MATCHER_RECENT_ROUNDS = 2
-
-export interface ReviewLoopDeps {
-  config: ReviewLoopConfig
-  runState: RunState
-  ledger: IssueLedger
-  spawn: SpawnFn
+export interface ReviewLoopDeps extends RoundAgentDeps {
   exec: ShellExecFn
-  log: ProgressReporter
-  trace: TraceLogger
   pool: WorkerPool
   inspect: boolean
+  /**
+   * The run's own bound, when it has one — see `stop-controller.ts`.
+   *
+   * Consulted between rounds and between issues, which are the two boundaries
+   * where everything in hand is committed and the ledger is on disk. Optional,
+   * because a run with no budget and no signal handler behaves exactly as it did
+   * before this existed.
+   */
+  stop?: StopController
 }
 
 export interface ReviewLoopResult {
-  doneReason: 'clean' | 'max_rounds' | 'no_progress'
+  /**
+   * `stopped` is not a failure and not a verdict on the code: it says the run
+   * reached a bound outside itself — its budget, or a signal — with findings it
+   * had not got to. Every other reason means the loop decided it was finished.
+   */
+  doneReason: 'clean' | 'max_rounds' | 'no_progress' | 'stopped'
   rounds: number
   ledger: IssueLedger['snapshot']
   metrics?: RoundMetric[]
@@ -107,102 +104,6 @@ function finishRound(
   return terminalResult(deps, doneReason, round, metrics)
 }
 
-function filterActionable(records: readonly LedgerIssueRecord[]): readonly LedgerIssueRecord[] {
-  return records.filter((r) => !TERMINAL_STATUSES.has(r.status))
-}
-
-function emitFoundEvents(
-  deps: ReviewLoopDeps,
-  matches: readonly IssueMatch[],
-  roundRecords: readonly LedgerIssueRecord[],
-): void {
-  for (const match of matches) {
-    if (match.existingId !== null) {
-      continue
-    }
-    const record = roundRecords[match.newIssueIndex]
-    if (record === undefined) {
-      continue
-    }
-    deps.log.issue?.({
-      type: 'found',
-      id: record.id,
-      severity: record.issue.severity,
-      file: record.issue.file,
-      line: record.issue.lineStart,
-      title: record.issue.title,
-    })
-  }
-}
-
-async function runReviewStep(deps: ReviewLoopDeps, collector: RoundCollector): Promise<readonly ReviewerIssue[]> {
-  deps.log.log(`[round ${deps.runState.currentRound}/${deps.config.maxRounds}] Reviewing...`)
-
-  const reviewStart = Date.now()
-  const reviewResult = await runAgent({
-    spawn: deps.spawn,
-    model: deps.config.reviewer.model,
-    cwd: deps.runState.worktreePath,
-    prompt: buildReviewPrompt(
-      deps.runState.planPath,
-      agentWritePath(deps.runState.worktreePath, deps.runState.issuesPath),
-    ),
-    outputPath: deps.runState.issuesPath,
-    outputSchema: ReviewerIssuesSchema,
-    label: 'reviewer',
-    reporter: deps.log,
-    logPath: deps.runState.logPath,
-    extraArgs: deps.config.reviewer.extraArgs,
-    timeoutMs: deps.config.reviewer.timeoutMs ?? deps.config.agentTimeoutMs,
-  })
-  tallyPhaseMs(collector, 'review', Date.now() - reviewStart)
-  tallyUsage(collector, reviewResult.usage)
-
-  return reviewResult.value.issues
-}
-
-async function runMatchAndRecord(
-  deps: ReviewLoopDeps,
-  round: number,
-  newIssues: readonly ReviewerIssue[],
-  collector: RoundCollector,
-): Promise<{ records: readonly LedgerIssueRecord[]; newCount: number; matchedCount: number }> {
-  const existingRecords = Object.values(deps.ledger.snapshot.issues).filter((r) => {
-    if (!TERMINAL_STATUSES.has(r.status)) return true
-    return round - r.latestSeenRound <= MATCHER_RECENT_ROUNDS
-  })
-
-  const matchStart = Date.now()
-  const { matches, usage } = await matchIssues({
-    spawn: deps.spawn,
-    newIssues,
-    existingRecords,
-    outputPath: deps.runState.matchesPath,
-    logPath: deps.runState.logPath,
-    cwd: deps.runState.worktreePath,
-    model: deps.config.matcher.model,
-    extraArgs: deps.config.matcher.extraArgs,
-    reporter: deps.log,
-    timeoutMs: deps.config.matcher.timeoutMs ?? deps.config.agentTimeoutMs,
-  })
-  tallyPhaseMs(collector, 'match', Date.now() - matchStart)
-  tallyUsage(collector, usage)
-
-  const newCount = matches.filter((m) => m.existingId === null).length
-  const matchedCount = matches.length - newCount
-
-  const roundRecords = applyMatchedIssues(deps.ledger, round, newIssues, matches)
-  closeUnreportedFixed(
-    deps.ledger,
-    roundRecords.map((r) => r.id),
-  )
-  await saveIssueLedger(deps.ledger)
-
-  emitFoundEvents(deps, matches, roundRecords)
-
-  return { records: roundRecords, newCount, matchedCount }
-}
-
 function runProcessPendingIssues(
   deps: ReviewLoopDeps,
   round: number,
@@ -220,6 +121,7 @@ function runProcessPendingIssues(
       trace: deps.trace,
       pool: deps.pool,
       inspect: deps.inspect,
+      stop: deps.stop,
     },
     round,
     collector,
@@ -262,22 +164,52 @@ async function runRound(round: number, deps: ReviewLoopDeps, metrics: RoundMetri
   await saveRunState(deps.runState)
   await saveIssueLedger(deps.ledger)
 
-  if (newNoProgress >= deps.config.maxNoProgressRounds) {
-    deps.log.log(`[done] no_progress`)
-    return finishRound(deps, metrics, round, matched.newCount, collector, 'no_progress')
-  }
-
-  if (round >= deps.config.maxRounds) {
-    deps.log.log(`[done] max_rounds`)
-    return finishRound(deps, metrics, round, matched.newCount, collector, 'max_rounds')
-  }
+  const ending = roundEnding(deps, round, newNoProgress)
+  if (ending !== null) return finishRound(deps, metrics, round, matched.newCount, collector, ending)
 
   pushRoundMetric(deps, metrics, round, matched.newCount, collector)
   return runRound(round + 1, deps, metrics)
 }
 
+/**
+ * Which ending this round is, or `null` for "run another one".
+ *
+ * The stop is asked **first**, and that order is the whole reason this is one
+ * function rather than three ifs. A round the stop cut short fixed fewer issues
+ * than it found, which is indistinguishable from a fixer that could not fix them
+ * — so asked second, it would be reported as `no_progress`, a verdict on the
+ * fixer, when what happened was a verdict on the clock.
+ */
+function roundEnding(
+  deps: ReviewLoopDeps,
+  round: number,
+  noProgressRounds: number,
+): ReviewLoopResult['doneReason'] | null {
+  const stopped = deps.stop?.requested() ?? null
+  if (stopped !== null) {
+    deps.log.log(`[done] stopped — ${stopped === 'budget' ? 'out of time for this run' : 'asked to stop'}`)
+    return 'stopped'
+  }
+  if (noProgressRounds >= deps.config.maxNoProgressRounds) {
+    deps.log.log(`[done] no_progress`)
+    return 'no_progress'
+  }
+  if (round >= deps.config.maxRounds) {
+    deps.log.log(`[done] max_rounds`)
+    return 'max_rounds'
+  }
+  return null
+}
+
 export function runReviewLoop(deps: ReviewLoopDeps): Promise<ReviewLoopResult> {
   const nextRound = deps.runState.currentRound + 1
+  // A stop that is already asked for when the run is entered — a resume onto a
+  // runner with minutes left, a signal during startup — must not open a reviewer
+  // whose findings nothing will have time to fix.
+  if ((deps.stop?.requested() ?? null) !== null) {
+    emitLoopEnd(deps.trace, deps.runState.currentRound, 'stopped', [])
+    return Promise.resolve(terminalResult(deps, 'stopped', deps.runState.currentRound, []))
+  }
   if (nextRound > deps.config.maxRounds) {
     emitLoopEnd(deps.trace, deps.runState.currentRound, 'max_rounds', [])
     return Promise.resolve(terminalResult(deps, 'max_rounds', deps.runState.currentRound, []))

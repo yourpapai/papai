@@ -7,8 +7,13 @@ import { describe, expect, test } from 'bun:test'
 
 import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
 import type { LogFields, Logger } from '../../opencode-agent/src/logger.js'
-import { buildReviewLoopConfig, describeFailure, runReviewLoop } from '../../opencode-agent/src/review-runner.js'
-import type { ReviewLoopSettings } from '../../opencode-agent/src/review-runner.js'
+import {
+  buildReviewLoopConfig,
+  describeFailure,
+  REVIEW_STOPPED_EXIT_CODE,
+  runReviewLoop,
+} from '../../opencode-agent/src/review-runner.js'
+import type { ReviewLoopSettings, ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { CommandResult, CommandRunner, RunOptions } from '../../opencode-agent/src/shell.js'
 
 /** A logger that keeps what it was told, so "it reached the CI log" is assertable. */
@@ -30,6 +35,8 @@ const settings = (overrides: Partial<ReviewLoopSettings> = {}): ReviewLoopSettin
   maxRounds: 2,
   poolSize: 1,
   agentTimeoutMs: 1_000,
+  softStopMs: 60_000,
+  commitAuthor: { name: 'agent[bot]', email: 'agent@example.invalid' },
   ...overrides,
 })
 
@@ -202,5 +209,72 @@ describe('describeFailure', () => {
 describe('buildReviewLoopConfig', () => {
   test('asks the loop to publish each fix, so a run that dies later keeps them', () => {
     expect(buildReviewLoopConfig(settings())['mergeEachFix']).toBe(true)
+  })
+})
+
+describe('buildReviewLoopConfig hand-over', () => {
+  test('gives the loop the identity its commits are made under', () => {
+    // Without it, `git commit` inside the loop's worktree fails outright on a
+    // runner: "Author identity unknown". Run 31803380299 lost an accepted
+    // high-severity fix that way, recorded as `needs_human` with git's advice
+    // pasted into the reasoning.
+    const config = buildReviewLoopConfig(
+      settings({ commitAuthor: { name: 'opencode-agent[bot]', email: 'agent@users.noreply.github.com' } }),
+    )
+
+    expect(config['commitAuthor']).toEqual({
+      name: 'opencode-agent[bot]',
+      email: 'agent@users.noreply.github.com',
+    })
+  })
+
+  test('hands over the soft budget, so the loop stops before the kill', () => {
+    const config = buildReviewLoopConfig(settings({ softStopMs: 120_000 }))
+
+    expect(config['runTimeoutMs']).toBe(120_000)
+  })
+
+  test('lets no single subprocess outlive the loop’s own budget', () => {
+    // The stop is honoured between issues, so a fixer already running when it
+    // fires is waited for. Bounding each agent by the run's remaining budget is
+    // what keeps that wait from being longer than the run itself.
+    const config = buildReviewLoopConfig(settings({ agentTimeoutMs: 90 * 60_000, softStopMs: 10 * 60_000 }))
+
+    expect(config['agentTimeoutMs']).toBe(10 * 60_000)
+    expect(config['fixer']).toMatchObject({ timeoutMs: 10 * 60_000 })
+  })
+
+  test('still publishes each fix as it lands', () => {
+    // The other half of not losing work to a stop: a fix on the loop's own
+    // branch dies with the runner's checkout.
+    expect(buildReviewLoopConfig(settings())['mergeEachFix']).toBe(true)
+  })
+})
+
+describe('runReviewLoop outcomes', () => {
+  const runWith = (commandResult: CommandResult): Promise<ReviewRunResult> =>
+    runReviewLoop({
+      settings: settings(),
+      plan: '- [ ] one',
+      run: () => Promise.resolve(commandResult),
+      env: {},
+      log: recordingLogger().logger,
+      timeoutMs: 1_000,
+      writeInputs: () => Promise.resolve({ planPath: '/tmp/plan.md', configPath: '/tmp/config.json' }),
+    })
+
+  test('reads the loop’s own stop as `stopped`, which is neither passed nor failed', async () => {
+    const review = await runWith(result({ exitCode: REVIEW_STOPPED_EXIT_CODE, stdout: '[review-loop] stopped: …' }))
+
+    expect(review.outcome).toBe('stopped')
+    // Not a failure: nothing broke, and what the loop had fixed is published.
+    expect(review.failure).toBeNull()
+  })
+
+  test('still reads any other non-zero exit as a failure', async () => {
+    const review = await runWith(result({ exitCode: 1, stderr: 'Final build check failed' }))
+
+    expect(review.outcome).toBe('failed')
+    expect(review.failure).not.toBeNull()
   })
 })

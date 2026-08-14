@@ -56,6 +56,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,
+  reviewTimeoutMs: 4000,
   jobDeadlineMs: null,
   teardownReserveMs: 180_000,
   wrapUpMs: 120_000,

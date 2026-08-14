@@ -475,6 +475,10 @@ jobs:
           AGENT_REVIEW_HINT_LINES: ${{ vars.AGENT_REVIEW_HINT_LINES }}
           AGENT_MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS }}
           AGENT_TIMEOUT_MS: ${{ vars.AGENT_TIMEOUT_MS }}
+          # The review loop's own ceiling, apart from the turn cap above because it
+          # bounds a phase rather than a turn: whatever this says, the loop gets the
+          # smaller of it and what is left of the job's clock.
+          AGENT_REVIEW_TIMEOUT_MS: ${{ vars.AGENT_REVIEW_TIMEOUT_MS }}
           # The job's own clock, as the two facts that describe it. The start comes
           # from the step above — nothing in the payload says when a job began — and
           # the ceiling is the *same* expression the job's `timeout-minutes:` reads,

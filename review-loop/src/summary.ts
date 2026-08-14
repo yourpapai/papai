@@ -106,6 +106,14 @@ function breakdownParts(counts: IssueCounts): string[] {
 
 function buildVerdict(input: SummaryInput, counts: IssueCounts, total: number): string {
   const breakdown = breakdownParts(counts).join(', ')
+  // First, and in its own sentence, because every other line below describes a
+  // run that decided it was finished. This one was stopped with findings it
+  // never reached, and a reader who takes the counts for a final verdict draws
+  // exactly the wrong conclusion from them.
+  if (input.doneReason === 'stopped') {
+    const suffix = breakdown === '' ? '' : ` (${breakdown})`
+    return `Review loop stopped early: out of time after ${plural(input.rounds, 'round')} — ${counts.open} open${suffix}.`
+  }
   if (counts.open > 0) {
     const suffix = breakdown === '' ? '' : ` (${breakdown})`
     return `Review loop finished: issues remaining — ${counts.open} open${suffix}.`

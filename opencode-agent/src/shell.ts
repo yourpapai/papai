@@ -32,6 +32,16 @@ export interface RunOptions {
   env?: Record<string, string>
   timeoutMs?: number
   /**
+   * What the deadline kills with. `SIGTERM` by default, as Node's own does.
+   *
+   * `SIGKILL` is for a child that **handles** `SIGTERM`, which the review loop
+   * does: it reads one as "finish the fix in hand and stop", correct for a
+   * Ctrl-C and wrong for the deadline sitting behind its own soft stop — the
+   * loop has already been told to stop, and a graceful handler here buys one
+   * more fixer subprocess with the runner's last minutes.
+   */
+  killSignal?: NodeJS.Signals
+  /**
    * Called with each complete line the child writes, as it writes it.
    *
    * The buffered `CommandResult` is still assembled — this is an addition, not a
@@ -140,6 +150,7 @@ export const runCommand: CommandRunner = (argv, options) =>
       cwd: options.cwd,
       env: options.env === undefined ? process.env : { ...process.env, ...options.env },
       timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      killSignal: options.killSignal,
       shell: false,
     })
 
