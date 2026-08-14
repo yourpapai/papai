@@ -147,6 +147,13 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
     stdout: (line) => {
       stdoutLines.push(line)
     },
+    // Without this, presentGateAt falls back to buildResolveCost(), which fetches the
+    // models.dev pricing table over the network. That made every test in this file depend on
+    // a live HTTP round trip finishing inside bun's 5s timeout — and when it did not, the
+    // afterEach cleanup deleted the run directory while the run was still going, so the real
+    // failure surfaced as an unrelated ENOENT on events.ndjson. A unit test has no business
+    // reaching the network; the pricing fetch itself is covered hermetically in pricing.test.ts.
+    resolveCost: () => null,
   }
   return { deps, repoRoot, changeName, changeDir, taskFile, rendered, stdoutLines, spawnOrder }
 }
@@ -677,6 +684,8 @@ describe('presentGateAt change digest', () => {
         exec: () => Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }),
         cwd: repoRoot,
       }),
+      // Keeps presentGateAt off the network — see the note in makeFixture.
+      resolveCost: () => null,
       now: () => new Date('2026-01-01T00:00:10.000Z'),
     }
     const ctx: StageContext = {

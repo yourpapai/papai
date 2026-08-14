@@ -9,7 +9,21 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
-const MODELS_DEV_URL = 'https://metrics.dev/api.json'
+/**
+ * The models.dev pricing table. Exported so a test can pin the domain: this was previously
+ * `metrics.dev`, a parked domain that answers 200 with an HTML lander. `JSON.parse` then threw,
+ * `loadDb` swallowed it and returned `{}`, and every gate reported its cost as unknown — a
+ * failure with no error anywhere. No test caught it because `pricing.test.ts` injects
+ * `fetchImpl` and never exercises this constant.
+ */
+export const MODELS_DEV_URL = 'https://models.dev/api.json'
+
+/**
+ * Bound on the pricing fetch. Cost is decoration on a gate summary; a slow or hanging host must
+ * never hold up presenting the gate itself, and an unbounded `fetch` here would do exactly that.
+ */
+export const MODELS_DEV_FETCH_TIMEOUT_MS = 10_000
+
 const CACHE_TTL_MS = 60 * 60 * 1000
 
 export const CostSchema = z.object({
@@ -20,7 +34,14 @@ export const CostSchema = z.object({
 })
 export type Cost = z.infer<typeof CostSchema>
 
-const ModelEntrySchema = z.object({ cost: CostSchema })
+/**
+ * `cost` is optional because 419 of the entries models.dev currently publishes have no cost at
+ * all (local and open-weight models, mostly). Requiring it made a single unpriced model reject
+ * the ENTIRE database — `loadDb` caught the parse error and returned `{}`, so every price
+ * silently resolved to unknown. `resolveCost` was already written to skip `cost === undefined`,
+ * so the schema was simply stricter than its only consumer.
+ */
+const ModelEntrySchema = z.object({ cost: CostSchema.optional() })
 const ProviderSchema = z.object({ models: z.record(z.string(), ModelEntrySchema) })
 export const ModelsDevDbSchema = z.record(z.string(), ProviderSchema)
 export type ModelsDevDb = z.infer<typeof ModelsDevDbSchema>
@@ -84,7 +105,7 @@ export function resolveCost(modelId: string, db: ModelsDevDb): ResolvedCost | nu
 }
 
 async function defaultFetch(): Promise<string> {
-  const response = await fetch(MODELS_DEV_URL)
+  const response = await fetch(MODELS_DEV_URL, { signal: AbortSignal.timeout(MODELS_DEV_FETCH_TIMEOUT_MS) })
   return response.text()
 }
 

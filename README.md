@@ -612,6 +612,7 @@ compatibility mode.
 
 ```bash
 bun test:mutate:changed          # PR gate: changed files vs base branch
+bun test:mutate:changed --no-score-cache  # ...re-measuring everything, ignoring carried-over scores
 bun test:mutate                  # full paired run over the configured scope
 bun test:mutate --update-baseline  # full run; ratchet scripts/mutation/baseline.json up
 bun test:mutate:seed --scores=reports/paired/scores.json  # re-apply persisted scores (CI commit step; lost-seed recovery)
@@ -624,6 +625,12 @@ via `scripts/mutation/coverage-map.ts`, with the companion as fallback). The CI
 **blocking per-file ratchet** on PRs: a changed file fails only if it has a
 recorded entry in `scripts/mutation/baseline.json` and its score drops below it;
 files with no recorded entry (new or never-baselined) are not regressions. The
+`mutation-testing` job **gates the whole branch diff on every push** but only
+**measures** the files whose content changed since the previous run — the rest
+carry over scores recorded earlier on the branch, guarded by a content
+fingerprint over the source, its candidate tests and the toolchain. So a drop
+introduced in one commit keeps failing later pushes that touch nothing near it.
+Pass `--no-score-cache` to re-measure everything. The
 `mutation-baseline` job seeds the baseline from files changed since the previous
 master commit (`test:mutate:changed --base=HEAD~1 --update-baseline`; broad
 scope, `seedMerge` preserves existing entries — not a full run) on push to

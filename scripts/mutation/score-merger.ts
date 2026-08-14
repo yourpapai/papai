@@ -74,8 +74,12 @@ const hasMutants = (file: StrykerFileReport): file is { readonly mutants: readon
 const reportMutants = (report: StrykerReport): readonly StrykerMutant[] =>
   Object.values(report.files ?? {}).flatMap((file) => (hasMutants(file) ? file.mutants : []))
 
-export const mergeReports = (reports: readonly StrykerReport[]): MergedScore => {
-  const counts = reports.flatMap(reportMutants).reduce(addMutant, ZERO_COUNTS)
+/**
+ * Derive `scored` + `score` from raw counts. Shared by {@link mergeReports} and
+ * {@link combineMergedScores} so a single-file run and a run assembled from several
+ * files can never disagree about what a population of mutants scores.
+ */
+const finalizeCounts = (counts: Counts): MergedScore => {
   const scored = counts.killed + counts.survived + counts.noCoverage + counts.timeout
   return {
     ...counts,
@@ -83,6 +87,9 @@ export const mergeReports = (reports: readonly StrykerReport[]): MergedScore => 
     score: scored === 0 ? 0 : (counts.killed + counts.timeout) / scored,
   }
 }
+
+export const mergeReports = (reports: readonly StrykerReport[]): MergedScore =>
+  finalizeCounts(reports.flatMap(reportMutants).reduce(addMutant, ZERO_COUNTS))
 
 // Ids of mutants that count AGAINST the mutation score: Survived and NoCoverage
 // both sit in the `scored` denominator without contributing kills, so a residual
@@ -95,3 +102,54 @@ export const survivingMutantIds = (report: StrykerReport): string[] =>
       ? [mutant.id]
       : [],
   )
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+
+const COUNT_FIELDS = [
+  'killed',
+  'survived',
+  'noCoverage',
+  'timeout',
+  'compileError',
+  'ignored',
+  'runtimeError',
+  'pending',
+  'total',
+] as const
+
+const addCounts = (a: Counts, b: MergedScore): Counts => ({
+  killed: a.killed + b.killed,
+  survived: a.survived + b.survived,
+  noCoverage: a.noCoverage + b.noCoverage,
+  timeout: a.timeout + b.timeout,
+  compileError: a.compileError + b.compileError,
+  ignored: a.ignored + b.ignored,
+  runtimeError: a.runtimeError + b.runtimeError,
+  pending: a.pending + b.pending,
+  total: a.total + b.total,
+})
+
+/**
+ * Pool independently-measured files into one score. Sums the raw counts and recomputes
+ * the ratio — it does NOT average the per-file `score` values, which would weight a
+ * two-mutant file the same as a two-hundred-mutant one. Used when a run's verdict is
+ * assembled from files measured now plus files whose scores were carried over from an
+ * earlier run, so the aggregate reads exactly as if every file had been measured together.
+ */
+export const combineMergedScores = (scores: readonly MergedScore[]): MergedScore =>
+  finalizeCounts(scores.reduce(addCounts, ZERO_COUNTS))
+
+/**
+ * Shape guard for a `MergedScore` deserialized from an on-disk cache. Every count and the
+ * score itself must be a finite number: a cache file is JSON written by an earlier run in
+ * an environment we no longer control, and a non-finite score would silently poison every
+ * comparison the ratchet makes against it.
+ */
+export const isMergedScore = (value: unknown): value is MergedScore => {
+  if (!isRecord(value)) return false
+  return [...COUNT_FIELDS, 'scored', 'score'].every((field) => {
+    const entry = value[field]
+    return typeof entry === 'number' && Number.isFinite(entry)
+  })
+}

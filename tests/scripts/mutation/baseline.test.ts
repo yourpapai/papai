@@ -137,6 +137,35 @@ describe('resolveRatchet', () => {
     const perFile = [score('src/a.ts', {})]
     expect(resolveRatchet(perFile, baseline)).toEqual({ exitCode: 0, regressions: [] })
   })
+
+  /**
+   * Pins the input type. A score carried over from an earlier run has no `testFiles`,
+   * `configPath` or `reportPath` — only `sourceFile` and `merged`. If this signature ever
+   * narrows to `PairedRunFileResult`, the incremental gate would have to fabricate those
+   * paths to reuse anything, which is exactly the lie this test exists to prevent.
+   */
+  test('judges a bare PerFileScore, with no run-artifact paths attached', () => {
+    const bare: PerFileScore = {
+      sourceFile: 'src/carried-over.ts',
+      merged: {
+        killed: 1,
+        survived: 1,
+        noCoverage: 0,
+        timeout: 0,
+        compileError: 0,
+        ignored: 0,
+        runtimeError: 0,
+        pending: 0,
+        total: 2,
+        scored: 2,
+        score: 0.5,
+      },
+    }
+    expect(resolveRatchet([bare], { 'src/carried-over.ts': 0.9 })).toEqual({
+      exitCode: 1,
+      regressions: [{ sourceFile: 'src/carried-over.ts', score: 0.5, threshold: 0.9 }],
+    })
+  })
 })
 
 describe('isBaselineMap', () => {

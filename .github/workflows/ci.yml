@@ -256,10 +256,19 @@ jobs:
     # so the value is sized off the worst run seen rather than the median — tight
     # enough that a wedged Stryker worker pool cannot sit for six hours, loose
     # enough that a genuinely large PR is not failed for being large.
+    #
+    # Carried-over scores make the typical push far cheaper, but they do not lower this
+    # ceiling: a cold cache (first push, evicted entry, changed toolchain) still measures
+    # every file in the branch diff, so the worst case is unchanged and so is the bound.
     timeout-minutes: 90
     # Blocking PR gate. A changed file fails only if it has a recorded baseline
     # entry in scripts/mutation/baseline.json and drops below it. Files new to
     # scope (first-touch) warn and are seeded by the master mutation-baseline job.
+    #
+    # The gate judges the WHOLE branch diff on every run, but measures only the files whose
+    # content changed since the previous run — the rest carry over scores recorded earlier on
+    # this branch. So a drop introduced in one commit keeps failing later pushes that touch
+    # nothing near it, which is the property the cache steps below exist to preserve.
     if: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -270,10 +279,37 @@ jobs:
           bun-version: 1.3.13
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      # The key only decides WHICH blob to fetch. Every entry inside it is guarded by a
+      # content fingerprint at read time, so restoring an older, racing, or unrelated cache
+      # can only cost runtime — it can never let a stale score into the verdict. Cache
+      # entries are immutable per key, hence unique-key-write plus prefix-restore; run_id
+      # keeps the key unique even when the same sha is re-run.
+      - name: Restore carried-over mutation scores
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            reports/paired/score-cache.json
+            reports/paired/coverage-map.cache.json
+          key: mutation-scores-v1-${{ github.event.pull_request.number }}-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: mutation-scores-v1-${{ github.event.pull_request.number }}-
       - name: Run paired mutation testing on changed files
         env:
           BASE_REF: ${{ github.base_ref || 'master' }}
         run: bun test:mutate:changed --base="origin/$BASE_REF"
+      - name: Save carried-over mutation scores
+        # `always()` is load-bearing, not hygiene. A FAILING run must still persist the scores
+        # it measured: otherwise the next push re-measures the regressed file from scratch and
+        # the gate forgets the drop that made this run red, which is the one thing incremental
+        # measurement must never do. `continue-on-error` covers fork PRs, whose read-only token
+        # cannot write a cache — a save that fails must never turn a green gate red.
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            reports/paired/score-cache.json
+            reports/paired/coverage-map.cache.json
+          key: mutation-scores-v1-${{ github.event.pull_request.number }}-${{ github.sha }}-${{ github.run_id }}
       - name: Upload per-file mutation reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
