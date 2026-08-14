@@ -635,6 +635,67 @@ describe('runGateResume', () => {
     expect(fixture.spawnOrder).not.toContain('decompose-tasks.json')
   })
 
+  it('treats a nitpick-only cap-hit as converged and flows into decompose + atomicity + final gate (task 2.1)', async () => {
+    const nitpicks = [1, 2, 3, 4].map((n) => ({
+      id: `F${n}`,
+      class: 'NITPICK',
+      gap: `wording wobble ${n}`,
+      question: 'minor',
+      code_evidence_attempted: 'searched design.md',
+    }))
+    const nitpickResolutions = [1, 2, 3, 4].map((n) => ({
+      id: `F${n}`,
+      class: 'NITPICK',
+      resolution: 'dismissed',
+      justification: `cosmetic ${n}`,
+    }))
+    const rounds: Record<string, string> = {}
+    for (const round of [1, 2, 3]) {
+      rounds[`findings-${round}.json`] = JSON.stringify({ findings: nitpicks })
+      rounds[`resolutions-${round}.json`] = JSON.stringify({ resolutions: nitpickResolutions, assumptions: [] })
+    }
+    const fixture = makeFixture(rounds)
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+
+    expect(started.version).toBe(1)
+    const gate1 = fs.readFileSync(started.gateMdPath, 'utf8')
+    expect(gate1).toContain('Final gate')
+    expect(gate1).not.toContain('Early gate')
+    expect(fixture.spawnOrder).toContain('decompose-tasks.json')
+    expect(fixture.spawnOrder).toContain('atomicity.json')
+    expect(fs.existsSync(path.join(fixture.changeDir, 'tasks.md'))).toBe(true)
+
+    const state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.gate).toEqual({ mode: 'final', version: 1 })
+    expect(state.status).toBe('running')
+  })
+
+  it('still presents an early gate and halts when a BLOCKER is open at cap (task 2.3)', async () => {
+    const blockerFinding = {
+      id: 'B1',
+      class: 'BLOCKER',
+      gap: 'no rollback path',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const blockerResolution = { id: 'B1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' }
+    const rounds: Record<string, string> = {}
+    for (const round of [1, 2, 3]) {
+      rounds[`findings-${round}.json`] = JSON.stringify({ findings: [blockerFinding] })
+      rounds[`resolutions-${round}.json`] = JSON.stringify({ resolutions: [blockerResolution], assumptions: [] })
+    }
+    rounds['findings-skeptic-3.json'] = JSON.stringify({ findings: [blockerFinding] })
+    const fixture = makeFixture(rounds)
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+
+    const gate1 = fs.readFileSync(started.gateMdPath, 'utf8')
+    expect(gate1).toContain('Early gate')
+    expect(fixture.spawnOrder).not.toContain('decompose-tasks.json')
+    const state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.gate).toEqual({ mode: 'early', version: 1 })
+    expect(fs.existsSync(path.join(fixture.changeDir, 'tasks.md'))).toBe(false)
+  })
+
   it('marks the run aborted on an ABORT gate response', async () => {
     const fixture = makeFixture()
     const started = await runStart(fixture.deps, {

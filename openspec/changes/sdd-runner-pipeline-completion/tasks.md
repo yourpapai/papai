@@ -21,9 +21,9 @@ Test-first throughout: failing test before the implementation it covers.
 
 ## 2. Severity-based convergence (Decision 2)
 
-- [ ] 2.1 Add a failing test in `tests/sdd-runner/orchestrator.test.ts`: a cap-hit review result with empty `openBlockers` and empty `openMaterial` (nitpick-only) flows into decompose → atomicity → final gate without presenting an early gate. Verify: `bun test tests/sdd-runner/orchestrator.test.ts` (red)
-- [ ] 2.2 Implement the severity check in `runPostReviewToGate` until 2.1 is green. Verify: `bun test tests/sdd-runner/orchestrator.test.ts`
-- [ ] 2.3 Add explicit coverage that a cap-hit with any open MATERIAL or BLOCKER still presents an early gate and halts (pin the unchanged behavior). Verify: `bun test tests/sdd-runner/orchestrator.test.ts`
+- [x] 2.1 Add a failing test in `tests/sdd-runner/orchestrator.test.ts`: a cap-hit review result with empty `openBlockers` and empty `openMaterial` (nitpick-only) flows into decompose → atomicity → final gate without presenting an early gate. Verify: `bun test tests/sdd-runner/orchestrator.test.ts` (red)
+- [x] 2.2 Implement the severity check in `runPostReviewToGate` until 2.1 is green. Verify: `bun test tests/sdd-runner/orchestrator.test.ts`
+- [x] 2.3 Add explicit coverage that a cap-hit with any open MATERIAL or BLOCKER still presents an early gate and halts (pin the unchanged behavior). Verify: `bun test tests/sdd-runner/orchestrator.test.ts`
 
 ## 3. Resume covers post-review stages (Decision 3)
 

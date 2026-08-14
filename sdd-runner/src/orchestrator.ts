@@ -113,8 +113,25 @@ function runPostReviewToGate(
   version: number = 1,
 ): Promise<RunStartResult> {
   const { deps, state, ctx, agent } = env
+  if (isSeverityConverged(reviewResult)) {
+    return runPostConvergenceTail({ deps, state, ctx, agent, depth, reviewResult, version })
+  }
   if (reviewResult.outcome === 'cap-hit') return presentGateAt(deps, state, ctx, reviewResult, version, 'early')
   return runPostConvergenceTail({ deps, state, ctx, agent, depth, reviewResult, version })
+}
+
+/**
+ * Severity-based convergence (orchestrator-level verdict): a cap-hit round
+ * with zero open BLOCKERs and zero open MATERIALs — nitpicks only, each
+ * resolved or dismissed — is treated as converged and flows into decompose
+ * without an early gate. Blockers/materials still force the early gate.
+ */
+function isSeverityConverged(reviewResult: ReviewLoopResult): boolean {
+  return (
+    reviewResult.outcome === 'cap-hit' &&
+    reviewResult.openBlockers.length === 0 &&
+    reviewResult.openMaterial.length === 0
+  )
 }
 
 async function runPlanningStages(env: PipelineEnv): Promise<{ depth: DepthProfile; reviewResult: ReviewLoopResult }> {
