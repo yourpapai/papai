@@ -10,7 +10,12 @@ import {
   type AdapterDeps,
   type SpawnRequest,
 } from '../../context-vault-indexer/adapters/opencode.js'
-import { LOCK_FILE_NAME, type LockDeps, type LockFileSystem } from '../../context-vault-indexer/lock.js'
+import {
+  LOCK_FILE_NAME,
+  refreshIndexerHeartbeat,
+  type LockDeps,
+  type LockFileSystem,
+} from '../../context-vault-indexer/lock.js'
 
 type FakeFs = LockFileSystem & { files: Map<string, string> }
 
@@ -48,6 +53,8 @@ const lockRecord = (pid: number, heartbeatAt: number): string => JSON.stringify(
 
 const readLockJson = (fs: FakeFs): unknown => JSON.parse(fs.files.get(LOCK_PATH) ?? '')
 
+const DAEMON_PID = 5555
+
 const makeDeps = (fs: FakeFs, lockOverrides: Partial<LockDeps> = {}): { deps: AdapterDeps; spawns: SpawnRequest[] } => {
   const spawns: SpawnRequest[] = []
   return {
@@ -56,6 +63,7 @@ const makeDeps = (fs: FakeFs, lockOverrides: Partial<LockDeps> = {}): { deps: Ad
       lock: makeLockDeps(fs, lockOverrides),
       spawnDetached: (request: SpawnRequest) => {
         spawns.push(request)
+        return DAEMON_PID
       },
       pid: 4242,
     },
@@ -70,8 +78,10 @@ describe('opencode adapter activation', () => {
     const result = activateOpencodeAdapter({ stateDir: '/state', daemonEntry: DAEMON_ENTRY }, deps)
 
     expect(result).toBe('spawned')
-    expect(spawns).toEqual([{ command: ['bun', 'run', DAEMON_ENTRY], options: { detached: true, stdio: 'ignore' } }])
-    expect(readLockJson(fs)).toEqual({ pid: 4242, heartbeatAt: 100_000 })
+    expect(spawns).toEqual([
+      { command: ['bun', 'run', DAEMON_ENTRY, '/state'], options: { detached: true, stdio: 'ignore' } },
+    ])
+    expect(readLockJson(fs)).toEqual({ pid: DAEMON_PID, heartbeatAt: 100_000 })
   })
 
   test('a live lock held by another daemon is a no-op: no spawn, no lock mutation', () => {
@@ -93,7 +103,7 @@ describe('opencode adapter activation', () => {
 
     expect(result).toBe('spawned')
     expect(spawns).toHaveLength(1)
-    expect(readLockJson(fs)).toEqual({ pid: 4242, heartbeatAt: 100_000 })
+    expect(readLockJson(fs)).toEqual({ pid: DAEMON_PID, heartbeatAt: 100_000 })
   })
 
   test('two activations through the same lock seam spawn exactly one daemon', () => {
@@ -107,5 +117,40 @@ describe('opencode adapter activation', () => {
     expect(first).toBe('spawned')
     expect(second).toBe('already-running')
     expect(spawns).toHaveLength(1)
+  })
+
+  test('a daemon that keeps refreshing its heartbeat survives past the TTL between activations', () => {
+    let clock = 100_000
+    const fs = makeFakeFs()
+    const { deps, spawns } = makeDeps(fs, { now: () => clock, isPidAlive: () => true })
+
+    const first = activateOpencodeAdapter({ stateDir: '/state', daemonEntry: DAEMON_ENTRY }, deps)
+    // The daemon ticks past the original heartbeat's TTL and refreshes the lock.
+    clock = 125_000
+    refreshIndexerHeartbeat(LOCK_PATH, DAEMON_PID, deps.lock)
+    // The next activation lands after the first heartbeat would have expired.
+    clock = 130_000
+    const second = activateOpencodeAdapter({ stateDir: '/state', daemonEntry: DAEMON_ENTRY }, deps)
+
+    expect(first).toBe('spawned')
+    expect(second).toBe('already-running')
+    expect(spawns).toHaveLength(1)
+    expect(readLockJson(fs)).toEqual({ pid: DAEMON_PID, heartbeatAt: 125_000 })
+  })
+
+  test('the lock stays held after the short-lived plugin process exits, while the daemon lives', () => {
+    const fs = makeFakeFs()
+    const { deps, spawns } = makeDeps(fs, { isPidAlive: () => true })
+
+    const first = activateOpencodeAdapter({ stateDir: '/state', daemonEntry: DAEMON_ENTRY }, deps)
+    refreshIndexerHeartbeat(LOCK_PATH, DAEMON_PID, deps.lock)
+    // The plugin process (pid 4242) is gone; only the daemon's pid is alive.
+    const later = makeDeps(fs, { isPidAlive: (pid: number) => pid === DAEMON_PID })
+    const second = activateOpencodeAdapter({ stateDir: '/state', daemonEntry: DAEMON_ENTRY }, later.deps)
+
+    expect(first).toBe('spawned')
+    expect(second).toBe('already-running')
+    expect(spawns).toHaveLength(1)
+    expect(later.spawns).toHaveLength(0)
   })
 })

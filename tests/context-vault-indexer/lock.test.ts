@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   acquireIndexerLock,
+  handoffIndexerLock,
   LOCK_FILE_NAME,
   refreshIndexerHeartbeat,
   type LockDeps,
@@ -164,5 +165,29 @@ describe('context-vault-indexer lock', () => {
     refreshIndexerHeartbeat(LOCK_PATH, 4242, makeDeps({ fs, now: () => 105_000 }))
 
     expect(readLockJson(fs)).toEqual({ pid: 1111, heartbeatAt: 100_000 })
+  })
+
+  test('handoffIndexerLock transfers the record from the acquirer to the daemon pid', () => {
+    const fs = makeFakeFs({ [LOCK_PATH]: lockRecord(4242, 100_000) })
+
+    handoffIndexerLock(LOCK_PATH, 4242, 5555, makeDeps({ fs, now: () => 101_000 }))
+
+    expect(readLockJson(fs)).toEqual({ pid: 5555, heartbeatAt: 101_000 })
+  })
+
+  test('handoffIndexerLock does not steal a lock held by another pid', () => {
+    const fs = makeFakeFs({ [LOCK_PATH]: lockRecord(1111, 100_000) })
+
+    handoffIndexerLock(LOCK_PATH, 4242, 5555, makeDeps({ fs, now: () => 101_000 }))
+
+    expect(readLockJson(fs)).toEqual({ pid: 1111, heartbeatAt: 100_000 })
+  })
+
+  test('handoffIndexerLock does not resurrect a missing lock', () => {
+    const fs = makeFakeFs()
+
+    handoffIndexerLock(LOCK_PATH, 4242, 5555, makeDeps({ fs, now: () => 101_000 }))
+
+    expect(fs.files.has(LOCK_PATH)).toBe(false)
   })
 })

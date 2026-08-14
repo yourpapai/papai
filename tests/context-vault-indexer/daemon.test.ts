@@ -16,6 +16,7 @@ import {
   type DaemonFs,
   type PushCall,
 } from '../../context-vault-indexer/daemon.js'
+import { LOCK_FILE_NAME, type LockDeps, type LockFileSystem } from '../../context-vault-indexer/lock.js'
 
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
 
@@ -123,6 +124,28 @@ const PushBodySchema = z.object({
 })
 
 const bodyOf = (call: PushCall): z.infer<typeof PushBodySchema> => PushBodySchema.parse(JSON.parse(call.body))
+
+type FakeLockFs = LockFileSystem & { files: Map<string, string>; writes: string[] }
+
+const makeFakeLockFs = (seed: Record<string, string> = {}): FakeLockFs => {
+  const files = new Map<string, string>(Object.entries(seed))
+  const writes: string[] = []
+  return {
+    files,
+    writes,
+    readLock: (path: string) => files.get(path) ?? null,
+    createExclusive: () => false,
+    write: (path: string, contents: string) => {
+      writes.push(contents)
+      files.set(path, contents)
+    },
+    remove: (path: string) => {
+      files.delete(path)
+    },
+  }
+}
+
+const readLockRecordAt = (fs: FakeLockFs, path: string): unknown => JSON.parse(fs.files.get(path) ?? '')
 
 describe('context-vault-indexer daemon scanOnce', () => {
   test('a fresh scan pushes every markdown file grouped by change directory', async () => {
@@ -311,5 +334,55 @@ describe('runDaemon', () => {
     expect(scans()).toBe(2)
     expect(pushes).toHaveLength(1)
     expect(sleeps).toEqual([5_000])
+  })
+
+  test('refreshes the lock heartbeat under its own pid on every tick', async () => {
+    const LOCK_PATH = `/state/${LOCK_FILE_NAME}`
+    const lockFs = makeFakeLockFs({ [LOCK_PATH]: JSON.stringify({ pid: 5555, heartbeatAt: 0 }) })
+    let clock = 100_000
+    const heartbeats: number[] = []
+    const countingLockFs: LockFileSystem = {
+      ...lockFs,
+      write: (path: string, contents: string) => {
+        heartbeats.push(clock)
+        lockFs.write(path, contents)
+      },
+    }
+    const lock: LockDeps = { fs: countingLockFs, isPidAlive: () => true, now: () => clock, ttlMs: 10_000 }
+
+    const controller = new AbortController()
+    const { fs, scans } = makeAbortingFs(controller, 2)
+    const base = makeDeps(fs)
+    const sleepAndAdvance = (ms: number): Promise<void> => {
+      clock += ms
+      return base.deps.sleep(ms)
+    }
+    const deps: DaemonDeps = {
+      ...base.deps,
+      sleep: sleepAndAdvance,
+      heartbeat: { lockPath: LOCK_PATH, pid: 5555, lock },
+    }
+
+    await runDaemon(CONFIG, deps, { intervalMs: 5_000, signal: controller.signal })
+
+    expect(scans()).toBe(2)
+    expect(heartbeats).toEqual([100_000, 105_000])
+    expect(readLockRecordAt(lockFs, LOCK_PATH)).toEqual({ pid: 5555, heartbeatAt: 105_000 })
+  })
+
+  test('does not touch a lock held by another pid', async () => {
+    const LOCK_PATH = `/state/${LOCK_FILE_NAME}`
+    const foreign = JSON.stringify({ pid: 1111, heartbeatAt: 0 })
+    const lockFs = makeFakeLockFs({ [LOCK_PATH]: foreign })
+    const lock: LockDeps = { fs: lockFs, isPidAlive: () => true, now: () => 100_000, ttlMs: 10_000 }
+
+    const controller = new AbortController()
+    const { fs } = makeAbortingFs(controller, 1)
+    const base = makeDeps(fs)
+    const deps: DaemonDeps = { ...base.deps, heartbeat: { lockPath: LOCK_PATH, pid: 5555, lock } }
+
+    await runDaemon(CONFIG, deps, { intervalMs: 5_000, signal: controller.signal })
+
+    expect(lockFs.files.get(LOCK_PATH)).toBe(foreign)
   })
 })

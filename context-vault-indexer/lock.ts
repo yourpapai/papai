@@ -66,3 +66,14 @@ export function refreshIndexerHeartbeat(lockPath: string, pid: number, deps: Loc
   if (existing === null || existing.pid !== pid) return
   deps.fs.write(lockPath, serialize(pid, deps.now()))
 }
+
+/**
+ * Transfers a held lock record from the short-lived acquiring process to the
+ * long-lived daemon process. Only rewrites when the record is still held by
+ * `fromPid`, so a reclaimed lock is never resurrected.
+ */
+export function handoffIndexerLock(lockPath: string, fromPid: number, toPid: number, deps: LockDeps): void {
+  const existing = parseRecord(deps.fs.readLock(lockPath))
+  if (existing === null || existing.pid !== fromPid) return
+  deps.fs.write(lockPath, serialize(toPid, deps.now()))
+}

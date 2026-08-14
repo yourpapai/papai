@@ -57,10 +57,14 @@ scenario(
     const fs = nodeLockFs()
     const spawns: SpawnRequest[] = []
     const lockBase = { fs, isPidAlive: (): boolean => true, now: (): number => 100_000, ttlMs: 10_000 }
+    // Each activation's plugin pid is short-lived; the spawned daemon gets its
+    // own pid and takes over the lock record via handoff.
+    const daemonPidOf = (pluginPid: number): number => pluginPid + 10_000
     const deps = (pid: number): AdapterDeps => ({
       lock: lockBase,
       spawnDetached: (request) => {
         spawns.push(request)
+        return daemonPidOf(pid)
       },
       pid,
     })
@@ -76,15 +80,19 @@ scenario(
     expect(spawns[0]?.options).toEqual({ detached: true, stdio: 'ignore' })
 
     const lockOnDisk = readLockRecord(stateDir)
-    expect(lockOnDisk.pid).toBe(1111)
+    expect(lockOnDisk.pid).toBe(daemonPidOf(1111))
 
     // The daemon dies and its heartbeat expires; the next activation reclaims and spawns.
-    const deadLock = { ...lockBase, isPidAlive: (pid: number): boolean => pid !== 1111, now: (): number => 200_000 }
+    const deadLock = {
+      ...lockBase,
+      isPidAlive: (pid: number): boolean => pid !== daemonPidOf(1111),
+      now: (): number => 200_000,
+    }
     const third = activateOpencodeAdapter(input, { ...deps(3333), lock: deadLock })
 
     expect(third).toBe('spawned')
     expect(spawns).toHaveLength(2)
     const reclaimed = readLockRecord(stateDir)
-    expect(reclaimed.pid).toBe(3333)
+    expect(reclaimed.pid).toBe(daemonPidOf(3333))
   },
 )

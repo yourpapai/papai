@@ -7,6 +7,8 @@ import { createHash } from 'node:crypto'
 
 import { z } from 'zod'
 
+import { refreshIndexerHeartbeat, type LockDeps } from './lock.js'
+
 export type DaemonFs = {
   /** Relative paths of every `*.md` file under dir, sorted. */
   listMarkdownFiles(dir: string): string[]
@@ -31,12 +33,24 @@ export type DaemonConfig = {
   token: string
 }
 
+/**
+ * Lock ownership seam: the daemon holds the singleton lock under its own pid
+ * and rewrites `heartbeatAt` on every scan tick, so the lock outlives the
+ * short-lived plugin process that spawned it.
+ */
+export type DaemonHeartbeat = {
+  lockPath: string
+  pid: number
+  lock: LockDeps
+}
+
 export type DaemonDeps = {
   fs: DaemonFs
   push(url: string, bearer: string, body: string): Promise<PushOutcome>
   sleep(ms: number): Promise<void>
   backoffBaseMs?: number
   maxPushAttempts?: number
+  heartbeat?: DaemonHeartbeat
 }
 
 export type ScanResult = {
@@ -179,6 +193,9 @@ export function runDaemon(config: DaemonConfig, deps: DaemonDeps, options: RunDa
       if (options.signal.aborted) {
         resolve()
         return
+      }
+      if (deps.heartbeat) {
+        refreshIndexerHeartbeat(deps.heartbeat.lockPath, deps.heartbeat.pid, deps.heartbeat.lock)
       }
       void scanOnce(config, deps)
         .then(() => (options.signal.aborted ? undefined : deps.sleep(options.intervalMs)))
