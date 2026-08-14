@@ -370,6 +370,32 @@ describe('context-vault spec-store', () => {
     expect(second?.changedFiles).toEqual([{ path: 'a/proposal.md', kind: 'proposal', text: '# P v2\n' }])
   })
 
+  test('a pure-deletion push signals summarization with the deleted paths', () => {
+    const enqueueSummarization = mock((input: EnqueueSummarizationInput): void => {
+      void input
+    })
+    const deps: ApplyPushDeps = { enqueueSummarization }
+    applyPush(
+      CTX_A,
+      {
+        repo: 'papai',
+        changeName: 'x',
+        files: [
+          { path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# P\n' },
+          { path: 'a/design.md', kind: 'design', hash: 'h2', mtime: 1, text: '# D\n' },
+        ],
+        deletions: [],
+      },
+      deps,
+    )
+    applyPush(CTX_A, { repo: 'papai', changeName: 'x', files: [], deletions: ['a/design.md'] }, deps)
+
+    expect(enqueueSummarization).toHaveBeenCalledTimes(2)
+    const second = enqueueSummarization.mock.calls[1]?.[0]
+    expect(second?.changedFiles).toEqual([])
+    expect(second?.deletedPaths).toEqual(['a/design.md'])
+  })
+
   test('a re-push with identical hashes enqueues no summarization', () => {
     const enqueueSummarization = mock((input: EnqueueSummarizationInput): void => {
       void input

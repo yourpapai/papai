@@ -120,11 +120,13 @@ const presetSummary = (specId: string, oneLine: string, summary: string): void =
 const enqueueInput = (
   changedFiles: EnqueueSummarizationInput['changedFiles'],
   changeName = 'x',
+  deletedPaths: string[] = [],
 ): EnqueueSummarizationInput => ({
   configContextId: CTX,
   specId: `papai:${changeName}`,
   changeName,
   changedFiles,
+  deletedPaths,
 })
 
 describe('context-vault summarizer', () => {
@@ -252,6 +254,48 @@ describe('context-vault summarizer', () => {
     const prompt = generateText.mock.calls[0]?.[0].prompt
     expect(prompt).toContain('PROPOSAL V2 BODY')
     expect(prompt).toContain('DESIGN V1 BODY')
+  })
+
+  test('a deletion push drops the deleted path from a pending job and cancels it when nothing remains', async () => {
+    seedSpec()
+    const generateText = mock((args: GenerateTextArgs) => {
+      void args
+      return Promise.resolve({ text: '{"one_line":"o","summary":"s"}' })
+    })
+    const { deps, fireAll, pendingCount, clearedCount } = makeDeps({ generateText })
+
+    enqueueSpecSummarization(enqueueInput([{ path: 'a/x/design.md', kind: 'design', text: 'DESIGN V1 BODY' }]), deps)
+    enqueueSpecSummarization(enqueueInput([], 'x', ['a/x/design.md']), deps)
+
+    expect(pendingCount()).toBe(0)
+    expect(clearedCount()).toBe(1)
+
+    fireAll()
+    await drainSpecSummarizations()
+    expect(generateText).not.toHaveBeenCalled()
+  })
+
+  test('a deletion push removes only the deleted path from a pending job', async () => {
+    seedSpec()
+    const generateText = mock((args: GenerateTextArgs) => {
+      void args
+      return Promise.resolve({ text: '{"one_line":"o","summary":"s"}' })
+    })
+    const { deps, fireAll } = makeDeps({ generateText })
+
+    enqueueSpecSummarization(enqueueInput([{ path: 'a/x/design.md', kind: 'design', text: 'DESIGN V1 BODY' }]), deps)
+    enqueueSpecSummarization(
+      enqueueInput([{ path: 'a/x/proposal.md', kind: 'proposal', text: 'PROPOSAL V2 BODY' }], 'x', ['a/x/design.md']),
+      deps,
+    )
+
+    fireAll()
+    await drainSpecSummarizations()
+
+    expect(generateText).toHaveBeenCalledTimes(1)
+    const prompt = generateText.mock.calls[0]?.[0].prompt
+    expect(prompt).toContain('PROPOSAL V2 BODY')
+    expect(prompt).not.toContain('DESIGN V1 BODY')
   })
 
   test('pushes for different changes schedule independent jobs', async () => {

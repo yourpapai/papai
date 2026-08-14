@@ -32,6 +32,7 @@ export interface EnqueueSummarizationInput {
   specId: string
   changeName: string
   changedFiles: readonly SummarizerFileInput[]
+  deletedPaths?: readonly string[]
 }
 
 export interface SummarizerDeps {
@@ -166,14 +167,21 @@ export function enqueueSpecSummarization(input: EnqueueSummarizationInput, deps:
   const semanticTexts = input.changedFiles.flatMap((f) =>
     SEMANTIC_KINDS.has(f.kind) && f.text !== undefined ? [[f.path, f.text] as const] : [],
   )
-  if (semanticTexts.length === 0) return
+  const deletedPaths = input.deletedPaths ?? []
+  if (semanticTexts.length === 0 && deletedPaths.length === 0) return
 
   const key = keyOf(input.configContextId, input.specId)
   const existing = pending.get(key)
   if (existing !== undefined && existing.timer !== null) existing.deps.clear(existing.timer)
 
   const texts = existing?.texts ?? new Map<string, string>()
+  for (const path of deletedPaths) texts.delete(path)
   for (const [path, text] of semanticTexts) texts.set(path, text)
+
+  if (texts.size === 0) {
+    pending.delete(key)
+    return
+  }
 
   const job: PendingJob = { input, texts, timer: null, deps }
   job.timer = deps.schedule(() => {

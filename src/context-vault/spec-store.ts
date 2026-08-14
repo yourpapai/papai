@@ -217,6 +217,18 @@ const buildAggregateInput = (
   return files
 }
 
+const maybeEnqueueSummarization = (
+  configContextId: string,
+  specId: string,
+  input: ApplyPushInput,
+  changedFiles: readonly SummarizerFileInput[],
+  deletedPaths: readonly string[],
+  deps: ApplyPushDeps,
+): void => {
+  if (changedFiles.length === 0 && deletedPaths.length === 0) return
+  deps.enqueueSummarization({ configContextId, specId, changeName: input.changeName, changedFiles, deletedPaths })
+}
+
 export function applyPush(
   configContextId: string,
   input: ApplyPushInput,
@@ -252,9 +264,7 @@ export function applyPush(
   }
   touchIndexerState(configContextId)
 
-  if (changedFiles.length > 0) {
-    mergedDeps.enqueueSummarization({ configContextId, specId, changeName: input.changeName, changedFiles })
-  }
+  maybeEnqueueSummarization(configContextId, specId, input, changedFiles, deletedPaths, mergedDeps)
 
   log.info(
     { configContextId, specId, changed: changedPaths.length, deleted: deletedPaths.length },
