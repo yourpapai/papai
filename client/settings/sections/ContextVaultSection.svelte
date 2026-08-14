@@ -83,6 +83,9 @@
   const formatEpoch = (epoch: number): string => new Date(epoch).toISOString().slice(0, 10)
 
   $effect(() => {
+    createdPlaintext = null
+    createError = null
+    listStatus = null
     void load(contextId)
   })
 </script>
