@@ -366,6 +366,44 @@ describe('context-vault-indexer daemon scanOnce', () => {
     expect(fs.savedStates).toHaveLength(0)
   })
 
+  test('archived changes keep their identity instead of collapsing into one "archive" spec', async () => {
+    const fs = makeFakeFs({
+      [`${SPEC_DIR}/archive/2026-01-01-foo/proposal.md`]: file('# Foo\n', 100),
+      [`${SPEC_DIR}/archive/2026-01-02-bar/tasks.md`]: file('- [x] done\n', 200),
+      [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha\n', 300),
+    })
+    const { deps, pushes } = makeDeps(fs)
+
+    const result = await scanOnce(CONFIG, deps)
+
+    expect(result).toEqual({ scanned: 3, pushedChanges: 3, failedChanges: 0 })
+    const names = pushes.map((call) => bodyOf(call).changeName)
+    expect(names).toEqual(['alpha', 'archive/2026-01-01-foo', 'archive/2026-01-02-bar'])
+    const foo = bodyOf(pushes[1]!)
+    expect(foo.files).toEqual([
+      {
+        path: 'archive/2026-01-01-foo/proposal.md',
+        kind: 'proposal',
+        hash: sha256('# Foo\n'),
+        mtime: 100,
+        text: '# Foo\n',
+      },
+    ])
+  })
+
+  test('a markdown file directly under archive/ has no change directory and is ignored', async () => {
+    const fs = makeFakeFs({
+      [`${SPEC_DIR}/archive/stray.md`]: file('# stray\n', 100),
+      [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha\n', 300),
+    })
+    const { deps, pushes } = makeDeps(fs)
+
+    const result = await scanOnce(CONFIG, deps)
+
+    expect(result).toEqual({ scanned: 1, pushedChanges: 1, failedChanges: 0 })
+    expect(bodyOf(pushes[0]!).changeName).toBe('alpha')
+  })
+
   test('non-markdown files and root-level files are ignored', async () => {
     const fs = makeFakeFs({
       [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha\n', 100),

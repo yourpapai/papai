@@ -74,7 +74,12 @@ const sha256Hex = (text: string): string => createHash('sha256').update(text).di
 const changeNameOf = (relPath: string): string | null => {
   const slash = relPath.indexOf('/')
   if (slash <= 0) return null
-  return relPath.slice(0, slash)
+  const first = relPath.slice(0, slash)
+  if (first !== 'archive') return first
+  const rest = relPath.slice(slash + 1)
+  const secondSlash = rest.indexOf('/')
+  if (secondSlash <= 0) return null
+  return `${first}/${rest.slice(0, secondSlash)}`
 }
 
 const kindOf = (relPath: string): string => {
