@@ -383,6 +383,25 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # The client bundles `public/` holds are gitignored, so a fresh checkout has
+      # none — and `tests/debug/` fails fast in `beforeAll` without them. Every
+      # other lane gets them for free and this one does not: `ci.yml`'s Checks job
+      # downloads the `build-output` artifact, and `check.sh` runs
+      # `ensure-client-built` before its fan-out. The agent's CI-fix loop runs each
+      # configured check as its own argv, and `DEFAULT_CHECKS` spells the test one
+      # `bun test` — bare, so neither of those paths is taken.
+      #
+      # Without this the loop reproduces failures that CI does not have, which is
+      # worse than not reproducing at all: run 31779566286 diagnosed the missing
+      # bundles as a workflow defect, wrote a fix to this very file, had it dropped
+      # at staging (a push from this token cannot carry it), and reported "nothing
+      # changed" — three times, until the pull request's ciAttempts budget was gone.
+      # The one real failing test on that branch was never looked at.
+      #
+      # The guard script no-ops when the bundles already exist, so this is ~2s.
+      - name: Build the client bundles the test check needs
+        run: bun scripts/ensure-client-built.ts
+
       # Runs the production skill loader, not a bash reimplementation of it, so
       # a checkout that is missing or has renamed a required skill fails here —
       # named — instead of silently producing a thinner prompt. Placed before
