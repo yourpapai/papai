@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { DiffLimits } from './diff-guard.js'
+
 /** Raised when the environment cannot produce a runnable configuration. */
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -73,8 +75,36 @@ export const ROUND_RANGE: IntRange = { min: 1, max: 20 }
 export const FILES_RANGE: IntRange = { min: 1, max: 5_000 }
 export const LINES_RANGE: IntRange = { min: 1, max: 1_000_000 }
 
+/** Both halves of that shape, read together because neither means anything alone. */
+export const buildDiffLimits = (env: Env): DiffLimits => ({
+  maxFiles: boundedInt(env, 'AGENT_MAX_CHANGED_FILES', 100, FILES_RANGE),
+  maxLines: boundedInt(env, 'AGENT_MAX_CHANGED_LINES', 20_000, LINES_RANGE),
+})
+
 /** Concurrent `opencode run` subprocesses one runner can actually serve. */
 export const POOL_RANGE: IntRange = { min: 1, max: 16 }
+
+/**
+ * How many of those the review loop starts by default: one, the bottom of the
+ * range above.
+ *
+ * A review worker is not one `opencode run` — it is that plus a full
+ * `AGENT_CHECK_COMMAND`, and this repository's is `bun check:full`, which fans
+ * lint, typecheck, knip, format and the whole test suite out *in parallel* on
+ * its own. Two of those on one 4-vCPU runner is the OOM `scripts/check.sh`
+ * already documents for `bun test --parallel`, and it does not merely fail the
+ * gate: it takes the runner with it. Runs 31704544065 and 31745493737 both
+ * ended with the VM gone mid-review — exit 143 and "the runner has received a
+ * shutdown signal" on the first, and on the second not even a log, because
+ * nothing was left alive to upload one. No post-mortem, no transcript, no state
+ * comment; the issue simply stops.
+ *
+ * A serial pool is slower, and that is the whole trade. Review is bounded by
+ * `AGENT_REVIEW_MAX_ROUNDS` and the job deadline, and both of those report where
+ * they stopped; a killed runner reports nothing. `AGENT_REVIEW_POOL_SIZE` opens
+ * it back up for a repository whose build gate is cheap enough to overlap.
+ */
+export const DEFAULT_REVIEW_POOL_SIZE = 1
 
 /**
  * Model tokens one issue may spend across every job it runs.

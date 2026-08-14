@@ -10,9 +10,10 @@ import { resolveReviewCommand } from './config-discovery.js'
 import {
   boundedInt,
   boundedIntOrNull,
+  buildDiffLimits,
+  DEFAULT_REVIEW_POOL_SIZE,
   DEFAULT_TURN_TIMEOUT_MS,
   EPOCH_MS_RANGE,
-  FILES_RANGE,
   JOB_MINUTES_RANGE,
   labelPrefix,
   LINES_RANGE,
@@ -275,7 +276,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     reviewCommand: resolveReviewCommand(env['AGENT_REVIEW_COMMAND'], repoRoot, existsSync),
     checks: parseChecks(env['AGENT_CHECKS']),
     reviewMaxRounds: boundedInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4, ROUND_RANGE),
-    reviewPoolSize: boundedInt(env, 'AGENT_REVIEW_POOL_SIZE', 2, POOL_RANGE),
+    reviewPoolSize: boundedInt(env, 'AGENT_REVIEW_POOL_SIZE', DEFAULT_REVIEW_POOL_SIZE, POOL_RANGE),
     agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', DEFAULT_TURN_TIMEOUT_MS, TIMEOUT_RANGE),
     jobDeadlineMs: buildJobDeadline(env),
     teardownReserveMs: boundedInt(env, 'AGENT_TEARDOWN_RESERVE_MS', 180_000, RESERVE_RANGE),
@@ -291,10 +292,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     reviewHintLines: boundedInt(env, 'AGENT_REVIEW_HINT_LINES', 200, LINES_RANGE),
     maxAttempts: boundedInt(env, 'AGENT_MAX_ATTEMPTS', 5, ROUND_RANGE),
     maxTokens: boundedInt(env, 'AGENT_MAX_TOKENS', 5_000_000, TOKEN_RANGE),
-    diffLimits: {
-      maxFiles: boundedInt(env, 'AGENT_MAX_CHANGED_FILES', 100, FILES_RANGE),
-      maxLines: boundedInt(env, 'AGENT_MAX_CHANGED_LINES', 20_000, LINES_RANGE),
-    },
+    diffLimits: buildDiffLimits(env),
     skillRoots: DEFAULT_SKILL_ROOTS,
   }
 }

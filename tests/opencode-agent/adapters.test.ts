@@ -1582,6 +1582,14 @@ describe('config', () => {
     expect(() => loadConfig({ ...baseEnv, AGENT_REVIEW_POOL_SIZE: '64' }, '/repo')).toThrow('between 1 and 16')
   })
 
+  test('the review pool defaults to one worker, because a second one kills the runner', () => {
+    // Not a preference: every fixer runs `check:full`, which itself fans its
+    // checks out in parallel, so a pool of 2 puts two of those on one 4-vCPU
+    // runner and the VM is OOM-killed mid-job. Runs 31704544065 and
+    // 31745493737 both died that way, and neither left a post-mortem.
+    expect(loadConfig(baseEnv, '/repo').reviewPoolSize).toBe(1)
+  })
+
   test.each([
     ['AGENT_REVIEW_MAX_ROUNDS', 'reviewMaxRounds'],
     ['AGENT_REVIEW_POOL_SIZE', 'reviewPoolSize'],
