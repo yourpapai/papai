@@ -115,16 +115,20 @@
             <span class="settings-vault__meta"
               >token •••••• · created {formatEpoch(token.createdAt)}{token.lastUsedAt !== null
                 ? ` · last push ${formatEpoch(token.lastUsedAt)}`
-                : ' · never used'}</span>
+                : ' · never used'}{token.revokedAt !== null ? ` · revoked ${formatEpoch(token.revokedAt)}` : ''}</span>
           </div>
-          <Btn
-            variant="danger"
-            size="sm"
-            testid={`vault-revoke-${token.tokenId}`}
-            disabled={revokingId === token.tokenId}
-            onClick={() => (pendingRevokeId = token.tokenId)}>
-            {#snippet children()}{revokingId === token.tokenId ? 'Revoking…' : 'Revoke'}{/snippet}
-          </Btn>
+          {#if token.revokedAt === null}
+            <Btn
+              variant="danger"
+              size="sm"
+              testid={`vault-revoke-${token.tokenId}`}
+              disabled={revokingId === token.tokenId}
+              onClick={() => (pendingRevokeId = token.tokenId)}>
+              {#snippet children()}{revokingId === token.tokenId ? 'Revoking…' : 'Revoke'}{/snippet}
+            </Btn>
+          {:else}
+            <span class="settings-vault__revoked" data-testid={`vault-revoked-${token.tokenId}`}>Revoked</span>
+          {/if}
         </div>
       {:else}
         <EmptyState
@@ -221,6 +225,11 @@
     font-weight: 600;
   }
   .settings-vault__meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .settings-vault__revoked {
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-dim);
