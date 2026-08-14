@@ -203,6 +203,53 @@ describe('context-vault spec-store', () => {
     expect(JSON.parse(String(spec?.outline))).toEqual(['# Proposal', '## Why', '# Design'])
   })
 
+  test('a delta push that omits unchanged files keeps their outline and progress contributions', () => {
+    applyPush(CTX_A, {
+      repo: 'papai',
+      changeName: 'x',
+      files: [
+        { path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# P\n\n## Why\n' },
+        { path: 'a/tasks.md', kind: 'tasks', hash: 'h2', mtime: 2, text: '# Tasks\n\n- [x] one\n- [ ] two\n' },
+      ],
+      deletions: [],
+    })
+    expect(getSpec(CTX_A, 'papai:x')?.stage).toBe('in-progress')
+
+    applyPush(CTX_A, {
+      repo: 'papai',
+      changeName: 'x',
+      files: [{ path: 'a/proposal.md', kind: 'proposal', hash: 'h1-new', mtime: 3, text: '# P v2\n' }],
+      deletions: [],
+    })
+    const spec = getSpec(CTX_A, 'papai:x')
+    expect(spec?.stage).toBe('in-progress')
+    expect(spec?.progressPct).toBe(50)
+    expect(JSON.parse(String(spec?.outline))).toEqual(['# P v2', '# Tasks'])
+  })
+
+  test('a changed file pushed without text contributes no derived artifacts but keeps the others', () => {
+    applyPush(CTX_A, {
+      repo: 'papai',
+      changeName: 'x',
+      files: [
+        { path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# P\n' },
+        { path: 'a/tasks.md', kind: 'tasks', hash: 'h2', mtime: 2, text: '- [x] one\n- [ ] two\n' },
+      ],
+      deletions: [],
+    })
+
+    applyPush(CTX_A, {
+      repo: 'papai',
+      changeName: 'x',
+      files: [{ path: 'a/proposal.md', kind: 'proposal', hash: 'h1-new', mtime: 3 }],
+      deletions: [],
+    })
+    const spec = getSpec(CTX_A, 'papai:x')
+    expect(spec?.stage).toBe('in-progress')
+    expect(spec?.progressPct).toBe(50)
+    expect(JSON.parse(String(spec?.outline))).toEqual([])
+  })
+
   test('stage reaches done when every tasks checkbox is ticked', () => {
     applyPush(CTX_A, {
       repo: 'papai',

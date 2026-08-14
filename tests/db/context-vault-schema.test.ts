@@ -100,6 +100,9 @@ describe('context vault schema', () => {
       kind: 'tasks',
       hash: 'c'.repeat(64),
       mtime: 1710000000000,
+      outline: null,
+      tasksTicked: null,
+      tasksTotal: null,
     })
   })
 

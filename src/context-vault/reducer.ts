@@ -22,20 +22,27 @@ export interface ReducedSpec {
   progressPct: number
 }
 
+export interface ReducedFileArtifacts {
+  outline: string[]
+  ticked: number
+  total: number
+}
+
+export interface AggregateFileInput {
+  path: string
+  kind: string
+  outline: readonly string[] | null
+  ticked: number | null
+  total: number | null
+}
+
+export interface AggregateSpecInput {
+  changeName: string
+  files: AggregateFileInput[]
+}
+
 const HEADING_RE = /^#{1,6}\s+\S/u
 const CHECKBOX_RE = /^\s*-\s*\[(?<mark>[ xX])\]\s/u
-
-const extractOutline = (files: readonly ReduceFileInput[]): string[] => {
-  const outline: string[] = []
-  for (const file of files) {
-    if (file.text === undefined) continue
-    for (const line of file.text.split('\n')) {
-      const trimmed = line.trimEnd()
-      if (HEADING_RE.test(trimmed)) outline.push(trimmed)
-    }
-  }
-  return outline
-}
 
 const countCheckboxes = (text: string): { ticked: number; total: number } => {
   let ticked = 0
@@ -49,23 +56,67 @@ const countCheckboxes = (text: string): { ticked: number; total: number } => {
   return { ticked, total }
 }
 
-const isArchived = (input: ReduceSpecInput): boolean =>
-  input.changeName.startsWith('archive/') || input.files.some((f) => /(^|\/)archive\//u.test(f.path))
+const isArchived = (changeName: string, files: readonly { path: string }[]): boolean =>
+  changeName.startsWith('archive/') || files.some((f) => /(^|\/)archive\//u.test(f.path))
 
-const deriveProgress = (files: readonly ReduceFileInput[]): { ticked: number; total: number } => {
-  let ticked = 0
-  let total = 0
-  for (const file of files) {
-    if (file.kind !== 'tasks' || file.text === undefined) continue
-    const counts = countCheckboxes(file.text)
-    ticked += counts.ticked
-    total += counts.total
+const hasPlanOrDesign = (files: readonly { kind: string }[]): boolean =>
+  files.some((f) => f.kind === 'plan' || f.kind === 'design')
+
+const deriveStageAndProgress = (
+  archived: boolean,
+  planOrDesign: boolean,
+  ticked: number,
+  total: number,
+): { stage: SpecStage; progressPct: number } => {
+  if (archived) return { stage: 'done', progressPct: 100 }
+  if (total > 0) {
+    const progressPct = Math.round((ticked / total) * 100)
+    if (ticked === total) return { stage: 'done', progressPct: 100 }
+    if (ticked > 0) return { stage: 'in-progress', progressPct }
+    return { stage: planOrDesign ? 'approved' : 'draft', progressPct: 0 }
   }
-  return { ticked, total }
+  return { stage: planOrDesign ? 'approved' : 'draft', progressPct: 0 }
 }
 
-const hasPlanOrDesign = (files: readonly ReduceFileInput[]): boolean =>
-  files.some((f) => f.kind === 'plan' || f.kind === 'design')
+/**
+ * Per-file mechanical derivation persisted alongside each file row on push, so
+ * later delta pushes can re-aggregate the spec without the unchanged files'
+ * raw text (which is never retained).
+ */
+export const reduceFileText = (kind: string, text: string): ReducedFileArtifacts => {
+  const outline: string[] = []
+  for (const line of text.split('\n')) {
+    const trimmed = line.trimEnd()
+    if (HEADING_RE.test(trimmed)) outline.push(trimmed)
+  }
+  const counts = kind === 'tasks' ? countCheckboxes(text) : { ticked: 0, total: 0 }
+  return { outline, ticked: counts.ticked, total: counts.total }
+}
+
+/**
+ * Re-aggregates a change's outline, stage, and progress from stored per-file
+ * artifacts. Files with null artifacts (pushed without text) contribute
+ * nothing, matching the whole-text reducer's skip semantics.
+ */
+export function aggregateSpec(input: AggregateSpecInput): ReducedSpec {
+  const outline = input.files.flatMap((f) => f.outline ?? [])
+
+  let ticked = 0
+  let total = 0
+  for (const file of input.files) {
+    if (file.kind !== 'tasks' || file.ticked === null || file.total === null) continue
+    ticked += file.ticked
+    total += file.total
+  }
+
+  const derived = deriveStageAndProgress(
+    isArchived(input.changeName, input.files),
+    hasPlanOrDesign(input.files),
+    ticked,
+    total,
+  )
+  return { outline, ...derived }
+}
 
 /**
  * Pure mechanical derivation of a change's outline, stage, and progress from
@@ -73,17 +124,18 @@ const hasPlanOrDesign = (files: readonly ReduceFileInput[]): boolean =>
  * `one_line`/`summary` come from the LLM (see design.md §4).
  */
 export function reduceSpec(input: ReduceSpecInput): ReducedSpec {
-  const outline = extractOutline(input.files)
-
-  if (isArchived(input)) return { outline, stage: 'done', progressPct: 100 }
-
-  const { ticked, total } = deriveProgress(input.files)
-  if (total > 0) {
-    const progressPct = Math.round((ticked / total) * 100)
-    if (ticked === total) return { outline, stage: 'done', progressPct: 100 }
-    if (ticked > 0) return { outline, stage: 'in-progress', progressPct }
-    return { outline, stage: hasPlanOrDesign(input.files) ? 'approved' : 'draft', progressPct: 0 }
-  }
-
-  return { outline, stage: hasPlanOrDesign(input.files) ? 'approved' : 'draft', progressPct: 0 }
+  return aggregateSpec({
+    changeName: input.changeName,
+    files: input.files.map((file): AggregateFileInput => {
+      if (file.text === undefined) return { path: file.path, kind: file.kind, outline: null, ticked: null, total: null }
+      const artifacts = reduceFileText(file.kind, file.text)
+      return {
+        path: file.path,
+        kind: file.kind,
+        outline: artifacts.outline,
+        ticked: artifacts.ticked,
+        total: artifacts.total,
+      }
+    }),
+  })
 }

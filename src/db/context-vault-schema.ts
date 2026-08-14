@@ -53,6 +53,9 @@ export const contextVaultFiles = sqliteTable(
     kind: text('kind').notNull(),
     hash: text('hash').notNull(),
     mtime: integer('mtime').notNull(),
+    outline: text('outline'),
+    tasksTicked: integer('tasks_ticked'),
+    tasksTotal: integer('tasks_total'),
   },
   (t) => [primaryKey({ columns: [t.configContextId, t.specId, t.path] })],
 )

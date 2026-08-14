@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { reduceSpec, type ReduceFileInput } from '../../src/context-vault/reducer.js'
+import { aggregateSpec, reduceFileText, reduceSpec, type ReduceFileInput } from '../../src/context-vault/reducer.js'
 
 const file = (path: string, kind: string, text?: string): ReduceFileInput => ({ path, kind, text })
 
@@ -106,5 +106,36 @@ describe('context-vault reducer', () => {
     })
     expect(result.stage).toBe('in-progress')
     expect(result.progressPct).toBe(33)
+  })
+
+  test('reduceFileText extracts the outline for any kind and checkbox counts only for tasks', () => {
+    const proposal = reduceFileText('proposal', '# P\n\n## Why\n\n- [ ] not a task\n')
+    expect(proposal).toEqual({ outline: ['# P', '## Why'], ticked: 0, total: 0 })
+
+    const tasks = reduceFileText('tasks', '# T\n\n- [x] one\n- [ ] two\n')
+    expect(tasks).toEqual({ outline: ['# T'], ticked: 1, total: 2 })
+  })
+
+  test('aggregateSpec re-aggregates stored per-file artifacts and skips null artifacts', () => {
+    const result = aggregateSpec({
+      changeName: 'x',
+      files: [
+        { path: 'a/proposal.md', kind: 'proposal', outline: ['# P v2'], ticked: 0, total: 0 },
+        { path: 'a/design.md', kind: 'design', outline: null, ticked: null, total: null },
+        { path: 'a/tasks.md', kind: 'tasks', outline: ['# Tasks'], ticked: 1, total: 2 },
+      ],
+    })
+    expect(result.outline).toEqual(['# P v2', '# Tasks'])
+    expect(result.stage).toBe('in-progress')
+    expect(result.progressPct).toBe(50)
+  })
+
+  test('aggregateSpec reports archive changes as done without checkbox data', () => {
+    const result = aggregateSpec({
+      changeName: 'x',
+      files: [{ path: 'openspec/changes/archive/x/tasks.md', kind: 'tasks', outline: null, ticked: null, total: null }],
+    })
+    expect(result.stage).toBe('done')
+    expect(result.progressPct).toBe(100)
   })
 })

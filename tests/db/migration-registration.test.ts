@@ -30,16 +30,16 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('070_message_metadata_history_search')
   })
 
-  test('076_context_vault is the last migration', () => {
+  test('077_context_vault_file_artifacts is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('076_context_vault')
+    expect(lastMigration.id).toBe('077_context_vault_file_artifacts')
   })
 
-  test('076_context_vault is registered immediately after 075_analytics_materializations', () => {
+  test('077_context_vault_file_artifacts is registered immediately after 076_context_vault', () => {
     const ids = MIGRATIONS.map((m) => m.id)
-    const materializationsIndex = ids.indexOf('075_analytics_materializations')
-    expect(materializationsIndex).toBeGreaterThanOrEqual(0)
-    expect(ids[materializationsIndex + 1]).toBe('076_context_vault')
+    const contextVaultIndex = ids.indexOf('076_context_vault')
+    expect(contextVaultIndex).toBeGreaterThanOrEqual(0)
+    expect(ids[contextVaultIndex + 1]).toBe('077_context_vault_file_artifacts')
   })
 
   test('migration ids are unique', () => {

@@ -15,7 +15,13 @@ import {
 } from '../db/context-vault-schema.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { logger } from '../logger.js'
-import { reduceSpec, type ReduceFileInput, type ReducedSpec } from './reducer.js'
+import {
+  aggregateSpec,
+  reduceFileText,
+  type AggregateFileInput,
+  type ReducedFileArtifacts,
+  type ReducedSpec,
+} from './reducer.js'
 import { enqueueSpecSummarization, type EnqueueSummarizationInput, type SummarizerFileInput } from './summarizer.js'
 
 const log = logger.child({ scope: 'context-vault:spec-store' })
@@ -122,6 +128,7 @@ const touchIndexerState = (configContextId: string): void => {
 }
 
 const applyFile = (configContextId: string, specId: string, file: PushFileInput, exists: boolean): void => {
+  const artifacts = artifactsOf(file)
   if (!exists) {
     getDrizzleDb()
       .insert(contextVaultFiles)
@@ -132,13 +139,14 @@ const applyFile = (configContextId: string, specId: string, file: PushFileInput,
         kind: file.kind,
         hash: file.hash,
         mtime: file.mtime,
+        ...artifacts,
       })
       .run()
     return
   }
   getDrizzleDb()
     .update(contextVaultFiles)
-    .set({ kind: file.kind, hash: file.hash, mtime: file.mtime })
+    .set({ kind: file.kind, hash: file.hash, mtime: file.mtime, ...artifacts })
     .where(
       and(
         eq(contextVaultFiles.configContextId, configContextId),
@@ -162,17 +170,49 @@ const deleteFile = (configContextId: string, specId: string, path: string): void
     .run()
 }
 
-const buildReduceInput = (input: ApplyPushInput, remaining: readonly ContextVaultFileRow[]): ReduceFileInput[] => {
-  const kindByPath = new Map(remaining.map((f) => [f.path, f.kind]))
-  const leftovers = new Set(kindByPath.keys())
-  const files: ReduceFileInput[] = []
+interface StoredArtifacts {
+  outline: string | null
+  tasksTicked: number | null
+  tasksTotal: number | null
+}
+
+const artifactsOf = (file: PushFileInput): StoredArtifacts => {
+  if (file.text === undefined) return { outline: null, tasksTicked: null, tasksTotal: null }
+  const reduced: ReducedFileArtifacts = reduceFileText(file.kind, file.text)
+  return { outline: JSON.stringify(reduced.outline), tasksTicked: reduced.ticked, tasksTotal: reduced.total }
+}
+
+const parseStoredOutline = (raw: string | null): string[] | null => {
+  if (raw === null) return null
+  const parsed: unknown = JSON.parse(raw)
+  if (!Array.isArray(parsed)) return null
+  return parsed.filter((h): h is string => typeof h === 'string')
+}
+
+const toAggregateFile = (row: ContextVaultFileRow): AggregateFileInput => ({
+  path: row.path,
+  kind: row.kind,
+  outline: parseStoredOutline(row.outline),
+  ticked: row.tasksTicked,
+  total: row.tasksTotal,
+})
+
+const buildAggregateInput = (
+  input: ApplyPushInput,
+  remaining: readonly ContextVaultFileRow[],
+): AggregateFileInput[] => {
+  const byPath = new Map(remaining.map((f) => [f.path, f]))
+  const leftovers = new Set(byPath.keys())
+  const files: AggregateFileInput[] = []
   for (const f of input.files) {
-    if (!leftovers.has(f.path)) continue
+    const row = byPath.get(f.path)
+    if (row === undefined) continue
     leftovers.delete(f.path)
-    files.push({ path: f.path, kind: f.kind, text: f.text })
+    files.push(toAggregateFile(row))
   }
   for (const path of [...leftovers].sort((a, b) => a.localeCompare(b))) {
-    files.push({ path, kind: kindByPath.get(path) ?? '', text: undefined })
+    const row = byPath.get(path)
+    if (row !== undefined) files.push(toAggregateFile(row))
   }
   return files
 }
@@ -207,7 +247,7 @@ export function applyPush(
   if (remaining.length === 0) {
     deleteSpecShell(configContextId, specId)
   } else {
-    const reduced = reduceSpec({ changeName: input.changeName, files: buildReduceInput(input, remaining) })
+    const reduced = aggregateSpec({ changeName: input.changeName, files: buildAggregateInput(input, remaining) })
     upsertSpec(configContextId, input, specId, reduced)
   }
   touchIndexerState(configContextId)
