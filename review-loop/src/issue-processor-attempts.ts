@@ -13,7 +13,9 @@ import { FixerResultSchema, type FixerResult } from './issue-schema.js'
 import {
   emitBuildComplete,
   emitFixComplete,
+  exposureKind,
   tallyDecision,
+  tallyExposure,
   tallyFixerSeverity,
   tallyPhaseMs,
   tallyUsage,
@@ -110,6 +112,7 @@ export async function runFixerAttempt(
     await worker.resetToBaseline(baselineSha)
     tallyDecision(collector, fixerResult.verdict, fixerResult.fixed)
     tallyFixerSeverity(collector, fixerResult.severity)
+    tallyExposure(collector, exposureKind(record.issue.exposure), exposureKind(fixerResult.exposure))
     emitDecision(deps.log, record, fixerResult.verdict)
     emitFixComplete(deps.trace, round, record.id, false, null, attempt)
     return { kind: 'terminal', outcome: { fixed: false } }
@@ -148,6 +151,7 @@ export async function runBuildAttempt(
       )
       tallyDecision(collector, 'needs_human', false)
       tallyFixerSeverity(collector, fixerResult.severity)
+      tallyExposure(collector, exposureKind(record.issue.exposure), exposureKind(fixerResult.exposure))
       emitDecision(deps.log, record, 'needs_human', 'build failed')
       emitFixComplete(deps.trace, round, record.id, false, null, attempt)
       return { kind: 'terminal', outcome: { fixed: false } }
@@ -200,6 +204,7 @@ export async function runInspectorAttempt(
       )
       tallyDecision(collector, unavailable ? 'needs_human' : 'inspector_rejected', false)
       tallyFixerSeverity(collector, fixerResult.severity)
+      tallyExposure(collector, exposureKind(record.issue.exposure), exposureKind(fixerResult.exposure))
       const note = unavailable ? 'inspector unavailable' : 'inspector rejected'
       emitDecision(deps.log, record, 'needs_human', note)
       emitFixComplete(deps.trace, round, record.id, false, null, attempt)

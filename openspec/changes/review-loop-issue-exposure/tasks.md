@@ -42,19 +42,23 @@ See LICENSE in the project root for details.
 
 ## 4. Divergence recording
 
-- [ ] 4.1 Write failing cases in `tests/review-loop/loop-trace.test.ts` and
+- [x] 4.1 Write failing cases in `tests/review-loop/loop-trace.test.ts` and
       `tests/review-loop/trace-log.test.ts` that the fixer's exposure rides the `verify_complete`
       trace event alongside the fixer's severity, and that reviewer-versus-fixer divergence is
       tallied into the round metric. Then implement, following the `fixerSeverity` path.
       Verify: `bun test tests/review-loop/loop-trace.test.ts tests/review-loop/trace-log.test.ts`
-- [ ] 4.2 Write a failing case that an unknown exposure on either side is not counted as a
+- [x] 4.2 Write a failing case that an unknown exposure on either side is not counted as a
       divergence, then implement.
       Verify: `bun test tests/review-loop/loop-trace.test.ts`
-- [ ] 4.3 Write failing cases in `tests/review-loop/summary.test.ts` and the run-artifacts suite
-      that the exposure distribution and divergence count appear in the summary and
-      `metrics.json`, including on a stopped run — which skips `finalizeRun` but still writes
-      artifacts — and that an older `metrics.json` without the fields still parses. Then implement.
-      Verify: `bun test tests/review-loop/summary.test.ts tests/review-loop/run-artifacts.test.ts`
+- [x] 4.3 Write failing cases in `tests/review-loop/summary.test.ts` and the run-artifacts suite
+      that the exposure distribution and divergence count appear in the summary, and that the
+      line is omitted rather than printed as zeros when nobody answered. The round metrics ride
+      `metrics.json`, which `writeRunArtifacts` writes before `finalizeRun` and therefore on a
+      stopped run too. Pin the real read path instead of a vacuous one: only `runStats` is ever
+      parsed back out of `metrics.json` (`MetricsEnvelopeSchema`), so assert an older file still
+      rehydrates stats — a future tightening that validated rounds would silently break
+      `--resume-run`. Then implement.
+      Verify: `bun test tests/review-loop/summary.test.ts tests/review-loop/cli.test.ts`
 
 ## 5. Documentation and full gate
 

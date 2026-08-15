@@ -26,6 +26,9 @@ function zeroMetric(round: number): RoundMetric {
     reviewerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
     fixerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
     inspector: { runs: 0, rejected: 0 },
+    reviewerExposure: { caller: 0, none: 0, unknown: 0 },
+    fixerExposure: { caller: 0, none: 0, unknown: 0 },
+    exposureDivergent: 0,
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
   }

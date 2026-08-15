@@ -67,6 +67,9 @@ function zeroMetric(round: number): RoundMetric {
     reviewerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
     fixerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
     inspector: { runs: 0, rejected: 0 },
+    reviewerExposure: { caller: 0, none: 0, unknown: 0 },
+    fixerExposure: { caller: 0, none: 0, unknown: 0 },
+    exposureDivergent: 0,
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
   }
@@ -459,5 +462,45 @@ describe('buildMetricsJson aggregation', () => {
     metric.inspector = { runs: 4, rejected: 2 }
     const json = buildMetricsJson('max_rounds', 2, 1, [metric], { poolSize: 1, inspect: true })
     expect(json.totals.inspectorRejected).toBe(2)
+  })
+})
+
+describe('exposure line', () => {
+  test('reports the distribution and the divergence count', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [
+        {
+          ...zeroMetric(1),
+          reviewerExposure: { caller: 4, none: 3, unknown: 1 },
+          fixerExposure: { caller: 3, none: 4, unknown: 1 },
+          exposureDivergent: 2,
+        },
+      ],
+    })
+    expect(summary).toContain('Exposure:')
+    expect(summary).toContain('4 cited')
+    expect(summary).toContain('3 none')
+    expect(summary).toContain('2 divergent')
+  })
+
+  test('is omitted when no issue carried exposure, rather than printing zeros', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), reviewerExposure: { caller: 0, none: 0, unknown: 5 } }],
+    })
+    expect(summary).not.toContain('Exposure:')
+  })
+
+  test('sums exposure across rounds', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [
+        { ...zeroMetric(1), reviewerExposure: { caller: 1, none: 0, unknown: 0 }, exposureDivergent: 1 },
+        { ...zeroMetric(2), reviewerExposure: { caller: 2, none: 0, unknown: 0 }, exposureDivergent: 2 },
+      ],
+    })
+    expect(summary).toContain('3 cited')
+    expect(summary).toContain('3 divergent')
   })
 })
