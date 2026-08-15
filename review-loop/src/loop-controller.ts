@@ -84,6 +84,10 @@ function pushRoundMetric(
     reviewerSeverity: collector.reviewerSeverity,
     fixerSeverity: collector.fixerSeverity,
     inspector: collector.inspector,
+    reviewerExposure: collector.reviewerExposure,
+    fixerExposure: collector.fixerExposure,
+    exposureDivergent: collector.exposureDivergent,
+    checkBehind: collector.checkBehind,
     phaseMs: collector.phaseMs,
     usage: collector.usage,
   }

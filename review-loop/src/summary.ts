@@ -16,9 +16,8 @@ import { formatDuration } from './live-format.js'
 import type { ReviewLoopResult } from './loop-controller.js'
 import type { PersistedStats, StatsSnapshot } from './run-stats.js'
 import { burndownBlock } from './summary-burndown.js'
+import { aggregatePhaseMs, aggregateUsage, PHASE_KEYS, sumDecisions } from './summary-metrics.js'
 import type { PhaseMs, RoundMetric, UsageTotals } from './trace-log.js'
-
-const PHASE_KEYS: (keyof PhaseMs)[] = ['review', 'match', 'verify', 'build', 'inspect', 'fix']
 
 const GROUP_CAP = 20
 
@@ -124,32 +123,6 @@ function buildVerdict(input: SummaryInput, counts: IssueCounts, total: number): 
   return `Review loop finished: done — ${plural(total, 'issue')}: ${breakdown}.`
 }
 
-function sumDecisions(metrics: readonly RoundMetric[], key: keyof RoundMetric['decisions']): number {
-  return metrics.reduce((s, m) => s + m.decisions[key], 0)
-}
-
-function aggregatePhaseMs(metrics: readonly RoundMetric[]): PhaseMs {
-  const phaseMs: PhaseMs = { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 }
-  for (const m of metrics) {
-    for (const k of PHASE_KEYS) {
-      phaseMs[k] += m.phaseMs[k]
-    }
-  }
-  return phaseMs
-}
-
-function aggregateUsage(metrics: readonly RoundMetric[]): UsageTotals {
-  return metrics.reduce(
-    (acc, m) => ({
-      inputTokens: acc.inputTokens + m.usage.inputTokens,
-      outputTokens: acc.outputTokens + m.usage.outputTokens,
-      reasoningTokens: acc.reasoningTokens + m.usage.reasoningTokens,
-      costUsd: acc.costUsd + m.usage.costUsd,
-    }),
-    { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
-  )
-}
-
 function msToSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
@@ -182,6 +155,37 @@ function buildInspectorLine(metrics: readonly RoundMetric[], options: SummaryOpt
   const rejected = metrics.reduce((s, m) => s + m.inspector.rejected, 0)
   const rate = `${((100 * rejected) / runs).toFixed(1)}%`
   return `Inspector: ${runs} runs, ${rejected} rejected (${rate} reject rate)`
+}
+
+/**
+ * Reported from the reviewer's answers, with the fixer's second opinion folded
+ * in only as the divergence count — the two distributions side by side would
+ * invite reading one as a correction of the other, and neither is authoritative.
+ *
+ * Omitted entirely when nobody answered: a row of zeros reads as "nothing is
+ * reachable" rather than "nobody was asked".
+ */
+function buildExposureLine(metrics: readonly RoundMetric[]): string | null {
+  const cited = metrics.reduce((s, m) => s + m.reviewerExposure.caller, 0)
+  const none = metrics.reduce((s, m) => s + m.reviewerExposure.none, 0)
+  if (cited + none === 0) return null
+  const divergent = metrics.reduce((s, m) => s + m.exposureDivergent, 0)
+  return `Exposure: ${cited} cited, ${none} none, ${divergent} divergent (advisory — orders dispatch, gates nothing)`
+}
+
+/**
+ * Counted over accepted fixes only — a rejected fix leaving no test behind is
+ * not a finding. `unmeasured` is reported separately rather than folded into
+ * the denominator, so a run whose diffs could not be read does not read as a
+ * run whose fixer skipped its tests.
+ */
+function buildCheckBehindLine(metrics: readonly RoundMetric[]): string | null {
+  const withCheck = metrics.reduce((s, m) => s + m.checkBehind.withCheck, 0)
+  const measured = withCheck + metrics.reduce((s, m) => s + m.checkBehind.withoutCheck, 0)
+  const unmeasured = metrics.reduce((s, m) => s + m.checkBehind.unmeasured, 0)
+  if (measured + unmeasured === 0) return null
+  const tail = unmeasured > 0 ? ` (${unmeasured} unmeasured)` : ''
+  return `Checks left behind: ${withCheck} of ${measured} accepted fixes${tail}`
 }
 
 function buildStatsLine(stats: StatsSnapshot | undefined): string | null {
@@ -241,6 +245,12 @@ export function buildSummary(input: SummaryInput): string {
   const inspectorLine = buildInspectorLine(input.metrics, input.options)
   if (inspectorLine !== null) lines.push(inspectorLine)
 
+  const exposureLine = buildExposureLine(input.metrics)
+  if (exposureLine !== null) lines.push(exposureLine)
+
+  const checkBehindLine = buildCheckBehindLine(input.metrics)
+  if (checkBehindLine !== null) lines.push(checkBehindLine)
+
   const statsLine = buildStatsLine(input.stats)
   if (statsLine !== null) lines.push(statsLine)
 
@@ -262,7 +272,9 @@ export function buildMetricsJson(
   options: SummaryOptions,
   runStats?: PersistedStats,
 ): MetricsJson {
-  const lastMetric = metrics.length > 0 ? metrics[metrics.length - 1] : undefined
+  // noUncheckedIndexedAccess already types this `RoundMetric | undefined`, and
+  // metrics[-1] on an empty array is undefined too, so a length guard adds nothing.
+  const lastMetric = metrics[metrics.length - 1]
   const openFromMetrics = lastMetric === undefined ? 0 : lastMetric.cumulativeOpen
   return {
     doneReason,

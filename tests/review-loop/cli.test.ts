@@ -599,6 +599,26 @@ describe('writeRunArtifacts stats persistence', () => {
     expect(summary).toContain('Stats: tools 5')
   })
 
+  test('readPersistedRunStats reads a metrics.json written before exposure existed', async () => {
+    // The rounds array is never parsed back — only runStats is — so an older
+    // file must keep loading. This pins that the envelope stays narrow: a
+    // future tightening that validates rounds would silently drop the stats
+    // rehydrated on --resume-run.
+    const runDir = makeTempDir('metrics-legacy-')
+    writeFileSync(
+      path.join(runDir, 'metrics.json'),
+      JSON.stringify({
+        rounds: [{ round: 1, newIssues: 2, inspector: { runs: 1, rejected: 0 } }],
+        runStats: {
+          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 7, added: 0, removed: 0 },
+          perLabel: {},
+        },
+      }),
+    )
+    const persisted = await readPersistedRunStats(runDir)
+    expect(persisted?.totals.toolCalls).toBe(7)
+  })
+
   test('readPersistedRunStats returns undefined when metrics.json is missing or has no runStats', async () => {
     const runDir = makeTempDir('rl-nostats-')
     await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()

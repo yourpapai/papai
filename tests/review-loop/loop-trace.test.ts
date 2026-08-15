@@ -17,7 +17,10 @@ import {
   emitRoundSummary,
   emitVerifyComplete,
   newCollector,
+  tallyCheckBehind,
   tallyDecision,
+  exposureKind,
+  tallyExposure,
   tallyFixerSeverity,
   tallyInspector,
   tallyPhaseMs,
@@ -72,11 +75,22 @@ describe('loop-trace emitters', () => {
 
   test('emitVerifyComplete spreads targetFiles', () => {
     const { logger, events } = createCapturingTraceLogger()
-    emitVerifyComplete(logger, 1, 'id', 'valid', 'auto', 'high', null, 'r', ['a.ts', 'b.ts'])
+    emitVerifyComplete(
+      logger,
+      1,
+      'id',
+      'valid',
+      'auto',
+      { reviewerSeverity: 'high', fixerSeverity: null, reviewerExposure: 'caller', fixerExposure: 'none' },
+      'r',
+      ['a.ts', 'b.ts'],
+    )
     expect(events[0]).toMatchObject({
       event: 'verify_complete',
       verdict: 'valid',
       reviewerSeverity: 'high',
+      reviewerExposure: 'caller',
+      fixerExposure: 'none',
       targetFiles: ['a.ts', 'b.ts'],
     })
   })
@@ -160,5 +174,57 @@ describe('emitInspectComplete', () => {
     expect(evt.event).toBe('inspect_complete')
     expect(evt.addresses).toBe(false)
     expect(evt.reasoning.length).toBeLessThanOrEqual(200)
+  })
+})
+
+describe('exposure tallies', () => {
+  test('records both reporters distributions', () => {
+    const collector = newCollector()
+    tallyExposure(collector, 'caller', 'caller')
+    tallyExposure(collector, 'none', 'none')
+    tallyExposure(collector, 'caller', 'none')
+    expect(collector.reviewerExposure).toEqual({ caller: 2, none: 1, unknown: 0 })
+    expect(collector.fixerExposure).toEqual({ caller: 1, none: 2, unknown: 0 })
+  })
+
+  test('counts a divergence when both answered and disagreed', () => {
+    const collector = newCollector()
+    tallyExposure(collector, 'caller', 'none')
+    tallyExposure(collector, 'none', 'caller')
+    expect(collector.exposureDivergent).toBe(2)
+  })
+
+  test('agreement is not a divergence', () => {
+    const collector = newCollector()
+    tallyExposure(collector, 'caller', 'caller')
+    tallyExposure(collector, 'none', 'none')
+    expect(collector.exposureDivergent).toBe(0)
+  })
+
+  test('unknown on either side is not a divergence: silence is not disagreement', () => {
+    const collector = newCollector()
+    tallyExposure(collector, 'unknown', 'caller')
+    tallyExposure(collector, 'caller', 'unknown')
+    tallyExposure(collector, 'unknown', 'unknown')
+    expect(collector.exposureDivergent).toBe(0)
+    expect(collector.reviewerExposure.unknown).toBe(2)
+    expect(collector.fixerExposure.unknown).toBe(2)
+  })
+
+  test('exposureKind reads an absent report as unknown, not as none', () => {
+    expect(exposureKind(undefined)).toBe('unknown')
+    expect(exposureKind({ kind: 'none' })).toBe('none')
+    expect(exposureKind({ kind: 'caller', file: 'a.ts', line: 1, quote: 'q' })).toBe('caller')
+  })
+})
+
+describe('check-behind tallies', () => {
+  test('counts each outcome separately, keeping unmeasured out of both', () => {
+    const collector = newCollector()
+    tallyCheckBehind(collector, 'with-check')
+    tallyCheckBehind(collector, 'with-check')
+    tallyCheckBehind(collector, 'without-check')
+    tallyCheckBehind(collector, 'unmeasured')
+    expect(collector.checkBehind).toEqual({ withCheck: 2, withoutCheck: 1, unmeasured: 1 })
   })
 })
