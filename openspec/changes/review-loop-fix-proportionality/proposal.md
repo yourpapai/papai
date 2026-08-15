@@ -9,63 +9,64 @@ See LICENSE in the project root for details.
 
 ## Why
 
-The review loop has no notion of a fix being *bigger than the problem*. Its only admission
-gate, `filterActionable` (`review-loop/src/review-round.ts:47`), filters on ledger **status**,
-never on worth; the inspector that follows is a relevance gate whose prompt is deliberately
-scoped away from quality by [ADR-0303](../../../docs/adr/0303-review-loop-parallel-fixes-inspector.md)
-("explicit anti-scope-creep language"). So nothing shapes a fix toward the smallest thing that
-works, and nothing notices when one lands with no check behind it.
+The review loop has no notion of a fix being *bigger than the problem*. `filterActionable`
+(`review-round.ts:47`) admits on ledger **status**, never worth, and the inspector that follows
+is a relevance gate [ADR-0303](../../../docs/adr/0303-review-loop-parallel-fixes-inspector.md)
+deliberately scoped away from quality. Nothing shapes a fix toward the smallest thing that
+works, or notices when one lands with no check behind it.
 
-PR #272's review run is the cost made visible. Of 17 fix commits, **6 shipped no test at all**
-in a repo whose Write/Edit hook mandates test-first, and one (`42413ce`) resolved a logging gap
-by adding a module-scope `pino` logger to a package whose stated design is fully DI-seamed. Both
-passed every gate: they built, and they addressed the issue.
+PR #272 is the cost made visible. Of 17 fix commits, **6 shipped no test** in a repo whose hook
+mandates test-first; one (`42413ce`) fixed a logging gap with a module-scope `pino` logger in a
+fully DI-seamed package; and one (`0c372ce`) wrote an architecture paragraph that `b3fc19a`
+invalidated two hours on. All passed every gate: they built, and addressed the issue. That doc
+claim is still wrong on master: no actor sees two fixes, and the terminal round's are never
+reviewed.
 
 ## What Changes
 
-- **Prompt-side (prevention).** `buildFixPrompt` and the two retry prompts in
-  `prompt-templates.ts` gain a minimality ladder applied *after* the fixer understands the
-  problem — does this need to exist, is it already in the codebase, can it be one line — and a
-  standing requirement that non-trivial logic leaves **one runnable check** behind, resolved
-  against the repo's existing TDD test-path mapping.
-- **Orchestrator-side (measurement).** A mechanical, **advisory** proportionality signal per
-  accepted fix: diff size, new-file/new-dependency/new-migration flags, and whether a test path
-  was touched. `measureDiffSince` (`diff-stats.ts`) already runs `git diff --numstat` and
-  discards the file paths; this reads what is already collected. The signal annotates the
-  ledger, the run summary, and `metrics.json`.
+- **Prompt-side (prevention).** `buildFixPrompt` and the two retry prompts gain a minimality
+  ladder applied *after* the fixer understands the problem — must it exist, is it already
+  here, can it be one line — and a standing requirement that non-trivial logic leaves
+  **one runnable check** behind, resolved against the repo's TDD test-path mapping. The
+  existing "do NOT edit the plan/spec" prohibition extends to architecture prose: report a doc
+  gap, do not write one.
+- **Orchestrator-side (measurement).** One **advisory** boolean per accepted fix: did the diff
+  touch a test path? It exists to measure whether the check-behind rule works. `measureDiffSince`
+  (`diff-stats.ts`) already runs `git diff --numstat` and discards the paths; this reads what is
+  collected, and annotates the ledger, summary, and `metrics.json`.
 - **The signal never blocks a merge or consumes retry budget.**
 
 ## Capabilities
 
 ### New Capabilities
 
-- `review-loop-fix-quality`: the instruction contract the review loop gives a fixer, and the
-  per-fix proportionality signal the orchestrator records alongside the result.
+- `review-loop-fix-quality`: the instruction contract the loop gives a fixer, and the per-fix
+  signal recorded with the result.
 
 ### Modified Capabilities
 
-None. No existing capability under `openspec/specs/` changes.
+None.
 
 ## Impact
 
 `review-loop/src/`: `prompt-templates.ts`, `diff-stats.ts`, `issue-processor-attempts.ts`,
 `commit-attempt.ts`, `summary.ts`, `trace-log.ts`; tests under `tests/review-loop/`. Docs:
-`review-loop/CLAUDE.md`, plus a new ADR recording why the inspector was rejected as the host.
+`review-loop/CLAUDE.md`, plus an ADR on why the inspector was rejected as host.
 
-`diff-stats.ts` is **shared**: `mutation-improve` imports `measureDiffSince`/`headSha` from it
-(`merge-stats.ts`, `pipeline.ts`), and its `reportMergeDiff` swallows failures — so a breaking
-change there degrades silently. The path read must be additive: a new export or widened return,
-never a changed `DiffStats` shape.
+`diff-stats.ts` is **shared** with `mutation-improve` (`merge-stats.ts`, `pipeline.ts`), whose
+`reportMergeDiff` swallows failures — a breaking change there degrades silently. The path read
+must be additive, never a changed `DiffStats` shape.
 
-**Scope impact: none.** This is local developer tooling — no platform instance, no task
-instance, and no per-user, group-shared, or thread-isolated state.
+**Scope impact: none.** Local developer tooling — no platform instance, no task instance, and
+no per-user, group-shared, or thread-isolated state.
 
 ## Non-goals
 
 - **Putting proportionality in the inspector.** Its unified `MAX_ATTEMPTS = 2`
-  (`issue-processor-attempts.ts:190-204`) turns a second rejection into `needs_human`, so a
-  correct-but-oversized fix would be **discarded** and the build-retry budget spent on it.
+  (`issue-processor-attempts.ts:190-204`) turns a second rejection into `needs_human`: a
+  correct-but-oversized fix would be **discarded**, and a build retry spent on it.
 - **Separate retry budgets** — ADR-0303 Option 3, already rejected.
-- **A reachability/exposure admission gate** — the larger half of the PR #272 finding, and its
-  own change.
-- Cross-fix documentation coherence; the `mutation-improve` workspace.
+- **Diff-size, new-dependency and new-migration flags** — they measure no rule adopted here, and
+  would have flagged `ddb7951`, the run's best commit.
+- **Machinery to detect cross-fix incoherence** — the prose prohibition removes the class instead.
+- A reachability/exposure admission gate; the `mutation-improve` workspace.
