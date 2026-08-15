@@ -48,9 +48,9 @@ See LICENSE in the project root for details.
 
 ## 4. Validate against a real change
 
-- [ ] 4.1 Run `openspec validate --strict` across every change in `openspec/changes/` to
+- [x] 4.1 Run `openspec validate --strict` across every change in `openspec/changes/` to
       confirm the added rules break no existing artifact — rules shape drafting, but a
       malformed entry surfaces at validation.
       Verify: `openspec list --json` then `openspec validate <name> --strict` per change
-- [ ] 4.2 Run the full gate and fix anything it surfaces.
+- [x] 4.2 Run the full gate and fix anything it surfaces.
       Verify: `bun run test && bun run typecheck && bun run lint && bun run sdd-runner:typecheck`
