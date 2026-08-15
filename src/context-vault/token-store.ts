@@ -7,7 +7,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 
 import { and, eq, isNull } from 'drizzle-orm'
 
-import { contextVaultTokens, type ContextVaultTokenRow } from '../db/context-vault-schema.js'
+import { contextVaultTokens } from '../db/context-vault-schema.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { logger } from '../logger.js'
 
@@ -115,19 +115,20 @@ const touchLastUsed = (configContextId: string, tokenId: string): void => {
   }
 }
 
+const DUMMY_HASH = hashToken('')
+
 export function verifyToken(plaintext: string): VerifiedToken | null {
   const presentedHash = hashToken(plaintext)
-  const candidates: ContextVaultTokenRow[] = getDrizzleDb()
+  const row = getDrizzleDb()
     .select()
     .from(contextVaultTokens)
-    .where(isNull(contextVaultTokens.revokedAt))
-    .all()
-  for (const candidate of candidates) {
-    if (hashesEqual(candidate.tokenHash, presentedHash)) {
-      touchLastUsed(candidate.configContextId, candidate.tokenId)
-      return { configContextId: candidate.configContextId, tokenId: candidate.tokenId }
-    }
+    .where(and(eq(contextVaultTokens.tokenHash, presentedHash), isNull(contextVaultTokens.revokedAt)))
+    .get()
+  if (row === undefined || !hashesEqual(row.tokenHash, presentedHash)) {
+    hashesEqual(presentedHash, DUMMY_HASH)
+    log.warn('Context vault token verification failed')
+    return null
   }
-  log.warn('Context vault token verification failed')
-  return null
+  touchLastUsed(row.configContextId, row.tokenId)
+  return { configContextId: row.configContextId, tokenId: row.tokenId }
 }
