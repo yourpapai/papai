@@ -403,6 +403,41 @@ describe('context-vault summarizer', () => {
     expect(generateText).toHaveBeenCalledTimes(2)
   })
 
+  test('an in-flight job superseded only by a mechanical push still stores its summary', async () => {
+    seedSpec()
+    let resolveGenerate: (value: { text: string }) => void = () => undefined
+    const generateText = mock(
+      (args: GenerateTextArgs) =>
+        new Promise<{ text: string }>((resolve) => {
+          void args
+          resolveGenerate = resolve
+        }),
+    )
+    const { deps, fireAll } = makeDeps({ generateText })
+
+    enqueueSpecSummarization(enqueueInput([{ path: 'a/x/proposal.md', kind: 'proposal', text: 'CURRENT BODY' }]), deps)
+    fireAll()
+    expect(generateText).toHaveBeenCalledTimes(1)
+
+    applyPush(
+      CTX,
+      {
+        repo: 'papai',
+        changeName: 'x',
+        files: [{ path: 'a/x/tasks.md', kind: 'tasks', hash: 'h2', mtime: 2, text: '- [x] one\n' }],
+        deletions: [],
+      },
+      { enqueueSummarization: (input) => enqueueSpecSummarization(input, deps) },
+    )
+
+    resolveGenerate({ text: '{"one_line":"fresh one-liner","summary":"fresh summary"}' })
+    await drainSpecSummarizations()
+
+    const spec = getSpec(CTX, 'papai:x')
+    expect(spec?.oneLine).toBe('fresh one-liner')
+    expect(spec?.summary).toBe('fresh summary')
+  })
+
   test('an in-flight job superseded by a newer push drops its stale summary', async () => {
     seedSpec()
     presetSummary('papai:x', 'previous one-liner', 'previous summary')

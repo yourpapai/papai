@@ -3,11 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { createHash } from 'node:crypto'
+
 import { generateText, type LanguageModel } from 'ai'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
-import { contextVaultSpecs } from '../db/context-vault-schema.js'
+import { contextVaultFiles, contextVaultSpecs } from '../db/context-vault-schema.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { buildChatModel } from '../llm-model-builder.js'
 import { resolveLlmConfig } from '../llm-providers/resolver.js'
@@ -112,6 +114,7 @@ interface PendingJob {
   input: EnqueueSummarizationInput
   texts: Map<string, string>
   sourceHash: string
+  semanticHash: string
   timer: ReturnType<typeof setTimeout> | null
   deps: SummarizerDeps
 }
@@ -121,12 +124,33 @@ const inFlight = new Set<Promise<void>>()
 
 const keyOf = (configContextId: string, specId: string): string => `${configContextId}\n${specId}`
 
-const readSourceHash = (configContextId: string, specId: string): string | undefined =>
-  getDrizzleDb()
+interface SourceHashes {
+  sourceHash: string
+  semanticHash: string
+}
+
+const readSourceHashes = (configContextId: string, specId: string): SourceHashes | undefined => {
+  const db = getDrizzleDb()
+  const row = db
     .select({ sourceHash: contextVaultSpecs.sourceHash })
     .from(contextVaultSpecs)
     .where(and(eq(contextVaultSpecs.configContextId, configContextId), eq(contextVaultSpecs.id, specId)))
-    .get()?.sourceHash
+    .get()
+  if (row === undefined) return undefined
+  const files = db
+    .select({ path: contextVaultFiles.path, kind: contextVaultFiles.kind, hash: contextVaultFiles.hash })
+    .from(contextVaultFiles)
+    .where(and(eq(contextVaultFiles.configContextId, configContextId), eq(contextVaultFiles.specId, specId)))
+    .all()
+  const digest = createHash('sha256')
+  const semanticFiles = files
+    .filter((file) => SEMANTIC_KINDS.has(file.kind))
+    .sort((a, b) => a.path.localeCompare(b.path))
+  for (const f of semanticFiles) {
+    digest.update(`${f.path} ${f.hash}\n`)
+  }
+  return { sourceHash: row.sourceHash, semanticHash: digest.digest('hex') }
+}
 
 const storeSummary = (
   configContextId: string,
@@ -160,7 +184,13 @@ const runJob = async (job: PendingJob): Promise<void> => {
     const prompt = buildPrompt(job.input.specId, job.texts)
     const result = await job.deps.generateText({ model, prompt })
     const summary = parseSpecSummary(result.text)
-    const stored = storeSummary(job.input.configContextId, job.input.specId, job.sourceHash, summary)
+    let stored = storeSummary(job.input.configContextId, job.input.specId, job.sourceHash, summary)
+    if (!stored) {
+      const fresh = readSourceHashes(job.input.configContextId, job.input.specId)
+      if (fresh !== undefined && fresh.semanticHash === job.semanticHash) {
+        stored = storeSummary(job.input.configContextId, job.input.specId, fresh.sourceHash, summary)
+      }
+    }
     if (stored) {
       log.info(
         { configContextId: job.input.configContextId, specId: job.input.specId },
@@ -202,14 +232,7 @@ export function enqueueSpecSummarization(input: EnqueueSummarizationInput, deps:
   const newSemanticTexts =
     hashChanged === undefined ? semanticTexts : semanticTexts.filter(([path]) => hashChanged.includes(path))
   const key = keyOf(input.configContextId, input.specId)
-  if (newSemanticTexts.length === 0 && deletedPaths.length === 0) {
-    const existing = pending.get(key)
-    if (existing !== undefined) {
-      const freshHash = readSourceHash(input.configContextId, input.specId)
-      if (freshHash !== undefined) existing.sourceHash = freshHash
-    }
-    return
-  }
+  if (newSemanticTexts.length === 0 && deletedPaths.length === 0) return
 
   const existing = pending.get(key)
   if (existing !== undefined && existing.timer !== null) existing.deps.clear(existing.timer)
@@ -223,8 +246,8 @@ export function enqueueSpecSummarization(input: EnqueueSummarizationInput, deps:
     return
   }
 
-  const sourceHash = readSourceHash(input.configContextId, input.specId)
-  if (sourceHash === undefined) {
+  const hashes = readSourceHashes(input.configContextId, input.specId)
+  if (hashes === undefined) {
     log.warn(
       { configContextId: input.configContextId, specId: input.specId },
       'Context vault summarization skipped: spec row missing',
@@ -233,7 +256,14 @@ export function enqueueSpecSummarization(input: EnqueueSummarizationInput, deps:
     return
   }
 
-  const job: PendingJob = { input, texts, sourceHash, timer: null, deps }
+  const job: PendingJob = {
+    input,
+    texts,
+    sourceHash: hashes.sourceHash,
+    semanticHash: hashes.semanticHash,
+    timer: null,
+    deps,
+  }
   job.timer = deps.schedule(() => {
     startJob(key, job)
   }, deps.debounceMs)
