@@ -61,10 +61,17 @@ export function acquireIndexerLock(stateDir: string, pid: number, deps: LockDeps
   return { acquired: false, reason: 'held' }
 }
 
-export function refreshIndexerHeartbeat(lockPath: string, pid: number, deps: LockDeps): void {
+/**
+ * Refreshes the holder's heartbeat. Returns false when the lock is no longer
+ * held by `pid` (missing, corrupt, or reclaimed by another process), so the
+ * caller can stop a superseded daemon instead of running alongside its
+ * replacement forever.
+ */
+export function refreshIndexerHeartbeat(lockPath: string, pid: number, deps: LockDeps): boolean {
   const existing = parseRecord(deps.fs.readLock(lockPath))
-  if (existing === null || existing.pid !== pid) return
+  if (existing === null || existing.pid !== pid) return false
   deps.fs.write(lockPath, serialize(pid, deps.now()))
+  return true
 }
 
 /**

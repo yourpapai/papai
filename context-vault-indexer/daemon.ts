@@ -228,14 +228,15 @@ const fallbackSleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms)
   })
 
-const refreshHeartbeat = (heartbeat: DaemonHeartbeat): void => {
+const refreshHeartbeat = (heartbeat: DaemonHeartbeat): boolean => {
   try {
-    refreshIndexerHeartbeat(heartbeat.lockPath, heartbeat.pid, heartbeat.lock)
+    return refreshIndexerHeartbeat(heartbeat.lockPath, heartbeat.pid, heartbeat.lock)
   } catch (error) {
     logger.warn(
       { error: error instanceof Error ? error.message : String(error) },
       'context-vault indexer heartbeat refresh failed; continuing after interval',
     )
+    return true
   }
 }
 
@@ -249,8 +250,13 @@ export function runDaemon(config: DaemonConfig, deps: DaemonDeps, options: RunDa
         resolve()
         return
       }
-      if (deps.heartbeat) {
-        refreshHeartbeat(deps.heartbeat)
+      if (deps.heartbeat && !refreshHeartbeat(deps.heartbeat)) {
+        logger.warn(
+          { lockPath: deps.heartbeat.lockPath, pid: deps.heartbeat.pid },
+          'context-vault indexer lost the singleton lock; superseded daemon exiting',
+        )
+        resolve()
+        return
       }
       const scanDue = sinceScanMs >= options.intervalMs
       const scanned = scanDue

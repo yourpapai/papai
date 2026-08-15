@@ -551,6 +551,23 @@ describe('runDaemon', () => {
     expect(lockFs.files.get(LOCK_PATH)).toBe(foreign)
   })
 
+  test('a superseded daemon exits on lock loss instead of scanning and pushing forever', async () => {
+    const LOCK_PATH = `/state/${LOCK_FILE_NAME}`
+    const lockFs = makeFakeLockFs({ [LOCK_PATH]: JSON.stringify({ pid: 1111, heartbeatAt: 0 }) })
+    const lock: LockDeps = { fs: lockFs, isPidAlive: () => true, now: () => 100_000, ttlMs: 10_000 }
+
+    const controller = new AbortController()
+    const { fs, scans } = makeAbortingFs(controller, 2)
+    const base = makeDeps(fs)
+    const deps: DaemonDeps = { ...base.deps, heartbeat: { lockPath: LOCK_PATH, pid: 5555, lock } }
+
+    await runDaemon(CONFIG, deps, { intervalMs: 5_000, signal: controller.signal })
+
+    expect(controller.signal.aborted).toBe(false)
+    expect(scans()).toBe(0)
+    expect(base.pushes).toHaveLength(0)
+  })
+
   test('a rejected scan tick is logged and the loop keeps scanning', async () => {
     const controller = new AbortController()
     const { fs, scans } = makeFailOnceThenAbortFs(controller)
