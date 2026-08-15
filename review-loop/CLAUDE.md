@@ -45,6 +45,13 @@ smaller diff is not the goal, so it cannot be read as licence to drop validation
 handling, security, or a test. Both retry prompts carry it too — a second attempt is where scope
 creeps, because the first failed and more feels like the answer.
 
+That constant is **exported and shared beyond this workspace**. `opencode-agent` carries the
+same text as `MINIMALITY_RULE` in its own `prompts.ts` — duplicated rather than imported,
+because it drives this workspace as a subprocess and imports nothing from it — and
+`tests/opencode-agent/minimality-rule.test.ts` asserts the two are equal. `CLAUDE.md` states it
+a third time for the main agent, in prose no test can pin. Reword it here and that test fails;
+that is the intended way to find every carrier.
+
 **Check-behind** (`CHECK_BEHIND_RULE`) requires non-trivial logic to leave one runnable check in
 the test path this repo already maps the file to, and states that a scratch reproduction deleted
 afterwards does not count.

@@ -43,11 +43,11 @@ See LICENSE in the project root for details.
 
 ## 3. Main-agent conventions
 
-- [ ] 3.1 Add one Key Conventions paragraph to `CLAUDE.md`, placed adjacent to the
+- [x] 3.1 Add one Key Conventions paragraph to `CLAUDE.md`, placed adjacent to the
       existing `max-lines` bullet so the two are read together: the ladder, the clause
       naming what is never cut, and no file-count guidance. Mirror it into `AGENTS.md`.
       Verify: `bun run format:check`
-- [ ] 3.2 Record the rule and its carriers in `review-loop/CLAUDE.md` (which already
+- [x] 3.2 Record the rule and its carriers in `review-loop/CLAUDE.md` (which already
       documents the fix instruction contract) and `opencode-agent/CLAUDE.md` (beside the
       `PROTECTED_PATHS_RULE` note), naming the equality test as the drift pin.
       Verify: `bun run format:check`
