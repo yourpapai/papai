@@ -221,6 +221,62 @@ describe('context-vault summarizer', () => {
     expect(generateText).not.toHaveBeenCalled()
   })
 
+  test('a tasks-only tick carrying unchanged semantic texts enqueues no summarization', async () => {
+    seedSpec()
+    const generateText = mock((args: GenerateTextArgs) => {
+      void args
+      return Promise.resolve({ text: '{"one_line":"o","summary":"s"}' })
+    })
+    const { deps, pendingCount } = makeDeps({ generateText })
+
+    applyPush(
+      CTX,
+      {
+        repo: 'papai',
+        changeName: 'x',
+        files: [
+          { path: 'a/x/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# P\n' },
+          { path: 'a/x/tasks.md', kind: 'tasks', hash: 'h2', mtime: 2, text: '- [x] one\n' },
+        ],
+        deletions: [],
+      },
+      { enqueueSummarization: (input) => enqueueSpecSummarization(input, deps) },
+    )
+
+    expect(pendingCount()).toBe(0)
+    await drainSpecSummarizations()
+    expect(generateText).not.toHaveBeenCalled()
+  })
+
+  test('a push deleting only a tasks file enqueues no summarization', async () => {
+    seedSpec()
+    applyPush(
+      CTX,
+      {
+        repo: 'papai',
+        changeName: 'x',
+        files: [{ path: 'a/x/tasks.md', kind: 'tasks', hash: 'h9', mtime: 1, text: '- [ ] one\n' }],
+        deletions: [],
+      },
+      { enqueueSummarization: () => undefined },
+    )
+    const generateText = mock((args: GenerateTextArgs) => {
+      void args
+      return Promise.resolve({ text: '{"one_line":"o","summary":"s"}' })
+    })
+    const { deps, pendingCount } = makeDeps({ generateText })
+
+    applyPush(
+      CTX,
+      { repo: 'papai', changeName: 'x', files: [], deletions: ['a/x/tasks.md'] },
+      { enqueueSummarization: (input) => enqueueSpecSummarization(input, deps) },
+    )
+
+    expect(pendingCount()).toBe(0)
+    await drainSpecSummarizations()
+    expect(generateText).not.toHaveBeenCalled()
+  })
+
   test('a mechanical push inside the debounce window does not drop the pending summary', async () => {
     seedSpec()
     const generateText = mock((args: GenerateTextArgs) => {

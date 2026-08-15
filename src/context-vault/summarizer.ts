@@ -18,7 +18,7 @@ const log = logger.child({ scope: 'context-vault:summarizer' })
 
 export const SPEC_SUMMARY_DEBOUNCE_MS = 15_000
 
-const SEMANTIC_KINDS: ReadonlySet<string> = new Set(['proposal', 'design', 'plan', 'spec'])
+export const SEMANTIC_KINDS: ReadonlySet<string> = new Set(['proposal', 'design', 'plan', 'spec'])
 const MAX_FILE_CHARS = 20_000
 
 export interface SummarizerFileInput {
@@ -33,6 +33,13 @@ export interface EnqueueSummarizationInput {
   changeName: string
   changedFiles: readonly SummarizerFileInput[]
   deletedPaths?: readonly string[]
+  /**
+   * Paths among `changedFiles` that arrived with a new hash. Unchanged files
+   * are still forwarded in `changedFiles` so the prompt sees the full semantic
+   * text set, but only a new-hash semantic file (or a deletion) schedules a
+   * job. Omitted by direct callers: every changed file counts as new.
+   */
+  hashChangedPaths?: readonly string[]
 }
 
 export interface SummarizerDeps {
@@ -191,8 +198,11 @@ export function enqueueSpecSummarization(input: EnqueueSummarizationInput, deps:
     SEMANTIC_KINDS.has(f.kind) && f.text !== undefined ? [[f.path, f.text] as const] : [],
   )
   const deletedPaths = input.deletedPaths ?? []
+  const hashChanged = input.hashChangedPaths
+  const newSemanticTexts =
+    hashChanged === undefined ? semanticTexts : semanticTexts.filter(([path]) => hashChanged.includes(path))
   const key = keyOf(input.configContextId, input.specId)
-  if (semanticTexts.length === 0 && deletedPaths.length === 0) {
+  if (newSemanticTexts.length === 0 && deletedPaths.length === 0) {
     const existing = pending.get(key)
     if (existing !== undefined) {
       const freshHash = readSourceHash(input.configContextId, input.specId)

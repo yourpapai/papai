@@ -17,7 +17,12 @@ import { getDrizzleDb } from '../db/drizzle.js'
 import { logger } from '../logger.js'
 import { aggregateSpec, type AggregateFileInput, type ReducedSpec } from './reducer.js'
 import { applyFiles, deleteFile, type AppliedFiles, type ApplyPushInput } from './spec-store-files.js'
-import { enqueueSpecSummarization, type EnqueueSummarizationInput, type SummarizerFileInput } from './summarizer.js'
+import {
+  enqueueSpecSummarization,
+  SEMANTIC_KINDS,
+  type EnqueueSummarizationInput,
+  type SummarizerFileInput,
+} from './summarizer.js'
 
 export type { ApplyPushInput, PushFileInput } from './spec-store-files.js'
 
@@ -153,18 +158,20 @@ const maybeEnqueueSummarization = (
   configContextId: string,
   specId: string,
   input: ApplyPushInput,
-  changedCount: number,
+  changedPaths: readonly string[],
   summarizerFiles: readonly SummarizerFileInput[],
   deletedPaths: readonly string[],
+  deletedSemanticPaths: readonly string[],
   deps: ApplyPushDeps,
 ): void => {
-  if (changedCount === 0 && deletedPaths.length === 0) return
+  if (changedPaths.length === 0 && deletedPaths.length === 0) return
   deps.enqueueSummarization({
     configContextId,
     specId,
     changeName: input.changeName,
     changedFiles: summarizerFiles,
-    deletedPaths,
+    deletedPaths: deletedSemanticPaths,
+    hashChangedPaths: changedPaths,
   })
 }
 
@@ -179,13 +186,16 @@ export function applyPush(
 
   let applied: AppliedFiles = { changedPaths: [], summarizerFiles: [] }
   const deletedPaths: string[] = []
+  const deletedSemanticPaths: string[] = []
   getDrizzleDb().transaction(() => {
     applied = applyFiles(configContextId, specId, input, existingByPath)
 
     for (const path of input.deletions) {
-      if (!existingByPath.has(path)) continue
+      const existing = existingByPath.get(path)
+      if (existing === undefined) continue
       deleteFile(configContextId, specId, path)
       deletedPaths.push(path)
+      if (SEMANTIC_KINDS.has(existing.kind)) deletedSemanticPaths.push(path)
     }
 
     const remaining = listFiles(configContextId, specId)
@@ -202,9 +212,10 @@ export function applyPush(
     configContextId,
     specId,
     input,
-    applied.changedPaths.length,
+    applied.changedPaths,
     applied.summarizerFiles,
     deletedPaths,
+    deletedSemanticPaths,
     mergedDeps,
   )
 
