@@ -272,7 +272,9 @@ export function buildMetricsJson(
   options: SummaryOptions,
   runStats?: PersistedStats,
 ): MetricsJson {
-  const lastMetric = metrics.length > 0 ? metrics[metrics.length - 1] : undefined
+  // noUncheckedIndexedAccess already types this `RoundMetric | undefined`, and
+  // metrics[-1] on an empty array is undefined too, so a length guard adds nothing.
+  const lastMetric = metrics[metrics.length - 1]
   const openFromMetrics = lastMetric === undefined ? 0 : lastMetric.cumulativeOpen
   return {
     doneReason,

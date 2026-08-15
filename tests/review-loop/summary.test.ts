@@ -510,14 +510,19 @@ describe('exposure line', () => {
   })
 })
 
+function lineStartingWith(summary: string, prefix: string): string | undefined {
+  return summary.split('\n').find((l) => l.startsWith(prefix))
+}
+
 describe('check-behind line', () => {
   test('reports how many accepted fixes left a check behind', () => {
     const summary = buildSummary({
       ...inputOf({}),
       metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 2, withoutCheck: 1, unmeasured: 0 } }],
     })
-    expect(summary).toContain('Checks left behind: 2 of 3 accepted fixes')
-    expect(summary).not.toContain('unmeasured')
+    // Whole line, not a prefix: a prefix assertion passes even when the empty
+    // no-unmeasured tail is replaced with arbitrary text.
+    expect(lineStartingWith(summary, 'Checks left behind:')).toBe('Checks left behind: 2 of 3 accepted fixes')
   })
 
   test('calls out unmeasured fixes rather than folding them into either answer', () => {
