@@ -61,6 +61,30 @@ const NO_PROSE_RULE = [
   'here would catch it.',
 ].join(' ')
 
+/**
+ * Over-engineering is reportable, as a closed set of five forms rather than an
+ * open category — an open one collects everything a reviewer mildly dislikes,
+ * which is what the "correct but I would write it differently" exclusion above
+ * already guards against and which a deletion vocabulary is uniquely able to
+ * reopen.
+ *
+ * The mandatory replacement is the same discipline `exposure` uses: a citation,
+ * not a rating. "Nothing replaces it" is a complete answer for code nothing
+ * reaches; being unable to name one at all is a reason to stay quiet.
+ */
+const CLEANUP_FINDINGS = [
+  'Also in scope — code that is more than it needs to be. Report these as `"kind": "cleanup"`; everything else above is `"kind": "defect"`, and every issue must carry one of the two.',
+  'A cleanup is one of exactly five forms, and a finding that fits none of them is not a cleanup:',
+  '- delete: code nothing reaches, or flexibility nothing uses. Nothing replaces it — say so; that is a complete answer, not a missing one.',
+  '- stdlib: a hand-rolled thing the standard library already ships. Name the function.',
+  '- native: a dependency, or code, doing what the platform already does. Name the feature.',
+  '- yagni: an abstraction with one implementation, a config nobody sets, a layer with one caller.',
+  '- shrink: the same logic in materially fewer lines. Show the shorter form.',
+  'Every cleanup MUST name what stands in place of the code it cuts — a named function, a named platform feature, an existing helper in this codebase, the shorter form, or nothing at all for code that is simply unused. If you cannot name one, omit the finding rather than reporting it without.',
+  'A cleanup is never above medium severity: severity grades what happens if the code is reached, and code that is merely over-built does not lose data, breach security, or crash. Grade a genuine defect as a defect, at whatever severity it deserves — the ceiling applies to the cleanup finding only.',
+  'Cleanups are fixed after every defect, so reporting one never delays a bug. Report the ones you are confident in and omit the rest.',
+].join('\n')
+
 export function buildReviewPrompt(planPath: string, outputPath: string): string {
   return [
     `Review the current implementation against the implementation plan at: ${planPath}.`,
@@ -69,6 +93,8 @@ export function buildReviewPrompt(planPath: string, outputPath: string): string 
     '',
     'In scope: bugs, security, error-handling gaps, plan-conformance, and violations of the repo conventions in AGENTS.md (already in your context) — e.g. the logging rules, the no-lint-disable rule, .js import paths, and the max-lines design signal.',
     'NOT in scope (do not report): style/formatting a linter owns, naming preferences, or "correct but I would write it differently."',
+    '',
+    CLEANUP_FINDINGS,
     '',
     'Evidence rule: only report an issue for files/lines you have actually opened and read. `evidence` must quote the offending source line(s); `file`/`lineStart`/`lineEnd` must point at code you opened. Before raising an issue, verify the impact you claim (e.g. check .gitignore before asserting something "will be committed by git add -A"; trace the control flow before claiming a missing keyword matters). If you cannot cite exact evidence or verify the impact, lower `confidence` or omit the issue.',
     '',
@@ -79,7 +105,7 @@ export function buildReviewPrompt(planPath: string, outputPath: string): string 
     'Severity calibration — critical: data loss / security / crash / blocks the plan goal; high: likely bug or breaks a requirement; medium: conditional correctness risk or maintainability; low: minor. Include all severity levels.',
     '',
     'Use this exact schema:',
-    '{"issues": [{"title": string, "severity": "critical" | "high" | "medium" | "low", "summary": string, "whyItMatters": string, "evidence": string, "file": string, "lineStart": number, "lineEnd": number, "suggestedFix": string, "confidence": number, "exposure": ' +
+    '{"issues": [{"title": string, "kind": "defect" | "cleanup", "severity": "critical" | "high" | "medium" | "low", "summary": string, "whyItMatters": string, "evidence": string, "file": string, "lineStart": number, "lineEnd": number, "suggestedFix": string, "confidence": number, "exposure": ' +
       EXPOSURE_SCHEMA +
       '}]}',
     '`confidence` is a probability between 0 and 1 (e.g. 0.85), NOT a 1-5 rating.',

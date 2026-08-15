@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { ReviewerIssueSchema } from '../../review-loop/src/issue-schema.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import {
   buildFixPrompt,
@@ -242,5 +243,68 @@ describe('fix instruction contract', () => {
     expect(prompt).toMatch(/architecture/iu)
     expect(prompt).toMatch(/report/iu)
     expect(prompt).toContain('do NOT edit the plan/spec')
+  })
+})
+
+describe('deletion findings in the reviewer prompt', () => {
+  const reviewPrompt = (): string => buildReviewPrompt('/plan.md', '/issues.json')
+
+  test('admits the five kinds by name', () => {
+    const p = reviewPrompt()
+    for (const tag of ['delete', 'stdlib', 'native', 'yagni', 'shrink']) expect(p).toContain(tag)
+  })
+
+  test('requires a named replacement for every cleanup', () => {
+    const p = reviewPrompt()
+    expect(p).toMatch(/replace/iu)
+    expect(p).toMatch(/name/iu)
+    // "nothing replaces it" is a complete answer for unused code, not a gap.
+    expect(p).toMatch(/nothing replaces it/iu)
+  })
+
+  test('tells the reviewer to omit a cleanup it cannot name a replacement for', () => {
+    expect(reviewPrompt()).toMatch(/omit/iu)
+  })
+
+  test('requires kind on every issue and states the two values', () => {
+    const p = reviewPrompt()
+    expect(p).toContain('"kind"')
+    expect(p).toContain('"defect"')
+    expect(p).toContain('"cleanup"')
+  })
+
+  test('states the medium ceiling on cleanups', () => {
+    const p = reviewPrompt()
+    expect(p).toMatch(/never above medium|at most medium|no higher than medium/iu)
+  })
+
+  test('keeps the existing exclusions: style, naming, and personal preference stay out', () => {
+    // A deletion vocabulary is exactly the thing that could be read as licence
+    // to report taste. The old exclusion has to survive it verbatim.
+    const p = reviewPrompt()
+    expect(p).toContain('correct but I would write it differently')
+    expect(p).toMatch(/style\/formatting a linter owns/iu)
+    expect(p).toMatch(/naming preferences/iu)
+  })
+
+  test("the prompt's inline issue schema still matches issue-schema.ts", () => {
+    // The prompt embeds the schema as a string literal, so the two drift in
+    // silence: a reviewer told to emit a field the parser rejects loses the
+    // whole round to a validation error.
+    const p = reviewPrompt()
+    const shape = ReviewerIssueSchema.parse({
+      title: 't',
+      kind: 'cleanup',
+      severity: 'medium',
+      summary: 's',
+      whyItMatters: 'w',
+      evidence: 'e',
+      file: 'f.ts',
+      lineStart: 1,
+      lineEnd: 2,
+      suggestedFix: 'x',
+      confidence: 0.5,
+    })
+    for (const key of Object.keys(shape)) expect(p).toContain(`"${key}"`)
   })
 })

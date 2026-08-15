@@ -44,16 +44,16 @@ See LICENSE in the project root for details.
 
 ## 4. Reviewer prompt
 
-- [ ] 4.1 Add failing cases to `tests/review-loop/prompt-templates.test.ts` that
+- [x] 4.1 Add failing cases to `tests/review-loop/prompt-templates.test.ts` that
       `buildReviewPrompt` admits the five kinds by name, requires a named replacement for
       each, requires `kind` on every issue, and states the medium cap. Assert the
       obligations, not the wording. Then implement in `buildReviewPrompt`.
       Verify: `bun test tests/review-loop/prompt-templates.test.ts`
-- [ ] 4.2 Add a failing case that the existing exclusions survive — style, naming, and
+- [x] 4.2 Add a failing case that the existing exclusions survive — style, naming, and
       "correct but I would write it differently" are still out of scope, and a cleanup
       with no nameable replacement is to be omitted rather than reported. Then implement.
       Verify: `bun test tests/review-loop/prompt-templates.test.ts`
-- [ ] 4.3 Confirm the issue JSON schema in the prompt matches `issue-schema.ts` after the
+- [x] 4.3 Confirm the issue JSON schema in the prompt matches `issue-schema.ts` after the
       `kind` addition — the prompt embeds the schema as a literal and the two drift
       silently.
       Verify: `bun test tests/review-loop/prompt-templates.test.ts tests/review-loop/issue-schema.test.ts`
