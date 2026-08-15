@@ -142,7 +142,7 @@ the same pass.
 
 - Deploy date / version: 2026-07-31 / 0368bcc1d67bd9d79ae95ac20663aa836a5f9063
 - Window start (UTC): 2026-08-01
-- Window end (UTC):
+- Window end (UTC): 2026-08-14
 - Restart/suppressed days (`unreconciled_restart_gap`):
 
 ### Daily log (report CLI rows)
@@ -162,11 +162,12 @@ the same pass.
 | 2026-08-11 | true | — | none | 0 | 40 (invalid_value=40) | 0 | ok | — |
 | 2026-08-12 | true | — | none | 0 | 54 (invalid_value=54) | 0 | ok | — |
 | 2026-08-13 | true | — | none | 0 | 6 (invalid_value=6) | 0 | ok | — |
+| 2026-08-14 | true | — | none | 0 | 99 (invalid_value=99) | 0 | ok | — |
 
 | Week | Freshness | Reconciliation delta | Rejects | Overflow | Expiry check | Notes |
 |---|---|---|---|---|---|---|
-| 1 | | | | | | |
-| 2 | | | | | | |
+| 1 | none (promotion unwired; file fresh via CLI) | 0 all days | 420 (all invalid_value) | 0 | ok | rejects attributable to #209 (tool_completed float durationMs); Freshness reads none because ordinary staged→published promotion has no runtime caller |
+| 2 | none (promotion unwired; file fresh via CLI) | 0 all days | 271 (all invalid_value) | 0 | ok | same #209 signature; tool metrics undercounted, eligibility unaffected |
 
 **Stage B exit review:** ____________________  date: ________
 
