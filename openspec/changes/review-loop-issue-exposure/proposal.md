@@ -11,45 +11,49 @@ See LICENSE in the project root for details.
 
 The reviewer's severity ladder grades only *consequence if reached* — "critical: data loss /
 security / crash". Nothing asks whether the code is reached at all. In PR #272 that produced
-`#4e816232 [high]`, a fix dispatched against `context-vault-indexer/daemon.ts`, a file with
-zero non-test callers; six of the run's seventeen fix commits landed in that unreachable
-package, and the run was then killed at 297 minutes with issues still open. Risk is hazard ×
-exposure, and the loop has no term for exposure.
+`#4e816232 [high]`, dispatched at `context-vault-indexer/daemon.ts` — zero non-test callers —
+and six of seventeen fix commits landed in that unreachable package before the run was killed
+at 297 minutes with issues still open. Risk is hazard × exposure; the loop has no exposure term.
 
-Dispatch order compounds it: `processPendingIssues` walks `pending` by index with no sort, so
-issues are fixed in the order the reviewer happened to emit them.
+Dispatch order compounds it: `processPendingIssues` walks `pending` by index with no sort —
+issues are fixed in reviewer-emission order.
 
 The obvious fix — a self-reported `exposure` grade that gates dispatch — would be the first
 time this design let a self-reported *judgment* control anything.
 [ADR-0303](../../../docs/adr/0303-review-loop-parallel-fixes-inspector.md) keeps `confidence`
 "logged for observability, not used to gate the verdict", and the fixer's independent
-`severity` is tallied but never overrides the reviewer's. Severity itself is the proof that
-this class of field inflates.
+`severity` is tallied but never overrides. Severity is itself the proof that this class of
+field inflates.
+
+The stronger posture exists next door: `mutation-improve` never trusts an agent's declared
+score — it re-measures with Stryker and requires declared residual `mutantIds` to equal the
+measured survivors exactly. That works because mutation score has an **oracle**. Reachability
+has none: caller analysis is blind to this repo's `plugin.json` `main` dispatch and its
+string-path `bun run <daemonEntry>` spawn. So this change measures divergence instead.
 
 ## What Changes
 
 - **Exposure as an artifact, not a grade.** The reviewer cites the **caller** it found — file,
-  line, and quoted line — or explicitly reports none. This is the shape of the existing
-  `evidence` rule: falsifiable by going and looking, unlike a self-assigned rating.
+  line, and quoted line — or explicitly reports none. Same shape as the existing `evidence`
+  rule: falsifiable, unlike a self-assigned rating.
 - **Advisory only.** Exposure never blocks dispatch and never consumes retry budget. It
   becomes the **dispatch sort key** — the loop's first — plus a summary and `metrics.json`
   line.
 - **Second-actor cross-check.** The fixer, which has already read the code, reports exposure
-  independently, exactly as it already reports an independent `severity`. Reviewer-vs-fixer
-  divergence is recorded per issue.
-- Together these make the loop measure its own honesty: divergence is the evidence that decides
-  whether a future change may gate on exposure. This change does not gate.
+  independently — as it already does for `severity`. Divergence is recorded per issue.
+- Together these measure the loop's own honesty: divergence is what would justify gating in a
+  later change. This change does not gate.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `review-loop-issue-exposure`: the exposure artifact on a reviewer issue, its independent
-  restatement by the fixer, and the advisory ordering and reporting derived from both.
+- `review-loop-issue-exposure`: the exposure artifact, its independent restatement by the
+  fixer, and the advisory ordering and reporting derived from both.
 
 ### Modified Capabilities
 
-None. No existing capability under `openspec/specs/` changes.
+None.
 
 ## Impact
 
@@ -63,10 +67,9 @@ no per-user, group-shared, or thread-isolated state.
 ## Non-goals
 
 - **Gating admission on exposure.** Deferred until divergence data says the artifact is
-  trustworthy; `evidence` is the cautionary precedent — a mandated field that appears only in
-  `issue-schema.ts:13` and its prompt, read by nothing.
-- **Mechanical caller analysis as the gate.** It is blind to this repo's manifest dispatch
-  (`plugin.json` `main`) and string-path spawn (`adapters/opencode.ts:44`), so it would mark
-  live plugin entry points dead.
+  trustworthy. `evidence` is the cautionary precedent: mandated by schema and prompt, read by
+  nothing.
+- **Mechanical caller analysis as the gate** — no oracle, per above; it would mark live plugin
+  entry points dead.
 - Fix proportionality — captured in `review-loop-fix-proportionality`.
 - The "hazard cannot occur" axis (reachable code, impossible state); `mutation-improve`.

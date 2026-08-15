@@ -52,6 +52,11 @@ None. No existing capability under `openspec/specs/` changes.
 `commit-attempt.ts`, `summary.ts`, `trace-log.ts`; tests under `tests/review-loop/`. Docs:
 `review-loop/CLAUDE.md`, plus a new ADR recording why the inspector was rejected as the host.
 
+`diff-stats.ts` is **shared**: `mutation-improve` imports `measureDiffSince`/`headSha` from it
+(`merge-stats.ts`, `pipeline.ts`), and its `reportMergeDiff` swallows failures — so a breaking
+change there degrades silently. The path read must be additive: a new export or widened return,
+never a changed `DiffStats` shape.
+
 **Scope impact: none.** This is local developer tooling — no platform instance, no task
 instance, and no per-user, group-shared, or thread-isolated state.
 
