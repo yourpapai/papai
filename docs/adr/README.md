@@ -415,6 +415,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0421](0421-single-line-live-renderer.md) | Single-Line Live Renderer — Shipped | 2026-08-10 | Accepted | - |
 | [0422](0422-analytics-preferences-consent-findings.md) | AnalyticsPreferences Consent Findings — Shipped | 2026-08-10 | Accepted | - |
 | [0423](0423-live-region-adoption.md) | Live-Region Adoption in the Field Primitives — Shipped | 2026-08-10 | Accepted | - |
+| [0425](0425-review-loop-fix-minimality-and-check-behind.md) | Shape the Fix, Do Not Gate It — Minimality in the Prompt, Check-Behind as an Advisory Signal | 2026-08-15 | Accepted | - |
 
 ## ADR Status Legend
 

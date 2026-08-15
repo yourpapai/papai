@@ -61,7 +61,7 @@ See LICENSE in the project root for details.
 
 ## 4. Documentation and full gate
 
-- [ ] 4.1 Update `review-loop/CLAUDE.md` with the fix instruction contract and the advisory
+- [x] 4.1 Update `review-loop/CLAUDE.md` with the fix instruction contract and the advisory
       signal, and add an ADR recording why the inspector was rejected as the host — the unified
       `MAX_ATTEMPTS = 2` would discard a correct-but-oversized fix — cross-referencing ADR-0303.
       Verify: `bun run format:check`
