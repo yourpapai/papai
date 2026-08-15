@@ -45,12 +45,12 @@ See LICENSE in the project root for details.
 
 ## 3. Reporting
 
-- [ ] 3.1 Write failing cases in `tests/mutation-improve/finalize.test.ts` that the
+- [x] 3.1 Write failing cases in `tests/mutation-improve/finalize.test.ts` that the
       pull-request table reports accepted residuals and their reasoning per file instead of
       two document paths, and that a file with no residuals renders without an empty cell.
       Then implement in `mutation-improve/src/finalize.ts`.
       Verify: `bun test tests/mutation-improve/finalize.test.ts`
-- [ ] 3.2 Write a failing case that a result carrying document paths (a resumed older run)
+- [x] 3.2 Write a failing case that a result carrying document paths (a resumed older run)
       renders the same way as one without — the report reads residuals, not paths. Then
       confirm.
       Verify: `bun test tests/mutation-improve/finalize.test.ts`

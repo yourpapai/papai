@@ -17,8 +17,15 @@ const MergedEntrySchema = z.object({
   beforeScore: z.number(),
   afterScore: z.number(),
   iter: z.number().int(),
+  // Carried by entries stored before the runner stopped mandating documents.
   specPath: z.string().optional(),
   planPath: z.string().optional(),
+  // Why a file was accepted below target, in the form the runner set-matched
+  // against its own surviving mutant ids. This is what the end-of-run report
+  // renders; it used to render two links to prose no gate ever read.
+  residuals: z
+    .array(z.object({ loc: z.string(), why: z.string(), mutantIds: z.array(z.string()).optional() }))
+    .optional(),
   // true when the iteration merged below threshold at its declared residual
   // ceiling (outcome 'capped'); absent/false on fully-threshold-passing merges.
   capped: z.boolean().optional(),

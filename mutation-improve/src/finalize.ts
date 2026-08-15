@@ -32,11 +32,19 @@ export interface FinalizeResult {
   pushed: boolean
 }
 
+interface MergedResidual {
+  loc: string
+  why: string
+  mutantIds?: readonly string[]
+}
+
 interface MergedRow {
   file: string
   beforeScore: number
   afterScore: number
   iter: number
+  residuals?: readonly MergedResidual[]
+  /** Carried by rows stored before the runner stopped mandating documents; not rendered. */
   specPath?: string
   planPath?: string
 }
@@ -48,10 +56,18 @@ interface FailedRow {
 }
 
 export function buildSummaryBody(merged: readonly MergedRow[], failed: readonly FailedRow[]): string {
+  // Residuals rather than two document links. That array is the one the runner
+  // set-matched against its own surviving mutant ids, so a reader sees the
+  // checked answer for why a file was accepted below target — where the links
+  // pointed at prose no gate ever read.
   const rows = merged
-    .map((m) => `| ${m.file} | ${m.beforeScore} | ${m.afterScore} | ${m.specPath ?? ''} | ${m.planPath ?? ''} |`)
+    .map((m) => {
+      const residuals = m.residuals ?? []
+      const why = residuals.length === 0 ? '—' : residuals.map((r) => `${r.loc}: ${r.why}`).join('; ')
+      return `| ${m.file} | ${m.beforeScore} | ${m.afterScore} | ${residuals.length} | ${why} |`
+    })
     .join('\n')
-  const header = '| File | Before | After | Spec | Plan |\n|---|---|---|---|---|\n'
+  const header = '| File | Before | After | Residuals | Accepted because |\n|---|---|---|---|---|\n'
   let body = `## mutation-improve\n\n${header}${rows}\n`
   if (failed.length > 0) {
     body += `\n## Failed iterations\n\n| Iter | Gate | Reason |\n|---|---|---|\n`

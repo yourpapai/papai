@@ -722,7 +722,7 @@ describe('pipeline build-fix retry', () => {
       return check(worktreePath)
     }
     const prompts: string[] = []
-    const fixedResult: Result = { ...result, specPath: 'docs/superpowers/specs/fixed-design.md' }
+    const fixedResult: Result = { ...result, residuals: [{ loc: 'L9', why: 'fixed-agent residual', mutantIds: ['3'] }] }
     deps.runImproveAgent = sequenceImprove([result, fixedResult], prompts, result)
     const outcome = await runIteration(deps, 1)
     expect(outcome.outcome).toBe('improved')
@@ -734,7 +734,7 @@ describe('pipeline build-fix retry', () => {
     const improveOut = path.join(deps.runState.runDir, 'iter', '1', 'result.json')
     expect(prompts[1]).toContain(agentWritePath(worktreePath, improveOut))
     // the fix agent's rewritten result replaces the original for finalize
-    expect(deps.runState.merged[0]?.specPath).toBe('docs/superpowers/specs/fixed-design.md')
+    expect(deps.runState.merged[0]?.residuals).toEqual([{ loc: 'L9', why: 'fixed-agent residual', mutantIds: ['3'] }])
   })
 
   test('exhausts buildFixAttempts then fails the build gate', async () => {

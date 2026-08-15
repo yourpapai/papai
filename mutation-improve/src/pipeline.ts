@@ -190,8 +190,7 @@ async function finalizePhase(
     beforeScore,
     afterScore,
     iter,
-    specPath: result.specPath,
-    planPath: result.planPath,
+    residuals: result.residuals,
     ...(gate.capped ? { capped: true } : {}),
   })
   return { iter, outcome: gate.capped ? 'capped' : 'improved', file, beforeScore, afterScore }
