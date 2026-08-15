@@ -169,7 +169,12 @@ the same pass.
 | 1 | none (promotion unwired; file fresh via CLI) | 0 all days | 420 (all invalid_value) | 0 | ok | rejects attributable to #209 (tool_completed float durationMs); Freshness reads none because ordinary staged→published promotion has no runtime caller |
 | 2 | none (promotion unwired; file fresh via CLI) | 0 all days | 271 (all invalid_value) | 0 | ok | same #209 signature; tool metrics undercounted, eligibility unaffected |
 
-**Stage B exit review:** ____________________  date: ________
+**Stage B exit review:** assess 2026-08-15 (`analytics-stage-b-report.ts --assess` over the
+cron-built `/data/stage-b.jsonl` on prod): `consecutive_complete_weeks=2
+stage_b_exit=allowed`. 14/14 window days eligible, `unexplained_delta=0` every day, zero
+overflow, expiry ok. `stage_c_entry=refused(governance_incomplete)` — Stage C prerequisites
+(policy metadata/operator acknowledgement and/or governance keyring) pending, tracked
+separately. date: 2026-08-15
 
 ## Follow-ups parked during the build
 
