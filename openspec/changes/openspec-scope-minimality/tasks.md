@@ -9,11 +9,11 @@ See LICENSE in the project root for details.
 
 ## 1. Pin the delivery contract before relying on it
 
-- [ ] 1.1 `tests/sdd-runner/draft.test.ts:129` already asserts rules reach the drafter
+- [x] 1.1 `tests/sdd-runner/draft.test.ts:129` already asserts rules reach the drafter
       prompt. Read it and confirm it covers `rules.proposal` specifically; extend it only
       if it does not. Do not duplicate an assertion that already holds.
       Verify: `bun test tests/sdd-runner/draft.test.ts`
-- [ ] 1.2 `tests/opencode-agent/phases.test.ts` stubs the driver with `rules: []`, so the
+- [x] 1.2 `tests/opencode-agent/phases.test.ts` stubs the driver with `rules: []`, so the
       forwarding in `plan-draft.ts:159` is never exercised. Write a failing case with a
       non-empty rules array asserting each entry reaches the drafted artifact brief
       verbatim, then confirm the existing implementation satisfies it.

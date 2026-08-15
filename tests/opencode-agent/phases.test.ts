@@ -265,7 +265,11 @@ const instructionsFor = (
 ): import('../../opencode-agent/src/openspec-driver.js').InstructionsResult => ({
   instruction: `Draft the ${artifactId}.`,
   template: undefined,
-  rules: [],
+  // Non-empty on purpose: a project's `rules` reach the drafter through this
+  // payload and through no other route, so a fake answering `[]` leaves the one
+  // seam that carries them untested. Two entries, because the section renders
+  // them as a list and one would not catch a builder that kept only the first.
+  rules: [`rule for ${artifactId}`, `second rule for ${artifactId}`],
   resolvedOutputPath: artifactId === 'specs' ? `${CHANGE_DIR}/specs/**/*.md` : `${CHANGE_DIR}/${artifactId}.md`,
   changeDir: CHANGE_DIR,
   existingOutputPaths: [],
@@ -522,6 +526,34 @@ describe('handlePlan · drafter loop (D3)', () => {
     // The steering feedback reached the drafter's prompt — the artifact-update
     // turn is grounded in the maintainer's scope change, not a blind re-draft.
     expect(io.prompts.some((p) => p.prompt.includes('structured logging'))).toBe(true)
+  })
+
+  it("forwards each artifact's project rules to its drafter verbatim", async () => {
+    // `openspec/config.yaml`'s `rules` are how a project shapes what its agents
+    // draft — a scope rule added there has to reach this drafter with no code
+    // change here. `plan-draft.ts` builds that section, but the fake driver used
+    // to answer `rules: []`, so the forwarding was never exercised: a refactor
+    // that dropped the section would have kept every test in this file green.
+    // Asserted across all three artifacts because the glob artifact (`specs`)
+    // takes the second prompt shape and would otherwise go uncovered.
+    const { input, io } = wireDrafterInput([
+      JSON.stringify({ files: [{ path: 'specs/retry/spec.md', content: 'spec body' }] }),
+      JSON.stringify({ content: 'design body' }),
+      JSON.stringify({ content: 'tasks body' }),
+    ])
+
+    await handlePlan(input)
+
+    const promptFor = (artifact: string): string =>
+      io.prompts
+        .map((p) => p.prompt)
+        .filter((p) => p.includes(`Draft the ${artifact}.`))
+        .join('\n')
+
+    for (const artifact of ['specs', 'design', 'tasks']) {
+      expect(promptFor(artifact)).toContain('Rules:')
+      for (const rule of instructionsFor(artifact).rules) expect(promptFor(artifact)).toContain(`- ${rule}`)
+    }
   })
 })
 
