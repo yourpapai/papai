@@ -195,3 +195,40 @@ describe('exposure in prompts', () => {
     })
   }
 })
+
+describe('fix instruction contract', () => {
+  const fixPrompts = [
+    ['buildFixPrompt', (): string => buildFixPrompt(issue, '/p/result.json', 'npm test')],
+    ['buildRetryFixPrompt', (): string => buildRetryFixPrompt(issue, '/p/result.json', 'boom', 'npm test')],
+    [
+      'buildRetryFixWithInspectorFeedbackPrompt',
+      (): string => buildRetryFixWithInspectorFeedbackPrompt(issue, 'not addressed', '/p/result.json', 'npm test'),
+    ],
+  ] as const
+
+  for (const [label, build] of fixPrompts) {
+    test(`${label} carries the minimality ladder`, () => {
+      const prompt = build()
+      expect(prompt).toMatch(/need to exist/iu)
+      expect(prompt).toMatch(/already/iu)
+      expect(prompt).toMatch(/one line/iu)
+    })
+
+    test(`${label} applies the ladder after comprehension, not instead of it`, () => {
+      expect(build()).toMatch(/after you understand/iu)
+    })
+  }
+
+  test('buildFixPrompt requires a runnable check to remain in the tree', () => {
+    const prompt = buildFixPrompt(issue, '/p/result.json', 'npm test')
+    expect(prompt).toMatch(/runnable check/iu)
+    expect(prompt).toMatch(/does not satisfy/iu)
+  })
+
+  test('buildFixPrompt forbids authoring architecture prose and asks for the gap instead', () => {
+    const prompt = buildFixPrompt(issue, '/p/result.json', 'npm test')
+    expect(prompt).toMatch(/architecture/iu)
+    expect(prompt).toMatch(/report/iu)
+    expect(prompt).toContain('do NOT edit the plan/spec')
+  })
+})

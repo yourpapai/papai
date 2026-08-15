@@ -9,21 +9,21 @@ See LICENSE in the project root for details.
 
 ## 1. Fix instruction contract
 
-- [ ] 1.1 Add failing cases to `tests/review-loop/prompt-templates.test.ts` asserting that
+- [x] 1.1 Add failing cases to `tests/review-loop/prompt-templates.test.ts` asserting that
       `buildFixPrompt` requires the minimality ladder *after* comprehension (must it exist, is it
       already here, can it be one line), then implement it in
       `review-loop/src/prompt-templates.ts`. Assert the contract, not the wording — match on the
       required obligations, so rewording the prompt does not fail the suite.
       Verify: `bun test tests/review-loop/prompt-templates.test.ts`
-- [ ] 1.2 Extend those cases to `buildRetryFixPrompt` and
+- [x] 1.2 Extend those cases to `buildRetryFixPrompt` and
       `buildRetryFixWithInspectorFeedbackPrompt` — a retry carries the same ladder as the first
       attempt — then implement.
       Verify: `bun test tests/review-loop/prompt-templates.test.ts`
-- [ ] 1.3 Add a failing case that `buildFixPrompt` requires non-trivial logic to leave one
+- [x] 1.3 Add a failing case that `buildFixPrompt` requires non-trivial logic to leave one
       runnable check in the tree, and that transient reproduction does not satisfy it, then
       implement.
       Verify: `bun test tests/review-loop/prompt-templates.test.ts`
-- [ ] 1.4 Add a failing case that `buildFixPrompt` forbids authoring architecture prose and
+- [x] 1.4 Add a failing case that `buildFixPrompt` forbids authoring architecture prose and
       directs the fixer to report the gap in `reasoning` instead, extending the existing
       plan/spec prohibition, then implement.
       Verify: `bun test tests/review-loop/prompt-templates.test.ts`
