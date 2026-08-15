@@ -77,9 +77,8 @@ function recordAcceptedFix(
   postSha: string,
 ): void {
   recordFixAttempt(deps.ledger, record.id)
-  if (checkBehind === 'unmeasured') {
-    deps.log.log(`[fix] "${shortTitle(record)}" → check-behind signal unavailable for this fix`)
-  }
+  // No per-fix log for `unmeasured`: the summary already reports the count, and
+  // nothing pinned a line that fires only when a diff cannot be read.
   tallyCheckBehind(collector, checkBehind)
   tallyDecision(collector, fixerResult.verdict, fixerResult.fixed)
   tallyFixerOutcome(collector, record, fixerResult)

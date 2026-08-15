@@ -479,10 +479,7 @@ describe('exposure line', () => {
         },
       ],
     })
-    expect(summary).toContain('Exposure:')
-    expect(summary).toContain('4 cited')
-    expect(summary).toContain('3 none')
-    expect(summary).toContain('2 divergent')
+    expect(summary).toContain('Exposure: 4 cited, 3 none, 2 divergent (advisory — orders dispatch, gates nothing)')
   })
 
   test('is omitted when no issue carried exposure, rather than printing zeros', () => {
@@ -493,6 +490,14 @@ describe('exposure line', () => {
     expect(summary).not.toContain('Exposure:')
   })
 
+  test('is still reported when cited and none happen to be equal', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), reviewerExposure: { caller: 2, none: 2, unknown: 0 } }],
+    })
+    expect(summary).toContain('Exposure: 2 cited, 2 none,')
+  })
+
   test('sums exposure across rounds', () => {
     const summary = buildSummary({
       ...inputOf({}),
@@ -501,8 +506,7 @@ describe('exposure line', () => {
         { ...zeroMetric(2), reviewerExposure: { caller: 2, none: 0, unknown: 0 }, exposureDivergent: 2 },
       ],
     })
-    expect(summary).toContain('3 cited')
-    expect(summary).toContain('3 divergent')
+    expect(summary).toContain('Exposure: 3 cited, 0 none, 3 divergent')
   })
 })
 
@@ -512,7 +516,8 @@ describe('check-behind line', () => {
       ...inputOf({}),
       metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 2, withoutCheck: 1, unmeasured: 0 } }],
     })
-    expect(summary).toContain('Checks left behind: 2 of 3')
+    expect(summary).toContain('Checks left behind: 2 of 3 accepted fixes')
+    expect(summary).not.toContain('unmeasured')
   })
 
   test('calls out unmeasured fixes rather than folding them into either answer', () => {
@@ -520,8 +525,15 @@ describe('check-behind line', () => {
       ...inputOf({}),
       metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 1, withoutCheck: 0, unmeasured: 2 } }],
     })
-    expect(summary).toContain('Checks left behind: 1 of 1')
-    expect(summary).toContain('2 unmeasured')
+    expect(summary).toContain('Checks left behind: 1 of 1 accepted fixes (2 unmeasured)')
+  })
+
+  test('is still reported when the measured and unmeasured counts happen to be equal', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 1, withoutCheck: 0, unmeasured: 1 } }],
+    })
+    expect(summary).toContain('Checks left behind: 1 of 1 accepted fixes (1 unmeasured)')
   })
 
   test('is omitted when no fix was accepted', () => {

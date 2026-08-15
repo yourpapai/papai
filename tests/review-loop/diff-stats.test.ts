@@ -110,9 +110,30 @@ describe('touchedTestPath', () => {
       'review-loop/src/a.ts',
       'a.test.js',
       'notatest.ts',
+      'a.test.ts.bak',
+      'src/a.spec.jsx',
     ]
     for (const p of cases) {
       expect(touchedTestPath([p])).toBe(isTestFile(p))
     }
+  })
+})
+
+describe('parseNumstatPaths edge rows', () => {
+  test('a row with no path field yields nothing', () => {
+    expect(parseNumstatPaths('1\t0\n')).toEqual([])
+  })
+
+  test('a row whose path field is empty yields nothing', () => {
+    expect(parseNumstatPaths('1\t0\t\n')).toEqual([])
+  })
+
+  test('a CRLF line does not carry the carriage return into the path', () => {
+    expect(parseNumstatPaths('1\t0\tsrc/a.ts\r\n')).toEqual(['src/a.ts'])
+  })
+
+  test('blank lines are skipped without a guard of their own', () => {
+    expect(parseNumstatPaths('\n1\t0\tsrc/a.ts\n\n')).toEqual(['src/a.ts'])
+    expect(parseNumstat('\n1\t2\tsrc/a.ts\n\n')).toEqual({ added: 1, removed: 2 })
   })
 })
