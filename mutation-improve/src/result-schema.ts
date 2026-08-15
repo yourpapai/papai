@@ -15,8 +15,14 @@ const ResidualSchema = z.object({
 })
 
 export const ResultSchema = z.object({
-  specPath: z.string().min(1),
-  planPath: z.string().min(1),
+  // Optional rather than removed. The runner no longer asks for a design.md or
+  // a tasks.md per improved file — every section of them restated something it
+  // already measures or set-matches — but `--resume-run` reads results stored
+  // by an earlier run, which carry both paths. Removing the fields outright
+  // would reject a run in flight the day this shipped; permitting `''` instead
+  // would encode "absent" as a sentinel every later reader has to know.
+  specPath: z.string().min(1).optional(),
+  planPath: z.string().min(1).optional(),
   testPaths: z.array(z.string().min(1)).min(1),
   residuals: z.array(ResidualSchema),
   notes: z.string().default(''),

@@ -9,7 +9,7 @@ See LICENSE in the project root for details.
 
 ## 0. Answer the open question first
 
-- [ ] 0.1 Determine why no `mutation-coverage-*` change folder appears in this
+- [x] 0.1 Determine why no `mutation-coverage-*` change folder appears in this
       repository's history — no merged run, or folders that do not survive the flow
       (`design.md`, Open Questions). Record the answer in the change; it does not alter
       the tasks below, but it changes how much weight later work should put on the
@@ -18,12 +18,12 @@ See LICENSE in the project root for details.
 
 ## 1. The result contract accepts a document-free result
 
-- [ ] 1.1 Write failing cases in `tests/mutation-improve/result-schema.test.ts` that a
+- [x] 1.1 Write failing cases in `tests/mutation-improve/result-schema.test.ts` that a
       result omitting `specPath` and `planPath` validates, and that a result carrying both
       still validates. Then make the two fields optional in
       `mutation-improve/src/result-schema.ts`.
       Verify: `bun test tests/mutation-improve/result-schema.test.ts`
-- [ ] 1.2 Write a failing case that a run resumed from state whose stored results carry
+- [x] 1.2 Write a failing case that a run resumed from state whose stored results carry
       both paths loads without error, then confirm `run-state.ts` and `pipeline.ts` need no
       change (both already treat them as optional).
       Verify: `bun test tests/mutation-improve/run-state.test.ts`

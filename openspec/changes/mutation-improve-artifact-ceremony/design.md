@@ -102,12 +102,30 @@ surfaces as a failed iteration rather than as a silently worse one.
 
 **A run in flight when this ships** → Covered by D3: stored results with paths still load.
 
-## Open Questions
+## Answered before implementation
 
-- **Why no `mutation-coverage-*` folder appears in this repository's history.** The
-  diff-guard whitelists `openspec/changes/`, and iteration branches merge into the
-  integration branch, so a completed run should have left one. Either no run has been
-  merged, or the folders do not survive the flow. It is worth one look before implementing,
-  because "the runner has never merged a run here" would change how much weight to put on
-  every other signal in this proposal — but not what this change does, since the documents
-  are redundant whether or not they ever landed.
+- **Why no `mutation-coverage-*` folder appears in this repository's history: the runner
+  has never merged a run here.** Not "the folders do not survive the flow." The evidence:
+  no `mutation-improve/*` branch exists; no commit anywhere in history touches both
+  `scripts/mutation/baseline.json` and `tests/`, which every merged iteration would; and
+  all eleven `chore(mutation): ratchet baseline` commits touch `baseline.json` **alone** —
+  they are the master-side seeding path (`test:mutate:changed --update-baseline`) that
+  `CLAUDE.md` documents, not runner output.
+
+  **This weakens one argument in the proposal and leaves the rest standing.** The absence
+  of those folders is no longer evidence that nothing reads them — it is explained by the
+  runner not having been used to completion here, and should not be cited as support. What
+  the change actually rests on is unaffected and was never the absence:
+
+  1. `finalize.ts:52` is the only consumer in the codebase, and it renders the two paths as
+     two cells of a markdown table.
+  2. Every section of the mandated `design.md` restates something already verified
+     elsewhere — the gap analysis restates the measured Stryker report, the accepted
+     residuals restate `result.residuals`, which the runner **set-matches** against its own
+     measurement.
+  3. Nothing walks the `tasks.md` checkboxes; this runner has no step machinery.
+
+  Those are properties of the code as it stands, not of what has been merged. One
+  consequence for implementation: with no merged run to inspect, `finalize.ts`'s table has
+  never been seen rendered against real data, so task 3's cases carry more weight than they
+  would otherwise — they are the only description of that output.

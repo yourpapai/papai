@@ -93,6 +93,24 @@ describe('run-state', () => {
     expect(reloaded.merged[1]?.capped).toBeUndefined()
   })
 
+  test('merged entries round-trip with and without the document paths', async () => {
+    // The runner stopped mandating a design.md and a tasks.md per improved file,
+    // so an entry naming neither is now the ordinary shape. An entry naming both
+    // is what --resume-run reads from a run started before that, and must keep
+    // loading — which is why the fields went optional rather than away.
+    const repoRoot = makeTempDir('rs-docs-')
+    const config = baseConfig(repoRoot, path.join(repoRoot, '.mutation-improve'))
+    const created = await createRunState(config)
+    created.merged = [
+      { file: 'src/a.ts', beforeScore: 0.3, afterScore: 0.85, iter: 1 },
+      { file: 'src/b.ts', beforeScore: 0.4, afterScore: 0.9, iter: 2, specPath: 's.md', planPath: 'p.md' },
+    ]
+    await saveRunState(created)
+    const reloaded = await loadRunState(config.workDir, created.runId)
+    expect(reloaded.merged[0]?.specPath).toBeUndefined()
+    expect(reloaded.merged[1]?.specPath).toBe('s.md')
+  })
+
   test('state.json round-trips the optional stats block', async () => {
     const repoRoot = makeTempDir('run-state-stats-')
     const config = baseConfig(repoRoot, path.join(repoRoot, '.mutation-improve'))
