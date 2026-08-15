@@ -36,13 +36,13 @@ See LICENSE in the project root for details.
 
 ## 3. The boundary, written down
 
-- [ ] 3.1 Add a short section to `docs/architecture/sdd-pipeline.md` stating that scope
+- [x] 3.1 Add a short section to `docs/architecture/sdd-pipeline.md` stating that scope
       minimality governs what a change admits and task atomicity governs how admitted work
       is divided, naming `rules.proposal` and `decompose.ts`'s atomicity checker as the two
       sides. This ships in the same commit as task 2, not as a follow-up
       (`design.md` D3, Risks).
       Verify: `bun run format:check`
-- [ ] 3.2 Cross-reference the boundary from `CLAUDE.md`'s Pi Workflow routing table entry
+- [x] 3.2 Cross-reference the boundary from `CLAUDE.md`'s Pi Workflow routing table entry
       for `/opsx:propose`, one line, so a reader arriving from the routing table finds it.
       Verify: `bun run format:check`
 

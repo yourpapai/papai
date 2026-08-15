@@ -103,7 +103,7 @@ all sub-second. `bun run test:raw` is the unwrapped escape hatch and writes no r
 
 When the harness supports `obra/superpowers` skills, preserve that workflow for what it still owns (see the routing table). Load `using-superpowers` at session start before acting; load any other applicable skill before responding, editing, or running commands; do not rely on memory of skill contents — load the current text each time.
 
-Planning runs on OpenSpec in this repo: code-behavior work enters through `/opsx:explore` / `/opsx:propose` and lives under `openspec/changes/<name>/`; `brainstorming` keeps non-code creative work only.
+Planning runs on OpenSpec in this repo: code-behavior work enters through `/opsx:explore` / `/opsx:propose` and lives under `openspec/changes/<name>/`; `brainstorming` keeps non-code creative work only. A proposal must justify each capability it declares and route declined scope into Non-goals (`openspec/config.yaml` `rules.proposal`); that governs what a change **admits**, never how tasks are divided — see [Admission vs division](docs/architecture/sdd-pipeline.md#admission-vs-division).
 
 | Trigger                                         | Route                                                                                |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------ |
