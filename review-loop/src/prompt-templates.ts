@@ -30,7 +30,7 @@ const FIXER_EXPOSURE_RULE = [
  * Carried by the retry prompts too — a second attempt is where scope creeps,
  * because the first one already failed and more feels like the answer.
  */
-const MINIMALITY_LADDER = [
+export const MINIMALITY_LADDER = [
   'Smallest thing that works. After you understand the problem, and before you write code, in order:',
   'does this need to exist at all; is it already in this codebase; does the stdlib or an installed',
   'dependency already do it; can it be one line. Only then write something new, and write the least',

@@ -12,6 +12,7 @@ import {
   buildRetryFixPrompt,
   buildRetryFixWithInspectorFeedbackPrompt,
   buildReviewPrompt,
+  MINIMALITY_LADDER,
 } from '../../review-loop/src/prompt-templates.js'
 
 const issue: ReviewerIssue = {
@@ -216,6 +217,14 @@ describe('fix instruction contract', () => {
 
     test(`${label} applies the ladder after comprehension, not instead of it`, () => {
       expect(build()).toMatch(/after you understand/iu)
+    })
+
+    // Additive to the two obligation assertions above, which cover a different
+    // failure: those keep a *reworded* ladder honest, this keeps every carrier
+    // saying the same words. Losing the first leaves a rewrite untested; losing
+    // this one lets one carrier drift from the constant the others share.
+    test(`${label} carries the ladder constant verbatim`, () => {
+      expect(build()).toContain(MINIMALITY_LADDER)
     })
   }
 

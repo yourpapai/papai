@@ -9,18 +9,18 @@ See LICENSE in the project root for details.
 
 ## 1. One definition, pinned across workspaces
 
-- [ ] 1.1 Export `MINIMALITY_LADDER` from `review-loop/src/prompt-templates.ts` (it is
+- [x] 1.1 Export `MINIMALITY_LADDER` from `review-loop/src/prompt-templates.ts` (it is
       module-private today) and add a case to `tests/review-loop/prompt-templates.test.ts`
       asserting each of the three fix prompts `toContain` the exported constant. This is
       additive to the existing obligation-shaped assertions — do not replace them; they
       cover a different failure (see `design.md` D4).
       Verify: `bun test tests/review-loop/prompt-templates.test.ts`
-- [ ] 1.2 Write a failing case in a new `tests/opencode-agent/minimality-rule.test.ts`
+- [x] 1.2 Write a failing case in a new `tests/opencode-agent/minimality-rule.test.ts`
       asserting that `opencode-agent`'s `MINIMALITY_RULE` equals `review-loop`'s
       `MINIMALITY_LADDER`, then add the constant to `opencode-agent/src/prompts.ts` to
       make it pass. Both texts imported directly; no copy in the test.
       Verify: `bun test tests/opencode-agent/minimality-rule.test.ts`
-- [ ] 1.3 Extend that suite with a failing case that the constant contains the clause
+- [x] 1.3 Extend that suite with a failing case that the constant contains the clause
       naming what is never cut — validation, error handling, security, tests — and that
       it does not advise minimising file count, then confirm the constant satisfies both.
       Verify: `bun test tests/opencode-agent/minimality-rule.test.ts`

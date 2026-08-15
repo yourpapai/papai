@@ -80,6 +80,31 @@ export interface PromptContext {
   thread: readonly IssueComment[]
 }
 
+/**
+ * The minimality rule, carried verbatim by every instruction block that asks
+ * the model to write production code — `IMPLEMENT_INSTRUCTIONS` and
+ * `CI_FIX_INSTRUCTIONS`, asserted against this constant by
+ * `instructions.test.ts` so a softened copy cannot pass. The drafting blocks in
+ * `phases/plan-draft.ts` deliberately do **not** carry it: artifact scope is a
+ * different question, governed by `openspec/config.yaml`'s `rules`.
+ *
+ * It is duplicated from `review-loop/src/prompt-templates.ts` rather than
+ * imported — that workspace is a subprocess here, not a module — and
+ * `tests/opencode-agent/minimality-rule.test.ts` pins the two texts equal.
+ *
+ * Two clauses are load-bearing and must survive any rewording. "After you
+ * understand the problem" keeps this a rule about solutions, not about reading
+ * less. And the sentence naming what is never cut is what stops the rest being
+ * read as licence to drop a safeguard for a shorter diff.
+ */
+export const MINIMALITY_RULE = [
+  'Smallest thing that works. After you understand the problem, and before you write code, in order:',
+  'does this need to exist at all; is it already in this codebase; does the stdlib or an installed',
+  'dependency already do it; can it be one line. Only then write something new, and write the least',
+  'of it that resolves the issue. A smaller diff is not the goal — never cut validation, error',
+  'handling, security, or a test to reach one.',
+].join(' ')
+
 export const TRIAGE_INSTRUCTIONS = [
   'Decide whether the request below is a question, needs more detail, or is ready to capture as a change.',
   'Explore the repository before deciding — do not assume a file layout.',
