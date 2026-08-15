@@ -72,9 +72,9 @@ See LICENSE in the project root for details.
 
 ## 6. Documentation and full gate
 
-- [ ] 6.1 Add a "Deletion findings" section to `review-loop/CLAUDE.md` covering the closed
+- [x] 6.1 Add a "Deletion findings" section to `review-loop/CLAUDE.md` covering the closed
       set, the mandatory replacement, kind-then-exposure ordering, and the medium cap.
       Note the open question on `shrink` from `design.md`.
       Verify: `bun run format:check`
-- [ ] 6.2 Run the full gate and fix anything it surfaces.
+- [x] 6.2 Run the full gate and fix anything it surfaces.
       Verify: `bun run test && bun run typecheck && bun run lint && bun run review-loop:test`
