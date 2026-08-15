@@ -19,7 +19,7 @@ PR #272 is the cost made visible. Of 17 fix commits, **6 shipped no test** in a 
 mandates test-first; one (`42413ce`) fixed a logging gap with a module-scope `pino` logger in a
 fully DI-seamed package; and one (`0c372ce`) wrote an architecture paragraph that `b3fc19a`
 invalidated two hours on. All passed every gate: they built, and addressed the issue. That doc
-claim is still wrong on master: no actor sees two fixes, and the terminal round's are never
+claim is uncorrected on PR #272: no actor sees two fixes, and the terminal round's are never
 reviewed.
 
 ## What Changes
