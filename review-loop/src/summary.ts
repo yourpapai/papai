@@ -173,6 +173,21 @@ function buildExposureLine(metrics: readonly RoundMetric[]): string | null {
   return `Exposure: ${cited} cited, ${none} none, ${divergent} divergent (advisory — orders dispatch, gates nothing)`
 }
 
+/**
+ * Counted over accepted fixes only — a rejected fix leaving no test behind is
+ * not a finding. `unmeasured` is reported separately rather than folded into
+ * the denominator, so a run whose diffs could not be read does not read as a
+ * run whose fixer skipped its tests.
+ */
+function buildCheckBehindLine(metrics: readonly RoundMetric[]): string | null {
+  const withCheck = metrics.reduce((s, m) => s + m.checkBehind.withCheck, 0)
+  const measured = withCheck + metrics.reduce((s, m) => s + m.checkBehind.withoutCheck, 0)
+  const unmeasured = metrics.reduce((s, m) => s + m.checkBehind.unmeasured, 0)
+  if (measured + unmeasured === 0) return null
+  const tail = unmeasured > 0 ? ` (${unmeasured} unmeasured)` : ''
+  return `Checks left behind: ${withCheck} of ${measured} accepted fixes${tail}`
+}
+
 function buildStatsLine(stats: StatsSnapshot | undefined): string | null {
   if (stats === undefined) return null
   const t = stats.totals
@@ -232,6 +247,9 @@ export function buildSummary(input: SummaryInput): string {
 
   const exposureLine = buildExposureLine(input.metrics)
   if (exposureLine !== null) lines.push(exposureLine)
+
+  const checkBehindLine = buildCheckBehindLine(input.metrics)
+  if (checkBehindLine !== null) lines.push(checkBehindLine)
 
   const statsLine = buildStatsLine(input.stats)
   if (statsLine !== null) lines.push(statsLine)

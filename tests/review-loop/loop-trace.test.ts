@@ -17,6 +17,7 @@ import {
   emitRoundSummary,
   emitVerifyComplete,
   newCollector,
+  tallyCheckBehind,
   tallyDecision,
   exposureKind,
   tallyExposure,
@@ -214,5 +215,16 @@ describe('exposure tallies', () => {
     expect(exposureKind(undefined)).toBe('unknown')
     expect(exposureKind({ kind: 'none' })).toBe('none')
     expect(exposureKind({ kind: 'caller', file: 'a.ts', line: 1, quote: 'q' })).toBe('caller')
+  })
+})
+
+describe('check-behind tallies', () => {
+  test('counts each outcome separately, keeping unmeasured out of both', () => {
+    const collector = newCollector()
+    tallyCheckBehind(collector, 'with-check')
+    tallyCheckBehind(collector, 'with-check')
+    tallyCheckBehind(collector, 'without-check')
+    tallyCheckBehind(collector, 'unmeasured')
+    expect(collector.checkBehind).toEqual({ withCheck: 2, withoutCheck: 1, unmeasured: 1 })
   })
 })

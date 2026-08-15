@@ -3,11 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { CheckBehind } from './commit-attempt.js'
 import type { Exposure, ReviewerIssue } from './issue-schema.js'
 import {
+  emptyCheckBehindCounts,
   emptyDecisions,
   emptyExposureCounts,
   emptySeverityCounts,
+  type CheckBehindCounts,
   type Decisions,
   type ExposureCounts,
   type ExposureKind,
@@ -27,6 +30,7 @@ export interface RoundCollector {
   reviewerExposure: ExposureCounts
   fixerExposure: ExposureCounts
   exposureDivergent: number
+  checkBehind: CheckBehindCounts
   phaseMs: PhaseMs
   usage: UsageTotals
 }
@@ -40,6 +44,7 @@ export function newCollector(): RoundCollector {
     reviewerExposure: emptyExposureCounts(),
     fixerExposure: emptyExposureCounts(),
     exposureDivergent: 0,
+    checkBehind: emptyCheckBehindCounts(),
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
   }
@@ -91,6 +96,17 @@ export function tallyExposure(collector: RoundCollector, reviewer: ExposureKind,
   if (reviewer !== 'unknown' && fixer !== 'unknown' && reviewer !== fixer) {
     collector.exposureDivergent += 1
   }
+}
+
+/**
+ * Whether an accepted fix left a runnable check behind. Advisory only: it never
+ * blocks a merge, changes a verdict, or touches the retry budget — it exists to
+ * say whether the rule the fix prompt states is actually being followed.
+ */
+export function tallyCheckBehind(collector: RoundCollector, outcome: CheckBehind): void {
+  if (outcome === 'with-check') collector.checkBehind.withCheck += 1
+  else if (outcome === 'without-check') collector.checkBehind.withoutCheck += 1
+  else collector.checkBehind.unmeasured += 1
 }
 
 export function tallyFixerSeverity(collector: RoundCollector, severity: Severity | undefined): void {

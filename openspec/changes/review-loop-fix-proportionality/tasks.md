@@ -46,15 +46,15 @@ See LICENSE in the project root for details.
 
 ## 3. Recording the signal
 
-- [ ] 3.1 Write failing cases in `tests/review-loop/issue-processor-attempts.test.ts` (or the
+- [x] 3.1 Write failing cases in `tests/review-loop/issue-processor-attempts.test.ts` (or the
       commit-attempt suite, following the local pattern) that an accepted fix whose diff touched
       no test path is still committed and merged, and that the issue's remaining retry budget is
       unchanged. Then record the boolean on the accepted fix.
       Verify: `bun test tests/review-loop/issue-processor-attempts.test.ts`
-- [ ] 3.2 Write a failing case that an unavailable or failing diff measurement leaves the fix
+- [x] 3.2 Write a failing case that an unavailable or failing diff measurement leaves the fix
       unaffected and is reported as absent rather than as a satisfied check, then implement.
       Verify: `bun test tests/review-loop/issue-processor-attempts.test.ts`
-- [ ] 3.3 Write failing cases in `tests/review-loop/trace-log.test.ts` and
+- [x] 3.3 Write failing cases in `tests/review-loop/trace-log.test.ts` and
       `tests/review-loop/summary.test.ts` that the signal reaches `metrics.json` and the run
       summary, and that an older `metrics.json` without the field still parses. Then implement.
       Verify: `bun test tests/review-loop/trace-log.test.ts tests/review-loop/summary.test.ts`

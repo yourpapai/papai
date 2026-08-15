@@ -818,3 +818,13 @@ describe('processPendingIssues exposure ordering', () => {
     expect(issueIdsInDispatchOrder(events)).toEqual(['rec-cited', 'rec-uncited'])
   })
 })
+
+describe('check-behind signal', () => {
+  test('records that an accepted fix left no check behind, and merges it anyway', async () => {
+    const { fixed, ledger, collector } = await runScenario(mockSpawnForFixerAndInspector({}))
+    expect(fixed).toBe(1)
+    expect(recordOf(ledger).status).toBe('fixed_pending_review')
+    expect(recordOf(ledger).fixAttempts).toBe(1)
+    expect(collector.checkBehind).toEqual({ withCheck: 0, withoutCheck: 1, unmeasured: 0 })
+  })
+})

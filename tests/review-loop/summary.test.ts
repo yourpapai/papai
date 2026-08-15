@@ -70,6 +70,7 @@ function zeroMetric(round: number): RoundMetric {
     reviewerExposure: { caller: 0, none: 0, unknown: 0 },
     fixerExposure: { caller: 0, none: 0, unknown: 0 },
     exposureDivergent: 0,
+    checkBehind: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
   }
@@ -502,5 +503,28 @@ describe('exposure line', () => {
     })
     expect(summary).toContain('3 cited')
     expect(summary).toContain('3 divergent')
+  })
+})
+
+describe('check-behind line', () => {
+  test('reports how many accepted fixes left a check behind', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 2, withoutCheck: 1, unmeasured: 0 } }],
+    })
+    expect(summary).toContain('Checks left behind: 2 of 3')
+  })
+
+  test('calls out unmeasured fixes rather than folding them into either answer', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 1, withoutCheck: 0, unmeasured: 2 } }],
+    })
+    expect(summary).toContain('Checks left behind: 1 of 1')
+    expect(summary).toContain('2 unmeasured')
+  })
+
+  test('is omitted when no fix was accepted', () => {
+    expect(buildSummary(inputOf({ metrics: [zeroMetric(1)] }))).not.toContain('Checks left behind')
   })
 })

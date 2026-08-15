@@ -74,6 +74,22 @@ export function emptyExposureCounts(): ExposureCounts {
   return { caller: 0, none: 0, unknown: 0 }
 }
 
+/**
+ * `unmeasured` is kept apart from both answers on purpose: a diff we could not
+ * read is not a fix that skipped its test, and counting it as one would make
+ * the signal accuse the innocent.
+ */
+export const CheckBehindCountsSchema = z.object({
+  withCheck: z.number().int().nonnegative(),
+  withoutCheck: z.number().int().nonnegative(),
+  unmeasured: z.number().int().nonnegative(),
+})
+export type CheckBehindCounts = z.infer<typeof CheckBehindCountsSchema>
+
+export function emptyCheckBehindCounts(): CheckBehindCounts {
+  return { withCheck: 0, withoutCheck: 0, unmeasured: 0 }
+}
+
 export const RoundMetricSchema = z.object({
   round: z.number().int().positive(),
   newIssues: z.number().int().nonnegative(),
@@ -86,6 +102,7 @@ export const RoundMetricSchema = z.object({
   reviewerExposure: ExposureCountsSchema,
   fixerExposure: ExposureCountsSchema,
   exposureDivergent: z.number().int().nonnegative(),
+  checkBehind: CheckBehindCountsSchema,
   phaseMs: PhaseMsSchema,
   usage: UsageTotalsSchema,
 })
