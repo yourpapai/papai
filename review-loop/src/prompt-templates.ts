@@ -5,6 +5,25 @@
 
 import type { ReviewerIssue } from './issue-schema.js'
 
+/**
+ * Exposure is reported as a citation, never as a rating: name the caller you
+ * found, or state there is none. Shared verbatim by the reviewer and the fixer
+ * so the two answers are comparable — their disagreement is the whole point.
+ */
+const EXPOSURE_SCHEMA = '{"kind": "caller", "file": string, "line": number, "quote": string} | {"kind": "none"}'
+
+const FIXER_RESULT_SCHEMA =
+  '{"verdict": "valid" | "invalid" | "already_fixed" | "needs_human" | "plan_drift", "fixability": "auto" | "manual", "reasoning": string, "targetFiles": string[], "fixed": boolean, "commitSha": string | null, "commitMessage": string, "severity": "critical" | "high" | "medium" | "low", "exposure": ' +
+  EXPOSURE_SCHEMA +
+  '}'
+
+const FIXER_EXPOSURE_RULE = [
+  '- exposure: your own, independent judgement of whether the code you touched is reached at all.',
+  'Cite a caller you actually found — file, line, and the line quoted — or report {"kind": "none"}.',
+  "Do not copy the reviewer's answer and do not defer to it; disagreeing with it is a useful result,",
+  'and it never changes whether your fix is accepted.',
+].join(' ')
+
 export function buildReviewPrompt(planPath: string, outputPath: string): string {
   return [
     `Review the current implementation against the implementation plan at: ${planPath}.`,
@@ -18,10 +37,14 @@ export function buildReviewPrompt(planPath: string, outputPath: string): string 
     '',
     'Verification budget: do NOT run test suites, builds, typechecks, linters, or the repo check command (e.g. `bun run test`, `bun run typecheck`, `bun run knip`, `bun check:full`) — the fixer and the final build check own build/test verification. Gather evidence only by reading files, inspecting `git diff`/`git log`/`git show`, and cheap targeted searches (rg/grep).',
     '',
+    'Exposure — every issue MUST carry `exposure`, and omitting it is not an answer. Severity grades what happens if the code is reached; exposure records whether it is reached at all. Find a caller that reaches the code you are reporting on and cite it: the file, the line, and that line quoted. If you searched and nothing reaches it, report {"kind": "none"} — that is a finding, not a failure. Cite only what you actually found, exactly as the evidence rule requires. Exposure never suppresses your issue; it orders which issues are fixed first.',
+    '',
     'Severity calibration — critical: data loss / security / crash / blocks the plan goal; high: likely bug or breaks a requirement; medium: conditional correctness risk or maintainability; low: minor. Include all severity levels.',
     '',
     'Use this exact schema:',
-    '{"issues": [{"title": string, "severity": "critical" | "high" | "medium" | "low", "summary": string, "whyItMatters": string, "evidence": string, "file": string, "lineStart": number, "lineEnd": number, "suggestedFix": string, "confidence": number}]}',
+    '{"issues": [{"title": string, "severity": "critical" | "high" | "medium" | "low", "summary": string, "whyItMatters": string, "evidence": string, "file": string, "lineStart": number, "lineEnd": number, "suggestedFix": string, "confidence": number, "exposure": ' +
+      EXPOSURE_SCHEMA +
+      '}]}',
     '`confidence` is a probability between 0 and 1 (e.g. 0.85), NOT a 1-5 rating.',
     'If there are no issues, write: {"issues": []}',
   ].join('\n\n')
@@ -36,7 +59,8 @@ export function buildFixPrompt(issue: ReviewerIssue, outputPath: string, checkCo
     'Do NOT commit and do NOT edit the plan/spec. If the issue is really that the code diverged from the plan/spec but is not a code defect (extra files, different structure), do not change anything — return verdict "plan_drift" with reasoning describing the divergence.',
     `Write your result as JSON to: ${outputPath}`,
     'Use this exact schema:',
-    '{"verdict": "valid" | "invalid" | "already_fixed" | "needs_human" | "plan_drift", "fixability": "auto" | "manual", "reasoning": string, "targetFiles": string[], "fixed": boolean, "commitSha": string | null, "commitMessage": string, "severity": "critical" | "high" | "medium" | "low"}',
+    FIXER_RESULT_SCHEMA,
+    FIXER_EXPOSURE_RULE,
     '- verdict "valid" means a real defect that you fixed; a real but not-auto-fixable issue is "needs_human".',
     '- commitMessage: a single-line conventional-commit subject describing the ACTUAL changes you made (the orchestrator commits; you do not).',
     '- severity: your independently-assessed severity (may differ from the reviewer). Omit only for "invalid".',
@@ -59,7 +83,8 @@ export function buildRetryFixPrompt(
     'This is your final attempt. If you cannot make the build pass, report "needs_human" and leave the tree buildable — do not leave a broken tree.',
     `Write your updated result as JSON to: ${outputPath}`,
     'Use this exact schema:',
-    '{"verdict": "valid" | "invalid" | "already_fixed" | "needs_human" | "plan_drift", "fixability": "auto" | "manual", "reasoning": string, "targetFiles": string[], "fixed": boolean, "commitSha": string | null, "commitMessage": string, "severity": "critical" | "high" | "medium" | "low"}',
+    FIXER_RESULT_SCHEMA,
+    FIXER_EXPOSURE_RULE,
     '',
     'Build error output:',
     buildError,
@@ -118,7 +143,8 @@ export function buildRetryFixWithInspectorFeedbackPrompt(
     'This is your final attempt. If you cannot make it work, return verdict "needs_human" — do not leave a broken tree.',
     `Write your result as JSON to: ${outputPath}`,
     'Use this exact schema:',
-    '{"verdict": "valid" | "invalid" | "already_fixed" | "needs_human" | "plan_drift", "fixability": "auto" | "manual", "reasoning": string, "targetFiles": string[], "fixed": boolean, "commitSha": string | null, "commitMessage": string, "severity": "critical" | "high" | "medium" | "low"}',
+    FIXER_RESULT_SCHEMA,
+    FIXER_EXPOSURE_RULE,
     '',
     'Issue:',
     JSON.stringify(issue, null, 2),

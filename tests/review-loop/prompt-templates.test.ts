@@ -152,3 +152,46 @@ describe('buildRetryFixWithInspectorFeedbackPrompt', () => {
     expect(prompt).toContain('final attempt')
   })
 })
+
+describe('exposure in prompts', () => {
+  const reviewPrompt = (): string => buildReviewPrompt('/path/to/plan.md', '/path/to/issues.json')
+
+  test('buildReviewPrompt asks for a cited caller or an explicit none', () => {
+    const prompt = reviewPrompt()
+    expect(prompt).toContain('exposure')
+    expect(prompt).toContain('"kind": "caller"')
+    expect(prompt).toContain('"kind": "none"')
+  })
+
+  test('buildReviewPrompt makes exposure mandatory: silence is not an answer', () => {
+    const prompt = reviewPrompt()
+    expect(prompt).toContain('MUST')
+    expect(prompt).toMatch(/omit|silence|leaving it out/iu)
+  })
+
+  test('buildReviewPrompt asks for the caller as evidence, not as a rating', () => {
+    const prompt = reviewPrompt()
+    expect(prompt).toMatch(/quote/iu)
+    expect(prompt).not.toMatch(/rate the (importance|reachability)/iu)
+  })
+
+  for (const [label, build] of [
+    ['buildFixPrompt', (): string => buildFixPrompt(issue, '/p/result.json', 'npm test')],
+    ['buildRetryFixPrompt', (): string => buildRetryFixPrompt(issue, '/p/result.json', 'boom', 'npm test')],
+    [
+      'buildRetryFixWithInspectorFeedbackPrompt',
+      (): string => buildRetryFixWithInspectorFeedbackPrompt(issue, 'not addressed', '/p/result.json', 'npm test'),
+    ],
+  ] as const) {
+    test(`${label} asks the fixer for its own exposure assessment`, () => {
+      const prompt = build()
+      expect(prompt).toContain('exposure')
+      expect(prompt).toContain('"kind": "caller"')
+      expect(prompt).toContain('"kind": "none"')
+    })
+
+    test(`${label} states the assessment is independent of the reviewer`, () => {
+      expect(build()).toMatch(/independent|your own/iu)
+    })
+  }
+})

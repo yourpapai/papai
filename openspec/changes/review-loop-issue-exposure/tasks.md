@@ -21,11 +21,11 @@ See LICENSE in the project root for details.
 
 ## 2. Prompt contracts
 
-- [ ] 2.1 Add failing cases to `tests/review-loop/prompt-templates.test.ts` that
+- [x] 2.1 Add failing cases to `tests/review-loop/prompt-templates.test.ts` that
       `buildReviewPrompt` requires a caller citation or an explicit "none found", and that
       silence is not acceptable. Assert the obligation, not the wording. Then implement.
       Verify: `bun test tests/review-loop/prompt-templates.test.ts`
-- [ ] 2.2 Add failing cases that `buildFixPrompt` and both retry prompts require the fixer's own
+- [x] 2.2 Add failing cases that `buildFixPrompt` and both retry prompts require the fixer's own
       exposure assessment, stated as independent of the reviewer's, then implement.
       Verify: `bun test tests/review-loop/prompt-templates.test.ts`
 
