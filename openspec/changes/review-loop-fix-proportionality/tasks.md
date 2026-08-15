@@ -30,18 +30,18 @@ See LICENSE in the project root for details.
 
 ## 2. Path-aware diff read
 
-- [ ] 2.1 Write failing cases in `tests/review-loop/diff-stats.test.ts` for a new path-aware
+- [x] 2.1 Write failing cases in `tests/review-loop/diff-stats.test.ts` for a new path-aware
       export over the same `git diff --numstat` output: it returns changed paths, tolerates
       renames and binary (`-`/`-`) rows, and returns empty for empty output. Assert in the same
       file that `parseNumstat`, `DiffStats` and `measureDiffSince` keep their current shapes —
       `mutation-improve` imports them and its `reportMergeDiff` swallows failures, so a breaking
       change there is silent. Then implement additively in `review-loop/src/diff-stats.ts`.
       Verify: `bun test tests/review-loop/diff-stats.test.ts`
-- [ ] 2.2 Write a failing case that a changed path is classified as a test path using the
+- [x] 2.2 Write a failing case that a changed path is classified as a test path using the
       repository's own implementation-to-test mapping rather than a rule private to the loop,
       then implement.
       Verify: `bun test tests/review-loop/diff-stats.test.ts`
-- [ ] 2.3 Confirm `mutation-improve` still builds and passes against the changed module.
+- [x] 2.3 Confirm `mutation-improve` still builds and passes against the changed module.
       Verify: `bun run mutation-improve:typecheck && bun test tests/mutation-improve`
 
 ## 3. Recording the signal
