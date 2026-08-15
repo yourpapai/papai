@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`mutation-improve/` is a standalone Bun workspace for the autonomous mutation-coverage improvement runner. Each iteration spawns two `opencode run` agent subprocesses (a SELECT agent that picks the highest-ROI file from `scripts/mutation/baseline.json`, then an IMPROVE agent that writes spec/plan/tests for it), gates the result, ratchets the baseline, and merges per-iteration worktree branches into the checked-out integration branch (the CLI refuses to start on `base` or a detached HEAD); a final step pushes that branch and opens a PR to `base` via `gh`. It is local developer tooling, not a papai runtime dependency.
+`mutation-improve/` is a standalone Bun workspace for the autonomous mutation-coverage improvement runner. Each iteration spawns two `opencode run` agent subprocesses (a SELECT agent that picks the highest-ROI file from `scripts/mutation/baseline.json`, then an IMPROVE agent that writes tests for it), gates the result, ratchets the baseline, and merges per-iteration worktree branches into the checked-out integration branch (the CLI refuses to start on `base` or a detached HEAD); a final step pushes that branch and opens a PR to `base` via `gh`. It is local developer tooling, not a papai runtime dependency.
 
 ## Pipeline
 
@@ -10,7 +10,10 @@
 
 1. SELECT — runner reads the baseline; the agent only suggests. Picks outside the baseline, already in `doneSet`, already failed this run, or present in the cross-run capped registry (`<workDir>/capped.json`) are rejected as agent mistakes.
 2. CAPTURE BEFORE — runner-measured score; already ≥ `threshold` → iteration is `skipped` and the file joins `doneSet`.
-3. IMPROVE — agent writes spec/plan/tests; its declared score is never trusted. Residual declarations must name the Stryker mutant ids they cover (`mutantIds`).
+3. IMPROVE — agent runs a three-step procedure: MEASURE (`bun test:mutate:file <file>`, read `reports/paired/`), TESTS (extend the companion test file, one test per mutant class, exact-equality `toBe(...)`), RESIDUALS. Its declared score is never trusted. Residual declarations must name the Stryker mutant ids they cover (`mutantIds`), and the runner set-matches their union against its own measurement.
+
+   It writes **only tests**. The runner used to mandate a seven-section `design.md` and a task-per-mutant `tasks.md` per improved file — two of five steps, paid out of the agent's turn every iteration. Every section restated something held somewhere stronger: the gap analysis restated the report the runner re-measures itself, the accepted residuals restated `result.residuals`, which it set-matches, and the tests section restated the tests. Nothing walked the checkboxes; this runner has no step machinery. `specPath`/`planPath` remain **optional** on `ResultSchema` and on the merged run-state entry so a `--resume-run` of a run started before that still loads, and are not rendered. The diff-guard still whitelists `openspec/changes/` — an agent that writes there is not refused, it is simply not asked to.
+
 4. GATES, in order: diff-guard (`src/diff-guard.ts`: agent may only touch `tests/` and `openspec/changes/`) → build check (`checkCommand`) → runner-measured after-score via `mutateFileCommand <file>`, read from `reports/paired/<stem>.stryker-report.json` (`src/score-reader.ts`, one retry on missing/corrupt report). Below `threshold` there are three outcomes: the residual escape hatch passes as `improved` when residuals are declared AND the score lands within `epsilon` of the threshold; otherwise the iteration merges as `capped` when the score improved AND the declared residual `mutantIds` exactly equal the runner-measured surviving ids (the file is at its tests-only ceiling — baseline ratchets to the measured score and the file enters the capped registry); otherwise it fails. A failed build check does NOT fail the iteration outright: the failed check output is fed back to the agent (`buildFixAttempts` times, default 2; diff-guard re-runs after each fix) before the iteration is failed at the build gate.
 5. RATCHET + MERGE — the baseline bump is committed on the iteration branch inside the worktree, then merged into the integration branch. A merge conflict aborts the whole run (`gate: 'merge'`) so no later iteration chains off a stale base.
 
@@ -30,6 +33,8 @@ Live output: every phase of an iteration renders into the single `'iter'` slot (
 - `iter/<N>/build-output.log` — full combined stdout+stderr of a failed build gate (the recorded reason is tail-bounded).
 - `<workDir>/worktrees/<runId>-iter<N>` on branches `mutation-improve/<runId>-iter<N>` (kept on merge conflict, removed otherwise).
 - `finalize.log` in the run dir if `gh pr create` fails (includes a re-run command).
+
+The pull-request body `src/finalize.ts` renders reports **accepted residuals and their reasoning** per file, not two document links. That array is the one the runner set-matched against its own surviving mutant ids, so a reviewer sees the checked answer for why a file merged below target rather than prose no gate ever read. `residuals` therefore has to survive a `--resume-run`: a run resumed after its last iteration would otherwise publish a table saying every file was accepted for no reason.
 
 ## Scripts
 

@@ -10,7 +10,7 @@ import type { CappedEntry } from './capped-registry.js'
 // the agent is still told to produce after it stopped being asked for — costs a
 // whole iteration to a validation error.
 const RESULT_SCHEMA_LINE =
-  'Schema: { testPaths: string[] (>=1),\n' + 'residuals: [{loc, why, mutantIds: string[]}], notes: string }.'
+  'Schema: { testPaths: string[] (>=1),\nresiduals: [{loc, why, mutantIds: string[]}], notes: string }.'
 
 // Both header forms spelled out verbatim: agents default to the // style they
 // see in source, but check.sh requires the HTML-comment form for docs/*.md and

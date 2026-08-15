@@ -57,9 +57,9 @@ See LICENSE in the project root for details.
 
 ## 4. Documentation and full gate
 
-- [ ] 4.1 Update `mutation-improve/CLAUDE.md`: the IMPROVE phase's procedure is three steps,
+- [x] 4.1 Update `mutation-improve/CLAUDE.md`: the IMPROVE phase's procedure is three steps,
       the agent writes only under `tests/`, and residual reasoning lives in the result. Keep
       the diff-guard description accurate — `openspec/changes/` stays whitelisted.
       Verify: `bun run format:check`
-- [ ] 4.2 Run the full gate and fix anything it surfaces.
+- [x] 4.2 Run the full gate and fix anything it surfaces.
       Verify: `bun run test && bun run typecheck && bun run lint && bun run mutation-improve:test`
