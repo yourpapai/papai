@@ -21,16 +21,16 @@ See LICENSE in the project root for details.
 
 ## 2. The rules
 
-- [ ] 2.1 Add two entries to `rules.proposal` in `openspec/config.yaml`: state the concrete
+- [x] 2.1 Add two entries to `rules.proposal` in `openspec/config.yaml`: state the concrete
       consequence of not building each declared capability, and name the existing
       capability or module that already covers it where one does. Route scope rejected on
       those grounds into the `Non-goals` section the rules already require.
       Verify: `bun run format:check`
-- [ ] 2.2 Add the reuse rung to `rules.design`, beside the existing new-dependency rule it
+- [x] 2.2 Add the reuse rung to `rules.design`, beside the existing new-dependency rule it
       generalises. Do not restate the dependency rule — the two are one question at two
       levels and the existing wording stays.
       Verify: `bun run format:check`
-- [ ] 2.3 Confirm `rules.tasks` is untouched, and that `openspec instructions tasks` for an
+- [x] 2.3 Confirm `rules.tasks` is untouched, and that `openspec instructions tasks` for an
       existing change returns exactly the rules it returned before.
       Verify: `openspec instructions tasks --change agent-minimality-ladder --json`
 
