@@ -10,8 +10,8 @@ import path from 'node:path'
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import type { ShellExecFn } from '../../review-loop/src/build-checker.js'
 import { createIssueLedger, type IssueLedger, type LedgerIssueRecord } from '../../review-loop/src/issue-ledger.js'
-import { processPendingIssues, sanitizeSubject } from '../../review-loop/src/issue-processor.js'
-import type { ReviewerIssue, Verdict } from '../../review-loop/src/issue-schema.js'
+import { orderByExposure, processPendingIssues, sanitizeSubject } from '../../review-loop/src/issue-processor.js'
+import type { Exposure, ReviewerIssue, Verdict } from '../../review-loop/src/issue-schema.js'
 import { newCollector, type RoundCollector } from '../../review-loop/src/loop-trace.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
@@ -715,5 +715,106 @@ describe('processPendingIssues under a stop request', () => {
     // The two it never reached are still open, which is what the summary reports
     // and what a resumed run would pick up.
     expect(ledger.snapshot.issues['rec-3']?.status).toBe('discovered')
+  })
+})
+
+describe('orderByExposure', () => {
+  const caller = { kind: 'caller', file: 'src/x.ts', line: 3, quote: 'flush()' } as const
+  const rec = (id: string, exposure?: Exposure): LedgerIssueRecord => ({
+    id,
+    issue: { ...issue, exposure },
+    status: 'discovered',
+    firstSeenRound: 1,
+    latestSeenRound: 1,
+    fixAttempts: 0,
+    verifierDecision: null,
+  })
+  const ids = (records: readonly LedgerIssueRecord[]): string[] => records.map((r) => r.id)
+
+  test('a cited caller is dispatched before an issue reporting none', () => {
+    expect(ids(orderByExposure([rec('none-1', { kind: 'none' }), rec('cited')]))).toEqual(['cited', 'none-1'])
+  })
+
+  test('unknown sits between cited and none: an absent answer is not a denial', () => {
+    const out = orderByExposure([rec('none-1', { kind: 'none' }), rec('unknown'), rec('cited', caller)])
+    expect(ids(out)).toEqual(['cited', 'unknown', 'none-1'])
+  })
+
+  test('is stable: issues exposure cannot separate keep their relative order', () => {
+    expect(ids(orderByExposure([rec('a', caller), rec('b', caller), rec('c', caller)]))).toEqual(['a', 'b', 'c'])
+  })
+
+  test('a round where nothing carries exposure dispatches in unchanged order', () => {
+    expect(ids(orderByExposure([rec('a'), rec('b'), rec('c')]))).toEqual(['a', 'b', 'c'])
+  })
+
+  test('does not mutate the caller array', () => {
+    const input = [rec('none-1', { kind: 'none' }), rec('cited', caller)]
+    orderByExposure(input)
+    expect(ids(input)).toEqual(['none-1', 'cited'])
+  })
+})
+
+function issueIdsInDispatchOrder(events: readonly TraceEvent[]): string[] {
+  const seen: string[] = []
+  for (const event of events) {
+    if (!('issueId' in event)) continue
+    const id = event.issueId
+    if (id === undefined || seen.includes(id)) continue
+    seen.push(id)
+  }
+  return seen
+}
+
+describe('processPendingIssues exposure ordering', () => {
+  test('dispatches the cited issue first and still dispatches the uncited one', async () => {
+    const repoRoot = makeTempDir('issue-proc-expo-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupRepo(runState.worktreePath)
+    const workerRepo = makeTempDir('worker-')
+    await setupRepo(workerRepo)
+
+    const mk = (id: string, file: string, exposure?: Exposure): LedgerIssueRecord => ({
+      id,
+      issue: { ...issue, file, exposure },
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    })
+    // Uncited first in ledger order, so a passing assertion cannot be luck.
+    const uncited = mk('rec-uncited', 'src/a.ts', { kind: 'none' })
+    const cited = mk('rec-cited', 'src/b.ts', { kind: 'caller', file: 'src/c.ts', line: 9, quote: 'go()' })
+    ledger.snapshot.issues['rec-uncited'] = uncited
+    ledger.snapshot.issues['rec-cited'] = cited
+
+    const { spawn } = createFixerOnlySpawn()
+    const { pool } = fakePool({ size: 1, worktreePaths: [workerRepo] })
+    const collector = newCollector()
+    const { logger, events } = createCapturingTraceLogger()
+
+    await processPendingIssues(
+      {
+        config: createReviewLoopConfigFixture(runState.repoRoot),
+        runState,
+        ledger,
+        spawn,
+        exec: passingExec,
+        log: silentReporter(),
+        trace: logger,
+        pool,
+        inspect: false,
+      },
+      1,
+      collector,
+      [uncited, cited],
+    )
+
+    expect(issueIdsInDispatchOrder(events)).toEqual(['rec-cited', 'rec-uncited'])
   })
 })

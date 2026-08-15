@@ -163,6 +163,29 @@ function makeDispatcher(args: {
   return dispatchNext
 }
 
+/**
+ * Dispatch order — the loop's first. An issue whose reporter cited a caller is
+ * fixed before one that reported none. Exposure never suppresses anything: a
+ * run that reaches the end fixes both. It decides only which issues get fixed
+ * while there is still budget, which is exactly what a stopped run spends.
+ *
+ * Unknown ranks between the two. State written before exposure existed, or an
+ * agent that simply omitted it, must not be read as "nothing reaches this".
+ *
+ * Stable by construction — `Array.prototype.sort` is specified stable — so
+ * issues exposure cannot separate keep the order the ledger produced, and two
+ * runs over the same ledger dispatch identically.
+ */
+const exposureRank = (record: LedgerIssueRecord): number => {
+  const kind = record.issue.exposure?.kind
+  if (kind === 'caller') return 0
+  return kind === undefined ? 1 : 2
+}
+
+export function orderByExposure(pending: readonly LedgerIssueRecord[]): readonly LedgerIssueRecord[] {
+  return [...pending].sort((a, b) => exposureRank(a) - exposureRank(b))
+}
+
 export async function processPendingIssues(
   deps: IssueProcessorDeps,
   round: number,
@@ -171,12 +194,13 @@ export async function processPendingIssues(
 ): Promise<number> {
   let fixed = 0
   let index = 0
+  const ordered = orderByExposure(pending)
   const { save } = makeSerializedSave(deps.saveLedger ?? saveIssueLedger)
   const dispatchNext = makeDispatcher({
     deps,
     round,
     collector,
-    pending,
+    pending: ordered,
     save,
     onFixed: () => {
       fixed += 1
@@ -184,7 +208,7 @@ export async function processPendingIssues(
     nextIndex: () => index++,
   })
 
-  const concurrency = Math.min(deps.config.poolSize, pending.length)
+  const concurrency = Math.min(deps.config.poolSize, ordered.length)
   const inFlight: Promise<void>[] = []
   for (let i = 0; i < concurrency; i++) {
     inFlight.push(dispatchNext())

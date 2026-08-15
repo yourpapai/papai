@@ -31,12 +31,12 @@ See LICENSE in the project root for details.
 
 ## 3. Ordering
 
-- [ ] 3.1 Write failing cases for dispatch ordering in `tests/review-loop/issue-processor.test.ts`:
+- [x] 3.1 Write failing cases for dispatch ordering in `tests/review-loop/issue-processor.test.ts`:
       issues with a cited caller dispatch before those without; issues exposure cannot separate
       keep their existing relative order (stable sort); a round where no issue carries exposure
       dispatches in unchanged order. Then implement in `review-loop/src/issue-processor.ts`.
       Verify: `bun test tests/review-loop/issue-processor.test.ts`
-- [ ] 3.2 Write a failing case that an issue reporting no caller is still dispatched, with its
+- [x] 3.2 Write a failing case that an issue reporting no caller is still dispatched, with its
       retry budget and terminal statuses unchanged, then confirm the implementation satisfies it.
       Verify: `bun test tests/review-loop/issue-processor.test.ts`
 
