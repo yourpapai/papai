@@ -17,6 +17,7 @@ import {
 
 const issue: ReviewerIssue = {
   title: 'Race condition in queue flush path',
+  kind: 'defect',
   severity: 'high',
   summary: 'Two concurrent messages can bypass the intended lock.',
   whyItMatters: 'This can produce stale assistant replies.',
@@ -96,6 +97,7 @@ describe('prompt-templates', () => {
 describe('buildInspectPrompt', () => {
   const inspectorIssue: ReviewerIssue = {
     title: 'Race in queue',
+    kind: 'defect',
     severity: 'high',
     summary: 's',
     whyItMatters: 'w',
@@ -128,6 +130,7 @@ describe('buildInspectPrompt', () => {
 describe('buildRetryFixWithInspectorFeedbackPrompt', () => {
   const inspectorIssue: ReviewerIssue = {
     title: 'Race in queue',
+    kind: 'defect',
     severity: 'high',
     summary: 's',
     whyItMatters: 'w',

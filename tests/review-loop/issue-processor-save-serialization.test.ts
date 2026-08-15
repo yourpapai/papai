@@ -54,6 +54,7 @@ async function setupRepo(repoPath: string): Promise<void> {
 
 const baseIssue: ReviewerIssue = {
   title: 'Race in queue',
+  kind: 'defect',
   severity: 'high',
   summary: 's',
   whyItMatters: 'w',

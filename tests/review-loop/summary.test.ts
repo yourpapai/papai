@@ -12,6 +12,7 @@ import type { RoundMetric } from '../../review-loop/src/trace-log.js'
 
 const issueFixture: ReviewerIssue = {
   title: 'Token refresh race on 401',
+  kind: 'defect',
   severity: 'high',
   summary: 's',
   whyItMatters: 'w',

@@ -37,6 +37,7 @@ function requireInspectComplete(evt: TraceEvent): Extract<TraceEvent, { event: '
 
 const issue: ReviewerIssue = {
   title: 'T',
+  kind: 'defect',
   severity: 'high',
   summary: 's',
   whyItMatters: 'w',

@@ -182,3 +182,21 @@ describe('exposure', () => {
     expect(parsed).not.toHaveProperty('exposure')
   })
 })
+
+describe('issue kind', () => {
+  test('ReviewerIssueSchema accepts both kinds', () => {
+    expect(ReviewerIssueSchema.parse({ ...validIssue, kind: 'defect' }).kind).toBe('defect')
+    expect(ReviewerIssueSchema.parse({ ...validIssue, kind: 'cleanup' }).kind).toBe('cleanup')
+  })
+
+  test('an issue written before kind existed reads as a defect', () => {
+    // Unlike `exposure`, absent is not a third state here: a ledger written
+    // before cleanups were admitted holds only defects, so the default states
+    // a truth rather than papering over a gap.
+    expect(ReviewerIssueSchema.parse(validIssue).kind).toBe('defect')
+  })
+
+  test('ReviewerIssueSchema rejects a kind outside the two', () => {
+    expect(() => ReviewerIssueSchema.parse({ ...validIssue, kind: 'refactor' })).toThrow()
+  })
+})

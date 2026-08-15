@@ -9,16 +9,16 @@ See LICENSE in the project root for details.
 
 ## 1. The kind, and an older ledger that still loads
 
-- [ ] 1.1 Write failing cases in `tests/review-loop/issue-schema.test.ts` that an issue
+- [x] 1.1 Write failing cases in `tests/review-loop/issue-schema.test.ts` that an issue
       carries `kind: 'defect' | 'cleanup'`, that a payload omitting it parses as `defect`,
       and that a value outside the two is rejected. Then add the field to
       `review-loop/src/issue-schema.ts` as optional-on-read with a `defect` default.
       Verify: `bun test tests/review-loop/issue-schema.test.ts`
-- [ ] 1.2 Write a failing case in `tests/review-loop/issue-ledger.test.ts` that a ledger
+- [x] 1.2 Write a failing case in `tests/review-loop/issue-ledger.test.ts` that a ledger
       written before this change (no `kind` on any issue) loads and reads as all-defects,
       then confirm the read path satisfies it.
       Verify: `bun test tests/review-loop/issue-ledger.test.ts`
-- [ ] 1.3 Write a failing case that a fixer result asserting a different kind leaves the
+- [x] 1.3 Write a failing case that a fixer result asserting a different kind leaves the
       recorded kind unchanged, then implement.
       Verify: `bun test tests/review-loop/issue-ledger.test.ts`
 

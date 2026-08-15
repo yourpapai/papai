@@ -17,6 +17,7 @@ afterEach(cleanupTempDirs)
 
 const existingIssue: ReviewerIssue = {
   title: 'Race condition in queue flush',
+  kind: 'defect',
   severity: 'high',
   summary: 'Two concurrent messages bypass the lock.',
   whyItMatters: 'Stale replies.',
