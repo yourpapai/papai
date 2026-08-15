@@ -24,13 +24,13 @@ See LICENSE in the project root for details.
 
 ## 2. Ordering
 
-- [ ] 2.1 Write failing cases in `tests/review-loop/issue-processor.test.ts`: a cleanup
+- [x] 2.1 Write failing cases in `tests/review-loop/issue-processor.test.ts`: a cleanup
       citing a caller is dispatched after a defect reporting no exposure; two cleanups
       order between themselves by exposure exactly as two defects do. Assert the existing
       exposure-ordering cases still pass unchanged. Then make `orderByExposure` sort on
       kind first with the existing exposure comparator as the tiebreak.
       Verify: `bun test tests/review-loop/issue-processor.test.ts`
-- [ ] 2.2 Write a failing case that a run stopped with issues pending leaves cleanups
+- [x] 2.2 Write a failing case that a run stopped with issues pending leaves cleanups
       unfixed before defects, then confirm it follows from 2.1 without further change.
       Verify: `bun test tests/review-loop/issue-processor.test.ts`
 

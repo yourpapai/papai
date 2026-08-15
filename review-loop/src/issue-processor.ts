@@ -182,8 +182,24 @@ const exposureRank = (record: LedgerIssueRecord): number => {
   return kind === undefined ? 1 : 2
 }
 
+/**
+ * Kind outranks exposure, and the ordering below it is untouched.
+ *
+ * Exposure grades whether code is reached, never whether the finding is worth
+ * fixing — so on a queue holding two kinds of thing it is the wrong first
+ * question: a cleanup whose caller was found would be dispatched ahead of a
+ * critical defect whose caller nobody found. A defect is always the better use
+ * of the next fixer, whatever either one's reachability.
+ *
+ * This is one comparison in front of `exposureRank`, not a rewrite of it: the
+ * exposure ordering keeps its behaviour and its tests, and becomes the tiebreak
+ * within each group. Stability still holds, so a run over the same ledger
+ * dispatches identically.
+ */
+const kindRank = (record: LedgerIssueRecord): number => (record.issue.kind === 'cleanup' ? 1 : 0)
+
 export function orderByExposure(pending: readonly LedgerIssueRecord[]): readonly LedgerIssueRecord[] {
-  return [...pending].sort((a, b) => exposureRank(a) - exposureRank(b))
+  return [...pending].sort((a, b) => kindRank(a) - kindRank(b) || exposureRank(a) - exposureRank(b))
 }
 
 export async function processPendingIssues(

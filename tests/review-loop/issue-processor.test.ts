@@ -754,6 +754,35 @@ describe('orderByExposure', () => {
     orderByExposure(input)
     expect(ids(input)).toEqual(['none-1', 'cited'])
   })
+
+  describe('kind outranks exposure', () => {
+    const clean = (id: string, exposure?: Exposure): LedgerIssueRecord => ({
+      ...rec(id, exposure),
+      issue: { ...issue, kind: 'cleanup', exposure },
+    })
+
+    test('every defect is dispatched before any cleanup', () => {
+      // The case the single-key sort got wrong: a cleanup whose caller was found
+      // outranked a critical defect whose caller nobody found. Exposure grades
+      // reachability, not worth, so it cannot be the only key once the queue
+      // holds two different kinds of thing.
+      const out = orderByExposure([clean('cleanup-cited', caller), rec('defect-none', { kind: 'none' })])
+      expect(ids(out)).toEqual(['defect-none', 'cleanup-cited'])
+    })
+
+    test('cleanups order among themselves by exposure, exactly as defects do', () => {
+      const out = orderByExposure([clean('none-1', { kind: 'none' }), clean('unknown'), clean('cited', caller)])
+      expect(ids(out)).toEqual(['cited', 'unknown', 'none-1'])
+    })
+
+    test('a run stopped mid-queue leaves cleanups unfixed before defects', () => {
+      // A stop is honoured between two issues, so what a stopped run drops is
+      // whatever the ordering put last. Taking a prefix is what that costs.
+      const out = orderByExposure([clean('cleanup-a', caller), rec('defect-a'), clean('cleanup-b', caller)])
+      expect(ids(out.slice(0, 1))).toEqual(['defect-a'])
+      expect(ids(out.slice(1))).toEqual(['cleanup-a', 'cleanup-b'])
+    })
+  })
 })
 
 function issueIdsInDispatchOrder(events: readonly TraceEvent[]): string[] {
