@@ -30,16 +30,16 @@ See LICENSE in the project root for details.
 
 ## 2. The procedure
 
-- [ ] 2.1 Write failing cases in `tests/mutation-improve/prompt-templates.test.ts` that
+- [x] 2.1 Write failing cases in `tests/mutation-improve/prompt-templates.test.ts` that
       `buildImprovePrompt` requires MEASURE, TESTS and RESIDUALS and requires neither a
       design document nor a task list; and that it still requires the residual `mutantIds`
       set-match, the one-test-per-mutant-class rule, exact-equality assertions, and the
       hard constraints. Assert the obligations, not the wording. Then rewrite the procedure.
       Verify: `bun test tests/mutation-improve/prompt-templates.test.ts`
-- [ ] 2.2 Write a failing case that the residual reasoning requirement is stated on the
+- [x] 2.2 Write a failing case that the residual reasoning requirement is stated on the
       result rather than on a document, then implement.
       Verify: `bun test tests/mutation-improve/prompt-templates.test.ts`
-- [ ] 2.3 Delete `improveChangePaths`, now unused (`design.md` D4). Confirm the SPDX
+- [x] 2.3 Delete `improveChangePaths`, now unused (`design.md` D4). Confirm the SPDX
       licence-header lines stay in the prompt — new test files still need them.
       Verify: `bun run knip && bun test tests/mutation-improve/prompt-templates.test.ts`
 

@@ -119,7 +119,6 @@ async function improvePhase(
       file,
       beforeScore,
       threshold: deps.config.threshold,
-      date: new Date().toISOString().slice(0, 10),
       outputPath: agentWritePath(worktreePath, improveOut),
     }),
     improveOut,
