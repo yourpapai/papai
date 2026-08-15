@@ -5,6 +5,25 @@
 
 import { z } from 'zod'
 
+/**
+ * Exposure is an *artifact*, not a grade: the reporter cites a caller it
+ * actually found — file, line, and the quoted line — or states outright that
+ * there is none. A citation can be checked later; a self-assigned rating
+ * cannot, and `severity` is the standing proof that ratings inflate.
+ *
+ * Optional on read throughout: state written before exposure existed parses
+ * with it absent, which reads as "unknown" and never counts as divergence.
+ */
+export const ExposureSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('caller'),
+    file: z.string().min(1),
+    line: z.number().int().positive(),
+    quote: z.string().min(1),
+  }),
+  z.object({ kind: z.literal('none') }),
+])
+
 export const ReviewerIssueSchema = z.object({
   title: z.string().min(1),
   severity: z.enum(['critical', 'high', 'medium', 'low']),
@@ -16,6 +35,7 @@ export const ReviewerIssueSchema = z.object({
   lineEnd: z.number().int().positive(),
   suggestedFix: z.string().min(1),
   confidence: z.number().min(0).max(1),
+  exposure: ExposureSchema.optional(),
 })
 
 export const ReviewerIssuesSchema = z.object({
@@ -34,6 +54,7 @@ export const FixerResultSchema = VerifierDecisionSchema.extend({
   commitSha: z.string().nullable().optional(),
   commitMessage: z.string().optional(),
   severity: z.enum(['critical', 'high', 'medium', 'low']).optional(),
+  exposure: ExposureSchema.optional(),
 })
 
 export const InspectorResultSchema = z.object({
@@ -51,6 +72,7 @@ export const IssueMatchesSchema = z.object({
   matches: z.array(IssueMatchSchema),
 })
 
+export type Exposure = z.infer<typeof ExposureSchema>
 export type ReviewerIssue = z.infer<typeof ReviewerIssueSchema>
 export type ReviewerIssues = z.infer<typeof ReviewerIssuesSchema>
 export type VerifierDecision = z.infer<typeof VerifierDecisionSchema>

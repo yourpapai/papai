@@ -9,12 +9,12 @@ See LICENSE in the project root for details.
 
 ## 1. Schema
 
-- [ ] 1.1 Write failing cases in `tests/review-loop/issue-schema.test.ts`: a reviewer issue
+- [x] 1.1 Write failing cases in `tests/review-loop/issue-schema.test.ts`: a reviewer issue
       accepts a caller citation (file, line, quoted line); accepts an explicit "none found";
       and parses when exposure is absent entirely, so state written before this change still
       loads. Then extend `ReviewerIssueSchema` in `review-loop/src/issue-schema.ts`.
       Verify: `bun test tests/review-loop/issue-schema.test.ts`
-- [ ] 1.2 Write failing cases that `FixerResultSchema` carries the fixer's own exposure, and
+- [x] 1.2 Write failing cases that `FixerResultSchema` carries the fixer's own exposure, and
       that `VerifierDecisionSchema` does **not** — it is persisted and drives
       `mapVerifierDecisionToLedgerStatus`, and exposure must never affect status. Then implement.
       Verify: `bun test tests/review-loop/issue-schema.test.ts`
