@@ -240,7 +240,7 @@ describe('context-vault-indexer daemon scanOnce', () => {
     expect(fs.savedStates).toHaveLength(0)
   })
 
-  test('a changed file produces a delta payload holding only that file', async () => {
+  test('a changed file produces a payload holding every current file of the change', async () => {
     const fs = makeFakeFs(
       {
         [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha v2\n', 150),
@@ -261,6 +261,7 @@ describe('context-vault-indexer daemon scanOnce', () => {
     expect(body.changeName).toBe('alpha')
     expect(body.files).toEqual([
       { path: 'alpha/proposal.md', kind: 'proposal', hash: sha256('# Alpha v2\n'), mtime: 150, text: '# Alpha v2\n' },
+      { path: 'alpha/tasks.md', kind: 'tasks', hash: sha256('- [ ] one\n'), mtime: 101, text: '- [ ] one\n' },
     ])
     expect(body.deletions).toEqual([])
   })
@@ -280,7 +281,9 @@ describe('context-vault-indexer daemon scanOnce', () => {
     expect(pushes).toHaveLength(1)
     const body = bodyOf(pushes[0]!)
     expect(body.changeName).toBe('alpha')
-    expect(body.files).toEqual([])
+    expect(body.files).toEqual([
+      { path: 'alpha/proposal.md', kind: 'proposal', hash: sha256('# Alpha\n'), mtime: 100, text: '# Alpha\n' },
+    ])
     expect(body.deletions).toEqual(['alpha/tasks.md'])
   })
 

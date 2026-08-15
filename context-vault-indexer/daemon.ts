@@ -160,12 +160,12 @@ type PushLoopState = {
 const processChange = async (
   state: PushLoopState,
   changeName: string,
-  changed: CurrentFile[],
+  current: CurrentFile[],
   deleted: string[],
   config: DaemonConfig,
   deps: DaemonDeps,
 ): Promise<PushLoopState> => {
-  const files = changed
+  const files = current
     .filter((f) => changeNameOf(f.path) === changeName)
     .map((f) => ({ path: f.path, kind: kindOf(f.path), hash: f.hash, mtime: f.mtime, text: f.text }))
   const deletions = deleted.filter((path) => changeNameOf(path) === changeName).toSorted()
@@ -200,7 +200,7 @@ export async function scanOnce(config: DaemonConfig, deps: DaemonDeps): Promise<
   }
 
   const final = await changeNames.reduce<Promise<PushLoopState>>(
-    (prev, changeName) => prev.then((state) => processChange(state, changeName, changed, deleted, config, deps)),
+    (prev, changeName) => prev.then((state) => processChange(state, changeName, current, deleted, config, deps)),
     Promise.resolve(initial),
   )
 

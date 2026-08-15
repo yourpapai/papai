@@ -15,31 +15,13 @@ import {
 } from '../db/context-vault-schema.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { logger } from '../logger.js'
-import {
-  aggregateSpec,
-  reduceFileText,
-  type AggregateFileInput,
-  type ReducedFileArtifacts,
-  type ReducedSpec,
-} from './reducer.js'
+import { aggregateSpec, type AggregateFileInput, type ReducedSpec } from './reducer.js'
+import { applyFiles, deleteFile, type AppliedFiles, type ApplyPushInput } from './spec-store-files.js'
 import { enqueueSpecSummarization, type EnqueueSummarizationInput, type SummarizerFileInput } from './summarizer.js'
 
+export type { ApplyPushInput, PushFileInput } from './spec-store-files.js'
+
 const log = logger.child({ scope: 'context-vault:spec-store' })
-
-export interface PushFileInput {
-  path: string
-  kind: string
-  hash: string
-  mtime: number
-  text?: string
-}
-
-export interface ApplyPushInput {
-  repo: string
-  changeName: string
-  files: PushFileInput[]
-  deletions: string[]
-}
 
 export interface ApplyPushResult {
   specId: string
@@ -127,61 +109,6 @@ const touchIndexerState = (configContextId: string): void => {
     .run()
 }
 
-const applyFile = (configContextId: string, specId: string, file: PushFileInput, exists: boolean): void => {
-  const artifacts = artifactsOf(file)
-  if (!exists) {
-    getDrizzleDb()
-      .insert(contextVaultFiles)
-      .values({
-        configContextId,
-        specId,
-        path: file.path,
-        kind: file.kind,
-        hash: file.hash,
-        mtime: file.mtime,
-        ...artifacts,
-      })
-      .run()
-    return
-  }
-  getDrizzleDb()
-    .update(contextVaultFiles)
-    .set({ kind: file.kind, hash: file.hash, mtime: file.mtime, ...artifacts })
-    .where(
-      and(
-        eq(contextVaultFiles.configContextId, configContextId),
-        eq(contextVaultFiles.specId, specId),
-        eq(contextVaultFiles.path, file.path),
-      ),
-    )
-    .run()
-}
-
-const deleteFile = (configContextId: string, specId: string, path: string): void => {
-  getDrizzleDb()
-    .delete(contextVaultFiles)
-    .where(
-      and(
-        eq(contextVaultFiles.configContextId, configContextId),
-        eq(contextVaultFiles.specId, specId),
-        eq(contextVaultFiles.path, path),
-      ),
-    )
-    .run()
-}
-
-interface StoredArtifacts {
-  outline: string | null
-  tasksTicked: number | null
-  tasksTotal: number | null
-}
-
-const artifactsOf = (file: PushFileInput): StoredArtifacts => {
-  if (file.text === undefined) return { outline: null, tasksTicked: null, tasksTotal: null }
-  const reduced: ReducedFileArtifacts = reduceFileText(file.kind, file.text)
-  return { outline: JSON.stringify(reduced.outline), tasksTicked: reduced.ticked, tasksTotal: reduced.total }
-}
-
 const parseStoredOutline = (raw: string | null): string[] | null => {
   if (raw === null) return null
   let parsed: unknown
@@ -226,12 +153,19 @@ const maybeEnqueueSummarization = (
   configContextId: string,
   specId: string,
   input: ApplyPushInput,
-  changedFiles: readonly SummarizerFileInput[],
+  changedCount: number,
+  summarizerFiles: readonly SummarizerFileInput[],
   deletedPaths: readonly string[],
   deps: ApplyPushDeps,
 ): void => {
-  if (changedFiles.length === 0 && deletedPaths.length === 0) return
-  deps.enqueueSummarization({ configContextId, specId, changeName: input.changeName, changedFiles, deletedPaths })
+  if (changedCount === 0 && deletedPaths.length === 0) return
+  deps.enqueueSummarization({
+    configContextId,
+    specId,
+    changeName: input.changeName,
+    changedFiles: summarizerFiles,
+    deletedPaths,
+  })
 }
 
 export function applyPush(
@@ -243,17 +177,10 @@ export function applyPush(
   const specId = specIdOf(input.repo, input.changeName)
   const existingByPath = new Map(listFiles(configContextId, specId).map((f) => [f.path, f]))
 
-  const changedPaths: string[] = []
-  const changedFiles: SummarizerFileInput[] = []
+  let applied: AppliedFiles = { changedPaths: [], summarizerFiles: [] }
   const deletedPaths: string[] = []
   getDrizzleDb().transaction(() => {
-    for (const file of input.files) {
-      const existing = existingByPath.get(file.path)
-      if (existing !== undefined && existing.hash === file.hash) continue
-      applyFile(configContextId, specId, file, existing !== undefined)
-      changedPaths.push(file.path)
-      changedFiles.push({ path: file.path, kind: file.kind, text: file.text })
-    }
+    applied = applyFiles(configContextId, specId, input, existingByPath)
 
     for (const path of input.deletions) {
       if (!existingByPath.has(path)) continue
@@ -271,11 +198,19 @@ export function applyPush(
     touchIndexerState(configContextId)
   })
 
-  maybeEnqueueSummarization(configContextId, specId, input, changedFiles, deletedPaths, mergedDeps)
+  maybeEnqueueSummarization(
+    configContextId,
+    specId,
+    input,
+    applied.changedPaths.length,
+    applied.summarizerFiles,
+    deletedPaths,
+    mergedDeps,
+  )
 
   log.info(
-    { configContextId, specId, changed: changedPaths.length, deleted: deletedPaths.length },
+    { configContextId, specId, changed: applied.changedPaths.length, deleted: deletedPaths.length },
     'Context vault push applied',
   )
-  return { specId, changedPaths, deletedPaths }
+  return { specId, changedPaths: applied.changedPaths, deletedPaths }
 }

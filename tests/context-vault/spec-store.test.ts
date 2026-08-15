@@ -330,7 +330,7 @@ describe('context-vault spec-store', () => {
     expect(spec?.progressPct).toBe(50)
   })
 
-  test('push enqueues summarization with exactly the files that arrived with a new hash', () => {
+  test('push enqueues summarization with unchanged files forwarded alongside the changed ones', () => {
     const enqueueSummarization = mock((input: EnqueueSummarizationInput): void => {
       void input
     })
@@ -367,7 +367,10 @@ describe('context-vault spec-store', () => {
     expect(second?.configContextId).toBe(CTX_A)
     expect(second?.specId).toBe('papai:x')
     expect(second?.changeName).toBe('x')
-    expect(second?.changedFiles).toEqual([{ path: 'a/proposal.md', kind: 'proposal', text: '# P v2\n' }])
+    expect(second?.changedFiles).toEqual([
+      { path: 'a/proposal.md', kind: 'proposal', text: '# P v2\n' },
+      { path: 'a/tasks.md', kind: 'tasks', text: '- [ ] one\n' },
+    ])
   })
 
   test('a pure-deletion push signals summarization with the deleted paths', () => {
