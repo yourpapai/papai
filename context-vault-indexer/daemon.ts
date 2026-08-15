@@ -113,7 +113,12 @@ const scanCurrent = (config: DaemonConfig, fs: DaemonFs): ScanCurrentResult => {
       )
       continue
     }
-    files.push({ path: rel, text, hash: sha256Hex(text), mtime: fs.statMtime(`${config.specDir}/${rel}`) })
+    files.push({
+      path: rel,
+      text,
+      hash: sha256Hex(text),
+      mtime: Math.round(fs.statMtime(`${config.specDir}/${rel}`)),
+    })
   }
   return { files, listed }
 }
