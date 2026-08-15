@@ -62,9 +62,9 @@ See LICENSE in the project root for details.
 
 ## 5. Documentation and full gate
 
-- [ ] 5.1 Update `review-loop/CLAUDE.md` with the exposure artifact, the advisory ordering, and
+- [x] 5.1 Update `review-loop/CLAUDE.md` with the exposure artifact, the advisory ordering, and
       the divergence record — naming its reader: the later change that decides whether exposure
       may gate.
       Verify: `bun run format:check`
-- [ ] 5.2 Run the full gate and fix anything it surfaces.
+- [x] 5.2 Run the full gate and fix anything it surfaces.
       Verify: `bun run test && bun run typecheck && bun run lint && bun run review-loop:test`

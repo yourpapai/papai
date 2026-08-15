@@ -33,6 +33,33 @@ merge means a red build gate or a killed runner takes every accepted fix with it
 and the marker is what lets the caller push. The hook runs under the pool's
 primary lock and never throws; `finalizeRun` still does the final merge.
 
+## Exposure
+
+Severity grades what happens _if_ the code is reached; **exposure** records whether it is
+reached at all. Both the reviewer and the fixer report it, as a citation rather than a rating:
+the file, line, and quoted line of a caller they actually found, or `{kind: 'none'}` if they
+searched and found nothing. Absent is a third state — `unknown` — meaning nobody answered, and
+it is never read as "nothing reaches this".
+
+It is **advisory and gates nothing**. Its one effect is dispatch order (`orderByExposure` in
+`src/issue-processor.ts`): cited callers are fixed first, then unknown, then none. That is the
+loop's first ordering of any kind — `processPendingIssues` previously walked `pending` by index,
+fixing issues in whatever order the reviewer emitted them. A run that reaches the end still
+fixes everything it admitted; ordering only decides what gets fixed while budget remains, which
+is the whole of what a stopped run spends.
+
+The fixer's answer is asked for independently and never resolves the reviewer's — the two are
+compared, not reconciled. Divergence is counted per fixer result (`tallyExposure`), rides the
+`verify_complete` trace event, and lands in `RoundMetric` and the summary's `Exposure:` line.
+An `unknown` on either side is silence, not disagreement, and is not counted.
+
+That divergence record has one named reader: the later change that decides whether exposure may
+ever gate admission. Nothing verifies a citation mechanically, and deliberately so — caller
+analysis is blind to this repo's manifest dispatch (`plugin.json` `main`) and its string-path
+`bun run <daemonEntry>` spawn, so it would report live plugin entry points as unreachable.
+Mutation score can be verified because Stryker is an oracle; reachability has none, so the loop
+measures whether its two actors agree instead of pretending to check them.
+
 ## Storage / Artifacts
 
 - The default `workDir` is `.review-loop/` relative to `repoRoot` (see `config.example.json`). The directory is created on demand via `mkdir`.
