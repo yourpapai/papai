@@ -227,7 +227,7 @@ describe('context-vault spec-store', () => {
     expect(JSON.parse(String(spec?.outline))).toEqual(['# P v2', '# Tasks'])
   })
 
-  test('a changed file pushed without text contributes no derived artifacts but keeps the others', () => {
+  test('a changed file pushed without text keeps its previously stored derived artifacts', () => {
     applyPush(CTX_A, {
       repo: 'papai',
       changeName: 'x',
@@ -247,7 +247,7 @@ describe('context-vault spec-store', () => {
     const spec = getSpec(CTX_A, 'papai:x')
     expect(spec?.stage).toBe('in-progress')
     expect(spec?.progressPct).toBe(50)
-    expect(JSON.parse(String(spec?.outline))).toEqual([])
+    expect(JSON.parse(String(spec?.outline))).toEqual(['# P'])
   })
 
   test('stage reaches done when every tasks checkbox is ticked', () => {

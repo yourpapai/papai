@@ -92,6 +92,30 @@ describe('context-vault spec-store-files', () => {
     expect(getFiles().find((f) => f.path === 'a/proposal.md')?.hash).toBe('h1-new')
   })
 
+  test('applyFiles keeps stored artifacts when a hash-changed update arrives without text', () => {
+    applyFiles(
+      CTX,
+      SPEC_ID,
+      input([{ path: 'a/tasks.md', kind: 'tasks', hash: 'h1', mtime: 1, text: '# T\n- [x] one\n- [ ] two\n' }]),
+      new Map(),
+    )
+    const existing = new Map(getFiles().map((f) => [f.path, f]))
+
+    const result = applyFiles(
+      CTX,
+      SPEC_ID,
+      input([{ path: 'a/tasks.md', kind: 'tasks', hash: 'h1-new', mtime: 2 }]),
+      existing,
+    )
+
+    expect(result.changedPaths).toEqual(['a/tasks.md'])
+    const row = getFiles().find((f) => f.path === 'a/tasks.md')
+    expect(row?.hash).toBe('h1-new')
+    expect(row?.outline).toBe(JSON.stringify(['# T']))
+    expect(row?.tasksTicked).toBe(1)
+    expect(row?.tasksTotal).toBe(2)
+  })
+
   test('deleteFile removes only the named row of the spec', () => {
     applyFiles(
       CTX,

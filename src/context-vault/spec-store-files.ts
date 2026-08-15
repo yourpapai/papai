@@ -56,7 +56,7 @@ const applyFile = (configContextId: string, specId: string, file: PushFileInput,
   }
   getDrizzleDb()
     .update(contextVaultFiles)
-    .set({ kind: file.kind, hash: file.hash, mtime: file.mtime, ...artifacts })
+    .set({ kind: file.kind, hash: file.hash, mtime: file.mtime, ...(file.text === undefined ? {} : artifacts) })
     .where(
       and(
         eq(contextVaultFiles.configContextId, configContextId),
