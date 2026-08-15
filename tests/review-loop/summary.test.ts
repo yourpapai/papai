@@ -67,6 +67,10 @@ function zeroMetric(round: number): RoundMetric {
     reviewerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
     fixerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
     inspector: { runs: 0, rejected: 0 },
+    reviewerExposure: { caller: 0, none: 0, unknown: 0 },
+    fixerExposure: { caller: 0, none: 0, unknown: 0 },
+    exposureDivergent: 0,
+    checkBehind: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
   }
@@ -459,5 +463,85 @@ describe('buildMetricsJson aggregation', () => {
     metric.inspector = { runs: 4, rejected: 2 }
     const json = buildMetricsJson('max_rounds', 2, 1, [metric], { poolSize: 1, inspect: true })
     expect(json.totals.inspectorRejected).toBe(2)
+  })
+})
+
+describe('exposure line', () => {
+  test('reports the distribution and the divergence count', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [
+        {
+          ...zeroMetric(1),
+          reviewerExposure: { caller: 4, none: 3, unknown: 1 },
+          fixerExposure: { caller: 3, none: 4, unknown: 1 },
+          exposureDivergent: 2,
+        },
+      ],
+    })
+    expect(summary).toContain('Exposure: 4 cited, 3 none, 2 divergent (advisory — orders dispatch, gates nothing)')
+  })
+
+  test('is omitted when no issue carried exposure, rather than printing zeros', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), reviewerExposure: { caller: 0, none: 0, unknown: 5 } }],
+    })
+    expect(summary).not.toContain('Exposure:')
+  })
+
+  test('is still reported when cited and none happen to be equal', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), reviewerExposure: { caller: 2, none: 2, unknown: 0 } }],
+    })
+    expect(summary).toContain('Exposure: 2 cited, 2 none,')
+  })
+
+  test('sums exposure across rounds', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [
+        { ...zeroMetric(1), reviewerExposure: { caller: 1, none: 0, unknown: 0 }, exposureDivergent: 1 },
+        { ...zeroMetric(2), reviewerExposure: { caller: 2, none: 0, unknown: 0 }, exposureDivergent: 2 },
+      ],
+    })
+    expect(summary).toContain('Exposure: 3 cited, 0 none, 3 divergent')
+  })
+})
+
+function lineStartingWith(summary: string, prefix: string): string | undefined {
+  return summary.split('\n').find((l) => l.startsWith(prefix))
+}
+
+describe('check-behind line', () => {
+  test('reports how many accepted fixes left a check behind', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 2, withoutCheck: 1, unmeasured: 0 } }],
+    })
+    // Whole line, not a prefix: a prefix assertion passes even when the empty
+    // no-unmeasured tail is replaced with arbitrary text.
+    expect(lineStartingWith(summary, 'Checks left behind:')).toBe('Checks left behind: 2 of 3 accepted fixes')
+  })
+
+  test('calls out unmeasured fixes rather than folding them into either answer', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 1, withoutCheck: 0, unmeasured: 2 } }],
+    })
+    expect(summary).toContain('Checks left behind: 1 of 1 accepted fixes (2 unmeasured)')
+  })
+
+  test('is still reported when the measured and unmeasured counts happen to be equal', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 1, withoutCheck: 0, unmeasured: 1 } }],
+    })
+    expect(summary).toContain('Checks left behind: 1 of 1 accepted fixes (1 unmeasured)')
+  })
+
+  test('is omitted when no fix was accepted', () => {
+    expect(buildSummary(inputOf({ metrics: [zeroMetric(1)] }))).not.toContain('Checks left behind')
   })
 })

@@ -7,7 +7,8 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { ensureFixerChangesCommitted } from '../../review-loop/src/commit-attempt.js'
+import { ensureFixerChangesCommitted, measureCheckBehind } from '../../review-loop/src/commit-attempt.js'
+import type { ExecGitFn } from '../../review-loop/src/diff-stats.js'
 import { createIssueLedger, type LedgerIssueRecord } from '../../review-loop/src/issue-ledger.js'
 import type { IssueProcessorDeps } from '../../review-loop/src/issue-processor.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
@@ -84,5 +85,26 @@ describe('ensureFixerChangesCommitted', () => {
     const postSha = await ensureFixerChangesCommitted(deps, workers[0]!, record, undefined)
 
     expect(postSha).toBe(baselineSha)
+  })
+})
+
+describe('measureCheckBehind', () => {
+  const execOf =
+    (stdout: string): ExecGitFn =>
+    () =>
+      Promise.resolve({ stdout, stderr: '' })
+
+  test('reports a check when the accepted diff touched a test path', async () => {
+    const exec = execOf('3\t0\treview-loop/src/a.ts\n8\t0\ttests/review-loop/a.test.ts\n')
+    expect(await measureCheckBehind(exec, '/w', 'base')).toBe('with-check')
+  })
+
+  test('reports none when the accepted diff touched only implementation', async () => {
+    expect(await measureCheckBehind(execOf('3\t0\treview-loop/src/a.ts\n'), '/w', 'base')).toBe('without-check')
+  })
+
+  test('a failed measurement is unmeasured, never a satisfied check', async () => {
+    const exploding: ExecGitFn = () => Promise.reject(new Error('git gone'))
+    expect(await measureCheckBehind(exploding, '/w', 'base')).toBe('unmeasured')
   })
 })

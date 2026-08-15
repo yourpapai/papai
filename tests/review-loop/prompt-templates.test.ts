@@ -152,3 +152,83 @@ describe('buildRetryFixWithInspectorFeedbackPrompt', () => {
     expect(prompt).toContain('final attempt')
   })
 })
+
+describe('exposure in prompts', () => {
+  const reviewPrompt = (): string => buildReviewPrompt('/path/to/plan.md', '/path/to/issues.json')
+
+  test('buildReviewPrompt asks for a cited caller or an explicit none', () => {
+    const prompt = reviewPrompt()
+    expect(prompt).toContain('exposure')
+    expect(prompt).toContain('"kind": "caller"')
+    expect(prompt).toContain('"kind": "none"')
+  })
+
+  test('buildReviewPrompt makes exposure mandatory: silence is not an answer', () => {
+    const prompt = reviewPrompt()
+    expect(prompt).toContain('MUST')
+    expect(prompt).toMatch(/omit|silence|leaving it out/iu)
+  })
+
+  test('buildReviewPrompt asks for the caller as evidence, not as a rating', () => {
+    const prompt = reviewPrompt()
+    expect(prompt).toMatch(/quote/iu)
+    expect(prompt).not.toMatch(/rate the (importance|reachability)/iu)
+  })
+
+  for (const [label, build] of [
+    ['buildFixPrompt', (): string => buildFixPrompt(issue, '/p/result.json', 'npm test')],
+    ['buildRetryFixPrompt', (): string => buildRetryFixPrompt(issue, '/p/result.json', 'boom', 'npm test')],
+    [
+      'buildRetryFixWithInspectorFeedbackPrompt',
+      (): string => buildRetryFixWithInspectorFeedbackPrompt(issue, 'not addressed', '/p/result.json', 'npm test'),
+    ],
+  ] as const) {
+    test(`${label} asks the fixer for its own exposure assessment`, () => {
+      const prompt = build()
+      expect(prompt).toContain('exposure')
+      expect(prompt).toContain('"kind": "caller"')
+      expect(prompt).toContain('"kind": "none"')
+    })
+
+    test(`${label} states the assessment is independent of the reviewer`, () => {
+      expect(build()).toMatch(/independent|your own/iu)
+    })
+  }
+})
+
+describe('fix instruction contract', () => {
+  const fixPrompts = [
+    ['buildFixPrompt', (): string => buildFixPrompt(issue, '/p/result.json', 'npm test')],
+    ['buildRetryFixPrompt', (): string => buildRetryFixPrompt(issue, '/p/result.json', 'boom', 'npm test')],
+    [
+      'buildRetryFixWithInspectorFeedbackPrompt',
+      (): string => buildRetryFixWithInspectorFeedbackPrompt(issue, 'not addressed', '/p/result.json', 'npm test'),
+    ],
+  ] as const
+
+  for (const [label, build] of fixPrompts) {
+    test(`${label} carries the minimality ladder`, () => {
+      const prompt = build()
+      expect(prompt).toMatch(/need to exist/iu)
+      expect(prompt).toMatch(/already/iu)
+      expect(prompt).toMatch(/one line/iu)
+    })
+
+    test(`${label} applies the ladder after comprehension, not instead of it`, () => {
+      expect(build()).toMatch(/after you understand/iu)
+    })
+  }
+
+  test('buildFixPrompt requires a runnable check to remain in the tree', () => {
+    const prompt = buildFixPrompt(issue, '/p/result.json', 'npm test')
+    expect(prompt).toMatch(/runnable check/iu)
+    expect(prompt).toMatch(/does not satisfy/iu)
+  })
+
+  test('buildFixPrompt forbids authoring architecture prose and asks for the gap instead', () => {
+    const prompt = buildFixPrompt(issue, '/p/result.json', 'npm test')
+    expect(prompt).toMatch(/architecture/iu)
+    expect(prompt).toMatch(/report/iu)
+    expect(prompt).toContain('do NOT edit the plan/spec')
+  })
+})

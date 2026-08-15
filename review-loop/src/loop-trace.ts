@@ -3,11 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ReviewerIssue } from './issue-schema.js'
+import type { CheckBehind } from './commit-attempt.js'
+import type { Exposure, ReviewerIssue } from './issue-schema.js'
 import {
+  emptyCheckBehindCounts,
   emptyDecisions,
+  emptyExposureCounts,
   emptySeverityCounts,
+  type CheckBehindCounts,
   type Decisions,
+  type ExposureCounts,
+  type ExposureKind,
   type PhaseMs,
   type RoundMetric,
   type Severity,
@@ -21,6 +27,10 @@ export interface RoundCollector {
   reviewerSeverity: SeverityCounts
   fixerSeverity: SeverityCounts
   inspector: { runs: number; rejected: number }
+  reviewerExposure: ExposureCounts
+  fixerExposure: ExposureCounts
+  exposureDivergent: number
+  checkBehind: CheckBehindCounts
   phaseMs: PhaseMs
   usage: UsageTotals
 }
@@ -31,6 +41,10 @@ export function newCollector(): RoundCollector {
     reviewerSeverity: emptySeverityCounts(),
     fixerSeverity: emptySeverityCounts(),
     inspector: { runs: 0, rejected: 0 },
+    reviewerExposure: emptyExposureCounts(),
+    fixerExposure: emptyExposureCounts(),
+    exposureDivergent: 0,
+    checkBehind: emptyCheckBehindCounts(),
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
   }
@@ -63,6 +77,36 @@ export function tallyDecision(collector: RoundCollector, verdict: string, fixed:
     bucket = 'plan_drift'
   }
   collector.decisions[bucket] += 1
+}
+
+/** An absent report is `unknown`, never `none`: nobody looked is not nothing found. */
+export function exposureKind(exposure: Exposure | undefined): ExposureKind {
+  return exposure?.kind ?? 'unknown'
+}
+
+/**
+ * Records what each reporter said and whether they disagreed. Divergence needs
+ * two actual answers — an `unknown` on either side is silence, and silence is
+ * not disagreement. Undercounting here is deliberate: this number exists to be
+ * trusted by the later decision about whether exposure may ever gate.
+ */
+export function tallyExposure(collector: RoundCollector, reviewer: ExposureKind, fixer: ExposureKind): void {
+  collector.reviewerExposure[reviewer] += 1
+  collector.fixerExposure[fixer] += 1
+  if (reviewer !== 'unknown' && fixer !== 'unknown' && reviewer !== fixer) {
+    collector.exposureDivergent += 1
+  }
+}
+
+/**
+ * Whether an accepted fix left a runnable check behind. Advisory only: it never
+ * blocks a merge, changes a verdict, or touches the retry budget — it exists to
+ * say whether the rule the fix prompt states is actually being followed.
+ */
+export function tallyCheckBehind(collector: RoundCollector, outcome: CheckBehind): void {
+  if (outcome === 'with-check') collector.checkBehind.withCheck += 1
+  else if (outcome === 'without-check') collector.checkBehind.withoutCheck += 1
+  else collector.checkBehind.unmeasured += 1
 }
 
 export function tallyFixerSeverity(collector: RoundCollector, severity: Severity | undefined): void {
@@ -149,14 +193,26 @@ export function emitMatchComplete(trace: TraceLogger, round: number, newCount: n
   void trace.append({ ts: nowIso(), round, phase: 'match', event: 'match_complete', newCount, matchedCount })
 }
 
+/**
+ * The four assessments travel as one object rather than four adjacent
+ * positional arguments: two severities and two exposures of near-identical
+ * type, in a row, is a transposition waiting to happen — and a silent one,
+ * since swapping reviewer and fixer still typechecks.
+ */
+export interface VerifyAssessments {
+  reviewerSeverity: Severity
+  fixerSeverity: Severity | null
+  reviewerExposure: ExposureKind
+  fixerExposure: ExposureKind
+}
+
 export function emitVerifyComplete(
   trace: TraceLogger,
   round: number,
   issueId: string,
   verdict: string,
   fixability: string,
-  reviewerSeverity: Severity,
-  fixerSeverity: Severity | null,
+  assessments: VerifyAssessments,
   reasoning: string,
   targetFiles: readonly string[],
 ): void {
@@ -168,8 +224,7 @@ export function emitVerifyComplete(
     issueId,
     verdict,
     fixability,
-    reviewerSeverity,
-    fixerSeverity,
+    ...assessments,
     reasoning,
     targetFiles: [...targetFiles],
   })
