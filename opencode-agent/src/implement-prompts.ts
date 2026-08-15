@@ -5,6 +5,7 @@
 
 import { describeStep } from './plan-steps.js'
 import type { PlanStep, StepMarker } from './plan-steps.js'
+import { MINIMALITY_RULE } from './prompts.js'
 import type { UntrustedEnvelope } from './prompts.js'
 import { PROTECTED_PATHS_RULE } from './protected-paths.js'
 
@@ -42,6 +43,7 @@ export const IMPLEMENT_INSTRUCTIONS = [
   'Implement the approved plan in the working tree, test-first.',
   'Never weaken or delete a test to make a check pass, and never add lint-disable or type-ignore comments.',
   'Leave committing, pushing and pull-request creation to the pipeline.',
+  MINIMALITY_RULE,
   PROTECTED_PATHS_RULE,
   'This job runs under a wall-clock deadline and you may be stopped at any moment: prefer finishing the file you ' +
     'are editing over starting another, so that whatever is on disk when you stop is worth keeping.',

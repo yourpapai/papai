@@ -27,18 +27,19 @@ See LICENSE in the project root for details.
 
 ## 2. New carriers
 
-- [ ] 2.1 Add failing cases to `tests/opencode-agent/instructions.test.ts` asserting that
+- [x] 2.1 Add failing cases to `tests/opencode-agent/instructions.test.ts` asserting that
       `IMPLEMENT_INSTRUCTIONS` and `CI_FIX_INSTRUCTIONS` each `toContain(MINIMALITY_RULE)`,
       following the `PROTECTED_PATHS_RULE` cases already in that file, then carry the
       constant in both blocks.
       Verify: `bun test tests/opencode-agent/instructions.test.ts`
-- [ ] 2.2 Add a failing case asserting that `PROPOSE_INSTRUCTIONS` and
+- [x] 2.2 Add a failing case asserting that `PROPOSE_INSTRUCTIONS` and
       `PROPOSE_FILES_INSTRUCTIONS` do **not** contain the rule, so that a later edit
       adding it to a drafting block fails rather than passing quietly (`design.md` D3).
       Verify: `bun test tests/opencode-agent/instructions.test.ts`
-- [ ] 2.3 Confirm the implement and CI-fix phases still assemble a prompt end to end with
+- [x] 2.3 Confirm the implement and CI-fix phases still assemble a prompt end to end with
       the longer instruction block, and that no prompt-budget cap now truncates it.
-      Verify: `bun test tests/opencode-agent/phases.test.ts tests/opencode-agent/prompt-budget.test.ts`
+      (`prompt-budget.ts` has no suite of its own; `adapters.test.ts` is what covers it.)
+      Verify: `bun test tests/opencode-agent/phases.test.ts tests/opencode-agent/adapters.test.ts`
 
 ## 3. Main-agent conventions
 
