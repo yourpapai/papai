@@ -172,9 +172,10 @@ the same pass.
 **Stage B exit review:** assess 2026-08-15 (`analytics-stage-b-report.ts --assess` over the
 cron-built `/data/stage-b.jsonl` on prod): `consecutive_complete_weeks=2
 stage_b_exit=allowed`. 14/14 window days eligible, `unexplained_delta=0` every day, zero
-overflow, expiry ok. `stage_c_entry=refused(governance_incomplete)` — Stage C prerequisites
-(policy metadata/operator acknowledgement and/or governance keyring) pending, tracked
-separately. date: 2026-08-15
+overflow, expiry ok. Governance metadata + operator acknowledgement filled 2026-08-15
+(`analytics_policy` config_version 3; the admin form only renders mode/egress/retention/ack,
+so the metadata was set via the same validated `updatePolicy` the route calls, run
+in-container). Final assess 2026-08-15: `stage_c_entry=allowed`. date: 2026-08-15
 
 ## Follow-ups parked during the build
 
