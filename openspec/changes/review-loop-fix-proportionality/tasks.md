@@ -65,5 +65,5 @@ See LICENSE in the project root for details.
       signal, and add an ADR recording why the inspector was rejected as the host — the unified
       `MAX_ATTEMPTS = 2` would discard a correct-but-oversized fix — cross-referencing ADR-0303.
       Verify: `bun run format:check`
-- [ ] 4.2 Run the full gate and fix anything it surfaces.
+- [x] 4.2 Run the full gate and fix anything it surfaces.
       Verify: `bun run test && bun run typecheck && bun run lint && bun run review-loop:test`
