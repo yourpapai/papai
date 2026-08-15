@@ -223,6 +223,11 @@ export type RunDaemonOptions = {
  * TTL — decoupled from `intervalMs`, so a scan interval longer than the TTL
  * never lets a live daemon's lock look reclaimable.
  */
+const fallbackSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+
 const refreshHeartbeat = (heartbeat: DaemonHeartbeat): void => {
   try {
     refreshIndexerHeartbeat(heartbeat.lockPath, heartbeat.pid, heartbeat.lock)
@@ -267,13 +272,14 @@ export function runDaemon(config: DaemonConfig, deps: DaemonDeps, options: RunDa
       }
       void scanned
         .then(() => (options.signal.aborted ? undefined : deps.sleep(stepMs)))
-        .then(advance, (error: unknown) => {
+        .catch((error: unknown) => {
           logger.warn(
             { error: error instanceof Error ? error.message : String(error) },
             'context-vault indexer sleep failed; continuing after interval',
           )
-          advance()
+          return options.signal.aborted ? undefined : fallbackSleep(stepMs)
         })
+        .then(advance)
     }
     tick()
   })

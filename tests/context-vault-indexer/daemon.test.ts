@@ -561,4 +561,17 @@ describe('runDaemon', () => {
     expect(scans()).toBe(2)
     expect(sleeps).toEqual([5_000])
   })
+
+  test('a rejected sleep falls back to a real delay instead of spinning the loop', async () => {
+    const controller = new AbortController()
+    const { fs, scans } = makeAbortingFs(controller, 2)
+    const { deps } = makeDeps(fs)
+    deps.sleep = (): Promise<void> => Promise.reject(new Error('timer unavailable'))
+
+    const started = Date.now()
+    await runDaemon(CONFIG, deps, { intervalMs: 25, signal: controller.signal })
+
+    expect(scans()).toBe(2)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(25)
+  })
 })
