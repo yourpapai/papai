@@ -15,6 +15,8 @@ import {
   createCapturingTraceLogger,
   emptyDecisions,
   emptySeverityCounts,
+  CheckBehindByKindSchema,
+  KindCountsSchema,
 } from '../../review-loop/src/trace-log.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
@@ -218,5 +220,32 @@ describe('extended schemas', () => {
       reasoning: 'ok',
     })
     expect(parsed.event).toBe('inspect_complete')
+  })
+})
+
+describe('per-kind schemas reject a partial shape', () => {
+  const counts = { withCheck: 1, withoutCheck: 0, unmeasured: 0 }
+
+  // These schemas are the only thing standing between a hand-edited or
+  // half-written metrics.json and a summary that reports confident nonsense.
+  // Asserting only that a well-formed payload parses leaves that unproven: an
+  // object schema with its fields dropped still accepts every good input, and
+  // silently accepts every bad one too.
+  test('CheckBehindByKindSchema requires both kinds, each a full count', () => {
+    expect(CheckBehindByKindSchema.parse({ defect: counts, cleanup: counts })).toEqual({
+      defect: counts,
+      cleanup: counts,
+    })
+    expect(() => CheckBehindByKindSchema.parse({})).toThrow()
+    expect(() => CheckBehindByKindSchema.parse({ defect: counts })).toThrow()
+    expect(() => CheckBehindByKindSchema.parse({ defect: counts, cleanup: { withCheck: 1 } })).toThrow()
+  })
+
+  test('KindCountsSchema requires both counts, non-negative integers', () => {
+    expect(KindCountsSchema.parse({ defect: 2, cleanup: 0 })).toEqual({ defect: 2, cleanup: 0 })
+    expect(() => KindCountsSchema.parse({})).toThrow()
+    expect(() => KindCountsSchema.parse({ defect: 2 })).toThrow()
+    expect(() => KindCountsSchema.parse({ defect: -1, cleanup: 0 })).toThrow()
+    expect(() => KindCountsSchema.parse({ defect: 1.5, cleanup: 0 })).toThrow()
   })
 })

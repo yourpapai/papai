@@ -157,7 +157,9 @@ function issuesBlock(ledger: IssueLedgerSnapshot): string[] {
   const lines = ['Issues:']
   for (const group of GROUP_ORDER) {
     const groupRecords = groups.get(group)
-    if (groupRecords === undefined || groupRecords.length === 0) continue
+    // Present means non-empty: the only write to this map appends a record, so
+    // an empty-array branch here is unreachable and no test could ever cover it.
+    if (groupRecords === undefined) continue
     lines.push(`  ${GROUP_LABEL[group]} (${groupRecords.length}):`)
     for (const record of groupRecords.slice(0, GROUP_CAP)) {
       lines.push(
