@@ -54,5 +54,5 @@ See LICENSE in the project root for details.
 
 ## 4. Full gate
 
-- [ ] 4.1 Run the full gate and fix anything it surfaces.
+- [x] 4.1 Run the full gate and fix anything it surfaces.
       Verify: `bun run test && bun run typecheck && bun run lint && bun run review-loop:test && bun run opencode-agent:typecheck`
