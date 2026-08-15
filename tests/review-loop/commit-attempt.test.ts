@@ -37,6 +37,7 @@ async function setupRepo(repoPath: string): Promise<void> {
 
 const issue: ReviewerIssue = {
   title: 'x',
+  kind: 'defect',
   severity: 'low',
   summary: '',
   whyItMatters: '',

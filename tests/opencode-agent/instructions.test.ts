@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { IMPLEMENT_INSTRUCTIONS } from '../../opencode-agent/src/implement-prompts.js'
 import { CI_FIX_INSTRUCTIONS } from '../../opencode-agent/src/phases/ci-fix.js'
 import { PROPOSE_FILES_INSTRUCTIONS, PROPOSE_INSTRUCTIONS } from '../../opencode-agent/src/phases/plan-draft.js'
+import { MINIMALITY_RULE } from '../../opencode-agent/src/prompts.js'
 import { PROTECTED_PATHS_RULE } from '../../opencode-agent/src/protected-paths.js'
 
 /**
@@ -42,5 +43,34 @@ describe('every phase that can write a file states the protected-paths rule', ()
     // edit, which is the case that cost three CI-fix rounds.
     expect(PROTECTED_PATHS_RULE).toContain('.github/workflows/')
     expect(PROTECTED_PATHS_RULE).toContain('by hand')
+  })
+})
+
+/**
+ * The minimality rule splits the same four blocks along a different seam:
+ * writing production code versus drafting an OpenSpec artifact. Both halves are
+ * asserted, because the boundary is a decision rather than an oversight — a
+ * later edit that hands the rule to a drafter should fail a test, not pass
+ * quietly. Artifact scope is governed by `openspec/config.yaml`'s `rules`, which
+ * reach those two blocks already; a second rule about stdlib and one-liners
+ * would be noise in a prompt that writes no code.
+ */
+describe('the minimality rule reaches the code-writing phases only', () => {
+  const WRITES_CODE: ReadonlyArray<readonly [string, string]> = [
+    ['implement', IMPLEMENT_INSTRUCTIONS],
+    ['ci-fix', CI_FIX_INSTRUCTIONS],
+  ]
+
+  const DRAFTS_ARTIFACTS: ReadonlyArray<readonly [string, string]> = [
+    ['propose', PROPOSE_INSTRUCTIONS],
+    ['propose-files', PROPOSE_FILES_INSTRUCTIONS],
+  ]
+
+  test.each(WRITES_CODE)('%s carries it verbatim', (_phase, instructions) => {
+    expect(instructions).toContain(MINIMALITY_RULE)
+  })
+
+  test.each(DRAFTS_ARTIFACTS)('%s deliberately does not carry it', (_phase, instructions) => {
+    expect(instructions).not.toContain(MINIMALITY_RULE)
   })
 })

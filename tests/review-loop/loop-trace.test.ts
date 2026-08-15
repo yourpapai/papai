@@ -37,6 +37,7 @@ function requireInspectComplete(evt: TraceEvent): Extract<TraceEvent, { event: '
 
 const issue: ReviewerIssue = {
   title: 'T',
+  kind: 'defect',
   severity: 'high',
   summary: 's',
   whyItMatters: 'w',
@@ -221,10 +222,38 @@ describe('exposure tallies', () => {
 describe('check-behind tallies', () => {
   test('counts each outcome separately, keeping unmeasured out of both', () => {
     const collector = newCollector()
-    tallyCheckBehind(collector, 'with-check')
-    tallyCheckBehind(collector, 'with-check')
-    tallyCheckBehind(collector, 'without-check')
-    tallyCheckBehind(collector, 'unmeasured')
-    expect(collector.checkBehind).toEqual({ withCheck: 2, withoutCheck: 1, unmeasured: 1 })
+    tallyCheckBehind(collector, 'with-check', 'defect')
+    tallyCheckBehind(collector, 'with-check', 'defect')
+    tallyCheckBehind(collector, 'without-check', 'defect')
+    tallyCheckBehind(collector, 'unmeasured', 'defect')
+    expect(collector.checkBehind.defect).toEqual({ withCheck: 2, withoutCheck: 1, unmeasured: 1 })
+  })
+})
+
+describe('per-kind counts', () => {
+  const cleanup: ReviewerIssue = { ...issue, kind: 'cleanup' }
+
+  test('tallyReviewerIssues counts defects and cleanups separately', () => {
+    const collector = newCollector()
+    tallyReviewerIssues(collector, [issue, cleanup, cleanup])
+    expect(collector.reviewerKind).toEqual({ defect: 1, cleanup: 2 })
+  })
+
+  test('a round with no cleanups reports zero, not an absent field', () => {
+    const collector = newCollector()
+    tallyReviewerIssues(collector, [issue])
+    expect(collector.reviewerKind).toEqual({ defect: 1, cleanup: 0 })
+  })
+
+  test('tallyCheckBehind books the outcome under the fixed issue kind', () => {
+    // A cleanup that deletes code introduces no non-trivial logic, so it
+    // legitimately leaves no check. Pooling the two would let cleanups depress
+    // the ratio the defect rule is actually measured by.
+    const collector = newCollector()
+    tallyCheckBehind(collector, 'with-check', 'defect')
+    tallyCheckBehind(collector, 'without-check', 'cleanup')
+    tallyCheckBehind(collector, 'unmeasured', 'cleanup')
+    expect(collector.checkBehind.defect).toEqual({ withCheck: 1, withoutCheck: 0, unmeasured: 0 })
+    expect(collector.checkBehind.cleanup).toEqual({ withCheck: 0, withoutCheck: 1, unmeasured: 1 })
   })
 })

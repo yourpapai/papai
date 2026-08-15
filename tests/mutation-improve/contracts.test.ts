@@ -55,6 +55,33 @@ describe('contracts', () => {
     expect(parsed.notes).toBe('')
   })
 
+  test('ResultSchema accepts a result naming no documents', () => {
+    // The runner no longer mandates a design.md or a tasks.md per improved file,
+    // so a result carrying neither is the ordinary shape rather than a gate
+    // failure. Everything the two documents restated is either measured by the
+    // runner or already carried by `residuals`, which it set-matches.
+    const parsed = ResultSchema.parse({
+      testPaths: ['tests/live-status/x.test.ts'],
+      residuals: [{ loc: 'x.ts:1', why: 'equivalent', mutantIds: ['1'] }],
+    })
+    expect(parsed.specPath).toBeUndefined()
+    expect(parsed.planPath).toBeUndefined()
+    expect(parsed.residuals).toHaveLength(1)
+  })
+
+  test('ResultSchema still accepts a result written before the documents were dropped', () => {
+    // --resume-run reads results stored by an earlier run, which carry both
+    // paths. Optional accepts either shape; removing the fields outright would
+    // reject a run in flight when this shipped.
+    const parsed = ResultSchema.parse({
+      specPath: 'openspec/changes/mutation-coverage-2026-08-01-x/design.md',
+      planPath: 'openspec/changes/mutation-coverage-2026-08-01-x/tasks.md',
+      testPaths: ['tests/x.test.ts'],
+      residuals: [],
+    })
+    expect(parsed.specPath).toBe('openspec/changes/mutation-coverage-2026-08-01-x/design.md')
+  })
+
   test('ResultSchema requires at least one testPath', () => {
     const base = {
       specPath: 'd.md',

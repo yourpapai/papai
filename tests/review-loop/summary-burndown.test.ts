@@ -29,7 +29,11 @@ function zeroMetric(round: number): RoundMetric {
     reviewerExposure: { caller: 0, none: 0, unknown: 0 },
     fixerExposure: { caller: 0, none: 0, unknown: 0 },
     exposureDivergent: 0,
-    checkBehind: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+    reviewerKind: { defect: 0, cleanup: 0 },
+    checkBehind: {
+      defect: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+      cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+    },
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
   }

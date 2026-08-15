@@ -803,6 +803,23 @@ not permitted to create or approve pull requests` is a repository or
   `PROTECTED_PREFIXES` is a privilege decision: an agent that can rewrite
   `agent-pipeline.yml` can rewrite the permissions, concurrency group and secret
   wiring that bound it, in a job that job itself defines.
+- **The minimality rule reaches the code-writing blocks and stops there.**
+  `MINIMALITY_RULE` in `prompts.ts` is carried verbatim by
+  `IMPLEMENT_INSTRUCTIONS` and `CI_FIX_INSTRUCTIONS`, and deliberately **not** by
+  `plan-draft.ts`'s two — `instructions.test.ts` asserts both halves, so an edit
+  that hands it to a drafter fails rather than passing quietly. Artifact scope is
+  a different question and already has an answer: `openspec/config.yaml`'s `rules`
+  reach those blocks through the instructions payload, and a rule about stdlib and
+  one-liners would be noise in a prompt that writes no code. The text is
+  **duplicated** from `review-loop/src/prompt-templates.ts`'s `MINIMALITY_LADDER`
+  rather than imported — that workspace is a subprocess here, not a module, and a
+  runtime import for one paragraph is a boundary to defend at every later
+  refactor. `tests/opencode-agent/minimality-rule.test.ts` pins the two equal, and
+  is where a reworded rule surfaces. Note what it does **not** say: nothing about
+  minimising file count. The phrasing this rule descends from says "fewest files
+  possible", and in the papai repository a `max-lines` failure means split the
+  file — adopting that clause would put the prompt in conflict with an enforced
+  convention.
 - **A drop is reported, never only logged, and `null` is not a verdict.**
   `commitAll` answers `CommitOutcome` — `clean | blocked | committed` — because
   `StagedTotals | null` made `null` mean both "the tree was already clean" and

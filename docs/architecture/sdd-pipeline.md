@@ -22,6 +22,34 @@ INTAKE → DRAFT → REVIEW LOOP → DECOMPOSE → ATOMICITY → GATE → (exit)
 - **Atomicity**: split/merge tasks (skipped at S).
 - **Gate**: single human gate with checkbox protocol.
 
+### Admission vs division
+
+Two of the project's rule sets pull in opposite directions on size, and read together
+they look like a contradiction. They are not: they answer different questions, at
+different stages.
+
+```
+   ADMISSION                          │  DIVISION
+   does this scope exist at all?      │  how is admitted work broken up?
+   ── DRAFT ──────────────────────▶   │  ── DECOMPOSE → ATOMICITY ──────▶
+   openspec/config.yaml               │  openspec/config.yaml
+     rules.proposal, rules.design     │    rules.tasks
+   "state what breaks without it";    │  "independently verifiable chunks";
+   "name what already covers it"      │  sdd-runner/src/decompose.ts splits
+                                      │  any task bundling several
+```
+
+`rules.proposal` asks a drafter to justify each declared capability and routes scope
+that fails that test into the proposal's Non-goals, where it stays visible as
+declined. Nothing there argues for fewer tasks. Once scope is admitted, the atomicity
+checker is free to split it as finely as the work warrants — splitting is this
+repository's settled answer to size, the same answer `max-lines` gives for a file.
+
+A minimality rule must therefore never be added to `rules.tasks`: it would argue with
+a checker built to split. Nothing enforces that boundary — it is a rule about prose,
+and a test matching phrasing in YAML would fail legitimate rewordings while missing
+a rule worded differently. This section is the guard.
+
 ## Event model
 
 Three altitudes in `<runDir>/events.ndjson`:

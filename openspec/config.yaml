@@ -63,6 +63,12 @@ rules:
     - Name the affected platform/task instances and state the config-context
       scope impact (per-user vs group-shared vs thread-isolated)
     - Include a "Non-goals" section listing explicitly out-of-scope behavior
+    - For each declared capability, state what concretely breaks or stays
+      missing without it; a capability justified only by an anticipated need
+      belongs in Non-goals rather than in scope, recorded as declined
+    - Name the existing capability or module that already covers a declared
+      capability where one does, and either extend it or say why a separate
+      one is needed
     - Reference existing capability specs under openspec/specs/ that the
       change modifies, and docs/architecture/*.md docs it affects
     - Keep proposals under 500 words; detail belongs in design.md
@@ -86,6 +92,8 @@ rules:
       for existing rows
     - For new dependencies, justify why existing stack (AI SDK, Grammy,
       discord.js, Zod, drizzle) cannot cover the need
+    - Before introducing a new module, name the existing one that covers the
+      need or state that none does — the dependency question one level in
     - Note hook/TDD interactions — which new files the Write/Edit TDD hook
       pipeline will gate, and the test-first order of work
   tasks:

@@ -3,18 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import path from 'node:path'
-
 import type { CappedEntry } from './capped-registry.js'
 
-const stemFrom = (file: string): string => {
-  const base = path.basename(file).replace(/\.ts$/u, '')
-  return base
-}
-
+// Kept in step with `result-schema.ts` by hand, and asserted against it: the
+// prompt states the shape as a literal, so a field the parser rejects — or one
+// the agent is still told to produce after it stopped being asked for — costs a
+// whole iteration to a validation error.
 const RESULT_SCHEMA_LINE =
-  'Schema: { specPath: string, planPath: string, testPaths: string[] (>=1),\n' +
-  'residuals: [{loc, why, mutantIds: string[]}], notes: string }.'
+  'Schema: { testPaths: string[] (>=1),\nresiduals: [{loc, why, mutantIds: string[]}], notes: string }.'
 
 // Both header forms spelled out verbatim: agents default to the // style they
 // see in source, but check.sh requires the HTML-comment form for docs/*.md and
@@ -103,19 +99,12 @@ export function buildFixPrompt(input: {
   ].join('\n')
 }
 
-const improveChangePaths = (input: { file: string; date: string }): { specPath: string; planPath: string } => {
-  const changeDir = `openspec/changes/mutation-coverage-${input.date}-${stemFrom(input.file)}`
-  return { specPath: `${changeDir}/design.md`, planPath: `${changeDir}/tasks.md` }
-}
-
 export function buildImprovePrompt(input: {
   file: string
   beforeScore: number
   threshold: number
-  date: string
   outputPath: string
 }): string {
-  const { specPath, planPath } = improveChangePaths(input)
   return [
     `You are the IMPROVE phase of an autonomous mutation-coverage improvement runner.`,
     `Target file: ${input.file} (current mutation score: ${input.beforeScore}; target: >= ${input.threshold})`,
@@ -124,14 +113,10 @@ export function buildImprovePrompt(input: {
     '',
     '1. MEASURE. Run `bun test:mutate:file ' + input.file + '` and inspect reports/paired/ to enumerate',
     '   the ACTUAL surviving mutants. Ground every later step in the real report, not speculation.',
-    '2. SPEC. Write ' + specPath + ' with sections: Summary / Why this file / Non-goals / Gap analysis',
-    '   (a table of surviving mutant classes, one row per class) / Design - tests to add (mapped one-to-one',
-    '   onto the gap classes) / Verification / Accepted residuals.',
-    '3. PLAN. Write ' + planPath + ' with task-per-mutant-class checkboxes and global constraints.',
-    '4. TESTS. Extend the existing companion test file (tests/.../<stem>.test.ts). Every new assertion',
+    '2. TESTS. Extend the existing companion test file (tests/.../<stem>.test.ts). Every new assertion',
     '   MUST use exact equality toBe(...) - never startsWith/endsWith/toContain where a full string is',
     '   knowable. One test per mutant class.',
-    '5. RESIDUALS. Enumerate equivalent mutants that survive and genuinely cannot be killed, with per-loc',
+    '3. RESIDUALS. Enumerate equivalent mutants that survive and genuinely cannot be killed, with per-loc',
     '   reasoning. Each entry MUST list the Stryker mutant ids it covers (mutantIds: string[]) exactly as',
     '   they appear in your measured report (reports/paired/<stem>.stryker-report.json, "id" fields with',
     '   status Survived or NoCoverage). The runner re-measures and set-matches the UNION of your mutantIds',

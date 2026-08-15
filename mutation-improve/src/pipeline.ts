@@ -119,7 +119,6 @@ async function improvePhase(
       file,
       beforeScore,
       threshold: deps.config.threshold,
-      date: new Date().toISOString().slice(0, 10),
       outputPath: agentWritePath(worktreePath, improveOut),
     }),
     improveOut,
@@ -191,8 +190,7 @@ async function finalizePhase(
     beforeScore,
     afterScore,
     iter,
-    specPath: result.specPath,
-    planPath: result.planPath,
+    residuals: result.residuals,
     ...(gate.capped ? { capped: true } : {}),
   })
   return { iter, outcome: gate.capped ? 'capped' : 'improved', file, beforeScore, afterScore }

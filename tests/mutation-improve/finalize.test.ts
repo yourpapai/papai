@@ -54,6 +54,49 @@ describe('finalize', () => {
     expect(body).toContain('| 2 | score |')
   })
 
+  test('reports accepted residuals and their reasoning instead of two document links', () => {
+    // The two Spec/Plan cells were the only place a pull-request reader could
+    // see why a file was accepted below target. Reading it from `residuals` is
+    // strictly better: that array is the one the runner set-matched against its
+    // own measurement, so the reader sees the checked answer rather than prose
+    // beside it.
+    const body = buildSummaryBody(
+      [
+        {
+          file: 'src/a.ts',
+          beforeScore: 0.4,
+          afterScore: 0.88,
+          iter: 1,
+          residuals: [
+            { loc: 'src/a.ts:12', why: 'equivalent mutant: jitter bound', mutantIds: ['7'] },
+            { loc: 'src/a.ts:30', why: 'dead branch only a src edit removes', mutantIds: ['9', '11'] },
+          ],
+        },
+      ],
+      [],
+    )
+    expect(body).toContain('| src/a.ts | 0.4 | 0.88 | 2 |')
+    expect(body).toContain('equivalent mutant: jitter bound')
+    expect(body).toContain('dead branch only a src edit removes')
+    expect(body).not.toContain('| Spec | Plan |')
+  })
+
+  test('renders a file with no residuals without an empty reasoning cell', () => {
+    const body = buildSummaryBody([{ file: 'src/a.ts', beforeScore: 0.4, afterScore: 0.97, iter: 1 }], [])
+    expect(body).toContain('| src/a.ts | 0.4 | 0.97 | 0 | — |')
+  })
+
+  test('a resumed row still carrying document paths renders from residuals, not paths', () => {
+    // --resume-run reads rows stored before the documents were dropped. The
+    // report reads residuals, so such a row renders exactly like a fresh one.
+    const body = buildSummaryBody(
+      [{ file: 'src/a.ts', beforeScore: 0.4, afterScore: 0.97, iter: 1, specPath: 's.md', planPath: 'p.md' }],
+      [],
+    )
+    expect(body).not.toContain('s.md')
+    expect(body).not.toContain('p.md')
+  })
+
   test('runFinalize pushes and opens a PR via gh, returning the URL', async () => {
     const repoRoot = makeTempDir('fin-')
     const runState: MutationImproveRunState = {

@@ -45,6 +45,13 @@ smaller diff is not the goal, so it cannot be read as licence to drop validation
 handling, security, or a test. Both retry prompts carry it too — a second attempt is where scope
 creeps, because the first failed and more feels like the answer.
 
+That constant is **exported and shared beyond this workspace**. `opencode-agent` carries the
+same text as `MINIMALITY_RULE` in its own `prompts.ts` — duplicated rather than imported,
+because it drives this workspace as a subprocess and imports nothing from it — and
+`tests/opencode-agent/minimality-rule.test.ts` asserts the two are equal. `CLAUDE.md` states it
+a third time for the main agent, in prose no test can pin. Reword it here and that test fails;
+that is the intended way to find every carrier.
+
 **Check-behind** (`CHECK_BEHIND_RULE`) requires non-trivial logic to leave one runnable check in
 the test path this repo already maps the file to, and states that a scratch reproduction deleted
 afterwards does not count.
@@ -62,6 +69,45 @@ an ancestor. A measurement that fails is `unmeasured`, reported apart from both 
 unreadable diff is not a fix that skipped its test. See the `Checks left behind:` summary line
 and [ADR-0425](../docs/adr/0425-review-loop-fix-minimality-and-check-behind.md), which records
 why the inspector was the wrong host for any of this.
+
+## Deletion findings
+
+The fixer was taught to reach for the smallest thing that works before the reviewer could
+report that the code already there is over-built, so for a while the ladder only ever shrank
+fixes the loop was already making and nothing it read got smaller. It can now report both:
+every issue carries `kind` — `defect` or `cleanup` — and a cleanup is one of exactly **five**
+forms, `delete` / `stdlib` / `native` / `yagni` / `shrink`.
+
+The set is **closed**, and that is the guard. An open category collects everything a reviewer
+mildly dislikes, which is what the standing "correct but I would write it differently"
+exclusion exists to prevent and which a deletion vocabulary is uniquely able to reopen — that
+exclusion survives verbatim, pinned by a test. Every cleanup must **name what replaces** the
+code it cuts: a named function, a named platform feature, an existing helper, the shorter
+form, or nothing at all for code nothing reaches. "Nothing replaces it" is a complete answer;
+being unable to name one is a reason to omit the finding. Same discipline as exposure — a
+citation, not a rating.
+
+**Ordering is kind-first** (`orderByExposure`, `issue-processor.ts`). Every defect is
+dispatched before any cleanup; exposure orders within each group exactly as it did, as the
+tiebreak. Without that, a cleanup whose caller was found would be dispatched ahead of a
+critical defect whose caller nobody found — exposure grades reachability, never worth. What it
+buys is what a stopped run spends: the soft stop is honoured between two issues, so the tail
+the run drops is now cleanups.
+
+A cleanup is **never above medium**. `capCleanupSeverity` (`review-round.ts`) clamps at ingest,
+before matching and before the ledger — the prompt states the rule, the clamp makes it true.
+
+Counts are reported per kind (`Findings:` line, `reviewerKind` in `metrics.json`), and
+`Checks left behind:` reports the **defect** ratio with cleanups named beside it rather than
+folded in: a cleanup that deletes code introduces no non-trivial logic, so it leaves no check
+and is right not to. Pooled, cleanups would drag down the very ratio the check-behind rule is
+measured by. Nothing here gates anything; it exists so the effect can be read afterwards.
+
+Open question carried from the change's `design.md`: whether **`shrink`** earns its place. It
+is the least objective of the five and the only one whose replacement is "the same logic,
+written shorter" rather than a name. If the first runs show it producing most of the noise,
+dropping it is one line in `CLEANUP_FINDINGS` and one in the closed set — it touches neither
+the ordering, the schema, nor the counts. The per-kind numbers are how that gets decided.
 
 ## Exposure
 

@@ -34,6 +34,7 @@ afterEach(cleanupTempDirs)
 
 const issue: ReviewerIssue = {
   title: 'Race condition in queue flush path',
+  kind: 'defect',
   severity: 'high',
   summary: 'Two concurrent messages can bypass the intended lock.',
   whyItMatters: 'This can produce stale assistant replies.',

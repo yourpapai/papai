@@ -68,6 +68,7 @@ Mandatory; pino with structured metadata-first calls. `debug` — function entry
 - Use `p-limit` for bounded concurrency over remote ops, not unbounded `Promise.all`.
 - **Never add lint-disable or type-ignore comments** — hook policy blocks them; fix the underlying issue.
 - A `max-lines` / `max-lines-per-function` failure is a **design signal**: split the file or extract functions; do not game the limit by deleting blank lines or compressing formatting.
+- **Smallest thing that works.** After you understand the problem, and before you write code, in order: does this need to exist at all; is it already in this codebase; does the stdlib or an installed dependency already do it; can it be one line. Only then write something new, and write the least of it that resolves the issue. A smaller diff is **not** the goal — never cut validation, error handling, security, or a test to reach one, and never keep code in one file to reach one (that is what the `max-lines` rule above is for). The same rule reaches the review-loop fixer and `opencode-agent` as `MINIMALITY_LADDER` / `MINIMALITY_RULE`, pinned equal by `tests/opencode-agent/minimality-rule.test.ts`.
 
 ## Testing Notes
 
@@ -103,7 +104,7 @@ all sub-second. `bun run test:raw` is the unwrapped escape hatch and writes no r
 
 When the harness supports `obra/superpowers` skills, preserve that workflow for what it still owns (see the routing table). Load `using-superpowers` at session start before acting; load any other applicable skill before responding, editing, or running commands; do not rely on memory of skill contents — load the current text each time.
 
-Planning runs on OpenSpec in this repo: code-behavior work enters through `/opsx:explore` / `/opsx:propose` and lives under `openspec/changes/<name>/`; `brainstorming` keeps non-code creative work only.
+Planning runs on OpenSpec in this repo: code-behavior work enters through `/opsx:explore` / `/opsx:propose` and lives under `openspec/changes/<name>/`; `brainstorming` keeps non-code creative work only. A proposal must justify each capability it declares and route declined scope into Non-goals (`openspec/config.yaml` `rules.proposal`); that governs what a change **admits**, never how tasks are divided — see [Admission vs division](docs/architecture/sdd-pipeline.md#admission-vs-division).
 
 | Trigger                                         | Route                                                                                |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------ |
