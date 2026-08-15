@@ -79,7 +79,7 @@ function recordAcceptedFix(
   recordFixAttempt(deps.ledger, record.id)
   // No per-fix log for `unmeasured`: the summary already reports the count, and
   // nothing pinned a line that fires only when a diff cannot be read.
-  tallyCheckBehind(collector, checkBehind)
+  tallyCheckBehind(collector, checkBehind, record.issue.kind)
   tallyDecision(collector, fixerResult.verdict, fixerResult.fixed)
   tallyFixerOutcome(collector, record, fixerResult)
   emitDecision(deps.log, record, 'fixed', attempt === 1 ? undefined : 'after retry')

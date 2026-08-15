@@ -12,11 +12,17 @@ import {
   type IssueGroup,
 } from './issue-format.js'
 import type { IssueLedgerSnapshot, LedgerIssueRecord } from './issue-ledger.js'
-import { formatDuration } from './live-format.js'
 import type { ReviewLoopResult } from './loop-controller.js'
 import type { PersistedStats, StatsSnapshot } from './run-stats.js'
 import { burndownBlock } from './summary-burndown.js'
-import { aggregatePhaseMs, aggregateUsage, PHASE_KEYS, sumDecisions } from './summary-metrics.js'
+import {
+  buildCheckBehindLine,
+  buildExposureLine,
+  buildInspectorLine,
+  buildKindLine,
+  buildTimingLine,
+} from './summary-lines.js'
+import { aggregatePhaseMs, aggregateUsage, sumDecisions } from './summary-metrics.js'
 import type { PhaseMs, RoundMetric, UsageTotals } from './trace-log.js'
 
 const GROUP_CAP = 20
@@ -123,69 +129,10 @@ function buildVerdict(input: SummaryInput, counts: IssueCounts, total: number): 
   return `Review loop finished: done — ${plural(total, 'issue')}: ${breakdown}.`
 }
 
-function msToSeconds(ms: number): string {
-  return `${(ms / 1000).toFixed(1)}s`
-}
-
-function formatCount(n: number): string {
-  return n.toLocaleString('en-US')
-}
-
-function buildTimingLine(metrics: readonly RoundMetric[], wallMs: number): string {
-  const phaseMs = aggregatePhaseMs(metrics)
-  const totalMs = PHASE_KEYS.reduce((s, k) => s + phaseMs[k], 0)
-  const parts = PHASE_KEYS.filter((k) => phaseMs[k] > 0).map((k) => `${k} ${msToSeconds(phaseMs[k])}`)
-  const breakdown = parts.length === 0 ? 'no phase timing recorded' : parts.join(', ')
-  const usage = aggregateUsage(metrics)
-  const tokens = `in ${formatCount(usage.inputTokens)} / out ${formatCount(usage.outputTokens)} / reasoning ${formatCount(usage.reasoningTokens)}`
-  const cost = usage.costUsd > 0 ? `Cost: $${usage.costUsd.toFixed(3)} (${tokens})` : `Tokens: ${tokens}`
-  return `Duration: ${formatDuration(wallMs)} wall · phases ${formatDuration(totalMs)} (${breakdown}) · ${cost}`
-}
-
 function buildRoundsLine(input: SummaryInput): string | null {
   if (input.rounds <= 1 && input.options.poolSize <= 1) return null
   const pool = input.options.poolSize > 1 ? ` · Pool: ${input.options.poolSize}` : ''
   return `Rounds: ${input.rounds}${pool}`
-}
-
-function buildInspectorLine(metrics: readonly RoundMetric[], options: SummaryOptions): string | null {
-  if (!options.inspect) return null
-  const runs = metrics.reduce((s, m) => s + m.inspector.runs, 0)
-  if (runs === 0) return null
-  const rejected = metrics.reduce((s, m) => s + m.inspector.rejected, 0)
-  const rate = `${((100 * rejected) / runs).toFixed(1)}%`
-  return `Inspector: ${runs} runs, ${rejected} rejected (${rate} reject rate)`
-}
-
-/**
- * Reported from the reviewer's answers, with the fixer's second opinion folded
- * in only as the divergence count — the two distributions side by side would
- * invite reading one as a correction of the other, and neither is authoritative.
- *
- * Omitted entirely when nobody answered: a row of zeros reads as "nothing is
- * reachable" rather than "nobody was asked".
- */
-function buildExposureLine(metrics: readonly RoundMetric[]): string | null {
-  const cited = metrics.reduce((s, m) => s + m.reviewerExposure.caller, 0)
-  const none = metrics.reduce((s, m) => s + m.reviewerExposure.none, 0)
-  if (cited + none === 0) return null
-  const divergent = metrics.reduce((s, m) => s + m.exposureDivergent, 0)
-  return `Exposure: ${cited} cited, ${none} none, ${divergent} divergent (advisory — orders dispatch, gates nothing)`
-}
-
-/**
- * Counted over accepted fixes only — a rejected fix leaving no test behind is
- * not a finding. `unmeasured` is reported separately rather than folded into
- * the denominator, so a run whose diffs could not be read does not read as a
- * run whose fixer skipped its tests.
- */
-function buildCheckBehindLine(metrics: readonly RoundMetric[]): string | null {
-  const withCheck = metrics.reduce((s, m) => s + m.checkBehind.withCheck, 0)
-  const measured = withCheck + metrics.reduce((s, m) => s + m.checkBehind.withoutCheck, 0)
-  const unmeasured = metrics.reduce((s, m) => s + m.checkBehind.unmeasured, 0)
-  if (measured + unmeasured === 0) return null
-  const tail = unmeasured > 0 ? ` (${unmeasured} unmeasured)` : ''
-  return `Checks left behind: ${withCheck} of ${measured} accepted fixes${tail}`
 }
 
 function buildStatsLine(stats: StatsSnapshot | undefined): string | null {
@@ -242,12 +189,14 @@ export function buildSummary(input: SummaryInput): string {
   const roundsLine = buildRoundsLine(input)
   if (roundsLine !== null) lines.push(roundsLine)
 
-  const inspectorLine = buildInspectorLine(input.metrics, input.options)
+  const inspectorLine = buildInspectorLine(input.metrics, input.options.inspect)
   if (inspectorLine !== null) lines.push(inspectorLine)
 
   const exposureLine = buildExposureLine(input.metrics)
   if (exposureLine !== null) lines.push(exposureLine)
 
+  const kindLine = buildKindLine(input.metrics)
+  if (kindLine !== null) lines.push(kindLine)
   const checkBehindLine = buildCheckBehindLine(input.metrics)
   if (checkBehindLine !== null) lines.push(checkBehindLine)
 

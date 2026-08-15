@@ -855,6 +855,6 @@ describe('check-behind signal', () => {
     expect(fixed).toBe(1)
     expect(recordOf(ledger).status).toBe('fixed_pending_review')
     expect(recordOf(ledger).fixAttempts).toBe(1)
-    expect(collector.checkBehind).toEqual({ withCheck: 0, withoutCheck: 1, unmeasured: 0 })
+    expect(collector.checkBehind.defect).toEqual({ withCheck: 0, withoutCheck: 1, unmeasured: 0 })
   })
 })

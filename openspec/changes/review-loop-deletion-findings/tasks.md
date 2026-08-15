@@ -60,12 +60,12 @@ See LICENSE in the project root for details.
 
 ## 5. Per-kind counts
 
-- [ ] 5.1 Write failing cases in `tests/review-loop/trace-log.test.ts` and
+- [x] 5.1 Write failing cases in `tests/review-loop/trace-log.test.ts` and
       `tests/review-loop/summary.test.ts` that defect and cleanup counts are reported
       separately in `metrics.json` and the run summary, and that a run admitting no
       cleanups reads as it did before. Then implement.
       Verify: `bun test tests/review-loop/trace-log.test.ts tests/review-loop/summary.test.ts`
-- [ ] 5.2 Write a failing case that the `Checks left behind:` line reports per kind, so a
+- [x] 5.2 Write a failing case that the `Checks left behind:` line reports per kind, so a
       cleanup deleting code does not depress the defect ratio (`design.md` D5), then
       implement.
       Verify: `bun test tests/review-loop/summary.test.ts`

@@ -4,13 +4,15 @@
 // See LICENSE in the project root for details.
 
 import type { CheckBehind } from './commit-attempt.js'
-import type { Exposure, ReviewerIssue } from './issue-schema.js'
+import type { Exposure, IssueKind, ReviewerIssue } from './issue-schema.js'
 import {
-  emptyCheckBehindCounts,
+  emptyCheckBehindByKind,
+  emptyKindCounts,
   emptyDecisions,
   emptyExposureCounts,
   emptySeverityCounts,
-  type CheckBehindCounts,
+  type CheckBehindByKind,
+  type KindCounts,
   type Decisions,
   type ExposureCounts,
   type ExposureKind,
@@ -30,7 +32,8 @@ export interface RoundCollector {
   reviewerExposure: ExposureCounts
   fixerExposure: ExposureCounts
   exposureDivergent: number
-  checkBehind: CheckBehindCounts
+  reviewerKind: KindCounts
+  checkBehind: CheckBehindByKind
   phaseMs: PhaseMs
   usage: UsageTotals
 }
@@ -44,7 +47,8 @@ export function newCollector(): RoundCollector {
     reviewerExposure: emptyExposureCounts(),
     fixerExposure: emptyExposureCounts(),
     exposureDivergent: 0,
-    checkBehind: emptyCheckBehindCounts(),
+    reviewerKind: emptyKindCounts(),
+    checkBehind: emptyCheckBehindByKind(),
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
   }
@@ -103,10 +107,11 @@ export function tallyExposure(collector: RoundCollector, reviewer: ExposureKind,
  * blocks a merge, changes a verdict, or touches the retry budget — it exists to
  * say whether the rule the fix prompt states is actually being followed.
  */
-export function tallyCheckBehind(collector: RoundCollector, outcome: CheckBehind): void {
-  if (outcome === 'with-check') collector.checkBehind.withCheck += 1
-  else if (outcome === 'without-check') collector.checkBehind.withoutCheck += 1
-  else collector.checkBehind.unmeasured += 1
+export function tallyCheckBehind(collector: RoundCollector, outcome: CheckBehind, kind: IssueKind): void {
+  const counts = collector.checkBehind[kind]
+  if (outcome === 'with-check') counts.withCheck += 1
+  else if (outcome === 'without-check') counts.withoutCheck += 1
+  else counts.unmeasured += 1
 }
 
 export function tallyFixerSeverity(collector: RoundCollector, severity: Severity | undefined): void {
@@ -118,6 +123,7 @@ export function tallyFixerSeverity(collector: RoundCollector, severity: Severity
 export function tallyReviewerIssues(collector: RoundCollector, newIssues: readonly ReviewerIssue[]): void {
   for (const issue of newIssues) {
     collector.reviewerSeverity[issue.severity] += 1
+    collector.reviewerKind[issue.kind] += 1
   }
 }
 

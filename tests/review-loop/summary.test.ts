@@ -71,7 +71,11 @@ function zeroMetric(round: number): RoundMetric {
     reviewerExposure: { caller: 0, none: 0, unknown: 0 },
     fixerExposure: { caller: 0, none: 0, unknown: 0 },
     exposureDivergent: 0,
-    checkBehind: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+    reviewerKind: { defect: 0, cleanup: 0 },
+    checkBehind: {
+      defect: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+      cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+    },
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
   }
@@ -519,30 +523,94 @@ describe('check-behind line', () => {
   test('reports how many accepted fixes left a check behind', () => {
     const summary = buildSummary({
       ...inputOf({}),
-      metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 2, withoutCheck: 1, unmeasured: 0 } }],
+      metrics: [
+        {
+          ...zeroMetric(1),
+          checkBehind: {
+            defect: { withCheck: 2, withoutCheck: 1, unmeasured: 0 },
+            cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+          },
+        },
+      ],
     })
     // Whole line, not a prefix: a prefix assertion passes even when the empty
     // no-unmeasured tail is replaced with arbitrary text.
-    expect(lineStartingWith(summary, 'Checks left behind:')).toBe('Checks left behind: 2 of 3 accepted fixes')
+    expect(lineStartingWith(summary, 'Checks left behind:')).toBe('Checks left behind: 2 of 3 accepted defect fixes')
   })
 
   test('calls out unmeasured fixes rather than folding them into either answer', () => {
     const summary = buildSummary({
       ...inputOf({}),
-      metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 1, withoutCheck: 0, unmeasured: 2 } }],
+      metrics: [
+        {
+          ...zeroMetric(1),
+          checkBehind: {
+            defect: { withCheck: 1, withoutCheck: 0, unmeasured: 2 },
+            cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+          },
+        },
+      ],
     })
-    expect(summary).toContain('Checks left behind: 1 of 1 accepted fixes (2 unmeasured)')
+    expect(summary).toContain('Checks left behind: 1 of 1 accepted defect fixes (2 unmeasured)')
   })
 
   test('is still reported when the measured and unmeasured counts happen to be equal', () => {
     const summary = buildSummary({
       ...inputOf({}),
-      metrics: [{ ...zeroMetric(1), checkBehind: { withCheck: 1, withoutCheck: 0, unmeasured: 1 } }],
+      metrics: [
+        {
+          ...zeroMetric(1),
+          checkBehind: {
+            defect: { withCheck: 1, withoutCheck: 0, unmeasured: 1 },
+            cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+          },
+        },
+      ],
     })
-    expect(summary).toContain('Checks left behind: 1 of 1 accepted fixes (1 unmeasured)')
+    expect(summary).toContain('Checks left behind: 1 of 1 accepted defect fixes (1 unmeasured)')
   })
 
   test('is omitted when no fix was accepted', () => {
     expect(buildSummary(inputOf({ metrics: [zeroMetric(1)] }))).not.toContain('Checks left behind')
+  })
+})
+
+describe('per-kind reporting', () => {
+  const zero = { withCheck: 0, withoutCheck: 0, unmeasured: 0 }
+
+  test('reports the findings split once a cleanup is reported', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), reviewerKind: { defect: 4, cleanup: 2 } }],
+    })
+    expect(lineStartingWith(summary, 'Findings:')).toBe('Findings: 4 defect, 2 cleanup')
+  })
+
+  test('omits the findings line entirely when no cleanup was reported', () => {
+    // A run that admits no cleanups must read exactly as it did before they
+    // were admitted — a "0 cleanup" line on every run is noise.
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [{ ...zeroMetric(1), reviewerKind: { defect: 4, cleanup: 0 } }],
+    })
+    expect(lineStartingWith(summary, 'Findings:')).toBeUndefined()
+  })
+
+  test('a cleanup fix that left no check does not depress the defect ratio', () => {
+    const summary = buildSummary({
+      ...inputOf({}),
+      metrics: [
+        {
+          ...zeroMetric(1),
+          checkBehind: {
+            defect: { withCheck: 2, withoutCheck: 0, unmeasured: 0 },
+            cleanup: { ...zero, withoutCheck: 3 },
+          },
+        },
+      ],
+    })
+    expect(lineStartingWith(summary, 'Checks left behind:')).toBe(
+      'Checks left behind: 2 of 2 accepted defect fixes; 3 cleanup fixes not counted',
+    )
   })
 })

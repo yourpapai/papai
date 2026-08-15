@@ -86,8 +86,34 @@ export const CheckBehindCountsSchema = z.object({
 })
 export type CheckBehindCounts = z.infer<typeof CheckBehindCountsSchema>
 
+/**
+ * Split by issue kind rather than pooled. A cleanup that deletes code
+ * introduces no non-trivial logic, so it leaves no check and is right to — but
+ * pooled it would depress the ratio the check-behind rule is actually measured
+ * by, making the defect fixers look worse the more cleanups a run admits.
+ */
+export const CheckBehindByKindSchema = z.object({
+  defect: CheckBehindCountsSchema,
+  cleanup: CheckBehindCountsSchema,
+})
+export type CheckBehindByKind = z.infer<typeof CheckBehindByKindSchema>
+
+export const KindCountsSchema = z.object({
+  defect: z.number().int().nonnegative(),
+  cleanup: z.number().int().nonnegative(),
+})
+export type KindCounts = z.infer<typeof KindCountsSchema>
+
+export function emptyKindCounts(): KindCounts {
+  return { defect: 0, cleanup: 0 }
+}
+
 export function emptyCheckBehindCounts(): CheckBehindCounts {
   return { withCheck: 0, withoutCheck: 0, unmeasured: 0 }
+}
+
+export function emptyCheckBehindByKind(): CheckBehindByKind {
+  return { defect: emptyCheckBehindCounts(), cleanup: emptyCheckBehindCounts() }
 }
 
 export const RoundMetricSchema = z.object({
@@ -102,7 +128,8 @@ export const RoundMetricSchema = z.object({
   reviewerExposure: ExposureCountsSchema,
   fixerExposure: ExposureCountsSchema,
   exposureDivergent: z.number().int().nonnegative(),
-  checkBehind: CheckBehindCountsSchema,
+  reviewerKind: KindCountsSchema,
+  checkBehind: CheckBehindByKindSchema,
   phaseMs: PhaseMsSchema,
   usage: UsageTotalsSchema,
 })
