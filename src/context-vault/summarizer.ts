@@ -191,9 +191,16 @@ export function enqueueSpecSummarization(input: EnqueueSummarizationInput, deps:
     SEMANTIC_KINDS.has(f.kind) && f.text !== undefined ? [[f.path, f.text] as const] : [],
   )
   const deletedPaths = input.deletedPaths ?? []
-  if (semanticTexts.length === 0 && deletedPaths.length === 0) return
-
   const key = keyOf(input.configContextId, input.specId)
+  if (semanticTexts.length === 0 && deletedPaths.length === 0) {
+    const existing = pending.get(key)
+    if (existing !== undefined) {
+      const freshHash = readSourceHash(input.configContextId, input.specId)
+      if (freshHash !== undefined) existing.sourceHash = freshHash
+    }
+    return
+  }
+
   const existing = pending.get(key)
   if (existing !== undefined && existing.timer !== null) existing.deps.clear(existing.timer)
 

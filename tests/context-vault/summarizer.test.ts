@@ -221,6 +221,37 @@ describe('context-vault summarizer', () => {
     expect(generateText).not.toHaveBeenCalled()
   })
 
+  test('a mechanical push inside the debounce window does not drop the pending summary', async () => {
+    seedSpec()
+    const generateText = mock((args: GenerateTextArgs) => {
+      void args
+      return Promise.resolve({ text: '{"one_line":"kept one-liner","summary":"kept summary"}' })
+    })
+    const { deps, fireAll, pendingCount } = makeDeps({ generateText })
+
+    enqueueSpecSummarization(enqueueInput([{ path: 'a/x/proposal.md', kind: 'proposal', text: 'BODY' }]), deps)
+
+    applyPush(
+      CTX,
+      {
+        repo: 'papai',
+        changeName: 'x',
+        files: [{ path: 'a/x/tasks.md', kind: 'tasks', hash: 'h2', mtime: 2, text: '- [x] one\n' }],
+        deletions: [],
+      },
+      { enqueueSummarization: (input) => enqueueSpecSummarization(input, deps) },
+    )
+
+    expect(pendingCount()).toBe(1)
+    fireAll()
+    await drainSpecSummarizations()
+
+    expect(generateText).toHaveBeenCalledTimes(1)
+    const spec = getSpec(CTX, 'papai:x')
+    expect(spec?.oneLine).toBe('kept one-liner')
+    expect(spec?.summary).toBe('kept summary')
+  })
+
   test('a semantic change without text enqueues no summarization', () => {
     seedSpec()
     const { deps, pendingCount } = makeDeps()
