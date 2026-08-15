@@ -223,6 +223,17 @@ export type RunDaemonOptions = {
  * TTL — decoupled from `intervalMs`, so a scan interval longer than the TTL
  * never lets a live daemon's lock look reclaimable.
  */
+const refreshHeartbeat = (heartbeat: DaemonHeartbeat): void => {
+  try {
+    refreshIndexerHeartbeat(heartbeat.lockPath, heartbeat.pid, heartbeat.lock)
+  } catch (error) {
+    logger.warn(
+      { error: error instanceof Error ? error.message : String(error) },
+      'context-vault indexer heartbeat refresh failed; continuing after interval',
+    )
+  }
+}
+
 export function runDaemon(config: DaemonConfig, deps: DaemonDeps, options: RunDaemonOptions): Promise<void> {
   return new Promise((resolve) => {
     const heartbeatTtlMs = deps.heartbeat?.lock.ttlMs ?? DEFAULT_HEARTBEAT_TTL_MS
@@ -234,7 +245,7 @@ export function runDaemon(config: DaemonConfig, deps: DaemonDeps, options: RunDa
         return
       }
       if (deps.heartbeat) {
-        refreshIndexerHeartbeat(deps.heartbeat.lockPath, deps.heartbeat.pid, deps.heartbeat.lock)
+        refreshHeartbeat(deps.heartbeat)
       }
       const scanDue = sinceScanMs >= options.intervalMs
       const scanned = scanDue
@@ -246,15 +257,22 @@ export function runDaemon(config: DaemonConfig, deps: DaemonDeps, options: RunDa
           })
         : Promise.resolve()
       if (scanDue) sinceScanMs = 0
+      const advance = (): void => {
+        sinceScanMs += stepMs
+        if (options.signal.aborted) {
+          resolve()
+          return
+        }
+        tick()
+      }
       void scanned
         .then(() => (options.signal.aborted ? undefined : deps.sleep(stepMs)))
-        .then(() => {
-          sinceScanMs += stepMs
-          if (options.signal.aborted) {
-            resolve()
-            return
-          }
-          tick()
+        .then(advance, (error: unknown) => {
+          logger.warn(
+            { error: error instanceof Error ? error.message : String(error) },
+            'context-vault indexer sleep failed; continuing after interval',
+          )
+          advance()
         })
     }
     tick()
