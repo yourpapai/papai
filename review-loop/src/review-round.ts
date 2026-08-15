@@ -43,6 +43,27 @@ export const TERMINAL_STATUSES = new Set<LedgerIssueRecord['status']>(['rejected
 
 const MATCHER_RECENT_ROUNDS = 2
 
+/**
+ * Severity grades what happens *if* the code is reached. Code that is merely
+ * more than it needs to be does not lose data, breach security or crash, so a
+ * cleanup graded above medium is a mis-grade rather than an emergency.
+ *
+ * Clamped here rather than trusted from the prompt, for the reason `exposure`
+ * is a citation instead of a rating: severity is this loop's standing proof
+ * that a self-assigned grade inflates. The prompt states the rule; this is what
+ * makes it true.
+ *
+ * Applied at ingest, before matching and before the ledger, so a resumed run
+ * never re-reads an ungraded cleanup and nothing downstream needs to know.
+ */
+export function capCleanupSeverity(issues: readonly ReviewerIssue[]): readonly ReviewerIssue[] {
+  return issues.map((issue) =>
+    issue.kind === 'cleanup' && (issue.severity === 'critical' || issue.severity === 'high')
+      ? { ...issue, severity: 'medium' }
+      : issue,
+  )
+}
+
 export function filterActionable(records: readonly LedgerIssueRecord[]): readonly LedgerIssueRecord[] {
   return records.filter((r) => !TERMINAL_STATUSES.has(r.status))
 }
@@ -97,7 +118,7 @@ export async function runReviewStep(
   tallyPhaseMs(collector, 'review', Date.now() - reviewStart)
   tallyUsage(collector, reviewResult.usage)
 
-  return reviewResult.value.issues
+  return capCleanupSeverity(reviewResult.value.issues)
 }
 
 export async function runMatchAndRecord(

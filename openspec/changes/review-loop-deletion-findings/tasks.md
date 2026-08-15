@@ -36,7 +36,7 @@ See LICENSE in the project root for details.
 
 ## 3. Severity cap on ingest
 
-- [ ] 3.1 Write failing cases that a cleanup arriving at `critical` or `high` is recorded
+- [x] 3.1 Write failing cases that a cleanup arriving at `critical` or `high` is recorded
       as `medium`, that a cleanup at `low` is left alone, and that a defect at `critical`
       is untouched. Then clamp on the ingest path — not in the prompt alone
       (`design.md` D4).
