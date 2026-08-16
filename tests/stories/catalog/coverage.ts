@@ -1166,9 +1166,9 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     ],
   },
   'SCN-context-vault-indexer-singleton': {
-    verifiedAt: '2026-08-13',
+    verifiedAt: '2026-08-16',
     storyIds: [
-      'tests/stories/integrations/plugins/context-vault-indexer.story.test.ts#SCN-context-vault-indexer-singleton: two plugin activations spawn exactly one daemon through the lock',
+      'tests/stories/integrations/plugins/context-vault-indexer.story.test.ts#SCN-context-vault-indexer-singleton: concurrent sessions share one daemon and register their repos with it',
     ],
   },
 }

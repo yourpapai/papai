@@ -8,8 +8,6 @@ import { createHash } from 'node:crypto'
 import pino from 'pino'
 import { z } from 'zod'
 
-import { DEFAULT_HEARTBEAT_TTL_MS, refreshIndexerHeartbeat, type LockDeps } from './lock.js'
-
 const logger = pino({ base: undefined, timestamp: pino.stdTimeFunctions.isoTime })
 
 export type DaemonFs = {
@@ -36,25 +34,12 @@ export type DaemonConfig = {
   token: string
 }
 
-/**
- * Lock ownership seam: the daemon holds the singleton lock under its own pid
- * and rewrites `heartbeatAt` on its own cadence (at least twice per heartbeat
- * TTL, independent of the scan interval), so the lock outlives the short-lived
- * plugin process that spawned it.
- */
-export type DaemonHeartbeat = {
-  lockPath: string
-  pid: number
-  lock: LockDeps
-}
-
 export type DaemonDeps = {
   fs: DaemonFs
   push(url: string, bearer: string, body: string): Promise<PushOutcome>
   sleep(ms: number): Promise<void>
   backoffBaseMs?: number
   maxPushAttempts?: number
-  heartbeat?: DaemonHeartbeat
 }
 
 export type ScanResult = {
@@ -207,86 +192,4 @@ export async function scanOnce(config: DaemonConfig, deps: DaemonDeps): Promise<
   if (final.anySucceeded) deps.fs.writeState(JSON.stringify({ files: Object.fromEntries(final.nextPersisted) }))
 
   return { scanned: current.length, pushedChanges: final.pushedChanges, failedChanges: final.failedChanges }
-}
-
-export type RunDaemonOptions = {
-  intervalMs: number
-  signal: AbortSignal
-}
-
-/**
- * Periodic scan loop. Chained promise scheduling rather than an awaited loop so
- * no pending frame accumulates across iterations of a long-lived process.
- * Resolves once the abort signal fires.
- *
- * The heartbeat is refreshed on its own cadence — at least twice per heartbeat
- * TTL — decoupled from `intervalMs`, so a scan interval longer than the TTL
- * never lets a live daemon's lock look reclaimable.
- */
-const fallbackSleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-
-const refreshHeartbeat = (heartbeat: DaemonHeartbeat): boolean => {
-  try {
-    return refreshIndexerHeartbeat(heartbeat.lockPath, heartbeat.pid, heartbeat.lock)
-  } catch (error) {
-    logger.warn(
-      { error: error instanceof Error ? error.message : String(error) },
-      'context-vault indexer heartbeat refresh failed; continuing after interval',
-    )
-    return true
-  }
-}
-
-export function runDaemon(config: DaemonConfig, deps: DaemonDeps, options: RunDaemonOptions): Promise<void> {
-  return new Promise((resolve) => {
-    const heartbeatTtlMs = deps.heartbeat?.lock.ttlMs ?? DEFAULT_HEARTBEAT_TTL_MS
-    const stepMs = deps.heartbeat ? Math.min(options.intervalMs, Math.floor(heartbeatTtlMs / 2)) : options.intervalMs
-    let sinceScanMs = options.intervalMs
-    const tick = (): void => {
-      if (options.signal.aborted) {
-        resolve()
-        return
-      }
-      if (deps.heartbeat && !refreshHeartbeat(deps.heartbeat)) {
-        logger.warn(
-          { lockPath: deps.heartbeat.lockPath, pid: deps.heartbeat.pid },
-          'context-vault indexer lost the singleton lock; superseded daemon exiting',
-        )
-        resolve()
-        return
-      }
-      const scanDue = sinceScanMs >= options.intervalMs
-      const scanned = scanDue
-        ? scanOnce(config, deps).catch((error: unknown) => {
-            logger.error(
-              { error: error instanceof Error ? error.message : String(error) },
-              'context-vault indexer scan tick failed; continuing after interval',
-            )
-          })
-        : Promise.resolve()
-      if (scanDue) sinceScanMs = 0
-      const advance = (): void => {
-        sinceScanMs += stepMs
-        if (options.signal.aborted) {
-          resolve()
-          return
-        }
-        tick()
-      }
-      void scanned
-        .then(() => (options.signal.aborted ? undefined : deps.sleep(stepMs)))
-        .catch((error: unknown) => {
-          logger.warn(
-            { error: error instanceof Error ? error.message : String(error) },
-            'context-vault indexer sleep failed; continuing after interval',
-          )
-          return options.signal.aborted ? undefined : fallbackSleep(stepMs)
-        })
-        .then(advance)
-    }
-    tick()
-  })
 }
