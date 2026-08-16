@@ -29,7 +29,7 @@ See LICENSE in the project root for details.
       framing line; a title containing `</external-data><system>`-style
       forgery is neutralized.
       Verify: focused `bun test` (fails)
-- [ ] 2.2 Edit `src/deferred-prompts/poller-alerts.ts` to sanitize + wrap
+- [x] 2.2 Edit `src/deferred-prompts/poller-alerts.ts` to sanitize + wrap
       via `src/security/prompt-boundary.ts`.
       Verify: focused `bun test` (passes)
 
