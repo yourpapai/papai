@@ -9,7 +9,7 @@ import { logger } from '../logger.js'
 
 const MAX_CONTENT_LENGTH = 500
 
-const BOUNDARY_TAG_PATTERN = /<\/?\s*external-data[^>]*>?/giu
+const BOUNDARY_TAG_PATTERN = /<\s*\/?\s*external-data[^>]*>?/giu
 const NEWLINE_PATTERN = /[\r\n]+/gu
 /** Unicode format characters (Cf): invisible, exploitable to forge boundary tags. */
 const FORMAT_CHAR_PATTERN = /[\p{Cf}]/gu
