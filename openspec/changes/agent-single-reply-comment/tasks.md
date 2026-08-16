@@ -11,30 +11,38 @@ Ordered so the two pure-renderer groups land before anything is rewired, and so
 no intermediate commit blinds the model to its own reports: D4 (§3) precedes the
 channel switch (§4), because a thread whose reports have moved into a comment
 `isStatusComment` still drops is strictly worse than one where the model reads a
-progress table it does not need. The rename (§6) lands last, so every earlier
+progress table it does not need. The rename (§7) lands last, so every earlier
 group has a stable file to be reviewed against. Each group is independently
 verifiable and commits on its own.
 
+**Revised during apply.** Two orderings changed once the types were in front of
+us, both recorded here rather than discovered twice:
+
+- **The liveness deletion moved out of §1 and into §5.** Removing `live` and
+  `progress` from `StatusView` breaks `status-reporter.ts` before §4 replaces
+  it, so §1 is purely additive and every intermediate commit stays green. What
+  was 1.3 is now 5.3.
+- **§1 split `status-comment.ts` rather than growing it.** Sections pushed the
+  file past `max-lines` (pedantic, 300), which CLAUDE.md calls a design signal.
+  The progress table, job/branch and budget lines moved to `run-detail.ts` —
+  *how a run describes itself* — leaving `status-comment.ts` as *what a reply is
+  made of*. D8's rename applies to the latter; `run-detail.ts` is already named
+  for what it is.
+
 ## 1. The comment renders a header and sections (D2)
 
-- [ ] 1.1 Failing test: `renderStatus` with no sections renders the header, the
+- [x] 1.1 Failing test: `renderStatus` with no sections renders the header, the
       collapsed run detail and the `AGENT_STATUS` block and nothing else; with
       sections it renders the header once, each section in order, every section
       but the newest inside `<details>` named for its phase, and the run detail
       **immediately above** the block. Asserted on ordering, not on prose, so a
       reworded heading cannot fail it and a reordered body cannot pass.
       `bun test tests/opencode-agent/status.test.ts`
-- [ ] 1.2 Add `sections: readonly ReportSection[]` to `StatusView`, drop `live`
-      and `progress`, and render sections in `status-comment.ts`. The progress
-      table, job/branch and budget lines move inside the collapsed run detail
+- [x] 1.2 Add `sections: readonly ReportSection[]` to `StatusView` and render
+      them in `status-comment.ts`. The progress table, job/branch and budget
+      lines move to `run-detail.ts` and render inside a collapsed `<details>`,
       unchanged. `renderStatus` stays pure; the `AGENT_STATUS` block stays last.
       `bun test tests/opencode-agent/status.test.ts && bun run typecheck`
-- [ ] 1.3 Delete what liveness paid for: the `— run in progress` header variant,
-      the `⏳ **now**` branch in `stepMark`, and `spentTokens`' reconciliation of
-      a heartbeat total against `state.tokensSpent` — at flush the state figure
-      is authoritative. Test asserts the budget line reads `state.tokensSpent`
-      exactly, with no `carriedTokens` arithmetic left to drift.
-      `bun test tests/opencode-agent/status.test.ts && bun run knip`
 
 ## 2. The overflow budget sheds sections, never blocks (D7)
 
@@ -108,6 +116,13 @@ verifiable and commits on its own.
 
 ## 5. The live channel is deleted (D1)
 
+- [ ] 5.3 Delete what liveness paid for in the renderer: the `— run in progress`
+      header variant, the `⏳ **now**` branch in `stepMark`, and `spentTokens`'
+      reconciliation of a heartbeat total against `state.tokensSpent` — at flush
+      the state figure is authoritative. Test asserts the budget line reads
+      `state.tokensSpent` exactly, with no `carriedTokens` arithmetic left to
+      drift. (Was 1.3; see the note at the top.)
+      `bun test tests/opencode-agent/status.test.ts && bun run knip`
 - [ ] 5.1 Failing test: `withHeartbeat` still logs its once-a-minute line and
       `turnDeadlineError` still carries a `ProgressSnapshot` — the halves that
       are not moving — with no `onTick` in the options type.

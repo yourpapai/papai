@@ -23,7 +23,7 @@ import {
 import { persistState } from '../../opencode-agent/src/state-persist.js'
 import type { StatePersistDeps } from '../../opencode-agent/src/state-persist.js'
 import { renderStatus, STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
-import type { StatusView } from '../../opencode-agent/src/status-comment.js'
+import type { ReportSection, StatusView } from '../../opencode-agent/src/status-comment.js'
 import { createStatusReporter, MIN_EDIT_INTERVAL_MS } from '../../opencode-agent/src/status-reporter.js'
 import type { StatusDeps } from '../../opencode-agent/src/status-reporter.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
@@ -81,6 +81,7 @@ const view = (overrides: Partial<StatusView> = {}): StatusView => ({
   state: state({ phase: 'REVIEW_AND_MUTATE' }),
   progress: null,
   live: true,
+  sections: [],
   runUrl: RUN_URL,
   startedMs: STARTED,
   carriedTokens: 0,
@@ -88,9 +89,14 @@ const view = (overrides: Partial<StatusView> = {}): StatusView => ({
   ...overrides,
 })
 
+const section = (summary: string, body: string): ReportSection => ({ summary, body })
+
 /** The row for one step of the progress table, whatever it currently says. */
 const rowFor = (body: string, title: string): string =>
   body.split('\n').find((line) => line.includes(`${title} |`)) ?? '(no such row)'
+
+/** Where each landmark of the body sits, so ordering is asserted as ordering. */
+const at = (body: string, needle: string): number => body.indexOf(needle)
 
 describe('renderStatus', () => {
   test('heads the comment with the phase’s own glyph and headline', () => {
@@ -226,6 +232,65 @@ describe('renderStatus', () => {
     // progress table per run would otherwise eat the window the model reads the
     // conversation through.
     expect(readBlock(renderStatus(view()), STATUS_MARKER)).toEqual({ run: RUN_URL })
+  })
+
+  test('with no sections it is a header, the collapsed run detail and its marker', () => {
+    // The shape a run that reported nothing lands in, and the base every
+    // section is added to. The run detail is collapsed because it is the
+    // summary of a finished run, not the thing the maintainer came to read.
+    const body = renderStatus(view())
+
+    expect(body).toContain('<details><summary>Run detail</summary>')
+    expect(at(body, '<details><summary>Run detail</summary>')).toBeGreaterThan(at(body, '###'))
+    expect(at(body, '| Phase | |')).toBeGreaterThan(at(body, '<details><summary>Run detail</summary>'))
+  })
+
+  test('renders every section in order, the newest open and the rest collapsed', () => {
+    // Latest last, and latest *open*: a job crossing three phases still reads as
+    // one reply whose bottom is what just happened.
+    const sections = [
+      section('Reading the issue', 'Adopted `prompt-injection-defense`.'),
+      section('Drafting the plan', '### Plan (revision 1)'),
+    ]
+
+    const body = renderStatus(view({ sections }))
+
+    expect(at(body, 'Adopted `prompt-injection-defense`.')).toBeLessThan(at(body, '### Plan (revision 1)'))
+    expect(body).toContain('<details><summary>Reading the issue</summary>')
+    // The newest is not wrapped: it is the answer, not an appendix.
+    expect(body).not.toContain('<details><summary>Drafting the plan</summary>')
+  })
+
+  test('the run detail sits below every section and immediately above the marker', () => {
+    // Both halves are load-bearing. Below the sections, because a progress table
+    // between two reports would bury the newer one; immediately above the
+    // marker, because `renderThread` truncates there and everything the model
+    // must read has to be on the near side of it.
+    const body = renderStatus(view({ sections: [section('Drafting the plan', '### Plan (revision 1)')] }))
+
+    expect(at(body, '### Plan (revision 1)')).toBeLessThan(at(body, '<details><summary>Run detail</summary>'))
+    expect(at(body, '<details><summary>Run detail</summary>')).toBeLessThan(at(body, STATUS_MARKER))
+    expect(at(body, '**Budget:**')).toBeLessThan(at(body, STATUS_MARKER))
+  })
+
+  test('heads the whole comment once, however many sections it carries', () => {
+    // Where the `### ❌ Run failed` / `### ❌ Run failed in INIT_OR_CLARIFY`
+    // duplication goes: one heading for the run, and the sections speak for
+    // their own phases.
+    const sections = [section('Reading the issue', 'first'), section('Drafting the plan', 'second')]
+
+    const body = renderStatus(view({ state: state({ phase: 'PLAN_REVIEW' }), live: false, sections }))
+
+    expect(body.split('\n').filter((line) => line.startsWith('### ')).length).toBe(1)
+    expect(body.split('\n')[0]).toBe('### 🧭 Plan is waiting for you')
+  })
+
+  test('a section carrying its own markdown is never reflowed', () => {
+    // Sections are model-written reports: headings, fences and `---` rules are
+    // ordinary in them, and the renderer's job is to place them, not parse them.
+    const report = '## Answer\n\n```ts\nconst x = 1\n```\n\n---\n\nDone.'
+
+    expect(renderStatus(view({ sections: [section('Answering', report)] }))).toContain(report)
   })
 
   test('the two markers do not read as each other', () => {

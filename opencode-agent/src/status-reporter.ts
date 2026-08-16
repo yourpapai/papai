@@ -10,7 +10,7 @@ import type { Logger } from './logger.js'
 import type { ProgressSnapshot } from './progress.js'
 import type { RunResult } from './run-result.js'
 import { renderStatus } from './status-comment.js'
-import type { StatusView } from './status-comment.js'
+import type { ReportSection, StatusView } from './status-comment.js'
 import { errorMessage } from './types.js'
 import type { AgentState } from './types.js'
 
@@ -92,6 +92,8 @@ interface RunStatus {
   carriedTokens: number
   progress: ProgressSnapshot | null
   live: boolean
+  /** Each phase's report, oldest first. Appended by {@link StatusReporter.section}. */
+  sections: ReportSection[]
   /** The body GitHub currently holds, so an unchanged render costs nothing. */
   lastBody: string | null
   lastEditMs: number
@@ -109,6 +111,7 @@ const attempt = async <T>(run: RunStatus, action: () => Promise<T>, message: str
 
 const viewOf = (run: RunStatus, state: AgentState): StatusView => ({
   state,
+  sections: run.sections,
   progress: run.progress,
   live: run.live,
   runUrl: run.runUrl,
@@ -167,6 +170,7 @@ const open = async (run: RunStatus, state: AgentState): Promise<void> => {
   run.state = state
   run.carriedTokens = state.tokensSpent
   run.commentId = null
+  run.sections = []
   run.lastBody = null
   run.lastEditMs = 0
   run.progress = null
@@ -226,6 +230,7 @@ export const createStatusReporter = (deps: StatusDeps): StatusReporter => {
     startedMs: deps.now(),
     commentId: null,
     state: null,
+    sections: [],
     carriedTokens: 0,
     progress: null,
     live: true,

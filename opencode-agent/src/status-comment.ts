@@ -4,263 +4,94 @@
 // See LICENSE in the project root for details.
 
 import { renderBlock } from './blocks.js'
-import type { PipelineConfig } from './config.js'
-import { branchNameFor } from './git.js'
-import { phaseHeading, PRESENTATION, presentationFor } from './presentation.js'
-import type { PresentationKey, RunStance } from './presentation.js'
-import type { ProgressSnapshot } from './progress.js'
-import type { AgentState, Phase } from './types.js'
+import { phaseHeading, presentationFor } from './presentation.js'
+import type { RunStance } from './presentation.js'
+import { renderRunDetail } from './run-detail.js'
+import type { RunDetailView } from './run-detail.js'
 
 /**
- * What the run's live status comment says. Pure: every input arrives as an
- * argument, including the clock, so the whole rendering is testable as a value
- * and the channel that edits it has nothing to decide but *when*.
+ * What the run's one comment says.
  *
- * Comments in this pipeline are terminal by construction — they are written from
- * a finished `PhaseOutcome` — so nothing could ever say "round 2 of 4" or "still
- * working" without adding a comment per tick. This is the one surface that can,
- * and it is the entire comment budget the feedback plan allows itself: one
- * comment per run, edited, never a second.
+ * Pure: every input arrives as an argument, including the clock, so the whole
+ * rendering is testable as a value and the channel that posts it has nothing to
+ * decide but *when*.
  *
- * It deliberately carries **no `AGENT_STATE` block**. `findLatestState` restores
- * from the newest agent comment carrying one, so a second writer of that block
- * is a second source of truth; the phase-end comments stay the only state
- * channel, and this comment is invisible to the restore scan.
+ * **One comment per run, posted once, when the run ends.** The pipeline used to
+ * open this at the start and edit it as the run moved, beside a second comment
+ * per phase carrying the report; both are now this. A maintainer's command
+ * draws exactly one reply, and because it is a *post* rather than an edit,
+ * GitHub notifies when the answer lands rather than when the run started.
  *
- * It does carry a block of its own, under {@link STATUS_MARKER}, and that is not
- * a hedge on the rule above — `findLatestBlock` matches a marker exactly, so
+ * It carries the run's hidden blocks — `AGENT_STATE` among them — which the live
+ * version deliberately did not. That reversal is safe for the reason it was
+ * unsafe before: there is no longer a second comment for the restore scan to
+ * choose between. `readBlock` returns the *last* block of a marker in a body and
+ * `locateLatestBlock` walks the thread newest-first, so "newest wins" is
+ * unchanged whether a run wrote four comments or one. The blocks are appended by
+ * the buffer, below what this renders.
+ *
+ * It also carries a block of its own, under {@link STATUS_MARKER}, and that is
+ * not a hedge on the rule above — `findLatestBlock` matches a marker exactly, so
  * `AGENT_STATUS` cannot be mistaken for `AGENT_STATE` by the scan or by
- * `readBlock`. The marker exists because this comment must be kept out of the
- * *prompt*: `renderThread` hands the model the last twenty comments of the
- * thread, so from the next job onward every previous run's progress table would
- * take a slot from the conversation the model is being asked to read, and a
- * feedback channel that quietly makes the agent worse at reading its own issue
- * is the wrong trade. Marked rather than filtered by author, because the agent
- * writes the spec and the plan too and blinding the model to those would be a
- * much subtler version of the same mistake.
- *
- * It also carries no free model text. Every field here is a phase, a count or a
- * status: the activity line comes from `ProgressSnapshot`, which has nowhere for
- * tool input, tool output or model prose to land, so the rule that progress
- * reporting carries names and counts only holds by construction rather than by
- * care — and this surface is a public issue, not a log.
+ * `readBlock`. The marker's job changed with the comment: it used to mean "drop
+ * this comment from the prompt", which is no longer possible now that the
+ * answer, the design digest and the plan all live here. It now means *the
+ * bookkeeping starts here*, and `renderThread` truncates the body at it — which
+ * is why {@link renderStatus} always puts the run detail last of the visible
+ * body, immediately above it.
  */
 
 /**
- * Marks a comment as this pipeline's own progress reporting.
+ * Marks the point where this comment stops speaking to a human and starts
+ * speaking to the pipeline.
  *
  * Deliberately **not** `AGENT_STATE`, and deliberately not a variant of it: the
  * restore scan matches a marker exactly, and the two are read by different
- * layers for opposite reasons — one to be believed, one to be left out.
+ * layers for opposite reasons — one to be believed, one to be cut at.
+ *
+ * The string is held at `AGENT_STATUS` rather than renamed alongside the
+ * behaviour, because old threads carry it and the prompt layer reads it on
+ * historical comments.
  */
 export const STATUS_MARKER = 'AGENT_STATUS'
 
-/** One row of the progress table. */
-interface RunStep {
-  title: string
-  /** Whose glyph the row wears. Never a glyph of its own — see the note below. */
-  key: PresentationKey
+/**
+ * One phase's report, as it appears in the run's comment.
+ *
+ * Terminal by construction: a section is written from a finished `PhaseOutcome`,
+ * so it is rendered once and never revisited. The summary is the phase's own
+ * headline, read from the one presentation table by whoever appends it, so a
+ * section cannot acquire a name no other surface uses.
+ */
+export interface ReportSection {
+  summary: string
+  body: string
+}
+
+/** Everything the comment is a function of. */
+export interface StatusView extends RunDetailView {
+  /** Each phase's report, oldest first. Empty for a run that said nothing. */
+  sections: readonly ReportSection[]
 }
 
 /**
- * The run, as five milestones.
+ * The sections, oldest first, with every one but the newest folded away.
  *
- * Fewer rows than there are phases, on purpose: `PLAN_REVIEW` is the plan
- * waiting to be approved rather than a sixth thing that happens, and
- * `CI_FIX` is repair work on the pull request row. A table with a row per phase
- * would be a state-machine diagram, and the question this answers is "how far
- * along is my issue".
+ * The newest is left open because it is what the maintainer came to read; the
+ * ones before it are the same job's earlier phases, which are context rather
+ * than news. A single-section run — the common case — therefore renders exactly
+ * as a bare report, with no disclosure widget at all.
  *
- * The titles live here rather than in `presentation.ts` because this is their
- * only reader, so this *is* the one place — and the glyphs beside them are read
- * back out of `PRESENTATION`, so no phase acquires a second face here.
+ * Bodies are placed, never parsed: a section is model-written markdown in which
+ * headings, fences and `---` rules are ordinary, and reflowing one is how a
+ * renderer corrupts a report it does not understand.
  */
-const RUN_STEPS: readonly RunStep[] = [
-  { title: 'Triage', key: 'INIT_OR_CLARIFY:working' },
-  { title: 'Design spec', key: 'DESIGN_SPEC' },
-  { title: 'Planning', key: 'PLANNING' },
-  { title: 'Implementation', key: 'REVIEW_AND_MUTATE' },
-  { title: 'Pull request', key: 'PR_DELIVERY' },
-]
-
-/** Rows that carry an artefact revision, by index into {@link RUN_STEPS}. */
-const SPEC_STEP = 1
-const PLAN_STEP = 2
-
-/**
- * Which row a phase sits on. `null` for the three phases that are not a step —
- * `COMPLETE` is past the end, and `FAILED` and `INCOMPLETE` are each wherever the
- * run stopped, which their `resumeFrom` names rather than their phase.
- *
- * A `Record<Phase, …>` so a phase added later fails to compile until it has been
- * placed, the same property `PRESENTATION` has.
- */
-const STEP_OF: Record<Phase, number | null> = {
-  INIT_OR_CLARIFY: 0,
-  DESIGN_SPEC: 1,
-  PLANNING: 2,
-  PLAN_REVIEW: 2,
-  REVIEW_AND_MUTATE: 3,
-  PR_DELIVERY: 4,
-  // Both of these are work *on* the pull request rather than a sixth milestone:
-  // the branch is pushed and the pull request open before either can start.
-  CODE_REVIEW: 4,
-  CI_FIX: 4,
-  // The archive door (D7) runs after delivery, on the base branch — past the
-  // pipeline's milestones, like COMPLETE.
-  ARCHIVE: null,
-  COMPLETE: null,
-  FAILED: null,
-  INCOMPLETE: null,
-}
-
-/** Phases whose row is the one they are parked *before*, read from `resumeFrom`. */
-const PARKED_PHASES: ReadonlySet<Phase> = new Set<Phase>(['FAILED', 'INCOMPLETE'])
-
-/** Everything the status comment is a function of. */
-export interface StatusView {
-  state: AgentState
-  /** What the model is doing, or `null` before a heartbeat has said. */
-  progress: ProgressSnapshot | null
-  /** Whether the run still holds the issue. False once it has ended. */
-  live: boolean
-  runUrl: string
-  startedMs: number
-  /** What this issue had spent before the job started — see {@link spentTokens}. */
-  carriedTokens: number
-  config: Pick<PipelineConfig, 'maxTokens' | 'maxAttempts' | 'maxCiAttempts'>
-}
-
-/**
- * How far the run has got, as an index into {@link RUN_STEPS}.
- *
- * A cancelled `COMPLETE` is the awkward case: the phase says only that the
- * conversation is over, not where it stopped. The artefacts do say — a plan
- * exists or it does not — so the row it stops on is read off those rather than
- * claiming every step finished on an issue somebody cancelled during triage.
- *
- * The two parked phases are the easy case, and they share one branch because they
- * carry the same field for the same purpose: `resumeFrom` is the phase the run
- * would re-enter, so it is also the row the table should mark. A `⏸️` on
- * "Implementation" says where a `/continue` picks up.
- */
-const stepIndex = (state: AgentState): number => {
-  const direct = STEP_OF[state.phase]
-  if (direct !== null) return direct
-  if (PARKED_PHASES.has(state.phase)) return STEP_OF[state.resumeFrom ?? 'INIT_OR_CLARIFY'] ?? 0
-  if (state.prUrl !== null) return RUN_STEPS.length
-
-  if (state.planRevision > 0) return PLAN_STEP
-  return state.changeName === null ? 0 : SPEC_STEP
-}
-
-/**
- * Behind, on, or ahead of the current step.
- *
- * The three marks are this table's own vocabulary and have no row in
- * `presentation.ts`, because "a step that is behind us" is not a state an issue
- * can be found in. The mark on the row the run *stopped* on is the exception and
- * is read from there — ❌ for a failure, 🛑 for a cancelled issue, the waiting
- * phase's own glyph for a run parked in front of a human — so the status comment
- * and the label sitting on the issue beside it cannot say different things.
- */
-const stepMark = (index: number, current: number, view: StatusView): string => {
-  if (index < current) return '✅'
-  if (index > current) return '⬜'
-  return view.live ? '⏳ **now**' : presentationFor(view.state, 'waiting').glyph
-}
-
-/**
- * The revision this row's artefact is on.
- *
- * Only the plan row carries a revision now: under the OpenSpec rework the
- * proposal lives in the `openspec/changes/<name>/` folder whose history *is*
- * its revision (a rendered digest says so), so the "Design spec" row reports no
- * counter. `planRevision` remains the machine's plan-identity token, read here
- * for the row it has always labelled.
- */
-const revisionNote = (index: number, state: AgentState): string => {
-  if (index === PLAN_STEP && state.planRevision > 0) return ` · revision ${state.planRevision}`
-  return ''
-}
-
-const table = (view: StatusView): readonly string[] => {
-  const current = stepIndex(view.state)
-
-  return [
-    '| Phase | |',
-    '| --- | --- |',
-    ...RUN_STEPS.map(
-      (step, index) =>
-        `| ${PRESENTATION[step.key].glyph} ${step.title} | ${stepMark(index, current, view)}${revisionNote(index, view.state)} |`,
-    ),
-  ]
-}
-
-const count = (value: number): string => value.toLocaleString('en-US')
-
-/** `HH:MM`, in UTC, because a runner's local time is not the reader's. */
-const clockUtc = (ms: number): string => new Date(ms).toISOString().slice(11, 16)
-
-/**
- * When the run started, and where to watch it.
- *
- * Deliberately *not* "6m elapsed", which the plan's sketch carried: a figure
- * that changes every minute changes the whole body every minute, and the same
- * section asks for edits to be skipped when the body has not changed. The two
- * cannot both be had — a quiet twenty-minute model call would cost twenty edits
- * saying nothing but a new minute count, which is precisely the case the
- * suppression exists for. A start time and GitHub's own "edited N minutes ago"
- * answer "how long has this been going" between them, and cost nothing.
- */
-const jobLine = (view: StatusView): string =>
-  `**Job:** [this run](${view.runUrl}) · started ${clockUtc(view.startedMs)} UTC`
-
-const branchLine = (state: AgentState): string =>
-  `**Branch:** \`${branchNameFor(state.issueId)}\` · **Pull request:** ${state.prUrl ?? '_not opened yet_'}`
-
-/**
- * What the issue has spent, live.
- *
- * `tokensSpent` is authoritative but only moves when a comment is posted, and
- * the point of this surface is the stretch *between* two comments — so the
- * heartbeat's running total, added to what the issue carried into this job, is
- * the fresher figure for exactly as long as no phase has ended. Whichever is
- * larger is the one that has seen more of the run; neither can double-count the
- * other, because `carriedTokens` is captured once, before this job spends
- * anything.
- */
-const spentTokens = (view: StatusView): number => {
-  const observed = view.progress
-  if (observed === null) return view.state.tokensSpent
-
-  return Math.max(view.state.tokensSpent, view.carriedTokens + observed.tokens)
-}
-
-/**
- * Which budget the run is working against.
- *
- * `ciAttempts` is counted per pull request rather than per issue, so the CI line
- * has to say so: the same "attempt 2 of 3" on a second pull request would be a
- * different two attempts, and a maintainer reading it as a per-issue count would
- * conclude the agent had given up when it had not started.
- */
-const attemptLine = (view: StatusView): string => {
-  const { state, config } = view
-  if (state.phase === 'CI_FIX') {
-    return `attempt ${state.ciAttempts} of ${config.maxCiAttempts} on this pull request`
-  }
-  // `attempts` counts failures already suffered, so the run in flight is the
-  // next one — which is the number the failure comment would print if it broke
-  // here.
-  return `attempt ${state.attempts + 1} of ${config.maxAttempts}`
-}
-
-const budgetLine = (view: StatusView): string =>
-  `**Budget:** ${count(spentTokens(view))} of ${count(view.config.maxTokens)} tokens · ${attemptLine(view)}`
-
-const doingLine = (progress: ProgressSnapshot): string =>
-  `**Doing:** ${progress.lastAction} · ${progress.toolCalls} tool calls`
+const renderSections = (sections: readonly ReportSection[]): readonly string[] =>
+  sections.flatMap((section, index) =>
+    index === sections.length - 1
+      ? [section.body, '']
+      : [`<details><summary>${section.summary}</summary>`, '', section.body, '', '</details>', ''],
+  )
 
 /**
  * The whole comment.
@@ -268,26 +99,21 @@ const doingLine = (progress: ProgressSnapshot): string =>
  * The heading's glyph and headline come from the presentation table and nothing
  * else: "🛠️ Implementing" would be a third name for a phase that already has a
  * label suffix and a headline, and inventing one per renderer is the defect that
- * table exists to prevent.
+ * table exists to prevent. One heading for the run, however many sections it
+ * carries — the sections speak for their own phases.
  */
 export const renderStatus = (view: StatusView): string => {
   const stance: RunStance = view.live ? 'working' : 'waiting'
   const { headline } = presentationFor(view.state, stance)
-  const activity = view.live && view.progress !== null ? [doingLine(view.progress)] : []
 
   return [
     phaseHeading(view.state, stance, view.live ? `${headline} — run in progress` : headline),
     '',
-    jobLine(view),
-    branchLine(view.state),
+    ...renderSections(view.sections),
+    ...renderRunDetail(view),
     '',
-    ...table(view),
-    '',
-    ...activity,
-    budgetLine(view),
-    '',
-    // The marker the prompt layer leaves out, carrying the run it belongs to so
-    // a reader of the raw thread can tell two runs' status comments apart.
+    // The marker the prompt layer cuts at, carrying the run it belongs to so a
+    // reader of the raw thread can tell two runs' comments apart.
     renderBlock(STATUS_MARKER, { run: view.runUrl }),
   ].join('\n')
 }
