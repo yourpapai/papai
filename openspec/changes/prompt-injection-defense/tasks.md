@@ -22,7 +22,7 @@ See LICENSE in the project root for details.
 
 ## 2. Alert summary wrapping
 
-- [ ] 2.1 Write failing regression test in
+- [x] 2.1 Write failing regression test in
       `tests/deferred-prompts/poller-alerts.test.ts` (or colocated security
       suite): `buildAlertSummary` output wraps each task title/url in
       external-data delimiters and includes the data-not-instructions
