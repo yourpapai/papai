@@ -46,13 +46,13 @@ us, both recorded here rather than discovered twice:
 
 ## 2. The overflow budget sheds sections, never blocks (D7)
 
-- [ ] 2.1 Failing test: a view whose sections exceed `BODY_BUDGET` renders under
+- [x] 2.1 Failing test: a view whose sections exceed `BODY_BUDGET` renders under
       the budget; hidden blocks survive verbatim and parse through `readBlock`;
       the newest section survives; the oldest are replaced by the trimmed note
       with the correct count. A newest section that alone exceeds the budget is
       truncated from the top, keeping its tail.
       `bun test tests/opencode-agent/status.test.ts`
-- [ ] 2.2 Implement the budget in `status-comment.ts`: measure the block region
+- [x] 2.2 Implement the budget in `status-comment.ts`: measure the block region
       first, spend what remains on visible sections newest-first. `BODY_BUDGET`
       is a named constant below GitHub's 65,536-character cap, with the margin
       stated in its doc comment.

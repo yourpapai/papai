@@ -22,7 +22,7 @@ import {
 } from '../../opencode-agent/src/state-manager.js'
 import { persistState } from '../../opencode-agent/src/state-persist.js'
 import type { StatePersistDeps } from '../../opencode-agent/src/state-persist.js'
-import { renderStatus, STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
+import { BODY_BUDGET, renderStatus, STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import type { ReportSection, StatusView } from '../../opencode-agent/src/status-comment.js'
 import { createStatusReporter, MIN_EDIT_INTERVAL_MS } from '../../opencode-agent/src/status-reporter.js'
 import type { StatusDeps } from '../../opencode-agent/src/status-reporter.js'
@@ -89,7 +89,11 @@ const view = (overrides: Partial<StatusView> = {}): StatusView => ({
   ...overrides,
 })
 
-const section = (summary: string, body: string): ReportSection => ({ summary, body })
+const section = (summary: string, body: string, blocks: readonly string[] = []): ReportSection => ({
+  summary,
+  body,
+  blocks,
+})
 
 /** The row for one step of the progress table, whatever it currently says. */
 const rowFor = (body: string, title: string): string =>
@@ -291,6 +295,81 @@ describe('renderStatus', () => {
     const report = '## Answer\n\n```ts\nconst x = 1\n```\n\n---\n\nDone.'
 
     expect(renderStatus(view({ sections: [section('Answering', report)] }))).toContain(report)
+  })
+
+  test('carries every section’s blocks, oldest first, below the marker', () => {
+    // Newest-wins across a run is "last block in the body" — the property
+    // `readBlock` already has — so the order sections were appended in is the
+    // order their blocks have to appear in.
+    const sections = [
+      section('Reading the issue', 'first', [serializeState(state({ phase: 'DESIGN_SPEC' }))]),
+      section('Drafting the plan', 'second', [serializeState(state({ phase: 'PLAN_REVIEW', planRevision: 2 }))]),
+    ]
+
+    const body = renderStatus(view({ sections }))
+
+    expect(at(body, STATUS_MARKER)).toBeLessThan(at(body, 'AGENT_STATE'))
+    expect(extractState(body)?.phase).toBe('PLAN_REVIEW')
+    expect(extractState(body)?.planRevision).toBe(2)
+  })
+
+  test('a body over budget sheds the oldest sections and says how many', () => {
+    const long = (marker: string): string => `${marker} ${'x'.repeat(20_000)}`
+    const sections = [
+      section('Reading the issue', long('OLDEST')),
+      section('Drafting the plan', long('MIDDLE')),
+      section('Writing the code', long('NEWEST')),
+    ]
+
+    const body = renderStatus(view({ sections }))
+
+    expect(body.length).toBeLessThanOrEqual(BODY_BUDGET)
+    expect(body).toContain('NEWEST')
+    expect(body).not.toContain('OLDEST')
+    expect(body).toContain('_(1 earlier section in this run was trimmed — see the run log.)_')
+  })
+
+  test('shedding a section never sheds its blocks', () => {
+    // The invariant that keeps a trimmed comment from stranding an issue: the
+    // visible prose is the budget's to spend, the run's memory is not.
+    const oldest = serializeState(state({ phase: 'DESIGN_SPEC' }))
+    const sections = [
+      section('Reading the issue', `OLDEST ${'x'.repeat(40_000)}`, [oldest]),
+      section('Writing the code', `NEWEST ${'x'.repeat(40_000)}`, []),
+    ]
+
+    const body = renderStatus(view({ sections }))
+
+    expect(body).not.toContain('OLDEST')
+    expect(body).toContain(oldest)
+    expect(extractState(body)?.phase).toBe('DESIGN_SPEC')
+  })
+
+  test('a newest section that alone exceeds the budget keeps its conclusion', () => {
+    // Truncated from the top: a maintainer reading a report wants how it ended,
+    // and the tail is where a report puts it.
+    const body = renderStatus(view({ sections: [section('Answering', `HEAD ${'x'.repeat(80_000)} TAIL`)] }))
+
+    expect(body.length).toBeLessThanOrEqual(BODY_BUDGET)
+    expect(body).toContain('TAIL')
+    expect(body).not.toContain('HEAD')
+    expect(body).toContain('…(truncated)…')
+  })
+
+  test('the run detail and the marker survive any amount of shedding', () => {
+    // Everything below the sections is what the next job and the prompt layer
+    // read; a budget that could eat it would be trading memory for prose.
+    const body = renderStatus(view({ sections: [section('Answering', 'y'.repeat(90_000))] }))
+
+    expect(body).toContain('<details><summary>Run detail</summary>')
+    expect(body).toContain('**Budget:**')
+    expect(readBlock(body, STATUS_MARKER)).toEqual({ run: RUN_URL })
+  })
+
+  test('a body inside the budget is left exactly as it was', () => {
+    const sections = [section('Reading the issue', 'first'), section('Drafting the plan', 'second')]
+
+    expect(renderStatus(view({ sections }))).not.toContain('trimmed')
   })
 
   test('the two markers do not read as each other', () => {

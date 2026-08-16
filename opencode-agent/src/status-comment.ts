@@ -66,6 +66,15 @@ export const STATUS_MARKER = 'AGENT_STATUS'
 export interface ReportSection {
   summary: string
   body: string
+  /**
+   * The hidden blocks this phase wrote — `AGENT_STATE` and any artefact block.
+   *
+   * They ride on the section rather than on the view because they arrive with
+   * it, and they are rendered from it even when {@link fitToBudget} sheds the
+   * prose: a trimmed report is a comment that reads short, a trimmed block is a
+   * stranded issue.
+   */
+  blocks: readonly string[]
 }
 
 /** Everything the comment is a function of. */
@@ -73,6 +82,28 @@ export interface StatusView extends RunDetailView {
   /** Each phase's report, oldest first. Empty for a run that said nothing. */
   sections: readonly ReportSection[]
 }
+
+/**
+ * How long the rendered comment may be.
+ *
+ * GitHub refuses an issue comment over 65,536 characters outright, and this is
+ * the first design in which one run's whole output lands in one body — while
+ * reports were a comment each, the cap was unreachable and nothing measured.
+ * The margin below it is deliberate rather than round: `renderStatus` is not the
+ * last writer, because the workflow appends the transcript `<details>` to
+ * whatever this produced, and a body sized exactly to the cap would fail that
+ * edit instead of this render.
+ */
+export const BODY_BUDGET = 60_000
+
+/** Marks a section clipped to fit, on the side the clipping happened. */
+const TRUNCATION_NOTE = '…(truncated)…\n'
+
+/** Says what was dropped, in the place it was dropped from. */
+const trimmedNote = (dropped: number): string =>
+  dropped === 1
+    ? '_(1 earlier section in this run was trimmed — see the run log.)_'
+    : `_(${dropped} earlier sections in this run were trimmed — see the run log.)_`
 
 /**
  * The sections, oldest first, with every one but the newest folded away.
@@ -94,6 +125,82 @@ const renderSections = (sections: readonly ReportSection[]): readonly string[] =
   )
 
 /**
+ * Everything below the sections, in one place because it is what the budget may
+ * never spend: the run's own summary, the marker the prompt layer cuts at, and
+ * every section's hidden blocks — oldest first, so "last block in the body wins"
+ * resolves to the newest phase's, which is the property `readBlock` already has.
+ */
+const bookkeeping = (view: StatusView): readonly string[] => [
+  ...renderRunDetail(view),
+  '',
+  renderBlock(STATUS_MARKER, { run: view.runUrl }),
+  ...view.sections.flatMap((section) => section.blocks.flatMap((block) => ['', block])),
+]
+
+/**
+ * The comment, given a decision about how much of the prose to keep.
+ *
+ * Split from {@link renderStatus} so the budget can render candidates and
+ * measure them rather than predicting their length: the heading, the table and
+ * the blocks all vary, and an arithmetic guess at the frame is a second
+ * implementation of this function that would drift from it.
+ */
+const frame = (view: StatusView, prose: readonly string[]): string => {
+  const stance: RunStance = view.live ? 'working' : 'waiting'
+  const { headline } = presentationFor(view.state, stance)
+
+  return [
+    phaseHeading(view.state, stance, view.live ? `${headline} — run in progress` : headline),
+    '',
+    ...prose,
+    ...bookkeeping(view),
+  ].join('\n')
+}
+
+/**
+ * The newest section, clipped from the top so its conclusion survives.
+ *
+ * The last resort, reached only when one report alone will not fit. From the
+ * top rather than the bottom because a report puts its verdict at the end, and
+ * a maintainer reading one wants how it came out.
+ */
+const clipNewest = (view: StatusView, dropped: number, newest: ReportSection): string => {
+  const prefix = dropped > 0 ? [trimmedNote(dropped), ''] : []
+  const empty = frame(view, [...prefix, ...renderSections([{ ...newest, body: '' }])])
+  const room = BODY_BUDGET - empty.length - TRUNCATION_NOTE.length
+
+  const clipped = `${TRUNCATION_NOTE}${newest.body.slice(-Math.max(room, 0))}`
+  return frame(view, [...prefix, ...renderSections([{ ...newest, body: clipped }])])
+}
+
+/**
+ * The whole body, under {@link BODY_BUDGET}.
+ *
+ * Sheds the **oldest** sections first, one at a time, because the newest is
+ * what the maintainer came to read and its predecessors are the same job's
+ * earlier phases. Nothing in {@link bookkeeping} is ever a candidate.
+ *
+ * A run whose blocks alone exceed the budget is returned over it, deliberately:
+ * the alternative is dropping the run's memory to fit its prose, and a comment
+ * GitHub refuses is a better failure than an issue that restores wrong.
+ */
+const fitToBudget = (view: StatusView): string => {
+  const full = frame(view, renderSections(view.sections))
+  if (full.length <= BODY_BUDGET || view.sections.length === 0) return full
+
+  const shed = view.sections.slice(1).reduce<string | null>((found, _section, index) => {
+    if (found !== null) return found
+    const kept = view.sections.slice(index + 1)
+    const body = frame(view, [trimmedNote(index + 1), '', ...renderSections(kept)])
+    return body.length <= BODY_BUDGET ? body : null
+  }, null)
+  if (shed !== null) return shed
+
+  const newest = view.sections.at(-1)
+  return newest === undefined ? full : clipNewest(view, view.sections.length - 1, newest)
+}
+
+/**
  * The whole comment.
  *
  * The heading's glyph and headline come from the presentation table and nothing
@@ -102,18 +209,4 @@ const renderSections = (sections: readonly ReportSection[]): readonly string[] =
  * table exists to prevent. One heading for the run, however many sections it
  * carries — the sections speak for their own phases.
  */
-export const renderStatus = (view: StatusView): string => {
-  const stance: RunStance = view.live ? 'working' : 'waiting'
-  const { headline } = presentationFor(view.state, stance)
-
-  return [
-    phaseHeading(view.state, stance, view.live ? `${headline} — run in progress` : headline),
-    '',
-    ...renderSections(view.sections),
-    ...renderRunDetail(view),
-    '',
-    // The marker the prompt layer cuts at, carrying the run it belongs to so a
-    // reader of the raw thread can tell two runs' comments apart.
-    renderBlock(STATUS_MARKER, { run: view.runUrl }),
-  ].join('\n')
-}
+export const renderStatus = (view: StatusView): string => fitToBudget(view)
