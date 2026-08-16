@@ -80,8 +80,8 @@ and the splice stays a field on the settings the builder already takes.
 
 ## 5. Docs and full gates
 
-- [ ] 5.1 Document the three overrides and the precedence in the
+- [x] 5.1 Document the three overrides and the precedence in the
       `opencode-agent/README.md` env table; note the cross-workspace import in
       `opencode-agent/CLAUDE.md` and the widened reader in
       `docs/architecture/sdd-pipeline.md` — no command; review the diff
-- [ ] 5.2 Full gates: `bun test`, `bun run typecheck`, `bun run lint`
+- [x] 5.2 Full gates: `bun test`, `bun run typecheck`, `bun run lint`

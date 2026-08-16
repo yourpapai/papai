@@ -452,6 +452,11 @@ jobs:
           # no catalogue row and the model runs with no context window and no
           # reasoning support declared.
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          # The last resort, for a model no catalogue carries at all — a
+          # self-hosted alias or a fine-tune. Unset means "ask the catalogue".
+          AGENT_MODEL_CONTEXT: ${{ vars.AGENT_MODEL_CONTEXT }}
+          AGENT_MODEL_OUTPUT: ${{ vars.AGENT_MODEL_OUTPUT }}
+          AGENT_MODEL_REASONING: ${{ vars.AGENT_MODEL_REASONING }}
 
           # Pipeline configuration — see opencode-agent/README.md.
           # Passed through unset when the variable is unset, with no

@@ -429,6 +429,31 @@ findings: `ROADMAP.md`.
   and keeps the whole remainder as the model id, which is what lets a model id
   contain slashes. `createOpenCodeAgent` logs the resolved reference at `debug`,
   names only — a CI log is world-readable on a public repository.
+- **A model no catalogue carries is described rather than guessed at, and the
+  description is omitted rather than zeroed.** `model-metadata.ts` resolves what
+  a run knows about its model on a four-rung ladder — `AGENT_MODEL_*` overrides,
+  then the models.dev row, then **nothing emitted**, then OpenCode's own zero
+  defaults — and the third rung is the one to preserve: writing
+  `limit: { context: 0 }` explicitly _pins_ the value that switches
+  auto-compaction off, where an absent key leaves OpenCode's own catalogue merge
+  free to answer. `limit` is emitted on the strength of `context` alone, with an
+  unknown `output` written as `0`, because OpenCode reads a zero output exactly
+  as absent (`?? existingModel?.limit?.output ?? 0`) and `maxOutputTokens` falls
+  back to its own ceiling — a zero _context_ is nothing like that.
+  The reader is **`sdd-runner/src/pricing.ts`**, imported across the workspace
+  boundary one function wide and one direction only: it is already a models.dev
+  client with a disk cache, a bounded fetch and two recorded incident fixes, and
+  the minimality ladder forbids a second copy of all that. Revisit the boundary
+  at a third consumer (papai's own `src/model-context.ts` is the candidate), not
+  before. The lookup runs **after the guardrail door** — a payload the pipeline
+  is about to drop must not pay for a network read — and `catalogueEntry` is the
+  one function permitted to swallow, per the feedback-channel rule above.
+  `buildOpencodeConfig` stays **synchronous** and takes the resolved facts as a
+  field on the settings it already has: it is the single definition serving both
+  the in-process session and the `OPENCODE_CONFIG_CONTENT` the review loop's
+  subprocesses read, and an async builder would fork that. `MainOptions.modelCatalogue`
+  is the seam that keeps the suites off the network; without it every `runCli`
+  test reaches models.dev and times out.
 - **The retry budget is refused, never applied-then-regretted.** A `/retry` past
   `maxAttempts` is turned down in `src/triggers.ts` before the signal reaches
   `transition`, so the issue keeps `FAILED` and its `resumeFrom` and raising

@@ -1537,6 +1537,9 @@ cannot drift.
 | `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                             | Held back from the job so a time stop can report       |
 | `AGENT_WRAP_UP_MS`                         | no       | `120000`                             | The model's slice of a stop: finish up and hand over   |
 | `AGENT_MAX_TOKENS`                         | no       | `5000000`                            | Model tokens one issue may spend, across all its jobs  |
+| `AGENT_MODEL_CONTEXT`                      | no       | unset — ask the catalogue            | Context window, for a model no catalogue carries       |
+| `AGENT_MODEL_OUTPUT`                       | no       | unset — ask the catalogue            | Output cap, same case                                  |
+| `AGENT_MODEL_REASONING`                    | no       | unset — ask the catalogue            | `true`/`false`: does this model support reasoning      |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                | Commit identity                                        |
 | `AGENT_LABEL_PREFIX`                       | no       | `agent:`                             | Namespace for the status labels; `none` disables them  |
 | `AGENT_LOG_LEVEL`                          | no       | `info`                               | `debug`, `info`, `warn`, `error`                       |
@@ -1574,8 +1577,32 @@ through the provider proxy. The run log names the reference it resolved at
 `debug`.
 
 A model no catalogue carries at all — a self-hosted alias, a fine-tune — has no
-id that helps here and still lands on those defaults. That gap is
-`openspec/changes/opencode-agent-model-metadata-fallback/`.
+id that helps here. The three `AGENT_MODEL_*` variables state those facts
+outright, and they sit at the top of a four-rung ladder:
+
+```
+AGENT_MODEL_CONTEXT / _OUTPUT / _REASONING   an operator said so → always wins
+        ↓ (unset)
+the models.dev row for <LLM_PROVIDER>/<LLM_MODEL>
+        ↓ (miss, or the catalogue could not be read)
+nothing emitted            → OpenCode's own catalogue merge stays free to answer
+        ↓ (miss there too)
+OpenCode's zero defaults   → compaction off, no effort variants
+```
+
+Each rung is per field, so declaring only `AGENT_MODEL_CONTEXT` still takes the
+output cap and the capability flags from the row. An unresolved fact is
+**omitted** from the emitted config rather than written as a zero — a written
+`limit.context` of `0` would pin the broken value instead of leaving the merge to
+answer.
+
+Reading the catalogue is best-effort and bounded: the run fetches
+`https://models.dev/api.json` once on the boot path through the same cached,
+timeout-bounded reader `sdd-runner` uses, after the guardrail door so a payload
+the pipeline is about to drop never pays for it. An unreachable host warns and
+falls to the next rung; it never fails a run. The `debug` line names the model,
+the resolved context window and **which rung answered**, so "why did this run
+never compact" is a log read rather than a rerun.
 
 `GITHUB_TOKEN` and `GITHUB_REPOSITORY` need no operator setup on GitHub
 Actions, unlike the variables above. `GITHUB_REPOSITORY` is one of the
