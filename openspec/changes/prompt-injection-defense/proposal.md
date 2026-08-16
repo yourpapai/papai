@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Prompt injection defense — increment 1: boundary utility + alert-pipeline wrapping
 
 Reviewer feedback: the original proposal bundled three call surfaces, docs, and legacy-doc adoption into one change. It is now decomposed into a series of small, independently deliverable updates. This change delivers increment 1 only; the existing artifacts in `openspec/changes/prompt-injection-defense/` should be re-scoped to match (proposal, design, specs, tasks).
