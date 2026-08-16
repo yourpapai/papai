@@ -38,10 +38,10 @@ import type {
 } from '../../opencode-agent/src/openspec-driver.js'
 import type { IssueContext } from '../../opencode-agent/src/phase-context.js'
 import type { PhaseDeps, RunReview } from '../../opencode-agent/src/phase-context.js'
+import type { ReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
+import { noopReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
-import type { StatusReporter } from '../../opencode-agent/src/status-reporter.js'
-import { noopStatusReporter } from '../../opencode-agent/src/status-reporter.js'
 
 /**
  * An Octokit logger that discards every level.
@@ -335,7 +335,7 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     endGroup: (): void => {},
   }
 
-  const status: StatusReporter = noopStatusReporter()
+  const reply: ReplyBuffer = noopReplyBuffer()
 
   const deps: PhaseDeps = {
     github,
@@ -357,7 +357,7 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     openspec,
     baseBranch: (): Promise<string> => Promise.resolve('main'),
     selfLogin: (): Promise<string> => Promise.resolve(login),
-    status,
+    reply,
     now: (): number => 0,
     groups,
     config: stubConfig(options.repoRoot),

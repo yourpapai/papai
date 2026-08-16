@@ -13,6 +13,10 @@ import type { PostedComment } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import { renderThread } from '../../opencode-agent/src/prompt-budget.js'
 import { createEnvelope } from '../../opencode-agent/src/prompts.js'
+import { createReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
+import type { ReplyDeps, ReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
+import { BODY_BUDGET, renderReply, STATUS_MARKER } from '../../opencode-agent/src/reply-comment.js'
+import type { ReportSection, ReplyView } from '../../opencode-agent/src/reply-comment.js'
 import {
   extractState,
   findLatestState,
@@ -22,10 +26,6 @@ import {
 } from '../../opencode-agent/src/state-manager.js'
 import { persistState } from '../../opencode-agent/src/state-persist.js'
 import type { StatePersistDeps } from '../../opencode-agent/src/state-persist.js'
-import { BODY_BUDGET, renderStatus, STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
-import type { ReportSection, StatusView } from '../../opencode-agent/src/status-comment.js'
-import { createStatusReporter } from '../../opencode-agent/src/status-reporter.js'
-import type { StatusDeps, StatusReporter } from '../../opencode-agent/src/status-reporter.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
@@ -77,7 +77,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
 
 const state = (patch: Partial<AgentState> = {}): AgentState => ({ ...initialState(ISSUE), ...patch })
 
-const view = (overrides: Partial<StatusView> = {}): StatusView => ({
+const view = (overrides: Partial<ReplyView> = {}): ReplyView => ({
   state: state({ phase: 'REVIEW_AND_MUTATE' }),
   sections: [],
   runUrl: RUN_URL,
@@ -99,12 +99,12 @@ const rowFor = (body: string, title: string): string =>
 /** Where each landmark of the body sits, so ordering is asserted as ordering. */
 const at = (body: string, needle: string): number => body.indexOf(needle)
 
-describe('renderStatus', () => {
+describe('renderReply', () => {
   test('heads the comment with the phase’s own glyph and headline', () => {
     // Not "Implementing": that is the label suffix, and a third name per phase
     // is exactly what one presentation table exists to prevent. And never
     // "— run in progress": the comment is written once, when the run is over.
-    const body = renderStatus(view())
+    const body = renderReply(view())
 
     expect(body.split('\n')[0]).toBe('### 🛠️ Writing the code')
     expect(body).not.toContain('run in progress')
@@ -115,21 +115,21 @@ describe('renderStatus', () => {
     // actually running, and where do I look. Not an elapsed figure — a minute
     // counter would change the body every minute and defeat the suppression
     // that makes a quiet stretch free.
-    const body = renderStatus(view())
+    const body = renderReply(view())
 
-    expect(body).toBe(renderStatus(view()))
+    expect(body).toBe(renderReply(view()))
     expect(body).toContain(`**Job:** [this run](${RUN_URL}) · started 14:02 UTC`)
     expect(body).not.toContain('elapsed')
   })
 
   test('names the branch and says plainly that there is no pull request yet', () => {
-    expect(renderStatus(view())).toContain('**Branch:** `agent/issue-42` · **Pull request:** _not opened yet_')
+    expect(renderReply(view())).toContain('**Branch:** `agent/issue-42` · **Pull request:** _not opened yet_')
   })
 
   test('marks the phases behind, the phase it stopped on, and the ones still ahead', () => {
     // The row it stopped on wears the waiting phase's own glyph. There is no
     // "⏳ now" any more — a comment posted after the run cannot have one.
-    const body = renderStatus(view())
+    const body = renderReply(view())
 
     expect(body).not.toContain('⏳')
     expect(rowFor(body, 'Triage')).toBe('| 🔍 Triage | ✅ |')
@@ -141,14 +141,14 @@ describe('renderStatus', () => {
     // Under the OpenSpec rework the proposal lives in the folder whose history
     // *is* its revision, so the "Design spec" row reports no counter and only
     // the plan row carries the machine's plan-identity token (`planRevision`).
-    const body = renderStatus(view({ state: state({ phase: 'REVIEW_AND_MUTATE', planRevision: 1 }) }))
+    const body = renderReply(view({ state: state({ phase: 'REVIEW_AND_MUTATE', planRevision: 1 }) }))
 
     expect(rowFor(body, 'Design spec')).not.toContain('· revision')
     expect(rowFor(body, 'Planning')).toContain('· revision 1')
   })
 
   test('the plan waiting for approval is the planning row, not a sixth one', () => {
-    const body = renderStatus(view({ state: state({ phase: 'PLAN_REVIEW' }) }))
+    const body = renderReply(view({ state: state({ phase: 'PLAN_REVIEW' }) }))
 
     expect(rowFor(body, 'Planning')).toContain('🧭')
     expect(body.split('\n').filter((line) => line.startsWith('| ')).length).toBe(7)
@@ -159,20 +159,20 @@ describe('renderStatus', () => {
     // comment is written after the run. The heartbeat's running total, and the
     // `max()` that reconciled the two while a comment was being edited mid-run,
     // went with the live channel — a second figure that can only disagree.
-    const body = renderStatus(view({ state: state({ tokensSpent: 900_000 }) }))
+    const body = renderReply(view({ state: state({ tokensSpent: 900_000 }) }))
 
     expect(body).toContain('**Budget:** 900,000 of 5,000,000 tokens')
     expect(body).not.toContain('**Doing:**')
   })
 
   test('the attempt in flight is the one a failure here would report', () => {
-    expect(renderStatus(view({ state: state({ phase: 'PLANNING', attempts: 1 }) }))).toContain('attempt 2 of 3')
+    expect(renderReply(view({ state: state({ phase: 'PLANNING', attempts: 1 }) }))).toContain('attempt 2 of 3')
   })
 
   test('a CI round says it is counted per pull request', () => {
     // `ciAttempts` is per pull request, so the same "2 of 3" on the next one
     // would be two different attempts.
-    const body = renderStatus(view({ state: state({ phase: 'CI_FIX', ciAttempts: 2, prUrl: 'https://p/1' }) }))
+    const body = renderReply(view({ state: state({ phase: 'CI_FIX', ciAttempts: 2, prUrl: 'https://p/1' }) }))
 
     expect(body).toContain('attempt 2 of 3 on this pull request')
   })
@@ -180,7 +180,7 @@ describe('renderStatus', () => {
   test('a finished run wears the state it ended in', () => {
     const ended = state({ phase: 'COMPLETE', prUrl: 'https://example.test/pull/7' })
 
-    const body = renderStatus(view({ state: ended }))
+    const body = renderReply(view({ state: ended }))
 
     expect(body.split('\n')[0]).toBe('### ✅ Delivered')
     expect(body).not.toContain('**Doing:**')
@@ -190,7 +190,7 @@ describe('renderStatus', () => {
   test('a failed run marks the step it broke on with the failure’s own glyph', () => {
     const broken = state({ phase: 'FAILED', resumeFrom: 'PLANNING' })
 
-    const body = renderStatus(view({ state: broken }))
+    const body = renderReply(view({ state: broken }))
 
     expect(rowFor(body, 'Planning')).toBe('| 🗺️ Planning | ❌ |')
     expect(rowFor(body, 'Implementation')).toBe('| 🛠️ Implementation | ⬜ |')
@@ -202,7 +202,7 @@ describe('renderStatus', () => {
     // table tells about work nobody did.
     const cancelled = state({ phase: 'COMPLETE', changeName: 'captured-but-unplanned' })
 
-    const body = renderStatus(view({ state: cancelled }))
+    const body = renderReply(view({ state: cancelled }))
 
     expect(rowFor(body, 'Design spec')).toContain('🛑')
     expect(rowFor(body, 'Implementation')).toBe('| 🛠️ Implementation | ⬜ |')
@@ -212,7 +212,7 @@ describe('renderStatus', () => {
     // Rule 4, at the renderer: `findLatestState` restores from the newest agent
     // comment carrying one, so a second writer of that block is a second source
     // of truth.
-    const body = renderStatus(view())
+    const body = renderReply(view())
 
     expect(body).not.toContain('AGENT_STATE')
     expect(extractState(body)).toBeNull()
@@ -224,14 +224,14 @@ describe('renderStatus', () => {
     // restore scan — and `renderThread` drops what carries it, because one
     // progress table per run would otherwise eat the window the model reads the
     // conversation through.
-    expect(readBlock(renderStatus(view()), STATUS_MARKER)).toEqual({ run: RUN_URL })
+    expect(readBlock(renderReply(view()), STATUS_MARKER)).toEqual({ run: RUN_URL })
   })
 
   test('with no sections it is a header, the collapsed run detail and its marker', () => {
     // The shape a run that reported nothing lands in, and the base every
     // section is added to. The run detail is collapsed because it is the
     // summary of a finished run, not the thing the maintainer came to read.
-    const body = renderStatus(view())
+    const body = renderReply(view())
 
     expect(body).toContain('<details><summary>Run detail</summary>')
     expect(at(body, '<details><summary>Run detail</summary>')).toBeGreaterThan(at(body, '###'))
@@ -246,7 +246,7 @@ describe('renderStatus', () => {
       section('Drafting the plan', '### Plan (revision 1)'),
     ]
 
-    const body = renderStatus(view({ sections }))
+    const body = renderReply(view({ sections }))
 
     expect(at(body, 'Adopted `prompt-injection-defense`.')).toBeLessThan(at(body, '### Plan (revision 1)'))
     expect(body).toContain('<details><summary>Reading the issue</summary>')
@@ -259,7 +259,7 @@ describe('renderStatus', () => {
     // section is above it and the run detail is below, because a progress table
     // is bookkeeping — it is the original reason the marker exists. The marker
     // is an HTML comment, so a human still sees the disclosure in place.
-    const body = renderStatus(view({ sections: [section('Drafting the plan', '### Plan (revision 1)')] }))
+    const body = renderReply(view({ sections: [section('Drafting the plan', '### Plan (revision 1)')] }))
 
     expect(at(body, '### Plan (revision 1)')).toBeLessThan(at(body, STATUS_MARKER))
     expect(at(body, STATUS_MARKER)).toBeLessThan(at(body, '<details><summary>Run detail</summary>'))
@@ -272,7 +272,7 @@ describe('renderStatus', () => {
     // their own phases.
     const sections = [section('Reading the issue', 'first'), section('Drafting the plan', 'second')]
 
-    const body = renderStatus(view({ state: state({ phase: 'PLAN_REVIEW' }), sections }))
+    const body = renderReply(view({ state: state({ phase: 'PLAN_REVIEW' }), sections }))
 
     expect(body.split('\n').filter((line) => line.startsWith('### ')).length).toBe(1)
     expect(body.split('\n')[0]).toBe('### 🧭 Plan is waiting for you')
@@ -283,7 +283,7 @@ describe('renderStatus', () => {
     // ordinary in them, and the renderer's job is to place them, not parse them.
     const report = '## Answer\n\n```ts\nconst x = 1\n```\n\n---\n\nDone.'
 
-    expect(renderStatus(view({ sections: [section('Answering', report)] }))).toContain(report)
+    expect(renderReply(view({ sections: [section('Answering', report)] }))).toContain(report)
   })
 
   test('carries every section’s blocks, oldest first, below the marker', () => {
@@ -295,7 +295,7 @@ describe('renderStatus', () => {
       section('Drafting the plan', 'second', [serializeState(state({ phase: 'PLAN_REVIEW', planRevision: 2 }))]),
     ]
 
-    const body = renderStatus(view({ sections }))
+    const body = renderReply(view({ sections }))
 
     expect(at(body, STATUS_MARKER)).toBeLessThan(at(body, 'AGENT_STATE'))
     expect(extractState(body)?.phase).toBe('PLAN_REVIEW')
@@ -310,7 +310,7 @@ describe('renderStatus', () => {
       section('Writing the code', long('NEWEST')),
     ]
 
-    const body = renderStatus(view({ sections }))
+    const body = renderReply(view({ sections }))
 
     expect(body.length).toBeLessThanOrEqual(BODY_BUDGET)
     expect(body).toContain('NEWEST')
@@ -327,7 +327,7 @@ describe('renderStatus', () => {
       section('Writing the code', `NEWEST ${'x'.repeat(40_000)}`, []),
     ]
 
-    const body = renderStatus(view({ sections }))
+    const body = renderReply(view({ sections }))
 
     expect(body).not.toContain('OLDEST')
     expect(body).toContain(oldest)
@@ -337,7 +337,7 @@ describe('renderStatus', () => {
   test('a newest section that alone exceeds the budget keeps its conclusion', () => {
     // Truncated from the top: a maintainer reading a report wants how it ended,
     // and the tail is where a report puts it.
-    const body = renderStatus(view({ sections: [section('Answering', `HEAD ${'x'.repeat(80_000)} TAIL`)] }))
+    const body = renderReply(view({ sections: [section('Answering', `HEAD ${'x'.repeat(80_000)} TAIL`)] }))
 
     expect(body.length).toBeLessThanOrEqual(BODY_BUDGET)
     expect(body).toContain('TAIL')
@@ -348,7 +348,7 @@ describe('renderStatus', () => {
   test('the run detail and the marker survive any amount of shedding', () => {
     // Everything below the sections is what the next job and the prompt layer
     // read; a budget that could eat it would be trading memory for prose.
-    const body = renderStatus(view({ sections: [section('Answering', 'y'.repeat(90_000))] }))
+    const body = renderReply(view({ sections: [section('Answering', 'y'.repeat(90_000))] }))
 
     expect(body).toContain('<details><summary>Run detail</summary>')
     expect(body).toContain('**Budget:**')
@@ -358,11 +358,11 @@ describe('renderStatus', () => {
   test('everything the model must read survives the prompt layer’s cut', () => {
     // The join between the two halves of this change, asserted against a body
     // this renderer actually produced rather than one hand-written to match:
-    // `renderStatus` puts the run detail last of the visible body *because*
+    // `renderReply` puts the run detail last of the visible body *because*
     // `renderThread` cuts there, and a test built from a literal would keep
     // passing after one of them moved.
     const sections = [section('Reading the issue', 'Adopted the change.'), section('Answering', '## Answer\n\nYes.')]
-    const comment: IssueComment = { id: 1, body: renderStatus(view({ sections })), authorLogin: AGENT_LOGIN }
+    const comment: IssueComment = { id: 1, body: renderReply(view({ sections })), authorLogin: AGENT_LOGIN }
 
     const rendered = renderThread(createEnvelope('abc123'), [comment])
 
@@ -376,11 +376,11 @@ describe('renderStatus', () => {
   test('a body inside the budget is left exactly as it was', () => {
     const sections = [section('Reading the issue', 'first'), section('Drafting the plan', 'second')]
 
-    expect(renderStatus(view({ sections }))).not.toContain('trimmed')
+    expect(renderReply(view({ sections }))).not.toContain('trimmed')
   })
 
   test('the two markers do not read as each other', () => {
-    expect(readBlock(renderStatus(view()), 'AGENT_STATE')).toBeUndefined()
+    expect(readBlock(renderReply(view()), 'AGENT_STATE')).toBeUndefined()
     expect(readBlock(`prose\n\n${serializeState(state())}`, STATUS_MARKER)).toBeUndefined()
   })
 
@@ -388,7 +388,7 @@ describe('renderStatus', () => {
     // The rule-4 invariant at the scan itself, with the marked comment newest —
     // which is where a marker that collided would do its damage.
     const conversation = [withState(1, { phase: 'PLAN_REVIEW', planRevision: 2 })]
-    const interleaved = [...conversation, agentComment(2, renderStatus(view()))]
+    const interleaved = [...conversation, agentComment(2, renderReply(view()))]
 
     expect(findLatestState(interleaved, AGENT_LOGIN, ISSUE)).toEqual(findLatestState(conversation, AGENT_LOGIN, ISSUE))
     expect(findLatestStateComment(interleaved, AGENT_LOGIN, ISSUE)?.comment.id).toBe(1)
@@ -412,7 +412,7 @@ const persistDeps = (edits: { id: number; body: string }[], error: Error | null 
 })
 
 /** Records what the reply channel sent, and can be told to refuse. */
-interface StatusIo {
+interface ReplyIo {
   created: string[]
   /** Which issue or pull request each comment was opened against. */
   createdOn: number[]
@@ -421,10 +421,10 @@ interface StatusIo {
   errors: string[]
 }
 
-const statusHarness = (overrides: Partial<PipelineConfig> = {}): { io: StatusIo; deps: StatusDeps } => {
-  const io: StatusIo = { created: [], createdOn: [], createError: null, postedAs: AGENT_LOGIN, errors: [] }
+const replyHarness = (overrides: Partial<PipelineConfig> = {}): { io: ReplyIo; deps: ReplyDeps } => {
+  const io: ReplyIo = { created: [], createdOn: [], createError: null, postedAs: AGENT_LOGIN, errors: [] }
 
-  const deps: StatusDeps = {
+  const deps: ReplyDeps = {
     github: {
       createComment: (issueNumber, body): Promise<PostedComment> => {
         if (io.createError !== null) return Promise.reject(io.createError)
@@ -441,15 +441,15 @@ const statusHarness = (overrides: Partial<PipelineConfig> = {}): { io: StatusIo;
   return { io, deps }
 }
 
-const reporterFor = (overrides: Partial<PipelineConfig> = {}): { io: StatusIo; reporter: StatusReporter } => {
-  const { io, deps } = statusHarness(overrides)
-  return { io, reporter: createStatusReporter(deps, STARTED) }
+const reporterFor = (overrides: Partial<PipelineConfig> = {}): { io: ReplyIo; reporter: ReplyBuffer } => {
+  const { io, deps } = replyHarness(overrides)
+  return { io, reporter: createReplyBuffer(deps, STARTED) }
 }
 
 const report = (body: string, blocks: readonly string[] = []): ReportSection =>
   section('Writing the code', body, blocks)
 
-describe('createStatusReporter', () => {
+describe('createReplyBuffer', () => {
   test('says nothing at all until the run is flushed', async () => {
     // The property that buys the notification back: a create at the end tells
     // GitHub to notify when the answer lands, where an edit tells it nothing.
@@ -559,7 +559,7 @@ describe('createStatusReporter', () => {
  * first records `prNumber` still lands on the issue, which is where a reader
  * wants the handover, and every later run lands on the pull request.
  */
-describe('createStatusReporter · where the comment lives', () => {
+describe('createReplyBuffer · where the comment lives', () => {
   test('posts on the issue while there is no pull request', async () => {
     const { io, reporter } = reporterFor()
     reporter.begin(state({ phase: 'PLANNING' }))

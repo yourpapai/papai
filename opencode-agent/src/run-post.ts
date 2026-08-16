@@ -108,7 +108,7 @@ export const postAndAppend = async (
 ): Promise<IssueComment[]> => {
   const prose = `${body}${commandPointer(state)}`.trimEnd()
   const carried = [serializeState(state), ...(blocks ?? [])]
-  input.deps.status.section(state, { summary: sectionSummary(input), body: prose, blocks: carried })
+  input.deps.reply.section(state, { summary: sectionSummary(input), body: prose, blocks: carried })
 
   return [...thread, mirror(await input.deps.selfLogin(), `${prose}\n\n${carried.join('\n\n')}`)]
 }
@@ -138,7 +138,7 @@ export const postAnswer = async (
   body: string,
   state: AgentState,
 ): Promise<readonly IssueComment[]> => {
-  input.deps.status.section(state, { summary: sectionSummary(input), body: body.trimEnd(), blocks: [] })
+  input.deps.reply.section(state, { summary: sectionSummary(input), body: body.trimEnd(), blocks: [] })
   await persistState(input.deps, thread, state)
   return thread
 }

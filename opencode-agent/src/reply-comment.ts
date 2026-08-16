@@ -36,7 +36,7 @@ import type { RunDetailView } from './run-detail.js'
  * this comment from the prompt", which is no longer possible now that the
  * answer, the design digest and the plan all live here. It now means *the
  * bookkeeping starts here*, and `renderThread` truncates the body at it — which
- * is why {@link renderStatus} puts the marker directly below the last section
+ * is why {@link renderReply} puts the marker directly below the last section
  * and everything else, the run detail included, below the marker.
  */
 
@@ -77,7 +77,7 @@ export interface ReportSection {
 }
 
 /** Everything the comment is a function of. */
-export interface StatusView extends RunDetailView {
+export interface ReplyView extends RunDetailView {
   /** Each phase's report, oldest first. Empty for a run that said nothing. */
   sections: readonly ReportSection[]
 }
@@ -88,7 +88,7 @@ export interface StatusView extends RunDetailView {
  * GitHub refuses an issue comment over 65,536 characters outright, and this is
  * the first design in which one run's whole output lands in one body — while
  * reports were a comment each, the cap was unreachable and nothing measured.
- * The margin below it is deliberate rather than round: `renderStatus` is not the
+ * The margin below it is deliberate rather than round: `renderReply` is not the
  * last writer, because the workflow appends the transcript `<details>` to
  * whatever this produced, and a body sized exactly to the cap would fail that
  * edit instead of this render.
@@ -129,7 +129,7 @@ const renderSections = (sections: readonly ReportSection[]): readonly string[] =
  * every section's hidden blocks — oldest first, so "last block in the body wins"
  * resolves to the newest phase's, which is the property `readBlock` already has.
  */
-const bookkeeping = (view: StatusView): readonly string[] => [
+const bookkeeping = (view: ReplyView): readonly string[] => [
   // First, and that ordering is the whole contract with `renderThread`: it cuts
   // the body here, so everything after this line is invisible to the model. The
   // run detail is on this side of it because a progress table is bookkeeping —
@@ -144,12 +144,12 @@ const bookkeeping = (view: StatusView): readonly string[] => [
 /**
  * The comment, given a decision about how much of the prose to keep.
  *
- * Split from {@link renderStatus} so the budget can render candidates and
+ * Split from {@link renderReply} so the budget can render candidates and
  * measure them rather than predicting their length: the heading, the table and
  * the blocks all vary, and an arithmetic guess at the frame is a second
  * implementation of this function that would drift from it.
  */
-const frame = (view: StatusView, prose: readonly string[]): string =>
+const frame = (view: ReplyView, prose: readonly string[]): string =>
   [
     // Always the `waiting` stance: this is written once, after the run, so the
     // state it describes is one a maintainer can find the issue in.
@@ -166,7 +166,7 @@ const frame = (view: StatusView, prose: readonly string[]): string =>
  * top rather than the bottom because a report puts its verdict at the end, and
  * a maintainer reading one wants how it came out.
  */
-const clipNewest = (view: StatusView, dropped: number, newest: ReportSection): string => {
+const clipNewest = (view: ReplyView, dropped: number, newest: ReportSection): string => {
   const prefix = dropped > 0 ? [trimmedNote(dropped), ''] : []
   const empty = frame(view, [...prefix, ...renderSections([{ ...newest, body: '' }])])
   const room = BODY_BUDGET - empty.length - TRUNCATION_NOTE.length
@@ -186,7 +186,7 @@ const clipNewest = (view: StatusView, dropped: number, newest: ReportSection): s
  * the alternative is dropping the run's memory to fit its prose, and a comment
  * GitHub refuses is a better failure than an issue that restores wrong.
  */
-const fitToBudget = (view: StatusView): string => {
+const fitToBudget = (view: ReplyView): string => {
   const full = frame(view, renderSections(view.sections))
   if (full.length <= BODY_BUDGET || view.sections.length === 0) return full
 
@@ -211,4 +211,4 @@ const fitToBudget = (view: StatusView): string => {
  * table exists to prevent. One heading for the run, however many sections it
  * carries — the sections speak for their own phases.
  */
-export const renderStatus = (view: StatusView): string => fitToBudget(view)
+export const renderReply = (view: ReplyView): string => fitToBudget(view)

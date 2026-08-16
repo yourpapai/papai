@@ -6,7 +6,7 @@
 import { stripBlocks } from './blocks.js'
 import type { IssueComment } from './blocks.js'
 import type { UntrustedEnvelope } from './prompts.js'
-import { STATUS_MARKER } from './status-comment.js'
+import { STATUS_MARKER } from './reply-comment.js'
 
 /**
  * How much text a prompt is allowed to carry, and which text loses when it does
@@ -45,8 +45,9 @@ const authorAttribute = (login: string): string => {
  * exists to show the model.
  *
  * So the marker changed jobs rather than the filter changing targets: it means
- * *the bookkeeping starts here*, `renderStatus` puts the run detail immediately
- * above it, and everything from it down is cut. By **marker**, never by author —
+ * *the bookkeeping starts here*, `renderReply` puts the marker directly below
+ * the last section, and everything from it down is cut — the run detail
+ * included, since a progress table is bookkeeping. By **marker**, never by author —
  * the agent writes the artefacts too, so filtering on the login would blind the
  * model to its own work, which is the much quieter version of the same bug.
  *
@@ -74,13 +75,11 @@ const untilBookkeeping = (body: string): string => {
  *
  * Hidden blocks are stripped: they are the pipeline's own bookkeeping, they are
  * large, and showing the model its own state schema invites it to write one.
- *
- * The run's live status comment is dropped outright rather than stripped, and
- * **before** the window is taken, not after: it is one comment per run, so a
- * conversation spanning five runs would otherwise spend a quarter of the twenty
- * slots on progress tables the model has no use for — and the phases that read
- * the thread are triage, answering and the classifier, which is to say the ones
- * whose whole job is understanding what the humans said.
+ * Each body is cut at its bookkeeping marker first — see {@link untilBookkeeping}
+ * — which is what keeps every previous run's progress table out of the twenty
+ * slots the phases that read this depend on: triage, answering and the
+ * classifier, which is to say the ones whose whole job is understanding what
+ * the humans said.
  */
 export const renderThread = (
   envelope: UntrustedEnvelope,

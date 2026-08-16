@@ -8,8 +8,8 @@ import { feedbackTarget } from './feedback-target.js'
 import type { GitHubApi, PostedComment } from './github.js'
 import { reportIdentityDrift } from './identity.js'
 import type { Logger } from './logger.js'
-import { renderStatus } from './status-comment.js'
-import type { ReportSection, StatusView } from './status-comment.js'
+import { renderReply } from './reply-comment.js'
+import type { ReportSection, ReplyView } from './reply-comment.js'
 import { errorMessage } from './types.js'
 import type { AgentState } from './types.js'
 
@@ -44,7 +44,7 @@ import type { AgentState } from './types.js'
  * run, the clock — went with the edits.
  */
 
-export interface StatusReporter {
+export interface ReplyBuffer {
   /**
    * Records the state the run entered on, which fixes the surface for the whole
    * run.
@@ -65,7 +65,7 @@ export interface StatusReporter {
   flush(): Promise<PostedComment | null>
 }
 
-export interface StatusDeps {
+export interface ReplyDeps {
   /** Narrower than `PhaseDeps`, the way `ReactionDeps` and `LabelDeps` are. */
   github: Pick<GitHubApi, 'createComment'>
   log: Logger
@@ -76,9 +76,9 @@ export interface StatusDeps {
 
 /** Everything one run's reply remembers. */
 interface Reply {
-  deps: StatusDeps
+  deps: ReplyDeps
   startedMs: number
-  /** The state the run entered on. `null` until {@link StatusReporter.begin}. */
+  /** The state the run entered on. `null` until {@link ReplyBuffer.begin}. */
   entry: AgentState | null
   /** The newest state a section was written from — the one the header wears. */
   latest: AgentState | null
@@ -98,7 +98,7 @@ const attempt = async <T>(reply: Reply, action: () => Promise<T>, message: strin
   }
 }
 
-const viewOf = (reply: Reply, state: AgentState): StatusView => ({
+const viewOf = (reply: Reply, state: AgentState): ReplyView => ({
   state,
   sections: reply.sections,
   runUrl: reply.deps.config.runUrl,
@@ -123,7 +123,7 @@ const post = async (reply: Reply): Promise<PostedComment | null> => {
 
   const posted = await attempt(
     reply,
-    () => reply.deps.github.createComment(feedbackTarget(entry), renderStatus(viewOf(reply, state))),
+    () => reply.deps.github.createComment(feedbackTarget(entry), renderReply(viewOf(reply, state))),
     'Could not post the run’s reply; the workflow’s fallback comment is now in scope',
   )
   if (posted === null) return null
@@ -146,13 +146,13 @@ const post = async (reply: Reply): Promise<PostedComment | null> => {
  * most of the value gone. It now carries the report, so silencing it would
  * silence the run entirely; `run-detail.ts` omits the job line instead.
  */
-export const noopStatusReporter = (): StatusReporter => ({
+export const noopReplyBuffer = (): ReplyBuffer => ({
   begin: (): void => undefined,
   section: (): void => undefined,
   flush: (): Promise<PostedComment | null> => Promise.resolve(null),
 })
 
-export const createStatusReporter = (deps: StatusDeps, startedMs: number): StatusReporter => {
+export const createReplyBuffer = (deps: ReplyDeps, startedMs: number): ReplyBuffer => {
   const reply: Reply = { deps, startedMs, entry: null, latest: null, sections: [] }
 
   return {

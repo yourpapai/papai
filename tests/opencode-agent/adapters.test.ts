@@ -38,6 +38,7 @@ import type { OpenCodeAgent, OpenCodeConnection, SdkPromptBody } from '../../ope
 import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { renderThread, shareBudget } from '../../opencode-agent/src/prompt-budget.js'
 import { buildCiFixPrompt, createEnvelope } from '../../opencode-agent/src/prompts.js'
+import { STATUS_MARKER } from '../../opencode-agent/src/reply-comment.js'
 import { parseRepository } from '../../opencode-agent/src/repository.js'
 import {
   collectText,
@@ -49,7 +50,6 @@ import {
 import type { SessionUsage } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
-import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import { errorMessage, PHASES } from '../../opencode-agent/src/types.js'
 import { silentOctokitLog } from './test-helpers.js'
 

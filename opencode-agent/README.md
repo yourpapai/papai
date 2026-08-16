@@ -129,7 +129,7 @@ moves the phase and the handler runs behind it in the same job, exactly as
 **Where a command is typed depends on whether a pull request exists.** Until one
 does, the issue is the only surface and every command is typed there. From the
 moment `state.prNumber` is set, the pull request takes over: it is where the diff,
-the checks and the merge button are, so it is where the live status comment opens,
+the checks and the merge button are, so it is where the run's reply is posted,
 where the `agent:*` labels are reconciled, and where commands are accepted. A
 command typed on the issue after that is refused with a comment naming the pull
 request — not "does not apply", which would be false twice over, since the command
@@ -556,8 +556,8 @@ the comment skips the classifier entirely and goes to the path that reports the
 ceiling without a model turn — the answer path on a waiting phase, triage's own
 stop in `INIT_OR_CLARIFY`. Under budget, the skip **rewrites the newest state
 block in place** rather than appending a comment, so the turn is written down
-without anything being said. That fix waited on an `updateComment` the pipeline
-had no other use for; the live status comment needed one anyway.
+without anything being said — which is the whole reason `state-persist.ts`
+exists, and the one write in this pipeline that edits rather than posts.
 
 The in-place rewrite targets the comment the restore scan itself selected, not
 the newest in the thread, so that comment stays the newest-with-a-block and the
@@ -942,8 +942,9 @@ above.
 
 Labels are reconciled at most **twice per run**, not per phase move: once when a
 run is about to do real work, and once when it ends, whatever the outcome — a
-run that only skipped gets the closing one alone. The live detail in between is
-the status comment's job, below. Each reconcile is a diff — the desired set is
+run that only skipped gets the closing one alone. Together with the 👀 reaction
+they are the _only_ live signal a run gives on the thread, since the reply is
+not posted until the run settles. Each reconcile is a diff — the desired set is
 computed and only the difference issued — so a run that moved nothing writes
 nothing, rather than clearing and reapplying and costing two timeline entries
 and a visible flicker per phase.
@@ -968,16 +969,36 @@ channel is off: the pipeline reconciles nothing and the workflow's cleanup step
 reads the same variable the same way and leaves the issue's labels alone, since
 opting out of a channel has to opt out of every writer on it.
 
-### The live status comment
+### The run's one comment
 
-One comment per run, created when the run is about to do work, edited as it
-moves, finalised when it ends. It is the only comment any of this adds, and the
-only surface that can say "still working" without posting again — every other
-comment in this pipeline is written from a finished phase outcome and is
-terminal by construction.
+One comment per maintainer command. A run collects each phase's report as it
+goes and posts them together, as a single comment, when it settles.
+
+It used to be two channels: a live status comment opened before the work and
+edited as the run moved, plus a comment per phase carrying the report — and the
+workflow added a third for the transcript link. Issue #281 shows the result:
+thirty agent comments against thirteen human ones, three per command, the first
+two of which routinely said the same thing twice (`### ❌ Run failed` followed
+by `### ❌ Run failed in INIT_OR_CLARIFY`).
 
 ```markdown
-### 🛠️ Writing the code — run in progress
+### 🧭 Plan is waiting for you
+
+<details><summary>Reading the issue</summary>
+
+### Captured: add-retries
+
+…the triage phase's report…
+
+</details>
+
+### Plan (revision 1)
+
+…the plan, which is what you came to read, left open…
+
+<!-- AGENT_STATUS: … -->
+
+<details><summary>Run detail</summary>
 
 **Job:** [this run](https://github.com/acme/widgets/actions/runs/1482) · started 14:02 UTC
 **Branch:** `agent/issue-42` · **Pull request:** _not opened yet_
@@ -985,59 +1006,64 @@ terminal by construction.
 | Phase             |                 |
 | ----------------- | --------------- |
 | 🔍 Triage         | ✅              |
-| 📋 Design spec    | ✅ · revision 2 |
-| 🗺️ Planning       | ✅ · revision 1 |
-| 🛠️ Implementation | ⏳ **now**      |
+| 📋 Design spec    | ✅              |
+| 🗺️ Planning       | 🧭 · revision 1 |
+| 🛠️ Implementation | ⬜              |
 | 📦 Pull request   | ⬜              |
 
-**Doing:** read (running) · 34 tool calls
 **Budget:** 218,400 of 5,000,000 tokens · attempt 1 of 3
+
+</details>
 ```
 
-Five milestones rather than a row per phase: `PLAN_REVIEW` is the plan waiting
-for you rather than a sixth thing that happens, and `CI_FIX` and `CODE_REVIEW`
-are both work _on_ the pull request row — the branch is pushed and the pull
-request open before either can start. The question it answers is "how far along
-is my issue", not "draw me the state machine". The spec and plan rows print
-`specRevision` and `planRevision` and never recount them — the two counters were
-split apart precisely because one number could not honestly label two artefacts.
-In `CI_FIX` the budget line says "attempt 2 of 3 **on this pull request**",
-because that budget is per pull request and reading it as per-issue would have
-you conclude the agent had given up when it had not started.
+One heading for the run; every phase report below it as a section, oldest folded
+away and newest left open. Five milestones rather than a row per phase:
+`PLAN_REVIEW` is the plan waiting for you rather than a sixth thing that
+happens, and `CI_FIX` and `CODE_REVIEW` are both work _on_ the pull request row
+— the branch is pushed and the pull request open before either can start. The
+question the table answers is "how far along is my issue", not "draw me the
+state machine". In `CI_FIX` the budget line says "attempt 2 of 3 **on this pull
+request**", because that budget is per pull request and reading it as per-issue
+would have you conclude the agent had given up when it had not started.
 
-There is deliberately no "6m elapsed". A figure that changes every minute
-changes the whole body every minute, and the whole body changing every minute
-defeats the rule below. A start time and GitHub's own "edited N minutes ago"
-answer the same question between them and cost nothing.
+**A post, not an edit**, and that is the decision everything else follows from.
+GitHub does not notify on an edit, so a comment opened at the start and
+rewritten at the end announces itself when the run _begins_ and delivers the
+answer in silence. Buying that notification costs the live view: while a run is
+in flight you have the 👀 reaction, the `agent:working` label, and the
+heartbeat's once-a-minute line in the Actions log — and nothing on the thread.
 
-Two bounds on the cost, because this is the only sustained writer the pipeline
-has: an edit is skipped outright when the rendered body has not changed, and
-otherwise at most one edit is issued per minute. A 90-minute run costs about 90
-edits, comfortably inside GitHub's secondary rate limit on content-mutating
-requests, and a quiet stretch costs nothing. The closing edit is the one caller
-allowed to skip the clock — a run that ends inside the window would otherwise
-leave "run in progress" on the issue for good — but it still skips an unchanged
-body, and the body is never unchanged, because ending the run is what takes "run
-in progress" out of the heading.
+Four more things worth knowing:
 
-Three things it deliberately is not:
-
-- **It is not a state channel.** It carries no `AGENT_STATE` block, so the
-  restore scan cannot see it and there is no second source of truth. It does
-  carry an `AGENT_STATUS` block of its own — markers are matched exactly, so the
-  two cannot be confused — and that marker is what keeps it out of the model's
-  prompt. `renderThread` hands the model the last twenty comments, and dropping
-  status comments **before** that window is taken is the difference between the
-  model reading the conversation and reading a quarter-window of its own
-  previous runs' progress tables. Filtered by marker, never by author: the agent
+- **The `AGENT_STATUS` marker is a position, not state.** Everything above it is
+  what the run said; everything below — the run detail, and every phase's hidden
+  blocks — is bookkeeping. `renderThread` cuts each body there before handing
+  the model its twenty-comment window, which is what keeps previous runs'
+  progress tables out of it. Cut by marker, never filtered by author: the agent
   writes the spec, the plan and every report too.
-- **It is not a report.** It never sets `reported`, so a run killed mid-phase
-  leaves "run in progress" on the issue _and_ still draws the workflow's
-  fallback comment — which is the case that comment exists for. Marking it
-  reported would suppress the one comment that explains the silence.
-- **It is not required.** A local `--event-path` run has no job to link to, so
-  the channel is a no-op there; and if creating the comment fails, every later
-  edit is a no-op too and the run reports exactly as it did before this existed.
+- **It carries `AGENT_STATE`.** The live status comment deliberately did not,
+  because two comments per run meant two candidate sources of truth. One comment
+  removes the competition: `readBlock` returns the _last_ block of a marker in a
+  body and `locateLatestBlock` walks comments newest-first, so newest-wins is
+  unchanged whether a run wrote four comments or one.
+- **It is bounded.** GitHub refuses a comment over 65,536 characters, which was
+  unreachable while reports were a comment each. Over budget the renderer sheds
+  the _oldest_ sections and says how many; a newest section that alone will not
+  fit is clipped from the top so its conclusion survives. Hidden blocks are
+  never shed — a trimmed report reads short, a trimmed `AGENT_STATE` strands the
+  issue.
+- **A refused post is a `warn`, and leaves `reported` false.** The run reaches
+  the same outcome and the same persisted state it would have with no comment at
+  all; what it may not do is claim the issue carries a report GitHub turned
+  down, because the workflow's fallback comment is gated on that flag.
+
+The cost of collecting before posting, stated plainly: a process that never runs
+its `finally` — an OOM kill, a cancelled job, a runner past `timeout-minutes` —
+loses every section it had buffered, where the old shape had each report on the
+thread the moment it existed. A throw still posts (the flush is in a `finally`),
+`teardownReserveMs` still holds back wall-clock time for that write, and the
+encrypted transcript still uploads. SIGKILL is what the fallback comment covers,
+as it always did.
 
 ### Where the run link is
 
@@ -1049,7 +1075,7 @@ segment is appended only above 1, because a re-run's logs live under the attempt
 path and a job on attempt 3 linking `/attempts/1` would point you at the run it
 superseded.
 
-It appears in four places: the status comment's first line, the failure comment
+It appears in four places: the reply's run detail, the failure comment
 ("The job that failed"), the CI-fix report, and the workflow's own fallback
 comment. The CI-fix report is the one that changed meaning — it names **two**
 runs now, "Red run I am repairing" and "This repair ran in", which until now
@@ -1117,8 +1143,10 @@ Two halves, answering different questions. OpenCode's event stream says **what**
 the model is doing, and only fires when something happens. The heartbeat, once a
 minute while a turn is outstanding, says it is **still** doing it — which is the
 only thing that distinguishes slow from dead during a single long model call
-that uses no tools. That same heartbeat is what feeds the status comment's
-**Doing:** line, so the two surfaces cannot disagree about what is running.
+that uses no tools. It briefly fed a live status comment as well; with the reply
+posted once, at the end, the log is again the only place a tick goes — and it is
+the place that matters, because a job silent for an hour is indistinguishable
+from a hung one.
 
 **Progress never carries content.** Not tool input, not tool output, not the
 model's text, not the provider's error message on a retry — only names, statuses
@@ -1126,11 +1154,10 @@ and counts. That is enforced by the decoding schemas rather than by care: they
 name the scalar fields they want and drop everything else, so there is nowhere
 for a `bash` command or a file's contents to land. It mattered here because a CI
 log is world-readable on a public repository and is **not** covered by the
-outbound redaction that guards issue comments — and it matters twice over now
-that the same snapshot is published to the issue. The status comment satisfies
-the rule by construction rather than by care: everything it can say about the
-model is a name, a status or a count, because that is all a `ProgressSnapshot`
-holds.
+outbound redaction that guards issue comments. The run detail in the reply
+satisfies the rule by construction rather than by care: every field it carries
+is a phase, a count or a status, so there is nowhere for tool input, tool output
+or model prose to land.
 
 Token and cost totals ride along, per step and in every heartbeat, and the token
 half is now a ceiling as well as a reading — see **What bounds a run** above.
@@ -1916,12 +1943,14 @@ network.
   command. A repository whose review loop is the expensive half is bounded by
   `AGENT_MAX_REVIEW_ATTEMPTS` (which exists for this reason), the loop's own
   round caps and the job timeout, and not by the token budget.
-- A run killed mid-phase leaves its status comment reading "run in progress",
-  and nothing ever corrects it: the process that owned that comment is gone, and
-  the next run opens its own. The workflow's fallback comment is what explains
-  the silence — the stale status comment is deliberately not treated as one, or
-  it would suppress it. `agent:working` is the labelling half of the same
-  problem and does get repaired, twice over.
+- A run killed outright — an OOM kill, a cancelled job, a runner past
+  `timeout-minutes` — loses every phase report it had collected, because the
+  reply is posted once at the end and the `finally` that posts it never runs. A
+  throw is covered (the flush is in that `finally`) and so is a wall-clock stop
+  (`teardownReserveMs` holds time back for the write); a SIGKILL is not. The
+  workflow's fallback comment is what explains the silence, and the encrypted
+  transcript is what reconstructs the run. `agent:working` is the labelling half
+  of the same problem and does get repaired, twice over.
 - Feedback is best-effort in one function per channel, which means a channel
   that is broken — a token without `issues: write`, an organisation policy, or a
   bug inside the reconcile — degrades to a `log.warn` and nothing else. The run

@@ -23,6 +23,8 @@ import type { AgentPromptRequest, OpenCodeAgent } from '../../opencode-agent/src
 import { runPipeline } from '../../opencode-agent/src/orchestrator.js'
 import type { PhaseDeps } from '../../opencode-agent/src/phase-context.js'
 import type { PullRequestTriggerEvent } from '../../opencode-agent/src/pr-trigger.js'
+import { createReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
+import { STATUS_MARKER } from '../../opencode-agent/src/reply-comment.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { RunResult } from '../../opencode-agent/src/run-result.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
@@ -33,8 +35,6 @@ import {
   serializeState,
   STATE_MARKER,
 } from '../../opencode-agent/src/state-manager.js'
-import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
-import { createStatusReporter } from '../../opencode-agent/src/status-reporter.js'
 import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
@@ -679,7 +679,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // The real reporter, built the way `contain` builds it — which for the
     // default config (`runUrl: null`) hands back the no-op, so every test that
     // is not about this channel drives exactly what it drove before.
-    status: createStatusReporter(
+    reply: createReplyBuffer(
       { github, log, config: pipelineConfig, selfLogin: () => Promise.resolve(AGENT_LOGIN) },
       RUN_NOW_MS,
     ),

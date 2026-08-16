@@ -17,9 +17,9 @@ import type { PhaseDeps } from './phase-context.js'
 import type { TranscriptSink } from './progress.js'
 import { proxiedSettings, startProviderProxy } from './provider-proxy.js'
 import type { ProviderProxy } from './provider-proxy.js'
+import { createReplyBuffer } from './reply-buffer.js'
 import { pipelineSecrets } from './secrets.js'
 import type { CommandRunner } from './shell.js'
-import { createStatusReporter } from './status-reporter.js'
 import { turnTimeoutMs } from './time-budget.js'
 import type { TriggerEvent } from './trigger-events.js'
 
@@ -140,7 +140,7 @@ export const contain = (input: ContainInput): Contained => {
   // against this same answer, and two memoizations would be two `GET /user`
   // calls that could disagree.
   const selfLogin = memoize(() => resolveSelfLogin({ override: contained.selfLoginOverride, api: github, log }))
-  const status = createStatusReporter({ github, log, config: contained, selfLogin }, clock())
+  const reply = createReplyBuffer({ github, log, config: contained, selfLogin }, clock())
 
   const agent = memoizeAgent(() => create(sessionOptions({ input, contained, clock })))
 
@@ -155,7 +155,7 @@ export const contain = (input: ContainInput): Contained => {
     log,
     agent,
     github,
-    status,
+    reply,
     now: clock,
     transcript: input.transcript,
   })

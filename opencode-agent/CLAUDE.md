@@ -18,9 +18,11 @@ findings: `ROADMAP.md`.
   to travel here too (`AGENT_SPEC` / `AGENT_PLAN`); under the OpenSpec rework
   (design D1 — the folder is truth, comments are renders) they live in
   `openspec/changes/<name>/` on `agent/issue-<n>`, and the human parks review
-  rendered digests of that folder. `AGENT_STATUS` is the odd one out — it marks
-  the run's live status comment so `renderThread` can leave it out of a prompt,
-  and it is read by nothing else.
+  rendered digests of that folder. `AGENT_STATUS` is the odd one out — it is not
+  state but a **position**: the point in a reply where the bookkeeping starts, so
+  `renderThread` can cut the body there. A run makes exactly one comment, at the
+  end, carrying every phase's report as a section above that marker and the run
+  detail and every block below it.
 - An event is parsed before it is judged: `src/trigger-events.ts` says what a raw
   payload **is** and `src/guardrails.ts` whether the pipeline may act on it. That
   split is not tidiness — it is what lets `src/pr-trigger.ts` finish a parse
@@ -81,16 +83,21 @@ findings: `ROADMAP.md`.
   it is in, which is why they are not one table; `src/feedback.ts` the reaction channel over `src/github-reactions.ts`'s
   endpoints, `src/labels.ts` the
   label reconcile over `src/github-labels.ts`'s endpoints, and
-  `src/status-reporter.ts` the run's live status comment over the body
-  `src/status-comment.ts` renders. Each channel has exactly one function that
+  `src/reply-buffer.ts` the run's one comment over the body
+  `src/reply-comment.ts` renders — with the run's own account of itself (the
+  progress table, the job and branch lines, the budget) split into
+  `src/run-detail.ts`. Each channel has exactly one function that
   talks to GitHub, because "best-effort" has to be a property of one function
-  rather than a convention at each call site. The status comment carries an
-  `AGENT_STATUS` block — never `AGENT_STATE`, which would give the restore scan a
-  second source of truth — so that `prompt-budget.ts` can drop it before the
-  twenty-comment window is taken; without that, every previous run's progress
-  table would take a slot from the conversation triage, answering and the
-  classifier are being asked to read. Filter that channel by **marker**, never by
-  author: the agent writes the spec, the plan and every report too.
+  rather than a convention at each call site. The reply carries an
+  `AGENT_STATUS` block and, unlike the live status comment it replaced, the
+  run's `AGENT_STATE` too: with one comment per run there is no second comment
+  for the restore scan to choose between, and `readBlock` already returns the
+  _last_ block of a marker in a body while `locateLatestBlock` walks comments
+  newest-first, so newest-wins is unchanged. `prompt-budget.ts` cuts each body
+  at the `AGENT_STATUS` marker rather than dropping the comment, which it can no
+  longer do — the answer, the design digest and the plan all live there now.
+  Cut by **marker**, never filter by author: the agent writes the spec, the plan
+  and every report too.
   `src/state-persist.ts` is the same shape for a write that is not feedback at
   all: rewriting the state block in place, so a run that posts nothing can still
   record what it spent. `src/budget-notices.ts` holds what a run says when a
@@ -345,8 +352,8 @@ findings: `ROADMAP.md`.
   safe before it, which is why this used to say the opposite.
 - **Once a pull request exists, it is the surface — record included.**
   `feedback-target.ts` says where, and `feedbackTarget` is now the answer for
-  **every** write: the status comment, the labels, and every comment
-  `postAndAppend` makes, block and all. `commandSurface` is the other half —
+  **every** write: the labels, and the run's one comment, block and all —
+  resolved once, by the buffer, from the state the run _entered_ on. `commandSurface` is the other half —
   a command typed on the issue is refused with a reply naming where to type it,
   not "does not apply", which would be false twice over since the command applies
   perfectly and would have worked one page over.
@@ -633,7 +640,7 @@ not permitted to create or approve pull requests` is a repository or
 - **A feedback channel has exactly one door, and that door swallows
   everything.** `react` in `feedback.ts` — with `unreact`, its mirror, which is
   the same door read the other way and takes the same catch —
-  `reconcileLabels` in `labels.ts`, `attempt` in `status-reporter.ts`,
+  `reconcileLabels` in `labels.ts`, `attempt` in `reply-buffer.ts`,
   `persistState` in `state-persist.ts`, `refreshPullRequest` in
   `phases/review.ts` and `dropUnpushable` in `phases/review-push.ts` are the only
   functions in their modules that call GitHub or git, and each catches every
@@ -696,24 +703,37 @@ not permitted to create or approve pull requests` is a repository or
   A throw is deliberately unmarked: that is the crash the fallback comment is
   for. Writing the marker is best-effort and must never throw — `GITHUB_OUTPUT`
   is absent on every `--event-path` run.
-- **`reported` means an account of what happened, so a status comment never sets
-  it.** The live status comment is what makes that distinction load-bearing
-  rather than pedantic: a run killed mid-phase leaves "🛠️ Writing and reviewing
-  the code — run in progress" on the issue, which is precisely the silence the
-  fallback comment exists to explain, and nothing ever corrects it — the process
-  that owned that comment is gone, and the next run opens its own. Marking it
-  reported would suppress the only comment that would have said why the issue
-  stopped. So `StatusReporter.finish` takes the `RunResult` and returns `void`:
-  the flag is **unreachable** from the channel, not merely left alone by habit,
-  and an edit that wanted to set it would have to change the interface first.
-  Keep it that way, and keep `finish` unable to _reject_: `runAccepted` awaits it
-  on the way out with the result already decided, so a channel that could throw
-  there would turn a finished run into a failed one. The rule above is what makes
-  that impossible. The finalising edit on a _returning_ path does not set the
-  flag either, though it safely could: the paths that report already do, and two
-  writers of one flag is how it drifts. Reactions and labels are the same
-  argument one step shorter — an emoji is not an account of anything, and
-  neither is a label.
+- **`reported` is decided by the one write a run makes, and by nothing else.**
+  A run posts one comment, when it settles, so "the issue carries an account of
+  this run" is a fact about that single `createComment` and about nothing a
+  phase can know. `flushAround` in `orchestrator.ts` sets the flag from what
+  GitHub **accepted** and overwrites whatever the terminal path claimed; the
+  guardrail exit in `runPipeline` keeps its own answer only because it returns
+  before the buffer is ever begun. Leave the per-path values as they are — they
+  document what each path intends to have said, and are what a second write
+  would be decided from.
+  This is where the swallow narrows. `attempt` in `reply-buffer.ts` still turns
+  every GitHub failure into a `warn`, but a refused post must leave the flag
+  **false**: a report GitHub turned down is a report the issue does not carry,
+  and claiming otherwise suppresses the fallback comment that is the only thing
+  that would explain the silence. Reactions and labels are the same argument one
+  step shorter — an emoji is not an account of anything, and neither is a label.
+- **One command, one reply, and the workflow keeps it that way.** Issue #281
+  drew three bot comments per maintainer command: the live status comment
+  finalised, the phase report, and the transcript notice. The first two are now
+  one comment posted at the end (`reply-buffer.ts`), and the workflow's
+  transcript step **edits** it rather than posting — reading
+  `steps.pipeline.outputs.reply-comment`, which `step-output.ts` writes beside
+  `reported=true`. The infrastructure-failure step publishes its own comment id
+  for the same reason: when the pipeline died before flushing, its notice _is_
+  the run's one comment, so the transcript step must be ordered after it and
+  append to that. A step that posts a second comment undoes the whole change.
+  The cost of buffering, and the one thing the old shape did better: a process
+  that never runs its `finally` — an OOM kill, a cancelled job, a runner past
+  `timeout-minutes` — loses every section it had collected. The flush sits in a
+  `finally` so a throw still posts, and `teardownReserveMs` still holds back
+  wall-clock time for that write; SIGKILL is what the fallback comment covers,
+  as it always did.
 - **The token budget is per issue and persisted.** `tokensSpent` lives in the
   state block; the orchestrator checks it before each phase. Budget on
   **tokens**, never on `cost`: token counts come

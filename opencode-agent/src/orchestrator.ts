@@ -146,7 +146,7 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
   // for the cascade would leave those sections in a buffer nothing ever flushed.
   // It is also the state the run entered on, which is what fixes the surface for
   // the whole run. It writes nothing.
-  deps.status.begin(restored)
+  deps.reply.begin(restored)
 
   return flushAround(deps, async () => {
     const entry = await applyTrigger(base)
@@ -201,10 +201,10 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
 const flushAround = async (deps: PhaseDeps, run: () => Promise<RunResult>): Promise<RunResult> => {
   try {
     const result = await run()
-    const posted = await deps.status.flush()
+    const posted = await deps.reply.flush()
     return posted === null ? { ...result, reported: false } : { ...result, reported: true, replyCommentId: posted.id }
   } catch (error) {
-    await deps.status.flush()
+    await deps.reply.flush()
     throw error
   }
 }

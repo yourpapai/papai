@@ -20,9 +20,9 @@ import { opencodeConfigEnv } from './openai-config.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { PhaseDeps, RunReview } from './phase-context.js'
 import type { TranscriptSink } from './progress.js'
+import type { ReplyBuffer } from './reply-buffer.js'
 import { runReviewLoop } from './review-runner.js'
 import type { CommandRunner } from './shell.js'
-import type { StatusReporter } from './status-reporter.js'
 import { reviewBudget } from './time-budget.js'
 import type { TriggerEvent } from './trigger-events.js'
 import type { Phase } from './types.js'
@@ -127,8 +127,8 @@ export interface DepsInput {
   /**
    * Built by `runCli` rather than here, unlike every other boundary below.
    *
-   * The status reporter needs it, and the OpenCode session needs the *reporter*
-   * — its heartbeat is what feeds the live status comment — so the session
+   * The reply buffer needs it, and the OpenCode session needs its own clock, so
+   * the session
    * cannot be built before both. One of the three has to be assembled outside
    * this function, and the GitHub adapter is the one with no other dependency.
    * It has since moved one step further out again, past `contain`: a comment
@@ -136,7 +136,7 @@ export interface DepsInput {
    * `getPullRequestHead` before there is a `TriggerEvent` to assemble against.
    */
   github: GitHubApi
-  status: StatusReporter
+  reply: ReplyBuffer
   /**
    * Who this pipeline is, memoized by the caller.
    *
@@ -147,7 +147,7 @@ export interface DepsInput {
    */
   selfLogin: () => Promise<string>
   /**
-   * The run's clock, built by `runCli` for the same reason `github` is: the status
+   * The run's clock, built by `runCli` for the same reason `github` is: the reply
    * reporter and the per-turn deadline are both handed it before this function
    * runs, and three readers of one clock have to be one clock.
    */
@@ -173,7 +173,7 @@ export const assembleDeps = ({
   log,
   agent,
   github,
-  status,
+  reply,
   selfLogin,
   now,
   transcript,
@@ -191,7 +191,7 @@ export const assembleDeps = ({
 
   return {
     github,
-    status,
+    reply,
     git,
     runCheck: makeCheckRunner(run, config),
     runReview: makeReviewRunner({ run, config, log, now, transcript }),

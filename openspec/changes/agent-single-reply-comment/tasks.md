@@ -156,16 +156,16 @@ us, both recorded here rather than discovered twice:
 
 ## 7. Rename, docs and full verification (D8)
 
-- [ ] 7.1 `git mv` `status-comment.ts` → `reply-comment.ts` and
+- [x] 7.1 `git mv` `status-comment.ts` → `reply-comment.ts` and
       `status-reporter.ts` → `reply-buffer.ts`, updating imports. The
       `AGENT_STATUS` marker string and the `STATUS_MARKER` symbol are unchanged
       — old threads carry the value and D4 reads it on historical comments.
       Test asserts the marker value verbatim, so the rename cannot take it.
       `bun test tests/opencode-agent/ && bun run typecheck`
-- [ ] 7.2 Update `opencode-agent/CLAUDE.md` — **Shape** still calls
+- [x] 7.2 Update `opencode-agent/CLAUDE.md` — **Shape** still calls
       `AGENT_STATUS` "read by nothing else" and describes the comment surfaces
       as separate — and `README.md`. Record the outcome in `ROADMAP.md`.
-- [ ] 7.3 Rewrite the module doc comments the change falsifies:
+- [x] 7.3 Rewrite the module doc comments the change falsifies:
       `reply-comment.ts` ("the entire comment budget… never a second", "carries
       no free model text", "deliberately carries no `AGENT_STATE` block"),
       `reply-buffer.ts` ("a status comment is not a report", the two cost
