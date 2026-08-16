@@ -8,6 +8,12 @@ import { randomBytes } from 'node:crypto'
 import { logger } from '../logger.js'
 
 const MAX_CONTENT_LENGTH = 500
+/**
+ * Generous pre-cap on untrusted input before the iterative strip loop: each
+ * nested split-tag layer costs one extra full-string regex pass, so unbounded
+ * input would be quadratic. The output is capped at 500 regardless.
+ */
+const MAX_INPUT_LENGTH = 10_000
 
 const BOUNDARY_TAG_PATTERN = /<\s*\/?\s*external-data[^>]*>?/giu
 const NEWLINE_PATTERN = /[\r\n]+/gu
@@ -28,7 +34,7 @@ logger.debug({ module: 'src/security/prompt-boundary' }, 'prompt boundary initia
  */
 export function sanitizeExternalData(content: string | undefined): string {
   if (content === undefined) return ''
-  let stripped = content.replace(FORMAT_CHAR_PATTERN, '')
+  let stripped = content.replace(FORMAT_CHAR_PATTERN, '').slice(0, MAX_INPUT_LENGTH)
   let previous: string
   do {
     previous = stripped
