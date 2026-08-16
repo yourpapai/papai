@@ -121,6 +121,12 @@ export interface OpenCodeAgentOptions extends TurnBounds {
  */
 export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promise<OpenCodeAgent> => {
   const model = parseModelRef(modelRef(options.openai))
+  // Which catalogue row a run resolved decides whether the model has a context
+  // window at all — `limit.context` 0 makes `isOverflow` return `false` and
+  // switches auto-compaction off with no other symptom — and nothing downstream
+  // can see it. Names only, never the key or the endpoint: a CI log is
+  // world-readable on a public repository.
+  options.log.debug({ ...model }, 'Resolved the model reference OpenCode will look up')
   const connect = options.connect ?? ((): Promise<OpenCodeConnection> => connectSdk(options.directory, options.openai))
   const connection = await connect()
 
@@ -144,16 +150,7 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
       requireAnswer(text, tracker, options)
       return { text, sessionId }
     },
-    tokensUsed: async (): Promise<number> => {
-      const usage = await connection.usage(sessionId).catch(() => null)
-      if (usage === null) {
-        options.log.warn({ sessionId }, 'The server did not report session usage; the token budget cannot see this run')
-        return 0
-      }
-
-      options.log.debug({ sessionId, tokens: usage.tokens, cost: usage.cost }, 'Session usage')
-      return usage.tokens
-    },
+    tokensUsed: () => readTokensUsed(connection, sessionId, options.log),
     abort: () => abortSession(connection, sessionId, options.log),
     close: async (): Promise<void> => {
       // Reporting first. Closing the server does not, by itself, end the stream
@@ -163,6 +160,30 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
       await connection.close()
     },
   }
+}
+
+/**
+ * What the session has spent, with a server that will not say treated as `0`.
+ *
+ * Beside {@link abortSession} and extracted for the same reason: it turns every
+ * way the read can go wrong into an answer the caller can use, rather than a
+ * rejection the budget would have to interpret. `0` is deliberately not a lie
+ * the caller can detect — the `warn` is where that shows, because a token budget
+ * that cannot see a run is a ceiling that has quietly stopped bounding it.
+ */
+const readTokensUsed = async (
+  connection: OpenCodeConnection,
+  sessionId: string,
+  log: OpenCodeAgentOptions['log'],
+): Promise<number> => {
+  const usage = await connection.usage(sessionId).catch(() => null)
+  if (usage === null) {
+    log.warn({ sessionId }, 'The server did not report session usage; the token budget cannot see this run')
+    return 0
+  }
+
+  log.debug({ sessionId, tokens: usage.tokens, cost: usage.cost }, 'Session usage')
+  return usage.tokens
 }
 
 /**

@@ -344,6 +344,40 @@ describe('createOpenCodeAgent', () => {
     },
   })
 
+  /**
+   * Which catalogue row a run resolved is the one thing that says whether the
+   * model has a context window at all, and it is invisible from the outside: a
+   * `limit.context` of 0 switches auto-compaction off silently. So the run's own
+   * log names the reference it opened with, and never the credential.
+   */
+  test('names the resolved provider and model at debug, and no credential', async () => {
+    const debugs: Array<{ meta: unknown; message: string }> = []
+    const log: Logger = {
+      ...silentLog,
+      debug: (meta: unknown, message: string): void => void debugs.push({ meta, message }),
+    }
+
+    await createOpenCodeAgent({
+      directory: '/repo',
+      openai: {
+        apiKey: 'sk-secret',
+        baseUrl: 'https://gateway.test/v1',
+        model: 'claude-sonnet-4-6',
+        provider: 'anthropic',
+      },
+      sessionTitle: 'issue-1',
+      log,
+      connect: () => Promise.resolve(fakeConnection({ bodies: [], closed: 0 }, { data: { parts: [] } })),
+    })
+
+    expect(debugs).toContainEqual({
+      meta: { providerID: 'anthropic', modelID: 'claude-sonnet-4-6' },
+      message: 'Resolved the model reference OpenCode will look up',
+    })
+    expect(JSON.stringify(debugs)).not.toContain('sk-secret')
+    expect(JSON.stringify(debugs)).not.toContain('gateway.test')
+  })
+
   test('sends the model, system prompt and agent profile through', async () => {
     const sink = { bodies: [] as SdkPromptBody[], closed: 0 }
     const agent = await createOpenCodeAgent({

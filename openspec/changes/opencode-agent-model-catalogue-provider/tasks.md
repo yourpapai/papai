@@ -42,10 +42,10 @@ See LICENSE in the project root for details.
 
 ## 3. Observability of the resolved row
 
-- [ ] 3.1 Failing test: boot logs the resolved provider id and model ref at
+- [x] 3.1 Failing test: boot logs the resolved provider id and model ref at
       `debug`, and never the key or base URL —
       `bun test tests/opencode-agent/adapters.test.ts`
-- [ ] 3.2 Implement the debug log in `connectSdk`; watch 3.1 pass —
+- [x] 3.2 Implement the debug log in `connectSdk`; watch 3.1 pass —
       `bun test tests/opencode-agent/adapters.test.ts`
 
 ## 4. Manual verification against a live server
