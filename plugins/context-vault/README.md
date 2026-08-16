@@ -98,8 +98,78 @@ Or let a coding-agent plugin start it. `activateOpencodeAdapter`
 session activation it checks the lock file, spawns
 `context-vault-indexer/main.ts` detached when the lock is free, hands the lock
 to the daemon's pid, and registers the session's repository either way. The
-spawned daemon inherits the coding-agent process's environment, so
-`CONTEXT_VAULT_TOKEN` must be set there.
+spawned daemon inherits the environment you give the spawn, which is where
+`CONTEXT_VAULT_TOKEN` must come from.
+
+Call it once per coding-agent session, from that agent's plugin activation
+hook. Every side effect is injected, so the integration supplies the concrete
+filesystem, spawn, and clock:
+
+```ts
+import { spawn } from 'node:child_process'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+
+import { activateOpencodeAdapter, registerOverIpc } from './context-vault-indexer/adapters/opencode.js'
+
+const readOrNull = (path: string): string | null => {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+const result = await activateOpencodeAdapter(
+  {
+    stateDir, // where the lock, socket, config and scan state live
+    daemonEntry, // absolute path to context-vault-indexer/main.ts
+    repo: 'papai', // display name shown by list_agent_specs
+    specDir, // absolute path to this session's openspec/changes
+  },
+  {
+    lock: {
+      fs: {
+        readLock: readOrNull,
+        createExclusive: (path, contents) => {
+          try {
+            writeFileSync(path, contents, { flag: 'wx', mode: 0o600 })
+            return true
+          } catch {
+            return false
+          }
+        },
+        write: (path, contents) => writeFileSync(path, contents, { mode: 0o600 }),
+        remove: (path) => rmSync(path, { force: true }),
+      },
+      isPidAlive: (pid) => {
+        try {
+          process.kill(pid, 0)
+          return true
+        } catch {
+          return false
+        }
+      },
+      now: Date.now,
+    },
+    spawnDetached: ({ command, options }) => {
+      const [bin, ...args] = command
+      const child = spawn(bin ?? 'bun', args, {
+        ...options,
+        env: { ...process.env, CONTEXT_VAULT_TOKEN: token },
+      })
+      child.unref()
+      return child.pid ?? 0
+    },
+    register: registerOverIpc,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  },
+)
+// result: { daemon: 'spawned' | 'already-running', registration: 'registered' | 'updated' | 'unchanged' | 'failed' }
+```
+
+It never throws: a daemon that will not start or a registration that will not
+land comes back as `registration: 'failed'`, because losing indexing must not
+break the coding session. Log `result` and move on.
 
 Any number of concurrent coding sessions yield exactly **one** daemon per state
 directory: a session that finds the lock held registers its repository with the
