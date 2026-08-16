@@ -8,6 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   buildOpencodeConfig,
   modelRef,
+  opencodeConfigEnv,
   PROPOSE_PERMISSION,
   READ_ONLY_PERMISSION,
   WRITE_PERMISSION,
@@ -143,5 +144,47 @@ describe('buildOpencodeConfig · catalogue provider id', () => {
     // D2 — an unset `LLM_PROVIDER` must not move anything, so this pins the
     // whole emitted document rather than the fields the change touches.
     expect(JSON.stringify(buildOpencodeConfig(settings))).toBe(PRE_CHANGE_CONFIG)
+  })
+})
+
+/**
+ * The splice: resolved facts ride on the model entry, which is the only place
+ * OpenCode reads them from.
+ */
+describe('buildOpencodeConfig · model facts', () => {
+  const modelEntry = (s: OpenAiSettings): Record<string, unknown> | undefined =>
+    buildOpencodeConfig(s).provider?.[s.provider]?.models?.[s.model]
+
+  it('carries the resolved limit and capabilities onto the model entry', () => {
+    const entry = modelEntry({
+      ...settings,
+      facts: { limit: { context: 200_000, output: 64_000 }, reasoning: true, tool_call: true },
+    })
+
+    expect(entry).toEqual({
+      name: 'gpt-5',
+      limit: { context: 200_000, output: 64_000 },
+      reasoning: true,
+      tool_call: true,
+    })
+  })
+
+  it('emits nothing but the name when nothing was resolved', () => {
+    // Not `limit: { context: 0 }`: a written zero pins the value that makes
+    // `isOverflow` return `false`, where an absent key leaves OpenCode's own
+    // catalogue merge free to answer.
+    expect(modelEntry({ ...settings, facts: {} })).toEqual({ name: 'gpt-5' })
+    expect(modelEntry(settings)).toEqual({ name: 'gpt-5' })
+  })
+
+  it('reaches the subprocess config too, so both execution paths agree', () => {
+    const withFacts: OpenAiSettings = { ...settings, facts: { limit: { context: 128_000, output: 8_192 } } }
+    const inlined = opencodeConfigEnv(withFacts)['OPENCODE_CONFIG_CONTENT']
+
+    expect(inlined).toBe(JSON.stringify(buildOpencodeConfig(withFacts)))
+  })
+
+  it('leaves the default config byte-identical when no facts are resolved', () => {
+    expect(JSON.stringify(buildOpencodeConfig({ ...settings, facts: {} }))).toBe(PRE_CHANGE_CONFIG)
   })
 })

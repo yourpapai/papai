@@ -21,6 +21,7 @@ import { createOctokitApi } from './github.js'
 import type { GitHubApi } from './github.js'
 import { createPipelineLogger } from './logger.js'
 import type { Logger } from './logger.js'
+import { resolveModelFacts } from './model-metadata.js'
 import { runPipeline } from './orchestrator.js'
 import type { PhaseDeps } from './phase-context.js'
 import { resolvePullRequestTrigger } from './pr-trigger.js'
@@ -178,6 +179,20 @@ const resolveEventOrDoor = async (args: CliArgs, github: GitHubApi, log: Logger)
  * Returns a {@link RunResult} rather than exiting so the same call is drivable
  * from a test; `main` below maps the status onto a process exit code.
  */
+/**
+ * The config, with whatever this run can learn about its own model filled in.
+ *
+ * Called after the guardrail door, and that ordering is the point: this is a
+ * network read, and a payload the pipeline is about to drop must not pay for one.
+ * Best-effort by construction — a catalogue that cannot be read leaves the facts
+ * empty, which emits exactly the config this pipeline emitted before the lookup
+ * existed.
+ */
+const describeModel = async (config: PipelineConfig, options: MainOptions, log: Logger): Promise<PipelineConfig> => {
+  const { facts } = await resolveModelFacts(config.openai, log, { loadDb: options.modelCatalogue })
+  return { ...config, openai: { ...config.openai, facts } }
+}
+
 export const runCli = async (options: MainOptions): Promise<RunResult> => {
   const args = parseArgs(options.argv, options.env)
   // Config first, so the logger is built knowing which values must never be
@@ -204,8 +219,11 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
   // the one keyless warning — or create the empty artefact — on a run that was
   // never going to act.
   const transcript = createRunTranscript(config, secrets, log)
+
+  const described = await describeModel(config, options, log)
+
   const contained = contain({
-    config,
+    config: described,
     event,
     log,
     run: options.run ?? runCommand,

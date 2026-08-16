@@ -6,12 +6,6 @@
 import type { Config } from '@opencode-ai/sdk'
 
 /**
- * The only model credentials this pipeline accepts: one OpenAI-compatible
- * endpoint. A base URL plus a key covers OpenAI itself, Azure-style gateways,
- * OpenRouter, vLLM and any other compatible server, so there is no reason to
- * carry provider-specific keys alongside it.
- */
-/**
  * Model facts an operator states outright, for a model no catalogue carries.
  *
  * `null` is not a default — it is "nobody said", which is what lets a lower
@@ -27,6 +21,29 @@ export interface ModelOverrides {
 /** Nothing declared: the ordinary case, and the shape an absent block takes. */
 export const NO_MODEL_OVERRIDES: ModelOverrides = { context: null, output: null, reasoning: null }
 
+/**
+ * What this run knows about its model, in the shape OpenCode's own config accepts.
+ *
+ * The field names are models.dev's and OpenCode's alike, which is what makes the
+ * splice a copy rather than a translation. Every field is optional and an unknown
+ * one is **omitted**, never zeroed: OpenCode merges this config provider over its
+ * own catalogue row, so an absent key leaves that merge free to answer while a
+ * `limit: { context: 0 }` would pin the value that switches auto-compaction off.
+ */
+export interface ModelFacts {
+  limit?: { context: number; output: number }
+  reasoning?: boolean
+  tool_call?: boolean
+  temperature?: boolean
+  attachment?: boolean
+}
+
+/**
+ * The only model credentials this pipeline accepts: one OpenAI-compatible
+ * endpoint. A base URL plus a key covers OpenAI itself, Azure-style gateways,
+ * OpenRouter, vLLM and any other compatible server, so there is no reason to
+ * carry provider-specific keys alongside it.
+ */
 export interface OpenAiSettings {
   apiKey: string
   baseUrl: string
@@ -39,6 +56,16 @@ export interface OpenAiSettings {
    * only {@link OpenAiSettings} itself ever produces.
    */
   overrides?: ModelOverrides
+  /**
+   * The resolved answer the overrides and the catalogue agreed on, spliced into
+   * the emitted config.
+   *
+   * Resolved once on the boot path and carried here rather than looked up inside
+   * {@link buildOpencodeConfig}, which must stay synchronous: it is the single
+   * definition serving both the in-process session and the `OPENCODE_CONFIG_CONTENT`
+   * the review loop's subprocesses read, and an async builder would fork that.
+   */
+  facts?: ModelFacts
   /**
    * The **catalogue** id the model is resolved under — `LLM_PROVIDER`, or
    * {@link DEFAULT_PROVIDER_ID}.
@@ -139,7 +166,10 @@ export const buildOpencodeConfig = (settings: OpenAiSettings): Config => ({
       npm: PROVIDER_NPM,
       name: 'OpenAI-compatible',
       options: { apiKey: settings.apiKey, baseURL: settings.baseUrl },
-      models: { [settings.model]: { name: settings.model } },
+      // The facts ride *on the model entry*, which is the only place OpenCode
+      // reads them from. An unresolved fact is absent rather than zero — see
+      // {@link ModelFacts}.
+      models: { [settings.model]: { name: settings.model, ...settings.facts } },
     },
   },
   model: modelRef(settings),

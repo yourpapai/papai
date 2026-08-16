@@ -42,21 +42,28 @@ tier is the catalogue merge that change makes reachable.
 
 ## 3. Precedence and splice
 
-- [ ] 3.1 Failing test, tier by tier: an override wins over a models.dev hit; a
-      hit wins over a miss; a miss emits **no** `limit`/`reasoning` keys at all
-      so OpenCode's own merge stays free to fill them (D3) —
+The resolution and the splice turned out to be two units, not one: the lookup is
+async and `buildOpencodeConfig` must stay synchronous, since it is the single
+definition serving both the in-process session and the `OPENCODE_CONFIG_CONTENT`
+the review loop reads. So the resolver is `model-metadata.ts` with its own suite,
+and the splice stays a field on the settings the builder already takes.
+
+- [x] 3.1 Test, tier by tier: an override wins over a models.dev hit; a hit wins
+      over a miss; a miss emits **no** `limit`/`reasoning` keys at all so
+      OpenCode's own merge stays free to fill them (D3) —
+      `bun test tests/opencode-agent/model-metadata.test.ts`
+- [x] 3.2 Test: a rejecting reader, a synchronous throw, and the empty database
+      an unreachable host degrades to all fall to the next tier, warn once, and
+      never throw (D4) — `bun test tests/opencode-agent/model-metadata.test.ts`
+- [x] 3.3 Test: the boot debug line reports the model reference, the context
+      window, `reasoning` and the tier that supplied them, and never the key or
+      base URL — `bun test tests/opencode-agent/model-metadata.test.ts`
+- [x] 3.4 Implement the resolver, the splice onto the model entry, and the
+      `runCli` wiring, with exactly one function permitted to swallow (D4) —
+      `bun test tests/opencode-agent/model-metadata.test.ts tests/opencode-agent/openai-config.test.ts`
+- [x] 3.5 Confirm the emitted config is unchanged when every tier misses and no
+      override is set, on both execution paths —
       `bun test tests/opencode-agent/openai-config.test.ts`
-- [ ] 3.2 Failing test: a rejecting, hanging, or HTML-returning models.dev
-      degrades to the next tier, warns once, and never throws (D4) —
-      `bun test tests/opencode-agent/openai-config.test.ts`
-- [ ] 3.3 Failing test: the boot debug line reports provider, model,
-      `limit.context`, `reasoning` and the tier that supplied them, and never
-      the key or base URL — `bun test tests/opencode-agent/adapters.test.ts`
-- [ ] 3.4 Implement the resolver and the splice in `buildOpencodeConfig`, with
-      exactly one function permitted to swallow (D4); watch 3.1-3.3 pass —
-      `bun test tests/opencode-agent/openai-config.test.ts tests/opencode-agent/adapters.test.ts`
-- [ ] 3.5 Confirm the emitted config is unchanged when every tier misses and no
-      override is set — `bun test tests/opencode-agent/openai-config.test.ts`
 
 ## 4. Security and manual verification
 
