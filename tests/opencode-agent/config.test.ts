@@ -99,3 +99,58 @@ describe('LLM_PROVIDER', () => {
     expect(loadConfig({ ...ENV, LLM_PROVIDER: 'anthropic' }, '/repo').openai.provider).toBe('anthropic')
   })
 })
+
+/**
+ * The last resort for a model no catalogue carries at all.
+ *
+ * `LLM_PROVIDER` reaches every hosted model models.dev knows; a self-hosted
+ * alias or a fine-tune has no id that helps, and still lands on `limit.context:
+ * 0` with auto-compaction switched off. These three say the facts outright.
+ *
+ * Absence is meaningful rather than defaulted: a default context window here
+ * would be a guess about somebody else's server, and a wrong one either compacts
+ * every turn or never compacts at all.
+ */
+describe('model metadata overrides', () => {
+  test('are absent when unset, so a lower precedence tier can answer', () => {
+    expect(loadOpenAiSettings(ENV).overrides).toEqual({ context: null, output: null, reasoning: null })
+  })
+
+  test('are read when set', () => {
+    const settings = loadOpenAiSettings({
+      ...ENV,
+      AGENT_MODEL_CONTEXT: '131072',
+      AGENT_MODEL_OUTPUT: '8192',
+      AGENT_MODEL_REASONING: 'true',
+    })
+
+    expect(settings.overrides).toEqual({ context: 131_072, output: 8_192, reasoning: true })
+  })
+
+  test.each([
+    // Below a single phase's own prompt budget, every turn would compact.
+    ['a context window too small to hold one prompt', 'AGENT_MODEL_CONTEXT', '4000'],
+    // Above any real model: a made-up huge window never reaches `usable`, so it
+    // disables compaction exactly as effectively as leaving it at zero.
+    ['a context window no model has', 'AGENT_MODEL_CONTEXT', '999999999'],
+    // OpenCode clamps the output cap to its own OUTPUT_TOKEN_MAX, so a larger
+    // value is a statement it will silently ignore.
+    ['an output cap above what OpenCode will honour', 'AGENT_MODEL_OUTPUT', '64000'],
+    ['a non-integer', 'AGENT_MODEL_CONTEXT', '128k'],
+  ])('refuse %s, naming the variable', (_case, key, value) => {
+    expect(() => loadOpenAiSettings({ ...ENV, [key]: value })).toThrow(ConfigError)
+    expect(() => loadOpenAiSettings({ ...ENV, [key]: value })).toThrow(key)
+  })
+
+  test.each([
+    ['true', true],
+    ['false', false],
+    ['TRUE', true],
+  ])('read AGENT_MODEL_REASONING=%s as a boolean', (value, expected) => {
+    expect(loadOpenAiSettings({ ...ENV, AGENT_MODEL_REASONING: value }).overrides?.reasoning).toBe(expected)
+  })
+
+  test.each(['yes', '1', 'maybe'])('refuse AGENT_MODEL_REASONING=%s rather than guessing', (value) => {
+    expect(() => loadOpenAiSettings({ ...ENV, AGENT_MODEL_REASONING: value })).toThrow('AGENT_MODEL_REASONING')
+  })
+})

@@ -10,7 +10,9 @@ import type { PipelineConfig } from './config-shape.js'
 import {
   boundedInt,
   boundedIntOrNull,
+  boolOrNull,
   buildDiffLimits,
+  CONTEXT_RANGE,
   DEFAULT_REVIEW_POOL_SIZE,
   DEFAULT_TURN_TIMEOUT_MS,
   EPOCH_MS_RANGE,
@@ -20,6 +22,7 @@ import {
   logKey,
   optional,
   optionalOrNull,
+  OUTPUT_RANGE,
   parseChecks,
   POOL_RANGE,
   providerId,
@@ -73,6 +76,15 @@ export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
   // exactly today's behaviour: `openai` is the id the pipeline hardcoded before
   // this knob existed, so an unset variable emits the same config it always did.
   provider: providerId(env, 'LLM_PROVIDER', DEFAULT_PROVIDER_ID),
+  // Read as three separate absences rather than one defaulted block: each is a
+  // fact about somebody else's server that only an operator can state, and a
+  // guessed default is either a window that compacts every turn or one that
+  // never compacts at all.
+  overrides: {
+    context: boundedIntOrNull(env, 'AGENT_MODEL_CONTEXT', CONTEXT_RANGE),
+    output: boundedIntOrNull(env, 'AGENT_MODEL_OUTPUT', OUTPUT_RANGE),
+    reasoning: boolOrNull(env, 'AGENT_MODEL_REASONING'),
+  },
 })
 
 /** Loader roots, first-hit-wins (D11): in-repo OpenSpec trees first, then the pinned superpowers checkout. */

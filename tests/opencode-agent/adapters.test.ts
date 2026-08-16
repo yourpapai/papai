@@ -31,7 +31,12 @@ import type { Logger } from '../../opencode-agent/src/logger.js'
 import { extractJsonObject, parseModelJson } from '../../opencode-agent/src/model-json.js'
 import { composeSystemPrompt, loadPhaseSkills, loadSkills, PHASE_SKILLS } from '../../opencode-agent/src/obra-skills.js'
 import type { ReadSkillFile } from '../../opencode-agent/src/obra-skills.js'
-import { buildOpencodeConfig, modelRef, opencodeConfigEnv } from '../../opencode-agent/src/openai-config.js'
+import {
+  buildOpencodeConfig,
+  modelRef,
+  NO_MODEL_OVERRIDES,
+  opencodeConfigEnv,
+} from '../../opencode-agent/src/openai-config.js'
 import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
 import { createOpenCodeAgent, parseModelRef } from '../../opencode-agent/src/opencode-adapter.js'
 import type { OpenCodeAgent, OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
@@ -1519,6 +1524,8 @@ describe('config', () => {
       // `LLM_PROVIDER` is unset here, and its default is the id this pipeline
       // hardcoded before the knob existed.
       provider: 'openai',
+      // Nothing declared by hand, which is what lets the catalogue answer.
+      overrides: NO_MODEL_OVERRIDES,
     })
   })
 

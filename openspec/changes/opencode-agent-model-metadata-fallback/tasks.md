@@ -30,13 +30,13 @@ tier is the catalogue merge that change makes reachable.
 
 ## 2. Overrides at load
 
-- [ ] 2.1 Failing test: `AGENT_MODEL_CONTEXT` / `AGENT_MODEL_OUTPUT` outside
+- [x] 2.1 Failing test: `AGENT_MODEL_CONTEXT` / `AGENT_MODEL_OUTPUT` outside
       their range, and non-integer values, raise `ConfigError` naming the
       variable; unset leaves the field absent rather than zero (D3, D5) —
       `bun test tests/opencode-agent/config.test.ts`
-- [ ] 2.2 Failing test: `AGENT_MODEL_REASONING` parses as a boolean knob and is
+- [x] 2.2 Failing test: `AGENT_MODEL_REASONING` parses as a boolean knob and is
       absent when unset — `bun test tests/opencode-agent/config.test.ts`
-- [ ] 2.3 Implement the three overrides in `config.ts` / `config-values.ts` and
+- [x] 2.3 Implement the three overrides in `config.ts` / `config-values.ts` and
       widen `OpenAiSettings`; watch 2.1-2.2 pass —
       `bun test tests/opencode-agent/config.test.ts`
 

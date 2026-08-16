@@ -11,10 +11,34 @@ import type { Config } from '@opencode-ai/sdk'
  * OpenRouter, vLLM and any other compatible server, so there is no reason to
  * carry provider-specific keys alongside it.
  */
+/**
+ * Model facts an operator states outright, for a model no catalogue carries.
+ *
+ * `null` is not a default — it is "nobody said", which is what lets a lower
+ * precedence tier answer instead. Writing a zero here would *pin* the broken
+ * value that this whole change exists to stop emitting.
+ */
+export interface ModelOverrides {
+  context: number | null
+  output: number | null
+  reasoning: boolean | null
+}
+
+/** Nothing declared: the ordinary case, and the shape an absent block takes. */
+export const NO_MODEL_OVERRIDES: ModelOverrides = { context: null, output: null, reasoning: null }
+
 export interface OpenAiSettings {
   apiKey: string
   baseUrl: string
   model: string
+  /**
+   * Facts stated by the operator, which win over any catalogue.
+   *
+   * Optional because an absent block and one holding three `null`s mean the same
+   * thing, and requiring it of every caller would be ceremony over a shape that
+   * only {@link OpenAiSettings} itself ever produces.
+   */
+  overrides?: ModelOverrides
   /**
    * The **catalogue** id the model is resolved under — `LLM_PROVIDER`, or
    * {@link DEFAULT_PROVIDER_ID}.
