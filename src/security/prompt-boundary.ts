@@ -17,8 +17,13 @@ const MAX_INPUT_LENGTH = 10_000
 
 const BOUNDARY_TAG_PATTERN = /<\s*\/?\s*external-data[^>]*>?/giu
 const NEWLINE_PATTERN = /[\r\n]+/gu
-/** Unicode format characters (Cf): invisible, exploitable to forge boundary tags. */
-const FORMAT_CHAR_PATTERN = /[\p{Cf}]/gu
+/**
+ * Unicode format (Cf) and control (Cc) characters except whitespace: invisible,
+ * exploitable to forge boundary tags. `\s` members are kept so the tag pattern's
+ * `\s*` and the newline collapse keep handling them (stripping `\r\n\t` here
+ * would join words that used to be space-separated).
+ */
+const FORMAT_CHAR_PATTERN = /(?=[\p{Cc}\p{Cf}])[^\s]/gu
 
 /** Unpredictable per-process token; never logged and never derived from message content. */
 const BOUNDARY_TOKEN = randomBytes(24).toString('hex')
