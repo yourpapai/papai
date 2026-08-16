@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { loadDb } from '../../sdd-runner/src/pricing.js'
+import { loadDb, lookupModel, ModelsDevDbSchema } from '../../sdd-runner/src/pricing.js'
 import { MODELS_DEV_FETCH_TIMEOUT_MS, MODELS_DEV_URL } from '../../sdd-runner/src/pricing.js'
 import { parseModelId } from '../../sdd-runner/src/pricing.js'
 import { resolveCost } from '../../sdd-runner/src/pricing.js'
@@ -248,5 +248,92 @@ describe('loadDb', () => {
     })
     expect(fetched).toBe(1)
     expect(inputCostOf(result, 'p', 'm')).toBe(7)
+  })
+})
+
+/**
+ * The catalogue carries more than a price, and one more consumer wants it.
+ *
+ * `opencode-agent` emits an OpenCode provider config whose model entry accepts
+ * exactly these fields; a model OpenCode cannot find falls to `limit.context: 0`,
+ * which switches auto-compaction off, and `reasoning: false`, which empties the
+ * reasoning-effort variants. Rather than a second models.dev client with a second
+ * cache and a second copy of this file's two recorded incident fixes, the reader
+ * answers with the whole entry and the splice happens over there.
+ */
+describe('lookupModel', () => {
+  const db = ModelsDevDbSchema.parse({
+    anthropic: {
+      models: {
+        'claude-sonnet-4-6': {
+          cost: { input: 3, output: 15 },
+          limit: { context: 200_000, output: 64_000 },
+          reasoning: true,
+          tool_call: true,
+          temperature: true,
+          attachment: true,
+        },
+      },
+    },
+    // An entry with none of the optional fields: the ordinary case for a local
+    // or open-weight model, and it must still parse.
+    local: { models: { 'qwen3-coder': {} } },
+  })
+
+  it('returns the whole entry, not just its cost', () => {
+    expect(lookupModel('anthropic/claude-sonnet-4-6', db)).toEqual({
+      cost: { input: 3, output: 15 },
+      limit: { context: 200_000, output: 64_000 },
+      reasoning: true,
+      tool_call: true,
+      temperature: true,
+      attachment: true,
+    })
+  })
+
+  it('returns an entry that carries none of the optional fields', () => {
+    expect(lookupModel('local/qwen3-coder', db)).toEqual({})
+  })
+
+  it('is null for a provider the database lacks, and for a model it lacks', () => {
+    expect(lookupModel('nobody/claude-sonnet-4-6', db)).toBeNull()
+    expect(lookupModel('anthropic/nothing-like-this', db)).toBeNull()
+  })
+
+  it('reads a model id containing slashes as everything after the first', () => {
+    const nested = ModelsDevDbSchema.parse({
+      openrouter: { models: { 'anthropic/claude-3.5': { limit: { context: 200_000, output: 8_192 } } } },
+    })
+
+    expect(lookupModel('openrouter/anthropic/claude-3.5', nested)?.limit?.context).toBe(200_000)
+  })
+})
+
+/**
+ * D2 — the schema stays looser than every consumer.
+ *
+ * `cost` was made optional because 419 published entries have none and requiring
+ * it rejected the ENTIRE database, resolving every price to unknown. The fields
+ * added beside it inherit that reasoning: one entry shaped unexpectedly must not
+ * cost the lookup its other eighteen hundred rows.
+ */
+describe('ModelsDevDbSchema · tolerance', () => {
+  it('keeps a database whose entries carry unknown extra fields', () => {
+    const db = ModelsDevDbSchema.parse({
+      p: { models: { m: { knowledge: '2025-08-31', open_weights: false, modalities: { input: ['text'] } } } },
+    })
+
+    expect(lookupModel('p/m', db)).not.toBeNull()
+  })
+
+  it('keeps the other rows when one entry has a malformed limit', () => {
+    const parsed = ModelsDevDbSchema.safeParse({
+      good: { models: { m: { limit: { context: 128_000, output: 4_096 } } } },
+      bad: { models: { m: { limit: 'enormous' } } },
+    })
+
+    expect(parsed.success).toBe(true)
+    expect(lookupModel('good/m', parsed.data!)?.limit?.context).toBe(128_000)
+    expect(lookupModel('bad/m', parsed.data!)?.limit).toBeUndefined()
   })
 })

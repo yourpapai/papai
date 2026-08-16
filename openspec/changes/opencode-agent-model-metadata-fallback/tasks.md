@@ -12,20 +12,20 @@ tier is the catalogue merge that change makes reachable.
 
 ## 1. Widen the models.dev reader
 
-- [ ] 1.1 Failing test: `lookupModel("<provider>/<model>")` returns the parsed
+- [x] 1.1 Failing test: `lookupModel("<provider>/<model>")` returns the parsed
       entry with `limit`, `reasoning`, `tool_call`, `temperature` and
       `attachment`, and `null` for a provider or model the database lacks —
       `bun test tests/sdd-runner/pricing.test.ts`
-- [ ] 1.2 Failing test: an entry missing any of those optional fields still
+- [x] 1.2 Failing test: an entry missing any of those optional fields still
       parses, and one malformed entry does not reject the database (D2) —
       `bun test tests/sdd-runner/pricing.test.ts`
-- [ ] 1.3 Regression test: `resolveCost` behavior — primary, median fallback,
+- [x] 1.3 Regression test: `resolveCost` behavior — primary, median fallback,
       and unknown — is unchanged when routed through `lookupModel` —
       `bun test tests/sdd-runner/pricing.test.ts`
-- [ ] 1.4 Widen `ModelEntrySchema` and add `lookupModel`; re-point
+- [x] 1.4 Widen `ModelEntrySchema` and add `lookupModel`; re-point
       `resolveCost` at it; watch 1.1-1.3 pass —
       `bun test tests/sdd-runner/pricing.test.ts`
-- [ ] 1.5 `bun run typecheck` and `bun run lint` clean —
+- [x] 1.5 `bun run typecheck` and `bun run lint` clean —
       `bun run typecheck && bun run lint`
 
 ## 2. Overrides at load
