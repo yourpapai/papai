@@ -415,6 +415,20 @@ findings: `ROADMAP.md`.
   it is the one layer that sees a real HTTP status and the only one the review
   loop's subprocesses also pass through; do not add a second retry in the
   adapter, where the status is already gone.
+- **The provider id is a catalogue key, and the transport is not.**
+  `LLM_PROVIDER` (default `openai`) says which models.dev row OpenCode resolves
+  `LLM_MODEL` under; `npm` stays `@ai-sdk/openai-compatible` and wins over the
+  borrowed row's own package in OpenCode's resolution order
+  (`model.provider?.npm ?? provider.npm ?? existingModel?.api.npm`), so naming
+  `anthropic` against a gateway borrows metadata without loading another SDK.
+  It is not cosmetic: a row OpenCode does not find leaves `limit.context` at
+  `0`, and `isOverflow` returns `false` unconditionally at zero — **auto-
+  compaction is off**, with no other symptom — and `reasoning` at `false`, which
+  makes `variants()` return `{}` so no reasoning effort is selectable at all.
+  The id may not contain a slash: `parseModelRef` splits at the **first** one
+  and keeps the whole remainder as the model id, which is what lets a model id
+  contain slashes. `createOpenCodeAgent` logs the resolved reference at `debug`,
+  names only — a CI log is world-readable on a public repository.
 - **The retry budget is refused, never applied-then-regretted.** A `/retry` past
   `maxAttempts` is turned down in `src/triggers.ts` before the signal reaches
   `transition`, so the issue keeps `FAILED` and its `resumeFrom` and raising

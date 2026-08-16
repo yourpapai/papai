@@ -68,9 +68,9 @@ rather than by adding to the live integration suite.
 
 ## 5. Workflow, docs and full gates
 
-- [ ] 5.1 Pass `vars.LLM_PROVIDER` through in `.github/workflows/agent-pipeline.yml`
+- [x] 5.1 Pass `vars.LLM_PROVIDER` through in `.github/workflows/agent-pipeline.yml`
       and confirm the workflow still parses — `bun workflows:lint`
-- [ ] 5.2 Update the env table in `opencode-agent/README.md` and the config note
+- [x] 5.2 Update the env table in `opencode-agent/README.md` and the config note
       in `opencode-agent/CLAUDE.md` to say the id selects the **catalogue** row,
       not the transport — no command; review the diff
-- [ ] 5.3 Full gates: `bun test`, `bun run typecheck`, `bun run lint`
+- [x] 5.3 Full gates: `bun test`, `bun run typecheck`, `bun run lint`

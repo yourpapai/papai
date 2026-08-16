@@ -1512,6 +1512,7 @@ cannot drift.
 | `LLM_API_KEY`                              | yes      | —                                    | Model credentials                                      |
 | `LLM_MODEL`                                | yes      | —                                    | Model name, e.g. `gpt-5`                               |
 | `LLM_BASE_URL`                             | yes      | —                                    | Any OpenAI-compatible endpoint                         |
+| `LLM_PROVIDER`                             | no       | `openai`                             | models.dev id `LLM_MODEL` resolves under; see below    |
 | `GITHUB_TOKEN`                             | no       | the job's own `secrets.GITHUB_TOKEN` | Comments, branches, pull requests; see below           |
 | `GITHUB_REPOSITORY`                        | no       | the job's own `owner/repo`           | `owner/repo`; see below                                |
 | `AGENT_SELF_LOGIN`                         | no       | derived from the token               | Login the agent posts as; see above                    |
@@ -1549,6 +1550,32 @@ first model call instead of at config load. A default of
 forgotten value indistinguishable from a deliberate one; this pipeline is built
 around one arbitrary configured endpoint, not OpenAI specifically, so there is
 no endpoint that is right unless someone said so.
+
+`LLM_PROVIDER` is a **catalogue key, not a transport**, and it is the one
+variable here whose default is wrong for most gateways. OpenCode builds its
+model database from models.dev and merges this pipeline's config provider _over_
+it, keyed by this id and then by `LLM_MODEL`. A row it does not find contributes
+nothing, and the two defaults that follow are silent:
+
+- `limit.context` becomes `0`, and `isOverflow` opens with
+  `if (model.limit.context === 0) return false` — so **auto-compaction never
+  fires** and a long implement turn grows until the provider rejects it.
+- `reasoning` becomes `false`, and `ProviderTransform.variants()` opens with
+  `if (!model.capabilities.reasoning) return {}` — so no reasoning effort is
+  selectable, for any phase.
+
+Leave it unset when `LLM_MODEL` is an OpenAI model id. Set it to the model's own
+provider — `anthropic`, `alibaba`, `zai`, `deepseek` — when `LLM_BASE_URL` is a
+gateway serving somebody else's model, so the lookup reaches a real row. The
+transport is unaffected either way: the emitted config pins
+`npm: "@ai-sdk/openai-compatible"`, which wins over the borrowed row's own
+package in OpenCode's resolution order, and the key still reaches the endpoint
+through the provider proxy. The run log names the reference it resolved at
+`debug`.
+
+A model no catalogue carries at all — a self-hosted alias, a fine-tune — has no
+id that helps here and still lands on those defaults. That gap is
+`openspec/changes/opencode-agent-model-metadata-fallback/`.
 
 `GITHUB_TOKEN` and `GITHUB_REPOSITORY` need no operator setup on GitHub
 Actions, unlike the variables above. `GITHUB_REPOSITORY` is one of the

@@ -444,6 +444,14 @@ jobs:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          # The models.dev provider id LLM_MODEL is looked up under, not a second
+          # endpoint: the transport stays openai-compatible whatever this says.
+          # Unset means `openai`, which is what the pipeline hardcoded before the
+          # variable existed. Set it to the model's real provider — `anthropic`,
+          # `alibaba`, `zai` — when the endpoint is a gateway, or OpenCode finds
+          # no catalogue row and the model runs with no context window and no
+          # reasoning support declared.
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
 
           # Pipeline configuration — see opencode-agent/README.md.
           # Passed through unset when the variable is unset, with no
