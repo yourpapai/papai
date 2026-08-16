@@ -99,12 +99,17 @@ export default {
     // only consumers today are the rollout-gate/privacy-contract tests outside
     // knip's production project scope (operator wiring lands with Stage B).
     'src/analytics/rollout/*.ts!',
+    // Context vault modules are the seam surface for the context-vault-plugin
+    // change (openspec/changes/context-vault-plugin); later tasks (settings
+    // routes, push route, summarizer, plugin facade) consume their exports.
+    'src/context-vault/*.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
     // Plugin runtime bridges loaded via import.meta.require(); declaring them
     // entries lets knip trace their static imports (provider clients, config).
     'plugins/audio-transcribe/runtime.ts!',
+    'plugins/context-vault/runtime.ts!',
     'plugins/task-provider-kaneo/auto-provision.ts!',
     // Test-seam shims: re-export test-only symbols so tests have an explicit
     // import site; see the *.testing.ts ignoreIssues glob below.
@@ -237,6 +242,13 @@ export default {
     // project scope.
     'src/analytics/rekey/*.ts': ['exports', 'types'],
 
+    // Context vault modules are the seam surface for the in-flight
+    // context-vault-plugin change (openspec/changes/context-vault-plugin);
+    // their exports are consumed by later tasks (settings routes, push route,
+    // summarizer, plugin facade) and by tests outside knip's production
+    // project scope.
+    'src/context-vault/*.ts': ['exports', 'types'],
+    'src/db/context-vault-schema.ts': ['exports', 'types'],
     // Re-export facades whose remaining flagged bindings knip cannot trace:
     // the published plugin-types package export, declared plugin-core-separation
     // compatibility boundaries, and bindings consumed by byte-frozen 0Q

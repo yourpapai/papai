@@ -100,6 +100,25 @@ const resolveDeps = (deps: ChangedFilesDeps | undefined): ChangedFilesDeps => {
   return deps
 }
 
+/**
+ * Is this a generated module — something under a `generated/` directory?
+ *
+ * Generated modules are never mutation targets, for two reasons that point the same way.
+ *
+ * The blocking one: Stryker instruments the file it mutates inside its sandbox, so a test that
+ * reads its own implementation's source text off disk sees the instrumented copy and fails —
+ * during the INITIAL, unmutated run, which aborts the file with a ConfigError. The paired run
+ * then records `errored` instead of a score and the gate goes red. That is exactly what
+ * `tests/analytics/tool-slug-generation.test.ts` does, deliberately: it re-renders the module
+ * and compares it to the checked-in bytes, proving the generator output has not drifted. The
+ * drift guard is worth more than the mutation score, so it is not the half that gives way.
+ *
+ * The reason that would hold anyway: a generated module's content comes from its generator, so
+ * mutating it measures the generator's tests, not this file's. Skipping it costs no real
+ * coverage — and stops every PR that adds a tool from failing on a file it only regenerated.
+ */
+export const isGeneratedSourceFile = (relPath: string): boolean => relPath.split(/[/\\]/u).includes('generated')
+
 export const selectChangedMutationTargets = (input: SelectInput): string[] => {
   const deps = resolveDeps(input.deps)
   const output = deps.runGit(['diff', '--name-only', '--diff-filter=ACMRT', `${input.baseRef}...HEAD`])
@@ -108,6 +127,7 @@ export const selectChangedMutationTargets = (input: SelectInput): string[] => {
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((relPath) => deps.isGateableImpl(relPath, input.projectRoot))
+    .filter((relPath) => !isGeneratedSourceFile(relPath))
     .filter((relPath, index, paths) => paths.indexOf(relPath) === index)
     .toSorted()
 }

@@ -495,6 +495,30 @@ describe('steps', () => {
     )
   })
 
+  test('builds the client bundles before the pipeline runs its checks', () => {
+    // The CI-fix loop runs its checks in this job's workspace, and the debug
+    // server/smoke suites throw when public/ has no bundles. ci.yml's jobs
+    // satisfy that precondition with the build-output artifact; this job has no
+    // such download, so it builds them itself.
+    //
+    // Through `ensure-client-built`, not a bare `bun run build:client`: it is
+    // the same guard `check.sh` runs before its fan-out, and it no-ops when the
+    // bundles are already there instead of rebuilding every run.
+    //
+    // This test is the surviving half of run 31740586420's CI fix. Its other
+    // half — the workflow step — was dropped at staging, because a push from
+    // that token cannot carry `.github/workflows/`, and the drop was reported
+    // only to a log nobody read. So the test went to the branch alone and had
+    // been failing ever since, while two further rounds rewrote the same step
+    // and had it dropped again. Keep the two together.
+    expect(step('client bundles').run).toContain('ensure-client-built')
+
+    const names = steps.map((candidate) => candidate.name.toLowerCase())
+    expect(names.findIndex((name) => name.includes('client bundles'))).toBeLessThan(
+      names.findIndex((name) => name.includes('agent pipeline')),
+    )
+  })
+
   test('installs the opencode CLI the review-loop workspace shells out to', () => {
     expect(step('opencode cli').run).toContain('opencode-ai')
   })

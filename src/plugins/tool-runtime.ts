@@ -8,6 +8,7 @@ import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.j
 import { getPluginConfig } from '../config.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildCodingReposFacade, buildCodingSecretsFacade } from './coding-secrets-facade.js'
+import { buildContextVaultFacade } from './context-vault-facade.js'
 import { deny } from './deny.js'
 import { buildIdentityFacade } from './identity-facade.js'
 import { consumePluginQuota } from './rate-limit.js'
@@ -234,5 +235,6 @@ export function buildPluginToolRuntimeContext(
       runtime.chatUserId,
     ),
     codingRepos: buildCodingReposFacade(pluginId, runtime.storageContextId, permissions.has('coding.secrets')),
+    contextVault: buildContextVaultFacade(pluginId, runtime.storageContextId, permissions.has('contextVault.read')),
   })
 }

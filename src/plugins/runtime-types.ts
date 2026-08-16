@@ -15,6 +15,7 @@ import type {
 } from '../providers/registry.js'
 import type { TaskCapability, ProviderConfigField, TaskProvider, TaskProviderTrait } from '../providers/types.js'
 import type { PluginAttachmentFacade, PluginAttachmentRecord } from './attachment-types.js'
+import type { ContextVaultGetResult, ContextVaultListFilter, ContextVaultListResult } from './context-vault-facade.js'
 import type { PluginAdminConfig } from './context.js'
 import type { PluginContext } from './context.js'
 import type { PluginIdentityFacade } from './identity-facade.js'
@@ -79,6 +80,11 @@ export type PluginToolRuntimeContext = {
     list(): { name: string; baseBranch: string }[]
     get(name: string): CodingRepoEntry | null
   }
+  /** Read-only access to the context vault, gated on the `contextVault.read` permission. */
+  contextVault: {
+    list(filter?: ContextVaultListFilter): ContextVaultListResult
+    get(idOrName: string): ContextVaultGetResult
+  }
 }
 
 export type PluginScheduledJobRuntimeContext = {
@@ -94,7 +100,8 @@ export type PluginTool = {
   /** Stable behavioral identifier independent of the production wire name. */
   capabilityId?: string
   description: string
-  inputSchema?: z.ZodType
+  /** Zod schema, or a raw JSON-schema object (wrapped via ai.jsonSchema by getPluginToolInputSchema). */
+  inputSchema?: z.ZodType | Record<string, unknown>
   execute: (
     input: unknown,
     runtimeContext: PluginToolRuntimeContext,

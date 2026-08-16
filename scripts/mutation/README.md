@@ -115,6 +115,18 @@ override, or widening the candidate heuristics in `coverage-map.ts`.
 - `bun test:mutate:changed-paired` — descriptive alias for
   `bun test:mutate:changed`.
 
+## Generated modules are not targets
+
+`test:mutate:changed` drops anything under a `generated/` directory. Stryker instruments the file
+it mutates inside its sandbox, so a test that reads its own implementation's source text off disk
+compares against the instrumented copy and fails the **initial, unmutated** run — which aborts the
+file with a `ConfigError` and lands in the gate as `errored`, not as a score.
+`tests/analytics/tool-slug-generation.test.ts` reads
+`src/analytics/generated/tool-slugs.ts` on purpose, to prove the checked-in bytes still match a
+fresh generation; that drift guard is worth more than a mutation score on a file whose content
+comes from a generator anyway. Without the exclusion, every PR that adds a tool — and so
+regenerates the slug table — fails this gate on a file it never hand-wrote.
+
 ## Incremental measurement (carried-over scores)
 
 A run measures only the files whose content changed since the previous run on the same branch —

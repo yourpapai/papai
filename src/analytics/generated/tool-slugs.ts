@@ -79,6 +79,8 @@ export const KNOWN_TOOL_SLUGS = [
   'plugin_acp__session_status',
   'plugin_acp__start_session',
   'plugin_audio_transcribe__transcribe',
+  'plugin_context_vault__get_agent_spec',
+  'plugin_context_vault__list_agent_specs',
   'plugin_synthetic_web_search__search',
   'promote_memo',
   'remember_memory',

@@ -48,6 +48,7 @@ const ADVANCED_ITEMS: readonly NavItem[] = [
   { id: 'coding-mcp', label: 'Coding MCP servers' },
   { id: 'code-host', label: 'Code host' },
   { id: 'repos', label: 'Repositories' },
+  { id: 'context-vault', label: 'Context Vault' },
   { id: 'mcp', label: 'MCP' },
   { id: 'plugins', label: 'Plugins' },
 ]

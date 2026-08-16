@@ -50,22 +50,26 @@ describe('buildNavGroups', () => {
     ])
   })
 
-  test('Advanced holds the ten integration sections and is collapsible', () => {
+  test('Advanced holds the eleven integration sections and is collapsible', () => {
     const advanced = buildNavGroups(personal, false).find((g) => g.key === 'advanced')!
     expect(advanced.kicker).toBe('Advanced')
     expect(advanced.collapsible).toBe(true)
     expect(advanced.danger).toBe(false)
-    expect(advanced.items.map((i) => i.id)).toEqual([
-      'memory',
-      'ai-output',
-      'identity',
-      'byok',
-      'coding-credentials',
-      'coding-mcp',
-      'code-host',
-      'repos',
-      'mcp',
-      'plugins',
+    // Labels are pinned alongside ids, not just counted for uniqueness: a label is the only
+    // thing the jump menu shows, so an emptied one is invisible to an id-only assertion and to
+    // the uniqueness check below (one empty string is still unique).
+    expect(advanced.items).toEqual([
+      { id: 'memory', label: 'Memory' },
+      { id: 'ai-output', label: 'AI output' },
+      { id: 'identity', label: 'Identity' },
+      { id: 'byok', label: 'BYOK LLM' },
+      { id: 'coding-credentials', label: 'Coding sessions' },
+      { id: 'coding-mcp', label: 'Coding MCP servers' },
+      { id: 'code-host', label: 'Code host' },
+      { id: 'repos', label: 'Repositories' },
+      { id: 'context-vault', label: 'Context Vault' },
+      { id: 'mcp', label: 'MCP' },
+      { id: 'plugins', label: 'Plugins' },
     ])
   })
 
@@ -158,7 +162,7 @@ describe('section id derivation', () => {
     expect(ids).toContain('profile')
     expect(ids).toContain('memory')
     expect(ids).toContain('instances')
-    expect(ids).toHaveLength(4 + 10 + 16)
+    expect(ids).toHaveLength(4 + 11 + 16)
   })
 
   test('mountedSectionIds omits collapsed groups and grows as they expand', () => {
@@ -175,7 +179,7 @@ describe('section id derivation', () => {
 describe('groupHint', () => {
   test('lists the first three labels and counts the rest', () => {
     const advanced = buildNavGroups(personal, false).find((g) => g.key === 'advanced')!
-    expect(groupHint(advanced.items)).toBe('Memory, AI output, Identity + 7 more')
+    expect(groupHint(advanced.items)).toBe('Memory, AI output, Identity + 8 more')
   })
 
   test('three or fewer items get no overflow count', () => {

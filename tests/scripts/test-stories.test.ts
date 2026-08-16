@@ -668,6 +668,7 @@ describe('story runner reports and compatibility', () => {
       writeFrozenCoverageSupport(root)
       mkdirSync(path.join(root, 'src'), { recursive: true })
       mkdirSync(path.join(root, 'plugins'), { recursive: true })
+      mkdirSync(path.join(root, 'context-vault-indexer'), { recursive: true })
       writeFileSync(path.join(root, 'bunfig.toml'), '[test]')
       writeFileSync(path.join(root, 'tests/stories/example.story.test.ts'), `scenario('example', async () => {})\n`)
       writeFileSync(path.join(root, 'tests/setup.ts'), '')
@@ -675,6 +676,7 @@ describe('story runner reports and compatibility', () => {
       writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), '')
       writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), '')
       writeFileSync(path.join(root, 'src/runtime.ts'), '')
+      writeFileSync(path.join(root, 'context-vault-indexer/lock.ts'), '')
       const packageName = `story-runner-ref-${path.basename(root)}`
       const dependencyCacheRoot = path.join(root, '.dependency-cache')
       writeFileSync(path.join(root, 'package.json'), `{"name":"${packageName}"}\n`)

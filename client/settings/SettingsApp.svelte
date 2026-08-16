@@ -36,6 +36,7 @@
   import CodingMcpSection from './sections/CodingMcpSection.svelte'
   import CodeHostSection from './sections/CodeHostSection.svelte'
   import ReposSection from './sections/ReposSection.svelte'
+  import ContextVaultSection from './sections/ContextVaultSection.svelte'
   import McpSection from './sections/McpSection.svelte'
   import PluginsSection from './sections/PluginsSection.svelte'
   import IdentitySection from './sections/IdentitySection.svelte'
@@ -190,6 +191,7 @@
                   <CodingMcpSection contextId={ctx} />
                   <CodeHostSection contextId={ctx} />
                   <ReposSection contextId={ctx} />
+                  <ContextVaultSection contextId={ctx} />
                   <McpSection contextId={ctx} />
                   <PluginsSection contextId={ctx} />
                 </div>

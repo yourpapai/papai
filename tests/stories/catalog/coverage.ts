@@ -278,6 +278,8 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-plugin-registry-served',
   'SCN-chat-turn-tool-loop',
   'SCN-graceful-shutdown',
+  'SCN-context-vault-push',
+  'SCN-context-vault-indexer-singleton',
 ] as const)
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -1155,6 +1157,18 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '3',
     storyIds: [
       'tests/platform/scenarios/mattermost-http-action.platform.ts#verifies a signed action context and dispatches over POST /mattermost/actions',
+    ],
+  },
+  'SCN-context-vault-push': {
+    verifiedAt: '2026-08-13',
+    storyIds: [
+      'tests/stories/integrations/plugins/context-vault.story.test.ts#SCN-context-vault-push: a token push updates the vault, tools report freshness, and revoke rejects',
+    ],
+  },
+  'SCN-context-vault-indexer-singleton': {
+    verifiedAt: '2026-08-13',
+    storyIds: [
+      'tests/stories/integrations/plugins/context-vault-indexer.story.test.ts#SCN-context-vault-indexer-singleton: two plugin activations spawn exactly one daemon through the lock',
     ],
   },
 }

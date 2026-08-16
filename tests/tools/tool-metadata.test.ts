@@ -209,6 +209,8 @@ const EXPECTED_STATIC: Readonly<Record<string, ToolClassification>> = {
   get_message_context: { domain: 'history', operation: 'read', risk: 'read' },
   fetch_chat_link: { domain: 'history', operation: 'read', risk: 'open-world' },
   web_fetch: { domain: 'web', operation: 'read', risk: 'open-world' },
+  plugin_context_vault__list_agent_specs: { domain: 'plugin', operation: 'read', risk: 'read' },
+  plugin_context_vault__get_agent_spec: { domain: 'plugin', operation: 'read', risk: 'read' },
 }
 
 describe('static tool classification table', () => {

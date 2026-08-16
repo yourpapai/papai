@@ -122,6 +122,10 @@ function makeStubRuntimeContext(): PluginToolRuntimeContext {
       resolveMcpTokens: () => ({}),
     },
     codingRepos: { list: () => [], get: () => null },
+    contextVault: {
+      list: () => ({ specs: [], meta: { lastPushAt: null } }),
+      get: () => ({ ok: false, reason: 'not-found' }),
+    },
   }
 }
 

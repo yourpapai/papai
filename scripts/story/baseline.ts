@@ -117,7 +117,19 @@ function runtimeDirectories(paths: readonly string[]): readonly string[] {
 export async function loadBaselineRuntimeInputs(root: string, commit: string): Promise<LoadedRuntimeInputTree> {
   const tree = await gitBytes(
     root,
-    ['ls-tree', '-rz', '--full-tree', commit, '--', 'src', 'plugins', 'package.json', 'bun.lock', 'public'],
+    [
+      'ls-tree',
+      '-rz',
+      '--full-tree',
+      commit,
+      '--',
+      'src',
+      'plugins',
+      'context-vault-indexer',
+      'package.json',
+      'bun.lock',
+      'public',
+    ],
     `Cannot read story runtime inputs at ${commit}`,
   )
   const entries = [...parseGitTree(tree, isRuntimeInputPath, true)].sort((left, right) =>
