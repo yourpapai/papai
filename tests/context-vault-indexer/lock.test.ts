@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   acquireIndexerLock,
+  releaseIndexerLock,
   handoffIndexerLock,
   LOCK_FILE_NAME,
   refreshIndexerHeartbeat,
@@ -189,5 +190,30 @@ describe('context-vault-indexer lock', () => {
     handoffIndexerLock(LOCK_PATH, 4242, 5555, makeDeps({ fs, now: () => 101_000 }))
 
     expect(fs.files.has(LOCK_PATH)).toBe(false)
+  })
+
+  describe('releaseIndexerLock', () => {
+    test('removes a lock still held by the releasing pid', () => {
+      const fs = makeFakeFs({ [LOCK_PATH]: JSON.stringify({ pid: 5555, heartbeatAt: 100_000 }) })
+
+      releaseIndexerLock(LOCK_PATH, 5555, makeDeps({ fs }))
+
+      expect(fs.files.has(LOCK_PATH)).toBe(false)
+    })
+
+    test('leaves a lock reclaimed by another daemon alone', () => {
+      const record = JSON.stringify({ pid: 1111, heartbeatAt: 100_000 })
+      const fs = makeFakeFs({ [LOCK_PATH]: record })
+
+      releaseIndexerLock(LOCK_PATH, 5555, makeDeps({ fs }))
+
+      expect(fs.files.get(LOCK_PATH)).toBe(record)
+    })
+
+    test('is a no-op when the lock file is already gone', () => {
+      const fs = makeFakeFs()
+
+      expect(() => releaseIndexerLock(LOCK_PATH, 5555, makeDeps({ fs }))).not.toThrow()
+    })
   })
 })

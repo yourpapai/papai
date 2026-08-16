@@ -112,10 +112,19 @@ runDaemon(getRepos: () => readonly RepoRuntime[], deps: Omit<DaemonDeps, 'fs'>, 
 ```
 
 Each tick snapshots `getRepos()` and calls the existing `scanOnce(repo.config, {…deps,
-fs: repo.fs})` per repo, sequentially. `scanOnce` is untouched. Sequential rather than
-concurrent: the repo count is the number of projects a developer has open, pushes are
-already retried with backoff inside `scanOnce`, and `p-limit` is not a dependency of
-this standalone package.
+fs: repo.fs})` per repo. `scanOnce` is untouched. Repos are scanned under `p-limit` at
+concurrency 4 — the project's stated convention for bounded concurrency over remote
+ops, and what the `no-await-in-loop` rule pushes toward; a plain sequential `for`/`await`
+tripped that rule during apply. The cap is small because the repo count is just the
+number of projects a developer has open, and each push already retries with backoff
+inside `scanOnce`.
+
+The loop moved to its own module during apply: `daemon.ts` crossed the 300-line
+`max-lines` limit once the multi-repo pass landed, and that limit is a design signal
+rather than something to compress around. `daemon.ts` now owns the per-repo scan and
+push (`scanOnce`); `loop.ts` owns tick scheduling, heartbeat cadence, lost-lock exit,
+and the repo fan-out (`runDaemon`). `DaemonHeartbeat` moved with the loop, since only
+the loop ever used it.
 
 Snapshotting at tick start means a registration arriving mid-tick applies to the next
 one, which is what the spec states.
@@ -133,8 +142,10 @@ two paths ran.
 
 ### 6. Shutdown
 
-`SIGINT`/`SIGTERM` abort the loop signal, close the socket, unlink the socket file, and
-remove the lock file if the record still names our pid. Releasing the lock on a clean
+`SIGINT`/`SIGTERM` abort the loop signal, close the socket (force-closing live
+connections, or a lingering client keeps Bun's event loop alive and the daemon ignores
+the signal), unlink the socket file, and remove the lock file if the record still names
+our pid — `releaseIndexerLock`, added to `lock.ts` alongside the existing handoff guard. Releasing the lock on a clean
 exit means the next activation spawns immediately instead of waiting out the heartbeat
 TTL.
 
@@ -147,7 +158,11 @@ persisted state is keyed by **repository identity** (a local filesystem path has
 by any storage-context, config-context, platform-instance, or user id.
 
 New files on disk, all under the caller-chosen `stateDir`: `config.json`,
-`context-vault-indexer.sock`, and one `state-<hash>.json` per registered repository.
+`context-vault-indexer.sock`, and one `state-<hash>.json` per registered repository. The
+state dir is forced to `0700` on every start, not only on creation: `mkdirSync` leaves an
+existing directory's mode alone, and a pre-existing `0755` dir would reopen the
+bind→chmod window the mode is there to close (caught by the manual smoke run in task 6.3,
+and it now logs a warning when it tightens).
 Per-repo state files are what let a re-pointed worktree diff against the same ledger.
 There is no installed base — no entrypoint has ever run — so no state migration is
 needed.
@@ -163,13 +178,18 @@ needed.
 
 ## New modules
 
-`context-vault-indexer/` gains `entry.ts` (process wiring), `config.ts` (schema, read,
-atomic rewrite), `ipc.ts` (server + client), and `repo-identity.ts` (worktree
-resolution). No existing module covers these: `daemon.ts` is the scan/push loop,
+`context-vault-indexer/` gains `main.ts` (the runnable process shell — real `node:fs`,
+`fetch`, `process.env`, signals — and the `daemonEntry` the adapter spawns), `entry.ts`
+(orchestration behind injected seams), `loop.ts` (the multi-repo tick loop split out of
+`daemon.ts`), `config.ts` (schema, read, atomic rewrite), `ipc.ts` (server + client),
+`repo-identity.ts` (worktree resolution), and `registry.ts` (the identity-keyed repo set: dedupe, re-point, persistence, and the
+per-repo state key). `registry.ts` was not in the original module list — it separated
+out during apply because folding it into `config.ts` would have made the schema module
+own worktree policy, and folding it into `ipc.ts` would have put domain logic behind
+the transport. No existing module covers these: `daemon.ts` is the scan/push loop,
 `lock.ts` is the singleton, and the adapter is the coding-agent shim. Keeping them
-separate is also what keeps `entry.ts` — the one file that touches real `node:fs`,
-`fetch`, `process.env`, and signals — thin enough to stay under the `max-lines` limits
-while every decision underneath it stays unit-testable through its injected seams.
+separate is what confines real I/O to `main.ts` while every decision underneath it stays
+unit-testable through injected seams.
 
 ## Hook and TDD interaction
 
@@ -186,10 +206,14 @@ scenario, extended so the second activation registers rather than merely no-opin
 
 ## Open risks
 
-- **Bun unix-socket API surface.** The design assumes `Bun.listen({ unix })` /
-  `Bun.connect({ unix })`. Task 3.1 verifies this against the installed Bun before the
-  IPC module is written; if it does not hold, `node:net` is the fallback with no design
-  consequence beyond the module's internals.
+- **Bun unix-socket API surface.** ~~Assumed~~ **confirmed** against Bun 1.3.11
+  (task 3.1): `Bun.listen({ unix })` / `Bun.connect({ unix })` round-trip, so `node:net`
+  is not needed. Two behaviors the probe surfaced and the implementation must handle:
+  the socket file is created `0755`, so the `chmod 0600` step is load-bearing rather
+  than defensive (and is why `stateDir` must be `0700` — it closes the bind→chmod
+  window); and `server.stop()` without `closeActiveConnections` leaves the event loop
+  alive on an open client connection, so shutdown must force-close or the daemon
+  ignores `SIGTERM`.
 - **Worktree `gitdir` parsing** covers the standard `git worktree add` layout. Exotic
   layouts fall back to path identity, which degrades to today's behavior (one entry per
   directory) rather than failing.

@@ -54,6 +54,7 @@
     "opencode-agent:lint": "bun run --filter opencode-agent lint",
     "opencode-agent:format:check": "bun run --filter opencode-agent format:check",
     "opencode-agent:start": "bun run --filter opencode-agent start",
+    "context-vault-indexer:start": "bun run context-vault-indexer/main.ts",
     "knip": "knip-bun --strict --no-gitignore",
     "typecheck": "tsgo --noEmit",
     "lint": "oxlint --config .oxlintrc.json --ignore-path .oxlintignore .",

@@ -9,7 +9,6 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 
 import {
-  runDaemon,
   scanOnce,
   type DaemonConfig,
   type DaemonDeps,
@@ -17,6 +16,7 @@ import {
   type PushCall,
 } from '../../context-vault-indexer/daemon.js'
 import { LOCK_FILE_NAME, type LockDeps, type LockFileSystem } from '../../context-vault-indexer/lock.js'
+import { runDaemon, type DaemonLoopDeps, type RepoRuntime } from '../../context-vault-indexer/loop.js'
 
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
 
@@ -454,13 +454,26 @@ describe('context-vault-indexer daemon scanOnce', () => {
   })
 })
 
+/** Appends `entry` the first time it is called, so a mid-scan registration happens exactly once. */
+const registerOnce = (repos: RepoRuntime[], entry: RepoRuntime): void => {
+  const alreadyRegistered = repos.length !== 1
+  if (alreadyRegistered) return
+  repos.push(entry)
+}
+
+/** Stops the loop once `count` reaches `limit`, keeping the branch out of test bodies. */
+const abortAfter = (controller: AbortController, count: number, limit: number): void => {
+  if (count < limit) return
+  controller.abort()
+}
+
 describe('runDaemon', () => {
   test('rescans on each interval tick until the abort signal fires', async () => {
     const controller = new AbortController()
     const { fs, scans } = makeAbortingFs(controller, 2)
     const { deps, pushes, sleeps } = makeDeps(fs)
 
-    await runDaemon(CONFIG, deps, { intervalMs: 5_000, signal: controller.signal })
+    await runDaemon(() => [{ config: CONFIG, fs }], deps, { intervalMs: 5_000, signal: controller.signal })
 
     expect(scans()).toBe(2)
     expect(pushes).toHaveLength(1)
@@ -488,13 +501,13 @@ describe('runDaemon', () => {
       clock += ms
       return base.deps.sleep(ms)
     }
-    const deps: DaemonDeps = {
+    const deps: DaemonLoopDeps = {
       ...base.deps,
       sleep: sleepAndAdvance,
       heartbeat: { lockPath: LOCK_PATH, pid: 5555, lock },
     }
 
-    await runDaemon(CONFIG, deps, { intervalMs: 5_000, signal: controller.signal })
+    await runDaemon(() => [{ config: CONFIG, fs }], deps, { intervalMs: 5_000, signal: controller.signal })
 
     expect(scans()).toBe(2)
     expect(heartbeats).toEqual([100_000, 105_000])
@@ -522,13 +535,13 @@ describe('runDaemon', () => {
       clock += ms
       return base.deps.sleep(ms)
     }
-    const deps: DaemonDeps = {
+    const deps: DaemonLoopDeps = {
       ...base.deps,
       sleep: sleepAndAdvance,
       heartbeat: { lockPath: LOCK_PATH, pid: 5555, lock },
     }
 
-    await runDaemon(CONFIG, deps, { intervalMs: 30_000, signal: controller.signal })
+    await runDaemon(() => [{ config: CONFIG, fs }], deps, { intervalMs: 30_000, signal: controller.signal })
 
     expect(scans()).toBe(2)
     expect(heartbeats).toEqual([100_000, 105_000, 110_000, 115_000, 120_000, 125_000, 130_000])
@@ -544,9 +557,9 @@ describe('runDaemon', () => {
     const controller = new AbortController()
     const { fs } = makeAbortingFs(controller, 1)
     const base = makeDeps(fs)
-    const deps: DaemonDeps = { ...base.deps, heartbeat: { lockPath: LOCK_PATH, pid: 5555, lock } }
+    const deps: DaemonLoopDeps = { ...base.deps, heartbeat: { lockPath: LOCK_PATH, pid: 5555, lock } }
 
-    await runDaemon(CONFIG, deps, { intervalMs: 5_000, signal: controller.signal })
+    await runDaemon(() => [{ config: CONFIG, fs }], deps, { intervalMs: 5_000, signal: controller.signal })
 
     expect(lockFs.files.get(LOCK_PATH)).toBe(foreign)
   })
@@ -559,9 +572,9 @@ describe('runDaemon', () => {
     const controller = new AbortController()
     const { fs, scans } = makeAbortingFs(controller, 2)
     const base = makeDeps(fs)
-    const deps: DaemonDeps = { ...base.deps, heartbeat: { lockPath: LOCK_PATH, pid: 5555, lock } }
+    const deps: DaemonLoopDeps = { ...base.deps, heartbeat: { lockPath: LOCK_PATH, pid: 5555, lock } }
 
-    await runDaemon(CONFIG, deps, { intervalMs: 5_000, signal: controller.signal })
+    await runDaemon(() => [{ config: CONFIG, fs }], deps, { intervalMs: 5_000, signal: controller.signal })
 
     expect(controller.signal.aborted).toBe(false)
     expect(scans()).toBe(0)
@@ -573,7 +586,7 @@ describe('runDaemon', () => {
     const { fs, scans } = makeFailOnceThenAbortFs(controller)
     const { deps, sleeps } = makeDeps(fs)
 
-    await runDaemon(CONFIG, deps, { intervalMs: 5_000, signal: controller.signal })
+    await runDaemon(() => [{ config: CONFIG, fs }], deps, { intervalMs: 5_000, signal: controller.signal })
 
     expect(scans()).toBe(2)
     expect(sleeps).toEqual([5_000])
@@ -586,9 +599,109 @@ describe('runDaemon', () => {
     deps.sleep = (): Promise<void> => Promise.reject(new Error('timer unavailable'))
 
     const started = Date.now()
-    await runDaemon(CONFIG, deps, { intervalMs: 25, signal: controller.signal })
+    await runDaemon(() => [{ config: CONFIG, fs }], deps, { intervalMs: 25, signal: controller.signal })
 
     expect(scans()).toBe(2)
     expect(Date.now() - started).toBeGreaterThanOrEqual(25)
+  })
+
+  test('scans every registered repo on a tick, each against its own state file', async () => {
+    const controller = new AbortController()
+    const alpha = makeFakeFs({ [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha\n', 100) })
+    const beta = makeFakeFs({ [`${SPEC_DIR}/beta/proposal.md`]: file('# Beta\n', 100) })
+    const { deps, pushes } = makeDeps(alpha, [
+      { ok: true, status: 200 },
+      { ok: true, status: 200 },
+    ])
+    const repos: RepoRuntime[] = [
+      { config: { ...CONFIG, repo: 'alpha-repo' }, fs: alpha },
+      { config: { ...CONFIG, repo: 'beta-repo' }, fs: beta },
+    ]
+    queueMicrotask(() => {
+      controller.abort()
+    })
+
+    await runDaemon(() => repos, deps, { intervalMs: 5_000, signal: controller.signal })
+
+    expect(pushes.map((push) => bodyOf(push).repo).toSorted()).toEqual(['alpha-repo', 'beta-repo'])
+    expect(alpha.savedStates).toHaveLength(1)
+    expect(beta.savedStates).toHaveLength(1)
+  })
+
+  test('a repo registered mid-tick is picked up on the next tick, not the running one', async () => {
+    const controller = new AbortController()
+    const alpha = makeFakeFs({ [`${SPEC_DIR}/alpha/proposal.md`]: file('# Alpha\n', 100) })
+    const beta = makeFakeFs({ [`${SPEC_DIR}/beta/proposal.md`]: file('# Beta\n', 100) })
+    const repos: RepoRuntime[] = []
+    // Registers beta while tick 1 is already scanning alpha.
+    const alphaMidScanRegister: DaemonFs = {
+      ...alpha,
+      listMarkdownFiles: (dir: string) => {
+        registerOnce(repos, { config: { ...CONFIG, repo: 'beta-repo' }, fs: beta })
+        return alpha.listMarkdownFiles(dir)
+      },
+    }
+    repos.push({ config: { ...CONFIG, repo: 'alpha-repo' }, fs: alphaMidScanRegister })
+    const { deps, pushes } = makeDeps(alpha, [
+      { ok: true, status: 200 },
+      { ok: true, status: 200 },
+      { ok: true, status: 200 },
+    ])
+    const snapshotSizes: number[] = []
+    const getRepos = (): readonly RepoRuntime[] => {
+      const snapshot = [...repos]
+      snapshotSizes.push(snapshot.length)
+      abortAfter(controller, snapshotSizes.length, 2)
+      return snapshot
+    }
+
+    await runDaemon(getRepos, deps, { intervalMs: 5_000, signal: controller.signal })
+
+    expect(snapshotSizes).toEqual([1, 2])
+    expect(pushes.map((push) => bodyOf(push).repo)).toEqual(['alpha-repo', 'beta-repo'])
+  })
+
+  test('one repo failing its scan does not skip the other repos in the same tick', async () => {
+    const controller = new AbortController()
+    const healthy = makeFakeFs({ [`${SPEC_DIR}/beta/proposal.md`]: file('# Beta\n', 100) })
+    const broken: DaemonFs = {
+      ...healthy,
+      listMarkdownFiles: () => {
+        throw new Error('spec dir vanished')
+      },
+    }
+    const { deps, pushes } = makeDeps(healthy)
+    queueMicrotask(() => {
+      controller.abort()
+    })
+
+    await runDaemon(
+      () => [
+        { config: { ...CONFIG, repo: 'broken-repo' }, fs: broken },
+        { config: { ...CONFIG, repo: 'healthy-repo' }, fs: healthy },
+      ],
+      deps,
+      { intervalMs: 5_000, signal: controller.signal },
+    )
+
+    expect(pushes.map((push) => bodyOf(push).repo)).toEqual(['healthy-repo'])
+  })
+
+  test('reports each completed scan pass so status can surface freshness', async () => {
+    const controller = new AbortController()
+    const { fs, scans } = makeAbortingFs(controller, 2)
+    const { deps } = makeDeps(fs)
+    const passes: number[] = []
+
+    await runDaemon(() => [{ config: CONFIG, fs }], deps, {
+      intervalMs: 5_000,
+      signal: controller.signal,
+      onScan: () => {
+        passes.push(passes.length)
+      },
+    })
+
+    expect(scans()).toBe(2)
+    expect(passes).toHaveLength(2)
   })
 })

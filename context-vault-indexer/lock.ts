@@ -84,3 +84,15 @@ export function handoffIndexerLock(lockPath: string, fromPid: number, toPid: num
   if (existing === null || existing.pid !== fromPid) return
   deps.fs.write(lockPath, serialize(toPid, deps.now()))
 }
+
+/**
+ * Drops the lock on a clean shutdown, but only while the record still names
+ * `pid`: a daemon that was superseded must not delete its replacement's lock.
+ * Releasing on exit means the next activation spawns immediately instead of
+ * waiting out the heartbeat TTL.
+ */
+export function releaseIndexerLock(lockPath: string, pid: number, deps: LockDeps): void {
+  const existing = parseRecord(deps.fs.readLock(lockPath))
+  if (existing === null || existing.pid !== pid) return
+  deps.fs.remove(lockPath)
+}
