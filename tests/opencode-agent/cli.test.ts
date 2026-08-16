@@ -14,7 +14,7 @@ import { parseArgs, runCli, UsageError } from '../../opencode-agent/src/index.js
 import { createLogger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
-import { REPORTED_OUTPUT } from '../../opencode-agent/src/step-output.js'
+import { REPLY_COMMENT_OUTPUT, REPORTED_OUTPUT } from '../../opencode-agent/src/step-output.js'
 import { silentOctokitLog } from './test-helpers.js'
 
 const workDir = await mkdtemp(path.join(tmpdir(), 'opencode-agent-cli-'))
@@ -772,7 +772,11 @@ describe('runCli', () => {
     // Asserting the flag alone is not enough: the workflow reads the file, and
     // a flag that never reaches it gates nothing.
     expect(github.posted).toHaveLength(1)
-    expect(await output.read()).toContain(`${REPORTED_OUTPUT}=true`)
+    const written = await output.read()
+    expect(written).toContain(`${REPORTED_OUTPUT}=true`)
+    // And which comment it was, so the workflow's transcript and failure steps
+    // can edit that one rather than adding comments of their own.
+    expect(written).toContain(`${REPLY_COMMENT_OUTPUT}=9`)
   })
 
   test('leaves the marker unwritten when it posted nothing', async () => {
@@ -797,6 +801,8 @@ describe('runCli', () => {
 
     expect(result.status).toBe('skipped')
     expect(result.reported).toBe(false)
+    // Neither marker: a job that dies with the issue silent must reach the
+    // fallback step, and that step has no comment to edit.
     expect(await output.read()).toBe('')
   })
 

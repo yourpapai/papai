@@ -44,12 +44,29 @@ export interface RunResult {
    * A field rather than something derived from `status` and `state`, because
    * neither says it. `failed` covers both a reported failure and a crash;
    * `skipped` covers both a silent guardrail rejection and a refused command
-   * that answered on the issue; and the state block rides on the same call that
-   * posts, so "the state moved" and "a comment exists" are one event seen from
-   * the side that cannot distinguish the paths that post from the ones that do
-   * not. Required rather than optional so a new terminal path has to decide,
-   * the way `SystemPromptInput.nonce` makes forgetting the envelope a type
-   * error.
+   * that answered on the issue.
+   *
+   * **Decided in one place.** Every terminal path still sets it, and inside
+   * `runAccepted` every one of those values is then replaced: a run makes one
+   * comment now, at the end, so whether the issue carries an account of it is a
+   * fact about that single write and about nothing a phase can know. `runCli`'s
+   * guardrail exit is the one that keeps its own answer, because it returns
+   * before the reply buffer is ever begun. Leave the per-path values as they
+   * are — they document what each path *intends* to have said, and the day a
+   * second write is added they are what it would be decided from.
    */
   reported: boolean
+  /**
+   * The comment the run posted, when it posted one.
+   *
+   * `step-output.ts` publishes it so the workflow's transcript and
+   * infrastructure-failure steps can edit that comment rather than adding
+   * comments of their own — which is the difference between one reply per
+   * command and three.
+   *
+   * Optional, unlike `reported`, and deliberately so: it is not a decision a
+   * terminal path makes but an observation only the flush can make, so a path
+   * that omits it is stating the truth rather than forgetting something.
+   */
+  replyCommentId?: number
 }

@@ -134,22 +134,22 @@ us, both recorded here rather than discovered twice:
 
 ## 6. The workflow steps edit rather than post (D5)
 
-- [ ] 6.1 Failing test: `REPLY_COMMENT_OUTPUT` is written to `$GITHUB_OUTPUT`
+- [x] 6.1 Failing test: `REPLY_COMMENT_OUTPUT` is written to `$GITHUB_OUTPUT`
       beside `reported=true` when a comment was posted, and neither is written
       when none was; absent `GITHUB_OUTPUT` (a local `--event-path` run) is not
       a failure; a failed write is a `warn`.
       `bun test tests/opencode-agent/cli.test.ts`
-- [ ] 6.2 Publish the id from `recordReport` in `step-output.ts`, taking it from
+- [x] 6.2 Publish the id from `recordReport` in `step-output.ts`, taking it from
       what the flush returned.
       `bun test tests/opencode-agent/ && bun run typecheck`
-- [ ] 6.3 Failing test: the transcript step runs **after** the
+- [x] 6.3 Failing test: the transcript step runs **after** the
       infrastructure-failure step and appends to whichever comment exists,
       reading `steps.pipeline.outputs.reply-comment` or the failure step's own
       id; the failure step's `if:` and wording are unchanged; both `if:`
       expressions name output keys the pipeline actually writes. Asserted
       against the parsed workflow, as the existing suite does.
       `bun test tests/opencode-agent/workflow.test.ts`
-- [ ] 6.4 Rewrite both steps in `.github/workflows/agent-pipeline.yml`, keeping
+- [x] 6.4 Rewrite both steps in `.github/workflows/agent-pipeline.yml`, keeping
       the artefact-id gate, the derived `VIEWER_URL` and the `reported` gate
       exactly as they are.
       `bun run workflows:lint && bun test tests/opencode-agent/workflow.test.ts`

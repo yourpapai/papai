@@ -201,7 +201,8 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
 const flushAround = async (deps: PhaseDeps, run: () => Promise<RunResult>): Promise<RunResult> => {
   try {
     const result = await run()
-    return { ...result, reported: (await deps.status.flush()) !== null }
+    const posted = await deps.status.flush()
+    return posted === null ? { ...result, reported: false } : { ...result, reported: true, replyCommentId: posted.id }
   } catch (error) {
     await deps.status.flush()
     throw error

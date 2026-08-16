@@ -871,6 +871,51 @@ describe('the encrypted debug transcript', () => {
     expect(transcriptStep.id).toBe('transcript')
   })
 
+  test('appends to the run’s reply instead of adding a comment of its own', () => {
+    // One third of issue #281's three-comments-per-command. The pipeline
+    // publishes which comment it posted; this step edits that one.
+    const { env, run } = transcriptComment
+
+    expect(env['REPLY_COMMENT']).toBe('${{ steps.pipeline.outputs.reply-comment }}')
+    expect(run).toContain('gh api')
+    expect(run).toContain('--method PATCH')
+  })
+
+  test('falls back to a comment when the run posted none to edit', () => {
+    // A job that died before the flush leaves nothing to append to, and a
+    // transcript for exactly that run is the one most worth reading.
+    expect(transcriptComment.run).toContain('gh issue comment')
+  })
+
+  test('runs after the failure notice, so there is always something to attach to', () => {
+    // The notice posts the run's one comment when the pipeline posted none, and
+    // publishes its id. Ordered the other way, the transcript would post its own
+    // comment and the notice would add a second.
+    const names = steps.map((candidate) => candidate.name.toLowerCase())
+    const notice = names.findIndex((name) => name.includes('infrastructure failure'))
+    const transcript = names.findIndex((name) => name.includes('link the transcript'))
+
+    expect(notice).toBeGreaterThan(-1)
+    expect(transcript).toBeGreaterThan(notice)
+  })
+})
+
+describe('the infrastructure-failure notice', () => {
+  const notice = step('infrastructure failure')
+
+  test('still fires only when the run reported nothing', () => {
+    // Unchanged, and now exactly true: `reported` is set from the one write a
+    // run makes, so "the pipeline reported" and "a comment exists" are one fact.
+    expect(notice.if).toContain("steps.pipeline.outputs.reported != 'true'")
+    expect(notice.if).toContain('needs.resolve.outputs.issue')
+    expect(notice.if).toContain('failure() || cancelled()')
+  })
+
+  test('publishes the comment it posted, so the transcript can append to it', () => {
+    expect(notice.id).toBe('failure-notice')
+    expect(notice.run).toContain('GITHUB_OUTPUT')
+  })
+
   test('links the artefact and the viewer, and carries no key', () => {
     // The split is the containment: the artefact is behind repository access,
     // the key behind the secret store, and the page brings them together in a

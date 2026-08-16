@@ -537,41 +537,6 @@ jobs:
           path: .opencode-agent/debug-transcript.enc
           retention-days: 7
 
-      # Two links and a sentence, which is the whole flow a maintainer was
-      # promised: click the artefact (one click, downloads while logged in),
-      # open the viewer, drop the file in, paste the key.
-      #
-      # Gated on the artefact **id** rather than on the run's outcome: a
-      # transcript is worth reading after a green run too — a phase that did the
-      # wrong thing correctly leaves no failure to attach a comment to — and a
-      # keyless run must stay silent, which an empty id is exactly.
-      #
-      # The key is never in the comment, and there is no URL parameter that
-      # could carry it. That is the point of the split: the artefact is behind
-      # repository access, the key is behind the secret store, and the page
-      # brings them together in a tab that talks to neither.
-      - name: Link the transcript on the issue
-        if: always() && needs.resolve.outputs.issue && steps.transcript.outputs.artifact-id != ''
-        env:
-          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ needs.resolve.outputs.issue }}
-          # The upload action's own output rather than a hand-built path: it is
-          # the URL GitHub actually serves the artefact from, and a URL assembled
-          # here would be a second spelling to keep in step with theirs.
-          ARTIFACT_URL: ${{ steps.transcript.outputs.artifact-url }}
-          # Derived rather than hardcoded, so a fork publishes its own page: this
-          # is the default Pages URL for `<owner>.github.io/<repo>`, which is
-          # what `transcript-viewer-pages.yml` deploys to.
-          VIEWER_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
-        run: |
-          printf '%s\n\n%s\n\n%s\n\n%s\n' \
-            '<details><summary>🔐 Encrypted debug transcript for this run</summary>' \
-            "- [Download the transcript]($ARTIFACT_URL) — the \`.enc\` file, inside the zip." \
-            "- [Open the viewer]($VIEWER_URL) — drop the file in and paste this repository's \`AGENT_LOG_KEY\`." \
-            '</details>' \
-            > /tmp/agent-transcript.md
-          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/agent-transcript.md
-
       # The two facts a dead pipeline cannot report about itself, collected while
       # the runner still exists.
       #
@@ -687,7 +652,11 @@ jobs:
       # need to tell, and "did not finish" is true of a crash, a runner timeout
       # and a cancellation alike — which is exactly the set the `reported` gate
       # leaves for this step.
+      # `id:` is load-bearing here too, for the same reason it is on the pipeline
+      # step: this is the run's *only* comment when the pipeline never got to
+      # post one, so the transcript step below has to be able to append to it.
       - name: Report an infrastructure failure on the issue
+        id: failure-notice
         if: (failure() || cancelled()) && needs.resolve.outputs.issue && steps.pipeline.outputs.reported != 'true'
         env:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
@@ -699,7 +668,71 @@ jobs:
             "The workflow run failed or was cancelled before or during the pipeline. Logs: $RUN_URL" \
             'The issue state is unchanged. Reply `/retry` once the cause is addressed — on the pull request, if this issue has one open.' \
             > /tmp/agent-failure.md
-          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/agent-failure.md
+          # `--json url` rather than parsing the printed link: the id is what the
+          # transcript step edits, and the URL's last path segment is where it is.
+          url=$(gh issue comment "$ISSUE_NUMBER" --body-file /tmp/agent-failure.md)
+          echo "comment=${url##*/}" >> "$GITHUB_OUTPUT"
+
+      # Two links and a sentence, which is the whole flow a maintainer was
+      # promised: click the artefact (one click, downloads while logged in),
+      # open the viewer, drop the file in, paste the key.
+      #
+      # Gated on the artefact **id** rather than on the run's outcome: a
+      # transcript is worth reading after a green run too — a phase that did the
+      # wrong thing correctly leaves no failure to attach a comment to — and a
+      # keyless run must stay silent, which an empty id is exactly.
+      #
+      # It **appends to the run's own reply** rather than posting a comment of
+      # its own, which is one third of why issue #281 drew three bot comments per
+      # command. The pipeline publishes the comment it posted; the step above
+      # publishes the one *it* posted when the pipeline never got that far; and a
+      # run that produced neither — no issue resolved at all — has nothing to
+      # append to and posts, which is the only case left where this adds a
+      # comment. Ordered after the failure notice for exactly that reason: the
+      # other way round, both would post.
+      #
+      # The key is never in the comment, and there is no URL parameter that
+      # could carry it. That is the point of the split: the artefact is behind
+      # repository access, the key is behind the secret store, and the page
+      # brings them together in a tab that talks to neither.
+      - name: Link the transcript on the run's reply
+        if: always() && needs.resolve.outputs.issue && steps.transcript.outputs.artifact-id != ''
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ needs.resolve.outputs.issue }}
+          REPO: ${{ github.repository }}
+          # Whichever comment this run left, in the order they are written.
+          REPLY_COMMENT: ${{ steps.pipeline.outputs.reply-comment }}
+          NOTICE_COMMENT: ${{ steps.failure-notice.outputs.comment }}
+          # The upload action's own output rather than a hand-built path: it is
+          # the URL GitHub actually serves the artefact from, and a URL assembled
+          # here would be a second spelling to keep in step with theirs.
+          ARTIFACT_URL: ${{ steps.transcript.outputs.artifact-url }}
+          # Derived rather than hardcoded, so a fork publishes its own page: this
+          # is the default Pages URL for `<owner>.github.io/<repo>`, which is
+          # what `transcript-viewer-pages.yml` deploys to.
+          VIEWER_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: |
+          printf '%s\n\n%s\n\n%s\n\n%s\n' \
+            '<details><summary>🔐 Encrypted debug transcript for this run</summary>' \
+            "- [Download the transcript]($ARTIFACT_URL) — the \`.enc\` file, inside the zip." \
+            "- [Open the viewer]($VIEWER_URL) — drop the file in and paste this repository's \`AGENT_LOG_KEY\`." \
+            '</details>' \
+            > /tmp/agent-transcript.md
+
+          target="${REPLY_COMMENT:-$NOTICE_COMMENT}"
+          if [ -z "$target" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body-file /tmp/agent-transcript.md
+            exit 0
+          fi
+
+          # Read-modify-write, because the REST API replaces a comment body
+          # rather than appending to it. A refused read leaves the body unset and
+          # the append is skipped rather than blanking a real comment.
+          gh api "repos/$REPO/issues/comments/$target" --jq .body > /tmp/agent-reply.md
+          printf '\n\n' >> /tmp/agent-reply.md
+          cat /tmp/agent-transcript.md >> /tmp/agent-reply.md
+          gh api "repos/$REPO/issues/comments/$target" --method PATCH -F body=@/tmp/agent-reply.md
 
       # The second half of the `agent:working` mitigation, and it has to live
       # here rather than in the pipeline. The in-run reconcile in
