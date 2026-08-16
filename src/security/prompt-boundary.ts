@@ -11,6 +11,8 @@ const MAX_CONTENT_LENGTH = 500
 
 const BOUNDARY_TAG_PATTERN = /<\/?\s*external-data[^>]*>?/giu
 const NEWLINE_PATTERN = /[\r\n]+/gu
+/** Unicode format characters (Cf): invisible, exploitable to forge boundary tags. */
+const FORMAT_CHAR_PATTERN = /[\p{Cf}]/gu
 
 /** Unpredictable per-process token; never logged and never derived from message content. */
 const BOUNDARY_TOKEN = randomBytes(24).toString('hex')
@@ -24,7 +26,12 @@ logger.debug({ module: 'src/security/prompt-boundary' }, 'prompt boundary initia
  */
 export function sanitizeExternalData(content: string | undefined): string {
   if (content === undefined) return ''
-  return content.replace(BOUNDARY_TAG_PATTERN, '').replace(NEWLINE_PATTERN, ' ').trim().slice(0, MAX_CONTENT_LENGTH)
+  return content
+    .replace(FORMAT_CHAR_PATTERN, '')
+    .replace(BOUNDARY_TAG_PATTERN, '')
+    .replace(NEWLINE_PATTERN, ' ')
+    .trim()
+    .slice(0, MAX_CONTENT_LENGTH)
 }
 
 /**
