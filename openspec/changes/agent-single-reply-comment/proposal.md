@@ -80,14 +80,14 @@ None. `openspec/specs/` is empty (strangler); nothing to modify.
 
 ## Impact
 
-`opencode-agent/src/`: `status-comment.ts` and `status-reporter.ts` (renamed to
-`reply-comment.ts` / `reply-buffer.ts`, the marker string held at
-`AGENT_STATUS`), `run-post.ts`, `cascade.ts`, `orchestrator.ts`, `contain.ts`,
-`heartbeat.ts`, `prompt-budget.ts`, `step-output.ts`, and the renderers reaching
-the thread through `postAndAppend` (`run-report.ts`, `time-budget.ts`,
-`token-budget.ts`, `triggers.ts`, `ci-trigger.ts`, `phase-failure.ts`).
+`opencode-agent/src/`: `status-comment.ts` and `status-reporter.ts` become
+`reply-comment.ts` / `reply-buffer.ts` (marker string held at `AGENT_STATUS`),
+with the run's self-description split into a new `run-detail.ts`; plus
+`run-post.ts`, `cascade.ts`, `orchestrator.ts`, `contain.ts`, `deps.ts`,
+`phase-context.ts`, `heartbeat.ts`, `turn-run.ts`, `prompt-budget.ts`,
+`run-result.ts`, `step-output.ts`.
 `.github/workflows/agent-pipeline.yml`: the transcript-link and
 infrastructure-failure steps become edits. Tests in `tests/opencode-agent/`
-(`status`, `orchestrator`, `workflow`, `adapters`, `cli`). Docs:
+(`reply`, `orchestrator`, `workflow`, `adapters`, `cli`, `progress`). Docs:
 `opencode-agent/CLAUDE.md` (the `AGENT_STATUS` rule in **Shape**), `README.md`,
-`ROADMAP.md`.
+`ROADMAP.md` (S5-14).

@@ -57,14 +57,26 @@ the thread while a run is in flight; each phase's report and blocks are
 appended to an in-memory buffer, and the buffer is rendered and posted as one
 comment when the run settles.
 
-`StatusReporter` collapses to a buffer with two methods:
+`StatusReporter` collapses to a buffer — `ReplyBuffer`, under D8 — with three
+methods:
 
 ```ts
+/** Records the state the run entered on, which fixes the surface. */
+begin(state: AgentState): void
 /** Adds a phase's report. Terminal by construction: never re-rendered. */
-section(body: string, blocks: readonly string[]): void
-/** Renders and posts the run's one comment. The only write to the thread. */
-flush(result: RunResult): Promise<void>
+section(state: AgentState, section: ReportSection): void
+/** Posts the run's one comment, or null. The only write this module makes. */
+flush(): Promise<PostedComment | null>
 ```
+
+*Added during apply:* `begin`. The sketch above had two methods and no way to
+say *which* state fixes the surface, which D3 needs; it also has to clear the
+previous run's sections, the way `open()` did, or a buffer reused across runs
+posts a finished run's sections under the next run's heading. It writes nothing.
+It is called before `applyTrigger`, not before the cascade: a refused command —
+an exhausted `/retry`, a `/review` past its ceiling, a command on the wrong
+surface — is buffered by the trigger layer, and a `begin` that waited for the
+cascade would strand those sections in a buffer nothing flushed.
 
 `section` is synchronous and cannot fail — it appends to an array — which is
 most of the complexity of the old channel gone. What goes with it, because
@@ -91,12 +103,19 @@ worth less than knowing the reply landed.
 `status-reporter.ts`. There is no live channel left for the latter to be, so
 this is a rename, not a second module — see D8.
 
+*Discovered during apply:* `createReplyBuffer` no longer returns the no-op
+reporter when `runUrl` is null. That short-circuit was right for decoration — a
+status comment that cannot link the job doing the work is most of its value gone
+— and is wrong for a report: it would silence every local `--event-path` run
+entirely. `run-detail.ts` drops the job *link* instead, and `runUrl` becomes
+nullable in the view.
+
 ### D2 — The comment is a header plus accumulated sections
 
 The rendered body, in order:
 
 1. **Header** — `phaseHeading` for the state the run settled on, as
-   `renderStatus` renders it today minus the `— run in progress` variant. One
+   `renderReply` renders it today minus the `— run in progress` variant. One
    heading for the run, which is where the `### ❌ Run failed` /
    `### ❌ Run failed in INIT_OR_CLARIFY` duplication goes.
 2. **Sections** — each phase's report, oldest first. Every section but the last
@@ -120,10 +139,18 @@ of the cut — the one thing the cut exists to remove. The marker moved up
 instead. It is the cheaper fix and the more honest one: "the bookkeeping starts
 here" was always the meaning, and a progress table is bookkeeping.
 
-`renderStatus` stays a pure function of a `StatusView`, which now carries
+`renderReply` stays a pure function of a `ReplyView`, which now carries
 `sections: readonly ReportSection[]` and no liveness. Phase reports are terminal
 by construction — written from a finished `PhaseOutcome` — so a section is
 rendered exactly once, and the whole body is rendered exactly once.
+
+*Split during apply:* sections pushed the renderer past `max-lines` (pedantic,
+300), which CLAUDE.md calls a design signal rather than something to compress
+around. The progress table, the job/branch lines and the budget line moved to
+`run-detail.ts` — *how a run describes itself* — leaving `reply-comment.ts` as
+*what a reply is made of*. The two change for different reasons: a new phase or
+a new budget adds a row to the former; a change to how reports are arranged
+touches only the latter.
 
 ### D3 — Blocks append into the same comment, unchanged in semantics
 
@@ -194,10 +221,19 @@ is explicit that the direct link is the promise being kept.
 
 ### D6 — `reported` means the comment was accepted
 
-With one write, the flag is what it always claimed to be: `flush` sets
-`reported` when `createComment` returns, and nothing else touches it. The old
+With one write, the flag is what it always claimed to be: the flush sets
+`reported` when `createComment` returns, and nothing else decides it. The old
 carve-out — a status comment that must never be mistaken for a report — has
 nothing left to guard.
+
+Concretely, `flushAround` in `orchestrator.ts` **overwrites** whatever the
+terminal path claimed, and `runPipeline`'s guardrail exit keeps its own answer
+only because it returns before the buffer is begun. The per-path `reported`
+values are therefore no longer read inside `runAccepted`. They are left in place
+rather than deleted: each documents what its path *intends* to have said, which
+is what a second write would have to be decided from, and stripping twenty-one
+of them would be a wider diff than the clarity buys. `run-result.ts` says so, so
+the next reader is not misled into thinking a path can still decide it.
 
 This is the one place the "never fail a run" swallow is narrowed. `attempt`
 keeps swallowing, so a refused post is still a `warn` rather than a crash, but
@@ -261,6 +297,18 @@ mirrors each rendered body into `thread` so a later phase can read what an
 earlier one wrote, and until flush there is no id to mirror it under. A
 synthetic negative id keeps the shape total and makes an accidental
 `updateComment` against it fail loudly rather than edit a real comment.
+
+**An identity drift is now a diagnostic, not an early failure.** *(Found during
+apply.)* `reportIdentityDrift` compared the author GitHub recorded against the
+one the pipeline believes in, and it ran on every phase's post — so the in-job
+mirror could carry the *recorded* author, and a drift made delivery unable to
+find the report the same job had just written. That early, self-inflicted
+failure is what made the misconfiguration visible within one run. Buffering
+removes it: there is no posted author to learn until the flush, one line before
+the run ends. The check moved there and still fires on the run that causes it,
+but the run now succeeds rather than failing on itself. The hazard it warns
+about is unchanged — a later job reading real authors back cannot see those
+comments — and `AGENT_SELF_LOGIN` is still the fix.
 
 **Nothing in `src/` is affected.** `opencode-agent/` is a standalone Bun
 workspace that no papai module imports and that never runs in the papai
