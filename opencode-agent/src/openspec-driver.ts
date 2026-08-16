@@ -78,6 +78,17 @@ export interface ValidateResult {
 }
 
 export interface OpenSpecDriver {
+  /**
+   * The name of every change the resolved OpenSpec root already holds.
+   *
+   * `openspec new change` refuses a name that is taken, and the refusal is an
+   * exit 1 the driver turns into a thrown error — which is the whole of run
+   * 31929516607: triage named `prompt-injection-defense`, a change the base
+   * branch has carried for weeks, and the pipeline died at INIT_OR_CLARIFY
+   * rather than picking the folder up. Asking first is what lets capture decide
+   * between creating and adopting instead of finding out by failing.
+   */
+  readonly listChangeNames: () => Promise<readonly string[]>
   readonly newChange: (changeName: string, schema: string) => Promise<NewChangeResult>
   readonly status: (changeName: string) => Promise<StatusResult>
   readonly instructions: (artifactId: string, changeName: string) => Promise<InstructionsResult>
@@ -91,6 +102,16 @@ const StatusPayloadSchema = z.object({
   schemaName: z.string().min(1),
   artifacts: z.array(StatusArtifactSchema),
   isPlanningComplete: z.boolean().optional(),
+})
+
+/**
+ * `openspec list --changes --json` carries a per-change progress summary; the
+ * name is the only field capture has a question about, so it is the only one
+ * decoded. The rest is stripped rather than rejected, the way every payload
+ * here is: a CLI that grows a field must not fail a caller that never read it.
+ */
+const ListPayloadSchema = z.object({
+  changes: z.array(z.object({ name: z.string().min(1) })).optional(),
 })
 
 const InstructionDependencySchema = z.object({
@@ -136,38 +157,50 @@ const parseJson = (stdout: string, label: string): unknown => {
   }
 }
 
+/** The artifact map behind `status`, decoded from the CLI's array of records. */
+const readStatus = async (deps: OpenSpecDriverDeps, changeName: string): Promise<StatusResult> => {
+  const stdout = await runExpectOk(deps, ['status', '--change', changeName, '--json'], 'status')
+  const payload = StatusPayloadSchema.parse(parseJson(stdout, 'status'))
+  const artifacts: Record<string, string> = {}
+  for (const artifact of payload.artifacts) artifacts[artifact.id] = artifact.status
+  return { schemaName: payload.schemaName, artifacts, isPlanningComplete: payload.isPlanningComplete ?? false }
+}
+
+/** One artifact's enriched instruction, with every optional field defaulted. */
+const readInstructions = async (
+  deps: OpenSpecDriverDeps,
+  artifactId: string,
+  changeName: string,
+): Promise<InstructionsResult> => {
+  const stdout = await runExpectOk(deps, ['instructions', artifactId, '--change', changeName, '--json'], 'instructions')
+  const payload = InstructionsPayloadSchema.parse(parseJson(stdout, 'instructions'))
+  return {
+    instruction: payload.instruction,
+    template: payload.template,
+    rules: payload.rules ?? [],
+    resolvedOutputPath: payload.resolvedOutputPath,
+    changeDir: payload.changeDir,
+    existingOutputPaths: payload.existingOutputPaths ?? [],
+    dependencies: payload.dependencies ?? [],
+  }
+}
+
 export function createOpenSpecDriver(deps: OpenSpecDriverDeps): OpenSpecDriver {
   return {
+    listChangeNames: async () => {
+      const stdout = await runExpectOk(deps, ['list', '--changes', '--json'], 'list')
+      const payload = ListPayloadSchema.parse(parseJson(stdout, 'list'))
+      return (payload.changes ?? []).map((change) => change.name)
+    },
+
     newChange: async (changeName, schema) => {
       await runExpectOk(deps, ['new', 'change', changeName, '--schema', schema], 'new change')
       return { changeName }
     },
 
-    status: async (changeName) => {
-      const stdout = await runExpectOk(deps, ['status', '--change', changeName, '--json'], 'status')
-      const payload = StatusPayloadSchema.parse(parseJson(stdout, 'status'))
-      const artifacts: Record<string, string> = {}
-      for (const artifact of payload.artifacts) artifacts[artifact.id] = artifact.status
-      return { schemaName: payload.schemaName, artifacts, isPlanningComplete: payload.isPlanningComplete ?? false }
-    },
+    status: (changeName) => readStatus(deps, changeName),
 
-    instructions: async (artifactId, changeName) => {
-      const stdout = await runExpectOk(
-        deps,
-        ['instructions', artifactId, '--change', changeName, '--json'],
-        'instructions',
-      )
-      const payload = InstructionsPayloadSchema.parse(parseJson(stdout, 'instructions'))
-      return {
-        instruction: payload.instruction,
-        template: payload.template,
-        rules: payload.rules ?? [],
-        resolvedOutputPath: payload.resolvedOutputPath,
-        changeDir: payload.changeDir,
-        existingOutputPaths: payload.existingOutputPaths ?? [],
-        dependencies: payload.dependencies ?? [],
-      }
-    },
+    instructions: (artifactId, changeName) => readInstructions(deps, artifactId, changeName),
 
     validateStrict: async (changeName) => {
       const result: CommandResult = await deps.runner(argvFor(deps, ['validate', changeName, '--strict']), {

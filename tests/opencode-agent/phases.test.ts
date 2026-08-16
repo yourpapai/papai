@@ -92,10 +92,13 @@ interface FakeOptions {
   /** State to seed the input with. */
   state?: Partial<AgentState>
   command?: ParsedCommand | null
+  /** Change names the base branch's `openspec/changes/` already holds. */
+  existing?: readonly string[]
 }
 
 const makeInput = (options: FakeOptions): { input: PhaseInput; io: StubIo } => {
   const recording = stubPhaseDeps({ replies: options.replies, thread: options.thread, selfLogin: AGENT_LOGIN })
+  recording.io.existingChanges = [...(options.existing ?? [])]
   const input: PhaseInput = {
     state: baseState(42, options.state),
     issue: { number: 42, title: 'Add a retry helper', body: 'Please add a retry helper to the HTTP client.' },
@@ -146,6 +149,9 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
 
     expect(outcome.signal).toBe('CAPTURED')
     expect(io.openspecCalls).toEqual([
+      // The existence probe comes first: creating is what capture does when the
+      // folder is *not* already there, and it cannot know that without asking.
+      'listChangeNames',
       'newChange:add-retry-helper:spec-driven',
       'instructions:proposal:add-retry-helper',
     ])
@@ -164,7 +170,11 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
     const outcome = await handleTriage(input)
 
     expect(outcome.signal).toBe('CAPTURED')
-    expect(io.openspecCalls).toEqual([`newChange:add-thing:spec-driven`, `instructions:proposal:add-thing`])
+    expect(io.openspecCalls).toEqual([
+      'listChangeNames',
+      `newChange:add-thing:spec-driven`,
+      `instructions:proposal:add-thing`,
+    ])
   })
 
   it('posts a consent comment and parks (NEEDS_CLARIFICATION) for an untrusted author', async () => {
@@ -196,6 +206,7 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
 
     expect(outcome.signal).toBe('CAPTURED')
     expect(io.openspecCalls).toEqual([
+      'listChangeNames',
       'newChange:add-retry-helper:spec-driven',
       'instructions:proposal:add-retry-helper',
     ])
@@ -233,6 +244,137 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
 
     // resetBranchToBase, not ensureBranch — restart means from zero.
     expect(io.gitCalls).toContain('resetBranchToBase:agent/issue-42:main')
+  })
+})
+
+/**
+ * Capture meets a change that is already there.
+ *
+ * A job starts on the base branch, so the folder a capture can collide with is
+ * one the base branch already carries — a change somebody proposed and never
+ * implemented. Run 31929516607 is what that used to cost: issue #281 asked for
+ * "the most valuable unimplemented spec", triage answered
+ * `prompt-injection-defense`, and `openspec new change` exited 1 with "already
+ * exists". The folder is truth (D1), so an existing one is work to adopt, and
+ * whatever it is missing PLANNING drafts through the ordinary artifact loop.
+ */
+
+const ADOPTED = 'prompt-injection-defense'
+
+const PROPOSAL_PATH = '/repo/x.md'
+
+/**
+ * Re-answers the driver the way a folder that already holds artifacts does:
+ * `instructions` reports the proposal as present when `proposal` is true, and
+ * `status` reports whatever the change still owes. Decorates the recording stub
+ * rather than replacing it, so `io.openspecCalls` still sees every call.
+ */
+const withExistingFolder = (input: PhaseInput, folder: { proposal: boolean; pending: readonly string[] }): void => {
+  const driver = input.deps.openspec
+  const artifacts: Record<string, string> = { proposal: 'done', specs: 'done', design: 'done', tasks: 'done' }
+  for (const artifactId of folder.pending) artifacts[artifactId] = 'ready'
+
+  input.deps.openspec = {
+    ...driver,
+    instructions: async (artifactId: string, changeName: string): Promise<InstructionsResult> => ({
+      ...(await driver.instructions(artifactId, changeName)),
+      existingOutputPaths: folder.proposal ? [PROPOSAL_PATH] : [],
+    }),
+    status: async (changeName: string): Promise<StatusResult> => ({
+      ...(await driver.status(changeName)),
+      artifacts,
+      isPlanningComplete: folder.pending.length === 0,
+    }),
+  }
+}
+
+const adoptInput = (
+  folder: { proposal: boolean; pending: readonly string[] },
+  options: Partial<FakeOptions> = {},
+): { input: PhaseInput; io: StubIo } => {
+  const built = makeInput({
+    association: 'OWNER',
+    existing: [ADOPTED, 'user-profile-memory'],
+    replies: [JSON.stringify({ status: 'capture', changeName: ADOPTED, spec: '# Goal\n\nDefend the prompt.' })],
+    ...options,
+  })
+  built.io.readContents[PROPOSAL_PATH] = '# Why\n\nThe proposal a human already wrote.'
+  withExistingFolder(built.input, folder)
+  return built
+}
+
+describe('handleTriage · outcome: capture · adopting a change that already exists', () => {
+  it('picks the existing folder up instead of asking `openspec new change` to recreate it', async () => {
+    const { input, io } = adoptInput({ proposal: true, pending: [] })
+
+    const outcome = await handleTriage(input)
+
+    expect(outcome.signal).toBe('CAPTURED')
+    expect(outcome.patch?.changeName).toBe(ADOPTED)
+    // The call that used to fail the run is not made at all.
+    expect(io.openspecCalls).not.toContain(`newChange:${ADOPTED}:spec-driven`)
+    expect(io.openspecCalls[0]).toBe('listChangeNames')
+    expect(outcome.comment).toContain(`Adopted: ${ADOPTED}`)
+  })
+
+  it('keeps the proposal the folder already carries rather than overwriting it with a fresh spec', async () => {
+    const { input, io } = adoptInput({ proposal: true, pending: [] })
+
+    const outcome = await handleTriage(input)
+
+    // Nothing written: the human-authored proposal is what every other artifact
+    // in that folder was drafted against, and this turn's spec read one issue.
+    expect(io.writes).toEqual([])
+    expect(outcome.comment).toContain('The proposal a human already wrote.')
+  })
+
+  it('writes the proposal into an adopted folder that never got one', async () => {
+    // `openspec new change` interrupted after the scaffold leaves a folder with
+    // `.openspec.yaml` and nothing else. `list` still reports it, so capture
+    // adopts — and the artifact it is missing is exactly what this turn composed.
+    const { input, io } = adoptInput({ proposal: false, pending: ['proposal'] })
+
+    await handleTriage(input)
+
+    expect(io.writes.map((write) => write.path)).toEqual([PROPOSAL_PATH])
+    expect(io.writes[0]?.content).toContain('Defend the prompt.')
+  })
+
+  it("rewrites an adopted proposal when a maintainer's `/changes` asked for one", async () => {
+    const { input, io } = adoptInput(
+      { proposal: true, pending: [] },
+      { command: { command: '/changes', argument: 'scope it to the chat surface' } },
+    )
+
+    await handleTriage(input)
+
+    expect(io.writes.map((write) => write.path)).toEqual([PROPOSAL_PATH])
+  })
+
+  it('names the artifacts the adopted change still owes, so `/approve` is a known quantity', async () => {
+    const { input } = adoptInput({ proposal: true, pending: ['design', 'tasks'] })
+
+    const outcome = await handleTriage(input)
+
+    expect(outcome.comment).toContain('`design`')
+    expect(outcome.comment).toContain('`tasks`')
+    expect(outcome.comment).not.toContain('`specs`')
+  })
+
+  it('says so when the adopted change is fully drafted and only wants implementing', async () => {
+    const { input } = adoptInput({ proposal: true, pending: [] })
+
+    const outcome = await handleTriage(input)
+
+    expect(outcome.comment).toContain('Every planning artifact is already drafted')
+  })
+
+  it('commits the adoption under its own verb, so the branch history does not claim a scaffold', async () => {
+    const { input, io } = adoptInput({ proposal: true, pending: [] })
+
+    await handleTriage(input)
+
+    expect(io.gitCalls).toContain(`commit:chore(openspec): adopt ${ADOPTED}`)
   })
 })
 
@@ -278,6 +420,7 @@ const instructionsFor = (
 
 /** A driver whose status evolves as the drafter writes each artifact. */
 const evolvingDriver = (drafted: Set<string>): OpenSpecDriver => ({
+  listChangeNames: (): Promise<readonly string[]> => Promise.resolve([]),
   newChange: (n: string): Promise<{ changeName: string }> => Promise.resolve({ changeName: n }),
   archive: (): Promise<void> => Promise.resolve(),
   validateStrict: (): Promise<{ ok: boolean; output: string }> => Promise.resolve({ ok: true, output: '' }),
@@ -565,6 +708,7 @@ describe('handlePlan · drafter loop (D3)', () => {
  */
 
 const folderDriver = (change: string): OpenSpecDriver => ({
+  listChangeNames: (): Promise<readonly string[]> => Promise.resolve([]),
   newChange: (n: string): Promise<{ changeName: string }> => Promise.resolve({ changeName: n }),
   archive: (): Promise<void> => Promise.resolve(),
   validateStrict: (): Promise<{ ok: boolean; output: string }> => Promise.resolve({ ok: true, output: '' }),

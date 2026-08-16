@@ -259,6 +259,8 @@ interface PipelineIo {
   reviewError: Error | null
   /** OpenSpec CLI driver call log + canned responses (design D3). */
   openspecCalls: string[]
+  /** Changes the base branch already holds — what capture adopts rather than creates. */
+  openspecChanges: string[]
   openspecStatus: import('../../opencode-agent/src/openspec-driver.js').StatusResult
   openspecInstructions: import('../../opencode-agent/src/openspec-driver.js').InstructionsResult
   openspecValidate: import('../../opencode-agent/src/openspec-driver.js').ValidateResult
@@ -443,6 +445,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     nowMs: RUN_NOW_MS,
     // OpenSpec driver fakes (design D3): safe defaults, overridden per-test.
     openspecCalls: [],
+    openspecChanges: [],
     openspecStatus: { schemaName: 'spec-driven', artifacts: {}, isPlanningComplete: false },
     openspecInstructions: {
       instruction: '',
@@ -684,6 +687,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // per-artifact path under the change folder so the folder-read phases find
     // the file `writeFile`/`seedTasks` placed there.
     openspec: {
+      listChangeNames: () => {
+        io.openspecCalls.push('listChangeNames')
+        return Promise.resolve([...io.openspecChanges])
+      },
       newChange: (changeName) => {
         io.openspecCalls.push(`newChange:${changeName}`)
         return Promise.resolve({ changeName })
