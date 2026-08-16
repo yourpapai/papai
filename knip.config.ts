@@ -103,11 +103,6 @@ export default {
     // change (openspec/changes/context-vault-plugin); later tasks (settings
     // routes, push route, summarizer, plugin facade) consume their exports.
     'src/context-vault/*.ts!',
-    // Prompt-boundary is the seam surface for the prompt-injection-defense
-    // change (openspec/changes/prompt-injection-defense); the production
-    // consumers (poller-alerts, memory-context-block) land with its tasks
-    // 2.2/3.2 — until then only its test imports it.
-    'src/security/prompt-boundary.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -253,12 +248,6 @@ export default {
     // summarizer, plugin facade) and by tests outside knip's production
     // project scope.
     'src/context-vault/*.ts': ['exports', 'types'],
-    // Prompt-boundary exports are consumed by the in-flight
-    // prompt-injection-defense change (openspec/changes/prompt-injection-
-    // defense): poller-alerts and memory-context-block import them with its
-    // tasks 2.2/3.2. Remove this entry and the matching entry declaration
-    // above when those land.
-    'src/security/prompt-boundary.ts': ['exports', 'types'],
     'src/db/context-vault-schema.ts': ['exports', 'types'],
     // Re-export facades whose remaining flagged bindings knip cannot trace:
     // the published plugin-types package export, declared plugin-core-separation
