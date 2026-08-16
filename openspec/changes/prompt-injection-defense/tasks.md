@@ -35,7 +35,7 @@ See LICENSE in the project root for details.
 
 ## 3. Memory fact wrapping
 
-- [ ] 3.1 Write failing regression test for `src/memory-context-block.ts`:
+- [x] 3.1 Write failing regression test for `src/memory-context-block.ts`:
       rendered fact lines wrap identifier/title/url in external-data
       delimiters; empty memory yields `null` as before.
       Verify: focused `bun test` (fails)
