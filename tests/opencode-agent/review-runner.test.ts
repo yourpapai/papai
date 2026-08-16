@@ -32,7 +32,7 @@ const recordingLogger = (): { logger: Logger; lines: Array<{ message: string; fi
 const settings = (overrides: Partial<ReviewLoopSettings> = {}): ReviewLoopSettings => ({
   repoRoot: '/tmp/does-not-need-to-exist',
   command: ['bun', 'run', 'review-loop/src/cli.ts'],
-  openai: { apiKey: 'k', baseUrl: 'https://example.invalid/v1', model: 'm' },
+  openai: { apiKey: 'k', baseUrl: 'https://example.invalid/v1', model: 'm', provider: 'openai' },
   checkCommand: 'bun check',
   maxRounds: 2,
   poolSize: 1,

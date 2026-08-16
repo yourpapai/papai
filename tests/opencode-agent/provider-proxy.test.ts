@@ -24,7 +24,12 @@ import type { ProviderProxy, Serve, UpstreamFetch } from '../../opencode-agent/s
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 
 const KEY = 'sk-live-SUPERSECRET-0123456789'
-const SETTINGS: OpenAiSettings = { apiKey: KEY, baseUrl: 'https://api.upstream.test/v1', model: 'gpt-5' }
+const SETTINGS: OpenAiSettings = {
+  apiKey: KEY,
+  baseUrl: 'https://api.upstream.test/v1',
+  model: 'gpt-5',
+  provider: 'openai',
+}
 
 const silentLog = {
   debug: (): void => {},

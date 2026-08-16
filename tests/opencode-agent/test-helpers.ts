@@ -79,7 +79,7 @@ export const stubConfig = (repoRoot = '/repo'): PipelineConfig => ({
   githubToken: 'token',
   selfLoginOverride: 'agent-bot',
   selfWorkflowName: 'OpenCode Issue Agent',
-  openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
+  openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5', provider: 'openai' },
   commitAuthorName: 'agent',
   commitAuthorEmail: 'agent@example.com',
   checkCommand: 'bun test',

@@ -161,6 +161,55 @@ export const labelPrefix = (env: Env, key: string, fallback: string): string | n
 }
 
 /**
+ * Longest catalogue provider id accepted. Generous: the longest ids OpenCode's
+ * own catalogue carries are of the order of `zai-coding-plan`, and this bound
+ * exists to refuse a pasted URL, not to be tight.
+ */
+const PROVIDER_ID_MAX_LENGTH = 64
+
+/**
+ * Shape a catalogue provider id may take.
+ *
+ * A slash is the one character that must not appear, and not on taste:
+ * `parseModelRef` splits `provider/model` at the **first** slash and keeps the
+ * whole remainder as the model id, so `a/b` here would parse back as provider
+ * `a` and model `b/<model>`. Lowercase because the ids are catalogue keys
+ * compared literally, and a leading separator because no real id starts with
+ * one and it is the shape a half-typed value takes.
+ */
+const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/u
+
+/**
+ * Reads the provider id the model is resolved **under**, which is not the same
+ * question as which endpoint it is served from.
+ *
+ * OpenCode builds its model database from its models.dev catalogue and merges a
+ * config provider *over* it, keyed by this id and then by the model id. A model
+ * the resulting row does not carry inherits nothing: `limit.context` 0, which
+ * makes `isOverflow` return `false` unconditionally and switches auto-compaction
+ * off, and `reasoning` false, which makes `variants()` return an empty set so no
+ * reasoning effort is selectable at all. The transport stays
+ * `@ai-sdk/openai-compatible` whatever this says, so naming a real provider here
+ * borrows its catalogue row without loading its SDK package.
+ *
+ * Validated at load, where a bad value is a message naming the variable, rather
+ * than at the first prompt, where it is metadata silently missing.
+ */
+export const providerId = (env: Env, key: string, fallback: string): string => {
+  const configured = optional(env, key, fallback)
+
+  if (configured.length > PROVIDER_ID_MAX_LENGTH) {
+    throw new ConfigError(`${key} must be at most ${PROVIDER_ID_MAX_LENGTH} characters, got ${configured.length}`)
+  }
+  if (!PROVIDER_ID_PATTERN.test(configured)) {
+    throw new ConfigError(
+      `${key} must be a lowercase catalogue id of letters, digits and \`-_.\` with no slash, got ${JSON.stringify(configured)}`,
+    )
+  }
+  return configured
+}
+
+/**
  * Bytes an AES-256-GCM key must decode to. Fixed rather than ranged: the
  * transcript writer has exactly one algorithm and this is its one key size.
  */

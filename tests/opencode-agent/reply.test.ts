@@ -47,7 +47,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   githubToken: 'token',
   selfLoginOverride: AGENT_LOGIN,
   selfWorkflowName: 'OpenCode Issue Agent',
-  openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
+  openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5', provider: 'openai' },
   commitAuthorName: 'agent',
   commitAuthorEmail: 'agent@example.com',
   checkCommand: 'bun test',

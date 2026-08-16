@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { logKey } from '../../opencode-agent/src/config-values.js'
-import { ConfigError, loadConfig } from '../../opencode-agent/src/config.js'
+import { ConfigError, loadConfig, loadOpenAiSettings } from '../../opencode-agent/src/config.js'
 import { pipelineSecrets } from '../../opencode-agent/src/secrets.js'
 
 /** `openssl rand -base64 32`, and the bytes it decodes to. */
@@ -57,5 +57,45 @@ describe('logKey', () => {
     const config = loadConfig({ ...ENV, AGENT_LOG_KEY: KEY_B64 }, '/repo')
 
     expect(pipelineSecrets(config)).toContain(KEY_B64)
+  })
+})
+
+/**
+ * `LLM_PROVIDER` is a **catalogue key**, not a transport.
+ *
+ * OpenCode merges a config provider over its own models.dev-derived database
+ * keyed by this id, so the id is what decides whether the model inherits a real
+ * `limit.context` and `reasoning` flag or falls to the zero defaults — and a
+ * zero context window switches auto-compaction off outright. The transport
+ * stays `@ai-sdk/openai-compatible` either way, which is why this is one string
+ * rather than a provider matrix.
+ */
+describe('LLM_PROVIDER', () => {
+  test('defaults to `openai`, so an unset variable is exactly today', () => {
+    expect(loadOpenAiSettings(ENV).provider).toBe('openai')
+  })
+
+  test('is read and trimmed when set', () => {
+    expect(loadOpenAiSettings({ ...ENV, LLM_PROVIDER: '  anthropic  ' }).provider).toBe('anthropic')
+    // A blank value is an unset one, like every other optional knob here.
+    expect(loadOpenAiSettings({ ...ENV, LLM_PROVIDER: '   ' }).provider).toBe('openai')
+  })
+
+  test.each([
+    // A slash would split `modelRef` at the wrong place: `parseModelRef` keeps
+    // everything after the FIRST one, so `a/b` + `m` would parse as provider
+    // `a`, model `b/m`.
+    ['a slash', 'openai/gpt-5'],
+    ['whitespace inside', 'open ai'],
+    ['uppercase', 'OpenAI'],
+    ['a leading separator', '-openai'],
+    ['over-length', 'a'.repeat(65)],
+  ])('refuses %s, naming the variable', (_case, value) => {
+    expect(() => loadOpenAiSettings({ ...ENV, LLM_PROVIDER: value })).toThrow(ConfigError)
+    expect(() => loadOpenAiSettings({ ...ENV, LLM_PROVIDER: value })).toThrow('LLM_PROVIDER')
+  })
+
+  test('loadConfig surfaces it on PipelineConfig', () => {
+    expect(loadConfig({ ...ENV, LLM_PROVIDER: 'anthropic' }, '/repo').openai.provider).toBe('anthropic')
   })
 })

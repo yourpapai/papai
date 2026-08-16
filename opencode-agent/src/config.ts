@@ -22,6 +22,7 @@ import {
   optionalOrNull,
   parseChecks,
   POOL_RANGE,
+  providerId,
   required,
   RESERVE_RANGE,
   ROUND_RANGE,
@@ -30,6 +31,7 @@ import {
   WRAP_UP_RANGE,
 } from './config-values.js'
 import type { Env } from './config-values.js'
+import { DEFAULT_PROVIDER_ID } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import { parseRepository } from './repository.js'
 
@@ -67,6 +69,10 @@ export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
   apiKey: required(env, 'LLM_API_KEY'),
   baseUrl: required(env, 'LLM_BASE_URL'),
   model: required(env, 'LLM_MODEL'),
+  // Optional and defaulted, unlike the three above, because the default is
+  // exactly today's behaviour: `openai` is the id the pipeline hardcoded before
+  // this knob existed, so an unset variable emits the same config it always did.
+  provider: providerId(env, 'LLM_PROVIDER', DEFAULT_PROVIDER_ID),
 })
 
 /** Loader roots, first-hit-wins (D11): in-repo OpenSpec trees first, then the pinned superpowers checkout. */

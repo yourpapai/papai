@@ -15,20 +15,41 @@ export interface OpenAiSettings {
   apiKey: string
   baseUrl: string
   model: string
+  /**
+   * The **catalogue** id the model is resolved under — `LLM_PROVIDER`, or
+   * {@link DEFAULT_PROVIDER_ID}.
+   *
+   * Deliberately not the transport, which is always {@link PROVIDER_NPM}.
+   * OpenCode merges this config provider over its own models.dev-derived
+   * database keyed by this id and then by the model id, and a row it does not
+   * find contributes nothing: `limit.context` 0 (which switches auto-compaction
+   * off outright) and `reasoning` false (which empties the effort variants). So
+   * `anthropic` here with an OpenAI-compatible gateway as the base URL borrows
+   * Anthropic's catalogue row while still speaking the OpenAI wire protocol.
+   *
+   * See `config-values.ts`'s `providerId` for the shape and why a slash is
+   * refused.
+   */
+  provider: string
 }
 
-/** Provider id used in every `provider/model` reference the pipeline emits. */
-export const OPENAI_PROVIDER_ID = 'openai'
+/** Provider id used when `LLM_PROVIDER` says nothing, i.e. today's behaviour. */
+export const DEFAULT_PROVIDER_ID = 'openai'
 
 /**
  * The AI SDK package OpenCode loads for this provider. The `openai-compatible`
  * driver — not the first-party `openai` one — is what makes `LLM_BASE_URL`
  * meaningful for non-OpenAI endpoints.
+ *
+ * Pinned here rather than inherited from the catalogue row, and the merge order
+ * is what makes that work: OpenCode resolves a model's package as
+ * `model.provider?.npm ?? provider.npm ?? existingModel?.api.npm ?? …`, so this
+ * value wins over whatever package the borrowed row names.
  */
 const PROVIDER_NPM = '@ai-sdk/openai-compatible'
 
-/** `openai/<model>`, the reference form both the SDK and `opencode run` expect. */
-export const modelRef = (settings: OpenAiSettings): string => `${OPENAI_PROVIDER_ID}/${settings.model}`
+/** `<provider>/<model>`, the reference form both the SDK and `opencode run` expect. */
+export const modelRef = (settings: OpenAiSettings): string => `${settings.provider}/${settings.model}`
 
 /**
  * Builds the OpenCode configuration that pins the provider, the endpoint and
@@ -90,7 +111,7 @@ export const PROPOSE_PERMISSION = grant([...READ_TOOLS, ...PROPOSE_TOOLS])
 export const buildOpencodeConfig = (settings: OpenAiSettings): Config => ({
   $schema: 'https://opencode.ai/config.json',
   provider: {
-    [OPENAI_PROVIDER_ID]: {
+    [settings.provider]: {
       npm: PROVIDER_NPM,
       name: 'OpenAI-compatible',
       options: { apiKey: settings.apiKey, baseURL: settings.baseUrl },

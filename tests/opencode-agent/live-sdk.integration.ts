@@ -252,7 +252,12 @@ const progressLog = {
 
 const run = async (): Promise<number> => {
   const stub = startStubProvider()
-  const real = { apiKey: 'sk-stub-REAL-CREDENTIAL', baseUrl: `http://127.0.0.1:${stub.port}`, model: 'gpt-5' }
+  const real = {
+    apiKey: 'sk-stub-REAL-CREDENTIAL',
+    baseUrl: `http://127.0.0.1:${stub.port}`,
+    model: 'gpt-5',
+    provider: 'openai',
+  }
   // The pipeline's own containment path: OpenCode is handed a placeholder key
   // and a loopback URL, and the proxy swaps in the credential on the way out.
   // Driving it here is the only proof that a *streamed* completion survives the
