@@ -661,6 +661,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ needs.resolve.outputs.issue }}
+          REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           printf '%s\n\n%s\n\n%s\n' \
@@ -668,10 +669,13 @@ jobs:
             "The workflow run failed or was cancelled before or during the pipeline. Logs: $RUN_URL" \
             'The issue state is unchanged. Reply `/retry` once the cause is addressed — on the pull request, if this issue has one open.' \
             > /tmp/agent-failure.md
-          # `--json url` rather than parsing the printed link: the id is what the
-          # transcript step edits, and the URL's last path segment is where it is.
-          url=$(gh issue comment "$ISSUE_NUMBER" --body-file /tmp/agent-failure.md)
-          echo "comment=${url##*/}" >> "$GITHUB_OUTPUT"
+          # `gh api` rather than `gh issue comment`, for the id alone. The latter
+          # prints the comment's *URL*, whose last path segment is
+          # `<issue>#issuecomment-<id>` — so the obvious `${url##*/}` yields a
+          # fragment the transcript step cannot address. The API answers with the
+          # id itself and needs no parsing.
+          id=$(gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" -F body=@/tmp/agent-failure.md --jq .id)
+          echo "comment=$id" >> "$GITHUB_OUTPUT"
 
       # Two links and a sentence, which is the whole flow a maintainer was
       # promised: click the artefact (one click, downloads while logged in),

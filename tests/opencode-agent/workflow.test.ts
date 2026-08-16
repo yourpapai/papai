@@ -916,6 +916,21 @@ describe('the infrastructure-failure notice', () => {
     expect(notice.run).toContain('GITHUB_OUTPUT')
   })
 
+  test('takes the comment id from the API, never from the printed URL', () => {
+    // `gh issue comment` prints the comment's URL, whose last path segment is
+    // `<issue>#issuecomment-<id>` — so the obvious `${url##*/}` publishes a
+    // fragment the transcript step cannot address, and the transcript would
+    // silently post a second comment on every failed run. The API answers with
+    // the id itself.
+    const executable = notice.run
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('#'))
+      .join('\n')
+
+    expect(executable).toContain('--jq .id')
+    expect(executable).not.toContain('gh issue comment')
+  })
+
   test('links the artefact and the viewer, and carries no key', () => {
     // The split is the containment: the artefact is behind repository access,
     // the key behind the secret store, and the page brings them together in a
