@@ -174,6 +174,18 @@ us, both recorded here rather than discovered twice:
       this pipeline tells the rest of its own workflow"), `heartbeat.ts`
       (`onTick`), `orchestrator.ts` (the `willWork` and `finish` comments).
       `bun run lint`
-- [ ] 7.4 Full verification: `bun test`, `bun run typecheck`, `bun run lint`,
-      `bun run knip`, `bun run workflows:lint`, and `bun run test:mutate:changed`
-      for the per-file ratchet on every file touched above.
+- [x] 7.4 Full verification: `bun test` (14,425 pass / 0 fail / 3 skip),
+      `bun run typecheck`, `bun run lint`, `bun run knip`,
+      `bun run format:check`, `bun run workflows:lint` — all green.
+      `bun run test:mutate:changed --base=<branch point>` reports **no changed
+      mutation targets**: `stryker.config.json`'s `mutate` globs cover
+      `src/providers/**`, `src/tools/**`, `plugins/task-provider-*/**` and a
+      short list of `src/*.ts`, and this change touches none of them. The
+      ratchet is a no-op here rather than a pass — worth stating, since a run
+      against a *stale* base ref sweeps in unrelated files and dies in
+      Stryker's dry run, which reads like a failure of this change and is not.
+      `bun security` was **not run**: Semgrep is absent from this container and
+      Docker is unavailable. The change adds no fetch, no credential handling
+      and no plugin surface, and comment bodies still leave through
+      `github.ts`'s unchanged redaction — but the scan did not run, so it is
+      not claimed to have passed.
