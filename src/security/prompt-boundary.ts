@@ -22,16 +22,19 @@ logger.debug({ module: 'src/security/prompt-boundary' }, 'prompt boundary initia
 /**
  * Neutralize prompt-boundary forgery in untrusted text: strip `<external-data …>`
  * tag sequences (open, close, case-insensitive, with or without a closing angle
- * bracket), collapse newline runs into single spaces, trim, and cap the result.
+ * bracket) repeatedly until stable, so removing one tag cannot reassemble
+ * another from the surrounding text. Then collapse newline runs into single
+ * spaces, trim, and cap the result.
  */
 export function sanitizeExternalData(content: string | undefined): string {
   if (content === undefined) return ''
-  return content
-    .replace(FORMAT_CHAR_PATTERN, '')
-    .replace(BOUNDARY_TAG_PATTERN, '')
-    .replace(NEWLINE_PATTERN, ' ')
-    .trim()
-    .slice(0, MAX_CONTENT_LENGTH)
+  let stripped = content.replace(FORMAT_CHAR_PATTERN, '')
+  let previous: string
+  do {
+    previous = stripped
+    stripped = stripped.replace(BOUNDARY_TAG_PATTERN, '')
+  } while (stripped !== previous)
+  return stripped.replace(NEWLINE_PATTERN, ' ').trim().slice(0, MAX_CONTENT_LENGTH)
 }
 
 /**
