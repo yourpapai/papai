@@ -133,6 +133,11 @@ export interface StubIo {
    * Set by a test before driving a handler that reads (e.g. tasks.md).
    */
   readContents: Record<string, string>
+  /**
+   * Change names the fake `listChangeNames` reports — the base branch's
+   * `openspec/changes/`. A test seeds it to drive capture down the adopt path.
+   */
+  existingChanges: string[]
 }
 
 export interface StubPhaseDepsOptions {
@@ -187,6 +192,7 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     writes: [],
     reads: [],
     readContents: {},
+    existingChanges: [],
   }
   const replies = options.replies ?? []
   const login = options.selfLogin ?? 'agent-bot'
@@ -204,6 +210,10 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
   const agent: OpenCodeAgent = options.agent ?? defaultAgent
 
   const defaultOpenspec: OpenSpecDriver = {
+    listChangeNames: (): Promise<readonly string[]> => {
+      io.openspecCalls.push('listChangeNames')
+      return Promise.resolve([...io.existingChanges])
+    },
     newChange: (changeName: string, schema: string): Promise<{ changeName: string }> => {
       io.openspecCalls.push(`newChange:${changeName}:${schema}`)
       return Promise.resolve({ changeName })

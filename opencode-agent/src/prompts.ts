@@ -113,6 +113,9 @@ export const TRIAGE_INSTRUCTIONS = [
   '{"status":"capture","changeName":"kebab-case-name","spec":"<markdown design spec>"} when the request is actionable.',
   '{"status":"answer","reply":"<markdown answer>"} when the request is a question, not work — answer it directly.',
   '`changeName` must be kebab-case (lowercase letters, digits, hyphens) and name the change, not the issue.',
+  'Look in `openspec/changes/` first: when a change there already covers this request — including one',
+  'proposed but never implemented — reply with its exact name and it will be picked up and completed',
+  'rather than recreated. Otherwise choose a name no folder there already uses.',
   'A `spec` must state: the goal, the files to touch, the intended behaviour change, and how it will be verified.',
   'Ask questions only when a wrong guess would produce the wrong feature; prefer stating an assumption in the spec.',
 ].join('\n')

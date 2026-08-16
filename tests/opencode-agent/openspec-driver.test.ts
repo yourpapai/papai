@@ -52,6 +52,51 @@ const STATUS_JSON = JSON.stringify({
   isPlanningComplete: false,
 })
 
+describe('openspec driver · listChangeNames', () => {
+  it('runs `openspec list --changes --json` and returns the names', async () => {
+    const payload = JSON.stringify({
+      changes: [
+        { name: 'prompt-injection-defense', completedTasks: 0, totalTasks: 12, status: 'in-progress' },
+        { name: 'add-thing', completedTasks: 0, totalTasks: 0, status: 'no-tasks' },
+      ],
+    })
+    const { runner, calls } = fakeRunner({ 'list --changes': { stdout: payload } })
+    const driver = createOpenSpecDriver(deps(runner))
+    const result = await driver.listChangeNames()
+    expect(result).toEqual(['prompt-injection-defense', 'add-thing'])
+    expect(calls[0]).toEqual(['openspec', 'list', '--changes', '--json'])
+  })
+
+  it('reports a scaffolded-but-undrafted folder, which is the one capture must not recreate', async () => {
+    // `openspec new change` leaves a folder holding `.openspec.yaml` and nothing
+    // else, and `list` reports it as `no-tasks`. That folder is exactly what a
+    // second `new change` refuses, so a lister that skipped it would leave
+    // capture failing on the case it exists to survive.
+    const payload = JSON.stringify({ changes: [{ name: 'half-scaffolded', totalTasks: 0, status: 'no-tasks' }] })
+    const { runner } = fakeRunner({ 'list --changes': { stdout: payload } })
+    const driver = createOpenSpecDriver(deps(runner))
+    expect(await driver.listChangeNames()).toEqual(['half-scaffolded'])
+  })
+
+  it('reads an empty root as no changes rather than as a failure', async () => {
+    const { runner } = fakeRunner({ 'list --changes': { stdout: JSON.stringify({ changes: [] }) } })
+    const driver = createOpenSpecDriver(deps(runner))
+    expect(await driver.listChangeNames()).toEqual([])
+  })
+
+  it('reads a payload with no `changes` key as no changes, rather than rejecting it', async () => {
+    const { runner } = fakeRunner({ 'list --changes': { stdout: JSON.stringify({}) } })
+    const driver = createOpenSpecDriver(deps(runner))
+    expect(await driver.listChangeNames()).toEqual([])
+  })
+
+  it('throws naming the command when the CLI exits non-zero', async () => {
+    const { runner } = fakeRunner({ 'list --changes': { stderr: 'no openspec root', exitCode: 1 } })
+    const driver = createOpenSpecDriver(deps(runner))
+    await expect(driver.listChangeNames()).rejects.toThrow(/openspec list/u)
+  })
+})
+
 describe('openspec driver · newChange', () => {
   it('runs `openspec new change <name> --schema <schema>` and returns the name', async () => {
     const { runner, calls } = fakeRunner({ 'new change': { stdout: "Created change 'add-thing'\n" } })

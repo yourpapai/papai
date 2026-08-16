@@ -175,6 +175,31 @@ findings: `ROADMAP.md`.
   directories for the same reason the pattern broke — `openspec new change`
   scaffolds a folder holding `.openspec.yaml` and nothing else, so
   `specs/<capability-path>/spec.md` is the first thing in its directory.
+- **A change that already exists is adopted, not recreated.** A job checks out
+  the base branch, so the only folder a capture can collide with is one the base
+  branch already carries — a change somebody proposed and never implemented.
+  Issue #281 asked for "the most valuable unimplemented spec", triage answered
+  `prompt-injection-defense`, and run 31929516607 died at `INIT_OR_CLARIFY`
+  because `openspec new change` exits 1 on a name that is taken and the driver
+  turns that into a throw. So capture asks `openspec list --changes --json`
+  first (`listChangeNames`) and creates only when the name is free. Three parts
+  of the adoption are decisions rather than details. The **proposal is kept**:
+  it is what a human wrote when they proposed the change and what every other
+  artifact in that folder was drafted against, while this turn's spec is a
+  reading of one issue — it is overwritten only when the folder has no proposal
+  (a scaffold interrupted before drafting) or when a maintainer's `/changes`
+  asked for a rewrite. The **missing artifacts are not drafted here**: PLANNING
+  already loops `status` → `instructions` → compose → `validate --strict` over
+  every artifact that is not `done`, so an adopted half-drafted change reaches
+  the same place a new one does, and capture only _names_ what is pending so
+  `/approve` is a known quantity. And the **commit says `adopt`, not
+  `scaffold`** — an adopted folder is already in the tree, so that commit is
+  usually empty and the verb is the only place the branch history records which
+  of the two happened. Residual, deliberately unhandled: a change whose
+  `tasks.md` boxes are all ticked but whose work was never implemented adopts
+  into an implementation walk with no steps. The `PLAN_REVIEW` digest shows the
+  ticked boxes to a maintainer, whose `/changes` re-plans it; nothing can tell
+  "already built" from "ticked and abandoned" by reading the folder.
 - **The plan counts one identity token, not two artefact revisions.** Under D1
   only `planRevision` remains — a machine identity for "a new plan happened",
   bumped by `PLAN_POSTED` alone, not an artefact revision. The former

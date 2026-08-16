@@ -41,7 +41,10 @@ blocks. Under the OpenSpec rework (design D1 — the folder is truth, comments a
 renders) they live in `openspec/changes/<name>/` on `agent/issue-<n>`:
 
 - `proposal.md` — the captured goal, drafted by triage and reviewed at the
-  `DESIGN_SPEC` park via a rendered digest.
+  `DESIGN_SPEC` park via a rendered digest. When the name triage picks is one
+  the base branch already carries, that change is **adopted** rather than
+  recreated — its proposal is kept, the park comment names whatever artifacts it
+  still owes, and `PLANNING` drafts those through the ordinary artifact loop.
 - `design.md`, `tasks.md` — drafted by the `PLANNING` loop (`status --json` →
   compose → `validate --strict` → retry ≤2), reviewed at `PLAN_REVIEW`.
 - `tasks.md` is the implementation's step source (D5): `REVIEW_AND_MUTATE`
