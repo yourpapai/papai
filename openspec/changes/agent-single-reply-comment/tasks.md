@@ -109,25 +109,25 @@ us, both recorded here rather than discovered twice:
       **earlier** comment when a run buffers nothing — the `none` classification
       branch — so a run that says nothing still records its spend.
       `bun test tests/opencode-agent/status.test.ts`
-- [ ] 4.8 Failing test: the wall-clock stop still posts. `teardownReserveMs` now
+- [x] 4.8 Failing test: the wall-clock stop still posts. `teardownReserveMs` now
       sizes one larger write rather than several small ones; assert the park
       notice reaches `createComment` inside the reserve with a full buffer.
       `bun test tests/opencode-agent/time-budget.test.ts`
 
 ## 5. The live channel is deleted (D1)
 
-- [ ] 5.3 Delete what liveness paid for in the renderer: the `— run in progress`
+- [x] 5.3 Delete what liveness paid for in the renderer: the `— run in progress`
       header variant, the `⏳ **now**` branch in `stepMark`, and `spentTokens`'
       reconciliation of a heartbeat total against `state.tokensSpent` — at flush
       the state figure is authoritative. Test asserts the budget line reads
       `state.tokensSpent` exactly, with no `carriedTokens` arithmetic left to
       drift. (Was 1.3; see the note at the top.)
       `bun test tests/opencode-agent/status.test.ts && bun run knip`
-- [ ] 5.1 Failing test: `withHeartbeat` still logs its once-a-minute line and
+- [x] 5.1 Failing test: `withHeartbeat` still logs its once-a-minute line and
       `turnDeadlineError` still carries a `ProgressSnapshot` — the halves that
       are not moving — with no `onTick` in the options type.
       `bun test tests/opencode-agent/progress.test.ts`
-- [ ] 5.2 Remove `onTick` from `heartbeat.ts` and its wiring in `contain.ts`,
+- [x] 5.2 Remove `onTick` from `heartbeat.ts` and its wiring in `contain.ts`,
       and rewrite `contain.ts`'s build-order comment, which explains an ordering
       that no longer has a reason. `bun run knip` proves nothing else read it.
       `bun test tests/opencode-agent/ && bun run knip`

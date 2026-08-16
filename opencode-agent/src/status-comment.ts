@@ -5,7 +5,6 @@
 
 import { renderBlock } from './blocks.js'
 import { phaseHeading, presentationFor } from './presentation.js'
-import type { RunStance } from './presentation.js'
 import { renderRunDetail } from './run-detail.js'
 import type { RunDetailView } from './run-detail.js'
 
@@ -37,8 +36,8 @@ import type { RunDetailView } from './run-detail.js'
  * this comment from the prompt", which is no longer possible now that the
  * answer, the design digest and the plan all live here. It now means *the
  * bookkeeping starts here*, and `renderThread` truncates the body at it — which
- * is why {@link renderStatus} always puts the run detail last of the visible
- * body, immediately above it.
+ * is why {@link renderStatus} puts the marker directly below the last section
+ * and everything else, the run detail included, below the marker.
  */
 
 /**
@@ -150,17 +149,15 @@ const bookkeeping = (view: StatusView): readonly string[] => [
  * the blocks all vary, and an arithmetic guess at the frame is a second
  * implementation of this function that would drift from it.
  */
-const frame = (view: StatusView, prose: readonly string[]): string => {
-  const stance: RunStance = view.live ? 'working' : 'waiting'
-  const { headline } = presentationFor(view.state, stance)
-
-  return [
-    phaseHeading(view.state, stance, view.live ? `${headline} — run in progress` : headline),
+const frame = (view: StatusView, prose: readonly string[]): string =>
+  [
+    // Always the `waiting` stance: this is written once, after the run, so the
+    // state it describes is one a maintainer can find the issue in.
+    phaseHeading(view.state, 'waiting', presentationFor(view.state, 'waiting').headline),
     '',
     ...prose,
     ...bookkeeping(view),
   ].join('\n')
-}
 
 /**
  * The newest section, clipped from the top so its conclusion survives.

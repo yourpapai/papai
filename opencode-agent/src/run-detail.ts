@@ -7,7 +7,6 @@ import type { PipelineConfig } from './config.js'
 import { branchNameFor } from './git.js'
 import { PRESENTATION, presentationFor } from './presentation.js'
 import type { PresentationKey } from './presentation.js'
-import type { ProgressSnapshot } from './progress.js'
 import type { AgentState, Phase } from './types.js'
 
 /**
@@ -92,15 +91,9 @@ const PARKED_PHASES: ReadonlySet<Phase> = new Set<Phase>(['FAILED', 'INCOMPLETE'
 /** Everything the run detail is a function of. */
 export interface RunDetailView {
   state: AgentState
-  /** What the model is doing, or `null` before a heartbeat has said. */
-  progress: ProgressSnapshot | null
-  /** Whether the run still holds the issue. False once it has ended. */
-  live: boolean
   /** `null` on a local `--event-path` run, which has no job to link to. */
   runUrl: string | null
   startedMs: number
-  /** What this issue had spent before the job started — see {@link spentTokens}. */
-  carriedTokens: number
   config: Pick<PipelineConfig, 'maxTokens' | 'maxAttempts' | 'maxCiAttempts'>
 }
 
@@ -130,17 +123,20 @@ const stepIndex = (state: AgentState): number => {
 /**
  * Behind, on, or ahead of the current step.
  *
- * The three marks are this table's own vocabulary and have no row in
+ * The two marks are this table's own vocabulary and have no row in
  * `presentation.ts`, because "a step that is behind us" is not a state an issue
  * can be found in. The mark on the row the run *stopped* on is the exception and
  * is read from there — ❌ for a failure, 🛑 for a cancelled issue, the waiting
  * phase's own glyph for a run parked in front of a human — so the run detail
  * and the label sitting on the issue beside it cannot say different things.
+ *
+ * There is no "⏳ now" mark. There was, while the comment was edited as the run
+ * moved; a comment written once, after the run, has no row in flight to point at.
  */
 const stepMark = (index: number, current: number, view: RunDetailView): string => {
   if (index < current) return '✅'
   if (index > current) return '⬜'
-  return view.live ? '⏳ **now**' : presentationFor(view.state, 'waiting').glyph
+  return presentationFor(view.state, 'waiting').glyph
 }
 
 /**
@@ -197,22 +193,6 @@ const branchLine = (state: AgentState): string =>
   `**Branch:** \`${branchNameFor(state.issueId)}\` · **Pull request:** ${state.prUrl ?? '_not opened yet_'}`
 
 /**
- * What the issue has spent.
- *
- * `tokensSpent` is authoritative but only moves when a phase ends, so while a
- * run is live the heartbeat's running total — added to what the issue carried
- * into this job — is the fresher figure. Whichever is larger has seen more of
- * the run; neither can double-count the other, because `carriedTokens` is
- * captured once, before this job spends anything.
- */
-const spentTokens = (view: RunDetailView): number => {
-  const observed = view.progress
-  if (observed === null) return view.state.tokensSpent
-
-  return Math.max(view.state.tokensSpent, view.carriedTokens + observed.tokens)
-}
-
-/**
  * Which budget the run is working against.
  *
  * `ciAttempts` is counted per pull request rather than per issue, so the CI line
@@ -231,11 +211,17 @@ const attemptLine = (view: RunDetailView): string => {
   return `attempt ${state.attempts + 1} of ${config.maxAttempts}`
 }
 
+/**
+ * What the issue has spent.
+ *
+ * `state.tokensSpent` and nothing else. It used to be reconciled against the
+ * heartbeat's running total with a `max()`, because a comment being edited
+ * mid-run could be fresher than the last phase that ended. A comment written
+ * after the run has no such gap to close, and two figures that can only
+ * disagree are worse than one.
+ */
 const budgetLine = (view: RunDetailView): string =>
-  `**Budget:** ${count(spentTokens(view))} of ${count(view.config.maxTokens)} tokens · ${attemptLine(view)}`
-
-const doingLine = (progress: ProgressSnapshot): string =>
-  `**Doing:** ${progress.lastAction} · ${progress.toolCalls} tool calls`
+  `**Budget:** ${count(view.state.tokensSpent)} of ${count(view.config.maxTokens)} tokens · ${attemptLine(view)}`
 
 /** The summary heading, kept here so the one reader and the one writer agree. */
 export const RUN_DETAIL_SUMMARY = 'Run detail'
@@ -248,20 +234,15 @@ export const RUN_DETAIL_SUMMARY = 'Run detail'
  * and because `renderThread` cuts the body just below it, so nothing here has to
  * earn a slot in the window the model reads the conversation through.
  */
-export const renderRunDetail = (view: RunDetailView): readonly string[] => {
-  const activity = view.live && view.progress !== null ? [doingLine(view.progress)] : []
-
-  return [
-    `<details><summary>${RUN_DETAIL_SUMMARY}</summary>`,
-    '',
-    jobLine(view),
-    branchLine(view.state),
-    '',
-    ...table(view),
-    '',
-    ...activity,
-    budgetLine(view),
-    '',
-    '</details>',
-  ]
-}
+export const renderRunDetail = (view: RunDetailView): readonly string[] => [
+  `<details><summary>${RUN_DETAIL_SUMMARY}</summary>`,
+  '',
+  jobLine(view),
+  branchLine(view.state),
+  '',
+  ...table(view),
+  '',
+  budgetLine(view),
+  '',
+  '</details>',
+]

@@ -101,11 +101,8 @@ const attempt = async <T>(reply: Reply, action: () => Promise<T>, message: strin
 const viewOf = (reply: Reply, state: AgentState): StatusView => ({
   state,
   sections: reply.sections,
-  progress: null,
-  live: false,
   runUrl: reply.deps.config.runUrl,
   startedMs: reply.startedMs,
-  carriedTokens: 0,
   config: reply.deps.config,
 })
 

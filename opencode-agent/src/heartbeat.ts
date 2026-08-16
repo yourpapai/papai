@@ -35,7 +35,6 @@ export interface HeartbeatOptions {
    * it either — the heartbeat's job is to fire on time, not to wait for whatever
    * the tick is being reported to.
    */
-  onTick?: (snapshot: ProgressSnapshot) => void
 }
 
 const realSchedule = (tick: () => void, everyMs: number): { cancel: () => void } => {
@@ -68,12 +67,10 @@ export const withHeartbeat = async <T>(work: Promise<T>, options: HeartbeatOptio
   const started = Date.now()
   const schedule = options.schedule ?? realSchedule
   const timer = schedule(() => {
-    const progress = options.snapshot()
     options.log.info(
-      { elapsedMs: Date.now() - started, ...progress },
+      { elapsedMs: Date.now() - started, ...options.snapshot() },
       'Still waiting on the model; the job is not stuck',
     )
-    if (options.onTick !== undefined) options.onTick(progress)
   }, options.everyMs)
 
   try {

@@ -11,7 +11,6 @@ import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { PostedComment } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
-import type { ProgressSnapshot } from '../../opencode-agent/src/progress.js'
 import { renderThread } from '../../opencode-agent/src/prompt-budget.js'
 import { createEnvelope } from '../../opencode-agent/src/prompts.js'
 import {
@@ -80,12 +79,9 @@ const state = (patch: Partial<AgentState> = {}): AgentState => ({ ...initialStat
 
 const view = (overrides: Partial<StatusView> = {}): StatusView => ({
   state: state({ phase: 'REVIEW_AND_MUTATE' }),
-  progress: null,
-  live: true,
   sections: [],
   runUrl: RUN_URL,
   startedMs: STARTED,
-  carriedTokens: 0,
   config: config(),
   ...overrides,
 })
@@ -106,10 +102,12 @@ const at = (body: string, needle: string): number => body.indexOf(needle)
 describe('renderStatus', () => {
   test('heads the comment with the phase’s own glyph and headline', () => {
     // Not "Implementing": that is the label suffix, and a third name per phase
-    // is exactly what one presentation table exists to prevent.
+    // is exactly what one presentation table exists to prevent. And never
+    // "— run in progress": the comment is written once, when the run is over.
     const body = renderStatus(view())
 
-    expect(body.split('\n')[0]).toBe('### 🛠️ Writing the code — run in progress')
+    expect(body.split('\n')[0]).toBe('### 🛠️ Writing the code')
+    expect(body).not.toContain('run in progress')
   })
 
   test('links the job that is doing the work, and says when it started', () => {
@@ -128,11 +126,14 @@ describe('renderStatus', () => {
     expect(renderStatus(view())).toContain('**Branch:** `agent/issue-42` · **Pull request:** _not opened yet_')
   })
 
-  test('marks the phases behind, the phase in flight, and the ones still ahead', () => {
+  test('marks the phases behind, the phase it stopped on, and the ones still ahead', () => {
+    // The row it stopped on wears the waiting phase's own glyph. There is no
+    // "⏳ now" any more — a comment posted after the run cannot have one.
     const body = renderStatus(view())
 
+    expect(body).not.toContain('⏳')
     expect(rowFor(body, 'Triage')).toBe('| 🔍 Triage | ✅ |')
-    expect(rowFor(body, 'Implementation')).toBe('| 🛠️ Implementation | ⏳ **now** |')
+    expect(rowFor(body, 'Implementation')).toBe('| 🛠️ Implementation | 🛠️ |')
     expect(rowFor(body, 'Pull request')).toBe('| 📦 Pull request | ⬜ |')
   })
 
@@ -149,31 +150,19 @@ describe('renderStatus', () => {
   test('the plan waiting for approval is the planning row, not a sixth one', () => {
     const body = renderStatus(view({ state: state({ phase: 'PLAN_REVIEW' }) }))
 
-    expect(rowFor(body, 'Planning')).toContain('⏳ **now**')
+    expect(rowFor(body, 'Planning')).toContain('🧭')
     expect(body.split('\n').filter((line) => line.startsWith('| ')).length).toBe(7)
   })
 
-  test('says what the model is doing, in names and counts only', () => {
-    const progress: ProgressSnapshot = { lastAction: 'bash (running)', toolCalls: 34, tokens: 218_000, cost: 0 }
-
-    const body = renderStatus(view({ progress }))
-
-    expect(body).toContain('**Doing:** bash (running) · 34 tool calls')
-    // The live figure, from the heartbeat, while the persisted one is still
-    // whatever the last posted comment recorded.
-    expect(body).toContain('**Budget:** 218,000 of 5,000,000 tokens')
-  })
-
-  test('never claims a smaller total than the state block already carries', () => {
-    // The persisted figure comes from the provider's usage block; the
-    // heartbeat's is summed from events that have arrived so far. A phase that
-    // has already posted therefore knows more than the tick does, and the line
-    // must not walk the total backwards when it ticks again.
-    const progress: ProgressSnapshot = { lastAction: 'starting', toolCalls: 0, tokens: 10, cost: 0 }
-
-    const body = renderStatus(view({ state: state({ tokensSpent: 900_000 }), carriedTokens: 0, progress }))
+  test('the budget line is the state’s own total, with no live arithmetic left', () => {
+    // `tokensSpent` is authoritative at the moment this renders, because the
+    // comment is written after the run. The heartbeat's running total, and the
+    // `max()` that reconciled the two while a comment was being edited mid-run,
+    // went with the live channel — a second figure that can only disagree.
+    const body = renderStatus(view({ state: state({ tokensSpent: 900_000 }) }))
 
     expect(body).toContain('**Budget:** 900,000 of 5,000,000 tokens')
+    expect(body).not.toContain('**Doing:**')
   })
 
   test('the attempt in flight is the one a failure here would report', () => {
@@ -188,11 +177,10 @@ describe('renderStatus', () => {
     expect(body).toContain('attempt 2 of 3 on this pull request')
   })
 
-  test('a finished run drops the progress line and wears the state it ended in', () => {
-    const progress: ProgressSnapshot = { lastAction: 'bash (running)', toolCalls: 34, tokens: 5, cost: 0 }
+  test('a finished run wears the state it ended in', () => {
     const ended = state({ phase: 'COMPLETE', prUrl: 'https://example.test/pull/7' })
 
-    const body = renderStatus(view({ state: ended, live: false, progress }))
+    const body = renderStatus(view({ state: ended }))
 
     expect(body.split('\n')[0]).toBe('### ✅ Delivered')
     expect(body).not.toContain('**Doing:**')
@@ -202,7 +190,7 @@ describe('renderStatus', () => {
   test('a failed run marks the step it broke on with the failure’s own glyph', () => {
     const broken = state({ phase: 'FAILED', resumeFrom: 'PLANNING' })
 
-    const body = renderStatus(view({ state: broken, live: false }))
+    const body = renderStatus(view({ state: broken }))
 
     expect(rowFor(body, 'Planning')).toBe('| 🗺️ Planning | ❌ |')
     expect(rowFor(body, 'Implementation')).toBe('| 🛠️ Implementation | ⬜ |')
@@ -214,7 +202,7 @@ describe('renderStatus', () => {
     // table tells about work nobody did.
     const cancelled = state({ phase: 'COMPLETE', changeName: 'captured-but-unplanned' })
 
-    const body = renderStatus(view({ state: cancelled, live: false }))
+    const body = renderStatus(view({ state: cancelled }))
 
     expect(rowFor(body, 'Design spec')).toContain('🛑')
     expect(rowFor(body, 'Implementation')).toBe('| 🛠️ Implementation | ⬜ |')
@@ -284,7 +272,7 @@ describe('renderStatus', () => {
     // their own phases.
     const sections = [section('Reading the issue', 'first'), section('Drafting the plan', 'second')]
 
-    const body = renderStatus(view({ state: state({ phase: 'PLAN_REVIEW' }), live: false, sections }))
+    const body = renderStatus(view({ state: state({ phase: 'PLAN_REVIEW' }), sections }))
 
     expect(body.split('\n').filter((line) => line.startsWith('### ')).length).toBe(1)
     expect(body.split('\n')[0]).toBe('### 🧭 Plan is waiting for you')
