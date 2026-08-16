@@ -45,7 +45,7 @@ See LICENSE in the project root for details.
 
 ## 4. Gate
 
-- [ ] 4.1 Run `bun security` (prompt-construction surface), full
+- [x] 4.1 Run `bun security` (prompt-construction surface), full
       `bun test`, `bun run typecheck`, `bun run lint`; update
       `docs/architecture/behaviors.md` with the boundary behavior note.
       Verify: all four commands pass
