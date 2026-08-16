@@ -39,7 +39,7 @@ See LICENSE in the project root for details.
       rendered fact lines wrap identifier/title/url in external-data
       delimiters; empty memory yields `null` as before.
       Verify: focused `bun test` (fails)
-- [ ] 3.2 Edit `src/memory-context-block.ts` to sanitize + wrap fact
+- [x] 3.2 Edit `src/memory-context-block.ts` to sanitize + wrap fact
       fields.
       Verify: focused `bun test` (passes)
 
