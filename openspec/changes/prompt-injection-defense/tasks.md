@@ -9,7 +9,7 @@ See LICENSE in the project root for details.
 
 ## 1. Boundary utility
 
-- [ ] 1.1 Write failing `tests/security/prompt-boundary.test.ts`: wrap
+- [x] 1.1 Write failing `tests/security/prompt-boundary.test.ts`: wrap
       produces `<external-data token=… kind=…>` with a stable per-process
       token; sanitize strips boundary-forging sequences, collapses
       newlines, truncates at 500 chars; token is not derivable from
