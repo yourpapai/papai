@@ -15,7 +15,7 @@ See LICENSE in the project root for details.
       newlines, truncates at 500 chars; token is not derivable from
       message content; empty/undefined inputs are safe.
       Verify: `bun test tests/security/prompt-boundary.test.ts` (fails)
-- [ ] 1.2 Implement `src/security/prompt-boundary.ts`
+- [x] 1.2 Implement `src/security/prompt-boundary.ts`
       (`wrapUntrusted`, `sanitizeExternalData`, per-process token via
       `node:crypto`, pino debug on module init without token value).
       Verify: `bun test tests/security/prompt-boundary.test.ts` (passes)
