@@ -12,6 +12,8 @@ import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { PostedComment } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { ProgressSnapshot } from '../../opencode-agent/src/progress.js'
+import { renderThread } from '../../opencode-agent/src/prompt-budget.js'
+import { createEnvelope } from '../../opencode-agent/src/prompts.js'
 import type { RunResult } from '../../opencode-agent/src/run-result.js'
 import {
   extractState,
@@ -265,16 +267,16 @@ describe('renderStatus', () => {
     expect(body).not.toContain('<details><summary>Drafting the plan</summary>')
   })
 
-  test('the run detail sits below every section and immediately above the marker', () => {
-    // Both halves are load-bearing. Below the sections, because a progress table
-    // between two reports would bury the newer one; immediately above the
-    // marker, because `renderThread` truncates there and everything the model
-    // must read has to be on the near side of it.
+  test('the marker opens the bookkeeping, and the run detail is inside it', () => {
+    // The contract with `renderThread`, which cuts the body at the marker: every
+    // section is above it and the run detail is below, because a progress table
+    // is bookkeeping — it is the original reason the marker exists. The marker
+    // is an HTML comment, so a human still sees the disclosure in place.
     const body = renderStatus(view({ sections: [section('Drafting the plan', '### Plan (revision 1)')] }))
 
-    expect(at(body, '### Plan (revision 1)')).toBeLessThan(at(body, '<details><summary>Run detail</summary>'))
-    expect(at(body, '<details><summary>Run detail</summary>')).toBeLessThan(at(body, STATUS_MARKER))
-    expect(at(body, '**Budget:**')).toBeLessThan(at(body, STATUS_MARKER))
+    expect(at(body, '### Plan (revision 1)')).toBeLessThan(at(body, STATUS_MARKER))
+    expect(at(body, STATUS_MARKER)).toBeLessThan(at(body, '<details><summary>Run detail</summary>'))
+    expect(at(body, STATUS_MARKER)).toBeLessThan(at(body, '**Budget:**'))
   })
 
   test('heads the whole comment once, however many sections it carries', () => {
@@ -364,6 +366,24 @@ describe('renderStatus', () => {
     expect(body).toContain('<details><summary>Run detail</summary>')
     expect(body).toContain('**Budget:**')
     expect(readBlock(body, STATUS_MARKER)).toEqual({ run: RUN_URL })
+  })
+
+  test('everything the model must read survives the prompt layer’s cut', () => {
+    // The join between the two halves of this change, asserted against a body
+    // this renderer actually produced rather than one hand-written to match:
+    // `renderStatus` puts the run detail last of the visible body *because*
+    // `renderThread` cuts there, and a test built from a literal would keep
+    // passing after one of them moved.
+    const sections = [section('Reading the issue', 'Adopted the change.'), section('Answering', '## Answer\n\nYes.')]
+    const comment: IssueComment = { id: 1, body: renderStatus(view({ sections })), authorLogin: AGENT_LOGIN }
+
+    const rendered = renderThread(createEnvelope('abc123'), [comment])
+
+    expect(rendered).toContain('Adopted the change.')
+    expect(rendered).toContain('## Answer')
+    expect(rendered).not.toContain('| Phase | |')
+    expect(rendered).not.toContain('**Budget:**')
+    expect(rendered).not.toContain('AGENT_STATUS')
   })
 
   test('a body inside the budget is left exactly as it was', () => {

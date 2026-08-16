@@ -102,12 +102,23 @@ The rendered body, in order:
 2. **Sections** — each phase's report, oldest first. Every section but the last
    is wrapped in `<details>` named for its phase; the newest is open, because it
    is what the maintainer came to read.
-3. **Run detail** — the progress table, job/branch lines and budget line in a
+3. **`AGENT_STATUS`** — the marker, which opens the bookkeeping rather than
+   closing the body. D4 cuts here.
+4. **Run detail** — the progress table, job/branch lines and budget line in a
    collapsed `<details>`. It is now a summary of a finished run rather than a
    live view, and it keeps its place because "42k of 150k tokens · attempt 1 of
-   3" is the figure a maintainer acts on. Always last of the visible body: D4
-   depends on it.
-4. **Hidden blocks** — `AGENT_STATUS`, then whatever D3 appended.
+   3" is the figure a maintainer acts on. **Below** the marker, because a
+   progress table is bookkeeping — it is the original reason the marker exists —
+   and an HTML comment renders as nothing, so a human sees the disclosure
+   exactly where it would otherwise have been.
+5. **The sections' hidden blocks**, oldest first, so "last block in the body
+   wins" resolves to the newest phase's.
+
+*Corrected during apply.* This list first put the run detail **above** the
+marker and had D4 cut at it, which leaves the progress table on the model's side
+of the cut — the one thing the cut exists to remove. The marker moved up
+instead. It is the cheaper fix and the more honest one: "the bookkeeping starts
+here" was always the meaning, and a progress table is bookkeeping.
 
 `renderStatus` stays a pure function of a `StatusView`, which now carries
 `sections: readonly ReportSection[]` and no liveness. Phase reports are terminal
@@ -146,9 +157,9 @@ must not be hidden from the model.
 
 The `AGENT_STATUS` block stops meaning "drop this comment" and starts meaning
 "the bookkeeping starts here". `renderThread` truncates each body at the first
-`AGENT_STATUS` marker before `stripBlocks` runs. D2 guarantees the run detail
-sits immediately above it, so the model sees the header and every section and
-none of the progress table.
+`AGENT_STATUS` marker before `stripBlocks` runs. D2 puts the marker directly
+below the last section and everything else below the marker, so the model sees
+the header and every section and none of the progress table.
 
 Truncation at a marker rather than a fenced region, because the failure mode is
 the mild one: a model-authored report that literally types `<!-- AGENT_STATUS:`

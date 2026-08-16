@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readBlock, stripBlocks } from './blocks.js'
+import { stripBlocks } from './blocks.js'
 import type { IssueComment } from './blocks.js'
 import type { UntrustedEnvelope } from './prompts.js'
 import { STATUS_MARKER } from './status-comment.js'
@@ -35,14 +35,29 @@ const authorAttribute = (login: string): string => {
 }
 
 /**
- * Whether a comment is the pipeline's own progress reporting.
+ * Cuts a body where it stops speaking to a human.
  *
- * By **marker**, never by author. The agent writes the design spec, the
- * plan and every phase report as well, and those are precisely what
- * the model is being asked to read — so filtering on the login would blind it to
- * its own artefacts, which is a much quieter version of the bug this prevents.
+ * This used to **drop** the whole comment, which was right while the agent
+ * posted a progress table and its reports separately: one status comment per run
+ * would otherwise have spent a quarter of the twenty slots on tables the model
+ * has no use for. The two are now one comment, so dropping it would hide the
+ * answer, the design digest and the plan — precisely the artefacts this renderer
+ * exists to show the model.
+ *
+ * So the marker changed jobs rather than the filter changing targets: it means
+ * *the bookkeeping starts here*, `renderStatus` puts the run detail immediately
+ * above it, and everything from it down is cut. By **marker**, never by author —
+ * the agent writes the artefacts too, so filtering on the login would blind the
+ * model to its own work, which is the much quieter version of the same bug.
+ *
+ * The **first** occurrence, not the last: a section is model-written and could
+ * type the marker verbatim, and cutting at the first makes that a report which
+ * ends early rather than bookkeeping that leaks into the window.
  */
-const isStatusComment = (comment: IssueComment): boolean => readBlock(comment.body, STATUS_MARKER) !== undefined
+const untilBookkeeping = (body: string): string => {
+  const marker = body.indexOf(`<!-- ${STATUS_MARKER}:`)
+  return marker === -1 ? body : body.slice(0, marker)
+}
 
 /**
  * Renders the issue thread for prompt context, newest last.
@@ -74,9 +89,10 @@ export const renderThread = (
   budget = THREAD_BUDGET,
 ): string => {
   const rendered = thread
-    .filter((comment) => !isStatusComment(comment))
     .slice(-limit)
-    .map((comment) => wrapWithin(envelope, authorAttribute(comment.authorLogin), stripBlocks(comment.body), budget))
+    .map((comment) =>
+      wrapWithin(envelope, authorAttribute(comment.authorLogin), stripBlocks(untilBookkeeping(comment.body)), budget),
+    )
   if (rendered.length === 0) return '(no comments yet)'
 
   const kept = withinBudget(rendered, budget)

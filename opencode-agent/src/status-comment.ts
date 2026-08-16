@@ -131,9 +131,14 @@ const renderSections = (sections: readonly ReportSection[]): readonly string[] =
  * resolves to the newest phase's, which is the property `readBlock` already has.
  */
 const bookkeeping = (view: StatusView): readonly string[] => [
-  ...renderRunDetail(view),
-  '',
+  // First, and that ordering is the whole contract with `renderThread`: it cuts
+  // the body here, so everything after this line is invisible to the model. The
+  // run detail is on this side of it because a progress table is bookkeeping —
+  // it was the original reason this marker exists — and an HTML comment renders
+  // as nothing, so a human sees the disclosure exactly where it was.
   renderBlock(STATUS_MARKER, { run: view.runUrl }),
+  '',
+  ...renderRunDetail(view),
   ...view.sections.flatMap((section) => section.blocks.flatMap((block) => ['', block])),
 ]
 

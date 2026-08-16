@@ -60,13 +60,13 @@ us, both recorded here rather than discovered twice:
 
 ## 3. The prompt truncates at the run detail (D4)
 
-- [ ] 3.1 Failing test: `renderThread` keeps a comment carrying an
+- [x] 3.1 Failing test: `renderThread` keeps a comment carrying an
       `AGENT_STATUS` block, renders everything above the marker, and renders
       nothing from the marker down — including the progress table. A comment
       with no marker is unchanged. Asserted against a body built by
       `renderStatus`, so the two cannot drift apart.
       `bun test tests/opencode-agent/adapters.test.ts`
-- [ ] 3.2 Replace `isStatusComment` with a truncate-at-marker step running
+- [x] 3.2 Replace `isStatusComment` with a truncate-at-marker step running
       **before** `stripBlocks` in `prompt-budget.ts`, and rewrite the doc
       comment: the marker no longer means "drop this comment", it means "the
       bookkeeping starts here".
