@@ -139,40 +139,73 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
   const command = triggerCommand(event)
 
   const base: PhaseInput = { state: restored, issue, trigger: event, command, thread, deps }
-  const entry = await applyTrigger(base)
-  if (entry.halt !== null) return settleLabels(deps, entry.halt, restored)
 
-  // Only when something is actually going to run. The closing reconcile happens
-  // either way — it is also the repair — but marking a run that is about to do
-  // nothing adds the marker and takes it off again within the second, which is
-  // two timeline entries on an issue where the agent did nothing, and precisely
-  // the churn a diff instead of a clear-and-reapply exists to avoid.
-  // The status comment is opened on the same condition and for the same reason:
-  // it is the whole comment budget this plan allows itself, and spending it on a
-  // run that is about to do nothing is the noise the budget exists to prevent.
-  if (willWork(entry)) {
-    await reconcileLabels(deps, entry.state, 'working')
-    await deps.status.start(entry.state)
-  }
+  // Before `applyTrigger`, not before the cascade: a refused command — an
+  // exhausted `/retry`, a `/review` past its ceiling, a command typed on the
+  // wrong surface — is buffered by the trigger layer, and a `begin` that waited
+  // for the cascade would leave those sections in a buffer nothing ever flushed.
+  // It is also the state the run entered on, which is what fixes the surface for
+  // the whole run. It writes nothing.
+  deps.status.begin(restored)
 
-  const result = await driveMachine({
-    ...base,
-    state: entry.state,
-    answer: entry.answer,
-    posted: false,
-    // Captured once. This job's session total is cumulative across the phases it
-    // runs, so adding it to the *restored* figure gives a monotonic total;
-    // adding it to each phase's own would count the earlier phases again.
-    carriedTokens: restored.tokensSpent,
+  return flushAround(deps, async () => {
+    const entry = await applyTrigger(base)
+    if (entry.halt !== null) return settleLabels(deps, entry.halt, restored)
+
+    // Only when something is actually going to run. The closing reconcile
+    // happens either way — it is also the repair — but marking a run that is
+    // about to do nothing adds the marker and takes it off again within the
+    // second, which is two timeline entries on an issue where the agent did
+    // nothing, and precisely the churn a diff instead of a clear-and-reapply
+    // exists to avoid.
+    //
+    // The reply used to be opened on this same condition, and needs no gate at
+    // all now that it is posted at the end: a run that does nothing buffers no
+    // sections, and a buffer with no sections posts nothing.
+    if (willWork(entry)) await reconcileLabels(deps, entry.state, 'working')
+
+    const result = await driveMachine({
+      ...base,
+      state: entry.state,
+      answer: entry.answer,
+      posted: false,
+      // Captured once. This job's session total is cumulative across the phases
+      // it runs, so adding it to the *restored* figure gives a monotonic total;
+      // adding it to each phase's own would count the earlier phases again.
+      carriedTokens: restored.tokensSpent,
+    })
+
+    return settleLabels(deps, result, entry.state)
   })
+}
 
-  // Finalising the status comment is deliberately not reporting: `finish`
-  // returns nothing, so this cannot touch `result.reported` even by accident. A
-  // run that died before reaching this line leaves "run in progress" on the
-  // issue, which is exactly what the workflow's fallback comment is for.
-  await deps.status.finish(result)
-
-  return settleLabels(deps, result, entry.state)
+/**
+ * Runs the whole accepted run and posts its reply, whichever way it leaves.
+ *
+ * The `finally` is the whole point and is what bounds the cost of buffering. A
+ * report used to be on the issue the moment the phase that wrote it finished;
+ * held in memory until the end, a run that throws would take every section with
+ * it — which would be strictly worse than what it replaced. Here a throw posts
+ * what was buffered and then rethrows, so the failure still reaches `runCli`
+ * and the job still goes red.
+ *
+ * What it cannot cover is a process that never runs its `finally`: an OOM kill,
+ * a cancelled job, a runner past `timeout-minutes`. Those leave nothing on the
+ * thread, and the workflow's fallback comment is the whole answer — the same
+ * answer it was before this change.
+ *
+ * `reported` is set from what GitHub **accepted**, not from the flush having
+ * been attempted: a refused post leaves the issue carrying no account of the
+ * run, and the fallback comment must stay in scope to say so.
+ */
+const flushAround = async (deps: PhaseDeps, run: () => Promise<RunResult>): Promise<RunResult> => {
+  try {
+    const result = await run()
+    return { ...result, reported: (await deps.status.flush()) !== null }
+  } catch (error) {
+    await deps.status.flush()
+    throw error
+  }
 }
 
 /**

@@ -579,21 +579,25 @@ describe('runCli', () => {
     })
 
     expect(result.status).toBe('failed')
-    // Two comments and no more: the run's status comment, and the notice that
-    // ended it. Everything in between is an edit.
-    expect(github.posted).toHaveLength(2)
+    // One comment and no more, at the wire: what used to be a status comment
+    // opened at the start, a notice at the end, and edits in between is now a
+    // single create carrying both.
+    expect(github.posted).toHaveLength(1)
     expect(github.posted[0]).toContain('[this run](https://github.com/acme/widgets/actions/runs/1482)')
-    // Rule 4, at the wire: the state channel gains no second writer.
+    expect(github.posted[0]).not.toContain('run in progress')
+    // An answer is not a record, so the reply carries no state block — the
+    // spend it owes is written in place, on the comment the scan restores from.
     expect(github.posted[0]).not.toContain('AGENT_STATE')
     expect(github.edits).toHaveLength(1)
-    expect(github.edits[0]?.url).toContain('/repos/acme/widgets/issues/comments/9')
-    expect(github.edits[0]?.body).not.toContain('run in progress')
+    expect(github.edits[0]?.url).toContain('/repos/acme/widgets/issues/comments/1')
   })
 
-  test('a local run with no job to link to opens no status comment', async () => {
-    // The no-op reporter, from the outside: `--event-path` without a run is an
-    // ordinary way to drive this CLI, and every other test in this file relies
-    // on it posting nothing.
+  test('a local run with no job to link to still posts its reply', async () => {
+    // `--event-path` without a run id is an ordinary way to drive this CLI, and
+    // it used to get the no-op reporter: a status comment that cannot say where
+    // the work happened was most of the value gone. The same comment now carries
+    // the report, so silencing it would silence the run — the job *link* is
+    // dropped instead.
     const prior = [
       {
         id: 1,
@@ -624,7 +628,8 @@ describe('runCli', () => {
 
     expect(result.status).toBe('failed')
     expect(github.posted).toHaveLength(1)
-    expect(github.edits).toEqual([])
+    expect(github.posted[0]).toContain('**Job:** local run')
+    expect(github.posted[0]).not.toContain('[this run]')
   })
 
   test('a repository that wants no labels gets none', async () => {

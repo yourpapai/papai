@@ -14,7 +14,6 @@ import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { ProgressSnapshot } from '../../opencode-agent/src/progress.js'
 import { renderThread } from '../../opencode-agent/src/prompt-budget.js'
 import { createEnvelope } from '../../opencode-agent/src/prompts.js'
-import type { RunResult } from '../../opencode-agent/src/run-result.js'
 import {
   extractState,
   findLatestState,
@@ -26,8 +25,8 @@ import { persistState } from '../../opencode-agent/src/state-persist.js'
 import type { StatePersistDeps } from '../../opencode-agent/src/state-persist.js'
 import { BODY_BUDGET, renderStatus, STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import type { ReportSection, StatusView } from '../../opencode-agent/src/status-comment.js'
-import { createStatusReporter, MIN_EDIT_INTERVAL_MS } from '../../opencode-agent/src/status-reporter.js'
-import type { StatusDeps } from '../../opencode-agent/src/status-reporter.js'
+import { createStatusReporter } from '../../opencode-agent/src/status-reporter.js'
+import type { StatusDeps, StatusReporter } from '../../opencode-agent/src/status-reporter.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 
 const AGENT_LOGIN = 'agent-bot'
@@ -408,176 +407,6 @@ describe('renderStatus', () => {
   })
 })
 
-/** Records what the status channel sent, and can be told to refuse. */
-interface StatusIo {
-  created: string[]
-  edits: { id: number; body: string }[]
-  /** Which issue or pull request each comment was opened against. */
-  createdOn: number[]
-  createError: Error | null
-  editError: Error | null
-  nowMs: number
-}
-
-const statusHarness = (overrides: Partial<PipelineConfig> = {}): { io: StatusIo; deps: StatusDeps } => {
-  const io: StatusIo = { created: [], createdOn: [], edits: [], createError: null, editError: null, nowMs: STARTED }
-
-  const deps: StatusDeps = {
-    github: {
-      createComment: (issueNumber, body): Promise<PostedComment> => {
-        if (io.createError !== null) return Promise.reject(io.createError)
-        io.createdOn.push(issueNumber)
-        io.created.push(body)
-        return Promise.resolve({ id: 900, url: 'https://example.test/c/900', authorLogin: AGENT_LOGIN })
-      },
-      updateComment: (id, body): Promise<void> => {
-        io.edits.push({ id, body })
-        return io.editError === null ? Promise.resolve() : Promise.reject(io.editError)
-      },
-    },
-    log: silentLogger(),
-    config: config(overrides),
-    now: () => io.nowMs,
-  }
-
-  return { io, deps }
-}
-
-const done: RunResult = {
-  status: 'completed',
-  reason: 'Pipeline finished',
-  state: { ...initialState(ISSUE), phase: 'COMPLETE', prUrl: 'https://example.test/pull/7' },
-  reported: true,
-}
-
-describe('createStatusReporter', () => {
-  test('opens exactly one comment for the run and edits it thereafter', () => {
-    const { io, deps } = statusHarness()
-    const reporter = createStatusReporter(deps)
-
-    return (async (): Promise<void> => {
-      await reporter.start(state({ phase: 'PLANNING' }))
-      io.nowMs += MIN_EDIT_INTERVAL_MS
-      await reporter.enter(state({ phase: 'REVIEW_AND_MUTATE' }))
-
-      expect(io.created).toHaveLength(1)
-      expect(io.edits).toHaveLength(1)
-      expect(io.edits[0]?.id).toBe(900)
-      expect(io.edits[0]?.body).toContain('Writing the code')
-    })()
-  })
-
-  test('a second tick inside the window issues no request', async () => {
-    // The clock is injected precisely so this is provable without waiting a
-    // minute for it, and the bound is what keeps a 90-minute run inside the
-    // secondary rate limit on content-mutating requests.
-    const { io, deps } = statusHarness()
-    const reporter = createStatusReporter(deps)
-    await reporter.start(state({ phase: 'REVIEW_AND_MUTATE' }))
-
-    io.nowMs += MIN_EDIT_INTERVAL_MS
-    await reporter.tick({ lastAction: 'bash (running)', toolCalls: 1, tokens: 10, cost: 0 })
-    io.nowMs += 1_000
-    await reporter.tick({ lastAction: 'read (running)', toolCalls: 2, tokens: 20, cost: 0 })
-
-    expect(io.edits).toHaveLength(1)
-    expect(io.edits[0]?.body).toContain('bash (running)')
-  })
-
-  test('an unchanged body issues nothing, however long the run has been quiet', async () => {
-    // The other half of the cost bound, and the one that makes a twenty-minute
-    // model call with no tool use free rather than twenty edits saying the same
-    // thing. The window is long past, so only the body is holding this back.
-    const { io, deps } = statusHarness()
-    const reporter = createStatusReporter(deps)
-    await reporter.start(state({ phase: 'REVIEW_AND_MUTATE' }))
-    const quiet: ProgressSnapshot = { lastAction: 'thinking', toolCalls: 0, tokens: 0, cost: 0 }
-
-    io.nowMs += 10 * MIN_EDIT_INTERVAL_MS
-    await reporter.enter(state({ phase: 'REVIEW_AND_MUTATE' }))
-    await reporter.tick(quiet)
-    io.nowMs += 10 * MIN_EDIT_INTERVAL_MS
-    await reporter.tick(quiet)
-
-    // One edit, for the tick that actually said something new.
-    expect(io.edits).toHaveLength(1)
-    expect(io.edits[0]?.body).toContain('**Doing:** thinking · 0 tool calls')
-  })
-
-  test('the final edit is not held back by the window', async () => {
-    // A run that ends inside the minute would otherwise leave "run in progress"
-    // on the issue for ever.
-    const { io, deps } = statusHarness()
-    const reporter = createStatusReporter(deps)
-    await reporter.start(state({ phase: 'PR_DELIVERY' }))
-
-    io.nowMs += 2_000
-    await reporter.finish(done)
-
-    expect(io.edits).toHaveLength(1)
-    expect(io.edits[0]?.body.split('\n')[0]).toBe('### ✅ Delivered')
-    expect(io.edits[0]?.body).not.toContain('run in progress')
-  })
-
-  test('a refused edit is a warning, and the next one retries it', async () => {
-    const { io, deps } = statusHarness()
-    const reporter = createStatusReporter(deps)
-    await reporter.start(state({ phase: 'REVIEW_AND_MUTATE' }))
-    io.editError = new Error('Resource not accessible by integration')
-
-    io.nowMs += MIN_EDIT_INTERVAL_MS
-    await expect(reporter.enter(state({ phase: 'PR_DELIVERY' }))).resolves.toBeUndefined()
-    io.editError = null
-    io.nowMs += MIN_EDIT_INTERVAL_MS
-    await reporter.enter(state({ phase: 'PR_DELIVERY' }))
-
-    // The body it failed to write is not remembered as written, so the retry
-    // actually carries it.
-    expect(io.edits).toHaveLength(2)
-    expect(io.edits[1]?.body).toContain('Opening the pull request')
-  })
-
-  test('a refused create leaves every later call a no-op', async () => {
-    // The degradation this channel is allowed: back to exactly the behaviour of
-    // a pipeline that never had a status comment.
-    const { io, deps } = statusHarness()
-    io.createError = new Error('403')
-    const reporter = createStatusReporter(deps)
-
-    await expect(reporter.start(state())).resolves.toBeUndefined()
-    await reporter.enter(state({ phase: 'REVIEW_AND_MUTATE' }))
-    await reporter.tick({ lastAction: 'bash (running)', toolCalls: 1, tokens: 1, cost: 0 })
-    await reporter.finish(done)
-
-    expect(io.edits).toEqual([])
-  })
-
-  test('a run with no job to link to says nothing at all', async () => {
-    // A local `--event-path` run is an ordinary way to drive this CLI, and the
-    // comment's first line is a link to the job doing the work.
-    const { io, deps } = statusHarness({ runUrl: null })
-    const reporter = createStatusReporter(deps)
-
-    await reporter.start(state())
-    await reporter.finish(done)
-
-    expect(io.created).toEqual([])
-    expect(io.edits).toEqual([])
-  })
-
-  test('finish returns nothing, so a status comment cannot report', async () => {
-    // Rule 7 in the type system rather than in a convention: `RunResult` never
-    // comes back out of this channel, so the flag the workflow's fallback
-    // comment is gated on is unreachable from here.
-    const { deps } = statusHarness()
-    const reporter = createStatusReporter(deps)
-    await reporter.start(state({ phase: 'REVIEW_AND_MUTATE' }))
-
-    expect(await reporter.finish(done)).toBeUndefined()
-    expect(done.reported).toBe(true)
-  })
-})
-
 const agentComment = (id: number, body: string): IssueComment => ({ id, body, authorLogin: AGENT_LOGIN })
 
 const withState = (id: number, patch: Partial<AgentState>, prose = 'earlier'): IssueComment =>
@@ -592,6 +421,186 @@ const persistDeps = (edits: { id: number; body: string }[], error: Error | null 
   },
   log: silentLogger(),
   selfLogin: (): Promise<string> => Promise.resolve(AGENT_LOGIN),
+})
+
+/** Records what the reply channel sent, and can be told to refuse. */
+interface StatusIo {
+  created: string[]
+  /** Which issue or pull request each comment was opened against. */
+  createdOn: number[]
+  createError: Error | null
+  postedAs: string
+  errors: string[]
+}
+
+const statusHarness = (overrides: Partial<PipelineConfig> = {}): { io: StatusIo; deps: StatusDeps } => {
+  const io: StatusIo = { created: [], createdOn: [], createError: null, postedAs: AGENT_LOGIN, errors: [] }
+
+  const deps: StatusDeps = {
+    github: {
+      createComment: (issueNumber, body): Promise<PostedComment> => {
+        if (io.createError !== null) return Promise.reject(io.createError)
+        io.createdOn.push(issueNumber)
+        io.created.push(body)
+        return Promise.resolve({ id: 900, url: 'https://example.test/c/900', authorLogin: io.postedAs })
+      },
+    },
+    log: { ...silentLogger(), error: (_meta, message): void => void io.errors.push(message ?? '') },
+    config: config(overrides),
+    selfLogin: (): Promise<string> => Promise.resolve(AGENT_LOGIN),
+  }
+
+  return { io, deps }
+}
+
+const reporterFor = (overrides: Partial<PipelineConfig> = {}): { io: StatusIo; reporter: StatusReporter } => {
+  const { io, deps } = statusHarness(overrides)
+  return { io, reporter: createStatusReporter(deps, STARTED) }
+}
+
+const report = (body: string, blocks: readonly string[] = []): ReportSection =>
+  section('Writing the code', body, blocks)
+
+describe('createStatusReporter', () => {
+  test('says nothing at all until the run is flushed', async () => {
+    // The property that buys the notification back: a create at the end tells
+    // GitHub to notify when the answer lands, where an edit tells it nothing.
+    const { io, reporter } = reporterFor()
+    reporter.begin(state({ phase: 'PLANNING' }))
+
+    reporter.section(state({ phase: 'PLAN_REVIEW' }), report('### Plan (revision 1)'))
+    expect(io.created).toEqual([])
+
+    await reporter.flush()
+    expect(io.created).toHaveLength(1)
+  })
+
+  test('one comment for the run, however many sections it collected', async () => {
+    const { io, reporter } = reporterFor()
+    reporter.begin(state({ phase: 'REVIEW_AND_MUTATE' }))
+
+    reporter.section(state({ phase: 'PR_DELIVERY' }), section('Writing the code', 'Implemented.'))
+    reporter.section(state({ phase: 'COMPLETE', prUrl: 'https://p/7' }), section('Opening the pull request', 'Ready.'))
+    await reporter.flush()
+
+    expect(io.created).toHaveLength(1)
+    expect(String(io.created[0])).toContain('Implemented.')
+    expect(String(io.created[0])).toContain('Ready.')
+  })
+
+  test('wears the state of the newest section, not the one it began on', async () => {
+    const { io, reporter } = reporterFor()
+    reporter.begin(state({ phase: 'PLANNING' }))
+
+    reporter.section(state({ phase: 'PLAN_REVIEW' }), report('### Plan (revision 1)'))
+    await reporter.flush()
+
+    expect(String(io.created[0]).split('\n')[0]).toBe('### 🧭 Plan is waiting for you')
+    expect(String(io.created[0])).not.toContain('run in progress')
+  })
+
+  test('a run that collected nothing posts nothing', async () => {
+    // A guardrail denial, a `/cancel` that settles without a handler, and the
+    // classifier's `none` branch all reach the flush with an empty buffer.
+    const { io, reporter } = reporterFor()
+    reporter.begin(state())
+
+    expect(await reporter.flush()).toBeNull()
+    expect(io.created).toEqual([])
+  })
+
+  test('a refused create is a warning, and answers null so nothing claims it reported', async () => {
+    // The one narrowing of "feedback never fails a run": still swallowed, but
+    // the caller must not mark an issue as carrying a report GitHub refused.
+    const { io, reporter } = reporterFor()
+    io.createError = new Error('Resource not accessible by integration')
+    reporter.begin(state({ phase: 'PLANNING' }))
+    reporter.section(state({ phase: 'PLAN_REVIEW' }), report('### Plan (revision 1)'))
+
+    expect(await reporter.flush()).toBeNull()
+  })
+
+  test('a run with no job to link to still posts, saying so', async () => {
+    // This used to be the no-op reporter's case. The comment now carries the
+    // report, so it posts and drops the link rather than staying silent.
+    const { io, reporter } = reporterFor({ runUrl: null })
+    reporter.begin(state({ phase: 'PLANNING' }))
+    reporter.section(state({ phase: 'PLAN_REVIEW' }), report('### Plan (revision 1)'))
+
+    await reporter.flush()
+
+    expect(io.created).toHaveLength(1)
+    expect(String(io.created[0])).toContain('**Job:** local run')
+  })
+
+  test('begins each run clean, so a finished run’s sections are never posted twice', async () => {
+    // A process drives one run, so in production this clears nothing — but a
+    // buffer that quietly kept a previous run's sections would post them again
+    // under the next run's heading.
+    const { io, reporter } = reporterFor()
+    reporter.begin(state({ phase: 'PLANNING' }))
+    reporter.section(state({ phase: 'PLAN_REVIEW' }), report('first run'))
+    await reporter.flush()
+
+    reporter.begin(state({ phase: 'PLAN_REVIEW' }))
+    reporter.section(state({ phase: 'REVIEW_AND_MUTATE' }), report('second run'))
+    await reporter.flush()
+
+    expect(String(io.created[1])).toContain('second run')
+    expect(String(io.created[1])).not.toContain('first run')
+  })
+
+  test('reports an identity drift on the run that caused it', async () => {
+    // The next job reads real authors back from the API, so a run posting as an
+    // account it does not identify as leaves its own comments invisible to it.
+    const { io, reporter } = reporterFor()
+    io.postedAs = 'github-actions[bot]'
+    reporter.begin(state({ phase: 'PLANNING' }))
+    reporter.section(state({ phase: 'PLAN_REVIEW' }), report('### Plan (revision 1)'))
+
+    await reporter.flush()
+
+    expect(io.errors.join(' ')).toContain('posted as a different account')
+  })
+})
+
+/**
+ * Which page the run's reply lands on.
+ *
+ * Resolved once, from the state the run *entered* on — so the delivery that
+ * first records `prNumber` still lands on the issue, which is where a reader
+ * wants the handover, and every later run lands on the pull request.
+ */
+describe('createStatusReporter · where the comment lives', () => {
+  test('posts on the issue while there is no pull request', async () => {
+    const { io, reporter } = reporterFor()
+    reporter.begin(state({ phase: 'PLANNING' }))
+    reporter.section(state({ phase: 'PLAN_REVIEW' }), report('x'))
+
+    await reporter.flush()
+
+    expect(io.createdOn).toEqual([ISSUE])
+  })
+
+  test('posts on the pull request once the run began with one', async () => {
+    const { io, reporter } = reporterFor()
+    reporter.begin(state({ phase: 'CI_FIX', prNumber: 7, prUrl: 'https://x.test/pull/7' }))
+    reporter.section(state({ phase: 'COMPLETE', prNumber: 7, prUrl: 'https://x.test/pull/7' }), report('x'))
+
+    await reporter.flush()
+
+    expect(io.createdOn).toEqual([7])
+  })
+
+  test('a run that opens the pull request still lands on the issue', async () => {
+    const { io, reporter } = reporterFor()
+    reporter.begin(state({ phase: 'PR_DELIVERY' }))
+    reporter.section(state({ phase: 'COMPLETE', prNumber: 7, prUrl: 'https://x.test/pull/7' }), report('Ready.'))
+
+    await reporter.flush()
+
+    expect(io.createdOn).toEqual([ISSUE])
+  })
 })
 
 /** The thread as GitHub would hold it after an in-place rewrite. */
@@ -704,20 +713,3 @@ describe('persistState', () => {
  * it happens. The record is the other half and does not move: the report and the
  * `AGENT_STATE` block stay on the issue, where `findLatestState` scans.
  */
-describe('createStatusReporter · where the comment lives', () => {
-  test('opens on the issue while there is no pull request', async () => {
-    const { io, deps } = statusHarness()
-
-    await createStatusReporter(deps).start(state({ phase: 'PLANNING' }))
-
-    expect(io.createdOn).toEqual([ISSUE])
-  })
-
-  test('opens on the pull request once one exists', async () => {
-    const { io, deps } = statusHarness()
-
-    await createStatusReporter(deps).start(state({ phase: 'CI_FIX', prNumber: 7, prUrl: 'https://x.test/pull/7' }))
-
-    expect(io.createdOn).toEqual([7])
-  })
-})

@@ -4,28 +4,35 @@
 // See LICENSE in the project root for details.
 
 import type { IssueComment } from './blocks.js'
-import { feedbackTarget } from './feedback-target.js'
-import { reportIdentityDrift } from './identity.js'
 import type { PhaseInput } from './phase-context.js'
-import { renderStateComment } from './state-manager.js'
+import { presentationFor } from './presentation.js'
+import { serializeState } from './state-manager.js'
 import { persistState } from './state-persist.js'
 import type { AgentState } from './types.js'
 
 /**
- * The two writes this pipeline makes to a conversation, and the one line they
+ * The two things this pipeline says to a conversation, and the one line they
  * both carry.
  *
  * Split from `run-report.ts` when the surface move (design D4) pushed that file
  * past `max-lines`, along a seam it already described in its own first sentence:
  * everything left there *renders* — a failure, a park, a refusal, a closing —
- * and this is what *posts*. The two change for entirely different reasons. A
- * renderer changes when the wording does; these two change when the answer to
- * "which page, and does it carry the record" changes, which is a question about
- * the restore scan and the state machine rather than about prose.
+ * and this is what commits it to the reply. The two change for entirely
+ * different reasons. A renderer changes when the wording does; these two change
+ * when the answer to "does it carry the record" changes, which is a question
+ * about the restore scan and the state machine rather than about prose.
  *
+ * Neither **posts** any more. Both append a section to the run's reply buffer,
+ * which `runAccepted` flushes once, as one comment, when the run settles — so a
+ * maintainer's command draws exactly one reply however many phases answered it.
+ * What survives the change is the distinction the two names carry:
  * `postAndAppend` is the pipeline's only durable write and the only place a
- * state block is appended. `postAnswer` is the one comment that is deliberately
- * not a record.
+ * state block is appended, and `postAnswer` is deliberately not a record.
+ *
+ * The **surface** is no longer decided here at all. It was `feedbackTarget` of
+ * the phase's *entry* state, a one-comment lag each caller had to not forget;
+ * the buffer now resolves it once from the state the whole run entered on, which
+ * is the same guarantee made structural — see `status-reporter.ts`.
  */
 
 /**
@@ -47,31 +54,50 @@ const commandPointer = (state: AgentState): string =>
   state.prUrl === null ? '' : `\n\n_Commands for this issue go on its pull request: ${state.prUrl}_`
 
 /**
- * Posts a comment and mirrors it into the in-memory thread, so a later phase in
- * the same job can read an artefact the earlier phase just wrote without
- * re-fetching the issue.
+ * How a folded section names itself.
  *
- * Addressed at {@link feedbackTarget}, so once a pull request exists the body
- * **and its state block** land there. That block used to be the one thing that
- * could not move: `findLatestState` scanned exactly one thread, so a block on
- * the pull request was a second source of truth the scan could never see. The
- * answer is not to split the write — a rendered comment here and a rewritten
- * block over there — but to move the scan, which `readThread` in
- * `orchestrator.ts` now does in two passes. Splitting them would have made the
- * record a **rewrite in place**, and blocks appending in order is load-bearing:
- * `findHandoff` and the report reads walk newest-first and need a superseded
- * block to still be there.
+ * From the one presentation table, keyed on the state the phase *started* from,
+ * so a section is titled by the work it did rather than by where that work left
+ * the machine — "Breaking the spec into steps", not "Plan is waiting for you".
+ * Reading it from `PRESENTATION` is what keeps a section from acquiring a name
+ * no other surface uses.
+ */
+const sectionSummary = (input: PhaseInput): string => presentationFor(input.state, 'working').headline
+
+/**
+ * The reply as the rest of *this job* sees it.
  *
- * The target comes from **`input.state`** — the state this phase started from —
- * while the block serialized is the state it produced, and that one-comment lag
- * is what makes the two-pass restore terminate. `readThread` learns which second
- * thread to read from a block on the issue, so *something* on the issue has to
- * name the pull request; addressing this write with the new state would post the
- * very block that first records `prNumber` to the pull request it names, leaving
- * the issue with no block that has ever heard of it and the scan with no way in.
- * The lag costs exactly one comment: the delivery lands on the issue, which is
- * also where a reader wants it — it is the handover — and every comment after it
- * lands on the pull request.
+ * A later phase in the same job reads artefacts out of `thread` rather than
+ * re-fetching the issue, so a buffered section still has to appear there. The id
+ * is synthetic and negative because there is no real comment until the flush:
+ * a negative id matches nothing GitHub would return, so code that assumed it
+ * could edit this fails loudly instead of rewriting a real comment. `readBlock`
+ * reads bodies and never ids, which is why the blocks still resolve normally.
+ */
+const MIRROR_ID = -1
+
+const mirror = (authorLogin: string, body: string): IssueComment => ({ id: MIRROR_ID, body, authorLogin })
+
+/**
+ * Adds a phase's report to the run's reply, and mirrors it into the in-memory
+ * thread so a later phase in the same job can read an artefact the earlier phase
+ * just wrote without re-fetching the issue.
+ *
+ * The state block is appended **into the same body** as every other section's,
+ * which the block layer already supports and which is what makes the whole
+ * consolidation cheap: `readBlock` returns the *last* block of a marker in a
+ * body and `locateLatestBlock` walks the thread newest-first, so "newest wins"
+ * is unchanged whether a run wrote four comments or one. Superseded blocks stay
+ * present in the body, which `findHandoff` and the report read depend on —
+ * they walk newest-first and need the older ones to still be there.
+ *
+ * Which page it lands on is decided **once, by the buffer**, from the state the
+ * run entered on. That preserves the property the old per-comment lag bought:
+ * `readThread` learns which second thread to read from a block on the issue, so
+ * something on the issue has to name the pull request, and a delivery addressed
+ * with its *own* new state would post the very block that first records
+ * `prNumber` to the pull request it names — leaving the issue with no block that
+ * has ever heard of it and the restore scan with no way in.
  */
 export const postAndAppend = async (
   thread: readonly IssueComment[],
@@ -80,51 +106,31 @@ export const postAndAppend = async (
   state: AgentState,
   blocks?: readonly string[],
 ): Promise<IssueComment[]> => {
-  const artifacts = blocks === undefined || blocks.length === 0 ? '' : `\n\n${blocks.join('\n\n')}`
-  const rendered = `${renderStateComment(`${body}${commandPointer(state)}`, state)}${artifacts}`
+  const prose = `${body}${commandPointer(state)}`.trimEnd()
+  const carried = [serializeState(state), ...(blocks ?? [])]
+  input.deps.status.section(state, { summary: sectionSummary(input), body: prose, blocks: carried })
 
-  const posted = await input.deps.github.createComment(feedbackTarget(input.state), rendered)
-  // The recorded author, not the one the pipeline believes in: if they differ,
-  // the in-job mirror would otherwise disagree with what a later job reads back.
-  reportIdentityDrift(await input.deps.selfLogin(), posted.authorLogin, input.deps.log)
-
-  return [...thread, { id: posted.id, body: rendered, authorLogin: posted.authorLogin }]
+  return [...thread, mirror(await input.deps.selfLogin(), `${prose}\n\n${carried.join('\n\n')}`)]
 }
 
 /**
- * Posts a reply to the surface the question was typed on.
+ * Answers a question, without recording anything.
  *
  * A question is the one thing this pipeline says that is *not* about the state
- * of the work: it moves no phase, spends no attempt and produces no artefact, so
- * it belongs in the conversation it answers rather than in the record. Typed on
- * the issue it goes to the issue, exactly as before; typed on a pull request it
- * goes there, where the person who asked is looking.
+ * of the work: it moves no phase, spends no attempt and produces no artefact.
  *
- * Three things this must not do, and the shape follows from them.
+ * So it writes no **state block**. Not because of where a block would land, but
+ * because an answer is not a record: a block appended for it would add an entry
+ * to the newest-first walk that says nothing happened. What a question really
+ * does change is the spend, and that is still written — by {@link persistState},
+ * which rewrites the newest block of an *earlier* comment in place and posts
+ * nothing.
  *
- * It must not write a **state block** at all. Not because of where the block
- * would land — under D4 `postAndAppend` puts blocks on the pull request quite
- * safely, and `readThread` reads them back — but because an answer is not a
- * record: appending a block for it would add a comment to the newest-first walk
- * that says nothing happened. So this is a plain comment plus
- * {@link persistState}, the write that rewrites the newest block *in place* and
- * posts nothing. The spend is the one thing a question really does change, and
- * it is still recorded.
- *
- * It must not post **twice**. A copy on the issue "for the record" would be two
- * accounts of one exchange, free to disagree, on a page nobody asked anything on.
- *
- * And it must not swallow a **failed post**: the answer is the work here, so a
- * rejected `createComment` throws exactly as it does on the issue path, leaving
- * `reported` unset and the workflow's fallback comment in scope. Only the state
- * rewrite beside it is best-effort, for the reason `persistState` states.
- *
- * The branch stays on the **trigger** rather than on `feedbackTarget`, though
- * under D4 the two now agree: a question can only reach here from the issue while
- * there is no pull request, since `commandSurface` refuses issue commands once
- * there is one. Keeping it on the trigger says the thing this function is
- * actually for — reply where the question was asked — instead of deriving it from
- * a rule two modules away that would have to keep agreeing for ever.
+ * Its old branch on `input.trigger.kind` is gone with the write it guarded. It
+ * existed to reply on the surface the question was typed on, and there is now
+ * one reply per run whose surface the buffer resolves; the two always agreed in
+ * any case, since `commandSurface` refuses issue commands once a pull request
+ * exists.
  */
 export const postAnswer = async (
   thread: readonly IssueComment[],
@@ -132,9 +138,7 @@ export const postAnswer = async (
   body: string,
   state: AgentState,
 ): Promise<readonly IssueComment[]> => {
-  if (input.trigger.kind !== 'pull-request') return postAndAppend(thread, input, body, state)
-
-  await input.deps.github.createComment(input.trigger.prNumber, body)
+  input.deps.status.section(state, { summary: sectionSummary(input), body: body.trimEnd(), blocks: [] })
   await persistState(input.deps, thread, state)
   return thread
 }

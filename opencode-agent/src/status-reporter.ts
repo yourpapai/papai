@@ -5,249 +5,174 @@
 
 import type { PipelineConfig } from './config.js'
 import { feedbackTarget } from './feedback-target.js'
-import type { GitHubApi } from './github.js'
+import type { GitHubApi, PostedComment } from './github.js'
+import { reportIdentityDrift } from './identity.js'
 import type { Logger } from './logger.js'
-import type { ProgressSnapshot } from './progress.js'
-import type { RunResult } from './run-result.js'
 import { renderStatus } from './status-comment.js'
 import type { ReportSection, StatusView } from './status-comment.js'
 import { errorMessage } from './types.js'
 import type { AgentState } from './types.js'
 
 /**
- * The live status channel: one comment per run, opened when the run starts,
- * edited as it moves, finalised when it ends.
+ * The run's reply: collected while the work happens, posted once when it ends.
  *
- * The same two rules the reaction and label channels are built on, for the same
- * reasons.
+ * This was the *live status comment* — opened before the work, edited as the run
+ * moved, finalised at the end — beside a second comment per phase carrying the
+ * report. One maintainer command therefore drew three comments (issue #281), and
+ * the first two routinely said the same thing twice. Both are now this, and a
+ * command draws exactly one reply.
  *
- * **Feedback must never fail a run.** Every write here is decoration on work
- * that matters, and each is a new way to break a pipeline that used to work — a
- * token without `issues: write`, a fork run, a secondary rate limit. So
- * {@link attempt} is the only place this module touches GitHub and it swallows
- * everything: a failed edit is a `warn`, and a failed *create* leaves
- * `commentId` null so every later call is a no-op and the run degrades to
- * exactly the behaviour it had before this channel existed.
+ * **A post, not an edit**, and that is the decision the shape follows from.
+ * GitHub does not notify on an edit, so a comment opened at the start and
+ * rewritten at the end announces itself when the run *begins* and delivers the
+ * answer in silence. Buying the notification costs the live view — a run in
+ * flight is visible through the 👀 reaction, the `agent:working` label and the
+ * heartbeat's once-a-minute line in the Actions log, and nothing on the thread.
  *
- * **A status comment is not a report.** `RunResult.reported` means the issue
- * carries this run's account of what happened, and the workflow's fallback
- * comment is gated on it. A run killed mid-phase leaves "run in progress" on the
- * issue — which is *precisely* the case that fallback exists for — so marking it
- * reported would suppress the one comment that would have explained the silence.
- * {@link StatusReporter.finish} therefore takes the result and returns nothing:
- * the flag is unreachable from here, rather than merely left alone by habit.
+ * **Feedback must never fail a run**, with one narrowing. {@link attempt} is
+ * still the only place this module touches GitHub and it still swallows
+ * everything. But this write is no longer decoration — it is the report — so a
+ * swallowed failure must leave {@link ReplyBuffer.flush} answering `null`, and
+ * the caller must leave `RunResult.reported` false. A report GitHub refused is a
+ * report the issue does not carry, and claiming otherwise suppresses the
+ * workflow's fallback comment, which is the only thing that would explain the
+ * silence.
  *
- * Cost is bounded twice over, because a status comment is the only sustained
- * writer this pipeline has: an edit is skipped when the rendered body has not
- * changed, and otherwise at most one is issued per minute. A 90-minute run costs
- * ~90 edits, comfortably inside the secondary rate limit on content-mutating
- * requests, and a quiet stretch costs nothing at all. The clock is injected, so
- * neither bound is proved by waiting.
+ * {@link ReplyBuffer.section} is synchronous and cannot fail: it appends to an
+ * array. Everything that made the live channel expensive — the edit
+ * rate-limiter, the unchanged-body suppression, the comment id held across a
+ * run, the clock — went with the edits.
  */
 
 export interface StatusReporter {
-  /** Opens the comment. Called once, and only when a run is about to do work. */
-  start(state: AgentState): Promise<void>
-  /** The cascade is about to run a handler for this state. */
-  enter(state: AgentState): Promise<void>
-  /** A heartbeat's account of the turn in flight. */
-  tick(snapshot: ProgressSnapshot): Promise<void>
-  /** The run is over. Returns nothing, deliberately — see the note above. */
-  finish(result: RunResult): Promise<void>
+  /**
+   * Records the state the run entered on, which fixes the surface for the whole
+   * run.
+   *
+   * This is what makes the one-comment lag structural rather than a rule each
+   * caller has to remember: `feedbackTarget` is resolved from a state captured
+   * before any phase ran, so the block that first records `prNumber` lands on
+   * the issue — which is where a reader wants the handover anyway — and every
+   * later run posts to the pull request.
+   */
+  begin(state: AgentState): void
+  /** Adds a phase's report. Terminal by construction: never re-rendered. */
+  section(state: AgentState, section: ReportSection): void
+  /**
+   * Posts the run's one comment, or `null` when there was nothing to say and
+   * when GitHub refused it. The only write this module makes.
+   */
+  flush(): Promise<PostedComment | null>
 }
 
 export interface StatusDeps {
   /** Narrower than `PhaseDeps`, the way `ReactionDeps` and `LabelDeps` are. */
-  github: Pick<GitHubApi, 'createComment' | 'updateComment'>
+  github: Pick<GitHubApi, 'createComment'>
   log: Logger
   config: PipelineConfig
-  /**
-   * The clock, injected.
-   *
-   * Nothing in this module reads `Date.now()`: the rate limit is the property
-   * most worth testing here and the least affordable to test by waiting a
-   * minute for it.
-   */
-  now: () => number
+  /** Who the pipeline believes it is, checked against who GitHub recorded. */
+  selfLogin: () => Promise<string>
 }
 
-/** At most one edit a minute, whatever happens in between. */
-export const MIN_EDIT_INTERVAL_MS = 60_000
-
-/**
- * Everything one run's status comment remembers.
- *
- * A record passed to module-level functions rather than a closure over a dozen
- * `let`s: the same fields, and the file stays readable at the length the rules
- * above cost to state.
- */
-interface RunStatus {
+/** Everything one run's reply remembers. */
+interface Reply {
   deps: StatusDeps
-  runUrl: string
   startedMs: number
-  /** `null` until the comment exists, and for ever if opening it failed. */
-  commentId: number | null
-  state: AgentState | null
-  /** What the issue had spent before this job started. Captured once. */
-  carriedTokens: number
-  progress: ProgressSnapshot | null
-  live: boolean
-  /** Each phase's report, oldest first. Appended by {@link StatusReporter.section}. */
+  /** The state the run entered on. `null` until {@link StatusReporter.begin}. */
+  entry: AgentState | null
+  /** The newest state a section was written from — the one the header wears. */
+  latest: AgentState | null
   sections: ReportSection[]
-  /** The body GitHub currently holds, so an unchanged render costs nothing. */
-  lastBody: string | null
-  lastEditMs: number
 }
 
 /** The only place this module talks to GitHub, and so the only place it can fail. */
-const attempt = async <T>(run: RunStatus, action: () => Promise<T>, message: string): Promise<T | null> => {
+const attempt = async <T>(reply: Reply, action: () => Promise<T>, message: string): Promise<T | null> => {
   try {
     return await action()
   } catch (error) {
-    run.deps.log.warn({ issue: run.state === null ? null : run.state.issueId, error: errorMessage(error) }, message)
+    reply.deps.log.warn(
+      { issue: reply.entry === null ? null : reply.entry.issueId, error: errorMessage(error) },
+      message,
+    )
     return null
   }
 }
 
-const viewOf = (run: RunStatus, state: AgentState): StatusView => ({
+const viewOf = (reply: Reply, state: AgentState): StatusView => ({
   state,
-  sections: run.sections,
-  progress: run.progress,
-  live: run.live,
-  runUrl: run.runUrl,
-  startedMs: run.startedMs,
-  carriedTokens: run.carriedTokens,
-  config: run.deps.config,
+  sections: reply.sections,
+  progress: null,
+  live: false,
+  runUrl: reply.deps.config.runUrl,
+  startedMs: reply.startedMs,
+  carriedTokens: 0,
+  config: reply.deps.config,
 })
 
 /**
- * Edits the comment, subject to both bounds.
+ * Posts the reply.
  *
- * `force` skips the clock, never the unchanged-body check, and exactly one
- * caller passes it: the final edit. A tick dropped inside the window is picked
- * up by the next one a minute later, and a phase move dropped by it is picked up
- * the same way — but a run that ends inside the window would otherwise leave
- * "run in progress" on the issue for ever, which is the one state this comment
- * must never be left in by an ordinary exit.
+ * An empty buffer posts nothing, which is the whole of "a run that does nothing
+ * says nothing": a guardrail denial, a `/cancel` that settles without a handler,
+ * and the classifier's `none` branch all reach here with no sections, and none of
+ * them should put a comment on the issue. The state spend those runs still owe is
+ * written by `state-persist.ts`, which rewrites a block in place and posts
+ * nothing.
  */
-const publish = async (run: RunStatus, force: boolean): Promise<void> => {
-  const id = run.commentId
-  const state = run.state
-  if (id === null || state === null) return
+const post = async (reply: Reply): Promise<PostedComment | null> => {
+  const entry = reply.entry
+  const state = reply.latest ?? entry
+  if (entry === null || state === null || reply.sections.length === 0) return null
 
-  const body = renderStatus(viewOf(run, state))
-  if (body === run.lastBody) return
-  if (!force && run.deps.now() - run.lastEditMs < MIN_EDIT_INTERVAL_MS) return
-
-  // Stamped before the call, not after it: a refused edit has still spent the
-  // request the bound is protecting, and retrying it every tick is how a
-  // rate-limited run stays rate-limited.
-  run.lastEditMs = run.deps.now()
-  const written = await attempt(
-    run,
-    async () => {
-      await run.deps.github.updateComment(id, body)
-      return body
-    },
-    'Could not update the status comment',
-  )
-  // Only what GitHub accepted, so a failed edit is retried rather than believed.
-  if (written !== null) run.lastBody = written
-}
-
-/**
- * Opens the comment for a run.
- *
- * Everything a previous run left behind is cleared here rather than assumed
- * absent, so the contract is "one run at a time" rather than "construct one per
- * run and hope". A process drives exactly one run, so in production this clears
- * nothing — but a reporter that quietly stayed finished, and so rendered its
- * second run's opening comment as though it had already ended, is a trap worth
- * four lines to close. `startedMs` is deliberately not among them: the job
- * started when the process did, which is what the comment's first line claims.
- */
-const open = async (run: RunStatus, state: AgentState): Promise<void> => {
-  run.state = state
-  run.carriedTokens = state.tokensSpent
-  run.commentId = null
-  run.sections = []
-  run.lastBody = null
-  run.lastEditMs = 0
-  run.progress = null
-  run.live = true
-
-  const body = renderStatus(viewOf(run, state))
-  // The pull request once one exists — see `feedback-target.ts`. This is the one
-  // comment in the pipeline that is *about the run happening now* rather than
-  // about the issue, and once there is a diff, the page somebody is watching
-  // while it happens is the pull request. The report and the state block stay on
-  // the issue either way: they are the record, and the restore scan reads exactly
-  // one thread.
   const posted = await attempt(
-    run,
-    () => run.deps.github.createComment(feedbackTarget(state), body),
-    'Could not open the status comment; this run reports only when it ends',
+    reply,
+    () => reply.deps.github.createComment(feedbackTarget(entry), renderStatus(viewOf(reply, state))),
+    'Could not post the run’s reply; the workflow’s fallback comment is now in scope',
   )
-  if (posted === null) return
+  if (posted === null) return null
 
-  run.commentId = posted.id
-  run.lastBody = body
-  run.lastEditMs = run.deps.now()
-}
-
-const finalise = async (run: RunStatus, result: RunResult): Promise<void> => {
-  run.live = false
-  // A guardrail skip carries no state, and no status comment was opened for one
-  // either — but a halted run does carry the state it halted on, and that is the
-  // state the comment should end on.
-  if (result.state !== null) run.state = result.state
-  await publish(run, true)
+  // The recorded author against the one the pipeline believes in. This used to
+  // sit on every phase's post, where a drift surfaced on the *first* comment of
+  // a run and the in-job thread mirror could be corrected with the real author.
+  // One comment per run means there is no posted author to learn until here, so
+  // the check moved to the only place that has one — see the change's Risks.
+  reportIdentityDrift(await reply.deps.selfLogin(), posted.authorLogin, reply.deps.log)
+  return posted
 }
 
 /**
  * A reporter that says nothing.
  *
- * Used by every test that is not about this channel, and by local
- * `--event-path` runs, which have no run to link to: the comment's first line is
- * a link to the job doing the work, and a status comment that cannot say where
- * the work is happening is most of the value gone. That decision lives in
- * {@link createStatusReporter}, so no caller has to make it twice.
+ * Used by every test that is not about this channel. Note what no longer
+ * qualifies: a run with no `runUrl` — a local `--event-path` run — used to get
+ * this, because a status comment that cannot link the job doing the work was
+ * most of the value gone. It now carries the report, so silencing it would
+ * silence the run entirely; `run-detail.ts` omits the job line instead.
  */
 export const noopStatusReporter = (): StatusReporter => ({
-  start: (): Promise<void> => Promise.resolve(),
-  enter: (): Promise<void> => Promise.resolve(),
-  tick: (): Promise<void> => Promise.resolve(),
-  finish: (): Promise<void> => Promise.resolve(),
+  begin: (): void => undefined,
+  section: (): void => undefined,
+  flush: (): Promise<PostedComment | null> => Promise.resolve(null),
 })
 
-export const createStatusReporter = (deps: StatusDeps): StatusReporter => {
-  const runUrl = deps.config.runUrl
-  if (runUrl === null) return noopStatusReporter()
-
-  const run: RunStatus = {
-    deps,
-    runUrl,
-    startedMs: deps.now(),
-    commentId: null,
-    state: null,
-    sections: [],
-    carriedTokens: 0,
-    progress: null,
-    live: true,
-    lastBody: null,
-    lastEditMs: 0,
-  }
+export const createStatusReporter = (deps: StatusDeps, startedMs: number): StatusReporter => {
+  const reply: Reply = { deps, startedMs, entry: null, latest: null, sections: [] }
 
   return {
-    start: (state): Promise<void> => open(run, state),
-    enter: async (state): Promise<void> => {
-      run.state = state
-      await publish(run, false)
+    begin: (state): void => {
+      reply.entry = state
+      // Cleared rather than assumed empty, so the contract is "one run at a
+      // time" rather than "construct one per run and hope". A process drives
+      // exactly one run, so in production this clears nothing — but a buffer
+      // that quietly kept a finished run's sections would post them again under
+      // the next run's heading, which is a trap worth two lines to close.
+      reply.latest = null
+      reply.sections = []
     },
-    tick: async (snapshot): Promise<void> => {
-      run.progress = snapshot
-      await publish(run, false)
+    section: (state, section): void => {
+      reply.latest = state
+      reply.sections.push(section)
     },
-    finish: (result): Promise<void> => finalise(run, result),
+    flush: (): Promise<PostedComment | null> => post(reply),
   }
 }

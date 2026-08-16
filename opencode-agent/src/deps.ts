@@ -13,7 +13,6 @@ import { resolveBaseBranch } from './config-discovery.js'
 import type { Env, PipelineConfig } from './config.js'
 import { createGit } from './git.js'
 import type { GitHubApi } from './github.js'
-import { resolveSelfLogin } from './identity.js'
 import type { Logger } from './logger.js'
 import { loadPhaseSkills } from './obra-skills.js'
 import type { SkillDocument } from './obra-skills.js'
@@ -111,7 +110,7 @@ const makeSkillLoader = (config: PipelineConfig, log: Logger): ((phase: Phase) =
  * Defers a one-shot async lookup until something asks for it, then keeps the
  * answer. Used for the base branch, whose resolution can cost a round trip.
  */
-const memoize = <T>(load: () => Promise<T>): (() => Promise<T>) => {
+export const memoize = <T>(load: () => Promise<T>): (() => Promise<T>) => {
   let pending: Promise<T> | null = null
   return () => (pending ??= load())
 }
@@ -138,6 +137,15 @@ export interface DepsInput {
    */
   github: GitHubApi
   status: StatusReporter
+  /**
+   * Who this pipeline is, memoized by the caller.
+   *
+   * Passed in rather than built here because the reply buffer needs the same
+   * answer — it checks the author GitHub recorded against it — and two
+   * memoizations would be two `GET /user` calls that could, in principle,
+   * disagree.
+   */
+  selfLogin: () => Promise<string>
   /**
    * The run's clock, built by `runCli` for the same reason `github` is: the status
    * reporter and the per-turn deadline are both handed it before this function
@@ -166,6 +174,7 @@ export const assembleDeps = ({
   agent,
   github,
   status,
+  selfLogin,
   now,
   transcript,
 }: DepsInput): PhaseDeps => {
@@ -195,7 +204,7 @@ export const assembleDeps = ({
     baseBranch: memoize(() =>
       resolveBaseBranch(env, { fromEvent: event.defaultBranch, fromGit: () => git.defaultBranch() }),
     ),
-    selfLogin: memoize(() => resolveSelfLogin({ override: config.selfLoginOverride, api: github, log })),
+    selfLogin,
     now,
     groups: createCiGroups(),
     config,

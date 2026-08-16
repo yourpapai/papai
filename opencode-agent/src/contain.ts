@@ -7,8 +7,9 @@ import { memoizeAgent } from './agent-handle.js'
 import type { AgentHandle } from './agent-handle.js'
 import type { MainOptions } from './cli-args.js'
 import type { PipelineConfig } from './config.js'
-import { assembleDeps } from './deps.js'
+import { assembleDeps, memoize } from './deps.js'
 import type { GitHubApi } from './github.js'
+import { resolveSelfLogin } from './identity.js'
 import type { Logger } from './logger.js'
 import { createOpenCodeAgent } from './opencode-adapter.js'
 import type { OpenCodeAgent, OpenCodeAgentOptions } from './opencode-adapter.js'
@@ -19,7 +20,6 @@ import type { ProviderProxy } from './provider-proxy.js'
 import { pipelineSecrets } from './secrets.js'
 import type { CommandRunner } from './shell.js'
 import { createStatusReporter } from './status-reporter.js'
-import type { StatusReporter } from './status-reporter.js'
 import { turnTimeoutMs } from './time-budget.js'
 import type { TriggerEvent } from './trigger-events.js'
 
@@ -91,12 +91,10 @@ export interface Contained {
 const sessionOptions = ({
   input,
   contained,
-  status,
   clock,
 }: {
   input: ContainInput
   contained: PipelineConfig
-  status: StatusReporter
   clock: () => number
 }): OpenCodeAgentOptions => ({
   directory: contained.repoRoot,
@@ -113,10 +111,6 @@ const sessionOptions = ({
   timeoutMs: (): number => turnTimeoutMs(contained, clock()),
   log: input.log,
   transcript: input.transcript,
-  // Not awaited, and it never rejects: reporting must not be able to fail
-  // the turn it is reporting on, and a heartbeat that waited on an HTTP
-  // round trip would no longer be a heartbeat.
-  onTick: (snapshot): void => void status.tick(snapshot),
 })
 
 /**
@@ -137,18 +131,22 @@ export const contain = (input: ContainInput): Contained => {
   const create = createAgent ?? createOpenCodeAgent
   const clock = now ?? ((): number => Date.now())
 
-  // In this order because each needs the one before it: the status comment is
-  // written through the GitHub adapter, and the session's heartbeat is what
-  // keeps the status comment current, so the session is built last and handed
-  // the reporter's tick. The adapter now arrives already built — see
-  // {@link ContainInput.github} — which changes where the first of the three
-  // comes from and nothing about the order of the other two.
-  const status = createStatusReporter({ github, log, config: contained, now: clock })
+  // The reply buffer is built before the session because `assembleDeps` hands it
+  // to every phase, not because the session needs it: the heartbeat used to feed
+  // the live status comment its ticks, and with the comment posted once at the
+  // end there is nothing live to feed. The buffer collects sections in memory
+  // and writes through the GitHub adapter exactly once, when the run settles.
+  // Resolved once and shared: the buffer checks the author GitHub recorded
+  // against this same answer, and two memoizations would be two `GET /user`
+  // calls that could disagree.
+  const selfLogin = memoize(() => resolveSelfLogin({ override: contained.selfLoginOverride, api: github, log }))
+  const status = createStatusReporter({ github, log, config: contained, selfLogin }, clock())
 
-  const agent = memoizeAgent(() => create(sessionOptions({ input, contained, status, clock })))
+  const agent = memoizeAgent(() => create(sessionOptions({ input, contained, clock })))
 
   const env = options.env
   const deps = assembleDeps({
+    selfLogin,
     config: contained,
     secrets,
     event,

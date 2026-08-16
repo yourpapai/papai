@@ -96,7 +96,8 @@ export interface RunDetailView {
   progress: ProgressSnapshot | null
   /** Whether the run still holds the issue. False once it has ended. */
   live: boolean
-  runUrl: string
+  /** `null` on a local `--event-path` run, which has no job to link to. */
+  runUrl: string | null
   startedMs: number
   /** What this issue had spent before the job started — see {@link spentTokens}. */
   carriedTokens: number
@@ -181,9 +182,16 @@ const clockUtc = (ms: number): string => new Date(ms).toISOString().slice(11, 16
  * that changes every minute is a figure nobody can diff two runs by, and
  * GitHub's own "N minutes ago" on the comment answers "how long has this been
  * going" for free.
+ *
+ * The link is dropped, not faked, when there is no job — a local `--event-path`
+ * run posts the same reply and simply cannot say where it happened. This used
+ * to silence the whole channel, which was affordable while it was decoration
+ * and is not now that it carries the report.
  */
-const jobLine = (view: RunDetailView): string =>
-  `**Job:** [this run](${view.runUrl}) · started ${clockUtc(view.startedMs)} UTC`
+const jobLine = (view: RunDetailView): string => {
+  const started = `started ${clockUtc(view.startedMs)} UTC`
+  return view.runUrl === null ? `**Job:** local run · ${started}` : `**Job:** [this run](${view.runUrl}) · ${started}`
+}
 
 const branchLine = (state: AgentState): string =>
   `**Branch:** \`${branchNameFor(state.issueId)}\` · **Pull request:** ${state.prUrl ?? '_not opened yet_'}`

@@ -74,38 +74,38 @@ us, both recorded here rather than discovered twice:
 
 ## 4. The reply is buffered and posted once (D1, D3, D6)
 
-- [ ] 4.1 Failing test: one `/ask` on an issue produces exactly **one**
+- [x] 4.1 Failing test: one `/ask` on an issue produces exactly **one**
       `createComment` for the whole run, no `createComment` before the run
       settles, and no `updateComment` against the reply at all. Driven end to
       end through `runPipeline`.
       `bun test tests/opencode-agent/orchestrator.test.ts`
-- [ ] 4.2 Failing test: a job crossing two phases still makes one
+- [x] 4.2 Failing test: a job crossing two phases still makes one
       `createComment`; both reports appear as sections, oldest first; both
       phases' blocks are in that one body; `readBlock` returns the newer
       `AGENT_STATE` and `locateLatestBlock` selects the comment. The target is
       resolved once from the run's entry state, so a run that opens a pull
       request posts its whole reply to the issue.
       `bun test tests/opencode-agent/orchestrator.test.ts`
-- [ ] 4.3 Replace `StatusReporter`'s four methods with `section()` (synchronous,
+- [x] 4.3 Replace `StatusReporter`'s four methods with `section()` (synchronous,
       infallible) and `flush()`, and update `noopStatusReporter`. Route
       `postAndAppend` and `postAnswer` through `section()`; both keep mirroring
       the rendered body into the in-memory thread, under a synthetic negative id
       until the flush has a real one.
       `bun test tests/opencode-agent/ && bun run typecheck`
-- [ ] 4.4 Failing test: the flush runs on every exit path — waiting, completed,
+- [x] 4.4 Failing test: the flush runs on every exit path — waiting, completed,
       failed and a handler that throws — and a throw still posts what was
       buffered before it. Asserts the `finally` placement, not just the happy
       path.
       `bun test tests/opencode-agent/orchestrator.test.ts`
-- [ ] 4.5 Move the flush into a `try/finally` around `driveMachine` in
+- [x] 4.5 Move the flush into a `try/finally` around `driveMachine` in
       `runAccepted`, where `deps.status.finish` sits today, and drop the
       `willWork` gate on opening a comment (the label gate stays).
       `bun test tests/opencode-agent/orchestrator.test.ts`
-- [ ] 4.6 Failing test (D6): `reported` is true only when `createComment`
+- [x] 4.6 Failing test (D6): `reported` is true only when `createComment`
       returned; a swallowed failure leaves it false with the run still
       succeeding, so the workflow fallback stays in scope.
       `bun test tests/opencode-agent/orchestrator.test.ts`
-- [ ] 4.7 Failing test: `persistState` still rewrites the newest block of an
+- [x] 4.7 Failing test: `persistState` still rewrites the newest block of an
       **earlier** comment when a run buffers nothing — the `none` classification
       branch — so a run that says nothing still records its spend.
       `bun test tests/opencode-agent/status.test.ts`
