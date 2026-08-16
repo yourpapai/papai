@@ -127,6 +127,15 @@ jobs:
         with:
           name: build-output
           path: public/
+      # The suite this job runs includes the Docker-backed story-sandbox boundary
+      # tests, and `CI` is what makes them mandatory rather than skippable (see
+      # `isLinuxStorySandboxRequired` in scripts/story/sandbox.ts). Nothing else
+      # in this job speaks to Docker, so without this the first `docker run`
+      # inside a test is also the first registry pull — which is how run
+      # 31932802512 turned an anonymous-pull rejection into a failed boundary
+      # assertion. Warm it here, retried, where a registry problem reads as one.
+      - name: Warm the story sandbox image
+        run: bash scripts/ci/pull-story-sandbox-image.sh
       - name: Run all checks
         env:
           # Enforce wall-clock perf budgets here: this job runs the suite serially, so
@@ -164,9 +173,8 @@ jobs:
       - name: Verify Linux story sandbox
         run: |
           docker version
-          image="$(cat scripts/story/sandbox-image.txt)"
-          docker pull "$image"
-          docker run --rm --network none "$image" --version
+          bash scripts/ci/pull-story-sandbox-image.sh
+          docker run --rm --network none "$(cat scripts/story/sandbox-image.txt)" --version
       - name: Prove process sandbox boundary
         env:
           PAPAI_REQUIRE_STORY_SANDBOX: '1'

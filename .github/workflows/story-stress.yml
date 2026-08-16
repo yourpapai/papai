@@ -53,9 +53,8 @@ jobs:
       - name: Verify Linux story sandbox
         run: |
           docker version
-          image="$(cat scripts/story/sandbox-image.txt)"
-          docker pull "$image"
-          docker run --rm --network none "$image" --version
+          bash scripts/ci/pull-story-sandbox-image.sh
+          docker run --rm --network none "$(cat scripts/story/sandbox-image.txt)" --version
       - name: Run sandboxed story stress
         env:
           PAPAI_REQUIRE_STORY_SANDBOX: '1'
