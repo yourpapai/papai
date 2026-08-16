@@ -1233,6 +1233,53 @@ two call sites that consume the identity.
 | S5-11 **[DONE]**           | The turn deadline abandons the work             | `deadline.ts`; `implement.ts`          | 30 minutes of steady progress — 355 tool calls, 112k tokens — discarded and reported as "the model did not answer", in a job with 59 minutes of its cap left. Three defects compose: the bound cannot cancel what it stops waiting for, nothing is committed until the turn returns, and the constant is unrelated to the runner cap it exists to stay under. A wall-clock stop is a **ceiling**: soft stop, unconditional hard stop, `--no-verify` salvage, park in `INCOMPLETE`, resume with `/continue` — and since stage 3 the unit of work is a **plan step**, so the ordinary stop lands between two of them and costs nothing. See below.                                                                                                                                                                                                                                                                                                                                                                |
 | S5-13 **[FIXED]**          | A turn nobody answered delivered a pull request | `turn-run.ts`; `stray-paths.ts`        | Issue #239's implement turn was refused by the provider 25 times over 12 minutes, went idle without finishing another step, and returned an empty reply that every layer read as success — so `git add --all` committed the one dirty path in the tree, a `serve3.pid` an experiment had left, and the run reported a delivery. Two independent guards now: an unanswered turn over a still-failing provider fails, and a process artefact is never a commit. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
+### S5-14 — three bot comments per command — **verified** — **[FIXED]**
+
+Issue #281 carries 43 comments, 30 of them the agent's, and every maintainer
+command drew exactly three in the same order: the live status comment finalised
+(`### 📋 Design spec is waiting for you`), the phase report (`### Answer`), and
+the workflow's transcript notice. The first two frequently said the same thing
+twice — the 04:49 failure posted `### ❌ Run failed`, then `### ❌ Run failed in
+INIT_OR_CLARIFY`.
+
+Three writers, each with a defensible reason and none of them owning the count:
+`status-reporter.ts` opened its comment before the work and had to survive a job
+that died, `postAndAppend` wrote the record and its `AGENT_STATE` block, and the
+workflow's transcript step could not know the artefact URL until after the
+upload.
+
+_Fixed. A run now buffers each phase's report and posts one comment when it
+settles; the workflow's transcript and infrastructure-failure steps edit that
+comment rather than adding their own, reading the id `step-output.ts` publishes
+beside `reported=true`._
+
+_The live status comment was **deleted** rather than repurposed, which is the
+decision worth recording. Editing it into the report would have kept the live
+view, but GitHub does not notify on an edit — the answer would have arrived in
+silence, in a comment whose only notification fired when the run started. A run
+in flight is now visible through the 👀 reaction, the `agent:working` label and
+the heartbeat's Actions-log line, and through nothing on the thread. The
+heartbeat's `onTick` reader, the edit rate-limiter, the unchanged-body
+suppression and the `max()` that reconciled a running token total against
+`state.tokensSpent` all went with it._
+
+_Two consequences are net improvements. `reported` is now set from what GitHub
+accepted, in one place, so the workflow's fallback comment is correct by
+construction rather than by each terminal path remembering. And a run with no
+`runUrl` — a local `--event-path` run — posts its reply instead of being
+silenced by the no-op reporter, which would now silence the report itself._
+
+_One is a regression, recorded rather than hidden: a process killed outright
+loses every section it had buffered, where each report used to be on the thread
+the moment it existed. The flush is in a `finally` so a throw still posts, and
+`teardownReserveMs` still reserves wall-clock time for the write; SIGKILL is
+what the fallback comment covers, as before. A second, smaller one: an identity
+drift between the account the agent posts as and the one it identifies as used
+to fail the run early, because the in-job thread mirror carried the author
+GitHub recorded; with one write there is no posted author to learn until the
+flush, so it is now a diagnostic on the same run rather than a self-inflicted
+failure._
+
 ### S5-3 — what the fix is, and what it deliberately is not
 
 Three phases ask the model for JSON — triage, plan, and comment classification —

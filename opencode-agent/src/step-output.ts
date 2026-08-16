@@ -28,6 +28,21 @@ import { errorMessage } from './types.js'
 export const REPORTED_OUTPUT = 'reported'
 
 /**
+ * The step output naming the comment this run posted.
+ *
+ * The workflow's transcript link and its "Agent job did not finish" notice both
+ * used to be comments of their own, which is two thirds of why one maintainer
+ * command drew three. They now edit the run's reply, and this is how they learn
+ * which comment that is.
+ *
+ * Written beside {@link REPORTED_OUTPUT} and under the same conditions, because
+ * they are two readings of one fact: the reply was posted. A run that posted
+ * nothing writes neither, which is exactly the case where the fallback step has
+ * to post rather than edit.
+ */
+export const REPLY_COMMENT_OUTPUT = 'reply-comment'
+
+/**
  * Tells the workflow that the issue already carries this run's report.
  *
  * The last step of `.github/workflows/agent-pipeline.yml` posts an "Agent job
@@ -57,7 +72,11 @@ export const recordReport = async (result: RunResult, env: NodeJS.ProcessEnv, lo
   const outputPath = env['GITHUB_OUTPUT']
   if (!result.reported || outputPath === undefined || outputPath.length === 0) return
 
-  await appendFile(outputPath, `${REPORTED_OUTPUT}=true\n`, 'utf8').catch((error: unknown) => {
+  const id = result.replyCommentId
+  const lines =
+    id === undefined ? [`${REPORTED_OUTPUT}=true`] : [`${REPORTED_OUTPUT}=true`, `${REPLY_COMMENT_OUTPUT}=${id}`]
+
+  await appendFile(outputPath, `${lines.join('\n')}\n`, 'utf8').catch((error: unknown) => {
     log.warn({ error: errorMessage(error) }, 'Could not record that the pipeline reported on the issue')
   })
 }

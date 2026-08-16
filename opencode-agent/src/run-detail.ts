@@ -3,57 +3,28 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { renderBlock } from './blocks.js'
 import type { PipelineConfig } from './config.js'
 import { branchNameFor } from './git.js'
-import { phaseHeading, PRESENTATION, presentationFor } from './presentation.js'
-import type { PresentationKey, RunStance } from './presentation.js'
-import type { ProgressSnapshot } from './progress.js'
+import { PRESENTATION, presentationFor } from './presentation.js'
+import type { PresentationKey } from './presentation.js'
 import type { AgentState, Phase } from './types.js'
 
 /**
- * What the run's live status comment says. Pure: every input arrives as an
- * argument, including the clock, so the whole rendering is testable as a value
- * and the channel that edits it has nothing to decide but *when*.
+ * The run, as a table and three lines: how far it got, what it cost, and where
+ * to watch it.
  *
- * Comments in this pipeline are terminal by construction — they are written from
- * a finished `PhaseOutcome` — so nothing could ever say "round 2 of 4" or "still
- * working" without adding a comment per tick. This is the one surface that can,
- * and it is the entire comment budget the feedback plan allows itself: one
- * comment per run, edited, never a second.
+ * Split from `status-comment.ts` when sections landed there and pushed it past
+ * `max-lines`, along the seam the two halves already had: that file decides
+ * *what a reply is made of* — a heading, the phase reports, this — and this one
+ * decides *how a run describes itself*. They change for different reasons. A
+ * new phase or a new budget adds a row here; a change to how reports are
+ * arranged touches only the other.
  *
- * It deliberately carries **no `AGENT_STATE` block**. `findLatestState` restores
- * from the newest agent comment carrying one, so a second writer of that block
- * is a second source of truth; the phase-end comments stay the only state
- * channel, and this comment is invisible to the restore scan.
- *
- * It does carry a block of its own, under {@link STATUS_MARKER}, and that is not
- * a hedge on the rule above — `findLatestBlock` matches a marker exactly, so
- * `AGENT_STATUS` cannot be mistaken for `AGENT_STATE` by the scan or by
- * `readBlock`. The marker exists because this comment must be kept out of the
- * *prompt*: `renderThread` hands the model the last twenty comments of the
- * thread, so from the next job onward every previous run's progress table would
- * take a slot from the conversation the model is being asked to read, and a
- * feedback channel that quietly makes the agent worse at reading its own issue
- * is the wrong trade. Marked rather than filtered by author, because the agent
- * writes the spec and the plan too and blinding the model to those would be a
- * much subtler version of the same mistake.
- *
- * It also carries no free model text. Every field here is a phase, a count or a
- * status: the activity line comes from `ProgressSnapshot`, which has nowhere for
- * tool input, tool output or model prose to land, so the rule that progress
- * reporting carries names and counts only holds by construction rather than by
- * care — and this surface is a public issue, not a log.
+ * Everything is a phase, a count or a status. There is nowhere for tool input,
+ * tool output or model prose to land, so the rule that progress reporting
+ * carries names and counts only holds by construction rather than by care —
+ * and this surface is a public issue, not a log.
  */
-
-/**
- * Marks a comment as this pipeline's own progress reporting.
- *
- * Deliberately **not** `AGENT_STATE`, and deliberately not a variant of it: the
- * restore scan matches a marker exactly, and the two are read by different
- * layers for opposite reasons — one to be believed, one to be left out.
- */
-export const STATUS_MARKER = 'AGENT_STATUS'
 
 /** One row of the progress table. */
 interface RunStep {
@@ -117,17 +88,12 @@ const STEP_OF: Record<Phase, number | null> = {
 /** Phases whose row is the one they are parked *before*, read from `resumeFrom`. */
 const PARKED_PHASES: ReadonlySet<Phase> = new Set<Phase>(['FAILED', 'INCOMPLETE'])
 
-/** Everything the status comment is a function of. */
-export interface StatusView {
+/** Everything the run detail is a function of. */
+export interface RunDetailView {
   state: AgentState
-  /** What the model is doing, or `null` before a heartbeat has said. */
-  progress: ProgressSnapshot | null
-  /** Whether the run still holds the issue. False once it has ended. */
-  live: boolean
-  runUrl: string
+  /** `null` on a local `--event-path` run, which has no job to link to. */
+  runUrl: string | null
   startedMs: number
-  /** What this issue had spent before the job started — see {@link spentTokens}. */
-  carriedTokens: number
   config: Pick<PipelineConfig, 'maxTokens' | 'maxAttempts' | 'maxCiAttempts'>
 }
 
@@ -157,17 +123,20 @@ const stepIndex = (state: AgentState): number => {
 /**
  * Behind, on, or ahead of the current step.
  *
- * The three marks are this table's own vocabulary and have no row in
+ * The two marks are this table's own vocabulary and have no row in
  * `presentation.ts`, because "a step that is behind us" is not a state an issue
  * can be found in. The mark on the row the run *stopped* on is the exception and
  * is read from there — ❌ for a failure, 🛑 for a cancelled issue, the waiting
- * phase's own glyph for a run parked in front of a human — so the status comment
+ * phase's own glyph for a run parked in front of a human — so the run detail
  * and the label sitting on the issue beside it cannot say different things.
+ *
+ * There is no "⏳ now" mark. There was, while the comment was edited as the run
+ * moved; a comment written once, after the run, has no row in flight to point at.
  */
-const stepMark = (index: number, current: number, view: StatusView): string => {
+const stepMark = (index: number, current: number, view: RunDetailView): string => {
   if (index < current) return '✅'
   if (index > current) return '⬜'
-  return view.live ? '⏳ **now**' : presentationFor(view.state, 'waiting').glyph
+  return presentationFor(view.state, 'waiting').glyph
 }
 
 /**
@@ -184,7 +153,7 @@ const revisionNote = (index: number, state: AgentState): string => {
   return ''
 }
 
-const table = (view: StatusView): readonly string[] => {
+const table = (view: RunDetailView): readonly string[] => {
   const current = stepIndex(view.state)
 
   return [
@@ -206,36 +175,22 @@ const clockUtc = (ms: number): string => new Date(ms).toISOString().slice(11, 16
  * When the run started, and where to watch it.
  *
  * Deliberately *not* "6m elapsed", which the plan's sketch carried: a figure
- * that changes every minute changes the whole body every minute, and the same
- * section asks for edits to be skipped when the body has not changed. The two
- * cannot both be had — a quiet twenty-minute model call would cost twenty edits
- * saying nothing but a new minute count, which is precisely the case the
- * suppression exists for. A start time and GitHub's own "edited N minutes ago"
- * answer "how long has this been going" between them, and cost nothing.
+ * that changes every minute is a figure nobody can diff two runs by, and
+ * GitHub's own "N minutes ago" on the comment answers "how long has this been
+ * going" for free.
+ *
+ * The link is dropped, not faked, when there is no job — a local `--event-path`
+ * run posts the same reply and simply cannot say where it happened. This used
+ * to silence the whole channel, which was affordable while it was decoration
+ * and is not now that it carries the report.
  */
-const jobLine = (view: StatusView): string =>
-  `**Job:** [this run](${view.runUrl}) · started ${clockUtc(view.startedMs)} UTC`
+const jobLine = (view: RunDetailView): string => {
+  const started = `started ${clockUtc(view.startedMs)} UTC`
+  return view.runUrl === null ? `**Job:** local run · ${started}` : `**Job:** [this run](${view.runUrl}) · ${started}`
+}
 
 const branchLine = (state: AgentState): string =>
   `**Branch:** \`${branchNameFor(state.issueId)}\` · **Pull request:** ${state.prUrl ?? '_not opened yet_'}`
-
-/**
- * What the issue has spent, live.
- *
- * `tokensSpent` is authoritative but only moves when a comment is posted, and
- * the point of this surface is the stretch *between* two comments — so the
- * heartbeat's running total, added to what the issue carried into this job, is
- * the fresher figure for exactly as long as no phase has ended. Whichever is
- * larger is the one that has seen more of the run; neither can double-count the
- * other, because `carriedTokens` is captured once, before this job spends
- * anything.
- */
-const spentTokens = (view: StatusView): number => {
-  const observed = view.progress
-  if (observed === null) return view.state.tokensSpent
-
-  return Math.max(view.state.tokensSpent, view.carriedTokens + observed.tokens)
-}
 
 /**
  * Which budget the run is working against.
@@ -245,7 +200,7 @@ const spentTokens = (view: StatusView): number => {
  * different two attempts, and a maintainer reading it as a per-issue count would
  * conclude the agent had given up when it had not started.
  */
-const attemptLine = (view: StatusView): string => {
+const attemptLine = (view: RunDetailView): string => {
   const { state, config } = view
   if (state.phase === 'CI_FIX') {
     return `attempt ${state.ciAttempts} of ${config.maxCiAttempts} on this pull request`
@@ -256,38 +211,38 @@ const attemptLine = (view: StatusView): string => {
   return `attempt ${state.attempts + 1} of ${config.maxAttempts}`
 }
 
-const budgetLine = (view: StatusView): string =>
-  `**Budget:** ${count(spentTokens(view))} of ${count(view.config.maxTokens)} tokens · ${attemptLine(view)}`
+/**
+ * What the issue has spent.
+ *
+ * `state.tokensSpent` and nothing else. It used to be reconciled against the
+ * heartbeat's running total with a `max()`, because a comment being edited
+ * mid-run could be fresher than the last phase that ended. A comment written
+ * after the run has no such gap to close, and two figures that can only
+ * disagree are worse than one.
+ */
+const budgetLine = (view: RunDetailView): string =>
+  `**Budget:** ${count(view.state.tokensSpent)} of ${count(view.config.maxTokens)} tokens · ${attemptLine(view)}`
 
-const doingLine = (progress: ProgressSnapshot): string =>
-  `**Doing:** ${progress.lastAction} · ${progress.toolCalls} tool calls`
+/** The summary heading, kept here so the one reader and the one writer agree. */
+export const RUN_DETAIL_SUMMARY = 'Run detail'
 
 /**
- * The whole comment.
+ * The run's own account of itself, collapsed.
  *
- * The heading's glyph and headline come from the presentation table and nothing
- * else: "🛠️ Implementing" would be a third name for a phase that already has a
- * label suffix and a headline, and inventing one per renderer is the defect that
- * table exists to prevent.
+ * Collapsed because it is a summary of a finished run rather than the thing the
+ * maintainer opened the comment to read — the phase reports above it are that —
+ * and because `renderThread` cuts the body just below it, so nothing here has to
+ * earn a slot in the window the model reads the conversation through.
  */
-export const renderStatus = (view: StatusView): string => {
-  const stance: RunStance = view.live ? 'working' : 'waiting'
-  const { headline } = presentationFor(view.state, stance)
-  const activity = view.live && view.progress !== null ? [doingLine(view.progress)] : []
-
-  return [
-    phaseHeading(view.state, stance, view.live ? `${headline} — run in progress` : headline),
-    '',
-    jobLine(view),
-    branchLine(view.state),
-    '',
-    ...table(view),
-    '',
-    ...activity,
-    budgetLine(view),
-    '',
-    // The marker the prompt layer leaves out, carrying the run it belongs to so
-    // a reader of the raw thread can tell two runs' status comments apart.
-    renderBlock(STATUS_MARKER, { run: view.runUrl }),
-  ].join('\n')
-}
+export const renderRunDetail = (view: RunDetailView): readonly string[] => [
+  `<details><summary>${RUN_DETAIL_SUMMARY}</summary>`,
+  '',
+  jobLine(view),
+  branchLine(view.state),
+  '',
+  ...table(view),
+  '',
+  budgetLine(view),
+  '',
+  '</details>',
+]

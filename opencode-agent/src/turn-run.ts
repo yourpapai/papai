@@ -7,7 +7,7 @@ import { withDeadline } from './deadline.js'
 import { isTurnDeadline, providerStalledError, serverGoneError, turnDeadlineError } from './errors.js'
 import { withHeartbeat } from './heartbeat.js'
 import type { Logger } from './logger.js'
-import type { ProgressSnapshot, ProgressTracker } from './progress.js'
+import type { ProgressTracker } from './progress.js'
 import type { SdkPromptBody } from './sdk-contract.js'
 import { errorMessage } from './types.js'
 
@@ -63,16 +63,6 @@ export interface TurnBounds {
   log: Logger
   /** Heartbeat period while a turn is outstanding. `0` disables it. */
   heartbeatMs?: number
-  /**
-   * Where each heartbeat goes besides the log.
-   *
-   * The adapter is the only layer that can see a turn in flight, and the live
-   * status comment on the issue is the only surface a maintainer has a link to
-   * — so the snapshot has to be handed out from here or the two never meet.
-   * Optional because most runs have nowhere to send it: a local `--event-path`
-   * run has no status comment at all.
-   */
-  onTick?: (snapshot: ProgressSnapshot) => void
 }
 
 /**
@@ -125,7 +115,6 @@ const bounded = (work: Promise<unknown>, bounds: TurnBounds, tracker: ProgressTr
       everyMs: bounds.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
       log: bounds.log,
       snapshot: tracker.snapshot,
-      onTick: bounds.onTick,
     },
   )
 

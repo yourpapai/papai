@@ -127,10 +127,6 @@ export const driveMachine = async (input: MachineInput): Promise<RunResult> => {
   const timedOut = await stopIfOutOfTime(input)
   if (timedOut !== null) return timedOut
 
-  // After both stops, so a run that cannot afford this phase does not announce it
-  // as the one in flight.
-  await input.deps.status.enter(state)
-
   const attempt = await runGrouped(handler, input)
   if (!attempt.ok) return input.answer ? failAnswer(input, attempt.error) : failRun(input, attempt.error)
 

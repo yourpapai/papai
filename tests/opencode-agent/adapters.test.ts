@@ -38,6 +38,7 @@ import type { OpenCodeAgent, OpenCodeConnection, SdkPromptBody } from '../../ope
 import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { renderThread, shareBudget } from '../../opencode-agent/src/prompt-budget.js'
 import { buildCiFixPrompt, createEnvelope } from '../../opencode-agent/src/prompts.js'
+import { STATUS_MARKER } from '../../opencode-agent/src/reply-comment.js'
 import { parseRepository } from '../../opencode-agent/src/repository.js'
 import {
   collectText,
@@ -49,7 +50,6 @@ import {
 import type { SessionUsage } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
-import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
 import { errorMessage, PHASES } from '../../opencode-agent/src/types.js'
 import { silentOctokitLog } from './test-helpers.js'
 
@@ -1282,28 +1282,61 @@ describe('renderThread', () => {
     expect(rendered).not.toContain('AGENT_STATE')
   })
 
-  test('leaves the run’s status comments out of the prompt entirely', () => {
-    // Stage 3 put one status comment on the issue per run, and this renderer
-    // hands the model the tail of the thread regardless of who wrote it. A
-    // conversation spanning several runs would spend its window on progress
-    // tables, degrading exactly the phases that read the thread — triage,
-    // answering, and the classifier.
-    const conversation = [at(1, 'maintainer', 'Please add retries.'), at(2, 'agent', 'Here is the spec.')]
-    const withStatus = [statusAt(9), ...conversation, statusAt(10)]
+  test('cuts a reply comment at the marker, keeping what was said above it', () => {
+    // The marker used to mean "drop this comment", which stopped being possible
+    // the day the reply and the status comment became one: this body carries the
+    // answer, the design digest and the plan. It now means "the bookkeeping
+    // starts here", and everything below it is the run describing itself.
+    const reply = [
+      '### 🧭 Plan is waiting for you',
+      '',
+      'Here is the plan.',
+      '',
+      renderBlock(STATUS_MARKER, { run: 'https://run/9' }),
+      '',
+      '<details><summary>Run detail</summary>',
+      '',
+      '| Phase | |',
+      '| 🔍 Triage | ✅ |',
+      '',
+      '</details>',
+    ].join('\n')
 
-    expect(renderThread(envelope, withStatus)).toBe(renderThread(envelope, conversation))
+    const rendered = renderThread(envelope, [at(1, 'agent', reply)])
+
+    expect(rendered).toContain('Here is the plan.')
+    expect(rendered).not.toContain('| 🔍 Triage | ✅ |')
+    expect(rendered).not.toContain('AGENT_STATUS')
   })
 
-  test('spends the whole window on real conversation, not on progress tables', () => {
-    // Dropped before the window is taken, not after: filtering afterwards would
-    // still let a status comment consume one of the twenty slots.
-    const thread = [0, 2, 4].flatMap((index) => [at(index, 'maintainer', `comment ${index}`), statusAt(index + 1)])
+  test('a comment carrying no marker is rendered whole', () => {
+    const rendered = renderThread(envelope, [at(1, 'maintainer', 'Please add retries.\n\nAnd tests.')])
 
-    const rendered = renderThread(envelope, thread, 3)
+    expect(rendered).toContain('Please add retries.')
+    expect(rendered).toContain('And tests.')
+  })
 
-    expect(rendered).toContain('comment 0')
-    expect(rendered).toContain('comment 2')
-    expect(rendered).toContain('comment 4')
+  test('cuts at the first marker, so a report quoting one truncates only itself', () => {
+    // A section is model-written and could type the marker verbatim. Cutting at
+    // the first occurrence makes that a report which ends early — a mild,
+    // self-inflicted loss — rather than bookkeeping leaking into the window.
+    const body = `visible\n\n${renderBlock(STATUS_MARKER, { run: 'https://run/1' })}\n\nhidden prose`
+
+    const rendered = renderThread(envelope, [at(1, 'agent', body)])
+
+    expect(rendered).toContain('visible')
+    expect(rendered).not.toContain('hidden prose')
+  })
+
+  test('a comment that is nothing but bookkeeping still holds its place', () => {
+    // A previous run's status comment, from before this change. It renders as
+    // its heading and nothing else rather than vanishing, which is the accepted
+    // cost of reading old threads — see the change's migration note.
+    const rendered = renderThread(envelope, [statusAt(9), at(2, 'maintainer', 'thanks')])
+
+    expect(rendered).toContain('### 🛠️ Working')
+    expect(rendered).toContain('thanks')
+    expect(rendered).not.toContain('AGENT_STATUS')
   })
 
   test('keeps the artefact comments the agent wrote, which are the point', () => {

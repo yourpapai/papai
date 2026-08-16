@@ -14,8 +14,8 @@ import type { Logger } from './logger.js'
 import type { SkillDocument } from './obra-skills.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
+import type { ReplyBuffer } from './reply-buffer.js'
 import type { ReviewRunResult } from './review-runner.js'
-import type { StatusReporter } from './status-reporter.js'
 import type { TriggerEvent } from './trigger-events.js'
 import type { AgentState, Phase } from './types.js'
 
@@ -88,13 +88,13 @@ export interface PhaseDeps {
    */
   selfLogin: () => Promise<string>
   /**
-   * The run's live status comment, as an injected boundary like every other.
+   * The run's reply, as an injected boundary like every other.
    *
    * Required rather than optional so a caller has to decide, and
-   * `noopStatusReporter()` is a decision: a local run with no job to link to
+   * `noopReplyBuffer()` is a decision: a local run with no job to link to
    * says nothing, and says so once, in `deps.ts`.
    */
-  status: StatusReporter
+  reply: ReplyBuffer
   /**
    * The clock, as an injected boundary like every other.
    *

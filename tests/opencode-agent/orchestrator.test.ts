@@ -23,6 +23,8 @@ import type { AgentPromptRequest, OpenCodeAgent } from '../../opencode-agent/src
 import { runPipeline } from '../../opencode-agent/src/orchestrator.js'
 import type { PhaseDeps } from '../../opencode-agent/src/phase-context.js'
 import type { PullRequestTriggerEvent } from '../../opencode-agent/src/pr-trigger.js'
+import { createReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
+import { STATUS_MARKER } from '../../opencode-agent/src/reply-comment.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { RunResult } from '../../opencode-agent/src/run-result.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
@@ -33,8 +35,6 @@ import {
   serializeState,
   STATE_MARKER,
 } from '../../opencode-agent/src/state-manager.js'
-import { STATUS_MARKER } from '../../opencode-agent/src/status-comment.js'
-import { createStatusReporter } from '../../opencode-agent/src/status-reporter.js'
 import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
@@ -86,11 +86,11 @@ const tasksMarkdown = (count: number): string =>
 /** A newer state block for a different issue, as a comment edit could plant. */
 const PLANTED_STATE: AgentState = { ...initialState(7), phase: 'PLAN_REVIEW' }
 
-const silentLogger = (): Logger => ({
+const silentLogger = (errors: string[] = []): Logger => ({
   debug: (): void => {},
   info: (): void => {},
   warn: (): void => {},
-  error: (): void => {},
+  error: (_meta, message): void => void errors.push(message ?? ''),
 })
 
 const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
@@ -376,8 +376,16 @@ interface PipelineIo {
    * mid-phase with its status comment already on the issue.
    */
   postError: Error | null
-  /** The clock the status reporter reads, so its rate limit is provable. */
+  /** The run's clock. */
   nowMs: number
+  /** Messages logged at `error`, so a diagnostic can be asserted as one. */
+  logErrors: string[]
+  /**
+   * Called as the model answers, so a test can look at the thread from *inside*
+   * a run rather than only after it. The one way to prove the reply is buffered
+   * rather than written as it is produced.
+   */
+  onReply: (() => void) | null
 }
 
 interface Harness {
@@ -443,6 +451,8 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     statusError: null,
     postError: null,
     nowMs: RUN_NOW_MS,
+    logErrors: [],
+    onReply: null,
     // OpenSpec driver fakes (design D3): safe defaults, overridden per-test.
     openspecCalls: [],
     openspecChanges: [],
@@ -470,8 +480,16 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     return Promise.resolve()
   }
 
-  /** True for the status comment and for nothing else — see `io.statusError`. */
-  const isStatus = (body: string): boolean => !body.includes(STATE_MARKER)
+  /**
+   * How a create is refused.
+   *
+   * One field would do now that a run makes exactly one comment — the status
+   * comment and the report are the same write — but both names are kept because
+   * the tests using them are asking different questions: `statusError` is "the
+   * channel is broken", `postError` is "the report could not be filed". They
+   * reach the same call and either one refuses it.
+   */
+  const createError = (): Error | null => io.postError ?? io.statusError
 
   const github: GitHubApi = {
     listIssueComments: (issueNumber) => Promise.resolve(issueNumber === ISSUE ? [...io.thread] : [...io.prThread]),
@@ -483,10 +501,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       if (issueNumber !== ISSUE) {
         io.prNotes.push(body)
         if (io.noteError !== null) return Promise.reject(io.noteError)
-        if (io.statusError !== null && isStatus(body)) return Promise.reject(io.statusError)
-        if (io.postError !== null && !isStatus(body)) return Promise.reject(io.postError)
+        const refusedOnPr = createError()
+        if (refusedOnPr !== null) return Promise.reject(refusedOnPr)
         nextCommentId += 1
-        if (!isStatus(body)) io.posted.push(body)
+        io.posted.push(body)
         io.prThread.push({ id: nextCommentId, body, authorLogin: io.postedAs })
         return Promise.resolve({
           id: nextCommentId,
@@ -494,8 +512,8 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
           authorLogin: io.postedAs,
         })
       }
-      if (io.statusError !== null && isStatus(body)) return Promise.reject(io.statusError)
-      if (io.postError !== null && !isStatus(body)) return Promise.reject(io.postError)
+      const refused = createError()
+      if (refused !== null) return Promise.reject(refused)
       nextCommentId += 1
       io.posted.push(body)
       io.thread.push({ id: nextCommentId, body, authorLogin: io.postedAs })
@@ -636,6 +654,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.prompts.push(request)
       const failure = io.promptFailures.shift()
       if (failure !== undefined && failure !== null) return Promise.reject(failure)
+      io.onReply?.()
       return Promise.resolve({ text: io.replies.shift() ?? '', sessionId: 'session-1' })
     },
     // Degrades to zero once closed, exactly as the real one does when the server
@@ -653,14 +672,17 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
   }
 
   const pipelineConfig = config(overrides)
-  const log = silentLogger()
+  const log = silentLogger(io.logErrors)
 
   const deps: PhaseDeps = {
     github,
     // The real reporter, built the way `contain` builds it — which for the
     // default config (`runUrl: null`) hands back the no-op, so every test that
     // is not about this channel drives exactly what it drove before.
-    status: createStatusReporter({ github, log, config: pipelineConfig, now: () => io.nowMs }),
+    reply: createReplyBuffer(
+      { github, log, config: pipelineConfig, selfLogin: () => Promise.resolve(AGENT_LOGIN) },
+      RUN_NOW_MS,
+    ),
     git,
     runCheck: (check) => Promise.resolve(io.checkResults.get(check.name) ?? OK_CHECK),
     runReview: (plan) => {
@@ -796,10 +818,22 @@ const refuseEachCommitOnce = (harness: Harness, stderr: string): void => {
 /** The nth prompt's system text, so a test asserting on it carries no narrowing. */
 const systemAt = (harness: Harness, index: number): string => harness.io.prompts[index]?.system ?? ''
 
-const latestPostedState = (harness: Harness): AgentState | null => {
-  const last = harness.io.posted.at(-1)
-  return last === undefined ? null : extractState(last)
-}
+/**
+ * The state the thread now carries — what a later job would restore.
+ *
+ * Reads the **thread**, not this run's comment, because those stopped being the
+ * same thing when the reply was consolidated. A run that answers a question
+ * writes no block of its own (an answer is not a record) and records its spend
+ * by rewriting an earlier one in place, so a reader of the posted body alone
+ * would conclude the run had persisted nothing. `tests/CLAUDE.md` asks for the
+ * persisted state for exactly this reason.
+ *
+ * Issue then pull request, concatenated the way `readThread` does it: once a
+ * pull request exists the record moves there, so a scan of the issue alone
+ * would keep answering with the last block written before the handover.
+ */
+const latestPostedState = (harness: Harness): AgentState | null =>
+  findLatestState([...harness.io.thread, ...harness.io.prThread], AGENT_LOGIN, ISSUE)
 
 /**
  * A state block an earlier job left on the thread, as a later job reads it back.
@@ -830,15 +864,35 @@ const seedTasks = (harness: Harness, tasks = '- [ ] Write retry tests'): void =>
 /** Keeps the "did a run return a state?" narrowing out of the test bodies. */
 const spentIn = (result: { state: AgentState | null }): number => result.state?.tokensSpent ?? -1
 
-const headings = (harness: Harness): string[] => harness.io.posted.map((body) => body.split('\n')[0] ?? '')
+/** The visible half of a reply: everything above the bookkeeping marker. */
+const visibleOf = (body: string): string => {
+  const marker = body.indexOf(`<!-- ${STATUS_MARKER}:`)
+  return marker === -1 ? body : body.slice(0, marker)
+}
 
 /**
- * The comments that carry a state block — every post except the run's status
- * comment, which by rule 4 carries none.
+ * The phase reports a run made, in order.
  *
- * `io.posted` stays the truthful count of comments created, because that is what
- * the one-comment budget is asserted against; a test about what the pipeline
- * *said* asks for the reports.
+ * Was "the first line of every comment", which asked the same question while a
+ * run posted one comment per phase. A run now posts one comment whose sections
+ * are those reports, so they are the `### ` lines below the run's own heading —
+ * and below the marker there is only bookkeeping, which is cut first so a block
+ * payload quoting a heading cannot be counted as one.
+ */
+const headings = (harness: Harness): string[] =>
+  harness.io.posted.flatMap((body) =>
+    visibleOf(body)
+      .split('\n')
+      .slice(1)
+      .filter((line) => line.startsWith('### ')),
+  )
+
+/**
+ * What the run said, for tests that ask about the report rather than the count.
+ *
+ * Every comment carrying a state block, which since the reply was consolidated
+ * is at most one per run — the same list, reached the same way, over a thread
+ * that now has fewer entries in it.
  */
 const reportsOf = (harness: Harness): string[] => harness.io.posted.filter((body) => body.includes(STATE_MARKER))
 
@@ -1054,9 +1108,11 @@ describe('chatter while the agent is clarifying', () => {
     // The classification is the only turn paid for; triage never ran.
     expect(harness.io.prompts).toHaveLength(1)
     expect(String(harness.io.prompts[0]?.prompt)).toContain('Classify this comment')
-    // State is persisted only by posting, so an untouched thread is itself the
-    // assertion that the issue is still parked on its clarifying questions.
-    expect(latestPostedState(harness)).toBeNull()
+    // Nothing was said and nothing moved: the issue is still parked on its
+    // clarifying questions. The spend such a run owes is written in place by
+    // `state-persist.ts`, which is why the phase is read rather than the posts.
+    expect(harness.io.posted).toEqual([])
+    expect(latestPostedState(harness)?.phase).toBe('INIT_OR_CLARIFY')
     expect(result.state?.phase).toBe('INIT_OR_CLARIFY')
   })
 
@@ -1621,17 +1677,26 @@ describe('implementation and delivery', () => {
     expect(harness.io.gitCalls.join(' ')).toContain(`agent/issue-${ISSUE}`)
   })
 
-  test('a mismatched posting identity fails now, not one job later', async () => {
-    // The in-job thread mirror carries the author GitHub *recorded*. If it
-    // carried the assumed one instead, delivery would find the report this job
-    // just wrote while the next job — reading real authors back from the API —
-    // could not. Failing the same way in both places is what makes the
-    // misconfiguration visible; `reportIdentityDrift` says why on the same run.
+  test('a mismatched posting identity is reported on the same run', async () => {
+    // The next job reads real authors back from the API, so a run posting as an
+    // account it does not identify as leaves comments invisible to itself and
+    // restarts the issue from scratch.
+    //
+    // It used to surface as a *failure* within the run: every phase posted, so
+    // the in-job thread mirror could carry the author GitHub recorded, and a
+    // drifted one made delivery unable to find the report this same job had
+    // written. Buffering removes that early warning — there is no posted author
+    // to learn until the flush, one line before the run ends — so the drift is
+    // now a diagnostic rather than a self-inflicted failure. It is still said on
+    // the run that causes it, which is what the name was ever about.
     harness.io.postedAs = 'github-actions[bot]'
 
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
-    expect(harness.io.prBodies.at(-1)).toContain('No implementation report was recorded')
+    expect(harness.io.logErrors.join(' ')).toContain('posted as a different account')
+    // And the run is otherwise unharmed: the report it wrote is on the pull
+    // request, where a drift no longer costs the job its own work.
+    expect(harness.io.prBodies.at(-1)).toContain('Implementation report')
   })
 
   test('finds its own report when the identity matches', async () => {
@@ -1991,20 +2056,22 @@ describe('/review — typed on the pull request', () => {
     expect(harness.io.prNotes[0]).toContain('❌ the review loop exited 1')
   })
 
-  test('a report the pull request will not take fails the run rather than being swallowed', async () => {
-    // The cost of moving the record: this write is no longer decoration. It used
-    // to be a pointer comment beside a report safely on the issue, so a 403 was
-    // degraded to a `warn`; now it *is* the report, and `postAndAppend` has
-    // always thrown — the same exposure the issue path has always had.
+  test('a report the pull request will not take leaves the fallback comment in scope', async () => {
+    // A refused report used to throw, leaving the workflow's "Agent job did not
+    // finish" comment to cover it because a throw is the deliberately *unmarked*
+    // terminal path.
     //
-    // It throws rather than returning `failed`, which is exactly what a refused
-    // post on the issue has always done: a throw is the deliberately *unmarked*
-    // terminal path, and the workflow's "Agent job did not finish" comment is
-    // what covers it.
+    // With one write per run it is `reported` that carries the same information,
+    // and carries it better: the run returns its real outcome, the job's exit
+    // code still reflects the work rather than the comment, and the fallback is
+    // gated on the flag rather than on a crash. The swallow is the rule every
+    // feedback channel here follows; the narrowing is that it may not claim the
+    // issue carries a report GitHub refused.
     harness.io.noteError = new Error('403 Resource not accessible by integration')
 
-    await expect(runPipeline({ event: prComment('/review'), deps: harness.deps })).rejects.toThrow('403')
+    const result = await runPipeline({ event: prComment('/review'), deps: harness.deps })
 
+    expect(result.reported).toBe(false)
     expect(harness.io.prNotes).toHaveLength(1)
   })
 
@@ -2043,8 +2110,10 @@ describe('/review — typed on the pull request', () => {
     expect(result.status).toBe('waiting')
     expect(harness.io.prNotes.at(-1)).toContain('It retries three times')
     // And nowhere else. A second copy on the issue is two accounts of one
-    // exchange, and the issue is not where the question was asked.
-    expect(harness.io.posted.some((body) => body.includes('It retries three times'))).toBe(false)
+    // exchange, and the issue is not where the question was asked. `posted`
+    // records creates on either page, so one entry there *is* the claim.
+    expect(harness.io.posted).toHaveLength(1)
+    expect(harness.io.thread.some((entry) => entry.body.includes('It retries three times'))).toBe(false)
   })
 
   test('the answer it posts there carries no state block', async () => {
@@ -5083,50 +5152,71 @@ const JOB_URL = 'https://github.test/acme/widgets/actions/runs/1482'
 
 const withStatus = (overrides: Partial<PipelineConfig> = {}): Harness => makeHarness({ runUrl: JOB_URL, ...overrides })
 
-/** Bodies the run created that carry no state block — the status comment, and nothing else. */
-const statusPosts = (harness: Harness): string[] => harness.io.posted.filter((body) => !body.includes(STATE_MARKER))
+describe('the run’s one comment', () => {
+  test('a maintainer’s command draws exactly one comment, and no edit of it', async () => {
+    // The whole point of the change, at the outermost seam: issue #281 drew
+    // three bot comments per command — the live status comment finalised, the
+    // report, and the transcript notice — and the first two often said the same
+    // thing twice.
+    const harness = withStatus()
+    await toDesignSpec(harness)
+    harness.io.replies = [PLAN_REPLY]
 
-describe('the live status comment', () => {
-  test('one comment per run, opened when the work starts and edited as it moves', async () => {
-    // The whole comment budget this plan allows itself. A run that added a
-    // comment per phase would be the noise the budget exists to prevent.
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+
+    expect(harness.io.posted).toHaveLength(1)
+    expect(harness.io.edits).toEqual([])
+  })
+
+  test('nothing is written to the thread until the run settles', async () => {
+    // The property that pays for the notification: a comment created at the end
+    // notifies when the answer lands, where an edit notifies nobody. Asserted by
+    // watching the thread from inside the run rather than by counting after it.
+    const harness = withStatus()
+    const duringTurn: number[] = []
+    harness.io.onReply = (): void => void duringTurn.push(harness.io.posted.length)
+
+    await driveDelivery(harness)
+
+    expect(duringTurn).not.toEqual([])
+    expect(duringTurn.every((count) => count === 0)).toBe(true)
+    expect(harness.io.posted).toHaveLength(1)
+  })
+
+  test('a job crossing several phases still draws one, carrying every report', async () => {
+    // `/approve` from PLAN_REVIEW walks implementation, delivery and the close.
+    // Each used to be its own comment; they are now sections of one, oldest
+    // first, with the newest left open because it is what the reader came for.
     const harness = withStatus()
 
     await driveDelivery(harness)
 
-    expect(statusPosts(harness)).toHaveLength(1)
-    expect(harness.io.edits.length).toBeGreaterThan(0)
-    expect(new Set(harness.io.edits.map((edit) => edit.id)).size).toBe(1)
+    expect(harness.io.posted).toHaveLength(1)
+    const reply = String(harness.io.posted[0])
+    // Every phase's report is present, oldest folded, newest open — and the
+    // run's own heading appears once, however many reports it introduces.
+    expect(headings(harness)).toEqual(['### Implementation report', '### Pull request ready'])
+    expect(reply).toContain('<details><summary>Writing the code</summary>')
+    expect(reply.split('### ✅ Delivered')).toHaveLength(2)
+    expect(reply.split('\n')[0]).toBe('### ✅ Delivered')
   })
 
-  test('it says which job is doing the work, and what phase it is on', async () => {
+  test('every phase’s blocks ride in that one body, newest winning', async () => {
+    // Newest-wins across a run is "last block in the newest comment carrying
+    // one", which `readBlock` and `locateLatestBlock` already implement. A run
+    // that writes several blocks into one body is the case that has to keep
+    // resolving to the last of them.
     const harness = withStatus()
-    await toDesignSpec(harness)
-    harness.io.replies = [PLAN_REPLY]
 
-    await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    await driveDelivery(harness)
 
-    const opened = String(statusPosts(harness)[0])
-    expect(opened).toContain(`[this run](${JOB_URL})`)
-    expect(opened.split('\n')[0]).toBe('### 🗺️ Breaking the spec into steps — run in progress')
+    const reply = String(harness.io.posted[0])
+    expect(reply.split(STATE_MARKER).length).toBeGreaterThan(2)
+    expect(extractState(reply)?.phase).toBe('COMPLETE')
+    expect(findLatestState(harness.io.thread, AGENT_LOGIN, ISSUE)?.phase).toBe('COMPLETE')
   })
 
-  test('it is finalised where the run stopped', async () => {
-    const harness = withStatus()
-    await toDesignSpec(harness)
-    harness.io.replies = [PLAN_REPLY]
-
-    await runPipeline({ event: comment('/approve'), deps: harness.deps })
-
-    const last = harness.io.edits.at(-1)
-    expect(last?.body.split('\n')[0]).toBe('### 🧭 Plan is waiting for you')
-    expect(last?.body).not.toContain('run in progress')
-  })
-
-  test('a run that does nothing opens no comment at all', async () => {
-    // Same gate as the working label, for the same reason: opening a status
-    // comment for a run that is about to skip spends the whole budget on
-    // nothing.
+  test('a run that does nothing says nothing', async () => {
     const harness = withStatus()
     await toComplete(harness)
     harness.io.edits.length = 0
@@ -5134,25 +5224,32 @@ describe('the live status comment', () => {
     await runPipeline({ event: comment('any plans to revisit?'), deps: harness.deps })
 
     expect(harness.io.posted).toEqual([])
-    expect(harness.io.edits).toEqual([])
   })
 
-  test('a guardrail denial opens no comment either', async () => {
+  test('a guardrail denial says nothing either', async () => {
     const harness = withStatus()
 
     await runPipeline({ event: issueEvent({ authorAssociation: 'CONTRIBUTOR' }), deps: harness.deps })
 
     expect(harness.io.posted).toEqual([])
   })
+
+  test('the surface is decided once, from the state the run entered on', async () => {
+    // The one-comment lag, now structural rather than a rule each caller has to
+    // remember: the delivery that first records `prNumber` lands on the issue,
+    // because that is where the run started, and it is the handover a reader
+    // wants there anyway.
+    const harness = withStatus()
+
+    await driveDelivery(harness)
+
+    expect(harness.io.prNotes).toEqual([])
+    expect(harness.io.thread.at(-1)?.body).toContain('AGENT_STATE')
+  })
 })
 
-describe('the status comment — rule 7, it is not a report', () => {
-  test('a run that only ever wrote status has still said nothing about itself', async () => {
-    // `RunResult.reported` means the issue carries this run's account of what
-    // happened, and the workflow's fallback comment is gated on it. A status
-    // comment is not an account of anything, so a run whose only writes were on
-    // that channel leaves the flag exactly where a run without the channel
-    // would.
+describe('the run’s one comment — what `reported` means', () => {
+  test('a run that says nothing has still said nothing about itself', async () => {
     const harness = withStatus()
     await toDesignSpec(harness)
     harness.io.replies = [JSON.stringify({ intent: 'none' })]
@@ -5160,102 +5257,124 @@ describe('the status comment — rule 7, it is not a report', () => {
     const result = await runPipeline({ event: comment('thanks!'), deps: harness.deps })
 
     expect(result.reported).toBe(false)
+    expect(harness.io.posted).toEqual([])
   })
 
-  test('a run killed mid-phase leaves the status mid-flight and yields no result to mark', async () => {
-    // The case rule 7 is really about. The report comment never lands, so the
-    // run dies with "run in progress" on the issue and hands back no
-    // `RunResult` at all — which is exactly why the flag must never be set from
-    // the status comment's existence: there would be nothing left to explain
-    // the silence.
+  test('a refused create leaves the flag false, so the fallback stays in scope', async () => {
+    // The one narrowing of "feedback must never fail a run": the write is still
+    // swallowed, but a report GitHub refused is a report the issue does not
+    // carry, and claiming otherwise suppresses the only comment that would have
+    // explained the silence.
     const harness = withStatus()
     await toDesignSpec(harness)
     harness.io.replies = [PLAN_REPLY]
     harness.io.postError = new Error('502 from GitHub')
 
-    await expect(runPipeline({ event: comment('/approve'), deps: harness.deps })).rejects.toThrow('502')
+    const result = await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
-    expect(harness.io.thread.at(-1)?.body).toContain('run in progress')
-    // `step-output.ts` writes the marker only on a returning path, and nothing
-    // returned; the state block on the issue is still the one from before.
-    expect(harness.io.thread.filter((entry) => entry.body.includes(STATE_MARKER))).toHaveLength(1)
+    expect(result.reported).toBe(false)
+    expect(harness.io.posted).toEqual([])
   })
 
-  test('finalising it on a returning path does not set the flag either', async () => {
-    // Two writers of one flag is how it drifts. The paths that report already
-    // do; this one has nothing to add.
+  test('a throw still posts what the run had buffered', async () => {
+    // The cost of buffering, bounded: the flush sits in a `finally`, so the
+    // common failure — a handler that throws — keeps every section written
+    // before it. Only a killed process loses them, which is what the workflow's
+    // fallback comment is for.
     const harness = withStatus()
-    harness.io.replies = [JSON.stringify({ intent: 'none' })]
-    seedState(harness, { phase: 'DESIGN_SPEC' })
+    await toPlanReview(harness)
+    harness.io.replies = ['Implemented.']
+    harness.io.createPrError = new Error('502 opening the pull request')
 
-    const result = await runPipeline({ event: comment('nice work'), deps: harness.deps })
+    await runPipeline({ event: comment('/approve'), deps: harness.deps })
 
-    expect(result.status).toBe('skipped')
-    expect(result.reported).toBe(false)
-    expect(statusPosts(harness)).toEqual([])
+    expect(harness.io.posted).toHaveLength(1)
+    expect(String(harness.io.posted[0])).toContain('AGENT_STATE')
   })
 })
 
-describe('the status comment — rule 4, the state channel is untouched', () => {
-  test('state restored from a thread with status comments equals the same thread without them', async () => {
-    // The invariant, stated as one. `findLatestState` restores from the newest
-    // agent comment carrying a valid block, so a status comment that ever grew
-    // one would become a second, competing source of truth — and it is written
-    // by the channel least likely to be looked at.
+describe('the run’s one comment — the state channel still resolves', () => {
+  test('a run that reports and a run that cannot link its job restore the same state', async () => {
+    // The rule this replaces said the status comment must never carry a state
+    // block, because two comments per run meant two candidate sources of truth.
+    // One comment per run removes the competition rather than policing it, and
+    // what has to survive is the property the rule protected: whatever the
+    // channel does, the state a later job restores is the same.
     const quiet = makeHarness()
     const loud = withStatus()
 
     await driveDelivery(quiet)
     await driveDelivery(loud)
 
-    expect(findLatestState(loud.io.thread, AGENT_LOGIN, ISSUE)).toEqual(
-      findLatestState(quiet.io.thread, AGENT_LOGIN, ISSUE),
-    )
-    // And it really did interleave them, rather than passing by never writing.
-    expect(loud.io.thread.length).toBeGreaterThan(quiet.io.thread.length)
-    expect(statusPosts(loud)).toHaveLength(1)
-    expect(statusPosts(loud)[0]).not.toContain(STATE_MARKER)
-    // And the comment that really went out carries the marker the prompt layer
-    // filters on — a renderer that grew one is worth nothing if the pipeline
-    // posts something else.
-    expect(readBlock(String(statusPosts(loud)[0]), STATUS_MARKER)).toEqual({ run: JOB_URL })
+    expect(latestPostedState(loud)).toEqual(latestPostedState(quiet))
   })
 
-  test('the comment a later job restores from is a report, never the status', async () => {
+  test('that one comment carries both markers, each read by its own layer', async () => {
+    // `AGENT_STATE` for the restore scan and `AGENT_STATUS` for the prompt
+    // layer's cut. They are matched exactly, so carrying both in one body is
+    // safe — and a renderer that grew a marker is worth nothing if the pipeline
+    // posts something else, which is why this asserts on what went out.
     const harness = withStatus()
     await driveDelivery(harness)
 
-    const restored = harness.io.thread.filter((entry) => extractState(entry.body) !== null)
+    const reply = String(harness.io.posted.at(-1))
+    expect(readBlock(reply, STATUS_MARKER)).toEqual({ run: JOB_URL })
+    expect(extractState(reply)?.phase).toBe('COMPLETE')
+  })
+
+  test('nothing a later job restores from claims a run is still going', async () => {
+    const harness = withStatus()
+    await driveDelivery(harness)
+
+    const restored = [...harness.io.thread, ...harness.io.prThread].filter((entry) => extractState(entry.body) !== null)
 
     expect(restored.length).toBeGreaterThan(0)
     expect(restored.every((entry) => !entry.body.includes('run in progress'))).toBe(true)
   })
 })
 
-describe('the status comment — rule 1, feedback never fails a run', () => {
-  test('a GitHub that refuses every status write changes nothing about the run', async () => {
-    // Measured against a run with no status channel at all, which is the exact
-    // degradation the rule allows: a failed create leaves the pipeline where it
-    // was before this stage, and a failed edit is a warning.
-    const silent = makeHarness()
+describe('the run’s one comment — a refused write never fails the run', () => {
+  test('a GitHub that refuses the reply changes the run’s outcome not at all', async () => {
+    // The rule survives the consolidation with one narrowing, and this is the
+    // half that does not move: a refused write is still a `warn`, the cascade
+    // still reaches the same outcome, and the work is still done. What the run
+    // *says* is gone, which is what the narrowing below is about.
+    const working = withStatus()
     const broken = withStatus()
+    await toPlanReview(working)
+    await toPlanReview(broken)
+    working.io.replies = ['Implemented.']
+    broken.io.replies = ['Implemented.']
+    // After the setup, so the refusal falls on the run under test rather than on
+    // the posts that put the issue in position.
     broken.io.statusError = new Error('Resource not accessible by integration')
 
-    const expected = await driveDelivery(silent)
-    const actual = await driveDelivery(broken)
+    const expected = await runPipeline({ event: comment('/approve'), deps: working.deps })
+    const actual = await runPipeline({ event: comment('/approve'), deps: broken.deps })
 
-    expect(actual).toEqual(expected)
-    // The persisted state, not just the returned status: a state that is never
-    // posted never happened, and that is the half a status cannot show.
-    expect(findLatestState(broken.io.thread, AGENT_LOGIN, ISSUE)).toEqual(
-      findLatestState(silent.io.thread, AGENT_LOGIN, ISSUE),
-    )
-    expect(broken.io.posted).toEqual(silent.io.posted)
+    expect(actual.status).toBe(expected.status)
+    expect(actual.state).toEqual(expected.state)
+    expect(broken.io.posted).toEqual([])
   })
 
-  test('a refused status write still lets a failure report itself', async () => {
+  test('but it may not claim the issue carries a report it refused', async () => {
+    // The one narrowing. `reported` gates the workflow's "Agent job did not
+    // finish" comment, so a run whose report GitHub turned down has to leave the
+    // flag false — otherwise the only comment that would have explained the
+    // silence is suppressed by the failure it was meant to explain.
     const harness = withStatus()
     harness.io.statusError = new Error('403')
+    harness.io.replies = ['not json at all']
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(result.reported).toBe(false)
+    expect(harness.io.posted).toEqual([])
+  })
+
+  test('and a failure that is accepted reports itself as before', async () => {
+    const harness = withStatus()
     harness.io.replies = ['not json at all']
 
     const result = await runPipeline({ event: issueEvent(), deps: harness.deps })

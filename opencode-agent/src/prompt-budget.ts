@@ -3,10 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readBlock, stripBlocks } from './blocks.js'
+import { stripBlocks } from './blocks.js'
 import type { IssueComment } from './blocks.js'
 import type { UntrustedEnvelope } from './prompts.js'
-import { STATUS_MARKER } from './status-comment.js'
+import { STATUS_MARKER } from './reply-comment.js'
 
 /**
  * How much text a prompt is allowed to carry, and which text loses when it does
@@ -35,14 +35,30 @@ const authorAttribute = (login: string): string => {
 }
 
 /**
- * Whether a comment is the pipeline's own progress reporting.
+ * Cuts a body where it stops speaking to a human.
  *
- * By **marker**, never by author. The agent writes the design spec, the
- * plan and every phase report as well, and those are precisely what
- * the model is being asked to read — so filtering on the login would blind it to
- * its own artefacts, which is a much quieter version of the bug this prevents.
+ * This used to **drop** the whole comment, which was right while the agent
+ * posted a progress table and its reports separately: one status comment per run
+ * would otherwise have spent a quarter of the twenty slots on tables the model
+ * has no use for. The two are now one comment, so dropping it would hide the
+ * answer, the design digest and the plan — precisely the artefacts this renderer
+ * exists to show the model.
+ *
+ * So the marker changed jobs rather than the filter changing targets: it means
+ * *the bookkeeping starts here*, `renderReply` puts the marker directly below
+ * the last section, and everything from it down is cut — the run detail
+ * included, since a progress table is bookkeeping. By **marker**, never by author —
+ * the agent writes the artefacts too, so filtering on the login would blind the
+ * model to its own work, which is the much quieter version of the same bug.
+ *
+ * The **first** occurrence, not the last: a section is model-written and could
+ * type the marker verbatim, and cutting at the first makes that a report which
+ * ends early rather than bookkeeping that leaks into the window.
  */
-const isStatusComment = (comment: IssueComment): boolean => readBlock(comment.body, STATUS_MARKER) !== undefined
+const untilBookkeeping = (body: string): string => {
+  const marker = body.indexOf(`<!-- ${STATUS_MARKER}:`)
+  return marker === -1 ? body : body.slice(0, marker)
+}
 
 /**
  * Renders the issue thread for prompt context, newest last.
@@ -59,13 +75,11 @@ const isStatusComment = (comment: IssueComment): boolean => readBlock(comment.bo
  *
  * Hidden blocks are stripped: they are the pipeline's own bookkeeping, they are
  * large, and showing the model its own state schema invites it to write one.
- *
- * The run's live status comment is dropped outright rather than stripped, and
- * **before** the window is taken, not after: it is one comment per run, so a
- * conversation spanning five runs would otherwise spend a quarter of the twenty
- * slots on progress tables the model has no use for — and the phases that read
- * the thread are triage, answering and the classifier, which is to say the ones
- * whose whole job is understanding what the humans said.
+ * Each body is cut at its bookkeeping marker first — see {@link untilBookkeeping}
+ * — which is what keeps every previous run's progress table out of the twenty
+ * slots the phases that read this depend on: triage, answering and the
+ * classifier, which is to say the ones whose whole job is understanding what
+ * the humans said.
  */
 export const renderThread = (
   envelope: UntrustedEnvelope,
@@ -74,9 +88,10 @@ export const renderThread = (
   budget = THREAD_BUDGET,
 ): string => {
   const rendered = thread
-    .filter((comment) => !isStatusComment(comment))
     .slice(-limit)
-    .map((comment) => wrapWithin(envelope, authorAttribute(comment.authorLogin), stripBlocks(comment.body), budget))
+    .map((comment) =>
+      wrapWithin(envelope, authorAttribute(comment.authorLogin), stripBlocks(untilBookkeeping(comment.body)), budget),
+    )
   if (rendered.length === 0) return '(no comments yet)'
 
   const kept = withinBudget(rendered, budget)
