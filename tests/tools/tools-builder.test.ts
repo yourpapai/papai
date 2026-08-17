@@ -1066,6 +1066,7 @@ const SCOPE_CONDITIONAL_TOOL_NAMES = [
   'update_task',
   'search_tasks',
   'list_tasks',
+  'suggest_next_task',
   'get_task',
   'delete_task',
   'count_tasks',
