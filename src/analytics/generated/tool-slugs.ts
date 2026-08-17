@@ -110,6 +110,7 @@ export const KNOWN_TOOL_SLUGS = [
   'set_my_identity',
   'set_visibility',
   'skip_recurring_task',
+  'suggest_next_task',
   'update_comment',
   'update_label',
   'update_project',

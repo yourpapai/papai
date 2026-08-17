@@ -33,7 +33,7 @@ task below.
 
 ## 5. Registration, metadata, inventory
 
-- [ ] 5.1 Register `suggest_next_task: makeSuggestNextTaskTool(provider, userId, storageContextId)` in `src/tools/core-tools.ts` beside `list_tasks`; add `suggest_next_task: read('task')` to `TOOL_METADATA` in `src/tools/tool-metadata.ts`; update the property assertions in `tests/tools/core-tools.test.ts`. Verification: `bun test tests/tools/core-tools.test.ts tests/tools/tool-metadata.test.ts`.
+- [x] 5.1 Register `suggest_next_task: makeSuggestNextTaskTool(provider, userId, storageContextId)` in `src/tools/core-tools.ts` beside `list_tasks`; add `suggest_next_task: read('task')` to `TOOL_METADATA` in `src/tools/tool-metadata.ts`; update the property assertions in `tests/tools/core-tools.test.ts`. Verification: `bun test tests/tools/core-tools.test.ts tests/tools/tool-metadata.test.ts`.
 - [ ] 5.2 Update tool-inventory enumerations: `tests/llm-orchestrator-tools.test.ts` (sorted key list around line 362), `tests/completion/verified-completion.test.ts` (around line 50), and any other `EXPECTED_KEYS`/enumeration failures the suite surfaces. Verification: `bun run test:affected` then the affected files directly.
 
 ## 6. Docs and full gates
