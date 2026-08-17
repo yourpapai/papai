@@ -8,7 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import type { TaskListItem } from '../../src/providers/domain-types.js'
 import { rankTasks } from '../../src/tools/suggest-next-task-ranking.js'
 
-type RankCandidate = TaskListItem & { createdAt?: string | null }
+type RankCandidate = TaskListItem
 
 const NOW = new Date('2026-04-01T12:00:00.000Z')
 const MINUTE = 60 * 1000

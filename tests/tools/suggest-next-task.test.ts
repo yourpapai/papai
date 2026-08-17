@@ -16,7 +16,7 @@ import { createMockProvider } from './mock-provider.js'
 
 const DAY = 24 * 60 * 60 * 1000
 
-type ToolTask = TaskListItem & { createdAt?: string | null }
+type ToolTask = TaskListItem
 
 type Suggestion = {
   id: string

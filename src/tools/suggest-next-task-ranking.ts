@@ -27,8 +27,8 @@ const SCORES = {
   newestCreated: 2,
 } as const
 
-/** Candidate accepted by `rankTasks`; `createdAt` rides along until the list type carries it (design D3). */
-export type RankableTask = TaskListItem & { createdAt?: string | null }
+/** Candidate accepted by `rankTasks`. */
+export type RankableTask = TaskListItem
 
 export type RankedTask = RankableTask & { score: number; reason: string }
 
