@@ -5,10 +5,13 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { setConfig } from '../../src/config.testing.js'
+import { clearIdentityMapping, setIdentityMapping } from '../../src/identity/mapping.js'
 import type { TaskListItem } from '../../src/providers/domain-types.js'
 import type { Project } from '../../src/providers/types.js'
 import { makeSuggestNextTaskTool } from '../../src/tools/suggest-next-task.js'
-import { getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { getToolExecutor, mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -61,6 +64,23 @@ async function executeSuggest(tool: unknown, input: Record<string, unknown>): Pr
   return result
 }
 
+type StatusResult = { status: string; message: string }
+
+async function executeSuggestStatus(tool: unknown, input: Record<string, unknown>): Promise<StatusResult> {
+  const value: unknown = await getToolExecutor(tool)(input, { toolCallId: '1', messages: [], context: {} })
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'status' in value &&
+    typeof value.status === 'string' &&
+    'message' in value &&
+    typeof value.message === 'string'
+  ) {
+    return { status: value.status, message: value.message }
+  }
+  throw new Error(`expected a status result, got ${JSON.stringify(value)}`)
+}
+
 const projects = (): Project[] => [
   { id: 'proj-a', name: 'Project A', url: 'https://tracker.example/a' },
   { id: 'proj-b', name: 'Project B', url: 'https://tracker.example/b' },
@@ -75,6 +95,8 @@ describe('suggest_next_task tool', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    clearIdentityMapping('suggest-identity-user', 'mock')
+    clearIdentityMapping('suggest-no-identity-user', 'mock')
   })
 
   test('fans out over listProjects, merges ranked suggestions, and drops resolved tasks from candidates', async () => {
@@ -178,5 +200,155 @@ describe('suggest_next_task tool', () => {
 
     expect(result.considered).toBe(4)
     expect(result.suggestions.map((suggestion): string => suggestion.id)).toEqual(['d4', 'd3'])
+  })
+
+  test('returns project_required guidance when listProjects is absent and no projectId is given', async () => {
+    const listTasks = mock((_projectId: string): Promise<ToolTask[]> => Promise.resolve([]))
+    const provider = createMockProvider({ listTasks, listProjects: undefined })
+    const tool = makeSuggestNextTaskTool(provider)
+
+    const result = await executeSuggestStatus(tool, {})
+
+    expect(result.status).toBe('project_required')
+    expect(result.message).toContain('projectId')
+    expect(listTasks).not.toHaveBeenCalled()
+  })
+
+  test('returns identity_required for unresolvable assigneeId "me"', async () => {
+    const provider = createMockProvider()
+    const tool = makeSuggestNextTaskTool(provider, 'suggest-no-identity-user')
+
+    const result = await executeSuggestStatus(tool, { projectId: 'proj-1', assigneeId: 'me' })
+
+    expect(result.status).toBe('identity_required')
+    expect(result.message).toContain("don't know who you are")
+  })
+
+  test('applies the resolved assignee filter using the provider user id by default', async () => {
+    setIdentityMapping({
+      contextId: 'suggest-identity-user',
+      providerName: 'mock',
+      providerUserId: 'resolved-user-789',
+      providerUserLogin: 'jsmith',
+      displayName: 'John Smith',
+      matchMethod: 'manual_nl',
+      confidence: 100,
+    })
+
+    let capturedAssigneeId: string | undefined
+    const listTasks = mock((_projectId: string, params?: { assigneeId?: string }): Promise<ToolTask[]> => {
+      capturedAssigneeId = params?.assigneeId
+      return Promise.resolve([toolTask('mine', { dueDate: fromNow(-DAY) })])
+    })
+    const provider = createMockProvider({ listTasks })
+    const tool = makeSuggestNextTaskTool(provider, 'suggest-identity-user')
+
+    const result = await executeSuggest(tool, { projectId: 'proj-1', assigneeId: 'me' })
+
+    expect(capturedAssigneeId).toBe('resolved-user-789')
+    expect(result.suggestions.map((suggestion): string => suggestion.id)).toEqual(['mine'])
+  })
+
+  test('uses the login when the provider prefers login identifiers', async () => {
+    setIdentityMapping({
+      contextId: 'suggest-identity-user',
+      providerName: 'mock',
+      providerUserId: 'resolved-user-789',
+      providerUserLogin: 'jsmith',
+      displayName: 'John Smith',
+      matchMethod: 'manual_nl',
+      confidence: 100,
+    })
+
+    let capturedAssigneeId: string | undefined
+    const listTasks = mock((_projectId: string, params?: { assigneeId?: string }): Promise<ToolTask[]> => {
+      capturedAssigneeId = params?.assigneeId
+      return Promise.resolve([])
+    })
+    const provider = createMockProvider({ listTasks, preferredUserIdentifier: 'login' })
+    const tool = makeSuggestNextTaskTool(provider, 'suggest-identity-user')
+
+    await executeSuggest(tool, { projectId: 'proj-1', assigneeId: 'me' })
+
+    expect(capturedAssigneeId).toBe('jsmith')
+  })
+
+  test('returns the empty state when no open tasks match', async () => {
+    const provider = createMockProvider({
+      listProjects: mock((): Promise<Project[]> => Promise.resolve(projects())),
+      listTasks: mock((): Promise<ToolTask[]> => Promise.resolve([])),
+    })
+    const tool = makeSuggestNextTaskTool(provider)
+
+    const result = await executeSuggest(tool, {})
+
+    expect(result).toEqual({ suggestions: [], considered: 0 })
+  })
+
+  test('renders dueDate in the group-shared config-context timezone', async () => {
+    const chatUserId = 'user-123'
+    const storageContextId = 'group-456'
+    setConfig(storageContextId, 'timezone', 'Europe/London')
+
+    const provider = createMockProvider({
+      listTasks: mock((): Promise<ToolTask[]> =>
+        Promise.resolve([toolTask('due-task', { dueDate: '2024-06-15T12:00:00.000Z' })]),
+      ),
+    })
+    const tool = makeSuggestNextTaskTool(provider, chatUserId, storageContextId)
+
+    const result = await executeSuggest(tool, { projectId: 'proj-1' })
+
+    // 12:00 UTC rendered in Europe/London (BST, +1) = 13:00.
+    expect(result.suggestions[0]?.dueDate).toContain('13:00')
+  })
+
+  test('strips the thread suffix so a group-thread storageContextId resolves the group timezone', async () => {
+    const chatUserId = 'user-123'
+    const groupConfigContextId = toScopedContextId({ platformInstanceId: 'inst-1', nativeContextId: 'group-1' })
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'inst-1',
+      nativeContextId: 'group-1',
+      threadId: 'thread-1',
+    })
+    setConfig(groupConfigContextId, 'timezone', 'Europe/London')
+
+    const provider = createMockProvider({
+      listTasks: mock((): Promise<ToolTask[]> =>
+        Promise.resolve([toolTask('due-task', { dueDate: '2024-06-15T12:00:00.000Z' })]),
+      ),
+    })
+    const tool = makeSuggestNextTaskTool(provider, chatUserId, threadContextId)
+
+    const result = await executeSuggest(tool, { projectId: 'proj-1' })
+
+    // A regression using the thread-scoped id would miss the config and render 12:00 (UTC).
+    expect(result.suggestions[0]?.dueDate).toContain('13:00')
+  })
+
+  test('falls back to UTC when no timezone is configured', async () => {
+    const chatUserId = 'user-123'
+    const storageContextId = 'group-456'
+
+    const provider = createMockProvider({
+      listTasks: mock((): Promise<ToolTask[]> =>
+        Promise.resolve([toolTask('due-task', { dueDate: '2024-06-15T12:00:00.000Z' })]),
+      ),
+    })
+    const tool = makeSuggestNextTaskTool(provider, chatUserId, storageContextId)
+
+    const result = await executeSuggest(tool, { projectId: 'proj-1' })
+
+    expect(result.suggestions[0]?.dueDate).toContain('12:00')
+  })
+
+  test('rejects out-of-range limit values at the schema layer', () => {
+    const tool = makeSuggestNextTaskTool(createMockProvider())
+
+    expect(schemaValidates(tool, { projectId: 'proj-1', limit: 1 })).toBe(true)
+    expect(schemaValidates(tool, { projectId: 'proj-1', limit: 5 })).toBe(true)
+    expect(schemaValidates(tool, { projectId: 'proj-1', limit: 0 })).toBe(false)
+    expect(schemaValidates(tool, { projectId: 'proj-1', limit: 6 })).toBe(false)
+    expect(schemaValidates(tool, { projectId: 'proj-1', limit: 3.5 })).toBe(false)
   })
 })
