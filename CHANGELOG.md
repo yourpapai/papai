@@ -5,6 +5,147 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.13.1] - 2026-08-17
+
+### Added
+
+- **openspec:** Ask whether a capability needs to exist before admitting it
+- **agents:** Give the minimality rule one definition, pinned across workspaces
+- **opencode-agent:** Carry the minimality rule into implement and CI-fix
+- **review-loop:** Record whether an issue is a defect or a cleanup
+- **review-loop:** Dispatch every defect before any cleanup
+- **review-loop:** Clamp a cleanup's severity at ingest, not in the prompt
+- **review-loop:** Let the reviewer report over-engineering, as five named forms
+- **review-loop:** Count cleanups apart from defects, in metrics and the summary
+- **mutation-improve:** Accept a result that names no planning documents
+- **mutation-improve:** Three steps, not five — drop the documents nothing read
+- **mutation-improve:** Report accepted residuals instead of two document links
+- **agent:** Implement issue #268 — step 1/30: 1.1 Write failing migration test `tests/db/migrations/076_context_vault.
+- **agent:** Implement issue #268 — step 2/30: 1.2 Create migration `src/db/migrations/076_context_vault.ts` (`context_
+- **agent:** Implement issue #268 — step 3/30: 1.3 Add drizzle twin `src/db/context-vault-schema.ts` with a schema-vali
+- **agent:** Implement issue #268 — step 4/30: 2.1 Write failing token-store tests (create returns plaintext once + sto
+- **agent:** Implement issue #268 — step 5/30: 2.2 Implement `src/context-vault/token-store.ts` (generation via `crypto
+- **agent:** Implement issue #268 — step 6/30: 2.3 Write failing route tests for `GET/POST/DELETE /settings/api/context
+- **agent:** Implement issue #268 — step 7/30: 2.4 Implement `src/debug/settings/context-vault-tokens-routes.ts` mirror
+- **agent:** Implement issue #268 — step 8/30: 3.1 Write failing spec-store tests (upsert by `(config_context_id, id, p
+- **agent:** Implement issue #268 — step 9/30: 3.2 Implement `src/context-vault/spec-store.ts` — `bun test tests/contex
+- **agent:** Implement issue #268 — step 10/30: 3.3 Write failing push-route tests (bearer auth via token hash, revoked/
+- **agent:** Implement issue #268 — step 11/30: 3.4 Implement `src/context-vault/push-route.ts` and mount `POST /api/con
+- **agent:** Implement issue #268 — step 12/30: 4.1 Write failing reducer tests (outline extraction, stage matrix draft/
+- **agent:** Implement issue #268 — step 13/30: 4.2 Implement `src/context-vault/reducer.ts` and wire it into the push p
+- **agent:** Implement issue #268 — step 14/30: 4.3 Write failing summarization-queue tests (semantic new-hash enqueue,
+- **agent:** Implement issue #268 — step 15/30: 4.4 Implement `src/context-vault/summarizer.ts` following the `long-term
+- **agent:** Implement issue #268 — step 16/30: 5.1 Write failing facade tests (`contextVault.read` permission gate, sto
+- **agent:** Implement issue #268 — step 17/30: 5.2 Implement the facade in `src/plugins/tool-runtime.ts` (mirroring `bu
+- **agent:** Implement issue #268 — step 18/30: 5.3 Write failing tool tests (`list_agent_specs` filters + freshness met
+- **agent:** Implement issue #268 — step 19/30: 5.4 Create `plugins/context-vault/` (`plugin.json` with the two contribu
+- **agent:** Implement issue #268 — step 20/30: 6.1 Write failing client tests for the "Context Vault tokens" section (l
+- **agent:** Implement issue #268 — step 21/30: 6.2 Implement the section in `client/settings/` reusing the coding-repos
+- **agent:** Implement issue #268 — step 22/30: 7.1 Write failing lock-file singleton tests (live lock no-op, dead-PID/e
+- **agent:** Implement issue #268 — step 23/30: 7.2 Implement `context-vault-indexer/lock.ts` — `bun test tests/context-
+- **agent:** Implement issue #268 — step 24/30: 7.3 Write failing daemon tests (scan detects changed/deleted `*.md`, per
+- **agent:** Implement issue #268 — step 25/30: 7.4 Implement `context-vault-indexer/daemon.ts` (periodic scan, hash-map
+- **agent:** Implement issue #268 — step 26/30: 7.5 Implement `context-vault-indexer/adapters/opencode.ts` (activation p
+- **agent:** Implement issue #268 — step 27/30: 8.1 Add story: push → index updated → tools return freshness meta; revok
+- **agent:** Implement issue #268 — step 28/30: 8.2 Add story: two plugin activations → exactly one daemon (lock singlet
+- **agent:** Implement issue #268 — step 29/30: 9.1 Update `docs/architecture/plugins.md` (new facade permission) and ad
+- **agent:** Implement issue #268 — step 30/30: 9.2 Run full gate: `bun run test`, `bun run typecheck`, `bun run lint`,
+- **opencode-agent:** Render phase reports as sections of one comment
+- **opencode-agent:** Bound the reply body, shedding prose before memory
+- **opencode-agent:** Cut the prompt at the bookkeeping, not at the comment
+- **opencode-agent:** Buffer the run's reply and post it once, at the end
+- **opencode-agent:** Fold the transcript and failure notices into the reply
+- **context-vault-indexer:** Ship a runnable daemon with IPC repo registration
+- **agent:** Implement issue #281 — step 1/7: 1.1 Write failing `tests/security/prompt-boundary.test.ts`: wrap
+- **agent:** Implement issue #281 — step 2/7: 1.2 Implement `src/security/prompt-boundary.ts`
+- **agent:** Implement issue #281 — step 3/7: 2.1 Write failing regression test in
+- **agent:** Implement issue #281 — step 4/7: 2.2 Edit `src/deferred-prompts/poller-alerts.ts` to sanitize + wrap
+- **agent:** Implement issue #281 — step 5/7: 3.1 Write failing regression test for `src/memory-context-block.ts`:
+- **agent:** Implement issue #281 — step 6/7: 3.2 Edit `src/memory-context-block.ts` to sanitize + wrap fact
+- **agent:** Implement issue #281 — step 7/7: 4.1 Run `bun security` (prompt-construction surface), full
+
+### Changed
+
+- **opencode-agent:** Delete what the live channel paid for
+- **opencode-agent:** Rename the channel to what it now is
+
+### Documentation
+
+- **openspec:** Four changes carrying minimality past the review-loop fixer
+- **sdd:** Record why two rule sets pull opposite ways on size
+- **agents:** State the minimality rule for the main agent and both workspaces
+- **review-loop:** Record the deletion vocabulary and what decides its future
+- **mutation-improve:** Record the three-step procedure and the residual report
+- **openspec:** Draft artifacts for context-vault-plugin
+- **context-vault:** Clarify indexer package is library-only and daemon entry is consumer-supplied
+- **research:** Scaffold Stage C evidence log
+- **openspec:** Propose one agent reply comment per command
+- **openspec:** Post the single reply once, at the end of the run
+- **openspec:** Reconcile the change artifacts with what was built
+- **openspec:** Propose context-vault indexer daemon entry
+- **context-vault:** Correct scan scheduling and show the adapter wiring
+- **behaviors:** Include task statuses in alert-summary boundary enumeration
+- **openspec:** Restore SPDX BUSL-1.1 header in prompt-injection-defense proposal.md
+
+### Fixed
+
+- **review-loop:** Restore the mutation ratchet on summary.ts and trace-log.ts
+- **agent:** Repair CI for issue #268
+- **agent:** Reunite the client-bundle test with its implementation half
+- **mutation:** Keep generated modules out of the changed-files gate
+- **context-vault-indexer:** Daemon owns the lock heartbeat
+- **context-vault-indexer:** Keep daemon loop alive across rejected scan ticks
+- **context-vault-indexer:** Retry rejected pushes with backoff instead of aborting the scan tick
+- **context-vault:** Enforce push body cap while streaming instead of after full buffering
+- **context-vault-facade:** Degrade gracefully on malformed outline JSON
+- **context-vault:** Persist per-file derived artifacts so delta pushes no longer regress stage/progr
+- **settings:** Show revoked context-vault tokens as revoked without a Revoke button
+- **context-vault:** Separate summarizer pending-job key segments to avoid collisions
+- **client:** Reset created vault token plaintext on context switch in settings
+- **context-vault-indexer:** Refresh lock heartbeat on its own cadence decoupled from the scan interv
+- **context-vault:** Drop deleted paths from pending spec summarization jobs
+- **context-vault:** Guard spec summary writes with source_hash to drop superseded results
+- **context-vault:** Tolerate malformed stored outlines and guard push route errors
+- **context-vault:** Wrap applyPush mutations in a drizzle transaction
+- **context-vault-indexer:** Preserve archived change identity in daemon push payload
+- **context-vault-indexer:** Keep persisted state when a listed file read fails instead of pushing a
+- **context-vault-indexer:** Round statMtime so push payloads satisfy server integer mtime schema
+- **context-vault:** Keep pending spec summary storable across mechanical pushes
+- **context-vault:** Summarize full semantic file set on delta pushes, not just the delta
+- **context-vault:** Preserve stored file artifacts on text-less hash-changed pushes
+- **context-vault:** Use token_hash index in verifyToken instead of full scan
+- **context-vault-indexer:** Catch heartbeat-refresh and sleep failures in daemon loop
+- **context-vault-indexer:** Pace daemon loop with a real fallback delay when injected sleep rejects
+- **context-vault-indexer:** Exit superseded daemon when the singleton lock is lost
+- **context-vault:** Enqueue spec summarization only on semantic new-hash or semantic deletion
+- **context-vault:** Keep in-flight spec summary when only a mechanical push supersedes it
+- **opencode-agent:** Adopt an existing openspec change instead of failing capture
+- **ci:** Warm the story sandbox image before the suite that requires it
+- **analytics:** Promote ordinary staged snapshots in the scheduler handler
+- **opencode-agent:** Take the failure notice's comment id from the API
+- **tests:** Repoint the indexer story catalog id after the scenario rename
+- **security:** Strip Unicode format characters before boundary-tag matching in sanitizeExternalData
+- **security:** Strip external-data boundary tags repeatedly to prevent split-tag reassembly
+- **security:** Strip boundary tags with whitespace between < and / in sanitizeExternalData
+- **deferred-prompts:** Wrap task status in external-data boundary in alert summary
+- **security:** Pre-cap untrusted input before iterative boundary-tag strip loop
+- **security:** Pre-strip Cc control chars alongside Cf in sanitizeExternalData
+
+### Miscellaneous
+
+- **openspec:** Verify the scope rules against every change and the full gate
+- **agents:** Verify the minimality ladder against the full gate
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold context-vault-plugin
+- **agent:** Salvage partial work on issue #268
+- **agent:** Salvage partial work on issue #268
+- **openspec:** Adopt prompt-injection-defense
+- **knip:** Drop stale prompt-boundary entry and ignore now tasks 2.2/3.2 landed
+
+### Testing
+
+- **opencode-agent:** Exercise the rule-forwarding seam the fake had stubbed out
+- **settings-nav:** Pin Advanced labels, not just ids
 ## [6.13.0] - 2026-08-15
 
 ### Added
