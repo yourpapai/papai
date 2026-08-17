@@ -167,6 +167,8 @@ jobs:
             [ -n "${ANALYTICS_KILL_SWITCH}" ] && printf 'ANALYTICS_KILL_SWITCH=%s\n' "${ANALYTICS_KILL_SWITCH}"
             [ -n "${ANALYTICS_HMAC_KEYRING}" ] && printf 'ANALYTICS_HMAC_KEYRING=%s\n' "${ANALYTICS_HMAC_KEYRING}"
             [ -n "${ANALYTICS_GOVERNANCE_HMAC_KEYRING}" ] && printf 'ANALYTICS_GOVERNANCE_HMAC_KEYRING=%s\n' "${ANALYTICS_GOVERNANCE_HMAC_KEYRING}"
+            # Fixed container path (papai-data volume): enables the hourly snapshot job
+            printf 'ANALYTICS_SNAPSHOT_PATH=/data/analytics-snapshot.db\n'
           } > .env
           chmod 600 .env
 
