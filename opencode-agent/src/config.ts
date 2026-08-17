@@ -15,6 +15,7 @@ import {
   CONTEXT_RANGE,
   DEFAULT_REVIEW_POOL_SIZE,
   DEFAULT_TURN_TIMEOUT_MS,
+  effortTier,
   EPOCH_MS_RANGE,
   JOB_MINUTES_RANGE,
   labelPrefix,
@@ -84,6 +85,14 @@ export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
     context: boundedIntOrNull(env, 'AGENT_MODEL_CONTEXT', CONTEXT_RANGE),
     output: boundedIntOrNull(env, 'AGENT_MODEL_OUTPUT', OUTPUT_RANGE),
     reasoning: boolOrNull(env, 'AGENT_MODEL_REASONING'),
+  },
+  // Which profile gets which model and how much effort. All three absent by
+  // default, so a repository that sets none of them emits the config it always
+  // did — the light model is only the read-only profile's, never `build`'s.
+  profiles: {
+    light: optionalOrNull(env, 'LLM_MODEL_LIGHT'),
+    planEffort: effortTier(env, 'AGENT_EFFORT_PLAN'),
+    buildEffort: effortTier(env, 'AGENT_EFFORT_BUILD'),
   },
 })
 

@@ -241,7 +241,7 @@ export { DEFAULT_CHECKS, parseChecks } from './check-spec.js'
 // The model-metadata knobs, split off for the same reason and reachable from
 // here for the same one: they are about somebody else's server rather than about
 // this pipeline's budgets, and their prose outgrew this file.
-export { boolOrNull, CONTEXT_RANGE, OUTPUT_RANGE, providerId } from './config-model-values.js'
+export { boolOrNull, CONTEXT_RANGE, effortTier, OUTPUT_RANGE, providerId } from './config-model-values.js'
 
 export {
   DEFAULT_TURN_TIMEOUT_MS,

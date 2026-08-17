@@ -22,6 +22,31 @@ export interface ModelOverrides {
 export const NO_MODEL_OVERRIDES: ModelOverrides = { context: null, output: null, reasoning: null }
 
 /**
+ * Which model and how much effort each agent profile gets.
+ *
+ * `null` throughout means "not configured", and each `null` leaves its key out of
+ * the emitted config rather than writing a value equal to the default — which is
+ * what makes an unset variable byte-identical to the behaviour before these knobs
+ * existed.
+ */
+export interface ModelProfiles {
+  /**
+   * Model for the read-only `plan` profile and for `small_model`; `null` uses the
+   * main model, as every profile did before.
+   *
+   * `propose` and `build` deliberately keep the main model: drafting a spec and
+   * writing code are not the cheap half of this pipeline, and a weak spec is the
+   * input to every later phase.
+   */
+  light: string | null
+  planEffort: string | null
+  buildEffort: string | null
+}
+
+/** Nothing configured: the ordinary case, and the shape an absent block takes. */
+export const NO_MODEL_PROFILES: ModelProfiles = { light: null, planEffort: null, buildEffort: null }
+
+/**
  * What this run knows about its model, in the shape OpenCode's own config accepts.
  *
  * The field names are models.dev's and OpenCode's alike, which is what makes the
@@ -66,6 +91,11 @@ export interface OpenAiSettings {
    * the review loop's subprocesses read, and an async builder would fork that.
    */
   facts?: ModelFacts
+  /**
+   * Per-profile model and effort. Optional for the reason {@link overrides} is:
+   * an absent block and one holding three `null`s mean the same thing.
+   */
+  profiles?: ModelProfiles
   /**
    * The **catalogue** id the model is resolved under — `LLM_PROVIDER`, or
    * {@link DEFAULT_PROVIDER_ID}.
@@ -159,39 +189,103 @@ export const WRITE_PERMISSION = grant([...READ_TOOLS, ...WRITE_TOOLS])
 /** Reading plus editing, scoped by the diff guard to the change folder (D8). */
 export const PROPOSE_PERMISSION = grant([...READ_TOOLS, ...PROPOSE_TOOLS])
 
-export const buildOpencodeConfig = (settings: OpenAiSettings): Config => ({
-  $schema: 'https://opencode.ai/config.json',
-  provider: {
-    [settings.provider]: {
-      npm: PROVIDER_NPM,
-      name: 'OpenAI-compatible',
-      options: { apiKey: settings.apiKey, baseURL: settings.baseUrl },
-      // The facts ride *on the model entry*, which is the only place OpenCode
-      // reads them from. An unresolved fact is absent rather than zero — see
-      // {@link ModelFacts}.
-      models: { [settings.model]: { name: settings.model, ...settings.facts } },
-    },
+/**
+ * A profile's entry: its permission, and whichever of model and effort was named.
+ *
+ * The two optional halves are **omitted** when unset rather than written as the
+ * value they would default to, which is what keeps an unconfigured run's emitted
+ * config identical to the one it produced before these knobs existed.
+ *
+ * `variant` is not on the pinned SDK's `AgentConfig` type, which carries an index
+ * signature that accepts it — and the server *does* read it: `opencode-ai@1.18.7`'s
+ * agent loader merges `model`, `variant`, `options`, `temperature`, `top_p` and
+ * `steps` from each config agent entry. The two pins are different versions, and
+ * the server's is the one that resolves configuration.
+ */
+const profile = (
+  permission: Record<string, 'allow' | 'deny'>,
+  overrides: { model?: string; variant?: string | null },
+): Record<string, unknown> => ({
+  permission,
+  ...(overrides.model === undefined ? {} : { model: overrides.model }),
+  ...(overrides.variant === undefined || overrides.variant === null ? {} : { variant: overrides.variant }),
+})
+
+/** `<provider>/<model>` for a model other than the main one. */
+const lightRef = (settings: OpenAiSettings): string | undefined => {
+  const light = settings.profiles?.light
+  return light === undefined || light === null ? undefined : `${settings.provider}/${light}`
+}
+
+/** The one provider block, its credentials and everything known about its model. */
+const providerBlock = (settings: OpenAiSettings): NonNullable<Config['provider']>[string] => ({
+  npm: PROVIDER_NPM,
+  name: 'OpenAI-compatible',
+  options: {
+    apiKey: settings.apiKey,
+    baseURL: settings.baseUrl,
+    // `ProviderTransform` emits a `promptCacheKey` for this driver only when this
+    // is `true`, and the key is the session id. Unconditional rather than behind a
+    // knob of its own: a provider that ignores the field is unaffected, and a long
+    // phase otherwise pays full input price on a prompt mostly identical to the
+    // last one.
+    setCacheKey: true,
   },
-  model: modelRef(settings),
-  // The weaker profile is the default, so an agent this pipeline does not name
-  // inherits the restricted set rather than a free pass.
-  permission: READ_ONLY_PERMISSION,
-  agent: {
+  // The facts ride *on the model entry*, which is the only place OpenCode reads
+  // them from. An unresolved fact is absent rather than zero — see
+  // {@link ModelFacts}.
+  models: { [settings.model]: { name: settings.model, ...settings.facts } },
+})
+
+/**
+ * The three profiles, and which model and effort each gets.
+ *
+ * Its own function so `buildOpencodeConfig` stays inside `max-lines-per-function`,
+ * and because this is where most of this file's reasoning lives: what each profile
+ * is *for* is the whole argument for what it may do and what it costs.
+ */
+const agentProfiles = (settings: OpenAiSettings, light: string | undefined): Config['agent'] => {
+  const profiles = settings.profiles ?? NO_MODEL_PROFILES
+
+  return {
     // The phases that only read the repository — triage, planning, answering a
-    // question, classifying a comment — all prompt with `agent: 'plan'`. They
-    // have no reason to edit a file or run a command, and denying it means a
-    // successful injection during the two *review* gates, before a maintainer
-    // has approved anything, cannot reach the working tree at all.
-    plan: { permission: READ_ONLY_PERMISSION },
-    // The artefact-drafting turns (design D8): read plus edit, confined by the
-    // diff guard to `openspec/changes/<change-name>/`. No `bash`.
-    propose: { permission: PROPOSE_PERMISSION },
+    // question, classifying a comment — all prompt with `agent: 'plan'`. They have
+    // no reason to edit a file or run a command, and denying it means a successful
+    // injection during the two *review* gates, before a maintainer has approved
+    // anything, cannot reach the working tree at all. This is also the one profile
+    // the light model is given: no write permission, and its phases are
+    // classification and short answers.
+    plan: profile(READ_ONLY_PERMISSION, { model: light, variant: profiles.planEffort }),
+    // The artefact-drafting turns (design D8): read plus edit, confined by the diff
+    // guard to `openspec/changes/<change-name>/`. No `bash`. Deliberately **not**
+    // given the light model — a weak spec is the input to every later phase, and
+    // the gates that would catch it cost wall clock rather than tokens.
+    propose: profile(PROPOSE_PERMISSION, {}),
     // Implementation and CI repair, and the review-loop subprocesses: `opencode
     // run` without `--agent` resolves to the primary agent, which
-    // `opencode agent list` reports as `build`.
-    build: { permission: WRITE_PERMISSION },
-  },
-})
+    // `opencode agent list` reports as `build`. That is exactly why the effort is
+    // set here rather than per call — a per-call setting could never reach a
+    // subprocess this process does not prompt.
+    build: profile(WRITE_PERMISSION, { variant: profiles.buildEffort }),
+  }
+}
+
+export const buildOpencodeConfig = (settings: OpenAiSettings): Config => {
+  const light = lightRef(settings)
+
+  return {
+    $schema: 'https://opencode.ai/config.json',
+    provider: { [settings.provider]: providerBlock(settings) },
+    model: modelRef(settings),
+    // Title and summary generation, which have no business on the model an
+    // implement turn uses. Emitted only when a light model was named.
+    ...(light === undefined ? {} : { small_model: light }),
+    // The weaker profile is the default, so an agent this pipeline does not name
+    // inherits the restricted set rather than a free pass.
+    permission: READ_ONLY_PERMISSION,
+    agent: agentProfiles(settings, light),
+  }
+}
 
 /**
  * Environment carrying the config to a spawned `opencode` process.

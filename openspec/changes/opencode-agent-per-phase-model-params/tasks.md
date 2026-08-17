@@ -13,37 +13,37 @@ Depends on `opencode-agent-model-catalogue-provider` and
 
 ## 1. Config loading
 
-- [ ] 1.1 Failing test: `LLM_MODEL_LIGHT` unset falls back to `LLM_MODEL`; set,
+- [x] 1.1 Failing test: `LLM_MODEL_LIGHT` unset falls back to `LLM_MODEL`; set,
       it is read and trimmed — `bun test tests/opencode-agent/config.test.ts`
-- [ ] 1.2 Failing test: `AGENT_EFFORT_PLAN` / `AGENT_EFFORT_BUILD` accept a
+- [x] 1.2 Failing test: `AGENT_EFFORT_PLAN` / `AGENT_EFFORT_BUILD` accept a
       short lowercase token, reject whitespace, uppercase, slashes and
       over-length values with a `ConfigError` naming the variable, and are
       absent when unset (D4) — `bun test tests/opencode-agent/config.test.ts`
-- [ ] 1.3 Widen `OpenAiSettings` / `PipelineConfig` and implement the three
+- [x] 1.3 Widen `OpenAiSettings` / `PipelineConfig` and implement the three
       loaders; watch 1.1-1.2 pass —
       `bun test tests/opencode-agent/config.test.ts`
-- [ ] 1.4 `cd opencode-agent && bun run typecheck && bun run lint`
+- [x] 1.4 `cd opencode-agent && bun run typecheck && bun run lint`
 
 ## 2. Emitted config
 
-- [ ] 2.1 Failing test: `agent.plan.model` is the light model ref and
+- [x] 2.1 Failing test: `agent.plan.model` is the light model ref and
       `small_model` is set to it, while `agent.propose` and `agent.build` carry
       no `model` override (D2) —
       `bun test tests/opencode-agent/openai-config.test.ts`
-- [ ] 2.2 Failing test: `agent.plan.variant` / `agent.build.variant` are emitted
+- [x] 2.2 Failing test: `agent.plan.variant` / `agent.build.variant` are emitted
       only when their variable is set, and the three permission profiles are
       byte-identical to today either way —
       `bun test tests/opencode-agent/openai-config.test.ts`
-- [ ] 2.3 Failing test: `provider.<id>.options.setCacheKey` is `true` and
+- [x] 2.3 Failing test: `provider.<id>.options.setCacheKey` is `true` and
       `options.{apiKey,baseURL}` are unchanged (D5) —
       `bun test tests/opencode-agent/openai-config.test.ts`
-- [ ] 2.4 Failing test: with all three variables unset, the emitted config
+- [x] 2.4 Failing test: with all three variables unset, the emitted config
       differs from the pre-change fixture only by `setCacheKey` (D3) —
       `bun test tests/opencode-agent/openai-config.test.ts`
-- [ ] 2.5 Implement the agent entries, `small_model` and `setCacheKey` in
+- [x] 2.5 Implement the agent entries, `small_model` and `setCacheKey` in
       `buildOpencodeConfig`; watch 2.1-2.4 pass —
       `bun test tests/opencode-agent/openai-config.test.ts`
-- [ ] 2.6 Update the `provider-proxy` inlined-config fixture —
+- [x] 2.6 Update the `provider-proxy` inlined-config fixture —
       `bun test tests/opencode-agent/provider-proxy.test.ts`
 
 ## 3. Manual verification against the installed CLI

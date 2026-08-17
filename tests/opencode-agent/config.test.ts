@@ -154,3 +154,52 @@ describe('model metadata overrides', () => {
     expect(() => loadOpenAiSettings({ ...ENV, AGENT_MODEL_REASONING: value })).toThrow('AGENT_MODEL_REASONING')
   })
 })
+
+/**
+ * Per-profile model and effort.
+ *
+ * The three agent profiles already differ by permission; these let them differ
+ * by cost too. `plan` is the read-only one — triage, comment classification,
+ * answering, both review gates — and it has been running on the same model as a
+ * thirty-step implement turn.
+ */
+describe('per-profile model and effort', () => {
+  test('are absent when unset, so the emitted config is exactly today', () => {
+    expect(loadOpenAiSettings(ENV).profiles).toEqual({ light: null, planEffort: null, buildEffort: null })
+  })
+
+  test('are read and trimmed when set', () => {
+    const settings = loadOpenAiSettings({
+      ...ENV,
+      LLM_MODEL_LIGHT: '  gpt-5-mini  ',
+      AGENT_EFFORT_PLAN: 'low',
+      AGENT_EFFORT_BUILD: 'xhigh',
+    })
+
+    expect(settings.profiles).toEqual({ light: 'gpt-5-mini', planEffort: 'low', buildEffort: 'xhigh' })
+  })
+
+  test.each([
+    ['whitespace inside', 'AGENT_EFFORT_PLAN', 'very high'],
+    ['uppercase', 'AGENT_EFFORT_BUILD', 'HIGH'],
+    ['a slash', 'AGENT_EFFORT_BUILD', 'openai/high'],
+    ['over-length', 'AGENT_EFFORT_PLAN', 'a'.repeat(17)],
+  ])('refuse %s, naming the variable', (_case, key, value) => {
+    expect(() => loadOpenAiSettings({ ...ENV, [key]: value })).toThrow(ConfigError)
+    expect(() => loadOpenAiSettings({ ...ENV, [key]: value })).toThrow(key)
+  })
+
+  test('accept a tier this pipeline has never heard of (D4)', () => {
+    // The valid set is model-dependent — `transform.ts` computes it from the
+    // model id and its release date — so a hardcoded list here would reject
+    // tiers that work and would be wrong on the next model. OpenCode rejects an
+    // unknown tier, where the knowledge lives.
+    expect(loadOpenAiSettings({ ...ENV, AGENT_EFFORT_BUILD: 'ludicrous' }).profiles?.buildEffort).toBe('ludicrous')
+  })
+
+  test('loadConfig surfaces them on PipelineConfig', () => {
+    const config = loadConfig({ ...ENV, LLM_MODEL_LIGHT: 'gpt-5-mini' }, '/repo')
+
+    expect(config.openai.profiles?.light).toBe('gpt-5-mini')
+  })
+})

@@ -35,6 +35,7 @@ import {
   buildOpencodeConfig,
   modelRef,
   NO_MODEL_OVERRIDES,
+  NO_MODEL_PROFILES,
   opencodeConfigEnv,
 } from '../../opencode-agent/src/openai-config.js'
 import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
@@ -1131,6 +1132,9 @@ describe('openai-config', () => {
     expect(config.provider?.['openai']?.options).toEqual({
       apiKey: 'sk-secret',
       baseURL: 'https://gateway.test/v1',
+      // Unconditional: a provider that ignores the field is unaffected, and a
+      // long phase otherwise pays full input price every turn.
+      setCacheKey: true,
     })
     expect(config.provider?.['openai']?.models).toHaveProperty('gpt-5')
   })
@@ -1526,6 +1530,8 @@ describe('config', () => {
       provider: 'openai',
       // Nothing declared by hand, which is what lets the catalogue answer.
       overrides: NO_MODEL_OVERRIDES,
+      // And no profile configured, so every profile keeps the main model.
+      profiles: NO_MODEL_PROFILES,
     })
   })
 

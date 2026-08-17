@@ -65,6 +65,45 @@ export const boolOrNull = (env: Env, key: string): boolean | null => {
 }
 
 /**
+ * Longest effort tier accepted, and the shape one may take.
+ *
+ * Deliberately a **shape** check and not a list. The valid set is model-dependent
+ * — OpenCode's `transform.ts` computes it from the model id and its release date,
+ * so `minimal` exists for one GPT-5 generation, `none` for another, `xhigh` only
+ * above a date, and `max` for one DeepSeek line — and a list copied here would
+ * reject tiers that work and be wrong on the next model. So this refuses what
+ * cannot be a tier at all, and OpenCode refuses the rest, where the knowledge is.
+ *
+ * The cost, accepted deliberately: a typo surfaces at the first prompt rather
+ * than at load, which is the opposite of what this file prefers everywhere else.
+ * A hardcoded list makes that *more* likely, not less.
+ */
+const EFFORT_MAX_LENGTH = 16
+const EFFORT_PATTERN = /^[a-z][a-z0-9-]*$/u
+
+/**
+ * Reads a reasoning-effort tier, or `null` when the operator named none.
+ *
+ * `null` leaves the profile's `variant` out of the emitted config entirely,
+ * which is what makes an unset variable byte-identical to the behaviour before
+ * these knobs existed.
+ */
+export const effortTier = (env: Env, key: string): string | null => {
+  const configured = optionalOrNull(env, key)
+  if (configured === null) return null
+
+  if (configured.length > EFFORT_MAX_LENGTH) {
+    throw new ConfigError(`${key} must be at most ${EFFORT_MAX_LENGTH} characters, got ${configured.length}`)
+  }
+  if (!EFFORT_PATTERN.test(configured)) {
+    throw new ConfigError(
+      `${key} must be a lowercase effort tier such as \`low\`, \`high\` or \`xhigh\`, got ${JSON.stringify(configured)}`,
+    )
+  }
+  return configured
+}
+
+/**
  * Longest catalogue provider id accepted. Generous: the longest ids OpenCode's
  * own catalogue carries are of the order of `zai-coding-plan`, and this bound
  * exists to refuse a pasted URL, not to be tight.
