@@ -29,7 +29,7 @@ task below.
 
 ## 4. Tool implementation
 
-- [ ] 4.1 Implement `makeSuggestNextTaskTool(provider, userId?, storageContextId?)` in `src/tools/suggest-next-task.ts` per design D1/D4/D5: `.describe()`d input schema (`projectId?`, `assigneeId?`, `limit?` int 1–5 default 3), p-limit(3) fan-out, `resolved` drop, `resolveMeReference` reuse, timezone resolution cloned from `list-tasks.ts`, structured `info`/`error` logging. Verification: `bun test tests/tools/suggest-next-task.test.ts` fully green.
+- [x] 4.1 Implement `makeSuggestNextTaskTool(provider, userId?, storageContextId?)` in `src/tools/suggest-next-task.ts` per design D1/D4/D5: `.describe()`d input schema (`projectId?`, `assigneeId?`, `limit?` int 1–5 default 3), p-limit(3) fan-out, `resolved` drop, `resolveMeReference` reuse, timezone resolution cloned from `list-tasks.ts`, structured `info`/`error` logging. Verification: `bun test tests/tools/suggest-next-task.test.ts` fully green.
 
 ## 5. Registration, metadata, inventory
 
