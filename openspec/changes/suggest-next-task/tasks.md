@@ -39,4 +39,4 @@ task below.
 ## 6. Docs and full gates
 
 - [x] 6.1 Document the tool: one line in `src/tools/CLAUDE.md` (tool-list context) and a note in the task-tool section of `docs/architecture/behaviors.md` covering on-demand ranking, the read-risk default (`allow`), and guest availability. Verification: `bun run test:log suggest` against the persisted report (no behavior change expected).
-- [ ] 6.2 Run the full gates: `bun run test` (inspect via `test:failures`/`test:show` off the persisted report), `bun run typecheck`, `bun run lint`, `bun check:full`, and `bun run test:mutate:changed` for the per-file ratchet on touched files. Verification: all commands exit 0.
+- [x] 6.2 Run the full gates: `bun run test` (inspect via `test:failures`/`test:show` off the persisted report), `bun run typecheck`, `bun run lint`, `bun check:full`, and `bun run test:mutate:changed` for the per-file ratchet on touched files. Verification: all commands exit 0.
