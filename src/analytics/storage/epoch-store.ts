@@ -3,15 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, eq, inArray, ne } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../../db/drizzle.js'
-import {
-  analyticsDailyCounters,
-  analyticsDailyHistograms,
-  analyticsEpochSourceCounters,
-  analyticsProcessEpochs,
-} from '../../db/schema.js'
+import { analyticsDailyCounters, analyticsDailyHistograms, analyticsProcessEpochs } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 
 const log = logger.child({ scope: 'analytics:storage:epoch-store' })
@@ -118,63 +113,6 @@ export const markOpenEpochsStaleOnStartup = (
   log.info({ count: staleRows.length, threshold }, 'startup stale epoch reconciliation complete')
 }
 
-const VALID_DISPOSITIONS = new Set([
-  'opportunity',
-  'canonical',
-  'normalization_reject',
-  'governance_ineligible',
-  'aggregate_only',
-  'controlled_overflow',
-])
-
-export const incrementEpochSourceCounter = (
-  input: { epochId: string; utcDay: string; sourceFamily: string; disposition: string; value?: number },
-  deps: EpochStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
-): void => {
-  if (!VALID_DISPOSITIONS.has(input.disposition)) {
-    throw new Error(`Invalid disposition: ${input.disposition}`)
-  }
-  const db = deps.getDrizzleDb()
-  const value = input.value ?? 1
-  db.insert(analyticsEpochSourceCounters)
-    .values({
-      epochId: input.epochId,
-      utcDay: input.utcDay,
-      sourceFamily: input.sourceFamily,
-      disposition: input.disposition,
-      value,
-    })
-    .onConflictDoUpdate({
-      target: [
-        analyticsEpochSourceCounters.epochId,
-        analyticsEpochSourceCounters.utcDay,
-        analyticsEpochSourceCounters.sourceFamily,
-        analyticsEpochSourceCounters.disposition,
-      ],
-      set: { value: sql`${analyticsEpochSourceCounters.value} + ${value}` },
-    })
-    .run()
-  log.debug({ ...input, value }, 'epoch source counter incremented')
-}
-
-/**
- * Production binding for the runtime observer's controlled-overflow hook: a
- * queue-full drop increments the exact `controlled_overflow` source counter
- * on the open process epoch (durable), in addition to the process-global
- * health signal.
- */
-export const createControlledOverflowBinding = (
-  input: { epochId: string },
-  deps: EpochStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
-): ((utcDay: string) => void) => {
-  return (utcDay) => {
-    incrementEpochSourceCounter(
-      { epochId: input.epochId, utcDay, sourceFamily: 'chat', disposition: 'controlled_overflow' },
-      deps,
-    )
-  }
-}
-
 export type ProcessEpochSummary = Readonly<{
   epochId: string
   state: EpochState
@@ -246,30 +184,6 @@ export const listProcessEpochs = (
           ]
         : [],
     )
-
-export type EpochSourceCounterSummary = Readonly<{
-  utcDay: string
-  sourceFamily: string
-  disposition: string
-  value: number
-}>
-
-export const listEpochSourceCounters = (
-  input: { epochId: string },
-  deps: EpochStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
-): readonly EpochSourceCounterSummary[] =>
-  deps
-    .getDrizzleDb()
-    .select()
-    .from(analyticsEpochSourceCounters)
-    .where(eq(analyticsEpochSourceCounters.epochId, input.epochId))
-    .all()
-    .map((row) => ({
-      utcDay: row.utcDay,
-      sourceFamily: row.sourceFamily,
-      disposition: row.disposition,
-      value: row.value,
-    }))
 
 export const markRestartGapBuckets = (
   input: { utcDays: readonly string[] },

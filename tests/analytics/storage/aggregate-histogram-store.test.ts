@@ -200,4 +200,39 @@ describe('analytics histogram storage', () => {
     expect(row?.sumDelta).toBe(3000)
     expect(JSON.parse(row!.fixedBucketCountsDeltaJson)).toEqual([0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0])
   })
+
+  test('live histogram merge records matching opportunity and aggregate_only epoch source counters', () => {
+    createTestEpoch(db)
+    const counts = new Array(FIXED_HISTOGRAM_BUCKETS_MS.length).fill(0)
+    counts[2] = 1
+
+    mergeHistogram(
+      {
+        utcDay: '2026-01-01',
+        definitionVersion: 1,
+        platform: 'telegram',
+        contextType: 'dm',
+        actorRole: 'admin',
+        taskProvider: 'none',
+        appVersion: '6.10.0',
+        metric: 'tool_duration_ms',
+        epochId: TEST_EPOCH_ID,
+        aggregateCellKey: 'cell-live-histogram',
+        fixedBuckets: FIXED_HISTOGRAM_BUCKETS_MS,
+        counts,
+        sum: 120,
+        sampleCount: 1,
+        ...commonQuality,
+      },
+      { getDrizzleDb: () => db },
+    )
+
+    const rows = db
+      .select()
+      .from(schema.analyticsEpochSourceCounters)
+      .where(eq(schema.analyticsEpochSourceCounters.epochId, TEST_EPOCH_ID))
+      .all()
+    const byDisposition = Object.fromEntries(rows.map((row) => [row.disposition, row.value]))
+    expect(byDisposition).toEqual({ opportunity: 1, aggregate_only: 1 })
+  })
 })

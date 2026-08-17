@@ -5,8 +5,11 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { eq } from 'drizzle-orm'
+
 import { incrementCounter } from '../../../src/analytics/storage/aggregate-store.js'
 import { closeEpoch, openEpoch } from '../../../src/analytics/storage/epoch-store.js'
+import * as schema from '../../../src/db/schema.js'
 import { setupTestDb } from '../../utils/test-helpers.js'
 import {
   commonQuality,
@@ -126,6 +129,68 @@ describe('analytics aggregate storage', () => {
         { getDrizzleDb: () => db },
       ),
     ).toThrow()
+  })
+
+  test('live counter increment records matching opportunity and aggregate_only epoch source counters', () => {
+    createTestEpoch(db)
+
+    incrementCounter(
+      {
+        utcDay: '2026-01-01',
+        definitionVersion: 1,
+        platform: 'telegram',
+        contextType: 'dm',
+        actorRole: 'admin',
+        taskProvider: 'none',
+        appVersion: '6.10.0',
+        metric: 'llm_completed',
+        aggregateCellKey: 'cell-live',
+        delta: 2,
+        ...commonQuality,
+        epochId: TEST_EPOCH_ID,
+      },
+      { getDrizzleDb: () => db },
+    )
+
+    const rows = db
+      .select()
+      .from(schema.analyticsEpochSourceCounters)
+      .where(eq(schema.analyticsEpochSourceCounters.epochId, TEST_EPOCH_ID))
+      .all()
+    const byDisposition = Object.fromEntries(rows.map((row) => [row.disposition, row.value]))
+    expect(byDisposition).toEqual({ opportunity: 2, aggregate_only: 2 })
+  })
+
+  test('backfill counter increment (runId set) records no epoch source counters', () => {
+    createTestEpoch(db)
+    createTestBackfillRun(db)
+
+    incrementCounter(
+      {
+        utcDay: '2026-01-01',
+        definitionVersion: 1,
+        platform: 'telegram',
+        contextType: 'dm',
+        actorRole: 'admin',
+        taskProvider: 'none',
+        appVersion: '6.10.0',
+        metric: 'llm_completed',
+        aggregateCellKey: 'cell-backfill',
+        delta: 3,
+        ...commonQuality,
+        epochId: TEST_EPOCH_ID,
+        runId: TEST_RUN_ID,
+        sourceRefKey: 'src-backfill',
+      },
+      { getDrizzleDb: () => db },
+    )
+
+    const rows = db
+      .select()
+      .from(schema.analyticsEpochSourceCounters)
+      .where(eq(schema.analyticsEpochSourceCounters.epochId, TEST_EPOCH_ID))
+      .all()
+    expect(rows).toEqual([])
   })
 
   test('increment rejects a closed epoch', () => {

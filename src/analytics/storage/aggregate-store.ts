@@ -16,6 +16,7 @@ import { logger } from '../../logger.js'
 import type { RetentionLimits } from '../retention/expiry-guard.js'
 import { aggregateDeadlineMs } from '../retention/expiry-guard.js'
 import { buildQualityColumns, type DailyAggregateKey, type QualityDisclosure } from './aggregate-store-helpers.js'
+import { recordLiveAggregateDisposition } from './epoch-source-counters.js'
 import { requireOpenEpoch } from './epoch-store.js'
 
 export { rebuildDailyAggregatesForDays } from './aggregate-rebuild.js'
@@ -154,6 +155,9 @@ export const incrementCounter = (
         aggregateCellKey: input.aggregateCellKey,
         delta: input.delta,
       })
+      if (input.runId === undefined) {
+        recordLiveAggregateDisposition(tx, { epochId: input.epochId, utcDay: input.utcDay, value: input.delta })
+      }
     }
 
     if (input.runId !== undefined && input.aggregateCellKey !== undefined && input.sourceRefKey !== undefined) {

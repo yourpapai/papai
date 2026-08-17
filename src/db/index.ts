@@ -88,6 +88,7 @@ import { migration074AnalyticsDelivery } from './migrations/074_analytics_delive
 import { migration075AnalyticsMaterializations } from './migrations/075_analytics_materializations.js'
 import { migration076ContextVault } from './migrations/076_context_vault.js'
 import { migration077ContextVaultFileArtifacts } from './migrations/077_context_vault_file_artifacts.js'
+import { migration078RepairEpochAggregateSourceCounters } from './migrations/078_repair_epoch_aggregate_source_counters.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -200,6 +201,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration075AnalyticsMaterializations,
   migration076ContextVault,
   migration077ContextVaultFileArtifacts,
+  migration078RepairEpochAggregateSourceCounters,
 ]
 
 export const initDb = (): void => {
