@@ -15,7 +15,7 @@ task below.
 ## 1. Ranking pure function (test-first)
 
 - [x] 1.1 Create `tests/tools/suggest-next-task.test.ts` with failing unit tests for the pure `rankTasks(tasks, now)` export: overdue-days magnitude ordering; overdue beats due ≤48h beats due ≤7d beats no-signal; priority token stacking (+25 urgent/critical/blocker, +20 high, +15 major, +5 medium/normal, case-insensitive containment); +2 `createdAt`-recency tiebreak only when no due/priority signal fired; tasks with `resolved` set excluded; identical inputs produce identical order; `reason` lines contain exactly the facts that scored. Verification: `bun test tests/tools/suggest-next-task.test.ts` (ranking cases red).
-- [ ] 1.2 Create `src/tools/suggest-next-task.ts` implementing the exported pure `rankTasks` with centralized score constants per design D2. Verification: `bun test tests/tools/suggest-next-task.test.ts` (ranking cases green).
+- [x] 1.2 Create `src/tools/suggest-next-task.ts` implementing the exported pure `rankTasks` with centralized score constants per design D2. Verification: `bun test tests/tools/suggest-next-task.test.ts` (ranking cases green).
 
 ## 2. `createdAt` passthrough (test-first)
 
