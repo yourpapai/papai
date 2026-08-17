@@ -70,7 +70,7 @@ observable by running it. Verified by hand, against `opencode-ai@1.18.7`.
 
 ## 4. Docs and full gates
 
-- [ ] 4.1 Add the three variables to the `opencode-agent/README.md` env table
+- [x] 4.1 Add the three variables to the `opencode-agent/README.md` env table
       and note the profile→model/effort mapping in `opencode-agent/CLAUDE.md` —
       no command; review the diff
-- [ ] 4.2 Full gates: `bun test`, `bun run typecheck`, `bun run lint`
+- [x] 4.2 Full gates: `bun test`, `bun run typecheck`, `bun run lint`

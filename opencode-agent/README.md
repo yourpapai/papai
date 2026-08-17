@@ -1540,6 +1540,9 @@ cannot drift.
 | `AGENT_MODEL_CONTEXT`                      | no       | unset — ask the catalogue            | Context window, for a model no catalogue carries       |
 | `AGENT_MODEL_OUTPUT`                       | no       | unset — ask the catalogue            | Output cap, same case                                  |
 | `AGENT_MODEL_REASONING`                    | no       | unset — ask the catalogue            | `true`/`false`: does this model support reasoning      |
+| `LLM_MODEL_LIGHT`                          | no       | unset — the main model               | Cheaper model for the read-only phases; see below      |
+| `AGENT_EFFORT_PLAN`                        | no       | unset — OpenCode's default           | Reasoning effort for the read-only profile             |
+| `AGENT_EFFORT_BUILD`                       | no       | unset — OpenCode's default           | Reasoning effort for implement / CI-fix / review       |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                | Commit identity                                        |
 | `AGENT_LABEL_PREFIX`                       | no       | `agent:`                             | Namespace for the status labels; `none` disables them  |
 | `AGENT_LOG_LEVEL`                          | no       | `info`                               | `debug`, `info`, `warn`, `error`                       |
@@ -1603,6 +1606,36 @@ the pipeline is about to drop never pays for it. An unreachable host warns and
 falls to the next rung; it never fails a run. The `debug` line names the model,
 the resolved context window and **which rung answered**, so "why did this run
 never compact" is a log read rather than a rerun.
+
+The pipeline runs three **agent profiles**, which already differ by what they
+may do and now differ by what they cost:
+
+| Profile   | Phases                                                          | Model             | Effort               |
+| --------- | --------------------------------------------------------------- | ----------------- | -------------------- |
+| `plan`    | triage, comment classification, `/ask`, both review gates       | `LLM_MODEL_LIGHT` | `AGENT_EFFORT_PLAN`  |
+| `propose` | drafting proposal / spec / design / tasks                       | `LLM_MODEL`       | —                    |
+| `build`   | implement, CI fix, and the review loop's `opencode run` workers | `LLM_MODEL`       | `AGENT_EFFORT_BUILD` |
+
+`LLM_MODEL_LIGHT` is a model on the **same** endpoint and key — not a second
+provider — and it reaches `plan` and OpenCode's `small_model` (title and summary
+generation) and nothing else. `propose` and `build` deliberately keep the main
+model: a weak spec is the input to every later phase, and the gates that would
+catch one cost wall clock rather than tokens.
+
+The effort variables take whatever tier the model offers — `minimal`, `none`,
+`low`, `medium`, `high`, `xhigh`, `max` depending on the family and its release
+date. They are **not** validated against a list here, because the valid set is
+computed per model: a list copied into this pipeline would reject tiers that work
+and be wrong on the next model. A malformed value is refused at load; an
+unknown-but-well-formed one is refused by OpenCode at the first prompt, which is
+where that knowledge lives. An effort tier only exists at all when the model is
+known to support reasoning — see `LLM_PROVIDER` and `AGENT_MODEL_REASONING`
+above.
+
+Both are set as `agent.<name>.variant` in the generated config rather than per
+call, which is what makes them reach the review loop: it shells out to
+`opencode run` with no `--agent`, so its workers resolve to `build` and pick the
+variant up from the same config the in-process session reads.
 
 `GITHUB_TOKEN` and `GITHUB_REPOSITORY` need no operator setup on GitHub
 Actions, unlike the variables above. `GITHUB_REPOSITORY` is one of the

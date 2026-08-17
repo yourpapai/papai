@@ -454,6 +454,27 @@ findings: `ROADMAP.md`.
   subprocesses read, and an async builder would fork that. `MainOptions.modelCatalogue`
   is the seam that keeps the suites off the network; without it every `runCli`
   test reaches models.dev and times out.
+- **A profile differs by cost as well as by permission, and the effort is set on
+  the profile rather than on the call.** `LLM_MODEL_LIGHT` reaches `plan` — the
+  read-only phases — and `small_model`, and deliberately **not** `propose` or
+  `build`: a weak spec is the input to every later phase, and the gates that would
+  catch one cost wall clock rather than tokens. `AGENT_EFFORT_PLAN` /
+  `AGENT_EFFORT_BUILD` become `agent.<name>.variant`, and config-level is forced
+  rather than preferred — the pinned SDK's prompt body has **no** `variant` field,
+  and the review loop's `opencode run` workers carry no `--agent` and so resolve
+  to `build`, which a per-call setting could never reach. Note the two pins are
+  different versions: `@opencode-ai/sdk@1.18.12` types the config, `opencode-ai@1.18.7`
+  reads it, and it is the **server's** version that decides which agent keys are
+  honoured — its loader merges `model`, `variant`, `options`, `temperature`,
+  `top_p` and `steps`, which the SDK's generated `AgentConfig` under-declares and
+  admits only through its index signature. Effort values are **passed through, not
+  enumerated**: `transform.ts` computes the valid tiers per model from its id and
+  release date, so a list copied here would refuse tiers that work and be wrong on
+  the next model — the loader checks the shape, OpenCode refuses the rest. And
+  `setCacheKey: true` is unconditional: `ProviderTransform` emits a
+  `promptCacheKey` for `@ai-sdk/openai-compatible` only when it is set, and a
+  provider that ignores the field is unaffected, so a knob for it would be
+  ceremony.
 - **The retry budget is refused, never applied-then-regretted.** A `/retry` past
   `maxAttempts` is turned down in `src/triggers.ts` before the signal reaches
   `transition`, so the issue keeps `FAILED` and its `resumeFrom` and raising
