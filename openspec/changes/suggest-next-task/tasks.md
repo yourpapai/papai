@@ -20,7 +20,7 @@ task below.
 ## 2. `createdAt` passthrough (test-first)
 
 - [x] 2.1 Add a failing case to the `mapTaskListItem` block in `tests/plugins/task-provider-kaneo/mappers.test.ts` asserting `createdAt` is preserved. Verification: `bun test tests/plugins/task-provider-kaneo/mappers.test.ts` (red).
-- [ ] 2.2 Add `createdAt?: string | null` to `TaskListItem` in `src/providers/domain-types.ts` and pass it through in `plugins/task-provider-kaneo/mappers.ts` (list schema already validates it as optional). Verification: `bun test tests/plugins/task-provider-kaneo/mappers.test.ts` green + `bun run typecheck`.
+- [x] 2.2 Add `createdAt?: string | null` to `TaskListItem` in `src/providers/domain-types.ts` and pass it through in `plugins/task-provider-kaneo/mappers.ts` (list schema already validates it as optional). Verification: `bun test tests/plugins/task-provider-kaneo/mappers.test.ts` green + `bun run typecheck`.
 
 ## 3. Tool-level tests (test-first)
 
