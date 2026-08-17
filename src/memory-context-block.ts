@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { wrapUntrusted } from './security/prompt-boundary.js'
 import type { MemoryFact } from './types/memory.js'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -32,7 +33,9 @@ const selectRenderableFacts = (facts: readonly MemoryFact[], now: number): reado
 const renderEntity = ({ fact, stale }: RenderableFact): string => {
   const seen = fact.last_seen.slice(0, 10)
   const suffix = stale ? `${seen}, stale` : seen
-  return `- ${fact.identifier}: "${fact.title}" (last seen ${suffix})`
+  const url = wrapUntrusted(fact.url, 'memory-url')
+  const urlPart = url === '' ? '' : ` (${url})`
+  return `- ${wrapUntrusted(fact.identifier, 'memory-identifier')}: "${wrapUntrusted(fact.title, 'memory-title')}" (last seen ${suffix})${urlPart}`
 }
 
 /**
