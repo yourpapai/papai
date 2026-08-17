@@ -49,8 +49,9 @@ function scoreDueDate(dueMs: number, nowMs: number): { score: number; reason: st
   if (dueMs < nowMs) {
     const overdueDays = Math.floor((nowMs - dueMs) / DAY_MS)
     return {
-      score: overdueDays * SCORES.overduePerDay,
-      reason: overdueDays >= 1 ? `${overdueDays} ${overdueDays === 1 ? 'day' : 'days'} overdue` : null,
+      score: Math.max(1, overdueDays) * SCORES.overduePerDay,
+      reason:
+        overdueDays >= 1 ? `${overdueDays} ${overdueDays === 1 ? 'day' : 'days'} overdue` : 'less than a day overdue',
     }
   }
   const untilDueMs = dueMs - nowMs

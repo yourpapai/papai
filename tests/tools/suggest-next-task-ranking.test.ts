@@ -58,6 +58,19 @@ describe('rankTasks', () => {
     expect(ranked.map((task) => task.score)).toEqual([30])
   })
 
+  test('scores any past due date as at least one overdue day and states the overdue fact', () => {
+    const ranked = rankTasks(
+      [makeTask({ id: 'due-soon', dueDate: at(24 * HOUR) }), makeTask({ id: 'hours-overdue', dueDate: at(-6 * HOUR) })],
+      NOW,
+    )
+    const reasons = reasonsById(ranked)
+
+    expect(ranked.map((task) => task.id)).toEqual(['hours-overdue', 'due-soon'])
+    expect(ranked.map((task) => task.score)).toEqual([30, 20])
+    expect(reasons.get('hours-overdue')).toBe('less than a day overdue')
+    expect(reasons.get('hours-overdue')).not.toBe('no urgency signals')
+  })
+
   test('ranks overdue above due within 48h above due within 7d above no signal', () => {
     const ranked = rankTasks(
       [
