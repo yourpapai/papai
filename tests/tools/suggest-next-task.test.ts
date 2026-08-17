@@ -3,273 +3,180 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { TaskListItem } from '../../src/providers/domain-types.js'
-import { rankTasks } from '../../src/tools/suggest-next-task.js'
+import type { Project } from '../../src/providers/types.js'
+import { makeSuggestNextTaskTool } from '../../src/tools/suggest-next-task.js'
+import { getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { createMockProvider } from './mock-provider.js'
 
-type RankCandidate = TaskListItem & { createdAt?: string | null }
+const DAY = 24 * 60 * 60 * 1000
 
-const NOW = new Date('2026-04-01T12:00:00.000Z')
-const MINUTE = 60 * 1000
-const HOUR = 60 * MINUTE
-const DAY = 24 * HOUR
+type ToolTask = TaskListItem & { createdAt?: string | null }
 
-const at = (offsetMs: number): string => new Date(NOW.getTime() + offsetMs).toISOString()
+type Suggestion = {
+  id: string
+  title: string
+  number?: number
+  url: string
+  projectId: string
+  dueDate?: string | null
+  priority?: string
+  score: number
+  reason: string
+}
 
-function makeTask(overrides: Partial<RankCandidate> & Pick<RankCandidate, 'id'>): RankCandidate {
+type SuggestResult = { suggestions: Suggestion[]; considered: number }
+
+function toolTask(id: string, overrides: Partial<ToolTask> = {}): ToolTask {
   return {
-    title: 'Fix login form',
-    url: 'https://tracker.example/tasks/1',
+    id,
+    title: `Task ${id}`,
+    url: `https://tracker.example/tasks/${id}`,
     ...overrides,
   }
 }
 
-function scoresById(ranked: Array<{ id: string; score: number }>): Map<string, number> {
-  return new Map(ranked.map((task): [string, number] => [task.id, task.score]))
+/** ISO timestamp relative to the real current time — the tool ranks against `new Date()`. */
+function fromNow(offsetMs: number): string {
+  return new Date(Date.now() + offsetMs).toISOString()
 }
 
-function reasonsById(ranked: Array<{ id: string; reason: string }>): Map<string, string> {
-  return new Map(ranked.map((task): [string, string] => [task.id, task.reason]))
+function isSuggestResult(value: unknown): value is SuggestResult {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'suggestions' in value &&
+    'considered' in value &&
+    typeof (value as Record<string, unknown>)['considered'] === 'number'
+  )
 }
 
-describe('rankTasks', () => {
-  test('returns an empty array for empty input', () => {
-    expect(rankTasks([], NOW)).toEqual([])
+async function executeSuggest(tool: unknown, input: Record<string, unknown>): Promise<SuggestResult> {
+  const result = await getToolExecutor(tool)(input, { toolCallId: '1', messages: [], context: {} })
+  if (!isSuggestResult(result)) {
+    throw new Error(`expected a suggestion result, got ${JSON.stringify(result)}`)
+  }
+  return result
+}
+
+const projects = (): Project[] => [
+  { id: 'proj-a', name: 'Project A', url: 'https://tracker.example/a' },
+  { id: 'proj-b', name: 'Project B', url: 'https://tracker.example/b' },
+]
+
+/** Fan-out stub: serve each project's tasks from a lookup table (no conditional in the test body). */
+function listTasksFromTable(table: Record<string, ToolTask[]>): (projectId: string) => Promise<ToolTask[]> {
+  return (projectId: string): Promise<ToolTask[]> => Promise.resolve(table[projectId] ?? [])
+}
+
+describe('suggest_next_task tool', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
   })
 
-  test('orders overdue tasks by overdue-days magnitude', () => {
-    const ranked = rankTasks(
-      [makeTask({ id: 'one-day', dueDate: at(-DAY) }), makeTask({ id: 'five-days', dueDate: at(-5 * DAY) })],
-      NOW,
-    )
-
-    expect(ranked.map((task) => task.id)).toEqual(['five-days', 'one-day'])
-    expect(ranked.map((task) => task.score)).toEqual([150, 30])
-    expect(ranked.map((task) => ({ id: task.id, title: task.title, url: task.url, dueDate: task.dueDate }))).toEqual([
-      { id: 'five-days', title: 'Fix login form', url: 'https://tracker.example/tasks/1', dueDate: at(-5 * DAY) },
-      { id: 'one-day', title: 'Fix login form', url: 'https://tracker.example/tasks/1', dueDate: at(-DAY) },
-    ])
-  })
-
-  test('floors partial overdue days to whole days', () => {
-    const ranked = rankTasks([makeTask({ id: 'partial', dueDate: at(-36 * HOUR) })], NOW)
-
-    expect(ranked.map((task) => task.score)).toEqual([30])
-  })
-
-  test('ranks overdue above due within 48h above due within 7d above no signal', () => {
-    const ranked = rankTasks(
-      [
-        makeTask({ id: 'no-signal' }),
-        makeTask({ id: 'due-this-week', dueDate: at(5 * DAY) }),
-        makeTask({ id: 'due-soon', dueDate: at(24 * HOUR) }),
-        makeTask({ id: 'overdue', dueDate: at(-DAY) }),
+  test('fans out over listProjects, merges ranked suggestions, and drops resolved tasks from candidates', async () => {
+    const tasksByProject: Record<string, ToolTask[]> = {
+      'proj-a': [
+        toolTask('a-plain', { createdAt: fromNow(-30 * DAY) }),
+        toolTask('a-overdue', { dueDate: fromNow(-5 * DAY), priority: 'urgent', number: 11 }),
       ],
-      NOW,
-    )
-
-    expect(ranked.map((task) => task.id)).toEqual(['overdue', 'due-soon', 'due-this-week', 'no-signal'])
-    expect(ranked.map((task) => task.score)).toEqual([30, 20, 10, 0])
-  })
-
-  test('treats the 48-hour and 7-day due windows as inclusive bounds', () => {
-    const scores = scoresById(
-      rankTasks(
-        [
-          makeTask({ id: 'at-48h', dueDate: at(48 * HOUR) }),
-          makeTask({ id: 'just-over-48h', dueDate: at(48 * HOUR + MINUTE) }),
-          makeTask({ id: 'at-7d', dueDate: at(7 * DAY) }),
-          makeTask({ id: 'beyond-7d', dueDate: at(8 * DAY) }),
-        ],
-        NOW,
-      ),
-    )
-
-    expect(scores.get('at-48h')).toBe(20)
-    expect(scores.get('just-over-48h')).toBe(10)
-    expect(scores.get('at-7d')).toBe(10)
-    expect(scores.get('beyond-7d')).toBe(0)
-  })
-
-  test('scores priority tokens by case-insensitive containment, stacking across tiers', () => {
-    const scores = scoresById(
-      rankTasks(
-        [
-          makeTask({ id: 'urgent-upper', priority: 'Urgent' }),
-          makeTask({ id: 'critical', priority: 'critical' }),
-          makeTask({ id: 'blocker-contained', priority: 'P0 blocker' }),
-          makeTask({ id: 'high', priority: 'High' }),
-          makeTask({ id: 'major', priority: 'major' }),
-          makeTask({ id: 'medium', priority: 'Medium' }),
-          makeTask({ id: 'normal', priority: 'normal' }),
-          makeTask({ id: 'unrecognized', priority: 'wishlist' }),
-          makeTask({ id: 'stacked-tiers', priority: 'critical high' }),
-          makeTask({ id: 'same-tier-twice', priority: 'urgent critical' }),
-        ],
-        NOW,
-      ),
-    )
-
-    expect(scores.get('urgent-upper')).toBe(25)
-    expect(scores.get('critical')).toBe(25)
-    expect(scores.get('blocker-contained')).toBe(25)
-    expect(scores.get('high')).toBe(20)
-    expect(scores.get('major')).toBe(15)
-    expect(scores.get('medium')).toBe(5)
-    expect(scores.get('normal')).toBe(5)
-    expect(scores.get('unrecognized')).toBe(0)
-    expect(scores.get('stacked-tiers')).toBe(45)
-    expect(scores.get('same-tier-twice')).toBe(25)
-  })
-
-  test('orders equally overdue tasks by priority strength', () => {
-    const ranked = rankTasks(
-      [
-        makeTask({ id: 'plain', dueDate: at(-2 * DAY) }),
-        makeTask({ id: 'urgent', dueDate: at(-2 * DAY), priority: 'urgent' }),
+      'proj-b': [
+        toolTask('b-resolved', { dueDate: fromNow(-9 * DAY), resolved: '2026-01-01T00:00:00.000Z' }),
+        toolTask('b-due-soon', { dueDate: fromNow(DAY) }),
+        toolTask('b-plain', { createdAt: fromNow(-60 * DAY) }),
       ],
-      NOW,
-    )
+    }
+    const listTasks = mock(listTasksFromTable(tasksByProject))
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve(projects())),
+      listTasks,
+    })
+    const tool = makeSuggestNextTaskTool(provider)
 
-    expect(ranked.map((task) => task.id)).toEqual(['urgent', 'plain'])
-    expect(ranked.map((task) => task.score)).toEqual([85, 60])
-  })
+    const result = await executeSuggest(tool, {})
 
-  test('applies the +2 creation-recency tiebreak among no-signal tasks, newest first', () => {
-    const ranked = rankTasks(
-      [
-        makeTask({ id: 'oldest', createdAt: at(-90 * DAY) }),
-        makeTask({ id: 'middle', createdAt: at(-60 * DAY) }),
-        makeTask({ id: 'newest', createdAt: at(-30 * DAY) }),
-      ],
-      NOW,
-    )
+    expect(listTasks).toHaveBeenCalledTimes(2)
+    expect(listTasks).toHaveBeenCalledWith('proj-a', { limit: 50, sortBy: 'dueDate', sortOrder: 'asc' })
+    expect(listTasks).toHaveBeenCalledWith('proj-b', { limit: 50, sortBy: 'dueDate', sortOrder: 'asc' })
 
-    expect(ranked.map((task) => task.id)).toEqual(['newest', 'middle', 'oldest'])
-    expect(ranked.map((task) => task.score)).toEqual([2, 0, 0])
-  })
-
-  test('withholds the recency bonus when a due date or recognized priority signal exists', () => {
-    const ranked = rankTasks(
-      [
-        makeTask({ id: 'far-due', dueDate: at(30 * DAY), createdAt: at(-DAY) }),
-        makeTask({ id: 'high-priority', priority: 'high', createdAt: at(-2 * DAY) }),
-        makeTask({ id: 'plain', createdAt: at(-3 * DAY) }),
-      ],
-      NOW,
-    )
-    const scores = scoresById(ranked)
-    const reasons = reasonsById(ranked)
-
-    expect(scores.get('far-due')).toBe(0)
-    expect(scores.get('high-priority')).toBe(20)
-    expect(scores.get('plain')).toBe(2)
-    expect(reasons.get('far-due')).not.toMatch(/created/iu)
-    expect(reasons.get('far-due')).not.toMatch(/due within/iu)
-    expect(reasons.get('far-due')).not.toMatch(/priority/iu)
-    expect(reasons.get('high-priority')).not.toMatch(/created/iu)
-  })
-
-  test('treats an unrecognized priority value as no priority signal for the recency tiebreak', () => {
-    const ranked = rankTasks(
-      [
-        makeTask({ id: 'unrecognized-priority', priority: 'wishlist', createdAt: at(-10 * DAY) }),
-        makeTask({ id: 'older-plain', createdAt: at(-40 * DAY) }),
-      ],
-      NOW,
-    )
-    const scores = scoresById(ranked)
-    const reasons = reasonsById(ranked)
-
-    expect(ranked.map((task) => task.id)).toEqual(['unrecognized-priority', 'older-plain'])
-    expect(scores.get('unrecognized-priority')).toBe(2)
-    expect(scores.get('older-plain')).toBe(0)
-    expect(reasons.get('unrecognized-priority')).toMatch(/created/iu)
-    expect(reasons.get('unrecognized-priority')).not.toMatch(/priority/iu)
-  })
-
-  test('excludes tasks with resolved set', () => {
-    const ranked = rankTasks(
-      [
-        makeTask({
-          id: 'resolved-top',
-          dueDate: at(-5 * DAY),
-          priority: 'urgent',
-          resolved: '2026-03-20T00:00:00.000Z',
-        }),
-        makeTask({ id: 'open-overdue', dueDate: at(-DAY) }),
-        makeTask({ id: 'open-soon', dueDate: at(24 * HOUR) }),
-        makeTask({ id: 'open-plain' }),
-      ],
-      NOW,
-    )
-
-    expect(ranked.map((task) => task.id)).toEqual(['open-overdue', 'open-soon', 'open-plain'])
-  })
-
-  test('keeps input order when no candidate carries createdAt', () => {
-    const ranked = rankTasks([makeTask({ id: 'first' }), makeTask({ id: 'second' }), makeTask({ id: 'third' })], NOW)
-
-    expect(ranked.map((task) => task.id)).toEqual(['first', 'second', 'third'])
-    expect(ranked.map((task) => task.score)).toEqual([0, 0, 0])
-  })
-
-  test('returns identical output for identical inputs', () => {
-    const build = (): RankCandidate[] => [
-      makeTask({ id: 'tie-a' }),
-      makeTask({ id: 'tie-b' }),
-      makeTask({ id: 'fresh', createdAt: at(-5 * DAY) }),
-      makeTask({ id: 'due-soon', dueDate: at(30 * HOUR) }),
-      makeTask({ id: 'urgent-overdue', dueDate: at(-3 * DAY), priority: 'URGENT' }),
-      makeTask({ id: 'plain-overdue', dueDate: at(-3 * DAY) }),
-    ]
-
-    expect(rankTasks(build(), NOW)).toEqual(rankTasks(build(), NOW))
-  })
-
-  test('assembles reason lines from exactly the facts that scored', () => {
-    const ranked = rankTasks(
-      [
-        makeTask({ id: 'overdue-high', dueDate: at(-2 * DAY), priority: 'high' }),
-        makeTask({ id: 'overdue-plain', dueDate: at(-2 * DAY) }),
-        makeTask({ id: 'due-soon', dueDate: at(20 * HOUR) }),
-        makeTask({ id: 'due-this-week', dueDate: at(6 * DAY) }),
-        makeTask({ id: 'fresh', createdAt: at(-2 * DAY) }),
-      ],
-      NOW,
-    )
-    const reasons = reasonsById(ranked)
-
-    expect(ranked.map((task) => task.id)).toEqual([
-      'overdue-high',
-      'overdue-plain',
-      'due-soon',
-      'due-this-week',
-      'fresh',
+    expect(result.considered).toBe(4)
+    expect(result.suggestions.map((suggestion): string => suggestion.id)).toEqual([
+      'a-overdue',
+      'b-due-soon',
+      'a-plain',
     ])
 
-    expect(reasons.get('overdue-high')).toMatch(/overdue/iu)
-    expect(reasons.get('overdue-high')).toMatch(/high/iu)
-    expect(reasons.get('overdue-high')).toMatch(/priority/iu)
-    expect(reasons.get('overdue-high')).not.toMatch(/due within/iu)
-    expect(reasons.get('overdue-high')).not.toMatch(/created/iu)
+    const top = result.suggestions[0]!
+    expect(top).toMatchObject({
+      id: 'a-overdue',
+      title: 'Task a-overdue',
+      number: 11,
+      url: 'https://tracker.example/tasks/a-overdue',
+      projectId: 'proj-a',
+      priority: 'urgent',
+    })
+    expect(Object.keys(top).sort()).toEqual([
+      'dueDate',
+      'id',
+      'number',
+      'priority',
+      'projectId',
+      'reason',
+      'score',
+      'title',
+      'url',
+    ])
+    expect(top.dueDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/u)
+    expect(typeof top.score).toBe('number')
+    expect(top.reason).toMatch(/overdue/iu)
 
-    expect(reasons.get('overdue-plain')).toMatch(/overdue/iu)
-    expect(reasons.get('overdue-plain')).not.toMatch(/priority/iu)
+    const second = result.suggestions[1]
+    expect(second?.projectId).toBe('proj-b')
+    expect(second?.priority).toBeUndefined()
+  })
 
-    expect(reasons.get('due-soon')).toMatch(/due within/iu)
-    expect(reasons.get('due-soon')).toMatch(/48/u)
-    expect(reasons.get('due-soon')).not.toMatch(/overdue/iu)
-    expect(reasons.get('due-soon')).not.toMatch(/priority/iu)
+  test('scopes to the explicit projectId without enumerating projects', async () => {
+    const listProjects = mock(() => Promise.resolve(projects()))
+    const listTasks = mock((_projectId: string): Promise<ToolTask[]> =>
+      Promise.resolve([
+        toolTask('solo-plain', { createdAt: fromNow(-30 * DAY) }),
+        toolTask('solo-overdue', { dueDate: fromNow(-2 * DAY) }),
+      ]),
+    )
+    const provider = createMockProvider({ listProjects, listTasks })
+    const tool = makeSuggestNextTaskTool(provider)
 
-    expect(reasons.get('due-this-week')).toMatch(/due within/iu)
-    expect(reasons.get('due-this-week')).toMatch(/7/u)
-    expect(reasons.get('due-this-week')).not.toMatch(/48/u)
+    const result = await executeSuggest(tool, { projectId: 'proj-solo' })
 
-    expect(reasons.get('fresh')).toMatch(/created/iu)
-    expect(reasons.get('fresh')).not.toMatch(/overdue/iu)
-    expect(reasons.get('fresh')).not.toMatch(/due within/iu)
-    expect(reasons.get('fresh')).not.toMatch(/priority/iu)
+    expect(listProjects).not.toHaveBeenCalled()
+    expect(listTasks).toHaveBeenCalledTimes(1)
+    expect(listTasks).toHaveBeenCalledWith('proj-solo', { limit: 50, sortBy: 'dueDate', sortOrder: 'asc' })
+
+    expect(result.considered).toBe(2)
+    expect(result.suggestions.map((suggestion): string => suggestion.id)).toEqual(['solo-overdue', 'solo-plain'])
+    for (const suggestion of result.suggestions) {
+      expect(suggestion.projectId).toBe('proj-solo')
+    }
+  })
+
+  test('respects an explicit limit while counting the wider candidate set', async () => {
+    const listTasks = mock((_projectId: string): Promise<ToolTask[]> =>
+      Promise.resolve([
+        toolTask('d1', { dueDate: fromNow(-1 * DAY) }),
+        toolTask('d2', { dueDate: fromNow(-2 * DAY) }),
+        toolTask('d3', { dueDate: fromNow(-3 * DAY) }),
+        toolTask('d4', { dueDate: fromNow(-4 * DAY) }),
+      ]),
+    )
+    const provider = createMockProvider({ listTasks })
+    const tool = makeSuggestNextTaskTool(provider)
+
+    const result = await executeSuggest(tool, { projectId: 'proj-x', limit: 2 })
+
+    expect(result.considered).toBe(4)
+    expect(result.suggestions.map((suggestion): string => suggestion.id)).toEqual(['d4', 'd3'])
   })
 })

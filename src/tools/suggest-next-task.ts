@@ -3,141 +3,178 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { TaskListItem } from '../providers/types.js'
+import { tool } from 'ai'
+import type { Tool } from 'ai'
+import pLimit from 'p-limit'
+import { z } from 'zod'
 
-const MINUTE_MS = 60_000
-const HOUR_MS = 60 * MINUTE_MS
-const DAY_MS = 24 * HOUR_MS
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
+import { getConfig } from '../config.js'
+import { resolveMeReference } from '../identity/resolver.js'
+import { logger } from '../logger.js'
+import type { ListTasksParams, TaskProvider } from '../providers/types.js'
+import type { RankedTask, RankableTask } from './suggest-next-task-ranking.js'
+import { rankTasks } from './suggest-next-task-ranking.js'
+import { toolFailureMeta } from './tool-logging.js'
 
-/** Centralized ranking score constants (design D2). Magnitudes are chosen so one
- *  overdue day (30) outranks the strongest future due window (20) and priority
- *  stacks within a due tier without crossing a full tier gap. */
-const SCORES = {
-  overduePerDay: 30,
-  dueSoonWithinMs: 48 * HOUR_MS,
-  dueSoon: 20,
-  dueThisWeekWithinMs: 7 * DAY_MS,
-  dueThisWeek: 10,
-  priorityTiers: [
-    { tokens: ['urgent', 'critical', 'blocker'], points: 25 },
-    { tokens: ['high'], points: 20 },
-    { tokens: ['major'], points: 15 },
-    { tokens: ['medium', 'normal'], points: 5 },
-  ],
-  newestCreated: 2,
-} as const
+const log = logger.child({ scope: 'tool:suggest-next-task' })
 
-/** Candidate accepted by `rankTasks`; `createdAt` rides along until the list type carries it (design D3). */
-export type RankableTask = TaskListItem & { createdAt?: string | null }
+const suggestInputSchema = z.object({
+  projectId: z.string().optional().describe('Restrict candidates to one project; defaults to all projects'),
+  assigneeId: z.string().optional().describe('Filter by assignee user ID; the literal "me" resolves to your identity'),
+  limit: z.number().int().min(1).max(5).optional().describe('Max suggestions to return (1-5, default 3)'),
+})
 
-export type RankedTask = RankableTask & { score: number; reason: string }
+/** Per-project list params for candidate collection (design D4). */
+const CANDIDATE_PARAMS: Readonly<ListTasksParams> = { limit: 50, sortBy: 'dueDate', sortOrder: 'asc' }
+const FAN_OUT_CONCURRENCY = 3
+const DEFAULT_LIMIT = 3
 
-type RankedEntry = {
-  ranked: RankedTask
-  index: number
-  hasDueOrPrioritySignal: boolean
-  createdAtMs: number | null
+type SuggestionEntry = {
+  id: string
+  title: string
+  number?: number
+  url: string
+  projectId: string
+  dueDate?: string | null
+  priority?: string
+  score: number
+  reason: string
 }
 
-function parseTimeMs(value: string | null | undefined): number | null {
-  if (value === undefined || value === null || value === '') return null
-  const ms = new Date(value).getTime()
-  return Number.isNaN(ms) ? null : ms
+async function resolveAssigneeFilter(
+  assigneeId: string | undefined,
+  userId: string | undefined,
+  provider: TaskProvider,
+): Promise<string | undefined | { status: 'identity_required'; message: string }> {
+  if (assigneeId === undefined || assigneeId.toLowerCase() !== 'me' || userId === undefined) {
+    return assigneeId
+  }
+  const identity = await resolveMeReference(userId, provider)
+  if (identity.type === 'found') {
+    return provider.preferredUserIdentifier === 'login' ? identity.identity.login : identity.identity.userId
+  }
+  return { status: 'identity_required', message: identity.message }
 }
 
-function scoreDueDate(dueMs: number, nowMs: number): { score: number; reason: string | null } {
-  if (dueMs < nowMs) {
-    const overdueDays = Math.floor((nowMs - dueMs) / DAY_MS)
+async function collectCandidates(
+  projectId: string | undefined,
+  resolvedAssigneeId: string | undefined,
+  provider: TaskProvider,
+): Promise<Array<{ task: RankableTask; projectId: string }> | { status: 'project_required'; message: string }> {
+  const projectIds: string[] = []
+  if (projectId !== undefined) {
+    projectIds.push(projectId)
+  } else if (provider.listProjects === undefined) {
     return {
-      score: overdueDays * SCORES.overduePerDay,
-      reason: overdueDays >= 1 ? `${overdueDays} ${overdueDays === 1 ? 'day' : 'days'} overdue` : null,
+      status: 'project_required',
+      message: 'This task instance cannot list projects. Specify a projectId to rank tasks within one project.',
     }
+  } else {
+    const projects = await provider.listProjects()
+    projectIds.push(...projects.map((project): string => project.id))
   }
-  const untilDueMs = dueMs - nowMs
-  if (untilDueMs <= SCORES.dueSoonWithinMs) {
-    return { score: SCORES.dueSoon, reason: 'due within 48 hours' }
-  }
-  if (untilDueMs <= SCORES.dueThisWeekWithinMs) {
-    return { score: SCORES.dueThisWeek, reason: 'due within 7 days' }
-  }
-  return { score: 0, reason: null }
+
+  const limit = pLimit(FAN_OUT_CONCURRENCY)
+  const listParams: ListTasksParams =
+    resolvedAssigneeId === undefined ? { ...CANDIDATE_PARAMS } : { ...CANDIDATE_PARAMS, assigneeId: resolvedAssigneeId }
+  const perProject = await Promise.all(
+    projectIds.map((id): Promise<Array<{ task: RankableTask; projectId: string }>> =>
+      limit(async (): Promise<Array<{ task: RankableTask; projectId: string }>> => {
+        const tasks = await provider.listTasks(id, provider.normalizeListTaskParams(listParams))
+        return tasks
+          .filter((task): boolean => task.resolved === undefined)
+          .map((task): { task: RankableTask; projectId: string } => ({ task, projectId: id }))
+      }),
+    ),
+  )
+  return perProject.flat()
 }
 
-function scorePriority(priority: string | undefined): { score: number; matchedTokens: string[] } {
-  if (priority === undefined || priority === '') return { score: 0, matchedTokens: [] }
-  const lowered = priority.toLowerCase()
-  let score = 0
-  const matchedTokens: string[] = []
-  for (const tier of SCORES.priorityTiers) {
-    const matched = tier.tokens.find((token): boolean => lowered.includes(token))
-    if (matched !== undefined) {
-      score += tier.points
-      matchedTokens.push(matched)
-    }
-  }
-  return { score, matchedTokens }
+/** Timezone resolution cloned from list-tasks.ts: group-shared config context
+ *  (thread suffix stripped), userId fallback, then UTC. */
+function resolveOutputTimezone(storageContextId: string | undefined, userId: string | undefined): string {
+  const configKey = storageContextId ?? userId
+  if (configKey === undefined) return 'UTC'
+  return getConfig(getConfigContextIdFromStorageContextId(configKey), 'timezone') ?? 'UTC'
 }
 
-function newestNoSignalCreatedAt(candidates: readonly RankableTask[]): number | null {
-  let newest: number | null = null
-  for (const task of candidates) {
-    const dueMs = parseTimeMs(task.dueDate)
-    if (dueMs !== null) continue
-    if (scorePriority(task.priority).score > 0) continue
-    const createdMs = parseTimeMs(task.createdAt)
-    if (createdMs !== null && (newest === null || createdMs > newest)) {
-      newest = createdMs
-    }
+function toSuggestion(task: RankedTask, projectId: string, provider: TaskProvider, timezone: string): SuggestionEntry {
+  const suggestion: SuggestionEntry = {
+    id: task.id,
+    title: task.title,
+    url: task.url,
+    projectId,
+    score: task.score,
+    reason: task.reason,
   }
-  return newest
+  if (task.number !== undefined) suggestion.number = task.number
+  if (task.priority !== undefined) suggestion.priority = task.priority
+  const dueDate = provider.formatDueDateOutput(task.dueDate, timezone)
+  if (dueDate !== undefined && dueDate !== null) suggestion.dueDate = dueDate
+  return suggestion
 }
 
-function evaluateTask(task: RankableTask, index: number, nowMs: number, newestCreatedMs: number | null): RankedEntry {
-  const dueMs = parseTimeMs(task.dueDate)
-  const due = dueMs === null ? { score: 0, reason: null } : scoreDueDate(dueMs, nowMs)
-  const priority = scorePriority(task.priority)
-  const hasDueOrPrioritySignal = dueMs !== null || priority.score > 0
+function buildSuggestions(
+  candidates: Array<{ task: RankableTask; projectId: string }>,
+  explicitProjectId: string | undefined,
+  suggestionLimit: number,
+  provider: TaskProvider,
+  timezone: string,
+): SuggestionEntry[] {
+  const projectIdByTaskId = new Map(candidates.map((entry): [string, string] => [entry.task.id, entry.projectId]))
+  return rankTasks(
+    candidates.map((entry): RankableTask => entry.task),
+    new Date(),
+  )
+    .slice(0, suggestionLimit)
+    .map((ranked): SuggestionEntry =>
+      toSuggestion(ranked, projectIdByTaskId.get(ranked.id) ?? explicitProjectId ?? '', provider, timezone),
+    )
+}
 
-  const reasonParts: string[] = []
-  if (due.reason !== null) reasonParts.push(due.reason)
-  if (priority.matchedTokens.length > 0) reasonParts.push(`priority ${priority.matchedTokens.join(', ')}`)
+export function makeSuggestNextTaskTool(provider: TaskProvider, userId?: string, storageContextId?: string): Tool {
+  return tool({
+    description:
+      'Suggest what to work on next: a deterministic ranking of open tasks by due-date urgency, priority, and recency, with one-line reasons. Read-only.',
+    inputSchema: suggestInputSchema,
+    execute: async ({ projectId, assigneeId, limit }) => {
+      try {
+        log.debug(
+          {
+            hasProjectId: projectId !== undefined,
+            hasAssigneeFilter: assigneeId !== undefined,
+            limit,
+            hasUserId: userId !== undefined,
+          },
+          'suggest_next_task called',
+        )
+        const resolvedAssigneeId = await resolveAssigneeFilter(assigneeId, userId, provider)
+        if (typeof resolvedAssigneeId === 'object') {
+          log.info({ status: 'identity_required' }, 'suggest_next_task identity resolution failed')
+          return resolvedAssigneeId
+        }
 
-  let score = due.score + priority.score
-  const createdMs = parseTimeMs(task.createdAt)
-  if (!hasDueOrPrioritySignal && createdMs !== null && createdMs === newestCreatedMs) {
-    score += SCORES.newestCreated
-    reasonParts.push('created most recently')
-  }
+        const candidates = await collectCandidates(projectId, resolvedAssigneeId, provider)
+        if (!Array.isArray(candidates)) {
+          log.info({ status: candidates.status }, 'suggest_next_task needs an explicit project')
+          return candidates
+        }
 
-  return {
-    ranked: {
-      ...task,
-      score,
-      reason: reasonParts.length > 0 ? reasonParts.join('; ') : 'no urgency signals',
+        const suggestions = buildSuggestions(
+          candidates,
+          projectId,
+          limit ?? DEFAULT_LIMIT,
+          provider,
+          resolveOutputTimezone(storageContextId, userId),
+        )
+
+        log.info({ considered: candidates.length, returned: suggestions.length }, 'suggest_next_task completed')
+        return { suggestions, considered: candidates.length }
+      } catch (error) {
+        log.error(toolFailureMeta('suggest_next_task', error), 'Tool execution failed')
+        throw error
+      }
     },
-    index,
-    hasDueOrPrioritySignal,
-    createdAtMs: createdMs,
-  }
-}
-
-function compareRanked(a: RankedEntry, b: RankedEntry): number {
-  if (a.ranked.score !== b.ranked.score) return b.ranked.score - a.ranked.score
-  if (!a.hasDueOrPrioritySignal && !b.hasDueOrPrioritySignal) {
-    const aCreated = a.createdAtMs ?? Number.NEGATIVE_INFINITY
-    const bCreated = b.createdAtMs ?? Number.NEGATIVE_INFINITY
-    if (aCreated !== bCreated) return bCreated - aCreated
-  }
-  return a.index - b.index
-}
-
-/** Deterministically rank open tasks against `now` (design D2): due-date urgency,
- *  stacking priority tokens, creation-recency fallback. Resolved tasks are excluded. */
-export function rankTasks(tasks: readonly RankableTask[], now: Date): RankedTask[] {
-  const candidates = tasks.filter((task): boolean => task.resolved === undefined)
-  const newestCreatedMs = newestNoSignalCreatedAt(candidates)
-  return candidates
-    .map((task, index): RankedEntry => evaluateTask(task, index, now.getTime(), newestCreatedMs))
-    .sort(compareRanked)
-    .map((entry): RankedTask => entry.ranked)
+  })
 }

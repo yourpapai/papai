@@ -103,11 +103,12 @@ export default {
     // change (openspec/changes/context-vault-plugin); later tasks (settings
     // routes, push route, summarizer, plugin facade) consume their exports.
     'src/context-vault/*.ts!',
-    // Suggest-next-task is the seam surface for the suggest-next-task change
-    // (openspec/changes/suggest-next-task); the production consumer
-    // (core-tools registration) lands with its task 5.1 — until then only its
-    // test imports it.
+    // Suggest-next-task modules are the seam surface for the suggest-next-task
+    // change (openspec/changes/suggest-next-task); the production consumer
+    // (core-tools registration) lands with its task 5.1 — until then only the
+    // tests import them.
     'src/tools/suggest-next-task.ts!',
+    'src/tools/suggest-next-task-ranking.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -255,11 +256,12 @@ export default {
     'src/context-vault/*.ts': ['exports', 'types'],
     // Suggest-next-task exports are consumed by the in-flight
     // suggest-next-task change (openspec/changes/suggest-next-task):
-    // core-tools.ts imports makeSuggestNextTaskTool with its task 5.1;
-    // rankTasks stays consumed by tests outside knip's production project
-    // scope. Remove this entry and the matching entry declaration above when
-    // that lands.
+    // core-tools.ts imports makeSuggestNextTaskTool with its task 5.1; the
+    // ranking module's exports stay consumed by tests outside knip's
+    // production project scope. Remove these entries and the matching entry
+    // declarations above when that lands.
     'src/tools/suggest-next-task.ts': ['exports', 'types'],
+    'src/tools/suggest-next-task-ranking.ts': ['exports', 'types'],
     'src/db/context-vault-schema.ts': ['exports', 'types'],
     // Re-export facades whose remaining flagged bindings knip cannot trace:
     // the published plugin-types package export, declared plugin-core-separation
