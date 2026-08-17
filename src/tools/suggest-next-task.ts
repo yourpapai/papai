@@ -117,7 +117,6 @@ function toSuggestion(task: RankedTask, projectId: string, provider: TaskProvide
 
 function buildSuggestions(
   candidates: Array<{ task: RankableTask; projectId: string }>,
-  explicitProjectId: string | undefined,
   suggestionLimit: number,
   provider: TaskProvider,
   timezone: string,
@@ -128,9 +127,7 @@ function buildSuggestions(
     new Date(),
   )
     .slice(0, suggestionLimit)
-    .map((ranked): SuggestionEntry =>
-      toSuggestion(ranked, projectIdByTaskId.get(ranked.id) ?? explicitProjectId ?? '', provider, timezone),
-    )
+    .map((ranked): SuggestionEntry => toSuggestion(ranked, projectIdByTaskId.get(ranked.id)!, provider, timezone))
 }
 
 export function makeSuggestNextTaskTool(provider: TaskProvider, userId?: string, storageContextId?: string): Tool {
@@ -163,7 +160,6 @@ export function makeSuggestNextTaskTool(provider: TaskProvider, userId?: string,
 
         const suggestions = buildSuggestions(
           candidates,
-          projectId,
           limit ?? DEFAULT_LIMIT,
           provider,
           resolveOutputTimezone(storageContextId, userId),
