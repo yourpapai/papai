@@ -111,6 +111,7 @@ export type TaskListItem = {
   status?: string
   priority?: string
   dueDate?: string | null
+  createdAt?: string | null
   resolved?: string
   url: string
 }

@@ -115,6 +115,7 @@ const EXPECTED_STATIC: Readonly<Record<string, ToolClassification>> = {
   update_task: { domain: 'task', operation: 'update', risk: 'write' },
   search_tasks: { domain: 'task', operation: 'read', risk: 'read' },
   list_tasks: { domain: 'task', operation: 'read', risk: 'read' },
+  suggest_next_task: { domain: 'task', operation: 'read', risk: 'read' },
   get_task: { domain: 'task', operation: 'read', risk: 'read' },
   count_tasks: { domain: 'task', operation: 'read', risk: 'read' },
   delete_task: { domain: 'task', operation: 'delete', risk: 'destructive' },

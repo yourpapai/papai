@@ -20,6 +20,7 @@ export interface KaneoTaskListItem {
   status: string
   priority: string
   dueDate: string | null
+  createdAt?: string
 }
 
 export async function listTasks({

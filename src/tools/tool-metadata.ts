@@ -65,6 +65,7 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   update_task: write('task', 'update'),
   search_tasks: read('task'),
   list_tasks: read('task'),
+  suggest_next_task: read('task'),
   get_task: read('task'),
   count_tasks: read('task'),
   delete_task: destructive('task'),

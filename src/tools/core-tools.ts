@@ -11,6 +11,7 @@ import { makeCreateTaskTool } from './create-task.js'
 import { makeGetTaskTool } from './get-task.js'
 import { makeListTasksTool } from './list-tasks.js'
 import { makeSearchTasksTool } from './search-tasks.js'
+import { makeSuggestNextTaskTool } from './suggest-next-task.js'
 import { makeUpdateTaskTool } from './update-task.js'
 
 export function makeCoreTools(provider: TaskProvider, userId?: string, storageContextId?: string): ToolSet {
@@ -19,6 +20,7 @@ export function makeCoreTools(provider: TaskProvider, userId?: string, storageCo
     update_task: makeUpdateTaskTool(provider, completionHook, userId, storageContextId),
     search_tasks: makeSearchTasksTool(provider, userId),
     list_tasks: makeListTasksTool(provider, userId, storageContextId),
+    suggest_next_task: makeSuggestNextTaskTool(provider, userId, storageContextId),
     get_task: makeGetTaskTool(provider, userId, storageContextId),
     // get_current_time is added by addProviderIndependentTools (keyed on the thread-stripped
     // config context); registering it here too would be dead — it is always overwritten.

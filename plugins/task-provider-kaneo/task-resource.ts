@@ -136,6 +136,7 @@ export class TaskResource {
         status: task.status,
         priority: task.priority,
         dueDate: task.dueDate ?? null,
+        createdAt: task.createdAt,
       }))
       // Denormalize status from column slug to normalized slug for each task
       for (const task of tasks) {
