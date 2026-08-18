@@ -152,8 +152,9 @@ describe('nextOccurrence', () => {
   })
 
   it('finds the next occurrence when dtstart is decades in the past', () => {
-    // RRuleTemporal.next() enumerates from DTSTART; without a windowed scan a
-    // ~30-year-old daily rule exceeds the library's maxIterations and throws.
+    // next() jumps to a phase-aligned DTSTART near `after` for unbounded
+    // rules, so a ~30-year-old daily rule must stay far under the library's
+    // maxIterations cap.
     const next = nextOccurrence(
       {
         rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
@@ -166,7 +167,6 @@ describe('nextOccurrence', () => {
   })
 
   it('finds the next occurrence for an aged HOURLY rule (cron */hour translation)', () => {
-    // HOURLY hits maxIterations after ~14 months of dtstart age.
     const next = nextOccurrence(
       {
         rrule: 'FREQ=HOURLY;BYMINUTE=30',
@@ -179,8 +179,6 @@ describe('nextOccurrence', () => {
   })
 
   it('finds the next occurrence for a MINUTELY rule with a recent dtstart', () => {
-    // MINUTELY packs 10,080 occurrences into 7 days, so any scan window must
-    // stay under the library's 10k iteration cap.
     const next = nextOccurrence(
       {
         rrule: 'FREQ=MINUTELY',
@@ -190,6 +188,47 @@ describe('nextOccurrence', () => {
       new Date('2026-06-15T12:00:30Z'),
     )
     expect(next?.toISOString()).toBe('2026-06-15T12:01:00.000Z')
+  })
+
+  it('finds the next occurrence for an aged MINUTELY rule', () => {
+    // rrule-temporal >=2.1 next() jumps to a phase-aligned DTSTART just
+    // before `after` for unbounded rules, so a year-old MINUTELY rule must
+    // answer without replaying ~525k occurrences from DTSTART.
+    const next = nextOccurrence(
+      {
+        rrule: 'FREQ=MINUTELY',
+        dtstartUtc: '2025-06-15T11:50:00Z',
+        timezone: 'UTC',
+      },
+      new Date('2026-06-15T12:00:30Z'),
+    )
+    expect(next?.toISOString()).toBe('2026-06-15T12:01:00.000Z')
+  })
+
+  it('finds the next occurrence for a COUNT rule with remaining occurrences', () => {
+    // COUNT-bound rules answer from lazy query plans since 2.1, so the
+    // remaining-occurrence lookup must stay correct past its dtstart.
+    const next = nextOccurrence(
+      {
+        rrule: 'FREQ=DAILY;COUNT=60',
+        dtstartUtc: '2026-05-01T09:00:00Z',
+        timezone: 'UTC',
+      },
+      new Date('2026-06-15T12:00:00Z'),
+    )
+    expect(next?.toISOString()).toBe('2026-06-16T09:00:00.000Z')
+  })
+
+  it('returns null for a COUNT rule exhausted long ago', () => {
+    const next = nextOccurrence(
+      {
+        rrule: 'FREQ=DAILY;COUNT=3',
+        dtstartUtc: '2020-01-01T09:00:00Z',
+        timezone: 'UTC',
+      },
+      new Date('2026-06-15T12:00:00Z'),
+    )
+    expect(next).toBeNull()
   })
 
   it('returns null instead of throwing for a rule that can never match', () => {
