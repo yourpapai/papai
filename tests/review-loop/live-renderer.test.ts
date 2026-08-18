@@ -365,6 +365,40 @@ describe('status line', () => {
     const status = output[output.length - 1]!.split('\n')[0]!
     expect(status).toContain('in 1.1k / out 100')
   })
+
+  test('renders the token segment when exactly one operand is positive', () => {
+    const cases = [
+      { usage: { input: 300, output: 0, reasoning: 0, cost: 0 }, expected: 'in 300 / out 0' },
+      { usage: { input: 0, output: 200, reasoning: 0, cost: 0 }, expected: 'in 0 / out 200' },
+      { usage: { input: 0, output: 0, reasoning: 0, cacheRead: 700, cost: 0 }, expected: 'in 0 · cached 700 / out 0' },
+    ]
+    for (const { usage, expected } of cases) {
+      const { stream, output } = makeStream({ isTTY: true, columns: 200 })
+      const r = new LiveRenderer(stream)
+      r.usage(usage)
+      r.slot('a', 'x')
+      const status = output[output.length - 1]!.split('\n')[0]!
+      expect(status).toContain(expected)
+    }
+  })
+
+  test('accumulates cached reads across usage calls', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 200 })
+    const r = new LiveRenderer(stream)
+    r.usage({ input: 500, output: 0, reasoning: 0, cacheRead: 1_500, cost: 0 })
+    r.usage({ input: 0, output: 100, reasoning: 0, cacheRead: 500, cost: 0 })
+    r.slot('a', 'x')
+    const status = output[output.length - 1]!.split('\n')[0]!
+    expect(status).toContain('in 500 · cached 2.0k / out 100')
+  })
+
+  test('omits the token segment before any usage arrives', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 200 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'x')
+    const status = output[output.length - 1]!.split('\n')[0]!
+    expect(status).not.toContain('/ out')
+  })
 })
 
 describe('withLivePhase', () => {

@@ -178,6 +178,15 @@ describe('repriceEvent', () => {
     const repriced = repriceEvent(event, { input: 5, output: 15, cache_read: 0.5 })
     expect(repriced.usage.costUsd).toBe(1)
   })
+
+  it('reprices cache-write-only usage at the cache_write rate', () => {
+    const event = doneEvent(
+      makeUsage({ inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cachedWriteTokens: 2_000_000, costUsd: 0 }),
+      1,
+    )
+    const repriced = repriceEvent(event, { input: 5, output: 15, cache_write: 6.25 })
+    expect(repriced.usage.costUsd).toBe(12.5)
+  })
 })
 
 describe('repriceEvents', () => {
@@ -237,6 +246,28 @@ describe('repriceEvents', () => {
     const { events: repriced, costKnown } = repriceEvents(events, resolve)
     expect(doneAt(repriced, 0).usage.costUsd).toBe(15)
     expect(doneAt(repriced, 1).usage.costUsd).toBe(5)
+    expect(costKnown).toBe(true)
+  })
+
+  it('reprices cache-only done events, exercising the cached-token operands of the zero-token guard', () => {
+    const resolve = resolverFrom({
+      'paid/m': { input: 5, output: 15, cache_read: 0.5, cache_write: 6.25, source: 'primary' },
+    })
+    const events: SddEvent[] = [
+      doneEvent(
+        makeUsage({ inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cachedReadTokens: 2_000_000, costUsd: 0 }),
+        1,
+        'paid/m',
+      ),
+      doneEvent(
+        makeUsage({ inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cachedWriteTokens: 1_000_000, costUsd: 0 }),
+        2,
+        'paid/m',
+      ),
+    ]
+    const { events: repriced, costKnown } = repriceEvents(events, resolve)
+    expect(doneAt(repriced, 0).usage.costUsd).toBe(1)
+    expect(doneAt(repriced, 1).usage.costUsd).toBe(6.25)
     expect(costKnown).toBe(true)
   })
 

@@ -45,14 +45,26 @@ describe('loop-trace emitters', () => {
     const { logger, events } = createCapturingTraceLogger()
     emitRoundStart(logger, 1, 5, 2, 'bun check')
     expect(events).toHaveLength(1)
-    expect(events[0]).toMatchObject({ event: 'round_start', round: 1, maxRounds: 5, checkCommand: 'bun check' })
+    expect(events[0]).toMatchObject({
+      phase: 'round',
+      event: 'round_start',
+      round: 1,
+      maxRounds: 5,
+      checkCommand: 'bun check',
+    })
   })
 
   test('emitReviewComplete maps issue fields', () => {
     const { logger, events } = createCapturingTraceLogger()
     emitReviewComplete(logger, 1, [issue])
-    expect(events[0]).toMatchObject({ event: 'review_complete', issueCount: 1 })
-    expect(events[0]).toMatchObject({ issues: [{ title: 'T', severity: 'high', file: 'f.ts' }] })
+    expect(events[0]).toMatchObject({
+      phase: 'review',
+      event: 'review_complete',
+      issueCount: 1,
+    })
+    expect(events[0]).toMatchObject({
+      issues: [{ title: 'T', severity: 'high', file: 'f.ts' }],
+    })
   })
 
   test('emitMatchComplete, emitBuildComplete, emitFixComplete push expected shapes', () => {
@@ -61,8 +73,17 @@ describe('loop-trace emitters', () => {
     emitBuildComplete(logger, 1, 'id', true, 1, 42)
     emitFixComplete(logger, 1, 'id', true, 'deadbeef', 1)
     expect(events.map((e) => e.event)).toEqual(['match_complete', 'build_complete', 'fix_complete'])
-    expect(events[1]).toMatchObject({ passed: true, attempt: 1, durationMs: 42 })
-    expect(events[2]).toMatchObject({ fixed: true, commitSha: 'deadbeef', attempt: 1 })
+    expect(events.map((e) => e.phase)).toEqual(['match', 'build', 'fix'])
+    expect(events[1]).toMatchObject({
+      passed: true,
+      attempt: 1,
+      durationMs: 42,
+    })
+    expect(events[2]).toMatchObject({
+      fixed: true,
+      commitSha: 'deadbeef',
+      attempt: 1,
+    })
   })
 
   test('emitVerifyComplete spreads targetFiles', () => {
@@ -73,11 +94,17 @@ describe('loop-trace emitters', () => {
       'id',
       'valid',
       'auto',
-      { reviewerSeverity: 'high', fixerSeverity: null, reviewerExposure: 'caller', fixerExposure: 'none' },
+      {
+        reviewerSeverity: 'high',
+        fixerSeverity: null,
+        reviewerExposure: 'caller',
+        fixerExposure: 'none',
+      },
       'r',
       ['a.ts', 'b.ts'],
     )
     expect(events[0]).toMatchObject({
+      phase: 'verify',
       event: 'verify_complete',
       verdict: 'valid',
       reviewerSeverity: 'high',
@@ -92,11 +119,22 @@ describe('loop-trace emitters', () => {
     const collector = newCollector()
     tallyDecision(collector, 'valid', true)
     tallyFixerSeverity(collector, 'medium')
-    const metric = { round: 1, newIssues: 1, cumulativeOpen: 2, noProgressRounds: 0, ...collector }
+    const metric = {
+      round: 1,
+      newIssues: 1,
+      cumulativeOpen: 2,
+      noProgressRounds: 0,
+      ...collector,
+    }
     emitRoundSummary(logger, metric)
     emitLoopEnd(logger, 1, 'clean', [metric])
-    expect(events[0]).toMatchObject({ event: 'round_summary', round: 1 })
+    expect(events[0]).toMatchObject({
+      phase: 'round',
+      event: 'round_summary',
+      round: 1,
+    })
     expect(events[1]).toMatchObject({
+      phase: 'loop',
       event: 'loop_end',
       doneReason: 'clean',
       rounds: 1,
@@ -105,7 +143,18 @@ describe('loop-trace emitters', () => {
   })
 
   test('truncate shortens', () => {
-    expect(truncate('abcdefghij', 5).length).toBeLessThan(6)
+    expect(truncate('abcdefghij', 5)).toBe('abcd…')
+  })
+
+  test('truncate leaves text at or under the limit unchanged', () => {
+    expect(truncate('abc', 5)).toBe('abc')
+    expect(truncate('abcde', 5)).toBe('abcde')
+  })
+
+  test('emitters stamp each event with an ISO timestamp', () => {
+    const { logger, events } = createCapturingTraceLogger()
+    emitRoundStart(logger, 1, 5, 2, 'bun check')
+    expect(events[0]!.ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u)
   })
 })
 
@@ -116,6 +165,7 @@ describe('emitInspectComplete', () => {
     expect(events).toHaveLength(1)
     const evt = requireInspectComplete(events[0]!)
     expect(evt.event).toBe('inspect_complete')
+    expect(evt.phase).toBe('inspect')
     expect(evt.addresses).toBe(false)
     expect(evt.reasoning.length).toBeLessThanOrEqual(200)
   })
