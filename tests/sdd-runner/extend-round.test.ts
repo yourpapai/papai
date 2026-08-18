@@ -27,7 +27,15 @@ describe('prepareResumeInput module surface', () => {
       JSON.stringify({
         resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'edited', outcome: 'fixed' }],
         assumptions: [
-          { id: 'A1', text: 'ok', basis: 'default', confidence: 'medium', blast_radius: 'low', status: 'open' },
+          {
+            id: 'A1',
+            text: 'ok',
+            basis: 'default',
+            confidence: 'medium',
+            blast_radius: 'low',
+            status: 'open',
+            evidence: { files: ['openspec/changes/thing/proposal.md'] },
+          },
         ],
       }),
     )

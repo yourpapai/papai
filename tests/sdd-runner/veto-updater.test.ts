@@ -97,7 +97,15 @@ describe('updateAssumptionsFromVetoes', () => {
           { id: 'F2', class: 'MATERIAL', resolution: 'assumed', outcome: 'old f2' },
         ],
         assumptions: [
-          { id: 'A1', text: 'original a1', basis: 'default', confidence: 'medium', blast_radius: 'r1', status: 'open' },
+          {
+            id: 'A1',
+            text: 'original a1',
+            basis: 'default',
+            confidence: 'medium',
+            blast_radius: 'r1',
+            status: 'open',
+            evidence: { files: ['a.md'] },
+          },
           {
             id: 'A2',
             text: 'original a2',
@@ -105,6 +113,7 @@ describe('updateAssumptionsFromVetoes', () => {
             confidence: 'high',
             blast_radius: 'r2',
             status: 'open',
+            evidence: { files: ['b.md'] },
           },
         ],
       }),
@@ -118,7 +127,15 @@ describe('updateAssumptionsFromVetoes', () => {
 
     const updated = ResolverOutputSchema.parse(JSON.parse(fs.readFileSync(sidecarPath, 'utf8')))
     expect(updated.assumptions).toEqual([
-      { id: 'A1', text: 'narrowed a1', basis: 'default', confidence: 'medium', blast_radius: 'r1', status: 'open' },
+      {
+        id: 'A1',
+        text: 'narrowed a1',
+        basis: 'default',
+        confidence: 'medium',
+        blast_radius: 'r1',
+        status: 'open',
+        evidence: { files: ['a.md'] },
+      },
       {
         id: 'A2',
         text: 'original a2',
@@ -126,6 +143,7 @@ describe('updateAssumptionsFromVetoes', () => {
         confidence: 'high',
         blast_radius: 'r2',
         status: 'vetoed',
+        evidence: { files: ['b.md'] },
       },
     ])
     expect(updated.resolutions).toEqual([
@@ -173,6 +191,7 @@ describe('runVetoUpdater', () => {
             confidence: 'medium',
             blast_radius: 'r',
             status: 'open',
+            evidence: { files: ['c.md'] },
           },
         ],
       }),

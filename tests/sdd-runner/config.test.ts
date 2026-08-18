@@ -73,6 +73,59 @@ describe('loadRunnerConfig', () => {
   })
 })
 
+describe('autonomy block', () => {
+  it('applies safe defaults when the block is omitted', async () => {
+    const dir = makeDir()
+    const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model' })
+    const config = await loadRunnerConfig(configPath)
+    expect(config.autonomy).toEqual({
+      level: 'observe',
+      costCeilingUsd: 5.0,
+      autoExtendMax: 1,
+      deadlineMinutes: undefined,
+      rules: {},
+    })
+  })
+
+  it('parses a full autonomy block', async () => {
+    const dir = makeDir()
+    const configPath = writeConfig(dir, {
+      repoRoot: dir,
+      model: 'test-model',
+      autonomy: {
+        level: 'assist',
+        costCeilingUsd: 2.5,
+        autoExtendMax: 2,
+        deadlineMinutes: 10,
+        rules: { R1: true, R2: false },
+      },
+    })
+    const config = await loadRunnerConfig(configPath)
+    expect(config.autonomy!.level).toBe('assist')
+    expect(config.autonomy!.costCeilingUsd).toBe(2.5)
+    expect(config.autonomy!.autoExtendMax).toBe(2)
+    expect(config.autonomy!.deadlineMinutes).toBe(10)
+    expect(config.autonomy!.rules).toEqual({ R1: true, R2: false })
+  })
+
+  it('parses rules entries naming R4/R5 even though the policy ignores them', async () => {
+    const dir = makeDir()
+    const configPath = writeConfig(dir, {
+      repoRoot: dir,
+      model: 'test-model',
+      autonomy: { rules: { R4: false, R5: false } },
+    })
+    const config = await loadRunnerConfig(configPath)
+    expect(config.autonomy!.rules).toEqual({ R4: false, R5: false })
+  })
+
+  it('rejects an invalid autonomy level', async () => {
+    const dir = makeDir()
+    const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model', autonomy: { level: 'yolo' } })
+    await expect(loadRunnerConfig(configPath)).rejects.toThrow(/config\.json/u)
+  })
+})
+
 describe('modelFor', () => {
   it('returns the per-role override when present, else the default model', async () => {
     const dir = makeDir()

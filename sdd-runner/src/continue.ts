@@ -6,7 +6,7 @@
 import { runGateResume } from './extend-round.js'
 import type { OrchestratorDeps } from './gate-digest.js'
 import { runResume } from './orchestrator.js'
-import type { RunContinueResult } from './orchestrator.js'
+import type { AutonomyOverrides, RunContinueResult } from './orchestrator.js'
 import { listPendingGates, loadRunState, resolveRunId } from './run-state.js'
 
 /**
@@ -16,11 +16,15 @@ import { listPendingGates, loadRunState, resolveRunId } from './run-state.js'
  * to the report. Without an id, discovery picks the single gate-pending run,
  * or lists the candidates when several exist.
  */
-export async function runContinue(deps: OrchestratorDeps, runId: string | null): Promise<RunContinueResult> {
+export async function runContinue(
+  deps: OrchestratorDeps,
+  runId: string | null,
+  overrides: AutonomyOverrides = {},
+): Promise<RunContinueResult> {
   if (runId === null) {
     const picked = await pickContinueRun(deps)
     if (picked === null) return { runId: null, routed: 'list' }
-    return runContinue(deps, picked)
+    return runContinue(deps, picked, overrides)
   }
   const resolved = await resolveRunId(deps.config.workDir, runId)
   const state = await loadRunState(deps.config.workDir, resolved)
@@ -36,7 +40,7 @@ export async function runContinue(deps: OrchestratorDeps, runId: string | null):
     deps.stdout?.(`run ${resolved} is completed — report: sdd-runner report ${resolved}`)
     return { runId: resolved, routed: 'report' }
   }
-  const resumed = await runResume(deps, resolved)
+  const resumed = await runResume(deps, resolved, overrides)
   return {
     runId: resolved,
     routed: 'resume',

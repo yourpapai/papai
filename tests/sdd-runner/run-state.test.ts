@@ -58,6 +58,7 @@ const emptyReplay: ReplayState = {
   perRound: [],
   lastVerdict: null,
   gate: null,
+  autoDecisions: [],
 }
 
 type ArtifactStates = Record<'proposal' | 'specs' | 'design' | 'assumptions' | 'review' | 'tasks', string>

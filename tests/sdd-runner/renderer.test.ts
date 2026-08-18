@@ -35,6 +35,7 @@ const state: ReplayState = {
     dismissed: 0,
   },
   gate: null,
+  autoDecisions: [],
 }
 
 describe('renderPipelineMap', () => {

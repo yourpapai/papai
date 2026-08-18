@@ -53,6 +53,7 @@ const RESOLUTIONS_R1 = {
       confidence: 'medium',
       blast_radius: 'group replies',
       status: 'open',
+      evidence: { files: ['openspec/changes/thing/proposal.md'] },
     },
   ],
 }
@@ -120,6 +121,7 @@ describe('materializeAssumptions', () => {
           confidence: 'low',
           blast_radius: 'one reply',
           status: 'open',
+          evidence: { files: ['openspec/changes/thing/a.md'] },
         },
       ],
     })
@@ -133,6 +135,7 @@ describe('materializeAssumptions', () => {
           confidence: 'high',
           blast_radius: 'whole bot',
           status: 'open',
+          evidence: { files: ['openspec/changes/thing/b.md'] },
         },
       ],
     })

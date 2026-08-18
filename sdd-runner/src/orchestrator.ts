@@ -9,6 +9,8 @@ import path from 'node:path'
 
 import type { AgentLayerDeps } from './agent-layer.js'
 import { deriveChangeName } from './config.js'
+import { resolveAutonomyConfig } from './config.js'
+import type { AutonomyConfig, AutonomyLevel } from './config.js'
 import { runDraft } from './draft.js'
 import type { DepthProfile, EventInput } from './events.js'
 import { buildBus, logPathFor, nowOf, presentGateAt, readReviewResultFromSidecars } from './gate-digest.js'
@@ -30,10 +32,20 @@ export type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
 export { runGateResume } from './extend-round.js'
 export { runContinue } from './continue.js'
 
+export interface AutonomyOverrides {
+  readonly level?: AutonomyLevel
+  readonly deadlineMinutes?: number
+}
+
+function resolveAutonomy(deps: OrchestratorDeps, overrides: AutonomyOverrides = {}): AutonomyConfig {
+  return resolveAutonomyConfig(deps.config, overrides)
+}
+
 export interface StartOptions {
   readonly taskFile: string
   readonly depthOverride?: DepthProfile
   readonly verbosity?: Verbosity
+  readonly autonomy?: AutonomyOverrides
 }
 
 export interface RunResumeResult {
@@ -54,6 +66,7 @@ interface FreshInput {
   readonly taskText: string
   readonly changeName: string
   readonly depthOverride?: DepthProfile
+  readonly autonomy: AutonomyConfig
 }
 
 interface PipelineEnv {
@@ -77,12 +90,18 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
     taskText,
     changeName,
     depthOverride: options.depthOverride,
+    autonomy: resolveAutonomy(deps, options.autonomy),
   })
   const { depth, reviewResult } = await runPlanningStages(env)
   return runPostReviewToGate(env, depth, reviewResult)
 }
 
-export async function runResume(deps: OrchestratorDeps, runId: string): Promise<RunResumeResult> {
+export async function runResume(
+  deps: OrchestratorDeps,
+  runId: string,
+  overrides: AutonomyOverrides = {},
+): Promise<RunResumeResult> {
+  const autonomy = resolveAutonomy(deps, overrides)
   const state = await loadRunState(deps.config.workDir, runId)
   if (state.gate !== null) {
     deps.stdout?.(`run ${runId} awaits a gate decision (gate ${state.gate.version}, ${state.gate.mode})`)
@@ -93,7 +112,23 @@ export async function runResume(deps: OrchestratorDeps, runId: string): Promise<
   const status = await deps.driver.status(state.changeName)
   const resume = deriveResumePoint(state, status.artifacts, replayEvents(logPathFor(state)))
   const depth = state.depth ?? 'S'
-  const env = buildPipelineEnv(deps, state, emit, { taskText: '', changeName: state.changeName, depthOverride: depth })
+  const env = buildPipelineEnv(deps, state, emit, {
+    taskText: '',
+    changeName: state.changeName,
+    depthOverride: depth,
+    autonomy,
+  })
+  return resumeFromPoint(deps, env, resume, depth)
+}
+
+async function resumeFromPoint(
+  deps: OrchestratorDeps,
+  env: PipelineEnv,
+  resume: ReturnType<typeof deriveResumePoint>,
+  depth: DepthProfile,
+): Promise<RunResumeResult> {
+  const { state } = env
+  const runId = state.runId
   if (resume.stage === 'review') {
     const reviewResult = await runReviewStage(env, depth, '')
     state.stage = 'review'
@@ -150,7 +185,8 @@ function buildPipelineEnv(
   const machine = createStageMachine({ emit })
   const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
   const ctx: StageContext = { cwd, changeDir, sidecarDir, emit }
-  return { deps, state, machine, agent, ctx, input }
+  const resolved: OrchestratorDeps = { ...deps, autonomy: input.autonomy }
+  return { deps: resolved, state, machine, agent, ctx, input }
 }
 
 function runPostReviewToGate(

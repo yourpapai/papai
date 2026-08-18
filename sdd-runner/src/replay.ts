@@ -5,7 +5,7 @@
 
 import { readEvents } from './events.js'
 import { STAGE_ORDER } from './events.js'
-import type { DepthProfile, EventInput, FindingCounts, StageId } from './events.js'
+import type { AutoDecisionRule, DepthProfile, EventInput, FindingCounts, StageId } from './events.js'
 
 export interface DigestRecord {
   readonly round: number
@@ -15,6 +15,15 @@ export interface DigestRecord {
   readonly verdict: 'converged' | 'open'
 }
 
+export interface AutoDecisionRecord {
+  readonly rule: AutoDecisionRule
+  readonly decision: 'preview' | 'approve' | 'extend' | 'accept-items' | 'gate'
+  readonly evidenceDigest: string
+  readonly gateVersion: number
+  readonly seq: number
+  readonly ts: string
+}
+
 export interface ReplayState {
   readonly stages: Record<StageId, 'done' | 'active' | 'pending'>
   readonly depth: DepthProfile | null
@@ -22,6 +31,7 @@ export interface ReplayState {
   readonly perRound: readonly DigestRecord[]
   readonly lastVerdict: DigestRecord | null
   readonly gate: { readonly mode: 'early' | 'final'; readonly version: number; readonly answered: boolean } | null
+  readonly autoDecisions: readonly AutoDecisionRecord[]
 }
 
 interface RoundDigest {
@@ -48,6 +58,7 @@ export function initialReplayState(): ReplayState {
     perRound: [],
     lastVerdict: null,
     gate: null,
+    autoDecisions: [],
   }
 }
 
@@ -81,6 +92,18 @@ function foldEvent(state: ReplayState, event: EventInput, pending: Map<number, R
     }
     const perRound = [...state.perRound, record]
     return { ...state, perRound, lastVerdict: record }
+  }
+  if (event.type === 'auto_decision') {
+    const raw: Record<string, unknown> = event
+    const record: AutoDecisionRecord = {
+      rule: event.rule,
+      decision: event.decision,
+      evidenceDigest: event.evidenceDigest,
+      gateVersion: event.gateVersion,
+      seq: typeof raw['seq'] === 'number' ? raw['seq'] : 0,
+      ts: typeof raw['ts'] === 'string' ? raw['ts'] : '',
+    }
+    return { ...state, autoDecisions: [...state.autoDecisions, record] }
   }
   if (event.type === 'gate') {
     if (event.action === 'presented')

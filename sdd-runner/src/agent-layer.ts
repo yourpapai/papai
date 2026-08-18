@@ -48,6 +48,7 @@ export const AssumptionRecordSchema = z.object({
   confidence: z.enum(['high', 'medium', 'low']),
   blast_radius: z.string().min(1),
   status: z.enum(['open', 'confirmed', 'vetoed']),
+  evidence: z.object({ files: z.array(z.string().min(1)).min(1) }),
 })
 export type AssumptionRecord = z.infer<typeof AssumptionRecordSchema>
 

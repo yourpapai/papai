@@ -172,6 +172,7 @@ export function buildResolverPrompt(input: {
     '{"resolutions": [{"id", "class", "resolution": "edited"|"evidence-answered"|"assumed"|"dismissed",',
     ' "outcome"?: string, "justification"?: string}],',
     ' "assumptions": [{"id", "text", "basis": "code-evidence"|"convention"|"default",',
-    ' "confidence": "high"|"medium"|"low", "blast_radius": string, "status": "open"}]}',
+    ' "confidence": "high"|"medium"|"low", "blast_radius": string, "status": "open",',
+    ' "evidence": {"files": ["<repo-relative paths this assumption references, at least one"]]}}]}',
   ].join('\n')
 }

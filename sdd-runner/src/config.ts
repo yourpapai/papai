@@ -19,6 +19,18 @@ export const AgentRoleSchema = z.enum([
 ])
 export type AgentRole = z.infer<typeof AgentRoleSchema>
 
+export const AutonomyLevelSchema = z.enum(['observe', 'assist', 'auto'])
+export type AutonomyLevel = z.infer<typeof AutonomyLevelSchema>
+
+export const AutonomyConfigSchema = z.object({
+  level: AutonomyLevelSchema.default('observe'),
+  costCeilingUsd: z.number().positive().default(5.0),
+  autoExtendMax: z.number().int().nonnegative().default(1),
+  deadlineMinutes: z.number().positive().optional(),
+  rules: z.partialRecord(z.enum(['R1', 'R2', 'R3', 'R4', 'R5']), z.boolean()).default({}),
+})
+export type AutonomyConfig = z.infer<typeof AutonomyConfigSchema>
+
 export const RunnerConfigSchema = z.object({
   repoRoot: z.string().min(1),
   workDir: z.string().min(1).default('.sdd-runner'),
@@ -31,10 +43,44 @@ export const RunnerConfigSchema = z.object({
     })
     .default({ wallClockMs: 1_800_000, inactivityMs: 600_000 }),
   budgetUsd: z.number().positive().optional(),
+  autonomy: AutonomyConfigSchema.default({
+    level: 'observe',
+    costCeilingUsd: 5.0,
+    autoExtendMax: 1,
+    rules: {},
+  }),
 })
 
-export interface RunnerConfig extends Omit<z.infer<typeof RunnerConfigSchema>, 'workDir'> {
+const AUTONOMY_DEFAULTS: AutonomyConfig = {
+  level: 'observe',
+  costCeilingUsd: 5.0,
+  autoExtendMax: 1,
+  deadlineMinutes: undefined,
+  rules: {},
+}
+
+/**
+ * Resolve the effective autonomy config for a process: a CLI `--autonomy` /
+ * `--auto-deadline` override wins per-command, else the parsed config block,
+ * else the safe defaults. The effective cost ceiling normalizes the top-level
+ * `budgetUsd` (previously parsed but unenforced) against
+ * `autonomy.costCeilingUsd` via min() so a stricter run budget can only make
+ * auto-decisions more conservative.
+ */
+export function resolveAutonomyConfig(
+  config: RunnerConfig,
+  overrides: { readonly level?: AutonomyLevel; readonly deadlineMinutes?: number } = {},
+): AutonomyConfig {
+  const base = config.autonomy ?? AUTONOMY_DEFAULTS
+  const level = overrides.level ?? base.level
+  const deadlineMinutes = overrides.deadlineMinutes ?? base.deadlineMinutes
+  const ceiling = Math.min(config.budgetUsd ?? Number.POSITIVE_INFINITY, base.costCeilingUsd)
+  return { ...base, level, deadlineMinutes, costCeilingUsd: ceiling }
+}
+
+export interface RunnerConfig extends Omit<z.infer<typeof RunnerConfigSchema>, 'workDir' | 'autonomy'> {
   readonly workDir: string
+  readonly autonomy?: AutonomyConfig
 }
 
 export async function loadRunnerConfig(configPath: string): Promise<RunnerConfig> {

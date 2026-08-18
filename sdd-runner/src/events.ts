@@ -173,6 +173,21 @@ const HumanEditsEvent = z.object({
   files: z.array(z.string().min(1)).min(1),
 })
 
+export const AutoDecisionRuleSchema = z.enum(['R1', 'R2', 'R3', 'R4', 'R5', 'none'])
+export type AutoDecisionRule = z.infer<typeof AutoDecisionRuleSchema>
+
+export const AutoDecisionKindSchema = z.enum(['preview', 'approve', 'extend', 'accept-items', 'gate'])
+export type AutoDecisionKind = z.infer<typeof AutoDecisionKindSchema>
+
+const AutoDecisionEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('auto_decision'),
+  rule: AutoDecisionRuleSchema,
+  decision: AutoDecisionKindSchema,
+  evidenceDigest: z.string(),
+  gateVersion: z.number().int().positive(),
+})
+
 const EVENT_VARIANTS = [
   ToolUseEvent,
   StepFinishEvent,
@@ -191,6 +206,7 @@ const EVENT_VARIANTS = [
   DepthEvent,
   GateEvent,
   HumanEditsEvent,
+  AutoDecisionEvent,
 ] as const
 
 export const EventInputSchema = z.discriminatedUnion('type', [...EVENT_VARIANTS])
@@ -216,6 +232,7 @@ export const SddEventSchema = z.discriminatedUnion('type', [
   DepthEvent.extend(StampShape),
   GateEvent.extend(StampShape),
   HumanEditsEvent.extend(StampShape),
+  AutoDecisionEvent.extend(StampShape),
 ])
 export type SddEvent = z.infer<typeof SddEventSchema>
 

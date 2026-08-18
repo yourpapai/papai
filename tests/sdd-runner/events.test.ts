@@ -76,6 +76,106 @@ describe('appendEvent + readEvents', () => {
   })
 })
 
+describe('auto_decision event', () => {
+  it('round-trips a preview decision with rule, evidence digest, and gate version', () => {
+    const log = makeLog()
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'auto_decision',
+        rule: 'R1',
+        decision: 'preview',
+        evidenceDigest: 'sha256:abc123',
+        gateVersion: 2,
+      },
+      at('00'),
+    )
+    const events = readEvents(log)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      seq: 1,
+      altitude: 'L2',
+      type: 'auto_decision',
+      rule: 'R1',
+      decision: 'preview',
+      evidenceDigest: 'sha256:abc123',
+      gateVersion: 2,
+    })
+  })
+
+  it('accepts every rule id including none and every decision kind', () => {
+    const log = makeLog()
+    const pairs = [
+      { rule: 'R1', decision: 'preview' },
+      { rule: 'R2', decision: 'approve' },
+      { rule: 'R3', decision: 'extend' },
+      { rule: 'R4', decision: 'accept-items' },
+      { rule: 'R5', decision: 'gate' },
+      { rule: 'none', decision: 'gate' },
+    ] as const
+    pairs.forEach((pair, i) => {
+      appendEvent(
+        log,
+        {
+          altitude: 'L2',
+          type: 'auto_decision',
+          rule: pair.rule,
+          decision: pair.decision,
+          evidenceDigest: 'd',
+          gateVersion: 1,
+        },
+        at(String(i).padStart(2, '0')),
+      )
+    })
+    const events = readEvents(log)
+    expect(events).toHaveLength(pairs.length)
+    pairs.forEach((pair, i) => {
+      expect(events[i]).toMatchObject({ type: 'auto_decision', rule: pair.rule, decision: pair.decision })
+    })
+  })
+
+  it('rejects a malformed auto_decision record', () => {
+    const log = makeLog()
+    expect(() =>
+      appendEvent(
+        log,
+        { altitude: 'L2', type: 'auto_decision', rule: 'R9', decision: 'preview', evidenceDigest: 'd', gateVersion: 1 },
+        at('00'),
+      ),
+    ).toThrow()
+    expect(() =>
+      appendEvent(
+        log,
+        { altitude: 'L2', type: 'auto_decision', rule: 'R1', decision: 'maybe', evidenceDigest: 'd', gateVersion: 1 },
+        at('00'),
+      ),
+    ).toThrow()
+    expect(() =>
+      appendEvent(
+        log,
+        { altitude: 'L2', type: 'auto_decision', rule: 'R1', decision: 'preview', gateVersion: 1 },
+        at('00'),
+      ),
+    ).toThrow()
+    expect(() =>
+      appendEvent(
+        log,
+        { altitude: 'L2', type: 'auto_decision', rule: 'R1', decision: 'preview', evidenceDigest: 'd', gateVersion: 0 },
+        at('00'),
+      ),
+    ).toThrow()
+    expect(fs.existsSync(log)).toBe(false)
+  })
+
+  it('old logs without auto_decision lines still parse unchanged', () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'stage_enter', stage: 'intake' }, at('00'))
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 1 }, at('01'))
+    expect(readEvents(log)).toHaveLength(2)
+  })
+})
+
 describe('L2 semantic events', () => {
   it('accepts a depth-classified event with rationale and source', () => {
     const log = makeLog()
