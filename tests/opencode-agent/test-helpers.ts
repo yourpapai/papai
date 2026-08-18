@@ -42,6 +42,7 @@ import type { ReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
 import { noopReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
+import type { ModelsDevDb } from '../../sdd-runner/src/pricing.js'
 
 /**
  * An Octokit logger that discards every level.
@@ -79,7 +80,7 @@ export const stubConfig = (repoRoot = '/repo'): PipelineConfig => ({
   githubToken: 'token',
   selfLoginOverride: 'agent-bot',
   selfWorkflowName: 'OpenCode Issue Agent',
-  openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
+  openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5', provider: 'openai' },
   commitAuthorName: 'agent',
   commitAuthorEmail: 'agent@example.com',
   checkCommand: 'bun test',
@@ -366,3 +367,14 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
 
   return { deps, io }
 }
+
+/**
+ * A model catalogue with nothing in it, injected wherever a test drives `runCli`.
+ *
+ * The boot path reads models.dev to learn its model's context window, and
+ * `tests/opencode-agent/` must not touch the network. Empty rather than seeded:
+ * these suites assert on the pipeline's behaviour, not on model metadata, and an
+ * empty database is the tier that emits nothing — exactly the config this
+ * pipeline produced before the lookup existed.
+ */
+export const emptyCatalogue = (): Promise<ModelsDevDb> => Promise.resolve({})

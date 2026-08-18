@@ -415,6 +415,66 @@ findings: `ROADMAP.md`.
   it is the one layer that sees a real HTTP status and the only one the review
   loop's subprocesses also pass through; do not add a second retry in the
   adapter, where the status is already gone.
+- **The provider id is a catalogue key, and the transport is not.**
+  `LLM_PROVIDER` (default `openai`) says which models.dev row OpenCode resolves
+  `LLM_MODEL` under; `npm` stays `@ai-sdk/openai-compatible` and wins over the
+  borrowed row's own package in OpenCode's resolution order
+  (`model.provider?.npm ?? provider.npm ?? existingModel?.api.npm`), so naming
+  `anthropic` against a gateway borrows metadata without loading another SDK.
+  It is not cosmetic: a row OpenCode does not find leaves `limit.context` at
+  `0`, and `isOverflow` returns `false` unconditionally at zero — **auto-
+  compaction is off**, with no other symptom — and `reasoning` at `false`, which
+  makes `variants()` return `{}` so no reasoning effort is selectable at all.
+  The id may not contain a slash: `parseModelRef` splits at the **first** one
+  and keeps the whole remainder as the model id, which is what lets a model id
+  contain slashes. `createOpenCodeAgent` logs the resolved reference at `debug`,
+  names only — a CI log is world-readable on a public repository.
+- **A model no catalogue carries is described rather than guessed at, and the
+  description is omitted rather than zeroed.** `model-metadata.ts` resolves what
+  a run knows about its model on a four-rung ladder — `AGENT_MODEL_*` overrides,
+  then the models.dev row, then **nothing emitted**, then OpenCode's own zero
+  defaults — and the third rung is the one to preserve: writing
+  `limit: { context: 0 }` explicitly _pins_ the value that switches
+  auto-compaction off, where an absent key leaves OpenCode's own catalogue merge
+  free to answer. `limit` is emitted on the strength of `context` alone, with an
+  unknown `output` written as `0`, because OpenCode reads a zero output exactly
+  as absent (`?? existingModel?.limit?.output ?? 0`) and `maxOutputTokens` falls
+  back to its own ceiling — a zero _context_ is nothing like that.
+  The reader is **`sdd-runner/src/pricing.ts`**, imported across the workspace
+  boundary one function wide and one direction only: it is already a models.dev
+  client with a disk cache, a bounded fetch and two recorded incident fixes, and
+  the minimality ladder forbids a second copy of all that. Revisit the boundary
+  at a third consumer (papai's own `src/model-context.ts` is the candidate), not
+  before. The lookup runs **after the guardrail door** — a payload the pipeline
+  is about to drop must not pay for a network read — and `catalogueEntry` is the
+  one function permitted to swallow, per the feedback-channel rule above.
+  `buildOpencodeConfig` stays **synchronous** and takes the resolved facts as a
+  field on the settings it already has: it is the single definition serving both
+  the in-process session and the `OPENCODE_CONFIG_CONTENT` the review loop's
+  subprocesses read, and an async builder would fork that. `MainOptions.modelCatalogue`
+  is the seam that keeps the suites off the network; without it every `runCli`
+  test reaches models.dev and times out.
+- **A profile differs by cost as well as by permission, and the effort is set on
+  the profile rather than on the call.** `LLM_MODEL_LIGHT` reaches `plan` — the
+  read-only phases — and `small_model`, and deliberately **not** `propose` or
+  `build`: a weak spec is the input to every later phase, and the gates that would
+  catch one cost wall clock rather than tokens. `AGENT_EFFORT_PLAN` /
+  `AGENT_EFFORT_BUILD` become `agent.<name>.variant`, and config-level is forced
+  rather than preferred — the pinned SDK's prompt body has **no** `variant` field,
+  and the review loop's `opencode run` workers carry no `--agent` and so resolve
+  to `build`, which a per-call setting could never reach. Note the two pins are
+  different versions: `@opencode-ai/sdk@1.18.12` types the config, `opencode-ai@1.18.7`
+  reads it, and it is the **server's** version that decides which agent keys are
+  honoured — its loader merges `model`, `variant`, `options`, `temperature`,
+  `top_p` and `steps`, which the SDK's generated `AgentConfig` under-declares and
+  admits only through its index signature. Effort values are **passed through, not
+  enumerated**: `transform.ts` computes the valid tiers per model from its id and
+  release date, so a list copied here would refuse tiers that work and be wrong on
+  the next model — the loader checks the shape, OpenCode refuses the rest. And
+  `setCacheKey: true` is unconditional: `ProviderTransform` emits a
+  `promptCacheKey` for `@ai-sdk/openai-compatible` only when it is set, and a
+  provider that ignores the field is unaffected, so a knob for it would be
+  ceremony.
 - **The retry budget is refused, never applied-then-regretted.** A `/retry` past
   `maxAttempts` is turned down in `src/triggers.ts` before the signal reaches
   `transition`, so the issue keeps `FAILED` and its `resumeFrom` and raising

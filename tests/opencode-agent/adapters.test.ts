@@ -31,7 +31,13 @@ import type { Logger } from '../../opencode-agent/src/logger.js'
 import { extractJsonObject, parseModelJson } from '../../opencode-agent/src/model-json.js'
 import { composeSystemPrompt, loadPhaseSkills, loadSkills, PHASE_SKILLS } from '../../opencode-agent/src/obra-skills.js'
 import type { ReadSkillFile } from '../../opencode-agent/src/obra-skills.js'
-import { buildOpencodeConfig, modelRef, opencodeConfigEnv } from '../../opencode-agent/src/openai-config.js'
+import {
+  buildOpencodeConfig,
+  modelRef,
+  NO_MODEL_OVERRIDES,
+  NO_MODEL_PROFILES,
+  opencodeConfigEnv,
+} from '../../opencode-agent/src/openai-config.js'
 import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
 import { createOpenCodeAgent, parseModelRef } from '../../opencode-agent/src/opencode-adapter.js'
 import type { OpenCodeAgent, OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
@@ -344,11 +350,45 @@ describe('createOpenCodeAgent', () => {
     },
   })
 
+  /**
+   * Which catalogue row a run resolved is the one thing that says whether the
+   * model has a context window at all, and it is invisible from the outside: a
+   * `limit.context` of 0 switches auto-compaction off silently. So the run's own
+   * log names the reference it opened with, and never the credential.
+   */
+  test('names the resolved provider and model at debug, and no credential', async () => {
+    const debugs: Array<{ meta: unknown; message: string }> = []
+    const log: Logger = {
+      ...silentLog,
+      debug: (meta: unknown, message: string): void => void debugs.push({ meta, message }),
+    }
+
+    await createOpenCodeAgent({
+      directory: '/repo',
+      openai: {
+        apiKey: 'sk-secret',
+        baseUrl: 'https://gateway.test/v1',
+        model: 'claude-sonnet-4-6',
+        provider: 'anthropic',
+      },
+      sessionTitle: 'issue-1',
+      log,
+      connect: () => Promise.resolve(fakeConnection({ bodies: [], closed: 0 }, { data: { parts: [] } })),
+    })
+
+    expect(debugs).toContainEqual({
+      meta: { providerID: 'anthropic', modelID: 'claude-sonnet-4-6' },
+      message: 'Resolved the model reference OpenCode will look up',
+    })
+    expect(JSON.stringify(debugs)).not.toContain('sk-secret')
+    expect(JSON.stringify(debugs)).not.toContain('gateway.test')
+  })
+
   test('sends the model, system prompt and agent profile through', async () => {
     const sink = { bodies: [] as SdkPromptBody[], closed: 0 }
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5', provider: 'openai' },
       sessionTitle: 'issue-1',
       log: silentLog,
       connect: () => Promise.resolve(fakeConnection(sink, { data: { parts: [{ type: 'text', text: 'done' }] } })),
@@ -381,7 +421,7 @@ describe('createOpenCodeAgent', () => {
     }
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () => Promise.resolve(fakeConnection(sink, reply)),
@@ -394,7 +434,7 @@ describe('createOpenCodeAgent', () => {
     const sink = { bodies: [] as SdkPromptBody[], closed: 0 }
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () => Promise.resolve(fakeConnection(sink, { data: undefined, error: { message: 'rate limited' } })),
@@ -408,7 +448,7 @@ describe('createOpenCodeAgent', () => {
 
     const attempt = createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () =>
@@ -434,7 +474,7 @@ describe('createOpenCodeAgent', () => {
   const hangingAgent = (timeoutMs: number): Promise<OpenCodeAgent> =>
     createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       timeoutMs,
@@ -463,7 +503,7 @@ describe('createOpenCodeAgent', () => {
     })
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: { ...silentLog, info: (_meta, message): void => void lines.push(message) },
       connect: () =>
@@ -492,7 +532,7 @@ describe('createOpenCodeAgent', () => {
   test('reports what the session has spent, from the server', async () => {
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () =>
@@ -519,7 +559,7 @@ describe('createOpenCodeAgent', () => {
     const warnings: string[] = []
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: { ...silentLog, warn: (_meta, message): void => void warnings.push(message) },
       connect: () =>
@@ -543,7 +583,7 @@ describe('createOpenCodeAgent', () => {
     // Reporting must not be able to fail the work it reports on.
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () =>
@@ -589,7 +629,7 @@ describe('createOpenCodeAgent', () => {
 
     return createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () =>
@@ -673,7 +713,7 @@ describe('createOpenCodeAgent', () => {
   ): Promise<OpenCodeAgent> =>
     createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       connect: () =>
@@ -745,7 +785,7 @@ describe('createOpenCodeAgent', () => {
   const abortingAgent = (answer: () => Promise<unknown>, log = silentLog): Promise<OpenCodeAgent> =>
     createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log,
       connect: () =>
@@ -805,7 +845,7 @@ describe('createOpenCodeAgent', () => {
   test('a zero timeout means no bound, not an instant failure', async () => {
     const agent = await createOpenCodeAgent({
       directory: '/repo',
-      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm' },
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'm', provider: 'openai' },
       sessionTitle: 't',
       log: silentLog,
       timeoutMs: 0,
@@ -1083,7 +1123,7 @@ const inlinedConfig = (settings: OpenAiSettings): unknown =>
   JSON.parse(opencodeConfigEnv(settings)['OPENCODE_CONFIG_CONTENT'] ?? '{}')
 
 describe('openai-config', () => {
-  const settings = { apiKey: 'sk-secret', baseUrl: 'https://gateway.test/v1', model: 'gpt-5' }
+  const settings = { apiKey: 'sk-secret', baseUrl: 'https://gateway.test/v1', model: 'gpt-5', provider: 'openai' }
 
   test('pins provider, endpoint and model in one config', () => {
     const config = buildOpencodeConfig(settings)
@@ -1092,6 +1132,9 @@ describe('openai-config', () => {
     expect(config.provider?.['openai']?.options).toEqual({
       apiKey: 'sk-secret',
       baseURL: 'https://gateway.test/v1',
+      // Unconditional: a provider that ignores the field is unaffected, and a
+      // long phase otherwise pays full input price every turn.
+      setCacheKey: true,
     })
     expect(config.provider?.['openai']?.models).toHaveProperty('gpt-5')
   })
@@ -1482,6 +1525,13 @@ describe('config', () => {
       apiKey: 'sk-test',
       baseUrl: 'https://api.openai.com/v1',
       model: 'gpt-5',
+      // `LLM_PROVIDER` is unset here, and its default is the id this pipeline
+      // hardcoded before the knob existed.
+      provider: 'openai',
+      // Nothing declared by hand, which is what lets the catalogue answer.
+      overrides: NO_MODEL_OVERRIDES,
+      // And no profile configured, so every profile keeps the main model.
+      profiles: NO_MODEL_PROFILES,
     })
   })
 

@@ -35,13 +35,52 @@ export const CostSchema = z.object({
 export type Cost = z.infer<typeof CostSchema>
 
 /**
+ * A model's declared context window and output cap, both optional for the reason the whole entry
+ * is lenient — and read by `opencode-agent`, where a missing `context` is not cosmetic: OpenCode's
+ * `isOverflow` opens with `if (model.limit.context === 0) return false`, so a model with no
+ * declared window never auto-compacts and grows until the provider rejects the request.
+ */
+export const LimitSchema = z.object({
+  context: z.number().optional(),
+  output: z.number().optional(),
+})
+export type Limit = z.infer<typeof LimitSchema>
+
+/**
  * `cost` is optional because 419 of the entries models.dev currently publishes have no cost at
  * all (local and open-weight models, mostly). Requiring it made a single unpriced model reject
  * the ENTIRE database — `loadDb` caught the parse error and returned `{}`, so every price
  * silently resolved to unknown. `resolveCost` was already written to skip `cost === undefined`,
  * so the schema was simply stricter than its only consumer.
+ *
+ * The capability fields beside it are that lesson applied one step further. They are `.catch`,
+ * not merely `.optional`: a malformed value degrades to `undefined` for that one field instead of
+ * failing its entry — and, since `loadDb` swallows a parse error and answers `{}`, failing an
+ * entry means losing the other eighteen hundred. `cost` deliberately keeps the weaker form; its
+ * incident was about a field being *absent*, its one consumer already handles `undefined`, and
+ * widening it here would hide a real shape change from the reader that depends on it.
+ *
+ * Unknown fields are dropped rather than rejected — models.dev publishes a dozen more per entry
+ * (`knowledge`, `modalities`, `open_weights`, …) and this reader wants none of them.
  */
-const ModelEntrySchema = z.object({ cost: CostSchema.optional() })
+const ModelEntrySchema = z.object({
+  cost: CostSchema.optional(),
+  limit: LimitSchema.optional().catch(undefined),
+  reasoning: z.boolean().optional().catch(undefined),
+  tool_call: z.boolean().optional().catch(undefined),
+  temperature: z.boolean().optional().catch(undefined),
+  attachment: z.boolean().optional().catch(undefined),
+})
+
+/**
+ * One model's catalogue row, as much of it as any consumer here reads.
+ *
+ * Exported because it is the shape `opencode-agent` splices into the OpenCode provider config it
+ * emits — the field names are models.dev's and OpenCode's alike, which is what makes the splice a
+ * copy rather than a translation.
+ */
+export type ModelEntry = z.infer<typeof ModelEntrySchema>
+
 const ProviderSchema = z.object({ models: z.record(z.string(), ModelEntrySchema) })
 export const ModelsDevDbSchema = z.record(z.string(), ProviderSchema)
 export type ModelsDevDb = z.infer<typeof ModelsDevDbSchema>
@@ -83,9 +122,21 @@ function medianDefined(values: (number | undefined)[]): number | undefined {
   return median(present)
 }
 
-export function resolveCost(modelId: string, db: ModelsDevDb): ResolvedCost | null {
+/**
+ * One model's catalogue row, or `null` when the database carries no such provider or model.
+ *
+ * The whole entry rather than one field of it, because the second consumer wants the capability
+ * half: `opencode-agent` copies `limit`, `reasoning`, `tool_call`, `temperature` and `attachment`
+ * straight into the OpenCode provider config it emits.
+ */
+export function lookupModel(modelId: string, db: ModelsDevDb): ModelEntry | null {
   const { providerID, modelID } = parseModelId(modelId)
-  const primary = db[providerID]?.models[modelID]?.cost
+  return db[providerID]?.models[modelID] ?? null
+}
+
+export function resolveCost(modelId: string, db: ModelsDevDb): ResolvedCost | null {
+  const { modelID } = parseModelId(modelId)
+  const primary = lookupModel(modelId, db)?.cost
   if (primary !== undefined && isPriced(primary)) {
     return { ...primary, source: 'primary' }
   }

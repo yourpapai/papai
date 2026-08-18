@@ -1512,6 +1512,7 @@ cannot drift.
 | `LLM_API_KEY`                              | yes      | —                                    | Model credentials                                      |
 | `LLM_MODEL`                                | yes      | —                                    | Model name, e.g. `gpt-5`                               |
 | `LLM_BASE_URL`                             | yes      | —                                    | Any OpenAI-compatible endpoint                         |
+| `LLM_PROVIDER`                             | no       | `openai`                             | models.dev id `LLM_MODEL` resolves under; see below    |
 | `GITHUB_TOKEN`                             | no       | the job's own `secrets.GITHUB_TOKEN` | Comments, branches, pull requests; see below           |
 | `GITHUB_REPOSITORY`                        | no       | the job's own `owner/repo`           | `owner/repo`; see below                                |
 | `AGENT_SELF_LOGIN`                         | no       | derived from the token               | Login the agent posts as; see above                    |
@@ -1536,6 +1537,12 @@ cannot drift.
 | `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                             | Held back from the job so a time stop can report       |
 | `AGENT_WRAP_UP_MS`                         | no       | `120000`                             | The model's slice of a stop: finish up and hand over   |
 | `AGENT_MAX_TOKENS`                         | no       | `5000000`                            | Model tokens one issue may spend, across all its jobs  |
+| `AGENT_MODEL_CONTEXT`                      | no       | unset — ask the catalogue            | Context window, for a model no catalogue carries       |
+| `AGENT_MODEL_OUTPUT`                       | no       | unset — ask the catalogue            | Output cap, same case                                  |
+| `AGENT_MODEL_REASONING`                    | no       | unset — ask the catalogue            | `true`/`false`: does this model support reasoning      |
+| `LLM_MODEL_LIGHT`                          | no       | unset — the main model               | Cheaper model for the read-only phases; see below      |
+| `AGENT_EFFORT_PLAN`                        | no       | unset — OpenCode's default           | Reasoning effort for the read-only profile             |
+| `AGENT_EFFORT_BUILD`                       | no       | unset — OpenCode's default           | Reasoning effort for implement / CI-fix / review       |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `opencode-agent[bot]`                | Commit identity                                        |
 | `AGENT_LABEL_PREFIX`                       | no       | `agent:`                             | Namespace for the status labels; `none` disables them  |
 | `AGENT_LOG_LEVEL`                          | no       | `info`                               | `debug`, `info`, `warn`, `error`                       |
@@ -1549,6 +1556,86 @@ first model call instead of at config load. A default of
 forgotten value indistinguishable from a deliberate one; this pipeline is built
 around one arbitrary configured endpoint, not OpenAI specifically, so there is
 no endpoint that is right unless someone said so.
+
+`LLM_PROVIDER` is a **catalogue key, not a transport**, and it is the one
+variable here whose default is wrong for most gateways. OpenCode builds its
+model database from models.dev and merges this pipeline's config provider _over_
+it, keyed by this id and then by `LLM_MODEL`. A row it does not find contributes
+nothing, and the two defaults that follow are silent:
+
+- `limit.context` becomes `0`, and `isOverflow` opens with
+  `if (model.limit.context === 0) return false` — so **auto-compaction never
+  fires** and a long implement turn grows until the provider rejects it.
+- `reasoning` becomes `false`, and `ProviderTransform.variants()` opens with
+  `if (!model.capabilities.reasoning) return {}` — so no reasoning effort is
+  selectable, for any phase.
+
+Leave it unset when `LLM_MODEL` is an OpenAI model id. Set it to the model's own
+provider — `anthropic`, `alibaba`, `zai`, `deepseek` — when `LLM_BASE_URL` is a
+gateway serving somebody else's model, so the lookup reaches a real row. The
+transport is unaffected either way: the emitted config pins
+`npm: "@ai-sdk/openai-compatible"`, which wins over the borrowed row's own
+package in OpenCode's resolution order, and the key still reaches the endpoint
+through the provider proxy. The run log names the reference it resolved at
+`debug`.
+
+A model no catalogue carries at all — a self-hosted alias, a fine-tune — has no
+id that helps here. The three `AGENT_MODEL_*` variables state those facts
+outright, and they sit at the top of a four-rung ladder:
+
+```
+AGENT_MODEL_CONTEXT / _OUTPUT / _REASONING   an operator said so → always wins
+        ↓ (unset)
+the models.dev row for <LLM_PROVIDER>/<LLM_MODEL>
+        ↓ (miss, or the catalogue could not be read)
+nothing emitted            → OpenCode's own catalogue merge stays free to answer
+        ↓ (miss there too)
+OpenCode's zero defaults   → compaction off, no effort variants
+```
+
+Each rung is per field, so declaring only `AGENT_MODEL_CONTEXT` still takes the
+output cap and the capability flags from the row. An unresolved fact is
+**omitted** from the emitted config rather than written as a zero — a written
+`limit.context` of `0` would pin the broken value instead of leaving the merge to
+answer.
+
+Reading the catalogue is best-effort and bounded: the run fetches
+`https://models.dev/api.json` once on the boot path through the same cached,
+timeout-bounded reader `sdd-runner` uses, after the guardrail door so a payload
+the pipeline is about to drop never pays for it. An unreachable host warns and
+falls to the next rung; it never fails a run. The `debug` line names the model,
+the resolved context window and **which rung answered**, so "why did this run
+never compact" is a log read rather than a rerun.
+
+The pipeline runs three **agent profiles**, which already differ by what they
+may do and now differ by what they cost:
+
+| Profile   | Phases                                                          | Model             | Effort               |
+| --------- | --------------------------------------------------------------- | ----------------- | -------------------- |
+| `plan`    | triage, comment classification, `/ask`, both review gates       | `LLM_MODEL_LIGHT` | `AGENT_EFFORT_PLAN`  |
+| `propose` | drafting proposal / spec / design / tasks                       | `LLM_MODEL`       | —                    |
+| `build`   | implement, CI fix, and the review loop's `opencode run` workers | `LLM_MODEL`       | `AGENT_EFFORT_BUILD` |
+
+`LLM_MODEL_LIGHT` is a model on the **same** endpoint and key — not a second
+provider — and it reaches `plan` and OpenCode's `small_model` (title and summary
+generation) and nothing else. `propose` and `build` deliberately keep the main
+model: a weak spec is the input to every later phase, and the gates that would
+catch one cost wall clock rather than tokens.
+
+The effort variables take whatever tier the model offers — `minimal`, `none`,
+`low`, `medium`, `high`, `xhigh`, `max` depending on the family and its release
+date. They are **not** validated against a list here, because the valid set is
+computed per model: a list copied into this pipeline would reject tiers that work
+and be wrong on the next model. A malformed value is refused at load; an
+unknown-but-well-formed one is refused by OpenCode at the first prompt, which is
+where that knowledge lives. An effort tier only exists at all when the model is
+known to support reasoning — see `LLM_PROVIDER` and `AGENT_MODEL_REASONING`
+above.
+
+Both are set as `agent.<name>.variant` in the generated config rather than per
+call, which is what makes them reach the review loop: it shells out to
+`opencode run` with no `--agent`, so its workers resolve to `build` and pick the
+variant up from the same config the in-process session reads.
 
 `GITHUB_TOKEN` and `GITHUB_REPOSITORY` need no operator setup on GitHub
 Actions, unlike the variables above. `GITHUB_REPOSITORY` is one of the

@@ -10,9 +10,12 @@ import type { PipelineConfig } from './config-shape.js'
 import {
   boundedInt,
   boundedIntOrNull,
+  boolOrNull,
   buildDiffLimits,
+  CONTEXT_RANGE,
   DEFAULT_REVIEW_POOL_SIZE,
   DEFAULT_TURN_TIMEOUT_MS,
+  effortTier,
   EPOCH_MS_RANGE,
   JOB_MINUTES_RANGE,
   labelPrefix,
@@ -20,8 +23,10 @@ import {
   logKey,
   optional,
   optionalOrNull,
+  OUTPUT_RANGE,
   parseChecks,
   POOL_RANGE,
+  providerId,
   required,
   RESERVE_RANGE,
   ROUND_RANGE,
@@ -30,6 +35,7 @@ import {
   WRAP_UP_RANGE,
 } from './config-values.js'
 import type { Env } from './config-values.js'
+import { DEFAULT_PROVIDER_ID } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import { parseRepository } from './repository.js'
 
@@ -67,6 +73,27 @@ export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
   apiKey: required(env, 'LLM_API_KEY'),
   baseUrl: required(env, 'LLM_BASE_URL'),
   model: required(env, 'LLM_MODEL'),
+  // Optional and defaulted, unlike the three above, because the default is
+  // exactly today's behaviour: `openai` is the id the pipeline hardcoded before
+  // this knob existed, so an unset variable emits the same config it always did.
+  provider: providerId(env, 'LLM_PROVIDER', DEFAULT_PROVIDER_ID),
+  // Read as three separate absences rather than one defaulted block: each is a
+  // fact about somebody else's server that only an operator can state, and a
+  // guessed default is either a window that compacts every turn or one that
+  // never compacts at all.
+  overrides: {
+    context: boundedIntOrNull(env, 'AGENT_MODEL_CONTEXT', CONTEXT_RANGE),
+    output: boundedIntOrNull(env, 'AGENT_MODEL_OUTPUT', OUTPUT_RANGE),
+    reasoning: boolOrNull(env, 'AGENT_MODEL_REASONING'),
+  },
+  // Which profile gets which model and how much effort. All three absent by
+  // default, so a repository that sets none of them emits the config it always
+  // did — the light model is only the read-only profile's, never `build`'s.
+  profiles: {
+    light: optionalOrNull(env, 'LLM_MODEL_LIGHT'),
+    planEffort: effortTier(env, 'AGENT_EFFORT_PLAN'),
+    buildEffort: effortTier(env, 'AGENT_EFFORT_BUILD'),
+  },
 })
 
 /** Loader roots, first-hit-wins (D11): in-repo OpenSpec trees first, then the pinned superpowers checkout. */

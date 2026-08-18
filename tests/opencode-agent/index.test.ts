@@ -18,6 +18,7 @@ import { createLogger, createPipelineLogger } from '../../opencode-agent/src/log
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgentOptions } from '../../opencode-agent/src/opencode-adapter.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { emptyCatalogue } from './test-helpers.js'
 
 /**
  * The transcript's wiring through the CLI: created only when the run has a
@@ -85,6 +86,7 @@ describe('runCli transcript lifecycle', () => {
     const { log, lines } = recording('info', config)
 
     await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment', '--repo-root', repoRoot],
       env: { ...ENV },
       logger: log,
@@ -101,6 +103,7 @@ describe('runCli transcript lifecycle', () => {
     const live = { ...ENV, AGENT_LOG_KEY: KEY_B64 }
 
     await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment', '--repo-root', repoRoot],
       env: live,
       logger: createLogger({ level: 'error', sink: () => {} }),
@@ -124,6 +127,7 @@ describe('runCli transcript lifecycle', () => {
       const config = loadConfig({ ...ENV, ...extra }, repoRoot)
       const { log, lines } = recording('info', config)
       await runCli({
+        modelCatalogue: emptyCatalogue,
         argv: ['--event-path', eventPath, '--event-name', 'issue_comment', '--repo-root', repoRoot],
         env: { ...ENV, ...extra },
         logger: log,

@@ -15,7 +15,7 @@ import { createLogger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { REPLY_COMMENT_OUTPUT, REPORTED_OUTPUT } from '../../opencode-agent/src/step-output.js'
-import { silentOctokitLog } from './test-helpers.js'
+import { emptyCatalogue, silentOctokitLog } from './test-helpers.js'
 
 const workDir = await mkdtemp(path.join(tmpdir(), 'opencode-agent-cli-'))
 
@@ -340,6 +340,7 @@ describe('runCli', () => {
     })
 
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -367,6 +368,7 @@ describe('runCli', () => {
     }
 
     await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: live,
       logger: silentLogger,
@@ -406,6 +408,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_TOKEN: token },
       logger: silentLogger,
@@ -437,6 +440,7 @@ describe('runCli', () => {
 
     const github = recordPosts([])
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment', '--repo-root', workDir],
       env,
       logger: silentLogger,
@@ -473,6 +477,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -516,6 +521,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -572,6 +578,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_RUN_ID: '1482', AGENT_MAX_TOKENS: '50000' },
       logger: silentLogger,
@@ -620,6 +627,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, AGENT_MAX_TOKENS: '50000' },
       logger: silentLogger,
@@ -650,6 +658,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, AGENT_LABEL_PREFIX: 'none' },
       logger: silentLogger,
@@ -682,6 +691,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -716,6 +726,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -761,6 +772,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_OUTPUT: output.path },
       logger: silentLogger,
@@ -794,6 +806,7 @@ describe('runCli', () => {
     })
 
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_OUTPUT: output.path },
       logger: silentLogger,
@@ -833,6 +846,7 @@ describe('runCli', () => {
 
     const github = recordPosts(prior)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env },
       logger: silentLogger,
@@ -860,6 +874,7 @@ describe('runCli', () => {
     }
 
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -906,6 +921,7 @@ describe('runCli', () => {
 
     const github = recordPosts(cancelled)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -932,6 +948,7 @@ describe('runCli', () => {
 
     const github = recordPosts(cancelled)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env: { ...env, GITHUB_OUTPUT: output.path },
       logger: silentLogger,
@@ -960,6 +977,7 @@ describe('runCli', () => {
 
     const github = recordPosts(cancelled, forked)
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
       env,
       logger: silentLogger,
@@ -979,6 +997,7 @@ describe('runCli', () => {
     const eventPath = await writeEvent('dispatch', { action: 'requested', sender: { login: 'maintainer' } })
 
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'workflow_dispatch'],
       env,
       logger: silentLogger,
@@ -996,6 +1015,7 @@ describe('runCli', () => {
     })
 
     const result = await runCli({
+      modelCatalogue: emptyCatalogue,
       argv: ['--event-path', eventPath, '--event-name', 'workflow_run'],
       env,
       logger: silentLogger,
