@@ -97,10 +97,10 @@ describe('parseCliArgs', () => {
   })
 
   it('reports an empty value when a value-taking flag ends the args', () => {
-    expect(() => parseCliArgs(['start', 'task.md', '--autonomy'])).toThrow('invalid --autonomy: ')
-    expect(() => parseCliArgs(['start', 'task.md', '--auto-deadline'])).toThrow('invalid --auto-deadline: ')
-    expect(() => parseCliArgs(['start', 'task.md', '--depth'])).toThrow('invalid --depth: ')
-    expect(() => parseCliArgs(['start', 'task.md', '--verbosity'])).toThrow('invalid --verbosity: ')
+    expect(() => parseCliArgs(['start', 'task.md', '--autonomy'])).toThrow(/invalid --autonomy: $/u)
+    expect(() => parseCliArgs(['start', 'task.md', '--auto-deadline'])).toThrow(/invalid --auto-deadline: $/u)
+    expect(() => parseCliArgs(['start', 'task.md', '--depth'])).toThrow(/invalid --depth: $/u)
+    expect(() => parseCliArgs(['start', 'task.md', '--verbosity'])).toThrow(/invalid --verbosity: $/u)
   })
 
   it('parses standard flags that come before the autonomy flags', () => {
@@ -475,6 +475,33 @@ describe('audit and gate reopen verbs', () => {
     })
     expect(() => parseCliArgs(['gate', 'reopen', 'run-1', '--gate', 'x'])).toThrow(/invalid --gate/u)
     expect(() => parseCliArgs(['gate', 'reopen', 'run-1'])).toThrow(/--gate/u)
+  })
+
+  it('gate reopen requires a run id and rejects unknown flags naming them', () => {
+    expect(() => parseCliArgs(['gate', 'reopen'])).toThrow('gate reopen requires a run id')
+    expect(() => parseCliArgs(['gate', 'reopen', 'run-1', '--bogus'])).toThrow('unknown flag: --bogus')
+  })
+
+  it('gate reopen rejects zero and negative gate versions', () => {
+    expect(() => parseCliArgs(['gate', 'reopen', 'run-1', '--gate', '0'])).toThrow('invalid --gate: 0')
+    expect(() => parseCliArgs(['gate', 'reopen', 'run-1', '--gate', '-1'])).toThrow('invalid --gate: -1')
+  })
+
+  it('gate reopen carries no decision flags in its parsed shape', () => {
+    expect(parseCliArgs(['gate', 'reopen', 'run-1', '--gate', '3'])).toStrictEqual({
+      subcommand: 'gate',
+      gateVerb: 'reopen',
+      runId: 'run-1',
+      reopenGateVersion: 3,
+      confirmAll: false,
+      abort: false,
+      extend: false,
+      vetoes: [],
+    })
+  })
+
+  it('audit rejects extra flags as unknown', () => {
+    expect(() => parseCliArgs(['audit', 'run-1', '--bogus'])).toThrow('unknown flag: --bogus')
   })
 
   it('main routes audit to harness.buildAuditReport output', async () => {

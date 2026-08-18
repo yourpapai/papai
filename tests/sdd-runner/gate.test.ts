@@ -13,6 +13,7 @@ import type { EventInput } from '../../sdd-runner/src/events.js'
 import type { ChangeDigest } from '../../sdd-runner/src/gate-digest-extract.js'
 import { presentGateAt } from '../../sdd-runner/src/gate-digest.js'
 import {
+  detectHandEdits,
   presentGate,
   resumeGate,
   runGateReopen,
@@ -21,7 +22,7 @@ import {
 } from '../../sdd-runner/src/gate.js'
 import type { GateDeps } from '../../sdd-runner/src/gate.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
-import { createRunState, loadRunState } from '../../sdd-runner/src/run-state.js'
+import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 
 const NULL_DIGEST: ChangeDigest = { what: null, why: null, touches: null, hasTasks: false }
 
@@ -644,5 +645,106 @@ describe('gate reopen (10.2)', () => {
       version: 2,
     })
     await expect(runGateReopen(deps, workDir, runId, 1)).rejects.toThrow(/latest/u)
+  })
+
+  it('refuses when the run has no answered gate at all', async () => {
+    const { workDir, runId, deps, ...rest } = await seedSettledGate()
+    void rest
+    const logPath = path.join(workDir, 'runs', runId, 'events.ndjson')
+    fs.writeFileSync(
+      logPath,
+      [
+        JSON.stringify({
+          altitude: 'L2',
+          type: 'gate',
+          action: 'presented',
+          mode: 'final',
+          version: 1,
+          seq: 1,
+          ts: '2026-01-01T00:00:00.000Z',
+        }),
+      ].join('\n') + '\n',
+    )
+    await expect(runGateReopen(deps, workDir, runId, 1)).rejects.toThrow(/no settled gate/u)
+  })
+
+  it('refuses when the settled gate markdown file is missing from disk', async () => {
+    const { workDir, runId, deps } = await seedSettledGate()
+    fs.rmSync(path.join(workDir, 'runs', runId, 'gate-1.md'))
+    await expect(runGateReopen(deps, workDir, runId, 1)).rejects.toThrow(/does not exist/u)
+  })
+
+  it('re-arms deadline fields: a state carrying a stale deadline is cleared on reopen', async () => {
+    const { workDir, runId, deps } = await seedSettledGate()
+    const state = await loadRunState(workDir, runId)
+    state.gateDeadlineAt = '2026-01-01T00:00:00.000Z'
+    state.gateDeadlineReArmed = true
+    await saveRunState(state)
+    await runGateReopen(deps, workDir, runId, 1)
+    const reopened = await loadRunState(workDir, runId)
+    expect(reopened.gateDeadlineAt).toBeNull()
+    expect(reopened.gateDeadlineReArmed).toBe(false)
+  })
+
+  it('unchecks every checked box before the response section and none after it', async () => {
+    const { workDir, runId, deps } = await seedSettledGate()
+    const gatePath = path.join(workDir, 'runs', runId, 'gate-1.md')
+    fs.writeFileSync(
+      gatePath,
+      [
+        '<!-- gate-1.md -->',
+        '',
+        '- [x] A1 digest box',
+        'x - [x] not line-anchored prose',
+        '',
+        '## Gate response',
+        '',
+        '- [x] A1 answered box',
+        '',
+      ].join('\n'),
+    )
+    await runGateReopen(deps, workDir, runId, 1)
+    const fresh = fs.readFileSync(path.join(workDir, 'runs', runId, 'gate-2.md'), 'utf8')
+    expect(fresh).toContain('- [ ] A1 digest box')
+    expect(fresh).not.toContain('## Gate response')
+    expect(fresh).not.toContain('A1 answered box')
+    expect(fresh).toContain('x - [x] not line-anchored prose')
+    expect(fresh.endsWith('\n')).toBe(true)
+  })
+
+  it('keeps the digest verbatim when no Gate response section exists', async () => {
+    const { workDir, runId, deps } = await seedSettledGate()
+    const gatePath = path.join(workDir, 'runs', runId, 'gate-1.md')
+    fs.writeFileSync(gatePath, ['<!-- gate-1.md -->', '', '- [x] A1 keep me checked', ''].join('\n'))
+    await runGateReopen(deps, workDir, runId, 1)
+    const fresh = fs.readFileSync(path.join(workDir, 'runs', runId, 'gate-2.md'), 'utf8')
+    expect(fresh).toContain('- [ ] A1 keep me checked')
+    expect(fresh.endsWith('\n')).toBe(true)
+  })
+
+  it('hashes specs/ markdown into the fresh hash set and skips missing artifacts', async () => {
+    const { workDir, runId, deps } = await seedSettledGate()
+    const changeDir = path.join(deps.config.repoRoot, 'openspec', 'changes', 'add-thing')
+    fs.mkdirSync(path.join(changeDir, 'specs', 'thing'), { recursive: true })
+    fs.writeFileSync(path.join(changeDir, 'specs', 'thing', 'spec.md'), '## ADDED Requirements\n')
+    await runGateReopen(deps, workDir, runId, 1)
+    const hashesJson = fs.readFileSync(path.join(workDir, 'runs', runId, 'gate-hashes-2.json'), 'utf8')
+    const specRel = path.join('specs', 'thing', 'spec.md')
+    expect(hashesJson).toContain('proposal.md')
+    expect(hashesJson).toContain(specRel)
+    expect(hashesJson).not.toContain('design.md')
+  })
+
+  it('detectHandEdits flags only files whose hash changed or appeared', () => {
+    const before = { 'proposal.md': 'h1', 'design.md': 'h2' }
+    const after = { 'proposal.md': 'h1-changed', 'design.md': 'h2', 'tasks.md': 'new' }
+    expect(detectHandEdits(before, after)).toEqual(['proposal.md', 'tasks.md'])
+  })
+
+  it('latestSettledGate ignores presented events: only answered ones count', async () => {
+    const { workDir, runId, deps } = await seedSettledGate()
+    const logPath = path.join(workDir, 'runs', runId, 'events.ndjson')
+    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 3 })
+    await expect(runGateReopen(deps, workDir, runId, 1)).resolves.toMatchObject({ gateVersion: 2 })
   })
 })

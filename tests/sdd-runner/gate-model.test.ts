@@ -286,6 +286,25 @@ describe('parseGateResponse → RUN 1 MORE (extend directive)', () => {
       expect(() => parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'early' })).toThrow(/line/u)
     }
   })
+
+  it('accepts an indented and trailing-space → RUN 1 MORE line', () => {
+    const md = '## Early gate\n\n  → RUN 1 MORE  \n'
+    expect(parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'early' }).extend).toBe(true)
+  })
+
+  it('a RUN-like payload after a blocker throws rather than becoming an answer', () => {
+    const md = '## Final gate\n\nB1 no rollback\n→ RUN something else\n'
+    expect(() => parseGateResponse(md, { assumptions: [], blockers: [blocker()], gateMode: 'final' })).toThrow(
+      /RUN directive not recognized/u,
+    )
+  })
+
+  it('ignores a mid-line marker like x → RUN 1 MORE instead of extending', () => {
+    const md = '## Early gate\n\nx → RUN 1 MORE\n'
+    const response = parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'early' })
+    expect(response.extend).toBe(false)
+    expect(response.approved).toBe(true)
+  })
 })
 
 describe('decided-by suffix recognition (D4)', () => {
@@ -348,5 +367,163 @@ describe('Auto-decision preview strip (D3 step 3)', () => {
   it('leaves files without a preview section untouched', () => {
     const md = 'ABORT\n'
     expect(parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'final' }).abort).toBe(true)
+  })
+})
+
+describe('parseGateResponse shape and anchor hardening', () => {
+  it('ABORT is recognized only on its own line, indented or not', () => {
+    expect(parseGateResponse('ABORT', { assumptions: [], blockers: [] }).abort).toBe(true)
+    expect(parseGateResponse('  ABORT  ', { assumptions: [], blockers: [] }).abort).toBe(true)
+    expect(parseGateResponse('we ABORT now', { assumptions: [], blockers: [] }).abort).toBe(false)
+    expect(parseGateResponse('ABORTED', { assumptions: [], blockers: [] }).abort).toBe(false)
+  })
+
+  it('accepts multi-digit assumption, blocker, and finding ids', () => {
+    const md = '## Gate\n\n- [x] A12\n- [ ] F34\n→ narrow it\nB56 gap\n→ OVERRIDE\n'
+    const response = parseGateResponse(md, {
+      assumptions: [assumption({ id: 'A12' })],
+      blockers: [blocker({ id: 'B56' })],
+      findings: [finding({ id: 'F34' })],
+    })
+    expect(response.approved).toBe(false)
+    expect(response.override).toBe(true)
+    expect(response.vetoes).toEqual([{ id: 'F34', redirect: 'narrow it' }])
+    expect(response.answers).toEqual([])
+  })
+
+  it('accepts an uppercase X as a checked box but rejects ambiguous marks', () => {
+    const upper = parseGateResponse('## Gate\n\n- [X] A1\n', { assumptions: [assumption()], blockers: [] })
+    expect(upper.approved).toBe(true)
+    expect(() => parseGateResponse('## Gate\n\n- [x ] A1\n', { assumptions: [assumption()], blockers: [] })).toThrow(
+      /ambiguous/u,
+    )
+  })
+
+  it('single-digit boxes do not capture multi-digit neighbours (F1 must not match F12)', () => {
+    expect(() =>
+      parseGateResponse('## Gate\n\n- [x] F1\n', {
+        assumptions: [],
+        blockers: [],
+        findings: [finding({ id: 'F12' })],
+      }),
+    ).toThrow(/unknown finding F1/u)
+  })
+
+  it('a decided-by suffix with tight or wide spacing is stripped from checkbox lines', () => {
+    const tight = parseGateResponse('## Gate\n\n- [x] A1·decided-by:policy R1\n', {
+      assumptions: [assumption()],
+      blockers: [],
+    })
+    expect(tight.approved).toBe(true)
+    const wide = parseGateResponse('## Gate\n\n- [x] A1  ·  decided-by: policy R1\n', {
+      assumptions: [assumption()],
+      blockers: [],
+    })
+    expect(wide.approved).toBe(true)
+  })
+
+  it('a decided-by suffix is not stripped from the middle of a veto redirect payload', () => {
+    const response = parseGateResponse('## Gate\n\n- [ ] A1\n→ decided-by: keep this payload\n', {
+      assumptions: [assumption()],
+      blockers: [],
+    })
+    expect(response.vetoes).toEqual([{ id: 'A1', redirect: 'decided-by: keep this payload' }])
+  })
+
+  it('an unchecked box without a following redirect records a bare veto', () => {
+    const response = parseGateResponse('## Gate\n\n- [ ] A1\n', { assumptions: [assumption()], blockers: [] })
+    expect(response.vetoes).toEqual([{ id: 'A1' }])
+    expect(response.approved).toBe(false)
+  })
+
+  it('a redirect after a non-veto line errors: prose resets the pending redirect', () => {
+    const md = '## Gate\n\n- [ ] A1\n→ first redirect\nprose line\n→ second redirect\n'
+    expect(() => parseGateResponse(md, { assumptions: [assumption()], blockers: [] })).toThrow(
+      /no preceding assumption or blocker/u,
+    )
+  })
+
+  it('a redirect only attaches to the immediately preceding unchecked box, not an earlier one', () => {
+    const md = '## Gate\n\n- [ ] A1\n- [ ] A2\n→ only for A2\n'
+    const response = parseGateResponse(md, {
+      assumptions: [assumption({ id: 'A1' }), assumption({ id: 'A2' })],
+      blockers: [],
+    })
+    expect(response.vetoes).toEqual([{ id: 'A1' }, { id: 'A2', redirect: 'only for A2' }])
+  })
+
+  it('rejects a redirect line with no preceding assumption or blocker', () => {
+    expect(() => parseGateResponse('## Gate\n\n→ free-floating payload\n', { assumptions: [], blockers: [] })).toThrow(
+      /no preceding assumption or blocker/u,
+    )
+  })
+
+  it('an indented arrow line is still an answer channel', () => {
+    const response = parseGateResponse('## Gate\n\nB1 gap\n  → indented answer\n', {
+      assumptions: [],
+      blockers: [blocker()],
+    })
+    expect(response.answers).toEqual([{ id: 'B1', answer: 'indented answer' }])
+  })
+
+  it('an approved-with-veto is not approved but keeps the vetoes', () => {
+    const response = parseGateResponse('## Gate\n\n- [ ] A1\n', { assumptions: [assumption()], blockers: [] })
+    expect(response.approved).toBe(false)
+    expect(response.abort).toBe(false)
+    expect(response.override).toBe(false)
+    expect(response.extend).toBe(false)
+  })
+
+  it('OVERRIDE only clears blockers, never assumptions: an unchecked assumption still vetoes', () => {
+    const md = '## Gate\n\n- [ ] A1\nB1 gap\n→ OVERRIDE\n'
+    const response = parseGateResponse(md, { assumptions: [assumption()], blockers: [blocker()] })
+    expect(response.override).toBe(true)
+    expect(response.approved).toBe(false)
+    expect(response.vetoes).toEqual([{ id: 'A1' }])
+  })
+
+  it('a checked box followed by a redirect payload is not a veto: the redirect errors out', () => {
+    expect(() =>
+      parseGateResponse('## Gate\n\n- [x] A1\n→ stray payload\n', {
+        assumptions: [assumption()],
+        blockers: [],
+      }),
+    ).toThrow(/no preceding assumption or blocker/u)
+  })
+})
+
+describe('Auto-decision preview strip — anchor hardening', () => {
+  it('a preview-like string inside a longer heading is not a preview boundary', () => {
+    const md = ['### Not a preview: Auto-decision preview extra', '', '- [ ] A1', ''].join('\n')
+    const response = parseGateResponse(md, { assumptions: [assumption()], blockers: [] })
+    expect(response.approved).toBe(false)
+  })
+
+  it('strips a preview section that ends at a following ## header, keeping that header', () => {
+    const md = [
+      '- [x] A1',
+      '',
+      '### Auto-decision preview',
+      'mangled - [ ] A1',
+      '',
+      '## After preview',
+      '- [x] A1',
+      '',
+    ].join('\n')
+    const response = parseGateResponse(md, { assumptions: [assumption()], blockers: [] })
+    expect(response.approved).toBe(true)
+    expect(md).toContain('## After preview')
+  })
+
+  it('an indented ### header terminates the preview section', () => {
+    const md = ['### Auto-decision preview', 'mangled', '', '  ### Indented next', '- [x] A1', ''].join('\n')
+    const response = parseGateResponse(md, { assumptions: [assumption()], blockers: [] })
+    expect(response.approved).toBe(true)
+  })
+
+  it('a mid-document ### header other than the preview header also bounds it', () => {
+    const md = ['### Auto-decision preview', 'mangled', '', '### Other section', '- [x] A1', ''].join('\n')
+    const response = parseGateResponse(md, { assumptions: [assumption()], blockers: [] })
+    expect(response.approved).toBe(true)
   })
 })
