@@ -71,6 +71,45 @@ describe('parseCliArgs', () => {
     )
   })
 
+  it('maps the observe autonomy level to itself', () => {
+    expect(parseCliArgs(['start', 'task.md', '--autonomy', 'observe'])).toMatchObject({ autonomy: 'observe' })
+  })
+
+  it('keeps a deadline-only start free of an autonomy key and vice versa', () => {
+    const deadlineOnly = parseCliArgs(['start', 'task.md', '--auto-deadline', '10'])
+    expect('autonomy' in deadlineOnly).toBe(false)
+    expect(deadlineOnly).toMatchObject({ autoDeadlineMinutes: 10 })
+    const autonomyOnly = parseCliArgs(['start', 'task.md', '--autonomy', 'auto'])
+    expect('autoDeadlineMinutes' in autonomyOnly).toBe(false)
+    expect(autonomyOnly).toMatchObject({ autonomy: 'auto' })
+  })
+
+  it('rejects zero, negative, infinite, and reformatted --auto-deadline values', () => {
+    for (const val of ['0', '-5', 'Infinity', '1e2']) {
+      expect(() => parseCliArgs(['start', 'task.md', '--auto-deadline', val])).toThrow(
+        `invalid --auto-deadline: ${val}`,
+      )
+    }
+  })
+
+  it('accepts a --auto-deadline value with surrounding whitespace', () => {
+    expect(parseCliArgs(['start', 'task.md', '--auto-deadline', ' 10'])).toMatchObject({ autoDeadlineMinutes: 10 })
+  })
+
+  it('reports an empty value when a value-taking flag ends the args', () => {
+    expect(() => parseCliArgs(['start', 'task.md', '--autonomy'])).toThrow('invalid --autonomy: ')
+    expect(() => parseCliArgs(['start', 'task.md', '--auto-deadline'])).toThrow('invalid --auto-deadline: ')
+    expect(() => parseCliArgs(['start', 'task.md', '--depth'])).toThrow('invalid --depth: ')
+    expect(() => parseCliArgs(['start', 'task.md', '--verbosity'])).toThrow('invalid --verbosity: ')
+  })
+
+  it('parses standard flags that come before the autonomy flags', () => {
+    expect(parseCliArgs(['start', 'task.md', '--verbosity', 'debug', '--autonomy', 'auto'])).toMatchObject({
+      verbosity: 'debug',
+      autonomy: 'auto',
+    })
+  })
+
   it('parses --autonomy and --auto-deadline on resume and continue', () => {
     expect(parseCliArgs(['resume', 'run-1', '--autonomy', 'auto'])).toMatchObject({
       subcommand: 'resume',
@@ -319,5 +358,100 @@ describe('main', () => {
     const calls: string[] = []
     await main(['gate'], makeHarness(calls))
     expect(calls).toContain('out:no runs await gate decisions')
+  })
+})
+
+interface MainCapture {
+  readonly startOptions: unknown[]
+  readonly resumeCalls: unknown[][]
+  readonly continueCalls: unknown[][]
+  readonly gateCalls: unknown[][]
+  readonly harness: CliHarness
+}
+
+function captureHarness(): MainCapture {
+  const startOptions: unknown[] = []
+  const resumeCalls: unknown[][] = []
+  const continueCalls: unknown[][] = []
+  const gateCalls: unknown[][] = []
+  const harness: CliHarness = {
+    runStart: (options) => {
+      startOptions.push(options)
+      return Promise.resolve({ runId: 'run-1', halted: 'gate', gateMdPath: '/x/gate-1.md', version: 1 })
+    },
+    runResume: (runId, autonomy) => {
+      resumeCalls.push([runId, autonomy])
+      return Promise.resolve({ runId, halted: 'gate' })
+    },
+    runGateResume: (runId, options) => {
+      gateCalls.push([runId, options])
+      return Promise.resolve({ runId, outcome: 'approved', version: 1 })
+    },
+    runContinue: (runId, autonomy) => {
+      continueCalls.push([runId, autonomy])
+      return Promise.resolve({ runId: runId ?? 'run-1', routed: 'gate' })
+    },
+    listPendingGates: () => Promise.resolve([]),
+    buildReport: () => Promise.resolve('body'),
+    stdout: () => {},
+  }
+  return { startOptions, resumeCalls, continueCalls, gateCalls, harness }
+}
+
+describe('main autonomy and gate decision wiring', () => {
+  it('nests parsed autonomy overrides under autonomy on start options', async () => {
+    const cap = captureHarness()
+    await main(['start', 'task.md', '--autonomy', 'assist', '--auto-deadline', '10'], cap.harness)
+    expect(cap.startOptions[0]).toMatchObject({
+      taskFile: 'task.md',
+      autonomy: { level: 'assist', deadlineMinutes: 10 },
+    })
+  })
+
+  it('sends empty autonomy overrides on start when no autonomy flags are given', async () => {
+    const cap = captureHarness()
+    await main(['start', 'task.md'], cap.harness)
+    expect(cap.startOptions[0]).toMatchObject({ autonomy: {} })
+  })
+
+  it('forwards autonomy overrides on resume and continue', async () => {
+    const cap = captureHarness()
+    await main(['resume', 'run-1', '--autonomy', 'auto'], cap.harness)
+    expect(cap.resumeCalls[0]).toEqual(['run-1', { level: 'auto' }])
+    await main(['continue', 'run-1', '--auto-deadline', '5'], cap.harness)
+    expect(cap.continueCalls[0]).toEqual(['run-1', { deadlineMinutes: 5 }])
+    await main(['resume', 'run-2'], cap.harness)
+    expect(cap.resumeCalls[1]).toEqual(['run-2', {}])
+  })
+
+  it('forwards --abort and --extend decisions to runGateResume as sole keys', async () => {
+    const cap = captureHarness()
+    await main(['gate', 'resume', 'run-1', '--abort'], cap.harness)
+    expect(cap.gateCalls[0]).toEqual(['run-1', { abort: true }])
+    await main(['gate', 'resume', 'run-2', '--extend'], cap.harness)
+    expect(cap.gateCalls[1]).toEqual(['run-2', { extend: true }])
+  })
+
+  it('never claims an empty pending list while entries print', async () => {
+    const pending: PendingGateEntry[] = [
+      {
+        runId: 'run-1',
+        changeName: 'add-x',
+        gateMode: 'early',
+        gateVersion: 1,
+        updatedAt: '2026-02-01T00:00:00.000Z',
+      },
+    ]
+    const lines: string[] = []
+    const harness: CliHarness = {
+      ...captureHarness().harness,
+      listPendingGates: () => Promise.resolve(pending),
+      stdout: (line) => {
+        lines.push(line)
+      },
+    }
+    await main(['gate'], harness)
+    expect(lines).toContain('gate-pending: run-1  (add-x, gate v1, updated 2026-02-01T00:00:00.000Z)')
+    expect(lines).not.toContain('no runs await gate decisions')
   })
 })

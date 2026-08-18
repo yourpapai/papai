@@ -38,7 +38,7 @@ export async function main(argv: readonly string[], harness: CliHarness): Promis
       taskFile: cmd.taskFile,
       depthOverride: cmd.depth,
       verbosity: cmd.verbosity,
-      ...autonomyOverridesOf(cmd.autonomy, cmd.autoDeadlineMinutes),
+      autonomy: autonomyOverridesOf(cmd.autonomy, cmd.autoDeadlineMinutes),
     })
     return 0
   }

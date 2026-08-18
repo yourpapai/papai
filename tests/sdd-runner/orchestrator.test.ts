@@ -470,6 +470,170 @@ describe('runResume', () => {
     const state = await loadRunState(workDir, runId)
     expect(state.gate).toEqual({ mode: 'final', version: 1 })
   })
+
+  it('re-enters at atomicity when tasks are done but the atomicity check is unrecorded', async () => {
+    const fixture = makeFixture()
+    const workDir = fixture.deps.config.workDir
+    const runId = 'seeded-atomicity'
+    const runDir = path.join(workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.mkdirSync(path.join(fixture.changeDir, 'specs', 'thing'), { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'design.md'), '## Context\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'spec.md'), '## ADDED Requirements\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'tasks.md'), '- [ ] 1. do it\n')
+    fs.writeFileSync(
+      path.join(runDir, 'sidecars', 'resolutions-1.json'),
+      JSON.stringify({
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }],
+        assumptions: [],
+      }),
+    )
+    const now = '2026-01-01T00:00:00.000Z'
+    const events = [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake', seq: 1, ts: now },
+      { altitude: 'L2', type: 'depth', profile: 'M', rationale: 'override', source: 'override', seq: 2, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'intake', seq: 3, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'draft', seq: 4, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'draft', seq: 5, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'review', seq: 6, ts: now },
+      { altitude: 'L2', type: 'round_open', round: 1, cap: 3, seq: 7, ts: now },
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 1,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 1, nitpick: 0 },
+        seq: 8,
+        ts: now,
+      },
+      { altitude: 'L2', type: 'round_close', round: 1, cap: 3, seq: 9, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'review', seq: 10, ts: now },
+    ]
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), events.map((e) => JSON.stringify(e)).join('\n') + '\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir,
+          changeName: fixture.changeName,
+          stage: 'review',
+          depth: 'M',
+          round: 1,
+          gate: null,
+          status: 'running',
+          createdAt: now,
+          updatedAt: now,
+        },
+        null,
+        2,
+      )}\n`,
+    )
+
+    const settled = createSettledDriver(fixture)
+    const driver: OpenSpecDriver = {
+      ...settled,
+      status: () =>
+        Promise.resolve({
+          schemaName: 'auto-sdd',
+          artifacts: { proposal: 'done', specs: 'done', design: 'done', tasks: 'done' },
+          isPlanningComplete: true,
+        }),
+    }
+    const deps: OrchestratorDeps = { ...fixture.deps, driver }
+    const before = fixture.spawnOrder.length
+    const result = await runResume(deps, runId)
+
+    expect(result.halted).toBe('gate')
+    const spawns = fixture.spawnOrder.slice(before)
+    expect(spawns).not.toContain('findings-1.json')
+    expect(spawns).toContain('decompose-tasks.json')
+    expect(spawns).toContain('atomicity.json')
+    expect(fs.existsSync(requireGateMdPath({ gateMdPath: result.gateMdPath }))).toBe(true)
+  })
+
+  it('re-enters at gate with the next version when every post-review stage is already done', async () => {
+    const fixture = makeFixture()
+    const workDir = fixture.deps.config.workDir
+    const runId = 'seeded-gate'
+    const runDir = path.join(workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.mkdirSync(path.join(fixture.changeDir, 'specs', 'thing'), { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'design.md'), '## Context\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'spec.md'), '## ADDED Requirements\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'tasks.md'), '- [ ] 1. do it\n')
+    fs.writeFileSync(path.join(runDir, 'gate-1.md'), '# Final gate (stale)\n')
+    fs.writeFileSync(
+      path.join(runDir, 'sidecars', 'resolutions-1.json'),
+      JSON.stringify({ resolutions: [], assumptions: [] }),
+    )
+    const now = '2026-01-01T00:00:00.000Z'
+    const events = [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake', seq: 1, ts: now },
+      { altitude: 'L2', type: 'depth', profile: 'M', rationale: 'override', source: 'override', seq: 2, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'intake', seq: 3, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'draft', seq: 4, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'draft', seq: 5, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'review', seq: 6, ts: now },
+      { altitude: 'L2', type: 'round_open', round: 1, cap: 3, seq: 7, ts: now },
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 1,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+        seq: 8,
+        ts: now,
+      },
+      { altitude: 'L2', type: 'round_close', round: 1, cap: 3, seq: 9, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'review', seq: 10, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'decompose', seq: 11, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'decompose', seq: 12, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'atomicity', seq: 13, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'atomicity', seq: 14, ts: now },
+    ]
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), events.map((e) => JSON.stringify(e)).join('\n') + '\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir,
+          changeName: fixture.changeName,
+          stage: 'atomicity',
+          depth: 'M',
+          round: 1,
+          gate: null,
+          status: 'running',
+          createdAt: now,
+          updatedAt: now,
+        },
+        null,
+        2,
+      )}\n`,
+    )
+
+    const settled = createSettledDriver(fixture)
+    const driver: OpenSpecDriver = {
+      ...settled,
+      status: () =>
+        Promise.resolve({
+          schemaName: 'auto-sdd',
+          artifacts: { proposal: 'done', specs: 'done', design: 'done', tasks: 'done' },
+          isPlanningComplete: true,
+        }),
+    }
+    const deps: OrchestratorDeps = { ...fixture.deps, driver }
+    const result = await runResume(deps, runId)
+
+    expect(result.halted).toBe('gate')
+    expect(result.version).toBe(2)
+    expect(requireGateMdPath({ gateMdPath: result.gateMdPath })).toContain('gate-2.md')
+  })
 })
 
 function createSettledDriver(fixture: Fixture): OpenSpecDriver {
