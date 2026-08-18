@@ -225,7 +225,7 @@
   "sdd-runner/src/openspec-driver.ts": 0.7297297297297297,
   "sdd-runner/src/orchestrator.ts": 0.8076923076923077,
   "sdd-runner/src/post-review-tail.ts": 0.9523809523809523,
-  "sdd-runner/src/pricing.ts": 0.628099173553719,
+  "sdd-runner/src/pricing.ts": 0.6451612903225806,
   "sdd-runner/src/prompter.ts": 0.9583333333333334,
   "sdd-runner/src/renderer.ts": 0.6310679611650486,
   "sdd-runner/src/replay.ts": 0.8315789473684211,
