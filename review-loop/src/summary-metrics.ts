@@ -34,8 +34,17 @@ export function aggregateUsage(metrics: readonly RoundMetric[]): UsageTotals {
       inputTokens: acc.inputTokens + m.usage.inputTokens,
       outputTokens: acc.outputTokens + m.usage.outputTokens,
       reasoningTokens: acc.reasoningTokens + m.usage.reasoningTokens,
+      cachedReadTokens: acc.cachedReadTokens + m.usage.cachedReadTokens,
+      cachedWriteTokens: acc.cachedWriteTokens + m.usage.cachedWriteTokens,
       costUsd: acc.costUsd + m.usage.costUsd,
     }),
-    { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
+    {
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
+      costUsd: 0,
+    },
   )
 }

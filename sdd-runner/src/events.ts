@@ -20,6 +20,8 @@ export const AgentUsageSchema = z.object({
   inputTokens: z.number().nonnegative(),
   outputTokens: z.number().nonnegative(),
   reasoningTokens: z.number().nonnegative(),
+  cachedReadTokens: z.number().nonnegative().default(0),
+  cachedWriteTokens: z.number().nonnegative().default(0),
   costUsd: z.number().nonnegative(),
   wallMs: z.number().nonnegative(),
 })
@@ -51,6 +53,8 @@ const StepFinishEvent = z.object({
     input: z.number().nonnegative(),
     output: z.number().nonnegative(),
     reasoning: z.number().nonnegative(),
+    cacheRead: z.number().nonnegative().default(0),
+    cacheWrite: z.number().nonnegative().default(0),
   }),
   costUsd: z.number().nonnegative(),
 })

@@ -136,6 +136,24 @@ describe('formatLiveLine', () => {
     const line = formatLiveLine('improve', 'read', 'a.ts', 5000, 1, { input: 5, output: 2 }, true)
     expect(line).toBe(`  improve    \u2713 read a.ts \u00B7 5s \u00B7 1 tool \u00B7 in 5 / out 2`)
   })
+  test('renders cached reads as their own segment between in and out', () => {
+    const line = formatLiveLine('skeptic', 'read', 'a.ts', 5000, 1, {
+      input: 1_000_000,
+      output: 456_000,
+      cached: 18_200_000,
+    })
+    expect(line).toBe(
+      `  skeptic    \u25B6 read a.ts \u00B7 5s \u00B7 1 tool \u00B7 in 1.00M \u00B7 cached 18.20M / out 456.0k`,
+    )
+  })
+  test('cached segment hidden when cached is zero', () => {
+    const line = formatLiveLine('improve', 'bash', 'bun test', 5000, 41, { input: 850_000, output: 12_000, cached: 0 })
+    expect(line).toBe(`  improve    \u25B6 bash bun test \u00B7 5s \u00B7 41 tools \u00B7 in 850.0k / out 12.0k`)
+  })
+  test('shows cached segment when only cached is non-zero', () => {
+    const line = formatLiveLine('improve', 'read', 'a.ts', 5000, 1, { input: 0, output: 0, cached: 2_500 })
+    expect(line).toContain('in 0 \u00B7 cached 2.5k / out 0')
+  })
 })
 
 describe('formatTokenCount', () => {

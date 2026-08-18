@@ -78,6 +78,7 @@ export function formatToolArg(tool: string, input: unknown): string {
 export interface LiveUsage {
   input: number
   output: number
+  cached?: number
 }
 
 export function formatLiveLine(
@@ -93,8 +94,10 @@ export function formatLiveLine(
   const toolPart = tool === '' ? 'thinking' : arg === '' ? tool : `${tool} ${arg}`
   const tools = `${toolCount} tool${toolCount === 1 ? '' : 's'}`
   const head = `  ${label.padEnd(10)} ${marker} ${toolPart} ${MIDDLE_DOT} ${formatDuration(elapsedMs)} ${MIDDLE_DOT} ${tools}`
-  if (usage.input === 0 && usage.output === 0) return head
-  return `${head} ${MIDDLE_DOT} in ${formatTokenCount(usage.input)} / out ${formatTokenCount(usage.output)}`
+  const cached = usage.cached ?? 0
+  if (usage.input === 0 && usage.output === 0 && cached === 0) return head
+  const cachedPart = cached === 0 ? '' : `${MIDDLE_DOT} cached ${formatTokenCount(cached)} `
+  return `${head} ${MIDDLE_DOT} in ${formatTokenCount(usage.input)} ${cachedPart}/ out ${formatTokenCount(usage.output)}`
 }
 
 export function formatTokenCount(n: number): string {

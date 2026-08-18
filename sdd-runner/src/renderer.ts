@@ -90,7 +90,9 @@ export function formatEvent(event: EventInput, verbosity: Verbosity): string | n
   if (event.type === 'killed') return `${event.agent} killed (${event.cause})`
   if (event.type === 'done') {
     const usage = event.usage
-    return `${event.agent} done ${MIDDLE_DOT} in ${formatTokenCount(usage.inputTokens)} out ${formatTokenCount(
+    const cachedRead = usage.cachedReadTokens ?? 0
+    const cachedPart = cachedRead > 0 ? ` ${MIDDLE_DOT} cached ${formatTokenCount(cachedRead)}` : ''
+    return `${event.agent} done ${MIDDLE_DOT} in ${formatTokenCount(usage.inputTokens)}${cachedPart} out ${formatTokenCount(
       usage.outputTokens,
     )} ${MIDDLE_DOT} $${usage.costUsd.toFixed(4)}`
   }

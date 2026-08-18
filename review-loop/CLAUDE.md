@@ -142,11 +142,13 @@ measures whether its two actors agree instead of pretending to check them.
 - `createWorktree` runs `bun install` in the fresh worktree (skipped when no `package.json`): worktrees live under the main checkout so most deps resolve by walking up to its root `node_modules`, but non-hoisted workspace deps (e.g. opencode-agent's `@octokit/rest`) do not, and the build gate fails on TS2307/import errors without the install.
 - Per-run state lives at `<workDir>/runs/<runId>/state.json` (see `src/run-state.ts`).
 - Progress logs and transcripts land alongside the run state (see `src/progress-log.ts`).
-- `config.example.json` at the workspace root documents the expected config shape; real configs are loaded from the path passed via `--config` (defaults to `.review-loop/config.json`). The optional top-level `pricing` map (USD per 1M tokens, glob-matched against the agent model) enables estimated-cost display.
+- `config.example.json` at the workspace root documents the expected config shape; real configs are loaded from the path passed via `--config` (defaults to `.review-loop/config.json`). The optional top-level `pricing` map (USD per 1M tokens, glob-matched against the agent model) enables estimated-cost display; entries take optional `cacheRead`/`cacheWrite` rates, and cached tokens contribute 0 to estimates when a rate is unpublished.
 
 ## Run Stats
 
 `src/run-stats.ts` (pure aggregate), `src/cost.ts` (pricing lookup), and `src/diff-stats.ts` (git numstat at worker merges) feed the `LiveRenderer` footer's aggregate segments (total tokens, `~$ est`, tool calls, `+a/-r`) and the final summary's `Stats:` line. Aggregates persist to `metrics.json` (`runStats` block) and rehydrate on `--resume-run`; stats accumulation is independent of the EPIPE downgrade, and segments are hidden when zero/unpriced.
+
+Cached-token accounting: opencode's `step_finish` reports `tokens.input` as **uncached input only**, with cache hits in a sibling `tokens.cache: { read, write }` object. The event parser surfaces `cacheRead`/`cacheWrite`, and usage flows track them as separate counters (`cachedReadTokens`/`cachedWriteTokens`) — never folded into `inputTokens`, which everywhere means uncached. Live lines, the footer, and summaries render `in X · cached Y / out Z` (reads only; hidden when zero); `metrics.json` and `events.ndjson` carry both counters additively, so pre-change artifacts replay/rehydrate with cache 0.
 
 The `LiveRenderer` folds all agent progress into one live line per slot key; `commit(key, line?)` freezes a slot as a permanent scrolled line (line-handler commits on agent dispose unless `commitOnDispose: false`). Non-TTY output prints only `event()`/`commit()` lines — `slot()`/`live()` updates are suppressed.
 

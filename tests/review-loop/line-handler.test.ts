@@ -81,7 +81,62 @@ describe('createLineHandler reporter wiring', () => {
         part: { reason: 'stop', tokens: { input: 5, output: 2, reasoning: 1 }, cost: 0.5 },
       }),
     )
-    expect(deltas).toEqual([{ input: 5, output: 2, reasoning: 1, cost: 0.5, label: 'drain', model: 'm' }])
+    expect(deltas).toEqual([
+      { input: 5, output: 2, reasoning: 1, cacheRead: 0, cacheWrite: 0, cost: 0.5, label: 'drain', model: 'm' },
+    ])
+  })
+
+  test('step_finish forwards cached tokens to the reporter as separate delta fields', () => {
+    const cwd = makeTempDir('line-handler-cache-usage-')
+    const deltas: UsageDelta[] = []
+    const reporter = makeReporter({
+      usage: (d) => {
+        deltas.push(d)
+      },
+    })
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    handler.onLine(
+      JSON.stringify({
+        type: 'step_finish',
+        part: {
+          reason: 'stop',
+          tokens: { input: 1757, output: 3, reasoning: 0, cache: { read: 8320, write: 4096 } },
+          cost: 0,
+        },
+      }),
+    )
+    expect(deltas).toEqual([
+      { input: 1757, output: 3, reasoning: 0, cacheRead: 8320, cacheWrite: 4096, cost: 0, label: 'drain', model: 'm' },
+    ])
+  })
+
+  test('step_finish accumulates cached token counters separately from input on ctx.usage', () => {
+    const cwd = makeTempDir('line-handler-cache-accum-')
+    const handler = createLineHandler(makeOptions(cwd, path.join(cwd, 'agent.log')))
+    handler.onLine(
+      JSON.stringify({
+        type: 'step_finish',
+        part: {
+          reason: 'stop',
+          tokens: { input: 100, output: 4, reasoning: 1, cache: { read: 800, write: 60 } },
+          cost: 0,
+        },
+      }),
+    )
+    handler.onLine(
+      JSON.stringify({
+        type: 'step_finish',
+        part: {
+          reason: 'stop',
+          tokens: { input: 50, output: 2, reasoning: 0, cache: { read: 400, write: 30 } },
+          cost: 0,
+        },
+      }),
+    )
+    expect(handler.ctx.usage.inputTokens).toBe(150)
+    expect(handler.ctx.usage.cachedReadTokens).toBe(1200)
+    expect(handler.ctx.usage.cachedWriteTokens).toBe(90)
+    expect(handler.ctx.usage.outputTokens).toBe(6)
   })
 
   test('step_finish delta carries label/model and tool calls accumulate per step', () => {
@@ -115,8 +170,8 @@ describe('createLineHandler reporter wiring', () => {
     handler.onLine(tool('c1'))
     handler.onLine(stepFinish)
     expect(deltas).toEqual([
-      { input: 5, output: 2, reasoning: 1, cost: 0, label: 'drain', model: 'm' },
-      { input: 5, output: 2, reasoning: 1, cost: 0, label: 'drain', model: 'm' },
+      { input: 5, output: 2, reasoning: 1, cacheRead: 0, cacheWrite: 0, cost: 0, label: 'drain', model: 'm' },
+      { input: 5, output: 2, reasoning: 1, cacheRead: 0, cacheWrite: 0, cost: 0, label: 'drain', model: 'm' },
     ])
     expect(stats.snapshot().totals.toolCalls).toBe(2)
     expect(stats.snapshot().perLabel['drain']?.input).toBe(10)

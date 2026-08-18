@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
+import { AgentUsageSchema, appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import { EventInputSchema } from '../../sdd-runner/src/events.js'
 
 const tmpDirs: string[] = []
@@ -140,5 +140,68 @@ describe('done event model field', () => {
     })
     expect(parsed).toMatchObject({ type: 'done' })
     expect(parsed).not.toHaveProperty('model')
+  })
+})
+
+describe('cached token fields', () => {
+  it('AgentUsageSchema accepts cache counters and rejects negatives', () => {
+    const parsed = AgentUsageSchema.parse({
+      inputTokens: 1005,
+      outputTokens: 456,
+      reasoningTokens: 0,
+      cachedReadTokens: 18_175_552,
+      cachedWriteTokens: 5_005_056,
+      costUsd: 2.19,
+      wallMs: 42_000,
+    })
+    expect(parsed.cachedReadTokens).toBe(18_175_552)
+    expect(parsed.cachedWriteTokens).toBe(5_005_056)
+    expect(
+      AgentUsageSchema.safeParse({
+        inputTokens: 1,
+        outputTokens: 1,
+        reasoningTokens: 0,
+        cachedReadTokens: -1,
+        costUsd: 0,
+        wallMs: 1,
+      }).success,
+    ).toBe(false)
+  })
+
+  it('AgentUsageSchema defaults cache counters to 0 when absent (old events replay)', () => {
+    const parsed = AgentUsageSchema.parse({
+      inputTokens: 1,
+      outputTokens: 2,
+      reasoningTokens: 0,
+      costUsd: 0,
+      wallMs: 10,
+    })
+    expect(parsed.cachedReadTokens).toBe(0)
+    expect(parsed.cachedWriteTokens).toBe(0)
+  })
+
+  it('step_finish events carry cache token deltas', () => {
+    const parsed = EventInputSchema.parse({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'skeptic-r3',
+      tokens: { input: 1757, output: 3, reasoning: 0, cacheRead: 8320, cacheWrite: 4096 },
+      costUsd: 0,
+    })
+    expect(parsed).toMatchObject({
+      type: 'step_finish',
+      tokens: { input: 1757, output: 3, reasoning: 0, cacheRead: 8320, cacheWrite: 4096 },
+    })
+  })
+
+  it('old step_finish event lines without cache fields still validate with cache 0', () => {
+    const parsed = EventInputSchema.parse({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'drafter',
+      tokens: { input: 5, output: 2, reasoning: 1 },
+      costUsd: 0,
+    })
+    expect(parsed).toMatchObject({ type: 'step_finish', tokens: { cacheRead: 0, cacheWrite: 0 } })
   })
 })

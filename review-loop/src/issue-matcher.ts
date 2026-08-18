@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { agentWritePath, runAgent, type AgentUsage, type SpawnFn } from './agent-runner.js'
+import { agentWritePath, emptyUsage, runAgent, type AgentUsage, type SpawnFn } from './agent-runner.js'
 import type { LedgerIssueRecord } from './issue-ledger.js'
 import { IssueMatchesSchema } from './issue-schema.js'
 import type { IssueMatch, ReviewerIssue } from './issue-schema.js'
@@ -53,13 +53,16 @@ function buildMatcherPrompt(
 
 export async function matchIssues(deps: MatchIssuesDeps): Promise<{ matches: IssueMatch[]; usage: AgentUsage }> {
   if (deps.newIssues.length === 0) {
-    return { matches: [], usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 } }
+    return {
+      matches: [],
+      usage: emptyUsage(),
+    }
   }
 
   if (deps.existingRecords.length === 0) {
     return {
       matches: deps.newIssues.map((_, index) => ({ newIssueIndex: index, existingId: null })),
-      usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+      usage: emptyUsage(),
     }
   }
 

@@ -61,6 +61,16 @@ describe('createAgentReporter', () => {
     })
   })
 
+  it('carries cached token deltas into the step_finish event', () => {
+    const { emitted, reporter } = harness()
+    reporter.usage?.({ input: 1757, output: 3, reasoning: 0, cacheRead: 8320, cacheWrite: 4096, cost: 0 })
+    expect(emitted).toHaveLength(1)
+    expect(emitted[0]).toMatchObject({
+      type: 'step_finish',
+      tokens: { input: 1757, output: 3, reasoning: 0, cacheRead: 8320, cacheWrite: 4096 },
+    })
+  })
+
   it('reports dynamic === false so withLivePhase skips its ticking path', () => {
     const { reporter } = harness()
     expect(reporter.dynamic).toBe(false)

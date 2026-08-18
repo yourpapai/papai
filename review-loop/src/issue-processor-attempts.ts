@@ -10,9 +10,10 @@ import { runInspectorOrTreatAsRejection } from './issue-inspector.js'
 import { recordNeedsHuman, recordVerify, type LedgerIssueRecord } from './issue-ledger.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
 import { FixerResultSchema, type FixerResult } from './issue-schema.js'
+import { emitBuildComplete, emitFixComplete } from './loop-trace.js'
+import { emitDecision } from './progress-log.js'
+import { buildFixPrompt, buildRetryFixPrompt, buildRetryFixWithInspectorFeedbackPrompt } from './prompt-templates.js'
 import {
-  emitBuildComplete,
-  emitFixComplete,
   exposureKind,
   tallyDecision,
   tallyExposure,
@@ -20,9 +21,7 @@ import {
   tallyPhaseMs,
   tallyUsage,
   type RoundCollector,
-} from './loop-trace.js'
-import { emitDecision } from './progress-log.js'
-import { buildFixPrompt, buildRetryFixPrompt, buildRetryFixWithInspectorFeedbackPrompt } from './prompt-templates.js'
+} from './round-collector.js'
 import { workerOutputPath } from './run-state.js'
 import type { Worker } from './worker-pool.js'
 

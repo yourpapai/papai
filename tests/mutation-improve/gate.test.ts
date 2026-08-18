@@ -108,7 +108,15 @@ const gateDeps = (
     runImproveAgent: () =>
       Promise.resolve({
         value: baseResult,
-        usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          cachedReadTokens: 0,
+          cachedWriteTokens: 0,
+          costUsd: 0,
+          wallMs: 0,
+        },
       }),
     cappedRegistry: { entries: [], record: () => Promise.resolve() },
     saveRunState: () => Promise.resolve(),

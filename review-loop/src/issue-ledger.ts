@@ -11,7 +11,8 @@ import { z } from 'zod'
 
 import { ReviewerIssueSchema, VerifierDecisionSchema } from './issue-schema.js'
 import type { FixerResult, IssueMatch, ReviewerIssue, VerifierDecision } from './issue-schema.js'
-import { emitVerifyComplete, exposureKind, truncate } from './loop-trace.js'
+import { emitVerifyComplete, truncate } from './loop-trace.js'
+import { exposureKind } from './round-collector.js'
 import type { TraceLogger } from './trace-log.js'
 
 export type LedgerIssueStatus =

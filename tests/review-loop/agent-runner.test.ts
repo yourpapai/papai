@@ -446,7 +446,11 @@ function mockSpawnWithStepFinish(outputPath: string): SpawnFn {
     // Emit a step_finish event line, then write the result file.
     const stepFinish = JSON.stringify({
       type: 'step_finish',
-      part: { reason: 'stop', tokens: { input: 100, output: 50, reasoning: 10 }, cost: 0.01 },
+      part: {
+        reason: 'stop',
+        tokens: { input: 100, output: 50, reasoning: 10, cache: { read: 700, write: 50 } },
+        cost: 0.01,
+      },
     })
     // Two step_finish events to test accumulation:
     return new Promise((resolve) => {
@@ -512,6 +516,8 @@ describe('runAgent return type', () => {
     expect(result.value.ok).toBe(true)
     expect(result.usage.inputTokens).toBe(200)
     expect(result.usage.outputTokens).toBe(100)
+    expect(result.usage.cachedReadTokens).toBe(1400)
+    expect(result.usage.cachedWriteTokens).toBe(100)
     expect(result.usage.costUsd).toBeCloseTo(0.02)
     expect(result.usage.wallMs).toBeGreaterThanOrEqual(0)
   })
@@ -571,7 +577,11 @@ describe('runAgent return type', () => {
     const outputPath = path.join(cwd, 'result.json')
     const stepFinish = JSON.stringify({
       type: 'step_finish',
-      part: { reason: 'stop', tokens: { input: 100, output: 50, reasoning: 10 }, cost: 0.01 },
+      part: {
+        reason: 'stop',
+        tokens: { input: 100, output: 50, reasoning: 10, cache: { read: 700, write: 50 } },
+        cost: 0.01,
+      },
     })
     function spawnFailing(
       _cmd: string,
@@ -607,6 +617,8 @@ describe('runAgent return type', () => {
     expect(error.usage.inputTokens).toBe(400)
     expect(error.usage.outputTokens).toBe(200)
     expect(error.usage.reasoningTokens).toBe(40)
+    expect(error.usage.cachedReadTokens).toBe(2800)
+    expect(error.usage.cachedWriteTokens).toBe(200)
     expect(error.usage.costUsd).toBeCloseTo(0.04)
   })
 
