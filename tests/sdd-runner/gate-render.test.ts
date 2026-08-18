@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { renderChangeDigest, writeGateDigest } from '../../sdd-runner/src/gate-render.js'
+import { formatTrajectorySparkline, renderChangeDigest, writeGateDigest } from '../../sdd-runner/src/gate-render.js'
 import type { GateDigestInput } from '../../sdd-runner/src/gate-render.js'
 
 const decisionBase: Omit<GateDigestInput, 'mode' | 'capHitFired'> = {
@@ -71,5 +71,17 @@ describe('gate-render module surface', () => {
     const md = writeGateDigest({ ...decisionBase, mode: 'final', capHitFired: false })
     expect(md).toContain('### Decisions')
     expect(md).toMatch(/approve.*completes the run/u)
+  })
+})
+
+describe('trajectory sparkline (13.5)', () => {
+  it('renders one magnitude-encoding glyph per round beside the counts', () => {
+    expect(formatTrajectorySparkline([3, 2, 0])).toBe('▇▅▁')
+  })
+
+  it('a single round and equal counts map to the lowest/matching glyphs deterministically', () => {
+    expect(formatTrajectorySparkline([1])).toBe('▇')
+    expect(formatTrajectorySparkline([5, 5])).toBe('▇▇')
+    expect(formatTrajectorySparkline([])).toBe('')
   })
 })

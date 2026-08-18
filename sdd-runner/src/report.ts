@@ -66,9 +66,94 @@ async function commitsLine(input: ReportInput): Promise<string[]> {
   return stdout.split('\n').filter((line) => line.trim().length > 0)
 }
 
+interface GainsFacts {
+  readonly avoidedByRule: ReadonlyMap<string, number>
+  readonly acceptItemsByRule: ReadonlyMap<string, number>
+  readonly humanGates: number
+  readonly medianDwellMs: number | null
+}
+
+/** Fixed conservative constant when no human-gate dwell history exists (D9). */
+const DEFAULT_DWELL_MINUTES = 5
+
+/**
+ * Wall-time saved estimate: N × median human-gate dwell, where dwell is the
+ * `gate presented` → `gate answered` timestamp distance of human-settled
+ * gates. One helper owns the formula so it can be corrected in one place.
+ */
+function estimateSavedMs(gains: GainsFacts): number {
+  const totalAvoided = [...gains.avoidedByRule.values()].reduce((acc, n) => acc + n, 0)
+  if (totalAvoided === 0) return 0
+  const dwell = gains.medianDwellMs ?? DEFAULT_DWELL_MINUTES * 60_000
+  return totalAvoided * dwell
+}
+
+function collectGains(events: readonly SddEvent[]): GainsFacts {
+  const answeredAt = new Map<number, string>()
+  const humanDwellsMs: number[] = []
+  for (const event of events) {
+    if (event.type !== 'gate') continue
+    if (event.action === 'answered') answeredAt.set(event.version, event.ts)
+  }
+  const presentedHuman = new Map<number, string>()
+  const avoidedByRule = new Map<string, number>()
+  const acceptItemsByRule = new Map<string, number>()
+  let humanGates = 0
+  for (const event of events) {
+    if (event.type === 'gate' && event.action === 'presented') {
+      presentedHuman.set(event.version, event.ts)
+    }
+  }
+  const autoDecidedVersions = new Set<number>()
+  for (const event of events) {
+    if (event.type !== 'auto_decision') continue
+    if (event.decision === 'approve' || event.decision === 'extend') {
+      if (answeredAt.has(event.gateVersion)) {
+        autoDecidedVersions.add(event.gateVersion)
+        avoidedByRule.set(event.rule, (avoidedByRule.get(event.rule) ?? 0) + 1)
+      }
+    }
+    if (event.decision === 'accept-items') {
+      acceptItemsByRule.set(event.rule, (acceptItemsByRule.get(event.rule) ?? 0) + 1)
+    }
+  }
+  for (const [version, presentedTs] of presentedHuman) {
+    const answeredTs = answeredAt.get(version)
+    if (answeredTs === undefined) continue
+    if (autoDecidedVersions.has(version)) continue
+    humanGates += 1
+    humanDwellsMs.push(Math.max(0, new Date(answeredTs).getTime() - new Date(presentedTs).getTime()))
+  }
+  humanDwellsMs.sort((a, b) => a - b)
+  const mid = Math.floor(humanDwellsMs.length / 2)
+  const medianDwellMs: number | null =
+    humanDwellsMs.length === 0
+      ? null
+      : humanDwellsMs.length % 2 === 1
+        ? (humanDwellsMs[mid] ?? 0)
+        : Math.round(((humanDwellsMs[mid - 1] ?? 0) + (humanDwellsMs[mid] ?? 0)) / 2)
+  return { avoidedByRule, acceptItemsByRule, humanGates, medianDwellMs }
+}
+
+function gainsLines(gains: GainsFacts): string[] {
+  const totalAvoided = [...gains.avoidedByRule.values()].reduce((acc, n) => acc + n, 0)
+  const perRule = [...gains.avoidedByRule.entries()].map(([rule, n]) => `${rule} × ${n}`)
+  const savedMin = Math.round(estimateSavedMs(gains) / 60_000)
+  const lines = [
+    '### Gains',
+    `interventions avoided: ${totalAvoided} · human gates: ${gains.humanGates} · ~wall-time saved: ${savedMin}m`,
+  ]
+  if (perRule.length > 0) lines.push(`per rule: ${perRule.join(', ')}`)
+  for (const [rule, n] of gains.acceptItemsByRule) {
+    lines.push(`${rule} items auto-accepted: ${n}`)
+  }
+  return lines
+}
+
 export async function buildReport(input: ReportInput): Promise<string> {
   const events = input.readEvents()
   const facts = factsFrom(events)
+  const gains = collectGains(events)
   const change = await input.readChangeDir()
   const commits = await commitsLine(input)
   const lines: string[] = []
@@ -86,6 +171,7 @@ export async function buildReport(input: ReportInput): Promise<string> {
     `### Tasks`,
     `${change.tasksDone}/${change.tasksTotal} tasks complete`,
     '',
+    ...(gains.avoidedByRule.size > 0 || gains.acceptItemsByRule.size > 0 ? [...gainsLines(gains), ''] : []),
     `### Commits on ${input.branch}`,
     ...commits,
     '',

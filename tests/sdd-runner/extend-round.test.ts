@@ -8,7 +8,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { prepareResumeInput, settleApprovedGate } from '../../sdd-runner/src/extend-round.js'
+import { settleApprovedGate } from '../../sdd-runner/src/extend-round.js'
+import { prepareResumeInput } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { createRunState, loadRunState } from '../../sdd-runner/src/run-state.js'
 

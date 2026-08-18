@@ -8,8 +8,9 @@ import path from 'node:path'
 
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import type { AutonomyConfig, ExecGitFn, RunnerConfig } from './config.js'
+import { deadlineStampFor } from './deadline-waiter.js'
 import { createEventBus } from './event-bus.js'
-import { appendEvent, readEvents } from './events.js'
+import { appendEvent } from './events.js'
 import type { EventInput, SddEvent } from './events.js'
 import { readChangeDigest } from './gate-digest-extract.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
@@ -17,6 +18,7 @@ import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
 import { planForGate, runPolicyLadder, writePresentedRecord } from './gate-prelude.js'
 import type { Prompter } from './gate-session.js'
 import { autoExtendRound, autoSettleFinalGate } from './gate-settle.js'
+import { gatherGateSignals } from './gate-signals.js'
 import type { PresentGateInput } from './gate.js'
 import { presentGate } from './gate.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
@@ -119,34 +121,19 @@ export async function presentGateAt(
   )
   state.gate = { mode, version }
   state.status = 'running'
+  const deadline = deadlineStampFor(deps, deps.autonomy?.level ?? 'observe')
+  state.gateDeadlineAt = deadline.gateDeadlineAt
+  state.gateDeadlineReArmed = false
   await saveRunState(state, nowOf(deps))
-  if (evaluation !== null) {
-    await writePresentedRecord(deps, state, ctx, evaluation, policyInput)
-  }
+  if (evaluation !== null) await writePresentedRecord(deps, state, ctx, evaluation, policyInput)
+  announceDeadline(deps, deadline.notify)
   deps.stdout?.(path.relative(deps.config.repoRoot, result.gateMdPath))
   deps.stdout?.(`Next: sdd-runner gate resume ${state.runId}`)
   return { runId: state.runId, halted: 'gate', gateMdPath: result.gateMdPath, version }
 }
 
-async function gatherGateSignals(
-  deps: OrchestratorDeps,
-  state: RunState,
-  ctx: StageContext,
-  reviewResult: ReviewLoopResult,
-): Promise<{
-  events: readonly SddEvent[]
-  costUsd: number
-  costKnown: boolean
-  durationMs: number
-  assumptions: readonly GateAssumption[]
-  trajectory: ReturnType<typeof replayEvents>['perRound']
-}> {
-  const events = readEvents(logPathFor(state))
-  const resolve = deps.resolveCost ?? (await buildResolveCost())
-  const { costUsd, durationMs, costKnown } = costAndDuration(events, state.createdAt, nowOf(deps), resolve)
-  const assumptions = await gatherAssumptions(ctx.sidecarDir, reviewResult.rounds)
-  const trajectory = replayEvents(logPathFor(state)).perRound
-  return { events, costUsd, costKnown, durationMs, assumptions, trajectory }
+function announceDeadline(deps: OrchestratorDeps, notify: string | null): void {
+  if (notify !== null) deps.stdout?.(notify)
 }
 
 interface GateDigestParts {
@@ -289,6 +276,25 @@ export async function finalizeGate(
 ): Promise<{ runId: string; outcome: 'approved' | 'aborted'; version: number }> {
   state.status = status
   state.gate = null
+  state.gateDeadlineAt = null
+  state.gateDeadlineReArmed = false
   await saveRunState(state, nowOf(deps))
   return { runId: state.runId, outcome: status === 'completed' ? 'approved' : 'aborted', version }
+}
+
+export async function prepareResumeInput(
+  sidecarDir: string,
+  round: number,
+  gateMode: 'early' | 'final',
+): Promise<{
+  assumptions: readonly { id: string; text: string; blast_radius: string }[]
+  reviewResult: ReviewLoopResult
+  requiredAck: string | undefined
+}> {
+  const assumptions = await gatherAssumptions(sidecarDir, round)
+  const capHitFired = gateMode === 'early'
+  const reviewResult = await readReviewResultFromSidecars(sidecarDir, round, capHitFired ? 'cap-hit' : 'converged')
+  const findings = findingsOf(reviewResult)
+  const requiredAck = capHitFired && findings.blockers.length === 0 ? 'T1' : undefined
+  return { assumptions, reviewResult, requiredAck }
 }

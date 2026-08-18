@@ -13,11 +13,12 @@ import { buildAuditReport } from './audit.js'
 import { main } from './cli.js'
 import type { CliHarness } from './cli.js'
 import { parseCliArgs } from './cli.js'
+import { makePrompterFor } from './composition-prompter.js'
 import { discoverBranch, loadRunnerConfig } from './config.js'
 import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
 import { buildResolveCost } from './gate-digest.js'
-import { readlinePrompter, stdinIsInteractive } from './gate-session.js'
+import { stdinIsInteractive } from './gate-session.js'
 import type { Prompter } from './gate-session.js'
 import { runGateReopen } from './gate.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
@@ -28,6 +29,7 @@ import type { Verbosity } from './renderer.js'
 import { buildReport } from './report.js'
 import type { ChangeDirSummary, ReportInput } from './report.js'
 import { listPendingGates, loadRunState, resolveRunId } from './run-state.js'
+import { registerTerminalTitle, TERMINAL_TITLE_RESTORE } from './terminal-title.js'
 
 export const USAGE = [
   'sdd-runner — autonomous SDD pipeline',
@@ -108,6 +110,7 @@ async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness
   const execGit = makeExecGit()
   const resolveCost = await buildResolveCost()
   const renderer = createRenderer(process.stdout, verbosity, { resolveCost })
+  registerTitleIfTty(process.stdout)
   const orchestratorDeps = {
     config,
     spawn: realSpawn,
@@ -118,7 +121,7 @@ async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness
       process.stdout.write(`${line}\n`)
     },
     interactive: (): boolean => stdinIsInteractive(),
-    makePrompter: (): Prompter => readlinePrompter({ input: process.stdin, output: process.stdout }),
+    makePrompter: (): Prompter => makePrompterFor(stdinIsInteractive(), process.env),
   }
   return {
     runStart: (options) => runStart(orchestratorDeps, options),
@@ -132,24 +135,41 @@ async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness
     buildAuditReport: (runId) => resolveAndCall(config.workDir, runId, (r) => buildAuditReport(config.workDir, r)),
     runGateReopen: (runId, gateVersion) =>
       resolveAndCall(config.workDir, runId, (r) => runGateReopen(orchestratorDeps, config.workDir, r, gateVersion)),
-    buildReport: async (runId, pr) => {
-      const state = await loadRunState(config.workDir, runId)
-      const branch = await discoverBranch(execGit, config.repoRoot)
-      const input: ReportInput = {
-        readEvents: () => readEvents(path.join(config.workDir, 'runs', runId, 'events.ndjson')),
-        readChangeDir: () => readChangeSummary(config.repoRoot, state.changeName),
-        execGit,
-        runId,
-        changeName: state.changeName,
-        branch,
-        pr,
-      }
-      return buildReport(input)
-    },
+    buildReport: (runId, pr) => buildRunReport(config, runId, pr, execGit),
     stdout: (line) => {
       process.stdout.write(`${line}\n`)
     },
   }
+}
+
+async function buildRunReport(
+  config: { readonly repoRoot: string; readonly workDir: string },
+  runId: string,
+  pr: boolean,
+  execGit: ExecGitFn,
+): Promise<string> {
+  const state = await loadRunState(config.workDir, runId)
+  const branch = await discoverBranch(execGit, config.repoRoot)
+  const input: ReportInput = {
+    readEvents: () => readEvents(path.join(config.workDir, 'runs', runId, 'events.ndjson')),
+    readChangeDir: () => readChangeSummary(config.repoRoot, state.changeName),
+    execGit,
+    runId,
+    changeName: state.changeName,
+    branch,
+    pr,
+  }
+  return buildReport(input)
+}
+
+function registerTitleIfTty(stream: { readonly isTTY?: boolean; write(chunk: string): boolean }): void {
+  if (stream.isTTY !== true) return
+  registerTerminalTitle(
+    (chunk: string): void => {
+      stream.write(chunk)
+    },
+    (): string => TERMINAL_TITLE_RESTORE,
+  )
 }
 
 async function resolveAndCall<T>(workDir: string, runId: string, fn: (resolved: string) => Promise<T>): Promise<T> {

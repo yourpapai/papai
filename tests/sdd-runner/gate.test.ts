@@ -485,6 +485,57 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
       expect(settled.status).toBe('completed')
     })
   })
+
+  describe('deadline field lifecycle (12.1)', () => {
+    it('a presented gate at auto with deadlineMinutes records gateDeadlineAt, prints the bell, and stays pending', async () => {
+      const fixture = await makePreludeFixture([])
+      const stdoutLines: string[] = []
+      const deps = {
+        ...fixture.deps,
+        stdout: (line: string): void => {
+          stdoutLines.push(line)
+        },
+        autonomy: {
+          level: 'auto' as const,
+          costCeilingUsd: 5,
+          autoExtendMax: 1,
+          deadlineMinutes: 10,
+          rules: {},
+        },
+      }
+      const undecidable = {
+        ...CONVERGED,
+        openMaterial: [{ id: 'F1', class: 'MATERIAL' as const, resolution: 'assumed' as const, outcome: 'kept' }],
+      }
+      await presentGateAt(deps, fixture.state, ctxOf(fixture), undecidable, 1, 'final')
+      const after = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+      expect(after.gateDeadlineAt).not.toBeNull()
+      expect(after.gateDeadlineReArmed).toBe(false)
+      expect(stdoutLines.some((l) => l.includes('auto-deadline'))).toBe(true)
+    })
+
+    it('presentation without a configured deadline clears both fields', async () => {
+      const fixture = await makePreludeFixture([])
+      const deps = {
+        ...fixture.deps,
+        autonomy: {
+          level: 'auto' as const,
+          costCeilingUsd: 5,
+          autoExtendMax: 1,
+          deadlineMinutes: undefined,
+          rules: {},
+        },
+      }
+      const state = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+      state.gateDeadlineAt = new Date().toISOString()
+      state.gateDeadlineReArmed = true
+      await saveRunState(state)
+      await presentGateAt(deps, state, ctxOf(fixture), CONVERGED, 1, 'final')
+      const after = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+      expect(after.gateDeadlineAt).toBeNull()
+      expect(after.gateDeadlineReArmed).toBe(false)
+    })
+  })
 })
 
 describe('verifyGateIntegrity shared helper (7.1)', () => {

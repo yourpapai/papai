@@ -539,3 +539,29 @@ function makeAuditHarness(calls: string[]): CliHarness {
     },
   }
 }
+
+describe('gate resume deadline flags (12.2)', () => {
+  it('parses --wait-deadline and --no-wait on gate resume', () => {
+    expect(parseCliArgs(['gate', 'resume', 'run-1', '--wait-deadline'])).toMatchObject({ waitDeadline: true })
+    expect(parseCliArgs(['gate', 'resume', 'run-1', '--no-wait'])).toMatchObject({ noWait: true })
+  })
+
+  it('--no-wait and --wait-deadline conflict', () => {
+    expect(() => parseCliArgs(['gate', 'resume', 'run-1', '--wait-deadline', '--no-wait'])).toThrow(
+      /cannot be combined/u,
+    )
+  })
+})
+
+describe('quiet verbosity (13.7)', () => {
+  it('parses quiet on start and rejects unknown values naming the flag', () => {
+    expect(parseCliArgs(['start', 'task.md', '--verbosity', 'quiet'])).toMatchObject({ verbosity: 'quiet' })
+    expect(() => parseCliArgs(['start', 'task.md', '--verbosity', 'silent'])).toThrow(/invalid --verbosity: silent/u)
+  })
+
+  it('accepts --verbosity on resume, continue, and gate', () => {
+    expect(parseCliArgs(['resume', 'r1', '--verbosity', 'quiet'])).toMatchObject({ verbosity: 'quiet' })
+    expect(parseCliArgs(['continue', 'r1', '--verbosity', 'quiet'])).toMatchObject({ verbosity: 'quiet' })
+    expect(parseCliArgs(['gate', 'resume', 'r1', '--verbosity', 'quiet'])).toMatchObject({ verbosity: 'quiet' })
+  })
+})

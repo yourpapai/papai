@@ -3,11 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { STAGE_ORDER } from './events.js'
 import type { EventInput } from './events.js'
 import { formatEvent } from './renderer.js'
 import { MIDDLE_DOT } from './renderer.js'
 import { formatTokenCount } from './renderer.js'
-import { renderPipelineMap } from './renderer.js'
+import { renderPipelineMap, truncateVisible } from './renderer.js'
 import type { Renderer, RendererStream, Verbosity } from './renderer.js'
 import { createReplayFolder } from './replay.js'
 import type { ReplayFolder, ReplayState } from './replay.js'
@@ -16,7 +17,6 @@ import type { ResolveCostFn } from './usage-aggregate.js'
 const ARROW = '\u25B6'
 const ERASE_LINE = '\u001b[2K'
 const CURSOR_DOWN = '\u001b[1B'
-const ELLIPSIS = '\u2026'
 const TOKEN_SCALE = 1_000_000
 
 type StepFinishInput = Extract<EventInput, { type: 'step_finish' }>
@@ -31,12 +31,6 @@ function formatDuration(ms: number): string {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes}m${seconds.toString().padStart(2, '0')}s`
-}
-
-function truncate(value: string, max: number): string {
-  if (max <= 0) return ''
-  if (value.length <= max) return value
-  return `${value.slice(0, max - 1)}${ELLIPSIS}`
 }
 
 /**
@@ -59,8 +53,13 @@ export class DynamicRenderer implements Renderer {
   private readonly slots = new Map<string, string>()
   private readonly totals = { input: 0, output: 0, reasoning: 0, cachedRead: 0, cachedWrite: 0, cost: 0 }
   private readonly agentModels = new Map<string, string>()
+  private readonly retryAttempts = new Map<string, number>()
+  private readonly stageEnteredAt = new Map<string, number>()
+  private readonly stageTimes = new Map<string, { wallMs: number; costUsd: number }>()
+  private readonly stageCostAtEnter = new Map<string, number>()
   private costEstimated = false
   private readonly resolveCost: ResolveCostFn | undefined
+  private readonly segmenter: Intl.Segmenter | undefined
 
   constructor(
     private readonly stream: RendererStream,
@@ -71,6 +70,8 @@ export class DynamicRenderer implements Renderer {
     this.tty = stream.isTTY === true
     this.folder = folder ?? createReplayFolder()
     this.resolveCost = resolveCost
+    this.segmenter =
+      typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : undefined
   }
 
   renderState = (state: ReplayState): void => {
@@ -96,14 +97,38 @@ export class DynamicRenderer implements Renderer {
     if (this.startedAt === 0) this.startedAt = Date.now()
     if (event.type === 'tool_use') {
       const arg = event.arg
+      const retry = this.retryAttempts.get(event.agent)
+      const badge = retry === undefined ? '' : ` [retry ${retry}]`
       this.slots.set(
         event.agent,
-        arg === undefined ? `${event.agent} ${ARROW} ${event.tool}` : `${event.agent} ${ARROW} ${event.tool} ${arg}`,
+        arg === undefined
+          ? `${event.agent} ${ARROW} ${event.tool}${badge}`
+          : `${event.agent} ${ARROW} ${event.tool} ${arg}${badge}`,
       )
     } else if (event.type === 'spawned') {
       this.agentModels.set(event.agent, event.model)
+    } else if (event.type === 'retrying') {
+      this.retryAttempts.set(event.agent, event.attempt)
     } else if (event.type === 'done') {
-      this.slots.delete(event.agent)
+      const model = event.model ?? this.agentModels.get(event.agent)
+      const modelPart = model === undefined ? '' : ` ${MIDDLE_DOT} ${model}`
+      this.slots.set(
+        event.agent,
+        `${event.agent} done${modelPart} ${MIDDLE_DOT} in ${formatTokenCount(event.usage.inputTokens)} out ${formatTokenCount(
+          event.usage.outputTokens,
+        )} ${MIDDLE_DOT} $${event.usage.costUsd.toFixed(4)}`,
+      )
+    } else if (event.type === 'stage_enter') {
+      this.stageEnteredAt.set(event.stage, Date.now())
+      this.stageCostAtEnter.set(event.stage, this.totals.cost)
+    } else if (event.type === 'stage_exit') {
+      const entered = this.stageEnteredAt.get(event.stage)
+      if (entered !== undefined) {
+        this.stageTimes.set(event.stage, {
+          wallMs: Date.now() - entered,
+          costUsd: Math.max(0, this.totals.cost - (this.stageCostAtEnter.get(event.stage) ?? 0)),
+        })
+      }
     } else if (event.type === 'step_finish') {
       this.totals.input += event.tokens.input
       this.totals.output += event.tokens.output
@@ -144,6 +169,8 @@ export class DynamicRenderer implements Renderer {
     const parts: string[] = []
     const round = this.folder.state.round
     if (round !== null) parts.push(`round ${round.current}/${round.cap}`)
+    const eta = this.etaOf()
+    if (eta !== null) parts.push(`eta ${eta}`)
     if (this.totals.input > 0 || this.totals.output > 0 || this.totals.cachedRead > 0) {
       const cachedPart =
         this.totals.cachedRead > 0 ? ` ${MIDDLE_DOT} cached ${formatTokenCount(this.totals.cachedRead)}` : ''
@@ -155,9 +182,36 @@ export class DynamicRenderer implements Renderer {
     return `  ${'status'.padEnd(10)} ${parts.join(` ${MIDDLE_DOT} `)}`
   }
 
+  /** ETA from the median completed review-round duration (D10). */
+  private etaOf(): string | null {
+    const round = this.folder.state.round
+    if (round === null || round.current <= 1) return null
+    const stageEntered = this.stageEnteredAt.get('review')
+    if (stageEntered === undefined) return null
+    const perRound = (Date.now() - stageEntered) / round.current
+    const remaining = Math.max(0, round.cap - round.current)
+    return formatDuration(perRound * remaining)
+  }
+
+  private activeStageElapsed(): number | undefined {
+    for (const stage of STAGE_ORDER) {
+      if (this.folder.state.stages[stage] === 'active') {
+        const entered = this.stageEnteredAt.get(stage)
+        return entered === undefined ? 0 : Date.now() - entered
+      }
+    }
+    return undefined
+  }
+
   private redraw(): void {
     const status = this.statusLine()
-    const lines = [...renderPipelineMap(this.folder.state), ...this.slots.values()]
+    const lines = [
+      ...renderPipelineMap(this.folder.state, {
+        stageTimes: this.stageTimes,
+        ...(this.activeStageElapsed() === undefined ? {} : { activeElapsedMs: this.activeStageElapsed() }),
+      }),
+      ...this.slots.values(),
+    ]
     if (status !== '') lines.push(status)
     if (lines.length === 0) {
       this.clearBlock()
@@ -203,6 +257,6 @@ export class DynamicRenderer implements Renderer {
 
   private fit(line: string): string {
     const max = this.stream.columns ?? 80
-    return truncate(line, max)
+    return truncateVisible(line, max, this.segmenter)
   }
 }

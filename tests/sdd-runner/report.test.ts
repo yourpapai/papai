@@ -98,3 +98,85 @@ describe('buildReport', () => {
     expect(body).toContain('skeptic lens: run')
   })
 })
+
+describe('gains block (11.1)', () => {
+  const gateStamps = (seq: number): { presented: string; answered: string } => ({
+    presented: `2026-01-01T00:0${seq}:00.000Z`,
+    answered: `2026-01-01T00:0${seq}:05.000Z`,
+  })
+
+  it('counts paired approve/extend events as interventions avoided per rule, with dwell-based saved estimate', async () => {
+    const base = events()
+    const stamps = gateStamps(8)
+    const ev: readonly SddEvent[] = [
+      ...base,
+      { altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 2, seq: 8, ts: stamps.presented },
+      {
+        altitude: 'L2',
+        type: 'auto_decision',
+        rule: 'R1',
+        decision: 'approve',
+        evidenceDigest: 'd',
+        gateVersion: 2,
+        seq: 9,
+        ts: 'x',
+      },
+      { altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: 2, seq: 10, ts: stamps.answered },
+    ]
+    const body = await buildReport(baseInput(ev))
+    expect(body).toContain('### Gains')
+    expect(body).toMatch(/interventions avoided: 1/u)
+    expect(body).toMatch(/R1 × 1/u)
+    expect(body).toMatch(/human gates: \d+/u)
+    expect(body).toMatch(/~wall-time saved/u)
+  })
+
+  it('never counts unpaired auto_decision events', async () => {
+    const ev: readonly SddEvent[] = [
+      ...events(),
+      {
+        altitude: 'L2',
+        type: 'auto_decision',
+        rule: 'R1',
+        decision: 'approve',
+        evidenceDigest: 'd',
+        gateVersion: 2,
+        seq: 8,
+        ts: 'x',
+      },
+    ]
+    const body = await buildReport(baseInput(ev))
+    expect(body).not.toMatch(/interventions avoided: [1-9]/u)
+  })
+
+  it('reports accept-items separately as items auto-accepted, not interventions avoided', async () => {
+    const ev: readonly SddEvent[] = [
+      ...events(),
+      {
+        altitude: 'L2',
+        type: 'auto_decision',
+        rule: 'R3',
+        decision: 'accept-items',
+        evidenceDigest: 'd',
+        gateVersion: 1,
+        seq: 8,
+        ts: 'x',
+      },
+    ]
+    const body = await buildReport(baseInput(ev))
+    expect(body).toMatch(/R3 .*items auto-accepted: 1/u)
+    expect(body).not.toMatch(/interventions avoided: [1-9]/u)
+  })
+})
+
+function baseInput(evs: readonly SddEvent[]): ReportInput {
+  return {
+    readEvents: () => evs,
+    readChangeDir: () => Promise.resolve(changeDir()),
+    execGit: gitLog('abc Section 1\n'),
+    runId: 'run-1',
+    changeName: 'add-thing',
+    branch: 'add-thing',
+    pr: false,
+  }
+}

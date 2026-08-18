@@ -204,6 +204,49 @@ describe('formatEvent', () => {
     )
     expect(line).toBe('reviewer-r1 done \u00B7 in 12.0k out 3.4k \u00B7 $0.0142')
   })
+
+  it('done line appends · <model> when the done event carries a model id', () => {
+    const line = formatEvent(
+      {
+        altitude: 'L1',
+        type: 'done',
+        agent: 'reviewer-r1',
+        model: 'test-model',
+        usage: {
+          inputTokens: 12000,
+          outputTokens: 3400,
+          reasoningTokens: 200,
+          cachedReadTokens: 0,
+          cachedWriteTokens: 0,
+          costUsd: 0.0142,
+          wallMs: 45000,
+        },
+      },
+      'normal',
+    )
+    expect(line).toBe('reviewer-r1 done \u00B7 test-model \u00B7 in 12.0k out 3.4k \u00B7 $0.0142')
+  })
+
+  it('done line without a model id renders exactly as before (no placeholder)', () => {
+    const noModel = formatEvent(
+      {
+        altitude: 'L1',
+        type: 'done',
+        agent: 'drafter-1',
+        usage: {
+          inputTokens: 100,
+          outputTokens: 10,
+          reasoningTokens: 0,
+          cachedReadTokens: 0,
+          cachedWriteTokens: 0,
+          costUsd: 0.001,
+          wallMs: 1000,
+        },
+      },
+      'normal',
+    )
+    expect(noModel).toBe('drafter-1 done \u00B7 in 100 out 10 \u00B7 $0.0010')
+  })
 })
 
 describe('createRenderer (integration smoke)', () => {

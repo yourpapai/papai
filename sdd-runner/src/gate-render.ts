@@ -6,12 +6,31 @@
 import type { ChangeDigest } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateDigestInput, GateFinding } from './gate-model.js'
 import { formatTrajectoryBlock } from './renderer.js'
+import type { DigestRecord } from './replay.js'
 
 export type { GateDigestInput }
 
 const NO_WHY = '_(no "Why" section in proposal.md)_'
 const NO_IMPACT = '_(no "Impact" section in proposal.md)_'
 const NO_ASSUMPTIONS = '_(no assumptions logged)_'
+
+const SPARK_GLYPHS = ['▁', '▂', '▃', '▄', '▅', '▆', '▇'] as const
+
+/**
+ * Per-round burndown sparkline (D10): one unicode block glyph per round,
+ * encoding relative magnitude. Pure text that renders identically in any
+ * pager.
+ */
+export function formatTrajectorySparkline(totals: readonly number[]): string {
+  if (totals.length === 0) return ''
+  const max = Math.max(...totals)
+  return totals
+    .map((total) => {
+      const index = max <= 0 ? 0 : Math.round((total / max) * (SPARK_GLYPHS.length - 1))
+      return SPARK_GLYPHS[Math.min(index, SPARK_GLYPHS.length - 1)] ?? '▁'
+    })
+    .join('')
+}
 
 function costMarker(input: GateDigestInput): string {
   if (input.costKnown) return 'metered'
@@ -136,7 +155,7 @@ function appendEarlyCapHitSections(lines: string[], input: GateDigestInput): voi
 }
 
 function appendOpenMaterial(lines: string[], input: GateDigestInput): void {
-  const trajectoryBlock = formatTrajectoryBlock(input.trajectory)
+  const trajectoryBlock = appendSparkline(formatTrajectoryBlock(input.trajectory), input.trajectory)
   if (trajectoryBlock !== '') lines.push('', trajectoryBlock)
   lines.push('', '### Open MATERIAL findings at cap (reviewed)')
   for (const finding of input.openMaterial) {
@@ -167,4 +186,13 @@ function appendAssumptions(lines: string[], ranked: readonly GateAssumption[], r
     lines.push('', `- [ ] ${assumption.id} ${assumption.text}`, `  blast radius: ${assumption.blast_radius}`)
   }
   lines.push('', '### Resume', `gate resume ${runId}`)
+}
+
+/** Append the sparkline line beside the per-round counts in the trajectory block. */
+function appendSparkline(block: string, trajectory: readonly DigestRecord[]): string {
+  if (block === '') return block
+  const spark = formatTrajectorySparkline(
+    trajectory.map((record) => record.counts.blocker + record.counts.material + record.counts.nitpick),
+  )
+  return `${block}\nsparkline: ${spark}`
 }
