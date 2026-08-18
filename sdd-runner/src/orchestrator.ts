@@ -22,7 +22,7 @@ import type { Verbosity } from './renderer.js'
 import { replayEvents } from './replay.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
-import { createRunState, loadRunState, resolveRoundCap, saveRunState } from './run-state.js'
+import { createRunState, loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { deriveResumePoint } from './run-state.js'
 import { createStageMachine } from './stage-machine.js'
@@ -38,7 +38,11 @@ export interface AutonomyOverrides {
 }
 
 function resolveAutonomy(deps: OrchestratorDeps, overrides: AutonomyOverrides = {}): AutonomyConfig {
-  return resolveAutonomyConfig(deps.config, overrides)
+  if (overrides.level === undefined && overrides.deadlineMinutes === undefined && deps.autonomy !== undefined) {
+    return deps.autonomy
+  }
+  const base = resolveAutonomyConfig(deps.config, overrides)
+  return deps.autonomy === undefined ? base : { ...base, level: overrides.level ?? deps.autonomy.level }
 }
 
 export interface StartOptions {
@@ -263,11 +267,18 @@ async function runDraftStage(env: PipelineEnv, depth: DepthProfile): Promise<voi
 
 async function runReviewStage(env: PipelineEnv, depth: DepthProfile, taskText: string): Promise<ReviewLoopResult> {
   const { deps, state, machine, agent, ctx, input } = env
-  const materialize = createMaterializer(ctx.sidecarDir, ctx.changeDir)
+  const materialize = createMaterializer(ctx.sidecarDir, ctx.changeDir, ctx.emit, deps.config.repoRoot)
   let reviewResult!: ReviewLoopResult
   await machine.runStage('review', async () => {
     reviewResult = await runReviewLoop(
-      { agent, emit: ctx.emit, sidecarDir: ctx.sidecarDir, cwd: ctx.cwd, materialize },
+      {
+        agent,
+        emit: ctx.emit,
+        sidecarDir: ctx.sidecarDir,
+        cwd: ctx.cwd,
+        materialize,
+        steer: steerSeamFor(state, (line) => deps.stdout?.(`steer: ${line}`)),
+      },
       {
         changeName: input.changeName,
         changeDir: ctx.changeDir,

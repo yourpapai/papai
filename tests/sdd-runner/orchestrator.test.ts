@@ -188,6 +188,10 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
   }
 }
 
+function gateEventKinds(events: readonly ReturnType<typeof readEvents>[number][]): string[] {
+  return events.filter((e) => e.type === 'gate').map((e) => (e as { action: string }).action)
+}
+
 function glmFallbackResolver(
   modelId: string,
 ): { input: number; output: number; source: 'primary' | 'fallback' } | null {
@@ -1393,7 +1397,7 @@ describe('runGateResume', () => {
     expect(state.round).toBe(4)
     expect(state.gate).toEqual({ mode: 'early', version: 2 })
 
-    const events = readEvents(path.join(runDir, 'events.ndjson'))
+    const events = readEvents(path.join(fixture.deps.config.workDir, 'runs', started.runId, 'events.ndjson'))
     const round4 = events.filter((e) => e.type === 'round_open').filter((e) => (e as { round: number }).round === 4)
     expect(round4).toHaveLength(1)
     expect(round4[0]).toMatchObject({ type: 'round_open', round: 4, cap: 4 })
@@ -1868,3 +1872,312 @@ describe('runResume hardening', () => {
     expect(fs.readFileSync(requireGateMdPath(result), 'utf8')).toContain('Final gate')
   })
 })
+
+describe('policy prelude at the extend-round seam (observe)', () => {
+  it('a --extend re-presented early gate carries the observe preview record', async () => {
+    const materialFinding = {
+      id: 'F1',
+      class: 'MATERIAL',
+      gap: 'design lacks rollback',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-1.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-2.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-3.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-3.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-4.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-4.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+    const result = await runGateResume(fixture.deps, started.runId, { extend: true })
+    expect(result.outcome).toBe('extend')
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
+    const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('### Auto-decision preview')
+    const sidecar = fs.readFileSync(path.join(runDir, 'auto-policy.jsonl'), 'utf8').trim().split('\n')
+    expect(sidecar.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('assist auto-settle (7.2)', () => {
+  const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
+    void modelId
+    return { input: 1, output: 2, source: 'primary' }
+  }
+
+  it('a converged run at assist auto-approves the final gate with zero prompts and full attribution', async () => {
+    const fixture = makeFixture()
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      resolveCost: meteredCost,
+      autonomy: { level: 'assist', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+    }
+    const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+
+    const state = await loadRunState(deps.config.workDir, result.runId)
+    expect(state.status).toBe('completed')
+    expect(state.gate).toBeNull()
+
+    const gateMd = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(gateMd).toContain('## Gate response')
+    expect(gateMd).toContain('decided-by: policy R1')
+
+    const events = readEvents(path.join(deps.config.workDir, 'runs', result.runId, 'events.ndjson'))
+    expect(gateEventKinds(events)).toEqual(['presented', 'answered'])
+    const autoDecisions = events.filter((e) => e.type === 'auto_decision')
+    expect(autoDecisions).toHaveLength(1)
+    expect(autoDecisions[0]).toMatchObject({ rule: 'R1', decision: 'approve', gateVersion: 1 })
+  })
+
+  it('observe stays byte-identical: no auto-settle, gate pending, preview recorded', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(state.status).toBe('running')
+    expect(state.gate).toEqual({ mode: 'final', version: 1 })
+    const gateMd = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(gateMd).not.toContain('## Gate response')
+    expect(gateMd).toContain('### Auto-decision preview')
+  })
+})
+
+describe('policy prelude at the extend-round seam (observe)', () => {
+  it('a --extend re-presented early gate carries the observe preview record', async () => {
+    const materialFinding = {
+      id: 'F1',
+      class: 'MATERIAL',
+      gap: 'design lacks rollback',
+      question: 'how?',
+      code_evidence_attempted: 'searched design.md',
+    }
+    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-1.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-2.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-3.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-3.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+      'findings-4.json': JSON.stringify({ findings: [materialFinding] }),
+      'resolutions-4.json': JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
+    })
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+    const result = await runGateResume(fixture.deps, started.runId, { extend: true })
+    expect(result.outcome).toBe('extend')
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
+    const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('### Auto-decision preview')
+    const sidecar = fs.readFileSync(path.join(runDir, 'auto-policy.jsonl'), 'utf8').trim().split('\n')
+    expect(sidecar.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('assist auto-settle (7.2)', () => {
+  const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
+    void modelId
+    return { input: 1, output: 2, source: 'primary' }
+  }
+
+  it('a converged run at assist auto-approves the final gate with zero prompts and full attribution', async () => {
+    const fixture = makeFixture()
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      resolveCost: meteredCost,
+      autonomy: { level: 'assist', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+    }
+    const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+
+    const state = await loadRunState(deps.config.workDir, result.runId)
+    expect(state.status).toBe('completed')
+    expect(state.gate).toBeNull()
+
+    const gateMd = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(gateMd).toContain('## Gate response')
+    expect(gateMd).toContain('decided-by: policy R1')
+
+    const events = readEvents(path.join(deps.config.workDir, 'runs', result.runId, 'events.ndjson'))
+    expect(gateEventKinds(events)).toEqual(['presented', 'answered'])
+    const autoDecisions = events.filter((e) => e.type === 'auto_decision')
+    expect(autoDecisions).toHaveLength(1)
+    expect(autoDecisions[0]).toMatchObject({ rule: 'R1', decision: 'approve', gateVersion: 1 })
+  })
+
+  it('observe stays byte-identical: no auto-settle, gate pending, preview recorded', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(state.status).toBe('running')
+    expect(state.gate).toEqual({ mode: 'final', version: 1 })
+    const gateMd = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(gateMd).not.toContain('## Gate response')
+    expect(gateMd).toContain('### Auto-decision preview')
+  })
+})
+
+describe('R3 accept-items partial path (7.5)', () => {
+  const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
+    void modelId
+    return { input: 1, output: 2, source: 'primary' }
+  }
+
+  it('a mixed gate pre-checks low-blast items, emits accept-items, and still presents to the human', async () => {
+    const nitpickFinding = {
+      id: 'F1',
+      class: 'NITPICK',
+      gap: 'typo in proposal',
+      question: 'fix?',
+      code_evidence_attempted: 'read proposal.md',
+    }
+    const nitpickResolution = { id: 'F1', class: 'NITPICK', resolution: 'dismissed', justification: 'cosmetic' }
+    const fixture = makeFixture({
+      'findings-1.json': JSON.stringify({ findings: [nitpickFinding] }),
+      'resolutions-1.json': JSON.stringify({
+        resolutions: [nitpickResolution],
+        assumptions: [
+          {
+            id: 'A1',
+            text: 'low blast one',
+            basis: 'default',
+            confidence: 'high',
+            blast_radius: 'tiny',
+            status: 'open',
+            evidence: { files: ['openspec/changes/add-thing/proposal.md'] },
+          },
+          {
+            id: 'A2',
+            text: 'high blast one',
+            basis: 'default',
+            confidence: 'low',
+            blast_radius: 'huge',
+            status: 'open',
+            evidence: { files: ['src/chat/router.ts'] },
+          },
+        ],
+      }),
+    })
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      resolveCost: meteredCost,
+      autonomy: { level: 'assist', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+    }
+    const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+
+    const state = await loadRunState(deps.config.workDir, result.runId)
+    expect(state.gate).not.toBeNull()
+    expect(state.status).toBe('running')
+
+    const gateMd = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(gateMd).toContain('### Auto-decision preview')
+    expect(gateMd).toContain('- [x] A1 low blast one · decided-by: policy R3')
+    expect(gateMd).toContain('- [ ] A2 high blast one')
+
+    const events = readEvents(path.join(deps.config.workDir, 'runs', result.runId, 'events.ndjson'))
+    const autoDecisions = events.filter((e) => e.type === 'auto_decision')
+    expect(autoDecisions[autoDecisions.length - 1]).toMatchObject({
+      rule: 'R3',
+      decision: 'accept-items',
+    })
+  })
+})
+
+describe('R2 trajectory auto-extend (8.2)', () => {
+  const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
+    void modelId
+    return { input: 1, output: 2, source: 'primary' }
+  }
+
+  function makeTrajectoryFixture(script: { reviewer: string[]; resolver: string[] }): Fixture {
+    const fixture = makeFixture({
+      'findings-1.json': script.reviewer[0] ?? '{}',
+      'resolutions-1.json': script.resolver[0] ?? '{}',
+      'findings-2.json': script.reviewer[1] ?? script.reviewer[0] ?? '{}',
+      'resolutions-2.json': script.resolver[1] ?? script.resolver[0] ?? '{}',
+      'findings-3.json': script.reviewer[2] ?? script.reviewer[1] ?? '{}',
+      'resolutions-3.json': script.resolver[2] ?? script.resolver[1] ?? '{}',
+      'findings-4.json': script.reviewer[3] ?? script.reviewer[2] ?? '{}',
+      'resolutions-4.json': script.resolver[3] ?? script.resolver[2] ?? '{}',
+    })
+    return fixture
+  }
+
+  const materialFinding = (id: string): Record<string, string> => ({
+    id,
+    class: 'MATERIAL',
+    gap: 'gap grows',
+    question: 'q',
+    code_evidence_attempted: 'e',
+  })
+  const openMaterial = (id: string): Record<string, string> => ({
+    id,
+    class: 'MATERIAL',
+    resolution: 'edited',
+    outcome: 'narrowed',
+  })
+
+  it('strictly decreasing burndown at cap-hit auto-extends one round, no prompt', async () => {
+    // M depth, cap 3: rounds 1-3 open MATERIAL (3 then 1), cap-hit at 3 →
+    // trajectory [.., 3, 1] strictly decreasing → R2 fires, extends to round 4.
+    const fixture = makeTrajectoryFixture({
+      reviewer: [
+        JSON.stringify({ findings: [materialFinding('F1'), materialFinding('F2'), materialFinding('F3')] }),
+        JSON.stringify({ findings: [materialFinding('F1')] }),
+        JSON.stringify({ findings: [materialFinding('F1')] }),
+        JSON.stringify({ findings: [] }),
+      ],
+      resolver: [
+        JSON.stringify({ resolutions: [openMaterial('F1'), openMaterial('F2'), openMaterial('F3')], assumptions: [] }),
+        JSON.stringify({ resolutions: [openMaterial('F1'), openMaterial('F2')], assumptions: [] }),
+        JSON.stringify({ resolutions: [openMaterial('F1')], assumptions: [] }),
+        JSON.stringify({ resolutions: [], assumptions: [] }),
+      ],
+    })
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      resolveCost: meteredCost,
+      autonomy: { level: 'assist', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+    }
+    const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+
+    const state = await loadRunState(deps.config.workDir, result.runId)
+    const events = readEvents(path.join(deps.config.workDir, 'runs', result.runId, 'events.ndjson'))
+    const extendDecisions = events.filter(isExtendDecision)
+    expect(extendDecisions).toHaveLength(1)
+    expect(state.autoExtendsUsed).toBe(1)
+    expect(state.round).toBe(4)
+    expect(result.halted).toBe('gate')
+  })
+
+  it('flat trajectory presents the human gate', async () => {
+    const fixture = makeTrajectoryFixture({
+      reviewer: [
+        JSON.stringify({ findings: [materialFinding('F1'), materialFinding('F2')] }),
+        JSON.stringify({ findings: [materialFinding('F1'), materialFinding('F2')] }),
+        JSON.stringify({ findings: [materialFinding('F1'), materialFinding('F2')] }),
+      ],
+      resolver: [
+        JSON.stringify({ resolutions: [openMaterial('F1'), openMaterial('F2')], assumptions: [] }),
+        JSON.stringify({ resolutions: [openMaterial('F1'), openMaterial('F2')], assumptions: [] }),
+        JSON.stringify({ resolutions: [openMaterial('F1'), openMaterial('F2')], assumptions: [] }),
+      ],
+    })
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      resolveCost: meteredCost,
+      autonomy: { level: 'assist', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+    }
+    const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
+    const events = readEvents(path.join(deps.config.workDir, 'runs', result.runId, 'events.ndjson'))
+    expect(events.filter(isExtendDecision)).toHaveLength(0)
+    const state = await loadRunState(deps.config.workDir, result.runId)
+    expect(state.gate).toEqual({ mode: 'early', version: 1 })
+  })
+})
+
+function isExtendDecision(e: ReturnType<typeof readEvents>[number]): boolean {
+  return e.type === 'auto_decision' && (e as { decision?: string }).decision === 'extend'
+}

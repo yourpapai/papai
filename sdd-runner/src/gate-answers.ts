@@ -12,6 +12,8 @@ export type GateAnswerItem =
       readonly text: string
       readonly accepted: boolean
       readonly redirect?: string
+      /** Optional per-item attribution suffix (`· decided-by: policy Rx`). */
+      readonly decidedBy?: string
     }
   | {
       readonly kind: 'finding'
@@ -19,6 +21,8 @@ export type GateAnswerItem =
       readonly text: string
       readonly accepted: boolean
       readonly redirect?: string
+      /** Optional per-item attribution suffix (`· decided-by: policy Rx`). */
+      readonly decidedBy?: string
     }
 
 export interface GateBlockerAnswer {
@@ -37,6 +41,8 @@ export interface GateAnswers {
   readonly blockerAnswers: readonly GateBlockerAnswer[]
   readonly acks: readonly GateAck[]
   readonly decision: 'approve' | 'veto' | 'extend' | 'abort'
+  /** Optional decision-level attribution (`decided-by: policy Rx`). */
+  readonly decidedBy?: string
 }
 
 const EXTEND_DIRECTIVE = '→ RUN 1 MORE'
@@ -69,10 +75,14 @@ export function renderGateAnswers(answers: GateAnswers): string {
   if (answers.decision === 'abort') return 'ABORT\n'
   if (answers.decision === 'extend') return `${EXTEND_DIRECTIVE}\n`
   const lines: string[] = ['## Gate response', '']
+  if (answers.decidedBy !== undefined) {
+    lines.push(`decided-by: ${answers.decidedBy}`, '')
+  }
   for (const ack of answers.acks) lines.push(`- [x] ${ack.id} ${ack.text}`)
   if (answers.acks.length > 0) lines.push('')
   for (const item of answers.items) {
-    lines.push(`- [${item.accepted ? 'x' : ' '}] ${item.id} ${item.text}`)
+    const suffix = item.decidedBy === undefined ? '' : ` · decided-by: ${item.decidedBy}`
+    lines.push(`- [${item.accepted ? 'x' : ' '}] ${item.id} ${item.text}${suffix}`)
     if (!item.accepted && item.redirect !== undefined) lines.push(`→ ${item.redirect}`)
   }
   if (answers.items.length > 0) lines.push('')

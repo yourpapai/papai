@@ -173,6 +173,9 @@ function createSeeded(workDir: string): PersistedRunState {
     round: 0,
     gate: null,
     status: 'running' as const,
+    autoExtendsUsed: 0,
+    gateDeadlineAt: null,
+    gateDeadlineReArmed: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   }
@@ -477,5 +480,26 @@ describe('resolveRunId', () => {
     expect(message).toContain('ffff0000')
     // one candidate per line, order-free: both candidate lines start with the shared timestamp prefix
     expect(message.match(/\n {2}2026-01-01/gu)).toHaveLength(2)
+  })
+})
+
+describe('autoExtendsUsed persistence (8.1)', () => {
+  it('defaults to zero on create, persists increments via saveRunState', async () => {
+    const workDir = makeWorkDir()
+    const state = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    expect(state.autoExtendsUsed).toBe(0)
+    const saved = await saveRunState({ ...state, autoExtendsUsed: 1 }, new Date('2026-08-10T10:10:00.000Z'))
+    const loaded = await loadRunState(workDir, state.runId)
+    expect(loaded.autoExtendsUsed).toBe(1)
+    expect(saved.autoExtendsUsed).toBe(1)
+  })
+
+  it('an old state.json without the field still loads (additive default)', async () => {
+    const workDir = makeWorkDir()
+    const state = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    const stateJson = fs.readFileSync(state.statePath, 'utf8')
+    fs.writeFileSync(state.statePath, stateJson.replace(/,\s*"autoExtendsUsed":\s*\d+/u, ''))
+    const loaded = await loadRunState(workDir, state.runId)
+    expect(loaded.autoExtendsUsed).toBe(0)
   })
 })

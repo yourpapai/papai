@@ -287,3 +287,66 @@ describe('parseGateResponse → RUN 1 MORE (extend directive)', () => {
     }
   })
 })
+
+describe('decided-by suffix recognition (D4)', () => {
+  it('strips a decided-by suffix from an answered checkbox before comparison', () => {
+    const md = '## Gate response\n\n- [x] A1 guests stay read-only · decided-by: policy R1\n'
+    const response = parseGateResponse(md, { assumptions: [assumption()], blockers: [], gateMode: 'final' })
+    expect(response.approved).toBe(true)
+  })
+
+  it('recognizes a decision-level decided-by line without treating it as an answer channel', () => {
+    const md = ['## Gate response', '', 'decided-by: policy R1', '', '- [x] A1 guests stay read-only', ''].join('\n')
+    const response = parseGateResponse(md, { assumptions: [assumption()], blockers: [], gateMode: 'final' })
+    expect(response.approved).toBe(true)
+  })
+})
+
+describe('Auto-decision preview strip (D3 step 3)', () => {
+  it('strips the preview section before processing so a hand-mangled preview cannot become gate input', () => {
+    const md = [
+      '## Gate response',
+      '',
+      '- [x] A1 guests stay read-only',
+      '',
+      '### Auto-decision preview',
+      '',
+      '> rule R1 would approve',
+      'ABORT',
+      '- [ ] A2 something else',
+      '→ RUN 1 MORE',
+      '',
+      '## After preview',
+      '',
+      'nothing structural',
+    ].join('\n')
+    const response = parseGateResponse(md, {
+      assumptions: [assumption()],
+      blockers: [],
+      gateMode: 'final',
+    })
+    expect(response.abort).toBe(false)
+    expect(response.extend).toBe(false)
+    expect(response.approved).toBe(true)
+  })
+
+  it('strips a trailing preview section that runs to EOF', () => {
+    const md = [
+      '## Gate response',
+      '',
+      '- [x] A1 guests stay read-only',
+      '',
+      '### Auto-decision preview',
+      '',
+      'ABORT',
+    ].join('\n')
+    const response = parseGateResponse(md, { assumptions: [assumption()], blockers: [], gateMode: 'final' })
+    expect(response.abort).toBe(false)
+    expect(response.approved).toBe(true)
+  })
+
+  it('leaves files without a preview section untouched', () => {
+    const md = 'ABORT\n'
+    expect(parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'final' }).abort).toBe(true)
+  })
+})

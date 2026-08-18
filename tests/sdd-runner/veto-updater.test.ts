@@ -208,6 +208,9 @@ describe('runVetoUpdater', () => {
       status: 'running',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
+      autoExtendsUsed: 0,
+      gateDeadlineAt: null,
+      gateDeadlineReArmed: false,
       runDir,
       statePath: path.join(runDir, 'state.json'),
     }

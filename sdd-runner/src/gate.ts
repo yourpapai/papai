@@ -11,8 +11,10 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import type { EventInput } from './events.js'
+import { readEvents } from './events.js'
 import { parseGateResponse, writeGateDigest } from './gate-model.js'
 import type { GateAssumption, GateBlocker, GateDigestInput } from './gate-model.js'
+import { loadRunState, saveRunState } from './run-state.js'
 
 const HashesSchema = z.record(z.string(), z.string())
 
@@ -101,6 +103,26 @@ export type GateOutcome =
   | { readonly kind: 'aborted' }
   | { readonly kind: 'extend' }
 
+/**
+ * Shared integrity verification every approved gate runs — human and policy
+ * paths alike: artifact-hash comparison against the presentation-time
+ * `gate-hashes-<version>.json` sidecar, the drift check when spec/design
+ * files were touched, and `human_edits` emission when anything changed.
+ */
+export async function verifyGateIntegrity(deps: GateDeps, version: number): Promise<void> {
+  const beforeRaw = await readFile(path.join(deps.runDir, `gate-hashes-${version}.json`), 'utf8')
+  const before = HashesSchema.parse(JSON.parse(beforeRaw))
+  const artifacts = listAgentArtifacts(deps.changeDir)
+  const after = await recordArtifactHashes(deps.changeDir, artifacts)
+  const edited = detectHandEdits(before, after)
+  if (edited.some((file) => file.startsWith(DRIFT_PREFIX) || file === 'design.md')) {
+    await deps.driftCheck(edited)
+  }
+  if (edited.length > 0) {
+    deps.emit({ altitude: 'L2', type: 'human_edits', action: 'detected', files: edited })
+  }
+}
+
 export async function resumeGate(deps: GateDeps, input: ResumeGateInput): Promise<GateOutcome> {
   const gateMdPath = path.join(deps.runDir, `gate-${input.version}.md`)
   const md = await readFile(gateMdPath, 'utf8')
@@ -119,17 +141,7 @@ export async function resumeGate(deps: GateDeps, input: ResumeGateInput): Promis
     deps.emit({ altitude: 'L2', type: 'gate', action: 'answered', mode: input.gateMode, version: input.version })
     return { kind: 'extend' }
   }
-  const beforeRaw = await readFile(path.join(deps.runDir, `gate-hashes-${input.version}.json`), 'utf8')
-  const before = HashesSchema.parse(JSON.parse(beforeRaw))
-  const artifacts = listAgentArtifacts(deps.changeDir)
-  const after = await recordArtifactHashes(deps.changeDir, artifacts)
-  const edited = detectHandEdits(before, after)
-  if (edited.some((file) => file.startsWith(DRIFT_PREFIX) || file === 'design.md')) {
-    await deps.driftCheck(edited)
-  }
-  if (edited.length > 0) {
-    deps.emit({ altitude: 'L2', type: 'human_edits', action: 'detected', files: edited })
-  }
+  await verifyGateIntegrity(deps, input.version)
   deps.emit({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: input.version })
   if (response.approved) return { kind: 'approved' }
   return { kind: 'veto', vetoes: response.vetoes }
@@ -138,4 +150,88 @@ export async function resumeGate(deps: GateDeps, input: ResumeGateInput): Promis
 export function vetoRedirects(outcome: GateOutcome): readonly { readonly id: string; readonly redirect?: string }[] {
   if (outcome.kind === 'veto') return outcome.vetoes
   return []
+}
+
+export interface GateReopenInput {
+  readonly workDir: string
+  readonly runId: string
+  readonly gateVersion: number
+  readonly changeDir: string
+}
+
+/**
+ * `sdd-runner gate reopen <runId> --gate <n>` (D9): re-present a settled
+ * auto-decided gate as pending at a fresh version, re-rendered as an
+ * unanswered digest (boxes unchecked, answered section cleared, digest
+ * sections carried over), with a fresh `gate-hashes-<freshVersion>.json`
+ * computed over current artifacts (old hashes never copied forward — they
+ * would false-positive `detectHandEdits`). A terminal `completed` status
+ * reverts to the pre-settle stage state (`gate`) so resume re-drives the
+ * settle path; deadline fields are cleared; `state.gate` becomes pending so
+ * the existing veto/abort resume mechanics apply.
+ */
+export async function runGateReopen(
+  deps: { readonly stdout?: (line: string) => void; readonly now?: () => Date },
+  workDir: string,
+  runId: string,
+  gateVersion: number,
+): Promise<{ readonly runId: string; readonly gateVersion: number; readonly gateMdPath: string }> {
+  const state = await loadRunState(workDir, runId)
+  if (state.gate !== null) {
+    throw new Error(`run ${runId} already has a pending gate (v${state.gate.version}) — settle or resume it first`)
+  }
+  const settledGate = latestSettledGate(
+    readEvents(path.join(state.runDir, 'events.ndjson')).filter((event) => event.type === 'gate'),
+  )
+  if (settledGate === null) {
+    throw new Error(`run ${runId} has no settled gate to reopen`)
+  }
+  if (settledGate.version !== gateVersion) {
+    throw new Error(
+      `gate ${gateVersion} is not the latest settled gate of run ${runId} (latest is v${settledGate.version})`,
+    )
+  }
+  const sourceMdPath = path.join(state.runDir, `gate-${gateVersion}.md`)
+  if (!existsSync(sourceMdPath)) {
+    throw new Error(`gate-${gateVersion}.md does not exist for run ${runId}`)
+  }
+  const freshVersion = settledGate.version + 1
+  const reopenedMd = renderUnansweredDigest(await readFile(sourceMdPath, 'utf8'))
+  const gateMdPath = path.join(state.runDir, `gate-${freshVersion}.md`)
+  await writeFile(gateMdPath, `${reopenedMd}\n`)
+  const changeDir = path.join(state.repoRoot, 'openspec', 'changes', state.changeName)
+  const artifacts = listAgentArtifacts(changeDir)
+  const hashes = await recordArtifactHashes(changeDir, artifacts)
+  await writeFile(path.join(state.runDir, `gate-hashes-${freshVersion}.json`), `${JSON.stringify(hashes, null, 2)}\n`)
+  state.gate = { mode: settledGate.mode, version: freshVersion }
+  state.status = 'running'
+  state.gateDeadlineAt = null
+  state.gateDeadlineReArmed = false
+  await saveRunState(state, deps.now?.() ?? new Date())
+  deps.stdout?.(path.relative(state.repoRoot, gateMdPath))
+  deps.stdout?.(`Next: sdd-runner gate resume ${runId} [--confirm-all --veto <id>=<redirect> | --abort]`)
+  return { runId, gateVersion: freshVersion, gateMdPath }
+}
+
+function latestSettledGate(
+  gateEvents: readonly { readonly action: string; readonly mode: 'early' | 'final'; readonly version: number }[],
+): { readonly mode: 'early' | 'final'; readonly version: number } | null {
+  let latest: { mode: 'early' | 'final'; version: number } | null = null
+  for (const event of gateEvents) {
+    if (event.action === 'answered') latest = { mode: event.mode, version: event.version }
+  }
+  return latest
+}
+
+/**
+ * Re-render a settled gate file as an unanswered digest: drop the
+ * `## Gate response` section, uncheck every checkbox, carry the digest
+ * sections over verbatim.
+ */
+function renderUnansweredDigest(md: string): string {
+  const lines = md.split('\n')
+  const responseStart = lines.findIndex((line) => line.trim() === '## Gate response')
+  const kept = responseStart === -1 ? lines : lines.slice(0, responseStart)
+  const unchecked = kept.map((line) => line.replace(/^(\s*-\s*\[)x(\])/u, '$1 $2'))
+  return unchecked.join('\n').trimEnd()
 }

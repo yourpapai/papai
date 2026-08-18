@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -12,10 +11,13 @@ import type { AutonomyConfig, ExecGitFn, RunnerConfig } from './config.js'
 import { createEventBus } from './event-bus.js'
 import { appendEvent, readEvents } from './events.js'
 import type { EventInput, SddEvent } from './events.js'
-import { extractChangeDigest } from './gate-digest-extract.js'
+import { readChangeDigest } from './gate-digest-extract.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
+import { planForGate, runPolicyLadder, writePresentedRecord } from './gate-prelude.js'
 import type { Prompter } from './gate-session.js'
+import { autoExtendRound, autoSettleFinalGate } from './gate-settle.js'
+import type { PresentGateInput } from './gate.js'
 import { presentGate } from './gate.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { loadDb } from './pricing.js'
@@ -85,85 +87,100 @@ export async function presentGateAt(
   reviewResult: ReviewLoopResult,
   version: number,
   mode: 'early' | 'final',
+  options: { readonly skipPolicy?: boolean } = {},
 ): Promise<RunStartResult> {
-  const events = readEvents(logPathFor(state))
-  const resolve = deps.resolveCost ?? (await buildResolveCost())
-  const { costUsd, durationMs, costKnown } = costAndDuration(events, state.createdAt, nowOf(deps), resolve)
-  const assumptions = await gatherAssumptions(ctx.sidecarDir, reviewResult.rounds)
+  const signals = await gatherGateSignals(deps, state, ctx, reviewResult)
+  const policyInput = { mode, version, ...signals }
+  const evaluation = options.skipPolicy === true ? null : runPolicyLadder(deps, state, ctx, reviewResult, policyInput)
+  const plan = planForGate(deps, state, evaluation)
+  if (plan !== null && plan.action === 'settle' && mode === 'final') {
+    return autoSettleFinalGate(deps, state, ctx, plan.decision, policyInput)
+  }
+  if (plan !== null && plan.action === 'extend' && mode === 'early') {
+    return autoExtendRound(deps, state, ctx, plan.decision, version)
+  }
   const findings = findingsOf(reviewResult)
-  const trajectory = replayEvents(logPathFor(state)).perRound
   const changeDigest = await readChangeDigest(ctx.changeDir)
   const result = await presentGate(
     { emit: ctx.emit, runDir: state.runDir, changeDir: ctx.changeDir, driftCheck: () => Promise.resolve() },
-    {
+    gateDigestInput(state, reviewResult, {
       version,
       mode,
-      changeName: state.changeName,
-      runId: state.runId,
-      assumptions,
+      assumptions: signals.assumptions,
       blockers: findings.blockers,
-      openMaterial: findings.material,
-      openNitpicks: findings.nitpicks,
-      trajectory,
-      capHitFired: reviewResult.outcome === 'cap-hit',
-      summary: state.changeName,
-      costUsd,
-      costKnown,
-      durationMs,
+      material: findings.material,
+      nitpicks: findings.nitpicks,
+      trajectory: signals.trajectory,
+      costUsd: signals.costUsd,
+      costKnown: signals.costKnown,
+      durationMs: signals.durationMs,
       changeDigest,
-    },
+    }),
   )
   state.gate = { mode, version }
   state.status = 'running'
   await saveRunState(state, nowOf(deps))
+  if (evaluation !== null) {
+    await writePresentedRecord(deps, state, ctx, evaluation, policyInput)
+  }
   deps.stdout?.(path.relative(deps.config.repoRoot, result.gateMdPath))
   deps.stdout?.(`Next: sdd-runner gate resume ${state.runId}`)
   return { runId: state.runId, halted: 'gate', gateMdPath: result.gateMdPath, version }
 }
 
-async function readFileSafe(filePath: string): Promise<string> {
-  try {
-    return await readFile(filePath, 'utf8')
-  } catch {
-    return ''
-  }
+async function gatherGateSignals(
+  deps: OrchestratorDeps,
+  state: RunState,
+  ctx: StageContext,
+  reviewResult: ReviewLoopResult,
+): Promise<{
+  events: readonly SddEvent[]
+  costUsd: number
+  costKnown: boolean
+  durationMs: number
+  assumptions: readonly GateAssumption[]
+  trajectory: ReturnType<typeof replayEvents>['perRound']
+}> {
+  const events = readEvents(logPathFor(state))
+  const resolve = deps.resolveCost ?? (await buildResolveCost())
+  const { costUsd, durationMs, costKnown } = costAndDuration(events, state.createdAt, nowOf(deps), resolve)
+  const assumptions = await gatherAssumptions(ctx.sidecarDir, reviewResult.rounds)
+  const trajectory = replayEvents(logPathFor(state)).perRound
+  return { events, costUsd, costKnown, durationMs, assumptions, trajectory }
 }
 
-function countTaskCheckboxes(tasksMd: string): { done: number; total: number } {
-  let done = 0
-  let total = 0
-  for (const line of tasksMd.split('\n')) {
-    const checked = /^\s*- \[x\]/iu.test(line)
-    const unchecked = /^\s*- \[ \]/iu.test(line)
-    if (checked || unchecked) {
-      total += 1
-      if (checked) done += 1
-    }
-  }
-  return { done, total }
+interface GateDigestParts {
+  readonly version: number
+  readonly mode: 'early' | 'final'
+  readonly assumptions: readonly GateAssumption[]
+  readonly blockers: readonly GateBlocker[]
+  readonly material: readonly GateFinding[]
+  readonly nitpicks: readonly GateFinding[]
+  readonly trajectory: ReturnType<typeof replayEvents>['perRound']
+  readonly costUsd: number
+  readonly costKnown: boolean
+  readonly durationMs: number
+  readonly changeDigest: ChangeDigest
 }
 
-/**
- * Build the change digest rendered in the gate MD by reading proposal.md /
- * design.md from the change dir and checking tasks.md existence (mode signal:
- * absent at the early gate, present at the final gate). Missing files degrade
- * to null fields rendered as placeholders.
- */
-export async function readChangeDigest(changeDir: string): Promise<ChangeDigest> {
-  const [proposalMd, designMd] = await Promise.all([
-    readFileSafe(path.join(changeDir, 'proposal.md')),
-    readFileSafe(path.join(changeDir, 'design.md')),
-  ])
-  const tasksPath = path.join(changeDir, 'tasks.md')
-  const hasTasksMd = existsSync(tasksPath)
-  let tasksDone: number | undefined
-  let tasksTotal: number | undefined
-  if (hasTasksMd) {
-    const counts = countTaskCheckboxes(await readFileSafe(tasksPath))
-    tasksDone = counts.done
-    tasksTotal = counts.total
+function gateDigestInput(state: RunState, reviewResult: ReviewLoopResult, parts: GateDigestParts): PresentGateInput {
+  return {
+    version: parts.version,
+    mode: parts.mode,
+    changeName: state.changeName,
+    runId: state.runId,
+    assumptions: parts.assumptions,
+    blockers: parts.blockers,
+    openMaterial: parts.material,
+    openNitpicks: parts.nitpicks,
+    trajectory: parts.trajectory,
+    capHitFired: reviewResult.outcome === 'cap-hit',
+    summary: state.changeName,
+    costUsd: parts.costUsd,
+    costKnown: parts.costKnown,
+    durationMs: parts.durationMs,
+    changeDigest: parts.changeDigest,
   }
-  return extractChangeDigest({ proposalMd, designMd, hasTasksMd, tasksDone, tasksTotal })
 }
 
 export async function gatherAssumptions(sidecarDir: string, rounds: number): Promise<GateAssumption[]> {
@@ -181,7 +198,12 @@ export async function gatherAssumptions(sidecarDir: string, rounds: number): Pro
   const byId = new Map<string, GateAssumption>()
   for (const assumptions of perRound) {
     for (const assumption of assumptions) {
-      byId.set(assumption.id, { id: assumption.id, text: assumption.text, blast_radius: assumption.blast_radius })
+      byId.set(assumption.id, {
+        id: assumption.id,
+        text: assumption.text,
+        blast_radius: assumption.blast_radius,
+        evidence: { files: assumption.evidence.files },
+      })
     }
   }
   return [...byId.values()]
