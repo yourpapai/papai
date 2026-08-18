@@ -30,6 +30,7 @@ export interface CliHarness {
   readonly listPendingGates: () => Promise<PendingGateEntry[]>
   readonly buildReport: (runId: string, pr: boolean) => Promise<string>
   readonly buildAuditReport: (runId: string) => Promise<string>
+  readonly runWatch: (runId: string) => Promise<void>
   readonly runGateReopen: (runId: string, gateVersion: number) => Promise<GateReopenResult>
   readonly stdout: (line: string) => void
 }
@@ -71,27 +72,35 @@ export async function main(argv: readonly string[], harness: CliHarness): Promis
     return 0
   }
   if (cmd.subcommand === 'audit') return runAudit(harness, cmd.runId)
+  if (cmd.subcommand === 'watch') return runWatchCmd(harness, cmd.runId)
   if (cmd.subcommand === 'gate') {
     if (cmd.gateVerb === 'reopen' && cmd.runId !== null) {
       await harness.runGateReopen(cmd.runId, cmd.reopenGateVersion ?? 1)
       return 0
     }
-    if (cmd.runId === null) {
-      const pending = await harness.listPendingGates()
-      if (pending.length === 0) harness.stdout('no runs await gate decisions')
-      for (const entry of pending) {
-        harness.stdout(
-          `gate-pending: ${entry.runId}  (${entry.changeName}, gate v${entry.gateVersion}, updated ${entry.updatedAt})`,
-        )
-        harness.stdout(`  sdd-runner gate resume ${entry.runId}`)
-      }
-      return 0
-    }
+    if (cmd.runId === null) return listPendingGates(harness)
     await harness.runGateResume(cmd.runId, gateResumeOptionsOf(cmd))
     return 0
   }
   const body = await harness.buildReport(cmd.runId, cmd.pr)
   harness.stdout(body)
+  return 0
+}
+
+async function listPendingGates(harness: CliHarness): Promise<number> {
+  const pending = await harness.listPendingGates()
+  if (pending.length === 0) harness.stdout('no runs await gate decisions')
+  for (const entry of pending) {
+    harness.stdout(
+      `gate-pending: ${entry.runId}  (${entry.changeName}, gate v${entry.gateVersion}, updated ${entry.updatedAt})`,
+    )
+    harness.stdout(`  sdd-runner gate resume ${entry.runId}`)
+  }
+  return 0
+}
+
+async function runWatchCmd(harness: CliHarness, runId: string): Promise<number> {
+  await harness.runWatch(runId)
   return 0
 }
 
@@ -139,8 +148,9 @@ export type CliCommand =
     }
   | { readonly subcommand: 'report'; readonly runId: string; readonly pr: boolean }
   | { readonly subcommand: 'audit'; readonly runId: string }
+  | { readonly subcommand: 'watch'; readonly runId: string }
 
-const VALID_SUBCOMMANDS = new Set(['start', 'resume', 'gate', 'continue', 'report', 'audit'])
+const VALID_SUBCOMMANDS = new Set(['start', 'resume', 'gate', 'continue', 'report', 'audit', 'watch'])
 
 const DEPTH_VALUES: Record<string, DepthProfile> = { S: 'S', M: 'M', L: 'L' }
 const VERBOSITY_VALUES: Record<string, Verbosity> = { quiet: 'quiet', brief: 'brief', normal: 'normal', debug: 'debug' }
@@ -255,6 +265,15 @@ export function parseCliArgs(args: readonly string[]): CliCommand {
     if (runId === undefined) throw new Error('audit requires a run id')
     if (args.length > 2) throw new Error(`unknown flag: ${args[2]}`)
     return { subcommand: 'audit', runId }
+  }
+  if (subcommand === 'watch') {
+    const runId = args[1]
+    if (runId === undefined) throw new Error('watch requires a run id')
+    if (runId.includes('/') || runId.includes('\\')) {
+      throw new Error(`run id must not contain path separators: ${runId}`)
+    }
+    if (args.length > 2) throw new Error(`unknown flag: ${args[2]}`)
+    return { subcommand: 'watch', runId }
   }
   if (subcommand === 'continue') {
     const flagStart = hasPositionalRunId(args) ? 2 : 1

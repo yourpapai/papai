@@ -135,6 +135,11 @@ async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness
     buildAuditReport: (runId) => resolveAndCall(config.workDir, runId, (r) => buildAuditReport(config.workDir, r)),
     runGateReopen: (runId, gateVersion) =>
       resolveAndCall(config.workDir, runId, (r) => runGateReopen(orchestratorDeps, config.workDir, r, gateVersion)),
+    runWatch: async (runId) => {
+      const resolved = await resolveRunId(config.workDir, runId)
+      const { runWatchLoop } = await import('./watch-loop.js')
+      await runWatchLoop(config.workDir, resolved)
+    },
     buildReport: (runId, pr) => buildRunReport(config, runId, pr, execGit),
     stdout: (line) => {
       process.stdout.write(`${line}\n`)
