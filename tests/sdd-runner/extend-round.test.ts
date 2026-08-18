@@ -8,7 +8,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { prepareResumeInput } from '../../sdd-runner/src/extend-round.js'
+import { prepareResumeInput, settleApprovedGate } from '../../sdd-runner/src/extend-round.js'
+import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
+import { createRunState, loadRunState } from '../../sdd-runner/src/run-state.js'
 
 function makeSidecarDir(): { dir: string; sidecarDir: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-ext-'))
@@ -89,6 +91,48 @@ describe('prepareResumeInput gate-mode semantics', () => {
     const result = await prepareResumeInput(sidecarDir, 2, 'final')
     expect(result.reviewResult.outcome).toBe('converged')
     expect(result.requiredAck).toBeUndefined()
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+})
+
+describe('settleApprovedGate export (7.1)', () => {
+  it('finalizes a final-gate approve to completed with no pending gate entry', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-settle-'))
+    const workDir = path.join(dir, 'work')
+    const state = await createRunState({ workDir, repoRoot: dir, changeName: 'thing' })
+    state.gate = { mode: 'final', version: 3 }
+    state.stage = 'gate'
+    const emit = (): void => {}
+    const result = await settleApprovedGate(
+      {
+        deps: {
+          config: { repoRoot: dir, workDir, model: 'm', models: {}, timeouts: { wallClockMs: 1, inactivityMs: 1 } },
+          spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+          execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+          driver: createOpenSpecDriver({
+            exec: () => Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 }),
+            cwd: dir,
+          }),
+        },
+        state,
+        emit,
+        version: 3,
+        changeDir: path.join(dir, 'openspec', 'changes', 'thing'),
+        sidecarDir: path.join(state.runDir, 'sidecars'),
+        agent: {
+          spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+          config: { repoRoot: dir, workDir, model: 'm', models: {}, timeouts: { wallClockMs: 1, inactivityMs: 1 } },
+          execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+          emit,
+        },
+      },
+      { outcome: 'converged', rounds: 1, openBlockers: [], openMaterial: [], openNitpicks: [] },
+    )
+    expect(result.outcome).toBe('approved')
+    expect(result.version).toBe(3)
+    const after = await loadRunState(workDir, state.runId)
+    expect(after.status).toBe('completed')
+    expect(after.gate).toBeNull()
     fs.rmSync(dir, { recursive: true, force: true })
   })
 })

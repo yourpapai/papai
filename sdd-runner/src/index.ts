@@ -9,6 +9,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
 import { realSpawn } from '../../review-loop/src/spawn.js'
+import { buildAuditReport } from './audit.js'
 import { main } from './cli.js'
 import type { CliHarness } from './cli.js'
 import { parseCliArgs } from './cli.js'
@@ -18,6 +19,7 @@ import { readEvents } from './events.js'
 import { buildResolveCost } from './gate-digest.js'
 import { readlinePrompter, stdinIsInteractive } from './gate-session.js'
 import type { Prompter } from './gate-session.js'
+import { runGateReopen } from './gate.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { runContinue, runGateResume, runResume, runStart } from './orchestrator.js'
@@ -127,6 +129,9 @@ async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness
     },
     runContinue: (runId, autonomy) => runContinue(orchestratorDeps, runId, autonomy),
     listPendingGates: () => listPendingGates(config.workDir),
+    buildAuditReport: (runId) => resolveAndCall(config.workDir, runId, (r) => buildAuditReport(config.workDir, r)),
+    runGateReopen: (runId, gateVersion) =>
+      resolveAndCall(config.workDir, runId, (r) => runGateReopen(orchestratorDeps, config.workDir, r, gateVersion)),
     buildReport: async (runId, pr) => {
       const state = await loadRunState(config.workDir, runId)
       const branch = await discoverBranch(execGit, config.repoRoot)
@@ -145,6 +150,11 @@ async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness
       process.stdout.write(`${line}\n`)
     },
   }
+}
+
+async function resolveAndCall<T>(workDir: string, runId: string, fn: (resolved: string) => Promise<T>): Promise<T> {
+  const resolved = await resolveRunId(workDir, runId)
+  return fn(resolved)
 }
 
 async function runEntry(): Promise<void> {

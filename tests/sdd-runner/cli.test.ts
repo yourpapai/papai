@@ -97,10 +97,10 @@ describe('parseCliArgs', () => {
   })
 
   it('reports an empty value when a value-taking flag ends the args', () => {
-    expect(() => parseCliArgs(['start', 'task.md', '--autonomy'])).toThrow('invalid --autonomy: ')
-    expect(() => parseCliArgs(['start', 'task.md', '--auto-deadline'])).toThrow('invalid --auto-deadline: ')
-    expect(() => parseCliArgs(['start', 'task.md', '--depth'])).toThrow('invalid --depth: ')
-    expect(() => parseCliArgs(['start', 'task.md', '--verbosity'])).toThrow('invalid --verbosity: ')
+    expect(() => parseCliArgs(['start', 'task.md', '--autonomy'])).toThrow(/invalid --autonomy: $/u)
+    expect(() => parseCliArgs(['start', 'task.md', '--auto-deadline'])).toThrow(/invalid --auto-deadline: $/u)
+    expect(() => parseCliArgs(['start', 'task.md', '--depth'])).toThrow(/invalid --depth: $/u)
+    expect(() => parseCliArgs(['start', 'task.md', '--verbosity'])).toThrow(/invalid --verbosity: $/u)
   })
 
   it('parses standard flags that come before the autonomy flags', () => {
@@ -287,6 +287,8 @@ function makeHarness(calls: string[], pending: PendingGateEntry[] = []): CliHarn
       calls.push(`report:${runId}:${pr}`)
       return Promise.resolve(`body for ${runId}`)
     },
+    buildAuditReport: () => Promise.reject(new Error('unused')),
+    runGateReopen: () => Promise.reject(new Error('unused')),
     stdout: (line) => {
       calls.push(`out:${line}`)
     },
@@ -393,6 +395,8 @@ function captureHarness(): MainCapture {
     },
     listPendingGates: () => Promise.resolve([]),
     buildReport: () => Promise.resolve('body'),
+    buildAuditReport: () => Promise.resolve('audit-body'),
+    runGateReopen: (runId) => Promise.resolve({ runId, gateVersion: 1 }),
     stdout: () => {},
   }
   return { startOptions, resumeCalls, continueCalls, gateCalls, harness }
@@ -455,3 +459,83 @@ describe('main autonomy and gate decision wiring', () => {
     expect(lines).not.toContain('no runs await gate decisions')
   })
 })
+
+describe('audit and gate reopen verbs', () => {
+  it('parses audit <runId>', () => {
+    expect(parseCliArgs(['audit', 'run-1'])).toMatchObject({ subcommand: 'audit', runId: 'run-1' })
+    expect(() => parseCliArgs(['audit'])).toThrow(/run id/u)
+  })
+
+  it('parses gate reopen <runId> --gate <n> and rejects invalid gate versions', () => {
+    expect(parseCliArgs(['gate', 'reopen', 'run-1', '--gate', '2'])).toMatchObject({
+      subcommand: 'gate',
+      gateVerb: 'reopen',
+      runId: 'run-1',
+      reopenGateVersion: 2,
+    })
+    expect(() => parseCliArgs(['gate', 'reopen', 'run-1', '--gate', 'x'])).toThrow(/invalid --gate/u)
+    expect(() => parseCliArgs(['gate', 'reopen', 'run-1'])).toThrow(/--gate/u)
+  })
+
+  it('gate reopen requires a run id and rejects unknown flags naming them', () => {
+    expect(() => parseCliArgs(['gate', 'reopen'])).toThrow('gate reopen requires a run id')
+    expect(() => parseCliArgs(['gate', 'reopen', 'run-1', '--bogus'])).toThrow('unknown flag: --bogus')
+  })
+
+  it('gate reopen rejects zero and negative gate versions', () => {
+    expect(() => parseCliArgs(['gate', 'reopen', 'run-1', '--gate', '0'])).toThrow('invalid --gate: 0')
+    expect(() => parseCliArgs(['gate', 'reopen', 'run-1', '--gate', '-1'])).toThrow('invalid --gate: -1')
+  })
+
+  it('gate reopen carries no decision flags in its parsed shape', () => {
+    expect(parseCliArgs(['gate', 'reopen', 'run-1', '--gate', '3'])).toStrictEqual({
+      subcommand: 'gate',
+      gateVerb: 'reopen',
+      runId: 'run-1',
+      reopenGateVersion: 3,
+      confirmAll: false,
+      abort: false,
+      extend: false,
+      vetoes: [],
+    })
+  })
+
+  it('audit rejects extra flags as unknown', () => {
+    expect(() => parseCliArgs(['audit', 'run-1', '--bogus'])).toThrow('unknown flag: --bogus')
+  })
+
+  it('main routes audit to harness.buildAuditReport output', async () => {
+    const calls: string[] = []
+    await main(['audit', 'run-9'], makeAuditHarness(calls))
+    expect(calls.join('\n')).toContain('audit:run-9')
+    expect(calls.join('\n')).toContain('report-body')
+  })
+
+  it('main routes gate reopen to harness.runGateReopen', async () => {
+    const calls: string[] = []
+    await main(['gate', 'reopen', 'run-9', '--gate', '3'], makeAuditHarness(calls))
+    expect(calls).toContain('reopen:run-9:3')
+  })
+})
+
+function makeAuditHarness(calls: string[]): CliHarness {
+  return {
+    runStart: () => Promise.reject(new Error('unused')),
+    runResume: () => Promise.reject(new Error('unused')),
+    runGateResume: () => Promise.reject(new Error('unused')),
+    runContinue: () => Promise.reject(new Error('unused')),
+    listPendingGates: () => Promise.resolve([]),
+    buildReport: () => Promise.reject(new Error('unused')),
+    buildAuditReport: (runId: string) => {
+      calls.push(`audit:${runId}`)
+      return Promise.resolve('report-body')
+    },
+    runGateReopen: (runId: string, gateVersion: number) => {
+      calls.push(`reopen:${runId}:${gateVersion}`)
+      return Promise.resolve({ runId, gateVersion })
+    },
+    stdout: (line: string) => {
+      calls.push(`out:${line}`)
+    },
+  }
+}

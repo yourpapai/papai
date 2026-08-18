@@ -173,6 +173,9 @@ function createSeeded(workDir: string): PersistedRunState {
     round: 0,
     gate: null,
     status: 'running' as const,
+    autoExtendsUsed: 0,
+    gateDeadlineAt: null,
+    gateDeadlineReArmed: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   }
@@ -477,5 +480,112 @@ describe('resolveRunId', () => {
     expect(message).toContain('ffff0000')
     // one candidate per line, order-free: both candidate lines start with the shared timestamp prefix
     expect(message.match(/\n {2}2026-01-01/gu)).toHaveLength(2)
+  })
+
+  it('names the runs directory when no runs exist at all', async () => {
+    const workDir = makeWorkDir()
+    const message = (await errorOf(resolveRunId(workDir, 'anything'))).message
+    expect(message).toContain(path.join(workDir, 'runs'))
+    expect(message).toContain('anything')
+  })
+})
+
+describe('reviewSettled via deriveResumePoint', () => {
+  const settledBase = (): PersistedRunState => {
+    const base: PersistedRunState = {
+      runId: 'run-1',
+      repoRoot: '/repo',
+      workDir: '/w',
+      changeName: 'add-thing',
+      stage: 'review',
+      depth: 'M',
+      round: 1,
+      roundCap: 3,
+      autoExtendsUsed: 0,
+      gate: null,
+      gateDeadlineAt: null,
+      gateDeadlineReArmed: false,
+      status: 'running',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }
+    return base
+  }
+  const doneArtifacts = artifacts({ proposal: 'done', specs: 'done', design: 'done', tasks: 'done' })
+
+  it('treats an answered early gate as settled and resumes past review', () => {
+    const point = deriveResumePoint(settledBase(), doneArtifacts, {
+      ...emptyReplay,
+      gate: { mode: 'early', answered: true, version: 1 },
+      lastVerdict: {
+        round: 1,
+        verdict: 'open',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+        resolved: 0,
+        dismissed: 0,
+      },
+    })
+    expect(point.stage).toBe('atomicity')
+    expect(point.reason).toBe('atomicity check not recorded')
+  })
+
+  it('an unanswered early gate with a cap-hit verdict stays at review', () => {
+    const point = deriveResumePoint(settledBase(), doneArtifacts, {
+      ...emptyReplay,
+      gate: { mode: 'early', answered: false, version: 1 },
+      lastVerdict: {
+        round: 1,
+        verdict: 'open',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+        resolved: 0,
+        dismissed: 0,
+      },
+    })
+    expect(point.stage).toBe('review')
+    expect(point.reason).toBe('review loop not converged')
+  })
+
+  it('a final answered gate does not count as an early-gate approve', () => {
+    const point = deriveResumePoint(settledBase(), doneArtifacts, {
+      ...emptyReplay,
+      gate: { mode: 'final', answered: true, version: 1 },
+    })
+    expect(point.stage).toBe('review')
+  })
+
+  it('a decompose stage exit counts as settled even without a verdict', () => {
+    const point = deriveResumePoint(settledBase(), doneArtifacts, {
+      ...emptyReplay,
+      stages: { ...emptyReplay.stages, decompose: 'done', atomicity: 'done' },
+    })
+    expect(point.stage).toBe('gate')
+    expect(point.reason).toBe('all stages complete')
+  })
+
+  it('picks the max of recorded round, replay round, and 1 when resuming mid-review', () => {
+    const base = { ...settledBase(), round: 0 }
+    const point = deriveResumePoint(base, doneArtifacts, { ...emptyReplay, round: { current: 3, cap: 3 } })
+    expect(point).toMatchObject({ stage: 'review', round: 3 })
+  })
+})
+
+describe('autoExtendsUsed persistence (8.1)', () => {
+  it('defaults to zero on create, persists increments via saveRunState', async () => {
+    const workDir = makeWorkDir()
+    const state = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    expect(state.autoExtendsUsed).toBe(0)
+    const saved = await saveRunState({ ...state, autoExtendsUsed: 1 }, new Date('2026-08-10T10:10:00.000Z'))
+    const loaded = await loadRunState(workDir, state.runId)
+    expect(loaded.autoExtendsUsed).toBe(1)
+    expect(saved.autoExtendsUsed).toBe(1)
+  })
+
+  it('an old state.json without the field still loads (additive default)', async () => {
+    const workDir = makeWorkDir()
+    const state = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    const stateJson = fs.readFileSync(state.statePath, 'utf8')
+    fs.writeFileSync(state.statePath, stateJson.replace(/,\s*"autoExtendsUsed":\s*\d+/u, ''))
+    const loaded = await loadRunState(workDir, state.runId)
+    expect(loaded.autoExtendsUsed).toBe(0)
   })
 })

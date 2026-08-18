@@ -199,6 +199,8 @@ export interface FlagDecisionInput {
   readonly abort?: boolean
   readonly extend?: boolean
   readonly vetoes?: readonly { readonly id: string; readonly redirect?: string }[]
+  /** Optional policy attribution rendered as a decision-level decided-by line. */
+  readonly decidedBy?: string
 }
 
 /**
@@ -245,7 +247,17 @@ export function desugarFlags(
   const blockerAnswers = view.blockers.map((blocker) => ({ id: blocker.id, gap: blocker.gap, answer: 'OVERRIDE' }))
   const ack = view.requiredAck
   const acks = ack === null ? [] : [{ id: ack.id, text: ack.text }]
-  return settleAnswers({ items, blockerAnswers, acks, decision: 'approve' }, view, writeGateMd)
+  return settleAnswers(
+    {
+      items,
+      blockerAnswers,
+      acks,
+      decision: 'approve',
+      ...(flags.decidedBy === undefined ? {} : { decidedBy: flags.decidedBy }),
+    },
+    view,
+    writeGateMd,
+  )
 }
 
 async function settleAnswers(

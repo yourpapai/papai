@@ -115,9 +115,24 @@ export async function materializeAssumptions(changeDir: string, sidecarDir: stri
   await writeFile(path.join(changeDir, 'assumptions.md'), lines.join('\n'))
 }
 
-export function createMaterializer(sidecarDir: string, changeDir: string): (round: number) => Promise<void> {
+export function createMaterializer(
+  sidecarDir: string,
+  changeDir: string,
+  emit?: (event: { altitude: 'L2'; type: 'artifact'; action: 'materialized'; path: string }) => void,
+  repoRoot?: string,
+): (round: number) => Promise<void> {
   return async (round) => {
     await materializeReview(changeDir, sidecarDir, round)
     await materializeAssumptions(changeDir, sidecarDir, round)
+    if (repoRoot !== undefined && emit !== undefined) {
+      for (const file of ['review.md', 'assumptions.md']) {
+        emit({
+          altitude: 'L2',
+          type: 'artifact',
+          action: 'materialized',
+          path: path.relative(repoRoot, path.join(changeDir, file)),
+        })
+      }
+    }
   }
 }

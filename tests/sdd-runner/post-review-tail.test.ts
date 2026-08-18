@@ -45,6 +45,7 @@ async function setup(): Promise<{
   state: RunState
   spawnOrder: string[]
   logPath: string
+  spawn: Parameters<OrchestratorDeps['spawn']>[0] extends never ? never : OrchestratorDeps['spawn']
 }> {
   const repoRoot = makeDir()
   const changeName = 'add-thing'
@@ -116,7 +117,7 @@ async function setup(): Promise<{
   fs.mkdirSync(path.join(state.runDir, 'sidecars'), { recursive: true })
   const logPath = path.join(state.runDir, 'events.ndjson')
   fs.writeFileSync(logPath, '')
-  return { deps, state, spawnOrder, logPath }
+  return { deps, state, spawnOrder, logPath, spawn }
 }
 
 function makeCtx(deps: OrchestratorDeps, state: RunState, logPath: string): StageContext {
@@ -187,5 +188,28 @@ describe('runPostConvergenceTail', () => {
     const capHit = await readReviewResultFromSidecars(sidecarDir, 3, 'cap-hit')
     expect(capHit.outcome).toBe('cap-hit')
     expect(capHit.rounds).toBe(3)
+  })
+})
+
+describe('policy prelude at the final-gate seam', () => {
+  it('runPostConvergenceTail presents the gate with an observe preview record (sidecar + event)', async () => {
+    const setupResult = await setup()
+    const { deps, state, logPath } = setupResult
+    const ctx = makeCtx(deps, state, logPath)
+    await runPostConvergenceTail({
+      deps,
+      state,
+      ctx,
+      agent: { spawn: setupResult.spawn, config: deps.config, execGit: deps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: REVIEW_RESULT,
+      version: 1,
+    })
+    const gateMd = fs.readFileSync(path.join(state.runDir, 'gate-1.md'), 'utf8')
+    expect(gateMd).toContain('### Auto-decision preview')
+    expect(fs.existsSync(path.join(state.runDir, 'auto-policy.jsonl'))).toBe(true)
+    const autoDecisions = readEvents(logPath).filter((e) => e.type === 'auto_decision')
+    expect(autoDecisions).toHaveLength(1)
+    expect(autoDecisions[0]).toMatchObject({ decision: 'preview', gateVersion: 1 })
   })
 })

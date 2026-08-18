@@ -13,7 +13,12 @@ import type { Finding, Resolution } from '../../sdd-runner/src/agent-layer.js'
 import type { RunnerConfig } from '../../sdd-runner/src/config.js'
 import { EventInputSchema } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
-import { runReviewLoop } from '../../sdd-runner/src/review-loop.js'
+import {
+  consumeSteerFile,
+  parseSteerDirectives,
+  reloadStagedSteer,
+  runReviewLoop,
+} from '../../sdd-runner/src/review-loop.js'
 import type { ReviewLoopDeps } from '../../sdd-runner/src/review-loop.js'
 import { evaluateConvergence, lensesForRound, mergeLensFindings } from '../../sdd-runner/src/review-model.js'
 
@@ -320,5 +325,112 @@ describe('runReviewLoop', () => {
     expect(roundOpens[0]).toMatchObject({ type: 'round_open', round: 4, cap: 4 })
     const reviewerPrompt = promptOf(fixture, 'reviewer-1')
     expect(reviewerPrompt).toContain(priorLedgerMarker)
+  })
+})
+
+describe('steer.md reader (9.1-9.2)', () => {
+  it('parses the fixed grammar line by line and rejects nothing fatally', () => {
+    const parsed = parseSteerDirectives(
+      ['extend', 'veto A1=use sqlite instead', 'abort', 'unknown-verb', ''].join('\n'),
+    )
+    expect(parsed.valid).toEqual([
+      { kind: 'extend' },
+      { kind: 'veto', id: 'A1', redirect: 'use sqlite instead' },
+      { kind: 'abort' },
+    ])
+    expect(parsed.warnings).toEqual(['unknown directive: unknown-verb'])
+  })
+
+  it('surfaces unknown veto ids as warnings only when validated against a gate id set', () => {
+    const parsed = parseSteerDirectives('veto Z9=nope', { knownIds: new Set(['A1']) })
+    expect(parsed.valid).toEqual([])
+    expect(parsed.warnings).toEqual(['unknown veto id: Z9'])
+  })
+
+  it('a veto with empty redirect parses as a bare veto', () => {
+    const parsed = parseSteerDirectives('veto A2=')
+    expect(parsed.valid).toEqual([{ kind: 'veto', id: 'A2', redirect: undefined }])
+  })
+
+  it('staged set written before the rename; consumption renames steer.consumed.<n>.md append-only', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-steer-'))
+    const runDir = path.join(dir, 'runs', 'r1')
+    fs.mkdirSync(runDir, { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'steer.md'), 'extend\n')
+    const consumed = consumeSteerFile(runDir)
+    expect(consumed.valid).toEqual([{ kind: 'extend' }])
+    expect(fs.existsSync(path.join(runDir, 'steer.md'))).toBe(false)
+    expect(fs.existsSync(path.join(runDir, 'steer.consumed.1.md'))).toBe(true)
+    const staged = JSON.parse(fs.readFileSync(path.join(runDir, 'steer.staged.json'), 'utf8')) as unknown
+    expect(staged).toMatchObject({ directives: [{ kind: 'extend' }] })
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('a missing steer.md is a no-op', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-steer-'))
+    const consumed = consumeSteerFile(dir)
+    expect(consumed.valid).toEqual([])
+    expect(consumed.warnings).toEqual([])
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('reloadStagedSteer returns the persisted staged set after a crash', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-steer-'))
+    fs.writeFileSync(path.join(dir, 'steer.staged.json'), JSON.stringify({ directives: [{ kind: 'abort' }] }))
+    const staged = await reloadStagedSteer(dir)
+    expect(staged).toEqual({ directives: [{ kind: 'abort' }] })
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+})
+
+describe('round-boundary steering consumption (9.2-9.3)', () => {
+  it('a steered extend re-reads the persisted roundCap at the next boundary and keeps running', async () => {
+    const dir = makeDir()
+    const openRound = JSON.stringify({
+      resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }],
+      assumptions: [],
+    })
+    const fixture = makeLoopFixture(dir, {
+      reviewer: [JSON.stringify({ findings: [finding()] }), JSON.stringify({ findings: [] })],
+      resolver: [openRound, NO_BLOCKERS_RESOLUTIONS],
+    })
+    // Simulate a steered extend: the persisted state.roundCap grows mid-run.
+    const depsWithState = {
+      ...fixture.deps,
+      steer: {
+        runDir: dir,
+        onWarning: (): void => undefined,
+        readRoundCap: (): number => 2,
+      },
+    }
+    fs.writeFileSync(path.join(dir, 'steer.md'), 'extend\n')
+    const result = await runReviewLoop(depsWithState, {
+      changeName: 'add-thing',
+      changeDir: fixture.changeDir,
+      depth: 'S',
+      taskText: 'x',
+      conventions: 'y',
+    })
+    expect(result.outcome).toBe('converged')
+    expect(result.rounds).toBe(2)
+    // consumption renamed the steer file before the extended round ran
+    expect(fs.existsSync(path.join(dir, 'steer.consumed.1.md'))).toBe(true)
+  })
+
+  it('without steering the persisted cap re-read changes nothing (entry cap governs)', async () => {
+    const dir = makeDir()
+    const blocker = resolution({ id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' })
+    const fixture = makeLoopFixture(dir, {
+      reviewer: [JSON.stringify({ findings: [finding({ id: 'F1', class: 'BLOCKER' })] })],
+      resolver: [JSON.stringify({ resolutions: [blocker], assumptions: [] })],
+    })
+    const result = await runReviewLoop(fixture.deps, {
+      changeName: 'add-thing',
+      changeDir: fixture.changeDir,
+      depth: 'S',
+      taskText: 'x',
+      conventions: 'y',
+    })
+    expect(result.outcome).toBe('cap-hit')
   })
 })

@@ -178,3 +178,64 @@ describe('renderGateAnswers → parseGateResponse round-trip', () => {
     expect(md).not.toContain('T1')
   })
 })
+
+describe('decided-by annotations (D4)', () => {
+  it('renders an optional per-item decided-by suffix that parses back identically', () => {
+    const answers: GateAnswers = {
+      items: [{ kind: 'assumption', id: 'A1', text: 'guests stay read-only', accepted: true, decidedBy: 'policy R3' }],
+      blockerAnswers: [{ id: 'B1', gap: 'no rollback path', answer: 'OVERRIDE' }],
+      acks: [{ id: 'T1', text: ACK_TEXT }],
+      decision: 'approve',
+    }
+    const md = renderGateAnswers(answers)
+    expect(md).toContain('- [x] A1 guests stay read-only · decided-by: policy R3')
+    const parsed = parseGateResponse(md, {
+      assumptions: [assumption()],
+      blockers: [blocker()],
+      findings: [finding()],
+      requiredAck: 'T1',
+      gateMode: 'final',
+    })
+    expect(parsed.approved).toBe(true)
+    expect(responseFromAnswers(answers)).toEqual(parsed)
+  })
+
+  it('renders a decision-level decided-by line under the Gate response header', () => {
+    const answers: GateAnswers = {
+      items: [{ kind: 'assumption', id: 'A1', text: 'guests stay read-only', accepted: true }],
+      blockerAnswers: [{ id: 'B1', gap: 'no rollback path', answer: 'OVERRIDE' }],
+      acks: [{ id: 'T1', text: ACK_TEXT }],
+      decision: 'approve',
+      decidedBy: 'policy R1',
+    }
+    const md = renderGateAnswers(answers)
+    expect(md).toContain('## Gate response')
+    expect(md).toMatch(/decided-by: policy R1/u)
+    const parsed = parseGateResponse(md, {
+      assumptions: [assumption()],
+      blockers: [blocker()],
+      findings: [finding()],
+      requiredAck: 'T1',
+      gateMode: 'final',
+    })
+    expect(parsed.approved).toBe(true)
+  })
+
+  it('hand-edited files without the annotation parse exactly as today', () => {
+    const md = renderGateAnswers({
+      items: [{ kind: 'assumption', id: 'A1', text: 'guests stay read-only', accepted: true }],
+      blockerAnswers: [{ id: 'B1', gap: 'no rollback path', answer: 'OVERRIDE' }],
+      acks: [{ id: 'T1', text: ACK_TEXT }],
+      decision: 'approve',
+    })
+    expect(md).not.toContain('decided-by')
+    const parsed = parseGateResponse(md, {
+      assumptions: [assumption()],
+      blockers: [blocker()],
+      findings: [finding()],
+      requiredAck: 'T1',
+      gateMode: 'final',
+    })
+    expect(parsed.approved).toBe(true)
+  })
+})

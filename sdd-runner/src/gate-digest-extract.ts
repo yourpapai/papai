@@ -3,6 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+
 /**
  * Change digest extracted from existing change artifacts. Rendered in the gate
  * MD so a human can answer "what is this change and what does it touch" without
@@ -81,4 +85,49 @@ export function extractChangeDigest(input: ExtractChangeDigestInput): ChangeDige
     touches = touches === null ? [entry] : [...touches, entry]
   }
   return { what, why, touches, hasTasks: input.hasTasksMd }
+}
+
+async function readFileSafe(filePath: string): Promise<string> {
+  try {
+    return await readFile(filePath, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+function countTaskCheckboxes(tasksMd: string): { done: number; total: number } {
+  let done = 0
+  let total = 0
+  for (const line of tasksMd.split('\n')) {
+    const checked = /^\s*- \[x\]/iu.test(line)
+    const unchecked = /^\s*- \[ \]/iu.test(line)
+    if (checked || unchecked) {
+      total += 1
+      if (checked) done += 1
+    }
+  }
+  return { done, total }
+}
+
+/**
+ * Build the change digest rendered in the gate MD by reading proposal.md /
+ * design.md from the change dir and checking tasks.md existence (mode signal:
+ * absent at the early gate, present at the final gate). Missing files degrade
+ * to null fields rendered as placeholders.
+ */
+export async function readChangeDigest(changeDir: string): Promise<ChangeDigest> {
+  const [proposalMd, designMd] = await Promise.all([
+    readFileSafe(path.join(changeDir, 'proposal.md')),
+    readFileSafe(path.join(changeDir, 'design.md')),
+  ])
+  const tasksPath = path.join(changeDir, 'tasks.md')
+  const hasTasksMd = existsSync(tasksPath)
+  let tasksDone: number | undefined
+  let tasksTotal: number | undefined
+  if (hasTasksMd) {
+    const counts = countTaskCheckboxes(await readFileSafe(tasksPath))
+    tasksDone = counts.done
+    tasksTotal = counts.total
+  }
+  return extractChangeDigest({ proposalMd, designMd, hasTasksMd, tasksDone, tasksTotal })
 }

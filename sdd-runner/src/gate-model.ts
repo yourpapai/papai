@@ -12,6 +12,8 @@ export interface GateAssumption {
   readonly id: string
   readonly text: string
   readonly blast_radius: string
+  /** Recorded per-assumption file evidence from the resolver sidecar (R3). */
+  readonly evidence?: { readonly files: readonly string[] }
 }
 
 export interface GateBlocker {
@@ -75,6 +77,24 @@ export interface ExpectedGateContent {
 const OVERRIDE_TOKEN = 'OVERRIDE'
 const RUN_DIRECTIVE_RE = /^\s*→\s*RUN 1 MORE\s*$/u
 const RUN_LIKE_RE = /^\s*→\s*RUN\b/u
+const DECIDED_BY_SUFFIX_RE = /\s*·\s*decided-by:\s*.+$/u
+const DECIDED_BY_LINE_RE = /^\s*decided-by:\s*\S.*$/u
+const PREVIEW_HEADER_RE = /^\s*###\s*Auto-decision preview\s*$/u
+const HEADER_RE = /^\s*(?:##|###)\s+/u
+
+/**
+ * Strip the `### Auto-decision preview` section (from its header to the next
+ * `## `/`### ` header or EOF) before processing, so a hand-mangled preview
+ * can never become gate input — the parse-inert guarantee's second layer.
+ */
+function stripPreviewSection(markdown: string): string {
+  const lines = markdown.split('\n')
+  const start = lines.findIndex((line) => PREVIEW_HEADER_RE.test(line))
+  if (start === -1) return markdown
+  const end = lines.findIndex((line, index) => index > start && HEADER_RE.test(line))
+  const kept = end === -1 ? lines.slice(0, start) : [...lines.slice(0, start), ...lines.slice(end)]
+  return kept.join('\n')
+}
 
 function classifyBox(mark: string): boolean | null {
   if (mark === '[x]' || mark === '[X]') return true
@@ -93,12 +113,13 @@ interface ParseState {
 
 function processVetoBox(
   state: ParseState,
-  line: string,
+  rawLine: string,
   lineNo: number,
   regex: RegExp,
   ids: Set<string>,
   label: string,
 ): boolean {
+  const line = rawLine.replace(DECIDED_BY_SUFFIX_RE, '')
   const match = line.match(regex)
   if (match === null) return false
   const checked = classifyBox(`[${match[1] ?? ''}]`)
@@ -158,6 +179,7 @@ function processLine(
   findingIds: Set<string>,
   gateMode: 'early' | 'final' | undefined,
 ): void {
+  if (DECIDED_BY_LINE_RE.test(line)) return
   if (processVetoBox(state, line, lineNo, /^\s*-\s*\[([^\]]+)\]\s*(A\d+)\b/u, assumptionIds, 'assumption')) return
   if (processVetoBox(state, line, lineNo, /^\s*-\s*\[([^\]]+)\]\s*(F\d+)\b/u, findingIds, 'finding')) return
   const ackMatch = line.match(/^\s*-\s*\[([^\]]+)\]\s*(T\d+)\b/u)
@@ -205,10 +227,11 @@ function finalizeResponse(state: ParseState, expected: ExpectedGateContent): Gat
 }
 
 export function parseGateResponse(markdown: string, expected: ExpectedGateContent): GateResponse {
-  if (/^\s*ABORT\s*$/mu.test(markdown)) {
+  const stripped = stripPreviewSection(markdown)
+  if (/^\s*ABORT\s*$/mu.test(stripped)) {
     return { approved: false, abort: true, override: false, extend: false, vetoes: [], answers: [] }
   }
-  const lines = markdown.split('\n')
+  const lines = stripped.split('\n')
   const assumptionIds = new Set(expected.assumptions.map((a) => a.id))
   const blockerIds = new Set(expected.blockers.map((b) => b.id))
   const findingIds = new Set((expected.findings ?? []).map((f) => f.id))

@@ -267,3 +267,25 @@ describe('runGateSession walkthrough', () => {
     expect(written[0]).not.toContain('→\n')
   })
 })
+
+describe('settleAnswers decidedBy self-check (D4)', () => {
+  it('a decidedBy field survives the write-then-parse round trip and parses as the same outcome', async () => {
+    const written: string[] = []
+    const result = await desugarFlags({ confirmAll: true, decidedBy: 'policy R1' }, view(), (md) => {
+      written.push(md)
+      return Promise.resolve()
+    })
+    expect(result).toMatchObject({ status: 'answered', decision: 'approve' })
+    expect(written[0]).toContain('decided-by: policy R1')
+    expect(written[0]).toContain('- [x] A1')
+  })
+
+  it('flag decisions without decidedBy render exactly as today', async () => {
+    const written: string[] = []
+    await desugarFlags({ confirmAll: true }, view(), (md) => {
+      written.push(md)
+      return Promise.resolve()
+    })
+    expect(written[0]).not.toContain('decided-by')
+  })
+})

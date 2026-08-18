@@ -51,7 +51,8 @@ export const RunnerConfigSchema = z.object({
   }),
 })
 
-const AUTONOMY_DEFAULTS: AutonomyConfig = {
+/** Safe autonomy defaults used when a hand-built config omits the block. */
+export const AUTONOMY_DEFAULTS: AutonomyConfig = {
   level: 'observe',
   costCeilingUsd: 5.0,
   autoExtendMax: 1,

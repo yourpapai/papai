@@ -28,7 +28,7 @@ import { createMaterializer } from './materialize.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
-import { loadRunState, resolveRoundCap, saveRunState } from './run-state.js'
+import { loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { runVetoUpdater, updateAssumptionsFromVetoes } from './veto-updater.js'
 
@@ -109,9 +109,16 @@ async function runExtendedReview(
   paths: { changeDir: string; sidecarDir: string; depth: 'S' | 'M' | 'L' },
 ): Promise<ReviewLoopResult> {
   const { changeDir, sidecarDir, depth } = paths
-  const materialize = createMaterializer(sidecarDir, changeDir)
+  const materialize = createMaterializer(sidecarDir, changeDir, emit, deps.config.repoRoot)
   const extendResult = await runReviewLoop(
-    { agent, emit, sidecarDir, cwd: deps.config.repoRoot, materialize },
+    {
+      agent,
+      emit,
+      sidecarDir,
+      cwd: deps.config.repoRoot,
+      materialize,
+      steer: steerSeamFor(state, (line) => deps.stdout?.(`steer: ${line}`)),
+    },
     { changeName: state.changeName, changeDir, depth, taskText: '', conventions: deps.conventions ?? '' },
     { startRound: state.round + 1, cap: state.roundCap },
   )
@@ -244,7 +251,7 @@ export async function runGateResume(
   return settleVeto(ctx, reviewResult, vetoRedirects(outcome))
 }
 
-async function settleApprovedGate(
+export async function settleApprovedGate(
   ctx: GateResumeContext,
   reviewResult: ReviewLoopResult,
 ): Promise<RunGateResumeResult> {
@@ -278,6 +285,6 @@ async function settleVeto(
   const driftFiles = filesUpdated.filter((file) => file.includes('specs/') || file.endsWith('tasks.md'))
   if (driftFiles.length > 0) await driftCheck(driftFiles)
   const next = version + 1
-  await presentGateAt(deps, state, stageCtx, reviewResult, next, state.gate?.mode ?? 'final')
+  await presentGateAt(deps, state, stageCtx, reviewResult, next, state.gate?.mode ?? 'final', { skipPolicy: true })
   return { runId: state.runId, outcome: 'veto', version: next }
 }

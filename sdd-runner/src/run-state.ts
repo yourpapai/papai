@@ -27,6 +27,9 @@ export const PersistedRunStateSchema = z.object({
   status: z.enum(['running', 'completed', 'aborted', 'failed']),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
+  autoExtendsUsed: z.number().int().nonnegative().default(0),
+  gateDeadlineAt: z.string().min(1).nullable().default(null),
+  gateDeadlineReArmed: z.boolean().default(false),
 })
 
 export type PersistedRunState = z.infer<typeof PersistedRunStateSchema>
@@ -45,6 +48,23 @@ export interface RunState extends PersistedRunState {
 export function resolveRoundCap(state: { depth: DepthProfile | null; roundCap?: number }): number {
   if (state.roundCap !== undefined) return state.roundCap
   return ROUND_CAPS[state.depth ?? 'S']
+}
+
+/**
+ * Build the standard round-boundary steering seam (D6): warn lines flow to
+ * the caller's sink; the cap re-read consults the persisted `state.roundCap`
+ * so a steered `extend` takes effect at the next boundary without consuming
+ * `autoExtendsUsed`.
+ */
+export function steerSeamFor(
+  state: { readonly runDir: string; readonly depth: DepthProfile | null; readonly roundCap?: number },
+  onWarning: (line: string) => void,
+): { readonly runDir: string; readonly onWarning: (line: string) => void; readonly readRoundCap: () => number } {
+  return {
+    runDir: state.runDir,
+    onWarning,
+    readRoundCap: () => resolveRoundCap(state),
+  }
 }
 
 export interface ResumePoint {
@@ -83,6 +103,9 @@ export async function createRunState(input: CreateRunStateInput, now: Date = new
     status: 'running',
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
+    autoExtendsUsed: 0,
+    gateDeadlineAt: null,
+    gateDeadlineReArmed: false,
     runDir,
     statePath: path.join(runDir, 'state.json'),
   }

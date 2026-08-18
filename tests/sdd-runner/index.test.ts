@@ -47,6 +47,22 @@ describe('USAGE', () => {
     expect(USAGE).toContain('Bare `gate` lists pending gates.')
     expect(USAGE).toContain('\n')
   })
+
+  it('pins every usage line, including the blank separators', () => {
+    expect(USAGE.split('\n')).toEqual([
+      'sdd-runner — autonomous SDD pipeline',
+      '',
+      'Usage:',
+      '  sdd-runner start <task-file> [--depth S|M|L] [--verbosity brief|normal|debug]',
+      '  sdd-runner continue [runId]',
+      '  sdd-runner resume <runId>',
+      '  sdd-runner gate [resume <runId> [--confirm-all] [--extend] [--veto <id>=<redirect>]... [--abort]]',
+      '  sdd-runner report <runId> [--pr]',
+      '',
+      'On a terminal, `gate resume <runId>` (or `continue`) opens an interactive gate session.',
+      'Without a TTY, pass decision flags or hand-edit the gate file. Bare `gate` lists pending gates.',
+    ])
+  })
 })
 
 describe('readChangeSummary', () => {

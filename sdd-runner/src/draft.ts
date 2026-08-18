@@ -89,6 +89,9 @@ async function attemptDraftArtifact(
     sidecarDir: deps.sidecarDir,
   })
   const missing = report.value.files_written.filter((file) => !fs.existsSync(path.join(deps.cwd, file)))
+  for (const file of report.value.files_written) {
+    deps.agent.emit({ altitude: 'L2', type: 'artifact', action: 'materialized', path: file })
+  }
   const validation =
     artifactId === 'specs' ? await deps.driver.validateStrict(options.changeName) : { ok: true, output: '' }
   if (missing.length === 0 && validation.ok) return

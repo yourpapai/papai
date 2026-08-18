@@ -103,4 +103,50 @@ describe('extractChangeDigest — tasks.md mode signal (task 1.3)', () => {
     })
     expect(digest.touches).toEqual(['file-a', 'file-b', 'tasks: ?/?'])
   })
+
+  it('renders tasks: ?/? when only one of done/total is known', () => {
+    const doneOnly = extractChangeDigest({ proposalMd: proposal, designMd: '', hasTasksMd: true, tasksDone: 3 })
+    expect(doneOnly.touches?.at(-1)).toBe('tasks: ?/?')
+    const totalOnly = extractChangeDigest({ proposalMd: proposal, designMd: '', hasTasksMd: true, tasksTotal: 3 })
+    expect(totalOnly.touches?.at(-1)).toBe('tasks: ?/?')
+  })
+})
+
+describe('extractChangeDigest — sentence and bullet normalization', () => {
+  it('what is the first two sentences with whitespace collapsed', () => {
+    const digest = extractChangeDigest({
+      proposalMd: ['## Why', '', '  First   sentence.', 'Second\tone!  Third?', ''].join('\n'),
+      designMd: '',
+      hasTasksMd: false,
+    })
+    expect(digest.what).toBe('First sentence. Second one!')
+    expect(digest.why).toBe(['First   sentence.', 'Second\tone!  Third?'].join('\n'))
+  })
+
+  it('what falls back to the whole body when no sentence terminator exists', () => {
+    const digest = extractChangeDigest({
+      proposalMd: ['## Why', '', 'no terminator anywhere', ''].join('\n'),
+      designMd: '',
+      hasTasksMd: false,
+    })
+    expect(digest.what).toBe('no terminator anywhere')
+  })
+
+  it('recognizes dash and asterisk bullets, including indented ones', () => {
+    const digest = extractChangeDigest({
+      proposalMd: ['## Impact', '', '- dash', '* star', '   - indented dash', '  plain line'].join('\n'),
+      designMd: '',
+      hasTasksMd: false,
+    })
+    expect(digest.touches).toEqual(['dash', 'star', 'indented dash'])
+  })
+
+  it('nulls touches when the Impact section exists but holds no bullets', () => {
+    const digest = extractChangeDigest({
+      proposalMd: ['## Impact', '', 'prose only, nothing to list'].join('\n'),
+      designMd: '',
+      hasTasksMd: false,
+    })
+    expect(digest.touches).toBeNull()
+  })
 })
