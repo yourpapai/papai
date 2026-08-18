@@ -57,7 +57,7 @@ export class DynamicRenderer implements Renderer {
   private startedAt = 0
   private readonly folder: ReplayFolder
   private readonly slots = new Map<string, string>()
-  private readonly totals = { input: 0, output: 0, reasoning: 0, cost: 0 }
+  private readonly totals = { input: 0, output: 0, reasoning: 0, cachedRead: 0, cachedWrite: 0, cost: 0 }
   private readonly agentModels = new Map<string, string>()
   private costEstimated = false
   private readonly resolveCost: ResolveCostFn | undefined
@@ -108,6 +108,8 @@ export class DynamicRenderer implements Renderer {
       this.totals.input += event.tokens.input
       this.totals.output += event.tokens.output
       this.totals.reasoning += event.tokens.reasoning
+      this.totals.cachedRead += event.tokens.cacheRead ?? 0
+      this.totals.cachedWrite += event.tokens.cacheWrite ?? 0
       this.totals.cost += event.costUsd + this.estimateStepCost(event)
     }
   }
@@ -121,21 +123,31 @@ export class DynamicRenderer implements Renderer {
   private estimateStepCost(event: StepFinishInput): number {
     if (this.resolveCost === undefined || event.costUsd > 0) return 0
     const { input, output, reasoning } = event.tokens
-    if (input === 0 && output === 0 && reasoning === 0) return 0
+    const cacheRead = event.tokens.cacheRead ?? 0
+    const cacheWrite = event.tokens.cacheWrite ?? 0
+    if (input === 0 && output === 0 && reasoning === 0 && cacheRead === 0 && cacheWrite === 0) return 0
     const model = this.agentModels.get(event.agent)
     if (model === undefined) return 0
     const resolved = this.resolveCost(model)
     if (resolved === null) return 0
     this.costEstimated = true
-    return ((input + reasoning) * resolved.input + output * resolved.output) / TOKEN_SCALE
+    return (
+      ((input + reasoning) * resolved.input +
+        output * resolved.output +
+        cacheRead * (resolved.cache_read ?? 0) +
+        cacheWrite * (resolved.cache_write ?? 0)) /
+      TOKEN_SCALE
+    )
   }
 
   private statusLine(): string {
     const parts: string[] = []
     const round = this.folder.state.round
     if (round !== null) parts.push(`round ${round.current}/${round.cap}`)
-    if (this.totals.input > 0 || this.totals.output > 0) {
-      parts.push(`in ${formatTokenCount(this.totals.input)} / out ${formatTokenCount(this.totals.output)}`)
+    if (this.totals.input > 0 || this.totals.output > 0 || this.totals.cachedRead > 0) {
+      const cachedPart =
+        this.totals.cachedRead > 0 ? ` ${MIDDLE_DOT} cached ${formatTokenCount(this.totals.cachedRead)}` : ''
+      parts.push(`in ${formatTokenCount(this.totals.input)}${cachedPart} / out ${formatTokenCount(this.totals.output)}`)
     }
     if (this.totals.cost > 0) parts.push(`${this.costEstimated ? '~' : ''}$${this.totals.cost.toFixed(4)}`)
     if (this.startedAt !== 0) parts.push(formatDuration(Date.now() - this.startedAt))

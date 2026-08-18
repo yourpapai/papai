@@ -40,8 +40,24 @@ export interface AgentUsage {
   inputTokens: number
   outputTokens: number
   reasoningTokens: number
+  /** Cached input tokens read from the provider prompt cache; never folded into inputTokens. */
+  cachedReadTokens: number
+  /** Cached input tokens written to the provider prompt cache; never folded into inputTokens. */
+  cachedWriteTokens: number
   costUsd: number
   wallMs: number
+}
+
+export function emptyUsage(): AgentUsage {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cachedReadTokens: 0,
+    cachedWriteTokens: 0,
+    costUsd: 0,
+    wallMs: 0,
+  }
 }
 
 export interface AgentRunResult<T> {

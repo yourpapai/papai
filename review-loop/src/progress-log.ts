@@ -16,6 +16,8 @@ export interface UsageDelta {
   input: number
   output: number
   reasoning: number
+  cacheRead?: number
+  cacheWrite?: number
   cost: number
   label?: string
   model?: string

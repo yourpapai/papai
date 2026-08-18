@@ -5,7 +5,7 @@
 
 import { appendFile } from 'node:fs/promises'
 
-import type { AgentUsage, LineSink, RunAgentOptions } from './agent-runner.js'
+import { emptyUsage, type AgentUsage, type LineSink, type RunAgentOptions } from './agent-runner.js'
 import { type OpencodeEvent, parseEventLine } from './event-stream.js'
 import { formatLiveLine, formatToolArg } from './live-format.js'
 import type { ProgressReporter } from './progress-log.js'
@@ -48,6 +48,7 @@ function liveLine(ctx: LiveCtx, done: boolean): string {
     {
       input: ctx.usage.inputTokens,
       output: ctx.usage.outputTokens,
+      cached: ctx.usage.cachedReadTokens,
     },
     done,
   )
@@ -71,12 +72,16 @@ function applyStepFinish(evt: Extract<OpencodeEvent, { type: 'step_finish' }>, c
   ctx.usage.inputTokens += evt.tokens.input
   ctx.usage.outputTokens += evt.tokens.output
   ctx.usage.reasoningTokens += evt.tokens.reasoning
+  ctx.usage.cachedReadTokens += evt.tokens.cacheRead
+  ctx.usage.cachedWriteTokens += evt.tokens.cacheWrite
   ctx.usage.costUsd += evt.cost
   if (reporter === undefined) return
   reporter.usage?.({
     input: evt.tokens.input,
     output: evt.tokens.output,
     reasoning: evt.tokens.reasoning,
+    cacheRead: evt.tokens.cacheRead,
+    cacheWrite: evt.tokens.cacheWrite,
     cost: evt.cost,
     label: ctx.label,
     model: ctx.model,
@@ -135,7 +140,7 @@ export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
     arg: '',
     seenCalls: new Set<string>(),
     timer: null,
-    usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+    usage: emptyUsage(),
     firstStepAt: null,
     logChain: Promise.resolve(),
   }

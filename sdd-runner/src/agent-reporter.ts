@@ -40,7 +40,13 @@ function buildStepFinishEvent(label: string, delta: UsageDelta): EventInput {
     altitude: 'L0',
     type: 'step_finish',
     agent: label,
-    tokens: { input: delta.input, output: delta.output, reasoning: delta.reasoning },
+    tokens: {
+      input: delta.input,
+      output: delta.output,
+      reasoning: delta.reasoning,
+      cacheRead: delta.cacheRead ?? 0,
+      cacheWrite: delta.cacheWrite ?? 0,
+    },
     costUsd: delta.cost,
   }
 }

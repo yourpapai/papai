@@ -172,6 +172,29 @@ describe('formatEvent', () => {
           inputTokens: 12000,
           outputTokens: 3400,
           reasoningTokens: 200,
+          cachedReadTokens: 18_175_552,
+          cachedWriteTokens: 5_005_056,
+          costUsd: 0.0142,
+          wallMs: 45000,
+        },
+      },
+      'normal',
+    )
+    expect(line).toBe('reviewer-r1 done \u00B7 in 12.0k \u00B7 cached 18.18M out 3.4k \u00B7 $0.0142')
+  })
+
+  it('done line omits the cached segment when cached counters are zero', () => {
+    const line = formatEvent(
+      {
+        altitude: 'L1',
+        type: 'done',
+        agent: 'reviewer-r1',
+        usage: {
+          inputTokens: 12000,
+          outputTokens: 3400,
+          reasoningTokens: 200,
+          cachedReadTokens: 0,
+          cachedWriteTokens: 0,
           costUsd: 0.0142,
           wallMs: 45000,
         },

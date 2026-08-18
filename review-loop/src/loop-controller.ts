@@ -6,16 +6,7 @@
 import type { ShellExecFn } from './build-checker.js'
 import { saveIssueLedger, type IssueLedger, type LedgerIssueRecord } from './issue-ledger.js'
 import { processPendingIssues } from './issue-processor.js'
-import {
-  emitLoopEnd,
-  emitMatchComplete,
-  emitReviewComplete,
-  emitRoundStart,
-  emitRoundSummary,
-  newCollector,
-  tallyReviewerIssues,
-  type RoundCollector,
-} from './loop-trace.js'
+import { emitLoopEnd, emitMatchComplete, emitReviewComplete, emitRoundStart, emitRoundSummary } from './loop-trace.js'
 import {
   filterActionable,
   runMatchAndRecord,
@@ -23,6 +14,7 @@ import {
   TERMINAL_STATUSES,
   type RoundAgentDeps,
 } from './review-round.js'
+import { newCollector, tallyReviewerIssues, type RoundCollector } from './round-collector.js'
 import { saveRunState } from './run-state.js'
 import type { StopController } from './stop-controller.js'
 import type { RoundMetric } from './trace-log.js'

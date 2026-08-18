@@ -12,7 +12,16 @@ import { repriceEvent } from '../../sdd-runner/src/usage-aggregate.js'
 import { repriceEvents } from '../../sdd-runner/src/usage-aggregate.js'
 
 function makeUsage(overrides: Partial<AgentUsage> = {}): AgentUsage {
-  return { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0, ...overrides }
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cachedReadTokens: 0,
+    cachedWriteTokens: 0,
+    costUsd: 0,
+    wallMs: 0,
+    ...overrides,
+  }
 }
 
 function doneEvent(usage: AgentUsage, seq: number, model?: string): DoneEvent {
@@ -52,10 +61,26 @@ describe('aggregateUsage', () => {
       inputTokens: 300,
       outputTokens: 80,
       reasoningTokens: 15,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
       costUsd: 0.75,
       wallMs: 3000,
       costKnown: true,
     })
+  })
+
+  it('sums cached token counters across done events', () => {
+    const events: readonly SddEvent[] = [
+      doneEvent(
+        makeUsage({ inputTokens: 100, cachedReadTokens: 18_175_552, cachedWriteTokens: 5_005_056, wallMs: 1 }),
+        1,
+      ),
+      doneEvent(makeUsage({ inputTokens: 50, cachedReadTokens: 1_000_000, cachedWriteTokens: 0, wallMs: 2 }), 2),
+    ]
+    const usage = aggregateUsage(events)
+    expect(usage.inputTokens).toBe(150)
+    expect(usage.cachedReadTokens).toBe(19_175_552)
+    expect(usage.cachedWriteTokens).toBe(5_005_056)
   })
 
   it('ignores non-done events', () => {
@@ -67,6 +92,8 @@ describe('aggregateUsage', () => {
       inputTokens: 100,
       outputTokens: 0,
       reasoningTokens: 0,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
       costUsd: 0,
       wallMs: 0,
       costKnown: false,
@@ -78,6 +105,8 @@ describe('aggregateUsage', () => {
       inputTokens: 0,
       outputTokens: 0,
       reasoningTokens: 0,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
       costUsd: 0,
       wallMs: 0,
       costKnown: true,
@@ -109,6 +138,45 @@ describe('repriceEvent', () => {
     const event = doneEvent(makeUsage({ inputTokens: 0, outputTokens: 0, reasoningTokens: 1_000_000, costUsd: 0 }), 1)
     const repriced = repriceEvent(event, { input: 5, output: 15 })
     expect(repriced.usage.costUsd).toBe(5)
+  })
+
+  it('prices cached reads and writes at their own rates when published', () => {
+    const event = doneEvent(
+      makeUsage({
+        inputTokens: 1_000_000,
+        outputTokens: 0,
+        cachedReadTokens: 2_000_000,
+        cachedWriteTokens: 1_000_000,
+        costUsd: 0,
+      }),
+      1,
+    )
+    const repriced = repriceEvent(event, { input: 5, output: 15, cache_read: 0.5, cache_write: 6.25 })
+    expect(repriced.usage.costUsd).toBeCloseTo(5 + 1 + 6.25, 10)
+  })
+
+  it('cached tokens contribute zero cost when no cache rates are published', () => {
+    const event = doneEvent(
+      makeUsage({
+        inputTokens: 1_000_000,
+        outputTokens: 0,
+        cachedReadTokens: 9_000_000,
+        cachedWriteTokens: 9_000_000,
+        costUsd: 0,
+      }),
+      1,
+    )
+    const repriced = repriceEvent(event, { input: 5, output: 15 })
+    expect(repriced.usage.costUsd).toBe(5)
+  })
+
+  it('reprices cache-only usage when input/output/reasoning are all zero', () => {
+    const event = doneEvent(
+      makeUsage({ inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cachedReadTokens: 2_000_000, costUsd: 0 }),
+      1,
+    )
+    const repriced = repriceEvent(event, { input: 5, output: 15, cache_read: 0.5 })
+    expect(repriced.usage.costUsd).toBe(1)
   })
 })
 

@@ -32,7 +32,8 @@ export function buildTimingLine(metrics: readonly RoundMetric[], wallMs: number)
   const parts = PHASE_KEYS.filter((k) => phaseMs[k] > 0).map((k) => `${k} ${msToSeconds(phaseMs[k])}`)
   const breakdown = parts.length === 0 ? 'no phase timing recorded' : parts.join(', ')
   const usage = aggregateUsage(metrics)
-  const tokens = `in ${formatCount(usage.inputTokens)} / out ${formatCount(usage.outputTokens)} / reasoning ${formatCount(usage.reasoningTokens)}`
+  const cachedPart = usage.cachedReadTokens > 0 ? ` / cached ${formatCount(usage.cachedReadTokens)}` : ''
+  const tokens = `in ${formatCount(usage.inputTokens)}${cachedPart} / out ${formatCount(usage.outputTokens)} / reasoning ${formatCount(usage.reasoningTokens)}`
   const cost = usage.costUsd > 0 ? `Cost: $${usage.costUsd.toFixed(3)} (${tokens})` : `Tokens: ${tokens}`
   return `Duration: ${formatDuration(wallMs)} wall · phases ${formatDuration(totalMs)} (${breakdown}) · ${cost}`
 }

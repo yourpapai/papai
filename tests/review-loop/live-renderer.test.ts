@@ -336,7 +336,7 @@ describe('status line', () => {
       line: 1,
       title: 'A',
     })
-    r.usage({ input: 228819, output: 9824, reasoning: 49844, cost: 0 })
+    r.usage({ input: 228819, output: 9824, reasoning: 49844, cacheRead: 0, cacheWrite: 0, cost: 0 })
     r.slot('fixer-w1', 'x')
     r.slot('fixer-w2-retry', 'y')
     const status = output[output.length - 1]!.split('\n')[0]!

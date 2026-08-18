@@ -29,7 +29,7 @@
     "timeoutMs": 1800000
   },
   "pricing": {
-    "anthropic/claude-sonnet-*": { "input": 3, "output": 15 },
+    "anthropic/claude-sonnet-*": { "input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 3.75 },
     "anthropic/claude-opus-*": { "input": 15, "output": 75 }
   }
 }

@@ -3,14 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { agentWritePath, runAgent, AgentRunError, type AgentUsage, type SpawnFn } from './agent-runner.js'
+import { agentWritePath, emptyUsage, runAgent, AgentRunError, type AgentUsage, type SpawnFn } from './agent-runner.js'
 import type { IssueWorker } from './issue-processor-attempts.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
 import { type FixerResult, InspectorResultSchema, type InspectorResult, type ReviewerIssue } from './issue-schema.js'
-import { emitInspectComplete, tallyInspector } from './loop-trace.js'
-import type { RoundCollector } from './loop-trace.js'
+import { emitInspectComplete } from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
 import { buildInspectPrompt } from './prompt-templates.js'
+import { tallyInspector, type RoundCollector } from './round-collector.js'
 import { workerOutputPath } from './run-state.js'
 import type { TraceLogger } from './trace-log.js'
 import { execGit } from './worktree.js'
@@ -114,10 +114,7 @@ export async function runInspectorOrTreatAsRejection(
     return {
       kind: 'unavailable',
       reasoning: `inspector unavailable: ${originalReasoning}`,
-      usage:
-        error instanceof AgentRunError
-          ? error.usage
-          : { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+      usage: error instanceof AgentRunError ? error.usage : emptyUsage(),
     }
   }
 }

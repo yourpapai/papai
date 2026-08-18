@@ -204,4 +204,66 @@ describe('DynamicRenderer totals accounting', () => {
     expect(status).not.toContain('3.0k')
     expect(status).not.toContain('$0.0160')
   })
+
+  it('shows cached reads as a footer segment hidden when zero', () => {
+    const stream = new MemoryStream({ isTTY: true, columns: 120 })
+    const renderer = new DynamicRenderer(stream, 'normal')
+    renderer.renderEvent({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'resolver-r1',
+      tokens: { input: 1000, output: 200, reasoning: 0, cacheRead: 8320, cacheWrite: 4096 },
+      costUsd: 0,
+    })
+    renderer.renderEvent({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'resolver-r1',
+      tokens: { input: 500, output: 100, reasoning: 0, cacheRead: 1000, cacheWrite: 0 },
+      costUsd: 0,
+    })
+    const status = lastStatusLine(stream.chunks.join(''))
+    expect(status).toContain('in 1.5k \u00B7 cached 9.3k / out 300')
+  })
+
+  it('footer byte-identical when cache deltas are zero', () => {
+    const stream = new MemoryStream({ isTTY: true, columns: 120 })
+    const renderer = new DynamicRenderer(stream, 'normal')
+    renderer.renderEvent({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'resolver-r1',
+      tokens: { input: 1000, output: 200, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+    })
+    const status = lastStatusLine(stream.chunks.join(''))
+    expect(status).toContain('in 1.0k / out 200')
+    expect(status).not.toContain('cached')
+  })
+
+  const CACHE_PRICED_MODEL = 'zai-coding-plan/glm-5.2'
+  const CACHE_PRICED: ResolvedCost = { input: 1, output: 2, cache_read: 0.1, cache_write: 1.25, source: 'primary' }
+  const resolveCachePriced = (modelId: string): ResolvedCost | null =>
+    modelId === CACHE_PRICED_MODEL ? CACHE_PRICED : null
+
+  it('prices cached reads/writes in the step estimate with the same formula as the gate', () => {
+    const stream = new MemoryStream({ isTTY: true, columns: 120 })
+    const renderer = new DynamicRenderer(stream, 'normal', undefined, resolveCachePriced)
+    renderer.renderEvent({
+      altitude: 'L1',
+      type: 'spawned',
+      agent: 'resolver-r1',
+      role: 'reviewer',
+      model: CACHE_PRICED_MODEL,
+    })
+    renderer.renderEvent({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'resolver-r1',
+      tokens: { input: 1_000_000, output: 1_000_000, reasoning: 0, cacheRead: 2_000_000, cacheWrite: 1_000_000 },
+      costUsd: 0,
+    })
+    // ((1M * 1) + (1M * 2) + (2M * 0.1) + (1M * 1.25)) / 1M = 4.45
+    expect(stream.chunks.join('')).toContain('$4.4500')
+  })
 })

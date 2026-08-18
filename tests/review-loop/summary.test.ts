@@ -77,7 +77,14 @@ function zeroMetric(round: number): RoundMetric {
       cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
     },
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
-    usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
+      costUsd: 0,
+    },
   }
 }
 
@@ -90,7 +97,27 @@ function busyMetric(round: number): RoundMetric {
   metric.reviewerSeverity = { critical: 0, high: 1, medium: 2, low: 1 }
   metric.fixerSeverity = { critical: 0, high: 1, medium: 1, low: 1 }
   metric.phaseMs = { review: 178_300, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 }
-  metric.usage = { inputTokens: 120_000, outputTokens: 8_000, reasoningTokens: 3_000, costUsd: 1.234 }
+  metric.usage = {
+    inputTokens: 120_000,
+    outputTokens: 8_000,
+    reasoningTokens: 3_000,
+    cachedReadTokens: 0,
+    cachedWriteTokens: 0,
+    costUsd: 1.234,
+  }
+  return metric
+}
+
+function cachedMetric(round: number): RoundMetric {
+  const metric = busyMetric(round)
+  metric.usage = {
+    inputTokens: 120_000,
+    outputTokens: 8_000,
+    reasoningTokens: 3_000,
+    cachedReadTokens: 18_175_552,
+    cachedWriteTokens: 5_005_056,
+    costUsd: 1.234,
+  }
   return metric
 }
 
@@ -183,10 +210,28 @@ describe('buildSummary timing and cost', () => {
 
   test('hides cost and shows Tokens when the reported cost is zero', () => {
     const metric = busyMetric(1)
-    metric.usage = { inputTokens: 228_819, outputTokens: 9_824, reasoningTokens: 49_844, costUsd: 0 }
+    metric.usage = {
+      inputTokens: 228_819,
+      outputTokens: 9_824,
+      reasoningTokens: 49_844,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
+      costUsd: 0,
+    }
     const summary = buildSummary(inputOf({ metrics: [metric] }))
     expect(summary).toContain('· Tokens: in 228,819 / out 9,824 / reasoning 49,844')
     expect(summary).not.toContain('Cost:')
+  })
+
+  test('token line includes the cached segment when cached reads are non-zero', () => {
+    const summary = buildSummary(inputOf({ metrics: [cachedMetric(1)] }))
+    expect(summary).toContain('in 120,000 / cached 18,175,552 / out 8,000 / reasoning 3,000')
+  })
+
+  test('token line omits the cached segment when cached counters are zero', () => {
+    const summary = buildSummary(inputOf({ metrics: [busyMetric(1)] }))
+    expect(summary).toContain('in 120,000 / out 8,000 / reasoning 3,000')
+    expect(summary).not.toContain('cached')
   })
 })
 
@@ -255,6 +300,8 @@ describe('buildSummary stats line', () => {
             input: 228_800,
             output: 41_200,
             reasoning: 0,
+            cachedRead: 0,
+            cachedWrite: 0,
             toolCalls: 37,
             added: 412,
             removed: 87,
@@ -276,7 +323,17 @@ describe('buildSummary stats line', () => {
     const summary = buildSummary(
       inputOf({
         stats: {
-          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 0, added: 0, removed: 0, elapsedMs: 1000 },
+          totals: {
+            input: 0,
+            output: 0,
+            reasoning: 0,
+            cachedRead: 0,
+            cachedWrite: 0,
+            toolCalls: 0,
+            added: 0,
+            removed: 0,
+            elapsedMs: 1000,
+          },
           perLabel: {},
         },
       }),
@@ -288,7 +345,17 @@ describe('buildSummary stats line', () => {
     const summary = buildSummary(
       inputOf({
         stats: {
-          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 0, added: 5, removed: 0, elapsedMs: 1000 },
+          totals: {
+            input: 0,
+            output: 0,
+            reasoning: 0,
+            cachedRead: 0,
+            cachedWrite: 0,
+            toolCalls: 0,
+            added: 5,
+            removed: 0,
+            elapsedMs: 1000,
+          },
           perLabel: {},
         },
       }),
@@ -309,7 +376,17 @@ describe('buildMetricsJson', () => {
 
   test('buildMetricsJson includes runStats when provided', () => {
     const runStats = {
-      totals: { input: 1, output: 2, reasoning: 0, toolCalls: 3, added: 4, removed: 5, estimatedCostUsd: 0.01 },
+      totals: {
+        input: 1,
+        output: 2,
+        reasoning: 0,
+        cachedRead: 0,
+        cachedWrite: 0,
+        toolCalls: 3,
+        added: 4,
+        removed: 5,
+        estimatedCostUsd: 0.01,
+      },
       perLabel: {},
     }
     const metrics = buildMetricsJson('clean', 1, 0, [], { poolSize: 1, inspect: false }, runStats)
@@ -398,7 +475,17 @@ describe('buildSummary stats and issues edges', () => {
     const summary = buildSummary(
       inputOf({
         stats: {
-          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 0, added: 0, removed: 7, elapsedMs: 1000 },
+          totals: {
+            input: 0,
+            output: 0,
+            reasoning: 0,
+            cachedRead: 0,
+            cachedWrite: 0,
+            toolCalls: 0,
+            added: 0,
+            removed: 7,
+            elapsedMs: 1000,
+          },
           perLabel: {},
         },
       }),

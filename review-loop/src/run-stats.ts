@@ -12,6 +12,8 @@ export interface UsageInput {
   input: number
   output: number
   reasoning: number
+  cachedRead?: number
+  cachedWrite?: number
   model?: string
 }
 
@@ -19,6 +21,8 @@ export interface LabelStats {
   input: number
   output: number
   reasoning: number
+  cachedRead: number
+  cachedWrite: number
   toolCalls: number
   added: number
   removed: number
@@ -37,6 +41,8 @@ export const LabelStatsSchema = z.object({
   input: z.number(),
   output: z.number(),
   reasoning: z.number(),
+  cachedRead: z.number().default(0),
+  cachedWrite: z.number().default(0),
   toolCalls: z.number(),
   added: z.number(),
   removed: z.number(),
@@ -60,7 +66,7 @@ function clamp(n: number): number {
 }
 
 function emptyLabelStats(): LabelStats {
-  return { input: 0, output: 0, reasoning: 0, toolCalls: 0, added: 0, removed: 0 }
+  return { input: 0, output: 0, reasoning: 0, cachedRead: 0, cachedWrite: 0, toolCalls: 0, added: 0, removed: 0 }
 }
 
 export class RunStats {
@@ -89,6 +95,8 @@ export class RunStats {
     stats.totals.input = persisted.totals.input
     stats.totals.output = persisted.totals.output
     stats.totals.reasoning = persisted.totals.reasoning
+    stats.totals.cachedRead = persisted.totals.cachedRead ?? 0
+    stats.totals.cachedWrite = persisted.totals.cachedWrite ?? 0
     stats.totals.toolCalls = persisted.totals.toolCalls
     stats.totals.added = persisted.totals.added
     stats.totals.removed = persisted.totals.removed
@@ -104,14 +112,21 @@ export class RunStats {
     entry.input += clamp(delta.input)
     entry.output += clamp(delta.output)
     entry.reasoning += clamp(delta.reasoning)
+    entry.cachedRead += clamp(delta.cachedRead ?? 0)
+    entry.cachedWrite += clamp(delta.cachedWrite ?? 0)
     this.totals.input += clamp(delta.input)
     this.totals.output += clamp(delta.output)
     this.totals.reasoning += clamp(delta.reasoning)
+    this.totals.cachedRead += clamp(delta.cachedRead ?? 0)
+    this.totals.cachedWrite += clamp(delta.cachedWrite ?? 0)
     const model = delta.model ?? this.model
     if (this.pricing !== undefined && model !== undefined) {
       const price = matchPrice(this.pricing, model)
       if (price !== undefined) {
-        this.estimatedCost += estimateCostUsd(price, clamp(delta.input), clamp(delta.output))
+        this.estimatedCost += estimateCostUsd(price, clamp(delta.input), clamp(delta.output), {
+          cachedRead: clamp(delta.cachedRead ?? 0),
+          cachedWrite: clamp(delta.cachedWrite ?? 0),
+        })
         this.hasCost = true
       }
     }
