@@ -120,12 +120,12 @@ async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness
   }
   return {
     runStart: (options) => runStart(orchestratorDeps, options),
-    runResume: (runId) => runResume(orchestratorDeps, runId),
+    runResume: (runId, autonomy) => runResume(orchestratorDeps, runId, autonomy),
     runGateResume: async (runId, options) => {
       const resolved = await resolveRunId(config.workDir, runId)
       return runGateResume(orchestratorDeps, resolved, options)
     },
-    runContinue: (runId) => runContinue(orchestratorDeps, runId),
+    runContinue: (runId, autonomy) => runContinue(orchestratorDeps, runId, autonomy),
     listPendingGates: () => listPendingGates(config.workDir),
     buildReport: async (runId, pr) => {
       const state = await loadRunState(config.workDir, runId)

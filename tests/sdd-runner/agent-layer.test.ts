@@ -181,14 +181,60 @@ describe('sidecar schemas', () => {
           confidence: 'medium',
           blast_radius: 'group replies',
           status: 'open',
+          evidence: { files: ['openspec/changes/foo/design.md'] },
         },
       ],
     }
     expect(AssumptionsSidecarSchema.safeParse(record).success).toBe(true)
     const badBasis = {
-      assumptions: [{ id: 'A1', text: 'x', basis: 'guesswork', confidence: 'low', blast_radius: 'y', status: 'open' }],
+      assumptions: [
+        {
+          id: 'A1',
+          text: 'x',
+          basis: 'guesswork',
+          confidence: 'low',
+          blast_radius: 'y',
+          status: 'open',
+          evidence: { files: ['a.md'] },
+        },
+      ],
     }
     expect(AssumptionsSidecarSchema.safeParse(badBasis).success).toBe(false)
+  })
+
+  it('requires per-assumption evidence.files and rejects missing or empty lists', () => {
+    const withEvidence = {
+      assumptions: [
+        {
+          id: 'A1',
+          text: 't',
+          basis: 'default',
+          confidence: 'high',
+          blast_radius: 'b',
+          status: 'open',
+          evidence: { files: ['openspec/changes/foo/design.md'] },
+        },
+      ],
+    }
+    expect(AssumptionsSidecarSchema.safeParse(withEvidence).success).toBe(true)
+    const missing = {
+      assumptions: [{ id: 'A1', text: 't', basis: 'default', confidence: 'high', blast_radius: 'b', status: 'open' }],
+    }
+    expect(AssumptionsSidecarSchema.safeParse(missing).success).toBe(false)
+    const emptyFiles = {
+      assumptions: [
+        {
+          id: 'A1',
+          text: 't',
+          basis: 'default',
+          confidence: 'high',
+          blast_radius: 'b',
+          status: 'open',
+          evidence: { files: [] },
+        },
+      ],
+    }
+    expect(AssumptionsSidecarSchema.safeParse(emptyFiles).success).toBe(false)
   })
 
   it('validates the depth classification sidecar with structured signals', () => {

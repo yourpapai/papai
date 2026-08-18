@@ -258,6 +258,59 @@ describe('runStart', () => {
   })
 })
 
+describe('autonomy resolution onto OrchestratorDeps', () => {
+  it('runStart accepts autonomy overrides on StartOptions and resolves observe defaults from a bare config', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+      autonomy: { level: 'assist', deadlineMinutes: 10 },
+    })
+    expect(result.halted).toBe('gate')
+    const { resolveAutonomyConfig } = await import('../../sdd-runner/src/config.js')
+    const resolved = resolveAutonomyConfig(
+      { ...fixture.deps.config, autonomy: { level: 'observe', costCeilingUsd: 5, autoExtendMax: 1, rules: {} } },
+      { level: 'assist', deadlineMinutes: 10 },
+    )
+    expect(resolved).toMatchObject({ level: 'assist', deadlineMinutes: 10, costCeilingUsd: 5 })
+  })
+
+  it('resolveAutonomyConfig normalizes the effective ceiling against budgetUsd (min) and applies CLI overrides', async () => {
+    const { resolveAutonomyConfig } = await import('../../sdd-runner/src/config.js')
+    const base = {
+      repoRoot: '/repo',
+      workDir: '/repo/.sdd-runner',
+      model: 'm',
+      models: {},
+      timeouts: { wallClockMs: 1, inactivityMs: 1 },
+      autonomy: {
+        level: 'observe' as const,
+        costCeilingUsd: 5,
+        autoExtendMax: 1,
+        deadlineMinutes: undefined,
+        rules: {},
+      },
+    }
+    expect(resolveAutonomyConfig(base)).toMatchObject({ level: 'observe', costCeilingUsd: 5 })
+    expect(resolveAutonomyConfig({ ...base, budgetUsd: 2 })).toMatchObject({ costCeilingUsd: 2 })
+    expect(resolveAutonomyConfig({ ...base, budgetUsd: 50 })).toMatchObject({ costCeilingUsd: 5 })
+    expect(resolveAutonomyConfig(base, { level: 'auto', deadlineMinutes: 10 })).toMatchObject({
+      level: 'auto',
+      deadlineMinutes: 10,
+    })
+  })
+
+  it('budgetUsd alone never gated anything before this change (no consumer in the pre-change pipeline path)', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(
+      { ...fixture.deps, config: { ...fixture.deps.config, budgetUsd: 0.000001 } },
+      { taskFile: fixture.taskFile, depthOverride: 'S' },
+    )
+    expect(result.halted).toBe('gate')
+    expect(fs.existsSync(result.gateMdPath)).toBe(true)
+  })
+})
+
 describe('runResume', () => {
   it('resumes from review without re-running intake or draft', async () => {
     const fixture = makeFixture()
@@ -603,6 +656,7 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
       confidence: 'medium',
       blast_radius: 'group replies',
       status: 'open',
+      evidence: { files: ['openspec/changes/thing/proposal.md'] },
     }
     const fixture = makeFixture({
       'resolutions-1.json': JSON.stringify({ resolutions: [], assumptions: [assumption] }),
@@ -1086,6 +1140,7 @@ describe('runGateResume', () => {
       confidence: 'medium',
       blast_radius: 'group replies',
       status: 'open',
+      evidence: { files: ['openspec/changes/thing/proposal.md'] },
     }
     const fixture = makeFixture({
       'resolutions-1.json': JSON.stringify({
@@ -1325,6 +1380,7 @@ describe('runGateResume', () => {
       confidence: 'medium',
       blast_radius: 'group replies',
       status: 'open',
+      evidence: { files: ['openspec/changes/thing/proposal.md'] },
     }
     const fixture = makeFixture({
       'resolutions-1.json': JSON.stringify({ resolutions: [], assumptions: [assumption] }),

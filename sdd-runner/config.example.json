@@ -9,5 +9,11 @@
     "wallClockMs": 1800000,
     "inactivityMs": 600000
   },
-  "budgetUsd": 25
+  "budgetUsd": 25,
+  "autonomy": {
+    "level": "observe",
+    "costCeilingUsd": 5.0,
+    "autoExtendMax": 1,
+    "rules": {}
+  }
 }

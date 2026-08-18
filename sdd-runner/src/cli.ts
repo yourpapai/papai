@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { AutonomyLevel } from './config.js'
 import type { DepthProfile } from './events.js'
 import type {
   RunContinueResult,
@@ -17,26 +18,36 @@ import type { PendingGateEntry } from './run-state.js'
 
 export interface CliHarness {
   readonly runStart: (options: StartOptions) => Promise<RunStartResult>
-  readonly runResume: (runId: string) => Promise<RunResumeResult>
+  readonly runResume: (runId: string, autonomy?: AutonomyOverrides) => Promise<RunResumeResult>
   readonly runGateResume: (runId: string, options: GateResumeOptions) => Promise<RunGateResumeResult>
-  readonly runContinue: (runId: string | null) => Promise<RunContinueResult>
+  readonly runContinue: (runId: string | null, autonomy?: AutonomyOverrides) => Promise<RunContinueResult>
   readonly listPendingGates: () => Promise<PendingGateEntry[]>
   readonly buildReport: (runId: string, pr: boolean) => Promise<string>
   readonly stdout: (line: string) => void
 }
 
+export interface AutonomyOverrides {
+  readonly level?: AutonomyLevel
+  readonly deadlineMinutes?: number
+}
+
 export async function main(argv: readonly string[], harness: CliHarness): Promise<number> {
   const cmd = parseCliArgs(argv)
   if (cmd.subcommand === 'start') {
-    await harness.runStart({ taskFile: cmd.taskFile, depthOverride: cmd.depth, verbosity: cmd.verbosity })
+    await harness.runStart({
+      taskFile: cmd.taskFile,
+      depthOverride: cmd.depth,
+      verbosity: cmd.verbosity,
+      ...autonomyOverridesOf(cmd.autonomy, cmd.autoDeadlineMinutes),
+    })
     return 0
   }
   if (cmd.subcommand === 'resume') {
-    await harness.runResume(cmd.runId)
+    await harness.runResume(cmd.runId, autonomyOverridesOf(cmd.autonomy, cmd.autoDeadlineMinutes))
     return 0
   }
   if (cmd.subcommand === 'continue') {
-    await harness.runContinue(cmd.runId)
+    await harness.runContinue(cmd.runId, autonomyOverridesOf(cmd.autonomy, cmd.autoDeadlineMinutes))
     return 0
   }
   if (cmd.subcommand === 'gate') {
@@ -70,9 +81,21 @@ export type CliCommand =
       readonly taskFile: string
       readonly depth?: DepthProfile
       readonly verbosity: Verbosity
+      readonly autonomy?: AutonomyLevel
+      readonly autoDeadlineMinutes?: number
     }
-  | { readonly subcommand: 'resume'; readonly runId: string }
-  | { readonly subcommand: 'continue'; readonly runId: string | null }
+  | {
+      readonly subcommand: 'resume'
+      readonly runId: string
+      readonly autonomy?: AutonomyLevel
+      readonly autoDeadlineMinutes?: number
+    }
+  | {
+      readonly subcommand: 'continue'
+      readonly runId: string | null
+      readonly autonomy?: AutonomyLevel
+      readonly autoDeadlineMinutes?: number
+    }
   | {
       readonly subcommand: 'gate'
       readonly runId: string | null
@@ -87,6 +110,59 @@ const VALID_SUBCOMMANDS = new Set(['start', 'resume', 'gate', 'continue', 'repor
 
 const DEPTH_VALUES: Record<string, DepthProfile> = { S: 'S', M: 'M', L: 'L' }
 const VERBOSITY_VALUES: Record<string, Verbosity> = { brief: 'brief', normal: 'normal', debug: 'debug' }
+const AUTONOMY_VALUES: Record<string, AutonomyLevel> = { observe: 'observe', assist: 'assist', auto: 'auto' }
+
+interface ParsedAutonomyFlags {
+  readonly autonomy?: AutonomyLevel
+  readonly autoDeadlineMinutes?: number
+}
+
+function parseAutonomyFlag(val: string): AutonomyLevel {
+  const level = AUTONOMY_VALUES[val]
+  if (level === undefined) throw new Error(`invalid --autonomy: ${val}`)
+  return level
+}
+
+function parseAutoDeadlineFlag(val: string): number {
+  const minutes = Number(val)
+  if (!Number.isFinite(minutes) || minutes <= 0 || String(minutes) !== val.trim()) {
+    throw new Error(`invalid --auto-deadline: ${val}`)
+  }
+  return minutes
+}
+
+function parseAutonomyFlags(args: readonly string[], start: number): ParsedAutonomyFlags {
+  let autonomy: AutonomyLevel | undefined
+  let autoDeadlineMinutes: number | undefined
+  let i = start
+  while (i < args.length) {
+    const arg = args[i]
+    if (arg === '--autonomy') {
+      const val = args[i + 1] ?? ''
+      autonomy = parseAutonomyFlag(val)
+      i += 2
+    } else if (arg === '--auto-deadline') {
+      const val = args[i + 1] ?? ''
+      autoDeadlineMinutes = parseAutoDeadlineFlag(val)
+      i += 2
+    } else {
+      throw new Error(`unknown flag: ${arg}`)
+    }
+  }
+  if (autonomy === undefined && autoDeadlineMinutes === undefined) return {}
+  return {
+    ...(autonomy === undefined ? {} : { autonomy }),
+    ...(autoDeadlineMinutes === undefined ? {} : { autoDeadlineMinutes }),
+  }
+}
+
+function autonomyOverridesOf(autonomy: AutonomyLevel | undefined, deadline: number | undefined): AutonomyOverrides {
+  if (autonomy === undefined && deadline === undefined) return {}
+  return {
+    ...(autonomy === undefined ? {} : { level: autonomy }),
+    ...(deadline === undefined ? {} : { deadlineMinutes: deadline }),
+  }
+}
 
 function parseStart(args: readonly string[]): CliCommand {
   const taskFile = args[1]
@@ -108,11 +184,14 @@ function parseStart(args: readonly string[]): CliCommand {
       if (vb === undefined) throw new Error(`invalid --verbosity: ${val}`)
       verbosity = vb
       i += 2
+    } else if (arg === '--autonomy' || arg === '--auto-deadline') {
+      break
     } else {
       throw new Error(`unknown flag: ${arg}`)
     }
   }
-  return { subcommand: 'start', taskFile, depth, verbosity }
+  const parsed = parseAutonomyFlags(args, i)
+  return { subcommand: 'start', taskFile, depth, verbosity, ...parsed }
 }
 
 function parseVetoArg(raw: string): { id: string; redirect?: string } {
@@ -171,10 +250,18 @@ export function parseCliArgs(args: readonly string[]): CliCommand {
   if (subcommand === 'gate') return parseGate(args)
   if (subcommand === 'report') return parseReport(args)
   if (subcommand === 'continue') {
-    if (args.length > 2) throw new Error(`unknown flag: ${args[2]}`)
-    return { subcommand: 'continue', runId: args[1] ?? null }
+    const flagStart = hasPositionalRunId(args) ? 2 : 1
+    const parsed = parseAutonomyFlags(args, flagStart)
+    const runId: string | null = hasPositionalRunId(args) ? args[1]! : null
+    return { subcommand: 'continue', runId, ...parsed }
   }
   const runId = args[1]
   if (runId === undefined) throw new Error('resume requires a run id')
-  return { subcommand: 'resume', runId }
+  const parsed = parseAutonomyFlags(args, 2)
+  return { subcommand: 'resume', runId, ...parsed }
+}
+
+function hasPositionalRunId(args: readonly string[]): boolean {
+  const first = args[1]
+  return first !== undefined && !first.startsWith('--')
 }

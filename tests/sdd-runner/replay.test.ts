@@ -149,3 +149,65 @@ describe('createReplayFolder', () => {
     expect(folder.state.lastVerdict).toMatchObject({ round: 1, verdict: 'converged' })
   })
 })
+
+describe('auto_decision fold', () => {
+  it('replay alone rebuilds every auto-decision preview from the log', () => {
+    const log = makeLog()
+    appendEvent(
+      log,
+      { altitude: 'L2', type: 'auto_decision', rule: 'R1', decision: 'preview', evidenceDigest: 'd1', gateVersion: 1 },
+      at('00'),
+    )
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 1 }, at('01'))
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'auto_decision',
+        rule: 'R2',
+        decision: 'extend',
+        evidenceDigest: 'd2',
+        gateVersion: 2,
+      },
+      at('02'),
+    )
+    const state = replayEvents(log)
+    expect(state.autoDecisions).toHaveLength(2)
+    expect(state.autoDecisions[0]).toEqual({
+      rule: 'R1',
+      decision: 'preview',
+      evidenceDigest: 'd1',
+      gateVersion: 1,
+      seq: 1,
+      ts: '2026-08-10T10:00:00.000Z',
+    })
+    expect(state.autoDecisions[1]).toMatchObject({ rule: 'R2', decision: 'extend', gateVersion: 2 })
+  })
+
+  it('initial replay state carries an empty autoDecisions list', () => {
+    const log = makeLogNoWrite()
+    fs.writeFileSync(log, '')
+    expect(replayEvents(log).autoDecisions).toEqual([])
+    expect(createReplayFolder().state.autoDecisions).toEqual([])
+  })
+
+  it('folds auto_decision through createReplayFolder incrementally', () => {
+    const folder = createReplayFolder()
+    folder.fold({
+      altitude: 'L2',
+      type: 'auto_decision',
+      rule: 'none',
+      decision: 'gate',
+      evidenceDigest: 'd',
+      gateVersion: 3,
+    })
+    expect(folder.state.autoDecisions).toHaveLength(1)
+    expect(folder.state.autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate', gateVersion: 3 })
+  })
+})
+
+function makeLogNoWrite(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-replay-empty-'))
+  tmpDirs.push(dir)
+  return path.join(dir, 'events.ndjson')
+}

@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import type { Finding, Resolution } from '../../sdd-runner/src/agent-layer.js'
+import { ResolverOutputSchema } from '../../sdd-runner/src/review-loop.js'
 import { evaluateConvergence, lensesForRound, mergeLensFindings } from '../../sdd-runner/src/review-model.js'
 
 function resolution(overrides: Partial<Resolution> = {}): Resolution {
@@ -31,5 +32,50 @@ describe('review-model (split smoke)', () => {
   it('dedupes lens findings by gap+question', () => {
     const merged = mergeLensFindings([finding()], [finding({ id: 'F9' })])
     expect(merged).toHaveLength(1)
+  })
+})
+
+describe('ResolverOutputSchema evidence contract', () => {
+  const base = {
+    resolutions: [],
+    assumptions: [
+      {
+        id: 'A1',
+        text: 't',
+        basis: 'default',
+        confidence: 'high',
+        blast_radius: 'b',
+        status: 'open',
+        evidence: { files: ['openspec/changes/foo/proposal.md'] },
+      },
+    ],
+  }
+
+  it('parses a resolver output whose assumptions carry evidence.files', () => {
+    const parsed = ResolverOutputSchema.safeParse(base)
+    expect(parsed.success).toBe(true)
+  })
+
+  it('rejects a resolver sidecar whose assumption lacks or empties evidence.files', () => {
+    const missingEvidence = {
+      resolutions: [],
+      assumptions: [{ id: 'A1', text: 't', basis: 'default', confidence: 'high', blast_radius: 'b', status: 'open' }],
+    }
+    expect(ResolverOutputSchema.safeParse(missingEvidence).success).toBe(false)
+    const emptyEvidence = {
+      resolutions: [],
+      assumptions: [
+        {
+          id: 'A1',
+          text: 't',
+          basis: 'default',
+          confidence: 'high',
+          blast_radius: 'b',
+          status: 'open',
+          evidence: { files: [] },
+        },
+      ],
+    }
+    expect(ResolverOutputSchema.safeParse(emptyEvidence).success).toBe(false)
   })
 })

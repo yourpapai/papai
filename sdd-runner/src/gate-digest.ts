@@ -8,7 +8,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
-import type { ExecGitFn, RunnerConfig } from './config.js'
+import type { AutonomyConfig, ExecGitFn, RunnerConfig } from './config.js'
 import { createEventBus } from './event-bus.js'
 import { appendEvent, readEvents } from './events.js'
 import type { EventInput, SddEvent } from './events.js'
@@ -40,6 +40,11 @@ export interface OrchestratorDeps {
   readonly resolveCost?: ResolveCostFn
   readonly interactive?: () => boolean
   readonly makePrompter?: () => Prompter
+  /**
+   * Per-process resolved autonomy config (CLI > config > default, normalized
+   * cost ceiling). The policy module reads this; it never sees the CLI.
+   */
+  readonly autonomy?: AutonomyConfig
 }
 
 export interface RunStartResult {

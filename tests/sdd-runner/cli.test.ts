@@ -53,6 +53,51 @@ describe('parseCliArgs', () => {
     expect(() => parseCliArgs(['start', 'task.md', '--wait'])).toThrow(/unknown flag: --wait/u)
   })
 
+  it('parses --autonomy and --auto-deadline on start', () => {
+    const cmd = parseCliArgs(['start', 'task.md', '--autonomy', 'assist', '--auto-deadline', '10'])
+    expect(cmd).toMatchObject({ autonomy: 'assist', autoDeadlineMinutes: 10 })
+  })
+
+  it('defaults autonomy and deadline to absent on start', () => {
+    const cmd = parseCliArgs(['start', 'task.md'])
+    expect('autonomy' in cmd).toBe(false)
+    expect('autoDeadlineMinutes' in cmd).toBe(false)
+  })
+
+  it('rejects an invalid --autonomy level and a non-numeric --auto-deadline', () => {
+    expect(() => parseCliArgs(['start', 'task.md', '--autonomy', 'yolo'])).toThrow(/invalid --autonomy: yolo/u)
+    expect(() => parseCliArgs(['start', 'task.md', '--auto-deadline', 'soon'])).toThrow(
+      /invalid --auto-deadline: soon/u,
+    )
+  })
+
+  it('parses --autonomy and --auto-deadline on resume and continue', () => {
+    expect(parseCliArgs(['resume', 'run-1', '--autonomy', 'auto'])).toMatchObject({
+      subcommand: 'resume',
+      runId: 'run-1',
+      autonomy: 'auto',
+    })
+    expect(parseCliArgs(['resume', 'run-1', '--auto-deadline', '5'])).toMatchObject({
+      subcommand: 'resume',
+      runId: 'run-1',
+      autoDeadlineMinutes: 5,
+    })
+    expect(parseCliArgs(['continue', 'run-1', '--autonomy', 'assist'])).toMatchObject({
+      subcommand: 'continue',
+      runId: 'run-1',
+      autonomy: 'assist',
+    })
+    expect(parseCliArgs(['continue', '--autonomy', 'auto'])).toMatchObject({
+      subcommand: 'continue',
+      runId: null,
+      autonomy: 'auto',
+    })
+  })
+
+  it('rejects --autonomy on report as an unknown flag', () => {
+    expect(() => parseCliArgs(['report', 'run-1', '--autonomy', 'auto'])).toThrow(/unknown flag/u)
+  })
+
   it('parses resume with a run id', () => {
     const cmd = parseCliArgs(['resume', 'run-123'])
     expect(cmd).toMatchObject({ subcommand: 'resume', runId: 'run-123' })
