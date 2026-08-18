@@ -314,6 +314,96 @@ describe('autonomy resolution onto OrchestratorDeps', () => {
     expect(state.gate).toBeNull()
   })
 
+  it('empty start overrides defer to per-process autonomy, ignoring the config-file ceiling', async () => {
+    const fixture = makeFixture()
+    const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
+      void modelId
+      return { input: 1, output: 2, source: 'primary' }
+    }
+    const usageLine = JSON.stringify({
+      type: 'step_finish',
+      part: { reason: 'stop', tokens: { input: 2_000_000, output: 1_000_000 }, cost: 0 },
+    })
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      resolveCost: meteredCost,
+      spawn: (command, args, options, onLine) => {
+        onLine?.(usageLine)
+        return fixture.deps.spawn(command, args, options)
+      },
+      config: {
+        ...fixture.deps.config,
+        autonomy: { level: 'auto', costCeilingUsd: 0.001, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+      },
+      autonomy: { level: 'auto', costCeilingUsd: 50, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+    }
+    const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S', autonomy: {} })
+    const state = await loadRunState(deps.config.workDir, result.runId)
+    // the per-process ceiling (50) governs: spend ~4 is under it, R1 approves
+    expect(state.status).toBe('completed')
+    expect(state.gate).toBeNull()
+  })
+
+  it('a level-only start override still re-resolves the ceiling from the config file', async () => {
+    const fixture = makeFixture()
+    const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
+      void modelId
+      return { input: 1, output: 2, source: 'primary' }
+    }
+    const usageLine = JSON.stringify({
+      type: 'step_finish',
+      part: { reason: 'stop', tokens: { input: 2_000_000, output: 1_000_000 }, cost: 0 },
+    })
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      resolveCost: meteredCost,
+      spawn: (command, args, options, onLine) => {
+        onLine?.(usageLine)
+        return fixture.deps.spawn(command, args, options)
+      },
+      config: {
+        ...fixture.deps.config,
+        autonomy: { level: 'observe', costCeilingUsd: 0.001, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+      },
+      autonomy: { level: 'auto', costCeilingUsd: 50, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+    }
+    const result = await runStart(deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+      autonomy: { level: 'auto' },
+    })
+    const state = await loadRunState(deps.config.workDir, result.runId)
+    // an override re-resolves from config: the 0.001 ceiling makes R4 fail closed over ~$4 of spend
+    expect(state.status).toBe('running')
+    expect(state.gate).toEqual({ mode: 'final', version: 1 })
+  })
+
+  it('a deadline-only start override keeps the per-process level and its ceiling', async () => {
+    const fixture = makeFixture()
+    const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
+      void modelId
+      return { input: 1, output: 2, source: 'primary' }
+    }
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      resolveCost: meteredCost,
+      config: {
+        ...fixture.deps.config,
+        autonomy: { level: 'observe', costCeilingUsd: 50, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+      },
+      autonomy: { level: 'auto', costCeilingUsd: 50, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+    }
+    const result = await runStart(deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+      autonomy: { deadlineMinutes: 10 },
+    })
+    const state = await loadRunState(deps.config.workDir, result.runId)
+    // the merged config keeps level auto from the per-process autonomy: R1 approves
+    expect(state.status).toBe('completed')
+    expect(state.gate).toBeNull()
+  })
+
   it('resolveAutonomyConfig normalizes the effective ceiling against budgetUsd (min) and applies CLI overrides', async () => {
     const { resolveAutonomyConfig } = await import('../../sdd-runner/src/config.js')
     const base = {
