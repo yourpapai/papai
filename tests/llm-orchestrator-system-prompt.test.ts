@@ -94,21 +94,6 @@ describe('resolveSystemPrompt locale resolution', () => {
     await setupTestDb()
   })
 
-  test('the locale comes from the message config context, not the thread-scoped storage id', () => {
-    setConfigValue(groupConfigId, 'language', 'ru')
-
-    const prompt = resolveSystemPrompt({
-      provider,
-      contextId: threadStorageId,
-      configContextId: groupConfigId,
-      enabledToolNames,
-      disclosure: undefined,
-      contextType: 'group',
-    })
-
-    expect(prompt).toContain('Отвечай пользователю на русском языке')
-  })
-
   test('without an explicit config context, a thread-scoped storage id derives its group config', () => {
     setConfigValue(groupConfigId, 'language', 'ru')
 
@@ -125,12 +110,10 @@ describe('resolveSystemPrompt locale resolution', () => {
 
   test('a ru config context with an en-language neighbour stays isolated per config context', () => {
     setConfigValue(groupConfigId, 'language', 'ru')
-    const otherConfigId = toScopedContextId({ platformInstanceId: 'tg', nativeContextId: 'group-2' })
 
     const prompt = resolveSystemPrompt({
       provider,
       contextId: toScopedThreadContextId({ platformInstanceId: 'tg', nativeContextId: 'group-2', threadId: 't9' }),
-      configContextId: otherConfigId,
       enabledToolNames,
       disclosure: undefined,
       contextType: 'group',

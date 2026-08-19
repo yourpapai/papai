@@ -84,8 +84,6 @@ interface AssembleOptions {
   readonly progressiveDisclosure?: boolean
   readonly contextType?: ContextType
   readonly locale?: Locale
-  /** Explicit config context for locale resolution; defaults to deriving it from `contextId`. */
-  readonly configContextId?: string
 }
 
 function assembleSystemPrompt(
@@ -94,7 +92,7 @@ function assembleSystemPrompt(
   enabledToolNames: ReadonlySet<string> | undefined,
   options: AssembleOptions,
 ): string {
-  const locale = options.locale ?? getContextLanguage(options.configContextId ?? contextId)
+  const locale = options.locale ?? getContextLanguage(contextId)
   const texts = getDictionary(locale).systemPrompt
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const parts: string[] = [intro]
@@ -161,7 +159,6 @@ export function buildSystemPrompt(
     askPermissionAvailable: boolean
     progressiveDisclosure?: boolean
     contextType?: ContextType
-    configContextId?: string
   },
 ): string
 export function buildSystemPrompt(
@@ -174,7 +171,6 @@ export function buildSystemPrompt(
           askPermissionAvailable: boolean
           progressiveDisclosure?: boolean
           contextType?: ContextType
-          configContextId?: string
         }?,
       ]
     | readonly []
@@ -184,10 +180,9 @@ export function buildSystemPrompt(
     askPermissionAvailable: args[1]?.askPermissionAvailable ?? true,
     progressiveDisclosure: args[1]?.progressiveDisclosure,
     contextType: args[1]?.contextType,
-    configContextId: args[1]?.configContextId,
   }
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
-  const locale = getContextLanguage(options.configContextId ?? sharedContextId)
+  const locale = getContextLanguage(sharedContextId)
   const texts = getDictionary(locale).systemPrompt
   const addendum = provider.getPromptAddendum()
   const basePrompt = assembleSystemPrompt(texts.coreIntro, contextId, enabledToolNames, { ...options, locale })
@@ -202,13 +197,12 @@ export function buildProviderlessSystemPrompt(
     askPermissionAvailable: boolean
     progressiveDisclosure?: boolean
     contextType?: ContextType
-    configContextId?: string
   } = {
     askPermissionAvailable: true,
   },
 ): string {
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
-  const locale = getContextLanguage(options.configContextId ?? sharedContextId)
+  const locale = getContextLanguage(sharedContextId)
   const texts = getDictionary(locale).systemPrompt
   const basePrompt = assembleSystemPrompt(texts.providerlessIntro, contextId, enabledToolNames, {
     ...options,

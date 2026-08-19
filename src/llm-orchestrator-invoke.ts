@@ -68,17 +68,13 @@ export type LlmInvokeAnalytics = Readonly<{
 type InvokeArgs = InvokeModelArgs & { reply: ReplyFn | undefined; turnId: string; analytics?: LlmInvokeAnalytics }
 
 export const resolveSystemPrompt = (
-  args: Pick<
-    InvokeModelArgs,
-    'provider' | 'contextId' | 'configContextId' | 'enabledToolNames' | 'disclosure' | 'contextType'
-  >,
+  args: Pick<InvokeModelArgs, 'provider' | 'contextId' | 'enabledToolNames' | 'disclosure' | 'contextType'>,
 ): string => {
-  const { provider, contextId, configContextId, enabledToolNames, disclosure, contextType } = args
+  const { provider, contextId, enabledToolNames, disclosure, contextType } = args
   const opts = {
     askPermissionAvailable: true,
     progressiveDisclosure: disclosure !== undefined,
     contextType,
-    configContextId,
   }
   return provider === null
     ? buildProviderlessSystemPrompt(contextId, enabledToolNames, opts)
@@ -164,7 +160,6 @@ export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorD
   const systemPrompt = resolveSystemPrompt({
     provider,
     contextId,
-    configContextId: args.configContextId,
     enabledToolNames,
     disclosure,
     contextType,
