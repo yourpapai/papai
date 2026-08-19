@@ -13,6 +13,7 @@ import { resolveLlmConfig } from './llm-providers/resolver.js'
 import { getAdminRoleBindings } from './llm-providers/store.js'
 import type { EffectiveLlmConfig, LlmConfigResult } from './llm-providers/types.js'
 import { logger } from './logger.js'
+import { getContextLanguage } from './utils/config-language.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
 
@@ -96,4 +97,3 @@ export async function resolveLlmForTurn(
   await replyByokConfigProblem(reply, contextId, resolvedLlm, scope)
   return null
 }
-import { getContextLanguage } from './utils/config-language.js'
