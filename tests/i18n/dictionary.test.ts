@@ -3,35 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, mock, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 
 import { en } from '../../src/i18n/locales/en.js'
 import { ru } from '../../src/i18n/locales/ru.js'
 import type { Dictionary } from '../../src/i18n/types.js'
-import { createTrackedLoggerMock, type TrackedLoggerMock } from '../utils/test-helpers.js'
-
-// src/i18n/index.ts logs fallbacks through the module-level logger, so it is
-// loaded via cache-busting dynamic import AFTER the tracked logger mock is
-// installed (same pattern as tests/startup-helpers.test.ts).
-type I18nModule = typeof import('../../src/i18n/index.js')
+import { createTrackedLoggerMock, loadI18nModule } from '../utils/test-helpers.js'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
-}
-
-const isI18nModule = (value: unknown): value is I18nModule =>
-  isRecord(value) &&
-  typeof Reflect.get(value, 't') === 'function' &&
-  typeof Reflect.get(value, 'isSupportedLocale') === 'function'
-
-async function loadI18n(tracked: TrackedLoggerMock): Promise<I18nModule> {
-  void mock.module('../../src/logger.js', () => ({
-    getLogLevel: tracked.getLogLevel,
-    logger: tracked.logger,
-  }))
-  const loaded: unknown = await import(`../../src/i18n/index.js?t=${crypto.randomUUID()}`)
-  if (!isI18nModule(loaded)) throw new Error('i18n module did not export the expected API')
-  return loaded
 }
 
 function collectLeaves(node: unknown): unknown[] {
@@ -56,7 +36,7 @@ describe('i18n dictionary', () => {
 
   test('t falls back to en with a logged warn when the ru key is missing at runtime', async () => {
     const tracked = createTrackedLoggerMock()
-    const i18n = await loadI18n(tracked)
+    const i18n = await loadI18nModule(tracked)
     const ruStop = ru.commands.stop
     const original = ruStop.nothingRunning
     Reflect.deleteProperty(ruStop, 'nothingRunning')
@@ -72,7 +52,7 @@ describe('i18n dictionary', () => {
   })
 
   test('t never returns the raw key when it is missing from every catalog', async () => {
-    const i18n = await loadI18n(createTrackedLoggerMock())
+    const i18n = await loadI18nModule(createTrackedLoggerMock())
     const enStop = en.commands.stop
     const ruStop = ru.commands.stop
     const originalEn = enStop.nothingRunning
@@ -88,7 +68,7 @@ describe('i18n dictionary', () => {
   })
 
   test('t interpolates named slots', async () => {
-    const i18n = await loadI18n(createTrackedLoggerMock())
+    const i18n = await loadI18nModule(createTrackedLoggerMock())
     const groupText = i18n.t('auth.groupNotAllowed', 'en', { groupId: '-100200300' })
     expect(groupText).toContain('(-100200300)')
     expect(groupText).not.toContain('{groupId}')
@@ -99,7 +79,7 @@ describe('i18n dictionary', () => {
   })
 
   test('t keeps unreferenced slots literal instead of dropping them', async () => {
-    const i18n = await loadI18n(createTrackedLoggerMock())
+    const i18n = await loadI18nModule(createTrackedLoggerMock())
     expect(i18n.t('progress.toolFinished', 'en', { toolName: 'create_task' })).toBe('Tool `create_task` {status}')
   })
 })

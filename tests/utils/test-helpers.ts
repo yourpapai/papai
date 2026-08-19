@@ -440,6 +440,28 @@ export {
   type LogCall,
   type TrackedLoggerMock,
 } from './logger-mock.js'
+import type { TrackedLoggerMock } from './logger-mock.js'
+
+// src/i18n/index.ts logs fallbacks through the module-level logger, so it is
+// loaded via cache-busting dynamic import AFTER the tracked logger mock is
+// installed (same pattern as tests/startup-helpers.test.ts).
+type I18nModule = typeof import('../../src/i18n/index.js')
+
+const isI18nModule = (value: unknown): value is I18nModule =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof Reflect.get(value, 't') === 'function' &&
+  typeof Reflect.get(value, 'isSupportedLocale') === 'function'
+
+export async function loadI18nModule(tracked: TrackedLoggerMock): Promise<I18nModule> {
+  void mock.module('../../src/logger.js', () => ({
+    getLogLevel: tracked.getLogLevel,
+    logger: tracked.logger,
+  }))
+  const loaded: unknown = await import(`../../src/i18n/index.js?t=${crypto.randomUUID()}`)
+  if (!isI18nModule(loaded)) throw new Error('i18n module did not export the expected API')
+  return loaded
+}
 
 // ============================================================================
 // REPLY MOCK FACTORIES
