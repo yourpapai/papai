@@ -417,3 +417,107 @@ kills the server pid, not its tool children (the known `abort` vs `close()`
 split, `opencode-agent/CLAUDE.md`), so a driver that spawns local MCP servers
 must track their pids itself. The stray was reaped by its recorded pid.
 
+---
+
+## 3. The CI constraints applied per option
+
+§1.4 recorded the constraints; this section applies them to the five candidate
+surfaces the comparison core scores. Two constraints are **option-independent**
+— they bind every surface equally, so they are stated once here rather than
+repeated five times:
+
+- **No interactive user is present.** Verified twice in §2.5: an OAuth-needing
+  remote parks at `needs_auth` forever, and an `ask` grant deadlocks the turn
+  on a permission request nothing answers. Whatever surface carries an `mcp`
+  block, the block it carries must hold local servers or `oauth: false`
+  remotes with static `headers`, and every grant must be `allow` or absent.
+- **A broken server degrades; it never hangs the job.** Verified in §2.2: bad
+  command, disabled, and hung children all settled to status data with the
+  server and sessions unaffected — with the one caveat that a status poller
+  must bound its own `GET /mcp` calls against the 30 s client-timeout floor.
+
+The rest of §1.4 binds the options differently, and that difference is the
+section. One evidence note first, so nothing below leans on a fact nobody
+checked: **the merge-vs-override semantics between a checkout-local config
+file and `OPENCODE_CONFIG_CONTENT` are recorded as pending, not settled** —
+the plan's experiment for them (task 2.3) did not land its evidence, and
+`design.md`'s risk table assumes it ran. Every claim below that would depend
+on those semantics says so instead of asserting them.
+
+### 3.1 Repo-committed config file (`opencode.json` in the checkout)
+
+The file is **readable by the model** — `read` is granted in both profiles
+(`openai-config.ts` `READ_TOOLS`), so anything committed in it is one tool call
+away from the prompt. That is S3-7's class (§1.4 row 2: a credential in a file
+the model can read), and the conclusion is the same one git credentials got:
+**this surface must never carry a credential** — no real token in `headers`,
+no secret in `environment`. On a repository that takes contributions the file
+is also **attacker-influenceable via PR**: a contributor can propose an `mcp`
+entry, and the pipeline would execute it in a privileged job the moment the PR
+merges. Config arriving from the checkout is untrusted input in exactly the
+way an issue body is — the difference is it arrives pre-approved by whoever
+merges it. The load-bearing open question — whether such a file **merges with
+or overrides** the pipeline's `OPENCODE_CONFIG_CONTENT` (provider pinning,
+deny-by-default permissions) — is the pending experiment above; until it is
+run, this option cannot be scored as either "harmless extra block" or
+"smuggled override of the permission model", and the comparison core must
+carry that as an explicit unknown, not a guess.
+
+### 3.2 Pipeline env knob (`AGENT_*` style, e.g. `AGENT_MCP_SERVERS`)
+
+Set through repository Actions variables/secrets — settings a maintainer
+changes, not a commit a contributor proposes, so it is the one surface with no
+PR-shaped attack path in this list. S3-9 still applies in full (§1.4 row 1):
+the knob is merged into the config, the config is serialised into
+`OPENCODE_CONFIG_CONTENT`, and that variable is model-readable by design —
+**an MCP credential configured here is one `echo` away**, exactly as the
+provider key was before `provider-proxy.ts`. Masking does not save it: GitHub
+masks a registered secret in the log, but the value inside the config variable
+is not "in the log" — it is in the server's environment (§1.4 rows 1 and 3).
+Failure behaviour is the friendliest of the five: a malformed value fails at
+job start in `config-values.ts`'s range-checking style, before any model turn
+is spent, and a bad server degrades per §2.2 regardless of how its definition
+arrived.
+
+### 3.3 Repo file + Actions-secrets interpolation (`{env:VAR}`)
+
+Splits §3.1's problem in two and solves only the git half: secrets never enter
+the repository (they exist as job env, interpolated at load), so rotation is an
+Actions-settings edit and history stays clean. The model-readability half is
+**unsolved** — after interpolation the value sits in the config content, where
+S3-9 puts it in the model's reach (§1.4 row 1), and the pipeline's
+value-scrubbing keys off `pipelineSecrets(config)` (§1.4 row 3), which an
+MCP-source credential would have to be wired into or it escapes every scrub.
+The file itself remains PR-influenceable for its non-secret parts, and the
+merge-vs-override question is exactly as pending as in §3.1 — interpolation
+changes where values come from, not how a loaded file interacts with the
+pipeline-owned config.
+
+### 3.4 Forked workflow (user edits `agent-pipeline.yml`)
+
+The escape hatch, and the only surface that can *install* things: a workflow
+step can `bunx`/`npx` a stdio server or pin one from a lockfile, which matters
+because the runner is ephemeral (§1.4 row 5) — **every server binary is
+re-fetched every job, cold**, so supply-chain pinning and cold-start cost stay
+permanently in the loop. It pays the drift tax the workspace already knows:
+upstream workflow improvements must be re-merged by hand, and a fork that lags
+misses the pipeline's own security fixes. Credential exposure is the S3-9
+default again — workflow `env:` lands in the spawned server's inheritable
+environment unless routed through the same containment the provider key uses.
+Nothing here is unusable; everything here is worse than the env knob unless
+the job genuinely needs an install step.
+
+### 3.5 Issue/comment-level configuration — the constraints forbid it
+
+Scored in the comparison core and rejected there on security grounds; this
+section records that the CI constraints reach the same verdict first. Issue
+authors and commenters are untrusted input (`prompts.ts`'s envelope exists for
+them), and an `mcp` entry is *executable configuration*: a `local` entry is
+arbitrary command execution in a privileged job, and a `remote` entry is an
+exfiltration endpoint the runner will happily talk to — egress is unrestricted
+(§1.4 row 4), so no network boundary would notice. The ephemeral runner
+(row 5) removes even a per-repo allowlist as a mitigation: nothing persists to
+accumulate trust in. No behavioural label needed on this half — none of it was
+exercised against the binary, because the rejection is a design decision about
+untrusted input, not an observation about the binary.
+

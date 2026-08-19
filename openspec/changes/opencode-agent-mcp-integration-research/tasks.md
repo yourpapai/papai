@@ -57,7 +57,7 @@ claim is recorded before the document asserts it.
 
 ## 3. The document
 
-- [ ] 3.1 Create `opencode-agent/docs/mcp-integration-research.md` with the
+- [x] 3.1 Create `opencode-agent/docs/mcp-integration-research.md` with the
       SPDX licence header and the conventions of the existing docs
       (`remaining-findings-evaluation.md`, `review-command-plan.md`): §1 the
       SDK config surface from 1.1, §3 the CI possibilities from 1.2 applied
