@@ -10,7 +10,7 @@ import { createReplayFolder } from './replay.js'
 import type { DigestRecord, ReplayFolder, ReplayState } from './replay.js'
 import type { ResolveCostFn } from './usage-aggregate.js'
 
-export type Verbosity = 'brief' | 'normal' | 'debug'
+export type Verbosity = 'quiet' | 'brief' | 'normal' | 'debug'
 
 export interface RendererStream {
   write(chunk: string): boolean
@@ -24,6 +24,7 @@ export interface RendererOptions {
 }
 
 export const MIDDLE_DOT = '\u00B7'
+const ELLIPSIS = '…'
 
 export function formatTokenCount(n: number): string {
   if (n < 1000) return String(n)
@@ -38,15 +39,37 @@ const STAGE_ICONS: Record<string, string> = {
   skipped: '\u2014',
 }
 
-export function renderPipelineMap(state: ReplayState): string[] {
+export function renderPipelineMap(
+  state: ReplayState,
+  details: {
+    readonly stageTimes?: ReadonlyMap<string, { wallMs: number; costUsd: number }>
+    readonly activeElapsedMs?: number
+  } = {},
+): string[] {
   return STAGE_ORDER.map((stage) => {
     let status: 'done' | 'active' | 'pending' | 'skipped' = state.stages[stage]
     if (stage === 'atomicity' && state.depth === 'S') status = 'skipped'
     const icon = STAGE_ICONS[status] ?? STAGE_ICONS['pending']
     let suffix = ''
-    if (status === 'active' && state.round !== null) suffix = ` (round ${state.round.current}/${state.round.cap})`
+    if (status === 'active') {
+      const roundPart = state.round === null ? '' : ` (round ${state.round.current}/${state.round.cap})`
+      const elapsed = details.activeElapsedMs === undefined ? '' : ` elapsed ${formatElapsed(details.activeElapsedMs)}`
+      suffix = `${roundPart}${elapsed}`
+    }
+    if (status === 'done' && details.stageTimes !== undefined) {
+      const entry = details.stageTimes.get(stage)
+      if (entry !== undefined) suffix = ` · ${formatElapsed(entry.wallMs)} · $${entry.costUsd.toFixed(4)}`
+    }
     return `${icon} ${stage} ${status}${suffix}`
   })
+}
+
+/** Elapsed-seconds formatting for stage markers (D10). */
+export function formatElapsed(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const minutes = Math.floor(totalSeconds / 60)
+  return `${minutes}m${(totalSeconds % 60).toString().padStart(2, '0')}s`
 }
 
 export function formatDigestBody(record: DigestRecord): string {
@@ -65,6 +88,7 @@ export function formatTrajectoryBlock(records: readonly DigestRecord[]): string 
 }
 
 function shouldShow(altitude: string, verbosity: Verbosity): boolean {
+  if (verbosity === 'quiet') return false
   if (altitude === 'L2') return true
   if (altitude === 'L1') return verbosity === 'normal' || verbosity === 'debug'
   return verbosity === 'debug'
@@ -92,7 +116,8 @@ export function formatEvent(event: EventInput, verbosity: Verbosity): string | n
     const usage = event.usage
     const cachedRead = usage.cachedReadTokens ?? 0
     const cachedPart = cachedRead > 0 ? ` ${MIDDLE_DOT} cached ${formatTokenCount(cachedRead)}` : ''
-    return `${event.agent} done ${MIDDLE_DOT} in ${formatTokenCount(usage.inputTokens)}${cachedPart} out ${formatTokenCount(
+    const modelPart = event.model === undefined ? '' : ` ${MIDDLE_DOT} ${event.model}`
+    return `${event.agent} done${modelPart} ${MIDDLE_DOT} in ${formatTokenCount(usage.inputTokens)}${cachedPart} out ${formatTokenCount(
       usage.outputTokens,
     )} ${MIDDLE_DOT} $${usage.costUsd.toFixed(4)}`
   }
@@ -151,4 +176,54 @@ export function createRenderer(stream: RendererStream, verbosity: Verbosity, opt
     return new DynamicRenderer(stream, verbosity, undefined, opts?.resolveCost)
   }
   return new LineRenderer(stream, verbosity)
+}
+
+const WIDE_RANGES: readonly [number, number][] = [
+  [0x1100, 0x115f],
+  [0x2e80, 0xa4cf],
+  [0xac00, 0xd7a3],
+  [0xf900, 0xfaff],
+  [0xfe30, 0xfe6f],
+  [0xff00, 0xff60],
+  [0xffe0, 0xffe6],
+  [0x1f300, 0x1f64f],
+  [0x1f900, 0x1f9ff],
+  [0x20000, 0x3fffd],
+]
+
+function isWideCode(code: number): boolean {
+  for (const [lo, hi] of WIDE_RANGES) {
+    if (code >= lo && code <= hi) return true
+  }
+  return false
+}
+
+function graphemesOf(line: string, segmenter: Intl.Segmenter | undefined): readonly string[] {
+  if (segmenter !== undefined) {
+    return [...segmenter.segment(line)].map((entry) => entry.segment)
+  }
+  return Array.from(line.match(/\S|\s/gu) ?? [])
+}
+
+/**
+ * Wide-char-aware truncation (D10): truncate by visible display width so
+ * wide characters and emoji never break alignment — local
+ * `Intl.Segmenter` + a range table, no dependency.
+ */
+export function truncateVisible(line: string, maxWidth: number, segmenter?: Intl.Segmenter): string {
+  if (maxWidth <= 0) return ''
+  let width = 0
+  const kept: string[] = []
+  for (const grapheme of graphemesOf(line, segmenter)) {
+    const code = grapheme.codePointAt(0) ?? 0
+    const glyphWidth = isWideCode(code) ? 2 : 1
+    if (width + glyphWidth > maxWidth) break
+    width += glyphWidth
+    kept.push(grapheme)
+  }
+  const joined = kept.join('')
+  if (width < line.length && joined.length > 0 && maxWidth > 1) {
+    return `${joined.slice(0, joined.length - 1)}${ELLIPSIS}`
+  }
+  return joined
 }

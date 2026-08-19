@@ -7,17 +7,17 @@ import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { AgentLayerDeps } from './agent-layer.js'
+import { shouldEnterWaiter } from './deadline-waiter.js'
 import { buildDriftCheck } from './drift.js'
 import type { EventInput } from './events.js'
 import {
   buildBus,
   finalizeGate,
   findingsOf,
-  gatherAssumptions,
   logPathFor,
   nowOf,
+  prepareResumeInput,
   presentGateAt,
-  readReviewResultFromSidecars,
 } from './gate-digest.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import type { GateAssumption, GateFinding } from './gate-model.js'
@@ -26,6 +26,7 @@ import type { GateSessionView } from './gate-session.js'
 import { resumeGate, vetoRedirects } from './gate.js'
 import { createMaterializer } from './materialize.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
+import type { Verbosity } from './renderer.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
@@ -43,24 +44,10 @@ export interface GateResumeOptions {
   readonly confirmAll?: boolean
   readonly abort?: boolean
   readonly extend?: boolean
+  readonly waitDeadline?: boolean
+  readonly noWait?: boolean
+  readonly verbosity?: Verbosity
   readonly vetoes?: readonly { readonly id: string; readonly redirect?: string }[]
-}
-
-export async function prepareResumeInput(
-  sidecarDir: string,
-  round: number,
-  gateMode: 'early' | 'final',
-): Promise<{
-  assumptions: readonly { id: string; text: string; blast_radius: string }[]
-  reviewResult: ReviewLoopResult
-  requiredAck: string | undefined
-}> {
-  const assumptions = await gatherAssumptions(sidecarDir, round)
-  const capHitFired = gateMode === 'early'
-  const reviewResult = await readReviewResultFromSidecars(sidecarDir, round, capHitFired ? 'cap-hit' : 'converged')
-  const findings = findingsOf(reviewResult)
-  const requiredAck = capHitFired && findings.blockers.length === 0 ? 'T1' : undefined
-  return { assumptions, reviewResult, requiredAck }
 }
 
 /**
@@ -217,6 +204,8 @@ export async function runGateResume(
 ): Promise<RunGateResumeResult> {
   const state = await loadRunState(deps.config.workDir, runId)
   if (state.gate === null) throw new Error(`run ${runId} is not gate-pending`)
+  const waiterEntry = await deadlineWaiterEntry(deps, state, options)
+  if (waiterEntry !== null) return waiterEntry
   const emit = buildBus(deps, logPathFor(state))
   const version = state.gate.version
   const changeDir = path.join(deps.config.repoRoot, 'openspec', 'changes', state.changeName)
@@ -249,6 +238,27 @@ export async function runGateResume(
   if (outcome.kind === 'approved') return settleApprovedGate(ctx, reviewResult)
   if (outcome.kind === 'extend') return runExtendRound(deps, state, emit, agent, version)
   return settleVeto(ctx, reviewResult, vetoRedirects(outcome))
+}
+
+/** D11: return the waiter result when this invocation should wait, else null. */
+async function deadlineWaiterEntry(
+  deps: OrchestratorDeps,
+  state: RunState,
+  options: GateResumeOptions,
+): Promise<RunGateResumeResult | null> {
+  const wait = shouldEnterWaiter({
+    isTty: deps.interactive?.() === true,
+    deadlineAt: state.gateDeadlineAt,
+    hasDecisionFlags:
+      options.abort === true ||
+      options.confirmAll === true ||
+      options.extend === true ||
+      (options.vetoes?.length ?? 0) > 0,
+    noWait: options.noWait === true,
+  })
+  if (!wait && options.waitDeadline !== true) return null
+  const { awaitGateDeadline } = await import('./deadline-waiter.js')
+  return awaitGateDeadline(deps, state.runId, runGateResume)
 }
 
 export async function settleApprovedGate(

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { autonomyOverridesOf, parseAutonomyFlags } from './cli-flags.js'
+import { autonomyOverridesOf, parseGateResumeFlags, parseTrailingFlags } from './cli-flags.js'
 import type { AutonomyLevel } from './config.js'
 import type { DepthProfile } from './events.js'
 import type {
@@ -37,6 +37,18 @@ export interface CliHarness {
 export interface AutonomyOverrides {
   readonly level?: AutonomyLevel
   readonly deadlineMinutes?: number
+}
+
+function gateResumeOptionsOf(cmd: Extract<CliCommand, { readonly subcommand: 'gate' }>): GateResumeOptions {
+  return {
+    ...(cmd.confirmAll ? { confirmAll: true } : {}),
+    ...(cmd.abort ? { abort: true } : {}),
+    ...(cmd.extend ? { extend: true } : {}),
+    ...(cmd.waitDeadline === true ? { waitDeadline: true } : {}),
+    ...(cmd.noWait === true ? { noWait: true } : {}),
+    ...(cmd.verbosity === undefined ? {} : { verbosity: cmd.verbosity }),
+    ...(cmd.vetoes.length > 0 ? { vetoes: cmd.vetoes } : {}),
+  }
 }
 
 export async function main(argv: readonly string[], harness: CliHarness): Promise<number> {
@@ -75,12 +87,7 @@ export async function main(argv: readonly string[], harness: CliHarness): Promis
       }
       return 0
     }
-    await harness.runGateResume(cmd.runId, {
-      ...(cmd.confirmAll ? { confirmAll: true } : {}),
-      ...(cmd.abort ? { abort: true } : {}),
-      ...(cmd.extend ? { extend: true } : {}),
-      ...(cmd.vetoes.length > 0 ? { vetoes: cmd.vetoes } : {}),
-    })
+    await harness.runGateResume(cmd.runId, gateResumeOptionsOf(cmd))
     return 0
   }
   const body = await harness.buildReport(cmd.runId, cmd.pr)
@@ -106,12 +113,14 @@ export type CliCommand =
   | {
       readonly subcommand: 'resume'
       readonly runId: string
+      readonly verbosity?: Verbosity
       readonly autonomy?: AutonomyLevel
       readonly autoDeadlineMinutes?: number
     }
   | {
       readonly subcommand: 'continue'
       readonly runId: string | null
+      readonly verbosity?: Verbosity
       readonly autonomy?: AutonomyLevel
       readonly autoDeadlineMinutes?: number
     }
@@ -123,6 +132,9 @@ export type CliCommand =
       readonly confirmAll: boolean
       readonly abort: boolean
       readonly extend: boolean
+      readonly waitDeadline?: boolean
+      readonly noWait?: boolean
+      readonly verbosity?: Verbosity
       readonly vetoes: readonly { readonly id: string; readonly redirect?: string }[]
     }
   | { readonly subcommand: 'report'; readonly runId: string; readonly pr: boolean }
@@ -131,7 +143,7 @@ export type CliCommand =
 const VALID_SUBCOMMANDS = new Set(['start', 'resume', 'gate', 'continue', 'report', 'audit'])
 
 const DEPTH_VALUES: Record<string, DepthProfile> = { S: 'S', M: 'M', L: 'L' }
-const VERBOSITY_VALUES: Record<string, Verbosity> = { brief: 'brief', normal: 'normal', debug: 'debug' }
+const VERBOSITY_VALUES: Record<string, Verbosity> = { quiet: 'quiet', brief: 'brief', normal: 'normal', debug: 'debug' }
 function parseStart(args: readonly string[]): CliCommand {
   const taskFile = args[1]
   if (taskFile === undefined) throw new Error('start requires a task file path')
@@ -158,16 +170,8 @@ function parseStart(args: readonly string[]): CliCommand {
       throw new Error(`unknown flag: ${arg}`)
     }
   }
-  const parsed = parseAutonomyFlags(args, i)
+  const parsed = parseTrailingFlags(args, i)
   return { subcommand: 'start', taskFile, depth, verbosity, ...parsed }
-}
-
-function parseVetoArg(raw: string): { id: string; redirect?: string } {
-  const eq = raw.indexOf('=')
-  if (eq <= 0) throw new Error(`--veto expects <id>=<redirect> (split on the first =): got "${raw}"`)
-  const id = raw.slice(0, eq)
-  const redirect = raw.slice(eq + 1)
-  return redirect === '' ? { id } : { id, redirect }
 }
 
 function parseGate(args: readonly string[]): CliCommand {
@@ -178,26 +182,24 @@ function parseGate(args: readonly string[]): CliCommand {
     throw new Error('gate requires: gate resume <runId> [flags] (or bare `gate` to list pending gates)')
   const runId = args[2]
   if (runId === undefined) throw new Error('gate resume requires a run id (or run bare `gate` to list pending gates)')
-  let confirmAll = false
-  let abort = false
-  let extend = false
-  const vetoes: { id: string; redirect?: string }[] = []
-  for (let i = 3; i < args.length; i += 1) {
-    const arg = args[i]
-    if (arg === '--confirm-all') confirmAll = true
-    else if (arg === '--abort') abort = true
-    else if (arg === '--extend') extend = true
-    else if (arg === '--veto') {
-      const raw = args[i + 1]
-      if (raw === undefined) throw new Error('--veto expects <id>=<redirect>')
-      vetoes.push(parseVetoArg(raw))
-      i += 1
-    } else throw new Error(`unknown flag: ${arg}`)
-  }
+  const { confirmAll, abort, extend, waitDeadline, noWait, gateVerbosity, vetoes } = parseGateResumeFlags(args)
   if (extend && (confirmAll || abort || vetoes.length > 0)) {
     throw new Error('--extend cannot be combined with --confirm-all, --veto, or --abort')
   }
-  return { subcommand: 'gate', runId, confirmAll, abort, extend, vetoes }
+  if (waitDeadline && noWait) {
+    throw new Error('--wait-deadline cannot be combined with --no-wait')
+  }
+  return {
+    subcommand: 'gate',
+    runId,
+    confirmAll,
+    abort,
+    extend,
+    ...(waitDeadline ? { waitDeadline: true } : {}),
+    ...(noWait ? { noWait: true } : {}),
+    ...(gateVerbosity === undefined ? {} : { verbosity: gateVerbosity }),
+    vetoes,
+  }
 }
 
 function parseGateReopen(args: readonly string[]): CliCommand {
@@ -256,13 +258,13 @@ export function parseCliArgs(args: readonly string[]): CliCommand {
   }
   if (subcommand === 'continue') {
     const flagStart = hasPositionalRunId(args) ? 2 : 1
-    const parsed = parseAutonomyFlags(args, flagStart)
+    const parsed = parseTrailingFlags(args, flagStart)
     const runId: string | null = hasPositionalRunId(args) ? args[1]! : null
     return { subcommand: 'continue', runId, ...parsed }
   }
   const runId = args[1]
   if (runId === undefined) throw new Error('resume requires a run id')
-  const parsed = parseAutonomyFlags(args, 2)
+  const parsed = parseTrailingFlags(args, 2)
   return { subcommand: 'resume', runId, ...parsed }
 }
 

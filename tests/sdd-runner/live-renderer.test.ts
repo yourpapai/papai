@@ -267,3 +267,133 @@ describe('DynamicRenderer totals accounting', () => {
     expect(stream.chunks.join('')).toContain('$4.4500')
   })
 })
+
+describe('Tier 0 dynamic details (13.2-13.4)', () => {
+  it('completed stages show wall time and cost; the active stage shows an elapsed marker', () => {
+    const stream = new MemoryStream({ isTTY: true, columns: 100 })
+    const renderer = new DynamicRenderer(stream, 'normal')
+    renderer.renderEvent({ altitude: 'L2', type: 'stage_enter', stage: 'intake' })
+    renderer.renderEvent({ altitude: 'L2', type: 'stage_exit', stage: 'intake' })
+    renderer.renderEvent({ altitude: 'L2', type: 'stage_enter', stage: 'draft' })
+    const out = stream.chunks.join('')
+    expect(out).toMatch(/intake done .* · \$0\.0{4}/u)
+    expect(out).toMatch(/draft active/u)
+  })
+
+  it('slot lines truncate by visible width so wide chars never overflow the terminal', () => {
+    const stream = new MemoryStream({ isTTY: true, columns: 20 })
+    const renderer = new DynamicRenderer(stream, 'normal')
+    const agent = 'レビューアー'
+    renderer.renderEvent({ altitude: 'L1', type: 'spawned', agent, role: 'reviewer', model: 'm' })
+    renderer.renderEvent({
+      altitude: 'L0',
+      type: 'tool_use',
+      agent,
+      tool: 'readFile',
+      arg: 'src/very/long/path/that/would/overflow.ts',
+    })
+    const out = stream.chunks.join('')
+    const lines = out.split('\n').filter((l) => l.includes('レビューアー'))
+    expect(lines.length).toBeGreaterThan(0)
+    for (const line of lines) {
+      expect(visibleWidth(line)).toBeLessThanOrEqual(20)
+    }
+  })
+
+  it('a retrying agent slot shows a retry badge', () => {
+    const stream = new MemoryStream({ isTTY: true, columns: 80 })
+    const renderer = new DynamicRenderer(stream, 'normal')
+    renderer.renderEvent({ altitude: 'L1', type: 'spawned', agent: 'a', role: 'reviewer', model: 'm' })
+    renderer.renderEvent({ altitude: 'L1', type: 'retrying', agent: 'a', reason: 'stall', attempt: 2 })
+    renderer.renderEvent({ altitude: 'L0', type: 'tool_use', agent: 'a', tool: 'readFile' })
+    const out = stream.chunks.join('')
+    expect(out).toMatch(/retry 2/u)
+  })
+
+  it('a done slot line reads <agent> done · <model> · in X out Y · $Z', () => {
+    const stream = new MemoryStream({ isTTY: true, columns: 100 })
+    const renderer = new DynamicRenderer(stream, 'normal')
+    renderer.renderEvent({ altitude: 'L1', type: 'spawned', agent: 'resolver-r1', role: 'resolver', model: 'glm' })
+    renderer.renderEvent({ altitude: 'L0', type: 'tool_use', agent: 'resolver-r1', tool: 'readFile' })
+    renderer.renderEvent({
+      altitude: 'L1',
+      type: 'done',
+      agent: 'resolver-r1',
+      model: 'glm',
+      usage: { inputTokens: 5000, outputTokens: 1200, reasoningTokens: 10, costUsd: 0.01, wallMs: 1000 },
+    })
+    const out = stream.chunks.join('')
+    expect(out).toMatch(/resolver-r1 done · glm · in 5.0k out 1.2k · \$0\.0100/u)
+  })
+
+  it('status line shows ETA from completed rounds and hides reasoning tokens when zero', () => {
+    const stream = new MemoryStream({ isTTY: true, columns: 100 })
+    const renderer = new DynamicRenderer(stream, 'normal')
+    renderer.renderEvent({ altitude: 'L2', type: 'stage_enter', stage: 'review' })
+    renderer.renderEvent({ altitude: 'L2', type: 'round_open', round: 1, cap: 3 })
+    renderer.renderEvent({
+      altitude: 'L0',
+      type: 'step_finish',
+      agent: 'a',
+      tokens: { input: 10, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      costUsd: 0,
+    })
+    renderer.renderEvent({ altitude: 'L2', type: 'round_close', round: 1, cap: 3 })
+    renderer.renderEvent({ altitude: 'L2', type: 'round_open', round: 2, cap: 3 })
+    const status = lastStatusLine(stream.chunks.join(''))
+    expect(status).not.toContain('reasoning')
+  })
+})
+
+/** Rough visible-width model: ANSI escapes count 0, wide chars count 2. */
+function visibleWidth(line: string): number {
+  const escape = String.fromCharCode(27)
+  const stripped = line
+    .split(escape)
+    .map((piece) => piece.replace(/^\[[0-9]*[A-Za-z]/u, ''))
+    .join('')
+  let width = 0
+  for (const char of stripped) {
+    width += isWide(char) ? 2 : 1
+  }
+  return width
+}
+
+function isWide(char: string): boolean {
+  const code = char.codePointAt(0) ?? 0
+  return code >= 0x1100 && (code <= 0x115f || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3))
+}
+
+describe('DynamicRenderer non-TTY and duration formatting', () => {
+  it('non-TTY writes rendered event lines and stays silent for filtered ones', () => {
+    const stream = new MemoryStream({ isTTY: false, columns: 100 })
+    const renderer = new DynamicRenderer(stream, 'normal')
+    renderer.renderEvent({ altitude: 'L2', type: 'stage_enter', stage: 'draft' })
+    renderer.renderEvent({ altitude: 'L0', type: 'tool_use', agent: 'a', tool: 't' })
+    const out = stream.chunks.join('')
+    expect(out).toContain('[draft] entered\n')
+    expect(out).not.toContain('tool')
+  })
+
+  it('formatDuration tiers are pinned through stage elapsed rendering', async () => {
+    const { formatElapsed } = await import('../../sdd-runner/src/renderer.js')
+    expect(formatElapsed(0)).toBe('0s')
+    expect(formatElapsed(59_000)).toBe('59s')
+    expect(formatElapsed(60_000)).toBe('1m00s')
+    expect(formatElapsed(605_000)).toBe('10m05s')
+  })
+
+  it('a done event without a spawned model records no model part', () => {
+    const stream = new MemoryStream({ isTTY: true, columns: 100 })
+    const renderer = new DynamicRenderer(stream, 'normal')
+    renderer.renderEvent({
+      altitude: 'L1',
+      type: 'done',
+      agent: 'lonely-agent',
+      usage: { inputTokens: 10, outputTokens: 5, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+    })
+    const out = stream.chunks.join('')
+    expect(out).toMatch(/lonely-agent done · in 10 out 5 · \$0\.0000/u)
+    expect(out).not.toMatch(/lonely-agent done · ·/u)
+  })
+})
