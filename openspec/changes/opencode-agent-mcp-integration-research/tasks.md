@@ -27,7 +27,7 @@ claim is recorded before the document asserts it.
 
 ## 2. Live verification — the real binary, pid-disciplined
 
-- [ ] 2.1 Write the throwaway stdio MCP server (minimal JSON-RPC responder,
+- [x] 2.1 Write the throwaway stdio MCP server (minimal JSON-RPC responder,
       placeholder token values only) into the job's temp dir — nothing
       committed, nothing installed. Every spawn records its pid and every
       experiment carries a timeout.
