@@ -1043,6 +1043,7 @@ not permitted to create or approve pull requests` is a repository or
   **not** end when its server does — the client reconnects for ever unless
   `sseMaxRetryAttempts: 0` is passed, so never make teardown wait for a stream to
   run out.
+- **Commit identity is per-run actor, author vs committer split.** `src/commit-identity.ts` resolves the git identity once per job from `TriggerEvent` (`issue`/`pull-request` → `senderLogin` via `GET /users/:login` → `id+login@users.noreply.github.com`, `ci`/`pr-merged`/lookup failure → `github-actions[bot]`/`41898282+github-actions[bot]@users.noreply.github.com`, explicit `AGENT_COMMIT_NAME`/`AGENT_COMMIT_EMAIL` wins per field). `src/git.ts` stamps author via `GIT_AUTHOR_*` env and committer via `git -c user.name/email` (service), so blame shows the human while push provenance stays service. The same resolved author is fed to `review-runner.ts` `commitAuthor` and to every `commitAll`/`salvageAll`/`ARCHIVE` commit in the job; re-resolving per commit would waste `GET /users` and diverge across steps — one lookup per job, reused.
 
 ## Dependencies
 

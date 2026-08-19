@@ -34,6 +34,7 @@ const api = (login: () => Promise<string>): GitHubApi => {
     createComment: unused,
     updateComment: unused,
     getIssue: unused,
+    getUser: unused,
     findPullRequest: unused,
     getPullRequestHead: unused,
     createPullRequest: unused,

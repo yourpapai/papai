@@ -416,9 +416,22 @@ describe('contain', () => {
    * The real adapter, built the way `runCli` builds it — it opens no socket
    * until something calls it, and `contain` only hands it on.
    */
-  const github = (): GitHubApi => createOctokitApi({ token: 'tok', owner: 'acme', repo: 'widgets', secrets: [KEY] })
+  const github = (): GitHubApi =>
+    createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets: [KEY],
+      fetch: (): Promise<Response> =>
+        Promise.resolve(
+          new Response(JSON.stringify({ login: 'maintainer', id: 42 }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        ),
+    })
 
-  const contained = (): Contained =>
+  const contained = (): Promise<Contained> =>
     contain({
       config: config(),
       event,
@@ -432,7 +445,7 @@ describe('contain', () => {
     // The adapter can be perfect and still never be wired in: a mutation
     // replacing the contained config with the raw one killed no test until this
     // existed. Same shape as the outbound-redaction gap in S3-3.
-    const run = contained()
+    const run = await contained()
 
     expect(run.deps.config.openai.apiKey).toBe(PLACEHOLDER_API_KEY)
     expect(run.deps.config.openai.baseUrl).toStartWith('http://127.0.0.1:')
@@ -456,7 +469,7 @@ describe('contain', () => {
     // S5-2's wiring, which is the half that has gone missing three times in this
     // workspace: the deadline is in the adapter, and nothing reached it.
     const seen: OpenCodeAgentOptions[] = []
-    const run = contain({
+    const run = await contain({
       config: config(),
       event,
       log: silentLog,
@@ -497,7 +510,7 @@ describe('contain', () => {
     // exactly how the deadline shipped broken once already.
     const seen: OpenCodeAgentOptions[] = []
     const nowMs = Date.UTC(2026, 7, 8, 12, 0)
-    const run = contain({
+    const run = await contain({
       // 90 seconds of job left, 30 of it reserved for the stop and 10 for the
       // wrap-up: nothing like the 600s cap, and the smaller number has to win.
       config: {
@@ -540,7 +553,7 @@ describe('contain', () => {
     const seen: OpenCodeAgentOptions[] = []
     const nowMs = Date.UTC(2026, 7, 8, 12, 0)
     let clock = nowMs
-    const run = contain({
+    const run = await contain({
       config: {
         ...config(),
         agentTimeoutMs: 600_000,
@@ -579,7 +592,7 @@ describe('contain', () => {
     // the deadline the session was handed have to be the same wall clock, or a
     // phase can be refused for want of time the turn thinks it has.
     const nowMs = Date.UTC(2026, 7, 8, 12, 0)
-    const run = contain({
+    const run = await contain({
       config: config(),
       event,
       log: silentLog,
@@ -596,7 +609,7 @@ describe('contain', () => {
   test('keeps the real credentials for the guards that need them', async () => {
     // Scrubbing, outbound redaction and the diff guard all protect the *value*,
     // so containment must not hide it from them.
-    const run = contained()
+    const run = await contained()
 
     expect(JSON.stringify(run.deps.config)).not.toContain(KEY)
     await run.proxy.close()

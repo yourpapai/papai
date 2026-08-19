@@ -222,7 +222,7 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
 
   const described = await describeModel(config, options, log)
 
-  const contained = contain({
+  const contained = await contain({
     config: described,
     event,
     log,

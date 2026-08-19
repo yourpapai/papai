@@ -123,7 +123,7 @@ const sessionOptions = ({
  * config, so scrubbing, redaction and the diff guard still know the value they
  * are protecting.
  */
-export const contain = (input: ContainInput): Contained => {
+export const contain = async (input: ContainInput): Promise<Contained> => {
   const { config, event, log, run, options, github, createAgent, now } = input
   const secrets = pipelineSecrets(config)
   const proxy = startProviderProxy(config.openai, log)
@@ -145,7 +145,7 @@ export const contain = (input: ContainInput): Contained => {
   const agent = memoizeAgent(() => create(sessionOptions({ input, contained, clock })))
 
   const env = options.env
-  const deps = assembleDeps({
+  const deps = await assembleDeps({
     selfLogin,
     config: contained,
     secrets,

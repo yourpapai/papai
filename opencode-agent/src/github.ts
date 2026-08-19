@@ -32,6 +32,11 @@ export interface PostedComment {
  * extending them is what keeps a fake that satisfies `GitHubApi` unable to leave
  * one of them out, which is the property the whole interface exists for.
  */
+export interface GitHubUser {
+  login: string
+  id: number
+}
+
 export interface GitHubApi extends LabelApi, PullRequestApi, ReactionApi {
   listIssueComments(issueNumber: number): Promise<IssueComment[]>
   /** Returns the created comment, including the author GitHub recorded. */
@@ -53,6 +58,7 @@ export interface GitHubApi extends LabelApi, PullRequestApi, ReactionApi {
   updateComment(commentId: number, body: string): Promise<void>
   getIssue(issueNumber: number): Promise<IssueContext>
   getAuthenticatedLogin(): Promise<string>
+  getUser(login: string): Promise<GitHubUser>
 }
 
 export interface OctokitApiOptions {
@@ -165,6 +171,11 @@ export const createOctokitApi = (options: OctokitApiOptions): GitHubApi => {
     getAuthenticatedLogin: async () => {
       const { data } = await octokit.rest.users.getAuthenticated()
       return data.login
+    },
+
+    getUser: async (login) => {
+      const { data } = await octokit.rest.users.getByUsername({ username: login })
+      return { login: data.login, id: data.id }
     },
   }
 }
