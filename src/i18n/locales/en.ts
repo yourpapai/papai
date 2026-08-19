@@ -58,5 +58,6 @@ Let's get you set up! 🎯`,
     prompt: 'Choose the language I will talk to you in:',
     english: 'English',
     russian: 'Русский',
+    saved: 'Language saved.',
   },
 }

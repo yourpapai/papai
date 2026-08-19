@@ -58,5 +58,6 @@ export const ru: Dictionary = {
     prompt: 'Выберите язык, на котором я буду с вами общаться:',
     english: 'English',
     russian: 'Русский',
+    saved: 'Язык сохранён.',
   },
 }

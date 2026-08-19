@@ -43,6 +43,7 @@ export interface Dictionary {
     prompt: string
     english: string
     russian: string
+    saved: string
   }
 }
 

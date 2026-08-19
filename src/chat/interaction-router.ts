@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { getConfigValue, setConfigValue, unsetConfigValue } from '../config.js'
+import { t, isSupportedLocale } from '../i18n/index.js'
 import { logger } from '../logger.js'
 import { peekEditPrompt, resolveEditPrompt } from '../message-edit/edit-prompt-store.js'
 import {
@@ -16,6 +18,7 @@ import type { AuthorizationResult, IncomingInteraction, PromptHandle, ReplyFn } 
 const log = logger.child({ scope: 'chat:interaction-router' })
 const PERMISSION_CALLBACK_PATTERN = /^perm:(a|d):([A-Za-z0-9_-]+)$/u
 const EDIT_CALLBACK_PATTERN = /^edit:(adjust|note):([A-Za-z0-9_-]+)$/u
+const LANGUAGE_CALLBACK_PATTERN = /^lang:([a-z]{2})$/u
 
 const permissionDecisionFromCode = (code: string): PermissionDecision => (code === 'a' ? 'allow' : 'deny')
 
@@ -52,14 +55,80 @@ async function finalizePermissionDecision(
 }
 
 /**
+ * Handle a `lang:<locale>` picker-callback: persist the language on the config
+ * context and clear `language_prompted`. Invalid locales and locales equal to
+ * the already-stored language are consumed no-ops; the ack is localized to the
+ * newly selected locale.
+ */
+async function handleLanguageCallback(reply: ReplyFn, auth: AuthorizationResult, locale: string): Promise<boolean> {
+  if (!isSupportedLocale(locale)) return true
+  const configContextId = auth.configContextId ?? auth.storageContextId
+  const stored = getConfigValue(configContextId, 'language')
+  if (stored !== null && isSupportedLocale(stored) && stored === locale) return true
+
+  setConfigValue(configContextId, 'language', locale)
+  unsetConfigValue(configContextId, 'language_prompted')
+  log.info({ configContextId, locale }, 'Language preference saved from picker callback')
+  await reply.text(t('picker.saved', locale))
+  return true
+}
+
+/** Handle a `perm:a:`/`perm:d:` allow/deny decision for an `ask`-gated tool. */
+async function handlePermissionCallback(
+  interaction: IncomingInteraction,
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+  code: string,
+  id: string,
+): Promise<boolean> {
+  const decision = permissionDecisionFromCode(code)
+  const pending = peekPermissionRequest(id)
+  if (pending === null || pending.contextId !== auth.storageContextId) {
+    await reply.text('Action is no longer available.')
+    return true
+  }
+  const result = resolvePermissionRequest(id, decision)
+  if (!result.resolved) {
+    await reply.text('Action is no longer available.')
+    return true
+  }
+  await finalizePermissionDecision(reply, pending.toolName, interaction.sourceMessageText, decision, result.handle)
+  return true
+}
+
+/** Handle an `edit:adjust:`/`edit:note:` W2 side-effects decision. */
+async function handleEditCallback(
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+  action: string,
+  id: string,
+): Promise<boolean> {
+  const prompt = peekEditPrompt(id)
+  if (prompt === undefined || prompt.contextId !== auth.storageContextId) {
+    await reply.text('Action is no longer available.')
+    return true
+  }
+  const resolved = resolveEditPrompt(id)
+  if (resolved === undefined) {
+    await reply.text('Action is no longer available.')
+    return true
+  }
+  if (action === 'adjust') await resolved.onAdjust()
+  else await resolved.onNote()
+  return true
+}
+
+/**
  * The config-flow callbacks were retired with the move to the settings web UI.
- * This router authorizes the actor and handles two prefixes:
+ * This router authorizes the actor and handles three prefixes:
  *  - `perm:a:`/`perm:d:` — the allow/deny decision for an `ask`-gated tool
- *    prompt (see `finalizePermissionDecision`).
+ *    prompt (see `handlePermissionCallback`).
  *  - `edit:adjust:`/`edit:note:` — the W2 side-effects "ask-first" buttons
  *    posted by `src/message-edit/handle.ts` when an edit targets a just-finished
  *    turn that made side-effects. `adjust` triggers a corrective regen +
  *    supersede; `note` leaves the (already baseline-corrected) history alone.
+ *  - `lang:<locale>` — the first-interaction language picker (see
+ *    `handleLanguageCallback`).
  * Any other callback is a safe-sink no-op, so adapters that still emit
  * interaction events have a single, harmless entry point.
  */
@@ -73,41 +142,19 @@ export async function routeInteraction(
     return true
   }
 
+  const languageMatch = LANGUAGE_CALLBACK_PATTERN.exec(interaction.callbackData)
+  if (languageMatch !== null) {
+    return handleLanguageCallback(reply, auth, languageMatch[1]!)
+  }
+
   const permissionMatch = PERMISSION_CALLBACK_PATTERN.exec(interaction.callbackData)
   if (permissionMatch !== null) {
-    const decision = permissionDecisionFromCode(permissionMatch[1]!)
-    const id = permissionMatch[2]!
-    const pending = peekPermissionRequest(id)
-    if (pending === null || pending.contextId !== auth.storageContextId) {
-      await reply.text('Action is no longer available.')
-      return true
-    }
-    const result = resolvePermissionRequest(id, decision)
-    if (!result.resolved) {
-      await reply.text('Action is no longer available.')
-      return true
-    }
-    await finalizePermissionDecision(reply, pending.toolName, interaction.sourceMessageText, decision, result.handle)
-    return true
+    return handlePermissionCallback(interaction, reply, auth, permissionMatch[1]!, permissionMatch[2]!)
   }
 
   const editMatch = EDIT_CALLBACK_PATTERN.exec(interaction.callbackData)
   if (editMatch !== null) {
-    const action = editMatch[1]!
-    const id = editMatch[2]!
-    const prompt = peekEditPrompt(id)
-    if (prompt === undefined || prompt.contextId !== auth.storageContextId) {
-      await reply.text('Action is no longer available.')
-      return true
-    }
-    const resolved = resolveEditPrompt(id)
-    if (resolved === undefined) {
-      await reply.text('Action is no longer available.')
-      return true
-    }
-    if (action === 'adjust') await resolved.onAdjust()
-    else await resolved.onNote()
-    return true
+    return handleEditCallback(reply, auth, editMatch[1]!, editMatch[2]!)
   }
 
   log.debug({ callbackData: interaction.callbackData }, 'No route matched for interaction callback')
