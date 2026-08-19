@@ -82,6 +82,14 @@ describe('sendLlmResponse verification wiring', () => {
       'Я выполнил запрошенные действия, но не смог подтвердить результат — пожалуйста, перепроверьте.',
     )
   })
+
+  test('empty-text turn without a verifier in a ru context gets the localized done fallback', async () => {
+    mockLogger()
+    setConfigValue('ctx-ru-done', 'language', 'ru')
+    const reply = createMockReply()
+    await sendLlmResponse(reply.reply, 'ctx-ru-done', { ...baseResult }, undefined)
+    expect(reply.textCalls).toContain('Готово.')
+  })
 })
 
 describe('sendLlmResponse beforeFirstMessage (live-status placeholder dismissal)', () => {

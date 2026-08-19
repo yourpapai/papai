@@ -10,6 +10,7 @@ import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js
 import type { ReplyFn } from './chat/types.js'
 import { buildVerifiedCompletion, detectToolFailure } from './completion/verified-completion.js'
 import type { VerifierDeps } from './completion/verified-completion.js'
+import { t } from './i18n/index.js'
 import { collectTurnMessages, type TurnMessagesResult } from './llm-orchestrator-messages.js'
 import { logger } from './logger.js'
 import { runRegistry } from './run-control/registry.js'
@@ -33,15 +34,15 @@ const resolveFinalText = async (
 ): Promise<string> => {
   const isRisky =
     result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
+  const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
   if (isRisky && verification !== undefined) {
-    const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
     const verified = await buildVerifiedCompletion(
       { history: verification.history, finishReason: result.finishReason, hadToolFailure, locale },
       verification.verifier,
     )
     return verified.text
   }
-  return result.text !== undefined && result.text !== '' ? result.text : 'Done.'
+  return result.text !== undefined && result.text !== '' ? result.text : t('completion.doneFallback', locale)
 }
 
 const flushProgressDetails = async (

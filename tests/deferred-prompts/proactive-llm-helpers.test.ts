@@ -63,6 +63,12 @@ describe('proactive-llm-helpers', () => {
     expect(finalizeDeliveryText({ text: '', finishReason: 'stop' })).toBe('Done.')
   })
 
+  test('localizes the Done fallback to the turn locale', () => {
+    expect(finalizeDeliveryText({ text: undefined, finishReason: 'stop' }, 'ru')).toBe('Готово.')
+    expect(finalizeDeliveryText({ text: '', finishReason: 'stop' }, 'ru')).toBe('Готово.')
+    expect(finalizeDeliveryText({ text: 'preamble', finishReason: 'tool-calls' }, 'ru')).toBe('Готово.')
+  })
+
   test('builds metadata messages', () => {
     const metadata: ExecutionMetadata = {
       delivery_brief: 'Brief',
@@ -123,5 +129,11 @@ describe('finalizeAndLog verification', () => {
     mockLogger()
     const text = await finalizeAndLog({ text: '', finishReason: 'stop' }, 'user-1')
     expect(text).toBe('Done.')
+  })
+
+  test('no verification arg + ru locale → localized done fallback', async () => {
+    mockLogger()
+    const text = await finalizeAndLog({ text: '', finishReason: 'stop' }, 'user-1', undefined, 'ru')
+    expect(text).toBe('Готово.')
   })
 })

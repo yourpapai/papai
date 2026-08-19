@@ -15,7 +15,7 @@ import {
   VERIFIER_MAX_STEPS,
 } from '../completion/verified-completion.js'
 import type { VerifierDeps, VerifierPrompt } from '../completion/verified-completion.js'
-import type { Locale } from '../i18n/index.js'
+import { t, type Locale } from '../i18n/index.js'
 import { hoistSystemMessages } from '../llm-message-utils.js'
 import { collectTurnMessages, type TurnMessagesResult } from '../llm-orchestrator-messages.js'
 import { logger } from '../logger.js'
@@ -100,9 +100,9 @@ export type DeliveryResultLike = Readonly<{
  * budget stopped the turn before it produced the real reply). In that case the only text
  * is a preamble, never the answer — drop it instead of leaking it to the user.
  */
-export const finalizeDeliveryText = (result: DeliveryResultLike): string => {
-  if (result.finishReason === 'tool-calls') return 'Done.'
-  if (result.text === undefined || result.text === '') return 'Done.'
+export const finalizeDeliveryText = (result: DeliveryResultLike, locale?: Locale): string => {
+  if (result.finishReason === 'tool-calls') return t('completion.doneFallback', locale)
+  if (result.text === undefined || result.text === '') return t('completion.doneFallback', locale)
   return result.text
 }
 
@@ -140,7 +140,7 @@ export const finalizeAndLog = async (
       return verified.text
     }
   }
-  return finalizeDeliveryText(result)
+  return finalizeDeliveryText(result, locale)
 }
 
 export const timezoneOrUtc = (timezone: string | null): string => {
