@@ -405,6 +405,26 @@ function captureHarness(): MainCapture {
 }
 
 describe('main autonomy and gate decision wiring', () => {
+  it('gate resume without a run id lists pending gates and never reopens', async () => {
+    const cap = captureHarness()
+    const pendingCalls: number[] = []
+    const reopenCalls: string[][] = []
+    const harness: CliHarness = {
+      ...cap.harness,
+      listPendingGates: () => {
+        pendingCalls.push(1)
+        return Promise.resolve([])
+      },
+      runGateReopen: (runId, version) => {
+        reopenCalls.push([runId, String(version)])
+        return Promise.resolve({ runId, gateVersion: version })
+      },
+    }
+    await main(['gate'], harness)
+    expect(pendingCalls).toHaveLength(1)
+    expect(reopenCalls).toEqual([])
+  })
+
   it('nests parsed autonomy overrides under autonomy on start options', async () => {
     const cap = captureHarness()
     await main(['start', 'task.md', '--autonomy', 'assist', '--auto-deadline', '10'], cap.harness)
@@ -683,5 +703,23 @@ describe('watch verb (15.3)', () => {
     expect(parseCliArgs(['watch', 'run-1'])).toMatchObject({ subcommand: 'watch', runId: 'run-1' })
     expect(() => parseCliArgs(['watch'])).toThrow(/run id/u)
     expect(() => parseCliArgs(['watch', 'a/b'])).toThrow(/path separator/u)
+  })
+
+  it('rejects unknown watch flags naming the flag', () => {
+    expect(() => parseCliArgs(['watch', 'run-1', '--bogus'])).toThrow('unknown flag: --bogus')
+  })
+
+  it('dispatches watch <runId> to the harness and returns 0', async () => {
+    const watchCalls: string[] = []
+    const harness: CliHarness = {
+      ...captureHarness().harness,
+      runWatch: (runId) => {
+        watchCalls.push(runId)
+        return Promise.resolve()
+      },
+    }
+    const code = await main(['watch', 'run-7'], harness)
+    expect(code).toBe(0)
+    expect(watchCalls).toEqual(['run-7'])
   })
 })
