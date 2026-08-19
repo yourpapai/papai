@@ -77,7 +77,7 @@ claim is recorded before the document asserts it.
       proxy-placeholder/scrubbing generalisation assessment deferred, and the
       ranked recommendation with named follow-ups.
       Verify: `grep -n 'Recommendation\|follow-up' opencode-agent/docs/mcp-integration-research.md`
-- [ ] 3.4 Optionally add the one-line link in `opencode-agent/ROADMAP.md` —
+- [x] 3.4 Optionally add the one-line link in `opencode-agent/ROADMAP.md` —
       only if the research surfaced a follow-up worth tracking (`design.md`
       Open Questions). Skip without comment otherwise.
       Verify: `git diff --stat` (confined to the two named files)

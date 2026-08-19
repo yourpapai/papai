@@ -50,6 +50,13 @@ See LICENSE in the project root for details.
 > it — the same way S3-7 and S3-8 came to be listed as open. A status line nobody
 > re-derives is the most reliably wrong part of any long document, which is why
 > what remains is now named positively rather than by omission.
+
+> **MCP integration.** The recorded research — pinned-SDK surface, live-verified
+> binary behaviour, and the option comparison recommending an `AGENT_MCP_SERVERS`
+> env knob — lives in
+> [`docs/mcp-integration-research.md`](docs/mcp-integration-research.md); its
+> named follow-ups (the merge-vs-override experiment that never ran, MCP
+> credential containment, the per-server opt-out) are tracked there.
 >
 > A recurring pattern is worth stating once: several items marked `[FIXED]` were
 > re-opened on inspection because the fix had closed the _instance_ and left the
