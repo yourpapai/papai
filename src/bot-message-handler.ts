@@ -36,6 +36,7 @@ import { maybePostLanguagePicker } from './chat/language-picker.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import { maybeSeedContextAssignment } from './chat/seed-context-assignment.js'
 import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn } from './chat/types.js'
+import { t } from './i18n/index.js'
 import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
 import { defaultDeps } from './llm-orchestrator.js'
 import { logger } from './logger.js'
@@ -43,6 +44,7 @@ import { enqueueMessage, type CoalescedItem as QueuedCoalescedItem } from './mes
 import { buildPromptWithReplyContext } from './reply-context.js'
 import { runRegistry } from './run-control/registry.js'
 import type { RunControl } from './run-control/types.js'
+import { getContextLanguage } from './utils/config-language.js'
 
 export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
   Readonly<
@@ -207,7 +209,7 @@ async function steerActiveRun(
     { storageContextId: auth.storageContextId, turnId: activeRun.turnId },
     'Mid-run message routed to steer queue',
   )
-  await reply.text('✋ folding that into the current run…')
+  await reply.text(t('steer.ack', getContextLanguage(auth.configContextId ?? auth.storageContextId)))
   if (observer === undefined || seed === undefined) return
   observer.observe(
     buildTurnSteeredFact(

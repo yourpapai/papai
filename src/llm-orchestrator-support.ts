@@ -8,12 +8,14 @@ import type { ModelMessage } from 'ai'
 
 import type { AiProgressReporter } from './ai-progress-reporter.js'
 import { classifyProviderError } from './analytics/provider-observer.js'
+import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
 import { selectReadOnlyTools, VERIFIER_MAX_STEPS } from './completion/verified-completion.js'
 import type { VerifierDeps, VerifierPrompt } from './completion/verified-completion.js'
 import { emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { saveHistory } from './history.js'
+import { t } from './i18n/index.js'
 import { createLiveStatusReporter, PREPARING_RESPONSE } from './live-status/reporter.js'
 import { hoistSystemMessages } from './llm-message-utils.js'
 import { invokeModelWithTyping, peekAttemptOrdinal } from './llm-orchestrator-invoke.js'
@@ -23,24 +25,16 @@ import type { LlmFailureAnalytics } from './llm-orchestrator-logging.js'
 import { collectTurnMessages } from './llm-orchestrator-messages.js'
 import { sendLlmResponse } from './llm-orchestrator-send.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+export { handleToolCallFinish } from './llm-orchestrator-tool-replies.js'
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from './memory.js'
-import { buildToolFailureResult, isToolFailureResult, type ToolFailureResult } from './tool-failure.js'
 import { buildToolsContextRecord } from './tools/wrap-tool-execution.js'
+import { getContextLanguage } from './utils/config-language.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:support' })
 
 type LogContext = Record<string, unknown>
-
-type ToolCallFinishEvent = {
-  toolCall: { toolName: string; toolCallId: string }
-} & Partial<{
-  success: boolean
-  output: unknown
-  error: unknown
-  durationMs: number
-}>
 
 export interface LlmOrchestratorSupportDeps {
   emit: (event: string, userId: string, payload: Record<string, unknown>) => void
@@ -57,73 +51,6 @@ const resolveSupportDeps = (deps: LlmOrchestratorSupportDeps | undefined): LlmOr
     return defaultDeps
   }
   return deps
-}
-
-const getToolFailureResult = (event: ToolCallFinishEvent): ToolFailureResult | null => {
-  if (event.success === true) {
-    return isToolFailureResult(event.output) ? event.output : null
-  }
-  if (event.success !== false) {
-    return null
-  }
-  return buildToolFailureResult(event.error, event.toolCall.toolName, event.toolCall.toolCallId)
-}
-
-const emitToolFailure = (
-  contextId: string,
-  reply: ReplyFn | undefined,
-  event: ToolCallFinishEvent,
-  toolFailure: ToolFailureResult,
-  deps: LlmOrchestratorSupportDeps,
-): void => {
-  const { toolName, toolCallId } = event.toolCall
-  deps.emit('llm:tool_result', contextId, {
-    toolName,
-    toolCallId,
-    durationMs: event.durationMs,
-    success: false,
-    result: toolFailure,
-    error: toolFailure.error,
-  })
-  deps.log.warn(
-    {
-      contextId,
-      toolName,
-      error: toolFailure.error,
-      errorType: toolFailure.errorType,
-      errorCode: toolFailure.errorCode,
-    },
-    'Tool execution failed',
-  )
-  if (reply === undefined) return
-  void reply.text(`⚠️ Tool "${toolName}" failed: ${toolFailure.userMessage}`)
-}
-
-const emitToolSuccess = (contextId: string, event: ToolCallFinishEvent, deps: LlmOrchestratorSupportDeps): void => {
-  const { toolName, toolCallId } = event.toolCall
-  deps.emit('llm:tool_result', contextId, {
-    toolName,
-    toolCallId,
-    durationMs: event.durationMs,
-    success: true,
-    result: event.output,
-  })
-}
-
-export function handleToolCallFinish(
-  ...args:
-    | [contextId: string, reply: ReplyFn | undefined, event: ToolCallFinishEvent]
-    | [contextId: string, reply: ReplyFn | undefined, event: ToolCallFinishEvent, deps: LlmOrchestratorSupportDeps]
-): void {
-  const [contextId, reply, event, deps] = args
-  const resolvedDeps = resolveSupportDeps(deps)
-  const toolFailure = getToolFailureResult(event)
-  if (toolFailure !== null) {
-    emitToolFailure(contextId, reply, event, toolFailure, resolvedDeps)
-    return
-  }
-  if (event.success !== true) return
-  emitToolSuccess(contextId, event, resolvedDeps)
 }
 
 export const extractOrchestratorErrorDetails = (error: unknown): Record<string, unknown> => {
@@ -163,10 +90,11 @@ export async function handleOrchestratorMessageError(
   resolvedDeps.log.error({ contextId, error: extractOrchestratorErrorDetails(error) }, 'Message handling failed')
   const appError = extractAppError(error)
   if (appError === null) {
+    const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
     await reply.text(
       APICallError.isInstance(error)
-        ? 'API call failed. Please try again.'
-        : 'An unexpected error occurred. Please try again later.',
+        ? t('orchestrator.apiCallFailed', locale)
+        : t('orchestrator.unexpectedError', locale),
     )
     return
   }

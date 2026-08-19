@@ -3,12 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import packageJson from '../../package.json' with { type: 'json' }
 import { announceNewVersion, type AnnouncementsDeps } from '../../src/announcements.js'
+import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../../src/chat/types.js'
-import { createMockChat } from '../utils/test-helpers.js'
+import { setConfigValue } from '../../src/config.js'
+import { createMockChat, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const VERSION = packageJson.version
 
@@ -33,6 +35,11 @@ function makeDeps(over: Partial<AnnouncementsDeps>): AnnouncementsDeps {
 }
 
 describe('announceNewVersion', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   test('humanizes, persists, and DMs the admin a review notice (no fan-out)', async () => {
     const sent: string[] = []
     const persistCalls: Array<{ version: string; rawBody: string; humanizedBody: string | null }> = []
@@ -106,5 +113,29 @@ describe('announceNewVersion', () => {
     expect(persistCalls).toBe(0)
     expect(updateHumanizedCalls).toBe(0)
     expect(sent).toHaveLength(0)
+  })
+})
+
+describe('announceNewVersion per locale', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('renders the ru review notice for a ru-configured admin', async () => {
+    const adminCtx = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'admin-ru' })
+    setConfigValue(adminCtx, 'language', 'ru')
+    const sent: string[] = []
+    await announceNewVersion(makeChat(sent), 'pi-1', 'admin-ru', makeDeps({}))
+    expect(sent[0]).toContain(`🆕 papai v${VERSION} готова к объявлению!`)
+    expect(sent[0]).toContain('✨ New')
+    expect(sent[0]).toContain('_Проверьте и разошлите подписчикам в Настройки → Release notes._')
+  })
+
+  test('renders the en review notice otherwise', async () => {
+    const sent: string[] = []
+    await announceNewVersion(makeChat(sent), 'pi-1', 'admin-en', makeDeps({}))
+    expect(sent[0]).toContain(`🆕 papai v${VERSION} is ready to announce!`)
+    expect(sent[0]).toContain('_Review and broadcast to subscribers in Settings → Release notes._')
   })
 })

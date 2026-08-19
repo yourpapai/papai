@@ -5,7 +5,9 @@
 
 import { observeScopedUnconfiguredReply } from './analytics/feature-observer.js'
 import type { ProviderRequestScope } from './analytics/provider-request-scope.js'
+import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
+import { t } from './i18n/index.js'
 import { checkRequiredProviderConfig } from './llm-orchestrator-config.js'
 import { resolveLlmConfig } from './llm-providers/resolver.js'
 import { getAdminRoleBindings } from './llm-providers/store.js'
@@ -28,7 +30,7 @@ export const ensureRequiredConfig = async (
   const missing = checkRequiredProviderConfig(configId)
   if (missing.length === 0) return
   log.warn({ contextId, configId, missing }, 'Missing required provider config keys')
-  await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /config to finish setup in the settings web UI.`)
+  await reply.text(t('orchestrator.missingConfig', getContextLanguage(configId), { missing: missing.join(', ') }))
   observeScopedUnconfiguredReply(scope, { missing: 'provider_credentials', surface: 'chat' })
   throw new Error('Missing configuration')
 }
@@ -44,7 +46,7 @@ const replyBotMisconfigured = async (reply: ReplyFn, contextId: string, scope: P
   const configured = getAdminRoleBindings() !== null
   log.error({ contextId, configured }, 'admin LLM provider registry is incomplete; bot cannot serve this turn')
   await reply.text(
-    '⚠️ The bot is not fully configured. Ask the administrator to run /config and complete setup in the web UI.',
+    t('orchestrator.botMisconfigured', getContextLanguage(getConfigContextIdFromStorageContextId(contextId))),
   )
   observeScopedUnconfiguredReply(scope, { missing: 'central_llm', surface: 'chat' })
   if (!botMisconfiguredNotified) {
@@ -65,14 +67,16 @@ async function replyByokConfigProblem(
   if (result.type === 'missing') {
     log.warn({ contextId, missing: result.missing }, 'BYOK LLM config is incomplete; bot cannot serve this turn')
     await reply.text(
-      `BYOK is enabled for this context, but LLM setup is incomplete. Missing: ${result.missing.join(', ')}. Use /config to finish BYOK setup in the settings web UI.`,
+      t('orchestrator.byokIncomplete', getContextLanguage(getConfigContextIdFromStorageContextId(contextId)), {
+        missing: result.missing.join(', '),
+      }),
     )
     observeScopedUnconfiguredReply(scope, { missing: 'provider_credentials', surface: 'chat' })
     return
   }
   log.warn({ contextId }, 'BYOK LLM config is unreadable; bot cannot serve this turn')
   await reply.text(
-    'BYOK credentials for this context are unreadable. Use /config to re-enter the BYOK LLM credentials in the settings web UI.',
+    t('orchestrator.byokUnreadable', getContextLanguage(getConfigContextIdFromStorageContextId(contextId))),
   )
   observeScopedUnconfiguredReply(scope, { missing: 'provider_credentials', surface: 'chat' })
 }
@@ -92,3 +96,4 @@ export async function resolveLlmForTurn(
   await replyByokConfigProblem(reply, contextId, resolvedLlm, scope)
   return null
 }
+import { getContextLanguage } from './utils/config-language.js'

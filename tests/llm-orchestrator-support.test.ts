@@ -3,11 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { ModelMessage } from 'ai'
 
+import { setConfigValue } from '../src/config.js'
 import { providerError } from '../src/errors.js'
 import * as historyModule from '../src/history.js'
 import {
@@ -17,18 +18,23 @@ import {
   handleToolCallFinish,
 } from '../src/llm-orchestrator-support.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
-import { createMockReply, mockLogger } from './utils/test-helpers.js'
+import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
 type SpyInstance = { mockRestore: () => void }
 
 describe('llm-orchestrator-support', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   test('handleToolCallFinish emits structured failures and replies with the user message', () => {
     const { reply, getReplies } = createMockReply()
     const emitCalls: Array<{ event: string; userId: string; payload: unknown }> = []
     const deps = {
-      emit: (event: string, userId: string, payload: unknown): void => {
+      emit: (event: string, userId: string, payload: Record<string, unknown>): void => {
         emitCalls.push({ event, userId, payload })
       },
       log: {
@@ -71,7 +77,7 @@ describe('llm-orchestrator-support', () => {
   test('handleToolCallFinish logs structured failures when reply is suppressed', () => {
     const emitCalls: Array<{ event: string; userId: string; payload: unknown }> = []
     const deps = {
-      emit: (event: string, userId: string, payload: unknown): void => {
+      emit: (event: string, userId: string, payload: Record<string, unknown>): void => {
         emitCalls.push({ event, userId, payload })
       },
       log: {
@@ -107,7 +113,7 @@ describe('llm-orchestrator-support', () => {
   test('handleOrchestratorMessageError replies with the app error message', async () => {
     const { reply, getReplies } = createMockReply()
     const deps = {
-      emit: (_event: string, _userId: string, _payload: unknown): void => {},
+      emit: (_event: string, _userId: string, _payload: Record<string, unknown>): void => {},
       log: {
         warn: mock(() => {}),
         error: mock(() => {}),
@@ -248,5 +254,23 @@ describe('llm-orchestrator-support', () => {
         unsubscribe(listener)
       }
     })
+  })
+})
+
+describe('orchestrator support replies per locale', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    setConfigValue('ctx-support-ru', 'language', 'ru')
+  })
+
+  test('unexpected-error fallback renders in ru', async () => {
+    const { reply, getReplies } = createMockReply()
+    const deps = {
+      emit: (_event: string, _userId: string, _payload: Record<string, unknown>): void => {},
+      log: { warn: mock(() => {}), error: mock(() => {}) },
+    }
+    await handleOrchestratorMessageError(reply, 'ctx-support-ru', new Error('boom'), deps)
+    expect(getReplies()).toEqual(['Произошла непредвиденная ошибка. Попробуйте позже.'])
   })
 })

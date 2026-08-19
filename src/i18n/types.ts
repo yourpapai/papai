@@ -59,6 +59,24 @@ export interface Dictionary {
     dmNotAllowed: string
     userBlocked: string
   }
+  steer: {
+    ack: string
+  }
+  orchestrator: {
+    toolFailed: string
+    apiCallFailed: string
+    unexpectedError: string
+    missingConfig: string
+    botMisconfigured: string
+    byokIncomplete: string
+    byokUnreadable: string
+  }
+  interactions: {
+    actionFailed: string
+  }
+  announcements: {
+    adminNotice: string
+  }
   progress: {
     toolStarted: string
     toolFinished: string

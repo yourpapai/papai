@@ -111,6 +111,28 @@ Let's get you set up! 🎯`,
     dmNotAllowed: 'You are not authorized to use this bot.',
     userBlocked: 'You are not authorized to use this bot.',
   },
+  steer: {
+    ack: '✋ folding that into the current run…',
+  },
+  orchestrator: {
+    toolFailed: '⚠️ Tool "{toolName}" failed: {userMessage}',
+    apiCallFailed: 'API call failed. Please try again.',
+    unexpectedError: 'An unexpected error occurred. Please try again later.',
+    missingConfig: 'Missing configuration: {missing}.\nUse /config to finish setup in the settings web UI.',
+    botMisconfigured:
+      '⚠️ The bot is not fully configured. Ask the administrator to run /config and complete setup in the web UI.',
+    byokIncomplete:
+      'BYOK is enabled for this context, but LLM setup is incomplete. Missing: {missing}. Use /config to finish BYOK setup in the settings web UI.',
+    byokUnreadable:
+      'BYOK credentials for this context are unreadable. Use /config to re-enter the BYOK LLM credentials in the settings web UI.',
+  },
+  interactions: {
+    actionFailed: '❌ Something went wrong processing your action. Please try again.',
+  },
+  announcements: {
+    adminNotice:
+      '🆕 papai v{version} is ready to announce!\n\n{body}\n\n_Review and broadcast to subscribers in Settings → Release notes._',
+  },
   progress: {
     toolStarted: 'Tool `{toolName}` started',
     toolFinished: 'Tool `{toolName}` {status}',
