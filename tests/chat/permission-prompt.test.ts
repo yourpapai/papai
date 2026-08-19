@@ -14,6 +14,8 @@ import {
 } from '../../src/chat/permission-prompt.js'
 import { resetPermissionPromptForTesting } from '../../src/chat/permission-prompt.testing.js'
 import type { ButtonReplyOptions, ChatButton, PromptHandle, ReplyFn } from '../../src/chat/types.js'
+import { setConfigValue } from '../../src/config.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 type CapturedButtonCall = { body: string; options: ButtonReplyOptions }
 
@@ -307,6 +309,52 @@ describe('formatDecisionConfirmation', () => {
   })
   test('includes the tool name for deny', () => {
     expect(formatDecisionConfirmation('delete_task', 'deny')).toBe('Denied delete_task 🚫')
+  })
+  test('renders allow in the requested locale', () => {
+    expect(formatDecisionConfirmation('delete_task', 'allow', 'ru')).toBe('Разрешено: delete_task ✅')
+  })
+  test('renders deny in the requested locale', () => {
+    expect(formatDecisionConfirmation('delete_task', 'deny', 'ru')).toBe('Отклонено: delete_task 🚫')
+  })
+})
+
+describe('expired-prompt redaction', () => {
+  beforeEach(() => resetPermissionPromptForTesting())
+  afterEach(() => resetPermissionPromptForTesting())
+
+  test('redacts the expired prompt in the context language', async () => {
+    mockLogger()
+    await setupTestDb()
+    setConfigValue('ctx-ru', 'language', 'ru')
+    const redactions: string[] = []
+    const handle: PromptHandle = {
+      redact: (text: string): Promise<void> => {
+        redactions.push(text)
+        return Promise.resolve()
+      },
+      remove: (): Promise<void> => Promise.resolve(),
+    }
+    const reply: ReplyFn = {
+      text: mock(() => Promise.resolve()),
+      formatted: mock(() => Promise.resolve()),
+      typing: mock(() => {}),
+      buttons: (): Promise<PromptHandle> => Promise.resolve(handle),
+    }
+
+    const decision = askPermissionViaChat(
+      reply,
+      'ctx-ru',
+      {
+        toolName: 'delete_task',
+        reason: 'r',
+        args: {},
+      },
+      { timeoutMs: 25 },
+    )
+    await tickAsync()
+
+    await expect(decision).resolves.toBe('deny')
+    expect(redactions).toEqual(['⌛ Время истекло — отклонено.'])
   })
 })
 

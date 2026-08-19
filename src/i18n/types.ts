@@ -86,6 +86,10 @@ export interface Dictionary {
   }
   interactions: {
     actionFailed: string
+    staleAction: string
+    allowedTool: string
+    deniedTool: string
+    expiredDenied: string
   }
   announcements: {
     adminNotice: string

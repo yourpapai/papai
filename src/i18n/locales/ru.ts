@@ -142,6 +142,10 @@ export const ru: Dictionary = {
   },
   interactions: {
     actionFailed: '❌ Что-то пошло не так при обработке действия. Попробуйте ещё раз.',
+    staleAction: 'Действие больше недоступно.',
+    allowedTool: 'Разрешено: {toolName} ✅',
+    deniedTool: 'Отклонено: {toolName} 🚫',
+    expiredDenied: '⌛ Время истекло — отклонено.',
   },
   announcements: {
     adminNotice:

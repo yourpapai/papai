@@ -4,9 +4,10 @@
 // See LICENSE in the project root for details.
 
 import { getConfigValue, setConfigValue, unsetConfigValue } from '../config.js'
-import { t, isSupportedLocale } from '../i18n/index.js'
+import { t, isSupportedLocale, type Locale } from '../i18n/index.js'
 import { logger } from '../logger.js'
 import { peekEditPrompt, resolveEditPrompt } from '../message-edit/edit-prompt-store.js'
+import { getContextLanguage } from '../utils/config-language.js'
 import {
   formatDecisionConfirmation,
   peekPermissionRequest,
@@ -22,14 +23,18 @@ const LANGUAGE_CALLBACK_PATTERN = /^lang:([a-z]{2})$/u
 
 const permissionDecisionFromCode = (code: string): PermissionDecision => (code === 'a' ? 'allow' : 'deny')
 
+const localeOf = (auth: AuthorizationResult): Locale =>
+  getContextLanguage(auth.configContextId ?? auth.storageContextId)
+
 async function finalizePermissionDecision(
   reply: ReplyFn,
   toolName: string,
   sourceMessageText: string | undefined,
   decision: PermissionDecision,
   handle: PromptHandle | undefined,
+  locale: Locale,
 ): Promise<void> {
-  const confirmation = formatDecisionConfirmation(toolName, decision)
+  const confirmation = formatDecisionConfirmation(toolName, decision, locale)
   // Ephemeral path: delete the prompt, confirm with a non-persistent toast.
   if (reply.ephemeralConfirm !== undefined && handle !== undefined) {
     try {
@@ -84,17 +89,25 @@ async function handlePermissionCallback(
   id: string,
 ): Promise<boolean> {
   const decision = permissionDecisionFromCode(code)
+  const locale = localeOf(auth)
   const pending = peekPermissionRequest(id)
   if (pending === null || pending.contextId !== auth.storageContextId) {
-    await reply.text('Action is no longer available.')
+    await reply.text(t('interactions.staleAction', locale))
     return true
   }
   const result = resolvePermissionRequest(id, decision)
   if (!result.resolved) {
-    await reply.text('Action is no longer available.')
+    await reply.text(t('interactions.staleAction', locale))
     return true
   }
-  await finalizePermissionDecision(reply, pending.toolName, interaction.sourceMessageText, decision, result.handle)
+  await finalizePermissionDecision(
+    reply,
+    pending.toolName,
+    interaction.sourceMessageText,
+    decision,
+    result.handle,
+    locale,
+  )
   return true
 }
 
@@ -107,12 +120,12 @@ async function handleEditCallback(
 ): Promise<boolean> {
   const prompt = peekEditPrompt(id)
   if (prompt === undefined || prompt.contextId !== auth.storageContextId) {
-    await reply.text('Action is no longer available.')
+    await reply.text(t('interactions.staleAction', localeOf(auth)))
     return true
   }
   const resolved = resolveEditPrompt(id)
   if (resolved === undefined) {
-    await reply.text('Action is no longer available.')
+    await reply.text(t('interactions.staleAction', localeOf(auth)))
     return true
   }
   if (action === 'adjust') await resolved.onAdjust()

@@ -142,6 +142,10 @@ Let's get you set up! 🎯`,
   },
   interactions: {
     actionFailed: '❌ Something went wrong processing your action. Please try again.',
+    staleAction: 'Action is no longer available.',
+    allowedTool: 'Allowed {toolName} ✅',
+    deniedTool: 'Denied {toolName} 🚫',
+    expiredDenied: '⌛ Expired — denied.',
   },
   announcements: {
     adminNotice:

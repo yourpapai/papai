@@ -5,7 +5,10 @@
 
 import { randomBytes } from 'node:crypto'
 
+import { t, type Locale } from '../i18n/index.js'
 import { logger } from '../logger.js'
+import { getContextLanguage } from '../utils/config-language.js'
+import { getConfigContextIdFromStorageContextId } from './scoped-context.js'
 import type { PromptHandle, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:permission-prompt' })
@@ -156,8 +159,14 @@ export function formatPrompt(toolName: string, reason: string, args: Record<stri
   return parts.join('\n')
 }
 
-export function formatDecisionConfirmation(toolName: string, decision: PermissionDecision): string {
-  return decision === 'allow' ? `Allowed ${toolName} ✅` : `Denied ${toolName} 🚫`
+export function formatDecisionConfirmation(
+  toolName: string,
+  decision: PermissionDecision,
+  locale: Locale = 'en',
+): string {
+  return decision === 'allow'
+    ? t('interactions.allowedTool', locale, { toolName })
+    : t('interactions.deniedTool', locale, { toolName })
 }
 
 const sendPromptButtons = (
@@ -245,7 +254,9 @@ async function redactExpiredPrompt(
 ): Promise<void> {
   if (entry.handle === undefined) return
   try {
-    await entry.handle.redact('⌛ Expired — denied.')
+    await entry.handle.redact(
+      t('interactions.expiredDenied', getContextLanguage(getConfigContextIdFromStorageContextId(contextId))),
+    )
   } catch (error) {
     log.warn(
       { contextId, toolName, id, error: error instanceof Error ? error.message : String(error) },
