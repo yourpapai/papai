@@ -70,6 +70,12 @@ export interface Dictionary {
     botMisconfigured: string
     byokIncomplete: string
     byokUnreadable: string
+    stopSummaryHead: string
+    stopSummaryHeadForced: string
+    stopSummaryNoActions: string
+    stopSummaryDoneOne: string
+    stopSummaryDoneMany: string
+    stopSummaryForcedTail: string
   }
   interactions: {
     actionFailed: string

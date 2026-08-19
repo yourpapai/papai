@@ -161,6 +161,7 @@ type RunTurnArgs = {
 const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
   const { invocationSource, turn, deps, configId, resolvedLlm, resolvedTurnId, originatingMessageIds, startedAt } = args
   const { reply, contextId, contextType, actorRole } = invocationSource
+  const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
   const run = runRegistry.begin(contextId, {
     turnId: resolvedTurnId,
     reply,
@@ -184,10 +185,10 @@ const runTurn = async (args: RunTurnArgs): Promise<InjectedMessage[]> => {
       actorRole,
     }
     recordAssistantTurn(meta, turn, result)
-    if (run.stopRequested) await reply.formatted(buildStopSummary(run.completedEffects, { forced: false }))
+    if (run.stopRequested) await reply.formatted(buildStopSummary(run.completedEffects, { forced: false, locale }))
   } catch (error) {
     if (error instanceof RunAbortedError) {
-      await reply.formatted(buildStopSummary(error.effects, { forced: true }))
+      await reply.formatted(buildStopSummary(error.effects, { forced: true, locale }))
     } else {
       await handleLlmTurnError({
         ...invocationSource,
