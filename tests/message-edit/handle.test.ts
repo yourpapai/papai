@@ -10,8 +10,11 @@ import type { ModelMessage } from 'ai'
 import type { AnalyticsObserver } from '../../src/analytics/runtime.js'
 import type { AnalyticsSourceFact } from '../../src/analytics/source-facts.js'
 import { getThreadScopedStorageContextId } from '../../src/auth.js'
+import { addAuthorizedGroup } from '../../src/authorized-groups.js'
 import { cacheObservedIncomingMessage } from '../../src/bot-message-caching.js'
 import type { AuthorizationResult, IncomingMessage } from '../../src/chat/types.js'
+import { setConfigValue } from '../../src/config.js'
+import { addGroupMember } from '../../src/groups.js'
 import { appendHistory, loadHistory } from '../../src/history.js'
 import { getMessageByContext } from '../../src/message-cache/store.js'
 import { onIncomingEdit } from '../../src/message-edit/handle.js'
@@ -21,6 +24,7 @@ import { runRegistry } from '../../src/run-control/registry.js'
 import { addUser } from '../../src/users.js'
 import {
   createDmMessage,
+  createGroupMessage,
   createMockChat,
   createMockReply,
   flushPendingWrites,
@@ -136,6 +140,47 @@ describe('onIncomingEdit', () => {
     expect(getMessageByContext(ctxId, 'm1')?.text).toBe('hi')
 
     runRegistry.end(ctxId)
+  })
+
+  test('W1 steer ack renders in the group-shared config context language, not the thread language', async () => {
+    const groupId = 'w1-ru-group'
+    const groupCfg = getThreadScopedStorageContextId(groupId, 'group', undefined, PLATFORM_ID)
+    const threadStore = getThreadScopedStorageContextId(groupId, 'group', 'th1', PLATFORM_ID)
+    addUser({ userId: 'w1-ru-user', platformInstanceId: PLATFORM_ID, addedBy: ADMIN_ID })
+    addAuthorizedGroup(groupCfg, ADMIN_ID)
+    addGroupMember(groupCfg, 'w1-ru-user', ADMIN_ID)
+    // ru on the group-shared config context; the thread-scoped storage context stays unset
+    // (would resolve to en) — the ack must follow the config context.
+    setConfigValue(groupCfg, 'language', 'ru')
+
+    const original: IncomingMessage = {
+      ...createGroupMessage('w1-ru-user', 'hello @bot'),
+      contextId: groupId,
+      commandMatch: undefined,
+      threadId: 'th1',
+      messageId: 'm1',
+    }
+    cacheObservedIncomingMessage(original, authFor(threadStore))
+    await flushPendingWrites()
+    appendHistory(threadStore, [makeUserTurn('m1', 'hello')])
+
+    const { reply, textCalls } = createMockReply()
+    runRegistry.begin(threadStore, { turnId: 't', reply, originatingMessageIds: ['m1'] })
+
+    const edited: IncomingMessage = {
+      ...createGroupMessage('w1-ru-user', 'hi @bot'),
+      contextId: groupId,
+      commandMatch: undefined,
+      threadId: 'th1',
+      messageId: 'm1',
+      editedAt: 1,
+    }
+    await onIncomingEdit(chat, edited, reply, {})
+
+    expect(textCalls.some((t) => t.includes('встраиваю это в текущий запуск'))).toBe(true)
+    expect(textCalls.some((t) => t.includes('folding that into the current run'))).toBe(false)
+
+    runRegistry.end(threadStore)
   })
 
   test('W1 emits a turn_steered fact on the active run when an analytics observer is wired', async () => {

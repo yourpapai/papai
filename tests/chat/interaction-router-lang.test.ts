@@ -98,4 +98,17 @@ describe('routeInteraction lang: callbacks', () => {
     expect(getConfigValue(CONFIG_CTX, 'language_prompted')).toBe('1')
     expect(getReplies()).toEqual([])
   })
+
+  test('a different stored language is overwritten and acked in the new locale', async () => {
+    setConfigValue(CONFIG_CTX, 'language', 'en')
+    setConfigValue(CONFIG_CTX, 'language_prompted', '1')
+    const { reply, getReplies } = createMockReply()
+
+    const handled = await routeInteraction(interaction('lang:ru'), reply, auth(true))
+
+    expect(handled).toBe(true)
+    expect(getConfigValue(CONFIG_CTX, 'language')).toBe('ru')
+    expect(getConfigValue(CONFIG_CTX, 'language_prompted')).toBeNull()
+    expect(getReplies()[0]).toBe('Язык сохранён.')
+  })
 })
