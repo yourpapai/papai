@@ -39,7 +39,7 @@ claim is recorded before the document asserts it.
       only — never `pkill`/`killall` (the control plane is a loopback
       `opencode serve`).
       Verify: `bun run opencode-agent:test:survival` (control plane alive after)
-- [ ] 2.3 Verify merge-vs-override semantics between a checkout-local config
+- [x] 2.3 Verify merge-vs-override semantics between a checkout-local config
       file and `OPENCODE_CONFIG_CONTENT`, and whether review-loop subprocesses
       (spawned with the env var set) see the checkout-local file at all —
       the smuggle-in-config question for the repo-file option.
