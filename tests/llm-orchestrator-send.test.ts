@@ -8,9 +8,11 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import type { ModelMessage } from 'ai'
 
 import type { ReplyTarget } from '../src/chat/types.js'
+import type { VerifierPrompt } from '../src/completion/verified-completion.js'
+import { setConfigValue } from '../src/config.js'
 import { sendLlmResponse } from '../src/llm-orchestrator-send.js'
 import { runRegistry } from '../src/run-control/registry.js'
-import { createMockReply, mockLogger } from './utils/test-helpers.js'
+import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 const baseResult = {
   text: undefined as string | undefined,
@@ -18,6 +20,10 @@ const baseResult = {
   toolCalls: [] as unknown[],
   finalStep: { response: { messages: [] as ModelMessage[] } },
 }
+
+beforeEach(async () => {
+  await setupTestDb()
+})
 
 describe('sendLlmResponse verification wiring', () => {
   test('risky turn (empty text) invokes the verifier and delivers its text', async () => {
@@ -54,6 +60,27 @@ describe('sendLlmResponse verification wiring', () => {
     })
     expect(invoked).toBe(0)
     expect(reply.textCalls).toContain('All set — moved to Done.')
+  })
+
+  test('risky turn in a ru context gets the ru verifier prompt and neutral fallback', async () => {
+    mockLogger()
+    setConfigValue('ctx-ru', 'language', 'ru')
+    const reply = createMockReply()
+    const prompts: VerifierPrompt[] = []
+    await sendLlmResponse(reply.reply, 'ctx-ru', { ...baseResult }, undefined, {
+      history: [],
+      verifier: {
+        readOnlyToolset: undefined,
+        invokeVerifier: (prompt: VerifierPrompt): Promise<{ text: string | undefined }> => {
+          prompts.push(prompt)
+          return Promise.resolve({ text: undefined })
+        },
+      },
+    })
+    expect(prompts[0]?.system).toContain('Отвечай на русском языке')
+    expect(reply.textCalls).toContain(
+      'Я выполнил запрошенные действия, но не смог подтвердить результат — пожалуйста, перепроверьте.',
+    )
   })
 })
 

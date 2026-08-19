@@ -17,6 +17,7 @@ import { collectTurnMessages } from '../llm-orchestrator-messages.js'
 import { logger } from '../logger.js'
 import { createDisclosurePrepareStep } from '../tools/disclosure/prepare-step.js'
 import { buildToolsContextRecord } from '../tools/wrap-tool-execution.js'
+import { getContextLanguage } from '../utils/config-language.js'
 import { getLlmConfig, type LlmConfig } from './proactive-llm-config.js'
 import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
 import {
@@ -151,6 +152,7 @@ const runScopedGeneration = async (args: ScopedGenerationArgs): Promise<string> 
     result,
     createdByUserId,
     buildProactiveVerification(deps, model, tools, [...prepared.messages, ...assistantMessages], scope),
+    getContextLanguage(configContextId),
   )
 }
 

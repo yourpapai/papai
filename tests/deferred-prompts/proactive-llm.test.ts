@@ -273,6 +273,27 @@ describe('dispatchExecution', () => {
       expect(generateTextCalls[0]!.tools).not.toHaveProperty('papai_tool')
     })
 
+    test('risky ru turn → verifier prompt is Russian', async () => {
+      setupUserConfig()
+      setConfig(USER_ID, 'language', 'ru')
+      const provider = createMockProvider()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        return Promise.resolve({
+          text: '',
+          toolCalls: [],
+          toolResults: [],
+          steps: undefined,
+          finalStep: { response: { messages: [] } },
+        })
+      }
+
+      await dispatchExecution(makeExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+
+      expect(generateTextCalls).toHaveLength(2)
+      expect(generateTextCalls[1]!.instructions).toContain('Отвечай на русском языке')
+    })
+
     test('uses full system prompt', async () => {
       setupUserConfig()
       const provider = createMockProvider()

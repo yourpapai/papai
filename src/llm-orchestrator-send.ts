@@ -6,12 +6,14 @@
 import type { ModelMessage } from 'ai'
 
 import type { AiProgressReporter } from './ai-progress-reporter.js'
+import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
 import { buildVerifiedCompletion, detectToolFailure } from './completion/verified-completion.js'
 import type { VerifierDeps } from './completion/verified-completion.js'
 import { collectTurnMessages, type TurnMessagesResult } from './llm-orchestrator-messages.js'
 import { logger } from './logger.js'
 import { runRegistry } from './run-control/registry.js'
+import { getContextLanguage } from './utils/config-language.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:send' })
 
@@ -27,12 +29,14 @@ const resolveFinalText = async (
   result: SendResult,
   hadToolFailure: boolean,
   verification: Verification | undefined,
+  contextId: string,
 ): Promise<string> => {
   const isRisky =
     result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
   if (isRisky && verification !== undefined) {
+    const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
     const verified = await buildVerifiedCompletion(
-      { history: verification.history, finishReason: result.finishReason, hadToolFailure },
+      { history: verification.history, finishReason: result.finishReason, hadToolFailure, locale },
       verification.verifier,
     )
     return verified.text
@@ -65,7 +69,7 @@ export const sendLlmResponse = async (
   beforeFirstMessage?: () => Promise<void>,
 ): Promise<void> => {
   const hadToolFailure = detectToolFailure(collectTurnMessages(result))
-  const textToFormat = await resolveFinalText(result, hadToolFailure, verification)
+  const textToFormat = await resolveFinalText(result, hadToolFailure, verification, contextId)
 
   const responseLength = result.text === undefined ? 0 : result.text.length
   const toolCallCount = result.toolCalls === undefined ? 0 : result.toolCalls.length

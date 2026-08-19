@@ -15,6 +15,7 @@ import {
   VERIFIER_MAX_STEPS,
 } from '../completion/verified-completion.js'
 import type { VerifierDeps, VerifierPrompt } from '../completion/verified-completion.js'
+import type { Locale } from '../i18n/index.js'
 import { hoistSystemMessages } from '../llm-message-utils.js'
 import { collectTurnMessages, type TurnMessagesResult } from '../llm-orchestrator-messages.js'
 import { logger } from '../logger.js'
@@ -117,6 +118,7 @@ export const finalizeAndLog = async (
   result: DeliveryResultLike & TurnMessagesResult,
   userId: string,
   verification?: { verifier: VerifierDeps; history: readonly ModelMessage[] },
+  locale?: Locale,
 ): Promise<string> => {
   const stepCount = Array.isArray(result.steps) ? result.steps.length : undefined
   const meta = { userId, finishReason: result.finishReason, stepCount }
@@ -132,7 +134,7 @@ export const finalizeAndLog = async (
       result.text === undefined || result.text === '' || result.finishReason === 'tool-calls' || hadToolFailure
     if (isRisky) {
       const verified = await buildVerifiedCompletion(
-        { history: verification.history, finishReason: result.finishReason, hadToolFailure },
+        { history: verification.history, finishReason: result.finishReason, hadToolFailure, locale },
         verification.verifier,
       )
       return verified.text
