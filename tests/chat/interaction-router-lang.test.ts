@@ -15,10 +15,11 @@ import { createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.
 const CONFIG_CTX = 'tg:u1:cfg'
 const STORAGE_CTX = 'tg:u1:store'
 
-const auth = (allowed: boolean): AuthorizationResult => ({
+const auth = (allowed: boolean, isGuest = false): AuthorizationResult => ({
   allowed,
   isBotAdmin: false,
   isGroupAdmin: false,
+  isGuest,
   storageContextId: STORAGE_CTX,
   configContextId: CONFIG_CTX,
 })
@@ -72,6 +73,18 @@ describe('routeInteraction lang: callbacks', () => {
     expect(handled).toBe(true)
     expect(getReplies()[0]).toContain('not authorized')
     expect(getConfigValue(CONFIG_CTX, 'language')).toBeNull()
+  })
+
+  test('a guest pressing the picker is a consumed no-op that persists nothing', async () => {
+    setConfigValue(CONFIG_CTX, 'language_prompted', '1')
+    const { reply, getReplies } = createMockReply()
+
+    const handled = await routeInteraction(interaction('lang:ru'), reply, auth(true, true))
+
+    expect(handled).toBe(true)
+    expect(getConfigValue(CONFIG_CTX, 'language')).toBeNull()
+    expect(getConfigValue(CONFIG_CTX, 'language_prompted')).toBe('1')
+    expect(getReplies()).toEqual([])
   })
 
   test('an invalid locale is a consumed no-op', async () => {

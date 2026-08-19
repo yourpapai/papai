@@ -56,11 +56,13 @@ async function finalizePermissionDecision(
 
 /**
  * Handle a `lang:<locale>` picker-callback: persist the language on the config
- * context and clear `language_prompted`. Invalid locales and locales equal to
- * the already-stored language are consumed no-ops; the ack is localized to the
+ * context and clear `language_prompted`. Guests (never offered the picker, see
+ * `postLanguagePicker`), invalid locales and locales equal to the
+ * already-stored language are consumed no-ops; the ack is localized to the
  * newly selected locale.
  */
 async function handleLanguageCallback(reply: ReplyFn, auth: AuthorizationResult, locale: string): Promise<boolean> {
+  if (auth.isGuest === true) return true
   if (!isSupportedLocale(locale)) return true
   const configContextId = auth.configContextId ?? auth.storageContextId
   const stored = getConfigValue(configContextId, 'language')
