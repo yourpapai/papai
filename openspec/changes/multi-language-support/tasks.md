@@ -30,7 +30,7 @@ See LICENSE in the project root for details.
 ## 5. Framework-text migration (one surface per task)
 
 - [x] 5.1 Commands: update `tests/commands/` to assert ru rendering for a ru-configured context and en otherwise, then swap literals in `src/commands/*.ts` (help, config, context, clear, dashboard, stop acks, start welcome) for `t()` lookups. Verify: `bun test tests/commands/`
-- [ ] 5.2 Unauthorized replies: failing test for ru rendering of each `auth.reason` branch, then migrate `src/bot-unauthorized-reply.ts`. Verify: `bun test tests/bot-unauthorized-reply.test.ts`
+- [x] 5.2 Unauthorized replies: failing test for ru rendering of each `auth.reason` branch, then migrate `src/bot-unauthorized-reply.ts`. Verify: `bun test tests/bot-unauthorized-reply.test.ts`
 - [ ] 5.3 Progress lines: failing tests for ru/en tool started/finished lines, then migrate `src/ai-progress-reporter.ts`. Verify: `bun test tests/ai-progress-reporter.test.ts`
 - [ ] 5.4 Stop/steer acks and announcements: failing tests for localized acks and bot-authored announcement texts, then migrate the user-facing strings in `src/bot.ts`, `src/llm-orchestrator-*.ts`, `src/announcements.ts`. Verify: `bun test tests/announcements/ tests/llm-orchestrator/`
 
