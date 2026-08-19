@@ -68,10 +68,18 @@ export type LlmInvokeAnalytics = Readonly<{
 type InvokeArgs = InvokeModelArgs & { reply: ReplyFn | undefined; turnId: string; analytics?: LlmInvokeAnalytics }
 
 export const resolveSystemPrompt = (
-  args: Pick<InvokeModelArgs, 'provider' | 'contextId' | 'enabledToolNames' | 'disclosure' | 'contextType'>,
+  args: Pick<
+    InvokeModelArgs,
+    'provider' | 'contextId' | 'configContextId' | 'enabledToolNames' | 'disclosure' | 'contextType'
+  >,
 ): string => {
-  const { provider, contextId, enabledToolNames, disclosure, contextType } = args
-  const opts = { askPermissionAvailable: true, progressiveDisclosure: disclosure !== undefined, contextType }
+  const { provider, contextId, configContextId, enabledToolNames, disclosure, contextType } = args
+  const opts = {
+    askPermissionAvailable: true,
+    progressiveDisclosure: disclosure !== undefined,
+    contextType,
+    configContextId,
+  }
   return provider === null
     ? buildProviderlessSystemPrompt(contextId, enabledToolNames, opts)
     : buildSystemPrompt(provider, contextId, enabledToolNames, opts)
@@ -126,6 +134,17 @@ const buildAttempt = (args: InvokeArgs): LlmAttemptAnalytics => ({
   ...(args.analytics?.providerBinding === undefined ? {} : { providerBinding: args.analytics.providerBinding }),
 })
 
+const buildToolCallContext = (args: InvokeArgs, mainModel: string, turnId: string): ToolCallContext => ({
+  contextId: args.contextId,
+  chatUserId: args.chatUserId,
+  contextType: args.contextType,
+  model: mainModel,
+  modelRole: 'main',
+  turnId,
+  ...(args.progressReporter === undefined ? {} : { progressReporter: args.progressReporter }),
+  ...(args.liveStatus === undefined ? {} : { liveStatus: args.liveStatus }),
+})
+
 export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorDeps['generateText']> => {
   const {
     contextId,
@@ -142,22 +161,20 @@ export const invokeModel = async (args: InvokeArgs): ReturnType<LlmOrchestratorD
     disclosure,
   } = args
   const start = Date.now()
-  const systemPrompt = resolveSystemPrompt({ provider, contextId, enabledToolNames, disclosure, contextType })
+  const systemPrompt = resolveSystemPrompt({
+    provider,
+    contextId,
+    configContextId: args.configContextId,
+    enabledToolNames,
+    disclosure,
+    contextType,
+  })
   const attempt = buildAttempt(args)
   const ttft = createTtftClock()
   ttft.start()
   const timedModel = wrapModelForTtft(model, ttft)
   emitLlmStart(contextId, mainModel, messages, tools, turnId, attempt)
-  const ctx: ToolCallContext = {
-    contextId,
-    chatUserId,
-    contextType,
-    model: mainModel,
-    modelRole: 'main',
-    turnId,
-    progressReporter: args.progressReporter,
-    liveStatus: args.liveStatus,
-  }
+  const ctx = buildToolCallContext(args, mainModel, turnId)
   const result = await callGenerateText({
     contextId,
     turnId,

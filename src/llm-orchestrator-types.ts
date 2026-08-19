@@ -71,7 +71,8 @@ export type InvokeModelArgs = {
   providerRequestScope: ProviderRequestScope
 } & Partial<Record<'progressReporter', AiProgressReporter>> &
   Partial<Record<'disclosure', DisclosureSession>> &
-  Partial<Record<'liveStatus', LiveStatusReporter>>
+  Partial<Record<'liveStatus', LiveStatusReporter>> &
+  Partial<Record<'configContextId', string>>
 
 export type StepOutput = {
   stepNumber: number
