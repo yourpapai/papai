@@ -663,3 +663,158 @@ experiment: if a committed file turns out to override pipeline-owned config,
 the "reviewable" surface is precisely the smuggling channel. The ranked
 recommendation and the deferred follow-ups close the document (§7).
 
+---
+
+## 5. Interaction with the deny-by-default permission model
+
+The model, restated in one line: every profile `openai-config.ts` emits is
+built by `grant()` — `"*": "deny"` first, named allows after — and MCP tools
+join the table under their `<server>_<tool>` names (**verified**, §2.1). The
+interaction, each half carrying its evidence:
+
+- **MCP tools are inside deny-by-default.** **Verified** (§2.1): a connected
+  server's tools were absent from the `build` agent's model-visible table
+  until a grant key named them. A server the pipeline spawns but never grants
+  is inert for the model — the strongest containment this design has, and it
+  costs nothing extra.
+- **The grant key form is the tool-name wildcard.** **Verified** (§2.4):
+  `"<server>_*": "allow"` in a profile's map resolves to
+  `{permission: "<server>_*", pattern: "*", action: "allow"}` and admits the
+  server's whole toolset; an exact `<server>_<tool>` key admits exactly that
+  tool; the bare server name is a **silent no-op** — accepted as a rule,
+  grants nothing — so wherever the key is generated deserves a one-line guard
+  (**design intent**).
+- **The grant must live in each profile's own map.** **Verified** (§2.4): a
+  global-block `research_*` allow is cancelled for any agent whose own map
+  ends in `"*": "deny"` — the resolved list is an ordered concatenation and
+  the later rule wins. A global-only grant would be a no-op for every agent
+  the pipeline prompts.
+- **`ask` is forbidden for MCP keys** as for built-ins. **Verified** (§2.5):
+  an `"ask"` grant parks the turn on a permission request nothing unattended
+  answers. An MCP entry is `allow` or absent, never `ask`.
+
+**Recommended grant shape** (the maintainer decision recorded per design D6;
+mechanics verified per above): the `<server>_*` wildcard **in both profiles'
+maps and in the global default**. The load-bearing half is the profile maps —
+`plan` and `build` each carry the key beside their existing allows, emitted by
+the same `grant()` call that builds the rest. The global-default half reaches
+only the unnamed built-ins (`title`, `summary`, `compaction`, …) that inherit
+it; giving them a granted server is harmless for `title`/`summary` (they
+generate text from the session, not tools) and consistent — one server, one
+key, three places, no per-profile forgetting. Composition note for honesty:
+the live runs verified the pieces (profile-map wildcard on `build`, exact-name
+on `plan`, global-only reaching unnamed agents) rather than the combined
+three-place shape end to end; the composition follows from the verified
+mechanics, and §1.1's re-verification note includes it.
+
+**Opt-out is a named follow-up, not designed here** (proposal Non-goals): a
+future per-server or per-profile opt-out knob narrows the grant without
+touching the model. Until it exists the shape is grant-all-configured, and an
+operator who wants a server invisible to `plan` configures it… not at all —
+the wildcard is the only shape shipped.
+
+## 6. Where the `mcp` block is injected, per option, for both execution paths
+
+The two paths and their one shared seam (**by inspection** of the pinned
+code, lines cited):
+
+- **In-process session**: `opencode-connect.ts:100–104` hands
+  `createOpencodeServer({ config: buildOpencodeConfig(openai) })` — the
+  config object, directly.
+- **Review-loop subprocesses**: `openai-config.ts:296–299`
+  (`opencodeConfigEnv`) serialises **the same** `buildOpencodeConfig` output
+  into `OPENCODE_CONFIG_CONTENT`, which `review-runner.ts:196–197` passes as
+  `env` to the loop, whose `agent-runner.ts:153–160` spawns
+  `opencode run … --dir <repoRoot>` inheriting it.
+
+One builder serves both — the workspace's single-definition rule
+(`openai-config.ts`'s own doc comment) — so **the only injection point that
+cannot drift is inside `buildOpencodeConfig`**: an `mcpServers` field on
+`OpenAiSettings` (the way `profiles` rides today), merged into the emitted
+config, with §5's grant keys added by the same `grant()` calls that build
+each profile. Both paths then carry it by construction; neither can see a
+different server set than the other.
+
+Per option:
+
+- **S2 env knob**: exactly the above — parse in `config-values.ts` style,
+  ride on settings, emit in `buildOpencodeConfig` (**design intent**; the
+  verified fact underneath is that both paths read the one builder).
+- **S1 / S3 repo file**: *no injection point of ours exists* — the binary
+  loads the file through its own discovery in whatever `--dir`/directory the
+  server runs in. Whether that load **merges with or overrides**
+  `OPENCODE_CONFIG_CONTENT` — and whether the review-loop subprocesses (same
+  env var, `--dir repoRoot`) see the checkout file at all — is the pending
+  2.3 experiment (§3 preamble). Until run, the honest statement is: unknown,
+  and the option's security story cannot be written either way.
+- **S4 forked workflow**: injection is a workflow `env:` or an install step —
+  **outside** the single builder, drifting from the in-process path by
+  construction unless the fork also routes through the knob. That drift is
+  part of the escape hatch's cost.
+- **S5 issue/comment**: rejected (§4, Scenario 5); no injection point may
+  exist.
+
+## 7. Credential exposure per option, the recommendation, and the follow-ups
+
+**Exposure risk per option** — the deferred containment assessment stated
+once, then priced in:
+
+The deferred question (proposal Non-goals, design D6): does the
+`provider-proxy.ts` loopback-placeholder pattern generalise to MCP — a proxy
+holding the real `headers` token while the config carries a placeholder — and
+does `secrets.ts`/`pipelineSecrets` value-scrubbing cover MCP-sourced
+credentials? **Deferred, not designed here.** What can be said without
+designing it: the provider proxy proves the *shape* works for one HTTP
+authorization header on one loopback route; MCP remotes multiply the routes
+(per-server), local servers move the credential into a child's `environment`
+(**verified** reachable, §2.1), and both land inside the config content the
+model can read (S3-9, §1.4 row 1). Until the generalisation lands, every
+option below carries the same residual risk: **an MCP credential that reaches
+config content is one `echo` away** — exactly the provider key pre-S3-9.
+
+| Option | Where a credential would sit | Exposure |
+| ------ | ---------------------------- | -------- |
+| S1 repo file | in the file itself | **worst**: model-readable *file* (§1.4 row 2) + git history; must be forbidden outright |
+| S2 env knob | config content via the knob | content risk only; fixable later by the same shape that fixed the provider key |
+| S3 file + `{env:VAR}` | config content post-interpolation | same content risk as S2, plus the file's other risks (§4) |
+| S4 forked workflow | workflow `env:` → inherited environment | inherited-env risk (S3-9's original channel); routing through containment is the fork's job |
+| S5 issue/comment | — | rejected; moot |
+
+**Recommendation** (ranked, from §4's table):
+
+1. **Adopt the `AGENT_*` env knob** (`AGENT_MCP_SERVERS`, JSON, merged in
+   `buildOpencodeConfig` — §6's single seam). Least knowledge, no PR trust
+   edge, best failure shape, both paths by construction, and its credential
+   risk is the one the codebase already knows how to reason about.
+2. **Record the repo-committed file as blocked on the 2.3 experiment**, not
+   rejected: if merge semantics come back benign (content merges, file cannot
+   override pipeline-owned blocks), its git-review story justifies a revisit;
+   if they do not, the §4 Scenario 1 security note is the rejection.
+3. **Forked workflow stays the escape hatch** for jobs that must install a
+   stdio server binary; the env knob plus a pinned `bunx`-style command
+   inside `McpLocalConfig.command` covers most of that ground without the
+   fork.
+4. **Issue/comment-level configuration is rejected** on the security grounds
+   recorded in §4 Scenario 5 — a decision, not a ranking.
+
+**Named follow-ups** (each deferred with its risk documented, none designed
+here):
+
+- **Per-server opt-out knob** — narrows §5's grant-all-configured shape
+  (proposal Non-goals).
+- **Credential containment for MCP `headers` / `environment`** — the
+  proxy-placeholder/scrubbing generalisation assessed above; until it lands,
+  the recommendation is the same one S3-9 taught: prefer **unauthenticated
+  local servers and static-token remotes you can afford to expose**, because
+  the content channel is model-readable.
+- **The missing merge-vs-override experiment** — task 2.3's evidence never
+  landed (§3 preamble); running it is what unblocks recommendation 2, and it
+  should also answer the second half: do review-loop subprocesses see a
+  checkout-local config file at all.
+- **Grant-key typo guard** — reject a bare server name at knob-parse time
+  (§2.4's silent no-op), one line in the future `config-values.ts` parsing.
+
+A later pin bump re-verifies, at minimum: the §1.2/§1.3 anchors, every
+**verified** claim in §2, and §5's combined grant shape end to end (§1.1's
+re-verification note).
+

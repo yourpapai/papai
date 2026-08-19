@@ -70,7 +70,7 @@ claim is recorded before the document asserts it.
       explicitly rejected on security grounds, not omitted.
       Verify: `grep -c 'Scenario\|by inspection\|verified' opencode-agent/docs/mcp-integration-research.md`
       (every behavioural claim carries a label)
-- [ ] 3.3 Write §4–§6: the deny-by-default permission interaction and grant
+- [x] 3.3 Write §4–§6: the deny-by-default permission interaction and grant
       shape (both profiles + global default, opt-out as a named follow-up),
       the injection point per option for both execution paths so they cannot
       drift, the credential-exposure risk per option with the
