@@ -280,6 +280,8 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     getIssue: (issueNumber: number): Promise<IssueContext> =>
       Promise.resolve({ number: issueNumber, title: '', body: '' }),
     getAuthenticatedLogin: (): Promise<string> => Promise.resolve(login),
+    getUser: (loginArg: string): Promise<{ login: string; id: number }> =>
+      Promise.resolve({ login: loginArg, id: 123 }),
     ...reactionApi,
     ...labelApi,
     ...pullRequestApi,

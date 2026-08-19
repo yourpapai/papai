@@ -36,6 +36,14 @@ export interface PipelineConfig {
   /** This pipeline's workflow name, so its own red runs do not re-trigger it. */
   selfWorkflowName: string
   openai: OpenAiSettings
+  /**
+   * Who the agent's commits claim to be. `github-actions[bot]` by default — the
+   * token's real identity, whose noreply
+   * `41898282+github-actions[bot]@users.noreply.github.com` verifies on GitHub.
+   * Overridden by `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` (`vars.*` in
+   * `agent-pipeline.yml`), which win per field over any per-run actor resolution
+   * in `commit-identity.ts` (explicit > actor > service).
+   */
   commitAuthorName: string
   commitAuthorEmail: string
   /** Build gate the review loop runs between rounds. */

@@ -481,6 +481,11 @@ jobs:
           AGENT_CHECK_COMMAND: ${{ vars.AGENT_CHECK_COMMAND }}
           AGENT_REVIEW_COMMAND: ${{ vars.AGENT_REVIEW_COMMAND }}
           AGENT_CHECKS: ${{ vars.AGENT_CHECKS }}
+          # Who git commits claim to be. Defaults to github-actions[bot] /
+          # 41898282+github-actions[bot]@users.noreply.github.com — the token's
+          # real service identity, whose noreply verifies. Explicit vars win
+          # per field over per-run actor resolution in commit-identity.ts
+          # (explicit > actor > service); see opencode-agent/README.md.
           AGENT_COMMIT_NAME: ${{ vars.AGENT_COMMIT_NAME }}
           AGENT_COMMIT_EMAIL: ${{ vars.AGENT_COMMIT_EMAIL }}
           AGENT_MAX_CHANGED_FILES: ${{ vars.AGENT_MAX_CHANGED_FILES }}

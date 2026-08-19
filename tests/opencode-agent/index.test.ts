@@ -172,13 +172,25 @@ describe('contain transcript wiring', () => {
     // the sink has to reach `OpenCodeAgentOptions` or no event ever lands.
     const seen: OpenCodeAgentOptions[] = []
     const rows: TranscriptRow[] = []
-    const run = contain({
+    const run = await contain({
       config: loadConfig(ENV, workDir),
       event: EVENT,
       log: createLogger({ level: 'error', sink: () => {} }),
       run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
       options: { argv: [], env: {} },
-      github: createOctokitApi({ token: 'tok', owner: 'acme', repo: 'widgets', secrets: [] }),
+      github: createOctokitApi({
+        token: 'tok',
+        owner: 'acme',
+        repo: 'widgets',
+        secrets: [],
+        fetch: (): Promise<Response> =>
+          Promise.resolve(
+            new Response(JSON.stringify({ login: 'maintainer', id: 42 }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+          ),
+      }),
       transcript: { write: (row) => void rows.push(row) },
       createAgent: (agentOptions) => {
         seen.push(agentOptions)

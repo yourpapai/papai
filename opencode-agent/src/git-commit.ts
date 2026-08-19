@@ -215,17 +215,20 @@ export const commit = (
   options: GitOptions,
   message: string,
   extra: readonly string[],
-): Promise<unknown> =>
-  gitOrThrow(
+): Promise<unknown> => {
+  const committerName = options.committerName ?? options.authorName
+  const committerEmail = options.committerEmail ?? options.authorEmail
+  return gitOrThrow(
     '-c',
-    `user.name=${options.authorName}`,
+    `user.name=${committerName}`,
     '-c',
-    `user.email=${options.authorEmail}`,
+    `user.email=${committerEmail}`,
     'commit',
     ...extra,
     '-m',
     message,
   )
+}
 
 export const commitAll = async (gitOrThrow: GitFn, options: GitOptions, message: string): Promise<CommitOutcome> => {
   const status = await gitOrThrow('status', '--porcelain')

@@ -547,6 +547,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       return Promise.resolve({ number: ISSUE, title: 'Add retries', body: 'Please add retries.' })
     },
     getAuthenticatedLogin: () => Promise.resolve(AGENT_LOGIN),
+    getUser: (login: string) => Promise.resolve({ login, id: 42 }),
     findPullRequest: () => Promise.resolve(io.existingPr),
     // Only `pr-trigger.ts` reads this, and it runs before `runPipeline` is
     // called at all — so a pipeline test that reaches it has resolved a

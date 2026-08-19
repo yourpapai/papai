@@ -17,28 +17,13 @@ export type { Salvage } from './git-commit.js'
 export interface GitOptions {
   run: CommandRunner
   cwd: string
-  /** Identity stamped on agent commits. */
   authorName: string
   authorEmail: string
-  /** Ceilings a staged change set must stay under before it is committed. */
+  committerName?: string
+  committerEmail?: string
   limits: DiffLimits
-  /** Credential values that must never reach a commit, whatever file holds them. */
   secrets: readonly string[]
-  /**
-   * Where a dropped path is reported.
-   *
-   * The one thing these operations have to *say* rather than return: excluding
-   * a file a push cannot carry is silent success from every caller's point of
-   * view, and a guardrail nobody can see firing is indistinguishable from a
-   * model that quietly failed to make the edit.
-   */
   log: Logger
-  /**
-   * How git authenticates to the remote, or `null` for an anonymous checkout.
-   *
-   * Supplied per invocation instead of persisted, so the token is in no file the
-   * model can read. See {@link credentialEnv}.
-   */
   credential: GitCredential | null
 }
 
@@ -200,7 +185,9 @@ export const credentialEnv = (credential: GitCredential | null): Record<string, 
 }
 
 const makeRunners = (options: GitOptions): { git: GitFn; gitOrThrow: GitFn } => {
-  const env = credentialEnv(options.credential)
+  const credential = credentialEnv(options.credential)
+  const authorEnv = { GIT_AUTHOR_NAME: options.authorName, GIT_AUTHOR_EMAIL: options.authorEmail }
+  const env = credential === undefined ? authorEnv : { ...credential, ...authorEnv }
   const git: GitFn = (...argv) => options.run(['git', ...argv], { cwd: options.cwd, env })
 
   const gitOrThrow: GitFn = async (...argv) => {
