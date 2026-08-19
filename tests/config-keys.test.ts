@@ -73,6 +73,7 @@ describe('getConfigKeysForContext', () => {
     expect(getConfigKeysForContext('ctx-unassigned')).toEqual([
       'timezone',
       'mcp_endpoints',
+      'language',
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
@@ -94,6 +95,7 @@ describe('getConfigKeysForContext', () => {
     expect(getConfigKeysForContext('ctx-kaneo')).toEqual([
       'timezone',
       'mcp_endpoints',
+      'language',
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
@@ -111,6 +113,7 @@ describe('getConfigKeysForContext', () => {
       'plugin:task-provider-youtrack:provider:token',
       'timezone',
       'mcp_endpoints',
+      'language',
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
@@ -126,6 +129,7 @@ describe('getConfigKeysForContext', () => {
     expect(getConfigKeysForContext('ctx-missing')).toEqual([
       'timezone',
       'mcp_endpoints',
+      'language',
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
@@ -149,6 +153,7 @@ describe('getConfigKeysForContext', () => {
     expect(getConfigKeysForContext('ctx-stopped')).toEqual([
       'timezone',
       'mcp_endpoints',
+      'language',
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',
@@ -176,6 +181,7 @@ describe('getConfigKeysForContext', () => {
       'plugin:demo-plugin:provider:token',
       'timezone',
       'mcp_endpoints',
+      'language',
       'ai_tool_visibility',
       'ai_reasoning_visibility',
       'ai_output_detail_level',

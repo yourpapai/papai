@@ -17,6 +17,7 @@ describe('config types', () => {
     test('ALL_CONFIG_KEYS contains the static preference and AI-output keys', () => {
       expect(ALL_CONFIG_KEYS).toEqual([
         'timezone',
+        'language',
         'mcp_endpoints',
         'ai_tool_visibility',
         'ai_reasoning_visibility',

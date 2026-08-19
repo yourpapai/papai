@@ -15,7 +15,7 @@ export const KANEO_PLUGIN_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:
 export const KANEO_PLUGIN_WORKSPACE_KEY = 'plugin:task-provider-kaneo:provider:workspaceId'
 
 // User preference config keys (always available)
-export type PreferenceConfigKey = 'timezone'
+export type PreferenceConfigKey = 'timezone' | 'language'
 
 // MCP endpoint config keys
 export type McpConfigKey = 'mcp_endpoints'
@@ -62,6 +62,7 @@ export function isFieldUnsettable(field: ConfigField): boolean {
 // handled via the dynamic-config path).
 export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
   'timezone',
+  'language',
   'mcp_endpoints',
   'ai_tool_visibility',
   'ai_reasoning_visibility',

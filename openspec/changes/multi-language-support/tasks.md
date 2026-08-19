@@ -14,7 +14,7 @@ See LICENSE in the project root for details.
 
 ## 2. `language` preference (config key, validation, resolution)
 
-- [ ] 2.1 Write failing tests covering: `isConfigKey('language')` is true; config-editor validation accepts `en`/`ru` and rejects other values; `getContextLanguage(configContextId)` returns the stored value and `en` when unset (null task instance and empty context included). Then add `'language'` to `PreferenceConfigKey`/`ALL_CONFIG_KEYS` in `src/types/config.ts`, the select `PREFERENCE_FIELDS` entry in `src/config-keys.ts`, the validation branch in `src/config-editor/validation.ts`, and the `getContextLanguage` helper mirroring `src/utils/config-timezone.ts`. Verify: `bun test tests/i18n/ tests/config-editor/ && bun run typecheck`
+- [x] 2.1 Write failing tests covering: `isConfigKey('language')` is true; config-editor validation accepts `en`/`ru` and rejects other values; `getContextLanguage(configContextId)` returns the stored value and `en` when unset (null task instance and empty context included). Then add `'language'` to `PreferenceConfigKey`/`ALL_CONFIG_KEYS` in `src/types/config.ts`, the select `PREFERENCE_FIELDS` entry in `src/config-keys.ts`, the validation branch in `src/config-editor/validation.ts`, and the `getContextLanguage` helper mirroring `src/utils/config-timezone.ts`. Verify: `bun test tests/i18n/ tests/config-editor/ && bun run typecheck`
 - [ ] 2.2 Add the internal `language_prompted` config key (guarded by `isConfigKey`, never a `ConfigField`) and a failing-then-passing test that it is storable/unsettable via the config store but absent from `getConfigFieldsForContext`. Verify: `bun test tests/i18n/ tests/config-fields.test.ts`
 
 ## 3. First-interaction picker
