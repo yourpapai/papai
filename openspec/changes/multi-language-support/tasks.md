@@ -24,7 +24,7 @@ See LICENSE in the project root for details.
 
 ## 4. System prompt per locale
 
-- [ ] 4.1 Write failing system-prompt tests: for `ru` the assembled prompt uses Russian fragments and contains the "answer in Russian" instruction; for unset language it is byte-identical to today's English prompt minus the mirror-language line, plus "answer in English"; tool names/parameter keys/JSON examples remain verbatim in both. Then move the fragment constants of `src/system-prompt.ts`, `src/system-prompt-group.ts`, `src/system-prompt-prefs.ts`, `src/completion/verified-completion.ts` into the catalogs' `systemPrompt` subtree and thread the locale through the builders. Verify: `bun test tests/system-prompt/ tests/completion/`
+- [x] 4.1 Write failing system-prompt tests: for `ru` the assembled prompt uses Russian fragments and contains the "answer in Russian" instruction; for unset language it is byte-identical to today's English prompt minus the mirror-language line, plus "answer in English"; tool names/parameter keys/JSON examples remain verbatim in both. Then move the fragment constants of `src/system-prompt.ts`, `src/system-prompt-group.ts`, `src/system-prompt-prefs.ts`, `src/completion/verified-completion.ts` into the catalogs' `systemPrompt` subtree and thread the locale through the builders. Verify: `bun test tests/system-prompt/ tests/completion/`
 - [ ] 4.2 Assert locale resolution in the orchestrator: the locale passed to `buildSystemPrompt` comes from the message's config context. Verify: `bun test tests/llm-orchestrator/`
 
 ## 5. Framework-text migration (one surface per task)

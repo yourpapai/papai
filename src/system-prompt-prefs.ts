@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { t, type Locale } from './i18n/index.js'
 import { DISCLOSURE_INJECTED_TOOL_NAMES } from './tools/disclosure/core.js'
 import { getToolMetadata, TOOL_METADATA } from './tools/tool-metadata.js'
 import { resolveToolPermission, type ToolPrefs } from './tools/tool-preferences.js'
@@ -12,7 +13,11 @@ import { resolveToolPermission, type ToolPrefs } from './tools/tool-preferences.
  * one enabled tool (a "partial" disable). Whole-domain disables are already handled by
  * fragment exclusion, so they are intentionally not repeated here.
  */
-export function buildUnavailableLine(prefs: ToolPrefs, enabled: ReadonlySet<string>): string | null {
+export function buildUnavailableLine(
+  prefs: ToolPrefs,
+  enabled: ReadonlySet<string>,
+  locale: Locale = 'en',
+): string | null {
   const enabledDomains = new Set<string>()
   for (const name of enabled) {
     const meta = getToolMetadata(name)
@@ -26,18 +31,18 @@ export function buildUnavailableLine(prefs: ToolPrefs, enabled: ReadonlySet<stri
     if (resolveToolPermission(prefs, name) === 'deny') names.add(name)
   }
   if (names.size === 0) return null
-  return `Unavailable tools — do not use or mention: ${[...names].toSorted().join(', ')}.`
+  return t('systemPrompt.unavailableTools', locale, { names: [...names].toSorted().join(', ') })
 }
 
-export function buildAskToolsLine(prefs: ToolPrefs, exposed: ReadonlySet<string>): string | null {
+export function buildAskToolsLine(
+  prefs: ToolPrefs,
+  exposed: ReadonlySet<string>,
+  locale: Locale = 'en',
+): string | null {
   const askNames = [...exposed]
     .filter((name) => !DISCLOSURE_INJECTED_TOOL_NAMES.has(name))
     .filter((name) => resolveToolPermission(prefs, name) === 'ask')
     .toSorted()
   if (askNames.length === 0) return null
-  return [
-    'Some tools require user permission before each call. Listed tools must include',
-    '`_permission_reason` (one sentence, present tense) describing why the call is needed:',
-    askNames.map((n) => `  - ${n}`).join('\n'),
-  ].join('\n')
+  return t('systemPrompt.askTools', locale, { tools: askNames.map((n) => `  - ${n}`).join('\n') })
 }

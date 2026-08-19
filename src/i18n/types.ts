@@ -45,6 +45,44 @@ export interface Dictionary {
     russian: string
     saved: string
   }
+  /** System-prompt fragments; tool names, parameter keys and JSON examples stay verbatim. */
+  systemPrompt: {
+    coreIntro: string
+    providerlessIntro: string
+    dueDates: string
+    recurring: string
+    deferred: string
+    providerlessDeferred: string
+    disclosureProtocol: string
+    disclosureAlwaysTools: string
+    disclosureAlwaysToolsWithExpand: string
+    proactive: string
+    userFacingWords: string
+    steering: string
+    webFetch: string
+    chatLink: string
+    workflow: string
+    destructive: string
+    relations: string
+    memos: string
+    memorySearch: string
+    groupFindUser: string
+    outputCore: string
+    instructionsRule: string
+    languageInstruction: string
+    groupReminders: string
+    groupRemindersWithParticipants: string
+    unavailableTools: string
+    askTools: string
+  }
+  /** Verified-completion verifier prompt fragments. */
+  completion: {
+    verifierSystem: string
+    verifierSummarizeRule: string
+    verifierTruncatedRule: string
+    neutralFallback: string
+    finalizeMessage: string
+  }
 }
 
 /** Dotted path to a string leaf of a `Dictionary` (e.g. `'commands.stop.stoppingNow'`). */
