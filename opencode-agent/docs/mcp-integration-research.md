@@ -293,3 +293,62 @@ status map was:
   these listings. A pipeline cannot discover MCP tool names from `tool.ids`;
   the naming contract (`<server>_<tool>`) is the only thing it can rely on.
 
+### 2.4 The permission key form that grants `<server>_<tool>` tools
+
+Same method as the existing plan/build permission table
+(`ROADMAP.md` S3-2's verification): feed the config to the real binary and
+read back the **resolved rules** it reports — here `GET /agent` through the
+pinned SDK (`client.app.agents()`, the listing `opencode agent list` prints),
+where each agent carries `permission: Array<{permission, pattern, action}>`.
+Closed with the §2.2 stub method too, so the claim is not config resolution
+but an **observed** model-visible table. Pipeline-shaped configs throughout
+(`buildOpencodeConfig` output, deny-by-default profiles, `mcp.research`
+connected); the only edits were the grant keys under test:
+
+```json
+"agent": {
+  "build": { "permission": { "*": "deny", "read": "allow", "edit": "allow",
+                             "bash": "allow", "…": "…", "research_*": "allow" } },
+  "plan":  { "permission": { "*": "deny", "read": "allow", "…": "…",
+                             "research_echo": "allow" } }
+}
+```
+
+**Verified** — the grant key form is the tool-name pattern, and the practical
+shape is the `<server>_*` wildcard:
+
+| Fed key (in the profile's map) | Resolved rule reported          | Model-visible table under that profile            |
+| ------------------------------ | ------------------------------- | ------------------------------------------------- |
+| `research_*` (on `build`)      | `{permission:"research_*", pattern:"*", action:"allow"}` | `bash edit glob grep read research_echo research_env_probe todowrite write` — **both** tools admitted |
+| `research_echo` (on `plan`)    | `{permission:"research_echo", pattern:"*", action:"allow"}` | `glob grep read research_echo todowrite` — **exactly one** tool admitted |
+| `research` (bare, on `build`)  | `{permission:"research", pattern:"*", action:"allow"}` — accepted silently | `bash edit glob grep read todowrite write` — **nothing** admitted |
+
+Three readings for §4. The **wildcard spans the server's whole toolset** — one
+key, both tools — and stays inside deny-by-default: profiles without the key
+(the `plan` row never carried `research_*`) admit nothing, so a server granted
+to `build` is invisible to `plan`. The **exact-name form** works and grants
+exactly that tool, so per-tool narrowing is available if an option ever needs
+it. And the **bare server name is a silent no-op**: the binary accepts it as a
+rule and reports it resolved, while the table admits nothing — a typo'd grant
+(`research`, no `_*`) fails quietly, which is worth a one-line guard wherever
+§4 generates the key.
+
+**Verified** — and the finding that decides where the grant must live: a
+`research_*` allow on the **global** `permission` block does **not** reach a
+profile that carries its own map. With the grant on the global block only, the
+unnamed built-ins that inherit it (`general`, `explore`, `title`, `summary`,
+`compaction` — the agents this pipeline never names) reported
+`research_*: allow` in their resolved rules, but `build` — whose own map ends
+in `"*": "deny"` — resolved to a ruleset that **contains** the global's
+`research_*: allow` *and still admitted no research tools* (its table was
+`bash edit glob grep read todowrite write`). The resolved list is an ordered
+concatenation — built-in base rules, then the global block, then the agent's
+own — and the outcome is consistent with the later rule winning: the agent's
+trailing `"*": "deny"` cancels the global's earlier allow. The mechanism
+(order precedence) is read off the list order; the outcome (rule present,
+tools absent) is the observed fact. So for the pipeline's shape the grant
+belongs **in each profile's map**, placed with the other allows after the
+`"*": "deny"` — exactly how `grant()` in `openai-config.ts` already emits its
+maps — and a global-default grant on its own would be a no-op for every agent
+the pipeline prompts.
+

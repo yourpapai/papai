@@ -45,7 +45,7 @@ claim is recorded before the document asserts it.
       the smuggle-in-config question for the repo-file option.
       Verify: recorded in the document with the **verified** label and the fed
       config reproduced
-- [ ] 2.4 Confirm the permission key form that grants `<server>_<tool>` tools
+- [x] 2.4 Confirm the permission key form that grants `<server>_<tool>` tools
       (e.g. `<server>_*` wildcard) against the resolved rules the binary
       reports — same method as the existing plan/build permission table.
       Verify: recorded in the document with the **verified** label and the fed
