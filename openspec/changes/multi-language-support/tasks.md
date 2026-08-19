@@ -40,4 +40,4 @@ See LICENSE in the project root for details.
 
 ## 7. Full verification
 
-- [ ] 7.1 Run the full suite and gates: `bun test`, `bun run typecheck`, `bun run lint`; fix any fallout. Update `docs/architecture/behaviors.md` (language preference, picker, fallback) and `docs/architecture/environment.md` if runtime keys changed. Verify: `bun run test:status`
+- [x] 7.1 Run the full suite and gates: `bun test`, `bun run typecheck`, `bun run lint`; fix any fallout. Update `docs/architecture/behaviors.md` (language preference, picker, fallback) and `docs/architecture/environment.md` if runtime keys changed. Verify: `bun run test:status`
