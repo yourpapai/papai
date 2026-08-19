@@ -39,6 +39,18 @@ export interface AutonomyOverrides {
   readonly deadlineMinutes?: number
 }
 
+function gateResumeOptionsOf(cmd: Extract<CliCommand, { readonly subcommand: 'gate' }>): GateResumeOptions {
+  return {
+    ...(cmd.confirmAll ? { confirmAll: true } : {}),
+    ...(cmd.abort ? { abort: true } : {}),
+    ...(cmd.extend ? { extend: true } : {}),
+    ...(cmd.waitDeadline === true ? { waitDeadline: true } : {}),
+    ...(cmd.noWait === true ? { noWait: true } : {}),
+    ...(cmd.verbosity === undefined ? {} : { verbosity: cmd.verbosity }),
+    ...(cmd.vetoes.length > 0 ? { vetoes: cmd.vetoes } : {}),
+  }
+}
+
 export async function main(argv: readonly string[], harness: CliHarness): Promise<number> {
   const cmd = parseCliArgs(argv)
   if (cmd.subcommand === 'start') {
@@ -75,14 +87,7 @@ export async function main(argv: readonly string[], harness: CliHarness): Promis
       }
       return 0
     }
-    await harness.runGateResume(cmd.runId, {
-      ...(cmd.confirmAll ? { confirmAll: true } : {}),
-      ...(cmd.abort ? { abort: true } : {}),
-      ...(cmd.extend ? { extend: true } : {}),
-      ...(cmd.waitDeadline === true ? { waitDeadline: true } : {}),
-      ...(cmd.noWait === true ? { noWait: true } : {}),
-      ...(cmd.vetoes.length > 0 ? { vetoes: cmd.vetoes } : {}),
-    })
+    await harness.runGateResume(cmd.runId, gateResumeOptionsOf(cmd))
     return 0
   }
   const body = await harness.buildReport(cmd.runId, cmd.pr)

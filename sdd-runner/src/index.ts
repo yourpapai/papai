@@ -177,14 +177,14 @@ async function resolveAndCall<T>(workDir: string, runId: string, fn: (resolved: 
   return fn(resolved)
 }
 
-async function runEntry(): Promise<void> {
+export async function runEntry(): Promise<void> {
   const argv = process.argv.slice(2)
   if (argv[0] === '--help' || argv[0] === '-h') {
     process.stdout.write(`${USAGE}\n`)
     return
   }
   const cmd = parseCliArgs(argv)
-  const verbosity = cmd.subcommand === 'start' ? cmd.verbosity : 'normal'
+  const verbosity = cmd.subcommand === 'start' || cmd.subcommand === 'gate' ? (cmd.verbosity ?? 'normal') : 'normal'
   const harness = await buildHarness(verbosity)
   const code = await main(argv, harness)
   process.exit(code)

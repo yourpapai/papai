@@ -18,25 +18,41 @@ export function terminalTitleFor(changeName: string, stage: string): string {
 
 export interface TerminalTitleHandle {
   readonly restore: () => void
+  /**
+   * Remove exactly the listeners this registration added. Production never
+   * calls it — the handlers live until process end — but a test that imports
+   * the module into a shared bun test process must, or every later SIGTERM
+   * aimed at that process (child reaping, teardown) is converted into
+   * `process.exit(143)` before the run can print its summary.
+   */
+  readonly dispose: () => void
 }
 
 /**
  * Register best-effort title restoration: `process.on('exit')` plus
  * SIGINT/SIGTERM handlers. Returns a handle whose `restore()` can be called
- * directly (used by tests and explicit teardown).
+ * directly (used by tests and explicit teardown) and whose `dispose()`
+ * removes the global listeners.
  */
 export function registerTerminalTitle(write: (chunk: string) => void, defaultTitle: () => string): TerminalTitleHandle {
   const restore = (): void => {
     write(defaultTitle())
   }
-  process.on('exit', restore)
-  process.on('SIGINT', () => {
+  const onSigint = (): void => {
     restore()
     process.exit(130)
-  })
-  process.on('SIGTERM', () => {
+  }
+  const onSigterm = (): void => {
     restore()
     process.exit(143)
-  })
-  return { restore }
+  }
+  process.on('exit', restore)
+  process.on('SIGINT', onSigint)
+  process.on('SIGTERM', onSigterm)
+  const dispose = (): void => {
+    process.off('exit', restore)
+    process.off('SIGINT', onSigint)
+    process.off('SIGTERM', onSigterm)
+  }
+  return { restore, dispose }
 }

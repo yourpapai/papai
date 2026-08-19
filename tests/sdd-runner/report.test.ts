@@ -180,3 +180,84 @@ function baseInput(evs: readonly SddEvent[]): ReportInput {
     pr: false,
   }
 }
+
+describe('buildReport verdict and lens edges (mutation kills)', () => {
+  it('verdict words: converged plural, open after N, review not reached', async () => {
+    const baseEvents = (): SddEvent[] => [
+      { altitude: 'L2', type: 'depth', profile: 'M', rationale: 'r', source: 'estimator', seq: 1, ts: 'x' },
+      { altitude: 'L1', type: 'spawned', agent: 'reviewer-r1', role: 'reviewer', model: 'x', seq: 2, ts: 'x' },
+    ]
+    const mk = (evts: SddEvent[]): ReportInput => ({
+      readEvents: () => evts,
+      readChangeDir: () => Promise.resolve(changeDir()),
+      execGit: gitLog(''),
+      runId: 'run-1',
+      changeName: 'add-thing',
+      branch: 'add-thing',
+      pr: false,
+    })
+    const twoRounds: SddEvent[] = [
+      ...baseEvents(),
+      { altitude: 'L2', type: 'round_open', round: 1, cap: 3, seq: 3, ts: 'x' },
+      { altitude: 'L2', type: 'round_open', round: 2, cap: 3, seq: 4, ts: 'x' },
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 2,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+        seq: 5,
+        ts: 'x',
+      },
+    ]
+    const body2 = await buildReport(mk(twoRounds))
+    expect(body2).toContain('converged in 2 rounds')
+    expect(body2).toContain('gate versions presented: 0')
+    expect(body2).toContain('skeptic lens: not run — M profile')
+
+    const noSkepticNoDepth: SddEvent[] = [
+      { altitude: 'L1', type: 'spawned', agent: 'a', role: 'reviewer', model: 'm', seq: 1, ts: 'x' },
+    ]
+    const bodyDepthless = await buildReport(mk(noSkepticNoDepth))
+    expect(bodyDepthless).toContain('not classified')
+    expect(bodyDepthless).toContain('review not reached')
+    expect(bodyDepthless).toContain('skeptic lens: not run\n')
+
+    const openVerdict: SddEvent[] = [
+      ...baseEvents(),
+      { altitude: 'L2', type: 'round_open', round: 1, cap: 3, seq: 3, ts: 'x' },
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 1,
+        verdict: 'open',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+        seq: 4,
+        ts: 'x',
+      },
+    ]
+    expect(await buildReport(mk(openVerdict))).toContain('open after 1 round')
+
+    const skepticRun: SddEvent[] = [
+      ...baseEvents(),
+      { altitude: 'L1', type: 'spawned', agent: 'skeptic-1', role: 'skeptic', model: 'm', seq: 3, ts: 'x' },
+    ]
+    expect(await buildReport(mk(skepticRun))).toContain('skeptic lens: run')
+  })
+
+  it('commits line filters blank lines and splits on newlines', async () => {
+    const input: ReportInput = {
+      readEvents: () => [],
+      readChangeDir: () => Promise.resolve(changeDir()),
+      execGit: gitLog('a1 Subject\n\n  \nb2 Subject\n'),
+      runId: 'run-1',
+      changeName: 'add-thing',
+      branch: 'add-thing',
+      pr: false,
+    }
+    const body = await buildReport(input)
+    expect(body).toContain('a1 Subject')
+    expect(body).toContain('b2 Subject')
+    expect(body).not.toMatch(/^ $/mu)
+  })
+})

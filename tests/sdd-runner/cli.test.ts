@@ -436,6 +436,41 @@ describe('main autonomy and gate decision wiring', () => {
     expect(cap.gateCalls[1]).toEqual(['run-2', { extend: true }])
   })
 
+  it('forwards --wait-deadline and --no-wait to runGateResume as sole keys', async () => {
+    const cap = captureHarness()
+    await main(['gate', 'resume', 'run-1', '--wait-deadline'], cap.harness)
+    expect(cap.gateCalls[0]).toEqual(['run-1', { waitDeadline: true }])
+    await main(['gate', 'resume', 'run-2', '--no-wait'], cap.harness)
+    expect(cap.gateCalls[1]).toEqual(['run-2', { noWait: true }])
+  })
+
+  it('forwards gate --verbosity as its own key', async () => {
+    const cap = captureHarness()
+    await main(['gate', 'resume', 'run-1', '--verbosity', 'quiet'], cap.harness)
+    expect(cap.gateCalls[0]).toEqual(['run-1', { verbosity: 'quiet' }])
+  })
+
+  it('omits verbosity from gate resume options when the flag is absent', async () => {
+    const cap = captureHarness()
+    await main(['gate', 'resume', 'run-1', '--abort'], cap.harness)
+    expect(cap.gateCalls[0]).toStrictEqual(['run-1', { abort: true }])
+  })
+
+  it('gate resume routes to runGateResume even when another gate verb exists in the grammar', async () => {
+    const cap = captureHarness()
+    const reopenCalls: string[] = []
+    const harness: CliHarness = {
+      ...cap.harness,
+      runGateReopen: (runId) => {
+        reopenCalls.push(runId)
+        return Promise.resolve({ runId, gateVersion: 1 })
+      },
+    }
+    await main(['gate', 'resume', 'run-1', '--confirm-all'], harness)
+    expect(cap.gateCalls[0]).toStrictEqual(['run-1', { confirmAll: true }])
+    expect(reopenCalls).toHaveLength(0)
+  })
+
   it('never claims an empty pending list while entries print', async () => {
     const pending: PendingGateEntry[] = [
       {
@@ -475,6 +510,7 @@ describe('audit and gate reopen verbs', () => {
     })
     expect(() => parseCliArgs(['gate', 'reopen', 'run-1', '--gate', 'x'])).toThrow(/invalid --gate/u)
     expect(() => parseCliArgs(['gate', 'reopen', 'run-1'])).toThrow(/--gate/u)
+    expect(() => parseCliArgs(['gate', 'reopen', 'run-1', '--gate'])).toThrow(/invalid --gate: $/u)
   })
 
   it('gate reopen requires a run id and rejects unknown flags naming them', () => {
@@ -500,6 +536,52 @@ describe('audit and gate reopen verbs', () => {
     })
   })
 
+  it('gate resume without --verbosity carries no verbosity key, and with it carries the value', () => {
+    const without = parseCliArgs(['gate', 'resume', 'run-1', '--abort'])
+    expect('verbosity' in without).toBe(false)
+    const withVerbosity = parseCliArgs(['gate', 'resume', 'run-1', '--verbosity', 'debug'])
+    expect(withVerbosity).toMatchObject({ verbosity: 'debug' })
+    expect('waitDeadline' in withVerbosity).toBe(false)
+    expect('noWait' in withVerbosity).toBe(false)
+  })
+
+  it('a standard start flag followed by autonomy flags parses both', () => {
+    expect(parseCliArgs(['start', 'task.md', '--depth', 'L', '--autonomy', 'auto'])).toStrictEqual({
+      subcommand: 'start',
+      taskFile: 'task.md',
+      depth: 'L',
+      verbosity: 'normal',
+      autonomy: 'auto',
+    })
+    expect(parseCliArgs(['start', 'task.md', '--depth', 'S', '--verbosity', 'debug'])).toMatchObject({
+      depth: 'S',
+      verbosity: 'debug',
+    })
+  })
+
+  it('an invalid verbosity value after a depth flag is rejected as an invalid verbosity, not an unknown flag', () => {
+    expect(() => parseCliArgs(['start', 'task.md', '--depth', 'S', '--verbosity', 'silent'])).toThrow(
+      /invalid --verbosity: silent/u,
+    )
+  })
+
+  it('a bare gate listing never routes to runGateReopen', async () => {
+    const cap = captureHarness()
+    const reopenCalls: string[] = []
+    const harness: CliHarness = {
+      ...cap.harness,
+      runGateReopen: (runId) => {
+        reopenCalls.push(runId)
+        return Promise.resolve({ runId, gateVersion: 1 })
+      },
+    }
+    await main(['gate'], harness)
+    expect(reopenCalls).toHaveLength(0)
+    await main(['gate', 'resume', 'run-1', '--abort'], harness)
+    expect(reopenCalls).toHaveLength(0)
+    expect(cap.gateCalls[0]).toStrictEqual(['run-1', { abort: true }])
+  })
+
   it('audit rejects extra flags as unknown', () => {
     expect(() => parseCliArgs(['audit', 'run-1', '--bogus'])).toThrow('unknown flag: --bogus')
   })
@@ -511,9 +593,16 @@ describe('audit and gate reopen verbs', () => {
     expect(calls.join('\n')).toContain('report-body')
   })
 
-  it('main routes gate reopen to harness.runGateReopen', async () => {
+  it('main routes gate reopen to harness.runGateReopen, and only reopen does', async () => {
     const calls: string[] = []
-    await main(['gate', 'reopen', 'run-9', '--gate', '3'], makeAuditHarness(calls))
+    const harness: CliHarness = {
+      ...makeAuditHarness(calls),
+      runGateResume: () => Promise.resolve({ runId: 'run-9', outcome: 'approved', version: 1 }),
+    }
+    await main(['gate', 'resume', 'run-9', '--abort'], harness)
+    expect(calls.filter((c) => c.startsWith('reopen:'))).toHaveLength(0)
+    calls.length = 0
+    await main(['gate', 'reopen', 'run-9', '--gate', '3'], harness)
     expect(calls).toContain('reopen:run-9:3')
   })
 })
@@ -563,5 +652,25 @@ describe('quiet verbosity (13.7)', () => {
     expect(parseCliArgs(['resume', 'r1', '--verbosity', 'quiet'])).toMatchObject({ verbosity: 'quiet' })
     expect(parseCliArgs(['continue', 'r1', '--verbosity', 'quiet'])).toMatchObject({ verbosity: 'quiet' })
     expect(parseCliArgs(['gate', 'resume', 'r1', '--verbosity', 'quiet'])).toMatchObject({ verbosity: 'quiet' })
+  })
+
+  it('maps every gate verbosity value to itself, rejecting empty and unknown values', () => {
+    for (const value of ['quiet', 'brief', 'normal', 'debug'] as const) {
+      expect(parseCliArgs(['gate', 'resume', 'r1', '--verbosity', value])).toMatchObject({ verbosity: value })
+    }
+    expect(() => parseCliArgs(['gate', 'resume', 'r1', '--verbosity', 'loud'])).toThrow('invalid --verbosity: loud')
+    expect(() => parseCliArgs(['gate', 'resume', 'r1', '--verbosity', ''])).toThrow('invalid --verbosity: ')
+  })
+
+  it('deadline-only and level-only overrides carry exactly one key', () => {
+    const deadlineOnly = parseCliArgs(['start', 'task.md', '--auto-deadline', '10'])
+    expect('autonomy' in deadlineOnly).toBe(false)
+    const levelOnly = parseCliArgs(['start', 'task.md', '--autonomy', 'assist'])
+    expect('autoDeadlineMinutes' in levelOnly).toBe(false)
+  })
+
+  it('rejects a trailing --autonomy or --verbosity value naming the empty value', () => {
+    expect(() => parseCliArgs(['start', 'task.md', '--autonomy'])).toThrow(/invalid --autonomy: $/u)
+    expect(() => parseCliArgs(['gate', 'resume', 'r1', '--verbosity'])).toThrow(/invalid --verbosity: $/u)
   })
 })

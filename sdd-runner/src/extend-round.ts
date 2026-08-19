@@ -26,6 +26,7 @@ import type { GateSessionView } from './gate-session.js'
 import { resumeGate, vetoRedirects } from './gate.js'
 import { createMaterializer } from './materialize.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
+import type { Verbosity } from './renderer.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
@@ -45,6 +46,7 @@ export interface GateResumeOptions {
   readonly extend?: boolean
   readonly waitDeadline?: boolean
   readonly noWait?: boolean
+  readonly verbosity?: Verbosity
   readonly vetoes?: readonly { readonly id: string; readonly redirect?: string }[]
 }
 
