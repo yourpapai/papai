@@ -13,7 +13,7 @@ claim is recorded before the document asserts it.
 
 ## 1. Recorded evidence — SDK surface and CI constraints
 
-- [ ] 1.1 Record the `mcp` config surface from the pinned SDK:
+- [x] 1.1 Record the `mcp` config surface from the pinned SDK:
       `McpLocalConfig` / `McpRemoteConfig` / `McpOAuthConfig` fields with the
       `types.gen.d.ts` file:line anchors, and each runtime endpoint
       (`POST /mcp`, `/mcp/{name}/connect|disconnect|auth`, `GET /mcp`) judged
