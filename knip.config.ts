@@ -103,10 +103,6 @@ export default {
     // change (openspec/changes/context-vault-plugin); later tasks (settings
     // routes, push route, summarizer, plugin facade) consume their exports.
     'src/context-vault/*.ts!',
-    // i18n module is the seam surface for the multi-language-support change
-    // (issue #298, steps 2–6); later tasks (language config key, picker,
-    // system prompt, command migration, settings UI) consume its exports.
-    'src/i18n/index.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -252,16 +248,6 @@ export default {
     // summarizer, plugin facade) and by tests outside knip's production
     // project scope.
     'src/context-vault/*.ts': ['exports', 'types'],
-    // i18n module is the seam surface for the in-flight multi-language-support
-    // change (issue #298); its exports are consumed by later tasks (language
-    // config key, picker, system prompt, command migration, settings UI) and
-    // by tests outside knip's production project scope.
-    'src/i18n/**': ['exports', 'types'],
-    // getContextLanguage is the language-resolution seam for the in-flight
-    // multi-language-support change (issue #298); picker, system-prompt and
-    // command-migration tasks consume it, plus tests outside knip's
-    // production project scope.
-    'src/utils/config-language.ts': ['files', 'exports'],
     'src/db/context-vault-schema.ts': ['exports', 'types'],
     // Re-export facades whose remaining flagged bindings knip cannot trace:
     // the published plugin-types package export, declared plugin-core-separation
