@@ -147,7 +147,8 @@ function makeOptions(dir: string, basename: string): RunStageAgentOptions<{ find
     outputPath: basename,
     outputSchema: FindingsSidecarSchema,
     label: 'reviewer-r1',
-    logPath: path.join(dir, 'logs', 'reviewer-r1.log'),
+    runDir: dir,
+    round: 1,
     sidecarDir: path.join(dir, 'sidecars'),
   }
 }

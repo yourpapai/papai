@@ -239,7 +239,7 @@ async function runIntakeStage(env: PipelineEnv): Promise<DepthProfile> {
   let depth: DepthProfile = input.depthOverride ?? 'S'
   await machine.runStage('intake', async () => {
     const result = await runIntake(
-      { driver: deps.driver, agent, emit: ctx.emit, sidecarDir: ctx.sidecarDir, cwd: ctx.cwd },
+      { driver: deps.driver, agent, emit: ctx.emit, sidecarDir: ctx.sidecarDir, runDir: state.runDir, cwd: ctx.cwd },
       { changeName: input.changeName, taskText: input.taskText, depthOverride: input.depthOverride },
     )
     depth = result.depth
@@ -250,13 +250,13 @@ async function runIntakeStage(env: PipelineEnv): Promise<DepthProfile> {
 }
 
 async function runDraftStage(env: PipelineEnv, depth: DepthProfile): Promise<void> {
-  const { deps, machine, agent, ctx, input } = env
+  const { deps, state, machine, agent, ctx, input } = env
   await machine.runStage('draft', () =>
     runDraft(
       {
         driver: deps.driver,
         agent,
-        logPath: path.join(ctx.sidecarDir, 'logs'),
+        runDir: state.runDir,
         sidecarDir: ctx.sidecarDir,
         cwd: ctx.cwd,
       },
@@ -274,6 +274,7 @@ async function runReviewStage(env: PipelineEnv, depth: DepthProfile, taskText: s
       {
         agent,
         emit: ctx.emit,
+        runDir: state.runDir,
         sidecarDir: ctx.sidecarDir,
         cwd: ctx.cwd,
         materialize,

@@ -118,6 +118,7 @@ function makeDecomposeFixture(
   const deps: DecomposeDeps = {
     driver: createOpenSpecDriver({ exec, cwd: dir }),
     agent: { spawn, config, execGit, emit: () => undefined },
+    runDir: dir,
     sidecarDir: path.join(dir, 'sidecars'),
     cwd: dir,
   }
@@ -204,6 +205,7 @@ function makeAtomicityFixture(dir: string, report: string, validateResults?: boo
   const deps: AtomicityDeps = {
     driver: createOpenSpecDriver({ exec, cwd: dir }),
     agent: { spawn, config, execGit, emit: () => undefined },
+    runDir: dir,
     sidecarDir: path.join(dir, 'sidecars'),
     cwd: dir,
   }

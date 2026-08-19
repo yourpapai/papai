@@ -321,3 +321,85 @@ describe('createLineHandler reporter wiring', () => {
     expect(slots[slots.length - 1]).toEqual(['drain', null])
   })
 })
+
+describe('createLineHandler session capture seam', () => {
+  test('reports the session id once, on the first session-bearing line', () => {
+    const cwd = makeTempDir('line-handler-session-')
+    const reported: Array<{ id: string; attempt: number }> = []
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      sessionLedger: {
+        recordSessionId: (id, attempt) => {
+          reported.push({ id, attempt })
+        },
+      },
+    })
+    handler.onLine(
+      JSON.stringify({ type: 'step_start', sessionID: 'ses_abc', timestamp: 1, part: { type: 'step-start' } }),
+    )
+    handler.onLine(
+      JSON.stringify({ type: 'step_start', sessionID: 'ses_abc', timestamp: 2, part: { type: 'step-start' } }),
+    )
+    handler.onLine(
+      JSON.stringify({ type: 'tool_use', sessionID: 'ses_abc', part: { tool: 'read', callID: 'c1', state: {} } }),
+    )
+    expect(reported).toEqual([{ id: 'ses_abc', attempt: 1 }])
+  })
+
+  test('never reports when no session-bearing line arrives', () => {
+    const cwd = makeTempDir('line-handler-nosession-')
+    const reported: string[] = []
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      sessionLedger: {
+        recordSessionId: (id) => {
+          reported.push(id)
+        },
+      },
+    })
+    handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
+    handler.onLine('{ not json')
+    expect(reported).toEqual([])
+  })
+
+  test('a ledger error never fails the line handler (best-effort capture)', () => {
+    const cwd = makeTempDir('line-handler-ledger-throw-')
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      sessionLedger: {
+        recordSessionId: () => {
+          throw new Error('disk on fire')
+        },
+      },
+    })
+    handler.onLine(
+      JSON.stringify({ type: 'step_start', sessionID: 'ses_x', timestamp: 1, part: { type: 'step-start' } }),
+    )
+  })
+
+  test('re-arming the seam records the next session under a fresh attempt', () => {
+    const cwd = makeTempDir('line-handler-rearm-')
+    const attempts: number[] = []
+    const ledger = {
+      recordSessionId: (_id: string, attempt: number): void => {
+        attempts.push(attempt)
+      },
+    }
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      sessionLedger: ledger,
+    })
+    handler.onLine(
+      JSON.stringify({ type: 'step_start', sessionID: 'ses_a', timestamp: 1, part: { type: 'step-start' } }),
+    )
+    // runAgent's stall retry re-arms the seam before the second attempt
+    const rearmed = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      sessionLedger: ledger,
+    })
+    rearmed.onLine(
+      JSON.stringify({ type: 'step_start', sessionID: 'ses_b', timestamp: 2, part: { type: 'step-start' } }),
+    )
+    expect(attempts).toEqual([1, 1])
+  })
+})

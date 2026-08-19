@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
 import { z } from 'zod'
@@ -14,6 +15,7 @@ import { createAgentReporter } from './agent-reporter.js'
 import { modelFor } from './config.js'
 import type { AgentRole, ExecGitFn, RunnerConfig } from './config.js'
 import type { EventInput } from './events.js'
+import { nextSessionAttempt, recordSessionId, settleSessionAttempt, transcriptPathFor } from './session-ledger.js'
 
 export const FindingSchema = z.object({
   id: z.string().min(1),
@@ -85,7 +87,10 @@ export interface RunStageAgentOptions<T> {
   readonly outputPath: string
   readonly outputSchema: z.ZodType<T>
   readonly label: string
-  readonly logPath: string
+  /** Run dir owning `sessions.jsonl` and `transcripts/` for this spawn. */
+  readonly runDir: string
+  /** Review round the spawn belongs to (0 for pre-review stages). */
+  readonly round: number
   readonly sidecarDir: string
 }
 
@@ -140,36 +145,57 @@ async function attemptStageAgent<T>(
   deps.emit({ altitude: 'L1', type: 'spawned', agent: options.label, role: options.role, model })
   const absoluteOutput = path.join(options.sidecarDir, path.basename(options.outputPath))
   const reporter = createAgentReporter(options.label, deps.emit)
-  const result = await runAgent({
-    spawn: deps.spawn,
-    model,
-    cwd: options.cwd,
-    prompt,
-    outputPath: absoluteOutput,
-    outputSchema: z.unknown(),
-    label: options.label,
-    logPath: options.logPath,
-    extraArgs: [],
-    timeoutMs: deps.config.timeouts.wallClockMs,
-    inactivityTimeoutMs: deps.config.timeouts.inactivityMs,
-    reporter,
-    onRetry: () => {
-      deps.emit({ altitude: 'L1', type: 'retrying', agent: options.label, reason: 'stall', attempt })
+  const spawnInput = { label: options.label, role: options.role, round: options.round, model }
+  // One ledger attempt per validation attempt; the session id is recorded the
+  // moment the first session-bearing event line arrives (D1). A stall retry
+  // inside runAgent shares the attempt number and appends to the transcript.
+  const ledgerAttempt = nextSessionAttempt(options.runDir, options.label, options.round)
+  const sessionLedger = {
+    recordSessionId: (id: string, preferred: number): void => {
+      recordSessionId(options.runDir, spawnInput, id, preferred)
     },
-  })
-  await guardWorkingTree(deps.execGit, options.cwd, before)
-  const parsed = options.outputSchema.safeParse(result.value)
-  if (parsed.success) {
-    deps.emit({ altitude: 'L1', type: 'done', agent: options.label, model, usage: result.usage })
-    return { value: parsed.data, usage: result.usage, attempts: attempt }
   }
-  if (attempt >= MAX_VALIDATION_ATTEMPTS) {
-    throw new Error(
-      `stage agent ${options.label} failed validation after ${MAX_VALIDATION_ATTEMPTS} attempts: ${parsed.error.message}`,
-    )
+  const logPath = transcriptPathFor(options.runDir, options.label, options.round, ledgerAttempt)
+  mkdirSync(path.dirname(logPath), { recursive: true })
+  try {
+    const result = await runAgent({
+      spawn: deps.spawn,
+      model,
+      cwd: options.cwd,
+      prompt,
+      outputPath: absoluteOutput,
+      outputSchema: z.unknown(),
+      label: options.label,
+      logPath,
+      extraArgs: [],
+      timeoutMs: deps.config.timeouts.wallClockMs,
+      inactivityTimeoutMs: deps.config.timeouts.inactivityMs,
+      reporter,
+      sessionLedger,
+      sessionAttempt: ledgerAttempt,
+      onRetry: () => {
+        deps.emit({ altitude: 'L1', type: 'retrying', agent: options.label, reason: 'stall', attempt })
+      },
+    })
+    await guardWorkingTree(deps.execGit, options.cwd, before)
+    const parsed = options.outputSchema.safeParse(result.value)
+    if (parsed.success) {
+      deps.emit({ altitude: 'L1', type: 'done', agent: options.label, model, usage: result.usage })
+      settleSessionAttempt(options.runDir, spawnInput, ledgerAttempt, 'done')
+      return { value: parsed.data, usage: result.usage, attempts: attempt }
+    }
+    settleSessionAttempt(options.runDir, spawnInput, ledgerAttempt, 'killed')
+    if (attempt >= MAX_VALIDATION_ATTEMPTS) {
+      throw new Error(
+        `stage agent ${options.label} failed validation after ${MAX_VALIDATION_ATTEMPTS} attempts: ${parsed.error.message}`,
+      )
+    }
+    deps.emit({ altitude: 'L1', type: 'retrying', agent: options.label, reason: 'validation', attempt: attempt + 1 })
+    return attemptStageAgent(deps, options, attempt + 1, parsed.error.message, before)
+  } catch (error) {
+    settleSessionAttempt(options.runDir, spawnInput, ledgerAttempt, 'killed')
+    throw error instanceof Error ? error : new Error(String(error))
   }
-  deps.emit({ altitude: 'L1', type: 'retrying', agent: options.label, reason: 'validation', attempt: attempt + 1 })
-  return attemptStageAgent(deps, options, attempt + 1, parsed.error.message, before)
 }
 
 export async function runStageAgent<T>(

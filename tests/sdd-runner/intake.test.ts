@@ -140,6 +140,7 @@ function makeFixture(dir: string, estimatorOutput?: string): IntakeFixture {
       emitted.push(EventInputSchema.parse(event))
     },
     sidecarDir: path.join(dir, 'sidecars'),
+    runDir: dir,
     cwd: dir,
   }
   return { deps, emitted, spawned }

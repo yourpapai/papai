@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { parseEventLine } from '../../review-loop/src/event-stream.js'
+import { parseEventLine, sessionIdOfLine } from '../../review-loop/src/event-stream.js'
 
 describe('parseEventLine', () => {
   test('parses step_start', () => {
@@ -131,5 +131,31 @@ describe('parseEventLine', () => {
 
   test('returns null when part is missing', () => {
     expect(parseEventLine(JSON.stringify({ type: 'step_start', timestamp: 1 }))).toBeNull()
+  })
+})
+
+describe('sessionIdOfLine', () => {
+  test('lifts the top-level sessionID from an event line', () => {
+    const line = JSON.stringify({
+      type: 'step_start',
+      sessionID: 'ses_abc',
+      timestamp: 1,
+      part: { type: 'step-start' },
+    })
+    expect(sessionIdOfLine(line)).toBe('ses_abc')
+  })
+
+  test('returns null when the line has no sessionID', () => {
+    const line = JSON.stringify({ type: 'step_start', timestamp: 1, part: { type: 'step-start' } })
+    expect(sessionIdOfLine(line)).toBeNull()
+  })
+
+  test('returns null when sessionID is not a string', () => {
+    expect(sessionIdOfLine(JSON.stringify({ sessionID: 42, part: {} }))).toBeNull()
+    expect(sessionIdOfLine(JSON.stringify({ sessionID: null, part: {} }))).toBeNull()
+  })
+
+  test('returns null for malformed JSON', () => {
+    expect(sessionIdOfLine('{ not json')).toBeNull()
   })
 })

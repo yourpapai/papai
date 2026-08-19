@@ -118,7 +118,7 @@ function makeFixture(dir: string, script: Record<string, ArtifactWrite[]>, valid
   const deps: DraftDeps = {
     driver: createOpenSpecDriver({ exec, cwd: dir }),
     agent: { spawn, config, execGit, emit: () => undefined },
-    logPath: path.join(dir, 'events.ndjson'),
+    runDir: dir,
     sidecarDir: path.join(dir, 'sidecars'),
     cwd: dir,
   }

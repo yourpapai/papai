@@ -129,6 +129,7 @@ export async function reloadStagedSteer(runDir: string): Promise<StagedSteer> {
 export interface ReviewLoopDeps {
   readonly agent: AgentLayerDeps
   readonly emit: (event: EventInput) => void
+  readonly runDir: string
   readonly sidecarDir: string
   readonly cwd: string
   readonly materialize: (round: number) => Promise<void>
@@ -185,7 +186,8 @@ async function runLens(
     outputPath,
     outputSchema: FindingsSidecarSchema,
     label: `${lens}-r${round}`,
-    logPath: `${deps.sidecarDir}/logs/${lens}-r${round}.log`,
+    runDir: deps.runDir,
+    round,
     sidecarDir: deps.sidecarDir,
   })
   return result.value.findings
@@ -212,7 +214,8 @@ async function runResolver(
     outputPath: `resolutions-${round}.json`,
     outputSchema: ResolverOutputSchema,
     label: `resolver-r${round}`,
-    logPath: `${deps.sidecarDir}/logs/resolver-r${round}.log`,
+    runDir: deps.runDir,
+    round,
     sidecarDir: deps.sidecarDir,
   })
   for (const entry of result.value.resolutions) {

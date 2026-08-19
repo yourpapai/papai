@@ -150,6 +150,7 @@ function makeLoopFixture(dir: string, script: Record<string, string[]>): LoopFix
       emitted.push(EventInputSchema.parse(event))
     },
     sidecarDir: path.join(dir, 'sidecars'),
+    runDir: dir,
     cwd: dir,
     materialize: (round) => {
       materialized.push(round)

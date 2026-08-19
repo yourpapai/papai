@@ -101,6 +101,7 @@ async function runExtendedReview(
     {
       agent,
       emit,
+      runDir: state.runDir,
       sidecarDir,
       cwd: deps.config.repoRoot,
       materialize,

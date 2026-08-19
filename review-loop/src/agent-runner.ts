@@ -10,11 +10,11 @@ import path from 'node:path'
 import type { z } from 'zod'
 
 import { createLineHandler, enqueueLog } from './line-handler.js'
-import type { LineHandler } from './line-handler.js'
+import type { LineHandler, SessionLedgerSeam } from './line-handler.js'
 import type { ProgressReporter } from './progress-log.js'
 
 export { createLineHandler } from './line-handler.js'
-export type { LineHandler } from './line-handler.js'
+export type { LineHandler, SessionLedgerSeam } from './line-handler.js'
 
 export interface SpawnResult {
   exitCode: number
@@ -99,6 +99,14 @@ export interface RunAgentOptions<T> {
   onRetry?: () => void
   timeoutMs?: number
   inactivityTimeoutMs?: number
+  /**
+   * Session-capture seam (D1): called once, the moment the first
+   * session-bearing event line of this spawn arrives. The host records the id
+   * synchronously so a crash mid-agent still leaves it on disk.
+   */
+  sessionLedger?: SessionLedgerSeam
+  /** Preferred ledger attempt number for this spawn (default 1). */
+  sessionAttempt?: number
 }
 
 interface AttemptResult<T> {
@@ -171,6 +179,9 @@ function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<
 
 async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler): Promise<Attempt<T>> {
   await mkdir(path.resolve(options.cwd, '.review-loop'), { recursive: true })
+  // Re-arm session capture: a stall retry is a fresh opencode session, and its
+  // id must be recorded even though the first attempt already captured one.
+  handler.ctx.sessionId = null
   const result = await attemptRun(options, handler.onLine)
   if (result.exitCode !== 0) {
     enqueueLog(handler.ctx, `[${options.label}] stderr: ${result.stderr}\n`)

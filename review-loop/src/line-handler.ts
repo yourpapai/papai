@@ -6,7 +6,7 @@
 import { appendFile } from 'node:fs/promises'
 
 import { emptyUsage, type AgentUsage, type LineSink, type RunAgentOptions } from './agent-runner.js'
-import { type OpencodeEvent, parseEventLine } from './event-stream.js'
+import { type OpencodeEvent, parseEventLine, sessionIdOfLine } from './event-stream.js'
 import { formatLiveLine, formatToolArg } from './live-format.js'
 import type { ProgressReporter } from './progress-log.js'
 
@@ -17,6 +17,15 @@ export interface LineHandler {
   dispose: () => Promise<void>
 }
 
+/**
+ * Session-capture seam (D1): the host records the opencode session id the
+ * moment the first session-bearing line arrives. Best-effort — an error here
+ * must never fail event processing.
+ */
+export interface SessionLedgerSeam {
+  recordSessionId: (opencodeSessionId: string, attempt: number) => unknown
+}
+
 export interface LiveCtx {
   readonly label: string
   readonly slotKey: string
@@ -24,6 +33,7 @@ export interface LiveCtx {
   readonly model: string
   readonly logPath: string
   readonly reporter: ProgressReporter | undefined
+  readonly sessionLedger: SessionLedgerSeam | undefined
   startedAt: number
   toolCount: number
   reportedToolCalls: number
@@ -35,6 +45,9 @@ export interface LiveCtx {
   firstStepAt: number | null
   /** Serializes log appends so `dispose` can drain them; never rejects (logging is best-effort). */
   logChain: Promise<void>
+  /** Preferred ledger attempt for this spawn; the id is recorded exactly once per handler. */
+  sessionAttempt: number
+  sessionId: string | null
 }
 
 function liveLine(ctx: LiveCtx, done: boolean): string {
@@ -125,6 +138,22 @@ function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
   }
 }
 
+/**
+ * Record the spawn's opencode session id the first time a session-bearing
+ * line arrives (D1). Idempotent per handler; best-effort — a ledger error
+ * must never fail event processing.
+ */
+function captureSessionId(ctx: LiveCtx, line: string): void {
+  const sessionId = sessionIdOfLine(line)
+  if (sessionId === null || ctx.sessionId !== null) return
+  ctx.sessionId = sessionId
+  try {
+    ctx.sessionLedger?.recordSessionId(sessionId, ctx.sessionAttempt)
+  } catch {
+    // best-effort: capture must never fail event processing
+  }
+}
+
 export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
   const ctx: LiveCtx = {
     label: options.label,
@@ -133,6 +162,7 @@ export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
     model: options.model,
     logPath: options.logPath,
     reporter: options.reporter,
+    sessionLedger: options.sessionLedger,
     startedAt: 0,
     toolCount: 0,
     reportedToolCalls: 0,
@@ -143,9 +173,12 @@ export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
     usage: emptyUsage(),
     firstStepAt: null,
     logChain: Promise.resolve(),
+    sessionAttempt: options.sessionAttempt ?? 1,
+    sessionId: null,
   }
   const onLine: LineSink = (line: string): void => {
     enqueueLog(ctx, `${line}\n`)
+    captureSessionId(ctx, line)
     const evt = parseEventLine(line)
     if (evt !== null) {
       applyEvent(evt, ctx)
@@ -155,22 +188,25 @@ export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
     if (ctx.timer !== null) {
       clearInterval(ctx.timer)
     }
-    const reporter = ctx.reporter
-    if (reporter !== undefined) {
-      if (reporter.slot === undefined) {
-        reporter.clearLive()
-      } else if (ctx.commitOnDispose && ctx.startedAt !== 0 && reporter.commit !== undefined) {
-        reporter.commit(ctx.slotKey, liveLine(ctx, true))
-      } else if (ctx.commitOnDispose) {
-        // Never started (died before the first step) or the reporter predates
-        // commit(): nothing worth freezing — clear instead.
-        reporter.slot(ctx.slotKey, null)
-      }
-      // commitOnDispose === false: leave the slot live for the unit's owner.
-    }
+    commitSlotOnDispose(ctx)
     await ctx.logChain
   }
   return { ctx, onLine, dispose }
+}
+
+function commitSlotOnDispose(ctx: LiveCtx): void {
+  const reporter = ctx.reporter
+  if (reporter === undefined) return
+  if (reporter.slot === undefined) {
+    reporter.clearLive()
+  } else if (ctx.commitOnDispose && ctx.startedAt !== 0 && reporter.commit !== undefined) {
+    reporter.commit(ctx.slotKey, liveLine(ctx, true))
+  } else if (ctx.commitOnDispose) {
+    // Never started (died before the first step) or the reporter predates
+    // commit(): nothing worth freezing — clear instead.
+    reporter.slot(ctx.slotKey, null)
+  }
+  // commitOnDispose === false: leave the slot live for the unit's owner.
 }
 
 /**
