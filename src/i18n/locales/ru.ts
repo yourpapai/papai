@@ -114,6 +114,13 @@ export const ru: Dictionary = {
   steer: {
     ack: '✋ встраиваю это в текущий запуск…',
   },
+  messageEdit: {
+    promptEditLine: 'Ваша правка: «{editedText}».',
+    adjustButton: 'Подстроить под правку',
+    noteButton: 'Просто учесть',
+    adjustingAck: '✏️ Подстраиваю…',
+    notedAck: '✏️ Принято',
+  },
   orchestrator: {
     toolFailed: '⚠️ Инструмент "{toolName}" завершился ошибкой: {userMessage}',
     apiCallFailed: 'Ошибка вызова API. Попробуйте ещё раз.',

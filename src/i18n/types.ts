@@ -62,6 +62,13 @@ export interface Dictionary {
   steer: {
     ack: string
   }
+  messageEdit: {
+    promptEditLine: string
+    adjustButton: string
+    noteButton: string
+    adjustingAck: string
+    notedAck: string
+  }
   orchestrator: {
     toolFailed: string
     apiCallFailed: string

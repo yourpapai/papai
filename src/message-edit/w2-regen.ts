@@ -11,11 +11,13 @@ import { buildEditSeed, observeEditRegen, type EditRegenPhase } from '../analyti
 import type { AnalyticsObserver } from '../analytics/runtime.js'
 import type { AuthorizationResult, IncomingMessage, PromptHandle, ReplyFn } from '../chat/types.js'
 import { trimTurnForRegeneration } from '../history.js'
+import { t, type Locale } from '../i18n/index.js'
 import type { LlmOrchestratorDeps } from '../llm-orchestrator-types.js'
 import { defaultDeps } from '../llm-orchestrator.js'
 import { logger } from '../logger.js'
 import type { LastTurn } from '../run-control/last-turn-registry.js'
 import { buildStopSummary } from '../run-control/summary.js'
+import { getContextLanguage } from '../utils/config-language.js'
 import { registerEditPrompt, type PendingEditPrompt } from './edit-prompt-store.js'
 import type { EditHandlerDeps } from './handle.js'
 
@@ -127,9 +129,10 @@ export async function handleW2WithSideEffects(
   deps: EditHandlerDeps,
 ): Promise<void> {
   const promptId = randomUUID()
-  const promptText = buildSideEffectsPromptText(last.completedEffects, msg.text)
-  registerEditPrompt(promptId, buildEditPromptHandlers(msg, reply, auth, last, deps))
-  const handle = await postSideEffectsPrompt(reply, auth, msg, promptText, promptId)
+  const locale = getContextLanguage(auth.configContextId ?? auth.storageContextId)
+  const promptText = buildSideEffectsPromptText(last.completedEffects, msg.text, locale)
+  registerEditPrompt(promptId, buildEditPromptHandlers(msg, reply, auth, last, deps, locale))
+  const handle = await postSideEffectsPrompt(reply, auth, msg, promptText, promptId, locale)
   const funnel = resolveEditFunnel(deps, msg, auth)
   if (handle === undefined) {
     log.debug(
@@ -142,9 +145,9 @@ export async function handleW2WithSideEffects(
   emitEditRegen(funnel, 'prompt_shown')
 }
 
-function buildSideEffectsPromptText(effects: LastTurn['completedEffects'], editedText: string): string {
-  const summary = buildStopSummary(effects, { forced: false })
-  return `${summary}\nYour edit: "${editedText}".\n[Adjust for me] / [Just note it]`
+function buildSideEffectsPromptText(effects: LastTurn['completedEffects'], editedText: string, locale: Locale): string {
+  const summary = buildStopSummary(effects, { forced: false, locale })
+  return `${summary}\n${t('messageEdit.promptEditLine', locale, { editedText })}\n[${t('messageEdit.adjustButton', locale)}] / [${t('messageEdit.noteButton', locale)}]`
 }
 
 function buildEditPromptHandlers(
@@ -153,18 +156,19 @@ function buildEditPromptHandlers(
   auth: AuthorizationResult,
   last: LastTurn,
   deps: EditHandlerDeps,
+  locale: Locale,
 ): PendingEditPrompt {
   return {
     contextId: auth.storageContextId,
     editedText: msg.text,
     onAdjust: async (): Promise<void> => {
       emitEditRegen(resolveEditFunnel(deps, msg, auth), 'prompt_adjust')
-      await sendEphemeralAck(reply, auth, '✏️ Adjusting…')
+      await sendEphemeralAck(reply, auth, t('messageEdit.adjustingAck', locale))
       await regenerateFromEditedText(msg, reply, auth, last, deps)
     },
     onNote: async (): Promise<void> => {
       emitEditRegen(resolveEditFunnel(deps, msg, auth), 'prompt_note')
-      await sendEphemeralAck(reply, auth, '✏️ Noted')
+      await sendEphemeralAck(reply, auth, t('messageEdit.notedAck', locale))
     },
   }
 }
@@ -175,12 +179,19 @@ function postSideEffectsPrompt(
   msg: IncomingMessage,
   promptText: string,
   promptId: string,
+  locale: Locale,
 ): Promise<PromptHandle | undefined> {
   return reply
     .buttons(promptText, {
       buttons: [
-        { text: 'Adjust for me', callbackData: `edit:adjust:${promptId}` },
-        { text: 'Just note it', callbackData: `edit:note:${promptId}` },
+        {
+          text: t('messageEdit.adjustButton', locale),
+          callbackData: `edit:adjust:${promptId}`,
+        },
+        {
+          text: t('messageEdit.noteButton', locale),
+          callbackData: `edit:note:${promptId}`,
+        },
       ],
     })
     .catch((error: unknown) => {
@@ -199,7 +210,10 @@ function postSideEffectsPrompt(
 async function sendEphemeralAck(reply: ReplyFn, auth: AuthorizationResult, text: string): Promise<void> {
   await reply.ephemeralConfirm?.(text).catch((error: unknown) => {
     log.debug(
-      { storageContextId: auth.storageContextId, error: error instanceof Error ? error.message : String(error) },
+      {
+        storageContextId: auth.storageContextId,
+        error: error instanceof Error ? error.message : String(error),
+      },
       'ephemeral ack failed',
     )
   })

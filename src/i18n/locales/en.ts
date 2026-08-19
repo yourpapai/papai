@@ -115,6 +115,13 @@ Let's get you set up! 🎯`,
   steer: {
     ack: '✋ folding that into the current run…',
   },
+  messageEdit: {
+    promptEditLine: 'Your edit: "{editedText}".',
+    adjustButton: 'Adjust for me',
+    noteButton: 'Just note it',
+    adjustingAck: '✏️ Adjusting…',
+    notedAck: '✏️ Noted',
+  },
   orchestrator: {
     toolFailed: '⚠️ Tool "{toolName}" failed: {userMessage}',
     apiCallFailed: 'API call failed. Please try again.',
