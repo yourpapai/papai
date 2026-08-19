@@ -121,6 +121,7 @@ Let's get you set up! 🎯`,
     noteButton: 'Just note it',
     adjustingAck: '✏️ Adjusting…',
     notedAck: '✏️ Noted',
+    superseded: '⟲ Superseded by your edit.',
   },
   orchestrator: {
     toolFailed: '⚠️ Tool "{toolName}" failed: {userMessage}',

@@ -120,6 +120,7 @@ export const ru: Dictionary = {
     noteButton: 'Просто учесть',
     adjustingAck: '✏️ Подстраиваю…',
     notedAck: '✏️ Принято',
+    superseded: '⟲ Заменено вашей правкой.',
   },
   orchestrator: {
     toolFailed: '⚠️ Инструмент "{toolName}" завершился ошибкой: {userMessage}',

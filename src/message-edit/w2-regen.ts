@@ -48,9 +48,9 @@ function buildOrchestratorDeps(deps: EditHandlerDeps): LlmOrchestratorDeps {
   }
 }
 
-async function supersedePriorReply(reply: ReplyFn, last: LastTurn): Promise<void> {
+async function supersedePriorReply(reply: ReplyFn, last: LastTurn, locale: Locale): Promise<void> {
   if (reply.editReply !== undefined && last.replyTarget !== undefined) {
-    await reply.editReply(last.replyTarget, '⟲ Superseded by your edit.').catch((): undefined => undefined)
+    await reply.editReply(last.replyTarget, t('messageEdit.superseded', locale)).catch((): undefined => undefined)
   }
 }
 
@@ -109,7 +109,7 @@ export async function regenerateFromEditedText(
     emitEditRegen(funnel, 'regen_failed', Math.max(0, Math.round(performance.now() - startedMonotonicMs)))
     throw error
   }
-  await supersedePriorReply(reply, last)
+  await supersedePriorReply(reply, last, getContextLanguage(auth.configContextId ?? auth.storageContextId))
   emitEditRegen(funnel, 'regen_completed', Math.max(0, Math.round(performance.now() - startedMonotonicMs)))
 }
 

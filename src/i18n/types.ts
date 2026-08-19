@@ -68,6 +68,7 @@ export interface Dictionary {
     noteButton: string
     adjustingAck: string
     notedAck: string
+    superseded: string
   }
   orchestrator: {
     toolFailed: string
