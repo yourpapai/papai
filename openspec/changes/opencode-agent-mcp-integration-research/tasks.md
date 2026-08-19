@@ -63,7 +63,7 @@ claim is recorded before the document asserts it.
       SDK config surface from 1.1, §3 the CI possibilities from 1.2 applied
       per option.
       Verify: `bun run format:check`
-- [ ] 3.2 Write §2 — the comparison core: every candidate surface
+- [x] 3.2 Write §2 — the comparison core: every candidate surface
       (repo-committed file, `AGENT_*` env knob, repo-file + Actions-secrets
       interpolation, forked workflow, issue/comment-level) scored on the fixed
       dimensions from `design.md` D5, with issue/comment-level configuration

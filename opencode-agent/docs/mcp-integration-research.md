@@ -521,3 +521,145 @@ accumulate trust in. No behavioural label needed on this half — none of it was
 exercised against the binary, because the rejection is a design decision about
 untrusted input, not an observation about the binary.
 
+---
+
+## 4. The comparison core — every candidate surface scored
+
+One numbering note: the plan drew this as §2, but the live-evidence sections
+(§2.1–§2.5) took the number first; the core sits here, after the constraints
+it applies, and the closing sections follow as §5–§7.
+
+The scoring dimensions were fixed before any option was ranked (design D5):
+**what the user must know about pipeline internals; where the value lives and
+how it is reviewed and changed; how secrets are supplied; what failure looks
+like; and the CI-constraint and security assessment.** Every option below is
+scored on exactly those five, in that order. Behavioural claims inherit their
+labels from the section that established them (§2.x **verified** / **by
+inspection**, §1.4 citations); statements about a *future* implementation are
+marked **design intent** — they are what the option promises, not what the
+binary was observed doing. The merge-vs-override unknown (§3 preamble) is
+priced into the two scenarios it threatens rather than footnoted away.
+
+### Scenario 1 — repo-committed config file (`opencode.json` in the checkout)
+
+- **Must know:** OpenCode's config syntax and its file discovery, plus the
+  fact that the pipeline *also* feeds config through
+  `OPENCODE_CONFIG_CONTENT` — two sources the user cannot see interacting
+  (the interaction itself is the pending experiment, §3.1).
+- **Lives / review:** in git, PR-reviewable, per-repository — the best
+  review story of the five on paper: a diff, a discussion, a merge.
+- **Secrets:** none may ride here. The file is model-readable (`read` is
+  granted in both profiles — §1.4 row 2), so a committed credential is S3-7's
+  class of finding. **Verified** that config-content `environment` values do
+  reach the server's child (§2.1's trace), which is the same channel a
+  committed file's values would take.
+- **Failure:** the server's own degradation is **verified** regardless of
+  where its definition came from (§2.2). The *config* failure mode — what a
+  contributor's syntax error or a smuggled key does to the pipeline's owned
+  blocks — is the pending merge-vs-override question and cannot be claimed
+  either way.
+- **CI / security:** executable configuration arriving through PRs
+  (§3.1) — pre-approved by merge, untrusted in any repository that takes
+  contributions. **Blocked on the pending experiment**: until merge semantics
+  are known, this option cannot be distinguished from "a contributor PR can
+  override the deny-by-default permission model", and it scores as
+  not-adoptable-now for that reason alone.
+
+### Scenario 2 — pipeline env knob (`AGENT_MCP_SERVERS` in the `AGENT_*` style)
+
+- **Must know:** one knob name and a JSON shape, documented in the README's
+  existing knob table — the same knowledge surface as `AGENT_MAX_TOKENS` and
+  friends. No workflow internals, no two-source interaction to reason about.
+- **Lives / review:** repository Actions variables/secrets — a maintainer
+  settings change, no commit, no PR. The one surface of the five with **no
+  PR-shaped attack path** (§3.2).
+- **Secrets:** the knob's value is merged into config content, and config
+  content is model-readable by design (S3-9, §1.4 row 1) — **verified** as the
+  channel (§2.1's `environment` trace). A credential here is one `echo` away
+  unless the containment work lands; that risk and the deferred
+  proxy-placeholder/scrubbing assessment are §7's, priced here as "no worse
+  than the provider key pre-S3-9, and fixable by the same shape".
+- **Failure:** malformed value → job start, `config-values.ts` range-check
+  style, before any model turn (**design intent** — the knob does not exist
+  yet); a bad *server* degrades per §2.2 (**verified**) whatever defined it.
+- **CI / security:** grants stay pipeline-generated inside
+  `buildOpencodeConfig`, so deny-by-default holds by construction and the
+  `<server>_*` key form is **verified** (§2.4). Serves both execution paths
+  from one definition (§6 pins the injection point). Cleanest failure, least
+  knowledge, no new trust edge.
+
+### Scenario 3 — repo file + Actions-secrets interpolation (`{env:VAR}`)
+
+- **Must know:** Scenario 1's file syntax **plus** interpolation markers
+  **plus** the Actions settings that fill them — the union of two worlds, and
+  the failure needs both halves present at once.
+- **Lives / review:** split: definitions in git (PR-reviewed), credentials in
+  Actions settings (maintainer rotation, no commit). Rotation is genuinely
+  better than Scenario 1; the review surface is the same file.
+- **Secrets:** never enters git — the git half is solved. The model-read half
+  is not: post-interpolation the value sits in config content where S3-9 puts
+  it one `echo` away (§3.3), and `pipelineSecrets` wiring is as required as in
+  Scenario 2. No better than Scenario 2 on the dimension that motivated it.
+- **Failure:** Scenario 1's unknowns (merge semantics, §3.3) **plus** a new
+  one: an env var missing at load time interpolates as what — empty, literal,
+  or error — is **by inspection unknown**; nothing in this research
+  exercised interpolation, and the option should not ship claiming a
+  behaviour nobody ran.
+- **CI / security:** non-secret parts remain PR-influenceable (§3.3); the
+  smuggle-in-config question is exactly Scenario 1's, unresolved.
+
+### Scenario 4 — forked workflow (user edits `agent-pipeline.yml`)
+
+- **Must know:** workflow YAML, the job's steps, install/pinning mechanics —
+  the most pipeline internals of the five.
+- **Lives / review:** a fork of the workflow file; every upstream improvement
+  re-merged by hand (§3.4). Powerful and permanently out of drift-lockstep.
+- **Secrets:** workflow `env:` lands in the spawned server's inheritable
+  environment unless routed through provider-proxy-style containment (§3.4) —
+  the S3-9 default, with the same deferred fix.
+- **Failure:** an install step that fails kills the job before any model turn
+  (**design intent** — that is what a workflow step does); server behaviour
+  after a successful install is §2.2's **verified** degradation. Cold fetch
+  every job (§1.4 row 5) makes install flakiness a per-job tax.
+- **CI / security:** the only surface that can *install* server binaries —
+  supply-chain pinning in the loop, re-fetched cold every run (§3.4). Records
+  as the escape hatch: right answer when a stdio server genuinely needs
+  installing, wrong answer as the default.
+
+### Scenario 5 — issue/comment-level configuration — scored, then rejected
+
+- **Must know:** a command syntax — the friendliest UX of the five, which is
+  exactly why it must be refused.
+- **Lives / review:** the issue thread; instant, no maintainer gate at all.
+- **Secrets:** moot — the source is untrusted before secrets even enter.
+- **Failure:** moot in the useful sense: nothing to observe because nothing
+  may run.
+- **CI / security: rejected on security grounds, on record** (D5 requires the
+  rejection be a finding, not an omission): an `mcp` entry is *executable
+  configuration*, and this surface hands its authorship to the two populations
+  the pipeline already treats as untrusted input — issue authors and
+  commenters (`prompts.ts`'s envelope exists for their text). A `local` entry
+  is arbitrary command execution in a privileged job; a `remote` entry is an
+  exfiltration endpoint over unrestricted egress (§1.4 row 4, §3.5). **No
+  behavioural label applies — the verdict is a design decision about
+  untrusted input, not an observation about the binary.**
+
+### The scores side by side
+
+| Dimension                      | S1 repo file | S2 env knob | S3 file+interp | S4 fork wf | S5 issue/cmd |
+| ------------------------------ | ------------ | ----------- | -------------- | ---------- | ------------ |
+| Knowledge required             | mid, 2-source | **least**   | most, 2-worlds | most, YAML | least (moot) |
+| Where it lives / review        | **git, PR**  | Actions only | split          | forked wf  | thread (moot) |
+| Secrets story                  | none allowed | content risk | git ok, content risk | content risk | moot |
+| Failure shape                  | pending merge | **job start** | pending + interp unknown | install-time | moot |
+| Trust edge added               | PR authors   | **none**     | PR authors     | workflow owner | **everyone** |
+| Verdict                        | blocked on 2.3 | **adopt**    | dominated by S2 | escape hatch | **rejected** |
+
+Two readings of the table. Scenario 3 is **dominated** by Scenario 2 on every
+dimension except git-visibility of definitions — it costs Scenario 1's unknowns
+plus interpolation's, to end at the same content-risk as the knob. Scenario 1's
+git-review advantage is real but held hostage to the merge-vs-override
+experiment: if a committed file turns out to override pipeline-owned config,
+the "reviewable" surface is precisely the smuggling channel. The ranked
+recommendation and the deferred follow-ups close the document (§7).
+
