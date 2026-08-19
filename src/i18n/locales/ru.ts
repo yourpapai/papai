@@ -120,7 +120,7 @@ export const ru: Dictionary = {
     outputLabel: 'Результат:',
     errorLabel: 'Ошибка:',
     reasoningTitle: 'Reasoning',
-    reasoningHidden: ' Reasoning провайдера доступен ({count} символов). Включите raw-режим, чтобы увидеть.',
+    reasoningHidden: 'Reasoning провайдера доступен ({count} символов). Включите raw-режим, чтобы увидеть.',
   },
   picker: {
     prompt: 'Выберите язык, на котором я буду с вами общаться:',

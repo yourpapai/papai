@@ -34,6 +34,7 @@ import { lastTurnRegistry } from './run-control/last-turn-registry.js'
 import { runRegistry } from './run-control/registry.js'
 import { buildStopSummary } from './run-control/summary.js'
 import { RunAbortedError, type InjectedMessage, type RunControl } from './run-control/types.js'
+import { getContextLanguage } from './utils/config-language.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
 
@@ -64,7 +65,11 @@ const maybeEnsureGroupMembership = (configId: string, chatUserId: string, userna
 export { resetBotMisconfiguredNotifiedForTesting } from './llm-orchestrator-unconfigured.js'
 
 const createProgressReporterForContext = (reply: ReplyFn, contextId: string): AiProgressReporter =>
-  createAiProgressReporter(reply, getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)))
+  createAiProgressReporter(
+    reply,
+    getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)),
+    getContextLanguage(resolveAiOutputSettingsContextId(contextId)),
+  )
 
 type CallLlmArgs = InvocationSource & {
   deps: LlmOrchestratorDeps
