@@ -83,7 +83,7 @@ interface AssembleOptions {
   readonly deferredFragmentText?: string
   readonly progressiveDisclosure?: boolean
   readonly contextType?: ContextType
-  readonly locale?: Locale
+  readonly locale: Locale
 }
 
 function assembleSystemPrompt(
@@ -92,7 +92,7 @@ function assembleSystemPrompt(
   enabledToolNames: ReadonlySet<string> | undefined,
   options: AssembleOptions,
 ): string {
-  const locale = options.locale ?? getContextLanguage(contextId)
+  const locale = options.locale
   const texts = getDictionary(locale).systemPrompt
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const parts: string[] = [intro]
@@ -176,7 +176,7 @@ export function buildSystemPrompt(
     | readonly []
 ): string {
   const enabledToolNames = args[0]
-  const options: AssembleOptions = {
+  const options: Omit<AssembleOptions, 'locale'> = {
     askPermissionAvailable: args[1]?.askPermissionAvailable ?? true,
     progressiveDisclosure: args[1]?.progressiveDisclosure,
     contextType: args[1]?.contextType,
