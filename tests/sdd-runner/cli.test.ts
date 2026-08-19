@@ -289,6 +289,7 @@ function makeHarness(calls: string[], pending: PendingGateEntry[] = []): CliHarn
     },
     buildAuditReport: () => Promise.reject(new Error('unused')),
     runGateReopen: () => Promise.reject(new Error('unused')),
+    runWatch: () => Promise.resolve(),
     stdout: (line) => {
       calls.push(`out:${line}`)
     },
@@ -397,12 +398,33 @@ function captureHarness(): MainCapture {
     buildReport: () => Promise.resolve('body'),
     buildAuditReport: () => Promise.resolve('audit-body'),
     runGateReopen: (runId) => Promise.resolve({ runId, gateVersion: 1 }),
+    runWatch: () => Promise.resolve(),
     stdout: () => {},
   }
   return { startOptions, resumeCalls, continueCalls, gateCalls, harness }
 }
 
 describe('main autonomy and gate decision wiring', () => {
+  it('gate resume without a run id lists pending gates and never reopens', async () => {
+    const cap = captureHarness()
+    const pendingCalls: number[] = []
+    const reopenCalls: string[][] = []
+    const harness: CliHarness = {
+      ...cap.harness,
+      listPendingGates: () => {
+        pendingCalls.push(1)
+        return Promise.resolve([])
+      },
+      runGateReopen: (runId, version) => {
+        reopenCalls.push([runId, String(version)])
+        return Promise.resolve({ runId, gateVersion: version })
+      },
+    }
+    await main(['gate'], harness)
+    expect(pendingCalls).toHaveLength(1)
+    expect(reopenCalls).toEqual([])
+  })
+
   it('nests parsed autonomy overrides under autonomy on start options', async () => {
     const cap = captureHarness()
     await main(['start', 'task.md', '--autonomy', 'assist', '--auto-deadline', '10'], cap.harness)
@@ -619,6 +641,7 @@ function makeAuditHarness(calls: string[]): CliHarness {
       calls.push(`audit:${runId}`)
       return Promise.resolve('report-body')
     },
+    runWatch: (): Promise<void> => Promise.resolve(),
     runGateReopen: (runId: string, gateVersion: number) => {
       calls.push(`reopen:${runId}:${gateVersion}`)
       return Promise.resolve({ runId, gateVersion })
@@ -672,5 +695,31 @@ describe('quiet verbosity (13.7)', () => {
   it('rejects a trailing --autonomy or --verbosity value naming the empty value', () => {
     expect(() => parseCliArgs(['start', 'task.md', '--autonomy'])).toThrow(/invalid --autonomy: $/u)
     expect(() => parseCliArgs(['gate', 'resume', 'r1', '--verbosity'])).toThrow(/invalid --verbosity: $/u)
+  })
+})
+
+describe('watch verb (15.3)', () => {
+  it('parses watch <runId> and rejects missing ids', () => {
+    expect(parseCliArgs(['watch', 'run-1'])).toMatchObject({ subcommand: 'watch', runId: 'run-1' })
+    expect(() => parseCliArgs(['watch'])).toThrow(/run id/u)
+    expect(() => parseCliArgs(['watch', 'a/b'])).toThrow(/path separator/u)
+  })
+
+  it('rejects unknown watch flags naming the flag', () => {
+    expect(() => parseCliArgs(['watch', 'run-1', '--bogus'])).toThrow('unknown flag: --bogus')
+  })
+
+  it('dispatches watch <runId> to the harness and returns 0', async () => {
+    const watchCalls: string[] = []
+    const harness: CliHarness = {
+      ...captureHarness().harness,
+      runWatch: (runId) => {
+        watchCalls.push(runId)
+        return Promise.resolve()
+      },
+    }
+    const code = await main(['watch', 'run-7'], harness)
+    expect(code).toBe(0)
+    expect(watchCalls).toEqual(['run-7'])
   })
 })
