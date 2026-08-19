@@ -36,4 +36,15 @@ describe('ru dictionary', () => {
     expect(ru.progress.reasoningHidden).toContain('{count}')
     expect(en.auth.groupNotAllowed).toContain('{groupId}')
   })
+
+  test('system-prompt fragments use the Russian imperative and no untranslated leftovers', () => {
+    expect(ru.systemPrompt.workflow).toContain('задай ОДИН короткий вопрос')
+    expect(ru.systemPrompt.groupReminders).toContain('задай ОДИН короткий вопрос')
+    expect(ru.systemPrompt.groupRemindersWithParticipants).toContain('задай ОДИН короткий вопрос')
+    expect(ru.systemPrompt.groupRemindersWithParticipants).toContain('задай ОДИН короткий конкретный вопрос')
+    expect(ru.systemPrompt.deferred).toContain('берёт на себя расписание')
+    expect(ru.systemPrompt.providerlessDeferred).toContain('берёт на себя расписание')
+    expect(ru.systemPrompt.deferred).not.toContain('handled by schedule')
+    expect(ru.systemPrompt.providerlessDeferred).not.toContain('handled by schedule')
+  })
 })
