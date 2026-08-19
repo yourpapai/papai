@@ -142,3 +142,33 @@ offers no such thing — but "avoid OAuth entirely": a **local** stdio server
 (`McpLocalConfig`, needs no auth) or a **remote** with static `headers` and
 `oauth: false`. Those two shapes are exactly what §2's experiments drive, and
 §4's per-option injection points must be able to express both.
+
+### 1.4 The CI constraints — compiled with citations, not re-derived
+
+Everything the pipeline already knows about what a credential and a config can
+survive on an Actions runner, read off where it is stated. The two findings the
+plan names by id sit in `ROADMAP.md` (both marked `[FIXED]` there — the fix
+closed the finding, not the property; the properties are what MCP must live
+with). All **by inspection** of the cited files; §3 applies each fact per
+option, this subsection only records it. Verify command for the pair:
+`grep -n 'S3-7\|S3-9' opencode-agent/ROADMAP.md` → lines 857 and 899.
+
+| # | Constraint (as stated)                                        | Where stated                                                                 | Why the plan cares about it for MCP                                                                                                        |
+| - | ------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 | **S3-9** — the model reads the server's environment: `opencode serve` is spawned with the whole serialized config in `OPENCODE_CONFIG_CONTENT`, and every process the model starts with `bash` inherits it; verified against `/proc/<pid>/environ`. Fix = placeholder key + loopback proxy (`provider-proxy.ts`) | `ROADMAP.md:899–939` (heading 899); restated `README.md:1442–1449` (`"one \`echo\` away"`, 1446) | The `mcp` block rides in that same variable. Whatever it carries — a remote's `headers` token, a local's `environment` values — is readable by the model with one `echo`. S3-9 moved the provider key out of the var; the var itself is as readable as ever, so an MCP credential fed through it is the same finding one surface over. |
+| 2 | **S3-7** — a credential must sit in none of the three places the model can reach: not `.git/config` (`persist-credentials: false`), not argv (`/proc`, published `GitError`), not the server's environment; git gets it per invocation via `GIT_CONFIG_COUNT`/`_KEY_0`/`_VALUE_0` | `ROADMAP.md:857–897` (heading 857); restated `README.md:1435–1441`; enforced `agent-pipeline.yml:352,376` | A repo-committed config file carrying an MCP token puts a credential in a file the `build` profile can read — the exact class S3-7 closed for git. The per-invocation env-config delivery is the precedent any repo-file-with-interpolation option must meet.            |
+| 3 | **Masking** — outbound bodies are scrubbed of pipeline credentials by value at the GitHub adapter, not in renderers; log lines get the same value pass; "GitHub masks registered secrets in an Actions log, but it does not mask an issue comment"; the log is world-readable and not covered by the outbound redaction | `README.md:1428–1433` (adapter redaction + the mask quote), `1449–1452` (log lines), `1151–1160` (world-readable log, progress never carries content) | A token the pipeline never loaded into `pipelineSecrets` is masked nowhere — not in a log (GitHub masks only registered Actions secrets), not in an issue comment (redaction is by the pipeline's own values). An MCP credential that bypasses config loading escapes every scrub. |
+| 4 | **Egress** — "there is no container or network boundary around the model, only these capability and credential boundaries" (S3-2's last open direction) | `README.md:1456–1457`; also `2046–2048` ("capability containment is config-level, not process-level") | A remote MCP server is direct egress from the runner, reachable by any tool once permitted; nothing network-level bounds where it can send. The provider proxy is the one egress indirection that exists — the loopback-placeholder pattern is the precedent, and its generalisation is §6's deferred assessment.                          |
+| 5 | **Ephemeral home** — the runner and its `$HOME` are per-job: the CLI is reinstalled every job (`bun add --global opencode-ai@1.18.7`, `$HOME/.bun` onto `GITHUB_PATH`), there is no `actions/cache` anywhere in the workflow, OpenCode's durable state lives under `$HOME/.local/share/opencode`, and "the runner is ephemeral" | `agent-pipeline.yml:414–418` (reinstall), no `cache:` in the file, `:623` (`$HOME/.local/share/opencode/log`), `ROADMAP.md:2218` ("The runner is ephemeral") | OpenCode's per-user durable state — global config, auth storage, any OAuth tokens — dies with every job. Nothing MCP-side can be "installed once and reused": config must be re-established per job, which favours injection (config content, per-boot re-add) over any durable side state, and kills OAuth on residency grounds too. |
+
+One reading note on the two `[FIXED]` markers, because it is easy to over-read
+them: **S3-9 fixed where the provider key lives, not what the model can read.**
+`OPENCODE_CONFIG_CONTENT` is still set on the spawned server and still
+inherited by every model-started process — the fix stopped putting a real
+credential in it. For MCP the constraint is the *still-true* half: an `mcp`
+block — and anything its `headers` / `environment` fields carry — is delivered
+through exactly that channel, so the placeholder-and-proxy shape is not a
+convention the option list may quietly drop. **S3-7 fixed where the git token
+lives**; the three-place rule it verified is general, and the option list in §2
+scores every candidate against it rather than against git specifically.
+

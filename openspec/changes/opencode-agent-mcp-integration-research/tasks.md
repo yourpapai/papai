@@ -20,7 +20,7 @@ claim is recorded before the document asserts it.
       for unattended usability. Note both pin versions (SDK types vs server
       binary) so a later bump knows what to re-verify.
       Verify: `sed -n '1462,1503p' opencode-agent/node_modules/@opencode-ai/sdk/dist/v2/gen/types.gen.d.ts`
-- [ ] 1.2 Compile the CI-constraint facts with citations, not re-derivation:
+- [x] 1.2 Compile the CI-constraint facts with citations, not re-derivation:
       S3-9 (model-readable server env), S3-7, workflow/README facts on
       masking, egress, ephemeral home. Capture where each is stated.
       Verify: `grep -n 'S3-7\|S3-9' opencode-agent/ROADMAP.md`
