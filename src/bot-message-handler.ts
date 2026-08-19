@@ -32,6 +32,7 @@ import {
   type ReplyDeliveryTracker,
 } from './bot-reply-tracking.js'
 import { replyToUnauthorized } from './bot-unauthorized-reply.js'
+import { maybePostLanguagePicker } from './chat/language-picker.js'
 import type { ChatParticipantResolver } from './chat/participants/roster.js'
 import { maybeSeedContextAssignment } from './chat/seed-context-assignment.js'
 import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn } from './chat/types.js'
@@ -221,37 +222,17 @@ async function steerActiveRun(
   )
 }
 
-export async function handleAuthorizedMessage(
-  chat: ChatProvider,
+/** Enqueue a new turn for the message (the non-steering path of `handleAuthorizedMessage`). */
+function enqueueTurn(
+  deps: BotDeps,
   msg: IncomingMessage,
   reply: ReplyFn,
   auth: AuthorizationResult,
-  deps: BotDeps,
-): Promise<void> {
-  if (!auth.allowed) {
-    if (msg.isMentioned) await replyToUnauthorized(reply, auth, msg.contextId)
-    return
-  }
-  if (shouldIgnoreGroupMessage(msg)) return
-  maybeSeedContextAssignment(auth, msg.platformInstanceId)
-  const voiceStagedIds = msg.contextType === 'group' ? findVoiceStagedIds(auth.storageContextId, msg.messageId) : []
-  const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
-  const newAttachmentIdSet = new Set(newAttachmentIds)
-  const messageAttachments = activeAttachments.filter((ref) => newAttachmentIdSet.has(ref.attachmentId))
-  const steerText = buildPromptWithReplyContext(msg, messageAttachments, auth.storageContextId)
-
-  const observer = deps.analyticsObserver
-  const seed = createMessageSeed(observer, msg, auth, newAttachmentIds.length)
-  if (observer !== undefined && seed !== undefined) {
-    observer.observe(buildChatMessageAcceptedFact(seed, { isCommand: false, command: 'none' }))
-  }
-
-  const activeRun = runRegistry.get(auth.storageContextId)
-  if (activeRun !== undefined) {
-    await steerActiveRun(activeRun, reply, auth, steerText, seed, observer)
-    return
-  }
-
+  steerText: string,
+  newAttachmentIds: readonly string[],
+  voiceStagedIds: readonly string[],
+  seed: AuthorizedTurnSeed | undefined,
+): void {
   const queueMessage = deps.enqueueMessage ?? enqueueMessage
   queueMessage(
     {
@@ -270,4 +251,39 @@ export async function handleAuthorizedMessage(
     reply,
     (coalescedItem): Promise<void> => processQueuedTurn(coalescedItem, deps),
   )
+}
+
+export async function handleAuthorizedMessage(
+  chat: ChatProvider,
+  msg: IncomingMessage,
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+  deps: BotDeps,
+): Promise<void> {
+  if (!auth.allowed) {
+    if (msg.isMentioned) await replyToUnauthorized(reply, auth, msg.contextId)
+    return
+  }
+  if (shouldIgnoreGroupMessage(msg)) return
+  maybeSeedContextAssignment(auth, msg.platformInstanceId)
+  await maybePostLanguagePicker(chat, msg, reply, auth)
+  const voiceStagedIds = msg.contextType === 'group' ? findVoiceStagedIds(auth.storageContextId, msg.messageId) : []
+  const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
+  const newAttachmentIdSet = new Set(newAttachmentIds)
+  const messageAttachments = activeAttachments.filter((ref) => newAttachmentIdSet.has(ref.attachmentId))
+  const steerText = buildPromptWithReplyContext(msg, messageAttachments, auth.storageContextId)
+
+  const observer = deps.analyticsObserver
+  const seed = createMessageSeed(observer, msg, auth, newAttachmentIds.length)
+  if (observer !== undefined && seed !== undefined) {
+    observer.observe(buildChatMessageAcceptedFact(seed, { isCommand: false, command: 'none' }))
+  }
+
+  const activeRun = runRegistry.get(auth.storageContextId)
+  if (activeRun !== undefined) {
+    await steerActiveRun(activeRun, reply, auth, steerText, seed, observer)
+    return
+  }
+
+  enqueueTurn(deps, msg, reply, auth, steerText, newAttachmentIds, voiceStagedIds, seed)
 }

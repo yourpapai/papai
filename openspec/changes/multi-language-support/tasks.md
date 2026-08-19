@@ -20,7 +20,7 @@ See LICENSE in the project root for details.
 ## 3. First-interaction picker
 
 - [x] 3.1 Write failing `lang:` callback-route tests: `lang:en`/`lang:ru` from an authorized actor persists the language and clears `language_prompted`; unauthorized actor is rejected; invalid locale and already-stored language are no-ops. Then add the `lang:<locale>` prefix handling to `src/chat/interaction-router.ts`. Verify: `bun test tests/chat/interaction-router-lang.test.ts`
-- [ ] 3.2 Write failing tests for the picker trigger: `/start` and the first authorized message from a context with no stored language post a two-button picker via `reply.buttons` and set `language_prompted`; subsequent messages do not re-ask; guests and buttonless platforms (Kontur Talk) skip the picker; contexts with a stored language never see it. Then implement the trigger in `src/commands/start.ts` and `src/bot-message-handler.ts`. Verify: `bun test tests/commands/start.test.ts tests/i18n/`
+- [x] 3.2 Write failing tests for the picker trigger: `/start` and the first authorized message from a context with no stored language post a two-button picker via `reply.buttons` and set `language_prompted`; subsequent messages do not re-ask; guests and buttonless platforms (Kontur Talk) skip the picker; contexts with a stored language never see it. Then implement the trigger in `src/commands/start.ts` and `src/bot-message-handler.ts`. Verify: `bun test tests/commands/start.test.ts tests/i18n/`
 
 ## 4. System prompt per locale
 

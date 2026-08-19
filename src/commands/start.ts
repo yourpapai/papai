@@ -3,8 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { maybePostLanguagePicker } from '../chat/language-picker.js'
 import type { ChatProvider, CommandHandler } from '../chat/types.js'
+import { t } from '../i18n/index.js'
 import { logger } from '../logger.js'
+import { getContextLanguage } from '../utils/config-language.js'
 
 const log = logger.child({ scope: 'commands:start' })
 
@@ -17,26 +20,10 @@ export function registerStartCommand(chat: ChatProvider): void {
 
     log.info({ userId: msg.user.id, contextId: auth.storageContextId }, '/start command executed')
 
-    const welcomeMessage = `👋 **Welcome to papai!**
-
-I'm your task management assistant. I can help you:
-
-📋 **Create and manage tasks** via natural language
-🔍 **Search and update** existing tasks
-⚙️ **Configure integrations** with your task tracker
-
-**Get Started:**
-⚙️ **/config** - Open your settings (API keys, models, integrations) in the web UI
-❓ **/help** - Show available commands
-
-**Quick Tips:**
-• Type your requests naturally (e.g., "create task: review PR #123")
-• I'll remember our conversation context
-• Use "/clear" to reset conversation history
-
-Let's get you set up! 🎯`
-
-    await reply.formatted(welcomeMessage)
+    await maybePostLanguagePicker(chat, msg, reply, auth)
+    await reply.formatted(
+      t('commands.start.welcome', getContextLanguage(auth.configContextId ?? auth.storageContextId)),
+    )
   }
 
   chat.registerCommand('start', handler)
