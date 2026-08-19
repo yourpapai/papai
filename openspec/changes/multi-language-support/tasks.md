@@ -36,7 +36,7 @@ See LICENSE in the project root for details.
 
 ## 6. Settings UI
 
-- [ ] 6.1 Add the language select to the Profile section of the settings SPA (options from the field definition), test-first via the existing client tests/Storybook spec where present. Verify: `bun run typecheck`
+- [x] 6.1 Add the language select to the Profile section of the settings SPA (options from the field definition), test-first via the existing client tests/Storybook spec where present. Verify: `bun run typecheck`
 
 ## 7. Full verification
 
