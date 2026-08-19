@@ -32,7 +32,7 @@ claim is recorded before the document asserts it.
       committed, nothing installed. Every spawn records its pid and every
       experiment carries a timeout.
       Verify: `git status --porcelain` (empty — no residue)
-- [ ] 2.2 Feed `OPENCODE_CONFIG_CONTENT` with an `mcp` block to the real
+- [x] 2.2 Feed `OPENCODE_CONFIG_CONTENT` with an `mcp` block to the real
       `opencode` binary and record: tool naming as `<server>_<tool>`, startup
       failure degradation (blocked vs tools-absent, never a hang), and
       `enabled: false` semantics. Kill experiment processes by recorded pid

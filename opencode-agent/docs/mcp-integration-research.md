@@ -172,3 +172,124 @@ convention the option list may quietly drop. **S3-7 fixed where the git token
 lives**; the three-place rule it verified is general, and the option list in §2
 scores every candidate against it rather than against git specifically.
 
+---
+
+## 2. Live evidence from the real binary
+
+Everything in this section is **verified** against the real `opencode-ai@1.18.7`
+(the workflow's pinned binary, present on this runner) driven through the pinned
+SDK's `createOpencodeServer` — the same spawn path as `opencode-connect.ts`, so
+the config below reached the binary as `OPENCODE_CONFIG_CONTENT` exactly as a
+pipeline job would deliver it. No model credentials: a stub OpenAI SSE endpoint
+stands in for the provider (the `live-sdk.integration.ts` pattern), so the one
+prompt below cost nothing and leaked nothing. The fixture is the throwaway
+stdio server from the plan's step 2.1 — a minimal JSON-RPC responder exposing
+`echo` and `env_probe`, placeholder token values only, living in the job's temp
+dir. Its trace log records the full JSON-RPC conversation, which is where
+several claims below come from. Pid discipline held throughout: every MCP child
+was wrapped to record its own pid before `exec`, teardown killed exactly those
+pids, and the control plane (`opencode-agent:test:survival`) ran green after
+every experiment — no candidate took the server down.
+
+### 2.1 Tool naming is `<server>_<tool>` — and the permission table gates it
+
+Fed config (the `mcp` block, under the pipeline-shaped provider config):
+
+```json
+{
+  "research": {
+    "type": "local",
+    "command": ["bash", "-c", "echo $$ > …/live-echo.pid; exec node …/echo-server.mjs"],
+    "environment": {
+      "MCP_EXAMPLE_TOKEN": "PLACEHOLDER-TOKEN-NOT-A-SECRET",
+      "ECHO_SERVER_TRACE": "…/conversation.log"
+    }
+  }
+}
+```
+
+**Verified** — the handshake and the naming. OpenCode sent `initialize`
+(protocolVersion `2025-11-25`, `clientInfo.name: "opencode"`), then
+`notifications/initialized`, then `tools/list`; my server answered both tools;
+`GET /mcp` reported `{"research":{"status":"connected"}}` in ~120 ms. With no
+agent permission blocks in the config, the **model-visible tool table** (read
+straight off the stub provider's request body) was:
+
+```json
+["bash","edit","glob","grep","question","read","research_echo",
+ "research_env_probe","skill","task","todowrite","webfetch","write"]
+```
+
+— `<server>_<tool>` naming, `research_echo` / `research_env_probe`, exactly as
+the plan hypothesised. Forced tool call round trip: the stub emitted a
+`research_echo` call with `{"value":"naming-proof"}`; the conversation log then
+records `tools/call` with `name: "echo"` (unprefixed — the prefix is stripped
+before the wire to the server) and my server's answer
+`echo: naming-proof` came back to the model as a `role: "tool"` message in the
+provider's next request. One artefact worth noting: after the result was
+delivered, OpenCode also sent `notifications/cancelled` for the same request id
+with an `AbortError` reason — turn-end cleanup racing a completed call, not a
+failure; the result had already been consumed. The `environment` field is also
+**verified** live: `ECHO_SERVER_TRACE` set in the config reached the child, and
+the placeholder token is what the `env_probe` tool reports.
+
+**Verified** — and this is the finding that shapes §4: under the pipeline's own
+config (`buildOpencodeConfig`, whose profiles are deny-by-default — `"*": "deny"`
+plus named allows) the **same connected server's tools do not reach the model at
+all**. The stub's table under the `build` agent was exactly the granted set —
+`["bash","edit","glob","grep","read","todowrite","write"]` — with no
+`research_*` entries, and a model attempt to call `research_echo` anyway did
+not reach the server (no `tools/call` in the trace). So the permission table
+filters the prompt-time tool set, and MCP tools are subject to it: deny by
+default holds for them too, and the grant key form (the `<server>_*` wildcard)
+is load-bearing — pinned in §2.4 below, not assumed from this observation.
+
+### 2.2 Startup failure, `enabled: false`, and the never-hang claim
+
+Fed config — four servers in one block, one boot:
+
+```json
+{
+  "research":      { "type": "local", "command": ["bash","-c","…; exec node …/echo-server.mjs"] },
+  "research_bad":  { "type": "local", "command": ["bash","-c","…; exec node /nonexistent/mcp-server.mjs"] },
+  "research_off":  { "type": "local", "command": ["bash","-c","…; exec node …/echo-server.mjs"], "enabled": false },
+  "research_hang": { "type": "local", "command": ["bash","-c","…; exec sleep 600"] }
+}
+```
+
+**Verified** — the server booted in ~1.2 s with all four present, and the final
+status map was:
+
+```json
+{
+  "research":      { "status": "connected" },
+  "research_bad":  { "status": "failed", "error": "MCP error -32000: Connection closed" },
+  "research_off":  { "status": "disabled" },
+  "research_hang": { "status": "failed", "error": "Operation timed out after 30000ms" }
+}
+```
+
+- **A nonexistent command degrades to data, not to a hang or a crash** —
+  `failed` with an error string, tools absent from the listings, boot and every
+  other endpoint unaffected.
+- **`enabled: false` means `disabled`, and the child is never spawned at all** —
+  the pid-recording wrapper never wrote its file, so OpenCode filtered the
+  entry before exec, exactly what the name-only-disable arm of `Config.mcp`
+  implies (§1.2).
+- **A stdio child that never initializes is bounded by OpenCode itself: 30 s**,
+  then `failed` with `Operation timed out after 30000ms` — and the stuck child
+  was reaped (its recorded pid was already gone at teardown). The pipeline
+  needs no timeout of its own to guarantee termination, but a **status poller
+  must bound its own calls**: `GET /mcp` **blocked until the slowest client
+  settled** — two consecutive polls hit their own 10 s deadline and only the
+  third (~33 s after boot) answered, with every entry final. The cheap
+  endpoints never blocked: `GET /experimental/tool/ids` answered in ~8 ms
+  throughout, and session traffic worked after everything. So: never a hang —
+  but a driver that polls status should treat the 30 s ceiling as the
+  poll-time floor, or it will read its own timeout as a missing server.
+- The built-in listing endpoints stay **MCP-blind**: `/experimental/tool/ids`
+  listed the fourteen built-ins and no `research_*` in any scenario, connected
+  or not — the tool table an MCP tool joins is the prompt-time one (§2.1), not
+  these listings. A pipeline cannot discover MCP tool names from `tool.ids`;
+  the naming contract (`<server>_<tool>`) is the only thing it can rely on.
+
