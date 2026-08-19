@@ -84,7 +84,7 @@ claim is recorded before the document asserts it.
 
 ## 4. Final verification
 
-- [ ] 4.1 Run the full suite and checks over the docs-only diff, confirm the
+- [x] 4.1 Run the full suite and checks over the docs-only diff, confirm the
       licence-header gate passes on the new file, and confirm no
       `docs/architecture/*.md` pages are affected (none are — the deliverable
       lives in the workspace).
