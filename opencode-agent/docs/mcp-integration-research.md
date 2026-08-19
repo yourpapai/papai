@@ -352,3 +352,68 @@ belongs **in each profile's map**, placed with the other allows after the
 maps — and a global-default grant on its own would be a no-op for every agent
 the pipeline prompts.
 
+### 2.5 The two dead ends an unattended job cannot use
+
+Both exercised live against the binary — neither needed a browser to reach the
+dead end, only to be stuck at it.
+
+**Verified — the `ask`-permission deadlock.** Fed config: the pipeline shape
+with `build`'s map carrying `"research_echo": "ask"` alongside its
+deny-by-default entries (keys: `*`, `read`, `grep`, `glob`, `list`,
+`todowrite`, `edit`, `bash`, `external_directory`, `research_echo`). The stub
+provider forced one `research_echo` call. The turn **stalled** — twelve
+seconds with no completion — while `GET /permission` reported exactly one
+parked request:
+
+```json
+{ "id": "per_01b455cff001lu9sBc9TM0a1ZQ",
+  "sessionID": "ses_fe4baa68affetEaVfOs5jQj8LX",
+  "permission": "research_echo", "patterns": ["*"],
+  "always": ["*"],
+  "tool": { "messageID": "msg_01b455b49001LUkTW2Cns2Rgm5", "callID": "call25" } }
+```
+
+Replying `{"reply": "reject"}` to `POST /permission/{id}/reply` **unblocked
+the turn at once** — it completed with parts `step-start, tool, step-finish`.
+That is the deadlock in one line: the turn waits on an answer only a human
+(or a driver speaking the reply endpoint) can give, and nothing in an
+unattended job ever will. `openai-config.ts` already refuses `"ask"` for
+exactly this reason ("the job is unattended and a prompt would deadlock it") —
+the observation extends the rule from built-in tools to MCP grant keys: an
+MCP entry must be `allow` or absent, never `ask`.
+
+**Verified — the OAuth dead end, `needs_auth` included.** Fed config: two
+`remote` entries pointing at the same local HTTP endpoint that answers every
+request `401` with a `WWW-Authenticate: Bearer …` header — the MCP OAuth
+discovery signal. The binary ran the whole discovery ladder against it:
+`POST /mcp`, `GET /mcp`, `POST /mcp`, then
+`GET /.well-known/oauth-authorization-server`,
+`GET /.well-known/openid-configuration`, and `POST /register` (dynamic client
+registration) — six requests — and settled both entries on the **first**
+status poll:
+
+```json
+{ "research_oauth":      { "status": "needs_auth" },
+  "research_oauth_off":  { "status": "failed",
+                           "error": "SSE error: Non-200 status code (401)" } }
+```
+
+So `McpStatusNeedsAuth` is a real, reachable state, reached exactly as §1.3
+read it: auto-detection on a 401 remote. And from there the only remedies are
+the browser family — **by inspection** of the pinned surface (§1.3): `POST
+/mcp/{name}/auth` hands back an `authorizationUrl` whose purpose is a human
+in a browser, `callback` needs the `code` that visit yields, and
+`authenticate` is documented "opens browser" (`sdk.gen.d.ts:640`). The second
+row is the contrast that closes the argument: with `oauth: false` the same
+endpoint degrades to a clean `failed` with the HTTP error — **no discovery
+ladder at all** (the endpoint saw only the connection attempts, no
+`/.well-known` or `/register` hits) — which is the unattended shape §1.3
+recommended and this run confirms: an unattended job either avoids OAuth
+entirely or parks at `needs_auth` forever.
+
+One operational footnote from the same run: after the permission-rejected
+turn and `server.close()`, the MCP stdio child was still alive — `close()`
+kills the server pid, not its tool children (the known `abort` vs `close()`
+split, `opencode-agent/CLAUDE.md`), so a driver that spawns local MCP servers
+must track their pids itself. The stray was reaped by its recorded pid.
+

@@ -50,7 +50,7 @@ claim is recorded before the document asserts it.
       reports — same method as the existing plan/build permission table.
       Verify: recorded in the document with the **verified** label and the fed
       config reproduced
-- [ ] 2.5 Record the OAuth dead end (`McpStatusNeedsAuth`, browser flow) and
+- [x] 2.5 Record the OAuth dead end (`McpStatusNeedsAuth`, browser flow) and
       the `ask`-permission deadlock as unusable unattended — by inspection if
       it cannot be exercised without a browser.
       Verify: claim carries its **by inspection** / **verified** label
