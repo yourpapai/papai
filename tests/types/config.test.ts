@@ -14,7 +14,7 @@ import { ALL_CONFIG_KEYS, isAllowedDynamicConfigKey, isConfigKey, type ConfigKey
 
 describe('config types', () => {
   describe('ALL_CONFIG_KEYS', () => {
-    test('ALL_CONFIG_KEYS contains the static preference and AI-output keys', () => {
+    test('ALL_CONFIG_KEYS contains the static preference, AI-output and internal keys', () => {
       expect(ALL_CONFIG_KEYS).toEqual([
         'timezone',
         'language',
@@ -23,6 +23,7 @@ describe('config types', () => {
         'ai_reasoning_visibility',
         'ai_output_detail_level',
         'ai_live_status',
+        'language_prompted',
       ])
     })
   })
