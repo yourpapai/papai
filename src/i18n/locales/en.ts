@@ -147,6 +147,10 @@ Let's get you set up! 🎯`,
     allowedTool: 'Allowed {toolName} ✅',
     deniedTool: 'Denied {toolName} 🚫',
     expiredDenied: '⌛ Expired — denied.',
+    permissionPrompt: '🔐 Run `{toolName}`?',
+    argumentsLabel: '**Arguments:**',
+    allowButton: '✅ Allow',
+    denyButton: '🚫 Deny',
   },
   announcements: {
     adminNotice:

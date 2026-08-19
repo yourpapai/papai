@@ -91,6 +91,10 @@ export interface Dictionary {
     allowedTool: string
     deniedTool: string
     expiredDenied: string
+    permissionPrompt: string
+    argumentsLabel: string
+    allowButton: string
+    denyButton: string
   }
   announcements: {
     adminNotice: string

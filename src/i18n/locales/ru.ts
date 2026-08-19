@@ -147,6 +147,10 @@ export const ru: Dictionary = {
     allowedTool: 'Разрешено: {toolName} ✅',
     deniedTool: 'Отклонено: {toolName} 🚫',
     expiredDenied: '⌛ Время истекло — отклонено.',
+    permissionPrompt: '🔐 Запустить `{toolName}`?',
+    argumentsLabel: '**Аргументы:**',
+    allowButton: '✅ Разрешить',
+    denyButton: '🚫 Запретить',
   },
   announcements: {
     adminNotice:

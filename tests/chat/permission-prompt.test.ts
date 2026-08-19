@@ -52,7 +52,11 @@ async function tickAsync(): Promise<void> {
 }
 
 describe('askPermissionViaChat', () => {
-  beforeEach(() => resetPermissionPromptForTesting())
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    resetPermissionPromptForTesting()
+  })
   afterEach(() => resetPermissionPromptForTesting())
 
   test('posts an Allow/Deny prompt and resolves on allow', async () => {
@@ -137,6 +141,20 @@ describe('askPermissionViaChat', () => {
     await tickAsync()
     expect(getButtonCall()!.body).toContain('`delete_task`')
   })
+
+  test('renders the prompt body and buttons in the context language', async () => {
+    setConfigValue('ctx-ru', 'language', 'ru')
+    const { reply, getButtonCall } = makeReply()
+    void askPermissionViaChat(reply, 'ctx-ru', { toolName: 'delete_task', reason: 'причина', args: { id: 'T-1' } })
+    await tickAsync()
+
+    const call = getButtonCall()!
+    expect(call.body).toContain('🔐 Запустить `delete_task`?')
+    expect(call.body).toContain('**Аргументы:**\nid: T-1')
+    const btns = extractButtons(call)
+    expect(btns[0]!.text).toBe('✅ Разрешить')
+    expect(btns[1]!.text).toBe('🚫 Запретить')
+  })
 })
 
 type RequestedEvent = { timeoutMs: number }
@@ -164,7 +182,11 @@ function makeLifecycleRecorder(): {
 }
 
 describe('analytics confirmation lifecycle', () => {
-  beforeEach(() => resetPermissionPromptForTesting())
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    resetPermissionPromptForTesting()
+  })
   afterEach(() => resetPermissionPromptForTesting())
 
   test('allow: requested fires after the prompt send resolves, then granted with latency', async () => {
@@ -427,9 +449,20 @@ describe('formatPrompt', () => {
     const result = formatPrompt('delete_task', 'cleanup *task*', { id: 'task-123' })
     expect(result).toContain('cleanup \\*task\\*')
   })
+
+  test('renders the prompt body in the requested locale', () => {
+    const result = formatPrompt('delete_task', 'cleanup', { id: 'task-123' }, 'ru')
+    expect(result).toContain('🔐 Запустить `delete_task`?')
+    expect(result).toContain('**Аргументы:**\nid: task-123')
+  })
 })
 
 describe('askPermissionViaChat handle lifecycle', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   type SpyHandle = {
     redact: ReturnType<typeof mock<() => Promise<void>>>
     remove: ReturnType<typeof mock<() => Promise<void>>>

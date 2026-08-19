@@ -143,13 +143,18 @@ function escapeMarkdown(text: string): string {
   return text.replace(MARKDOWN_ESCAPE_PATTERN, (ch) => `\\${ch}`)
 }
 
-export function formatPrompt(toolName: string, reason: string, args: Record<string, unknown>): string {
+export function formatPrompt(
+  toolName: string,
+  reason: string,
+  args: Record<string, unknown>,
+  locale: Locale = 'en',
+): string {
   const argsSection = formatArguments(args)
-  const parts = [`🔐 Run \`${toolName}\`?`]
+  const parts = [t('interactions.permissionPrompt', locale, { toolName })]
 
   if (argsSection) {
     parts.push('')
-    parts.push('**Arguments:**')
+    parts.push(t('interactions.argumentsLabel', locale))
     parts.push(argsSection)
   }
 
@@ -176,12 +181,13 @@ const sendPromptButtons = (
   contextId: string,
   toolName: string,
   timeoutMs: number,
+  locale: Locale,
 ): void => {
   void reply
     .buttons(body, {
       buttons: [
-        { text: '✅ Allow', callbackData: `perm:a:${id}`, style: 'primary' },
-        { text: '🚫 Deny', callbackData: `perm:d:${id}`, style: 'secondary' },
+        { text: t('interactions.allowButton', locale), callbackData: `perm:a:${id}`, style: 'primary' },
+        { text: t('interactions.denyButton', locale), callbackData: `perm:d:${id}`, style: 'secondary' },
       ],
     })
     .then((handle) => {
@@ -214,7 +220,8 @@ export function askPermissionViaChat(
   options?: AskPermissionOptions,
 ): Promise<PermissionDecision> {
   const id = generateRequestId()
-  const body = formatPrompt(req.toolName, req.reason, req.args)
+  const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
+  const body = formatPrompt(req.toolName, req.reason, req.args, locale)
   const timeoutMs = options?.timeoutMs ?? PERMISSION_TIMEOUT_MS
   const now = options?.now ?? Date.now
   const startedAtMs = now()
@@ -242,7 +249,7 @@ export function askPermissionViaChat(
       now,
       startedAtMs,
     })
-    sendPromptButtons(reply, id, body, contextId, req.toolName, timeoutMs)
+    sendPromptButtons(reply, id, body, contextId, req.toolName, timeoutMs, locale)
   })
 }
 
