@@ -7,17 +7,12 @@ import { getFeatureObserver } from '../analytics/feature-observer.js'
 import type { AnalyticsRequestContext } from '../analytics/provider-observer.js'
 import { buildChatCommandRequestContext } from '../analytics/provider-scope-factory.js'
 import type { ChatProvider, CommandHandler, IncomingMessage, AuthorizationResult } from '../chat/types.js'
+import { t } from '../i18n/index.js'
 import { logger } from '../logger.js'
 import { issueSettingsLink } from '../settings/issue-link.js'
+import { getContextLanguage } from '../utils/config-language.js'
 
 const log = logger.child({ scope: 'commands:config' })
-
-const GROUP_CONFIG_REDIRECT =
-  'Group settings are configured in direct messages with the bot. Open a DM with me and run /config.'
-const GROUP_CONFIG_ADMIN_ONLY =
-  'Only group admins can configure group settings, and group settings are configured in direct messages with the bot.'
-const NOT_CONFIGURED =
-  'The settings UI is not configured on this deployment. Ask the administrator to set SETTINGS_PUBLIC_BASE_URL.'
 
 /** Pure milestone context for the command path; null when the platform is unresolvable or analytics is off. */
 const commandMilestoneContext = (msg: IncomingMessage, auth: AuthorizationResult): AnalyticsRequestContext | null =>
@@ -37,17 +32,18 @@ export function registerConfigCommand(chat: ChatProvider): void {
     // launch /config to reach the settings UI (auth.configCommandAllowed).
     if (!auth.allowed && auth.configCommandAllowed !== true) return
 
+    const locale = getContextLanguage(auth.configContextId ?? auth.storageContextId)
     if (msg.contextType === 'group') {
-      await reply.text(auth.isGroupAdmin ? GROUP_CONFIG_REDIRECT : GROUP_CONFIG_ADMIN_ONLY)
+      await reply.text(
+        auth.isGroupAdmin ? t('commands.config.groupRedirect', locale) : t('commands.config.groupAdminOnly', locale),
+      )
       return
     }
 
     const link = issueSettingsLink({ platformInstanceId: msg.platformInstanceId, platformUserId: msg.user.id })
     if (link.kind === 'ok') {
       log.info({ userId: msg.user.id }, '/config issued settings link')
-      await reply.formatted(
-        `🔧 Open your settings: ${link.url}\n\n⚠️ This link is single-use and expires in 10 minutes. Do not share it.`,
-      )
+      await reply.formatted(t('commands.config.linkIssued', locale, { url: link.url }))
       const observer = getFeatureObserver()
       const requestContext = commandMilestoneContext(msg, auth)
       if (observer !== null && requestContext !== null) observer.configLinkIssued(requestContext, 'issued')
@@ -55,7 +51,7 @@ export function registerConfigCommand(chat: ChatProvider): void {
     }
     if (link.kind === 'rate_limited') {
       const minutes = Math.max(1, Math.ceil(link.retryAfterSec / 60))
-      await reply.text(`Too many settings links requested. Please try again in ${minutes} minute(s).`)
+      await reply.text(t('commands.config.rateLimited', locale, { minutes }))
       const observer = getFeatureObserver()
       const requestContext = commandMilestoneContext(msg, auth)
       if (observer !== null && requestContext !== null) {
@@ -66,7 +62,7 @@ export function registerConfigCommand(chat: ChatProvider): void {
     }
 
     log.warn({ userId: msg.user.id }, '/config requested but settings UI is not configured')
-    await reply.text(NOT_CONFIGURED)
+    await reply.text(t('commands.config.notConfigured', locale))
     const observer = getFeatureObserver()
     const requestContext = commandMilestoneContext(msg, auth)
     if (observer !== null && requestContext !== null) {

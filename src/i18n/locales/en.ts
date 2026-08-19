@@ -33,6 +33,75 @@ Let's get you set up! 🎯`,
       stoppingNow: '🛑 Stopping immediately…',
       windingDown: '🛑 winding down after this step…',
     },
+    help: {
+      dmUser: [
+        'papai — AI assistant for Kaneo task management',
+        '',
+        'Commands:',
+        '/help — Show this message',
+        '/config — Open your settings in the web UI (single-use link)',
+        '/clear — Clear conversation history and memory',
+        '/context — Show current memory context (summary and known entities)',
+        '/stop — Stop or steer the running task (send again to stop immediately)',
+        '',
+        'Any other message is sent to the AI assistant.',
+      ].join('\n'),
+      dmAdmin: [
+        '',
+        'Admin commands:',
+        "/clear <user_id> — Clear a specific user's history",
+        "/clear all — Clear all users' history",
+        '/dashboard — Open the operator dashboard (single-use link)',
+        '',
+        'Authorized users, groups, plugins, and announcements are managed in the web UI — open /config.',
+      ].join('\n'),
+      groupUser: [
+        'papai — AI assistant for Kaneo task management',
+        '',
+        'Group commands:',
+        '/help — Show this message',
+        '/context — Show current memory context',
+        '/clear — Clear group conversation history',
+        '',
+        'Mention me with @botname for natural language queries',
+      ].join('\n'),
+      groupAdmin: [
+        '',
+        'Group settings, membership, and authorization are configured in the web UI.',
+        'Open a DM with me and run /config.',
+      ].join('\n'),
+    },
+    clear: {
+      selfCleared: 'Conversation history, memory, and facts cleared.',
+      allCleared: 'Cleared history, memory, and facts for all {count} users.',
+      userCleared: 'Cleared history, memory, and facts for user {userId}.',
+      onlyGroupAdmins: 'Only group admins can run this command.',
+      onlyAdminOtherUsers: "Only the admin can clear other users' history.",
+      targetNotAuthorized: 'Target user is not authorized on this platform.',
+    },
+    config: {
+      groupRedirect:
+        'Group settings are configured in direct messages with the bot. Open a DM with me and run /config.',
+      groupAdminOnly:
+        'Only group admins can configure group settings, and group settings are configured in direct messages with the bot.',
+      notConfigured:
+        'The settings UI is not configured on this deployment. Ask the administrator to set SETTINGS_PUBLIC_BASE_URL.',
+      linkIssued:
+        '🔧 Open your settings: {url}\n\n⚠️ This link is single-use and expires in 10 minutes. Do not share it.',
+      rateLimited: 'Too many settings links requested. Please try again in {minutes} minute(s).',
+    },
+    context: {
+      buildFailed: 'Sorry — could not build context view right now.',
+    },
+    dashboard: {
+      dmOnly: 'Open this in a DM with me — `/dashboard` is DM-only.',
+      adminOnly: 'Only bot admins can claim a dashboard session.',
+      disabled: 'The dashboard is disabled on this deployment (DEBUG_SERVER is not enabled).',
+      userIdMissing: 'Could not identify the requesting user.',
+      issueFailed: 'Could not issue a sign-in link. Please try again.',
+      claimLink:
+        'Open this link, then press "Sign in" on the page:\n\n{url}\n\nLink expires in {ttlMinutes} min and can be used once.',
+    },
   },
   auth: {
     groupNotAllowed:

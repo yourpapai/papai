@@ -20,6 +20,38 @@ export interface Dictionary {
       stoppingNow: string
       windingDown: string
     }
+    help: {
+      dmUser: string
+      dmAdmin: string
+      groupUser: string
+      groupAdmin: string
+    }
+    clear: {
+      selfCleared: string
+      allCleared: string
+      userCleared: string
+      onlyGroupAdmins: string
+      onlyAdminOtherUsers: string
+      targetNotAuthorized: string
+    }
+    config: {
+      groupRedirect: string
+      groupAdminOnly: string
+      notConfigured: string
+      linkIssued: string
+      rateLimited: string
+    }
+    context: {
+      buildFailed: string
+    }
+    dashboard: {
+      dmOnly: string
+      adminOnly: string
+      disabled: string
+      userIdMissing: string
+      issueFailed: string
+      claimLink: string
+    }
   }
   auth: {
     groupNotAllowed: string

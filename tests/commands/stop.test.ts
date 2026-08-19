@@ -21,8 +21,10 @@ import {
 } from '../utils/test-helpers.js'
 
 describe('/stop command', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
     runRegistry.clear()
   })
   afterEach(() => runRegistry.clear())

@@ -5,8 +5,10 @@
 
 import type { ChatProvider, CommandHandler } from '../chat/types.js'
 import { getClaimTtlSeconds, issueClaim } from '../dashboard-auth/index.js'
+import { t } from '../i18n/index.js'
 import { logger } from '../logger.js'
 import { getSettingsPublicBaseUrl } from '../settings/config.js'
+import { getContextLanguage } from '../utils/config-language.js'
 
 const log = logger.child({ scope: 'commands:dashboard' })
 
@@ -25,24 +27,25 @@ const isDebugServerEnabled = (): boolean => process.env['DEBUG_SERVER'] === 'tru
 export const registerDashboardCommand = (chat: Readonly<ChatProvider>): void => {
   const handler: CommandHandler = async (msg, reply, auth) => {
     if (!auth.allowed) return
+    const locale = getContextLanguage(auth.configContextId ?? auth.storageContextId)
 
     if (msg.contextType !== 'dm') {
-      await reply.text('Open this in a DM with me — `/dashboard` is DM-only.')
+      await reply.text(t('commands.dashboard.dmOnly', locale))
       return
     }
     if (!auth.isBotAdmin) {
-      await reply.text('Only bot admins can claim a dashboard session.')
+      await reply.text(t('commands.dashboard.adminOnly', locale))
       return
     }
     if (!isDebugServerEnabled()) {
-      await reply.text('The dashboard is disabled on this deployment (DEBUG_SERVER is not enabled).')
+      await reply.text(t('commands.dashboard.disabled', locale))
       return
     }
 
     const adminUserId = msg.user.id
     if (adminUserId === '') {
       log.error('dashboard command: msg.user.id missing')
-      await reply.text('Could not identify the requesting user.')
+      await reply.text(t('commands.dashboard.userIdMissing', locale))
       return
     }
 
@@ -54,16 +57,15 @@ export const registerDashboardCommand = (chat: Readonly<ChatProvider>): void => 
         { error: error instanceof Error ? error.message : String(error) },
         'dashboard command: issueClaim failed',
       )
-      await reply.text('Could not issue a sign-in link. Please try again.')
+      await reply.text(t('commands.dashboard.issueFailed', locale))
       return
     }
 
     const url = `${defaultBaseUrl()}/auth/claim?n=${claim.nonce}`
     const ttlMinutes = Math.round(getClaimTtlSeconds() / 60)
-    await reply.formatted(
-      `Open this link, then press "Sign in" on the page:\n\n${url}\n\nLink expires in ${ttlMinutes} min and can be used once.`,
-      { disableLinkPreview: true },
-    )
+    await reply.formatted(t('commands.dashboard.claimLink', locale, { url, ttlMinutes }), {
+      disableLinkPreview: true,
+    })
   }
 
   chat.registerCommand('dashboard', handler)
