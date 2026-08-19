@@ -103,6 +103,10 @@ export default {
     // change (openspec/changes/context-vault-plugin); later tasks (settings
     // routes, push route, summarizer, plugin facade) consume their exports.
     'src/context-vault/*.ts!',
+    // i18n module is the seam surface for the multi-language-support change
+    // (issue #298, steps 2–6); later tasks (language config key, picker,
+    // system prompt, command migration, settings UI) consume its exports.
+    'src/i18n/index.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',

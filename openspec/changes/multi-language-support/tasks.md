@@ -10,7 +10,7 @@ See LICENSE in the project root for details.
 ## 1. i18n module (typed catalogs + fallback)
 
 - [x] 1.1 Write failing `tests/i18n/dictionary.test.ts`: en catalog satisfies the `Dictionary` type; `t()` returns the en entry for `en`, the ru entry for `ru`, and falls back to en with a logged warn when a ru key is missing (raw key never returned); named-slot interpolation. Then implement `src/i18n/types.ts`, `src/i18n/index.ts` (`Locale`, `SUPPORTED_LOCALES`, `isSupportedLocale`, `getDictionary`, `t`), `src/i18n/locales/en.ts` seeded with the framework texts, and `src/i18n/locales/ru.ts` typed against the same shape. Verify: `bun test tests/i18n/dictionary.test.ts`
-- [ ] 1.2 Write failing key-parity test in `tests/i18n/parity.test.ts` that walks the en dictionary and asserts every key path exists in ru (and vice versa, no extra keys). Keep it green by completing `locales/ru.ts`. Verify: `bun test tests/i18n/parity.test.ts && bun run typecheck`
+- [x] 1.2 Write failing key-parity test in `tests/i18n/parity.test.ts` that walks the en dictionary and asserts every key path exists in ru (and vice versa, no extra keys). Keep it green by completing `locales/ru.ts`. Verify: `bun test tests/i18n/parity.test.ts && bun run typecheck`
 
 ## 2. `language` preference (config key, validation, resolution)
 
