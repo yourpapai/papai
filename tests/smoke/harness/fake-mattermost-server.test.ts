@@ -26,6 +26,15 @@ const singlePostSchema = z.object({
   message: z.string(),
   create_at: z.number(),
 })
+const createdPostSchema = z.object({ id: z.string() })
+
+/** Keeps the `posted`-only branch out of the test body, where conditionals are banned. */
+const collectPostedFrame = (data: string, into: Array<Record<string, unknown>>): void => {
+  const raw: unknown = JSON.parse(data)
+  const frame = frameSchema.parse(raw)
+  if (frame['event'] !== 'posted') return
+  into.push(frameSchema.parse(JSON.parse(postedFrameSchema.parse(frame).data.post)))
+}
 const threadSchema = z.object({ order: z.array(z.string()), posts: z.record(z.string(), z.object({ id: z.string() })) })
 
 describe('fake Mattermost server', () => {
@@ -119,6 +128,76 @@ describe('fake Mattermost server — T3 post + thread endpoints', () => {
       expect(body.order).toEqual(['root-1'])
       expect(body.posts['root-1']?.id).toBe('root-1')
       expect(mm.observedGets()).toContain('/api/v4/posts/root-1/thread')
+    } finally {
+      await mm.stop()
+    }
+  })
+
+  test('delivers the thread root on the posted frame when one is given', async () => {
+    const mm = startFakeMattermostServer()
+    try {
+      const ws = new WebSocket(`${mm.localBaseUrl.replace('http', 'ws')}/api/v4/websocket`)
+      const posts: Array<Record<string, unknown>> = []
+      ws.addEventListener('message', (e) => collectPostedFrame(String(e.data), posts))
+      await new Promise<void>((resolve) => {
+        ws.addEventListener('open', () => resolve())
+      })
+      ws.send(JSON.stringify({ seq: 1, action: 'authentication_challenge', data: { token: 't' } }))
+      await mm.whenConnected()
+
+      mm.deliverMessage({ channelId: 'chan-1', message: 'in thread', userId: 'admin-user-1', rootId: 'root-9' })
+      mm.deliverMessage({ channelId: 'chan-1', message: 'channel level', userId: 'admin-user-1' })
+      await waitFor(() => posts.length === 2)
+
+      expect(posts[0]).toMatchObject({ message: 'in thread', root_id: 'root-9' })
+      // Omitting the root must leave the key off entirely: the adapter reads an
+      // absent root_id as "not in a thread", and an empty string would not.
+      expect(posts[1]).not.toHaveProperty('root_id')
+      ws.close()
+    } finally {
+      await mm.stop()
+    }
+  })
+
+  test('captures post creation, patches, and deletion in order', async () => {
+    const mm = startFakeMattermostServer()
+    try {
+      const created = await fetch(`${mm.localBaseUrl}/api/v4/posts`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ channel_id: 'chan-1', message: 'Thinking…' }),
+      })
+      const postId = createdPostSchema.parse(await created.json()).id
+
+      const patched = await fetch(`${mm.localBaseUrl}/api/v4/posts/${postId}/patch`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'Reading the thread', props: {} }),
+      })
+      expect(patched.status).toBe(200)
+      const removed = await fetch(`${mm.localBaseUrl}/api/v4/posts/${postId}`, { method: 'DELETE' })
+      expect(removed.status).toBe(200)
+
+      expect(mm.postMutations()).toEqual([
+        { kind: 'create', postId, message: 'Thinking…' },
+        { kind: 'patch', postId, message: 'Reading the thread' },
+        { kind: 'delete', postId },
+      ])
+    } finally {
+      await mm.stop()
+    }
+  })
+
+  test('refuses to mutate a post that was never created or seeded', async () => {
+    const mm = startFakeMattermostServer()
+    try {
+      const patched = await fetch(`${mm.localBaseUrl}/api/v4/posts/ghost/patch`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'nope' }),
+      })
+      expect(patched.status).toBe(404)
+      expect(mm.postMutations()).toEqual([])
     } finally {
       await mm.stop()
     }

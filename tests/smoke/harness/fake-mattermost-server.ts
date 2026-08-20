@@ -12,7 +12,21 @@
 import type { ServerWebSocket } from 'bun'
 import { z } from 'zod'
 
-export type IncomingPost = { channelId: string; message: string; userId: string; userName?: string; postId?: string }
+export type IncomingPost = {
+  channelId: string
+  message: string
+  userId: string
+  userName?: string
+  postId?: string
+  /** Thread root the post belongs to. Omitted means channel level, as Mattermost sends it. */
+  rootId?: string
+}
+
+/** One ordered write against a post: how the live-status lifecycle is observed. */
+export type PostMutation =
+  | { kind: 'create'; postId: string; message: string }
+  | { kind: 'patch'; postId: string; message: string }
+  | { kind: 'delete'; postId: string }
 export type CapturedPost = { channel_id: string; message: string; root_id?: string }
 
 export type SeededPost = {
@@ -35,6 +49,7 @@ export type FakeMattermostServer = {
   waitForPost(timeoutMs?: number): Promise<CapturedPost>
   seedPost(post: SeededPost): void
   observedGets(): readonly string[]
+  postMutations(): readonly PostMutation[]
   stop(): Promise<void>
 }
 
@@ -42,12 +57,15 @@ const CHANNEL_RE = /^\/api\/v4\/channels\/[^/]+$/u
 const MEMBER_RE = /^\/api\/v4\/channels\/[^/]+\/members\/[^/]+$/u
 const POST_SINGLE_RE = /^\/api\/v4\/posts\/([^/]+)$/u
 const POST_THREAD_RE = /^\/api\/v4\/posts\/([^/]+)\/thread$/u
+const POST_PATCH_RE = /^\/api\/v4\/posts\/([^/]+)\/patch$/u
 
 const postBodySchema = z.object({
   channel_id: z.string().optional(),
   message: z.string().optional(),
   root_id: z.string().optional(),
 })
+
+const patchBodySchema = z.object({ message: z.string().optional() })
 
 const wsFrameSchema = z.object({ action: z.string().optional() })
 
@@ -69,6 +87,8 @@ export function startFakeMattermostServer(
   const postWaiters: Array<(post: CapturedPost) => void> = []
   const seededPosts = new Map<string, SeededPost>()
   const observedGetPaths: string[] = []
+  const mutations: PostMutation[] = []
+  const knownPostIds = new Set<string>()
 
   const onPost = (post: CapturedPost): void => {
     const waiter = postWaiters.shift()
@@ -124,7 +144,30 @@ export function startFakeMattermostServer(
       const captured: CapturedPost = { channel_id: body.channel_id ?? '', message: body.message ?? '' }
       if (body.root_id !== undefined) captured.root_id = body.root_id
       onPost(captured)
-      return Response.json({ id: `out-${outCount}` })
+      const postId = `out-${String(outCount)}`
+      knownPostIds.add(postId)
+      mutations.push({ kind: 'create', postId, message: body.message ?? '' })
+      return Response.json({ id: postId })
+    }
+    if (req.method === 'PUT') {
+      const patchMatch = POST_PATCH_RE.exec(path)
+      if (patchMatch !== null) {
+        const postId = patchMatch[1] ?? ''
+        if (!knownPostIds.has(postId) && !seededPosts.has(postId)) return new Response('not found', { status: 404 })
+        const rawBody: unknown = await req.json().catch(() => ({}))
+        const parsed = patchBodySchema.safeParse(rawBody)
+        mutations.push({ kind: 'patch', postId, message: (parsed.success ? parsed.data.message : undefined) ?? '' })
+        return Response.json({ id: postId })
+      }
+    }
+    if (req.method === 'DELETE') {
+      const deleteMatch = POST_SINGLE_RE.exec(path)
+      if (deleteMatch !== null) {
+        const postId = deleteMatch[1] ?? ''
+        if (!knownPostIds.has(postId) && !seededPosts.has(postId)) return new Response('not found', { status: 404 })
+        mutations.push({ kind: 'delete', postId })
+        return Response.json({ status: 'OK' })
+      }
     }
     // Tolerate any other v4 GET the provider probes at startup rather than 404-crashing it.
     if (req.method === 'GET' && path.startsWith('/api/v4/')) return Response.json({})
@@ -178,6 +221,7 @@ export function startFakeMattermostServer(
         channel_id: post.channelId,
         message: post.message,
         user_name: post.userName ?? post.userId,
+        ...(post.rootId === undefined ? {} : { root_id: post.rootId }),
       }
       activeWs.send(
         JSON.stringify({
@@ -202,6 +246,9 @@ export function startFakeMattermostServer(
     },
     observedGets() {
       return observedGetPaths.slice()
+    },
+    postMutations() {
+      return mutations.slice()
     },
     async stop() {
       await server.stop(true)

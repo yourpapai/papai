@@ -29,7 +29,7 @@ See LICENSE in the project root for details.
 
 ## 3. Mattermost fake boundary
 
-- [ ] 3.1 Failing contract tests in
+- [x] 3.1 Failing contract tests in
       `tests/smoke/harness/fake-mattermost-server.test.ts` for `rootId` on the
       delivered WS frame and ordered patch/delete capture; then implement
       additively in `tests/smoke/harness/fake-mattermost-server.ts`
