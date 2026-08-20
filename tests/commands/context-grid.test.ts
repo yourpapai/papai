@@ -18,13 +18,6 @@ const baseSnapshot = (overrides: Partial<ContextSnapshot> = {}): ContextSnapshot
   ...overrides,
 })
 
-// The stable section id arrives with the localization implementation; building id-bearing
-// sections through this type keeps the suite compiling until then (extra properties are fine
-// when the array is not a fresh literal at the assignment site).
-type SectionWithId = ContextSnapshot['sections'][number] & { id: string }
-
-const sectionWithId = (id: string, label: string, tokens: number): SectionWithId => ({ id, label, tokens })
-
 describe('buildContextGrid', () => {
   test('returns a string with GRID_ROWS lines of GRID_COLS cells when maxTokens is known', () => {
     const snapshot = baseSnapshot({
@@ -118,10 +111,10 @@ describe('SECTION_EMOJIS keyed by stable section ids', () => {
       baseSnapshot({
         totalTokens: 4,
         sections: [
-          sectionWithId('system_prompt', 'System prompt', 1),
-          sectionWithId('memory_context', 'Memory context', 1),
-          sectionWithId('conversation_history', 'Conversation history', 1),
-          sectionWithId('tools', 'Tools', 1),
+          { id: 'system_prompt', label: 'System prompt', tokens: 1 },
+          { id: 'memory_context', label: 'Memory context', tokens: 1 },
+          { id: 'conversation_history', label: 'Conversation history', tokens: 1 },
+          { id: 'tools', label: 'Tools', tokens: 1 },
         ],
       }),
     )
@@ -129,10 +122,10 @@ describe('SECTION_EMOJIS keyed by stable section ids', () => {
       baseSnapshot({
         totalTokens: 4,
         sections: [
-          sectionWithId('system_prompt', 'Системный промпт', 1),
-          sectionWithId('memory_context', 'Контекст памяти', 1),
-          sectionWithId('conversation_history', 'История диалога', 1),
-          sectionWithId('tools', 'Инструменты', 1),
+          { id: 'system_prompt', label: 'Системный промпт', tokens: 1 },
+          { id: 'memory_context', label: 'Контекст памяти', tokens: 1 },
+          { id: 'conversation_history', label: 'История диалога', tokens: 1 },
+          { id: 'tools', label: 'Инструменты', tokens: 1 },
         ],
       }),
     )
