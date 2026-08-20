@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import { isAuthorizedGroup } from '../../../src/authorized-groups.js'
+import { getConfigValue } from '../../../src/config.js'
 import { isGroupMember } from '../../../src/groups.js'
 import { isAdmin, isSuperAdmin } from '../../../src/instances/admin-store.js'
 import { getContextSettings } from '../../../src/instances/context-store.js'
@@ -13,6 +14,7 @@ import { getPlatformInstance } from '../../../src/instances/platform-store.js'
 import { getTaskInstance } from '../../../src/instances/task-store.js'
 import { getAdminRoleBindings } from '../../../src/llm-providers/store.js'
 import { mcpPool } from '../../../src/mcp/client-pool.js'
+import { activatePlugins } from '../../../src/plugins/loader.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
 import { getPluginAdminState } from '../../../src/plugins/store.js'
 import {
@@ -276,5 +278,66 @@ describe('scenario fixtures', () => {
     } finally {
       Reflect.set(globalThis, 'fetch', originalFetch)
     }
+  })
+})
+
+describe('approveRealTaskProviderPlugin', () => {
+  test('approves the real YouTrack plugin so its type becomes resolvable', async () => {
+    const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
+    await fixtures.setupDatabase()
+
+    fixtures.approveRealTaskProviderPlugin('youtrack')
+    await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
+
+    const descriptor = getTaskProviderDescriptor('youtrack')
+    expect(descriptor).toBeDefined()
+    expect(descriptor?.source).toEqual({ plugin: 'task-provider-youtrack' })
+  })
+
+  test('leaves the kaneo memory-fake registration intact', async () => {
+    const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
+    await fixtures.setupDatabase()
+
+    fixtures.approveRealTaskProviderPlugin('youtrack')
+    expect(() => {
+      fixtures.registerTaskProvider()
+    }).not.toThrow()
+  })
+
+  test('approves the real Kaneo plugin so its type becomes resolvable without a memory fake', async () => {
+    const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
+    await fixtures.setupDatabase()
+
+    fixtures.approveRealTaskProviderPlugin('kaneo')
+    await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
+
+    const descriptor = getTaskProviderDescriptor('kaneo')
+    expect(descriptor).toBeDefined()
+    expect(descriptor?.source).toEqual({ plugin: 'task-provider-kaneo' })
+  })
+})
+
+describe('seedTaskInstance config passthrough', () => {
+  test('stores a caller-supplied instance config', async () => {
+    const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
+    await fixtures.setupDatabase()
+    fixtures.seedTaskInstance({ id: 'ti-1', type: 'youtrack', config: { baseUrl: 'https://youtrack.invalid' } })
+
+    expect(getTaskInstance('ti-1')?.config['baseUrl']).toBe('https://youtrack.invalid')
+  })
+})
+
+describe('seedProviderContextConfig', () => {
+  test('writes the plugin-scoped provider config key the resolver reads', async () => {
+    const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
+    await fixtures.setupDatabase()
+    fixtures.seedProviderContextConfig({
+      contextId: 'ctx-1',
+      pluginId: 'task-provider-youtrack',
+      key: 'token',
+      value: 'fake-token',
+    })
+
+    expect(getConfigValue('ctx-1', 'plugin:task-provider-youtrack:provider:token')).toBe('fake-token')
   })
 })

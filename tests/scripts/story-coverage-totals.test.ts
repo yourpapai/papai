@@ -10,20 +10,20 @@ import { formatStoryCoverageTotals, storyCoverageTotals } from '../../scripts/st
 describe('storyCoverageTotals', () => {
   test('tallies the catalog ledger', () => {
     expect(storyCoverageTotals()).toEqual({
-      total: 167,
-      executable: 142,
-      pending: 25,
-      readiness: { 'executable-as-is': 0, 'needs-seam': 3, blocked: 22 },
-      executableByTier: { '0': 103, '1': 29, '2': 8, '3': 2, '4': 0 },
-      pendingByUnblockingTier: { '0': 0, '1': 0, '2': 0, '3': 3, '4': 0 },
+      total: 254,
+      executable: 232,
+      pending: 22,
+      readiness: { 'executable-as-is': 0, 'needs-seam': 0, blocked: 22 },
+      executableByTier: { '0': 178, '1': 29, '2': 8, '3': 16, '4': 1 },
+      pendingByUnblockingTier: { '0': 0, '1': 0, '2': 0, '3': 0, '4': 0 },
     })
   })
 
   test('formats a single summary line with per-tier tallies', () => {
     expect(formatStoryCoverageTotals()).toBe(
-      'story catalog: 142/167 executable (T0 103, T1 29, T2 8, T3 2, T4 0); ' +
-        'pending 25 (0 executable-as-is, 3 needs-seam, 22 blocked); ' +
-        'pending unblocked by tier (T0 0, T1 0, T2 0, T3 3, T4 0)',
+      'story catalog: 232/254 executable (T0 178, T1 29, T2 8, T3 16, T4 1); ' +
+        'pending 22 (0 executable-as-is, 0 needs-seam, 22 blocked); ' +
+        'pending unblocked by tier (T0 0, T1 0, T2 0, T3 0, T4 0)',
     )
   })
 })

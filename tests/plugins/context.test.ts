@@ -253,6 +253,36 @@ describe('buildPluginContext', () => {
       expect(fetch).toHaveBeenCalledTimes(1)
       expect(assertPublicUrl).toHaveBeenCalledTimes(1)
     })
+
+    test('forInstance admits only the hostname parsed from instance config and rejects a different host', async () => {
+      const fetch = mock(() => Promise.resolve(new Response('fixture')))
+      const assertPublicUrl = mock(() => Promise.resolve())
+      const manifest = pluginManifestSchema.parse({
+        id: 'instance-host-plugin',
+        name: 'Instance Host Plugin',
+        version: '1.0.0',
+        description: 'Tests per-instance host admission',
+        apiVersion: PLUGIN_API_VERSION,
+        main: 'index.ts',
+        permissions: ['provider.task'],
+        contributes: { taskProviderTypes: ['instance-tracker'] },
+        providerConfigSchema: [{ key: 'baseUrl', label: 'Base URL', required: true }],
+        providerAllowedInstanceHostsFromConfig: ['baseUrl'],
+      })
+      const { ctx } = buildPluginContext(manifest, '__system__', {
+        providerRuntimeDeps: { fetch, assertPublicUrl },
+      })
+
+      const instanceFetch = ctx.providerRuntime!.forInstance({ baseUrl: 'https://kaneo.invalid' })
+
+      expect(await instanceFetch('https://kaneo.invalid/api/projects').then((response) => response.text())).toBe(
+        'fixture',
+      )
+      expect(fetch).toHaveBeenCalledTimes(1)
+
+      await expect(instanceFetch('https://evil.invalid/exfiltrate')).rejects.toThrow('allowlist')
+      expect(fetch).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('registerTaskProviderType', () => {

@@ -6,7 +6,6 @@
 import { inArray } from 'drizzle-orm'
 import { z } from 'zod'
 
-import { deriveCollectionRefKey, setEligibilityState } from '../../analytics/governance/collection-store.js'
 import { getDeletionRequest } from '../../analytics/governance/deletion-target-store.js'
 import { getPolicy } from '../../analytics/governance/policy-store.js'
 import { getPreference, setPreference } from '../../analytics/governance/preference-store.js'
@@ -26,6 +25,7 @@ import { getDrizzleDb } from '../../db/drizzle.js'
 import { analyticsCensorIntervals } from '../../db/schema.js'
 import { logger } from '../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
+import { activeCollectionRefKey, collectionEligibilityEffect } from './analytics-consent.js'
 import { settingsRequestNowMs } from './request-clock.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from './respond.js'
 
@@ -138,27 +138,6 @@ const handleGetPreferences = (authed: AuthenticatedSettingsRequest, deps: Analyt
   })
 }
 
-const provisionCollectionEligibility = (
-  identity: SubjectIdentity,
-  state: 'allow' | 'deny',
-  policyVersion: number,
-  nowMs: number,
-  deps: AnalyticsActorRouteDeps,
-): void => {
-  const governance = deps.subject.keyrings.governance
-  if (governance.kind !== 'available') return
-  const refKey = deriveCollectionRefKey({
-    key: governance.activeKey,
-    keyVersion: governance.activeVersion,
-    platformInstanceId: identity.platformInstanceId,
-    platformUserId: identity.platformUserId,
-  })
-  setEligibilityState(
-    { refKey, keyVersion: governance.activeVersion, state, policyVersion, nowMs },
-    { getDrizzleDb: deps.subject.getDrizzleDb },
-  )
-}
-
 const handlePutPreferences = async (
   req: Request,
   authed: AuthenticatedSettingsRequest,
@@ -183,12 +162,16 @@ const handlePutPreferences = async (
     ['local_longitudinal', body.data.localLongitudinal],
     ['external_pseudonymous', body.data.externalPseudonymous],
   ]
+  const onAppliedInTx = collectionEligibilityEffect(activeCollectionRefKey(identity, deps.subject.keyrings), {
+    policyVersion,
+    nowMs,
+  })
   for (const [lane, value] of lanes) {
     if (value === undefined) continue
-    setPreference({ governanceActorKey, keyVersion, lane, value, policyVersion, source: 'settings', nowMs }, storeDeps)
-  }
-  if (body.data.localLongitudinal !== undefined) {
-    provisionCollectionEligibility(identity, body.data.localLongitudinal, policyVersion, nowMs, deps)
+    setPreference(
+      { governanceActorKey, keyVersion, lane, value, policyVersion, source: 'settings', nowMs, onAppliedInTx },
+      storeDeps,
+    )
   }
   log.info('analytics preference updated through settings')
   return settingsJson(200, { ok: true, preference: preferencePayload(identity, deps) })
