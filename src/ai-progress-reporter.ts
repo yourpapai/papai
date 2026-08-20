@@ -5,6 +5,7 @@
 
 import type { AiOutputSettings } from './ai-output-settings.js'
 import type { ReplyFn } from './chat/types.js'
+import { t, type Locale } from './i18n/index.js'
 
 type ToolEventBase = {
   toolName: string
@@ -118,35 +119,39 @@ function formatCodeBlock(value: unknown, settings: AiOutputSettings): string {
   return '```json\n' + formatted + '\n```'
 }
 
-function formatToolFinishedMessage(event: ToolFinishedEvent, settings: AiOutputSettings): string {
-  const status = event.success ? 'success' : 'failed'
-  const duration = event.durationMs === undefined ? '' : ` in ${event.durationMs}ms`
-  const lines = [`Tool \`${event.toolName}\` ${status}${duration}`, '']
-  lines.push('Input:', formatCodeBlock(event.input, settings))
+function formatToolFinishedMessage(event: ToolFinishedEvent, settings: AiOutputSettings, locale: Locale): string {
+  const status = event.success ? t('progress.statusSuccess', locale) : t('progress.statusFailed', locale)
+  const duration =
+    event.durationMs === undefined ? '' : t('progress.durationSuffix', locale, { durationMs: event.durationMs })
+  const head = t('progress.toolFinished', locale, { toolName: event.toolName, status }) + duration
+  const lines = [head, '']
+  lines.push(t('progress.inputLabel', locale), formatCodeBlock(event.input, settings))
   if (event.output !== undefined) {
-    lines.push('', 'Output:', formatCodeBlock(event.output, settings))
+    lines.push('', t('progress.outputLabel', locale), formatCodeBlock(event.output, settings))
   }
   if (event.error !== undefined) {
-    lines.push('', 'Error:', '```json\n' + formatErrorValue(event.error, settings) + '\n```')
+    lines.push('', t('progress.errorLabel', locale), '```json\n' + formatErrorValue(event.error, settings) + '\n```')
   }
   return lines.join('\n')
 }
 
-function formatToolStartedMessage(event: ToolStartedEvent, settings: AiOutputSettings): string {
-  const lines = [`Tool \`${event.toolName}\` started`, '']
-  lines.push('Input:', formatCodeBlock(event.input, settings))
+function formatToolStartedMessage(event: ToolStartedEvent, settings: AiOutputSettings, locale: Locale): string {
+  const lines = [t('progress.toolStarted', locale, { toolName: event.toolName }), '']
+  lines.push(t('progress.inputLabel', locale), formatCodeBlock(event.input, settings))
   return lines.join('\n')
 }
 
-function formatReasoningMessage(text: string, settings: AiOutputSettings): string {
+function formatReasoningMessage(text: string, settings: AiOutputSettings, locale: Locale): string {
   const content =
-    settings.detailLevel === 'raw'
-      ? text.trim()
-      : `Provider reasoning available (${text.trim().length} characters). Enable raw detail to view.`
-  return 'Reasoning\n\n```json\n' + JSON.stringify(content) + '\n```'
+    settings.detailLevel === 'raw' ? text.trim() : t('progress.reasoningHidden', locale, { count: text.trim().length })
+  return t('progress.reasoningTitle', locale) + '\n\n```json\n' + JSON.stringify(content) + '\n```'
 }
 
-export function createAiProgressReporter(reply: ReplyFn, settings: AiOutputSettings): AiProgressReporter {
+export function createAiProgressReporter(
+  reply: ReplyFn,
+  settings: AiOutputSettings,
+  locale: Locale = 'en',
+): AiProgressReporter {
   const pendingToolStarts = new Map<string, ToolStartedEvent>()
   const toolMessages: string[] = []
   const reasoningMessages: string[] = []
@@ -159,21 +164,21 @@ export function createAiProgressReporter(reply: ReplyFn, settings: AiOutputSetti
     toolFinished: (event) => {
       if (settings.toolVisibility !== 'on') return
       pendingToolStarts.delete(event.toolCallId)
-      toolMessages.push(formatToolFinishedMessage(event, settings))
+      toolMessages.push(formatToolFinishedMessage(event, settings, locale))
     },
     reasoning: (...args) => {
       const [text, raw] = args
       if (settings.reasoningVisibility !== 'on') return
       if (settings.detailLevel === 'raw' && raw !== undefined) {
-        reasoningMessages.push('Reasoning\n\n' + formatCodeBlock(raw, settings))
+        reasoningMessages.push(t('progress.reasoningTitle', locale) + '\n\n' + formatCodeBlock(raw, settings))
         return
       }
       if (text === undefined || text.trim() === '') return
-      reasoningMessages.push(formatReasoningMessage(text, settings))
+      reasoningMessages.push(formatReasoningMessage(text, settings, locale))
     },
     flush: async () => {
       const startedMessages = Array.from(pendingToolStarts.values()).map((event) =>
-        formatToolStartedMessage(event, settings),
+        formatToolStartedMessage(event, settings, locale),
       )
       const allMessages = [...startedMessages, ...toolMessages, ...reasoningMessages]
       if (allMessages.length === 0) return

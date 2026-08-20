@@ -103,6 +103,10 @@ export default {
     // change (openspec/changes/context-vault-plugin); later tasks (settings
     // routes, push route, summarizer, plugin facade) consume their exports.
     'src/context-vault/*.ts!',
+    // The usage-failure query is the seam surface for the
+    // usage-failure-queries change (openspec/changes/usage-failure-queries);
+    // the follow-up dashboard/settings wiring consumes its exports.
+    'src/usage/failures.ts!',
     // First-party plugin entry points are loaded dynamically by the plugin
     // loader, so they have no static importer.
     'plugins/*/index.ts!',
@@ -249,6 +253,11 @@ export default {
     // project scope.
     'src/context-vault/*.ts': ['exports', 'types'],
     'src/db/context-vault-schema.ts': ['exports', 'types'],
+    // The usage-failure query exports are consumed by the follow-up
+    // dashboard/settings wiring of the usage-failure-queries change
+    // (openspec/changes/usage-failure-queries) and by tests outside knip's
+    // production project scope.
+    'src/usage/failures.ts': ['exports'],
     // Re-export facades whose remaining flagged bindings knip cannot trace:
     // the published plugin-types package export, declared plugin-core-separation
     // compatibility boundaries, and bindings consumed by byte-frozen 0Q

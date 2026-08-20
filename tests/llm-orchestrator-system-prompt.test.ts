@@ -6,6 +6,8 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
 
 import { userCachesForTesting } from '../src/cache.js'
+import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
+import { setConfigValue } from '../src/config.js'
 import { saveInstruction, buildInstructionsBlock } from '../src/instructions.js'
 import { resolveSystemPrompt } from '../src/llm-orchestrator-invoke.js'
 import { createMockProvider } from './tools/mock-provider.js'
@@ -71,5 +73,52 @@ describe('resolveSystemPrompt context propagation', () => {
     })
 
     expect(prompt).not.toContain('GROUP REMINDERS')
+  })
+})
+
+describe('resolveSystemPrompt locale resolution', () => {
+  const provider = createMockProvider()
+  const enabledToolNames = new Set(['create_reminder', 'list_reminders', 'get_current_time'])
+
+  // A Telegram-style group: thread-scoped storage context, group-shared config context.
+  const groupConfigId = toScopedContextId({ platformInstanceId: 'tg', nativeContextId: 'group-1' })
+  const threadStorageId = toScopedThreadContextId({
+    platformInstanceId: 'tg',
+    nativeContextId: 'group-1',
+    threadId: 't1',
+  })
+
+  beforeEach(async () => {
+    mockLogger()
+    userCachesForTesting.clear()
+    await setupTestDb()
+  })
+
+  test('without an explicit config context, a thread-scoped storage id derives its group config', () => {
+    setConfigValue(groupConfigId, 'language', 'ru')
+
+    const prompt = resolveSystemPrompt({
+      provider,
+      contextId: threadStorageId,
+      enabledToolNames,
+      disclosure: undefined,
+      contextType: 'group',
+    })
+
+    expect(prompt).toContain('Отвечай пользователю на русском языке')
+  })
+
+  test('a ru config context with an en-language neighbour stays isolated per config context', () => {
+    setConfigValue(groupConfigId, 'language', 'ru')
+
+    const prompt = resolveSystemPrompt({
+      provider,
+      contextId: toScopedThreadContextId({ platformInstanceId: 'tg', nativeContextId: 'group-2', threadId: 't9' }),
+      enabledToolNames,
+      disclosure: undefined,
+      contextType: 'group',
+    })
+
+    expect(prompt).toContain('Always write your replies to the user in English')
   })
 })

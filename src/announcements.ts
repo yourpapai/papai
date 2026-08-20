@@ -17,9 +17,11 @@ import type { ChatProvider } from './chat/types.js'
 import { dmTarget } from './chat/types.js'
 import { getDrizzleDb } from './db/drizzle.js'
 import { versionAnnouncements } from './db/schema.js'
+import { t } from './i18n/index.js'
 import { logger } from './logger.js'
 import { recordProactiveInHistory } from './proactive-history.js'
 import { extractChangelogSection } from './utils/changelog.js'
+import { getContextLanguage } from './utils/config-language.js'
 
 export interface AnnouncementsDeps {
   readChangelogFile: () => Promise<string>
@@ -110,9 +112,11 @@ export async function announceNewVersion(
   if (humanized !== null) deps.updateHumanizedBody(VERSION, humanized)
 
   const draftBody = humanized ?? rawSection
-  const message =
-    `🆕 papai v${VERSION} is ready to announce!\n\n${draftBody}\n\n` +
-    `_Review and broadcast to subscribers in Settings → Release notes._`
+  const adminConfigContextId = toScopedContextId({ platformInstanceId, nativeContextId: adminUserId })
+  const message = t('announcements.adminNotice', getContextLanguage(adminConfigContextId), {
+    version: VERSION,
+    body: draftBody,
+  })
   const success = await sendAnnouncementToAdmin(platformInstanceId, adminUserId, message, chat)
 
   log.info({ version: VERSION, success, humanized: humanized !== null }, 'Version announcement notice complete')

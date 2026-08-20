@@ -6,6 +6,7 @@
 import { inArray } from 'drizzle-orm'
 import { z } from 'zod'
 
+import { deriveCollectionRefKey, setEligibilityState } from '../../analytics/governance/collection-store.js'
 import { getDeletionRequest } from '../../analytics/governance/deletion-target-store.js'
 import { getPolicy } from '../../analytics/governance/policy-store.js'
 import { getPreference, setPreference } from '../../analytics/governance/preference-store.js'
@@ -138,6 +139,27 @@ const handleGetPreferences = (authed: AuthenticatedSettingsRequest, deps: Analyt
   })
 }
 
+const provisionCollectionEligibility = (
+  identity: SubjectIdentity,
+  state: 'allow' | 'deny',
+  policyVersion: number,
+  nowMs: number,
+  deps: AnalyticsActorRouteDeps,
+): void => {
+  const governance = deps.subject.keyrings.governance
+  if (governance.kind !== 'available') return
+  const refKey = deriveCollectionRefKey({
+    key: governance.activeKey,
+    keyVersion: governance.activeVersion,
+    platformInstanceId: identity.platformInstanceId,
+    platformUserId: identity.platformUserId,
+  })
+  setEligibilityState(
+    { refKey, keyVersion: governance.activeVersion, state, policyVersion, nowMs },
+    { getDrizzleDb: deps.subject.getDrizzleDb },
+  )
+}
+
 const handlePutPreferences = async (
   req: Request,
   authed: AuthenticatedSettingsRequest,
@@ -172,6 +194,9 @@ const handlePutPreferences = async (
       { governanceActorKey, keyVersion, lane, value, policyVersion, source: 'settings', nowMs, onAppliedInTx },
       storeDeps,
     )
+  }
+  if (body.data.localLongitudinal !== undefined) {
+    provisionCollectionEligibility(identity, body.data.localLongitudinal, policyVersion, nowMs, deps)
   }
   log.info('analytics preference updated through settings')
   return settingsJson(200, { ok: true, preference: preferencePayload(identity, deps) })

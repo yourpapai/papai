@@ -20,6 +20,7 @@ import { validateToolResults } from './llm-orchestrator-validation.js'
 import { logger } from './logger.js'
 import type { TaskProvider } from './providers/types.js'
 import { toolCapabilityCatalog } from './runtime/capability-catalog.js'
+import { resolveContextLocale } from './tool-failure.js'
 import { applyResultCompaction } from './tools/compaction/wrap-compaction.js'
 import { registerMcpToolCapabilities, registerOfferedCoreToolCapabilities } from './tools/core-capabilities.js'
 import { getToolRetriever } from './tools/disclosure/embedding-tool-retriever.js'
@@ -259,7 +260,10 @@ const buildFullToolSet = async (
   // Single final pass: attach the strict ProviderRequestScope contextSchema and
   // outer execution wrapper to every executable descriptor (including the real
   // search_tools/load_tool). No later step may create or replace a tool.
-  const tools = finalizeProviderScopedTools(disclosedTools)
+  const tools = finalizeProviderScopedTools(
+    disclosedTools,
+    resolveContextLocale(getConfigContextIdFromStorageContextId(contextId)),
+  )
   log.debug(
     { contextId, toolCount: Object.keys(tools).length, gated: gatedTools !== descriptors },
     'Prepared tool set for LLM invocation',

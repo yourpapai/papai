@@ -26,6 +26,7 @@ import {
   setCodingSessionRecord,
   type SessionRecord,
 } from '../../../src/coding-sessions/store.js'
+import { setConfigValue } from '../../../src/config.js'
 import { issueClaim } from '../../../src/dashboard-auth/index.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { announcementDeliveries, memoryRecords } from '../../../src/db/schema.js'
@@ -358,6 +359,19 @@ const scopedStorageContextId = (context: ContextHandle): string =>
 const scopedGroupId = (group: GroupHandle): string =>
   toScopedContextId({ platformInstanceId: group.platformInstanceId, nativeContextId: group.id })
 
+/**
+ * Pin every story config context to English: scenarios assert exact reply histories, and the
+ * first-interaction language picker (src/chat/language-picker.ts) would otherwise inject its
+ * prompt into a fresh context's history. Picker behavior itself is covered by unit suites.
+ */
+const seedStoryLanguage = (nativeContextId: string): void => {
+  setConfigValue(
+    toScopedContextId({ platformInstanceId: SCENARIO_PLATFORM_INSTANCE_ID, nativeContextId }),
+    'language',
+    'en',
+  )
+}
+
 /** Fixed reference instant for sweep-trigger primitives; scenarios seed activity timestamps relative to this. */
 export const FIXED_SWEEP_NOW = '2026-07-20T00:00:00.000Z'
 
@@ -531,6 +545,7 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     user(id): UserHandle {
       prerequisite('given.user')
       world.fixtures.authorizeUser({ userId: id, platformInstanceId: SCENARIO_PLATFORM_INSTANCE_ID, username: id })
+      seedStoryLanguage(id)
       return makeUserHandle(id)
     },
     guest(id): UserHandle {
@@ -541,6 +556,7 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       prerequisite('given.group')
       const group = makeGroupHandle(id)
       world.fixtures.authorizeGroup({ groupId: scopedGroupId(group) })
+      seedStoryLanguage(id)
       return group
     },
     guestMode(group, enabled): void {

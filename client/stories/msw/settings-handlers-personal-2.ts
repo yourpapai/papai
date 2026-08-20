@@ -29,6 +29,21 @@ const configPopulated = {
       control: 'text',
     },
     {
+      key: 'language',
+      label: 'Language',
+      required: false,
+      sensitive: false,
+      hasValue: true,
+      value: 'en',
+      storageKey: 'language',
+      kind: 'preference',
+      control: 'select',
+      options: [
+        { value: 'en', label: 'English' },
+        { value: 'ru', label: 'Русский' },
+      ],
+    },
+    {
       key: 'ai_output_detail_level',
       label: 'Output detail level',
       required: false,

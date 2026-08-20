@@ -5,6 +5,7 @@
 
 import type { ModelMessage, ToolSet } from 'ai'
 
+import { getDictionary, type Locale } from '../i18n/index.js'
 import { logger } from '../logger.js'
 import { isToolFailureResult } from '../tool-failure.js'
 
@@ -50,31 +51,20 @@ export type CompletionTurn = {
   history: readonly ModelMessage[]
   finishReason?: string
   hadToolFailure: boolean
+  /** Locale of the turn's config context; the verifier prompt and fallback localize to it. */
+  locale?: Locale
 }
 
 export const VERIFIER_MAX_STEPS = 4
-const NEUTRAL_FALLBACK = 'I ran the requested actions but could not confirm the result — please double-check.'
 
 const buildVerifierPrompt = (turn: CompletionTurn): VerifierPrompt => {
+  const texts = getDictionary(turn.locale ?? 'en').completion
   const truncated = turn.finishReason === 'tool-calls'
-  const system = [
-    'You are finalizing an assistant turn in a task-management chat bot.',
-    'The conversation so far — including the tools the assistant just called and their results — is provided.',
-    "Determine whether the user's most recent request was actually carried out, then write ONE short reply to the user.",
-    'Rules:',
-    '- Reply in the same language the user used.',
-    '- Be truthful. Never claim something succeeded unless the tool results (or a read-back) confirm it.',
-    '- You MAY call read-only tools to re-check current state before answering. Never attempt to change anything.',
-    '- If a tool failed, tell the user plainly what did not work.',
-    truncated
-      ? '- This turn did a lot of work but ran out of room before fully finishing. Summarize what was completed (naming the affected item(s)) and briefly what remains. Do not apologize or dwell on limits; you may offer that the user can say "continue" if they want you to pick up where you left off.'
-      : '- Summarize what was done, naming the affected item(s).',
-    'Output only the user-facing reply text, nothing else.',
-  ].join('\n')
-  const messages: ModelMessage[] = [
-    ...turn.history,
-    { role: 'user', content: '[FINALIZE] Write the reply now, following your instructions.' },
-  ]
+  const system = texts.verifierSystem.replace(
+    '{rule}',
+    truncated ? texts.verifierTruncatedRule : texts.verifierSummarizeRule,
+  )
+  const messages: ModelMessage[] = [...turn.history, { role: 'user', content: texts.finalizeMessage }]
   return { system, messages }
 }
 
@@ -93,13 +83,14 @@ export const buildVerifiedCompletion = async (
   deps: VerifierDeps,
 ): Promise<VerifiedCompletion> => {
   const verdict = deriveVerdict(turn)
+  const neutralFallback = getDictionary(turn.locale ?? 'en').completion.neutralFallback
   log.debug({ verdict, readBack: deps.readOnlyToolset !== undefined }, 'Building verified completion')
   const prompt = buildVerifierPrompt(turn)
   try {
     const res = await deps.invokeVerifier(prompt)
     if (res.text === undefined || res.text === '') {
       log.warn({ verdict }, 'Verifier returned empty text; using neutral fallback')
-      return { text: NEUTRAL_FALLBACK, verdict: 'unconfirmed' }
+      return { text: neutralFallback, verdict: 'unconfirmed' }
     }
     log.info({ verdict }, 'Verified completion built')
     return { text: res.text, verdict }
@@ -108,6 +99,6 @@ export const buildVerifiedCompletion = async (
       { err: error instanceof Error ? error.message : String(error) },
       'Verifier call failed; using neutral fallback',
     )
-    return { text: NEUTRAL_FALLBACK, verdict: 'unconfirmed' }
+    return { text: neutralFallback, verdict: 'unconfirmed' }
   }
 }

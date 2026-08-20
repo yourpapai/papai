@@ -9,13 +9,14 @@ import assert from 'node:assert/strict'
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
+import { setConfigValue } from '../../../src/config.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../../../src/debug/event-bus.js'
 import { isToolFailureResult } from '../../../src/tool-failure.js'
 import { CORE_TOOL_NAMES } from '../../../src/tools/disclosure/core.js'
 import { createDisclosureSession } from '../../../src/tools/disclosure/registry.js'
 import { makeSearchToolsTool } from '../../../src/tools/disclosure/search-tools.js'
 import { LexicalToolRetriever, type ToolRetriever } from '../../../src/tools/disclosure/tool-retriever.js'
-import { getToolExecutor } from '../../utils/test-helpers.js'
+import { getToolExecutor, mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 
 let events: DebugEvent[] = []
 const listener = (event: DebugEvent): void => {
@@ -141,5 +142,20 @@ describe('search_tools', () => {
     expect(out.success).toBe(false)
     expect(out.error).toContain('retriever edge case')
     expect(out.toolName).toBe('search_tools')
+  })
+
+  it('builds the failure userMessage in the context locale when the retriever throws', async () => {
+    mockLogger()
+    await setupTestDb()
+    setConfigValue('ctx-search-ru', 'language', 'ru')
+    const tools: ToolSet = { get_current_time: d('Get the time.'), list_tasks: d('List tasks.') }
+    const session = createDisclosureSession(tools, CORE_TOOL_NAMES)
+    const throwingRetriever: ToolRetriever = {
+      rank: () => Promise.reject(new Error('retriever edge case')),
+    }
+    const exec = getToolExecutor(makeSearchToolsTool(session, throwingRetriever, 'ctx-search-ru', tools))
+    const out: unknown = await exec({ query: 'tasks', limit: 5 })
+    assert.ok(isToolFailureResult(out), `expected ToolFailureResult, got: ${JSON.stringify(out)}`)
+    expect(out.userMessage).toBe('Действие не выполнено: retriever edge case.')
   })
 })

@@ -74,6 +74,23 @@ const configPayload = {
   ],
 }
 
+/** The language field exactly as the settings API serves it (from the field definition). */
+const languageField = (value: string, hasValue: boolean): unknown => ({
+  key: 'language',
+  storageKey: 'language',
+  label: 'Language',
+  required: false,
+  sensitive: false,
+  kind: 'preference',
+  control: 'select',
+  options: [
+    { value: 'en', label: 'English' },
+    { value: 'ru', label: 'Русский' },
+  ],
+  hasValue,
+  value,
+})
+
 const errorResponse = (): Promise<Response> => Promise.resolve(new Response('Internal Server Error', { status: 500 }))
 
 afterEach(() => {
@@ -188,6 +205,33 @@ describe('ProfileSection', () => {
     const component = mount(ProfileSection, { target, props: { contextId: 'user:1' } })
     await drain()
     expect(target.querySelector('.ui-page-header__title')?.textContent).toContain('Profile')
+    void unmount(component)
+  })
+
+  test('renders the language select from the field definition options', async () => {
+    setMockFetch(() => Promise.resolve(json(configWith([languageField('ru', true)]))))
+    const { target, component } = render()
+    await drain()
+    expect(target.querySelector('[data-testid="cfg-row-language"]')).not.toBeNull()
+    const enOption = target.querySelector('[data-testid="cfg-seg-language-en"]')
+    const ruOption = target.querySelector('[data-testid="cfg-seg-language-ru"]')
+    expect(enOption?.textContent).toContain('English')
+    expect(ruOption?.textContent).toContain('Русский')
+    expect(ruOption?.getAttribute('aria-checked')).toBe('true')
+    expect(enOption?.getAttribute('aria-checked')).toBe('false')
+    void unmount(component)
+  })
+
+  test('an unset language still renders the select with no option checked', async () => {
+    setMockFetch(() => Promise.resolve(json(configWith([languageField('', false)]))))
+    const { target, component } = render()
+    await drain()
+    const enOption = target.querySelector('[data-testid="cfg-seg-language-en"]')
+    const ruOption = target.querySelector('[data-testid="cfg-seg-language-ru"]')
+    expect(enOption).not.toBeNull()
+    expect(ruOption).not.toBeNull()
+    expect(enOption?.getAttribute('aria-checked')).toBe('false')
+    expect(ruOption?.getAttribute('aria-checked')).toBe('false')
     void unmount(component)
   })
 })

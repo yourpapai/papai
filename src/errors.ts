@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { t, type Locale } from './i18n/index.js'
 import { ProviderClassifiedError, type ProviderError, getProviderMessage, providerError } from './providers/errors.js'
 
 // Re-export ProviderError and its constructors for backward compatibility
@@ -82,83 +83,84 @@ export const extractAppError = (error: unknown): AppError | null => {
   return null
 }
 
-const getLlmMessage = (error: LlmError): string => {
+const getLlmMessage = (error: LlmError, locale: Locale): string => {
   switch (error.code) {
     case 'api-error':
-      return `AI service error: ${error.message}. Please try again.`
+      return t('errors.llm.apiError', locale, { message: error.message })
     case 'rate-limited':
-      return `AI service rate limit reached. Please wait a moment and try again.`
+      return t('errors.llm.rateLimited', locale)
     case 'timeout':
-      return `AI service request timed out. Please try again.`
+      return t('errors.llm.timeout', locale)
     case 'token-limit':
-      return `Message is too long. Please shorten your request and try again.`
+      return t('errors.llm.tokenLimit', locale)
     default:
-      return `An AI service error occurred. Please try again later.`
+      return t('errors.llm.fallback', locale)
   }
 }
 
-const getValidationMessage = (error: ValidationError): string => {
+const getValidationMessage = (error: ValidationError, locale: Locale): string => {
   switch (error.code) {
     case 'invalid-input':
-      return `Invalid ${error.field}: ${error.reason}`
+      return t('errors.validation.invalidInput', locale, { field: error.field, reason: error.reason })
     case 'missing-required':
-      return `Missing required field: ${error.field}`
+      return t('errors.validation.missingRequired', locale, { field: error.field })
     default:
-      return `Invalid input provided.`
+      return t('errors.validation.fallback', locale)
   }
 }
 
-const getSystemMessage = (error: SystemError): string => {
+const getSystemMessage = (error: SystemError, locale: Locale): string => {
   switch (error.code) {
     case 'config-missing':
-      return `Configuration error: ${error.variable} is not set. Please use /config to finish setup in the settings web UI.`
+      return t('errors.system.configMissing', locale, { variable: error.variable })
     case 'network-error':
-      return `Network error: ${error.message}. Please check your connection and try again.`
+      return t('errors.system.networkError', locale, { message: error.message })
+    // Stryker disable next-line StringLiteral,ConditionalExpression: explicit 'unexpected' duplicates default but keeps switch exhaustive - equivalent mutants
     case 'unexpected':
-      return `An unexpected error occurred. Please try again later.`
+      return t('errors.system.unexpected', locale)
     default:
-      return `An unexpected error occurred. Please try again later.`
+      return t('errors.system.unexpected', locale)
   }
 }
 
-const getWebFetchMessage = (error: WebFetchError): string => {
+const getWebFetchMessage = (error: WebFetchError, locale: Locale): string => {
   switch (error.code) {
     case 'invalid-url':
-      return `That URL doesn't look valid.`
+      return t('errors.webFetch.invalidUrl', locale)
     case 'blocked-host':
-      return `I can't fetch that address because it isn't on the public web.`
+      return t('errors.webFetch.blockedHost', locale)
     case 'blocked-content-type':
-      return `That content type isn't supported.`
+      return t('errors.webFetch.blockedContentType', locale)
     case 'too-large':
-      return `That page is too large for me to read safely.`
+      return t('errors.webFetch.tooLarge', locale)
     case 'timeout':
-      return `Fetching that page took too long.`
+      return t('errors.webFetch.timeout', locale)
     case 'rate-limited':
-      return `You're fetching URLs too quickly. Please try again in a moment.`
+      return t('errors.webFetch.rateLimited', locale)
     case 'extract-failed':
-      return `I couldn't extract readable content from that page.`
+      return t('errors.webFetch.extractFailed', locale)
     case 'upstream-error':
-      return `The site returned an error.`
+      return t('errors.webFetch.upstreamError', locale)
     default:
-      return `I couldn't fetch that page.`
+      return t('errors.webFetch.fallback', locale)
   }
 }
 
 export { getAgentGuidance, getAppErrorDetails, isRetryableAppError } from './error-analysis.js'
 
-export const getUserMessage = (error: AppError): string => {
+export const getUserMessage = (error: AppError, locale: Locale = 'en'): string => {
   switch (error.type) {
     case 'provider':
-      return getProviderMessage(error)
+      return getProviderMessage(error, locale)
     case 'llm':
-      return getLlmMessage(error)
+      return getLlmMessage(error, locale)
     case 'validation':
-      return getValidationMessage(error)
+      return getValidationMessage(error, locale)
     case 'system':
-      return getSystemMessage(error)
+      return getSystemMessage(error, locale)
     case 'web-fetch':
-      return getWebFetchMessage(error)
+      return getWebFetchMessage(error, locale)
     default:
-      return `An unexpected error occurred. Please try again later.`
+      return t('errors.system.unexpected', locale)
   }
 }

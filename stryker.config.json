@@ -23,9 +23,11 @@
     "src/cron.ts",
     "src/recurring.ts",
     "src/history.ts",
-    "src/conversation.ts"
+    "src/conversation.ts",
+    "!src/i18n/locales/**/*.ts"
   ],
   "coverageAnalysis": "perTest",
+  "disableTypeChecks": false,
   "ignoreStatic": true,
   "incremental": true,
   "incrementalFile": "reports/stryker-incremental.json",

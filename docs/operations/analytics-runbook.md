@@ -187,9 +187,9 @@ becomes zero-delta evidence by estimating crash loss.
   every pseudonymous decision for that actor denies with
   `governance_incomplete` and no event is written. Setting both lanes back to
   `deny` revokes the ref in the same way. There is no operator-side grant: the
-  ref exists only as the shipped consequence of the actor's own consent.
-  Run at least two weekly review cycles and one complete
-  authenticated export/withdraw/delete exercise; hand-calculate sessions,
+  ref exists only as the shipped consequence of the actor's own consent. Run
+  at least two weekly review cycles and one complete authenticated
+  export/withdraw/delete exercise; hand-calculate sessions,
   activation, outcomes, intent coverage, and censoring against the
   materializations; drill HMAC key backup/restore and a planned rekey.
 - **Exit:** hand-calculations match; withdrawal passes collection and delivery

@@ -32,6 +32,19 @@ const PREFERENCE_FIELDS: readonly ConfigField[] = [
     sensitive: false,
     kind: 'preference',
   },
+  {
+    key: 'language',
+    storageKey: 'language',
+    label: 'Language',
+    required: false,
+    sensitive: false,
+    kind: 'preference',
+    control: 'select',
+    options: [
+      { value: 'en', label: 'English' },
+      { value: 'ru', label: 'Русский' },
+    ],
+  },
 ]
 
 const AI_OUTPUT_FIELDS: readonly ConfigField[] = [
