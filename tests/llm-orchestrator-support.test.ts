@@ -18,6 +18,7 @@ import {
   handleToolCallFinish,
 } from '../src/llm-orchestrator-support.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
+import { llmError } from './utils/test-errors.js'
 import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -272,5 +273,49 @@ describe('orchestrator support replies per locale', () => {
     }
     await handleOrchestratorMessageError(reply, 'ctx-support-ru', new Error('boom'), deps)
     expect(getReplies()).toEqual(['Произошла непредвиденная ошибка. Попробуйте позже.'])
+  })
+
+  test('app error reply renders in ru', async () => {
+    const { reply, getReplies } = createMockReply()
+    const deps = {
+      emit: (_event: string, _userId: string, _payload: Record<string, unknown>): void => {},
+      log: { warn: mock(() => {}), error: mock(() => {}) },
+    }
+    await handleOrchestratorMessageError(reply, 'ctx-support-ru', providerError.projectNotFound('PRJ-1'), deps)
+    expect(getReplies()).toEqual(['Проект «PRJ-1» не найден.'])
+  })
+
+  test('llm app error reply renders in ru', async () => {
+    const { reply, getReplies } = createMockReply()
+    const deps = {
+      emit: (_event: string, _userId: string, _payload: Record<string, unknown>): void => {},
+      log: { warn: mock(() => {}), error: mock(() => {}) },
+    }
+    await handleOrchestratorMessageError(reply, 'ctx-support-ru', llmError.rateLimited(), deps)
+    expect(getReplies()).toEqual(['Достигнут лимит запросов к ИИ-сервису. Подождите немного и попробуйте ещё раз.'])
+  })
+
+  test('tool failure envelope renders fully in ru for a thrown provider error', () => {
+    const { reply, getReplies } = createMockReply()
+    handleToolCallFinish('ctx-support-ru', reply, {
+      toolCall: { toolName: 'get_task', toolCallId: 'call-ru' },
+      success: false,
+      error: providerError.taskNotFound('TASK-9'),
+      durationMs: 5,
+    })
+    expect(getReplies()).toEqual([
+      '⚠️ Инструмент "get_task" завершился ошибкой: Задача «TASK-9» не найдена. Проверьте идентификатор задачи и попробуйте ещё раз.',
+    ])
+  })
+
+  test('tool failure envelope renders the unclassified failure body in ru', () => {
+    const { reply, getReplies } = createMockReply()
+    handleToolCallFinish('ctx-support-ru', reply, {
+      toolCall: { toolName: 'search_tools', toolCallId: 'call-ru-2' },
+      success: false,
+      error: new Error('boom'),
+      durationMs: 5,
+    })
+    expect(getReplies()).toEqual(['⚠️ Инструмент "search_tools" завершился ошибкой: Действие не выполнено: boom.'])
   })
 })

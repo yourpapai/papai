@@ -6,9 +6,14 @@
 import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
-import { t } from './i18n/index.js'
+import { t, type Locale } from './i18n/index.js'
 import { logger } from './logger.js'
-import { isToolFailureResult, buildToolFailureResult, type ToolFailureResult } from './tool-failure.js'
+import {
+  isToolFailureResult,
+  buildToolFailureResult,
+  resolveContextLocale,
+  type ToolFailureResult,
+} from './tool-failure.js'
 import { getContextLanguage } from './utils/config-language.js'
 
 type LogContext = Record<string, unknown>
@@ -43,14 +48,14 @@ const resolveDeps = (deps: LlmToolReplyDeps | undefined): LlmToolReplyDeps => {
   return deps
 }
 
-const getToolFailureResult = (event: ToolCallFinishEvent): ToolFailureResult | null => {
+const getToolFailureResult = (event: ToolCallFinishEvent, locale: Locale): ToolFailureResult | null => {
   if (event.success === true) {
     return isToolFailureResult(event.output) ? event.output : null
   }
   if (event.success !== false) {
     return null
   }
-  return buildToolFailureResult(event.error, event.toolCall.toolName, event.toolCall.toolCallId)
+  return buildToolFailureResult(event.error, event.toolCall.toolName, event.toolCall.toolCallId, { locale })
 }
 
 const emitToolFailure = (
@@ -106,7 +111,8 @@ export function handleToolCallFinish(
 ): void {
   const [contextId, reply, event, deps] = args
   const resolvedDeps = resolveDeps(deps)
-  const toolFailure = getToolFailureResult(event)
+  const locale = resolveContextLocale(getConfigContextIdFromStorageContextId(contextId))
+  const toolFailure = getToolFailureResult(event, locale)
   if (toolFailure !== null) {
     emitToolFailure(contextId, reply, event, toolFailure, resolvedDeps)
     return

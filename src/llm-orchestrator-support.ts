@@ -89,8 +89,8 @@ export async function handleOrchestratorMessageError(
   const resolvedDeps = resolveSupportDeps(deps)
   resolvedDeps.log.error({ contextId, error: extractOrchestratorErrorDetails(error) }, 'Message handling failed')
   const appError = extractAppError(error)
+  const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
   if (appError === null) {
-    const locale = getContextLanguage(getConfigContextIdFromStorageContextId(contextId))
     await reply.text(
       APICallError.isInstance(error)
         ? t('orchestrator.apiCallFailed', locale)
@@ -98,7 +98,7 @@ export async function handleOrchestratorMessageError(
     )
     return
   }
-  await reply.text(getUserMessage(appError))
+  await reply.text(getUserMessage(appError, locale))
 }
 
 export { emitLlmError, logProcessMessage }

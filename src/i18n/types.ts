@@ -117,6 +117,64 @@ export interface Dictionary {
     russian: string
     saved: string
   }
+  /** User-facing AppError / tool-failure bodies; interpolated ids stay verbatim. */
+  errors: {
+    llm: {
+      apiError: string
+      rateLimited: string
+      timeout: string
+      tokenLimit: string
+      fallback: string
+    }
+    validation: {
+      invalidInput: string
+      missingRequired: string
+      fallback: string
+    }
+    system: {
+      configMissing: string
+      networkError: string
+      unexpected: string
+    }
+    webFetch: {
+      invalidUrl: string
+      blockedHost: string
+      blockedContentType: string
+      tooLarge: string
+      timeout: string
+      rateLimited: string
+      extractFailed: string
+      upstreamError: string
+      fallback: string
+    }
+    provider: {
+      taskNotFound: string
+      projectNotFound: string
+      workspaceNotFound: string
+      commentNotFound: string
+      labelNotFound: string
+      relationNotFound: string
+      notFound: string
+      accessDenied: string
+      authFailed: string
+      rateLimited: string
+      validationFailed: string
+      workflowPrefixKnown: string
+      workflowPrefixUnknown: string
+      workflowValidationNoFields: string
+      workflowValidationWithFields: string
+      unsupportedOperation: string
+      statusNotFound: string
+      linkTypeNotFound: string
+      invalidResponse: string
+      fallback: string
+    }
+    toolFailure: {
+      providerScopeMissing: string
+      actionFailed: string
+      interrupted: string
+    }
+  }
   /** System-prompt fragments; tool names, parameter keys and JSON examples stay verbatim. */
   systemPrompt: {
     coreIntro: string

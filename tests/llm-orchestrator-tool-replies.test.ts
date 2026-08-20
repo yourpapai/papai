@@ -20,7 +20,7 @@ describe('tool-failure reply per locale', () => {
 
   test('renders the ru tool-failure notice for a ru-configured context', () => {
     const { reply, getReplies } = createMockReply()
-    const failure = buildToolFailureResult(providerError.taskNotFound('TASK-9'), 'get_task', 'c-ru')
+    const failure = buildToolFailureResult(providerError.taskNotFound('TASK-9'), 'get_task', 'c-ru', { locale: 'ru' })
     handleToolCallFinish('ctx-tool-reply-ru', reply, {
       toolCall: { toolName: 'get_task', toolCallId: 'c-ru' },
       success: true,
@@ -28,7 +28,7 @@ describe('tool-failure reply per locale', () => {
       durationMs: 5,
     })
     expect(getReplies()).toEqual([
-      '⚠️ Инструмент "get_task" завершился ошибкой: Task "TASK-9" was not found. Please check the task ID and try again.',
+      '⚠️ Инструмент "get_task" завершился ошибкой: Задача «TASK-9» не найдена. Проверьте идентификатор задачи и попробуйте ещё раз.',
     ])
   })
 

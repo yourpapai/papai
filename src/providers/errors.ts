@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { t, type Locale } from '../i18n/index.js'
+
 /**
  * Provider-agnostic error type that will replace KaneoError in the AppError union.
  *
@@ -127,54 +129,69 @@ export const providerError = {
   }),
 }
 
+const getWorkflowValidationMessage = (
+  error: Extract<ProviderError, { code: 'workflow-validation-failed' }>,
+  locale: Locale,
+): string => {
+  const fields = error.requiredFields.map((f) => `"${f.name}"`).join(', ')
+  const prefix =
+    error.projectId === 'unknown'
+      ? t('errors.provider.workflowPrefixUnknown', locale)
+      : t('errors.provider.workflowPrefixKnown', locale, { projectId: error.projectId })
+  if (fields === '') {
+    return t('errors.provider.workflowValidationNoFields', locale, { prefix, message: error.message })
+  }
+  return t('errors.provider.workflowValidationWithFields', locale, { prefix, message: error.message, fields })
+}
+
 /** User-facing message mapper for ProviderError. */
-export const getProviderMessage = (error: ProviderError): string => {
+export const getProviderMessage = (error: ProviderError, locale: Locale = 'en'): string => {
   switch (error.code) {
     case 'task-not-found':
-      return `Task "${error.taskId}" was not found. Please check the task ID and try again.`
+      return t('errors.provider.taskNotFound', locale, { taskId: error.taskId })
     case 'project-not-found':
-      return `Project "${error.projectId}" was not found.`
+      return t('errors.provider.projectNotFound', locale, { projectId: error.projectId })
     case 'workspace-not-found':
-      return `Workspace configuration error. Please check your workspace settings.`
+      return t('errors.provider.workspaceNotFound', locale)
     case 'comment-not-found':
-      return `Comment "${error.commentId}" was not found.`
+      return t('errors.provider.commentNotFound', locale, { commentId: error.commentId })
     case 'label-not-found':
-      return `Label "${error.labelName}" was not found. Use list_labels to see available labels.`
+      return t('errors.provider.labelNotFound', locale, { labelName: error.labelName })
     case 'relation-not-found':
-      return `Relation between tasks "${error.taskId}" and "${error.relatedTaskId}" was not found.`
+      return t('errors.provider.relationNotFound', locale, {
+        taskId: error.taskId,
+        relatedTaskId: error.relatedTaskId,
+      })
     case 'not-found':
-      return `${error.resourceType} "${error.resourceId}" was not found.`
+      return t('errors.provider.notFound', locale, { resourceType: error.resourceType, resourceId: error.resourceId })
     case 'access-denied':
-      return `You don't have access to ${error.resource}. You need to be a member of it (or it must be a public channel) for me to read it.`
+      return t('errors.provider.accessDenied', locale, { resource: error.resource })
     case 'auth-failed':
-      return `Failed to connect to the task tracker. Please check your API key.`
+      return t('errors.provider.authFailed', locale)
     case 'rate-limited':
-      return `API rate limit reached. Please wait a moment and try again.`
+      return t('errors.provider.rateLimited', locale)
     case 'validation-failed':
-      return `Invalid ${error.field}: ${error.reason}`
-    case 'workflow-validation-failed': {
-      const fields = error.requiredFields.map((f) => `"${f.name}"`).join(', ')
-      const prefix =
-        error.projectId === 'unknown'
-          ? `The project workflow blocked this request`
-          : `The project workflow blocked this request in project "${error.projectId}"`
-      if (fields === '') {
-        return `${prefix}: ${error.message}.`
-      }
-      return `${prefix}: ${error.message}. Required fields: ${fields}.`
-    }
+      return t('errors.provider.validationFailed', locale, { field: error.field, reason: error.reason })
+    case 'workflow-validation-failed':
+      return getWorkflowValidationMessage(error, locale)
     case 'unsupported-operation':
-      return `Operation "${error.operation}" is not supported by this provider.`
+      return t('errors.provider.unsupportedOperation', locale, { operation: error.operation })
     case 'status-not-found':
-      return `Status "${error.statusName}" is not recognised. Available statuses: ${error.available.join(', ')}.`
+      return t('errors.provider.statusNotFound', locale, {
+        statusName: error.statusName,
+        available: error.available.join(', '),
+      })
     case 'link-type-not-found':
-      return `Link type "${error.linkTypeName}" was not recognised. Available link types: ${error.available.join(', ')}.`
+      return t('errors.provider.linkTypeNotFound', locale, {
+        linkTypeName: error.linkTypeName,
+        available: error.available.join(', '),
+      })
     case 'invalid-response':
-      return `The task tracker returned an unexpected response. Please try again.`
+      return t('errors.provider.invalidResponse', locale)
     case 'unknown':
-      return `Task tracker API error occurred. Please try again later.`
+      return t('errors.provider.fallback', locale)
     default:
-      return `Task tracker API error occurred. Please try again later.`
+      return t('errors.provider.fallback', locale)
   }
 }
 
