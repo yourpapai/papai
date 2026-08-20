@@ -9,15 +9,37 @@ See LICENSE in the project root for details.
 
 ## 1. Establish the budget
 
-- [ ] 1.1 Re-measure the current mean and restate the deficit in file-units
+- [x] 1.1 Re-measure the current mean and restate the deficit in file-units
       against the gate's own scope (`scopeLcov` + `discoverScopedSourceFiles`),
       and list the zero-function files in the D2 target order.
       Verify: `bun test:stories:coverage` exits 0 at the current floor and the
       file-unit deficit is recorded
-- [ ] 1.2 Record the per-section function-unit targets from 1.1's measurement,
+- [x] 1.2 Record the per-section function-unit targets from 1.1's measurement,
       replacing the provisional numbers in sections 2-4 if the deficit has
       moved. The targets sum to the deficit plus a two-unit margin.
       Verify: the section targets sum to at least the measured deficit
+
+### Measured budget (2026-08-20, from `reports/stories/coverage/lcov.info`)
+
+Measured with the gate's own scope (`discoverScopedSourceFiles` + `scopeLcov`
++ `parseLcovTotals`): **1050 files** (1022 measured, 28 unloaded seeded as 0%),
+lines **68.66%**, functions **65.75%**. Deficit to 0.71/0.70: **24.6 line-units,
+44.6 function-units**. Functions binds, as D1 predicted.
+
+222 files have `FNH:0`. Reachable headroom in D2 order:
+
+| target | files | uncovered fns | section |
+| --- | --- | --- | --- |
+| `plugins/task-provider-kaneo/` | 11 | 22 | 2.1 |
+| `plugins/task-provider-youtrack/` | 11 | 44 | 2.2 |
+| `src/analytics/governance/` | 14 | 100 | 3.1 |
+| `src/analytics/derive/` + `delivery/` | 10 | 64 | 3.2 |
+| `src/chat/` | 52 | 275 | 4.1 |
+| `src/debug/` | 23 | 112 | 4.2 |
+| excluded: `src/analytics/rekey/` | 19 | 57 | — (D3) |
+| not targeted | 82 | 366 | — |
+
+Section targets sum to 47 against a 44.6-unit deficit — a 2.4-unit margin.
 
 ## 2. Provider operations (target: 16 function-units)
 
@@ -47,12 +69,12 @@ See LICENSE in the project root for details.
       Verify: `bun test:stories:coverage` reports at least 6 further
       function-units
 
-## 4. Chat and settings surfaces (target: 16 function-units)
+## 4. Chat and settings surfaces (target: 17 function-units)
 
 - [ ] 4.1 Stories for the zero-function files under `src/chat/` (51 candidates:
       adapter helpers reachable from the existing Telegram and Discord story
       lanes).
-      Verify: `bun test:stories:coverage` reports at least 10 further
+      Verify: `bun test:stories:coverage` reports at least 11 further
       function-units
 - [ ] 4.2 Stories for the zero-function files under `src/debug/` (22
       candidates: settings routes reachable through the settings story
