@@ -15,7 +15,7 @@
 
 ## 4. Tool preferences (regression-only, no src change)
 
-- [ ] 4.1 Following the local pattern, add a tool-preferences test: `parseToolPrefs('{"domainDefaults":{"diagnostics":"ask"}}')` preserves `diagnostics: 'ask'` instead of dropping the key, and empty prefs resolve every tool to `allow` via `resolveToolPermission`. Verify: `bun test tests/tools/tool-preferences.test.ts` (or the file hosting the local pattern)
+- [x] 4.1 Following the local pattern, add a tool-preferences test: `parseToolPrefs('{"domainDefaults":{"diagnostics":"ask"}}')` preserves `diagnostics: 'ask'` instead of dropping the key, and empty prefs resolve every tool to `allow` via `resolveToolPermission`. Verify: `bun test tests/tools/tool-preferences.test.ts` (or the file hosting the local pattern)
 
 ## 5. Docs restating the bounded domain list
 
