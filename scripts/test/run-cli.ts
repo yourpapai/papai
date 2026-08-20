@@ -77,12 +77,12 @@ const captureChild = async (argv: readonly string[], cwd: string, stream: boolea
   fs.mkdirSync(absolute(cwd, REPORT_DIR), { recursive: true })
   const fd = fs.openSync(logPath, 'w')
   const startedAt = Date.now()
-  const proc = Bun.spawn([...argv], {
-    cwd,
-    env: childEnv(cwd),
-    stdio: ['inherit', fd, fd],
-  })
   try {
+    const proc = Bun.spawn([...argv], {
+      cwd,
+      env: childEnv(cwd),
+      stdio: ['inherit', fd, fd],
+    })
     if (stream) {
       await mirrorLogWhile(logPath, proc.exited, {
         size: (p): number | null => {
