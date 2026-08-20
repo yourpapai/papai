@@ -86,6 +86,47 @@ describe('maybePostLanguagePicker', () => {
     expect(buttonCalls).toHaveLength(1)
   })
 
+  test('concurrent first messages post the picker at most once', async () => {
+    const chat = createMockChat()
+    const buttonCalls: Array<{ content: string; buttons?: unknown[] }> = []
+    let releaseSend!: () => void
+    const sendGate = new Promise<void>((resolve) => {
+      releaseSend = resolve
+    })
+    const base = createMockReply()
+    const gatedReply: ReplyFn = {
+      ...base.reply,
+      buttons: (content: string, options: { buttons?: unknown[] }): Promise<undefined> => {
+        buttonCalls.push({ content, buttons: options.buttons })
+        return sendGate.then(() => undefined)
+      },
+    }
+
+    const first = maybePostLanguagePicker(chat, msg(), gatedReply, auth())
+    const second = maybePostLanguagePicker(chat, msg({ messageId: 'm2' }), gatedReply, auth())
+    releaseSend()
+
+    expect(await first).toBe(true)
+    expect(await second).toBe(false)
+    expect(buttonCalls).toHaveLength(1)
+  })
+
+  test('a failed send rolls back language_prompted so a later message can re-ask', async () => {
+    const chat = createMockChat()
+    const base = createMockReply()
+    const failingReply: ReplyFn = {
+      ...base.reply,
+      buttons: (): Promise<undefined> => Promise.reject(new Error('send failed')),
+    }
+
+    expect(await maybePostLanguagePicker(chat, msg(), failingReply, auth())).toBe(false)
+    expect(getConfigValue(CONFIG_CTX, 'language_prompted')).toBeNull()
+
+    const { reply, buttonCalls } = createButtonCapturingReply()
+    expect(await maybePostLanguagePicker(chat, msg({ messageId: 'm2' }), reply, auth())).toBe(true)
+    expect(buttonCalls).toHaveLength(1)
+  })
+
   test('guests skip the picker', async () => {
     const chat = createMockChat()
     const { reply, buttonCalls } = createButtonCapturingReply()

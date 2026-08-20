@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getConfigValue, setConfigValue } from '../config.js'
+import { getConfigValue, setConfigValue, unsetConfigValue } from '../config.js'
 import { t } from '../i18n/index.js'
 import { logger } from '../logger.js'
 import { resolveSourceChatProvider } from './source-instance.js'
@@ -18,8 +18,9 @@ const log = logger.child({ scope: 'chat:language-picker' })
  * `src/chat/interaction-router.ts`) the first time an authorized, non-guest
  * actor talks to the bot from a config context that has no stored `language`
  * and no `language_prompted` marker. Buttonless platforms (Kontur Talk) skip
- * the picker entirely; the marker is only set after a successful post, so the
- * bot asks at most once per context.
+ * the picker entirely; the marker is set synchronously before the send (and
+ * rolled back on failure) so the guard window contains no await — concurrent
+ * first messages cannot double-post, and the bot asks at most once per context.
  *
  * Best-effort: a send failure is logged and swallowed — it must never block
  * the user's actual message. Returns true when the picker was posted.
@@ -54,13 +55,18 @@ async function postLanguagePicker(
   if (getConfigValue(configContextId, 'language') !== null) return false
   if (getConfigValue(configContextId, 'language_prompted') !== null) return false
 
-  await reply.buttons(t('picker.prompt'), {
-    buttons: [
-      { text: t('picker.english'), callbackData: 'lang:en' },
-      { text: t('picker.russian'), callbackData: 'lang:ru' },
-    ],
-  })
   setConfigValue(configContextId, 'language_prompted', '1')
+  try {
+    await reply.buttons(t('picker.prompt'), {
+      buttons: [
+        { text: t('picker.english'), callbackData: 'lang:en' },
+        { text: t('picker.russian'), callbackData: 'lang:ru' },
+      ],
+    })
+  } catch (error) {
+    unsetConfigValue(configContextId, 'language_prompted')
+    throw error
+  }
   log.info({ configContextId }, 'Language picker posted (first interaction)')
   return true
 }
