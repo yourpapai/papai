@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 ## 1. Tests (TDD — write first, failing)
 
-- [ ] 1.1 Create `tests/usage/failures.test.ts` on the pattern of `tests/usage/recent-requests.test.ts` (`setupTestDb()` + direct Drizzle inserts), covering: only failed rows returned from each source (successful LLM turns and `success = 1` tool calls excluded); merged newest-first ordering across both tables; limit clamping (0 → `[]`, clamped to 200, fractional floors, default 25); `windowMs` filtering vs all-time (`null`/omitted); nullable-field normalization (`finishReason`, `errorType`, `errorCode`, `retryable`, `recovered`, `durationMs` → `null`). Verify it fails (module missing): `bun test tests/usage/failures.test.ts`
+- [x] 1.1 Create `tests/usage/failures.test.ts` on the pattern of `tests/usage/recent-requests.test.ts` (`setupTestDb()` + direct Drizzle inserts), covering: only failed rows returned from each source (successful LLM turns and `success = 1` tool calls excluded); merged newest-first ordering across both tables; limit clamping (0 → `[]`, clamped to 200, fractional floors, default 25); `windowMs` filtering vs all-time (`null`/omitted); nullable-field normalization (`finishReason`, `errorType`, `errorCode`, `retryable`, `recovered`, `durationMs` → `null`). Verify it fails (module missing): `bun test tests/usage/failures.test.ts`
 
 ## 2. Implementation
 
