@@ -53,16 +53,24 @@ The roadmap design doc SHALL carry a literal `baselineSha`, the frozen
 `treeHash` read from `reports/stories/manifest.json`, and the list of verified
 commands. Shell variable names SHALL NOT remain in the rendered document.
 
-Raising the floor edits `scripts/story/coverage-floor.json`, and adding stories
-edits `tests/stories/**`; both are frozen inputs. The baseline recorded before
-the climb SHALL therefore be superseded, and a new baseline SHALL be recorded
-on the commit that carries the restored floor.
+Adding stories edits `tests/stories/**`, which is a frozen input, so the
+baseline recorded before the climb SHALL be superseded and a new baseline SHALL
+be recorded on the commit that carries the new stories.
+`scripts/story/coverage-floor.json` is deliberately NOT a frozen input: the
+compatibility proof is behavioral, so a refactor branch is measured against the
+frozen suite, not against the floor value in force when the baseline was taken.
 
 #### Scenario: Climb retires the previous baseline
 
-- **WHEN** the floor is raised and new stories land
-- **THEN** the previously recorded `baselineSha` no longer qualifies, and no
-  refactor branch may claim compatibility against it
+- **WHEN** new stories land under `tests/stories/**`
+- **THEN** the frozen tree hash changes, the previously recorded `baselineSha`
+  no longer qualifies, and no refactor branch may claim compatibility against it
+
+#### Scenario: Floor value alone moves
+
+- **WHEN** only `scripts/story/coverage-floor.json` changes
+- **THEN** the frozen tree hash is unaffected and the recorded baseline still
+  qualifies
 
 #### Scenario: Baseline recorded
 

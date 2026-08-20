@@ -61,9 +61,12 @@ analytics group gets cheaper.
 
 ## D5 — Ordering against the baseline
 
-The floor raise and the story additions both touch frozen inputs, so the
-baseline recorded by `story-coverage-floor-qualification` dies the moment the
-first story lands. Order: add stories → gate green → ratchet the floor → commit
+The story additions touch frozen inputs, so the baseline recorded by
+`story-coverage-floor-qualification` dies the moment the first story lands. The
+floor raise on its own does not: `scripts/story/coverage-floor.json` is absent
+from the manifest's 163 frozen files, because the compatibility proof is
+behavioral and measures a refactor against the frozen suite rather than against
+whatever floor was in force. Order: add stories → gate green → ratchet the floor → commit
 the frozen input set → read `treeHash` from `reports/stories/manifest.json` →
 record the new literals in a follow-up commit that touches no frozen input →
 run both compat commands against it.
