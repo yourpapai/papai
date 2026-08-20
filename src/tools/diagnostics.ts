@@ -7,8 +7,9 @@ import { tool } from 'ai'
 import type { Tool } from 'ai'
 import { z } from 'zod'
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getPlatformInstance } from '../instances/platform-store.js'
-import { resolveAdminLlmConfig } from '../llm-providers/resolver.js'
+import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { mcpPool } from '../mcp/client-pool.js'
 import { registry } from '../message-queue/index.js'
@@ -39,7 +40,11 @@ export type DiagnosticsDeps = Partial<
 
 const defaultTaskInstance = (): { id: string; type: string } | null => null
 
-const defaultLlmConfig = (): DiagnosticsLlmConfigStatus => (resolveAdminLlmConfig().ok ? 'central' : 'unconfigured')
+const defaultLlmConfig = (configContextId: string): DiagnosticsLlmConfigStatus => {
+  const resolved = resolveLlmConfig(configContextId)
+  if (!resolved.ok) return 'unconfigured'
+  return resolved.source === 'global' ? 'central' : 'byok'
+}
 
 const defaultMcpPool = (): { serverCount: number; healthyCount: number } => {
   const infos = mcpPool.getServerInfos()
@@ -50,12 +55,12 @@ const defaultQueueCount = (): number => registry.getAllQueues().size
 
 const defaultUptimeSeconds = (): number => Math.floor(process.uptime())
 
-const resolveDeps = (deps: DiagnosticsDeps): Required<DiagnosticsDeps> => ({
+const resolveDeps = (deps: DiagnosticsDeps, configContextId: string): Required<DiagnosticsDeps> => ({
   platformInstanceActive:
     deps.platformInstanceActive ??
     ((platformInstanceId) => getPlatformInstance(platformInstanceId)?.status === 'active'),
   taskInstance: deps.taskInstance ?? defaultTaskInstance,
-  llmConfig: deps.llmConfig ?? defaultLlmConfig,
+  llmConfig: deps.llmConfig ?? (() => defaultLlmConfig(configContextId)),
   mcpPool: deps.mcpPool ?? defaultMcpPool,
   queueCount: deps.queueCount ?? defaultQueueCount,
   descriptorCachePresent: deps.descriptorCachePresent ?? (() => false),
@@ -86,8 +91,12 @@ const summarizeTaskInstance = (
  * count/boolean/enum/duration fields — never tokens, config bodies, or
  * credential-bearing values, neither in the result nor in log output.
  */
-export function makeRunDiagnosticsTool(platformInstanceId: string, deps: DiagnosticsDeps = {}): Tool {
-  const resolved = resolveDeps(deps)
+export function makeRunDiagnosticsTool(
+  platformInstanceId: string,
+  deps: DiagnosticsDeps = {},
+  configContextId = '',
+): Tool {
+  const resolved = resolveDeps(deps, configContextId)
   return tool({
     description:
       'Run a read-only bot health diagnostics snapshot: platform instance state, task instance configuration, LLM config resolution, MCP pool health, message queue depth, tool descriptor cache presence, and uptime. Admin-only; returns no secrets.',
@@ -115,5 +124,7 @@ export function makeRunDiagnosticsTool(platformInstanceId: string, deps: Diagnos
  */
 export function maybeAddDiagnosticsTools(tools: Record<string, Tool>, options: MakeToolsOptions): void {
   if (options.isBotAdmin !== true || options.contextType !== 'dm' || options.mode !== 'normal') return
-  tools['run_diagnostics'] = makeRunDiagnosticsTool(options.platformInstanceId ?? '', {})
+  const configContextId =
+    options.storageContextId === undefined ? '' : getConfigContextIdFromStorageContextId(options.storageContextId)
+  tools['run_diagnostics'] = makeRunDiagnosticsTool(options.platformInstanceId ?? '', {}, configContextId)
 }
