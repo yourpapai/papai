@@ -101,7 +101,7 @@ See LICENSE in the project root for details.
       `docs/adr/README.md` index and mark ADR-0224 as superseded where the
       index tracks status.
       Verify: manual review; `bun run workflows:lint` unaffected (markdown only)
-- [ ] 5.2 Extend the anonymity-contract section in
+- [x] 5.2 Extend the anonymity-contract section in
       `docs/architecture/overview.md` to cover the diagnosis surface: per-session
       visibility principal, allowed/never-returned field classes for log egress,
       aggregate-only `/logs/stats` + `/logs/scopes`, GET-only enforcement.
