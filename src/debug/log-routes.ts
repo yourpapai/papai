@@ -18,11 +18,6 @@ function parseIntParam(value: string | null): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed
 }
 
-function searchParam(value: string | null): string | undefined {
-  if (value !== null) return value
-  return undefined
-}
-
 /** Session-scoped egress: own entries verbatim, everything else shaped. */
 function egressEntries(adminUserId: string): LogEntry[] {
   // Resolve turn attribution once per request (O(turns)), not per entry.
@@ -37,7 +32,7 @@ export function handleLogs(url: URL, session: AuthenticatedRequest): Response {
   // The connection filter (incl. q) runs after shaping so it can only ever
   // match post-shaping content; limit/before apply last for stable paging.
   let results = egressEntries(session.adminUserId).filter((entry) => entryMatchesFilter(entry, filter))
-  const before = searchParam(url.searchParams.get('before'))
+  const before = url.searchParams.get('before') ?? undefined
   if (before !== undefined) results = results.filter((e) => e.time < before)
   const limit = parseIntParam(url.searchParams.get('limit')) ?? 100
   return jsonResponse(results.slice(-limit))
