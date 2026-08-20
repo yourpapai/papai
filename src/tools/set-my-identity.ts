@@ -41,8 +41,8 @@ function validateResolver(provider: TaskProvider): ErrorResult | null {
   return null
 }
 
-function parseClaim(claim: string): { result: ErrorResult | null; login: string | null } {
-  const claimedLogin = extractIdentityClaim(claim)
+function parseClaim(claim: string, chatUserId: string): { result: ErrorResult | null; login: string | null } {
+  const claimedLogin = extractIdentityClaim(claim, chatUserId)
   if (claimedLogin === null) {
     log.warn('Could not extract identity from claim')
     return {
@@ -138,7 +138,7 @@ async function executeSetMyIdentity(
   const resolverError = validateResolver(provider)
   if (resolverError !== null) return resolverError
 
-  const { result, login } = parseClaim(claim)
+  const { result, login } = parseClaim(claim, chatUserId)
   if (result !== null) return result
   if (login === null) return { status: 'error', message: 'Failed to parse identity claim.' }
 
