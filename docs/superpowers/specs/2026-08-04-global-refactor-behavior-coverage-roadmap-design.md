@@ -208,16 +208,22 @@ The roadmap is complete when:
 
 ## Foundation baseline
 
-Recorded 2026-08-20, superseding the baseline taken earlier that day at
+Recorded 2026-08-20 from the merge of `origin/master` into
+`hermetic-stories-continue`, superseding two baselines taken earlier that day:
 `b8badfbbfa02485e4fa2d6a0818682dbd8a4c12a` (tree hash
-`5f5db4a39db11d56d084612836b827bd271579ee04dcb6271ef43592288809f1`), which the
-story work on this branch retired by editing frozen inputs. A qualifying
-refactor measures against the literals below.
+`5f5db4a39db11d56d084612836b827bd271579ee04dcb6271ef43592288809f1`), retired by
+this branch's own story work, and `cfe3da15087e40950b3a2ff94ef65cc4d5fe97f9`
+(tree hash
+`c289d710ca91c37534d7450ded5e7550cc11dee84d04c4ea04d54f233b295e04`), retired by
+the merge — master's i18n work edits two frozen inputs,
+`tests/stories/harness/scenario.ts` (the story language seed) and
+`tests/utils/test-helpers.ts` (`loadI18nModule`). A qualifying refactor measures
+against the literals below.
 
 | field | value |
 | --- | --- |
-| `baselineSha` | `cfe3da15087e40950b3a2ff94ef65cc4d5fe97f9` |
-| `treeHash` | `c289d710ca91c37534d7450ded5e7550cc11dee84d04c4ea04d54f233b295e04` |
+| `baselineSha` | `2e1630c0609744a3ec4f87f15a47735657419cef` |
+| `treeHash` | `04d272db4dac667d4736c3f6d5a949fc5bb1c9787c1cbb2118d4c244347cdfee` |
 | frozen inputs | 173 files |
 | manifest scenarios | 192 |
 | bun | 1.3.13 |
@@ -226,12 +232,17 @@ refactor measures against the literals below.
 Verified green on that commit:
 
 1. `bun test:stories:contracts` — 444 pass, 0 fail, 24 files
-2. `bun test:stories:coverage` — 191 pass, 0 fail; lines 72.52%, functions
-   71.02%, against floors 0.72 / 0.70
+2. `bun test:stories:coverage` — 191 pass, 0 fail; lines 72.66%, functions
+   71.13%, against floors 0.72 / 0.70
 3. `bun test:stories:manifest` — 232/254 catalog records executable
    (T0 178, T1 29, T2 8, T3 16, T4 1)
-4. `BASE_REF=cfe3da15087e40950b3a2ff94ef65cc4d5fe97f9 bun test:stories:compat --manifest-only`
-5. `BASE_REF=cfe3da15087e40950b3a2ff94ef65cc4d5fe97f9 bun test:stories:compat`
+4. `BASE_REF=2e1630c0609744a3ec4f87f15a47735657419cef bun test:stories:compat --manifest-only`
+5. `BASE_REF=2e1630c0609744a3ec4f87f15a47735657419cef bun test:stories:compat`
+
+The lane measures a little above the numbers the floors were ratcheted from
+because the merge brought master's files into scope; the floors are left where
+`story-coverage-floor-climb` set them rather than re-ratcheted from a merge
+measurement.
 
 ### Why the floors read 0.72 / 0.70
 
@@ -263,7 +274,8 @@ floor was in force when the baseline was taken. Changing the floor value alone
 does not retire this baseline; editing anything under `tests/stories/**`,
 `scripts/story/**`, or the other frozen inputs does.
 
-This SHA is a `hermetic-stories-continue` commit. Under the Delivery
-constraints below, a baseline that other branches rely on for a compatibility
-claim must sit on master — so this baseline qualifies work on this branch, and
-must be re-recorded from the merge commit before another branch cites it.
+This SHA is still a `hermetic-stories-continue` commit, though one that
+already carries `origin/master`. Under the Delivery constraints below, a
+baseline that other branches rely on for a compatibility claim must sit on
+master — so this baseline qualifies work on this branch, and becomes citable
+by other branches only once PR #201 lands it on master.
