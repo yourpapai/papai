@@ -242,11 +242,17 @@ const BEHAVIOR_COVERAGE_RECORDS: readonly BehaviorCoverage[] = [
     behaviorId: 'privacy-gated-analytics',
     state: 'partial',
     provingTier: '0',
-    scenarioIds: ['SCN-analytics-governed-turn', 'SCN-settings-admin-analytics', 'SCN-stats-anonymity'],
+    scenarioIds: [
+      'SCN-analytics-governed-turn',
+      'SCN-analytics-consent-grant',
+      'SCN-analytics-subject-rights',
+      'SCN-settings-admin-analytics',
+      'SCN-stats-anonymity',
+    ],
     required: ['primary', 'authorization-routing', 'persistence-scope', 'external-boundary'],
     missing: ['persistence-scope', 'external-boundary'],
     rationale:
-      'A governed turn records one epoch-bound aggregate with the kill switch fail-closed, the operator reviews policy through settings, and stats omit raw identity; derive jobs, the Metabase snapshot pipeline, and the external egress lanes have no story.',
+      'A governed turn records one epoch-bound aggregate with the kill switch fail-closed, consent through settings grants the collection ref the pseudonymous lane needs and the subject can export, withdraw, and delete the resulting record, the operator reviews policy through settings, and stats omit raw identity; derive jobs, the Metabase snapshot pipeline, and the external egress lanes have no story.',
   },
 ]
 

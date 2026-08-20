@@ -64,7 +64,7 @@ Section targets sum to 47 against a 44.6-unit deficit — a 2.4-unit margin.
 
 ## 3. Analytics stores and jobs (target: 14 function-units)
 
-- [ ] 3.1 Stories for the zero-function files in `src/analytics/governance/`,
+- [x] 3.1 Stories for the zero-function files in `src/analytics/governance/`,
       granting collection eligibility the way production does — by storing a
       pseudonymous preference through the settings preference handler, never by
       calling `setEligibilityState` from the story. Cover both sides: a

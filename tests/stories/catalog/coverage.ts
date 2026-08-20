@@ -224,6 +224,9 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-settings-admin-tool-defaults',
   'SCN-settings-admin-analytics',
   'SCN-analytics-governed-turn',
+  // Phase 6 — consent-gated analytics (story-coverage-floor-climb)
+  'SCN-analytics-consent-grant',
+  'SCN-analytics-subject-rights',
   'SCN-analytics-aggregate-release-settings',
   'SCN-analytics-aggregate-release-denials',
   'SCN-analytics-aggregate-delivery-captured',
@@ -1640,6 +1643,20 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-08-03',
     storyIds: [
       'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-analytics: an operator reviews and updates the analytics policy through settings',
+    ],
+  },
+  'SCN-analytics-consent-grant': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/subject-consent.story.test.ts#SCN-analytics-consent-grant: consent through settings grants the collection ref that makes the pseudonymous lane admit',
+    ],
+  },
+  'SCN-analytics-subject-rights': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/subject-consent.story.test.ts#SCN-analytics-subject-rights: a consenting subject exports, withdraws, and deletes their analytics record through settings',
     ],
   },
   'SCN-analytics-governed-turn': {
