@@ -9,7 +9,7 @@ See LICENSE in the project root for details.
 
 ## 1. Pin the current behavior
 
-- [ ] 1.1 Failing-first regression test: a subject with a stored
+- [x] 1.1 Failing-first regression test: a subject with a stored
       `external_pseudonymous` preference and no eligibility row produces a
       decision denied with `governance_incomplete` at runtime start, and no
       row is created. This must pass before and after the change.
