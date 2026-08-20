@@ -35,7 +35,7 @@ See LICENSE in the project root for details.
 
 ## 3. Per-session visibility in the state collector
 
-- [ ] 3.1 Write failing per-session tests (new
+- [x] 3.1 Write failing per-session tests (new
       `tests/debug/per-session-visibility.test.ts` plus updates in
       `tests/debug/sse-log-filter.test.ts`): `addClient(controller, filter,
       adminUserId)` binds the session admin; `log:entry` egress applies
