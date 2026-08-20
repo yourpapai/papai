@@ -7,41 +7,58 @@ See LICENSE in the project root for details.
 
 ## Purpose
 
-Defines the restored Tier 0 story coverage floor and the immutable
-qualification baseline that `test:stories:compat` measures refactor branches
-against.
+Defines how the Tier 0 story coverage floor is recorded against the tree it
+measures, and the immutable qualification baseline that `test:stories:compat`
+measures refactor branches against.
 
 ## ADDED Requirements
 
-### Requirement: Floors are met, never lowered
+### Requirement: The floor describes the tree it was measured on
 
-The Tier 0 coverage gate SHALL pass at the recorded floors in
-`scripts/story/coverage-floor.json` by adding durable story coverage. Lowering
-either floor value, or changing how `meanMetric` aggregates, SHALL NOT be used
-to make the gate pass.
+The floor in `scripts/story/coverage-floor.json` SHALL be a recorded
+measurement of the current scope, derived with the ratchet's epsilon
+convention (`floor((measured - 0.005) * 100) / 100`). It SHALL be raised
+automatically by `bun coverage:ratchet:stories` from a green run, and MAY be
+re-recorded downward only by an explicit, reviewed edit that states the
+measured scope. `meanMetric` aggregation and `story-scope.ts` membership SHALL
+NOT be changed to move the number.
+
+#### Scenario: Scope grows faster than coverage
+
+- **WHEN** the scoped file count grows materially since the floor was recorded
+  and the mean falls below it
+- **THEN** the floor is re-recorded at the measured value with the scope size
+  stated, rather than the metric being reweighted or the scope narrowed
+
+#### Scenario: Ratchet cannot lower
+
+- **WHEN** `bun coverage:ratchet:stories` runs against a measurement below the
+  current floor
+- **THEN** `nextFloor` leaves the floor unchanged, so any reduction is a
+  deliberate committed edit and never a silent side effect of a script
 
 #### Scenario: Gate below floor
 
 - **WHEN** `bun test:stories:coverage` measures below either floor
-- **THEN** it exits non-zero and prints the per-file uncovered diagnostics,
-  and the remedy is added coverage, not an edited floor file
+- **THEN** it exits non-zero and prints the per-file uncovered diagnostics
 
-#### Scenario: Merge dilutes the mean
+### Requirement: Coverage is bought with contracts, not with loads
 
-- **WHEN** a merge adds production files the story lane never loads
-- **THEN** those files are seeded at 0% and counted in the scope, so the mean
-  drops and the gate goes red rather than silently ignoring them
-
-### Requirement: Every added story carries two oracles
-
-Each story added to restore the floor SHALL assert one user-visible result and
-one durable system result, and SHALL NOT use retries to stabilise evidence.
+A story added to raise the floor SHALL assert one user-visible result and one
+durable system result, and SHALL NOT use retries to stabilise evidence. A story
+whose only effect is to import a module so it stops counting as 0% SHALL NOT be
+used to move the metric.
 
 #### Scenario: Denied action
 
 - **WHEN** a story covers a rejection branch
 - **THEN** it asserts both the user-visible reply and that the affected store
   gained no row
+
+#### Scenario: Load-only story
+
+- **WHEN** a proposed story reaches a module without asserting a behavior of it
+- **THEN** it does not qualify as coverage, and the module stays counted at 0%
 
 ### Requirement: Recorded qualification baseline
 

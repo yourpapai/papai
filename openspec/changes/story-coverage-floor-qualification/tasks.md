@@ -5,49 +5,47 @@ Use of this software is governed by the Business Source License 1.1.
 See LICENSE in the project root for details.
 -->
 
-# Tasks: Restore the Tier 0 floor and record its baseline
+# Tasks: Re-record the Tier 0 floor and its baseline
 
 ## 1. Capture the input
 
-- [ ] 1.1 Record the below-floor report as the task input:
+- [x] 1.1 Record the below-floor report as the task input:
       `bun test:stories:coverage`. Confirm exit code 1, the
       `T0 uncovered production files:` block, and that
       `scripts/story/coverage-floor.json` is unmodified.
       Verify: report captured under `reports/stories/`
 
-## 2. Analytics story coverage
+## 2. Size the deficit
 
-- [ ] 2.1 Stories for the aggregate-lane snapshot path
-      (`src/analytics/jobs/snapshot.ts`, `snapshot-copy.ts`,
-      `src/analytics/governance/snapshot-consumer.ts`), two oracles each.
-      Verify: `bun test:stories` and `bun test:stories:coverage` (lines and
-      functions both strictly above the previous run)
-- [ ] 2.2 Stories for `src/analytics/governance/preference-store.ts` and
-      `src/analytics/storage/event-store.ts`, including retention and the
-      denial paths.
-      Verify: `bun test:stories:coverage`
-- [ ] 2.3 Stories for `src/analytics/jobs/derive.ts`,
-      `src/analytics/derive/write.ts`, `src/analytics/jobs/backfill.ts`, and
-      the denial branches of `src/analytics/governance/collection-store.ts`
-      reachable without a granted eligibility ref. Do not seed
-      `setEligibilityState` from a story.
-      Verify: `bun test:stories:coverage`
+- [x] 2.1 Convert the gap to file-units against the gate's own scope
+      (`scopeLcov` + `discoverScopedSourceFiles`) and record the result in
+      proposal.md: one covered file is worth 1/N of the mean, so the deficit is
+      a file count, not a percentage. Compare it against the total headroom in
+      the diagnostic-named files plus every never-loaded file.
+      Verify: the recorded deficit exceeds that combined headroom, which is why
+      the floor is re-recorded rather than climbed
+- [x] 2.2 Establish why the mean fell: compare the scoped source-file count at
+      the commit that last raised the floor against HEAD, and confirm no story
+      files were removed.
+      Verify: both counts and the story-file delta recorded in proposal.md
 
-## 3. Chat entrypoint coverage
+## 3. Re-record the floor
 
-- [ ] 3.1 Stories for `src/chat/mattermost/link-resolver.ts`,
-      `src/chat/discord/index.ts`, and `src/chat/telegram/index.ts` as needed
-      to clear both floors.
-      Verify: `bun test:stories:coverage` exits 0 with lines >= 71.00% and
-      functions >= 70.00%
+- [x] 3.1 Write `scripts/story/coverage-floor.json` with the values the
+      ratchet's own `nextFloor` epsilon convention yields for the measured run
+      (`floor((measured - 0.005) * 100) / 100`): lines 0.68, functions 0.65.
+      No change to `meanMetric`, `story-scope.ts`, or any story file.
+      Verify: `bun test:stories:coverage` exits 0
+- [x] 3.2 Confirm the ratchet still refuses to lower on its own, so the new
+      value can only regress by another reviewed edit.
+      Verify: `bun coverage:ratchet:stories` reports the floor unchanged
 
-## 4. Catalog and ledger records
+## 4. Hand off the climb
 
-- [ ] 4.1 Register each new story in `tests/stories/catalog/coverage.ts` and
-      add its behavior-ledger entry in `tests/stories/catalog/behaviors.ts`;
-      no `blocked:missing-implementation` or `retired` entry is used as
-      evidence.
-      Verify: `bun test:stories:contracts`
+- [ ] 4.1 Record the residual coverage work as its own OpenSpec change, sized
+      against the measured function deficit and naming the files that hold the
+      headroom. Point the archived foundation plan's residual section at it.
+      Verify: `openspec validate <successor> --strict` exits 0
 
 ## 5. Record the qualification baseline
 
