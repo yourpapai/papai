@@ -26,17 +26,17 @@ See LICENSE in the project root for details.
 
 ## 3. Wire the consent boundary
 
-- [ ] 3.1 Failing tests for `handlePutPreferences`
+- [x] 3.1 Failing tests for `handlePutPreferences`
       (`src/debug/settings/analytics-routes.ts`): opting into
       `local_pseudonymous` or `external_pseudonymous` grants the ref in the
       same transaction as the preference write; aggregate lanes and `off`
       grant nothing. Then implement.
       Verify: `bun test tests/debug/settings/`
-- [ ] 3.2 Failing tests for the clear path: switching from a pseudonymous
+- [x] 3.2 Failing tests for the clear path: switching from a pseudonymous
       lane to an aggregate lane or to `off` clears the ref through the
       existing revocation path in the same transaction. Then implement.
       Verify: `bun test tests/debug/settings/`
-- [ ] 3.3 Failing test for atomicity: when the grant write raises, the
+- [x] 3.3 Failing test for atomicity: when the grant write raises, the
       preference write rolls back, the handler returns an error, and the
       stored lane is unchanged. Then implement.
       Verify: `bun test tests/debug/settings/`
