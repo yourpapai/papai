@@ -84,23 +84,34 @@ const captureChild = async (argv: readonly string[], cwd: string, stream: boolea
       stdio: ['inherit', fd, fd],
     })
     if (stream) {
-      await mirrorLogWhile(logPath, proc.exited, {
-        size: (p): number | null => {
-          try {
-            return fs.statSync(p).size
-          } catch {
-            return null
-          }
-        },
-        read: utf8TailRead((p, start, end): Uint8Array => fs.readFileSync(p).subarray(start, end)),
-        write: (chunk: string): void => {
-          process.stderr.write(chunk)
-        },
-        sleep: (ms: number): Promise<void> =>
-          new Promise<void>((resolve) => {
-            setTimeout(resolve, ms)
+      // One read fd for the whole run: each poll reads only the new byte range,
+      // instead of re-reading (and re-allocating) the entire log every 250 ms.
+      const readFd = fs.openSync(logPath, 'r')
+      try {
+        await mirrorLogWhile(logPath, proc.exited, {
+          size: (p): number | null => {
+            try {
+              return fs.statSync(p).size
+            } catch {
+              return null
+            }
+          },
+          read: utf8TailRead((_p, start, end): Uint8Array => {
+            const bytes = new Uint8Array(end - start)
+            fs.readSync(readFd, bytes, 0, bytes.length, start)
+            return bytes
           }),
-      })
+          write: (chunk: string): void => {
+            process.stderr.write(chunk)
+          },
+          sleep: (ms: number): Promise<void> =>
+            new Promise<void>((resolve) => {
+              setTimeout(resolve, ms)
+            }),
+        })
+      } finally {
+        fs.closeSync(readFd)
+      }
     }
     const exitCode = await proc.exited
     const output = fs.readFileSync(logPath, 'utf8')
