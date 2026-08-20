@@ -103,6 +103,7 @@ describe('isToolDomain', () => {
   test('narrows exactly to the declared tool domains', () => {
     expect(isToolDomain('task')).toBe(true)
     expect(isToolDomain('memory')).toBe(true)
+    expect(isToolDomain('diagnostics')).toBe(true)
     expect(isToolDomain('nope')).toBe(false)
     expect(isToolDomain('')).toBe(false)
   })

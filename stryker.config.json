@@ -27,6 +27,7 @@
     "!src/i18n/locales/**/*.ts"
   ],
   "coverageAnalysis": "perTest",
+  "disableTypeChecks": false,
   "ignoreStatic": true,
   "incremental": true,
   "incrementalFile": "reports/stryker-incremental.json",

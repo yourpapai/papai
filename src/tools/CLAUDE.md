@@ -52,7 +52,7 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): Tool {
   classifies as its own `permission_denied` outcome rather than a failure. The analytics
   layer maps `tool-metadata.ts` domains/risks onto its bounded fact enums in
   `src/analytics/tool-classification.ts` (`open-world` → `open_world`, richer domains
-  collapse onto `task|memo|schedule|attachment|web|identity|coding|config|meta|other`).
+  collapse onto `task|memo|schedule|attachment|web|identity|coding|config|meta|diagnostics|other`).
 - **Result compaction is not part of `makeTools()`.** It is a per-turn wrap applied
   unconditionally in `prepareLlmInvocation` (`src/llm-orchestrator-tools.ts`) after
   `applyToolPreferences`. `applyResultCompaction` (`src/tools/compaction/wrap-compaction.ts`)
