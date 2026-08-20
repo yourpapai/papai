@@ -129,6 +129,7 @@ const realDeps = (cwd: string, bypass: boolean, stream: boolean): RunDeps => ({
   env: process.env,
   cores: os.availableParallelism(),
   load1: os.loadavg()[0] ?? 0,
+  stdoutIsTTY: process.stdout.isTTY ?? false,
   ensureClientBuilt: (): void => {
     realEnsureClientBuilt(cwd)
   },

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { CHILD_TIMEOUT_MS, parseWrapperArgs, selectMode } from './mode.js'
+import { CHILD_TIMEOUT_DEMOTE_MS, CHILD_TIMEOUT_MS, parseWrapperArgs, selectMode } from './mode.js'
 import type { ExecutionMode } from './mode.js'
 import { LAST_RUN_JUNIT, LAST_RUN_LOG, REPORT_DIR } from './paths.js'
 import { buildReport } from './report.js'
@@ -41,11 +41,13 @@ export interface RunDeps {
   cores: number
   /** 1-minute load average consulted by `selectMode` for load demotion. */
   load1: number
+  /** Whether stdout is a terminal; a non-TTY defaults the run to streaming. */
+  stdoutIsTTY: boolean
   /** Build the client bundles if they are missing, before anything else runs. */
   ensureClientBuilt: () => void
   /** Drop the previous run's log and junit so a run that writes neither cannot inherit them. */
   clearArtifacts: () => void
-  spawn: (argv: readonly string[]) => SpawnResult
+  spawn: (argv: readonly string[], options: { stream: boolean }) => SpawnResult
   fingerprint: () => string
   gitSha: () => string | null
   /** `null` when Bun wrote no junit file — which is what happens when every file fails to load. */
@@ -75,7 +77,7 @@ const countsLine = (report: RunReport): string => {
     `${String(totals.pass)} pass`,
     `${String(totals.fail)} fail`,
     `${String(totals.skip)} skip`,
-    `${formatDuration(report.wallMs)} (${report.mode})`,
+    `${formatDuration(report.wallMs)} (${report.mode}${report.loadDemoted ? ' · load' : ''})`,
   ].join(' · ')
 }
 
@@ -134,10 +136,16 @@ export function formatSummary(report: RunReport): string[] {
  * The child's flags, without the `bun test` prefix — this is also what lands in the
  * report's `argv`, so a later reader can see exactly what the run was.
  */
-const childFlagsFor = (mode: ExecutionMode, passthrough: readonly string[], persist: boolean): string[] => [
+const childFlagsFor = (
+  mode: ExecutionMode,
+  loadDemoted: boolean,
+  passthrough: readonly string[],
+  persist: boolean,
+): string[] => [
   ...(mode === 'parallel' ? ['--parallel'] : []),
   '--timeout',
-  CHILD_TIMEOUT_MS,
+  // Injected before the passthrough args, so an explicit `--timeout` still wins.
+  loadDemoted ? CHILD_TIMEOUT_DEMOTE_MS : CHILD_TIMEOUT_MS,
   ...(persist ? ['--reporter=junit', `--reporter-outfile=${LAST_RUN_JUNIT}`] : []),
   ...passthrough,
 ]
@@ -154,14 +162,17 @@ export function runWrapper(argv: readonly string[], deps: RunDeps): number {
 
   const args = parseWrapperArgs(argv)
   const plan = selectMode(args.mode, deps.env, deps.cores, deps.load1)
-  const flags = childFlagsFor(plan.mode, args.passthrough, !args.bypass)
+  const flags = childFlagsFor(plan.mode, plan.loadDemoted, args.passthrough, !args.bypass)
+  // A piped run has no summary to watch; stream it instead. Bypass runs keep the
+  // terminal themselves and are exempt from the default.
+  const stream = args.bypass ? args.stream : args.stream || !deps.stdoutIsTTY
 
   // `--watch` / `--update-snapshots` are interactive; there is no meaningful "last run".
-  if (args.bypass) return deps.spawn(['bun', 'test', ...flags]).exitCode
+  if (args.bypass) return deps.spawn(['bun', 'test', ...flags], { stream: args.stream }).exitCode
 
   deps.clearArtifacts()
   const startedAt = deps.now()
-  const child = deps.spawn(['bun', 'test', ...flags])
+  const child = deps.spawn(['bun', 'test', ...flags], { stream })
   const junitXml = deps.readJUnit()
 
   const report = buildReport({
@@ -173,6 +184,7 @@ export function runWrapper(argv: readonly string[], deps: RunDeps): number {
     argv: flags,
     scope: scopeFor(args.paths),
     mode: plan.mode,
+    loadDemoted: plan.loadDemoted,
     fingerprint: deps.fingerprint(),
     gitSha: deps.gitSha(),
   })
