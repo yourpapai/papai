@@ -119,6 +119,8 @@ const resolveDeps = (deps: ChangedFilesDeps | undefined): ChangedFilesDeps => {
  */
 export const isGeneratedSourceFile = (relPath: string): boolean => relPath.split(/[/\\]/u).includes('generated')
 
+export const isLocaleDataFile = (relPath: string): boolean => relPath.startsWith('src/i18n/locales/')
+
 export const selectChangedMutationTargets = (input: SelectInput): string[] => {
   const deps = resolveDeps(input.deps)
   const output = deps.runGit(['diff', '--name-only', '--diff-filter=ACMRT', `${input.baseRef}...HEAD`])
@@ -128,6 +130,7 @@ export const selectChangedMutationTargets = (input: SelectInput): string[] => {
     .filter(Boolean)
     .filter((relPath) => deps.isGateableImpl(relPath, input.projectRoot))
     .filter((relPath) => !isGeneratedSourceFile(relPath))
+    .filter((relPath) => !isLocaleDataFile(relPath))
     .filter((relPath, index, paths) => paths.indexOf(relPath) === index)
     .toSorted()
 }

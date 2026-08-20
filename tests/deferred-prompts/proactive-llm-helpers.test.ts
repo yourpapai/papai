@@ -3,9 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { DeferredDeliveryTarget } from '../../src/chat/types.js'
+import type { VerifierPrompt } from '../../src/completion/verified-completion.js'
 import {
   buildMetadataMessages,
   finalizeAndLog,
@@ -14,7 +15,7 @@ import {
   timezoneOrUtc,
 } from '../../src/deferred-prompts/proactive-llm-helpers.js'
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
-import { mockLogger } from '../utils/test-helpers.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const dmTarget: DeferredDeliveryTarget = {
   contextId: 'user-1',
@@ -62,6 +63,12 @@ describe('proactive-llm-helpers', () => {
     expect(finalizeDeliveryText({ text: '', finishReason: 'stop' })).toBe('Done.')
   })
 
+  test('localizes the Done fallback to the turn locale', () => {
+    expect(finalizeDeliveryText({ text: undefined, finishReason: 'stop' }, 'ru')).toBe('Готово.')
+    expect(finalizeDeliveryText({ text: '', finishReason: 'stop' }, 'ru')).toBe('Готово.')
+    expect(finalizeDeliveryText({ text: 'preamble', finishReason: 'tool-calls' }, 'ru')).toBe('Готово.')
+  })
+
   test('builds metadata messages', () => {
     const metadata: ExecutionMetadata = {
       delivery_brief: 'Brief',
@@ -76,6 +83,10 @@ describe('proactive-llm-helpers', () => {
 })
 
 describe('finalizeAndLog verification', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
   test('empty text + verification → verified text', async () => {
     mockLogger()
     const text = await finalizeAndLog(
@@ -92,9 +103,37 @@ describe('finalizeAndLog verification', () => {
     expect(text).toBe('Reminder delivered.')
   })
 
+  test('ru locale → ru verifier prompt and neutral fallback', async () => {
+    mockLogger()
+    const prompts: VerifierPrompt[] = []
+    const text = await finalizeAndLog(
+      { text: '', finishReason: 'stop', finalStep: { response: { messages: [] } } },
+      'user-1',
+      {
+        history: [],
+        verifier: {
+          readOnlyToolset: undefined,
+          invokeVerifier: (prompt: VerifierPrompt): Promise<{ text: string | undefined }> => {
+            prompts.push(prompt)
+            return Promise.resolve({ text: undefined })
+          },
+        },
+      },
+      'ru',
+    )
+    expect(prompts[0]?.system).toContain('Отвечай на русском языке')
+    expect(text).toBe('Я выполнил запрошенные действия, но не смог подтвердить результат — пожалуйста, перепроверьте.')
+  })
+
   test('no verification arg → legacy Done. fallback preserved', async () => {
     mockLogger()
     const text = await finalizeAndLog({ text: '', finishReason: 'stop' }, 'user-1')
     expect(text).toBe('Done.')
+  })
+
+  test('no verification arg + ru locale → localized done fallback', async () => {
+    mockLogger()
+    const text = await finalizeAndLog({ text: '', finishReason: 'stop' }, 'user-1', undefined, 'ru')
+    expect(text).toBe('Готово.')
   })
 })

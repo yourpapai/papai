@@ -192,3 +192,38 @@ describe('mid-run steering analytics', () => {
     expect(facts.filter((fact) => fact.type === 'turn_started')).toHaveLength(0)
   })
 })
+
+describe('steer ack per locale', () => {
+  let getMessageHandler: () => ((msg: ReturnType<typeof createDmMessage>, reply: ReplyFn) => Promise<void>) | null
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+    runRegistry.clear()
+    const { provider: mockChat, getMessageHandler: getHandler } = createMockChatForBot()
+    getMessageHandler = getHandler as typeof getMessageHandler
+    setupBot(mockChat, ADMIN_ID, { processMessage: (): Promise<void> => Promise.resolve() })
+  })
+
+  afterEach(() => {
+    runRegistry.clear()
+  })
+
+  test('ru-configured DM user gets the ru steer ack', async () => {
+    const userId = 'ru-steer-user'
+    addUser(userId, ADMIN_ID)
+    const storageContextId = scopedDm(userId)
+    setConfigValue(storageContextId, 'language', 'ru')
+
+    const { reply: runReply } = createMockReply()
+    runRegistry.begin(storageContextId, { turnId: 't-ru', reply: runReply, originatingMessageIds: [] })
+
+    const messageHandler = getMessageHandler()
+    assert.ok(messageHandler !== null)
+    const { reply, textCalls } = createMockReply()
+    await messageHandler({ ...createDmMessage(userId), text: 'продолжай' }, reply)
+
+    expect(textCalls.some((c) => c.includes('встраиваю это в текущий запуск'))).toBe(true)
+  })
+})

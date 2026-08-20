@@ -34,4 +34,32 @@ describe('buildStopSummary', () => {
     const s = buildStopSummary([], { forced: true })
     expect(s).toBe('🛑 Stopped immediately. An in-flight action may have been cut off — verify recent changes.')
   })
+
+  test('ru locale: graceful stop with no effects', () => {
+    const s = buildStopSummary([], { forced: false, locale: 'ru' })
+    expect(s).toBe('🛑 Остановлено. Действий ещё не было выполнено.')
+  })
+
+  test('ru locale: graceful stop lists effects with counts', () => {
+    const s = buildStopSummary(
+      [{ toolName: 'update_task' }, { toolName: 'update_task' }, { toolName: 'add_comment' }],
+      { forced: false, locale: 'ru' },
+    )
+    expect(s).toBe('🛑 Остановлено. Выполнено действий: 3 (update_task ×2, add_comment).')
+  })
+
+  test('ru locale: forced stop with one effect uses the singular form and warns', () => {
+    const s = buildStopSummary([{ toolName: 'update_task' }], { forced: true, locale: 'ru' })
+    expect(s).toBe(
+      '🛑 Остановлено немедленно. Выполнено одно действие: update_task. ' +
+        'Выполнявшееся действие могло быть прервано — проверьте недавние изменения.',
+    )
+  })
+
+  test('ru locale: forced stop with no effects still warns', () => {
+    const s = buildStopSummary([], { forced: true, locale: 'ru' })
+    expect(s).toBe(
+      '🛑 Остановлено немедленно. Выполнявшееся действие могло быть прервано — проверьте недавние изменения.',
+    )
+  })
 })

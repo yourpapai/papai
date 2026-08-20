@@ -15,7 +15,7 @@ export const KANEO_PLUGIN_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:
 export const KANEO_PLUGIN_WORKSPACE_KEY = 'plugin:task-provider-kaneo:provider:workspaceId'
 
 // User preference config keys (always available)
-export type PreferenceConfigKey = 'timezone'
+export type PreferenceConfigKey = 'timezone' | 'language'
 
 // MCP endpoint config keys
 export type McpConfigKey = 'mcp_endpoints'
@@ -27,13 +27,17 @@ export type AiOutputConfigKey =
   | 'ai_output_detail_level'
   | 'ai_live_status'
 
+// Internal config keys: storable via the config store but never declared as a
+// ConfigField, so they stay invisible to the settings UI and config editor.
+export type InternalConfigKey = 'language_prompted'
+
 // Static per-user config keys. Provider-specific keys ('kaneo_apikey',
 // 'kaneo_workspace_id', 'youtrack_token', etc.) are no longer part of this
 // union; they are plugin-namespaced dynamic keys handled via
 // setConfigValue/getConfigValue + isAllowedDynamicConfigKey.
 // LLM credentials live in the llm_providers / llm_admin_roles tables (see src/llm-providers/store.js)
 // and are owned by the bot admin, not per-user.
-export type ConfigKey = PreferenceConfigKey | McpConfigKey | AiOutputConfigKey
+export type ConfigKey = PreferenceConfigKey | McpConfigKey | AiOutputConfigKey | InternalConfigKey
 
 export type ConfigFieldOption = {
   readonly value: string
@@ -58,15 +62,17 @@ export function isFieldUnsettable(field: ConfigField): boolean {
   return field.unsettable !== false
 }
 
-// All valid static config keys (preference and MCP only; provider keys are
+// All valid static config keys (preference, MCP, AI-output and internal; provider keys are
 // handled via the dynamic-config path).
 export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
   'timezone',
+  'language',
   'mcp_endpoints',
   'ai_tool_visibility',
   'ai_reasoning_visibility',
   'ai_output_detail_level',
   'ai_live_status',
+  'language_prompted',
 ]
 
 /**

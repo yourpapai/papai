@@ -23,7 +23,8 @@
     "src/cron.ts",
     "src/recurring.ts",
     "src/history.ts",
-    "src/conversation.ts"
+    "src/conversation.ts",
+    "!src/i18n/locales/**/*.ts"
   ],
   "coverageAnalysis": "perTest",
   "ignoreStatic": true,

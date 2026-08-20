@@ -6,10 +6,14 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { AiProgressReporter, ToolFinishedEvent, ToolStartedEvent } from '../src/ai-progress-reporter.js'
+import { userCachesForTesting } from '../src/cache.js'
+import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import { type DebugEvent, subscribe, unsubscribe } from '../src/debug/event-bus.js'
+import { resolveSystemPrompt } from '../src/llm-orchestrator-invoke.js'
 import { handleToolCallStart, handleToolCallFinishEvent } from '../src/llm-orchestrator-tool-events.js'
 import type { ToolCallContext } from '../src/llm-orchestrator-types.js'
-import { createMockReply, mockLogger } from './utils/test-helpers.js'
+import { createMockProvider } from './tools/mock-provider.js'
+import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 const baseContext = (): ToolCallContext => ({
   contextId: 'ctx-1',
@@ -370,5 +374,34 @@ describe('live status wiring', () => {
       output: {},
     })
     expect(spy.finishes).toBe(1)
+  })
+})
+
+describe('resolveSystemPrompt', () => {
+  beforeEach(async () => {
+    mockLogger()
+    userCachesForTesting.clear()
+    await setupTestDb()
+  })
+
+  test('localizes the prompt from the config context derived from the storage context id', async () => {
+    const { setConfigValue } = await import('../src/config.js')
+    const groupConfigId = toScopedContextId({ platformInstanceId: 'tg', nativeContextId: 'invoke-group' })
+    const threadStorageId = toScopedThreadContextId({
+      platformInstanceId: 'tg',
+      nativeContextId: 'invoke-group',
+      threadId: 't1',
+    })
+    setConfigValue(groupConfigId, 'language', 'ru')
+
+    const prompt = resolveSystemPrompt({
+      provider: createMockProvider(),
+      contextId: threadStorageId,
+      enabledToolNames: new Set(['create_reminder']),
+      disclosure: undefined,
+      contextType: 'group',
+    })
+
+    expect(prompt).toContain('Отвечай пользователю на русском языке')
   })
 })

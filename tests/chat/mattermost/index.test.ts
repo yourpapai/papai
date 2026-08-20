@@ -11,15 +11,18 @@ import { MattermostChatProvider } from '../../../src/chat/mattermost/index.js'
 import { determineMattermostThreadId } from '../../../src/chat/mattermost/message-normalization.js'
 import { mattermostCapabilities } from '../../../src/chat/mattermost/metadata.js'
 import type { MattermostPost } from '../../../src/chat/mattermost/schema.js'
-import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 import type { AuthorizationResult } from '../../../src/chat/types.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
+import { setConfigValue } from '../../../src/config.js'
 import {
   clearMessageCache,
   createMockReply,
+  mockLogger,
   mockMessageCache,
   restoreFetch,
   setMockFetch,
+  setupTestDb,
 } from '../../utils/test-helpers.js'
 
 type BuiltPostedMessage = { readonly msg: IncomingMessage }
@@ -204,7 +207,9 @@ void mock.module('../../../src/auth.js', () => ({
 describe('MattermostChatProvider', () => {
   let provider: MattermostChatProvider
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
     mockMessageCache()
     clearMessageCache()
   })
@@ -882,6 +887,48 @@ describe('MattermostChatProvider', () => {
       })
 
       expect(replies.getReplies()).toEqual(['Use `@testbot /help` to see commands, or mention me with a question.'])
+
+      restoreFetch()
+    })
+
+    test('renders the empty-mention hint in the context language', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = createMattermostProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      const replies = createMockReply()
+      provider.onMessage(async (_msg, reply) => {
+        await reply.text('should not be called')
+      })
+
+      // @ts-expect-error - replacing private method for testing
+      provider.buildReplyFn = (): typeof replies.reply => replies.reply
+
+      setConfigValue(
+        toScopedContextId({ platformInstanceId: TEST_PLATFORM_ID, nativeContextId: 'channel789' }),
+        'language',
+        'ru',
+      )
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post130',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(replies.getReplies()).toEqual([
+        'Используйте `@testbot /help`, чтобы посмотреть команды, или упомяните меня с вопросом.',
+      ])
 
       restoreFetch()
     })

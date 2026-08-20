@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { generateText, stepCountIs } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 
+import { setConfigValue } from '../../src/config.js'
 import type { LlmOrchestratorDeps } from '../../src/llm-orchestrator-types.js'
 import { processMessage } from '../../src/llm-orchestrator.js'
 import { lastTurnRegistry } from '../../src/run-control/last-turn-registry.js'
@@ -38,6 +39,13 @@ const mockModel = new MockLanguageModelV3({
 // LlmOrchestratorDeps without any unsafe assertion.
 type GenerateResult = Awaited<ReturnType<LlmOrchestratorDeps['generateText']>>
 const okResult: GenerateResult = await generateText({ model: mockModel, prompt: 'hi' })
+
+// Flip the live run's stop flag from the generateText seam, exactly like a
+// concurrent /stop would mid-turn. Helper keeps the branch out of the test body.
+function requestGracefulStop(contextId: string): void {
+  const run = runRegistry.get(contextId)
+  if (run !== undefined) run.stopRequested = true
+}
 
 describe('processMessage run lifecycle', () => {
   beforeEach(async () => {
@@ -92,6 +100,26 @@ describe('processMessage run lifecycle', () => {
     await processMessage(reply, 'dm-user-1', 'user-1', null, 'hello', 'dm', undefined, deps, [], 't2')
 
     expect(runRegistry.get('dm-user-1')).toBeUndefined()
+  })
+
+  test('graceful-stop summary is posted in the context language', async () => {
+    setConfigValue('dm-user-1', 'language', 'ru')
+    const { reply, getReplies } = createMockReply()
+
+    const deps: LlmOrchestratorDeps = {
+      generateText: () => {
+        requestGracefulStop('dm-user-1')
+        return Promise.resolve(okResult)
+      },
+      stepCountIs: (...args) => stepCountIs(...args),
+      buildModel: () => mockModel,
+      resolve: () => null,
+      maybeAutoProvision: () => Promise.resolve(false),
+    }
+
+    await processMessage(reply, 'dm-user-1', 'user-1', null, 'hello', 'dm', undefined, deps, [], 't4')
+
+    expect(getReplies().some((text) => text.startsWith('🛑 Остановлено.'))).toBe(true)
   })
 
   test('records the last turn even when the catch body throws', async () => {

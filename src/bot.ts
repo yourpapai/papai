@@ -18,14 +18,17 @@ import { replyToUnauthorized } from './bot-unauthorized-reply.js'
 import { supportsFileReplies } from './chat/capabilities.js'
 import { routeInteraction } from './chat/interaction-router.js'
 import { willQueueAuthorizedMessage } from './chat/queue-policy.js'
+import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
+import { t } from './i18n/index.js'
 import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
 import { processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { onIncomingEdit } from './message-edit/handle.js'
 import { enqueueMessage } from './message-queue/index.js'
+import { getContextLanguage } from './utils/config-language.js'
 
 const initializedChats = new WeakSet<ChatProvider>()
 export type { BotDeps } from './bot-message-handler.js'
@@ -158,7 +161,12 @@ async function routeIncomingInteraction(interaction: IncomingInteraction, reply:
       },
       'Interaction routing failed',
     )
-    await reply.text('❌ Something went wrong processing your action. Please try again.')
+    await reply.text(
+      t(
+        'interactions.actionFailed',
+        getContextLanguage(getConfigContextIdFromStorageContextId(interaction.storageContextId)),
+      ),
+    )
   }
 }
 export function setupBot(chat: ChatProvider, adminUserId: string): void

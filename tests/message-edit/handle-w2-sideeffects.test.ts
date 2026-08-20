@@ -19,6 +19,7 @@ import type {
   ReplyFn,
   ReplyTarget,
 } from '../../src/chat/types.js'
+import { setConfigValue } from '../../src/config.js'
 import { appendHistory } from '../../src/history.js'
 import type { ProcessMessageFn, ProcessMessageRest } from '../../src/llm-orchestrator-process-args.js'
 import { peekEditPrompt } from '../../src/message-edit/edit-prompt-store.js'
@@ -215,6 +216,61 @@ describe('W2 rerun pathway — side-effects (Task 11)', () => {
     // Prompt body surfaces the stop summary and the edited text.
     expect(buttonCalls[0]!.content).toContain('create_task')
     expect(buttonCalls[0]!.content).toContain('create my other task')
+  })
+
+  test('side-effects prompt, buttons, and acks render in the configured context language', async () => {
+    const ctxId = scopedDm('w2-se-ru-user')
+    addUser({
+      userId: 'w2-se-ru-user',
+      platformInstanceId: PLATFORM_ID,
+      addedBy: ADMIN_ID,
+    })
+    setConfigValue(ctxId, 'language', 'ru')
+
+    const original: IncomingMessage = {
+      ...createDmMessage('w2-se-ru-user'),
+      text: 'create my task',
+      messageId: 'm1',
+    }
+    cacheObservedIncomingMessage(original, authFor(ctxId))
+    await flushPendingWrites()
+    appendHistory(ctxId, [makeUserTurn('m1', 'create my task')])
+
+    lastTurnRegistry.record(ctxId, {
+      originatingMessageIds: ['m1'],
+      completedEffects: [{ toolName: 'create_task' }],
+      replyTarget: { platform: 'telegram', ref: { messageId: 51, chatId: 1 } },
+      finishedAt: Date.now(),
+    })
+
+    const processCalls: ProcessCall[] = []
+    const { reply, buttonCalls, ephemeralCalls } = buildCapturingReply()
+
+    const edited: IncomingMessage = {
+      ...createDmMessage('w2-se-ru-user'),
+      text: 'create my other task',
+      messageId: 'm1',
+      editedAt: 2,
+    }
+    await onIncomingEdit(chat, edited, reply, {
+      processMessage: buildProcessSpy(processCalls),
+    })
+
+    // Stop summary, edit line, and button hints all render in Russian.
+    const prompt = buttonCalls[0]!
+    expect(prompt.content).toContain('🛑 Остановлено.')
+    expect(prompt.content).toContain('Выполнено одно действие: create_task.')
+    expect(prompt.content).toContain('Ваша правка: «create my other task».')
+    expect(prompt.content).not.toContain('Your edit:')
+    expect(prompt.options.buttons!.map((b) => b.text)).toEqual(['Подстроить под правку', 'Просто учесть'])
+
+    // Both ephemeral acks render in Russian.
+    const noteButton = prompt.options.buttons!.find((b) => b.callbackData.startsWith('edit:note:'))!
+    const entry = peekEditPrompt(noteButton.callbackData.replace('edit:note:', ''))
+    expect(entry).toBeDefined()
+    await entry!.onNote()
+    await entry!.onAdjust()
+    expect(ephemeralCalls).toEqual(['✏️ Принято', '✏️ Подстраиваю…'])
   })
 
   test('Adjust button triggers corrective regen + supersede + ephemeral ack', async () => {

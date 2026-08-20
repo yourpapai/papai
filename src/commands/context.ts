@@ -8,12 +8,14 @@ import type { ModelMessage } from 'ai'
 import type { ChatProvider, ContextRendered, ContextSnapshot } from '../chat/types.js'
 import { buildMessagesWithMemory } from '../conversation.js'
 import { loadHistory } from '../history.js'
+import { t } from '../i18n/index.js'
 import { buildInstructionsBlock } from '../instructions.js'
 import { resolveAdminLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { loadFacts, loadSummary } from '../memory.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildProviderlessSystemPrompt, buildSystemPrompt as buildSystemPromptImpl } from '../system-prompt.js'
+import { getContextLanguage } from '../utils/config-language.js'
 import {
   collectContext,
   type ContextCollectorDeps,
@@ -215,7 +217,9 @@ async function handleContextCommand(
       },
       '/context collector failed',
     )
-    await reply.text('Sorry — could not build context view right now.')
+    await reply.text(
+      t('commands.context.buildFailed', getContextLanguage(auth.configContextId ?? auth.storageContextId)),
+    )
     return
   }
 
