@@ -858,3 +858,150 @@ describe('check-behind signal', () => {
     expect(collector.checkBehind.defect).toEqual({ withCheck: 0, withoutCheck: 1, unmeasured: 0 })
   })
 })
+
+describe('batchVerify dispatch', () => {
+  test('when batchVerify false, preserves per-issue fixer→build→inspect path', async () => {
+    const repoRoot = makeTempDir('batch-off-')
+    const config = createReviewLoopConfigFixture(repoRoot, { batchVerify: false })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupRepo(runState.worktreePath)
+    const workerRepo = makeTempDir('worker-batch-off-')
+    await setupRepo(workerRepo)
+    // two independent English lows that would cluster if batchVerify true
+    const recA: LedgerIssueRecord = {
+      id: 'ra',
+      issue: { ...issue, title: 'English literal not localized', file: 'src/a.ts' },
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    }
+    const recB: LedgerIssueRecord = {
+      id: 'rb',
+      issue: { ...issue, title: 'English literal not localized', file: 'src/b.ts' },
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    }
+    ledger.snapshot.issues['ra'] = recA
+    ledger.snapshot.issues['rb'] = recB
+    let fixerCalls = 0
+    const spawn: SpawnFn = (_cmd, args, opts) => {
+      const prompt = args[args.length - 1]!
+      const out = prompt.match(/(?:to|JSON to):\s*(\S+)/u)![1]!
+      fixerCalls += 1
+      writeFileSync(
+        path.resolve(opts.cwd, out),
+        JSON.stringify({
+          verdict: 'valid',
+          fixability: 'auto',
+          fixed: true,
+          reasoning: 'fix',
+          targetFiles: [],
+          severity: 'low',
+        }),
+      )
+      writeFileSync(path.join(opts.cwd, `fixed-${fixerCalls}.ts`), 'ok\n')
+      return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+    }
+    const { pool } = fakePool({ size: 1, worktreePaths: [workerRepo] })
+    const collector = newCollector()
+    const { logger } = createCapturingTraceLogger()
+    const fixed = await processPendingIssues(
+      {
+        config,
+        runState,
+        ledger,
+        spawn,
+        exec: passingExec,
+        log: silentReporter(),
+        trace: logger,
+        pool,
+        inspect: false,
+      },
+      1,
+      collector,
+      [recA, recB],
+    )
+    expect(fixed).toBe(2)
+    expect(fixerCalls).toBe(2)
+  })
+
+  test('when batchVerify true, clusters pending and calls fixer once per batch', async () => {
+    const repoRoot = makeTempDir('batch-on-')
+    const config = createReviewLoopConfigFixture(repoRoot, { batchVerify: true })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupRepo(runState.worktreePath)
+    const workerRepo = makeTempDir('worker-batch-on-')
+    await setupRepo(workerRepo)
+    const recA: LedgerIssueRecord = {
+      id: 'ra',
+      issue: { ...issue, title: 'English literal not localized', file: 'src/a.ts' },
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    }
+    const recB: LedgerIssueRecord = {
+      id: 'rb',
+      issue: { ...issue, title: 'English literal not localized', file: 'src/b.ts' },
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    }
+    ledger.snapshot.issues['ra'] = recA
+    ledger.snapshot.issues['rb'] = recB
+    let fixerCalls = 0
+    const spawn: SpawnFn = (_cmd, args, opts) => {
+      const prompt = args[args.length - 1]!
+      const out = prompt.match(/(?:to|JSON to):\s*(\S+)/u)![1]!
+      fixerCalls += 1
+      writeFileSync(
+        path.resolve(opts.cwd, out),
+        JSON.stringify({
+          verdict: 'valid',
+          fixability: 'auto',
+          fixed: true,
+          reasoning: 'batch fix',
+          targetFiles: [],
+          severity: 'low',
+        }),
+      )
+      writeFileSync(path.join(opts.cwd, `fixed-${fixerCalls}.ts`), 'ok\n')
+      return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+    }
+    const { pool } = fakePool({ size: 1, worktreePaths: [workerRepo] })
+    const collector = newCollector()
+    const { logger } = createCapturingTraceLogger()
+    const fixed = await processPendingIssues(
+      {
+        config,
+        runState,
+        ledger,
+        spawn,
+        exec: passingExec,
+        log: silentReporter(),
+        trace: logger,
+        pool,
+        inspect: false,
+      },
+      1,
+      collector,
+      [recA, recB],
+    )
+    expect(fixerCalls).toBe(1)
+    expect(fixed).toBeGreaterThanOrEqual(0)
+  })
+})

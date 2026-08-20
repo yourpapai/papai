@@ -200,3 +200,47 @@ describe('issue kind', () => {
     expect(() => ReviewerIssueSchema.parse({ ...validIssue, kind: 'refactor' })).toThrow()
   })
 })
+
+describe('spans', () => {
+  test('ReviewerIssueSchema accepts optional spans with file/lineStart/lineEnd/evidence', () => {
+    const parsed = ReviewerIssueSchema.parse({
+      ...validIssue,
+      spans: [
+        { file: 'src/a.ts', lineStart: 1, lineEnd: 2, evidence: 'evidence A' },
+        { file: 'src/b.ts', lineStart: 10, lineEnd: 12, evidence: 'evidence B' },
+      ],
+    })
+    expect(parsed.spans).toHaveLength(2)
+    expect(parsed.spans?.[0]?.file).toBe('src/a.ts')
+  })
+
+  test('ReviewerIssueSchema rejects empty spans array', () => {
+    expect(() => ReviewerIssueSchema.parse({ ...validIssue, spans: [] })).toThrow()
+  })
+
+  test('ReviewerIssueSchema rejects spans missing required fields', () => {
+    const incomplete = [{ file: 'src/a.ts', lineStart: 1, lineEnd: 2, evidence: '' }]
+    expect(() =>
+      ReviewerIssueSchema.parse({
+        ...validIssue,
+        spans: incomplete,
+      }),
+    ).toThrow()
+  })
+
+  test('ReviewerIssueSchema parses legacy issue without spans', () => {
+    const parsed = ReviewerIssueSchema.parse(validIssue)
+    expect(parsed.spans).toBeUndefined()
+  })
+
+  test('ReviewerIssuesSchema accepts theme issue with spans alongside legacy issues', () => {
+    const theme = {
+      ...validIssue,
+      spans: [
+        { file: 'src/a.ts', lineStart: 1, lineEnd: 2, evidence: 'e1' },
+        { file: 'src/b.ts', lineStart: 3, lineEnd: 4, evidence: 'e2' },
+      ],
+    }
+    expect(() => ReviewerIssuesSchema.parse({ issues: [validIssue, theme] })).not.toThrow()
+  })
+})

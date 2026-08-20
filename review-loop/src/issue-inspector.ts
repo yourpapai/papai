@@ -6,10 +6,17 @@
 import { agentWritePath, emptyUsage, runAgent, AgentRunError, type AgentUsage, type SpawnFn } from './agent-runner.js'
 import type { IssueWorker } from './issue-processor-attempts.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
-import { type FixerResult, InspectorResultSchema, type InspectorResult, type ReviewerIssue } from './issue-schema.js'
+import {
+  AggregatedInspectorResultSchema,
+  type AggregatedInspectorResult,
+  type FixerResult,
+  InspectorResultSchema,
+  type InspectorResult,
+  type ReviewerIssue,
+} from './issue-schema.js'
 import { emitInspectComplete } from './loop-trace.js'
 import type { ProgressReporter } from './progress-log.js'
-import { buildInspectPrompt } from './prompt-templates.js'
+import { buildAggregatedInspectPrompt, buildInspectPrompt } from './prompt-templates.js'
 import { tallyInspector, type RoundCollector } from './round-collector.js'
 import { workerOutputPath } from './run-state.js'
 import type { TraceLogger } from './trace-log.js'
@@ -115,6 +122,110 @@ export async function runInspectorOrTreatAsRejection(
       kind: 'unavailable',
       reasoning: `inspector unavailable: ${originalReasoning}`,
       usage: error instanceof AgentRunError ? error.usage : emptyUsage(),
+    }
+  }
+}
+
+export interface AggregatedInspectorDeps {
+  spawn: SpawnFn
+  cwd: string
+  issues: readonly { id: string; issue: ReviewerIssue }[]
+  baselineSha: string
+  outputPath: string
+  logPath: string
+  reporter: ProgressReporter
+  model: string
+  extraArgs: readonly string[]
+  timeoutMs?: number
+  label: string
+}
+
+export async function runAggregatedInspector(
+  deps: AggregatedInspectorDeps,
+  round: number,
+  trace: TraceLogger,
+  collector?: RoundCollector,
+): Promise<AggregatedInspectorResult & { kind: 'inspected'; usage: AgentUsage }> {
+  await execGit(deps.cwd, ['add', '-N', '.'])
+  const { stdout: diff } = await execGit(deps.cwd, ['diff', deps.baselineSha])
+  const result = await runAgent({
+    spawn: deps.spawn,
+    model: deps.model,
+    cwd: deps.cwd,
+    prompt: buildAggregatedInspectPrompt(
+      deps.issues.map((i) => i.issue),
+      diff,
+      agentWritePath(deps.cwd, deps.outputPath),
+    ),
+    outputPath: deps.outputPath,
+    outputSchema: AggregatedInspectorResultSchema,
+    label: deps.label,
+    reporter: deps.reporter,
+    logPath: deps.logPath,
+    extraArgs: deps.extraArgs,
+    timeoutMs: deps.timeoutMs,
+  })
+  for (const r of result.value.results) {
+    emitInspectComplete(trace, round, r.id, r.addresses, r.confidence, r.reasoning)
+    if (collector !== undefined) tallyInspector(collector, r.addresses)
+  }
+  return { ...result.value, kind: 'inspected', usage: result.usage }
+}
+
+export async function runAggregatedInspectorOrTreatAsRejection(
+  deps: {
+    config: {
+      inspector?: { model: string; extraArgs: readonly string[]; timeoutMs?: number }
+      fixer: { model: string; extraArgs: readonly string[]; timeoutMs?: number }
+      agentTimeoutMs: number
+    }
+    spawn: SpawnFn
+    log: ProgressReporter
+    trace: TraceLogger
+  },
+  worktreePath: string,
+  issues: readonly { id: string; issue: ReviewerIssue }[],
+  baselineSha: string,
+  round: number,
+  runDir: string,
+  logPath: string,
+  collector: RoundCollector,
+): Promise<
+  | (AggregatedInspectorResult & { kind: 'inspected'; usage: AgentUsage })
+  | { kind: 'unavailable'; reasoning: string; usage: AgentUsage; results: AggregatedInspectorResult['results'] }
+> {
+  const cfg = deps.config.inspector ?? deps.config.fixer
+  try {
+    return await runAggregatedInspector(
+      {
+        spawn: deps.spawn,
+        cwd: worktreePath,
+        issues,
+        baselineSha,
+        outputPath: workerOutputPath(runDir, undefined, 'inspect-aggregated.json'),
+        logPath,
+        reporter: deps.log,
+        model: cfg.model,
+        extraArgs: cfg.extraArgs,
+        timeoutMs: cfg.timeoutMs ?? deps.config.agentTimeoutMs,
+        label: 'inspector-aggregated',
+      },
+      round,
+      deps.trace,
+      collector,
+    )
+  } catch (error) {
+    const reasoning = `inspector unavailable: ${error instanceof Error ? error.message : String(error)}`
+    deps.log.log(`[inspect] aggregated inspector unavailable: ${reasoning}`)
+    for (const { id } of issues) {
+      emitInspectComplete(deps.trace, round, id, false, 0, reasoning)
+      tallyInspector(collector, false)
+    }
+    return {
+      kind: 'unavailable',
+      reasoning,
+      usage: error instanceof AgentRunError ? error.usage : emptyUsage(),
+      results: issues.map(({ id }) => ({ id, addresses: false, reasoning, confidence: 0 })),
     }
   }
 }

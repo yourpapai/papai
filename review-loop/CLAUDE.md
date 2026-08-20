@@ -170,6 +170,10 @@ change's task list: `--plan openspec/changes/<name>/tasks.md`.
 
 The repo TDD resolver treats `review-loop/src/**` as gateable implementation code and maps it to `tests/review-loop/**`. New review-loop work must follow the same test-first flow used under `src/` and other repo-owned implementation paths.
 
+## Batch Verification
+
+When `batchVerify: true` (`config.ts`, default `false`), the reviewer may coalesce same-class findings into one theme issue with `spans: {file,lineStart,lineEnd,evidence}[]` (`issue-schema.ts`, `prompt-templates.ts` coalescence rule). `clusterRecords` (`issue-clustering.ts`) groups flat pending issues by kind + title n-gram, preserving kind-first order. `processPendingIssues` dispatches one fixer per cluster sequentially (still `poolSize=1`), with no per-issue or per-batch `build`/`inspect`. After all batches, the round runs **one `build` (`runAggregatedBuild`) and one `inspector` (`runAggregatedInspector`)** over the aggregated working-tree diff (`git add -N .; git diff baselineSha`). Build/inspect failures attribute via `spans` + `git diff --name-only`; ambiguous failures mark all batched members `needs_human`. This is the deferred-verification counterpart to ADR-0303's per-issue gate — see `design.md` D2–D5.
+
 ## Dependencies
 
 - `zod` — runtime config/schema validation (shared with root).

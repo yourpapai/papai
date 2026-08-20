@@ -308,3 +308,42 @@ describe('deletion findings in the reviewer prompt', () => {
     for (const key of Object.keys(shape)) expect(p).toContain(`"${key}"`)
   })
 })
+
+describe('spans in reviewer schema', () => {
+  test('ReviewerIssueSchema accepts theme spans and legacy without spans', async () => {
+    const { ReviewerIssueSchema: Schema } = await import('../../review-loop/src/issue-schema.js')
+    const legacy = {
+      title: 't',
+      severity: 'low',
+      summary: 's',
+      whyItMatters: 'w',
+      evidence: 'e',
+      file: 'f.ts',
+      lineStart: 1,
+      lineEnd: 2,
+      suggestedFix: 'x',
+      confidence: 0.5,
+    }
+    expect(() => Schema.parse(legacy)).not.toThrow()
+    expect(() =>
+      Schema.parse({
+        ...legacy,
+        spans: [
+          { file: 'src/a.ts', lineStart: 1, lineEnd: 2, evidence: 'e1' },
+          { file: 'src/b.ts', lineStart: 3, lineEnd: 4, evidence: 'e2' },
+        ],
+      }),
+    ).not.toThrow()
+    expect(() => Schema.parse({ ...legacy, spans: [] })).toThrow()
+  })
+})
+
+describe('reviewer coalescence', () => {
+  test('review prompt tells reviewer to coalesce same-class repeats into theme spans', () => {
+    const prompt = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(prompt).toMatch(/same class repeats/iu)
+    expect(prompt).toContain('spans')
+    expect(prompt).toMatch(/ONE theme issue/iu)
+    expect(prompt).toMatch(/un-migrated English literals/iu)
+  })
+})

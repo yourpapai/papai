@@ -36,6 +36,13 @@ export const ExposureSchema = z.discriminatedUnion('kind', [
  */
 export const IssueKindSchema = z.enum(['defect', 'cleanup']).default('defect')
 
+export const IssueSpanSchema = z.object({
+  file: z.string().min(1),
+  lineStart: z.number().int().positive(),
+  lineEnd: z.number().int().positive(),
+  evidence: z.string().min(1),
+})
+
 export const ReviewerIssueSchema = z.object({
   title: z.string().min(1),
   kind: IssueKindSchema,
@@ -49,6 +56,7 @@ export const ReviewerIssueSchema = z.object({
   suggestedFix: z.string().min(1),
   confidence: z.number().min(0).max(1),
   exposure: ExposureSchema.optional(),
+  spans: z.array(IssueSpanSchema).min(1).optional(),
 })
 
 export const ReviewerIssuesSchema = z.object({
@@ -76,6 +84,25 @@ export const InspectorResultSchema = z.object({
   confidence: z.number().min(0).max(1),
 })
 
+export const AggregatedInspectorResultSchema = z.object({
+  results: z.array(
+    z.object({
+      id: z.string().min(1),
+      addresses: z.boolean(),
+      reasoning: z.string().min(1),
+      confidence: z.number().min(0).max(1),
+    }),
+  ),
+})
+
+export const ClusterFixerResultSchema = z.object({
+  results: z.array(
+    FixerResultSchema.extend({
+      id: z.string().min(1),
+    }),
+  ),
+})
+
 export const IssueMatchSchema = z.object({
   newIssueIndex: z.number().int().nonnegative(),
   existingId: z.string().nullable(),
@@ -85,6 +112,12 @@ export const IssueMatchesSchema = z.object({
   matches: z.array(IssueMatchSchema),
 })
 
+export function getIssueSpans(issue: ReviewerIssue): IssueSpan[] {
+  if (issue.spans !== undefined && issue.spans.length > 0) return issue.spans
+  return [{ file: issue.file, lineStart: issue.lineStart, lineEnd: issue.lineEnd, evidence: issue.evidence }]
+}
+
+export type IssueSpan = z.infer<typeof IssueSpanSchema>
 export type Exposure = z.infer<typeof ExposureSchema>
 export type IssueKind = z.infer<typeof IssueKindSchema>
 export type ReviewerIssue = z.infer<typeof ReviewerIssueSchema>
@@ -93,5 +126,7 @@ export type VerifierDecision = z.infer<typeof VerifierDecisionSchema>
 export type Verdict = VerifierDecision['verdict']
 export type FixerResult = z.infer<typeof FixerResultSchema>
 export type InspectorResult = z.infer<typeof InspectorResultSchema>
+export type AggregatedInspectorResult = z.infer<typeof AggregatedInspectorResultSchema>
+export type ClusterFixerResult = z.infer<typeof ClusterFixerResultSchema>
 export type IssueMatch = z.infer<typeof IssueMatchSchema>
 export type IssueMatches = z.infer<typeof IssueMatchesSchema>

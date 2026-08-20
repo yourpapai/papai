@@ -85,6 +85,14 @@ const CLEANUP_FINDINGS = [
   'Cleanups are fixed after every defect, so reporting one never delays a bug. Report the ones you are confident in and omit the rest.',
 ].join('\n')
 
+const SPANS_SCHEMA = '"spans": [{"file": string, "lineStart": number, "lineEnd": number, "evidence": string}]'
+
+const COALESCE_RULE = [
+  'Coalescence: if the same class repeats across files (e.g. un-migrated English literals), emit ONE theme issue with `spans`, not N separate issues.',
+  'Put each location in `spans` with its own file/lineStart/lineEnd/evidence, and keep `file`/`lineStart`/`lineEnd`/`evidence` mirrored from the first span for backward compatibility.',
+  'A single-file defect emits a single span and is identical to a legacy issue.',
+].join(' ')
+
 export function buildReviewPrompt(planPath: string, outputPath: string): string {
   return [
     `Review the current implementation against the implementation plan at: ${planPath}.`,
@@ -98,6 +106,8 @@ export function buildReviewPrompt(planPath: string, outputPath: string): string 
     '',
     'Evidence rule: only report an issue for files/lines you have actually opened and read. `evidence` must quote the offending source line(s); `file`/`lineStart`/`lineEnd` must point at code you opened. Before raising an issue, verify the impact you claim (e.g. check .gitignore before asserting something "will be committed by git add -A"; trace the control flow before claiming a missing keyword matters). If you cannot cite exact evidence or verify the impact, lower `confidence` or omit the issue.',
     '',
+    COALESCE_RULE,
+    '',
     'Verification budget: do NOT run test suites, builds, typechecks, linters, or the repo check command (e.g. `bun run test`, `bun run typecheck`, `bun run knip`, `bun check:full`) — the fixer and the final build check own build/test verification. Gather evidence only by reading files, inspecting `git diff`/`git log`/`git show`, and cheap targeted searches (rg/grep).',
     '',
     'Exposure — every issue MUST carry `exposure`, and omitting it is not an answer. Severity grades what happens if the code is reached; exposure records whether it is reached at all. Find a caller that reaches the code you are reporting on and cite it: the file, the line, and that line quoted. If you searched and nothing reaches it, report {"kind": "none"} — that is a finding, not a failure. Cite only what you actually found, exactly as the evidence rule requires. Exposure never suppresses your issue; it orders which issues are fixed first.',
@@ -107,7 +117,9 @@ export function buildReviewPrompt(planPath: string, outputPath: string): string 
     'Use this exact schema:',
     '{"issues": [{"title": string, "kind": "defect" | "cleanup", "severity": "critical" | "high" | "medium" | "low", "summary": string, "whyItMatters": string, "evidence": string, "file": string, "lineStart": number, "lineEnd": number, "suggestedFix": string, "confidence": number, "exposure": ' +
       EXPOSURE_SCHEMA +
-      '}]}',
+      ', ' +
+      SPANS_SCHEMA +
+      ' (optional, theme issue coalescence)}]}',
     '`confidence` is a probability between 0 and 1 (e.g. 0.85), NOT a 1-5 rating.',
     'If there are no issues, write: {"issues": []}',
   ].join('\n\n')
@@ -216,5 +228,35 @@ export function buildRetryFixWithInspectorFeedbackPrompt(
     '',
     'Issue:',
     JSON.stringify(issue, null, 2),
+  ].join('\n\n')
+}
+
+export function buildAggregatedInspectPrompt(
+  issues: readonly ReviewerIssue[],
+  diff: string,
+  outputPath: string,
+): string {
+  return [
+    'You are an inspector for an aggregated batch. Your ONLY job: decide for EACH issue below whether the diff addresses it.',
+    'Do not flag unrelated problems. Do not assess code quality. Do not run checks.',
+    'A build check has already passed — assume the code compiles and tests pass.',
+    '',
+    'Return addresses=true ONLY if you can point to specific lines in the diff that resolve the specific complaint in that issue.',
+    'For each issue, return {id, addresses, reasoning, confidence}. When addresses=false, reasoning MUST be actionable.',
+    '',
+    `Write your result as JSON to: ${outputPath}`,
+    'Use this exact schema:',
+    '{"results": [{"id": string, "addresses": boolean, "reasoning": string, "confidence": number}]}',
+    '`confidence` is a probability between 0 and 1, NOT a 1-5 rating.',
+    '',
+    'Issues:',
+    JSON.stringify(
+      issues.map((issue, idx) => ({ id: String(idx), issue })),
+      null,
+      2,
+    ),
+    '',
+    'Diff (baseline..HEAD):',
+    diff,
   ].join('\n\n')
 }
