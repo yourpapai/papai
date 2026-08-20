@@ -59,6 +59,8 @@ To establish a baseline on master:
 3. Rebase the refactor branch onto that exact baseline commit.
 4. Run `BASE_REF=<baseline-sha> bun test:stories:compat --manifest-only` for the exact preflight proof. It reads baseline blobs directly from Git and fails with added/removed/changed paths without starting the story child. Then run `BASE_REF=<baseline-sha> bun test:stories:compat` to preflight again and execute the unchanged suite.
 
+The currently recorded baseline — SHA, tree hash, and the commands verified against it — lives in the `Foundation baseline` section of `docs/superpowers/specs/2026-08-04-global-refactor-behavior-coverage-roadmap-design.md`. It is a `hermetic-stories-continue` commit, so per step 1 above it must be re-recorded from the merge before another branch cites it. Note that `scripts/story/coverage-floor.json` is not a frozen input: changing the floor value alone does not retire a baseline.
+
 Neither normal nor compatibility runs retry failures. `reports/stories/**` is ignored build output and must not be committed.
 
 The compatibility proof is a **behavioral and seam-API proof**, not purely behavioral. The frozen harness bytes consume production dependency-injection seams, so a candidate refactor must preserve their TypeScript signatures — or land the seam change on master before the baseline is recorded, because candidate-side harness edits are forbidden by the frozen-tree rule. The consumed seams are:

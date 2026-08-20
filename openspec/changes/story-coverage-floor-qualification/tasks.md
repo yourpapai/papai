@@ -62,14 +62,14 @@ See LICENSE in the project root for details.
       with the literal baseline SHA, the literal frozen tree hash, and the
       verified command list. No shell variable names remain in the document.
       Verify: `grep -n '\$' ` on the added section returns nothing
-- [ ] 5.3 Prove compatibility:
+- [x] 5.3 Prove compatibility:
       `BASE_REF=<baselineSha> bun test:stories:compat --manifest-only` then
       `BASE_REF=<baselineSha> bun test:stories:compat`.
       Verify: both exit 0
 
 ## 6. Close out
 
-- [ ] 6.1 Run `bun test`, `bun run typecheck`, `bun run lint`, and
+- [x] 6.1 Run `bun test`, `bun run typecheck`, `bun run lint`, and
       `bun run check:full`; update `docs/architecture/commands.md` if the
       recorded baseline changes how the compat commands are invoked.
       Verify: all commands exit 0
