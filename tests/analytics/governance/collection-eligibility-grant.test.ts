@@ -5,7 +5,12 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { deriveCollectionRefKey, getEligibilityRef } from '../../../src/analytics/governance/collection-store.js'
+import {
+  deriveCollectionRefKey,
+  getEligibilityRef,
+  grantEligibilityInTx,
+  revokeEligibilityInTx,
+} from '../../../src/analytics/governance/collection-store.js'
 import { decideEligibility } from '../../../src/analytics/governance/eligibility.js'
 import type { EligibilityInput } from '../../../src/analytics/governance/eligibility.js'
 import { deriveGovernanceActorKey, setPreference } from '../../../src/analytics/governance/preference-store.js'
@@ -118,5 +123,71 @@ describe('collection eligibility without a grant', () => {
     decisionFor(db, 'external_pseudonymous')
 
     expect(eligibilityRows(db)).toHaveLength(0)
+  })
+})
+
+describe('grantEligibilityInTx', () => {
+  let db: Db
+
+  beforeEach(async () => {
+    mockLogger()
+    db = await setupTestDb()
+  })
+
+  const grant = (nowMs = T): Readonly<{ generation: number }> =>
+    db.transaction((tx) =>
+      grantEligibilityInTx(tx, { refKey: runtimeRefKey(), keyVersion: 'v3', policyVersion: 3, nowMs }),
+    )
+
+  test('writes an allow row the ordinary reader resolves', () => {
+    const { generation } = grant()
+
+    const ref = getEligibilityRef(runtimeRefKey(), { getDrizzleDb: () => db })
+    expect(ref).toEqual({ refKey: runtimeRefKey(), keyVersion: 'v3', generation })
+  })
+
+  test('a repeated grant is idempotent and does not advance the generation', () => {
+    const first = grant()
+    const second = grant(T + 1000)
+
+    expect(second.generation).toBe(first.generation)
+    expect(eligibilityRows(db)).toHaveLength(1)
+  })
+
+  test('re-granting after a revoke advances the generation past the revoked one', () => {
+    const granted = grant()
+    const revoked = db.transaction((tx) =>
+      revokeEligibilityInTx(tx, { refKey: runtimeRefKey(), policyVersion: 3, nowMs: T + 1 }),
+    )
+    const regranted = grant(T + 2)
+
+    // Revoking advances the generation, which is what orphans events associated
+    // under the old one: recheckAndAssociateEvent matches on generation. The
+    // re-grant then keeps that advanced number rather than stepping again --
+    // nothing was ever associable while the row read 'deny', so there is no
+    // second generation to step past, and this matches setEligibilityState.
+    expect(revoked).not.toBeNull()
+    expect(revoked?.generation).toBe(granted.generation + 1)
+    expect(regranted.generation).toBe(granted.generation + 1)
+    expect(getEligibilityRef(runtimeRefKey(), { getDrizzleDb: () => db })?.generation).toBe(regranted.generation)
+  })
+
+  test('clears the revocation timestamp so the row does not read as revoked', () => {
+    grant()
+    db.transaction((tx) => revokeEligibilityInTx(tx, { refKey: runtimeRefKey(), policyVersion: 3, nowMs: T + 1 }))
+    grant(T + 2)
+
+    expect(eligibilityRows(db)[0]?.revokedAt).toBeNull()
+  })
+
+  test('persists the derived pseudonym and no raw subject identifier', () => {
+    grant()
+
+    const row = eligibilityRows(db)[0]
+    expect(row?.refKey).toBe(runtimeRefKey())
+    const serialized = JSON.stringify(row)
+    expect(serialized).not.toContain(IDENTITY_A.platformUserId)
+    expect(serialized).not.toContain(IDENTITY_A.platformInstanceId)
+    expect(serialized).not.toContain(GKEYS.v3.toString('hex'))
   })
 })

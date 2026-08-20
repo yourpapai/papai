@@ -17,7 +17,7 @@ See LICENSE in the project root for details.
 
 ## 2. Transactional grant helper
 
-- [ ] 2.1 Failing tests for a `grantCollectionEligibilityInTx` helper in
+- [x] 2.1 Failing tests for a `grantCollectionEligibilityInTx` helper in
       `src/analytics/governance/collection-store.ts`: derives the ref key via
       `deriveCollectionRefKey` under `collection-eligibility:v1`, writes state
       `allow`, is idempotent for a repeated grant, and persists no raw subject
