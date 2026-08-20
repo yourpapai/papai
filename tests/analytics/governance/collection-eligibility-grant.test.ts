@@ -136,7 +136,13 @@ describe('grantEligibilityInTx', () => {
 
   const grant = (nowMs = T): Readonly<{ generation: number }> =>
     db.transaction((tx) =>
-      grantEligibilityInTx(tx, { refKey: runtimeRefKey(), keyVersion: 'v3', policyVersion: 3, nowMs }),
+      grantEligibilityInTx(tx, {
+        refKey: runtimeRefKey(),
+        keyVersion: 'v3',
+        lane: 'local_longitudinal',
+        policyVersion: 3,
+        nowMs,
+      }),
     )
 
   test('writes an allow row the ordinary reader resolves', () => {

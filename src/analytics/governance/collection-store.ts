@@ -14,6 +14,7 @@ import { createPseudonym } from '../identity/pseudonym.js'
 import { createDefaultGovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
 import type { GovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
 import type { CollectionEligibilityRef } from './eligibility.js'
+import type { PreferenceLane } from './preference-store.js'
 
 const log = logger.child({ scope: 'analytics:governance:collection-store' })
 
@@ -215,14 +216,21 @@ export const setEligibilityState = (
  * record and its ref commit or roll back as one. The transactional twin of
  * `revokeEligibilityInTx`; `setEligibilityState` remains the standalone
  * primitive for callers that own no transaction.
+ *
+ * `lane` is recorded on the log line only: it names the consent that produced
+ * the ref, which is what lets an operator reconcile the record against the
+ * eligibility table. The ref itself is lane-agnostic.
  */
 export const grantEligibilityInTx = (
   tx: Tx,
-  input: Readonly<{ refKey: string; keyVersion: string; policyVersion: number; nowMs: number }>,
+  input: Readonly<{ refKey: string; keyVersion: string; lane: PreferenceLane; policyVersion: number; nowMs: number }>,
   resolver: GovernanceDualWriteResolver = () => null,
 ): Readonly<{ generation: number }> => {
-  const generation = applyEligibilityStateInTx(tx, resolver, { ...input, state: 'allow' })
-  log.info({ state: 'allow', generation }, 'collection eligibility granted')
+  const { lane, ...state } = input
+  const generation = applyEligibilityStateInTx(tx, resolver, { ...state, state: 'allow' })
+  // refKey is a derived pseudonym, so the record stays free of raw subject
+  // identifiers and of keyring material.
+  log.info({ state: 'allow', generation, lane, refKey: input.refKey }, 'collection eligibility granted')
   return { generation }
 }
 

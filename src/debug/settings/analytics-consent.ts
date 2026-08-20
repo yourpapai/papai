@@ -42,7 +42,10 @@ export const collectionEligibilityEffect =
   ): PreferenceAppliedInTx =>
   (tx, row) => {
     if (row.localLongitudinal === 'allow' || row.externalPseudonymous === 'allow') {
-      grantEligibilityInTx(tx, { ...ref, policyVersion: at.policyVersion, nowMs: at.nowMs })
+      // When both lanes consent the local one names the grant: it is the broader
+      // retention lane, and the ref it produces is the same either way.
+      const lane = row.localLongitudinal === 'allow' ? 'local_longitudinal' : 'external_pseudonymous'
+      grantEligibilityInTx(tx, { ...ref, lane, policyVersion: at.policyVersion, nowMs: at.nowMs })
       return
     }
     revokeEligibilityInTx(tx, { refKey: ref.refKey, policyVersion: at.policyVersion, nowMs: at.nowMs })

@@ -43,10 +43,10 @@ See LICENSE in the project root for details.
 
 ## 4. Prove the path is now reachable
 
-- [ ] 4.1 Test that after a granted consent the pseudonymous decision admits
+- [x] 4.1 Test that after a granted consent the pseudonymous decision admits
       and the derive job writes at least one canonical event.
       Verify: `bun test tests/analytics/`
-- [ ] 4.2 Assert the grant's log record carries the lane and derived ref key
+- [x] 4.2 Assert the grant's log record carries the lane and derived ref key
       and no raw subject identifier or keyring material.
       Verify: `bun test tests/analytics/governance/`
 
