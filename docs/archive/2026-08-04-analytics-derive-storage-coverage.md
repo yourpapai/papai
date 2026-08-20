@@ -450,3 +450,51 @@ git commit -m "test(stories): cover idempotent derive rewrite"
 - [ ] Run `bun run typecheck && bun run lint`; expected exit code `0`.
 - [ ] Run `git status --short`; expected output shows no uncommitted changes under `tests/` or `src/`.
 - [ ] Verify no story file imports `src/analytics/delivery/`, `src/analytics/jobs/snapshot`, `runBackfillJob`, `runIntentDerivation`, `src/analytics/rekey/`, `subject-deletion`, or `subject-export`.
+
+## Outcome — abandoned 2026-08-20 (Tasks 2–4 blocked)
+
+Task 1 landed (`bcf162c73`) and was reverted (`f34ced120`) once its only
+consumers were dropped. Tasks 2–4 were **not** executed: their core premise is
+false.
+
+**Premise:** "real governed turns flow through the production
+observer/normalizer/eligibility pipeline into canonical `analytics_events`"
+once `analytics_policy.local_mode` is `local_pseudonymous`.
+
+**Reality:** a live turn can never write a canonical event, because
+`decideEligibility` requires a collection-eligibility ref
+(`src/analytics/governance/eligibility.ts:143`,
+`if (input.collectionEligibility === null) return denied('governance_incomplete')`)
+and **no production code ever grants one**:
+
+- `setEligibilityState` (`src/analytics/governance/collection-store.ts:135`) is
+  the only writer of `state='allow'`. It has zero callers in `src/`,
+  `plugins/`, or `client/`; every reference is under `tests/`.
+- The settings preference route
+  (`src/debug/settings/analytics-routes.ts:161`) records an `allow` preference
+  via `setPreference` but grants no eligibility ref; `preference-store.ts`
+  contains no eligibility logic.
+- The only production eligibility writer is `revokeEligibilityInTx`
+  (`subject-service.ts:158`), on subject withdrawal.
+
+Measured directly: after `given.analyticsRuntime('governed-pseudonymous')` and
+one governed turn, `analytics_policy` holds
+`local_mode=local_pseudonymous, lawful_basis_mode=legitimate_interest,
+policy_effective_at_ms=<now>`, and `analytics_collection_eligibility`,
+`analytics_preferences`, and `analytics_events` are all empty. The turn passes
+the lane and preference gates and is denied `governance_incomplete` at the
+eligibility-ref check.
+
+**Consequences.** The `local_pseudonymous` collection lane is unreachable in
+the shipped product, so `runDeriveJob` and the sessions/friction
+materializations are unexercised by any live path — which is why their coverage
+is low. `docs/operations/analytics-runbook.md` Stage C ("enable
+`local_pseudonymous` for explicit test actors or one controlled installation
+only") has no shipped mechanism behind it.
+
+**Not done, deliberately.** Seeding `setEligibilityState` from the story would
+have unblocked Tasks 2–4 but would prove the derive pipeline from a state the
+product cannot reach — a subsystem proof wearing an end-to-end story's clothes,
+which is what the T0 lane exists to prevent. Closing the gap for real means
+wiring the grant into the allow path, which is a production privacy-governance
+change and needs its own change proposal and review.
