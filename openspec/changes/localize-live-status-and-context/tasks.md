@@ -14,7 +14,7 @@ See LICENSE in the project root for details.
 - [x] 1.3 Fill the `liveStatus` subtree in `src/i18n/locales/ru.ts` (`💭 Думаю…`, `💬 Готовлю ответ…`, `⚙️ Выполняю {tool}…`, gerund tool labels): `bun test tests/i18n/parity.test.ts`
 - [x] 1.4 Add the `contextView` subtree to types + `en.ts`: `sections.<id>` for the nine section ids (`system_prompt`…`tools`), fact/message counts (singular/plural `{count}` keys), progressive-disclosure line (`{active}`/`{available}`), and renderer chrome (header word, `tokens` unit, `tk` suffix, `(approximate)` marker, approximate footer): `bun test tests/i18n/ && bun run typecheck`
 - [x] 1.5 Fill the `contextView` subtree in `ru.ts` (`Контекст`, `токенов`, `факт`/`фактов`, `сообщений`, `{active} активных · {available} доступных (прогрессивное раскрытие)`, `(приблизительно)`, `_количество токенов приблизительное_`): `bun test tests/i18n/parity.test.ts`
-- [ ] 1.6 Fallback guard: add a test that blanks/omits one ru `liveStatus` key and asserts the en text renders with a warn (existing i18n fallback pattern): `bun test tests/i18n/index.test.ts`
+- [x] 1.6 Fallback guard: add a test that blanks/omits one ru `liveStatus` key and asserts the en text renders with a warn (existing i18n fallback pattern): `bun test tests/i18n/index.test.ts`
 
 ## 2. Live status (Part 1)
 
