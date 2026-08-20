@@ -75,6 +75,7 @@ const DOMAIN_MAP: Readonly<Record<ToolDomain, AnalyticsToolDomain>> = {
   time: 'other',
   mcp: 'other',
   plugin: 'other',
+  diagnostics: 'meta',
 }
 
 const riskOf = (risk: ToolRisk): AnalyticsToolRisk => (risk === 'open-world' ? 'open_world' : risk)

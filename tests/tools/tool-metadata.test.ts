@@ -37,6 +37,15 @@ describe('tool metadata', () => {
     })
   })
 
+  test('registers run_diagnostics in the diagnostics domain as a read tool', () => {
+    expect(isToolDomain('diagnostics')).toBe(true)
+    expect(getToolMetadata('run_diagnostics')).toEqual({
+      domain: 'diagnostics',
+      operation: 'read',
+      risk: 'read',
+    })
+  })
+
   test('identifies read-only tools', () => {
     expect(getToolRisk('list_tasks')).toBe('read')
     expect(getToolRisk('create_task')).toBe('write')
@@ -212,6 +221,7 @@ const EXPECTED_STATIC: Readonly<Record<string, ToolClassification>> = {
   web_fetch: { domain: 'web', operation: 'read', risk: 'open-world' },
   plugin_context_vault__list_agent_specs: { domain: 'plugin', operation: 'read', risk: 'read' },
   plugin_context_vault__get_agent_spec: { domain: 'plugin', operation: 'read', risk: 'read' },
+  run_diagnostics: { domain: 'diagnostics', operation: 'read', risk: 'read' },
 }
 
 describe('static tool classification table', () => {

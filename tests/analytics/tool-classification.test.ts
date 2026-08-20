@@ -53,6 +53,11 @@ describe('classifyAnalyticsTool', () => {
     expect(classifyAnalyticsTool('find_user').toolDomain).toBe('identity')
   })
 
+  test('run_diagnostics classifies as a meta read', () => {
+    expect(classifyAnalyticsTool('run_diagnostics').toolDomain).toBe('meta')
+    expect(classifyAnalyticsTool('run_diagnostics').risk).toBe('read')
+  })
+
   test('meta tools classify as core meta reads', () => {
     for (const name of ['search_tools', 'load_tool', 'expand_result']) {
       expect(classifyAnalyticsTool(name)).toEqual({

@@ -32,7 +32,7 @@ See LICENSE in the project root for details.
 
 ## 5. Metadata and analytics classification
 
-- [ ] 5.1 Add failing tests: `getToolMetadata('run_diagnostics')` returns `read('diagnostics')`; `isToolDomain('diagnostics')` is true; `classifyAnalyticsTool('run_diagnostics')` yields `toolDomain: 'meta'`, `risk: 'read'` — `bun test tests/tools/tool-metadata.test.ts tests/analytics/tool-classification.test.ts`
+- [x] 5.1 Add failing tests: `getToolMetadata('run_diagnostics')` returns `read('diagnostics')`; `isToolDomain('diagnostics')` is true; `classifyAnalyticsTool('run_diagnostics')` yields `toolDomain: 'meta'`, `risk: 'read'` — `bun test tests/tools/tool-metadata.test.ts tests/analytics/tool-classification.test.ts`
 - [ ] 5.2 Add `diagnostics` to `TOOL_DOMAINS` and register `run_diagnostics: read('diagnostics')` in `src/tools/tool-metadata.ts`; add `diagnostics: 'meta'` to `DOMAIN_MAP` in `src/analytics/tool-classification.ts` (exhaustive `Record` — typecheck enforces) — `bun test tests/tools/tool-metadata.test.ts tests/analytics/tool-classification.test.ts`
 
 ## 6. Full verification and docs
