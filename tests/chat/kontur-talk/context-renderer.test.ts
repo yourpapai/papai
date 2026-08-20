@@ -49,7 +49,7 @@ describe('renderKonturTalkContext locale', () => {
   test('ru localizes the header word and tokens unit', () => {
     const result = renderKonturTalkContext(makeSnapshot({ locale: 'ru' }))
     assert(result.method === 'formatted')
-    expect(result.content).toContain('**Контекст** · gpt-4o · 6,770 / 128,000 токенов (5.3%)')
+    expect(result.content).toContain('**Контекст** · gpt-4 · 1,000 / 8,000 токенов (12.5%)')
   })
 
   test('ru localizes the approximate footer', () => {

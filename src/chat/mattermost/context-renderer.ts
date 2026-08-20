@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { buildContextGrid, SECTION_EMOJIS } from '../../commands/context-grid.js'
+import { t } from '../../i18n/index.js'
 import type { ContextRendered, ContextSection, ContextSnapshot } from '../types.js'
 
 const formatNumber = (n: number): string => n.toLocaleString('en-US')
@@ -11,11 +12,11 @@ const formatNumber = (n: number): string => n.toLocaleString('en-US')
 const buildHeader = (snapshot: ContextSnapshot): string => {
   const total = formatNumber(snapshot.totalTokens)
   if (snapshot.maxTokens === null) {
-    return `**Context** · ${snapshot.modelName} · ${total} tokens`
+    return `**${t('contextView.headerWord', snapshot.locale)}** · ${snapshot.modelName} · ${total} ${t('contextView.tokensUnit', snapshot.locale)}`
   }
   const max = formatNumber(snapshot.maxTokens)
   const pct = ((snapshot.totalTokens / snapshot.maxTokens) * 100).toFixed(1)
-  return `**Context** · ${snapshot.modelName} · ${total} / ${max} tokens (${pct}%)`
+  return `**${t('contextView.headerWord', snapshot.locale)}** · ${snapshot.modelName} · ${total} / ${max} ${t('contextView.tokensUnit', snapshot.locale)} (${pct}%)`
 }
 
 const emojiFor = (id: string): string => SECTION_EMOJIS[id] ?? '⬜'
@@ -46,6 +47,6 @@ export const renderMattermostContext = (snapshot: ContextSnapshot): ContextRende
   const header = buildHeader(snapshot)
   const grid = buildContextGrid(snapshot)
   const table = buildTable(snapshot)
-  const footer = snapshot.approximate ? '\n\n_token counts are approximate_' : ''
+  const footer = snapshot.approximate ? `\n\n_${t('contextView.approximateFooter', snapshot.locale)}_` : ''
   return { method: 'formatted', content: `${header}\n\n${grid}\n\n${table}${footer}` }
 }
