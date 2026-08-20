@@ -93,7 +93,7 @@ See LICENSE in the project root for details.
 
 ## 5. Docs
 
-- [ ] 5.1 Write a new ADR at the next free slot (`docs/adr/04xx-…`, 0426+ at
+- [x] 5.1 Write a new ADR at the next free slot (`docs/adr/04xx-…`, 0426+ at
       planning time): supersedes ADR-0224's "admin sees all users' content"
       posture (retaining its redaction-removal for visible scopes), records the
       per-session visibility model, anonymity-safe egress shape, and that
