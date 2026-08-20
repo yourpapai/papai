@@ -66,7 +66,7 @@ See LICENSE in the project root for details.
 
 ## 4. REST routes: session threading, `/logs` egress, `/turns/:id`, 405 guards
 
-- [ ] 4.1 Re-attribute the fixtures in `tests/debug/logs-route-content.test.ts`
+- [x] 4.1 Re-attribute the fixtures in `tests/debug/logs-route-content.test.ts`
       with `chatUserId` so the existing "unredacted" expectations describe the
       session admin's own entries (stays green before implementation).
       Verify: `bun test tests/debug/logs-route-content.test.ts` (passes)
