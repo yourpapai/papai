@@ -43,11 +43,19 @@ Section targets sum to 47 against a 44.6-unit deficit — a 2.4-unit margin.
 
 ## 2. Provider operations (target: 16 function-units)
 
-- [ ] 2.1 Stories covering the zero-function files in
+- [x] 2.1 Stories covering the zero-function files in
       `plugins/task-provider-kaneo/` (column and label operations, provisioning
       requests and messages, validation errors), two oracles each.
       Verify: `bun test:stories` and `bun test:stories:coverage` reports at
       least 8 function-units above the section's starting measurement
+      Result: +9.3 function-units (65.75% -> 66.64%), 7 of the 11 files closed
+      by three column/label scenarios. Four files stay at zero and are left
+      there on purpose: `remove-label.ts` is unreachable, because Kaneo does
+      not declare `labels.delete` (its REST delete only accepts an attached
+      label), so `remove_label` is never registered; `provision-requests.ts`,
+      `provision-messages.ts` and `validation-error.ts` sit behind the
+      self-service account-provisioning flow, which needs a registration seam
+      the fake Kaneo does not model. Section target already met without them.
 - [ ] 2.2 Stories covering `plugins/task-provider-youtrack/operations/`
       (collaboration, team, work items, activities, attachments, count,
       project fields, saved queries, commands) and the derived-field helpers.

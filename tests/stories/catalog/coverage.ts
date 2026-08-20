@@ -352,6 +352,10 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-plugin-audio-transcribe-transformer',
   'SCN-context-vault-push',
   'SCN-context-vault-indexer-singleton',
+  // Phase 6 — Kaneo column and label operations (story-coverage-floor-climb)
+  'SCN-task-kaneo-status-lifecycle',
+  'SCN-task-kaneo-status-delete-unconfirmed',
+  'SCN-task-kaneo-label-lifecycle',
   // Phase 5 — Discord/Mattermost platform-adapter scenarios (tier3-chat-adapter-coverage)
   'SCN-interaction-discord-reply-mention',
   'SCN-interaction-discord-status-lifecycle',
@@ -1471,6 +1475,24 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '3',
     storyIds: [
       'tests/platform/scenarios/telegram-callback-routing.platform.ts#routes a Telegram permission callback through ChatRouter and production setupBot',
+    ],
+  },
+  'SCN-task-kaneo-status-lifecycle': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/kaneo-statuses-and-labels.story.test.ts#SCN-task-kaneo-status-lifecycle: creates, renames, reorders and deletes Kaneo statuses through the real provider',
+    ],
+  },
+  'SCN-task-kaneo-status-delete-unconfirmed': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/kaneo-statuses-and-labels.story.test.ts#SCN-task-kaneo-status-delete-unconfirmed: an unconfident status delete is blocked and the column survives',
+    ],
+  },
+  'SCN-task-kaneo-label-lifecycle': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/kaneo-statuses-and-labels.story.test.ts#SCN-task-kaneo-label-lifecycle: attaches, renames and detaches a Kaneo label through the real provider',
     ],
   },
   'SCN-task-youtrack-real-create': {
