@@ -32,7 +32,10 @@ const childRow = (child: ContextSection): string => {
 const detailRow = (detail: string): string => `| ↳ ${detail} |  |`
 
 const buildTable = (snapshot: ContextSnapshot): string => {
-  const lines = ['| Section | Tokens |', '| ------ | ------:|']
+  const lines = [
+    `| ${t('contextView.sectionColumnHeader', snapshot.locale)} | ${t('contextView.tokensColumnHeader', snapshot.locale)} |`,
+    '| ------ | ------:|',
+  ]
   for (const section of snapshot.sections) {
     lines.push(topRow(section))
     if (section.children !== undefined) {

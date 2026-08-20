@@ -27,6 +27,8 @@ export const ruContextView: Dictionary['contextView'] = {
   progressiveDisclosure: '{active} активных · {available} доступных (прогрессивное раскрытие)',
   headerWord: 'Контекст',
   tokensUnit: 'токенов',
+  sectionColumnHeader: 'Раздел',
+  tokensColumnHeader: 'Токены',
   tokenSuffix: 'tk',
   approximateMarker: '(приблизительно)',
   approximateFooter: 'количество токенов приблизительное',

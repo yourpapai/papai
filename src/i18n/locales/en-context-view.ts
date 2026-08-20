@@ -27,6 +27,8 @@ export const enContextView: Dictionary['contextView'] = {
   progressiveDisclosure: '{active} active · {available} available (progressive disclosure)',
   headerWord: 'Context',
   tokensUnit: 'tokens',
+  sectionColumnHeader: 'Section',
+  tokensColumnHeader: 'Tokens',
   tokenSuffix: 'tk',
   approximateMarker: '(approximate)',
   approximateFooter: 'token counts are approximate',

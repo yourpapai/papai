@@ -61,6 +61,13 @@ describe('renderMattermostContext locale', () => {
     expect(result.content).toContain('**Контекст** · gpt-4o · 6,770 / 128,000 токенов (5.3%)')
   })
 
+  test('ru localizes the table column headers', () => {
+    const result = renderMattermostContext({ ...standardContextSnapshot, locale: 'ru' })
+    assert(result.method === 'formatted')
+    expect(result.content).toContain('| Раздел | Токены |')
+    expect(result.content).not.toContain('| Section | Tokens |')
+  })
+
   test('ru localizes the approximate footer', () => {
     const result = renderMattermostContext({ ...standardContextSnapshot, locale: 'ru', approximate: true })
     assert(result.method === 'formatted')
