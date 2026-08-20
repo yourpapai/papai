@@ -536,6 +536,7 @@ describe('createLiveStatusReporter locale', () => {
     })
     await reporter.start()
     reporter.onToolStart({ toolName: 'get_current_time', input: {} })
+    reporter.onToolFinish()
     await flushMicrotasks()
     expect(rec.updates).toEqual(['🕒 Проверяю время…'])
     timers.advance(1000)
