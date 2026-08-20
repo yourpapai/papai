@@ -3,10 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
-
 import pLimit from 'p-limit'
 import { z } from 'zod'
 
@@ -14,6 +10,8 @@ import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { AssumptionRecordSchema, FindingsSidecarSchema, ResolutionSchema, runStageAgent } from './agent-layer.js'
 import type { AgentLayerDeps, Finding, Resolution } from './agent-layer.js'
 import type { DepthProfile, EventInput } from './events.js'
+export { consumeSteerFile, parseSteerDirectives, reloadStagedSteer } from './steer.js'
+export type { ParsedSteer, StagedSteer, SteerDirective } from './steer.js'
 import {
   buildResolverPrompt,
   buildReviewerPrompt,
@@ -24,107 +22,14 @@ import {
   readReviewArtifacts,
   ROUND_CAPS,
 } from './review-model.js'
+import { consumeSteerFile } from './steer.js'
+import type { SteerDirective } from './steer.js'
 
 export const ResolverOutputSchema = z.object({
   resolutions: z.array(ResolutionSchema),
   assumptions: z.array(AssumptionRecordSchema),
 })
 export type ResolverOutput = z.infer<typeof ResolverOutputSchema>
-
-/** Queued steering grammar (D6): `extend`, `veto <id>=<redirect>`, `abort`. */
-export type SteerDirective =
-  | { readonly kind: 'extend' }
-  | { readonly kind: 'veto'; readonly id: string; readonly redirect?: string }
-  | { readonly kind: 'abort' }
-
-export interface ParsedSteer {
-  readonly valid: readonly SteerDirective[]
-  readonly warnings: readonly string[]
-}
-
-/**
- * Parse `steer.md` content line by line against the fixed grammar. Unknown
- * directives (and, when `knownIds` is given, unknown veto ids) surface as
- * warn lines and are skipped — never fatal, never an `events.ndjson`
- * variant. Directive text is never interpolated into shell commands, file
- * paths, or prompts: each line maps to the closed `SteerDirective` union.
- */
-export function parseSteerDirectives(
-  content: string,
-  options: { readonly knownIds?: ReadonlySet<string> } = {},
-): ParsedSteer {
-  const valid: SteerDirective[] = []
-  const warnings: string[] = []
-  for (const rawLine of content.split('\n')) {
-    const line = rawLine.trim()
-    if (line.length === 0) continue
-    if (line === 'extend') {
-      valid.push({ kind: 'extend' })
-      continue
-    }
-    if (line === 'abort') {
-      valid.push({ kind: 'abort' })
-      continue
-    }
-    const vetoMatch = line.match(/^veto\s+(\S+)=(.*)$/u)
-    if (vetoMatch !== null) {
-      const id = vetoMatch[1] ?? ''
-      if (options.knownIds !== undefined && !options.knownIds.has(id)) {
-        warnings.push(`unknown veto id: ${id}`)
-        continue
-      }
-      const redirect = vetoMatch[2] ?? ''
-      valid.push(redirect === '' ? { kind: 'veto', id } : { kind: 'veto', id, redirect })
-      continue
-    }
-    warnings.push(`unknown directive: ${line}`)
-  }
-  return { valid, warnings }
-}
-
-/** Build the standard steering seam for a run state (D6). */
-export const StagedSteerSchema = z.object({
-  directives: z.array(
-    z.union([
-      z.object({ kind: z.literal('extend') }),
-      z.object({ kind: z.literal('abort') }),
-      z.object({ kind: z.literal('veto'), id: z.string().min(1), redirect: z.string().optional() }),
-    ]),
-  ),
-})
-export type StagedSteer = z.infer<typeof StagedSteerSchema>
-
-function nextConsumedName(runDir: string): string {
-  let n = 1
-  while (existsSync(path.join(runDir, `steer.consumed.${n}.md`))) n += 1
-  return `steer.consumed.${n}.md`
-}
-
-/**
- * Round-boundary consumption (D6): read `steer.md` if present, persist the
- * staged set to `steer.staged.json` BEFORE the rename (a crash mid-tick
- * re-consumes idempotently — the staged set survives), then rename to
- * `steer.consumed.<n>.md` (append-only audit; never delete).
- */
-export function consumeSteerFile(runDir: string): ParsedSteer {
-  const steerPath = path.join(runDir, 'steer.md')
-  if (!existsSync(steerPath)) return { valid: [], warnings: [] }
-  const parsed = parseSteerDirectives(readFileSync(steerPath, 'utf8'))
-  const staged: StagedSteer = { directives: [...parsed.valid] }
-  writeFileSync(path.join(runDir, 'steer.staged.json'), `${JSON.stringify(staged)}\n`)
-  renameSync(steerPath, path.join(runDir, nextConsumedName(runDir)))
-  return parsed
-}
-
-/** Reload the persisted staged set (resume-after-crash; missing file = none). */
-export async function reloadStagedSteer(runDir: string): Promise<StagedSteer> {
-  try {
-    const raw = await readFile(path.join(runDir, 'steer.staged.json'), 'utf8')
-    return StagedSteerSchema.parse(JSON.parse(raw))
-  } catch {
-    return { directives: [] }
-  }
-}
 
 export interface ReviewLoopDeps {
   readonly agent: AgentLayerDeps
@@ -133,6 +38,16 @@ export interface ReviewLoopDeps {
   readonly sidecarDir: string
   readonly cwd: string
   readonly materialize: (round: number) => Promise<void>
+  /**
+   * Resume continuation (D2): continue this recorded opencode session at its
+   * exact prior context instead of re-spawning the round's first agent from a
+   * rebuilt prompt. Consumed by the first spawn of the resumed round.
+   */
+  readonly resumeSession?: {
+    readonly label: string
+    readonly opencodeSessionId: string
+    readonly round: number
+  }
   /**
    * Round-boundary steering seam (D6): consume `steer.md` at each round-cap
    * evaluation point and re-read the persisted round cap so a steered
@@ -170,6 +85,7 @@ async function runLens(
   round: number,
   artifacts: string,
   ledger: readonly Resolution[],
+  continueSessionId?: string,
 ): Promise<Finding[]> {
   const outputPath = lens === 'skeptic' ? `findings-skeptic-${round}.json` : `findings-${round}.json`
   const result = await runStageAgent(deps.agent, {
@@ -189,6 +105,7 @@ async function runLens(
     runDir: deps.runDir,
     round,
     sidecarDir: deps.sidecarDir,
+    ...(continueSessionId === undefined ? {} : { continueSessionId }),
   })
   return result.value.findings
 }
@@ -199,6 +116,7 @@ async function runResolver(
   round: number,
   artifacts: string,
   merged: readonly Finding[],
+  continueSessionId?: string,
 ): Promise<ResolverOutput> {
   const result = await runStageAgent(deps.agent, {
     role: 'resolver',
@@ -217,6 +135,7 @@ async function runResolver(
     runDir: deps.runDir,
     round,
     sidecarDir: deps.sidecarDir,
+    ...(continueSessionId === undefined ? {} : { continueSessionId }),
   })
   for (const entry of result.value.resolutions) {
     const action = entry.resolution === 'dismissed' ? 'dismissed' : 'resolved'
@@ -244,27 +163,76 @@ function applySteerAtBoundary(deps: ReviewLoopDeps, entryCap: number): number {
   return steer.readRoundCap()
 }
 
+/**
+ * The resumed session applies only to the round it was recorded in; a resume
+ * entering an earlier round runs it fresh by design.
+ */
+function consumeResumeSession(
+  resumeSession: ReviewLoopDeps['resumeSession'],
+  round: number,
+): ReviewLoopDeps['resumeSession'] {
+  if (resumeSession === undefined || resumeSession.round !== round) return undefined
+  return resumeSession
+}
+
+/** The resume session id for a given spawn label in this round, if it matches. */
+function sessionForLabel(
+  consumedSession: ReviewLoopDeps['resumeSession'],
+  label: string,
+  round: number,
+): string | undefined {
+  if (consumedSession === undefined) return undefined
+  return consumedSession.label === `${label}-r${round}` ? consumedSession.opencodeSessionId : undefined
+}
+
+/** Run this round's lenses (bounded 2-way) and merge their findings. */
+async function runLenses(
+  deps: ReviewLoopDeps,
+  options: ReviewLoopOptions,
+  round: number,
+  prevOpenBlockers: number,
+  consumedSession: ReviewLoopDeps['resumeSession'],
+): Promise<readonly Finding[]> {
+  const artifacts = await readReviewArtifacts(options.changeDir)
+  const ledger = await readResolutionsLedger(deps.sidecarDir, round)
+  const lenses = lensesForRound(options.depth, round, prevOpenBlockers)
+  const limit = pLimit(2)
+  const perLens = await Promise.all(
+    lenses.map((lens) =>
+      limit(() =>
+        runLens(deps, options, lens, round, artifacts, ledger, sessionForLabel(consumedSession, lens, round)),
+      ),
+    ),
+  )
+  return mergeLensFindings(...perLens)
+}
+
 async function runRound(
   deps: ReviewLoopDeps,
   options: ReviewLoopOptions,
   round: number,
   cap: number,
   prevOpenBlockers: number,
+  resumeSession?: ReviewLoopDeps['resumeSession'],
 ): Promise<ReviewLoopResult> {
   const effectiveCap = applySteerAtBoundary(deps, cap)
   deps.emit({ altitude: 'L2', type: 'round_open', round, cap: effectiveCap })
-  const artifacts = await readReviewArtifacts(options.changeDir)
-  const ledger = await readResolutionsLedger(deps.sidecarDir, round)
-  const lenses = lensesForRound(options.depth, round, prevOpenBlockers)
-  const limit = pLimit(2)
-  const perLens = await Promise.all(
-    lenses.map((lens) => limit(() => runLens(deps, options, lens, round, artifacts, ledger))),
-  )
-  const merged = mergeLensFindings(...perLens)
+  // The resumed session continues once: whichever agent the ledger recorded
+  // consumes it, and later rounds/spawns are fresh by design (D2).
+  const consumedSession = consumeResumeSession(resumeSession, round)
+  const merged = await runLenses(deps, options, round, prevOpenBlockers, consumedSession)
   for (const finding of merged) {
     deps.emit({ altitude: 'L2', type: 'finding', action: 'classified', id: finding.id, round, class: finding.class })
   }
-  const resolved = await runResolver(deps, options, round, artifacts, merged)
+  const artifacts = await readReviewArtifacts(options.changeDir)
+  const resolved = await runResolver(
+    deps,
+    options,
+    round,
+    artifacts,
+    merged,
+    sessionForLabel(consumedSession, 'resolver', round),
+  )
   const { verdict, counts } = evaluateConvergence(resolved.resolutions)
   deps.emit({ altitude: 'L2', type: 'convergence', round, verdict, counts })
   await deps.materialize(round)
@@ -288,5 +256,5 @@ export function runReviewLoop(
 ): Promise<ReviewLoopResult> {
   const startRound = entry.startRound ?? 1
   const cap = entry.cap ?? ROUND_CAPS[options.depth]
-  return runRound(deps, options, startRound, cap, 0)
+  return runRound(deps, options, startRound, cap, 0, deps.resumeSession)
 }

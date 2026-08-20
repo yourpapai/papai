@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -13,18 +12,21 @@ import { resolveAutonomyConfig } from './config.js'
 import type { AutonomyConfig, AutonomyLevel } from './config.js'
 import { runDraft } from './draft.js'
 import type { DepthProfile, EventInput } from './events.js'
-import { buildBus, logPathFor, nowOf, presentGateAt, readReviewResultFromSidecars } from './gate-digest.js'
+import { buildBus, logPathFor, nowOf, presentGateAt } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
 import { runIntake } from './intake.js'
 import { createMaterializer } from './materialize.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
 import type { Verbosity } from './renderer.js'
 import { replayEvents } from './replay.js'
+import { resolveResumeDecision } from './resume-decision.js'
+import type { ResumedSession } from './resume-decision.js'
+import { resumeFromPoint } from './resume-flow.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { createRunState, loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
 import type { RunState } from './run-state.js'
-import { deriveResumePoint } from './run-state.js'
+import { readSessionLedger } from './session-ledger.js'
 import { createStageMachine } from './stage-machine.js'
 
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
@@ -113,8 +115,8 @@ export async function runResume(
     return { runId, halted: 'gate-pending' }
   }
   const emit = buildBus(deps, logPathFor(state))
-  const status = await deps.driver.status(state.changeName)
-  const resume = deriveResumePoint(state, status.artifacts, replayEvents(logPathFor(state)))
+  const decision = await deriveResumeDecision(deps, state)
+  reportResumeDecision(deps, emit, decision)
   const depth = state.depth ?? 'S'
   const env = buildPipelineEnv(deps, state, emit, {
     taskText: '',
@@ -122,59 +124,46 @@ export async function runResume(
     depthOverride: depth,
     autonomy,
   })
-  return resumeFromPoint(deps, env, resume, depth)
+  return resumeFromPoint(
+    { deps: env.deps, state, ctx: env.ctx, agent: env.agent },
+    {
+      runReviewStage: (d, entry) => runReviewStage(env, d, '', entry),
+      runPostReviewToGate: (d, reviewResult, version) => runPostReviewToGate(env, d, reviewResult, version),
+    },
+    decision,
+    depth,
+  )
 }
 
-async function resumeFromPoint(
+/** Resolve the D2 resume decision: artifact-first, session-second, rebuild-last. */
+async function deriveResumeDecision(
   deps: OrchestratorDeps,
-  env: PipelineEnv,
-  resume: ReturnType<typeof deriveResumePoint>,
-  depth: DepthProfile,
-): Promise<RunResumeResult> {
-  const { state } = env
-  const runId = state.runId
-  if (resume.stage === 'review') {
-    const reviewResult = await runReviewStage(env, depth, '')
-    state.stage = 'review'
-    await saveRunState(state, nowOf(deps))
-    const gate = await runPostReviewToGate(env, depth, reviewResult)
-    return { runId, halted: 'gate', gateMdPath: gate.gateMdPath, version: gate.version }
-  }
-  if (resume.stage === 'decompose' || resume.stage === 'atomicity' || resume.stage === 'gate') {
-    const reviewResult = await readReviewResultFromSidecars(
-      env.ctx.sidecarDir,
-      state.round,
-      resume.stage === 'gate' ? 'converged' : 'cap-hit',
-    )
-    const reviewSettled = replayEvents(logPathFor(state)).gate?.answered === true
-    const outcome = reviewSettled ? 'converged' : reviewResult.outcome
-    const settledResult: ReviewLoopResult = { ...reviewResult, outcome }
-    const version = nextGateVersion(state)
-    const gate = await runPostConvergenceTail({
-      deps,
-      state,
-      ctx: env.ctx,
-      agent: env.agent,
-      depth,
-      reviewResult: settledResult,
-      version,
-    })
-    return { runId, halted: 'gate', gateMdPath: gate.gateMdPath, version: gate.version }
-  }
-  throw new Error(`resume from stage '${resume.stage}' (${resume.reason}) is not supported yet`)
+  state: RunState,
+): Promise<ReturnType<typeof resolveResumeDecision>> {
+  const status = await deps.driver.status(state.changeName)
+  return resolveResumeDecision(
+    state,
+    status.artifacts,
+    replayEvents(logPathFor(state)),
+    readSessionLedger(state.runDir),
+  )
 }
 
-function nextGateVersion(state: RunState): number {
-  const versions = [0]
-  try {
-    for (const entry of readdirSync(state.runDir)) {
-      const match = entry.match(/^gate-(\d+)\.md$/u)
-      if (match !== null) versions.push(Number(match[1]))
-    }
-  } catch {
-    // run dir unreadable — start at 1
-  }
-  return Math.max(...versions) + 1
+function reportResumeDecision(
+  deps: OrchestratorDeps,
+  emit: (event: EventInput) => void,
+  decision: ReturnType<typeof resolveResumeDecision>,
+): void {
+  emit({
+    altitude: 'L2',
+    type: 'resume',
+    path: decision.path,
+    stage: decision.stage,
+    ...(decision.session === undefined ? {} : { session: decision.session.opencodeSessionId }),
+  })
+  deps.stdout?.(
+    `resume: ${decision.path}${decision.session === undefined ? '' : ` (session ${decision.session.opencodeSessionId})`}`,
+  )
 }
 
 function buildPipelineEnv(
@@ -265,7 +254,16 @@ async function runDraftStage(env: PipelineEnv, depth: DepthProfile): Promise<voi
   )
 }
 
-async function runReviewStage(env: PipelineEnv, depth: DepthProfile, taskText: string): Promise<ReviewLoopResult> {
+async function runReviewStage(
+  env: PipelineEnv,
+  depth: DepthProfile,
+  taskText: string,
+  entry: {
+    readonly startRound?: number
+    readonly cap?: number
+    readonly resumeSession?: ResumedSession
+  } = {},
+): Promise<ReviewLoopResult> {
   const { deps, state, machine, agent, ctx, input } = env
   const materialize = createMaterializer(ctx.sidecarDir, ctx.changeDir, ctx.emit, deps.config.repoRoot)
   let reviewResult!: ReviewLoopResult
@@ -279,6 +277,7 @@ async function runReviewStage(env: PipelineEnv, depth: DepthProfile, taskText: s
         cwd: ctx.cwd,
         materialize,
         steer: steerSeamFor(state, (line) => deps.stdout?.(`steer: ${line}`)),
+        resumeSession: entry.resumeSession,
       },
       {
         changeName: input.changeName,
@@ -287,6 +286,7 @@ async function runReviewStage(env: PipelineEnv, depth: DepthProfile, taskText: s
         taskText,
         conventions: deps.conventions ?? '',
       },
+      { startRound: entry.startRound, cap: entry.cap },
     )
     state.round = reviewResult.rounds
   })

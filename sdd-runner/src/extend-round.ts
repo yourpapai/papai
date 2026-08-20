@@ -10,6 +10,7 @@ import type { AgentLayerDeps } from './agent-layer.js'
 import { shouldEnterWaiter } from './deadline-waiter.js'
 import { buildDriftCheck } from './drift.js'
 import type { EventInput } from './events.js'
+// prettier-ignore is not allowed; oxfmt keeps this single line under 110 chars
 import {
   buildBus,
   finalizeGate,
@@ -21,6 +22,8 @@ import {
 } from './gate-digest.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import type { GateAssumption, GateFinding } from './gate-model.js'
+import { settleApprovedGate, settleVeto } from './gate-resume-tail.js'
+export { settleApprovedGate } from './gate-resume-tail.js'
 import { desugarFlags, readlinePrompter, runGateSession } from './gate-session.js'
 import type { GateSessionView } from './gate-session.js'
 import { resumeGate, vetoRedirects } from './gate.js'
@@ -31,7 +34,6 @@ import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
 import type { RunState } from './run-state.js'
-import { runVetoUpdater, updateAssumptionsFromVetoes } from './veto-updater.js'
 
 export interface RunGateResumeResult {
   readonly runId: string
@@ -260,42 +262,4 @@ async function deadlineWaiterEntry(
   if (!wait && options.waitDeadline !== true) return null
   const { awaitGateDeadline } = await import('./deadline-waiter.js')
   return awaitGateDeadline(deps, state.runId, runGateResume)
-}
-
-export async function settleApprovedGate(
-  ctx: GateResumeContext,
-  reviewResult: ReviewLoopResult,
-): Promise<RunGateResumeResult> {
-  const { deps, state, emit, version, changeDir, sidecarDir, agent } = ctx
-  if (state.gate?.mode === 'early') {
-    const stageCtx: StageContext = { cwd: deps.config.repoRoot, changeDir, sidecarDir, emit }
-    const gate = await runPostConvergenceTail({
-      deps,
-      state,
-      ctx: stageCtx,
-      agent,
-      depth: state.depth ?? 'S',
-      reviewResult,
-      version: version + 1,
-    })
-    return { runId: state.runId, outcome: 'approved', version: gate.version, gateMdPath: gate.gateMdPath }
-  }
-  return finalizeGate(deps, state, 'completed', version)
-}
-
-async function settleVeto(
-  ctx: GateResumeContext,
-  reviewResult: ReviewLoopResult,
-  vetoes: readonly { readonly id: string; readonly redirect?: string }[],
-): Promise<RunGateResumeResult> {
-  const { deps, state, emit, version, changeDir, sidecarDir, agent } = ctx
-  const stageCtx: StageContext = { cwd: deps.config.repoRoot, changeDir, sidecarDir, emit }
-  await updateAssumptionsFromVetoes(sidecarDir, state.round, vetoes)
-  const driftCheck = buildDriftCheck(agent, state, changeDir, sidecarDir, deps.config.repoRoot)
-  const { filesUpdated } = await runVetoUpdater({ driver: deps.driver, agent }, state, stageCtx, vetoes)
-  const driftFiles = filesUpdated.filter((file) => file.includes('specs/') || file.endsWith('tasks.md'))
-  if (driftFiles.length > 0) await driftCheck(driftFiles)
-  const next = version + 1
-  await presentGateAt(deps, state, stageCtx, reviewResult, next, state.gate?.mode ?? 'final', { skipPolicy: true })
-  return { runId: state.runId, outcome: 'veto', version: next }
 }

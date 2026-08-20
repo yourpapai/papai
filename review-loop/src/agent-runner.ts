@@ -107,6 +107,12 @@ export interface RunAgentOptions<T> {
   sessionLedger?: SessionLedgerSeam
   /** Preferred ledger attempt number for this spawn (default 1). */
   sessionAttempt?: number
+  /**
+   * Fail fast instead of retrying a soft failure once. Resume continuations
+   * set this: their fallback path is the caller's prompt-rebuild spawn, not a
+   * second continuation of a session that may no longer exist.
+   */
+  noRetry?: boolean
 }
 
 interface AttemptResult<T> {
@@ -240,6 +246,7 @@ export async function runAgent<T>(options: RunAgentOptions<T>): Promise<AgentRun
     // budget), but stalls are: a hung provider stream is transient, and the
     // retry usually lands on a healthy request path.
     if (first.timedOut && !first.stalled) throw new AgentRunError(first.error.message, buildUsage())
+    if (options.noRetry === true) throw new AgentRunError(first.error.message, buildUsage())
     options.onRetry?.()
     const second = await runAttempt(options, handler)
     if (second.ok) return finalize(second.value)

@@ -11,10 +11,10 @@ Ordered per design.md Migration Plan: every step is shippable alone, steps 1–2
 
 ## 2. Session resume behind existing verbs (additive)
 
-- [ ] 2.1 Failing tests for the resume decision table: artifact-complete → skip agent; in-flight session recorded → continuation path; no session (pre-change run) or continuation failure → stage-boundary rebuild; each path reports which was taken. Verify: `bun test tests/sdd-runner/resume-decision.test.ts`
-- [ ] 2.2 Implement: `deriveResumePoint` consults the session ledger; the agent seam gains the `--session <id>` continuation spawn with fallback to prompt-rebuild on any continuation failure; resume path recorded into `events.ndjson` (L2). Verify: `bun test tests/sdd-runner/resume-decision.test.ts`
-- [ ] 2.3 Failing tests + implementation that continued-session usage flows through the existing usage accounting and `budget` guard identically to fresh spawns. Verify: `bun test tests/sdd-runner/resume-budget.test.ts`
-- [ ] 2.4 Failing tests + implementation for run status `stopped` (state schema additive, parsing lenient) and routing of stopped runs through the interrupted path. Verify: `bun test tests/sdd-runner/run-state-stopped.test.ts`
+- [x] 2.1 Failing tests for the resume decision table: artifact-complete → skip agent; in-flight session recorded → continuation path; no session (pre-change run) or continuation failure → stage-boundary rebuild; each path reports which was taken. Verify: `bun test tests/sdd-runner/resume-decision.test.ts`
+- [x] 2.2 Implement: `deriveResumePoint` consults the session ledger; the agent seam gains the `--session <id>` continuation spawn with fallback to prompt-rebuild on any continuation failure; resume path recorded into `events.ndjson` (L2). Verify: `bun test tests/sdd-runner/resume-decision.test.ts`
+- [x] 2.3 Failing tests + implementation that continued-session usage flows through the existing usage accounting and `budget` guard identically to fresh spawns. Verify: `bun test tests/sdd-runner/resume-budget.test.ts`
+- [x] 2.4 Failing tests + implementation for run status `stopped` (state schema additive, parsing lenient) and routing of stopped runs through the interrupted path. Verify: `bun test tests/sdd-runner/run-state-stopped.test.ts`
 
 ## 3. Calm stop seam (coexists)
 
