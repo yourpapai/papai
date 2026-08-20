@@ -230,18 +230,18 @@ export function createLiveStatusReporter(reply: ReplyFn, options?: LiveStatusRep
   const clock = options?.now ?? ((): number => Date.now())
   const recorder = createAnalyticsRecorder(options?.analytics, clock, options?.turnStartedAtMs ?? clock())
   const state: MutableReporterState = { handle: undefined, frozen: false, createdAtMs: undefined }
+  const thinkingText = t('liveStatus.thinking', locale)
   const engine = createStatusEngine({
     emit: (text): void => {
       if (state.frozen || state.handle === undefined) return
       recorder.recordUpdate(state.handle.update(text))
     },
     isActive: (): boolean => state.handle !== undefined,
-    idleText: t('liveStatus.thinking', locale),
+    idleText: thinkingText,
     minLabelMs: options?.minLabelMs ?? DEFAULT_MIN_LABEL_MS,
     now: clock,
     schedule: options?.schedule ?? defaultSchedule,
   })
-  const thinkingText = t('liveStatus.thinking', locale)
 
   return {
     start: () => startStatus(reply, enabled, state, engine, recorder, clock, thinkingText),
