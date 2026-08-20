@@ -86,19 +86,20 @@ describe('context-tool-resolution', () => {
     expect(result).toBeNull()
   })
 
-  test('resolveContextToolSurface falls back to the exact cached descriptor set for the current invocation scope', async () => {
-    setCachedTools('providerless:no-staged-download:user-1:user-1:', { save_memo: { description: 'providerless' } })
+  test('resolveContextToolSurface falls back to the latest cached descriptor set for the context', async () => {
+    setCachedTools('providerless:no-staged-download:no-resolver:user-1:user-1::user', {
+      save_memo: { description: 'providerless' },
+    })
 
     const surface = await resolveContextToolSurface('user-1', 'user-1', 'dm', null, () => null)
 
     expect(surface.definitions).toEqual({ save_memo: { description: 'providerless' } })
   })
 
-  test('resolveContextToolSurface degraded fallback does not reuse another scope cached descriptor set', async () => {
-    setCachedTools('provider-backed:no-staged-download:user-1:user-1:', {
-      create_task: { description: 'provider-backed' },
+  test('resolveContextToolSurface degraded fallback does not reuse another context cached descriptor set', async () => {
+    setCachedTools('providerless:no-staged-download:no-resolver:other-context:other-user::user', {
+      save_memo: { description: 'other-context' },
     })
-    setCachedTools('providerless:no-staged-download:user-1:other-user:', { save_memo: { description: 'other-actor' } })
 
     const surface = await resolveContextToolSurface('user-1', 'user-1', 'dm', null, () => null)
 
@@ -108,7 +109,7 @@ describe('context-tool-resolution', () => {
   test('resolveContextToolSurface reapplies tool preferences to degraded cached descriptors', async () => {
     const cachedSaveMemo = fakeTool('save_memo')
     setToolPrefs('user-1', { domainDefaults: { task: 'deny' }, toolOverrides: { save_memo: 'ask' } })
-    setCachedTools('providerless:no-staged-download:user-1:user-1:', {
+    setCachedTools('providerless:no-staged-download:no-resolver:user-1:user-1::user', {
       create_task: fakeTool('create_task'),
       save_memo: cachedSaveMemo,
     })

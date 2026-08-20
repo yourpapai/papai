@@ -47,7 +47,6 @@ export interface ContextCommandDeps {
     contextType: 'dm' | 'group',
     provider: TaskProvider | null,
     buildLiveToolSet: BuildLiveToolSet,
-    username?: string | null,
   ) => Promise<ResolvedContextToolSurface> | ResolvedContextToolSurface
 }
 
@@ -203,7 +202,6 @@ async function handleContextCommand(
     msg.contextType,
     provider,
     deps.buildLiveToolSet,
-    msg.user.username,
   )
   let snapshot: ContextSnapshot
   try {
