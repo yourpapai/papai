@@ -11,7 +11,7 @@ See LICENSE in the project root for details.
 
 ## 2. Implementation
 
-- [ ] 2.1 Create `src/usage/failures.ts` with `listRecentFailures(options: { windowMs?: number | null; limit?: number }): FailureRow[]` per `specs/usage-failure-queries/spec.md`: two Drizzle selects over `llm_usage_events` (`error IS NOT NULL`) and `tool_call_events` (`success = 0`), each filtered by `computeSince`-style window and capped at the clamped limit, mapped to the `kind: 'llm' | 'tool'` discriminated union with nulls normalized, merged and sorted `occurred_at DESC` (stable, fixed source order), clamped limit applied last (`Math.max(0, Math.min(200, Math.floor(limit)))`, default 25). Verify: `bun test tests/usage/failures.test.ts`
+- [x] 2.1 Create `src/usage/failures.ts` with `listRecentFailures(options: { windowMs?: number | null; limit?: number }): FailureRow[]` per `specs/usage-failure-queries/spec.md`: two Drizzle selects over `llm_usage_events` (`error IS NOT NULL`) and `tool_call_events` (`success = 0`), each filtered by `computeSince`-style window and capped at the clamped limit, mapped to the `kind: 'llm' | 'tool'` discriminated union with nulls normalized, merged and sorted `occurred_at DESC` (stable, fixed source order), clamped limit applied last (`Math.max(0, Math.min(200, Math.floor(limit)))`, default 25). Verify: `bun test tests/usage/failures.test.ts`
 
 ## 3. Verification
 
