@@ -256,13 +256,15 @@ describe('shapeLlmTrace', () => {
     expect(shapeLlmTrace(trace, 'chat-1')).toBe(trace)
   })
 
-  test('non-own trace drops generatedText, stepsDetail and toolCall args/result, keeps the rest', () => {
+  test('non-own trace drops identity, generatedText, stepsDetail and toolCall args/result, keeps the rest', () => {
     const shaped = shapeLlmTrace(makeTrace(), 'chat-2')
 
+    expect(shaped.userId).toBeUndefined()
+    expect(shaped.chatUserId).toBeUndefined()
     expect(shaped).toEqual({
       timestamp: 10,
-      userId: 'u:1',
-      chatUserId: 'chat-1',
+      userId: undefined,
+      chatUserId: undefined,
       model: 'gpt-x',
       steps: 2,
       totalTokens: { inputTokens: 10, outputTokens: 5 },

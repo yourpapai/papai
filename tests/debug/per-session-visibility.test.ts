@@ -204,6 +204,8 @@ describe('llm:full egress shaping', () => {
     expect(foreign).toBeDefined()
     expect(foreign!.data['generatedText']).toBeUndefined()
     expect(foreign!.data['steps']).toBe(1)
+    expect(foreign!.data['chatUserId']).toBeUndefined()
+    expect(foreign!.data['userId']).toBeUndefined()
   })
 })
 

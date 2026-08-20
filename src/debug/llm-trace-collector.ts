@@ -18,7 +18,7 @@ export type LlmTraceToolCall = {
 
 export type LlmTrace = {
   timestamp: number
-  userId: string
+  userId: string | undefined
   chatUserId: string | undefined
   model: string
   steps: number
@@ -148,14 +148,17 @@ function traceKey(event: TraceEvent): string {
 /**
  * @public -- anonymity-safe egress shape for an LLM trace: a trace attributed to the viewing
  * admin (via `chatUserId`) passes verbatim (same reference); any other trace — including
- * unattributed ones — loses `generatedText`, `stepsDetail`, and per-tool-call `args`/`result`,
- * keeping metadata (tool names, durations, success flags, model ids, token/step counters).
+ * unattributed ones — loses the identity fields (`userId`, `chatUserId`), `generatedText`,
+ * `stepsDetail`, and per-tool-call `args`/`result`, keeping metadata (tool names, durations,
+ * success flags, model ids, token/step counters).
  * Pure and idempotent: never mutates the input; shaping an already-shaped trace is a no-op.
  */
 export function shapeLlmTrace(trace: LlmTrace, viewingChatUserId: string | undefined): LlmTrace {
   if (viewingChatUserId !== undefined && trace.chatUserId === viewingChatUserId) return trace
   return {
     ...trace,
+    userId: undefined,
+    chatUserId: undefined,
     generatedText: undefined,
     stepsDetail: undefined,
     toolCalls: trace.toolCalls.map((call) => ({ ...call, args: undefined, result: undefined })),
