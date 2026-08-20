@@ -3,8 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { getThreadScopedStorageContextId } from '../../bot.js'
+import { t } from '../../i18n/index.js'
 import { logger } from '../../logger.js'
 import { getSettingsPublicBaseUrl } from '../../settings/config.js'
+import { getContextLanguage } from '../../utils/config-language.js'
 import { buildScopedCommandAuth } from '../command-auth.js'
 import type {
   ChatProvider,
@@ -166,9 +169,11 @@ export class MattermostChatProvider implements ChatProvider {
     const replyToMessageId = extractReplyId(post.parent_id, post.root_id)
     const { msg, reply, command, isAdmin } = await this.buildPostedMessage(post, senderName, replyToMessageId)
     if (msg.isMentioned && msg.text === '') {
-      const mentionHelp =
-        this.botUsername === null ? 'Use `/help` to see commands' : `Use \`@${this.botUsername} /help\` to see commands`
-      await reply.text(`${mentionHelp}, or mention me with a question.`)
+      const locale = getContextLanguage(
+        getThreadScopedStorageContextId(msg.contextId, msg.contextType, undefined, this.platformInstanceId),
+      )
+      const helpCommand = this.botUsername === null ? '`/help`' : `\`@${this.botUsername} /help\``
+      await reply.text(t('commands.help.mentionHint', locale, { helpCommand }))
       return
     }
     if (command !== null) {

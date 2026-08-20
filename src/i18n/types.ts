@@ -25,6 +25,7 @@ export interface Dictionary {
       dmAdmin: string
       groupUser: string
       groupAdmin: string
+      mentionHint: string
     }
     clear: {
       selfCleared: string

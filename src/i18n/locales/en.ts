@@ -71,6 +71,7 @@ Let's get you set up! 🎯`,
         'Group settings, membership, and authorization are configured in the web UI.',
         'Open a DM with me and run /config.',
       ].join('\n'),
+      mentionHint: 'Use {helpCommand} to see commands, or mention me with a question.',
     },
     clear: {
       selfCleared: 'Conversation history, memory, and facts cleared.',
