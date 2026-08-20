@@ -67,13 +67,13 @@
 }
 
 .log-detail-msg {
-  background: var(--surface);
+  background: var(--surface-1);
   padding: 12px;
   border-radius: 2px;
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 11px;
-  color: var(--fg);
+  color: var(--text);
 }
 
 /* --- Tree View --- */
@@ -105,7 +105,7 @@
 }
 
 .tool-call-item {
-  background: var(--raised);
+  background: var(--surface-2);
   border-left: 3px solid var(--accent);
   padding: 12px;
 }
@@ -128,7 +128,7 @@
 }
 
 .tool-call-id {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 11px;
   margin-bottom: 8px;
   word-break: break-all;
@@ -139,18 +139,18 @@
 }
 
 .tool-section .label {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 11px;
   text-transform: uppercase;
   margin-bottom: 4px;
 }
 
 .tool-json {
-  background: var(--surface);
+  background: var(--surface-1);
   padding: 8px;
   border-radius: 2px;
   font-size: 11px;
-  color: var(--fg);
+  color: var(--text);
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
@@ -168,7 +168,7 @@
 }
 
 .step-item {
-  background: var(--raised);
+  background: var(--surface-2);
   padding: 12px;
   border-radius: 2px;
 }
@@ -183,7 +183,7 @@
 
 .step-finish-reason {
   font-weight: normal;
-  color: var(--fg2);
+  color: var(--text-muted);
   font-size: 11px;
   margin-left: 6px;
 }
@@ -193,19 +193,19 @@
 }
 
 .step-section .label {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 11px;
   text-transform: uppercase;
   margin-bottom: 4px;
 }
 
 .step-text {
-  background: var(--surface);
+  background: var(--surface-1);
   padding: 8px;
   border-radius: 2px;
   font-size: 11px;
   line-height: 1.5;
-  color: var(--fg);
+  color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 300px;
@@ -221,7 +221,7 @@
 
 .step-tool-call {
   padding: 8px;
-  background: var(--surface);
+  background: var(--surface-1);
   border-left: 2px solid var(--border);
   border-radius: 2px;
 }
@@ -244,7 +244,7 @@
 }
 
 .step-tool-call-header .tool-id {
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 10px;
   word-break: break-all;
 }
@@ -253,18 +253,18 @@
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 12px;
 }
 
 /* Generated text */
 .generated-text {
-  background: var(--raised);
+  background: var(--surface-2);
   padding: 16px;
   border-radius: 2px;
   font-size: 13px;
   line-height: 1.6;
-  color: var(--fg);
+  color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 400px;
@@ -304,12 +304,12 @@
 }
 
 .context-key {
-  color: var(--fg);
+  color: var(--text);
   font-weight: 600;
 }
 
 .context-value {
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 /* --- Three-column debug grid --- */

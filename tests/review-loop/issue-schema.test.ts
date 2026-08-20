@@ -130,3 +130,73 @@ describe('InspectorResultSchema', () => {
     expect(() => InspectorResultSchema.parse({ addresses: true, reasoning: 'ok', confidence: 1.5 })).toThrow()
   })
 })
+
+describe('exposure', () => {
+  const citation = { kind: 'caller', file: 'src/chat/router.ts', line: 42, quote: '  await flushQueue(ctx)' } as const
+
+  test('ReviewerIssueSchema accepts a cited caller', () => {
+    const parsed = ReviewerIssueSchema.parse({ ...validIssue, exposure: citation })
+    expect(parsed.exposure).toEqual(citation)
+  })
+
+  test('ReviewerIssueSchema accepts an explicit "none found"', () => {
+    const parsed = ReviewerIssueSchema.parse({ ...validIssue, exposure: { kind: 'none' } })
+    expect(parsed.exposure?.kind).toBe('none')
+  })
+
+  test('ReviewerIssueSchema parses an issue written before exposure existed', () => {
+    const parsed = ReviewerIssueSchema.parse(validIssue)
+    expect(parsed.exposure).toBeUndefined()
+  })
+
+  test('ReviewerIssueSchema rejects a caller citation missing its quote', () => {
+    expect(() =>
+      ReviewerIssueSchema.parse({ ...validIssue, exposure: { kind: 'caller', file: 'a.ts', line: 1 } }),
+    ).toThrow()
+  })
+
+  test('ReviewerIssueSchema rejects an unknown exposure kind', () => {
+    expect(() => ReviewerIssueSchema.parse({ ...validIssue, exposure: { kind: 'probably' } })).toThrow()
+  })
+
+  test('FixerResultSchema carries the fixer own exposure', () => {
+    const parsed = FixerResultSchema.parse({
+      verdict: 'valid',
+      fixability: 'auto',
+      reasoning: 'Fixed.',
+      targetFiles: ['a.ts'],
+      fixed: true,
+      exposure: citation,
+    })
+    expect(parsed.exposure).toEqual(citation)
+  })
+
+  test('VerifierDecisionSchema strips exposure: it drives ledger status and must not carry it', () => {
+    const parsed = VerifierDecisionSchema.parse({
+      verdict: 'valid',
+      fixability: 'auto',
+      reasoning: 'Fixed.',
+      targetFiles: ['a.ts'],
+      exposure: citation,
+    })
+    expect(parsed).not.toHaveProperty('exposure')
+  })
+})
+
+describe('issue kind', () => {
+  test('ReviewerIssueSchema accepts both kinds', () => {
+    expect(ReviewerIssueSchema.parse({ ...validIssue, kind: 'defect' }).kind).toBe('defect')
+    expect(ReviewerIssueSchema.parse({ ...validIssue, kind: 'cleanup' }).kind).toBe('cleanup')
+  })
+
+  test('an issue written before kind existed reads as a defect', () => {
+    // Unlike `exposure`, absent is not a third state here: a ledger written
+    // before cleanups were admitted holds only defects, so the default states
+    // a truth rather than papering over a gap.
+    expect(ReviewerIssueSchema.parse(validIssue).kind).toBe('defect')
+  })
+
+  test('ReviewerIssueSchema rejects a kind outside the two', () => {
+    expect(() => ReviewerIssueSchema.parse({ ...validIssue, kind: 'refactor' })).toThrow()
+  })
+})

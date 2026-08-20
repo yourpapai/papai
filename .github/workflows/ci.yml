@@ -17,6 +17,13 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    # Runaway guard, not a budget. A job with no `timeout-minutes` inherits
+    # GitHub's own 360-minute ceiling, so a stalled `docker build` layer pull
+    # holds a concurrency slot for six hours and the run reports nothing until
+    # it does. Observed 69s on 2026-08-13; every value in this file is that
+    # measurement rounded up hard, deliberately loose enough that a slow runner
+    # is never what turns the build red.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -56,6 +63,8 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    # Observed 65s. Semgrep's rule download is the part that can hang.
+    timeout-minutes: 15
     permissions:
       actions: read
       contents: read
@@ -70,15 +79,42 @@ jobs:
       - name: Run security scan
         run: bun security:ci
       - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         if: always() && hashFiles('semgrep-results.sarif') != ''
         with:
           sarif_file: semgrep-results.sarif
+
+  # Deliberately `needs`-free and dependency-free: it is the one check whose
+  # subject is the workflow files themselves, and an invalid one is invisible
+  # everywhere else. GitHub rejects the file rather than failing a job, so no
+  # build goes red — agent-pipeline.yml sat broken from 2026-08-09 to
+  # 2026-08-12 with CI green over it. Running before `build` makes that the
+  # first thing the run says rather than the last.
+  workflows:
+    name: Workflow Lint
+    runs-on: ubuntu-latest
+    # Observed 11s. The only slow path is the pinned actionlint download.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+      # No `bun install`: the runner script imports nothing outside Bun's own
+      # builtins, and the linter it fetches is a pinned, checksum-verified
+      # release binary.
+      - name: Lint workflow files
+        run: bun workflows:lint
 
   check:
     name: Checks
     needs: build
     runs-on: ubuntu-latest
+    # Observed 3m03s; CLAUDE.md budgets the serial suite at ~3-4 min plus ~65s of
+    # lint/typecheck/knip/format. Loose enough that a single pathologically slow
+    # test file is a slow build rather than a red one — the perf budgets this job
+    # enables (PAPAI_PERF_BUDGETS) are what fail on real timing regressions.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -91,7 +127,20 @@ jobs:
         with:
           name: build-output
           path: public/
+      # The suite this job runs includes the Docker-backed story-sandbox boundary
+      # tests, and `CI` is what makes them mandatory rather than skippable (see
+      # `isLinuxStorySandboxRequired` in scripts/story/sandbox.ts). Nothing else
+      # in this job speaks to Docker, so without this the first `docker run`
+      # inside a test is also the first registry pull — which is how run
+      # 31932802512 turned an anonymous-pull rejection into a failed boundary
+      # assertion. Warm it here, retried, where a registry problem reads as one.
+      - name: Warm the story sandbox image
+        run: bash scripts/ci/pull-story-sandbox-image.sh
       - name: Run all checks
+        env:
+          # Enforce wall-clock perf budgets here: this job runs the suite serially, so
+          # the timing assertions are not subject to parallel-worker CPU contention.
+          PAPAI_PERF_BUDGETS: '1'
         run: bun check:full
       - name: Upload coverage report
         if: always()
@@ -106,6 +155,9 @@ jobs:
     name: Hermetic Full-Stack Stories
     needs: build
     runs-on: ubuntu-24.04
+    # Observed 2m52s. The sandbox image pull is the unbounded part — a registry
+    # stall is exactly the failure this guard is for.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -121,9 +173,8 @@ jobs:
       - name: Verify Linux story sandbox
         run: |
           docker version
-          image="$(cat scripts/story/sandbox-image.txt)"
-          docker pull "$image"
-          docker run --rm --network none "$image" --version
+          bash scripts/ci/pull-story-sandbox-image.sh
+          docker run --rm --network none "$(cat scripts/story/sandbox-image.txt)" --version
       - name: Prove process sandbox boundary
         env:
           PAPAI_REQUIRE_STORY_SANDBOX: '1'
@@ -207,9 +258,25 @@ jobs:
   mutation-testing:
     name: Mutation Testing (paired, changed files)
     runs-on: ubuntu-latest
+    # The loosest guard in this file, and the one that most needed a guard at all:
+    # this was the longest unbounded job in CI, observed at 39m13s on a large PR
+    # against 21s on a one-file merge. Runtime scales with the changed-file count,
+    # so the value is sized off the worst run seen rather than the median — tight
+    # enough that a wedged Stryker worker pool cannot sit for six hours, loose
+    # enough that a genuinely large PR is not failed for being large.
+    #
+    # Carried-over scores make the typical push far cheaper, but they do not lower this
+    # ceiling: a cold cache (first push, evicted entry, changed toolchain) still measures
+    # every file in the branch diff, so the worst case is unchanged and so is the bound.
+    timeout-minutes: 90
     # Blocking PR gate. A changed file fails only if it has a recorded baseline
     # entry in scripts/mutation/baseline.json and drops below it. Files new to
     # scope (first-touch) warn and are seeded by the master mutation-baseline job.
+    #
+    # The gate judges the WHOLE branch diff on every run, but measures only the files whose
+    # content changed since the previous run — the rest carry over scores recorded earlier on
+    # this branch. So a drop introduced in one commit keeps failing later pushes that touch
+    # nothing near it, which is the property the cache steps below exist to preserve.
     if: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -220,10 +287,37 @@ jobs:
           bun-version: 1.3.13
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      # The key only decides WHICH blob to fetch. Every entry inside it is guarded by a
+      # content fingerprint at read time, so restoring an older, racing, or unrelated cache
+      # can only cost runtime — it can never let a stale score into the verdict. Cache
+      # entries are immutable per key, hence unique-key-write plus prefix-restore; run_id
+      # keeps the key unique even when the same sha is re-run.
+      - name: Restore carried-over mutation scores
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            reports/paired/score-cache.json
+            reports/paired/coverage-map.cache.json
+          key: mutation-scores-v1-${{ github.event.pull_request.number }}-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: mutation-scores-v1-${{ github.event.pull_request.number }}-
       - name: Run paired mutation testing on changed files
         env:
           BASE_REF: ${{ github.base_ref || 'master' }}
         run: bun test:mutate:changed --base="origin/$BASE_REF"
+      - name: Save carried-over mutation scores
+        # `always()` is load-bearing, not hygiene. A FAILING run must still persist the scores
+        # it measured: otherwise the next push re-measures the regressed file from scratch and
+        # the gate forgets the drop that made this run red, which is the one thing incremental
+        # measurement must never do. `continue-on-error` covers fork PRs, whose read-only token
+        # cannot write a cache — a save that fails must never turn a green gate red.
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            reports/paired/score-cache.json
+            reports/paired/coverage-map.cache.json
+          key: mutation-scores-v1-${{ github.event.pull_request.number }}-${{ github.sha }}-${{ github.run_id }}
       - name: Upload per-file mutation reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -236,6 +330,11 @@ jobs:
   mutation-baseline:
     name: Mutation Testing (changed-files baseline seed)
     runs-on: ubuntu-latest
+    # Same tool and the same variance as the paired gate above, so the same value.
+    # It matters more here than the runtime suggests: `queue: max` keeps every
+    # merge's seed alive, so one wedged job at the six-hour ceiling stalls the
+    # baseline queue behind it rather than just losing its own slot.
+    timeout-minutes: 90
     # Serialize baseline seeds across CI runs. queue: max keeps every merge's job
     # alive: the default (single) lets a newer run cancel a pending one, which
     # would silently lose that merge's seed. Group is workflow-scoped because

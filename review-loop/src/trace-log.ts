@@ -51,9 +51,72 @@ export const UsageTotalsSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
   reasoningTokens: z.number().int().nonnegative(),
+  cachedReadTokens: z.number().int().nonnegative().default(0),
+  cachedWriteTokens: z.number().int().nonnegative().default(0),
   costUsd: z.number().nonnegative(),
 })
 export type UsageTotals = z.infer<typeof UsageTotalsSchema>
+
+/**
+ * `unknown` is a distinct answer from `none`: it means nobody reported, not
+ * that nothing reaches the code. Keeping them apart is what stops an omission
+ * from being counted as a finding — or as a disagreement.
+ */
+export const ExposureKindSchema = z.enum(['caller', 'none', 'unknown'])
+export type ExposureKind = z.infer<typeof ExposureKindSchema>
+
+export const ExposureCountsSchema = z.object({
+  caller: z.number().int().nonnegative(),
+  none: z.number().int().nonnegative(),
+  unknown: z.number().int().nonnegative(),
+})
+export type ExposureCounts = z.infer<typeof ExposureCountsSchema>
+
+export function emptyExposureCounts(): ExposureCounts {
+  return { caller: 0, none: 0, unknown: 0 }
+}
+
+/**
+ * `unmeasured` is kept apart from both answers on purpose: a diff we could not
+ * read is not a fix that skipped its test, and counting it as one would make
+ * the signal accuse the innocent.
+ */
+export const CheckBehindCountsSchema = z.object({
+  withCheck: z.number().int().nonnegative(),
+  withoutCheck: z.number().int().nonnegative(),
+  unmeasured: z.number().int().nonnegative(),
+})
+export type CheckBehindCounts = z.infer<typeof CheckBehindCountsSchema>
+
+/**
+ * Split by issue kind rather than pooled. A cleanup that deletes code
+ * introduces no non-trivial logic, so it leaves no check and is right to — but
+ * pooled it would depress the ratio the check-behind rule is actually measured
+ * by, making the defect fixers look worse the more cleanups a run admits.
+ */
+export const CheckBehindByKindSchema = z.object({
+  defect: CheckBehindCountsSchema,
+  cleanup: CheckBehindCountsSchema,
+})
+export type CheckBehindByKind = z.infer<typeof CheckBehindByKindSchema>
+
+export const KindCountsSchema = z.object({
+  defect: z.number().int().nonnegative(),
+  cleanup: z.number().int().nonnegative(),
+})
+export type KindCounts = z.infer<typeof KindCountsSchema>
+
+export function emptyKindCounts(): KindCounts {
+  return { defect: 0, cleanup: 0 }
+}
+
+export function emptyCheckBehindCounts(): CheckBehindCounts {
+  return { withCheck: 0, withoutCheck: 0, unmeasured: 0 }
+}
+
+export function emptyCheckBehindByKind(): CheckBehindByKind {
+  return { defect: emptyCheckBehindCounts(), cleanup: emptyCheckBehindCounts() }
+}
 
 export const RoundMetricSchema = z.object({
   round: z.number().int().positive(),
@@ -64,6 +127,11 @@ export const RoundMetricSchema = z.object({
   reviewerSeverity: SeverityCountsSchema,
   fixerSeverity: SeverityCountsSchema,
   inspector: z.object({ runs: z.number().int().nonnegative(), rejected: z.number().int().nonnegative() }),
+  reviewerExposure: ExposureCountsSchema,
+  fixerExposure: ExposureCountsSchema,
+  exposureDivergent: z.number().int().nonnegative(),
+  reviewerKind: KindCountsSchema,
+  checkBehind: CheckBehindByKindSchema,
   phaseMs: PhaseMsSchema,
   usage: UsageTotalsSchema,
 })
@@ -110,6 +178,8 @@ export const TraceEventSchema = z.discriminatedUnion('event', [
     fixability: z.string(),
     reviewerSeverity: SeveritySchema.nullable(),
     fixerSeverity: SeveritySchema.nullable(),
+    reviewerExposure: ExposureKindSchema,
+    fixerExposure: ExposureKindSchema,
     reasoning: z.string(),
     targetFiles: z.array(z.string()),
   }),

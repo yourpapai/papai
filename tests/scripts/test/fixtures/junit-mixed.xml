@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="bun test" tests="2" assertions="2" failures="0" skipped="0" time="0.070260372">
+  <testsuite name="reports/fixture-gen/green.test.ts" file="reports/fixture-gen/green.test.ts" tests="2" assertions="2" failures="0" skipped="0" time="0" hostname="vm">
+    <testsuite name="green" file="reports/fixture-gen/green.test.ts" line="3" tests="2" assertions="2" failures="0" skipped="0" time="0" hostname="vm">
+      <testcase name="one" classname="green" time="0.000042" file="reports/fixture-gen/green.test.ts" line="4" assertions="1" />
+      <testcase name="two" classname="green" time="0.000018" file="reports/fixture-gen/green.test.ts" line="7" assertions="1" />
+    </testsuite>
+  </testsuite>
+</testsuites>

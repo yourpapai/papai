@@ -55,11 +55,12 @@ describe('settings msw handlers', () => {
     expect(pathsOf(kaneoHandlers.populated).some((p) => p.includes('/settings/api/kaneo/credentials'))).toBe(true)
   })
 
-  test('adminUsersHandlers has all four variants', () => {
+  test('adminUsersHandlers has all five variants', () => {
     expect(Array.isArray(adminUsersHandlers.populated)).toBe(true)
     expect(Array.isArray(adminUsersHandlers.empty)).toBe(true)
     expect(Array.isArray(adminUsersHandlers.error)).toBe(true)
     expect(Array.isArray(adminUsersHandlers.loading)).toBe(true)
+    expect(Array.isArray(adminUsersHandlers.openAccessError)).toBe(true)
     expect(adminUsersHandlers.populated.length).toBeGreaterThan(0)
   })
 

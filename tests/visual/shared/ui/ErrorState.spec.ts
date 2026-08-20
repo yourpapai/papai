@@ -16,5 +16,14 @@ test.describe('shared/ui/ErrorState', () => {
     await switchStory(sharedPage, 'shared-ui-errorstate--message-only')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('With detail', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-errorstate--with-detail')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

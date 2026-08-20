@@ -6,6 +6,5 @@
 export { cacheMessage, getCachedMessage } from './cache.js'
 export { buildReplyChain } from './chain.js'
 export type { CachedMessage } from './types.js'
-export type { ReplyChainResult } from './chain.js'
-export { getMessage, getMessageByContext, getMessageContext, rowToCachedMessage, searchMessages } from './store.js'
-export type { MessageContextMode, MessageContextResult, MessageScope, SearchFilters } from './store.js'
+export { getMessage, getMessageByContext, getMessageContext, searchMessages } from './store.js'
+export type { MessageScope, SearchFilters } from './store.js'

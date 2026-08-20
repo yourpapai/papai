@@ -5,16 +5,7 @@
 
 import { createClusteringProfile, recordClusteringTiming } from './clustering-profile.js'
 import type { ClusteringProfile } from './clustering-profile.js'
-import {
-  activeIndices,
-  buildAgglomerativeClusters,
-  buildCondensedDistanceMatrix,
-  condensedIndex,
-  createActiveState,
-  getDistance,
-  isActive,
-  setDistance,
-} from './consolidate-keywords-agglomerative-clustering.js'
+import { buildAgglomerativeClusters } from './consolidate-keywords-agglomerative-clustering.js'
 import {
   buildClustersNormalized,
   dotProduct,
@@ -23,16 +14,6 @@ import {
   toIndexedSubEmbeddings,
 } from './consolidate-keywords-clustering.js'
 import type { LinkageMode } from './consolidate-keywords-clustering.js'
-export {
-  activeIndices,
-  buildCondensedDistanceMatrix,
-  condensedIndex,
-  createActiveState,
-  getDistance,
-  isActive,
-  setDistance,
-}
-export type { ActiveState, MutableDistanceMatrix } from './consolidate-keywords-agglomerative-clustering.js'
 
 type Cluster = readonly number[]
 

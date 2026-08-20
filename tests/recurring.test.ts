@@ -10,13 +10,12 @@ import { drizzle } from 'drizzle-orm/bun-sqlite'
 
 import * as schema from '../src/db/schema.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
+import { findTemplateByTaskId, isCompletionStatus } from '../src/recurring-occurrences.js'
 import {
   createRecurringTask,
   deleteRecurringTask,
-  findTemplateByTaskId,
   getDueRecurringTasks,
   getRecurringTask,
-  isCompletionStatus,
   listRecurringTasks,
   markExecuted,
   pauseRecurringTask,

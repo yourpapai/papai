@@ -30,6 +30,9 @@ bun test:mutate:file src/providers/kaneo/label-resource.ts src/tools/update-stat
 # Measure everything changed vs origin/master (also used by CI):
 bun test:mutate:changed
 
+# Re-measure everything, ignoring carried-over scores:
+bun test:mutate:changed --no-score-cache
+
 # Optional threshold (exit 1 below it):
 bun test:mutate --threshold=0.6
 bun test:mutate:file src/foo.ts --threshold=0.6
@@ -47,6 +50,12 @@ A file whose Stryker run fails (dry-run timeout, crash, or missing report) is
 recorded as errored and excluded from the aggregate score; the run continues so
 one bad file never aborts the batch. Errored files appear in the summary as
 `errored=N` and carry the captured failure message for diagnosis.
+
+The Stryker binary is resolved by walking up from the working directory to the
+nearest ancestor `node_modules/.bin` (`scripts/mutation/stryker-bin.ts`,
+mirroring bun's own module resolution), so runs work from nested git worktrees
+that have no `node_modules` of their own — e.g. `mutation-improve`'s iteration
+worktrees — as long as an ancestor checkout has dependencies installed.
 
 ## Test-set resolution
 
@@ -105,6 +114,66 @@ override, or widening the candidate heuristics in `coverage-map.ts`.
 - `bun test:mutate:file` — accurate paired run for explicitly listed files.
 - `bun test:mutate:changed-paired` — descriptive alias for
   `bun test:mutate:changed`.
+
+## Generated modules are not targets
+
+`test:mutate:changed` drops anything under a `generated/` directory. Stryker instruments the file
+it mutates inside its sandbox, so a test that reads its own implementation's source text off disk
+compares against the instrumented copy and fails the **initial, unmutated** run — which aborts the
+file with a `ConfigError` and lands in the gate as `errored`, not as a score.
+`tests/analytics/tool-slug-generation.test.ts` reads
+`src/analytics/generated/tool-slugs.ts` on purpose, to prove the checked-in bytes still match a
+fresh generation; that drift guard is worth more than a mutation score on a file whose content
+comes from a generator anyway. Without the exclusion, every PR that adds a tool — and so
+regenerates the slug table — fails this gate on a file it never hand-wrote.
+
+## Incremental measurement (carried-over scores)
+
+A run measures only the files whose content changed since the previous run on the same branch —
+but it **gates the whole branch diff every time**. Files it did not measure contribute scores
+recorded by an earlier run, so a drop introduced in one commit keeps failing later pushes that
+touch nothing near it. Measuring incrementally and gating incrementally are different things;
+only the first one is safe.
+
+A recorded score is reused only when a fingerprint matches exactly:
+
+- the source file's bytes;
+- the paths **and** bytes of its candidate test universe — the companion, the coverage-map
+  candidates (same-package directory ∪ import-scanned), and any `overrides.json` entry. This is
+  a superset of the test set actually paired with the file, so it over-invalidates a little and
+  never under-invalidates;
+- a toolchain hash over `stryker.config.json`, `scripts/mutation/overrides.json`, `bun.lock`,
+  `package.json`, every `scripts/mutation/*.ts`, and `.hooks/tdd/test-resolver.mjs`.
+
+Contents are hashed, never size or mtime — `scripts/test/fingerprint.ts` deliberately does the
+opposite for a different purpose, and reusing it here would miss on every entry because each CI
+job checks the repository out fresh. The recorded baseline is deliberately _not_ an input: when
+a merge raises a file's floor, the carried-over score is re-judged against the new floor.
+
+**Not tracked:** a change to a `src/` helper the file imports. Its score is carried over even
+though the real score may have moved. Bounded by the master seed run, which always measures
+fresh — see [ADR-0424](../../docs/adr/0424-incremental-mutation-measurement-with-whole-branch-gate.md).
+
+Scores live in `reports/paired/score-cache.json`, which CI carries between pushes via
+`actions/cache`. The save step runs with `if: always()`, because a _failing_ run must still
+persist what it measured — otherwise the next push re-measures the regression from scratch and
+the gate forgets it. Reads fail open: a missing, malformed or foreign cache simply measures
+everything, exactly as before this existed.
+
+Each run prints the split, so a green run is legible as whole-branch rather than partial:
+
+```
+Whole-branch mutation targets: 22 file(s) — measured now: 3, reused: 19
+  reused src/context-vault/push-route.ts: score 0.6812 (measured 2026-08-13T20:51Z)
+```
+
+Two ways to force a full re-measure: pass `--no-score-cache` (also implied by
+`--update-baseline`, so a committed floor is only ever seeded from a fresh measurement), or bump
+`SCORE_FINGERPRINT_VERSION` in `scripts/mutation/score-fingerprint.ts`. On the CI side, bumping
+the `mutation-scores-v1` key prefix in `.github/workflows/ci.yml` does the same.
+
+Files whose run **errored** or was **skipped** are never recorded, so they stay retryable and an
+unmeasurable file can never be carried over into a pass.
 
 ## Ratchet gate (`scripts/mutation/baseline.json`)
 

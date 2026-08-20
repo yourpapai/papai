@@ -60,7 +60,7 @@ const PatchResponseSchema = z.object({
   contextId: z.string(),
 })
 
-const ErrorResponseSchema = z.object({ error: z.string() })
+const ErrorResponseSchema = z.object({ error: z.string(), field: z.string().optional() })
 
 function get(path: string, session: SettingsSession): Request {
   return new Request(`https://x${path}`, { headers: authHeaders(session) })
@@ -143,6 +143,7 @@ describe('coding-credentials routes', () => {
     expect(res.status).toBe(422)
     const body = ErrorResponseSchema.parse(await res.json())
     expect(body.error).toContain('incompatible')
+    expect(body.field).toBeUndefined()
   })
 
   test('PATCH accepts compatible agent/provider pair', async () => {
@@ -475,7 +476,8 @@ describe('coding-credentials routes', () => {
     )
     expect(res.status).toBe(422)
     const body = ErrorResponseSchema.parse(await res.json())
-    expect(body.error).toContain('unknown')
+    expect(body.error).toBe('unsupported coding agent')
+    expect(body.field).toBe('agent')
   })
 
   test('PATCH rejects unknown provider value with 422', async () => {
@@ -489,7 +491,8 @@ describe('coding-credentials routes', () => {
     )
     expect(res.status).toBe(422)
     const body = ErrorResponseSchema.parse(await res.json())
-    expect(body.error).toContain('unknown')
+    expect(body.error).toBe('unsupported model provider')
+    expect(body.field).toBe('provider')
   })
 
   test('PATCH ?namespace=forge saves the forge token masked on GET', async () => {
@@ -524,6 +527,9 @@ describe('coding-credentials routes', () => {
       url,
     )
     expect(bad.status).toBe(422)
+    const badBody = ErrorResponseSchema.parse(await bad.json())
+    expect(badBody.error).toBe('required for self-hosted code hosts, and must start with https://')
+    expect(badBody.field).toBe('instance_url')
 
     const ok = await handleCodingCredentialsRoutes(
       patch('/settings/api/coding-credentials', session, {
@@ -546,7 +552,8 @@ describe('coding-credentials routes', () => {
     )
     expect(res.status).toBe(422)
     const body = ErrorResponseSchema.parse(await res.json())
-    expect(body.error).toContain('unknown')
+    expect(body.error).toBe('unsupported code host')
+    expect(body.field).toBe('kind')
   })
 
   test('forge PATCH instance_url must be https for self-hosted', async () => {
@@ -559,6 +566,9 @@ describe('coding-credentials routes', () => {
       url,
     )
     expect(res.status).toBe(422)
+    const body = ErrorResponseSchema.parse(await res.json())
+    expect(body.error).toBe('required for self-hosted code hosts, and must start with https://')
+    expect(body.field).toBe('instance_url')
   })
 
   test('openai-compatible provider requires a base URL (422 without, 200 with)', async () => {
@@ -572,7 +582,8 @@ describe('coding-credentials routes', () => {
     )
     expect(bad.status).toBe(422)
     const badBody = ErrorResponseSchema.parse(await bad.json())
-    expect(badBody.error).toContain('base URL')
+    expect(badBody.error).toBe('required for the openai-compatible provider')
+    expect(badBody.field).toBe('provider_base_url')
 
     const ok = await handleCodingCredentialsRoutes(
       patch('/settings/api/coding-credentials', session, {
@@ -615,7 +626,8 @@ describe('coding-credentials routes', () => {
     )
     expect(bad.status).toBe(422)
     const body = ErrorResponseSchema.parse(await bad.json())
-    expect(body.error).toContain('base URL')
+    expect(body.error).toBe('required for the openai-compatible provider')
+    expect(body.field).toBe('provider_base_url')
   })
 
   test('openai-compatible 200 uses MERGED state: patch only provider when base URL already stored → 200', async () => {
@@ -708,7 +720,8 @@ describe('coding-credentials routes', () => {
     )
     expect(res.status).toBe(422)
     const body = ErrorResponseSchema.parse(await res.json())
-    expect(body.error).toContain('model')
+    expect(body.error).toBe('too long (max 200 characters)')
+    expect(body.field).toBe('model')
   })
 
   test('PATCH rejects model with control characters with 422', async () => {
@@ -722,7 +735,8 @@ describe('coding-credentials routes', () => {
     )
     expect(res.status).toBe(422)
     const body = ErrorResponseSchema.parse(await res.json())
-    expect(body.error).toContain('model')
+    expect(body.error).toBe('contains control characters')
+    expect(body.field).toBe('model')
   })
 
   test('forge PATCH token-only (no kind) with github defaults is allowed', async () => {
@@ -776,6 +790,44 @@ describe('coding-credentials routes', () => {
       url,
     )
     expect(res.status).toBe(422)
-    expect(ErrorResponseSchema.parse(await res.json()).error).toMatch(/base URL/u)
+    const body = ErrorResponseSchema.parse(await res.json())
+    expect(body.error).toBe('leave blank when auth method is oauth-subscription')
+    expect(body.field).toBe('provider_base_url')
+  })
+
+  test('PATCH rejects an unknown auth method with 422 attributed to auth_method', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: { agent: 'claude', provider: 'anthropic', provider_api_key: 'k', auth_method: 'kerberos' },
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
+    const body = ErrorResponseSchema.parse(await res.json())
+    expect(body.error).toBe('unsupported auth method')
+    expect(body.field).toBe('auth_method')
+  })
+
+  test('PATCH rejects oauth-subscription with a base URL, attributed to provider_base_url', async () => {
+    const url = new URL('https://x/settings/api/coding-credentials')
+    const res = await handleCodingCredentialsRoutes(
+      patch('/settings/api/coding-credentials', session, {
+        namespace: 'agent-provider',
+        values: {
+          agent: 'claude',
+          provider: 'anthropic',
+          provider_api_key: 'k',
+          auth_method: 'oauth-subscription',
+          provider_base_url: 'https://example.com/v1',
+        },
+      }),
+      url,
+    )
+    expect(res.status).toBe(422)
+    const body = ErrorResponseSchema.parse(await res.json())
+    expect(body.error).toBe('leave blank when auth method is oauth-subscription')
+    expect(body.field).toBe('provider_base_url')
   })
 })

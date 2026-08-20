@@ -71,7 +71,7 @@
 </script>
 
 <section id="byok-admin" class="settings-section">
-  <PageHeader eyebrow="Admin · System" title="BYOK LLM">
+  <PageHeader eyebrow="Admin · System" title="BYOK keys">
     {#snippet action()}
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load()} testid="admin-byok-refresh" />
     {/snippet}
@@ -111,7 +111,7 @@
     margin-right: 8px;
   }
   .settings-byok-admin__error {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-size: 12px;
   }
 </style>

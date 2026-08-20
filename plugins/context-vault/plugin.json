@@ -1,0 +1,15 @@
+{
+  "id": "context-vault",
+  "name": "Context Vault",
+  "version": "1.0.0",
+  "description": "Read OpenSpec change summaries, outlines, stage, and progress pushed by context-vault indexers",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "contributes": {
+    "tools": ["list_agent_specs", "get_agent_spec"]
+  },
+  "permissions": ["contextVault.read"],
+  "storageScope": "group",
+  "defaultEnabled": false,
+  "activationTimeoutMs": 3000
+}

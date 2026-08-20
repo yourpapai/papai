@@ -14,21 +14,23 @@
     children: Snippet
     tone?: Tone
     dot?: boolean
+    /** Optional id so the pill can be referenced by aria-describedby / aria-labelledby. */
+    id?: string
   }
 
-  let { children, tone = 'neutral', dot = false }: Props = $props()
+  let { children, tone = 'neutral', dot = false, id }: Props = $props()
 
   const dotColor: Record<Tone, string> = {
     accent: 'var(--accent)',
     warn: 'var(--warn)',
     danger: 'var(--danger)',
     info: 'var(--info)',
-    neutral: 'var(--fg3)',
-    mute: 'var(--fg4)',
+    neutral: 'var(--text-dim)',
+    mute: 'var(--text-dim)',
   }
 </script>
 
-<span class="ui-pill ui-pill--{tone}">
+<span {id} class="ui-pill ui-pill--{tone}">
   {#if dot}
     <Dot color={dotColor[tone]} glow={tone === 'accent'} />
   {/if}
@@ -69,13 +71,13 @@
     border-color: rgba(108, 182, 255, 0.3);
   }
   .ui-pill--neutral {
-    color: var(--fg2);
+    color: var(--text-muted);
     background: transparent;
     border-color: var(--border);
   }
   .ui-pill--mute {
-    color: var(--fg3);
+    color: var(--text-dim);
     background: transparent;
-    border-color: var(--hair);
+    border-color: var(--border);
   }
 </style>

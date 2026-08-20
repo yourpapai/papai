@@ -22,6 +22,7 @@ afterEach(cleanupTempDirs)
 
 const issue: ReviewerIssue = {
   title: 'Missing error handling',
+  kind: 'defect',
   severity: 'high',
   summary: 'Errors are swallowed.',
   whyItMatters: 'Silent failures.',

@@ -40,7 +40,9 @@ const MembersLabelSchema = z.object({
 const TaskInstanceGetSchema = z.object({
   contextId: z.string(),
   taskInstanceId: z.string().nullable(),
-  available: z.array(z.object({ id: z.string(), type: z.string(), status: z.string(), name: z.string().optional() })),
+  // `name` is required here, not optional: this route is the layer that
+  // guarantees every option carries a human-readable label.
+  available: z.array(z.object({ id: z.string(), type: z.string(), status: z.string(), name: z.string() })),
   canProvision: z.boolean(),
 })
 
@@ -327,7 +329,9 @@ describe('settings group routes', () => {
 
     expect(res.status).toBe(200)
     const body = TaskInstanceGetSchema.parse(await res.json())
-    expect(body.available).toEqual([{ id: 'ti-active', type: 'kaneo', status: 'active' }])
+    expect(body.available).toEqual([
+      { id: 'ti-active', type: 'kaneo', status: 'active', name: 'Kaneo instance (ti-active)' },
+    ])
   })
 
   test('task-instance GET surfaces config.baseUrl as the option name', async () => {
@@ -353,6 +357,24 @@ describe('settings group routes', () => {
     ])
   })
 
+  test('task-instance GET labels a config-less instance with its type and id', async () => {
+    const contextId = seedManageableGroup()
+    insertTaskInstance({ id: 'ti-bare', type: 'youtrack', config: {}, status: 'active' })
+
+    const getUrl = new URL(`https://x/settings/api/group/task-instance?contextId=${encodeURIComponent(contextId)}`)
+    const res = await handleGroupRoutes(
+      new Request(getUrl, { headers: authHeaders(session) }),
+      getUrl,
+      '/settings/api/group/task-instance',
+    )
+
+    expect(res.status).toBe(200)
+    const body = TaskInstanceGetSchema.parse(await res.json())
+    expect(body.available).toEqual([
+      { id: 'ti-bare', type: 'youtrack', status: 'active', name: 'YouTrack instance (ti-bare)' },
+    ])
+  })
+
   test('task-instance GET skips unreadable rows and still returns readable active instances', async () => {
     const contextId = seedManageableGroup()
     insertTaskInstance({ id: 'ti-active', type: 'kaneo', config: {}, status: 'active' })
@@ -367,7 +389,9 @@ describe('settings group routes', () => {
 
     expect(res.status).toBe(200)
     const body = TaskInstanceGetSchema.parse(await res.json())
-    expect(body.available).toEqual([{ id: 'ti-active', type: 'kaneo', status: 'active' }])
+    expect(body.available).toEqual([
+      { id: 'ti-active', type: 'kaneo', status: 'active', name: 'Kaneo instance (ti-active)' },
+    ])
   })
 
   test('task-instance PATCH unknown instance returns 422', async () => {

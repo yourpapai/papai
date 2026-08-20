@@ -44,14 +44,16 @@ const RuntimeSymlinkSchema = z.strictObject({
   target: z.string(),
 })
 const RuntimeInputSchema = z.discriminatedUnion('kind', [RuntimeFileSchema, RuntimeSymlinkSchema])
-const RuntimeDirectoriesSchema = z.array(z.string().regex(/^(?:src|plugins|public)(?:\/[^/\\]+)*$/u)).refine(
-  (directories) =>
-    directories.every((directory, index) => {
-      const previous = directories[index - 1]
-      return index === 0 || (previous !== undefined && previous < directory)
-    }),
-  'Runtime directories must be unique and sorted',
-)
+const RuntimeDirectoriesSchema = z
+  .array(z.string().regex(/^(?:src|plugins|public|context-vault-indexer)(?:\/[^/\\]+)*$/u))
+  .refine(
+    (directories) =>
+      directories.every((directory, index) => {
+        const previous = directories[index - 1]
+        return index === 0 || (previous !== undefined && previous < directory)
+      }),
+    'Runtime directories must be unique and sorted',
+  )
 const RuntimeInputManifestSchema = z.strictObject({
   treeHash: z.string().regex(FILE_HASH),
   directories: RuntimeDirectoriesSchema,

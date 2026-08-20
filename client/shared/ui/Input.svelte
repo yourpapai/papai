@@ -6,7 +6,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
 
-  import { getFieldError, getFieldLabelId } from './field-context.js'
+  import { getFieldLabelId, useFieldInvalid } from './field-context.js'
 
   interface Props {
     value: string
@@ -16,6 +16,7 @@
     onBlur?: () => void
     type?: 'text' | 'search' | 'password'
     readonly?: boolean
+    disabled?: boolean
     testid?: string
     multiline?: boolean
     rows?: number
@@ -29,17 +30,17 @@
     onBlur,
     type = 'text',
     readonly = false,
+    disabled = false,
     testid,
     multiline = false,
     rows = 3,
   }: Props = $props()
 
   const labelId = getFieldLabelId()
-  const fieldError = getFieldError()
-  const invalid = $derived(fieldError?.invalid ?? false)
-  const describedBy = $derived(invalid ? fieldError?.errorId : undefined)
+  const fieldError = useFieldInvalid()
 
   function handleInput(event: Event): void {
+    if (disabled) return
     const next = (event.target as HTMLInputElement | HTMLTextAreaElement).value
     onInput?.(next)
   }
@@ -48,17 +49,20 @@
 <div
   class="ui-input"
   class:ui-input--multiline={multiline}
-  class:ui-input--invalid={invalid}
+  class:ui-input--disabled={disabled}
+  class:ui-input--invalid={fieldError.invalid}
 >
   {#if multiline}
     <textarea
       {placeholder}
       {value}
       {readonly}
+      {disabled}
       {rows}
       aria-labelledby={labelId}
-      aria-invalid={invalid ? 'true' : undefined}
-      aria-describedby={describedBy}
+      aria-invalid={fieldError.invalid ? 'true' : undefined}
+      aria-required={fieldError.required ? 'true' : undefined}
+      aria-describedby={fieldError.describedBy}
       data-testid={testid}
       oninput={handleInput}
       onblur={onBlur}
@@ -72,9 +76,11 @@
       {placeholder}
       {value}
       {readonly}
+      {disabled}
       aria-labelledby={labelId}
-      aria-invalid={invalid ? 'true' : undefined}
-      aria-describedby={describedBy}
+      aria-invalid={fieldError.invalid ? 'true' : undefined}
+      aria-required={fieldError.required ? 'true' : undefined}
+      aria-describedby={fieldError.describedBy}
       data-testid={testid}
       oninput={handleInput}
       onblur={onBlur} />
@@ -85,7 +91,7 @@
   .ui-input {
     display: flex;
     align-items: center;
-    background: var(--raised);
+    background: var(--surface-2);
     border: 1px solid var(--border);
     padding: 0 10px;
     border-radius: var(--radius-control);
@@ -97,8 +103,12 @@
   .ui-input--invalid {
     border-color: var(--danger);
   }
+  .ui-input--disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
   .ui-input__prefix {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 12px;
     margin-right: 8px;
@@ -107,7 +117,7 @@
     background: transparent;
     border: 0;
     outline: 0;
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
     flex: 1;
@@ -120,7 +130,7 @@
     background: transparent;
     border: 0;
     outline: 0;
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
     flex: 1;

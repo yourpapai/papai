@@ -10,6 +10,8 @@ import type { TaskHandler } from '../../utils/scheduler.js'
 import { utcDayOfMs } from '../aggregate.js'
 import { runDeliveryWorkerTick } from '../delivery/worker.js'
 import type { EffectiveLanes } from '../governance/policy-store.js'
+import { createSnapshotConsumerCoordinator } from '../governance/snapshot-consumer.js'
+import { createFileBoundConsumer } from '../governance/snapshot-file-consumer.js'
 import { createRekeyCutoverFence } from '../rekey/cutover-fence.js'
 import type { RekeyCutoverFence } from '../rekey/cutover-fence.js'
 import { utcDayStartMs } from '../retention/expiry-guard.js'
@@ -198,6 +200,7 @@ const reconcileHandler = (deps: AnalyticsJobDeps, run: AnalyticsJobRunnerOverrid
 }
 
 const snapshotHandler = (deps: AnalyticsJobDeps, run: AnalyticsJobRunnerOverrides): TaskHandler => {
+  const consumer = createFileBoundConsumer()
   return () => {
     if (deps.lanes().killSwitchActive) return
     const outputPath = deps.snapshotPath()
@@ -211,6 +214,12 @@ const snapshotHandler = (deps: AnalyticsJobDeps, run: AnalyticsJobRunnerOverride
       { outputPath, replace: true },
       { getDrizzleDb: deps.getDrizzleDb, fence: snapshotFence(deps), nowMs: deps.nowMs },
     )
+    createSnapshotConsumerCoordinator({
+      getDrizzleDb: deps.getDrizzleDb,
+      consumer,
+      pathForSnapshot: () => outputPath,
+      nowMs: deps.nowMs,
+    }).publishStagedOrdinary()
   }
 }
 

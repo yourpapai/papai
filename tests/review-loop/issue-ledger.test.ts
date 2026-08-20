@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -17,12 +17,14 @@ import {
   recordVerification,
   saveIssueLedger,
 } from '../../review-loop/src/issue-ledger.js'
+import { FixerResultSchema } from '../../review-loop/src/issue-schema.js'
 import type { IssueMatch, ReviewerIssue, VerifierDecision } from '../../review-loop/src/issue-schema.js'
 
 const tempDirs: string[] = []
 
 const issue: ReviewerIssue = {
   title: 'Race condition in queue flush path',
+  kind: 'defect',
   severity: 'high',
   summary: 'Two concurrent messages can bypass the intended lock.',
   whyItMatters: 'This can produce stale assistant replies.',
@@ -162,5 +164,61 @@ describe('issue ledger', () => {
     })
 
     expect(ledger.snapshot.issues[id]?.status).toBe('needs_human')
+  })
+})
+
+describe('issue kind on the ledger', () => {
+  test('a ledger written before cleanups existed loads as all-defects', async () => {
+    // The ledger is Zod-validated on read and persists across --resume-run, so
+    // a snapshot from an earlier run must keep loading. It holds only defects
+    // by construction — cleanups could not be reported yet — so the default is
+    // a true statement about that file, not a fallback.
+    const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
+    tempDirs.push(runDir)
+
+    const { kind: _dropped, ...issueWithoutKind } = issue
+    writeFileSync(
+      path.join(runDir, 'ledger.json'),
+      JSON.stringify({
+        issues: {
+          'issue-1': {
+            id: 'issue-1',
+            issue: issueWithoutKind,
+            status: 'discovered',
+            firstSeenRound: 1,
+            latestSeenRound: 1,
+            fixAttempts: 0,
+            verifierDecision: null,
+          },
+        },
+      }),
+    )
+
+    const ledger = await loadIssueLedger(runDir)
+    expect(ledger.snapshot.issues['issue-1']?.issue.kind).toBe('defect')
+  })
+
+  test('a fixer result cannot change the recorded kind', async () => {
+    // The kind is the reviewer's answer. FixerResultSchema carries no `kind`,
+    // so one asserted in a reply is stripped before it can reach the ledger —
+    // this pins that, because adding the field there would silently make the
+    // fixer able to reclassify its own issue out of the defect queue.
+    const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
+    tempDirs.push(runDir)
+
+    const ledger = await createIssueLedger(runDir)
+    const cleanup: ReviewerIssue = { ...issue, kind: 'cleanup' }
+    const records = applyMatchedIssues(ledger, 1, [cleanup], [{ newIssueIndex: 0, existingId: null }])
+    const id = records[0]!.id
+
+    const parsed = FixerResultSchema.parse({
+      ...validDecision,
+      fixed: true,
+      kind: 'defect',
+    })
+    expect(parsed).not.toHaveProperty('kind')
+
+    recordVerification(ledger, id, validDecision)
+    expect(ledger.snapshot.issues[id]?.issue.kind).toBe('cleanup')
   })
 })

@@ -17,6 +17,7 @@ afterEach(cleanupTempDirs)
 
 const existingIssue: ReviewerIssue = {
   title: 'Race condition in queue flush',
+  kind: 'defect',
   severity: 'high',
   summary: 'Two concurrent messages bypass the lock.',
   whyItMatters: 'Stale replies.',
@@ -114,9 +115,8 @@ describe('issue-matcher', () => {
 
   test('short-circuits without invoking matcher when there are no new issues', async () => {
     const dir = makeTempDir('matcher-')
-    const spawn = mock(
-      (): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
-        Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+    const spawn = mock((): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
+      Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
     )
 
     const result = await matchIssues({

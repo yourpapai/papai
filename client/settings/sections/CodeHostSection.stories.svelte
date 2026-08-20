@@ -17,27 +17,45 @@
   })
 </script>
 
-<!-- CodeHostSection reads /settings/api/coding-credentials (same endpoint as CodingCredentialsSection) -->
+<!-- CodeHostSection reads the 'forge' namespace of /settings/api/coding-credentials -->
 <Story
   name="Populated"
   args={{ contextId: CONTEXT_ID }}
-  parameters={{ fixtures: 'settings-coding-credentials-populated' }}
+  parameters={{ fixtures: 'settings-code-host-populated' }}
 />
 
 <Story
   name="Empty"
   args={{ contextId: CONTEXT_ID }}
-  parameters={{ fixtures: 'settings-coding-credentials-empty' }}
+  parameters={{ fixtures: 'settings-code-host-empty' }}
 />
 
 <Story
   name="Error"
   args={{ contextId: CONTEXT_ID }}
-  parameters={{ fixtures: 'settings-coding-credentials-error' }}
+  parameters={{ fixtures: 'settings-code-host-error' }}
 />
 
 <Story
   name="Loading"
   args={{ contextId: CONTEXT_ID }}
-  parameters={{ fixtures: 'settings-coding-credentials-loading' }}
+  parameters={{ fixtures: 'settings-code-host-loading' }}
+/>
+
+<Story
+  name="Save validation error"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-code-host-save-error' }}
+/>
+
+<Story
+  name="Incomplete"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-code-host-incomplete' }}
+/>
+
+<Story
+  name="Self hosted"
+  args={{ contextId: CONTEXT_ID }}
+  parameters={{ fixtures: 'settings-code-host-self-hosted' }}
 />

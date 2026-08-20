@@ -20,6 +20,7 @@ const TONE_MAP: Record<string, StatusTone> = {
   error: 'danger',
   failed: 'danger',
   stopped: 'danger',
+  blocked: 'danger',
   unmatched: 'mute',
   idle: 'mute',
   unknown: 'mute',

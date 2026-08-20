@@ -132,7 +132,7 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--fg3);
+    color: var(--text-dim);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -141,8 +141,8 @@
   .count-badge {
     font-size: 11px;
     font-weight: 500;
-    color: var(--fg4);
-    background: var(--surface2);
+    color: var(--text-dim);
+    background: var(--surface-2);
     padding: 1px 6px;
     border-radius: 10px;
   }

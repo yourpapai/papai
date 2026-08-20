@@ -61,12 +61,13 @@
   <PageHeader eyebrow="Group" title="Guest mode">
     {#snippet action()}
       {#if enabled !== null}
-        <Pill tone={enabled ? 'warn' : 'mute'} dot={enabled}>{enabled ? 'On' : 'Off'}</Pill>
+        <Pill id="guest-mode-state" tone={enabled ? 'warn' : 'mute'} dot={enabled}>{enabled ? 'On' : 'Off'}</Pill>
         <Btn
           variant="secondary"
           size="sm"
           busy={mutating}
           disabled={loading || mutating}
+          ariaDescribedBy="guest-mode-state guest-mode-help"
           testid="guest-mode-toggle"
           onClick={() => void toggle()}>
           {#snippet children()}
@@ -84,7 +85,7 @@
   </PageHeader>
 
   {#if toggleError !== null}
-    <p class="status-error" data-testid="guest-mode-error">{formatFetchError(toggleError)}</p>
+    <p class="status-error" role="alert" data-testid="guest-mode-error">{formatFetchError(toggleError)}</p>
   {/if}
 
   {#if error !== null && enabled === null}
@@ -95,7 +96,7 @@
     {#if error !== null}
       <p class="status-error" role="alert" data-testid="guest-mode-load-error">{formatFetchError(error)}</p>
     {/if}
-    <p class="t-help">
+    <p class="t-help" id="guest-mode-help">
       When on, anyone in this chat can use the bot, read-only. Members and admins are unaffected.
     </p>
   {/if}

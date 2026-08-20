@@ -13,6 +13,7 @@ import { createIssueLedger, IssueLedgerSnapshotSchema } from '../../review-loop/
 import type { IssueMatch, ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import { runReviewLoop } from '../../review-loop/src/loop-controller.js'
 import { createRunState, PersistedRunStateSchema } from '../../review-loop/src/run-state.js'
+import type { StopController, StopReason } from '../../review-loop/src/stop-controller.js'
 import type { Decisions } from '../../review-loop/src/trace-log.js'
 import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
 import { execGit } from '../../review-loop/src/worktree.js'
@@ -33,6 +34,7 @@ afterEach(cleanupTempDirs)
 
 const issue: ReviewerIssue = {
   title: 'Race condition in queue flush path',
+  kind: 'defect',
   severity: 'high',
   summary: 'Two concurrent messages can bypass the intended lock.',
   whyItMatters: 'This can produce stale assistant replies.',
@@ -1147,5 +1149,210 @@ describe('runReviewLoop', () => {
     expect(decisions.needs_human).toBe(1)
     expect(decisions.fixed).toBe(0)
     expect(sumDecisions(decisions)).toBe(1)
+  })
+})
+
+/** A stop nothing arms on its own, so a test decides exactly when the run is over. */
+function manualStop(): StopController {
+  let reason: StopReason | null = null
+  return {
+    requested: () => reason,
+    request: (next) => {
+      reason ??= next
+    },
+    dispose: () => undefined,
+  }
+}
+
+describe('runReviewLoop under a stop request', () => {
+  test('finishes the round it is in and starts no further one', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxRounds: 5 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+
+    const stop = manualStop()
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: createMockSpawn({
+        // Enough rounds' worth of findings that only the stop can end this run.
+        reviewerIssues: [[issue], [issue], [issue]],
+        fixerResults: [
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+          { verdict: 'valid', fixability: 'auto', fixed: true },
+        ],
+        onFixer: (cwd) => {
+          writeFileSync(path.join(cwd, 'fixed.ts'), 'ok\n')
+          stop.request('budget')
+          return Promise.resolve()
+        },
+      }),
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
+      stop,
+    })
+
+    expect(result.doneReason).toBe('stopped')
+    expect(result.rounds).toBe(1)
+    // The round it was in still counts: its fix was accepted, built and merged.
+    expect(result.metrics?.[0]?.decisions.fixed).toBe(1)
+  })
+
+  test('starts no round at all when the stop is already asked for', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+
+    let spawns = 0
+    const stop = manualStop()
+    stop.request('signal')
+
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: (command, args, opts) => {
+        spawns += 1
+        return createMockSpawn({ reviewerIssues: [[]] })(command, args, opts)
+      },
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
+      stop,
+    })
+
+    expect(result.doneReason).toBe('stopped')
+    expect(spawns).toBe(0)
+  })
+})
+
+describe('a stop that lands inside a round', () => {
+  test('starts no further agent — not even the matcher', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot, { maxRounds: 5 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+    // A record for the matcher to have something to match against: with an empty
+    // ledger it short-circuits and never spawns, which would make this vacuous.
+    ledger.snapshot.issues['seed'] = {
+      id: 'seed',
+      issue,
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    }
+
+    const stop = manualStop()
+    const matcherCalls: string[] = []
+    const inner = createMockSpawn({
+      reviewerIssues: [[issue], [issue]],
+      fixerResults: [{ verdict: 'valid', fixability: 'auto', fixed: true }],
+      // The reviewer is the long pole — seven minutes in the run this comes from
+      // — so the budget usually runs out inside it, not between rounds.
+      onReviewer: () => {
+        stop.request('budget')
+      },
+    })
+
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: (command, args, opts) => {
+        matcherCalls.push(...args.join('\n').split('Match newly found').slice(1))
+        return inner(command, args, opts)
+      },
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
+      stop,
+    })
+
+    // The matcher is an `opencode run` of its own, and minutes of it: spending
+    // them after the loop has agreed to stop spends the slice its caller held
+    // back for publishing and finalizing.
+    expect(matcherCalls).toEqual([])
+    expect(result.doneReason).toBe('stopped')
+  })
+
+  test('reports a subprocess that died with the run as a stop, not as a failure', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+
+    const stop = manualStop()
+
+    // What a stop actually looks like from inside: the agent that was running
+    // when the budget expired is killed by its own timeout — which is now capped
+    // by that same budget — and throws. Thrown out of here it takes the summary,
+    // the metrics and the exit code with it, and the caller reports a failure for
+    // a run that only ran out of time.
+    const result = await runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: () => {
+        stop.request('budget')
+        return Promise.reject(new Error('reviewer exited with code 1: killed'))
+      },
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
+      stop,
+    })
+
+    expect(result.doneReason).toBe('stopped')
+  })
+
+  test('still reports a failure that had nothing to do with a stop', async () => {
+    const repoRoot = makeTempDir('loop-ctrl-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupGitRepo(runState.worktreePath)
+
+    const failing = runReviewLoop({
+      config,
+      runState,
+      ledger,
+      spawn: () => Promise.reject(new Error('reviewer exited with code 1: no such model')),
+      exec: createMockExec(true),
+      log: silentReporter(),
+      trace: silentTrace(),
+      pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+      inspect: true,
+      stop: manualStop(),
+    })
+
+    await expect(failing).rejects.toThrow('no such model')
   })
 })

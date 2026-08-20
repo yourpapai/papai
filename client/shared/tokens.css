@@ -18,7 +18,7 @@
   /* ---- foreground ---- */
   --text: #e6efe8;
   --text-muted: #9aa79d;
-  --text-dim: #6b766e;
+  --text-dim: #828d84; /* 4.70:1 on --surface-hover, 5.69:1 on --bg — WCAG SC 1.4.3 floor */
 
   /* ---- accent + semantic ---- */
   --accent: #52e08a;
@@ -54,6 +54,15 @@
   --radius-control: 2px;
   --radius-pill: 999px;
   --row-h: 44px;
+  /*
+   * 24px is the height half of WCAG 2.2 AA SC 2.5.8 (24x24 CSS px). Height
+   * alone does not satisfy the criterion — the control must also be at least
+   * 24px wide, or be spaced so a 24px circle centred on it hits no neighbour.
+   * Check both when using this token on a narrow control.
+   */
+  --control-h-sm: 24px;
+  --control-h-md: 28px;
+  --control-h-lg: 34px;
 
   /* ---- spacing scale (4px base, legacy) ---- */
   --s1: 4px;
@@ -65,14 +74,4 @@
   --s7: 32px;
   --s8: 40px;
   --s9: 48px;
-
-  /* ---- legacy aliases: debug/admin SPAs reference these names ---- */
-  --surface: var(--surface-1);
-  --raised: var(--surface-2);
-  --hair: var(--border);
-  --fg: var(--text);
-  --fg2: var(--text-muted);
-  --fg3: var(--text-dim);
-  --fg4: #3a4248;
-  --fg-hint: #8b978c; /* instructional hint text — ≥4.5:1 on --surface-1/-2 (measures ~6:1) */
 }

@@ -20,6 +20,7 @@ import {
   type DailyAggregateKey,
   type QualityDisclosure,
 } from './aggregate-store-helpers.js'
+import { recordLiveAggregateDisposition } from './epoch-source-counters.js'
 import { requireOpenEpoch } from './epoch-store.js'
 
 const log = logger.child({ scope: 'analytics:storage:aggregate-histogram-store' })
@@ -203,6 +204,20 @@ const updateHistogram = (
     .run()
 }
 
+const recordEpochAccounting = (tx: Tx, input: MergeHistogramInput): void => {
+  if (input.epochId === undefined || input.aggregateCellKey === undefined) return
+  recordHistogramEpochContribution(tx, {
+    epochId: input.epochId,
+    aggregateCellKey: input.aggregateCellKey,
+    sampleCount: input.sampleCount,
+    sum: input.sum,
+    counts: input.counts,
+  })
+  if (input.runId === undefined) {
+    recordLiveAggregateDisposition(tx, { epochId: input.epochId, utcDay: input.utcDay, value: input.sampleCount })
+  }
+}
+
 export const mergeHistogram = (
   input: MergeHistogramInput,
   deps: AggregateHistogramStoreDeps = { getDrizzleDb: defaultGetDrizzleDb },
@@ -225,15 +240,7 @@ export const mergeHistogram = (
       updateHistogram(tx, input, existing, quality)
     }
 
-    if (input.epochId !== undefined && input.aggregateCellKey !== undefined) {
-      recordHistogramEpochContribution(tx, {
-        epochId: input.epochId,
-        aggregateCellKey: input.aggregateCellKey,
-        sampleCount: input.sampleCount,
-        sum: input.sum,
-        counts: input.counts,
-      })
-    }
+    recordEpochAccounting(tx, input)
 
     if (input.runId !== undefined && input.aggregateCellKey !== undefined && input.sourceRefKey !== undefined) {
       tx.insert(analyticsBackfillAggregateContributions)

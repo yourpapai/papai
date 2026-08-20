@@ -16,5 +16,14 @@ test.describe('debug/components/TraceList', () => {
     await switchStory(sharedPage, 'debug-components-tracelist--empty')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Selected', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'debug-components-tracelist--selected')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

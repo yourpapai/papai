@@ -10,11 +10,9 @@ import { eq } from 'drizzle-orm'
 import {
   createInMemoryBlobStoreForTesting,
   resetBlobStoreForTesting,
-  resolveStagedFile,
-  searchStagedFiles,
   setBlobStoreForTesting,
-  stageFileMetadata,
-} from '../../../src/attachments/index.js'
+} from '../../../src/attachments/blob-store.js'
+import { resolveStagedFile, searchStagedFiles, stageFileMetadata } from '../../../src/attachments/index.js'
 import { createStagedDownloader } from '../../../src/attachments/staged-download.js'
 import type { StagedFileRef } from '../../../src/attachments/types.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'

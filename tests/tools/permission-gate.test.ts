@@ -27,6 +27,14 @@ describe('isPermissionDeniedResult', () => {
     expect(isPermissionDeniedResult({ status: 'permission_denied' })).toBe(false)
     expect(isPermissionDeniedResult('permission_denied')).toBe(false)
   })
+
+  test('rejects an object whose status is not permission_denied even with a string message', () => {
+    expect(isPermissionDeniedResult({ status: 'other_status', message: 'hi' })).toBe(false)
+  })
+
+  test('rejects a permission_denied object whose message is not a string', () => {
+    expect(isPermissionDeniedResult({ status: 'permission_denied', message: 7 })).toBe(false)
+  })
 })
 
 describe('buildPermissionDenied', () => {
@@ -159,5 +167,119 @@ describe('gatedExecute', () => {
     const gated = gatedExecute(fakeExecute, 'demo_tool', ask)
     await gated({ id: 'X', _permission_reason: 'cleanup' }, toolOpts)
     expect(captured).toMatchObject({ toolName: 'demo_tool', reason: 'cleanup', args: { id: 'X' } })
+  })
+})
+
+type SafeParseSchema = { safeParse: (data: unknown) => { success: boolean } }
+type JsonSchemaWrapper = { jsonSchema: Record<string, unknown> }
+
+function hasSafeParse(s: unknown): s is SafeParseSchema {
+  return s !== null && typeof s === 'object' && 'safeParse' in s
+}
+
+function isJsonSchemaWrapper(s: unknown): s is JsonSchemaWrapper {
+  return s !== null && typeof s === 'object' && 'jsonSchema' in s
+}
+
+function isStringRecord(s: unknown): s is Record<string, unknown> {
+  return s !== null && typeof s === 'object'
+}
+
+function requireSafeParse(s: unknown): SafeParseSchema {
+  if (!hasSafeParse(s)) throw new Error('expected a schema with safeParse')
+  return s
+}
+
+function requireJsonSchema(s: unknown): JsonSchemaWrapper {
+  if (!isJsonSchemaWrapper(s)) throw new Error('expected a jsonSchema wrapper')
+  return s
+}
+
+function permissionReasonDescription(s: unknown): unknown {
+  const json = requireJsonSchema(s).jsonSchema
+  const properties = json['properties']
+  if (!isStringRecord(properties)) throw new Error('expected properties record')
+  const field = properties[PERMISSION_REASON_FIELD]
+  if (!isStringRecord(field)) throw new Error('expected _permission_reason property')
+  return field['description']
+}
+
+describe('extendSchemaForAsk (missing JSON shape fallback)', () => {
+  test('returns a usable fallback Zod schema for a null schema', () => {
+    const extended = requireSafeParse(extendSchemaForAsk(null))
+    expect(extended.safeParse({ [PERMISSION_REASON_FIELD]: 'rr' }).success).toBe(true)
+    expect(extended.safeParse({}).success).toBe(false)
+  })
+
+  test('returns a usable fallback Zod schema for a non-object schema value', () => {
+    const extended = requireSafeParse(extendSchemaForAsk('not-a-schema'))
+    expect(extended.safeParse({ [PERMISSION_REASON_FIELD]: 'rr' }).success).toBe(true)
+  })
+
+  test('returns a usable fallback Zod schema when the wrapped jsonSchema is not a record', () => {
+    const extended = requireSafeParse(extendSchemaForAsk({ jsonSchema: 'nope' }))
+    expect(extended.safeParse({ [PERMISSION_REASON_FIELD]: 'rr' }).success).toBe(true)
+  })
+})
+
+describe('extendSchemaForAsk (jsonSchema merge fidelity)', () => {
+  test('appends only _permission_reason to required when the source has no required array', () => {
+    const json = requireJsonSchema(extendSchemaForAsk(jsonSchema({ type: 'object' }))).jsonSchema
+    expect(JSON.stringify(json['required'])).toBe(JSON.stringify([PERMISSION_REASON_FIELD]))
+  })
+
+  test('drops non-string entries from required before appending _permission_reason', () => {
+    const source = { jsonSchema: { type: 'object', required: ['id', 9, true] } }
+    const json = requireJsonSchema(extendSchemaForAsk(source)).jsonSchema
+    expect(JSON.stringify(json['required'])).toBe(JSON.stringify(['id', PERMISSION_REASON_FIELD]))
+  })
+
+  test('forces the merged schema type to object', () => {
+    const json = requireJsonSchema(extendSchemaForAsk(jsonSchema({ type: 'object' }))).jsonSchema
+    expect(json['type']).toBe('object')
+  })
+
+  test('carries the full _permission_reason description verbatim', () => {
+    const description = permissionReasonDescription(extendSchemaForAsk(jsonSchema({ type: 'object' })))
+    expect(description).toBe(
+      'Brief, user-facing reason this tool call is needed. ' +
+        'Shown verbatim in the permission prompt. ' +
+        'One sentence, present tense, no markdown.',
+    )
+  })
+})
+
+describe('gatedExecute input handling', () => {
+  test('treats a missing _permission_reason as an empty reason passed to askPermission', async () => {
+    const captured: { reason: string } = { reason: '' }
+    const ask: AskPermissionFn = (req) => {
+      captured.reason = req.reason
+      return Promise.resolve('deny')
+    }
+    const gated = gatedExecute(fakeExecute, 'demo_tool', ask)
+    await gated({ id: 'X' }, toolOpts)
+    expect(captured.reason).toBe('')
+  })
+
+  test('coerces a non-object string input into empty args for askPermission', async () => {
+    let capturedArgs: Record<string, unknown> | null = null
+    const ask: AskPermissionFn = (req) => {
+      capturedArgs = req.args
+      return Promise.resolve('deny')
+    }
+    const gated = gatedExecute(fakeExecute, 'demo_tool', ask)
+    await gated('not-an-object', toolOpts)
+    expect(JSON.stringify(capturedArgs)).toBe('{}')
+  })
+
+  test('coerces a null input into empty args for askPermission without throwing', async () => {
+    let capturedArgs: Record<string, unknown> | null = null
+    const ask: AskPermissionFn = (req) => {
+      capturedArgs = req.args
+      return Promise.resolve('deny')
+    }
+    const gated = gatedExecute(fakeExecute, 'demo_tool', ask)
+    await gated(null, toolOpts)
+    expect(JSON.stringify(capturedArgs)).toBe('{}')
   })
 })

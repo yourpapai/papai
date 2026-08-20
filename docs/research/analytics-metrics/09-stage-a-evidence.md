@@ -142,7 +142,7 @@ the same pass.
 
 - Deploy date / version: 2026-07-31 / 0368bcc1d67bd9d79ae95ac20663aa836a5f9063
 - Window start (UTC): 2026-08-01
-- Window end (UTC):
+- Window end (UTC): 2026-08-14
 - Restart/suppressed days (`unreconciled_restart_gap`):
 
 ### Daily log (report CLI rows)
@@ -151,13 +151,31 @@ the same pass.
 |---|---|---|---|---|---|---|---|---|
 | 2026-08-01 | true | — | none | 0 | 24 (invalid_value=24) | 0 | ok | — |
 | 2026-08-02 | true | — | none | 0 | 0 | 0 | ok | — |
+| 2026-08-03 | true | — | none | 0 | 2 (invalid_value=2) | 0 | ok | — |
+| 2026-08-04 | true | — | none | 0 | 150 (invalid_value=150) | 0 | ok | — |
+| 2026-08-05 | true | — | none | 0 | 96 (invalid_value=96) | 0 | ok | — |
+| 2026-08-06 | true | — | none | 0 | 50 (invalid_value=50) | 0 | ok | — |
+| 2026-08-07 | true | — | none | 0 | 98 (invalid_value=98) | 0 | ok | — |
+| 2026-08-08 | true | — | none | 0 | 4 (invalid_value=4) | 0 | ok | — |
+| 2026-08-09 | true | — | none | 0 | 26 (invalid_value=26) | 0 | ok | — |
+| 2026-08-10 | true | — | none | 0 | 42 (invalid_value=42) | 0 | ok | — |
+| 2026-08-11 | true | — | none | 0 | 40 (invalid_value=40) | 0 | ok | — |
+| 2026-08-12 | true | — | none | 0 | 54 (invalid_value=54) | 0 | ok | — |
+| 2026-08-13 | true | — | none | 0 | 6 (invalid_value=6) | 0 | ok | — |
+| 2026-08-14 | true | — | none | 0 | 99 (invalid_value=99) | 0 | ok | — |
 
 | Week | Freshness | Reconciliation delta | Rejects | Overflow | Expiry check | Notes |
 |---|---|---|---|---|---|---|
-| 1 | | | | | | |
-| 2 | | | | | | |
+| 1 | none (promotion unwired; file fresh via CLI) | 0 all days | 420 (all invalid_value) | 0 | ok | rejects attributable to #209 (tool_completed float durationMs); Freshness reads none because ordinary staged→published promotion has no runtime caller |
+| 2 | none (promotion unwired; file fresh via CLI) | 0 all days | 271 (all invalid_value) | 0 | ok | same #209 signature; tool metrics undercounted, eligibility unaffected |
 
-**Stage B exit review:** ____________________  date: ________
+**Stage B exit review:** assess 2026-08-15 (`analytics-stage-b-report.ts --assess` over the
+cron-built `/data/stage-b.jsonl` on prod): `consecutive_complete_weeks=2
+stage_b_exit=allowed`. 14/14 window days eligible, `unexplained_delta=0` every day, zero
+overflow, expiry ok. Governance metadata + operator acknowledgement filled 2026-08-15
+(`analytics_policy` config_version 3; the admin form only renders mode/egress/retention/ack,
+so the metadata was set via the same validated `updatePolicy` the route calls, run
+in-container). Final assess 2026-08-15: `stage_c_entry=allowed`. date: 2026-08-15
 
 ## Follow-ups parked during the build
 

@@ -29,6 +29,10 @@ test.describe('settings/sections/ProfileSection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 test('ProfileSection — populated, narrow', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-profilesection--populated')
   await sharedPage.setViewportSize({ width: 640, height: 900 })

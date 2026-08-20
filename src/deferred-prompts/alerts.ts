@@ -144,10 +144,12 @@ export const updateAlertPrompt = (
   if (updates.cooldownMinutes !== undefined) set.cooldownMinutes = updates.cooldownMinutes
   if (updates.executionMetadata !== undefined) set.executionMetadata = JSON.stringify(updates.executionMetadata)
 
-  db.update(alertPrompts)
-    .set(set)
-    .where(and(eq(alertPrompts.id, id), eq(alertPrompts.createdByUserId, userId)))
-    .run()
+  if (Object.keys(set).length > 0) {
+    db.update(alertPrompts)
+      .set(set)
+      .where(and(eq(alertPrompts.id, id), eq(alertPrompts.createdByUserId, userId)))
+      .run()
+  }
   log.info({ id, userId }, 'Alert prompt updated')
   return getAlertPrompt(id, userId)
 }

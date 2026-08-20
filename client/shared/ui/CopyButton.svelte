@@ -31,6 +31,11 @@
 
 <style>
   .ui-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--control-h-sm);
+    min-height: var(--control-h-sm);
     background: transparent; border: 0; cursor: pointer;
     color: var(--text-dim); font-family: var(--font-mono); font-size: 12px; padding: 2px 4px;
   }

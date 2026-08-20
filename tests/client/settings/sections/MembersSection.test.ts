@@ -307,4 +307,27 @@ describe('MembersSection', () => {
     expect(target.textContent).toContain('No members')
     void unmount(component)
   })
+
+  test('the empty table points at the add form above it', async () => {
+    setMockFetch(() => Promise.resolve(json({ contextId: 'group:7', members: [] })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+
+    expect(target.textContent).toContain('No members yet — add the first one using the form above.')
+    void unmount(component)
+  })
+
+  test('a failed load shows a neutral empty state, not a claim that there are no members', async () => {
+    setMockFetch(() => Promise.resolve(new Response('Server Error', { status: 500 })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+
+    expect(target.textContent).not.toContain('No members yet — add the first one using the form above.')
+    expect(target.textContent).toContain("Members couldn't be loaded.")
+    void unmount(component)
+  })
 })

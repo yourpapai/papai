@@ -166,22 +166,29 @@ const adminUsersSample = {
       platform_user_id: '123456789',
       platform_instance_id: 'tg-main',
       username: 'alice_tg',
-      added_by: 'admin',
+      added_by: '555000111',
       blocked_at: null,
     },
     {
       platform_user_id: 'placeholder-@bob_handle',
       platform_instance_id: 'tg-main',
       username: '@bob_handle',
-      added_by: 'admin',
+      added_by: '555000111',
       blocked_at: null,
     },
     {
       platform_user_id: '987654321',
       platform_instance_id: 'tg-main',
       username: 'charlie',
-      added_by: 'open_access',
+      added_by: 'open-access',
       blocked_at: '2026-01-15T10:00:00Z',
+    },
+    {
+      platform_user_id: '246813579',
+      platform_instance_id: 'tg-main',
+      username: 'a_very_long_telegram_username_that_will_not_fit',
+      added_by: 'announce-subscription',
+      blocked_at: null,
     },
   ],
 }
@@ -193,7 +200,7 @@ const adminUsersWrites: HttpHandler[] = [
   http.post('/settings/api/admin/open-access', () => HttpResponse.json({ ok: true })),
 ]
 
-export const adminUsersHandlers: HandlerFamily = {
+export const adminUsersHandlers: HandlerFamily & { openAccessError: HttpHandler[] } = {
   populated: [
     http.get('/settings/api/admin/users', () => HttpResponse.json(adminUsersSample)),
     http.get('/settings/api/admin/open-access', () => HttpResponse.json({ openDmAccess: true })),
@@ -211,6 +218,11 @@ export const adminUsersHandlers: HandlerFamily = {
       return HttpResponse.json({ users: [] })
     }),
     http.get('/settings/api/admin/open-access', () => HttpResponse.json({ openDmAccess: false })),
+  ],
+  openAccessError: [
+    http.get('/settings/api/admin/users', () => HttpResponse.json(adminUsersSample)),
+    http.get('/settings/api/admin/open-access', () => HttpResponse.json({ error: 'boom' }, { status: 500 })),
+    ...adminUsersWrites,
   ],
 }
 

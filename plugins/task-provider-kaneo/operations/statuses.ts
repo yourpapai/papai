@@ -5,11 +5,11 @@
 
 import type { Column } from 'papai/plugin-types'
 
-import type { KaneoConfig } from '../client.js'
 import { createColumn } from '../create-column.js'
 import { deleteColumn } from '../delete-column.js'
 import { listColumns } from '../list-columns.js'
 import { mapColumn } from '../mappers.js'
+import type { KaneoConfig } from '../provider.js'
 import { reorderColumns } from '../reorder-columns.js'
 import { updateColumn } from '../update-column.js'
 

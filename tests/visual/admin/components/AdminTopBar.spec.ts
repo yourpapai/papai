@@ -13,3 +13,7 @@ test.describe('admin/components/AdminTopBar', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

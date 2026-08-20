@@ -39,6 +39,10 @@ test.describe('settings/sections/ReleaseSubscriptionSection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 test('Unsubscribed — primary button hover', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-releasesubscriptionsection--unsubscribed')
   await sharedPage.getByTestId('release-subscription-toggle').hover()

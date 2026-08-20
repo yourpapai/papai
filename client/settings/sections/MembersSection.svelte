@@ -159,7 +159,13 @@
         {/if}
       {/snippet}
       <DataTable columns={memberColumns} rows={memberRows} {cell} rowKey="user_id">
-        {#snippet empty()}No members{/snippet}
+        {#snippet empty()}
+          {#if error === null}
+            No members yet — add the first one using the form above.
+          {:else}
+            Members couldn't be loaded.
+          {/if}
+        {/snippet}
       </DataTable>
     </div>
   {/if}
@@ -185,18 +191,13 @@
   .members-error {
     margin: 0 0 var(--gap-field);
   }
-  /* Keep the input growing and the button on the same baseline; hint wraps below the row. */
-  .members-add :global(.ui-field) {
-    flex: 1;
-    min-width: 220px;
-  }
   .member-cell {
     display: inline-flex;
     flex-direction: column;
     line-height: 1.3;
   }
   .member-cell__raw {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-size: 11px;
   }
 </style>

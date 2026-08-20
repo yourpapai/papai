@@ -5,8 +5,8 @@
 
 import { incrementClusteringCounter, recordClusteringTiming } from './clustering-profile.js'
 import type { ClusteringProfile } from './clustering-profile.js'
+import type { MutableDistanceMatrix } from './consolidate-keywords-agglomerative-clustering.js'
 import { findNearestActiveCluster, getDistance } from './consolidate-keywords-agglomerative-helpers.js'
-import type { MutableDistanceMatrix } from './consolidate-keywords-agglomerative-helpers.js'
 
 type Cluster = readonly number[]
 

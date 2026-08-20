@@ -51,4 +51,20 @@ describe('Pill.svelte', () => {
     expect(target.querySelector('.ui-dot')).not.toBeNull()
     void unmount(component)
   })
+
+  test('renders the id on the pill span when id is passed', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Pill, { target, props: { children: textSnippet('On'), id: 'guest-mode-state' } })
+    expect(target.querySelector('.ui-pill')?.id).toBe('guest-mode-state')
+    void unmount(component)
+  })
+
+  test('omits the id attribute when id is absent', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Pill, { target, props: { children: textSnippet('On') } })
+    expect(target.querySelector('.ui-pill')?.hasAttribute('id')).toBe(false)
+    void unmount(component)
+  })
 })

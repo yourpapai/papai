@@ -8,12 +8,12 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../db/schema.js'
 import { logger } from '../logger.js'
-import { isWithinThrottleWindow } from './registry-helpers.js'
-import type {
-  UpsertGroupAdminObservationInput,
-  UpsertGroupUserObservationInput,
-  UpsertKnownGroupContextInput,
-} from './registry-types.js'
+import {
+  type UpsertKnownGroupContextInput,
+  type UpsertGroupUserObservationInput,
+  type UpsertGroupAdminObservationInput,
+  isWithinThrottleWindow,
+} from './registry-helpers.js'
 
 export type {
   UpsertGroupAdminObservationInput,

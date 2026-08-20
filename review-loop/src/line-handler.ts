@@ -5,9 +5,9 @@
 
 import { appendFile } from 'node:fs/promises'
 
-import type { AgentUsage, LineSink, RunAgentOptions } from './agent-runner.js'
+import { emptyUsage, type AgentUsage, type LineSink, type RunAgentOptions } from './agent-runner.js'
 import { type OpencodeEvent, parseEventLine } from './event-stream.js'
-import { formatLiveLine, formatStepFooter, formatToolArg } from './live-format.js'
+import { formatLiveLine, formatToolArg } from './live-format.js'
 import type { ProgressReporter } from './progress-log.js'
 
 export interface LineHandler {
@@ -19,10 +19,14 @@ export interface LineHandler {
 
 export interface LiveCtx {
   readonly label: string
+  readonly slotKey: string
+  readonly commitOnDispose: boolean
+  readonly model: string
   readonly logPath: string
   readonly reporter: ProgressReporter | undefined
   startedAt: number
   toolCount: number
+  reportedToolCalls: number
   tool: string
   arg: string
   readonly seenCalls: Set<string>
@@ -33,18 +37,61 @@ export interface LiveCtx {
   logChain: Promise<void>
 }
 
+function liveLine(ctx: LiveCtx, done: boolean): string {
+  const elapsed = ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt
+  return formatLiveLine(
+    ctx.label,
+    ctx.tool,
+    ctx.arg,
+    elapsed,
+    ctx.toolCount,
+    {
+      input: ctx.usage.inputTokens,
+      output: ctx.usage.outputTokens,
+      cached: ctx.usage.cachedReadTokens,
+    },
+    done,
+  )
+}
+
 function renderLive(ctx: LiveCtx): void {
   const reporter = ctx.reporter
   if (reporter === undefined) {
     return
   }
-  const elapsed = ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt
-  const line = formatLiveLine(ctx.label, ctx.tool, ctx.arg, elapsed, ctx.toolCount)
+  const line = liveLine(ctx, false)
   if (reporter.slot === undefined) {
     reporter.live([line])
   } else {
-    reporter.slot(ctx.label, line)
+    reporter.slot(ctx.slotKey, line)
   }
+}
+
+function applyStepFinish(evt: Extract<OpencodeEvent, { type: 'step_finish' }>, ctx: LiveCtx): void {
+  const reporter = ctx.reporter
+  ctx.usage.inputTokens += evt.tokens.input
+  ctx.usage.outputTokens += evt.tokens.output
+  ctx.usage.reasoningTokens += evt.tokens.reasoning
+  ctx.usage.cachedReadTokens += evt.tokens.cacheRead
+  ctx.usage.cachedWriteTokens += evt.tokens.cacheWrite
+  ctx.usage.costUsd += evt.cost
+  if (reporter === undefined) return
+  reporter.usage?.({
+    input: evt.tokens.input,
+    output: evt.tokens.output,
+    reasoning: evt.tokens.reasoning,
+    cacheRead: evt.tokens.cacheRead,
+    cacheWrite: evt.tokens.cacheWrite,
+    cost: evt.cost,
+    label: ctx.label,
+    model: ctx.model,
+  })
+  const newToolCalls = ctx.toolCount - ctx.reportedToolCalls
+  if (newToolCalls > 0) {
+    ctx.reportedToolCalls = ctx.toolCount
+    reporter.stats?.addToolCalls(ctx.label, newToolCalls)
+  }
+  renderLive(ctx)
 }
 
 function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
@@ -71,22 +118,7 @@ function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
       renderLive(ctx)
       break
     case 'step_finish':
-      ctx.usage.inputTokens += evt.tokens.input
-      ctx.usage.outputTokens += evt.tokens.output
-      ctx.usage.reasoningTokens += evt.tokens.reasoning
-      ctx.usage.costUsd += evt.cost
-      if (reporter !== undefined) {
-        reporter.usage?.({
-          input: evt.tokens.input,
-          output: evt.tokens.output,
-          reasoning: evt.tokens.reasoning,
-          cost: evt.cost,
-        })
-        reporter.clearLive()
-        reporter.event(
-          formatStepFooter(ctx.label, ctx.startedAt === 0 ? 0 : Date.now() - ctx.startedAt, ctx.toolCount, evt.tokens),
-        )
-      }
+      applyStepFinish(evt, ctx)
       break
     case 'text':
       break
@@ -96,15 +128,19 @@ function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
 export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
   const ctx: LiveCtx = {
     label: options.label,
+    slotKey: options.slotKey ?? options.label,
+    commitOnDispose: options.commitOnDispose ?? true,
+    model: options.model,
     logPath: options.logPath,
     reporter: options.reporter,
     startedAt: 0,
     toolCount: 0,
+    reportedToolCalls: 0,
     tool: '',
     arg: '',
     seenCalls: new Set<string>(),
     timer: null,
-    usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+    usage: emptyUsage(),
     firstStepAt: null,
     logChain: Promise.resolve(),
   }
@@ -123,9 +159,14 @@ export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
     if (reporter !== undefined) {
       if (reporter.slot === undefined) {
         reporter.clearLive()
-      } else {
-        reporter.slot(ctx.label, null)
+      } else if (ctx.commitOnDispose && ctx.startedAt !== 0 && reporter.commit !== undefined) {
+        reporter.commit(ctx.slotKey, liveLine(ctx, true))
+      } else if (ctx.commitOnDispose) {
+        // Never started (died before the first step) or the reporter predates
+        // commit(): nothing worth freezing — clear instead.
+        reporter.slot(ctx.slotKey, null)
       }
+      // commitOnDispose === false: leave the slot live for the unit's owner.
     }
     await ctx.logChain
   }

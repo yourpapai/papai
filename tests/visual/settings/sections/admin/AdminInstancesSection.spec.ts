@@ -28,3 +28,51 @@ test.describe('settings/sections/admin/AdminInstancesSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../../support/viewport.js'
+
+pinDefaultViewport()
+
+const POPULATED = 'settings-sections-admin-admininstancessection--populated'
+
+test('AdminInstancesSection — populated, narrow', async ({ sharedPage }) => {
+  await switchStory(sharedPage, POPULATED)
+  await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('AdminInstancesSection — delete hovered', async ({ sharedPage }) => {
+  await switchStory(sharedPage, POPULATED)
+  await sharedPage.getByTestId('platform-delete-tg-main').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('AdminInstancesSection — delete confirm open', async ({ sharedPage }) => {
+  await switchStory(sharedPage, POPULATED)
+  await sharedPage.getByTestId('platform-delete-tg-main').click()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('AdminInstancesSection — stop confirm open', async ({ sharedPage }) => {
+  await switchStory(sharedPage, POPULATED)
+  await sharedPage.getByTestId('platform-status-tg-main').click()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('AdminInstancesSection — keyboard focus on first control', async ({ sharedPage }) => {
+  await switchStory(sharedPage, POPULATED)
+  await sharedPage.keyboard.press('Tab')
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('AdminInstancesSection — platform config fields for mattermost', async ({ sharedPage }) => {
+  await switchStory(sharedPage, POPULATED)
+  await sharedPage.locator('.ui-select select').first().selectOption('mattermost')
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('AdminInstancesSection — duplicate id blocks create', async ({ sharedPage }) => {
+  await switchStory(sharedPage, POPULATED)
+  await sharedPage.getByTestId('platform-id').fill('tg-main')
+  await expect(sharedPage).toHaveScreenshot()
+})

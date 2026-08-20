@@ -22,12 +22,11 @@ describe('Bars.svelte', () => {
     void unmount(component)
   })
 
-  test('renders empty svg for undefined data', () => {
+  test('renders nothing at all for undefined data', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!
     const component = mount(Bars, { target, props: { data: undefined, width: 200, height: 40 } })
-    expect(target.querySelector('svg')).not.toBeNull()
-    expect(target.querySelectorAll('rect').length).toBe(0)
+    expect(target.querySelector('svg')).toBeNull()
     void unmount(component)
   })
 
@@ -39,11 +38,11 @@ describe('Bars.svelte', () => {
     void unmount(component)
   })
 
-  test('renders flat baseline for all-zero data', () => {
+  test('renders nothing at all for an all-zero series', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!
     const component = mount(Bars, { target, props: { data: [0, 0, 0, 0], width: 200, height: 40 } })
-    expect(target.querySelectorAll('rect').length).toBe(4)
+    expect(target.querySelector('svg')).toBeNull()
     void unmount(component)
   })
 
@@ -53,6 +52,30 @@ describe('Bars.svelte', () => {
     const component = mount(Bars, { target, props: { data: [1, 2, 3] } })
     const svg = target.querySelector('svg')
     expect(svg?.getAttribute('viewBox')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('the fluid branch renders at the requested height, not an aspect ratio', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Bars, { target, props: { data: [1, 2, 3], height: 56 } })
+    const svg = target.querySelector('svg')!
+    expect(svg.getAttribute('style')).toContain('height: 56px')
+    expect(svg.getAttribute('preserveAspectRatio')).toBe('none')
+    expect(svg.getAttribute('height')).toBeNull()
+    void unmount(component)
+  })
+
+  test('every bar stays inside the requested height', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Bars, { target, props: { data: [10, 5, 0], height: 56 } })
+    for (const rect of target.querySelectorAll('rect')) {
+      const y = Number(rect.getAttribute('y'))
+      const h = Number(rect.getAttribute('height'))
+      expect(y).toBeGreaterThanOrEqual(0)
+      expect(y + h).toBeLessThanOrEqual(56)
+    }
     void unmount(component)
   })
 })

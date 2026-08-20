@@ -25,7 +25,7 @@ import { createRekeyCutoverFence } from './analytics/rekey/cutover-fence.js'
 import type { AnalyticsObserver } from './analytics/runtime.js'
 import { getActiveAnalyticsRuntime } from './analytics/start-analytics.js'
 import { getOpenEpoch } from './analytics/storage/epoch-store.js'
-import { purgeExpiredStagedFiles } from './attachments/staged.js'
+import { purgeExpiredStagedFiles } from './attachments/index.js'
 import { cleanupExpiredCaches } from './cache.js'
 import { getDrizzleDb } from './db/drizzle.js'
 import { logger } from './logger.js'
@@ -34,8 +34,7 @@ import { runMemoryMaintenance } from './long-term-memory/maintenance.js'
 import { sweepPromotions } from './long-term-memory/promotion-sweep.js'
 import { runMessageEmbeddingSweep } from './message-embedding-sweep.js'
 import { cleanupExpiredQueues } from './message-queue/index.js'
-import { createScheduler } from './utils/scheduler.js'
-import type { ErrorEvent, FatalErrorEvent } from './utils/scheduler.types.js'
+import { type FatalErrorEvent, type ErrorEvent, createScheduler } from './utils/scheduler.js'
 const log = logger.child({ scope: 'scheduler-instance' })
 
 // Create singleton scheduler

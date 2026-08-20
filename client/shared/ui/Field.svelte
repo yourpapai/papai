@@ -11,6 +11,7 @@
   import type { Snippet } from 'svelte'
 
   import { setFieldError, setFieldLabelId } from './field-context.js'
+  import LiveRegion from './LiveRegion.svelte'
 
   interface Props {
     label: string
@@ -25,29 +26,50 @@
   const uid = ++seq
   const labelId = `ui-field-${uid}`
   const errorId = `ui-field-err-${uid}`
+  const hintId = `ui-field-hint-${uid}`
   setFieldLabelId(labelId)
   setFieldError({
     errorId,
+    hintId,
     get invalid() {
       return error !== undefined && error !== ''
+    },
+    get hasHint() {
+      return hint !== undefined && hint !== ''
+    },
+    get required() {
+      return required
     },
   })
 </script>
 
 <div class="ui-field">
   <span class="ui-field__label" id={labelId}>
-    {label}{#if required}<span class="ui-field__req">*</span>{/if}
+    {label}{#if required}<span class="ui-field__req" aria-hidden="true">*</span>{/if}
   </span>
-  {@render children()}
-  {#if error}<span class="ui-field__error" id={errorId} role="alert">{error}</span>{:else if hint}<span
-      class="ui-field__hint">{hint}</span>{/if}
+  <div class="ui-field__control">{@render children()}</div>
+  <div class="ui-field__msg">
+    <LiveRegion tone="alert" message={error ?? null} id={errorId} class="ui-field__error" />
+    {#if !error && hint}<span class="ui-field__hint" id={hintId}>{hint}</span>{/if}
+  </div>
 </div>
 
 <style>
+  /* subgrid adopts the parent's three tracks so this field's label, control and
+     hint align with every sibling's. Outside a grid parent, subgrid is invalid
+     and falls back to independent auto rows -- visually the same stack as the
+     column flex this replaces. */
   .ui-field {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: span 3;
     gap: 6px;
+    min-width: 0;
+  }
+  /* A real box now, so the control always occupies exactly one grid row no
+     matter how many elements the children slot emits. */
+  .ui-field__control {
+    display: block;
     min-width: 0;
   }
   .ui-field__label {
@@ -56,7 +78,7 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .ui-field__req {
     color: var(--accent);
@@ -64,10 +86,20 @@
   }
   .ui-field__hint {
     font-size: 10px;
-    color: var(--fg-hint);
+    color: var(--text-dim);
   }
-  .ui-field__error {
+  /* :global because the class is handed to LiveRegion, and a class passed to a child
+     component does not pick up this component's scoped styles. Scoped to the message box
+     so it stays a Field rule rather than an app-wide one. */
+  .ui-field__msg :global(.ui-field__error) {
     font-size: 10px;
     color: var(--danger);
+  }
+  /* The region stays mounted so a screen reader can hear it change, which means it is
+     still a grid child when it holds no text -- and a zero-height grid child consumes a
+     full row gap. It cannot be display:none'd or visibility:hidden'd without leaving the
+     accessibility tree, so cancel the gap instead of removing the box. */
+  .ui-field__msg:not(:has(*:not(:empty))) {
+    margin-top: -6px;
   }
 </style>

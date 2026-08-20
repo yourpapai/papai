@@ -53,6 +53,15 @@ function makePlugin(overrides?: Partial<DiscoveredPlugin>): DiscoveredPlugin {
   }
 }
 
+const ContextConfigResponseSchema = z.object({
+  plugins: z.array(
+    z.object({
+      id: z.string(),
+      contextConfig: z.array(z.object({ key: z.string(), hasValue: z.boolean(), value: z.string() })),
+    }),
+  ),
+})
+
 describe('settings plugins routes', () => {
   let session: SettingsSession
 
@@ -79,6 +88,67 @@ describe('settings plugins routes', () => {
     expect(res.status).toBe(200)
     const body = z.object({ plugins: z.array(z.unknown()) }).parse(await res.json())
     expect(Array.isArray(body.plugins)).toBe(true)
+  })
+
+  test('GET returns the verbatim stored value for a non-sensitive context config field', async () => {
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        configRequirements: [
+          { key: 'base_url', label: 'Base URL', required: false, sensitive: false, scope: 'context' },
+        ],
+      },
+    })
+    pluginRegistry.registerDiscovered(plugin)
+    const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
+    setPluginConfig(personalConfigContextId, 'test-plugin', 'base_url', 'https://example.test')
+
+    const url = new URL('https://x/settings/api/plugins')
+    const res = await handlePluginsRoutes(
+      new Request(url, { headers: authHeaders(session) }),
+      url,
+      '/settings/api/plugins',
+    )
+
+    expect(res.status).toBe(200)
+    const body = ContextConfigResponseSchema.parse(await res.json())
+    const field = body.plugins.find((p) => p.id === 'test-plugin')?.contextConfig[0]
+    expect(field?.hasValue).toBe(true)
+    expect(field?.value).toBe('https://example.test')
+  })
+
+  test('GET masks the stored value for a sensitive context config field and returns empty when unset', async () => {
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        configRequirements: [
+          { key: 'token', label: 'Token', required: true, sensitive: true, scope: 'context' },
+          { key: 'note', label: 'Note', required: false, sensitive: false, scope: 'context' },
+        ],
+      },
+    })
+    pluginRegistry.registerDiscovered(plugin)
+    const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
+    const plaintext = 'secret-plugin-token-xyz'
+    setPluginConfig(personalConfigContextId, 'test-plugin', 'token', plaintext)
+
+    const url = new URL('https://x/settings/api/plugins')
+    const res = await handlePluginsRoutes(
+      new Request(url, { headers: authHeaders(session) }),
+      url,
+      '/settings/api/plugins',
+    )
+
+    const body = ContextConfigResponseSchema.parse(await res.json())
+    const foundPlugin = body.plugins.find((p) => p.id === 'test-plugin')
+    assert(foundPlugin !== undefined, 'test-plugin must be present in the response')
+    const token = foundPlugin.contextConfig.find((f) => f.key === 'token')
+    const note = foundPlugin.contextConfig.find((f) => f.key === 'note')
+
+    expect(token?.value).toBe(maskSensitiveValue(plaintext))
+    expect(token?.value).not.toBe(plaintext)
+    expect(note?.hasValue).toBe(false)
+    expect(note?.value).toBe('')
   })
 
   test('toggle of an unknown plugin returns 422', async () => {

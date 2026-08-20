@@ -31,6 +31,10 @@
 
   let { contextId }: Props = $props()
 
+  // The load-error panel leads with a sentence a user can act on; the raw exception text stays
+  // reachable in ErrorState's disclosure so it is still available for diagnosis.
+  const LOAD_ERROR_MESSAGE = 'Could not load BYOK settings for this context.'
+
   let data: ByokResponse | null = $state(null)
   let loadedContextId: string | null = $state(null)
   let error: string | null = $state(null)
@@ -244,7 +248,7 @@
   {#if currentData === null && loading}
     <p class="placeholder">Loading…</p>
   {:else if currentData === null && error !== null}
-    <ErrorState message={error} onRetry={() => void load(contextId)} />
+    <ErrorState message={LOAD_ERROR_MESSAGE} detail={error} onRetry={() => void load(contextId)} />
   {:else if currentData !== null && !currentData.enabled}
     <p class="placeholder">
       Using the central LLM credentials. Turn on "Use my own credentials" to configure BYOK for this context.
@@ -381,7 +385,7 @@
     border: 1px solid var(--border);
     background: var(--surface-1);
     border-radius: var(--radius);
-    padding: 16px;
+    padding: var(--s4);
     margin-bottom: var(--gap-field);
   }
   .settings-byok__roles {
@@ -399,6 +403,6 @@
   }
   .row-actions {
     display: flex;
-    gap: 4px;
+    gap: var(--s1);
   }
 </style>

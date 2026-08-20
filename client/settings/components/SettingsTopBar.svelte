@@ -41,19 +41,20 @@
   .settings-topbar__status {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--s3);
     width: 100%;
   }
   .settings-topbar__spacer {
     flex: 1;
   }
+  /* gap was 6px, snapped up to the nearest scale step (--s2, 8px). */
   .settings-topbar__ctx {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--s2);
   }
   .settings-topbar__lbl {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 11px;
   }

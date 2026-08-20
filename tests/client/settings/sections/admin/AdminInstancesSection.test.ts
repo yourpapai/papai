@@ -199,6 +199,33 @@ const createProviderTypeFailureMock = () => {
   }
 }
 
+const createInstanceAndProviderTypeFailureMock = () => {
+  const responses = new Map<string, Response>([
+    ['GET /settings/api/admin/platform-instances', new Response('platform instances unavailable', { status: 500 })],
+    [
+      'GET /settings/api/admin/task-instances',
+      json({ instances: [{ id: 'k', type: 'kaneo', status: 'active', config: {}, createdAt: 1 }], unreadable: [] }),
+    ],
+    [
+      'GET /settings/api/admin/platform-provider-types',
+      json({ providerTypes: [{ type: 'telegram', displayName: 'Telegram', instanceConfigSchema: [] }] }),
+    ],
+    ['GET /settings/api/admin/task-provider-types', new Response('provider types unavailable', { status: 500 })],
+  ])
+
+  return (url: string, init?: RequestInit): Promise<Response> => {
+    const call = `${requestMethod(init)} ${url}`
+    return Promise.resolve(responseFor(responses, call))
+  }
+}
+
+const createEmptyInstancesMock = () => {
+  return (url: string): Promise<Response> => {
+    if (url.includes('provider-types')) return Promise.resolve(json({ providerTypes: [] }))
+    return Promise.resolve(json({ instances: [] }))
+  }
+}
+
 const createUnreadableDiagnosticsMock = () => {
   const responses = new Map<string, Response>([
     [
@@ -354,6 +381,24 @@ const baseInstances = (url: string): Response | null => {
   if (url.includes('/admin/task-provider-types'))
     return json({ providerTypes: [{ type: 'kaneo', displayName: 'Kaneo', instanceConfigSchema: [] }] })
   return null
+}
+
+const createPendingToggleMock = (counter: {
+  patches: number
+}): ((url: string, init?: RequestInit) => Promise<Response>) => {
+  return (url, init) => {
+    const method = requestMethod(init)
+    if (method === 'PATCH') {
+      counter.patches += 1
+      return new Promise<Response>(() => {})
+    }
+    if (url.includes('/admin/platform-instances'))
+      return Promise.resolve(
+        json({ instances: [{ id: 'tg', type: 'telegram', status: 'stopped', config: {}, createdAt: 1 }] }),
+      )
+    if (url.includes('/admin/task-instances')) return Promise.resolve(json({ instances: [] }))
+    return Promise.resolve(json({ providerTypes: [] }))
+  }
 }
 
 const createNeverResolvingPlatformCreateMock = (): ((url: string, init?: RequestInit) => Promise<Response>) => {
@@ -536,7 +581,7 @@ describe('AdminInstancesSection', () => {
     void unmount(component)
   })
 
-  test('keeps instance rows visible when a provider types request fails', async () => {
+  test('a provider types request failure keeps the tables visible with an inline error', async () => {
     setMockFetch(createProviderTypeFailureMock())
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.querySelector<HTMLElement>('#root')!
@@ -547,6 +592,21 @@ describe('AdminInstancesSection', () => {
     expect(target.textContent).toContain('tg')
     expect(target.textContent).toContain('k')
     expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('.ui-error')).toBeNull()
+    void unmount(component)
+  })
+
+  test('an instance-list failure alongside a provider types failure still shows the ErrorState', async () => {
+    setMockFetch(createInstanceAndProviderTypeFailureMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+
+    await drain()
+
+    expect(target.querySelector('.ui-error')).not.toBeNull()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    expect(target.querySelector('.status-error')).toBeNull()
     void unmount(component)
   })
 
@@ -623,6 +683,27 @@ describe('AdminInstancesSection', () => {
     target.querySelector<HTMLButtonElement>('.modal .ui-btn--danger')!.click()
     await drain()
     expect(deletedUrl).toContain('tg')
+    void unmount(component)
+  })
+
+  test('the delete confirmation names the consequence that fits the instance kind', async () => {
+    installFetch()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="platform-delete-tg"]')!.click()
+    flushSync()
+    expect(target.querySelector('.modal')!.textContent).toContain('Its platform stops being served')
+
+    target.querySelector<HTMLButtonElement>('[data-testid="confirm-cancel"]')!.click()
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="task-delete-k"]')!.click()
+    flushSync()
+    const taskBody = target.querySelector('.modal')!.textContent
+    expect(taskBody).toContain('Any context assigned to it loses its task tracker')
+    expect(taskBody).not.toContain('Its platform stops being served')
     void unmount(component)
   })
 
@@ -799,6 +880,93 @@ describe('AdminInstancesSection', () => {
     // Independent flags: the platform-create form's Select must remain enabled.
     const platformSel = target.querySelector<HTMLSelectElement>('[data-testid="platform-create-card"] select')!
     expect(platformSel.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('Create is disabled until an id is entered', async () => {
+    installFetch()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    const button = target.querySelector<HTMLButtonElement>('[data-testid="platform-create"]')!
+    expect(button.disabled).toBe(true)
+    const input = target.querySelector<HTMLInputElement>('[data-testid="platform-id"]')!
+    input.value = 'tg-eu'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(button.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('a duplicate id blocks Create and says so without waiting for a blur', async () => {
+    installFetch()
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="platform-id"]')!
+    input.value = 'tg'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    expect(target.textContent).toContain('An instance with this id already exists')
+    expect(target.querySelector<HTMLButtonElement>('[data-testid="platform-create"]')!.disabled).toBe(true)
+    void unmount(component)
+  })
+
+  test('a load failure shows an ErrorState with the raw text demoted to a detail', async () => {
+    setMockFetch(() => Promise.resolve(new Response('request failed with status 404', { status: 404 })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    expect(target.querySelector('.ui-error')).not.toBeNull()
+    expect(target.querySelector('.ui-error__detail')).not.toBeNull()
+    expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    // Every request failed, so the provider-type failures must not also render inline
+    // above the panel that already reports them.
+    expect(target.querySelector('.status-error')).toBeNull()
+    void unmount(component)
+  })
+
+  test('an empty instance list renders EmptyState, not a bare string', async () => {
+    setMockFetch(createEmptyInstancesMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    expect(target.querySelectorAll('.ui-empty').length).toBe(2)
+    void unmount(component)
+  })
+
+  test('with no provider types to pick from, the Type field says so instead of silently disabling Create', async () => {
+    setMockFetch(createEmptyInstancesMock())
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    // Nothing has been touched: the id error stays hidden, but the type error must show,
+    // because an empty option list is not something the operator can touch their way out of.
+    // Every field now carries an always-mounted region; an empty one means "no error here".
+    const errors = [...target.querySelectorAll('.ui-field__error')].map((n) => n.textContent).filter((t) => t !== '')
+    expect(errors).toEqual(['Required', 'Required'])
+    void unmount(component)
+  })
+
+  test('a second click on a row action does not fire a second PATCH', async () => {
+    const counter = { patches: 0 }
+    setCsrfToken('c')
+    setMockFetch(createPendingToggleMock(counter))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminInstancesSection, { target })
+    await drain()
+    const button = target.querySelector<HTMLButtonElement>('[data-testid="platform-status-tg"]')!
+    button.click()
+    await drain()
+    button.click()
+    await drain()
+    expect(counter.patches).toBe(1)
     void unmount(component)
   })
 })

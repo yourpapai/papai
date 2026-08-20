@@ -4,7 +4,8 @@
 // See LICENSE in the project root for details.
 
 import type { Preview } from '@storybook/svelte-vite'
-import { initialize } from 'msw-storybook-addon'
+import { mswLoader } from 'msw-storybook-addon/csf3'
+import { setupWorker } from 'msw/browser'
 
 import { appAreaFor } from '../client/stories/app-area.js'
 import { fixturesLoader } from '../client/stories/decorators/withFixtures.js'
@@ -16,7 +17,6 @@ import { installTimeStub } from '../client/stories/stubs/time.js'
 // Fail fast at preview boot if any fixture has drifted from its live schema.
 assertFixturesMatchSchemas()
 
-initialize({ onUnhandledRequest: 'bypass' })
 installSseStub()
 installIntersectionObserverStub()
 installTimeStub()
@@ -60,17 +60,34 @@ function applyAppGlobals(title: string): Promise<void> {
   })
 }
 
+// mswLoader installs the worker on context.msw for fixturesLoader (and resets
+// handlers between stories). Custom setup keeps the historical
+// `onUnhandledRequest: 'bypass'` behavior of the v2 `initialize()` call.
+const installMsw = mswLoader(async () => {
+  const worker = setupWorker()
+  await worker.start({ onUnhandledRequest: 'bypass' })
+  return worker
+})
+
+// Storybook runs the loaders of a single annotation level through `Promise.all`,
+// so sibling entries in this array start in the same tick and array order buys
+// no ordering. fixturesLoader reads `context.msw` synchronously, which would
+// therefore always observe `undefined` — no scenario handlers, every request
+// bypassed to a 404, and every data-driven story rendering empty. Composing the
+// three steps into one loader is what actually sequences them.
+type ProjectLoaderContext = Parameters<typeof installMsw>[0]
+
+async function projectLoader(context: ProjectLoaderContext): Promise<Record<string, never>> {
+  await installMsw(context)
+  await applyAppGlobals(context.title)
+  return fixturesLoader(context)
+}
+
 const preview: Preview = {
   parameters: {
     layout: 'fullscreen',
   },
-  loaders: [
-    async (context) => {
-      await applyAppGlobals(context.title)
-      return {}
-    },
-    fixturesLoader,
-  ],
+  loaders: [projectLoader],
 }
 
 export default preview

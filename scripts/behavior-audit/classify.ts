@@ -21,6 +21,7 @@ import {
 } from './classify-phase2a-helpers.js'
 import { reportClassificationResult, type ClassificationResultForReporting } from './classify-reporting.js'
 import { CONCURRENCY, MAX_RETRIES } from './config.js'
+import type { BehaviorAuditProgressReporter } from './extract.js'
 import { readExtractedFile } from './extracted-store.js'
 import { saveManifest, type IncrementalManifest } from './incremental.js'
 import {
@@ -33,7 +34,6 @@ import {
   recordItemSkipped,
 } from './phase-stats.js'
 import { saveProgress } from './progress-io.js'
-import type { BehaviorAuditProgressReporter } from './progress-reporter.js'
 import type { Progress } from './progress.js'
 import { getFailedClassificationAttempts, markClassificationDone, setClassificationFailedAttempts } from './progress.js'
 

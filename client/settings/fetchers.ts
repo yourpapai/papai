@@ -17,6 +17,7 @@ import {
   IdentityResponseSchema,
   MemoryResponseSchema,
   McpResponseSchema,
+  PluginConfigPatchResultSchema,
   PluginsResponseSchema,
   ProvisionResultSchema,
   type ByokResponse,
@@ -31,6 +32,7 @@ import {
   type MemoryResponse,
   type McpEndpoint,
   type McpResponse,
+  type PluginConfigPatchResult,
   type PluginsResponse,
   type ProvisionResult,
 } from './fetcher-schemas.js'
@@ -192,7 +194,8 @@ export const patchPluginConfig = (input: {
   key: string
   value: string
   contextId: string
-}): Promise<unknown> => writeJson('/settings/api/plugins/config', 'PATCH', input, (b) => b)
+}): Promise<PluginConfigPatchResult> =>
+  writeJson('/settings/api/plugins/config', 'PATCH', input, (b) => PluginConfigPatchResultSchema.parse(b))
 
 export const unsetConfigField = (input: { contextId: string; key: string }): Promise<unknown> =>
   writeJson('/settings/api/config', 'PATCH', { action: 'unset', ...input }, (b) => b)

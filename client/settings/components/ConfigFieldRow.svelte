@@ -14,6 +14,7 @@
   import Secret from '../../shared/ui/Secret.svelte'
   import SegmentedControl from '../../shared/ui/SegmentedControl.svelte'
   import Confirm from '../../shared/Confirm.svelte'
+  import LiveRegion from '../../shared/ui/LiveRegion.svelte'
   import SettingsFieldShell from './SettingsFieldShell.svelte'
 
   interface Props {
@@ -45,6 +46,37 @@
 
   const hintId = $derived(`cfg-hint-${field.key}`)
 
+  // How long the save acknowledgement stays on screen. Long enough to notice, short enough
+  // that it never reads as persistent state.
+  const SAVED_VISIBLE_MS = 2000
+
+  let justSaved = $state(false)
+  let savedTimer: ReturnType<typeof setTimeout> | null = null
+
+  // The row writes in place with no submit-and-navigate step, so without an explicit
+  // acknowledgement a completed save is indistinguishable from a control never touched.
+  function markSaved(): void {
+    justSaved = true
+    if (savedTimer !== null) clearTimeout(savedTimer)
+    savedTimer = setTimeout(() => {
+      justSaved = false
+      savedTimer = null
+    }, SAVED_VISIBLE_MS)
+  }
+
+  $effect(() => () => {
+    if (savedTimer !== null) clearTimeout(savedTimer)
+  })
+
+  // The enum branch's hint stays visible even when the shell shows an error (unlike
+  // the input branch, where the shell suppresses the hint), so both ids may be present
+  // at once — compose a space-separated aria-describedby token list, skipping whichever
+  // id is absent.
+  function segmentedDescribedBy(errorId: string | undefined): string | undefined {
+    const ids = [errorId, hint ? hintId : undefined].filter((id): id is string => id !== undefined)
+    return ids.length > 0 ? ids.join(' ') : undefined
+  }
+
   // Confirm-dialog copy for clearing. Only plugin/provider config makes a plugin ineligible;
   // a required preference/ai-output field simply reverts to its default.
   const clearWarning = $derived(
@@ -74,6 +106,7 @@
       await patchConfig({ key: field.key, value: draft, contextId })
       replacing = false
       onSaved()
+      markSaved()
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -88,6 +121,7 @@
     try {
       await unsetConfigField({ key: field.key, contextId })
       onSaved()
+      markSaved()
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -104,6 +138,7 @@
     try {
       await patchConfig({ key: field.key, value: next, contextId })
       onSaved()
+      markSaved()
     } catch (err) {
       current = previous
       error = err instanceof Error ? err.message : String(err)
@@ -113,15 +148,24 @@
   }
 </script>
 
+{#snippet savedMarker()}
+  <LiveRegion
+    tone="status"
+    message={justSaved ? '✓ Saved' : null}
+    class="settings-field__saved"
+    testid={`cfg-saved-${field.key}`} />
+{/snippet}
+
 {#if isEnum}
-  <SettingsFieldShell label={field.label} editorOpen={false} testid={`cfg-row-${field.key}`}>
-    {#snippet head()}
+  <SettingsFieldShell label={field.label} editorOpen={false} error={error ?? undefined} testid={`cfg-row-${field.key}`}>
+    {#snippet head(errorId)}
       <SegmentedControl
         options={field.options ?? []}
         value={current}
         ariaLabel={field.label}
-        ariaDescribedBy={hint ? hintId : undefined}
+        ariaDescribedBy={segmentedDescribedBy(errorId)}
         disabled={saving}
+        busy={saving}
         onChange={(v) => void saveEnum(v)}
         testidPrefix={`cfg-seg-${field.key}`} />
       {#if field.hasValue}
@@ -129,18 +173,22 @@
           {#snippet children()}Clear{/snippet}
         </Btn>
       {/if}
+      {@render savedMarker()}
     {/snippet}
     {#snippet footer()}
-      {#if error !== null}
-        <p class="status-error">{error}</p>
-      {/if}
       {#if hint}
         <p class="settings-field__hint" id={hintId}>{hint}</p>
       {/if}
     {/snippet}
   </SettingsFieldShell>
 {:else}
-  <SettingsFieldShell label={field.label} required={field.required} editorOpen={editorOpen} testid={`cfg-row-${field.key}`}>
+  <SettingsFieldShell
+    label={field.label}
+    required={field.required}
+    editorOpen={editorOpen}
+    error={error ?? undefined}
+    {hint}
+    testid={`cfg-row-${field.key}`}>
     {#snippet head()}
       {#if field.sensitive && field.hasValue && !replacing}
         <Secret value={maskSecret(field.value)} />
@@ -153,6 +201,7 @@
           {#snippet children()}Clear{/snippet}
         </Btn>
       {/if}
+      {@render savedMarker()}
     {/snippet}
     {#snippet editor()}
       <Input
@@ -170,14 +219,6 @@
         </Btn>
       {/if}
     {/snippet}
-    {#snippet footer()}
-      {#if error !== null}
-        <p class="status-error">{error}</p>
-      {/if}
-      {#if hint}
-        <p class="settings-field__hint" id={hintId}>{hint}</p>
-      {/if}
-    {/snippet}
   </SettingsFieldShell>
 {/if}
 
@@ -193,7 +234,24 @@
 
 <style>
   .settings-field__hint {
+    margin: 0;
     color: var(--text-muted);
     font-size: 12px;
+  }
+
+  /* :global because the class is handed to LiveRegion, and a class passed to a child
+     component does not pick up this component's scoped styles. */
+  :global(.settings-field__head .settings-field__saved) {
+    color: var(--success);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  /* The marker is the last child of .settings-field__head, a flex row with
+     gap: var(--gap-tight) whose label carries margin-right: auto -- so the slack sits
+     left of the controls and a trailing gap would shove them 8px inward. The marker
+     stays mounted so the save can be announced, and it cannot be hidden without leaving
+     the accessibility tree, so cancel the gap it claims while empty instead. */
+  :global(.settings-field__head .settings-field__saved:empty) {
+    margin-left: calc(-1 * var(--gap-tight));
   }
 </style>

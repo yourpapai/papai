@@ -7,6 +7,7 @@
   import type { Memo } from '../../shared/api-types.js'
   import Btn from '../../shared/ui/Btn.svelte'
   import DataTable from '../../shared/ui/DataTable.svelte'
+  import Field from '../../shared/ui/Field.svelte'
   import Input from '../../shared/ui/Input.svelte'
   import Panel from '../../shared/ui/Panel.svelte'
   import Seg from '../../shared/ui/Seg.svelte'
@@ -89,7 +90,9 @@
           e.preventDefault()
           void loadMemos()
         }}>
-        <Input value={userId} onInput={(v) => (userId = v)} placeholder="user id" testid="memos-user-id" />
+        <Field label="user id">
+          <Input value={userId} onInput={(v) => (userId = v)} placeholder="user id" testid="memos-user-id" />
+        </Field>
         <Seg
           options={['active', 'archived']}
           value={state}
@@ -97,7 +100,7 @@
             state = v as 'active' | 'archived'
           }} />
         <Btn variant="primary" size="sm" type="submit" testid="memos-load" disabled={userId.trim() === '' || loading}>
-          {#snippet children()}{loading ? 'Loading…' : 'Load'}{/snippet}
+          {#snippet children()}{loading ? 'Loading memos…' : 'Load memos'}{/snippet}
         </Btn>
       </form>
     {/snippet}
@@ -140,7 +143,7 @@
   .placeholder {
     margin: 0;
     padding: 24px;
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 12px;
     text-align: center;

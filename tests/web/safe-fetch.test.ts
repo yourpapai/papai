@@ -67,14 +67,13 @@ describe('safeFetchContent', () => {
 
   test('rejects unsupported content types', async () => {
     const deps: SafeFetchDeps = {
-      fetch: createFetchMock(
-        (..._args: Parameters<typeof fetch>): Promise<Response> =>
-          Promise.resolve(
-            new Response('not allowed', {
-              status: 200,
-              headers: { 'content-type': 'image/png' },
-            }),
-          ),
+      fetch: createFetchMock((..._args: Parameters<typeof fetch>): Promise<Response> =>
+        Promise.resolve(
+          new Response('not allowed', {
+            status: 200,
+            headers: { 'content-type': 'image/png' },
+          }),
+        ),
       ),
       assertPublicUrl: (): Promise<void> => Promise.resolve(),
     }
@@ -95,14 +94,13 @@ describe('safeFetchContent', () => {
 
   test('accepts content types case-insensitively', async () => {
     const deps: SafeFetchDeps = {
-      fetch: createFetchMock(
-        (..._args: Parameters<typeof fetch>): Promise<Response> =>
-          Promise.resolve(
-            new Response('<html><body>Hello</body></html>', {
-              status: 200,
-              headers: { 'content-type': 'TEXT/HTML; charset=utf-8' },
-            }),
-          ),
+      fetch: createFetchMock((..._args: Parameters<typeof fetch>): Promise<Response> =>
+        Promise.resolve(
+          new Response('<html><body>Hello</body></html>', {
+            status: 200,
+            headers: { 'content-type': 'TEXT/HTML; charset=utf-8' },
+          }),
+        ),
       ),
       assertPublicUrl: (): Promise<void> => Promise.resolve(),
     }
@@ -117,14 +115,13 @@ describe('safeFetchContent', () => {
 
   test('rejects oversized text bodies', async () => {
     const deps: SafeFetchDeps = {
-      fetch: createFetchMock(
-        (..._args: Parameters<typeof fetch>): Promise<Response> =>
-          Promise.resolve(
-            new Response('x'.repeat(2_000_001), {
-              status: 200,
-              headers: { 'content-type': 'text/plain; charset=utf-8' },
-            }),
-          ),
+      fetch: createFetchMock((..._args: Parameters<typeof fetch>): Promise<Response> =>
+        Promise.resolve(
+          new Response('x'.repeat(2_000_001), {
+            status: 200,
+            headers: { 'content-type': 'text/plain; charset=utf-8' },
+          }),
+        ),
       ),
       assertPublicUrl: (): Promise<void> => Promise.resolve(),
     }

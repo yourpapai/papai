@@ -350,6 +350,8 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-chat-capability-gating',
   'SCN-chat-telegram-reply-fn',
   'SCN-plugin-audio-transcribe-transformer',
+  'SCN-context-vault-push',
+  'SCN-context-vault-indexer-singleton',
 ] as const)
 
 export const PHASE3_UNCATALOGUED_CLUSTER_IDS = [
@@ -1717,6 +1719,18 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '0',
     storyIds: [
       'tests/stories/integrations/plugins/audio-transcribe.story.test.ts#SCN-plugin-audio-transcribe-transformer: a voice attachment is transcribed through the declared host',
+    ],
+  },
+  'SCN-context-vault-push': {
+    verifiedAt: '2026-08-13',
+    storyIds: [
+      'tests/stories/integrations/plugins/context-vault.story.test.ts#SCN-context-vault-push: a token push updates the vault, tools report freshness, and revoke rejects',
+    ],
+  },
+  'SCN-context-vault-indexer-singleton': {
+    verifiedAt: '2026-08-16',
+    storyIds: [
+      'tests/stories/integrations/plugins/context-vault-indexer.story.test.ts#SCN-context-vault-indexer-singleton: concurrent sessions share one daemon and register their repos with it',
     ],
   },
 }

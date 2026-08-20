@@ -35,12 +35,42 @@ export async function detectGitRoot(cwd: string): Promise<string> {
   return stdout.trim()
 }
 
-export async function createWorktree(repoRoot: string, worktreePath: string, runId: string): Promise<void> {
+export async function createWorktree(
+  repoRoot: string,
+  worktreePath: string,
+  runId: string,
+  branchPrefix = 'review-loop',
+): Promise<void> {
   const parentDir = path.dirname(worktreePath)
   if (!existsSync(parentDir)) {
     await mkdir(parentDir, { recursive: true })
   }
-  await execGit(repoRoot, ['worktree', 'add', worktreePath, '-b', `review-loop/${runId}`])
+  await execGit(repoRoot, ['worktree', 'add', worktreePath, '-b', `${branchPrefix}/${runId}`])
+  await installDeps(worktreePath)
+}
+
+// Fresh worktrees ship no node_modules. Most deps still resolve by walking up
+// to the main checkout's root node_modules (worktrees live under it), but
+// non-hoisted workspace deps (e.g. opencode-agent's @octokit/rest) do not, so
+// the build gate fails with TS2307/import errors without this. Skipped for
+// package.json-less repos (bare temp repos in tests). process.execPath is the
+// bun binary the runner itself executes under — no PATH lookup needed.
+async function installDeps(worktreePath: string): Promise<void> {
+  if (!existsSync(path.join(worktreePath, 'package.json'))) return
+  await new Promise<void>((resolve, reject) => {
+    execFile(
+      process.execPath,
+      ['install'],
+      { cwd: worktreePath, maxBuffer: 10 * 1024 * 1024 },
+      (error, _stdout, stderr) => {
+        if (error !== null) {
+          reject(new Error(`bun install failed in ${worktreePath}: ${stderr}`))
+          return
+        }
+        resolve()
+      },
+    )
+  })
 }
 
 export function worktreeExists(worktreePath: string): boolean {
@@ -98,12 +128,17 @@ export async function mergeWorktree(repoRoot: string, branchName: string): Promi
   return { ok: true }
 }
 
-export async function removeWorktree(repoRoot: string, worktreePath: string, runId: string): Promise<void> {
+export async function removeWorktree(
+  repoRoot: string,
+  worktreePath: string,
+  runId: string,
+  branchPrefix = 'review-loop',
+): Promise<void> {
   if (existsSync(worktreePath)) {
     await execGit(repoRoot, ['worktree', 'remove', worktreePath, '--force'])
   }
   try {
-    await execGit(repoRoot, ['branch', '-D', `review-loop/${runId}`])
+    await execGit(repoRoot, ['branch', '-D', `${branchPrefix}/${runId}`])
   } catch {
     // Branch may not exist if already merged and deleted
   }

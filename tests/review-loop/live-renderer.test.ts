@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { LiveRenderer, type RendererStream, withLivePhase } from '../../review-loop/src/live-renderer.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
+import { RunStats } from '../../review-loop/src/run-stats.js'
 
 function makeStream(opts: { isTTY?: boolean; columns?: number } = {}): {
   stream: RendererStream
@@ -23,6 +24,20 @@ function makeStream(opts: { isTTY?: boolean; columns?: number } = {}): {
       ...opts,
     },
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+async function pollUntil(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate() && Date.now() < deadline) {
+    await sleep(50)
+  }
+  return predicate()
 }
 
 describe('LiveRenderer', () => {
@@ -50,10 +65,10 @@ describe('LiveRenderer', () => {
     expect(new LiveRenderer(stream).dynamic).toBe(true)
   })
 
-  test('non-TTY live scrolls with newline', () => {
+  test('non-TTY live is a no-op', () => {
     const { output, stream } = makeStream()
     new LiveRenderer(stream).live(['x'])
-    expect(output).toEqual(['x\n'])
+    expect(output).toEqual([])
   })
 
   test('TTY live writes clear-line + content with no newline', () => {
@@ -83,18 +98,12 @@ describe('LiveRenderer', () => {
   })
 
   test('ProgressReporter.live accepts an array of lines (one per active worker)', () => {
-    const captured: string[] = []
-    const stream = {
-      write: (s: string): boolean => {
-        captured.push(s)
-        return true
-      },
-      isTTY: false,
-    }
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
     const r = new LiveRenderer(stream)
     r.live(['line 1', 'line 2'])
-    expect(captured.join('')).toContain('line 1')
-    expect(captured.join('')).toContain('line 2')
+    const joined = output.join('')
+    expect(joined).toContain('line 1')
+    expect(joined).toContain('line 2')
   })
 })
 
@@ -253,6 +262,67 @@ describe('LiveRenderer slots', () => {
   })
 })
 
+describe('LiveRenderer commit', () => {
+  test('non-TTY commit prints the line once', () => {
+    const { stream, output } = makeStream()
+    const r = new LiveRenderer(stream)
+    r.slot('iter', '  improve    ▶ read a.ts')
+    r.commit('iter', 'iter 1 ✓ improved · src/x.ts')
+    expect(output).toEqual(['iter 1 ✓ improved · src/x.ts\n'])
+  })
+
+  test('non-TTY live() intermediate updates are suppressed', () => {
+    const { stream, output } = makeStream()
+    const r = new LiveRenderer(stream)
+    r.live(['working'])
+    r.live(['still working'])
+    expect(output).toEqual([])
+  })
+
+  test('TTY commit freezes the slot content as a permanent line', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.commit('a')
+    expect(output[output.length - 1]).toBe('line-a\n')
+  })
+
+  test('TTY commit with a replacement line prints it instead of the slot content', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.commit('a', 'iter 1 ✓ improved')
+    const joined = output.join('')
+    expect(output[output.length - 1]).toBe('iter 1 ✓ improved\n')
+    expect(joined).not.toContain('line-a\n')
+  })
+
+  test('TTY commit with a line but no slot still prints it', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.commit('iter', 'iter 1 ✗ failed · exception: boom')
+    expect(output).toEqual(['iter 1 ✗ failed · exception: boom\n'])
+  })
+
+  test('commit with neither slot nor line is a no-op', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.commit('missing')
+    expect(output).toEqual([])
+  })
+
+  test('a slot opened after commit renders as a fresh live line', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 120 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'line-a')
+    r.commit('a')
+    r.slot('a', 'line-b')
+    const last = output[output.length - 1]!
+    expect(last).toContain('line-b')
+    expect(last.startsWith('\r')).toBe(true)
+  })
+})
+
 describe('status line', () => {
   test('combines round, activity, issues, and tokens', () => {
     const { stream, output } = makeStream({ isTTY: true, columns: 200 })
@@ -266,7 +336,7 @@ describe('status line', () => {
       line: 1,
       title: 'A',
     })
-    r.usage({ input: 228819, output: 9824, reasoning: 49844, cost: 0 })
+    r.usage({ input: 228819, output: 9824, reasoning: 49844, cacheRead: 0, cacheWrite: 0, cost: 0 })
     r.slot('fixer-w1', 'x')
     r.slot('fixer-w2-retry', 'y')
     const status = output[output.length - 1]!.split('\n')[0]!
@@ -295,6 +365,40 @@ describe('status line', () => {
     const status = output[output.length - 1]!.split('\n')[0]!
     expect(status).toContain('in 1.1k / out 100')
   })
+
+  test('renders the token segment when exactly one operand is positive', () => {
+    const cases = [
+      { usage: { input: 300, output: 0, reasoning: 0, cost: 0 }, expected: 'in 300 / out 0' },
+      { usage: { input: 0, output: 200, reasoning: 0, cost: 0 }, expected: 'in 0 / out 200' },
+      { usage: { input: 0, output: 0, reasoning: 0, cacheRead: 700, cost: 0 }, expected: 'in 0 · cached 700 / out 0' },
+    ]
+    for (const { usage, expected } of cases) {
+      const { stream, output } = makeStream({ isTTY: true, columns: 200 })
+      const r = new LiveRenderer(stream)
+      r.usage(usage)
+      r.slot('a', 'x')
+      const status = output[output.length - 1]!.split('\n')[0]!
+      expect(status).toContain(expected)
+    }
+  })
+
+  test('accumulates cached reads across usage calls', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 200 })
+    const r = new LiveRenderer(stream)
+    r.usage({ input: 500, output: 0, reasoning: 0, cacheRead: 1_500, cost: 0 })
+    r.usage({ input: 0, output: 100, reasoning: 0, cacheRead: 500, cost: 0 })
+    r.slot('a', 'x')
+    const status = output[output.length - 1]!.split('\n')[0]!
+    expect(status).toContain('in 500 · cached 2.0k / out 100')
+  })
+
+  test('omits the token segment before any usage arrives', () => {
+    const { stream, output } = makeStream({ isTTY: true, columns: 200 })
+    const r = new LiveRenderer(stream)
+    r.slot('a', 'x')
+    const status = output[output.length - 1]!.split('\n')[0]!
+    expect(status).not.toContain('/ out')
+  })
 })
 
 describe('withLivePhase', () => {
@@ -313,5 +417,165 @@ describe('withLivePhase', () => {
     const { result } = await withLivePhase(reporter, 'build', () => Promise.resolve('done'))
     expect(result).toBe('done')
     expect(slots[slots.length - 1]).toEqual(['build', null])
+  })
+
+  test('announces the phase start with an event', async () => {
+    const events: string[] = []
+    const reporter: ProgressReporter = {
+      dynamic: false,
+      event: (m) => {
+        events.push(m)
+      },
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+    }
+    await withLivePhase(reporter, 'build', () => Promise.resolve('x'))
+    expect(events).toEqual(['[build] running...'])
+  })
+
+  test('durationMs measures elapsed wall time', async () => {
+    const reporter: ProgressReporter = {
+      dynamic: false,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+    }
+    const { durationMs } = await withLivePhase(reporter, 'build', () => Promise.resolve('x'))
+    expect(durationMs).toBeGreaterThanOrEqual(0)
+    expect(durationMs).toBeLessThan(60_000)
+  })
+
+  // Poll-until-tick with a generous bound: the 1s interval can fire late under
+  // mutation-run load, but it must fire (a missing tick means reporter.dynamic
+  // was lost). Never assert after a fixed sleep — that flakes.
+  test('ticks the slot while a dynamic phase runs', async () => {
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter: ProgressReporter = {
+      dynamic: true,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    }
+    await withLivePhase(reporter, 'build', () => pollUntil(() => slots.length > 0, 10_000))
+    expect(slots.length).toBeGreaterThan(0)
+    expect(slots[0]![0]).toBe('build')
+    expect(slots[0]![1]).toContain('[build]')
+  }, 15_000)
+
+  test('stops ticking after the phase completes', async () => {
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter: ProgressReporter = {
+      dynamic: true,
+      event: () => {},
+      live: () => {},
+      clearLive: () => {},
+      log: () => {},
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    }
+    const { result: sawTick } = await withLivePhase(reporter, 'build', () =>
+      pollUntil(() => slots.some(([, line]) => line !== null), 10_000),
+    )
+    expect(sawTick).toBe(true)
+    // Completion nulls the slot; the interval must be cleared too.
+    expect(slots[slots.length - 1]).toEqual(['build', null])
+    const callsAtEnd = slots.length
+    await sleep(2_500)
+    expect(slots.length).toBe(callsAtEnd)
+  }, 20_000)
+})
+
+describe('LiveRenderer stats', () => {
+  test('routes usage deltas into RunStats with label and model', () => {
+    const { stream } = makeStream()
+    const stats = new RunStats({ pricing: { 'm-*': { input: 3, output: 15 } } })
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 100_000, output: 10_000, reasoning: 0, cost: 0, label: 'improve', model: 'm-x' })
+    expect(stats.snapshot().perLabel['improve']?.input).toBe(100_000)
+    expect(stats.snapshot().totals.estimatedCostUsd).toBeCloseTo(0.45, 10)
+  })
+
+  test('diff() routes into RunStats', () => {
+    const { stream } = makeStream()
+    const stats = new RunStats()
+    const r = new LiveRenderer(stream, stats)
+    r.diff('iter-1', { added: 12, removed: 3 })
+    expect(stats.snapshot().totals.added).toBe(12)
+  })
+
+  test('status line gains cost, tools and diff segments (TTY)', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 300 })
+    const stats = new RunStats({ pricing: { 'm-*': { input: 3, output: 15 } } })
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 100_000, output: 10_000, reasoning: 0, cost: 0, label: 'improve', model: 'm-x' })
+    stats.addToolCalls('improve', 7)
+    r.diff('iter-1', { added: 12, removed: 3 })
+    r.slot('improve', '  improve   ▶ read a.ts · 1s · 1 tool')
+    const last = output[output.length - 1]!
+    expect(last).toContain('in 100.0k / out 10.0k')
+    expect(last).toContain('~$0.45 est')
+    expect(last).toContain('tools 7')
+    expect(last).toContain('+12/-3')
+  })
+
+  test('cost segment hidden when no pricing matches', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 300 })
+    const stats = new RunStats()
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 100_000, output: 10_000, reasoning: 0, cost: 0, label: 'improve' })
+    r.slot('improve', 'x')
+    expect(output[output.length - 1]!).not.toContain('est')
+  })
+
+  test('works without stats (legacy single-arg construction)', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 300 })
+    const r = new LiveRenderer(stream)
+    r.usage({ input: 5, output: 2, reasoning: 0, cost: 0 })
+    r.slot('a', 'x')
+    expect(output[output.length - 1]!).toContain('in 5 / out 2')
+  })
+
+  test('usage without a label accumulates under agent', () => {
+    const { stream } = makeStream()
+    const stats = new RunStats()
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 5, output: 2, reasoning: 0, cost: 0 })
+    expect(stats.snapshot().perLabel['agent']?.input).toBe(5)
+    expect(stats.snapshot().perLabel['']).toBeUndefined()
+  })
+
+  test('diff without stats is a no-op', () => {
+    const { stream } = makeStream()
+    const r = new LiveRenderer(stream)
+    expect(() => r.diff('iter-1', { added: 1, removed: 0 })).not.toThrow()
+  })
+
+  test('status line hides tools and diff segments at zero (TTY)', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 300 })
+    const stats = new RunStats()
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 100, output: 10, reasoning: 0, cost: 0, label: 'a' })
+    r.slot('a', 'x')
+    const last = output[output.length - 1]!
+    expect(last).toContain('in 100 / out 10')
+    expect(last).not.toContain('tools')
+    expect(last).not.toContain('+0/-0')
+  })
+
+  test('status line shows diff segment when only added is positive (TTY)', () => {
+    const { output, stream } = makeStream({ isTTY: true, columns: 300 })
+    const stats = new RunStats()
+    const r = new LiveRenderer(stream, stats)
+    r.usage({ input: 1, output: 1, reasoning: 0, cost: 0, label: 'a' })
+    r.diff('iter-1', { added: 5, removed: 0 })
+    r.slot('a', 'x')
+    expect(output[output.length - 1]!).toContain('+5/-0')
   })
 })

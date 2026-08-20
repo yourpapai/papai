@@ -61,10 +61,38 @@ crvy-rprtr-*.json
 # Review loop state
 .review-loop/
 
+# Mutation improve runner state
+.mutation-improve/
+
+# SDD runner state
+.sdd-runner/
+
 codeindex/.codeindex/
 papai-local.tar
 client/assets
 
 # opencode local config
-.opencode/
+.opencode/*
+!.opencode/commands/
+!.opencode/skills/
+!.opencode/plugins/
 opencode.json
+
+# process bookkeeping a probe or a background server leaves behind — also
+# refused at staging by opencode-agent/src/stray-paths.ts, which is the
+# guardrail; this is so a human does not commit one either
+*.pid
+*.sock
+
+# process bookkeeping a probe or a background server leaves behind. The
+# guardrail is opencode-agent/src/stray-paths.ts, which refuses these at
+# staging; this is so a human does not commit one either
+*.pid
+*.sock
+
+# opencode-agent: vendored superpowers checkout + generated run inputs
+.superpowers/
+.opencode-agent/
+
+# pinned actionlint binary, fetched and checksum-verified by scripts/run-actionlint.ts
+.actionlint/

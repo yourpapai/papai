@@ -4,8 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ChatProvider, CommandHandler } from '../chat/types.js'
-import { sanitizePluginId } from './contribution-names.js'
-import { contributionRegistry } from './contributions.js'
+import { sanitizePluginId, contributionRegistry } from './contributions.js'
 import { formatPluginEligibilityMessage } from './eligibility-message.js'
 import { getPluginContextEligibility } from './registry.js'
 

@@ -3,9 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { DiffStats } from './diff-stats.js'
 import { formatDecidedLine, formatFoundLine } from './issue-format.js'
 import { activitySummary, formatDuration, formatTokenCount, MIDDLE_DOT, truncate } from './live-format.js'
 import type { IssueProgressEvent, ProgressReporter, UsageDelta } from './progress-log.js'
+import type { RunStats } from './run-stats.js'
 
 const ERASE_LINE = '\u001b[2K'
 const CURSOR_DOWN = '\u001b[1B'
@@ -57,6 +59,7 @@ export class LiveRenderer implements ProgressReporter {
   private readonly tty: boolean
   private broken = false
   private readonly stream: RendererStream
+  readonly stats: RunStats | undefined
   private renderedLines = 0
   private startedAt = 0
   private round = 0
@@ -65,9 +68,10 @@ export class LiveRenderer implements ProgressReporter {
   private readonly usageTotals: UsageDelta = { input: 0, output: 0, reasoning: 0, cost: 0 }
   private readonly slots = new Map<string, string>()
 
-  constructor(stream: RendererStream) {
+  constructor(stream: RendererStream, stats?: RunStats) {
     this.stream = stream
     this.tty = stream.isTTY === true
+    this.stats = stats
   }
 
   get dynamic(): boolean {
@@ -117,12 +121,36 @@ export class LiveRenderer implements ProgressReporter {
     this.renderBlock()
   }
 
+  commit(key: string, line?: string): void {
+    this.touch()
+    const finalLine = line ?? this.slots.get(key)
+    this.slots.delete(key)
+    if (finalLine === undefined) {
+      if (this.dynamic) this.renderBlock()
+      return
+    }
+    if (!this.dynamic) {
+      this.writeSafe(`${finalLine}\n`)
+      return
+    }
+    this.clearBlock()
+    this.writeSafe(`${finalLine}\n`)
+    this.renderBlock()
+  }
+
   usage(delta: UsageDelta): void {
     this.touch()
     this.usageTotals.input += delta.input
     this.usageTotals.output += delta.output
     this.usageTotals.reasoning += delta.reasoning
+    this.usageTotals.cacheRead = (this.usageTotals.cacheRead ?? 0) + (delta.cacheRead ?? 0)
+    this.usageTotals.cacheWrite = (this.usageTotals.cacheWrite ?? 0) + (delta.cacheWrite ?? 0)
     this.usageTotals.cost += delta.cost
+    this.stats?.addUsage(delta.label ?? 'agent', delta)
+  }
+
+  diff(label: string, diffStats: DiffStats): void {
+    this.stats?.addDiff(label, diffStats)
   }
 
   event(message: string): void {
@@ -142,9 +170,6 @@ export class LiveRenderer implements ProgressReporter {
 
   live(lines: readonly string[]): void {
     if (!this.dynamic) {
-      for (const line of lines) {
-        this.writeSafe(`${line}\n`)
-      }
       return
     }
     this.writeBlock([...lines])
@@ -171,8 +196,22 @@ export class LiveRenderer implements ProgressReporter {
     if (this.counts.rejected > 0) segments.push(`${this.counts.rejected} rejected`)
     if (this.counts.needsHuman > 0) segments.push(`${this.counts.needsHuman} needs human`)
     if (segments.length > 0) parts.push(`issues: ${segments.join(` ${MIDDLE_DOT} `)}`)
-    if (this.usageTotals.input > 0 || this.usageTotals.output > 0) {
-      parts.push(`in ${formatTokenCount(this.usageTotals.input)} / out ${formatTokenCount(this.usageTotals.output)}`)
+    const cachedRead = this.usageTotals.cacheRead ?? 0
+    if (this.usageTotals.input > 0 || this.usageTotals.output > 0 || cachedRead > 0) {
+      const cachedPart = cachedRead > 0 ? ` ${MIDDLE_DOT} cached ${formatTokenCount(cachedRead)}` : ''
+      parts.push(
+        `in ${formatTokenCount(this.usageTotals.input)}${cachedPart} / out ${formatTokenCount(this.usageTotals.output)}`,
+      )
+    }
+    const snap = this.stats?.snapshot()
+    if (snap !== undefined) {
+      if (snap.totals.estimatedCostUsd !== undefined) {
+        parts.push(`~$${snap.totals.estimatedCostUsd.toFixed(2)} est`)
+      }
+      if (snap.totals.toolCalls > 0) parts.push(`tools ${snap.totals.toolCalls}`)
+      if (snap.totals.added > 0 || snap.totals.removed > 0) {
+        parts.push(`+${snap.totals.added}/-${snap.totals.removed}`)
+      }
     }
     if (parts.length === 0) return ''
     return `  ${'status'.padEnd(10)} ${parts.join(` ${MIDDLE_DOT} `)}`

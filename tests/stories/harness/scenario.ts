@@ -1100,11 +1100,14 @@ export function executeScenario(
       const guardFailure = error instanceof Error ? error : new Error(String(error))
       teardownFailure = teardownFailure === undefined ? guardFailure : combineFailures(teardownFailure, guardFailure)
     }
-    if (teardownFailure !== undefined) {
-      if (primaryFailure !== undefined) throw combineFailures(primaryFailure, teardownFailure)
-      return Promise.reject(teardownFailure)
+    const failure: Error | undefined =
+      primaryFailure !== undefined && teardownFailure !== undefined
+        ? combineFailures(primaryFailure, teardownFailure)
+        : (teardownFailure ?? primaryFailure)
+    if (failure !== undefined) {
+      const error: Error = failure
+      throw error
     }
-    if (primaryFailure !== undefined) return Promise.reject(primaryFailure)
   })
 }
 

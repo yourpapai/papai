@@ -35,12 +35,12 @@ describe('EmptyState.svelte', () => {
     expect(target.querySelector('.ui-empty__action')?.textContent).toContain('LOAD')
     void unmount(c)
   })
-  test('hint uses the AA-passing --fg2 token', () => {
+  test('hint uses the AA-passing --text-muted token', () => {
     const src = readFileSync(
       fileURLToPath(new URL('../../../../client/shared/ui/EmptyState.svelte', import.meta.url)),
       'utf8',
     )
     const hintRule = src.slice(src.indexOf('.ui-empty__hint'))
-    expect(hintRule).toContain('color: var(--fg2)')
+    expect(hintRule).toContain('color: var(--text-muted)')
   })
 })

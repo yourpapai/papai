@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { ReviewerIssueSchema } from '../../review-loop/src/issue-schema.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import {
   buildFixPrompt,
@@ -12,10 +13,12 @@ import {
   buildRetryFixPrompt,
   buildRetryFixWithInspectorFeedbackPrompt,
   buildReviewPrompt,
+  MINIMALITY_LADDER,
 } from '../../review-loop/src/prompt-templates.js'
 
 const issue: ReviewerIssue = {
   title: 'Race condition in queue flush path',
+  kind: 'defect',
   severity: 'high',
   summary: 'Two concurrent messages can bypass the intended lock.',
   whyItMatters: 'This can produce stale assistant replies.',
@@ -95,6 +98,7 @@ describe('prompt-templates', () => {
 describe('buildInspectPrompt', () => {
   const inspectorIssue: ReviewerIssue = {
     title: 'Race in queue',
+    kind: 'defect',
     severity: 'high',
     summary: 's',
     whyItMatters: 'w',
@@ -127,6 +131,7 @@ describe('buildInspectPrompt', () => {
 describe('buildRetryFixWithInspectorFeedbackPrompt', () => {
   const inspectorIssue: ReviewerIssue = {
     title: 'Race in queue',
+    kind: 'defect',
     severity: 'high',
     summary: 's',
     whyItMatters: 'w',
@@ -150,5 +155,156 @@ describe('buildRetryFixWithInspectorFeedbackPrompt', () => {
     expect(prompt).toContain('verdict "invalid", "needs_human", or "plan_drift"')
     expect(prompt).toContain('bun check:full')
     expect(prompt).toContain('final attempt')
+  })
+})
+
+describe('exposure in prompts', () => {
+  const reviewPrompt = (): string => buildReviewPrompt('/path/to/plan.md', '/path/to/issues.json')
+
+  test('buildReviewPrompt asks for a cited caller or an explicit none', () => {
+    const prompt = reviewPrompt()
+    expect(prompt).toContain('exposure')
+    expect(prompt).toContain('"kind": "caller"')
+    expect(prompt).toContain('"kind": "none"')
+  })
+
+  test('buildReviewPrompt makes exposure mandatory: silence is not an answer', () => {
+    const prompt = reviewPrompt()
+    expect(prompt).toContain('MUST')
+    expect(prompt).toMatch(/omit|silence|leaving it out/iu)
+  })
+
+  test('buildReviewPrompt asks for the caller as evidence, not as a rating', () => {
+    const prompt = reviewPrompt()
+    expect(prompt).toMatch(/quote/iu)
+    expect(prompt).not.toMatch(/rate the (importance|reachability)/iu)
+  })
+
+  for (const [label, build] of [
+    ['buildFixPrompt', (): string => buildFixPrompt(issue, '/p/result.json', 'npm test')],
+    ['buildRetryFixPrompt', (): string => buildRetryFixPrompt(issue, '/p/result.json', 'boom', 'npm test')],
+    [
+      'buildRetryFixWithInspectorFeedbackPrompt',
+      (): string => buildRetryFixWithInspectorFeedbackPrompt(issue, 'not addressed', '/p/result.json', 'npm test'),
+    ],
+  ] as const) {
+    test(`${label} asks the fixer for its own exposure assessment`, () => {
+      const prompt = build()
+      expect(prompt).toContain('exposure')
+      expect(prompt).toContain('"kind": "caller"')
+      expect(prompt).toContain('"kind": "none"')
+    })
+
+    test(`${label} states the assessment is independent of the reviewer`, () => {
+      expect(build()).toMatch(/independent|your own/iu)
+    })
+  }
+})
+
+describe('fix instruction contract', () => {
+  const fixPrompts = [
+    ['buildFixPrompt', (): string => buildFixPrompt(issue, '/p/result.json', 'npm test')],
+    ['buildRetryFixPrompt', (): string => buildRetryFixPrompt(issue, '/p/result.json', 'boom', 'npm test')],
+    [
+      'buildRetryFixWithInspectorFeedbackPrompt',
+      (): string => buildRetryFixWithInspectorFeedbackPrompt(issue, 'not addressed', '/p/result.json', 'npm test'),
+    ],
+  ] as const
+
+  for (const [label, build] of fixPrompts) {
+    test(`${label} carries the minimality ladder`, () => {
+      const prompt = build()
+      expect(prompt).toMatch(/need to exist/iu)
+      expect(prompt).toMatch(/already/iu)
+      expect(prompt).toMatch(/one line/iu)
+    })
+
+    test(`${label} applies the ladder after comprehension, not instead of it`, () => {
+      expect(build()).toMatch(/after you understand/iu)
+    })
+
+    // Additive to the two obligation assertions above, which cover a different
+    // failure: those keep a *reworded* ladder honest, this keeps every carrier
+    // saying the same words. Losing the first leaves a rewrite untested; losing
+    // this one lets one carrier drift from the constant the others share.
+    test(`${label} carries the ladder constant verbatim`, () => {
+      expect(build()).toContain(MINIMALITY_LADDER)
+    })
+  }
+
+  test('buildFixPrompt requires a runnable check to remain in the tree', () => {
+    const prompt = buildFixPrompt(issue, '/p/result.json', 'npm test')
+    expect(prompt).toMatch(/runnable check/iu)
+    expect(prompt).toMatch(/does not satisfy/iu)
+  })
+
+  test('buildFixPrompt forbids authoring architecture prose and asks for the gap instead', () => {
+    const prompt = buildFixPrompt(issue, '/p/result.json', 'npm test')
+    expect(prompt).toMatch(/architecture/iu)
+    expect(prompt).toMatch(/report/iu)
+    expect(prompt).toContain('do NOT edit the plan/spec')
+  })
+})
+
+describe('deletion findings in the reviewer prompt', () => {
+  const reviewPrompt = (): string => buildReviewPrompt('/plan.md', '/issues.json')
+
+  test('admits the five kinds by name', () => {
+    const p = reviewPrompt()
+    for (const tag of ['delete', 'stdlib', 'native', 'yagni', 'shrink']) expect(p).toContain(tag)
+  })
+
+  test('requires a named replacement for every cleanup', () => {
+    const p = reviewPrompt()
+    expect(p).toMatch(/replace/iu)
+    expect(p).toMatch(/name/iu)
+    // "nothing replaces it" is a complete answer for unused code, not a gap.
+    expect(p).toMatch(/nothing replaces it/iu)
+  })
+
+  test('tells the reviewer to omit a cleanup it cannot name a replacement for', () => {
+    expect(reviewPrompt()).toMatch(/omit/iu)
+  })
+
+  test('requires kind on every issue and states the two values', () => {
+    const p = reviewPrompt()
+    expect(p).toContain('"kind"')
+    expect(p).toContain('"defect"')
+    expect(p).toContain('"cleanup"')
+  })
+
+  test('states the medium ceiling on cleanups', () => {
+    const p = reviewPrompt()
+    expect(p).toMatch(/never above medium|at most medium|no higher than medium/iu)
+  })
+
+  test('keeps the existing exclusions: style, naming, and personal preference stay out', () => {
+    // A deletion vocabulary is exactly the thing that could be read as licence
+    // to report taste. The old exclusion has to survive it verbatim.
+    const p = reviewPrompt()
+    expect(p).toContain('correct but I would write it differently')
+    expect(p).toMatch(/style\/formatting a linter owns/iu)
+    expect(p).toMatch(/naming preferences/iu)
+  })
+
+  test("the prompt's inline issue schema still matches issue-schema.ts", () => {
+    // The prompt embeds the schema as a string literal, so the two drift in
+    // silence: a reviewer told to emit a field the parser rejects loses the
+    // whole round to a validation error.
+    const p = reviewPrompt()
+    const shape = ReviewerIssueSchema.parse({
+      title: 't',
+      kind: 'cleanup',
+      severity: 'medium',
+      summary: 's',
+      whyItMatters: 'w',
+      evidence: 'e',
+      file: 'f.ts',
+      lineStart: 1,
+      lineEnd: 2,
+      suggestedFix: 'x',
+      confidence: 0.5,
+    })
+    for (const key of Object.keys(shape)) expect(p).toContain(`"${key}"`)
   })
 })

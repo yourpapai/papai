@@ -10,7 +10,7 @@ import type { TaskProviderConfigValidator } from '../providers/registry.js'
 import { getTaskProviderDescriptor, registerContributedTaskProviderType } from '../providers/registry.js'
 import { buildPluginContext, runWithClosedRegistration } from './context.js'
 import { contributionRegistry } from './contributions.js'
-import { importPluginModule, resolveProviderConfigValidator, toPluginImportSpecifier } from './module-import.js'
+import { importPluginModule, resolveProviderConfigValidator } from './module-import.js'
 import type { ProviderRuntimeDeps } from './provider-runtime.js'
 import { pluginRegistry } from './registry.js'
 import { recordRuntimeEvent } from './store.js'
@@ -279,5 +279,3 @@ export function deactivateAllPlugins(options: DeactivateAllPluginsOptions = {}):
 export function getActivatedPluginIds(): string[] {
   return [...activationOrder]
 }
-
-export { toPluginImportSpecifier }

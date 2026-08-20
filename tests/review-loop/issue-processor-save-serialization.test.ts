@@ -25,8 +25,8 @@ import type { ShellExecFn } from '../../review-loop/src/build-checker.js'
 import { createIssueLedger, type IssueLedger, type LedgerIssueRecord } from '../../review-loop/src/issue-ledger.js'
 import { processPendingIssues } from '../../review-loop/src/issue-processor.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
-import { newCollector } from '../../review-loop/src/loop-trace.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
+import { newCollector } from '../../review-loop/src/round-collector.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
 import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
 import { execGit } from '../../review-loop/src/worktree.js'
@@ -54,6 +54,7 @@ async function setupRepo(repoPath: string): Promise<void> {
 
 const baseIssue: ReviewerIssue = {
   title: 'Race in queue',
+  kind: 'defect',
   severity: 'high',
   summary: 's',
   whyItMatters: 'w',

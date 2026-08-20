@@ -21,8 +21,6 @@
 
 <Story name="Colored value" args={{ k: 'Status', v: 'error', vColor: 'var(--danger)' }} />
 
-<Story name="Dim" args={{ k: 'Idle since', v: '3h', dim: true }} />
-
 <Story name="With Pill value" asChild>
   <KV k="status">
     {#snippet v()}

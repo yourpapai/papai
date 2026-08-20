@@ -71,6 +71,8 @@
   let storedDefaults = $state(hasStoredDefaults)
   let pendingPreset: ToolPreset | null = $state(null)
   let pendingClear = $state(false)
+  let applying = $state(false)
+  let clearing = $state(false)
 
   const riskTone = (risk: ToolRisk): 'mute' | 'info' | 'warn' | 'danger' => {
     if (risk === 'read') return 'mute'
@@ -99,6 +101,8 @@
     expanded = {}
     pendingPreset = null
     pendingClear = false
+    applying = false
+    clearing = false
     try {
       const res = await fetchToolsFn(id)
       if (id !== contextId) return
@@ -151,6 +155,7 @@
   }
 
   function requestPreset(preset: ToolPreset): void {
+    if (applying || clearing) return
     error = null
     pendingClear = false
     pendingPreset = preset
@@ -158,9 +163,9 @@
 
   async function confirmPreset(): Promise<void> {
     const preset = pendingPreset
-    if (preset === null) return
-    pendingPreset = null
+    if (preset === null || applying || clearing) return
     error = null
+    applying = true
     try {
       const res = await applyToolPresetFn({ preset, contextId })
       domains = res.domains
@@ -168,13 +173,16 @@
       storedDefaults = res.hasStoredDefaults
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
+    } finally {
+      applying = false
+      pendingPreset = null
     }
   }
 
   async function confirmClear(): Promise<void> {
-    if (clearPresetFn === undefined) return
-    pendingClear = false
+    if (clearPresetFn === undefined || clearing || applying) return
     error = null
+    clearing = true
     try {
       const res = await clearPresetFn()
       domains = res.domains
@@ -182,6 +190,9 @@
       storedDefaults = res.hasStoredDefaults
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
+    } finally {
+      clearing = false
+      pendingClear = false
     }
   }
 
@@ -202,37 +213,58 @@
   {/if}
 
   <div class="settings-tools__presets" data-testid="tools-presets">
-    <span class="settings-tools__presets-label">Preset</span>
-    {#each PRESET_OPTIONS as preset (preset.value)}
-      <Btn
-        variant={activePreset === preset.value ? 'primary' : 'ghost'}
-        size="sm"
-        testid={`preset-${preset.value}`}
-        onClick={() => requestPreset(preset.value)}>
-        {#snippet children()}{preset.label}{/snippet}
-      </Btn>
-    {/each}
-    <span class="settings-tools__presets-active" data-testid="preset-active">
-      <Pill tone="mute">{#snippet children()}{activePreset === null ? 'Custom' : presetLabel(activePreset)}{/snippet}</Pill>
+    <span class="settings-tools__presets-label">
+      Preset: <span data-testid="preset-active">{activePreset === null ? 'Custom' : presetLabel(activePreset)}</span>
     </span>
+    {#each PRESET_OPTIONS as preset (preset.value)}
+      {@const active = activePreset === preset.value}
+      <span class="settings-tools__preset" class:settings-tools__preset--active={active}>
+        <Btn
+          variant="outline"
+          size="sm"
+          busy={applying || clearing}
+          disabled={applying || clearing}
+          ariaPressed={active}
+          testid={`preset-${preset.value}`}
+          onClick={() => requestPreset(preset.value)}>
+          {#snippet children()}{#if active}<span aria-hidden="true">✓ </span>{/if}{preset.label}{/snippet}
+        </Btn>
+      </span>
+    {/each}
   </div>
   <p class="settings-tools__presets-hint">New tools follow the selected preset by their risk level.</p>
 
   {#if pendingPreset !== null}
     <div class="settings-tools__confirm" data-testid="preset-confirm">
       <span>Apply "{presetLabel(pendingPreset)}"? This replaces your per-tool and per-domain settings.</span>
-      <Btn variant="primary" size="sm" testid="preset-confirm-apply" onClick={() => void confirmPreset()}>
-        {#snippet children()}Apply{/snippet}
+      <Btn
+        variant="primary"
+        size="sm"
+        busy={applying}
+        disabled={applying}
+        testid="preset-confirm-apply"
+        onClick={() => void confirmPreset()}>
+        {#snippet children()}{applying ? 'Applying…' : 'Apply'}{/snippet}
       </Btn>
-      <Btn variant="ghost" size="sm" testid="preset-confirm-cancel" onClick={() => (pendingPreset = null)}>
+      <Btn
+        variant="ghost"
+        size="sm"
+        disabled={applying}
+        testid="preset-confirm-cancel"
+        onClick={() => (pendingPreset = null)}>
         {#snippet children()}Cancel{/snippet}
       </Btn>
     </div>
   {/if}
 
-  {#if clearPresetFn !== undefined && storedDefaults && !pendingClear}
+  {#if clearPresetFn !== undefined && storedDefaults && !pendingClear && pendingPreset === null}
     <div class="settings-tools__clear-row">
-      <Btn variant="ghost" size="sm" testid="tool-defaults-clear" onClick={() => { pendingPreset = null; pendingClear = true }}>
+      <Btn
+        variant="outline"
+        size="sm"
+        disabled={applying || clearing}
+        testid="tool-defaults-clear"
+        onClick={() => { pendingPreset = null; pendingClear = true }}>
         {#snippet children()}Clear admin defaults{/snippet}
       </Btn>
     </div>
@@ -241,10 +273,21 @@
   {#if pendingClear}
     <div class="settings-tools__confirm" data-testid="tool-defaults-clear-confirm">
       <span>Clear all admin default tool permissions? Contexts will revert to the allow-all baseline.</span>
-      <Btn variant="danger" size="sm" testid="tool-defaults-clear-confirm-apply" onClick={() => void confirmClear()}>
-        {#snippet children()}Clear{/snippet}
+      <Btn
+        variant="danger"
+        size="sm"
+        busy={clearing}
+        disabled={clearing}
+        testid="tool-defaults-clear-confirm-apply"
+        onClick={() => void confirmClear()}>
+        {#snippet children()}{clearing ? 'Clearing…' : 'Clear'}{/snippet}
       </Btn>
-      <Btn variant="ghost" size="sm" testid="tool-defaults-clear-confirm-cancel" onClick={() => (pendingClear = false)}>
+      <Btn
+        variant="ghost"
+        size="sm"
+        disabled={clearing}
+        testid="tool-defaults-clear-confirm-cancel"
+        onClick={() => (pendingClear = false)}>
         {#snippet children()}Cancel{/snippet}
       </Btn>
     </div>
@@ -261,13 +304,18 @@
               data-testid={`domain-expand-${domain.domain}`}
               aria-expanded={expanded[domain.domain] === true}
               onclick={() => (expanded[domain.domain] = !expanded[domain.domain])}>
-              {expanded[domain.domain] ? '▾' : '▸'} {domain.domain}
+              {expanded[domain.domain] ? '▾' : '▸'} {domain.domain} ({domain.tools.length})
             </button>
             <span data-testid={`domain-summary-${domain.domain}`}>
               <Pill tone={summaryTone(domain.summary)}>{#snippet children()}{domain.summary}{/snippet}</Pill>
             </span>
             <span class="settings-tools__domain-toggle">
-              <Btn variant="ghost" size="sm" testid={`domain-toggle-${domain.domain}`} onClick={() => void onSetDomainPermission(domain.domain, domain.summary)}>
+              <Btn
+                variant="outline"
+                size="sm"
+                disabled={applying || clearing}
+                testid={`domain-toggle-${domain.domain}`}
+                onClick={() => void onSetDomainPermission(domain.domain, domain.summary)}>
                 {#snippet children()}{domain.summary === 'deny' ? 'Allow all' : domain.summary === 'ask' ? 'Deny all' : domain.summary === 'allow' ? 'Ask all' : 'Allow all'}{/snippet}
               </Btn>
             </span>
@@ -279,12 +327,13 @@
                   {@const groupName = toolGroup.group}
                   {@const summary = groupSummary(toolGroup.tools)}
                   <li class="settings-tools__group-head" data-testid={`group-head-${groupName}`}>
-                    <span class="settings-tools__group-name">{groupName}</span>
+                    <span class="settings-tools__group-name">{groupName} ({toolGroup.tools.length})</span>
                     <Pill tone={summaryTone(summary)}>{#snippet children()}{summary}{/snippet}</Pill>
                     <span class="settings-tools__group-toggle">
                       <Btn
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
+                        disabled={applying || clearing}
                         testid={`group-toggle-${groupName}`}
                         onClick={() => void onSetGroupPermission(domain.domain, groupName, summary)}>
                         {#snippet children()}{summary === 'deny' ? 'Allow all' : summary === 'ask' ? 'Deny all' : summary === 'allow' ? 'Ask all' : 'Allow all'}{/snippet}
@@ -301,6 +350,7 @@
                         options={PERM_OPTIONS}
                         value={tool.permission}
                         ariaLabel={`Permission for ${tool.name}`}
+                        disabled={applying || clearing}
                         onChange={(p) => void onSetToolPermission(tool.name, p as ToolPermission)}
                         testidPrefix={`tool-perm-${tool.name}`} />
                     </div>
@@ -315,7 +365,13 @@
   {:else if loading}
     <p class="placeholder">Loading…</p>
   {:else if error === null}
-    <EmptyState title="No togglable tools" hint="No togglable tools for this context." />
+    <EmptyState title="No togglable tools" hint="No tools are available for this context yet. Tools appear here once a task provider or plugin is configured.">
+      {#snippet action()}
+        <Btn variant="outline" size="sm" testid="tools-empty-refresh" onClick={() => void load(contextId)}>
+          {#snippet children()}Refresh{/snippet}
+        </Btn>
+      {/snippet}
+    </EmptyState>
   {/if}
 </section>
 
@@ -326,18 +382,24 @@
   }
   .settings-tools__domain {
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--surface-1);
   }
   .settings-tools__domain-head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
+    gap: var(--s3);
+    padding: var(--s2) var(--s3);
+    flex-wrap: wrap;
   }
   .settings-tools__expand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s1);
+    min-height: var(--control-h-sm);
+    padding: 0 var(--s1);
     background: none;
     border: none;
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
     cursor: pointer;
@@ -345,14 +407,14 @@
   .settings-tools__list {
     list-style: none;
     margin: 0;
-    padding: 0 10px 10px;
+    padding: 0 var(--s3) var(--s3);
     display: grid;
-    gap: 6px;
+    gap: var(--s2);
   }
   .settings-tools__tool {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--s3);
   }
   .settings-tools__name {
     font-family: var(--font-mono);
@@ -364,55 +426,56 @@
   .settings-tools__group-head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding-top: 6px;
+    gap: var(--s3);
+    padding-top: var(--s2);
     border-top: 1px solid var(--border);
   }
   .settings-tools__group-name {
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
   .settings-tools__group-toggle {
     margin-left: auto;
   }
   .settings-tools__tool--grouped {
-    padding-left: 14px;
+    padding-left: var(--s4);
   }
   .settings-tools__perm { margin-left: auto; }
   .settings-tools__presets {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--s2);
     flex-wrap: wrap;
-    margin-bottom: 6px;
+    margin-bottom: var(--s2);
   }
   .settings-tools__presets-label {
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
-  .settings-tools__presets-active {
-    margin-left: auto;
+  .settings-tools__preset--active :global(.ui-btn) {
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .settings-tools__presets-hint {
-    margin: 0 0 12px;
+    margin: 0 0 var(--s3);
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .settings-tools__confirm {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--s2);
     flex-wrap: wrap;
-    padding: 8px 10px;
-    margin-bottom: 12px;
+    padding: var(--s2) var(--s3);
+    margin-bottom: var(--s3);
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--surface-1);
     font-size: 12px;
   }
   .settings-tools__clear-row {
     display: flex;
-    margin-bottom: 12px;
+    margin-bottom: var(--s3);
   }
 </style>

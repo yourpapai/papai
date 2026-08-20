@@ -6,8 +6,8 @@
 import type { IdentityUser, UserIdentityResolver } from 'papai/plugin-types'
 
 import { logger } from '../../src/logger.js'
-import type { KaneoConfig } from './client.js'
 import { kaneoListUsers } from './operations/users.js'
+import type { KaneoConfig } from './provider.js'
 
 const log = logger.child({ scope: 'provider:kaneo:identity' })
 
@@ -20,13 +20,11 @@ export function createKaneoIdentityResolver(config: KaneoConfig, workspaceId: st
 
       try {
         const users = await kaneoListUsers(config, workspaceId, query, limit ?? 10)
-        return users.map(
-          (u): IdentityUser => ({
-            id: u.id,
-            login: u.login ?? u.id,
-            name: u.name ?? u.login ?? u.id,
-          }),
-        )
+        return users.map((u): IdentityUser => ({
+          id: u.id,
+          login: u.login ?? u.id,
+          name: u.name ?? u.login ?? u.id,
+        }))
       } catch (error) {
         log.error({ error: error instanceof Error ? error.message : String(error), query }, 'Kaneo searchUsers failed')
         throw error

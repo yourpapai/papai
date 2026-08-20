@@ -29,6 +29,10 @@ test.describe('settings/sections/MembersSection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 test('MembersSection — populated, narrow', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-memberssection--populated')
   await sharedPage.setViewportSize({ width: 640, height: 900 })

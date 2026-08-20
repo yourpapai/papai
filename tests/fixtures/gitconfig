@@ -1,0 +1,22 @@
+# Hermetic git configuration for the test suite.
+#
+# `tests/setup.ts` points GIT_CONFIG_GLOBAL at this file (and GIT_CONFIG_SYSTEM
+# at /dev/null) before any module loads, so every `git` child process the suites
+# spawn sees exactly this config instead of the developer's or CI runner's.
+#
+# Why: ~20 suites shell out to `git init` without `-b`. With init.defaultBranch
+# unset, git 2.28+ prints a 10-line `hint:` advice block to stderr — ~100 lines
+# of a near-green full-suite log. Pinning the value here silences all of them
+# without editing every call site.
+#
+# `master` (not `main`) is deliberate: it is git's historical default, so suites
+# that create a repo and then reference the initial branch by name keep working.
+
+[init]
+	defaultBranch = master
+
+# Identity so `git commit` works in throwaway repos that do not configure their
+# own; suites that set user.* on the repo still win (local config > global).
+[user]
+	name = papai tests
+	email = tests@papai.invalid

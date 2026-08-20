@@ -13,8 +13,8 @@ type GenerateOpts = { system: string; prompt: string }
 type GenerateFn = (opts: GenerateOpts) => Promise<{ text: string }>
 
 function depsReturning(text: string): { deps: SummarizerDeps; generateMock: Mock<GenerateFn> } {
-  const generateMock: Mock<GenerateFn> = mock(
-    (_opts: GenerateOpts): Promise<{ text: string }> => Promise.resolve({ text }),
+  const generateMock: Mock<GenerateFn> = mock((_opts: GenerateOpts): Promise<{ text: string }> =>
+    Promise.resolve({ text }),
   )
   return { deps: { generate: generateMock }, generateMock }
 }

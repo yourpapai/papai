@@ -108,13 +108,14 @@ const checkForgeKind = (contextId: string, toPersist: CodingCredentialConfig): R
   const kindRaw = merged.kind?.trim()
   if (kindRaw === undefined || kindRaw.length === 0) return null
   if (!isForgeKind(kindRaw)) {
-    return settingsJson(422, { error: `unknown forge kind: ${kindRaw}` })
+    return settingsJson(422, { error: 'unsupported code host', field: 'kind' })
   }
   if (needsInstanceUrl(kindRaw)) {
     const instanceUrl = merged.instance_url?.trim() ?? ''
     if (instanceUrl.length === 0 || !instanceUrl.startsWith('https://')) {
       return settingsJson(422, {
-        error: 'instance_url must be an https URL for self-hosted forge kinds',
+        error: 'required for self-hosted code hosts, and must start with https://',
+        field: 'instance_url',
       })
     }
   }
@@ -127,10 +128,10 @@ const checkCompatibility = (contextId: string, toPersist: CodingCredentialConfig
   const agentRaw = merged.agent?.trim()
   const providerRaw = merged.provider?.trim()
   if (agentRaw !== undefined && agentRaw.length > 0 && !isAgent(agentRaw)) {
-    return settingsJson(422, { error: `unknown agent: ${agentRaw}` })
+    return settingsJson(422, { error: 'unsupported coding agent', field: 'agent' })
   }
   if (providerRaw !== undefined && providerRaw.length > 0 && !isProvider(providerRaw)) {
-    return settingsJson(422, { error: `unknown provider: ${providerRaw}` })
+    return settingsJson(422, { error: 'unsupported model provider', field: 'provider' })
   }
   if (
     agentRaw !== undefined &&
@@ -143,26 +144,29 @@ const checkCompatibility = (contextId: string, toPersist: CodingCredentialConfig
     return settingsJson(422, { error: 'incompatible agent/provider' })
   }
   if (providerRaw === 'openai-compatible' && (merged.provider_base_url?.trim() ?? '').length === 0) {
-    return settingsJson(422, { error: 'openai-compatible requires a base URL' })
+    return settingsJson(422, { error: 'required for the openai-compatible provider', field: 'provider_base_url' })
   }
   const modelRaw = merged.model?.trim()
   if (modelRaw !== undefined && modelRaw.length > 0) {
-    if (modelRaw.length > 200) return settingsJson(422, { error: 'model too long (max 200)' })
+    if (modelRaw.length > 200) return settingsJson(422, { error: 'too long (max 200 characters)', field: 'model' })
     const hasCtrl = Array.from(modelRaw).some((ch) => {
       const cp = ch.codePointAt(0) ?? 0
       return cp < 0x20 || cp === 0x7f
     })
-    if (hasCtrl) return settingsJson(422, { error: 'model contains control characters' })
+    if (hasCtrl) return settingsJson(422, { error: 'contains control characters', field: 'model' })
   }
   const methodRaw = merged.auth_method?.trim()
   if (methodRaw !== undefined && methodRaw.length > 0) {
-    if (!isAuthMethod(methodRaw)) return settingsJson(422, { error: `unknown auth method: ${methodRaw}` })
+    if (!isAuthMethod(methodRaw)) return settingsJson(422, { error: 'unsupported auth method', field: 'auth_method' })
     if (methodRaw === 'oauth-subscription') {
       if (providerRaw !== undefined && providerRaw.length > 0 && providerRaw !== 'anthropic') {
         return settingsJson(422, { error: 'oauth-subscription requires the anthropic provider' })
       }
       if ((merged.provider_base_url?.trim() ?? '').length > 0) {
-        return settingsJson(422, { error: 'oauth-subscription does not use a base URL' })
+        return settingsJson(422, {
+          error: 'leave blank when auth method is oauth-subscription',
+          field: 'provider_base_url',
+        })
       }
     }
   }

@@ -4,18 +4,29 @@
 /* See LICENSE in the project root for details. */
 
 /* ---- layout shell ---- */
+/* The shell body no longer scrolls (Shell bodyScroll={false}); this column fills it
+   and hands the remaining height to the grid, so the sidebar and the main column each
+   scroll inside a box whose height is real rather than an assumed 100vh. */
+.settings-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
 .settings-grid {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: 0;
+  flex: 1 1 auto;
   min-height: 0;
 }
 .settings-grid__main {
   display: flex;
   flex-direction: column;
   gap: var(--gap-group);
-  padding: var(--gap-section) var(--gap-section) 96px;
+  padding: var(--gap-section) var(--gap-section) var(--s9);
   min-width: 0;
+  overflow-y: auto;
 }
 
 /* group = Personal / Integrations / Admin */
@@ -30,17 +41,30 @@
 }
 
 .settings-section {
-  scroll-margin-top: 96px;
+  scroll-margin-top: var(--gap-inline);
   color: var(--text);
 }
 
 /* forms */
+/* Three shared tracks -- label / control / hint. Fields span all three via
+   subgrid (Field.svelte), so labels, controls and hints line up across the
+   whole row. Non-field children (submit buttons) span only label+control and
+   sit at the bottom of the control track, which puts them level with the
+   inputs rather than below a neighbour's hint text. */
 .settings-form {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-rows: auto auto auto;
   gap: var(--gap-inline);
-  align-items: end;
   margin-bottom: var(--gap-field);
+}
+.settings-form > * {
+  grid-row: span 3;
+}
+.settings-form > :not(.ui-field) {
+  grid-row: span 2;
+  align-self: end;
+  justify-self: start;
 }
 .settings-table-wrap {
   overflow-x: auto;
@@ -64,6 +88,7 @@
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
+  margin: 0;
 }
 .t-label {
   font-size: 12px;
@@ -88,14 +113,22 @@
 }
 
 /* ---- status text ---- */
+/* Both carry the same margin so an error and a success message occupy identical
+   space in the same slot; a section must not shift by the UA default when one
+   swaps for the other. */
 .status-error {
   color: var(--danger);
+  margin: var(--gap-inline) 0 0;
 }
 .status-success {
   color: var(--success);
+  margin: var(--gap-inline) 0 0;
 }
+/* --content-max is the same cap .settings-group uses, so placeholder prose
+   wraps at the measure of the column that usually contains it. */
 .placeholder {
   color: var(--text-muted);
+  max-width: var(--content-max);
 }
 
 .settings-gate {
@@ -108,12 +141,19 @@
 }
 
 /* ---- shared focus ring ---- */
-.settings-grid :focus-visible {
-  outline: 2px solid rgba(82, 224, 138, 0.4);
-  outline-offset: 1px;
+/* .ui-shell rather than .settings-grid: the top bar, the jump menu, and the gates all
+   render outside the grid, so scoping there left the context switcher, sign-out, and
+   the only small-screen navigation with the UA default ring. */
+.ui-shell :focus-visible,
+.settings-gate :focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
-@media (max-width: 720px) {
+/* Below this the sidebar hides and the jump menu takes over. 900px, not 720px: with a
+   fixed 220px rail, a 760px viewport leaves the content column ~492px -- narrower than
+   the 608px it gets at 640px, where the rail is already gone. */
+@media (max-width: 900px) {
   .settings-grid {
     grid-template-columns: 1fr;
   }

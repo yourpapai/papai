@@ -142,6 +142,10 @@ describe('pairedRun', () => {
       log: (message) => {
         messages.push(message)
       },
+      // Stubbed so the assertion below covers this run's own per-file lines and
+      // nothing else; the coverage map reports through the same `log`, and its
+      // own routing is asserted by its own test further down.
+      buildMap: () => ({}),
     }
 
     await pairedRun({
@@ -183,6 +187,8 @@ describe('pairedRun', () => {
       log: (message) => {
         messages.push(message)
       },
+      // See the note on the previous test: the coverage map shares this `log`.
+      buildMap: () => ({}),
     }
 
     await pairedRun({
@@ -504,6 +510,38 @@ describe('pairedRun', () => {
 
     const testFiles = readConfiguredBunTestFiles(captured.configPath)
     expect(testFiles).toEqual(['./tests/companion.test.ts'])
+  })
+
+  test("the default coverage map reports an uncovered source through this run's log, not the console", async () => {
+    // The notice used to go straight to `console.error` from two layers down,
+    // which put it in front of every test that ran a default map build. It is
+    // paired-run progress, so it belongs on paired-run's own reporter.
+    const reportDir = makeReportDir()
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paired-run-root-'))
+    const messages: string[] = []
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: () => 'tests/companion.test.ts',
+      loadOverrides: () => ({}),
+      runStryker: (configPath: string) => {
+        writeConfiguredReport(configPath, makeReport(['Killed']))
+      },
+      readReport: readStrykerReport,
+      log: (message) => {
+        messages.push(message)
+      },
+      // No `buildMap`: this is the one test that exercises the real default.
+    }
+
+    await pairedRun({
+      projectRoot,
+      reportDir,
+      sourceFiles: ['src/uncovered.ts'],
+      verbose: undefined,
+      deps,
+    })
+
+    expect(messages[0]).toBe('coverage-map: no covering test found for src/uncovered.ts (checked 0 candidates)')
   })
 })
 

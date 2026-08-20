@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { ReviewerIssueSchema, VerifierDecisionSchema } from './issue-schema.js'
 import type { FixerResult, IssueMatch, ReviewerIssue, VerifierDecision } from './issue-schema.js'
 import { emitVerifyComplete, truncate } from './loop-trace.js'
+import { exposureKind } from './round-collector.js'
 import type { TraceLogger } from './trace-log.js'
 
 export type LedgerIssueStatus =
@@ -178,8 +179,12 @@ export function recordVerify(
     record.id,
     result.verdict,
     result.fixability,
-    record.issue.severity,
-    result.severity ?? null,
+    {
+      reviewerSeverity: record.issue.severity,
+      fixerSeverity: result.severity ?? null,
+      reviewerExposure: exposureKind(record.issue.exposure),
+      fixerExposure: exposureKind(result.exposure),
+    },
     truncate(result.reasoning, 200),
     result.targetFiles,
   )
@@ -205,8 +210,12 @@ export function recordNeedsHuman(
     record.id,
     'needs_human',
     'manual',
-    record.issue.severity,
-    result.severity ?? null,
+    {
+      reviewerSeverity: record.issue.severity,
+      fixerSeverity: result.severity ?? null,
+      reviewerExposure: exposureKind(record.issue.exposure),
+      fixerExposure: exposureKind(result.exposure),
+    },
     truncate(reasoning, 200),
     result.targetFiles,
   )

@@ -261,6 +261,17 @@ const oauthOpenCodePayload = {
   ],
 }
 
+const errorJson = (payload: { error: string; field?: string }): Response =>
+  new Response(JSON.stringify(payload), { status: 422, headers: { 'Content-Type': 'application/json' } })
+
+const makeFieldErrorMock =
+  (errorPayload: { error: string; field?: string }, getPayload: unknown = withSelectsPayload) =>
+  (_url: string, init?: RequestInit): Promise<Response> => {
+    if (_url.includes('/settings/api/coding-credentials') && (init?.method ?? 'GET').toUpperCase() === 'PATCH')
+      return Promise.resolve(errorJson(errorPayload))
+    return Promise.resolve(json(getPayload))
+  }
+
 let capturedPatchBody = ''
 
 const clearErrorMock = (_url: string, init?: RequestInit): Promise<Response> => {
@@ -776,6 +787,40 @@ describe('CodingCredentialsSection', () => {
     void unmount(component)
   })
 
+  test('Save stays disabled on load even if a sensitive field reports hasValue:false with a non-empty value', async () => {
+    // Regression guard: initialDrafts and formDirty must agree on the baseline an untouched
+    // sensitive field is compared against. If they use different rules (e.g. one keys off
+    // hasValue, the other off sensitive alone), a payload where hasValue is false but value is
+    // non-empty makes the two disagree, and Save comes up enabled with no user edit.
+    setMockFetch(() =>
+      Promise.resolve(
+        json({
+          namespace: 'agent-provider',
+          configured: true,
+          complete: false,
+          missing: [],
+          fields: [
+            {
+              key: 'provider_api_key',
+              label: 'Anthropic API Key',
+              required: true,
+              sensitive: true,
+              hasValue: false,
+              value: 'stale-leftover-value',
+            },
+          ],
+        }),
+      ),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const save = target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!
+    expect(save.disabled).toBe(true)
+    void unmount(component)
+  })
+
   test('a failed initial load renders ErrorState with a retry control', async () => {
     setMockFetch(() => Promise.resolve(new Response('boom', { status: 500 })))
     document.body.innerHTML = '<div id="root"></div>'
@@ -783,6 +828,17 @@ describe('CodingCredentialsSection', () => {
     const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
     await drain()
     expect(target.querySelector('[data-testid="error-retry"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('a dropped connection on load shows the friendly unreachable-server message', async () => {
+    setMockFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+    const message = target.querySelector('.ui-error__message')
+    expect(message?.textContent).toBe("Couldn't reach the server. Check your connection and try again.")
     void unmount(component)
   })
 
@@ -884,6 +940,129 @@ describe('CodingCredentialsSection', () => {
     expect(placeholder).not.toBeNull()
     expect(String(placeholder?.textContent)).toContain('No provider fields available')
     expect(target.querySelector('[data-testid="coding-credentials-save"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a 422 naming a visible field renders inline under that field, not in the banner', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(makeFieldErrorMock({ error: 'Key looks invalid.', field: 'provider_api_key' }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-provider_api_key"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-provider_api_key"]')!
+    input.value = 'sk-ant-bad'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+
+    const row = target.querySelector<HTMLElement>('[data-testid="coding-row-provider_api_key"]')!
+    const inlineError = row.querySelector('.settings-field__error')
+    expect(inlineError).not.toBeNull()
+    expect(inlineError!.textContent).toContain('Key looks invalid.')
+    expect(target.querySelector('.status-error')).toBeNull()
+    void unmount(component)
+  })
+
+  test('a 422 naming a hidden field falls back to the banner, with no inline error', async () => {
+    setCsrfToken('csrf-t')
+    // oauthOpenCodePayload has auth_method=oauth-subscription, which hides provider_base_url.
+    setMockFetch(makeFieldErrorMock({ error: 'Base URL required.', field: 'provider_base_url' }, oauthOpenCodePayload))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    expect(target.querySelector('[data-testid="coding-row-provider_base_url"]')).toBeNull()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-provider_api_key"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-provider_api_key"]')!
+    input.value = 'sk-ant-oat01-new'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+
+    const banner = target.querySelector('.status-error')
+    expect(banner).not.toBeNull()
+    expect(banner!.textContent).toContain('Base URL required.')
+    expect([...target.querySelectorAll('.settings-field__error')].every((n) => n.textContent === '')).toBe(true)
+    void unmount(component)
+  })
+
+  test('a 422 naming an unknown field falls back to the banner, with no inline error', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(makeFieldErrorMock({ error: 'Unknown field.', field: 'nonexistent_key' }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-provider_api_key"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-provider_api_key"]')!
+    input.value = 'sk-ant-new'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+
+    const banner = target.querySelector('.status-error')
+    expect(banner).not.toBeNull()
+    expect(banner!.textContent).toContain('Unknown field.')
+    expect([...target.querySelectorAll('.settings-field__error')].every((n) => n.textContent === '')).toBe(true)
+    void unmount(component)
+  })
+
+  test('Auth method carries a hint explaining why it appeared', async () => {
+    setMockFetch(() => Promise.resolve(json(baseUrlStoredPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    const row = target.querySelector('[data-testid="coding-row-auth_method"]')
+    expect(row?.textContent).toContain('Anthropic')
+    void unmount(component)
+  })
+
+  test('Base URL carries a hint when the provider is openai-compatible', async () => {
+    setMockFetch(() => Promise.resolve(json(withOpenAiCompatiblePayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    const row = target.querySelector('[data-testid="coding-row-provider_base_url"]')
+    expect(row?.textContent).toContain('OpenAI-compatible')
+    void unmount(component)
+  })
+
+  test('a 422 with no field key renders in the banner', async () => {
+    setCsrfToken('csrf-t')
+    setMockFetch(makeFieldErrorMock({ error: 'Something went wrong.' }))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(CodingCredentialsSection, { target, props: { contextId: 'pi:telegram:ctx:u1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-replace-provider_api_key"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="coding-input-provider_api_key"]')!
+    input.value = 'sk-ant-new'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="coding-credentials-save"]')!.click()
+    await drain()
+
+    const banner = target.querySelector('.status-error')
+    expect(banner).not.toBeNull()
+    expect(banner!.textContent).toContain('Something went wrong.')
+    expect([...target.querySelectorAll('.settings-field__error')].every((n) => n.textContent === '')).toBe(true)
     void unmount(component)
   })
 })

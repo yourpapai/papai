@@ -29,6 +29,17 @@
 <Story name="Single option" args={{ value: 'only', options: [{ value: 'only', label: 'Only choice' }] }} />
 
 <Story
+  name="Disabled"
+  args={{
+    value: '30d',
+    disabled: true,
+    options: [
+      { value: '7d', label: 'Last 7 days' },
+      { value: '30d', label: 'Last 30 days' },
+    ],
+  }} />
+
+<Story
   name="Placeholder"
   args={{
     value: '',

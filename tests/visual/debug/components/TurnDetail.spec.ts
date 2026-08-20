@@ -24,6 +24,9 @@ test.describe('debug/components/TurnDetail', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
 test('TurnDetail — raw expanded', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'debug-components-turndetail--completed')
   await sharedPage.getByText('show raw').click()

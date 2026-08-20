@@ -33,13 +33,8 @@ const DEFAULT_SEARCH_LIMIT = 10
 
 type MemoryRecordValues = typeof memoryRecords.$inferInsert
 
-export { rowToProfile, rowToRecord } from './serialization.js'
-export {
-  listProvisionalRecords,
-  markPromotionRejected,
-  promoteProvisionalToActive,
-  type ListProvisionalFilter,
-} from './provisional-store.js'
+export { rowToRecord } from './serialization.js'
+export { listProvisionalRecords, markPromotionRejected, promoteProvisionalToActive } from './provisional-store.js'
 
 const inputToRecordValues = (input: MemoryRecordInput): MemoryRecordValues => ({
   id: input.id,

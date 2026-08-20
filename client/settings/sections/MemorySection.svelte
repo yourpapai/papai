@@ -343,7 +343,7 @@
   .settings-memory__note {
     margin: 0;
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
 
   .settings-memory__profile {
@@ -351,7 +351,7 @@
     gap: 10px;
     padding: 12px;
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--surface-1);
   }
 
   .settings-memory__profile-actions {
@@ -378,13 +378,13 @@
   .settings-memory__pending-title {
     margin: 0;
     font-size: 13px;
-    color: var(--fg);
+    color: var(--text);
   }
 
   .settings-memory__records-title {
     margin: 0;
     font-size: 13px;
-    color: var(--fg);
+    color: var(--text);
   }
 
   .settings-memory__active {
@@ -395,7 +395,7 @@
   .settings-memory__pending-hint {
     margin: 0;
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
 
   .settings-memory__record {
@@ -406,7 +406,7 @@
     min-height: 76px;
     padding: 12px;
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--surface-1);
   }
 
   .settings-memory__record-main {
@@ -429,12 +429,12 @@
   .settings-memory__tag {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
 
   .settings-memory__text {
     margin: 0;
-    color: var(--fg);
+    color: var(--text);
     font-size: 12px;
     line-height: 1.45;
     overflow-wrap: anywhere;
@@ -446,7 +446,7 @@
 
   .settings-memory__tag {
     padding: 1px 6px;
-    border: 1px solid var(--hair);
+    border: 1px solid var(--border);
   }
 
   @media (max-width: 640px) {

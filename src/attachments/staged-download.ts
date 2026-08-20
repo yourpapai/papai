@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { AttachmentSourceProvider, StagedFileDownloadFn } from './types.js'
+import type { StagedFileDownloadFn, AttachmentSourceProvider } from './index.js'
 
 export type StagedDownloaderDeps = {
   downloadFileFromInstance: (

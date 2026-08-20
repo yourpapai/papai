@@ -15,6 +15,8 @@ import {
   createCapturingTraceLogger,
   emptyDecisions,
   emptySeverityCounts,
+  CheckBehindByKindSchema,
+  KindCountsSchema,
 } from '../../review-loop/src/trace-log.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
@@ -80,6 +82,8 @@ describe('trace-log', () => {
         fixability: 'auto',
         reviewerSeverity: 'high',
         fixerSeverity: 'medium',
+        reviewerExposure: 'caller',
+        fixerExposure: 'unknown',
         reasoning: 'r',
         targetFiles: [],
       },
@@ -105,6 +109,14 @@ describe('trace-log', () => {
         reviewerSeverity: { critical: 0, high: 1, medium: 0, low: 0 },
         fixerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         inspector: { runs: 0, rejected: 0 },
+        reviewerExposure: { caller: 0, none: 0, unknown: 0 },
+        fixerExposure: { caller: 0, none: 0, unknown: 0 },
+        exposureDivergent: 0,
+        reviewerKind: { defect: 0, cleanup: 0 },
+        checkBehind: {
+          defect: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+          cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+        },
         phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
         usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
       },
@@ -125,6 +137,14 @@ describe('trace-log', () => {
       reviewerSeverity: { ...emptySeverityCounts(), high: 2, low: 1 },
       fixerSeverity: { ...emptySeverityCounts(), high: 1 },
       inspector: { runs: 0, rejected: 0 },
+      reviewerExposure: { caller: 0, none: 0, unknown: 0 },
+      fixerExposure: { caller: 0, none: 0, unknown: 0 },
+      exposureDivergent: 0,
+      reviewerKind: { defect: 0, cleanup: 0 },
+      checkBehind: {
+        defect: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+        cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+      },
       phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
       usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
     }
@@ -172,6 +192,14 @@ describe('extended schemas', () => {
       reviewerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
       fixerSeverity: { critical: 0, high: 0, medium: 0, low: 0 },
       inspector: { runs: 0, rejected: 0 },
+      reviewerExposure: { caller: 0, none: 0, unknown: 0 },
+      fixerExposure: { caller: 0, none: 0, unknown: 0 },
+      exposureDivergent: 0,
+      reviewerKind: { defect: 0, cleanup: 0 },
+      checkBehind: {
+        defect: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+        cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
+      },
       phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
       usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
     })
@@ -192,5 +220,32 @@ describe('extended schemas', () => {
       reasoning: 'ok',
     })
     expect(parsed.event).toBe('inspect_complete')
+  })
+})
+
+describe('per-kind schemas reject a partial shape', () => {
+  const counts = { withCheck: 1, withoutCheck: 0, unmeasured: 0 }
+
+  // These schemas are the only thing standing between a hand-edited or
+  // half-written metrics.json and a summary that reports confident nonsense.
+  // Asserting only that a well-formed payload parses leaves that unproven: an
+  // object schema with its fields dropped still accepts every good input, and
+  // silently accepts every bad one too.
+  test('CheckBehindByKindSchema requires both kinds, each a full count', () => {
+    expect(CheckBehindByKindSchema.parse({ defect: counts, cleanup: counts })).toEqual({
+      defect: counts,
+      cleanup: counts,
+    })
+    expect(() => CheckBehindByKindSchema.parse({})).toThrow()
+    expect(() => CheckBehindByKindSchema.parse({ defect: counts })).toThrow()
+    expect(() => CheckBehindByKindSchema.parse({ defect: counts, cleanup: { withCheck: 1 } })).toThrow()
+  })
+
+  test('KindCountsSchema requires both counts, non-negative integers', () => {
+    expect(KindCountsSchema.parse({ defect: 2, cleanup: 0 })).toEqual({ defect: 2, cleanup: 0 })
+    expect(() => KindCountsSchema.parse({})).toThrow()
+    expect(() => KindCountsSchema.parse({ defect: 2 })).toThrow()
+    expect(() => KindCountsSchema.parse({ defect: -1, cleanup: 0 })).toThrow()
+    expect(() => KindCountsSchema.parse({ defect: 1.5, cleanup: 0 })).toThrow()
   })
 })

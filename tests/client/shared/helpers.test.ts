@@ -5,7 +5,14 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { fmtBytes, fmtNum, formatDateTime, formatDuration } from '../../../client/shared/helpers.js'
+import {
+  escapeHtml,
+  fmtBytes,
+  fmtNum,
+  formatDateTime,
+  formatDuration,
+  hasSeriesData,
+} from '../../../client/shared/helpers.js'
 
 describe('fmtNum', () => {
   test('rounds to <=2dp by default and adds thousands separators', () => {
@@ -64,5 +71,71 @@ describe('formatDuration', () => {
   test('invalid input renders a dash', () => {
     expect(formatDuration(Number.NaN)).toBe('—')
     expect(formatDuration(-5)).toBe('—')
+  })
+})
+
+describe('hasSeriesData', () => {
+  test('is false for undefined, empty, and all-zero series', () => {
+    expect(hasSeriesData(undefined)).toBe(false)
+    expect(hasSeriesData([])).toBe(false)
+    expect(hasSeriesData([0, 0, 0])).toBe(false)
+  })
+
+  test('is false for a series of non-finite values', () => {
+    expect(hasSeriesData([Number.NaN, Number.POSITIVE_INFINITY])).toBe(false)
+  })
+
+  test('is true as soon as one positive finite value is present', () => {
+    expect(hasSeriesData([0, 0, 1])).toBe(true)
+  })
+})
+
+describe('escapeHtml', () => {
+  test('escapes & to &amp;', () => {
+    expect(escapeHtml('x&y')).toBe('x&amp;y')
+  })
+})
+
+describe('fmtNum', () => {
+  test('honors an explicit dp larger than the default maximumFractionDigits', () => {
+    expect(fmtNum(1.123456, 5)).toBe('1.12346')
+  })
+})
+
+describe('fmtBytes boundary and unit tiers', () => {
+  test('treats exactly 1024 as the first KB tier (strict < 1024)', () => {
+    expect(fmtBytes(1024)).toBe('1.0 KB')
+  })
+
+  test('loop v >= 1024 boundary advances at exactly 1024', () => {
+    expect(fmtBytes(1048576)).toBe('1.0 MB')
+  })
+
+  test('caps at the TB tier on petabyte-scale input', () => {
+    expect(fmtBytes(1024 ** 5)).toBe('1024 TB')
+  })
+
+  test('uses zero decimals when v lands exactly on 10', () => {
+    expect(fmtBytes(10240)).toBe('10 KB')
+  })
+
+  describe('unit tiers', () => {
+    test('reaches the GB unit', () => {
+      expect(fmtBytes(50 * 1024 ** 3)).toBe('50 GB')
+    })
+
+    test('reaches the TB unit', () => {
+      expect(fmtBytes(2 * 1024 ** 4)).toBe('2.0 TB')
+    })
+  })
+})
+
+describe('formatDuration', () => {
+  test('zero duration renders as 0ms', () => {
+    expect(formatDuration(0)).toBe('0ms')
+  })
+
+  test('exactly 1000ms renders as 1s', () => {
+    expect(formatDuration(1000)).toBe('1s')
   })
 })

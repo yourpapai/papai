@@ -218,7 +218,7 @@
 </script>
 
 <section id="analytics-admin" class="settings-section">
-  <PageHeader eyebrow="Admin" title="Analytics" />
+  <PageHeader eyebrow="Admin" title="Analytics policy" />
 
   {#if loadError !== null && data === null}
     <ErrorState title="Couldn't load analytics settings" message={loadError} onRetry={() => void load()} />
@@ -394,7 +394,7 @@
   .settings-section__caption {
     margin: var(--gap-inline) 0;
     font-size: 12px;
-    color: var(--fg3);
+    color: var(--text-dim);
     line-height: 1.45;
   }
   .sink-row {

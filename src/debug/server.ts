@@ -6,6 +6,7 @@
 import path from 'node:path'
 
 import { handleMattermostActionRequest, isMattermostActionPath } from '../chat/mattermost/action-callbacks.js'
+import { handleContextVaultPush } from '../context-vault/push-route.js'
 import { authenticate, recordActivity } from '../dashboard-auth/index.js'
 import { listAllIdentityMappings } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
@@ -198,8 +199,9 @@ export function routeSettingsStatic(pathname: string): Response | null {
   return null
 }
 
-/** PUBLIC capability-token routes (transcript viewer, plugin-mcp); must stay before the auth gate. */
+/** PUBLIC capability-token routes (transcript viewer, plugin-mcp, context-vault push); must stay before the auth gate. */
 async function routePublicCapabilityPaths(req: Request, url: URL): Promise<Response | null> {
+  if (url.pathname === '/api/context-vault/push') return handleContextVaultPush(req)
   const transcriptResponse = await routeTranscriptPaths(req, url)
   if (transcriptResponse !== null) return transcriptResponse
   const pluginMcpResponse = await routePluginMcpPaths(req, url)

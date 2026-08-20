@@ -303,7 +303,7 @@
     padding: var(--gap-inline);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--surface);
+    background: var(--surface-1);
   }
   .settings-mcp__primary {
     display: flex;
@@ -350,7 +350,7 @@
     margin: 0 0 var(--gap-tight);
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .settings-mcp__group-body {
     display: grid;
@@ -359,7 +359,7 @@
   .settings-mcp__group-hint {
     margin: 0;
     font-size: 10px;
-    color: var(--fg-hint);
+    color: var(--text-dim);
   }
   .settings-mcp__header-row {
     display: flex;

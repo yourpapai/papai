@@ -11,5 +11,14 @@ test.describe('shared/ui/SummaryList', () => {
     await switchStory(sharedPage, 'shared-ui-summarylist--system-summary')
     await expect(sharedPage).toHaveScreenshot()
   })
+
+  test('Long unbroken values', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'shared-ui-summarylist--long-unbroken-values')
+    await expect(sharedPage).toHaveScreenshot()
+  })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

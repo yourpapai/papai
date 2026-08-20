@@ -27,6 +27,18 @@ describe('collectFieldPairs', () => {
     expect(pairs).toContainEqual({ source: 'dedicated', kind: 'state', value: 'Open' })
     expect(pairs).toContainEqual({ source: 'generic', name: 'URL', value: 'http://x' })
   })
+
+  test('assignee dedicated param round-trips as a single user-kind pair', () => {
+    const pairs = collectFieldPairs({ assignee: 'someone' })
+    expect(pairs).toHaveLength(1)
+    expect(pairs[0]).toEqual({ source: 'dedicated', kind: 'user', value: 'someone' })
+  })
+
+  test('dueDate dedicated param round-trips as a single date-kind pair', () => {
+    const pairs = collectFieldPairs({ dueDate: '2026-01-01' })
+    expect(pairs).toHaveLength(1)
+    expect(pairs[0]).toEqual({ source: 'dedicated', kind: 'date', value: '2026-01-01' })
+  })
 })
 
 describe('resolveFieldPair', () => {

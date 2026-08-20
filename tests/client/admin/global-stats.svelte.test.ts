@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { adminGlobals, refreshGlobals } from '../../../client/admin/global-stats.svelte.js'
+import { adminGlobals, refreshGlobals, toolTotalsFrom } from '../../../client/admin/global-stats.svelte.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 const responseBody = {
@@ -42,6 +42,7 @@ describe('global-stats', () => {
     adminGlobals.loading = false
     adminGlobals.data = null
     adminGlobals.fetchedAt = null
+    adminGlobals.error = null
   })
 
   afterEach(() => {
@@ -86,5 +87,59 @@ describe('global-stats', () => {
     })
     await refreshGlobals()
     expect(adminGlobals.data).not.toBeNull()
+  })
+
+  test('records the status when the request fails and keeps the last good data', async () => {
+    adminGlobals.data = { window: '30d' }
+    setMockFetch(() => Promise.resolve(new Response('nope', { status: 503 })))
+    await refreshGlobals()
+    expect(adminGlobals.error).toBe('request failed with status 503')
+    expect(adminGlobals.data).toEqual({ window: '30d' })
+    expect(adminGlobals.loading).toBe(false)
+    restoreFetch()
+  })
+
+  test('records the status when the body does not match the schema', async () => {
+    setMockFetch(() => Promise.resolve(Response.json({ subjects: { dmTotal: 'lots' } })))
+    await refreshGlobals()
+    expect(adminGlobals.error).toBe('response did not match the expected shape')
+    expect(adminGlobals.loading).toBe(false)
+    restoreFetch()
+  })
+
+  test('records the error message and resets loading when fetch itself rejects', async () => {
+    setMockFetch(() => Promise.reject(new Error('network offline')))
+    await expect(refreshGlobals()).resolves.toBeUndefined()
+    expect(adminGlobals.error).toBe('network offline')
+    expect(adminGlobals.loading).toBe(false)
+  })
+
+  test('clears a previous error on a successful refresh', async () => {
+    adminGlobals.error = 'request failed with status 503'
+    setMockFetch(() =>
+      Promise.resolve(Response.json({ window: '30d', subjects: { dmTotal: 1, groupTotal: 0, growthLast30d: [] } })),
+    )
+    await refreshGlobals()
+    expect(adminGlobals.error).toBeNull()
+    expect(adminGlobals.data?.subjects?.dmTotal).toBe(1)
+    restoreFetch()
+  })
+
+  test('toolTotalsFrom sums counts and splits them by success rate', () => {
+    const totals = toolTotalsFrom({
+      toolMix: {
+        topTools: [
+          { toolName: 'a', count: 100, successRate: 0.9 },
+          { toolName: 'b', count: 10, successRate: 1 },
+        ],
+        errorTypeCounts: {},
+      },
+    })
+    expect(totals).toEqual({ total: 110, ok: 100, fail: 10 })
+  })
+
+  test('toolTotalsFrom returns null when there is no tool mix', () => {
+    expect(toolTotalsFrom(null)).toBeNull()
+    expect(toolTotalsFrom({})).toBeNull()
   })
 })

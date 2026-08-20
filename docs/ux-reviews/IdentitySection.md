@@ -7,9 +7,9 @@ See LICENSE in the project root for details.
 
 # UX Review — IdentitySection
 
-**Date:** 2026-07-06
+**Date:** 2026-08-03
 **Reviewed:** `client/settings/sections/IdentitySection.svelte`
-**States captured:** Populated, Empty, Error, Loading, Clear-hover, user-id focus-within, long-value · desktop (1280) + narrow (640)
+**States captured:** Populated, Empty, Error, Loading, Gated · Empty-validation-error, Populated-clear-confirm-open · desktop (1280) + narrow (640)
 **Rubric:** [`RUBRIC.md`](./RUBRIC.md)
 
 > Report-only. This document contains no code changes and no change-plan. Each finding
@@ -18,16 +18,16 @@ See LICENSE in the project root for details.
 ## Scorecard
 
 | Dimension                       | Score | Rationale (one line)                                                                                                                |
-| ------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Visual hierarchy & scanning  | warn  | Header rhythm is right, but the destructive action carries no visual weight and the error text collides with the first field label. |
-| 2. Affordance & signifiers      | fail  | The destructive "Clear" is a ghost button that reads as static grey text at rest — no signifier until hover.                        |
-| 3. Consistency w/ design system | fail  | Rolls its own inline error/empty markup and skips `ErrorState`/`EmptyState`/`Confirm`/`busy` that sibling sections use.             |
-| 4. Feedback & state             | fail  | No in-flight feedback, late/misplaced validation, destructive delete with no confirm, editable form shown over a load error.        |
-| 5. Content & language           | fail  | First-run form is an unguided dead end: three jargon labels, no placeholder/hint/help, no next step.                                |
-| 6. Accessibility                | warn  | Real semantics + focus rings exist, but validation is color-only tiny text with no live region; required field not marked.          |
+| -------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Visual hierarchy & scanning  | pass  | Header rhythm is consistent; the destructive action now carries a colored border/text and no longer collides with the error state.  |
+| 2. Affordance & signifiers      | pass  | "Clear" is `variant="danger"` with a red border/text at rest — visibly distinct from Save and from a plain ghost/secondary control.  |
+| 3. Consistency w/ design system | pass  | Now imports and renders `ErrorState`, `EmptyState`, and `Confirm`, matching the pattern used by sibling sections.                    |
+| 4. Feedback & state             | pass  | Busy/disabled Save with "Saving…" label, Clear gated behind `Confirm` (busy "Working…"), dedicated error state for load failures.    |
+| 5. Content & language           | pass  | Intro line explains what linking does; every field carries a `hint` and a concrete `placeholder` example.                            |
+| 6. Accessibility                | pass  | Validation renders through `Field`'s `role="alert"` error span, with `aria-invalid`/`aria-describedby` wired on the input.           |
 | 7. Responsive / layout          | pass  | Reflows cleanly at 640px (fields stack full-width); long values fit without overflow.                                               |
-| 8. Spacing, alignment & sizing  | warn  | Inputs stretch full-bleed with no max-width; error line has no separation from the form.                                            |
-| 9. Interaction & micro-states   | fail  | Save/Clear give no busy state during the async round-trip — dead frozen control, double-submit possible.                            |
+| 8. Spacing, alignment & sizing  | pass  | `.identity-form`/`.identity-intro` cap at `max-width: 520px`; the load-error state replaces the form instead of overlapping it.      |
+| 9. Interaction & micro-states   | pass  | Save shows `busy`/`disabled` + "Saving…"; the destructive path is gated behind `Confirm`, which itself shows a busy "Working…" state.|
 
 ## Findings
 
@@ -35,70 +35,90 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [High] Destructive "Clear" has no affordance and no confirmation
 
+- **Id:** identity-clear-no-confirmation
+- **Status:** fixed
+- **Resolved:** `c1e4a3bbe` ("fix(settings): rework IdentitySection state model, feedback, and guidance", 2026-07-06) — Clear is now `variant="danger"` (`IdentitySection.svelte:204`) and opens the shared `Confirm` dialog (`openClear` at `:115`, `<Confirm>` at `:217-233`) which itself danger-styles the confirm action and shows a busy "Working…" label (`Confirm.svelte:33-35`) before `deleteIdentity` runs.
 - **Dimension:** 2. Affordance & signifiers (also 4. Feedback & state)
-- **Where visible:** Populated (Clear reads as plain grey text next to Save); Empty — Clear hover (only hover reveals a raised background)
-- **Source:** `client/settings/sections/IdentitySection.svelte:125` (`variant="ghost"`, `onClick={() => void clear()}`) → `clear()` at `:70`
-- **Suggested fix:** Give the delete a `danger` variant so it reads as interactive and destructive, and gate it behind the shared `shared/Confirm.svelte` dialog that sibling sections (Members, Memory, CodingCredentials) already use — one stray click currently deletes the identity mapping irreversibly.
+- **Where visible:** Populated — clear confirm open (`.storybook-shots/settings/sections/IdentitySection.spec.ts/settings-sections-IdentitySection-—-manual-Populated-—-clear-confirm-open-1.png`) shows the modal with a red "Clear" action and dimmed background.
+- **Suggested fix:** N/A — resolved.
 
 ### [High] No in-flight feedback on Save / Clear (double-submit risk)
 
+- **Id:** identity-save-clear-no-feedback
+- **Status:** fixed
+- **Resolved:** `c1e4a3bbe` — Save now passes `busy={saving} disabled={saving}` and renders "Saving…" (`IdentitySection.svelte:200-201`); `save()` guards re-entry with `if (saving) return` (`:95`). Clear opens `Confirm`, whose confirm button is `disabled={busy}` and shows "Working…" while `confirmClear()` runs (`Confirm.svelte:33-35`, `IdentitySection.svelte:120-132`).
 - **Dimension:** 9. Interaction & micro-states (also 4. Feedback & state)
-- **Where visible:** not capturable as a single frame — `save()`/`clear()` are async but neither button is disabled or `busy` during the request
-- **Source:** `client/settings/sections/IdentitySection.svelte:124-125` (no `busy`/`disabled`); `save()` `:54`, `clear()` `:70`
-- **Suggested fix:** Track a pending flag and pass `busy`/`disabled` to the buttons (with a "Saving…" label), matching the established pattern in `ReleaseSubscriptionSection.svelte:76` and `GroupProviderSection.svelte:97`.
+- **Where visible:** not a single frame; confirmed from source (`Btn.svelte:44-56` renders `aria-busy` and disables via `handleClick`'s busy guard).
+- **Suggested fix:** N/A — resolved.
 
 ### [High] First-run / empty form is an unguided dead end
 
+- **Id:** identity-empty-form-no-guidance
+- **Status:** fixed
+- **Resolved:** `c1e4a3bbe` — an intro paragraph now precedes the form (`IdentitySection.svelte:165-167`, `.identity-intro`), and every `Field` carries a `hint` plus the `Input` carries a `placeholder` (`:175-198`, e.g. `hint={\`Your account ID in ${providerName}…\`}` and `placeholder="e.g. 42"`).
 - **Dimension:** 5. Content & language
-- **Where visible:** Empty (three blank fields, no guidance); Error (same blank form under a raw message)
-- **Source:** `client/settings/sections/IdentitySection.svelte:109-123` — `Field`/`Input` render with no `hint`, no `placeholder`, and no intro copy
-- **Suggested fix:** Add field hints/placeholders and a one-line intro explaining what "Provider user ID" is and where to find it — both `Field` (`hint`) and `Input` (`placeholder`) already support this; this section is the per-user onboarding surface, so a bare form blocks first-time setup.
+- **Where visible:** Empty (`.storybook-shots/settings/sections/IdentitySection.spec.ts/settings-sections-IdentitySection-Empty-1.png`) shows the intro line and greyed placeholder text in all three fields.
+- **Suggested fix:** N/A — resolved.
 
 ### [Med] Validation is late and shown far from the field
 
+- **Id:** identity-validation-far-from-field
+- **Status:** fixed
+- **Resolved:** `c1e4a3bbe` — the "Provider user ID" `Field` is now `required` and receives `error={validationError ?? undefined}` (`IdentitySection.svelte:176-179`), and `Field.svelte:50` renders that error inline directly beneath the input via `role="alert"`, not at the top of the section.
 - **Dimension:** 4. Feedback & state
-- **Where visible:** triggered on submit with an empty required field — message renders at the top of the section (`status-error`), not next to the input
-- **Source:** `client/settings/sections/IdentitySection.svelte:57-59` (required check in `save()`) and `:97` (error printed at section top); the "Provider user ID" `Field` at `:109` is not marked `required`
-- **Suggested fix:** Mark the field `required` (the `Field` primitive renders the asterisk) and surface the validation message inline beneath that input rather than only at the top after a failed submit.
+- **Where visible:** Empty — validation error (`.storybook-shots/settings/sections/IdentitySection.spec.ts/settings-sections-IdentitySection-—-manual-Empty-—-validation-error-1.png`) shows "Provider user ID is required." directly under the red-outlined input, with the label carrying the required `*`.
+- **Suggested fix:** N/A — resolved.
 
 ### [Med] Diverges from shared state primitives used by sibling sections
 
+- **Id:** identity-diverges-from-shared-primitives
+- **Status:** fixed
+- **Resolved:** `c1e4a3bbe` — the component now imports and uses `Confirm`, `EmptyState`, and `ErrorState` (`IdentitySection.svelte:9, 11-12`), rendering `EmptyState` for the gated (no task provider) case (`:154-161`) and `ErrorState` for a load failure (`:163`), matching sibling sections.
 - **Dimension:** 3. Consistency w/ design system
-- **Where visible:** Error (custom inline `status-error` paragraph vs. the framed `ErrorState` card); Empty (bare form vs. `EmptyState`)
-- **Source:** `client/settings/sections/IdentitySection.svelte:97-98` inline status paragraphs; no `ErrorState`/`EmptyState`/`Confirm` imports — contrast the sibling `AiOutputSection.svelte:10-11` which uses both
-- **Suggested fix:** Adopt the shared `ErrorState`/`EmptyState` components (and `Confirm` for the destructive path) so the section matches the rest of the settings surface.
+- **Where visible:** Error (`.storybook-shots/settings/sections/IdentitySection.spec.ts/settings-sections-IdentitySection-Error-1.png`) shows the framed `ErrorState` card with icon, message, and "Try again"; Gated (`…-Gated-1.png`) shows the `EmptyState` card.
+- **Suggested fix:** N/A — resolved.
 
 ### [Med] Editable form is shown on top of a load failure
 
+- **Id:** identity-editable-form-over-load-failure
+- **Status:** fixed
+- **Resolved:** `c1e4a3bbe` — the view is now a derived state machine (`IdentitySection.svelte:44-52`: `'form' | 'gated' | 'loadError' | 'loading'`); on `loadError` only `ErrorState` renders (`:162-163`), the form markup sits in the `{:else}` branch (`:164` onward) and is not reachable while `data` is null.
 - **Dimension:** 4. Feedback & state
-- **Where visible:** Error — the raw "boom" line appears above a fully editable empty form, implying the user can fill it in and Save when the load actually failed
-- **Source:** `client/settings/sections/IdentitySection.svelte:96-101` — on `error` the form still renders below the message (only `loading`/`notice` short-circuit it)
-- **Suggested fix:** On load failure, render an error state with a retry in place of the form (as `AiOutputSection` does) instead of layering the message over an editable form.
+- **Where visible:** Error (`.storybook-shots/settings/sections/IdentitySection.spec.ts/settings-sections-IdentitySection-Error-1.png`) shows only the error card, no form beneath it.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Inputs stretch full-bleed with no max-width
 
+- **Id:** identity-inputs-no-max-width
+- **Status:** fixed
+- **Resolved:** `c1e4a3bbe` — `.identity-form` and `.identity-intro` now cap at `max-width: 520px` (`IdentitySection.svelte:237, 243`).
 - **Dimension:** 8. Spacing, alignment & sizing
-- **Where visible:** Populated / long-value (desktop) — a numeric id sits in a ~1200px-wide input; the form looks sparse and unbalanced
-- **Source:** `client/settings/settings.css:38-44` (`.settings-form`) + `client/shared/ui/Input.svelte:64` (input `flex: 1`, no width cap)
-- **Suggested fix:** Cap the form/input to a readable measure (max-width) so short identity values don't render in a full-viewport-width field.
+- **Where visible:** Populated (`.storybook-shots/settings/sections/IdentitySection.spec.ts/settings-sections-IdentitySection-Populated-1.png`) shows the form and inputs constrained to roughly a third of the 1280px viewport rather than full-bleed.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Error line collides with the first field label
 
+- **Id:** identity-error-collides-with-label
+- **Status:** fixed
+- **Resolved:** `c1e4a3bbe` — the load-error path no longer renders the form at all (see `identity-editable-form-over-load-failure`), so there is nothing for the message to collide with; `ErrorState.svelte` renders the message inside its own card layout.
 - **Dimension:** 8. Spacing, alignment & sizing (also 1. Visual hierarchy)
-- **Where visible:** Error — "boom" sits directly on top of the "PROVIDER USER ID" label with no separating whitespace
-- **Source:** `client/settings/sections/IdentitySection.svelte:97-98` status paragraphs; `.settings-form` has `margin-bottom` but nothing separates the status line above it
-- **Suggested fix:** Add vertical separation between the status/notice line and the form so the message isn't visually fused to the first label.
+- **Where visible:** Error (`.storybook-shots/settings/sections/IdentitySection.spec.ts/settings-sections-IdentitySection-Error-1.png`) shows clear vertical spacing between the icon, title, message, and retry button, with no form label anywhere on screen.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] Validation error is not announced to assistive tech
 
+- **Id:** identity-validation-not-announced
+- **Status:** fixed
+- **Resolved:** `c1e4a3bbe` (`Field` primitive) — the error span now renders with `role="alert"` (`client/shared/ui/Field.svelte:50`), and the associated `Input` sets `aria-invalid` and `aria-describedby` pointing at that error id (`client/shared/ui/Input.svelte:63, 65, 81, 83`) via `useFieldInvalid()`/`field-context.js`.
 - **Dimension:** 6. Accessibility
-- **Where visible:** Error — conveyed only by red color at 11px, no icon and no live region
-- **Source:** `client/settings/settings.css:91-93` (`.status-error` is color-only) applied at `IdentitySection.svelte:97`
-- **Suggested fix:** Give the status line an assertive live region (`role="alert"`/`aria-live`) so save failures and validation are announced, not just colored.
+- **Where visible:** Empty — validation error (`.storybook-shots/settings/sections/IdentitySection.spec.ts/settings-sections-IdentitySection-—-manual-Empty-—-validation-error-1.png`); confirmed from `Field.svelte`/`Input.svelte` source, not inferable from the screenshot alone.
+- **Suggested fix:** N/A — resolved.
 
 ### [Low] "Clear" is offered when there is nothing to clear
 
+- **Id:** identity-clear-offered-when-empty
+- **Status:** fixed
+- **Resolved:** `c1e4a3bbe` — the Clear button is now wrapped in `{#if hasMapping}` (`IdentitySection.svelte:203-207`), where `hasMapping` is `$derived(data?.mapping != null)` (`:42`).
 - **Dimension:** 4. Feedback & state
-- **Where visible:** Empty — Clear is shown even though the mapping is null, so it issues a no-op delete
-- **Source:** `client/settings/sections/IdentitySection.svelte:125` (Clear always rendered) vs. `data.mapping` nullability at `:42-44`
-- **Suggested fix:** Hide (or disable) Clear when no identity mapping exists so the destructive control only appears when it has an effect.
+- **Where visible:** Empty (`.storybook-shots/settings/sections/IdentitySection.spec.ts/settings-sections-IdentitySection-Empty-1.png`) shows only the "Save" button, no Clear.
+- **Suggested fix:** N/A — resolved.

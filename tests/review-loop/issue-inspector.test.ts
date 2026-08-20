@@ -19,6 +19,7 @@ afterEach(cleanupTempDirs)
 
 const issue: ReviewerIssue = {
   title: 'x',
+  kind: 'defect',
   severity: 'low',
   summary: 's',
   whyItMatters: 'w',

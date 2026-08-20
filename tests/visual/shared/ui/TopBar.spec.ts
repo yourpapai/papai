@@ -23,3 +23,7 @@ test.describe('shared/ui/TopBar', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

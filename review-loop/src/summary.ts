@@ -12,12 +12,18 @@ import {
   type IssueGroup,
 } from './issue-format.js'
 import type { IssueLedgerSnapshot, LedgerIssueRecord } from './issue-ledger.js'
-import { formatDuration } from './live-format.js'
 import type { ReviewLoopResult } from './loop-controller.js'
+import type { PersistedStats, StatsSnapshot } from './run-stats.js'
 import { burndownBlock } from './summary-burndown.js'
+import {
+  buildCheckBehindLine,
+  buildExposureLine,
+  buildInspectorLine,
+  buildKindLine,
+  buildTimingLine,
+} from './summary-lines.js'
+import { aggregatePhaseMs, aggregateUsage, sumDecisions } from './summary-metrics.js'
 import type { PhaseMs, RoundMetric, UsageTotals } from './trace-log.js'
-
-const PHASE_KEYS: (keyof PhaseMs)[] = ['review', 'match', 'verify', 'build', 'inspect', 'fix']
 
 const GROUP_CAP = 20
 
@@ -39,6 +45,7 @@ export interface MetricsJson {
     reopened: number
     inspectorRejected: number
   }
+  runStats?: PersistedStats
 }
 
 export interface SummaryOptions {
@@ -54,6 +61,7 @@ export interface SummaryInput {
   runDir: string
   wallMs: number
   options: SummaryOptions
+  stats?: StatsSnapshot
 }
 
 interface IssueCounts {
@@ -103,6 +111,14 @@ function breakdownParts(counts: IssueCounts): string[] {
 
 function buildVerdict(input: SummaryInput, counts: IssueCounts, total: number): string {
   const breakdown = breakdownParts(counts).join(', ')
+  // First, and in its own sentence, because every other line below describes a
+  // run that decided it was finished. This one was stopped with findings it
+  // never reached, and a reader who takes the counts for a final verdict draws
+  // exactly the wrong conclusion from them.
+  if (input.doneReason === 'stopped') {
+    const suffix = breakdown === '' ? '' : ` (${breakdown})`
+    return `Review loop stopped early: out of time after ${plural(input.rounds, 'round')} — ${counts.open} open${suffix}.`
+  }
   if (counts.open > 0) {
     const suffix = breakdown === '' ? '' : ` (${breakdown})`
     return `Review loop finished: issues remaining — ${counts.open} open${suffix}.`
@@ -113,64 +129,21 @@ function buildVerdict(input: SummaryInput, counts: IssueCounts, total: number): 
   return `Review loop finished: done — ${plural(total, 'issue')}: ${breakdown}.`
 }
 
-function sumDecisions(metrics: readonly RoundMetric[], key: keyof RoundMetric['decisions']): number {
-  return metrics.reduce((s, m) => s + m.decisions[key], 0)
-}
-
-function aggregatePhaseMs(metrics: readonly RoundMetric[]): PhaseMs {
-  const phaseMs: PhaseMs = { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 }
-  for (const m of metrics) {
-    for (const k of PHASE_KEYS) {
-      phaseMs[k] += m.phaseMs[k]
-    }
-  }
-  return phaseMs
-}
-
-function aggregateUsage(metrics: readonly RoundMetric[]): UsageTotals {
-  return metrics.reduce(
-    (acc, m) => ({
-      inputTokens: acc.inputTokens + m.usage.inputTokens,
-      outputTokens: acc.outputTokens + m.usage.outputTokens,
-      reasoningTokens: acc.reasoningTokens + m.usage.reasoningTokens,
-      costUsd: acc.costUsd + m.usage.costUsd,
-    }),
-    { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
-  )
-}
-
-function msToSeconds(ms: number): string {
-  return `${(ms / 1000).toFixed(1)}s`
-}
-
-function formatCount(n: number): string {
-  return n.toLocaleString('en-US')
-}
-
-function buildTimingLine(metrics: readonly RoundMetric[], wallMs: number): string {
-  const phaseMs = aggregatePhaseMs(metrics)
-  const totalMs = PHASE_KEYS.reduce((s, k) => s + phaseMs[k], 0)
-  const parts = PHASE_KEYS.filter((k) => phaseMs[k] > 0).map((k) => `${k} ${msToSeconds(phaseMs[k])}`)
-  const breakdown = parts.length === 0 ? 'no phase timing recorded' : parts.join(', ')
-  const usage = aggregateUsage(metrics)
-  const tokens = `in ${formatCount(usage.inputTokens)} / out ${formatCount(usage.outputTokens)} / reasoning ${formatCount(usage.reasoningTokens)}`
-  const cost = usage.costUsd > 0 ? `Cost: $${usage.costUsd.toFixed(3)} (${tokens})` : `Tokens: ${tokens}`
-  return `Duration: ${formatDuration(wallMs)} wall · phases ${formatDuration(totalMs)} (${breakdown}) · ${cost}`
-}
-
 function buildRoundsLine(input: SummaryInput): string | null {
   if (input.rounds <= 1 && input.options.poolSize <= 1) return null
   const pool = input.options.poolSize > 1 ? ` · Pool: ${input.options.poolSize}` : ''
   return `Rounds: ${input.rounds}${pool}`
 }
 
-function buildInspectorLine(metrics: readonly RoundMetric[], options: SummaryOptions): string | null {
-  if (!options.inspect) return null
-  const runs = metrics.reduce((s, m) => s + m.inspector.runs, 0)
-  if (runs === 0) return null
-  const rejected = metrics.reduce((s, m) => s + m.inspector.rejected, 0)
-  const rate = `${((100 * rejected) / runs).toFixed(1)}%`
-  return `Inspector: ${runs} runs, ${rejected} rejected (${rate} reject rate)`
+function buildStatsLine(stats: StatsSnapshot | undefined): string | null {
+  if (stats === undefined) return null
+  const t = stats.totals
+  const parts: string[] = []
+  if (t.toolCalls > 0) parts.push(`tools ${t.toolCalls}`)
+  if (t.added > 0 || t.removed > 0) parts.push(`+${t.added}/-${t.removed}`)
+  if (t.estimatedCostUsd !== undefined) parts.push(`~$${t.estimatedCostUsd.toFixed(2)} est`)
+  if (parts.length === 0) return null
+  return `Stats: ${parts.join(' · ')}`
 }
 
 function issuesBlock(ledger: IssueLedgerSnapshot): string[] {
@@ -184,7 +157,9 @@ function issuesBlock(ledger: IssueLedgerSnapshot): string[] {
   const lines = ['Issues:']
   for (const group of GROUP_ORDER) {
     const groupRecords = groups.get(group)
-    if (groupRecords === undefined || groupRecords.length === 0) continue
+    // Present means non-empty: the only write to this map appends a record, so
+    // an empty-array branch here is unreachable and no test could ever cover it.
+    if (groupRecords === undefined) continue
     lines.push(`  ${GROUP_LABEL[group]} (${groupRecords.length}):`)
     for (const record of groupRecords.slice(0, GROUP_CAP)) {
       lines.push(
@@ -216,8 +191,19 @@ export function buildSummary(input: SummaryInput): string {
   const roundsLine = buildRoundsLine(input)
   if (roundsLine !== null) lines.push(roundsLine)
 
-  const inspectorLine = buildInspectorLine(input.metrics, input.options)
+  const inspectorLine = buildInspectorLine(input.metrics, input.options.inspect)
   if (inspectorLine !== null) lines.push(inspectorLine)
+
+  const exposureLine = buildExposureLine(input.metrics)
+  if (exposureLine !== null) lines.push(exposureLine)
+
+  const kindLine = buildKindLine(input.metrics)
+  if (kindLine !== null) lines.push(kindLine)
+  const checkBehindLine = buildCheckBehindLine(input.metrics)
+  if (checkBehindLine !== null) lines.push(checkBehindLine)
+
+  const statsLine = buildStatsLine(input.stats)
+  if (statsLine !== null) lines.push(statsLine)
 
   const issues = issuesBlock(input.ledger)
   if (issues.length > 0) lines.push('', ...issues)
@@ -235,8 +221,11 @@ export function buildMetricsJson(
   closed: number,
   metrics: readonly RoundMetric[],
   options: SummaryOptions,
+  runStats?: PersistedStats,
 ): MetricsJson {
-  const lastMetric = metrics.length > 0 ? metrics[metrics.length - 1] : undefined
+  // noUncheckedIndexedAccess already types this `RoundMetric | undefined`, and
+  // metrics[-1] on an empty array is undefined too, so a length guard adds nothing.
+  const lastMetric = metrics[metrics.length - 1]
   const openFromMetrics = lastMetric === undefined ? 0 : lastMetric.cumulativeOpen
   return {
     doneReason,
@@ -254,5 +243,6 @@ export function buildMetricsJson(
       reopened: 0,
       inspectorRejected: metrics.reduce((s, m) => s + m.inspector.rejected, 0),
     },
+    ...(runStats === undefined ? {} : { runStats }),
   }
 }

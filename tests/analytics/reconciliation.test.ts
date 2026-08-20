@@ -14,17 +14,15 @@ import { deriveCollectionRefKey, setEligibilityState } from '../../src/analytics
 import { deriveBackfillSourceRef } from '../../src/analytics/jobs/backfill-decisions.js'
 import { routeFutureCanonicalDecision, runBackfillJob } from '../../src/analytics/jobs/backfill.js'
 import { runReconciliation } from '../../src/analytics/jobs/reconcile.js'
-import {
-  closeEpoch,
-  incrementEpochSourceCounter,
-  markEpochStale,
-  openEpoch,
-} from '../../src/analytics/storage/epoch-store.js'
+import { incrementCounter } from '../../src/analytics/storage/aggregate-store.js'
+import { incrementEpochSourceCounter } from '../../src/analytics/storage/epoch-source-counters.js'
+import { closeEpoch, markEpochStale, openEpoch } from '../../src/analytics/storage/epoch-store.js'
 import { insertCanonicalEventRow } from '../../src/analytics/storage/event-store.js'
 import type { LlmUsageEventRow } from '../../src/db/llm-usage-events-schema.js'
 import * as schema from '../../src/db/schema.js'
 import type { ToolCallEventRow } from '../../src/db/tool-call-events-schema.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { commonQuality } from './storage-fixtures.js'
 
 type Db = Awaited<ReturnType<typeof setupTestDb>>
 
@@ -433,6 +431,38 @@ describe('live epoch reconciliation', () => {
     expect(report.status).toBe('delta')
     const epoch = report.liveEpochs.find((row) => row.epochId === 'epoch-imbalanced')
     expect(epoch?.status).toBe('delta')
+  })
+
+  test('closed epoch with only live aggregate increments reconciles to zero', () => {
+    openEpoch({ epochId: 'epoch-live-aggregate', startedAtMs: BASE_MS - 1000 }, { getDrizzleDb: () => db })
+    const storeDeps: Readonly<{ getDrizzleDb: () => Db }> = { getDrizzleDb: () => db }
+    for (const [metric, cellKey] of [
+      ['llm_completed', `${DAY}|cell-a|llm_completed`],
+      ['tool_failed', `${DAY}|cell-a|tool_failed`],
+    ] as const) {
+      incrementCounter(
+        {
+          utcDay: DAY,
+          definitionVersion: 1,
+          platform: 'all',
+          contextType: 'all',
+          actorRole: 'all',
+          taskProvider: 'all',
+          appVersion: 'all',
+          metric,
+          aggregateCellKey: cellKey,
+          delta: 1,
+          ...commonQuality,
+          epochId: 'epoch-live-aggregate',
+        },
+        storeDeps,
+      )
+    }
+    closeEpoch({ epochId: 'epoch-live-aggregate', closedAtMs: BASE_MS + 1000 }, { getDrizzleDb: () => db })
+    const report = runReconciliation({ nowMs: BASE_MS + DAY_MS, apply: false }, { getDrizzleDb: () => db })
+    const epoch = report.liveEpochs.find((row) => row.epochId === 'epoch-live-aggregate')
+    expect(epoch?.status).toBe('publishable')
+    expect(epoch?.unexplainedDelta).toBe(0)
   })
 
   test('canonical terms ignore shadow and retired generations', () => {

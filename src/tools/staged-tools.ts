@@ -7,8 +7,8 @@ import { tool } from 'ai'
 import type { Tool } from 'ai'
 import { z } from 'zod'
 
-import { resolveStagedFile, searchStagedFiles } from '../attachments/staged.js'
-import type { StagedFileDownloadFn } from '../attachments/types.js'
+import { type StagedFileDownloadFn, searchStagedFiles } from '../attachments/index.js'
+import { resolveStagedFile } from '../attachments/staged.js'
 import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:staged-files' })

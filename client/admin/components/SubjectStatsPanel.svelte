@@ -95,7 +95,7 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .stats-grid {
     display: grid;
@@ -111,6 +111,6 @@
     color: var(--danger);
   }
   .placeholder {
-    color: var(--fg3);
+    color: var(--text-dim);
   }
 </style>

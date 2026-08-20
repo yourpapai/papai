@@ -175,6 +175,86 @@ describe('buildPairedConfig', () => {
     expect(cfg.bun.bunArgs).toBeUndefined()
   })
 
+  test('adds the browser condition and client preload for tests/client/', () => {
+    // Clearing pathIgnorePatterns only makes the lane discoverable. These tests are
+    // written for the mode `bun test:client` runs them in: without --conditions=browser
+    // msw resolves to its node export and the handler suites fail unmutated, which
+    // aborts the whole file with a ConfigError instead of producing a score.
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'client/stories/msw/namespace.ts',
+      testFiles: ['tests/client/stories/msw/coding-credentials-namespace.test.ts'],
+      reportPath: 'reports/paired/namespace.json',
+    })
+    expect(cfg.bun.bunArgs).toContain('--conditions=browser')
+    expect(cfg.bun.bunArgs).toContain('--preload')
+    expect(cfg.bun.bunArgs).toContain('./tests/client-setup.ts')
+  })
+
+  test('asks the bunfig preload to register the Svelte plugin for tests/client/', () => {
+    // The runner's coverage preload eagerly imports the mutate target before any
+    // CLI --preload runs, so client-setup.ts registers the Svelte loader too late
+    // for a target that imports a .svelte.ts module. bunfig preloads run first,
+    // and tests/setup.ts registers the loader when this env var is set.
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'client/stories/decorators/withFixtures.ts',
+      testFiles: ['tests/client/stories/decorators/withFixtures.test.ts'],
+      reportPath: 'reports/paired/withFixtures.json',
+    })
+    expect(cfg.bun.env).toEqual({ PAPAI_SVELTE_TEST_PLUGIN: '1' })
+  })
+
+  test('preserves base bun env while adding the Svelte plugin flag', () => {
+    const cfg = buildPairedConfig({
+      base: { ...BASE, bun: { ...BASE.bun, env: { EXISTING: 'yes' } } },
+      srcFile: 'client/foo.ts',
+      testFiles: ['tests/client/foo.test.ts'],
+      reportPath: 'reports/paired/foo.json',
+    })
+    expect(cfg.bun.env).toEqual({ EXISTING: 'yes', PAPAI_SVELTE_TEST_PLUGIN: '1' })
+  })
+
+  test('leaves bun env untouched for server-side tests', () => {
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'src/tools/compaction/wrap-compaction.ts',
+      testFiles: ['tests/tools/compaction/wrap-compaction.test.ts'],
+      reportPath: 'reports/paired/wrap-compaction.json',
+    })
+    expect(cfg.bun.env).toBeUndefined()
+  })
+
+  test('adds the e2e preload for tests/e2e/ without the browser condition', () => {
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'src/kaneo/client.ts',
+      testFiles: ['tests/e2e/e2e.test.ts'],
+      reportPath: 'reports/paired/client.json',
+    })
+    expect(cfg.bun.bunArgs).toContain('./tests/e2e/bun-test-setup.ts')
+    expect(cfg.bun.bunArgs).toContain('--path-ignore-patterns')
+    expect(cfg.bun.bunArgs).not.toContain('--conditions=browser')
+  })
+
+  test('emits --path-ignore-patterns once when both lanes are present', () => {
+    const cfg = buildPairedConfig({
+      base: BASE,
+      srcFile: 'client/shared/ui/field-context.ts',
+      testFiles: ['tests/client/foo.test.ts', 'tests/e2e/e2e.test.ts'],
+      reportPath: 'reports/paired/field-context.json',
+    })
+    expect(cfg.bun.bunArgs).toEqual([
+      '--conditions=browser',
+      '--preload',
+      './tests/client-setup.ts',
+      '--preload',
+      './tests/e2e/bun-test-setup.ts',
+      '--path-ignore-patterns',
+      '',
+    ])
+  })
+
   test('preserves existing base bunArgs when adding path-ignore-patterns', () => {
     const cfg = buildPairedConfig({
       base: { ...BASE, bun: { ...BASE.bun, bunArgs: ['--watch'] } },

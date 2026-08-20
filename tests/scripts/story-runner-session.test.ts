@@ -120,7 +120,15 @@ function makeRemovable(root: string): void {
 function fixture(): Readonly<{ root: string; dependencyRoot: string }> {
   const root = mkdtempSync(path.join(os.tmpdir(), 'papai-story-session-'))
   roots.push(root)
-  for (const directory of ['tests/stories', 'tests/utils', 'scripts/story', 'src', 'plugins', 'public']) {
+  for (const directory of [
+    'tests/stories',
+    'tests/utils',
+    'scripts/story',
+    'src',
+    'plugins',
+    'context-vault-indexer',
+    'public',
+  ]) {
     mkdirSync(path.join(root, directory), { recursive: true })
   }
   writeFileSync(path.join(root, 'tests/stories/preload.ts'), 'preload')
@@ -132,6 +140,7 @@ function fixture(): Readonly<{ root: string; dependencyRoot: string }> {
   writeFrozenCoverageSupport(root)
   writeFileSync(path.join(root, 'scripts/story/test-stories.ts'), 'runner')
   writeFileSync(path.join(root, 'src/runtime.ts'), 'runtime v1')
+  writeFileSync(path.join(root, 'context-vault-indexer/lock.ts'), 'lock v1')
   writeFileSync(path.join(root, 'package.json'), '{"name":"fixture"}')
   writeFileSync(path.join(root, 'bun.lock'), 'lock')
   writeFileSync(path.join(root, 'bunfig.toml'), '')
@@ -150,7 +159,20 @@ function fixture(): Readonly<{ root: string; dependencyRoot: string }> {
   git(root, 'config', 'user.email', 'stories@example.invalid')
   git(root, 'config', 'user.name', 'Story Tests')
   git(root, 'config', 'commit.gpgsign', 'false')
-  git(root, 'add', '--', 'tests', 'scripts', 'src', 'plugins', 'public', 'package.json', 'bun.lock', 'bunfig.toml')
+  git(
+    root,
+    'add',
+    '--',
+    'tests',
+    'scripts',
+    'src',
+    'plugins',
+    'context-vault-indexer',
+    'public',
+    'package.json',
+    'bun.lock',
+    'bunfig.toml',
+  )
   git(root, 'commit', '-qm', 'candidate')
   return { root, dependencyRoot }
 }

@@ -48,3 +48,7 @@ test.describe('settings/sections/admin/AdminAnalyticsSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../../support/viewport.js'
+
+pinDefaultViewport()

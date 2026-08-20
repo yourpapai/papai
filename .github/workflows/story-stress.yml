@@ -12,6 +12,8 @@ jobs:
   build:
     name: Build story runtime
     runs-on: ubuntu-24.04
+    # Install and a client build, nothing else. Mirrors CI's `build` guard.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -32,6 +34,10 @@ jobs:
     name: Sandboxed story stress
     needs: build
     runs-on: ubuntu-24.04
+    # Repeated story runs against the sandbox, so deliberately the loosest guard
+    # of the two: this job is *meant* to take a long time, and the thing being
+    # guarded against is a sandbox container that stops answering mid-repeat.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -47,9 +53,8 @@ jobs:
       - name: Verify Linux story sandbox
         run: |
           docker version
-          image="$(cat scripts/story/sandbox-image.txt)"
-          docker pull "$image"
-          docker run --rm --network none "$image" --version
+          bash scripts/ci/pull-story-sandbox-image.sh
+          docker run --rm --network none "$(cat scripts/story/sandbox-image.txt)" --version
       - name: Run sandboxed story stress
         env:
           PAPAI_REQUIRE_STORY_SANDBOX: '1'

@@ -15,10 +15,10 @@ import { pluginRuntimeEvents } from '../../src/db/schema.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { namespacedCommandName, registerPluginCommands } from '../../src/plugins/command-contributions.js'
+import { namespacedJobName } from '../../src/plugins/contribution-names.js'
 import {
   buildPluginToolSet,
   contributionRegistry,
-  namespacedJobName,
   namespacedToolName,
   runPluginScheduledJob,
   sanitizePluginId,

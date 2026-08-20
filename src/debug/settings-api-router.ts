@@ -24,6 +24,7 @@ import { handleCodingCredentialsRoutes } from './settings/coding-credentials-rou
 import { handleCodingReposRoutes } from './settings/coding-repos-routes.js'
 import { handleConfigRoutes } from './settings/config-routes.js'
 import { handleContextTaskInstanceRoutes } from './settings/context-task-instance-routes.js'
+import { handleContextVaultTokensRoutes } from './settings/context-vault-tokens-routes.js'
 import { handleGroupRoutes } from './settings/group-routes.js'
 import { handleIdentityRoutes } from './settings/identity-routes.js'
 import { handleKaneoCredentialsRoutes } from './settings/kaneo-credentials-routes.js'
@@ -112,6 +113,7 @@ export function routeSettingsApi(
   if (url.pathname === '/settings/api/coding-credentials/models') return handleCodingCredentialsModelsRoute(req, url)
   if (url.pathname === '/settings/api/coding-credentials') return handleCodingCredentialsRoutes(req, url)
   if (url.pathname === '/settings/api/coding-repos') return handleCodingReposRoutes(req, url)
+  if (url.pathname === '/settings/api/context-vault/tokens') return handleContextVaultTokensRoutes(req, url)
   if (url.pathname === '/settings/api/config') return handleConfigRoutes(req, url)
   if (url.pathname === '/settings/api/context/task-instance') return handleContextTaskInstanceRoutes(req, url)
   if (url.pathname === '/settings/api/tools' || url.pathname === '/settings/api/tools/toggle') {

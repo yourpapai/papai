@@ -1,0 +1,10 @@
+{
+  "repoRoot": ".",
+  "workDir": ".sdd-runner",
+  "model": "kimi-for-coding/k3-256k",
+  "timeouts": {
+    "wallClockMs": 1800000,
+    "inactivityMs": 600000
+  },
+  "budgetUsd": 25
+}

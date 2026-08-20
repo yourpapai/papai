@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { renderAttachedLine, sanitizeForBracket } from '../attachments/resolver.js'
-import type { StoredAttachment } from '../attachments/types.js'
+import { type StoredAttachment, sanitizeForBracket } from '../attachments/index.js'
+import { renderAttachedLine } from '../attachments/resolver.js'
 import { logger } from '../logger.js'
 import type { PluginAttachmentRecord } from './attachment-types.js'
 import { contributionRegistry } from './contributions.js'

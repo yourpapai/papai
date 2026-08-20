@@ -29,6 +29,10 @@ test.describe('settings/sections/McpSection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 test('McpSection — populated, narrow 640', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-mcpsection--populated')
   await sharedPage.setViewportSize({ width: 640, height: 1100 })

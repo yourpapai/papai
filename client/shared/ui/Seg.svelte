@@ -29,7 +29,7 @@
     display: inline-flex;
     border: 1px solid var(--border);
     border-radius: 2px;
-    background: var(--surface);
+    background: var(--surface-1);
     padding: 2px;
   }
   .ui-seg__btn {
@@ -37,14 +37,15 @@
     font-size: 11px;
     font-weight: 500;
     padding: 4px 10px;
-    color: var(--fg3);
+    min-height: var(--control-h-sm);
+    color: var(--text-dim);
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
   }
   .ui-seg__btn--active {
-    color: var(--fg);
-    background: var(--raised);
-    border-color: var(--hair);
+    color: var(--text);
+    background: var(--surface-2);
+    border-color: var(--border);
   }
 </style>

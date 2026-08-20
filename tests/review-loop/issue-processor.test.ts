@@ -10,11 +10,12 @@ import path from 'node:path'
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import type { ShellExecFn } from '../../review-loop/src/build-checker.js'
 import { createIssueLedger, type IssueLedger, type LedgerIssueRecord } from '../../review-loop/src/issue-ledger.js'
-import { processPendingIssues, sanitizeSubject } from '../../review-loop/src/issue-processor.js'
-import type { ReviewerIssue, Verdict } from '../../review-loop/src/issue-schema.js'
-import { newCollector, type RoundCollector } from '../../review-loop/src/loop-trace.js'
+import { orderByExposure, processPendingIssues, sanitizeSubject } from '../../review-loop/src/issue-processor.js'
+import type { Exposure, ReviewerIssue, Verdict } from '../../review-loop/src/issue-schema.js'
 import type { ProgressReporter } from '../../review-loop/src/progress-log.js'
+import { newCollector, type RoundCollector } from '../../review-loop/src/round-collector.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
+import type { StopReason } from '../../review-loop/src/stop-controller.js'
 import { createCapturingTraceLogger, type TraceEvent } from '../../review-loop/src/trace-log.js'
 import { execGit } from '../../review-loop/src/worktree.js'
 import {
@@ -30,6 +31,7 @@ afterEach(cleanupTempDirs)
 
 const issue: ReviewerIssue = {
   title: 'Race in queue',
+  kind: 'defect',
   severity: 'high',
   summary: 's',
   whyItMatters: 'w',
@@ -661,5 +663,198 @@ describe('sanitizeSubject', () => {
 
   test('slices to at most 100 characters', () => {
     expect(sanitizeSubject('x'.repeat(150)).length).toBe(100)
+  })
+})
+
+describe('processPendingIssues under a stop request', () => {
+  test('finishes the issue in hand and takes no further one', async () => {
+    const repoRoot = makeTempDir('issue-proc-stop-')
+    const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 1 })
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupRepo(runState.worktreePath)
+
+    const pending = ['rec-1', 'rec-2', 'rec-3'].map((id) => {
+      const record = { ...buildRecord(), id }
+      ledger.snapshot.issues[id] = record
+      return record
+    })
+
+    let stopReason: StopReason | null = null
+    const fixerCallCount = { current: 0 }
+    const inner = mockSpawnForFixerAndInspector({ fixerCallCount })
+    // The budget runs out while the first fixer is running, which is the only
+    // moment worth testing: mid-issue, with more issues queued behind it.
+    const spawn: SpawnFn = async (command, args, opts) => {
+      const result = await inner(command, args, opts)
+      stopReason = 'budget'
+      return result
+    }
+
+    const fixed = await processPendingIssues(
+      {
+        config,
+        runState,
+        ledger,
+        spawn,
+        exec: passingExec,
+        log: silentReporter(),
+        trace: createCapturingTraceLogger().logger,
+        pool: fakePool({ size: 1, worktreePath: runState.worktreePath }).pool,
+        inspect: false,
+        stop: { requested: () => stopReason, request: () => undefined, dispose: () => undefined },
+      },
+      1,
+      newCollector(),
+      pending,
+    )
+
+    expect(fixerCallCount.current).toBe(1)
+    expect(fixed).toBe(1)
+    // The two it never reached are still open, which is what the summary reports
+    // and what a resumed run would pick up.
+    expect(ledger.snapshot.issues['rec-3']?.status).toBe('discovered')
+  })
+})
+
+describe('orderByExposure', () => {
+  const caller = { kind: 'caller', file: 'src/x.ts', line: 3, quote: 'flush()' } as const
+  const rec = (id: string, exposure?: Exposure): LedgerIssueRecord => ({
+    id,
+    issue: { ...issue, exposure },
+    status: 'discovered',
+    firstSeenRound: 1,
+    latestSeenRound: 1,
+    fixAttempts: 0,
+    verifierDecision: null,
+  })
+  const ids = (records: readonly LedgerIssueRecord[]): string[] => records.map((r) => r.id)
+
+  test('a cited caller is dispatched before an issue reporting none', () => {
+    expect(ids(orderByExposure([rec('none-1', { kind: 'none' }), rec('cited')]))).toEqual(['cited', 'none-1'])
+  })
+
+  test('unknown sits between cited and none: an absent answer is not a denial', () => {
+    const out = orderByExposure([rec('none-1', { kind: 'none' }), rec('unknown'), rec('cited', caller)])
+    expect(ids(out)).toEqual(['cited', 'unknown', 'none-1'])
+  })
+
+  test('is stable: issues exposure cannot separate keep their relative order', () => {
+    expect(ids(orderByExposure([rec('a', caller), rec('b', caller), rec('c', caller)]))).toEqual(['a', 'b', 'c'])
+  })
+
+  test('a round where nothing carries exposure dispatches in unchanged order', () => {
+    expect(ids(orderByExposure([rec('a'), rec('b'), rec('c')]))).toEqual(['a', 'b', 'c'])
+  })
+
+  test('does not mutate the caller array', () => {
+    const input = [rec('none-1', { kind: 'none' }), rec('cited', caller)]
+    orderByExposure(input)
+    expect(ids(input)).toEqual(['none-1', 'cited'])
+  })
+
+  describe('kind outranks exposure', () => {
+    const clean = (id: string, exposure?: Exposure): LedgerIssueRecord => ({
+      ...rec(id, exposure),
+      issue: { ...issue, kind: 'cleanup', exposure },
+    })
+
+    test('every defect is dispatched before any cleanup', () => {
+      // The case the single-key sort got wrong: a cleanup whose caller was found
+      // outranked a critical defect whose caller nobody found. Exposure grades
+      // reachability, not worth, so it cannot be the only key once the queue
+      // holds two different kinds of thing.
+      const out = orderByExposure([clean('cleanup-cited', caller), rec('defect-none', { kind: 'none' })])
+      expect(ids(out)).toEqual(['defect-none', 'cleanup-cited'])
+    })
+
+    test('cleanups order among themselves by exposure, exactly as defects do', () => {
+      const out = orderByExposure([clean('none-1', { kind: 'none' }), clean('unknown'), clean('cited', caller)])
+      expect(ids(out)).toEqual(['cited', 'unknown', 'none-1'])
+    })
+
+    test('a run stopped mid-queue leaves cleanups unfixed before defects', () => {
+      // A stop is honoured between two issues, so what a stopped run drops is
+      // whatever the ordering put last. Taking a prefix is what that costs.
+      const out = orderByExposure([clean('cleanup-a', caller), rec('defect-a'), clean('cleanup-b', caller)])
+      expect(ids(out.slice(0, 1))).toEqual(['defect-a'])
+      expect(ids(out.slice(1))).toEqual(['cleanup-a', 'cleanup-b'])
+    })
+  })
+})
+
+function issueIdsInDispatchOrder(events: readonly TraceEvent[]): string[] {
+  const seen: string[] = []
+  for (const event of events) {
+    if (!('issueId' in event)) continue
+    const id = event.issueId
+    if (id === undefined || seen.includes(id)) continue
+    seen.push(id)
+  }
+  return seen
+}
+
+describe('processPendingIssues exposure ordering', () => {
+  test('dispatches the cited issue first and still dispatches the uncited one', async () => {
+    const repoRoot = makeTempDir('issue-proc-expo-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const planPath = path.join(repoRoot, 'plan.md')
+    writeFileSync(planPath, '# Plan')
+    const runState = await createRunState(config, planPath)
+    const ledger = await createIssueLedger(runState.runDir)
+    await setupRepo(runState.worktreePath)
+    const workerRepo = makeTempDir('worker-')
+    await setupRepo(workerRepo)
+
+    const mk = (id: string, file: string, exposure?: Exposure): LedgerIssueRecord => ({
+      id,
+      issue: { ...issue, file, exposure },
+      status: 'discovered',
+      firstSeenRound: 1,
+      latestSeenRound: 1,
+      fixAttempts: 0,
+      verifierDecision: null,
+    })
+    // Uncited first in ledger order, so a passing assertion cannot be luck.
+    const uncited = mk('rec-uncited', 'src/a.ts', { kind: 'none' })
+    const cited = mk('rec-cited', 'src/b.ts', { kind: 'caller', file: 'src/c.ts', line: 9, quote: 'go()' })
+    ledger.snapshot.issues['rec-uncited'] = uncited
+    ledger.snapshot.issues['rec-cited'] = cited
+
+    const { spawn } = createFixerOnlySpawn()
+    const { pool } = fakePool({ size: 1, worktreePaths: [workerRepo] })
+    const collector = newCollector()
+    const { logger, events } = createCapturingTraceLogger()
+
+    await processPendingIssues(
+      {
+        config: createReviewLoopConfigFixture(runState.repoRoot),
+        runState,
+        ledger,
+        spawn,
+        exec: passingExec,
+        log: silentReporter(),
+        trace: logger,
+        pool,
+        inspect: false,
+      },
+      1,
+      collector,
+      [uncited, cited],
+    )
+
+    expect(issueIdsInDispatchOrder(events)).toEqual(['rec-cited', 'rec-uncited'])
+  })
+})
+
+describe('check-behind signal', () => {
+  test('records that an accepted fix left no check behind, and merges it anyway', async () => {
+    const { fixed, ledger, collector } = await runScenario(mockSpawnForFixerAndInspector({}))
+    expect(fixed).toBe(1)
+    expect(recordOf(ledger).status).toBe('fixed_pending_review')
+    expect(recordOf(ledger).fixAttempts).toBe(1)
+    expect(collector.checkBehind.defect).toEqual({ withCheck: 0, withoutCheck: 1, unmeasured: 0 })
   })
 })

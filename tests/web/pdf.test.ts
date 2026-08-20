@@ -69,6 +69,10 @@ describe('extractPdfText', () => {
     function extractText(
       data: Parameters<PdfDeps['extractText']>[0],
       options?: { mergePages?: boolean },
+    ): Promise<{ totalPages: number; text: string | string[] }>
+    function extractText(
+      data: Parameters<PdfDeps['extractText']>[0],
+      options?: { mergePages?: boolean },
     ): Promise<{ totalPages: number; text: string[] } | { totalPages: number; text: string }> {
       assert(options?.mergePages === true)
       return extractTextSpy(data, { mergePages: true })

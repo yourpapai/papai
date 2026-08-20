@@ -19,6 +19,7 @@
   class="ui-iconbtn"
   class:ui-iconbtn--busy={busy}
   aria-label={label}
+  aria-busy={busy ? 'true' : undefined}
   title={label}
   data-testid={testid}
   onclick={onClick}>
@@ -30,8 +31,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: var(--control-h-md);
+    height: var(--control-h-md);
     background: transparent;
     border: 1px solid var(--border);
     border-radius: var(--radius-control);

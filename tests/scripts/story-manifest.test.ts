@@ -65,6 +65,7 @@ function fixture(options: Readonly<{ includePublic?: boolean }> = {}): string {
   mkdirSync(path.join(root, 'scripts/story'), { recursive: true })
   mkdirSync(path.join(root, 'src'), { recursive: true })
   mkdirSync(path.join(root, 'plugins/example'), { recursive: true })
+  mkdirSync(path.join(root, 'context-vault-indexer'), { recursive: true })
   if (includesPublic) mkdirSync(path.join(root, 'public'), { recursive: true })
   writeFileSync(path.join(root, 'bunfig.toml'), '[test]')
   writeFileSync(path.join(root, 'tests/stories/harness/helper.ts'), Buffer.from([0, 10, 255]))
@@ -89,6 +90,7 @@ function fixture(options: Readonly<{ includePublic?: boolean }> = {}): string {
   writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), 'logger mock')
   writeFileSync(path.join(root, 'src/runtime.ts'), 'runtime source')
   writeFileSync(path.join(root, 'plugins/example/plugin.json'), '{"name":"example"}')
+  writeFileSync(path.join(root, 'context-vault-indexer/lock.ts'), 'lock source')
   writeFileSync(path.join(root, 'package.json'), '{"name":"story-fixture"}')
   writeFileSync(path.join(root, 'bun.lock'), 'lockfile')
   if (includesPublic) writeFileSync(path.join(root, 'public/settings.js'), 'settings asset')
@@ -101,6 +103,7 @@ function fixture(options: Readonly<{ includePublic?: boolean }> = {}): string {
     'scripts',
     'src',
     'plugins',
+    'context-vault-indexer',
     'package.json',
     'bun.lock',
     ...(includesPublic ? ['public'] : []),
@@ -164,6 +167,7 @@ describe('story manifest', () => {
 
     expect(manifest.runtimeInputs.files.map(({ path: filePath }) => filePath)).toEqual([
       'bun.lock',
+      'context-vault-indexer/lock.ts',
       'package.json',
       'plugins/example/plugin.json',
       'public/settings.js',
@@ -186,8 +190,20 @@ describe('story manifest', () => {
 
     expect(candidate.version).toBe(4)
     expect(baseline.version).toBe(4)
-    expect(candidate.runtimeInputs.directories).toEqual(['plugins', 'plugins/example', 'public', 'src'])
-    expect(baseline.runtimeInputs.directories).toEqual(['plugins', 'plugins/example', 'public', 'src'])
+    expect(candidate.runtimeInputs.directories).toEqual([
+      'context-vault-indexer',
+      'plugins',
+      'plugins/example',
+      'public',
+      'src',
+    ])
+    expect(baseline.runtimeInputs.directories).toEqual([
+      'context-vault-indexer',
+      'plugins',
+      'plugins/example',
+      'public',
+      'src',
+    ])
     expect(StoryManifestSchema.safeParse({ ...candidate, version: 3 }).success).toBe(false)
   })
 
@@ -195,15 +211,17 @@ describe('story manifest', () => {
     const root = fixture()
     rmSync(path.join(root, 'src'), { recursive: true })
     rmSync(path.join(root, 'plugins'), { recursive: true })
+    rmSync(path.join(root, 'context-vault-indexer'), { recursive: true })
     rmSync(path.join(root, 'public'), { recursive: true })
     mkdirSync(path.join(root, 'src'))
     mkdirSync(path.join(root, 'plugins'))
+    mkdirSync(path.join(root, 'context-vault-indexer'))
     mkdirSync(path.join(root, 'public'))
 
     const manifest = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
 
     expect(manifest.version).toBe(4)
-    expect(manifest.runtimeInputs.directories).toEqual(['plugins', 'public', 'src'])
+    expect(manifest.runtimeInputs.directories).toEqual(['context-vault-indexer', 'plugins', 'public', 'src'])
   })
 
   test('omits an absent optional public root deterministically', async () => {
@@ -213,6 +231,7 @@ describe('story manifest', () => {
 
     expect(manifest.runtimeInputs.files.map(({ path: filePath }) => filePath)).toEqual([
       'bun.lock',
+      'context-vault-indexer/lock.ts',
       'package.json',
       'plugins/example/plugin.json',
       'src/runtime.ts',
@@ -293,6 +312,7 @@ describe('story manifest', () => {
     expect(StoryManifestSchema.parse(baseline)).toEqual(baseline)
     expect(baseline.runtimeInputs.files.map(({ kind, path: filePath }) => ({ kind, path: filePath }))).toEqual([
       { kind: 'file', path: 'bun.lock' },
+      { kind: 'file', path: 'context-vault-indexer/lock.ts' },
       { kind: 'file', path: 'package.json' },
       { kind: 'file', path: 'plugins/example/plugin.json' },
       { kind: 'file', path: 'public/settings.js' },

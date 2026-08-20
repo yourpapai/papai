@@ -29,6 +29,10 @@ test.describe('settings/sections/KaneoAccessSection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 test('Populated — password revealed', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-kaneoaccesssection--populated')
   await sharedPage.getByRole('button', { name: 'Reveal password' }).click()

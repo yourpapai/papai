@@ -1,0 +1,19 @@
+{
+  "repoRoot": "..",
+  "workDir": ".sdd-runner",
+  "model": "anthropic/claude-opus-4-1",
+  "models": {
+    "estimator": "openai/gpt-5"
+  },
+  "timeouts": {
+    "wallClockMs": 1800000,
+    "inactivityMs": 600000
+  },
+  "budgetUsd": 25,
+  "autonomy": {
+    "level": "observe",
+    "costCeilingUsd": 5.0,
+    "autoExtendMax": 1,
+    "rules": {}
+  }
+}

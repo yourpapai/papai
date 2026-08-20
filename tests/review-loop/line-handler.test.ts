@@ -12,6 +12,7 @@ import { z } from 'zod'
 import type { RunAgentOptions, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import { createLineHandler, enqueueLog } from '../../review-loop/src/line-handler.js'
 import type { ProgressReporter, UsageDelta } from '../../review-loop/src/progress-log.js'
+import { RunStats } from '../../review-loop/src/run-stats.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
@@ -80,15 +81,112 @@ describe('createLineHandler reporter wiring', () => {
         part: { reason: 'stop', tokens: { input: 5, output: 2, reasoning: 1 }, cost: 0.5 },
       }),
     )
-    expect(deltas).toEqual([{ input: 5, output: 2, reasoning: 1, cost: 0.5 }])
+    expect(deltas).toEqual([
+      { input: 5, output: 2, reasoning: 1, cacheRead: 0, cacheWrite: 0, cost: 0.5, label: 'drain', model: 'm' },
+    ])
   })
 
-  test('tool progress goes to reporter.slot and dispose clears it', async () => {
+  test('step_finish forwards cached tokens to the reporter as separate delta fields', () => {
+    const cwd = makeTempDir('line-handler-cache-usage-')
+    const deltas: UsageDelta[] = []
+    const reporter = makeReporter({
+      usage: (d) => {
+        deltas.push(d)
+      },
+    })
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    handler.onLine(
+      JSON.stringify({
+        type: 'step_finish',
+        part: {
+          reason: 'stop',
+          tokens: { input: 1757, output: 3, reasoning: 0, cache: { read: 8320, write: 4096 } },
+          cost: 0,
+        },
+      }),
+    )
+    expect(deltas).toEqual([
+      { input: 1757, output: 3, reasoning: 0, cacheRead: 8320, cacheWrite: 4096, cost: 0, label: 'drain', model: 'm' },
+    ])
+  })
+
+  test('step_finish accumulates cached token counters separately from input on ctx.usage', () => {
+    const cwd = makeTempDir('line-handler-cache-accum-')
+    const handler = createLineHandler(makeOptions(cwd, path.join(cwd, 'agent.log')))
+    handler.onLine(
+      JSON.stringify({
+        type: 'step_finish',
+        part: {
+          reason: 'stop',
+          tokens: { input: 100, output: 4, reasoning: 1, cache: { read: 800, write: 60 } },
+          cost: 0,
+        },
+      }),
+    )
+    handler.onLine(
+      JSON.stringify({
+        type: 'step_finish',
+        part: {
+          reason: 'stop',
+          tokens: { input: 50, output: 2, reasoning: 0, cache: { read: 400, write: 30 } },
+          cost: 0,
+        },
+      }),
+    )
+    expect(handler.ctx.usage.inputTokens).toBe(150)
+    expect(handler.ctx.usage.cachedReadTokens).toBe(1200)
+    expect(handler.ctx.usage.cachedWriteTokens).toBe(90)
+    expect(handler.ctx.usage.outputTokens).toBe(6)
+  })
+
+  test('step_finish delta carries label/model and tool calls accumulate per step', () => {
+    const cwd = makeTempDir('line-handler-stats-')
+    const stats = new RunStats()
+    const deltas: UsageDelta[] = []
+    const reporter = makeReporter({
+      stats,
+      usage: (d) => {
+        deltas.push(d)
+        stats.addUsage('drain', d)
+      },
+    })
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    const stepStart = JSON.stringify({ type: 'step_start', timestamp: 1, part: {} })
+    const stepFinish = JSON.stringify({
+      type: 'step_finish',
+      part: { reason: 'stop', tokens: { input: 5, output: 2, reasoning: 1 }, cost: 0 },
+    })
+    const tool = (id: string): string =>
+      JSON.stringify({
+        type: 'tool_use',
+        part: { tool: 'read', callID: id, state: { status: 'running', input: { filePath: '/a/cli.ts' } } },
+      })
+    handler.onLine(stepStart)
+    handler.onLine(tool('c1'))
+    handler.onLine(stepFinish)
+    handler.onLine(stepStart)
+    handler.onLine(tool('c2'))
+    // duplicate callID from a later step must not double-count
+    handler.onLine(tool('c1'))
+    handler.onLine(stepFinish)
+    expect(deltas).toEqual([
+      { input: 5, output: 2, reasoning: 1, cacheRead: 0, cacheWrite: 0, cost: 0, label: 'drain', model: 'm' },
+      { input: 5, output: 2, reasoning: 1, cacheRead: 0, cacheWrite: 0, cost: 0, label: 'drain', model: 'm' },
+    ])
+    expect(stats.snapshot().totals.toolCalls).toBe(2)
+    expect(stats.snapshot().perLabel['drain']?.input).toBe(10)
+  })
+
+  test('tool progress goes to reporter.slot and dispose commits it with a done marker', async () => {
     const cwd = makeTempDir('line-handler-slot-')
     const slots: Array<readonly [string, string | null]> = []
+    const commits: Array<readonly [string, string | undefined]> = []
     const reporter = makeReporter({
       slot: (key, line) => {
         slots.push([key, line] as const)
+      },
+      commit: (key, line) => {
+        commits.push([key, line] as const)
       },
     })
     const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
@@ -100,6 +198,125 @@ describe('createLineHandler reporter wiring', () => {
       }),
     )
     expect(slots.some(matchesDrainRead)).toBe(true)
+    await handler.dispose()
+    expect(commits).toHaveLength(1)
+    expect(commits[0]![0]).toBe('drain')
+    expect(commits[0]![1]).toContain('\u2713')
+    expect(commits[0]![1]).toContain('read')
+    expect(slots.every(([, line]) => line !== null)).toBe(true)
+  })
+
+  test('commitOnDispose:false leaves the slot live (no commit, no clear)', async () => {
+    const cwd = makeTempDir('line-handler-keep-')
+    const slots: Array<readonly [string, string | null]> = []
+    const commits: Array<readonly [string, string | undefined]> = []
+    const reporter = makeReporter({
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+      commit: (key, line) => {
+        commits.push([key, line] as const)
+      },
+    })
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      reporter,
+      slotKey: 'iter',
+      commitOnDispose: false,
+    })
+    handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
+    handler.onLine(
+      JSON.stringify({
+        type: 'tool_use',
+        part: { tool: 'read', callID: 'c1', state: { status: 'running', input: { filePath: '/a/cli.ts' } } },
+      }),
+    )
+    await handler.dispose()
+    expect(commits).toEqual([])
+    expect(slots).toHaveLength(1)
+    expect(slots.every(([, line]) => line !== null)).toBe(true)
+  })
+
+  test('slotKey overrides the slot identity', async () => {
+    const cwd = makeTempDir('line-handler-key-')
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter = makeReporter({
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    })
+    const handler = createLineHandler({
+      ...makeOptions(cwd, path.join(cwd, 'agent.log')),
+      reporter,
+      slotKey: 'iter',
+      commitOnDispose: false,
+    })
+    handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
+    handler.onLine(
+      JSON.stringify({
+        type: 'tool_use',
+        part: { tool: 'read', callID: 'c1', state: { status: 'running', input: { filePath: '/a/cli.ts' } } },
+      }),
+    )
+    expect(slots).toHaveLength(1)
+    expect(slots.every(([key]) => key === 'iter')).toBe(true)
+    await handler.dispose()
+  })
+
+  test('step_finish emits no permanent event, but re-renders the live line with cumulative tokens', async () => {
+    const cwd = makeTempDir('line-handler-tokens-')
+    const events: string[] = []
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter = makeReporter({
+      event: (msg) => {
+        events.push(msg)
+      },
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    })
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
+    handler.onLine(
+      JSON.stringify({
+        type: 'step_finish',
+        part: { reason: 'stop', tokens: { input: 5, output: 2, reasoning: 1 }, cost: 0 },
+      }),
+    )
+    expect(events).toEqual([])
+    const last = slots[slots.length - 1]![1]!
+    expect(last).toContain('in 5 / out 2')
+    await handler.dispose()
+  })
+
+  test('an agent that died before its first step clears the slot instead of committing', async () => {
+    const cwd = makeTempDir('line-handler-unstarted-')
+    const slots: Array<readonly [string, string | null]> = []
+    const commits: Array<readonly [string, string | undefined]> = []
+    const reporter = makeReporter({
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+      commit: (key, line) => {
+        commits.push([key, line] as const)
+      },
+    })
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    await handler.dispose()
+    expect(commits).toEqual([])
+    expect(slots).toEqual([['drain', null]])
+  })
+
+  test('a reporter without commit falls back to clearing the slot on dispose', async () => {
+    const cwd = makeTempDir('line-handler-nocommit-')
+    const slots: Array<readonly [string, string | null]> = []
+    const reporter = makeReporter({
+      slot: (key, line) => {
+        slots.push([key, line] as const)
+      },
+    })
+    const handler = createLineHandler({ ...makeOptions(cwd, path.join(cwd, 'agent.log')), reporter })
+    handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
     await handler.dispose()
     expect(slots[slots.length - 1]).toEqual(['drain', null])
   })

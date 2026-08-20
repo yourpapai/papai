@@ -73,7 +73,31 @@ export const statsHandlers: HandlerFamily = {
   ],
   empty: [
     http.get('/stats/global', () =>
-      HttpResponse.json(makeGlobalStats({ subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] } })),
+      HttpResponse.json(
+        makeGlobalStats({
+          subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] },
+          active: { activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 },
+          storage: { sqliteBytes: 0, s3AttachmentBytes: 0 },
+          identityMix: { byProvider: {}, kaneoWorkspaces: 0 },
+          surfaceMix: {
+            subjectsWithRecurring: 0,
+            subjectsWithDeferred: 0,
+            subjectsWithMemos: 0,
+            subjectsWithInstructions: 0,
+          },
+          webFetches: { topHosts: [] },
+          toolMix: { topTools: [], errorTypeCounts: {}, totalCalls: 0, totalSuccessRate: 0, toolCallGrowth30d: [] },
+          llmUsage: {
+            totalCalls: 0,
+            mainCalls: 0,
+            smallCalls: 0,
+            embeddingCalls: 0,
+            inputTokensTotal: 0,
+            outputTokensTotal: 0,
+          },
+          tokenUsageByDay: [],
+        }),
+      ),
     ),
     http.get('/stats/subject/:id', ({ params }) =>
       HttpResponse.json(makeSubjectStats({ storageContextId: String(params['id']) })),

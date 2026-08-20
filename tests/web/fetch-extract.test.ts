@@ -92,12 +92,10 @@ describe('fetchAndExtract', () => {
       fetchedAt: 1_234,
     }
 
-    const consumeWebFetchQuota = mock(
-      (_actorId: string, _nowMs?: number): RateLimitResult => ({
-        allowed: true,
-        remaining: 19,
-      }),
-    )
+    const consumeWebFetchQuota = mock((_actorId: string, _nowMs?: number): RateLimitResult => ({
+      allowed: true,
+      remaining: 19,
+    }))
     const normalizeWebUrl = mock((_rawUrl: string): string => 'https://example.com/article')
     const getCachedWebFetch = mock((_normalizedUrl: string, _nowMs?: number): WebFetchResult | null => cached)
 
@@ -154,12 +152,10 @@ describe('fetchAndExtract', () => {
           truncated: false,
         }),
     )
-    const consumeWebFetchQuota = mock(
-      (_actorId: string, _nowMs?: number): RateLimitResult => ({
-        allowed: true,
-        remaining: 18,
-      }),
-    )
+    const consumeWebFetchQuota = mock((_actorId: string, _nowMs?: number): RateLimitResult => ({
+      allowed: true,
+      remaining: 18,
+    }))
 
     const nowSequence: [number, number] = [1_000, 2_000]
     let nowCallIndex = 0
@@ -177,13 +173,12 @@ describe('fetchAndExtract', () => {
         normalizeWebUrl: mock((_rawUrl: string): string => 'https://example.com/path'),
         getCachedWebFetch: mock((_normalizedUrl: string, _nowMs?: number): WebFetchResult | null => null),
         putCachedWebFetch,
-        safeFetchContent: mock(
-          (_url: string, _options?: { abortSignal?: AbortSignal }): Promise<SafeFetchResponse> =>
-            Promise.resolve({
-              finalUrl: 'https://docs.example.org/final',
-              contentType: 'text/plain',
-              body: new TextEncoder().encode('Plain body content'),
-            }),
+        safeFetchContent: mock((_url: string, _options?: { abortSignal?: AbortSignal }): Promise<SafeFetchResponse> =>
+          Promise.resolve({
+            finalUrl: 'https://docs.example.org/final',
+            contentType: 'text/plain',
+            body: new TextEncoder().encode('Plain body content'),
+          }),
         ),
         extractHtmlContent: (): Promise<{ title: string; content: string }> => {
           throw createUnexpectedCallError('extractHtmlContent')
@@ -300,12 +295,11 @@ describe('fetchAndExtract', () => {
 
   test('uses extracted HTML title and content in the final result', async () => {
     const runFetchAndExtract = getFetchAndExtract(fetchAndExtract)
-    const extractHtmlContent = mock(
-      (_html: string, _url: string): Promise<{ title: string; content: string }> =>
-        Promise.resolve({
-          title: 'Readable title',
-          content: 'Readable body',
-        }),
+    const extractHtmlContent = mock((_html: string, _url: string): Promise<{ title: string; content: string }> =>
+      Promise.resolve({
+        title: 'Readable title',
+        content: 'Readable body',
+      }),
     )
     const distillWebContent = mock(
       (input: {
@@ -424,12 +418,10 @@ describe('fetchAndExtract', () => {
 
   test('rejects invalid URLs before consuming quota', async () => {
     const runFetchAndExtract = getFetchAndExtract(fetchAndExtract)
-    const consumeWebFetchQuota = mock(
-      (_actorId: string, _nowMs?: number): RateLimitResult => ({
-        allowed: true,
-        remaining: 19,
-      }),
-    )
+    const consumeWebFetchQuota = mock((_actorId: string, _nowMs?: number): RateLimitResult => ({
+      allowed: true,
+      remaining: 19,
+    }))
 
     try {
       await runFetchAndExtract(

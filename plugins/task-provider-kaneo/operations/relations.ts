@@ -6,7 +6,7 @@
 import type { RelationType } from 'papai/plugin-types'
 
 import { addTaskRelation } from '../add-task-relation.js'
-import type { KaneoConfig } from '../client.js'
+import type { KaneoConfig } from '../provider.js'
 import { removeTaskRelation } from '../remove-task-relation.js'
 import { updateTaskRelation } from '../update-task-relation.js'
 

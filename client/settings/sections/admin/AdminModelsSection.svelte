@@ -116,7 +116,7 @@
 
 <style>
   .placeholder {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-size: 12px;
     padding: 8px 0;
   }

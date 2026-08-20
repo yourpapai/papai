@@ -13,6 +13,7 @@ describe('buildAttemptPrompt', () => {
   test('builds inspector-rejection retry prompt', () => {
     const issue: ReviewerIssue = {
       title: 'x',
+      kind: 'defect',
       severity: 'low',
       summary: 's',
       whyItMatters: 'w',
@@ -59,6 +60,7 @@ describe('buildAttemptPrompt', () => {
       id: 'rec-1',
       issue: {
         title: 'x',
+        kind: 'defect',
         severity: 'low',
         summary: 's',
         whyItMatters: 'w',

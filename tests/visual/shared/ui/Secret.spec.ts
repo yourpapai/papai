@@ -13,3 +13,7 @@ test.describe('shared/ui/Secret', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

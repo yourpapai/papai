@@ -18,10 +18,17 @@ export const readJsonRecord = (filePath: string): Record<string, unknown> => {
   return parsed
 }
 
+export class ReportReadError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ReportReadError'
+  }
+}
+
 export const readStrykerReport = (reportPath: string): StrykerReport => {
   const parsed: unknown = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
   if (!isStrykerReport(parsed)) {
-    throw new Error(`${reportPath} must contain a Stryker JSON report object`)
+    throw new ReportReadError(`${reportPath} must contain a Stryker JSON report object`)
   }
   return parsed
 }

@@ -53,17 +53,15 @@ async function fetchViaProjects(provider: TaskProvider): Promise<Task[]> {
   const allItems = tasksByProject.flatMap(({ projectId, items }) => items.map((item) => ({ ...item, projectId })))
   log.debug({ projectCount: projects.length, taskCount: allItems.length }, 'Fetched tasks across all projects')
 
-  return allItems.map(
-    (item): Task => ({
-      id: item.id,
-      title: item.title,
-      status: item.status,
-      priority: item.priority,
-      dueDate: item.dueDate,
-      projectId: item.projectId,
-      url: item.url,
-    }),
-  )
+  return allItems.map((item): Task => ({
+    id: item.id,
+    title: item.title,
+    status: item.status,
+    priority: item.priority,
+    dueDate: item.dueDate,
+    projectId: item.projectId,
+    url: item.url,
+  }))
 }
 
 /** Fallback: fetch tasks via searchTasks when listProjects is unavailable. */
@@ -72,16 +70,14 @@ async function fetchViaSearch(provider: TaskProvider): Promise<Task[]> {
   const results = await provider.searchTasks({ query: '' })
   log.debug({ taskCount: results.length }, 'Fetched tasks via searchTasks fallback')
 
-  return results.map(
-    (item): Task => ({
-      id: item.id,
-      title: item.title,
-      status: item.status,
-      priority: item.priority,
-      projectId: item.projectId,
-      url: item.url,
-    }),
-  )
+  return results.map((item): Task => ({
+    id: item.id,
+    title: item.title,
+    status: item.status,
+    priority: item.priority,
+    projectId: item.projectId,
+    url: item.url,
+  }))
 }
 
 /** Fetch all tasks for alert evaluation. Uses listProjects+listTasks if available, searchTasks as fallback. */

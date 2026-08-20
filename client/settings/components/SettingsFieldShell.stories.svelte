@@ -46,3 +46,21 @@
     {/snippet}
   </SettingsFieldShell>
 </Story>
+
+<Story name="Inline error" asChild>
+  <SettingsFieldShell label="Instance URL" required editorOpen={true} error="required for self-hosted code hosts, and must start with https://">
+    {#snippet editor()}
+      <Input value="http://ghe.corp.example" />
+      <Btn variant="primary" size="sm">{#snippet children()}Save{/snippet}</Btn>
+    {/snippet}
+  </SettingsFieldShell>
+</Story>
+
+<Story name="Hint prop" asChild>
+  <SettingsFieldShell label="Model" editorOpen={true} hint="Leave blank for the agent default.">
+    {#snippet editor()}
+      <Input value="claude-opus-4-5" />
+      <Btn variant="primary" size="sm">{#snippet children()}Save{/snippet}</Btn>
+    {/snippet}
+  </SettingsFieldShell>
+</Story>

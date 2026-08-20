@@ -5,6 +5,1100 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.13.1] - 2026-08-17
+
+### Added
+
+- **openspec:** Ask whether a capability needs to exist before admitting it
+- **agents:** Give the minimality rule one definition, pinned across workspaces
+- **opencode-agent:** Carry the minimality rule into implement and CI-fix
+- **review-loop:** Record whether an issue is a defect or a cleanup
+- **review-loop:** Dispatch every defect before any cleanup
+- **review-loop:** Clamp a cleanup's severity at ingest, not in the prompt
+- **review-loop:** Let the reviewer report over-engineering, as five named forms
+- **review-loop:** Count cleanups apart from defects, in metrics and the summary
+- **mutation-improve:** Accept a result that names no planning documents
+- **mutation-improve:** Three steps, not five — drop the documents nothing read
+- **mutation-improve:** Report accepted residuals instead of two document links
+- **agent:** Implement issue #268 — step 1/30: 1.1 Write failing migration test `tests/db/migrations/076_context_vault.
+- **agent:** Implement issue #268 — step 2/30: 1.2 Create migration `src/db/migrations/076_context_vault.ts` (`context_
+- **agent:** Implement issue #268 — step 3/30: 1.3 Add drizzle twin `src/db/context-vault-schema.ts` with a schema-vali
+- **agent:** Implement issue #268 — step 4/30: 2.1 Write failing token-store tests (create returns plaintext once + sto
+- **agent:** Implement issue #268 — step 5/30: 2.2 Implement `src/context-vault/token-store.ts` (generation via `crypto
+- **agent:** Implement issue #268 — step 6/30: 2.3 Write failing route tests for `GET/POST/DELETE /settings/api/context
+- **agent:** Implement issue #268 — step 7/30: 2.4 Implement `src/debug/settings/context-vault-tokens-routes.ts` mirror
+- **agent:** Implement issue #268 — step 8/30: 3.1 Write failing spec-store tests (upsert by `(config_context_id, id, p
+- **agent:** Implement issue #268 — step 9/30: 3.2 Implement `src/context-vault/spec-store.ts` — `bun test tests/contex
+- **agent:** Implement issue #268 — step 10/30: 3.3 Write failing push-route tests (bearer auth via token hash, revoked/
+- **agent:** Implement issue #268 — step 11/30: 3.4 Implement `src/context-vault/push-route.ts` and mount `POST /api/con
+- **agent:** Implement issue #268 — step 12/30: 4.1 Write failing reducer tests (outline extraction, stage matrix draft/
+- **agent:** Implement issue #268 — step 13/30: 4.2 Implement `src/context-vault/reducer.ts` and wire it into the push p
+- **agent:** Implement issue #268 — step 14/30: 4.3 Write failing summarization-queue tests (semantic new-hash enqueue,
+- **agent:** Implement issue #268 — step 15/30: 4.4 Implement `src/context-vault/summarizer.ts` following the `long-term
+- **agent:** Implement issue #268 — step 16/30: 5.1 Write failing facade tests (`contextVault.read` permission gate, sto
+- **agent:** Implement issue #268 — step 17/30: 5.2 Implement the facade in `src/plugins/tool-runtime.ts` (mirroring `bu
+- **agent:** Implement issue #268 — step 18/30: 5.3 Write failing tool tests (`list_agent_specs` filters + freshness met
+- **agent:** Implement issue #268 — step 19/30: 5.4 Create `plugins/context-vault/` (`plugin.json` with the two contribu
+- **agent:** Implement issue #268 — step 20/30: 6.1 Write failing client tests for the "Context Vault tokens" section (l
+- **agent:** Implement issue #268 — step 21/30: 6.2 Implement the section in `client/settings/` reusing the coding-repos
+- **agent:** Implement issue #268 — step 22/30: 7.1 Write failing lock-file singleton tests (live lock no-op, dead-PID/e
+- **agent:** Implement issue #268 — step 23/30: 7.2 Implement `context-vault-indexer/lock.ts` — `bun test tests/context-
+- **agent:** Implement issue #268 — step 24/30: 7.3 Write failing daemon tests (scan detects changed/deleted `*.md`, per
+- **agent:** Implement issue #268 — step 25/30: 7.4 Implement `context-vault-indexer/daemon.ts` (periodic scan, hash-map
+- **agent:** Implement issue #268 — step 26/30: 7.5 Implement `context-vault-indexer/adapters/opencode.ts` (activation p
+- **agent:** Implement issue #268 — step 27/30: 8.1 Add story: push → index updated → tools return freshness meta; revok
+- **agent:** Implement issue #268 — step 28/30: 8.2 Add story: two plugin activations → exactly one daemon (lock singlet
+- **agent:** Implement issue #268 — step 29/30: 9.1 Update `docs/architecture/plugins.md` (new facade permission) and ad
+- **agent:** Implement issue #268 — step 30/30: 9.2 Run full gate: `bun run test`, `bun run typecheck`, `bun run lint`,
+- **opencode-agent:** Render phase reports as sections of one comment
+- **opencode-agent:** Bound the reply body, shedding prose before memory
+- **opencode-agent:** Cut the prompt at the bookkeeping, not at the comment
+- **opencode-agent:** Buffer the run's reply and post it once, at the end
+- **opencode-agent:** Fold the transcript and failure notices into the reply
+- **context-vault-indexer:** Ship a runnable daemon with IPC repo registration
+- **agent:** Implement issue #281 — step 1/7: 1.1 Write failing `tests/security/prompt-boundary.test.ts`: wrap
+- **agent:** Implement issue #281 — step 2/7: 1.2 Implement `src/security/prompt-boundary.ts`
+- **agent:** Implement issue #281 — step 3/7: 2.1 Write failing regression test in
+- **agent:** Implement issue #281 — step 4/7: 2.2 Edit `src/deferred-prompts/poller-alerts.ts` to sanitize + wrap
+- **agent:** Implement issue #281 — step 5/7: 3.1 Write failing regression test for `src/memory-context-block.ts`:
+- **agent:** Implement issue #281 — step 6/7: 3.2 Edit `src/memory-context-block.ts` to sanitize + wrap fact
+- **agent:** Implement issue #281 — step 7/7: 4.1 Run `bun security` (prompt-construction surface), full
+
+### Changed
+
+- **opencode-agent:** Delete what the live channel paid for
+- **opencode-agent:** Rename the channel to what it now is
+
+### Documentation
+
+- **openspec:** Four changes carrying minimality past the review-loop fixer
+- **sdd:** Record why two rule sets pull opposite ways on size
+- **agents:** State the minimality rule for the main agent and both workspaces
+- **review-loop:** Record the deletion vocabulary and what decides its future
+- **mutation-improve:** Record the three-step procedure and the residual report
+- **openspec:** Draft artifacts for context-vault-plugin
+- **context-vault:** Clarify indexer package is library-only and daemon entry is consumer-supplied
+- **research:** Scaffold Stage C evidence log
+- **openspec:** Propose one agent reply comment per command
+- **openspec:** Post the single reply once, at the end of the run
+- **openspec:** Reconcile the change artifacts with what was built
+- **openspec:** Propose context-vault indexer daemon entry
+- **context-vault:** Correct scan scheduling and show the adapter wiring
+- **behaviors:** Include task statuses in alert-summary boundary enumeration
+- **openspec:** Restore SPDX BUSL-1.1 header in prompt-injection-defense proposal.md
+
+### Fixed
+
+- **review-loop:** Restore the mutation ratchet on summary.ts and trace-log.ts
+- **agent:** Repair CI for issue #268
+- **agent:** Reunite the client-bundle test with its implementation half
+- **mutation:** Keep generated modules out of the changed-files gate
+- **context-vault-indexer:** Daemon owns the lock heartbeat
+- **context-vault-indexer:** Keep daemon loop alive across rejected scan ticks
+- **context-vault-indexer:** Retry rejected pushes with backoff instead of aborting the scan tick
+- **context-vault:** Enforce push body cap while streaming instead of after full buffering
+- **context-vault-facade:** Degrade gracefully on malformed outline JSON
+- **context-vault:** Persist per-file derived artifacts so delta pushes no longer regress stage/progr
+- **settings:** Show revoked context-vault tokens as revoked without a Revoke button
+- **context-vault:** Separate summarizer pending-job key segments to avoid collisions
+- **client:** Reset created vault token plaintext on context switch in settings
+- **context-vault-indexer:** Refresh lock heartbeat on its own cadence decoupled from the scan interv
+- **context-vault:** Drop deleted paths from pending spec summarization jobs
+- **context-vault:** Guard spec summary writes with source_hash to drop superseded results
+- **context-vault:** Tolerate malformed stored outlines and guard push route errors
+- **context-vault:** Wrap applyPush mutations in a drizzle transaction
+- **context-vault-indexer:** Preserve archived change identity in daemon push payload
+- **context-vault-indexer:** Keep persisted state when a listed file read fails instead of pushing a
+- **context-vault-indexer:** Round statMtime so push payloads satisfy server integer mtime schema
+- **context-vault:** Keep pending spec summary storable across mechanical pushes
+- **context-vault:** Summarize full semantic file set on delta pushes, not just the delta
+- **context-vault:** Preserve stored file artifacts on text-less hash-changed pushes
+- **context-vault:** Use token_hash index in verifyToken instead of full scan
+- **context-vault-indexer:** Catch heartbeat-refresh and sleep failures in daemon loop
+- **context-vault-indexer:** Pace daemon loop with a real fallback delay when injected sleep rejects
+- **context-vault-indexer:** Exit superseded daemon when the singleton lock is lost
+- **context-vault:** Enqueue spec summarization only on semantic new-hash or semantic deletion
+- **context-vault:** Keep in-flight spec summary when only a mechanical push supersedes it
+- **opencode-agent:** Adopt an existing openspec change instead of failing capture
+- **ci:** Warm the story sandbox image before the suite that requires it
+- **analytics:** Promote ordinary staged snapshots in the scheduler handler
+- **opencode-agent:** Take the failure notice's comment id from the API
+- **tests:** Repoint the indexer story catalog id after the scenario rename
+- **security:** Strip Unicode format characters before boundary-tag matching in sanitizeExternalData
+- **security:** Strip external-data boundary tags repeatedly to prevent split-tag reassembly
+- **security:** Strip boundary tags with whitespace between < and / in sanitizeExternalData
+- **deferred-prompts:** Wrap task status in external-data boundary in alert summary
+- **security:** Pre-cap untrusted input before iterative boundary-tag strip loop
+- **security:** Pre-strip Cc control chars alongside Cf in sanitizeExternalData
+
+### Miscellaneous
+
+- **openspec:** Verify the scope rules against every change and the full gate
+- **agents:** Verify the minimality ladder against the full gate
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold context-vault-plugin
+- **agent:** Salvage partial work on issue #268
+- **agent:** Salvage partial work on issue #268
+- **openspec:** Adopt prompt-injection-defense
+- **knip:** Drop stale prompt-boundary entry and ignore now tasks 2.2/3.2 landed
+
+### Testing
+
+- **opencode-agent:** Exercise the rule-forwarding seam the fake had stubbed out
+- **settings-nav:** Pin Advanced labels, not just ids
+## [6.13.0] - 2026-08-15
+
+### Added
+
+- **announcements:** Structured classification schema and dep for changelog humanizer
+- **announcements:** Classify changelog entries before writing release notes
+- **announcements:** Benefit-framed three-section release notes prompt
+- **announcements:** Demonstrate improvement bucket in release-notes few-shot example
+- **tools:** Carry legacy tool_prefs overrides to renamed reminder/alert tools
+- **live-status:** Friendly labels for reminder/alert tools
+- **admin:** Relabel deferred-prompts panel to Reminders & alerts
+- **shared:** Keyboard-reachable DataTable rows, stronger selected style
+- **debug:** Selected-row indication across all detail-rail lists
+- **shared:** FormatDuration, consistent duration display in debug
+- **debug:** Structured TurnDetail with collapsible raw tree
+- **debug:** Structured FailureDetail with collapsible raw tree
+- **debug:** Disconnect banner, stale-stat dimming, logs-error note
+- **review-loop:** Add shared issue line formatting module
+- **review-loop:** Add issue event seam and live status counters to reporter
+- **review-loop:** Stream per-issue found/decided events instead of fix log strings
+- **review-loop:** Verdict-first final report with issue groups and artifact paths
+- **review-loop:** Wall-clock duration and honest cost/token reporting
+- **review-loop:** Per-activity live slots with multi-line redraw and EPIPE downgrade
+- **review-loop:** Status line with round, activity, issues, and tokens
+- **review-loop:** Route live progress through slots and forward usage
+- **mutation-improve:** Config schema and loader
+- **mutation-improve:** Selection and result contracts
+- **mutation-improve:** Score reader reusing paired-runner math
+- **mutation-improve:** Baseline read/write/bump
+- **mutation-improve:** Diff-scope guard
+- **mutation-improve:** Run-state persistence
+- **mutation-improve:** Select and improve prompt templates
+- **mutation-improve:** Pipeline state machine with runner-measured gates
+- **mutation-improve:** Finalize push + summary gh PR
+- **mutation-improve:** Cli arg parsing and orchestration
+- **tokens:** Add --control-h-{sm,md,lg} control-height scale
+- **stories:** Add forge fixtures and retarget CodeHostSection
+- **settings:** Attribute coding-credential 422s to the offending field
+- **client:** Carry the offending field key on FetchError
+- **settings:** Give SettingsFieldShell an inline error and hint channel
+- **ui:** Give Select and Combobox the invalid state Input already had
+- **settings:** Render attributed validation errors under their field
+- **settings:** Surface code-host connection state in the header
+- **settings:** Explain the code-host token on first setup
+- **settings:** Mark and explain the conditional instance URL
+- **settings:** Guard empty code-host fields and weight the Clear trigger
+- **settings:** Confirm repository deletion and weight the row action
+- **settings:** Give an empty repository list an empty state
+- **settings:** Mark the required repo fields and announce the status channel
+- **visual:** Add opt-in high-sensitivity screenshot audit mode
+- **scripts:** Add ux-backlog parsing and rendering library
+- **scripts:** Generate the UX findings backlog with a currency gate
+- **ui:** Add an optional ariaPressed prop to Btn
+- **ui:** Give SegmentedControl a busy state
+- **ux-backlog:** Add wont-fix and deferred statuses
+- **ux-backlog:** List deferred findings in their own section
+- **ui:** Let ErrorState demote raw diagnostics to a collapsed detail
+- **settings:** Acknowledge a completed config-field save
+- **settings:** Add pure plugin eligibility copy module
+- **settings:** Give plugins real feedback, in-flight and validation state
+- **settings:** Render plugin config through SettingsFieldShell
+- **settings:** Human eligibility copy and real structure for plugin cards
+- **mutation:** Throw typed ReportReadError from readStrykerReport
+- **settings:** Split bootstrap failure into unauthenticated and failed
+- **settings:** Mount before bootstrap and render a real session gate
+- **ui:** Select gains optional option groups, a block size, and the focus-ring token
+- **settings:** Jump menu uses the shared Select and skips collapsed groups
+- **settings:** Extract the nav group model with per-group collapse
+- **settings:** Shared group disclosure button with real hover and active states
+- **settings:** Drive navigation from the nav model and make Admin collapsible
+- **admin:** Design the zero-data state and make the empty fixture empty
+- **transcript:** Add pure describeEvent payload mapper
+- **transcript:** Add empty-state copy map keyed by viewer status
+- **transcript:** Split out TranscriptView, add empty states and real stories
+- **transcript:** Rebuild the status banner on the shared Pill primitive
+- **transcript:** Render event timestamps in the timeline
+- **transcript:** Give every terminal state copy that says what happens next
+- **transcript:** Announce streamed events and follow the live tail
+- **opencode-agent:** Add GitHub Actions issue agent spike
+- **opencode-agent:** OpenAI-only creds, real review-loop, CI retries, review conversation
+- **opencode-agent:** Bound the model's capabilities and strip its credentials
+- **opencode-agent:** Guard what `git add --all` staged before committing it
+- **opencode-agent:** Derive the agent identity from the token
+- **opencode-agent:** Report progress during a model turn
+- **opencode-agent:** Cap what one issue may spend
+- **review-loop:** Add pricing-table cost estimation module
+- **review-loop:** Add git numstat diff-stats module
+- **review-loop:** Add RunStats aggregate with cost estimation and rehydration
+- **review-loop:** Wire RunStats into LiveRenderer footer segments
+- **review-loop:** Forward label/model and tool-call increments from line handler
+- Add optional pricing table to review-loop and mutation-improve config schemas
+- **review-loop:** Report merge numstat diffs from worker pool
+- **review-loop:** Persist run stats to metrics.json and print Stats line in summary
+- **mutation-improve:** Persist run stats in state.json and measure merge diffs per iteration
+- **mutation-improve:** Print end-of-run terminal summary with aggregate stats
+- **opencode-agent:** Acknowledge triggers and link the running job
+- **opencode-agent:** Label the issue with the state it is in
+- **opencode-agent:** Give every comment heading a glyph from one table
+- **opencode-agent:** Show the run while it is running
+- **opencode-agent:** Make the review loop an explicit /review phase
+- **opencode-agent:** Size the delivery's /review hint from the diff it committed
+- **opencode-agent:** Resolve a /review typed on the pull request
+- **opencode-agent:** Let a /review on a pull request start a job
+- **opencode-agent:** Say on the pull request what the review concluded
+- **agent:** Implement issue #232
+- **opencode-agent:** A wall-clock stop is a ceiling, and knows the real clock
+- **opencode-agent:** Keep the work a stopped turn had already done
+- **opencode-agent:** The unit of work is a plan step
+- **settings:** Give SettingsTable a no-match state and sort passthrough
+- **settings:** Give the users table a status column, sorting, and pinned widths
+- **settings:** State the coding MCP server cap beside Add
+- **opencode-agent:** Repair a refused commit instead of failing the run
+- **review-loop:** Add inactivity watchdog with one stall-retry for agent subprocesses
+- **opencode-agent:** Say which server died, and ask the runner why
+- **scripts:** Parse bun's test output into something queryable
+- **test:** Make a run answer questions instead of being re-run
+- **hooks,docs:** Wire the per-edit test run; hold the privacy gate back
+- **opencode-agent:** Stop the agent committing files a push cannot carry
+- **opencode-agent:** Publish the debug transcript, and a viewer to read it
+- **opencode-agent:** Fix transcript drop zone and add copy controls
+- **sdd-runner:** Autonomous SDD pipeline with end-to-end orchestration
+- **sdd-runner:** Cap-hit gate fidelity — trajectory, open MATERIAL, vacuous-approval guard
+- **sdd-runner:** Veto resolver pass — apply redirects, validate, re-present
+- **sdd-runner:** Live TTY rendering — ProgressReporter adapter, DynamicRenderer, verbosity threading
+- **ui:** A live region that exists before it has anything to say
+- **settings:** Analytics consent copy is a pure, testable function
+- **ui:** LiveRegion accepts an id and a replacement class
+- **review-loop:** Add LiveRenderer.commit to freeze slots as permanent lines
+- **review-loop:** Fold step footers into the live line, commit on dispose
+- **mutation-improve:** One live line per iteration with committed summary
+- **opencode:** Add OpenSpec workflow commands and skills
+- **opencode:** Add /sdd:auto command
+- **sdd-runner:** Aggregate-time cost fallback for subscription models
+- **sdd-runner:** Add change digest section to gate MD
+- **sdd-runner:** Add roundCap field to RunState
+- **sdd-runner:** Parameterize runReviewLoop entry point
+- **sdd-runner:** Add → RUN 1 MORE extend directive at cap-hit gates
+- **opencode-agent:** OpenSpec-compliance foundation — driver, probe, CAPTURED spine
+- **opencode-agent:** Triage capture — clarify|capture|answer + D9 gate (slice A)
+- **opencode-agent:** Branch-from-first-spec + diff-guard prefix grant (slice 4)
+- **opencode-agent:** PLANNING drafter loop + retire SPEC bridge (slice B, part 1)
+- **opencode-agent:** Tasks.md checkbox parser (D5, task 6.1 part 1)
+- **opencode-agent:** REVIEW_AND_MUTATE walks tasks.md checkboxes (D5, tasks 6.1/6.2)
+- **opencode-agent:** /ask and /review read artefacts from the folder (D1, slice 1)
+- **opencode-agent:** Parks render folder digests (slice C, task 5.2)
+- **opencode-agent:** Steering-drift routes scope changes to PLANNING (D6, tasks 6.3/6.4)
+- **opencode-agent:** Merged-PR archive door + ARCHIVE phase (D7, tasks 7.1/7.2)
+- **opencode-agent:** Restart-with-reset + /cancel branch cleanup (D12/D9, tasks 8.1/8.2)
+- **opencode-agent:** Drive an issue from its pull request once one exists
+- **opencode-agent:** Collect the review loop's own trace into the transcript
+- **mutation:** Pool scores across files, and fingerprint what a score depends on
+- **mutation:** Measure what changed, judge the whole branch
+- **opencode-agent:** State the protected-paths rule in every writing phase
+- **opencode-agent:** CommitAll reports what a push cannot carry
+- **opencode-agent:** A CI-fix round reports what it could not push
+- **opencode-agent:** The pull request carries the run, record included
+- **opencode-agent:** Guard the review loop's push against protected paths
+- **sdd-runner:** Early-gate approval continues the pipeline into the post-convergence tail
+- **sdd-runner:** Severity-based convergence for nitpick-only cap-hit rounds
+- **sdd-runner:** Resume covers post-review stages via artifact evidence
+- **sdd-runner:** Gate copy states each decision's downstream effect
+- **review-loop:** Carry exposure as a cited caller on issues and fixer results
+- **review-loop:** Ask both actors to cite the caller, or say there is none
+- **review-loop:** Order dispatch by exposure, the loop's first priority
+- **review-loop:** Record what each actor said about exposure, and where they differ
+- **review-loop:** Give the fixer a ladder, a check to leave behind, and no pen
+- **review-loop:** Read the paths numstat was already reporting
+- **review-loop:** Record whether an accepted fix left a check behind
+
+### Changed
+
+- **deferred:** Rename tool surface to reminders/alerts
+- **debug:** Delete dead css, co-locate component styles
+- Prune dead facade re-exports
+- Import through module facades instead of concrete internals
+- **review-loop:** Parametrize worktree branch prefix
+- **stories:** Guard agent-provider fixtures by namespace
+- **stories:** Guard mcp fixtures by namespace
+- **settings:** Move consumers onto the shell's error and hint props
+- **settings:** Rename forge kind and instance-url labels
+- **settings:** Route the repo preset and egress fields through shared primitives
+- **settings:** Put the repo add form on the shared layout and tokens
+- **client:** Migrate 314 legacy token aliases to the semantic vocabulary
+- **client:** Delete the legacy token alias block and KV's inert dim prop
+- **ui:** Wrap the Field children slot in a control element
+- **ux-backlog:** Derive the summary table from the status tuple
+- **settings:** Extract PluginCard from PluginsSection
+- **mutation-improve:** Key score-reader retry off typed error instead of message text
+- **mutation-improve:** Rename agentTimeoutMs to mutateTimeoutMs
+- **client:** One shared scroll spy for admin and settings
+- **opencode-agent:** Read the working tree once per commit
+- **opencode-agent:** Drop three unread fields and forward every documented knob
+- **opencode-agent:** Re-run only the checks that failed
+- **opencode-agent:** Require LLM_BASE_URL, rename OPENAI_* to LLM_*
+- **ui:** Extract shownError and markTouched into a shared module
+- **analytics:** Prove the privacy contract from the run, not from 57 more runs
+- **mutation-improve:** Retarget diff-guard and prompt templates to openspec/changes
+- **scripts:** Move benchmark output to docs/research, mark plan-adr-workflow legacy-only
+- **sdd-runner:** Canonical digest shape, drop dormant renderer surfaces
+- **settings:** Analytics consent rows become real settings fields
+- **opencode-agent:** Delete retired SPEC/PLAN block code (5.3 sweep)
+- **mutation:** Give the gate its own module, and a shape it can share
+
+### Documentation
+
+- **spec:** User-friendly release notes via two-pass generation design
+- **plan:** User-friendly release notes implementation plan
+- **research:** Record Stage B window day 1 (2026-08-01)
+- **spec:** Add friendly deferred prompts design
+- **plan:** Add friendly deferred prompts implementation plan
+- **tools:** Document tool_prefs alias step for renamed reminder/alert tools
+- **analytics:** Clarify FEATURE_PRODUCERS lists representative deferred producer site
+- Debug dashboard UX remediation phased design spec
+- Debug dashboard UX remediation implementation plan
+- Amend selected-row identity decision for traces/failures
+- Debug dashboard UX review findings (source of this branch's work)
+- **review-loop:** Report output redesign spec
+- **review-loop:** Report output implementation plan + spec sync
+- **review-loop:** Drop unused isOpenStatus from report plan (YAGNI)
+- **review-loop:** Live status line + report polish design spec
+- **review-loop:** Live status line + report polish implementation plan
+- Design spec for tool_completed durationMs float/int fix (#209)
+- Implementation plan for tool_completed durationMs fix (#209)
+- Design spec for src/history.ts mutation coverage + stryker .opencode sandbox fix
+- Fix survivor count in history mutation design spec
+- Implementation plan for src/history.ts mutation coverage
+- Correct paired report filename in history mutation plan
+- **research:** Record Stage B window day 2 (2026-08-02)
+- Mutation coverage design for create-recurring-task tool
+- Implementation plan for create-recurring-task mutation coverage
+- Replace unsafe zod cast with safeParse type guard in task 1
+- Assert synchronous rethrow in task 4 failure test
+- Sync plan with final test shapes and achieved mutation score
+- **research:** Record Stage B window day 3 (2026-08-03)
+- Spec for youtrack custom-field-values mutation coverage
+- Plan for youtrack custom-field-values mutation coverage
+- Sync spec with achieved custom-field-values mutation score
+- Spec for youtrack validate-config mutation coverage
+- Plan for youtrack validate-config mutation coverage
+- Sync spec with achieved validate-config mutation score
+- Spec for deferred tool-handlers mutation coverage
+- Plan for deferred tool-handlers mutation coverage
+- Use lint-safe invalid-payload idiom in tool-handlers plan
+- Document equivalent residuals and approved alerts.ts fix
+- **spec:** Knip facade import triage design
+- **plan:** Knip facade import triage implementation plan
+- **plan:** Make triage codemod knip-report-driven, fix frozen guard
+- **plan:** Sync authoritative anchors, fix export-type parser gap
+- **plan:** Cascade rule, sync Task 3 contract-test trims to authoritative anchors
+- **plan:** Fix inline-type emission in codemod rebuild paths (TS1484)
+- **plan,spec:** Record 6th kept ignore entry (BYOK api-types) from Task 5 ruling
+- **knip:** Record standing rule for facade re-export findings
+- Mutation coverage design for src/tools/search-memos.ts
+- Implementation plan for search-memos mutation coverage
+- Record final search-memos mutation score and verified residuals
+- Spec mutation coverage strengthening for tool-status-labels
+- Plan mutation coverage strengthening for tool-status-labels
+- Amend tool-status-labels plan with Task 7 (full REGISTRY pinning)
+- Record tool-status-labels verified score 0.9714 (was 0.4619)
+- Reconcile tool-status-labels spec residuals with verified six
+- **research:** Record Stage B window day 4 (2026-08-04)
+- Design spec for autonomous mutation-improve runner
+- Implementation plan for autonomous mutation-improve runner
+- **ux-review:** Add CodeHostSection review + depth-B screenshot states
+- **spec:** Control target size floor design (WCAG 2.2 AA SC 2.5.8)
+- **plan:** Control target size floor implementation plan
+- **plan:** Use the browser-conditions invocation for client tests
+- **spec:** Namespace-aware story fixtures design
+- **plan:** Namespace-aware story fixtures implementation plan
+- **plan:** Probe only foreign namespaces in the loading-family guard test
+- **plan:** Record the TDD-hook mirror test requirement
+- **spec:** Settings field error channel design (sub-project B)
+- **plan:** Settings field error channel implementation plan
+- **plan:** Extract useFieldInvalid instead of a third copy in Select/Combobox
+- **plan:** Correct acceptance 5 — ConfigFieldRow has no visual baseline
+- **spec:** Code host connection clarity design (sub-project D)
+- **plan:** Code host connection clarity implementation plan
+- **plan:** Keep the code-host setup hint on one source line
+- **plan:** Drop unsafe casts from the task 5 test assertions
+- **settings:** Correct the SaaS-host comment's provenance claim
+- **ux:** Add the ReposSection UX review
+- **spec:** Repositories section clarity design (sub-project E)
+- **plan:** Implementation plan for repositories section clarity
+- **plan:** Correct the style-block anchor in task 1
+- **plan:** Put both delete-state resets in finally, and drain twice
+- **spec:** Design sub-project F — shared primitive accessibility
+- **plan:** Implementation plan for sub-project F
+- **plan:** Replace sub-project F's inert visual gate with a real one
+- **tokens:** Stop claiming --control-h-sm satisfies SC 2.5.8 on its own
+- **spec:** Design token contrast remediation (sub-project G)
+- **plan:** Implementation plan for token contrast remediation
+- **spec:** Design for visual-gate trustworthiness (sub-project I)
+- **plan:** Implementation plan for visual-gate trustworthiness
+- **visual:** Document audit mode and per-run CSS regeneration
+- **spec:** Design token-vocabulary retirement and license-header repair
+- **plans:** Add the token-vocabulary and license-header implementation plan
+- **plans:** Sync the token-references vacuity floor to the shipped value
+- **spec:** Design for UX findings backlog status tracking and re-verification
+- **plan:** Implementation plan for the UX findings backlog
+- **plan:** Verify baselines rather than blanket re-shooting in re-review batches
+- **ux-reviews:** Backfill finding ids and open statuses
+- **skill:** Teach ux-review the finding record and re-review procedure
+- **skill:** Explain why no-partial rule exists
+- **skill:** Resolve the ux-review hard-gate contradiction on story edits
+- **ux-reviews:** Re-verify batch 1 (Repos, DebugApp, CodeHost, KaneoAccess, Identity)
+- **ux:** Re-review batch 2 — Memory, Mcp, GuestMode, GroupProvider, CodingIdentity
+- **ux:** Re-review batch 3 — Tools, TaskProvider, ReleaseSubscription, Members
+- **ux:** Re-review batch 4 — CodingCredentials, Byok, Profile, AiOutput
+- **ux:** Fix citation line drifts, add missing dim-4 finding, note license-header edge case
+- **spec:** Design for closing the 8 open ToolsSection findings
+- **plan:** Implementation plan for the ToolsSection open-findings fix
+- **ux:** Close the ToolsSection findings fixed by this branch
+- **spec:** Design for closing the provider-pair open findings
+- **plan:** Implementation plan for closing the provider-pair open findings
+- **plan:** Record the accepted Task 4 fixture-file split
+- **ux:** Close the provider-pair findings and re-score both sections
+- **ux:** Downgrade the TaskProvider spacing dimension to warn
+- **spec:** Design for the shared-primitive and TaskProvider close-out
+- **plan:** Implementation plan for the shared-primitive + TaskProviderSection close-out
+- **plan:** Correct client-test invocation and baseline PNG paths
+- **ux:** Close three findings and re-score two scorecards
+- **ux:** Correct the DebugDetailRail citation and the busy-prop commit attribution
+- **spec:** Design for the ToolsSection close-out
+- **plans:** Add the ToolsSection close-out implementation plan
+- **plans:** Record that the ToolsSection checkmark fix is not pixel-neutral
+- **plans:** Make the Tools clear trigger reachable from Storybook
+- **plans:** Correct the clear-trigger finding's Where-visible line in Task 3
+- **plans:** Correct Task 3's audit claims for the checkmark and spacing fixes
+- **ux-reviews:** Close out ToolsSection
+- **plans:** Fix the expected section count in Task 3's verification
+- **ux-reviews:** Correct four stale line citations in the ToolsSection close-out
+- **specs:** Add the ReposSection close-out design
+- **plans:** Add the ReposSection close-out implementation plan
+- **ux-reviews:** Close out ReposSection
+- **ux-reviews:** Refresh three ReposSection scorecard rationales
+- **specs:** Design the central shared-settings.css fixes (SP3)
+- **plans:** Add the SP3 shared settings.css central-fixes plan
+- **plans:** Correct the Field row-count invariant in the SP3 plan
+- **ux-reviews:** Close the three shared settings.css findings
+- **specs:** Add the SP4 backlog vocabulary and decision-close design
+- **spec:** Name the two test cases SP4 legitimately changes
+- **plan:** Add the SP4 backlog-vocabulary implementation plan
+- **ux-reviews:** Close the two non-defect findings by decision
+- **specs:** Add the SP5 design for the nine open UX findings
+- **spec:** Amend SP5 design with Pill.id and the Kaneo reveal-once hazard
+- **spec:** Drop the visual baseline for the transient Saved marker
+- **plans:** Add the SP5 open-findings implementation plan
+- **plans:** Correct the SP5 plan's baseline handling and audit floor
+- **plans:** Fix how SP5 implementers enumerate rewritten baselines
+- **plans:** Correct the SP5 Task 2 assumption about the fixture error text
+- **plans:** Correct the SP5 Task 3 token and option-shape errors
+- **plan:** Correct SP5 Task 5's revealed-shot prediction
+- **plan:** Correct SP5 Task 6's two fixture errors
+- **plan:** Correct SP5 Task 8's moved-shot prediction
+- **ux-reviews:** Close the nine remaining open findings
+- **ux-reviews:** Keep the aria-pressed rejection visible in the scorecard
+- **ux:** Review PluginsSection
+- **spec:** Design for closing the PluginsSection findings
+- **plan:** Add PluginsSection close-out implementation plan
+- **plan:** Move PluginConfigField export to its first consumer
+- **plan:** Fold task 2 into task 6
+- **plan:** Correct Task 4 saveConfig to clear the card error before validating
+- **ux:** Close all 14 PluginsSection findings
+- **ux:** File the inactive-eligibility copy overclaim as a new finding
+- **mutation-improve:** Hardening spec + plan for PR #222 deferred items
+- **mutation-improve:** Retire Stream-3 Tier-B arity claim (compile-checked at call sites)
+- **research:** Record Stage B window day 5 (2026-08-05)
+- **spec:** Mutation-improve runner gate & finalize fixes design
+- **plan:** Mutation-improve runner gate & finalize fixes plan
+- **plan:** Sync runner-fixes plan with failure-recorder/skip-ratchet extractions
+- **research:** Record Stage B window day 6 (2026-08-06)
+- **ux:** SettingsApp shell review + close-out design
+- **plan:** Implementation plan for the SettingsApp shell findings
+- **settings:** Note the spacing values that snapped up to the scale
+- **ux:** Close 13 SettingsApp shell findings and file the type-scale gap
+- **ux:** Refresh the SettingsApp scorecard and reopen the focus-ring residue
+- **spec:** Design for the AdminApp review findings
+- **plan:** Implementation plan for the AdminApp review findings
+- **ux:** Land the AdminApp review findings and its evidence states
+- **ux:** Close the AdminApp findings
+- **transcript:** UX review findings + fix design spec
+- **transcript:** Implementation plan for the five UX findings
+- **ux:** Close five TranscriptApp findings, fix review-count assertion
+- **transcript:** Design for the eleven open TranscriptApp UX findings
+- **transcript:** Implementation plan for the eleven open findings
+- **transcript:** Correct screenshot baseline paths and shot counts in the plan
+- **ux:** Close the eleven open TranscriptApp findings
+- **ux:** Re-score the TranscriptApp card and file the aria-live history race
+- **ux:** Review AdminInstancesSection
+- **spec:** Design for the AdminInstancesSection open findings
+- **plan:** Implementation plan for the AdminInstancesSection findings
+- **ux:** Close the AdminInstancesSection findings
+- **opencode-agent:** Add follow-up roadmap from a file-by-file audit
+- **opencode-agent:** Unmerge two workspace rules that ran together
+- **opencode-agent:** Reattach a misplaced test doc comment
+- **opencode-agent:** Record the S4 items that were already closed
+- **opencode-agent:** Record the real size of the S4-10 gap
+- **opencode-agent:** Add a worked example to the README
+- **spec:** Progress & stats renderer upgrade design for review-loop/mutation-improve
+- **spec:** Clarify CLI-specific footer segments in progress renderer design
+- **plan:** Progress & stats renderer implementation plan
+- Document run-stats pipeline in workspace CLAUDE.md files
+- **opencode-agent:** Plan the issue status-feedback UX
+- **opencode-agent:** Re-anchor the status-feedback plan to master
+- **opencode-agent:** Describe the issue as the place you watch a run
+- **opencode-agent:** De-duplicate S3 and correct the status blurb
+- **opencode-agent:** Evaluate what is still open, and fix the blurb again
+- **opencode-agent:** Plan the /review command split
+- **opencode-agent:** Settle the four /review design questions
+- **opencode-agent:** Document the review loop as a phase of its own
+- **opencode-agent:** Name the one thing the PR door checks in YAML alone
+- **opencode-agent:** Document the pull request as the second door onto /review
+- **opencode-agent:** Record S5-11, the deadline that abandons the work
+- **opencode-agent:** S5-11 gains a wrap-up window, --no-verify and /continue
+- **opencode-agent:** Record why a session is not what continues
+- **opencode-agent:** Measure the hard stop, and correct it
+- **opencode-agent:** The staging fence is an assertion, not a wait
+- **ux:** Review AdminUsersSection
+- **spec:** Design for the AdminUsersSection open findings
+- **spec:** Correct the added_by treatment to an open set
+- **plan:** Implementation plan for the AdminUsersSection findings
+- **plan:** Note the client test invocation
+- **ux:** Close the AdminUsersSection findings
+- **ux:** Close the width-pinning and sort findings, file the narrow-viewport regressions they exposed
+- **ux:** Close the narrow-viewport regressions f5da228ac fixed
+- **ux:** Score the AdminUsersSection interaction dimension as passing
+- **ux:** Review CodingMcpSection
+- **ux:** Design the CodingMcpSection open-findings fix
+- **plan:** Implement the CodingMcpSection open findings
+- **plan:** Drop an untestable duplicate-whitespace case from the MCP plan
+- **ux:** Close the admin-users truncation finding by decision
+- **ux:** Record resolutions and regenerate the review backlog
+- **research:** Record Stage B window days 7-8 (2026-08-07, 2026-08-08)
+- **research:** Why the agent re-runs the suite, and what to do about it
+- **spec:** Design the run-once-read-many check loop
+- **plan:** Implementation plan for the run-once-read-many check loop
+- **workflow:** Route code-behavior work through OpenSpec in CLAUDE.md
+- **skills:** Retarget syncing-plan-with-code and designing-new-provider to OpenSpec
+- **tests:** Retarget e2e planning pointers to openspec/changes
+- **superpowers:** Freeze legacy tree and supersede hybrid doc migration guide
+- **openspec:** Add migrate-brainstorming-to-openspec change artifacts
+- **operations:** Add legacy-corpus porting runbook and procedure change
+- **legacy:** Lane-0 bulk drain — archive 71 shipped plans with ADRs
+- **legacy:** Retire phase-10-notification-controls brief — superseded by ADR-0309
+- **legacy:** Retire test-improvement-roadmap brief — superseded by ADR-0315
+- **legacy:** Retire plugin-system-implementation brief — MVP shipped
+- **legacy:** Adopt prompt-injection-defense into OpenSpec
+- **legacy:** Adopt telemetry-metrics into OpenSpec
+- **legacy:** Re-propose user-profile-memory per ADR-0313 trigger
+- **legacy:** Adopt db-foreign-keys residual, re-scoped per scope model
+- **legacy:** Archive readonly-exploration-sessions spec — shipped in magi
+- **legacy:** Adopt hermetic-e2e-core-separation-proof residual
+- **legacy:** Adopt trusted-module-hermetic-qualification residual
+- **legacy:** Adopt plugin tool-gate port (core separation phase 0/1)
+- **openspec:** Add auto-sdd-pipeline change proposal (agent-drafted)
+- **adr:** Annotate 0313/0316 status after lane-1 adoptions
+- **openspec:** Propose superpowers-residue-cleanup
+- **legacy:** Retire compact-tools pi extension — superseded by ec6cd43df
+- **operations:** Move e2e planning docs out of the frozen tree
+- **adr:** Annotate 0324 — tier canon inverted to operations doc
+- **openspec:** Record latent-item triage findings (task 4.1)
+- **openspec:** Superpowers-residue-cleanup final gate
+- **openspec:** Propose latent-queue-disposition
+- **adr:** Record chat-provider defer + rate-limit retire (0380/0381)
+- **archive:** Retire llm-rate-limiting-and-plans cluster
+- **adr:** Replace batch ADR-0382 with 37 per-plan lane-0-parity ADRs
+- **adr:** Record OpenSpec-to-master rollout decision (ADR-0420)
+- **openspec:** Archive completed sdd-openspec migration changes
+- **sdd-pipeline:** Mark /sdd:auto wrapper as not-yet-implemented
+- **sdd-runner:** Sync cap-hit-fidelity plan to canonical-digest API
+- **ux-review:** AnalyticsPreferencesSection — consent controls no keyboard can reach
+- **spec:** Analytics consent findings — design for the three-commit fix
+- **plan:** Analytics consent findings — task-by-task implementation plan
+- **plan:** Task 3 proves the describedby fallback with a real red bar
+- **ux-review:** Close the analytics consent findings
+- **specs:** Design for always-mounted live regions in the field primitives
+- **plans:** Implementation plan for live-region adoption
+- **plans:** Complete Task 2's blast radius — 4 more invalidated assertions
+- **plans:** Drop the unused errorTexts helper and pin the ?? lint hazard
+- **plans:** Correct Task 5's claim that :907/:925 needed no migration
+- **test:** Record what the live-region guard's pattern does not catch
+- **ux-reviews:** Close the two live-region findings
+- **spec:** Single-line live renderer design for review-loop & mutation-improve
+- **plan:** Single-line live renderer implementation plan
+- Document single-line live renderer commit model
+- **review-loop:** Note bun install step in createWorktree
+- **research:** Record Stage B window day 9 (2026-08-09)
+- **adr:** Archive single-line-live-renderer as shipped (ADR-0421)
+- **legacy:** Lane-0 drain of this branch's superpowers arrivals
+- **research:** Record Stage B window day 10 (2026-08-10)
+- **research:** Record Stage B window day 11 (2026-08-11)
+- **openspec:** Archive completed sdd-runner changes
+- **openspec:** Add shared-tui-renderer change proposal
+- **sdd-pipeline:** Document → RUN 1 MORE extend directive
+- **openspec:** Propose opencode-agent-openspec-compliance
+- **opencode-agent:** OpenSpec rework — folder model, archive door, no-legacy (task 9.1)
+- **research:** Record Stage B window day 12 (2026-08-12)
+- **openspec:** Propose incremental mutation measurement with a whole-branch gate
+- **mutation:** Record the incremental gate, and what it deliberately misses
+- **opencode-agent:** Propose blocked-commit reporting and the PR surface
+- **opencode-agent:** Record the surface move and the reported drop
+- **research:** Record Stage B window day 13 (2026-08-13)
+- **sdd-pipeline:** Approve-continues semantics, severity convergence, resume coverage
+- **openspec:** Propose review-loop fix proportionality change
+- **openspec:** Propose review-loop issue exposure change
+- **openspec:** Record the shared diff-stats seam and the oracle argument
+- **openspec:** Prune both proposals to the rules that carry their own weight
+- **openspec:** Complete specs, design and tasks for both review-loop changes
+- **review-loop:** Document exposure, its ordering, and who reads the divergence
+- **review-loop:** Record the fix contract and why the inspector was the wrong host
+- **research:** Record Stage B window day 14, close window 2026-08-01..14
+- **research:** Certify Stage B exit (2 complete weeks, assess 2026-08-15)
+- **research:** Record stage_c_entry allowed after governance metadata
+
+### Fixed
+
+- **analytics:** Point deferred producer site at renamed create-reminder file
+- **deferred:** Drop capitalized "Deferred prompt" from delivery + tool-result strings
+- **stories:** Convert DataTable & TreeView stories to args form
+- **shared:** TreeView closing brackets on aligned own rows
+- **shared:** TreeView nested closing brackets on own block rows
+- **shared:** SummaryList wraps long unbroken values
+- **debug:** Visible keyboard focus rings on list rows
+- **debug:** Narrow selected-row signature in TraceList/ToolFailuresPanel
+- **debug:** Panel header counts reflect active scope filter
+- **debug:** Scope-chip legend, activity-scope caption on Seg
+- **debug+shared:** Distinct operator signifier, aria names on icon buttons
+- **debug:** 720px responsive collapse for dashboard grid and top bar
+- **debug:** Actionable hints on every empty state
+- **debug:** Poller state in pill text, fg3 floor for meta text
+- **debug:** Deterministic shots, TraceDetail duration, dead css cleanup
+- **client/debug:** Remove dead CSS selectors from debug.css
+- **debug:** Suppress disconnect banner and stale dimming during initial SSE connecting state
+- **debug:** Pin log-row selected highlight to content key, not positional index
+- **review-loop:** Align burndown columns and drop zero-activity rows
+- **review-loop:** Erase ghost lines when the live block shrinks
+- **analytics:** Round tool_completed durationMs at emission (#209)
+- **analytics:** Round durationMs via subscriber schema transform (#209)
+- **mutation:** Copy .opencode/plugins into Stryker sandbox
+- **deferred:** No-op empty alert prompt updates
+- **deps:** Adapt to msw-storybook-addon v3, unpdf 1.8, knip 6.28
+- **mutation-improve:** Commit iteration work before merge + state durability + residual-escape test
+- **mutation-improve:** Harden diff-guard against untracked files + allow-empty commit
+- **docker:** Copy mutation-improve workspace package.json for frozen-lockfile
+- **ui:** Raise sm controls to the 24px WCAG target-size floor
+- **ui:** Raise CopyButton and DataTable sort control to the 24px target-size floor
+- **test:** Probe only foreign namespaces in the loading-family guard
+- **settings:** Associate enum-field errors with the segmented control
+- **settings:** Clear a stale instance URL when saving a SaaS code host
+- **settings:** Align the code-host actions row with the field content edge
+- **settings:** Clear pendingDeleteId on failed repo delete
+- **settings:** Top-align the repo add form and give Add its own row
+- **settings:** Stop formDirty from flagging an untouched empty select as dirty
+- **settings:** Reset the UA default margin on ConfigFieldRow's enum hint
+- **a11y:** Associate a Field hint with the control it explains
+- **a11y:** Convey a required field through aria-required
+- **a11y:** Render section titles as headings
+- **settings:** Lock the code-host inputs while a save is in flight
+- **a11y:** Root the admin document outline too
+- **a11y:** Raise dim text tokens above the 4.5:1 contrast floor
+- **visual:** Regenerate storybook CSS bundles on every playwright run
+- **visual:** Make bun shoot rewrite every baseline unconditionally
+- **settings:** Finish formatFetchError and shared-baseline migrations in the two BYOK sections
+- **scripts:** Stop license-header stamping from duplicating existing headers
+- **client:** Resolve the undefined --fg1 and --surface2 token references
+- **client:** Harden token-references guard regexes and drop --red fallback
+- **settings:** Keep the Tools confirm bar mounted while in flight and give the empty state a next step
+- **settings:** Prevent the Tools preset and clear flows from interrupting each other
+- **settings:** Wrap the ToolsSection domain head and prove it with a long-name fixture
+- **settings:** Make the ToolsSection preset state visible and row actions look interactive
+- **settings:** Always label task-instance options server-side
+- **settings:** Share one task-instance option label across the provider pair
+- **settings:** Show an unassigned placeholder instead of preselecting the first instance
+- **ui:** Render Secret's placeholder for an empty masked value
+- **settings:** Show a busy caption while an enum field saves
+- **settings:** Inset the Kaneo provision-reveal block
+- **settings:** Close four pixel-preserving ToolsSection findings
+- **settings:** Give the Tools clear-defaults trigger a real button affordance
+- **settings:** Make the Repositories add-form label a real heading
+- **settings:** Route Repositories feedback to the action that caused it
+- **settings:** Show what the egress field will actually save
+- **settings:** Give status text a token margin instead of the UA default
+- **settings:** Cap placeholder prose at a reading measure
+- **settings:** Align form fields on shared subgrid tracks
+- **ux-reviews:** Correct the ReposSection add-note anchor to :193-196
+- **settings:** Give the BYOK load failure a written message
+- **settings:** Expose the guest-mode toggle state and error to assistive tech
+- **settings:** Give Kaneo access a re-check action and a one-way password hide
+- **settings:** Explain why the coding-credential conditional fields appear
+- **settings:** Turn the empty members table into guidance
+- **settings:** Stop claiming zero members after a failed load
+- **storybook:** Sequence the MSW loader ahead of fixturesLoader
+- **mutation:** Run the client and e2e lanes in the mode their tests need
+- **mutation:** Fail the changed-files gate when a file could not be scored
+- **mutation:** Register the Svelte loader before the runner's eager import
+- **settings:** Return stored plugin config values from the plugins route
+- **settings:** Drop the unused PluginConfigField type export
+- **settings:** Clear stale error when a plugin toggle or save starts
+- **settings:** Clear the card error before validating a required plugin field
+- **mutation-improve:** Wrap runIteration in try/catch so exceptions route through failIter instead o
+- **mutation-improve:** Wire --reset-worktree to sweep stale iteration worktrees
+- **mutation-improve:** Throw on non-zero stryker exitCode in measureMutationScore to avoid returning
+- **mutation-improve:** Direct agent prompts to the worktree scratch path the runner reads
+- **mutation-improve:** Snap repoRoot to git toplevel
+- **mutation-improve:** Parse porcelain renames in diff-guard
+- **mutation-improve:** Run build gate inside the iteration worktree
+- **mutation-improve:** Write agent artifacts to per-iteration dirs
+- **mutation-improve:** Record failure.json and file on failed iterations
+- **mutation-improve:** Persist run state after every iteration
+- **mutation-improve:** Refuse to start a run on base or detached HEAD
+- **mutation-improve:** Push integration branch and PR with explicit head
+- **mutation-improve:** Ratchet baseline floor on threshold-verified skips
+- **mutation:** Resolve stryker bin by walking up from the run cwd
+- **mutation-improve:** Make the build gate deterministic and diagnosable
+- **mutation-improve:** Feed build-gate failures back to the agent for retry
+- **mutation-improve:** Merge residual-capped iterations instead of failing them
+- **a11y:** Give the settings jump menu select an accessible name
+- **settings:** Add focus-visible ring to SettingsGroupToggle
+- **settings:** Replace knip nav suppression with .testing.ts shim; fix sidebar key naming
+- **settings:** Move the scroll boundary into the grid so the sidebar tail is reachable
+- **settings:** Rename the duplicated admin sections to what they do
+- **settings:** Scrollspy observes the main column and no longer rewrites history
+- **settings:** Raise the single-column breakpoint to 900px
+- **settings:** Focus ring uses the shared tokens and covers the whole shell
+- **admin:** Style the nav rail in one place, on the spacing scale
+- **admin:** Give the main column the scroll so the rail stays on screen
+- **admin:** Hide the rail below 900px and give the top bar a jump menu
+- **admin:** Add a keyboard focus ring and name the section nav
+- **ui:** Render fluid Bars at the requested height
+- **ui:** Let Spark fill its container instead of pinning at 120px
+- **admin:** Let the overview KPI tiles wrap instead of truncating
+- **admin:** Record why a global-stats refresh failed instead of swallowing it
+- **admin:** Bind the status pill to fetch health
+- **admin:** Tick the last-refreshed label instead of freezing it
+- **admin:** Bind the tools quick stat to the same totals as the overview tile
+- **admin:** Frame the reminders section like its sibling data sections
+- **admin:** Label the memos lookup and name both Load buttons
+- Handle refreshGlobals fetch rejection, correct breakpoint doc, harden assertions, add Spark aria-hidden
+- **transcript:** Serialize the original payload in describeEvent's raw fallback
+- **transcript:** Render prompt, plan, and tool status from the typed union
+- **settings:** Render instance credential fields in stories
+- **settings:** Validate the instance create forms
+- **settings:** Tell loading, failed, and empty apart
+- **settings:** Give the instances section structure and consequence
+- **settings:** Narrow admin instances load failure to instance-list requests
+- **settings:** Let a fatal load error stand alone
+- **settings:** Guard instance row actions against double-firing
+- **settings:** Align and sort the instance tables
+- **settings:** Tell the delete confirmation which kind it is deleting
+- **settings:** Show why Create is blocked when no provider types load
+- **opencode-agent:** Make the closing comment match what COMPLETE accepts
+- **opencode-agent:** Serialise CI and issue runs, pin the workflow trigger surface
+- **opencode-agent:** Stop a block payload forging its own delimiter
+- **opencode-agent:** Replace the guessed SDK contract with a verified one
+- **opencode-agent:** Pin the superpowers ref and verify skills with the real loader
+- **opencode-agent:** Reset the failure budget on every forward move
+- **opencode-agent:** Report the CI-fix budget instead of stopping in silence
+- **opencode-agent:** Size code fences so foreign text cannot break out
+- **opencode-agent:** Detect the review loop instead of hardcoding papai's path
+- **opencode-agent:** Resolve the base branch instead of guessing "main"
+- **opencode-agent:** Refresh a reused pull request's title, not just its body
+- **opencode-agent:** Stand down when the branch's pull request already settled
+- **opencode-agent:** Validate GITHUB_REPOSITORY's shape, not its slash count
+- **opencode-agent:** Range-check numeric knobs, not just their syntax
+- **opencode-agent:** Stand down from CI-fixing a settled pull request
+- **opencode-agent:** Close the untrusted-input envelope properly
+- **opencode-agent:** Redact credentials from every outbound GitHub body
+- **opencode-agent:** Refuse a state block that names a different issue
+- **opencode-agent:** Give each thread comment its own envelope
+- **opencode-agent:** Stop persisting the repository token into .git/config
+- **opencode-agent:** Keep the provider key out of the model's reach too
+- **opencode-agent:** Redact log lines by value, not just by field name
+- **opencode-agent:** Re-ask once when a model reply is not valid JSON
+- **opencode-agent:** Bound the prompt, the turn, and a flaky provider
+- **opencode-agent:** Stop trusting a fork's branch name, and drop the ref
+- **opencode-agent:** Let Semgrep parse the block-stripping regex
+- **opencode-agent:** Stop defaulting AGENT_SELF_LOGIN to the repository owner
+- **opencode-agent:** Make answering phase-neutral in both directions
+- **opencode-agent:** Refuse a spent retry budget instead of applying it
+- **opencode-agent:** Park an over-budget stop where /retry can resume it
+- **opencode-agent:** Record token spend on every path that writes state
+- **opencode-agent:** Post the fallback failure comment only when nothing else did
+- **opencode-agent:** Let a red run reach a delivery, and hand back the CI budget
+- **opencode-agent:** Count each artefact's revisions separately
+- **opencode-agent:** Stop re-triaging chatter while clarifying
+- **opencode-agent:** Keep status comments out of the model's window
+- **opencode-agent:** Cover the runs that died with nothing on the issue
+- **opencode-agent:** Make the agent workflow scannable by Semgrep
+- **scripts:** Stop a docs-only commit failing format:check
+- **opencode-agent:** Stop the status comment promising a review
+- **opencode-agent:** Offer both /review doors, and say which gate filters
+- **opencode-agent:** Clear the 👀 on finish, rename the planning phase, explain a refused PR
+- **opencode-agent:** Name the greyed-out case in the refused-PR message
+- **scripts:** Match .oxfmtignore the way oxfmt reads it
+- **ui:** Announce IconButton's busy state with aria-busy
+- **settings:** Remove orphaned touch-gating doc comment, note Type field exception
+- **stories:** Use real added_by values in the admin users fixture
+- **settings:** Separate the users and open-access load failures
+- **settings:** Name the person in the remove confirm and reweight Block
+- **settings:** Make admin users tests constrain sort and the remove/block contrast
+- **settings:** Validate the add-user form and guard against double submit
+- **settings:** Announce status lines, give the empty list a next step, use tokens
+- **ui:** Pin DataTable column widths with table-layout: fixed
+- **settings:** Give the fixed-layout users table a min-width so narrow viewports scroll instead of crushing columns
+- **settings:** Announce the open-access toggle's in-flight state
+- **settings:** Name the reason a coding MCP row blocks Save
+- **settings:** Complete the coding MCP in-flight control state
+- **settings:** Give the coding MCP dead ends a title and a next step
+- **settings:** Align the coding MCP actions row and match its peer fields
+- **settings:** Block Save from silently clearing coding MCP servers
+- **opencode-agent:** Give one turn an hour, not half of one
+- **opencode-agent:** Clear the checks blocking the issue-240 work
+- **opencode-agent:** A turn nobody answered is not a delivery
+- **opencode-agent:** Raise AGENT_MAX_ATTEMPTS default from 3 to 5
+- **sdd-runner:** Runnable entry, snapshot diff-guard, line-mode rendering
+- **sdd-runner:** Exclude openspec/changes/ from oxfmt
+- **sdd-driver:** Parse structured instruction dependencies
+- **sdd-runner:** F-box veto parsing + nitpicks at final gate (OQ2)
+- **sdd-runner:** Bind renderer callbacks to stop event-bus error spam
+- **ui:** A segmented control with no matching option stays reachable
+- **ui:** Make LiveRegion a single reconciled element across tone changes
+- **settings:** A field's head control is described by its hint, not by nothing
+- **settings:** Analytics consent says what it did and why it can't
+- **analytics-preferences:** Wire busy to action Btns, cover error describedby
+- **analytics-preferences:** Signal and surface refresh failures
+- **ui:** Field mounts its error region before the error arrives
+- **settings:** SettingsFieldShell mounts its error region before the error
+- **settings:** ConfigFieldRow announces a save from a mounted region
+- **admin:** AdminUsersSection mounts its live regions before their messages
+- **settings:** CodingMcpSection mounts its live regions before their messages
+- **scripts:** Invoke review-loop/mutation-improve CLIs directly so the live renderer gets a TTY
+- **review-loop:** Bun install in fresh worktrees so non-hoisted workspace deps resolve
+- **mutation:** Stabilize ratchet floors against flaky timeout kills
+- **docker:** Copy sdd-runner workspace package.json into image
+- **opencode-agent:** Walk tasks.md by absolute index, skipping checked boxes
+- **agent-pipeline:** A `#` inside the `if:` block scalar is expression text
+- **opencode-agent:** Check out the branch before reading the change folder
+- **opencode-agent:** Draft the glob `specs` artifact into per-capability files
+- **opencode-agent:** Push what the review loop finds, and say what it did
+- **opencode-agent:** Answer a question where it was asked
+- **opencode-agent:** Review with one worker, not two
+- **sdd-runner:** Stop the orchestrator tests reaching the network, and unbreak pricing
+- **agent-pipeline:** Build the client bundles the test check needs
+- **opencode-agent:** Run the CI-fix suite the way a contributor runs it
+- **review:** Give the loop the job's clock, a soft stop and a commit identity
+- **review:** Close three holes the verification pass found in the stop
+- **review:** Bound the review by the job's own minutes, and by nothing else
+
+### Miscellaneous
+
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Remap baseline/overrides to renamed reminder tool files
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Actualize baseline for 107 stale entries
+- **mutation:** Ratchet tool-handlers baseline after coverage work
+- **mutation:** Ratchet baseline
+- **knip:** Drop facade ignoreIssues resolved by import triage
+- **mutation:** Ratchet baseline
+- **mutation-improve:** Scaffold workspace and root wiring
+- **mutation-improve:** Ignore workspace in knip
+- **mutation:** Ratchet baseline
+- Untrack .superpowers/sdd scratch report
+- **scripts:** Normalize four malformed license headers
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- Ignore .mutation-improve/ runtime scratch directory
+- **mutation:** Ratchet src/recurrence.ts baseline to 0.9513888888888888
+- **mutation:** Ratchet src/byok-llm/blob-codec.ts baseline to 1
+- **mutation:** Ratchet src/errors.ts baseline to 0.9808917197452229
+- **mutation:** Ratchet src/analytics/intent/classifier.ts baseline to 0.9672727272727273
+- **mutation:** Ratchet src/live-status/tool-status-labels.ts baseline to 0.9714285714285714 (verified at threshold)
+- **mutation:** Ratchet plugins/task-provider-youtrack/due-date.ts baseline to 0.925531914893617
+- **mutation:** Ratchet plugins/task-provider-youtrack/classify-error.ts baseline to 0.9490909090909091
+- **mutation:** Ratchet review-loop/src/live-format.ts baseline to 0.9871794871794872
+- **mutation:** Ratchet plugins/task-provider-youtrack/query-builder.ts baseline to 1
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet src/utils/scheduler.helpers.ts baseline to 1
+- **mutation:** Ratchet review-loop/src/summary-burndown.ts baseline to 0.96
+- **mutation:** Ratchet plugins/task-provider-youtrack/field-engine.ts baseline to 0.9688715953307393
+- **mutation:** Ratchet plugins/task-provider-youtrack/create-field-helpers.ts baseline to 1
+- **mutation:** Ratchet src/announcements/humanize.ts baseline to 0.9117647058823529
+- **mutation:** Ratchet src/utils/scheduler.events.ts baseline to 0.9
+- **mutation:** Ratchet plugins/task-provider-youtrack/dedicated-fields.ts baseline to 0.912621359223301
+- **mutation:** Ratchet plugins/task-provider-kaneo/mappers.ts baseline to 0.7619047619047619
+- **mutation:** Ratchet src/tools/permission-gate.ts baseline to 0.9682539682539683
+- **mutation:** Ratchet plugins/task-provider-kaneo/task-status.ts baseline to 0.875
+- **mutation:** Ratchet review-loop/src/summary.ts baseline to 0.9888475836431226
+- **mutation:** Ratchet plugins/task-provider-kaneo/search-tasks.ts baseline to 0.8163265306122449
+- **mutation:** Ratchet plugins/task-provider-kaneo/list-tasks-query.ts baseline to 1
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet src/reply-context.ts baseline to 0.7605633802816901
+- **mutation:** Ratchet src/recurring-utils.ts baseline to 0.9636363636363636
+- **mutation:** Ratchet src/providers/config-validation.ts baseline to 0.9790209790209791
+- **mutation:** Ratchet src/tools/tool-metadata.ts baseline to 1
+- **mutation:** Ratchet client/shared/helpers.ts baseline to 0.9447852760736196
+- **mutation:** Ratchet plugins/task-provider-youtrack/helpers.ts baseline to 0.9782608695652174
+- **mutation:** Ratchet plugins/task-provider-youtrack/mappers.ts baseline to 0.9644268774703557
+- **mutation:** Ratchet baseline
+- **agent:** Salvage partial work on issue #240
+- **openspec:** Scaffold OpenSpec SDD tree with papai-tailored config
+- **openspec:** Refresh skills and add verify command from openspec update
+- **openspec:** Add commit-strategy guidance for apply and archive
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- Adapt to oxlint 1.77 and oxfmt 0.62 from the dependency bump
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- Reformat pre-existing files with oxfmt 0.62
+- **mutation:** Ratchet baseline
+- **openspec:** Mark task 5.3 complete (SPEC/PLAN block sweep done)
+- **openspec:** Mark task 9.2 complete — full verification passes
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **openspec:** Record the verification gates for the surface change
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **openspec:** Close out review-loop-fix-proportionality
+- **mutation:** Ratchet baseline
+
+### Styling
+
+- **settings:** Round ToolsSection spacing onto the scale and raise the expand target to 24px
+- **settings:** Drop the dead fallback on the saved marker colour
+- **settings:** Replace the BYOK spacing literals with scale tokens
+- **settings:** Put plugin cards on the shared spacing scale
+- **transcript:** Migrate spacing to tokens and fix rail, focus, and hierarchy
+- **settings:** Drop the redundant mono declaration on the cap counter
+- Apply oxfmt to drifted files
+
+### Testing
+
+- **scripts:** Remove always-skipped opencode.json portability check
+- **history:** Cover user-role guards in edit/trim turn matching
+- **history:** Cover clearHistory and structured log contracts
+- **history:** Kill remaining surviving mutants
+- **history:** Restore cache load/save/clear behavior tests alongside log contracts
+- **tools:** Cover create_recurring_task input validation
+- **tools:** Cover create_recurring_task compile branch
+- **tools:** Cover create_recurring_task result mapping
+- **tools:** Cover create_recurring_task failure path
+- **youtrack:** Cover custom-field-values filter and primitive mapping
+- **youtrack:** Cover custom-field-values fallback ladder and stringify tail
+- **youtrack:** Merge duplicate filter-lock test; docs: note two-class survivor forecast
+- **youtrack:** Cover validate-config baseUrl validation
+- **deferred:** Cover executeCreate input guards and rrule edge cases
+- **deferred:** Assert no create event on failed scheduled create
+- **deferred:** Cover alert create validation, create events, executeGet
+- **deferred:** Cover scheduled-prompt update field handling
+- **deferred:** Cover alert-prompt update field handling
+- **deferred:** Cover alert cancellation and cancel not-found
+- **deferred:** Assert tool-handlers log metadata via tracked logger
+- **deferred:** Cover update-store null branches via narrow store mocks
+- **deferred:** Reset alerts.js module mock between tests
+- Import test-only symbols from concrete modules
+- Add search_memos companion harness with keyword-mode tests
+- Assert search_memos schema contract and descriptions
+- Cover search_memos semantic routing and fallback modes
+- Assert search_memos ranking, threshold, limit, and embedding scope
+- Assert search_memos log contracts
+- Kill search_memos sort-comparator and memo-join mutants
+- Drop stale search-memos test exports and note findCall arg asymmetry
+- Pin tool-status-labels truncation boundary with exact equality
+- Pin getStringField key precedence and skip rules
+- Pin hostOf port preservation and asRecord rejection guards
+- Pin no-arg tool path and fetch_chat_link/update_task/delete_task labels
+- Pin humanizeToolName hyphen, case, multi-__ and prefix-strip behavior
+- Pin every REGISTRY entry and three missed helper mutants
+- Pin search_tasks text-key and create_project title-key fallbacks
+- **review-loop:** Pin create-side in removeWorktree prefix test
+- **mutation-improve:** Hermetic end-to-end integration test
+- **ui:** Ratchet hardcoded heights in the shared primitive set
+- **visual:** Expose SegmentedControl at 24px in ToolsSection spec
+- **visual:** Measure Checkbox label click-target height
+- **visual:** Retarget CodeHostSection states to forge fields
+- Cover ConfigFieldRow input-branch error and hint rendering
+- **settings:** Pin banner fallback for an unknown error field
+- **visual:** Cover the inline validation error on CodeHostSection
+- **visual:** Pin explicit viewport in CodeHostSection specs
+- **visual:** Cover code-host connection states
+- **visual:** Pin the shared-page viewport in the ProfileSection and CodingCredentialsSection specs
+- **visual:** Pin the default viewport across every spec that resizes
+- **visual:** Cover the repo delete confirm dialog
+- **visual:** Cover the disabled Input state
+- **visual:** Pin the default viewport in the SettingsFieldShell spec
+- **visual:** Keep the viewport guards inside the generated-region boundary
+- **settings:** Assert the real delete-failure text via a stable Confirm testid
+- **visual:** Pin the default viewport in every spec, not only the resizers
+- **visual:** Lengthen the ToolsSection long-domain fixture until the head row wraps
+- **visual:** Cover the TaskProvider bound, provisionable and reveal states
+- **visual:** Cover the GroupProvider unassigned and nameless-instance states
+- **visual:** Pin the SegmentedControl busy frame
+- **settings:** Poll for the repos success-message auto-clear instead of a fixed wait
+- **client:** Assert Field control invariant across all hint/error states
+- **settings:** Scope the form button-span assertion to its own rule
+- **ux-backlog:** Pin the separator and total rows to the header column count
+- **visual:** Regenerate the spec files that drifted from their stories
+- **ux:** Count the PluginsSection review document
+- **stories:** Cover the two new plugin scenarios in the non-empty bundle check
+- **mutation-improve:** Cover parseCliArgs edge cases and guard non-numeric --threshold
+- **mutation-improve:** Pin consumed review-loop surface via contract tests
+- **mutation-improve:** Pin --threshold=Infinity rejection
+- **settings:** Assert nav group kicker/collapsible/danger fields
+- **settings:** Capture the session gates and the fixed layout states
+- **settings:** Pin the admin rail's tail as reachable, not just its head
+- **ux:** Count the SettingsApp review document in the backlog coverage check
+- **admin:** Cover loading-over-error precedence in status pill
+- **admin:** Add mounted-DOM coverage for MemosSection Field wiring
+- **visual:** Re-shoot AdminApp against the fixed shell
+- **visual:** Pin the default viewport in the StatusBanner spec
+- **settings:** Assert the mixed-failure case suppresses the inline error
+- **opencode-agent:** Prove PR_DELIVERY survives a fresh runner
+- **opencode-agent:** Pin the OpenCode session lifecycle
+- **opencode-agent:** Verify the SDK shapes against a live server, and fix the check
+- **review-loop:** Kill mutation survivors in cli, live-renderer, summary to clear ratchet floors
+- **settings:** Pin the failed-add button re-enable in AdminUsersSection
+- **stories:** Cover the fifth adminUsers handler variant
+- **visual:** Cover the coding MCP duplicate state and close the review
+- **stories:** Cover the new open-access-error msw scenario
+- **scripts:** Record bun reporter fixtures; correct the junit assumption
+- **scripts:** Stop two check.sh tests depending on the ambient CI variable
+- **stories:** Capture unavailable rights and legitimate-interest consent
+- **ux-backlog:** Count the AnalyticsPreferencesSection review document
+- **visual:** Regenerate the AdminUsersSection screenshot region
+- **admin:** Assert the announced text, not just the region's role
+- **client:** Guard against hand-rolled live regions outside LiveRegion
+- **settings:** Assert the ConfigFieldRow error text, not just its node
+- **review-loop:** Drop dead events wiring in agent-runner test
+- **review-loop:** Pin asymmetric zero-token cases in formatLiveLine
+- **stories:** Pin the msw scenario key sets against mutation
+- **sdd-runner:** Close mutation ratchet gaps in gate/run-state/usage-aggregate
+- **opencode-agent:** Migrate orchestrator e2e to the folder model (slice 2)
+- **review-loop:** Kill the mutants the stop and the notices left alive
+- **review-loop:** Kill the mutants this branch's new code left alive
+- **review-loop:** Pin the check-behind line whole, and drop a guard that guards nothing
+
+### Ci
+
+- Bump docker/login-action in the github-actions group
+- Bump the github-actions group with 2 updates
+- Lint the workflow files, because an invalid one is not a red build
+- The workflow gate must answer the same everywhere, so pin what it runs
+- Bound every workflow job and raise the agent's clock to 300 minutes
+- **mutation:** Carry measured scores between pushes on a PR
+
+### Deps
+
+- Bump the bun-dependencies group with 20 updates
+- Bump the bun-dependencies group with 16 updates
 ## [6.12.4] - 2026-08-01
 
 ### Fixed

@@ -118,6 +118,13 @@ describe('RemindersSection', () => {
     void unmount(component)
   })
 
+  test('the section is carded and framed like its siblings', async () => {
+    const url = new URL('../../../../client/admin/sections/RemindersSection.svelte', import.meta.url)
+    const svelte = await Bun.file(url).text()
+    expect(svelte).toContain('class="admin-data-section admin-section"')
+    expect(svelte).toContain('<Panel title="reminders">')
+  })
+
   test('shows fetch errors', async () => {
     const responses = new Map<string, Response>([
       ['/recurring?userId=user-3', Response.json({ error: 'recurring failed' }, { status: 500 })],

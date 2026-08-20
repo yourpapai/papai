@@ -28,6 +28,27 @@ import type { StoryRunnerSession } from '../../scripts/story/session.js'
 import { parseStoryRunnerArguments, runStoryTests, STORY_SEED } from '../../scripts/story/test-stories.js'
 import { writeFrozenCoverageSupport } from './story-frozen-inputs.helpers.js'
 
+/**
+ * Runs the story runner with its refusal captured rather than printed.
+ *
+ * A refusal lands on `console.error` — the one channel `tests/setup.ts`
+ * deliberately leaves open, because that is where a real diagnostic goes — so a
+ * suite that drives a dozen refusals on purpose fills an otherwise green run's
+ * log with lines that are not diagnostics at all. The two tests that assert on
+ * the text install their own spy instead, and keep asserting.
+ */
+const runStoryTestsQuietly = async (
+  args: readonly string[],
+  dependencies: Parameters<typeof runStoryTests>[1],
+): Promise<number> => {
+  const errorSpy = spyOn(console, 'error').mockImplementation(() => undefined)
+  try {
+    return await runStoryTests(args, dependencies)
+  } finally {
+    errorSpy.mockRestore()
+  }
+}
+
 const manifest = (treeHash: string): StoryManifest => ({
   version: 4,
   commit: '1234567',
@@ -188,7 +209,7 @@ describe('story runner reports and compatibility', () => {
       ...manifest('a'.repeat(64)),
       files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
     }
-    const exitCode = await runStoryTests([], {
+    const exitCode = await runStoryTestsQuietly([], {
       cwd: '/repo',
       env: {},
       spawn: () => {
@@ -217,7 +238,7 @@ describe('story runner reports and compatibility', () => {
         ...manifest('a'.repeat(64)),
         files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
       }
-      const exitCode = await runStoryTests([], {
+      const exitCode = await runStoryTestsQuietly([], {
         cwd: '/repo',
         env: {},
         spawn: () => {
@@ -281,6 +302,7 @@ describe('story runner reports and compatibility', () => {
           },
           buildCandidateManifest: () => Promise.resolve(candidate),
           ...sessionDependencies(session),
+          assertLinuxSandboxBackend: () => undefined,
           buildBaselineManifest: () => Promise.resolve(candidate),
           writeManifest: () => {
             rmSync(liveStory)
@@ -361,6 +383,7 @@ describe('story runner reports and compatibility', () => {
         },
         buildCandidateManifest: () => Promise.resolve(candidate),
         ...sessionDependencies(session),
+        assertLinuxSandboxBackend: () => undefined,
         buildBaselineManifest: () => Promise.resolve(candidate),
         writeManifest: (_manifest, outputPath) => {
           writeFileSync(outputPath, 'current manifest')
@@ -419,6 +442,7 @@ describe('story runner reports and compatibility', () => {
           return { exited: Promise.resolve(0), kill: (): void => undefined }
         },
         ...sessionDependencies(session),
+        assertLinuxSandboxBackend: () => undefined,
         buildCandidateManifest: () => Promise.resolve(candidate),
         buildBaselineManifest: () => Promise.resolve(candidate),
         writeManifest: () => {
@@ -515,13 +539,14 @@ describe('story runner reports and compatibility', () => {
   test('refuses compatibility without an explicit CLI or BASE_REF ref before spawning', async () => {
     let spawnCount = 0
 
-    const exitCode = await runStoryTests(['--compat'], {
+    const exitCode = await runStoryTestsQuietly(['--compat'], {
       cwd: '/repo',
       env: {},
       spawn: () => {
         spawnCount += 1
         throw new Error('must not spawn')
       },
+      assertLinuxSandboxBackend: () => undefined,
       buildCandidateManifest: () => Promise.resolve(manifest('a'.repeat(64))),
       buildBaselineManifest: () => Promise.resolve(manifest('a'.repeat(64))),
       writeManifest: () => Promise.resolve(),
@@ -537,13 +562,14 @@ describe('story runner reports and compatibility', () => {
   test('compares manifests and stops before child spawn on mismatch', async () => {
     let spawnCount = 0
 
-    const exitCode = await runStoryTests(['--baseline-ref=base123'], {
+    const exitCode = await runStoryTestsQuietly(['--baseline-ref=base123'], {
       cwd: '/repo',
       env: {},
       spawn: () => {
         spawnCount += 1
         throw new Error('must not spawn')
       },
+      assertLinuxSandboxBackend: () => undefined,
       buildCandidateManifest: () => Promise.resolve(manifest('a'.repeat(64))),
       buildBaselineManifest: () => Promise.resolve(manifest('b'.repeat(64))),
       writeManifest: () => Promise.resolve(),
@@ -573,6 +599,7 @@ describe('story runner reports and compatibility', () => {
         return { exited: Promise.resolve(0), kill: (): void => undefined }
       },
       ...sessionDependencies(session),
+      assertLinuxSandboxBackend: () => undefined,
       buildCandidateManifest: () => {
         actions.push('candidate')
         return Promise.resolve(candidate)
@@ -641,6 +668,7 @@ describe('story runner reports and compatibility', () => {
       writeFrozenCoverageSupport(root)
       mkdirSync(path.join(root, 'src'), { recursive: true })
       mkdirSync(path.join(root, 'plugins'), { recursive: true })
+      mkdirSync(path.join(root, 'context-vault-indexer'), { recursive: true })
       writeFileSync(path.join(root, 'bunfig.toml'), '[test]')
       writeFileSync(path.join(root, 'tests/stories/example.story.test.ts'), `scenario('example', async () => {})\n`)
       writeFileSync(path.join(root, 'tests/setup.ts'), '')
@@ -648,6 +676,7 @@ describe('story runner reports and compatibility', () => {
       writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), '')
       writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), '')
       writeFileSync(path.join(root, 'src/runtime.ts'), '')
+      writeFileSync(path.join(root, 'context-vault-indexer/lock.ts'), '')
       const packageName = `story-runner-ref-${path.basename(root)}`
       const dependencyCacheRoot = path.join(root, '.dependency-cache')
       writeFileSync(path.join(root, 'package.json'), `{"name":"${packageName}"}\n`)
@@ -723,6 +752,9 @@ describe('story report lifecycle', () => {
       removeReport: (reportPath) => rm(reportPath, { force: true }),
       discoverStories: () => Promise.resolve(['./tests/stories/a.story.test.ts']),
       discoverContracts: () => Promise.resolve(['./tests/stories/harness/a.test.ts']),
+      // The sandbox preflight is a real Docker probe; these tests assert runner behavior after it,
+      // so stub the seam by default. Tests that exercise preflight failure override it.
+      assertLinuxSandboxBackend: () => undefined,
       ...sessionDependencies(testSession(root, sessionManifest)),
       ...overrides,
     }
@@ -731,7 +763,7 @@ describe('story report lifecycle', () => {
   test('invalid arguments remove both stale standard reports but preserve custom output', async () => {
     const fixture = reportFixture()
     try {
-      const exitCode = await runStoryTests(['--seed='], dependencies(fixture.root))
+      const exitCode = await runStoryTestsQuietly(['--seed='], dependencies(fixture.root))
 
       expect(exitCode).toBe(2)
       expect(existsSync(fixture.manifestPath)).toBe(false)
@@ -747,7 +779,7 @@ describe('story report lifecycle', () => {
     let builds = 0
     let spawns = 0
     try {
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         ['--rerun-each=4294967296'],
         dependencies(fixture.root, {
           buildCandidateManifest: () => {
@@ -777,7 +809,7 @@ describe('story report lifecycle', () => {
     try {
       mkdirSync(path.join(fixture.root, 'tests'), { recursive: true })
       symlinkSync(external, path.join(fixture.root, 'tests/stories'))
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         ['--manifest-only'],
         dependencies(fixture.root, { buildCandidateManifest: buildCandidateStoryManifest }),
       )
@@ -794,7 +826,7 @@ describe('story report lifecycle', () => {
   test('compatibility mismatch leaves the current candidate manifest and no JUnit', async () => {
     const fixture = reportFixture()
     try {
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         ['--baseline-ref=base'],
         dependencies(fixture.root, {
           ...sessionDependencies(testSession(fixture.root, manifest('a'.repeat(64)))),
@@ -814,7 +846,7 @@ describe('story report lifecycle', () => {
     const fixture = reportFixture()
     try {
       const candidate = manifest('a'.repeat(64))
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         [],
         dependencies(fixture.root, {
           ...sessionDependencies(testSession(fixture.root, candidate)),
@@ -839,7 +871,7 @@ describe('story report lifecycle', () => {
       files: [{ path: 'tests/stories/a.story.test.ts', sha256: 'b'.repeat(64) }],
     }
     try {
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         [],
         dependencies(fixture.root, {
           ...sessionDependencies(
@@ -924,7 +956,7 @@ describe('story report lifecycle', () => {
     verifyIntegrity.mockResolvedValueOnce(undefined)
     verifyIntegrity.mockRejectedValueOnce(new Error('Snapshot integrity check failed'))
     try {
-      const exitCode = await runStoryTests(
+      const exitCode = await runStoryTestsQuietly(
         [],
         dependencies(fixture.root, {
           ...sessionDependencies(

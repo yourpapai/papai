@@ -28,6 +28,8 @@ describe('samePackageTestDir — src↔tests package mapping (all roots)', () =>
     ['plugins/task-provider-kaneo/client.ts', 'tests/plugins/task-provider-kaneo'],
     ['review-loop/src/index.ts', 'tests/review-loop'],
     ['review-loop/src/lib/util.ts', 'tests/review-loop/lib'],
+    ['sdd-runner/src/index.ts', 'tests/sdd-runner'],
+    ['sdd-runner/src/stages/intake.ts', 'tests/sdd-runner/stages'],
     ['scripts/foo.ts', 'tests'],
   ]
   for (const [input, expected] of cases) {
@@ -63,16 +65,21 @@ describe('buildCoverageMap', () => {
     })
   })
 
-  it('omits sources with no covering test', () => {
+  it('omits sources with no covering test, and says so through the injected sink', () => {
+    const warnings: string[] = []
     const map = buildCoverageMap({
       sourceFiles: ['src/lonely.ts'],
       projectRoot: '/proj',
       deps: {
         listCandidateTests: () => ['tests/x.test.ts'],
         runCoverage: () => new Map([['src/other.ts', 1]]),
+        warn: (message) => {
+          warnings.push(message)
+        },
       },
     })
     expect(map).toEqual({})
+    expect(warnings).toEqual(['coverage-map: no covering test found for src/lonely.ts (checked 1 candidates)'])
   })
 
   it('calls flush exactly once after the batch completes', () => {
@@ -86,6 +93,7 @@ describe('buildCoverageMap', () => {
         flush: () => {
           flushCalls += 1
         },
+        warn: () => {},
       },
     })
     expect(flushCalls).toBe(1)
@@ -102,6 +110,7 @@ describe('buildCoverageMap', () => {
         flush: () => {
           flushCalls += 1
         },
+        warn: () => {},
       },
     })
     expect(flushCalls).toBe(1)

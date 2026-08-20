@@ -41,7 +41,7 @@ import type {
 
 const log = logger.child({ scope: 'plugins:contributions' })
 const recordedToolCollisionEvents = new Set<string>()
-export { namespacedJobName, namespacedToolName, sanitizePluginId } from './contribution-names.js'
+export { namespacedToolName, sanitizePluginId } from './contribution-names.js'
 
 export function resetContributionCollisionStateForTesting(): void {
   recordedToolCollisionEvents.clear()

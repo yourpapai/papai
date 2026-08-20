@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { saveAttachment } from '../../src/attachments/store.js'
 import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setPluginConfig } from '../../src/config.js'
+import { applyPush } from '../../src/context-vault/spec-store.js'
 import { PLUGIN_QUOTA_LIMIT } from '../../src/plugins/rate-limit.js'
 import { kvGet, setPluginAdminConfig } from '../../src/plugins/store.js'
 import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from '../../src/plugins/tool-runtime.js'
@@ -175,6 +176,34 @@ describe('buildPluginToolRuntimeContext', () => {
       const { record } = await ctx.attachments.read(saved.attachmentId)
       expect(record.origin).toBe('voice')
       expect(record.forwardedFrom).toBe('Alice')
+    })
+  })
+
+  describe('contextVault facade', () => {
+    test('exposes vault reads for plugins with the contextVault.read permission', () => {
+      applyPush(
+        'ctx-1',
+        {
+          repo: 'papai',
+          changeName: 'alpha',
+          files: [{ path: 'a/proposal.md', kind: 'proposal', hash: 'h1', mtime: 1, text: '# A\n' }],
+          deletions: [],
+        },
+        { enqueueSummarization: () => undefined },
+      )
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({ permissions: ['contextVault.read'] }),
+        makeRuntime(),
+      )
+      expect(ctx.contextVault.list().specs.map((s) => s.id)).toEqual(['papai:alpha'])
+      expect(ctx.contextVault.get('papai:alpha').ok).toBe(true)
+    })
+
+    test('throws without the contextVault.read permission', () => {
+      const ctx = buildPluginToolRuntimeContext('test-plugin', makeManifest(), makeRuntime())
+      expect(() => ctx.contextVault.list()).toThrow(/contextVault\.read/u)
+      expect(() => ctx.contextVault.get('papai:alpha')).toThrow(/contextVault\.read/u)
     })
   })
 

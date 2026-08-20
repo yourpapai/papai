@@ -65,6 +65,7 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   update_task: write('task', 'update'),
   search_tasks: read('task'),
   list_tasks: read('task'),
+  suggest_next_task: read('task'),
   get_task: read('task'),
   count_tasks: read('task'),
   delete_task: destructive('task'),
@@ -176,6 +177,11 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   get_message_context: read('history'),
   fetch_chat_link: { domain: 'history', operation: 'read', risk: 'open-world' },
   web_fetch: { domain: 'web', operation: 'read', risk: 'open-world' },
+
+  // Context-vault plugin tools are read-only over locally stored summaries, so they
+  // outrank the dynamic plugin_ open-world fallback and stay guest-eligible.
+  plugin_context_vault__list_agent_specs: read('plugin'),
+  plugin_context_vault__get_agent_spec: read('plugin'),
 }
 
 export function getToolMetadata(toolName: string): ToolClassification | undefined {

@@ -18,3 +18,7 @@ test.describe('admin/sections/StatsSection', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

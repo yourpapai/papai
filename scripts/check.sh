@@ -22,6 +22,18 @@ done
 TMPDIR=$(mktemp -d) || { echo "Failed to create temp dir" >&2; exit 1; }
 trap 'rm -rf "$TMPDIR"' EXIT
 
+# Per-check output outlives the run, in reports/ (gitignored).
+#
+# It used to live in $TMPDIR and die with the trap above, which meant the only
+# copy of a failure was whatever scrolled past on stdout. Wanting a different
+# slice of it — more context, a different grep — meant running the check again,
+# and for `test` that is a multi-minute round trip to re-read bytes this script
+# already paid for. Cleared at the start rather than deleted at the end so the
+# newest run's output is what is on disk, with nothing stale beside it.
+CHECKS_REPORT_DIR="reports/checks"
+rm -rf "$CHECKS_REPORT_DIR"
+mkdir -p "$CHECKS_REPORT_DIR" || { echo "Failed to create $CHECKS_REPORT_DIR" >&2; exit 1; }
+
 # Sanitize check names for safe temp filenames (replace : with _)
 safe_name() { echo "${1//:/_}"; }
 
@@ -35,7 +47,7 @@ is_license_header_file() {
         *) return 1 ;;
       esac
       ;;
-    src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts)
+    src/*|client/*|scripts/*|review-loop/src/*|opencode-agent/src/*|tests/*|drizzle.config.ts)
       case "$file" in
         *.ts|*.tsx|*.js|*.jsx) return 0 ;;
         *) return 1 ;;
@@ -48,7 +60,7 @@ is_license_header_file() {
 is_oxlint_scoped_file() {
   local file="$1"
   case "$file" in
-    src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts)
+    src/*|client/*|scripts/*|review-loop/src/*|opencode-agent/src/*|tests/*|drizzle.config.ts)
       case "$file" in
         *.ts|*.tsx|*.js|*.jsx) return 0 ;;
         *) return 1 ;;
@@ -208,15 +220,39 @@ if [ "$STAGED_MODE" = true ]; then
       case "$file" in
         package-lock.json|*/package-lock.json) keep=false ;;
       esac
+      # This sweep has to reach the same verdict oxfmt will, because the two
+      # disagreeing is not a mismatched warning — it is a failed commit. oxfmt
+      # exits 2 with "Expected at least one target file" when everything handed
+      # to it is ignored, so a staged set this loop thinks is formattable and
+      # oxfmt thinks is empty reports a formatting failure that does not exist.
+      # That was every commit touching only `opencode-agent/docs/`: the patterns
+      # were matched anchored at the start of the path, so `docs/` caught
+      # `docs/a.md` and missed `opencode-agent/docs/a.md`, while oxfmt read the
+      # same pattern out of the same file and dropped it.
+      #
+      # So match them the way a `.gitignore` is read, which is what oxfmt does.
+      # A pattern with an internal slash (`client/assets/`, `.opencode/package.json`)
+      # is anchored to the repository root; one without (`docs/`, `CHANGELOG.md`)
+      # matches at any depth. Only these two forms appear in `.oxfmtignore`; a
+      # pattern needing globs or negation would need this to grow with it.
       if $keep && [ -f .oxfmtignore ]; then
         while IFS= read -r pattern; do
           [ -z "$pattern" ] && continue
           case "$pattern" in
             \#*) continue ;;
           esac
+          case "${pattern%/}" in
+            */*) anchored=true ;;
+            *) anchored=false ;;
+          esac
           case "$file" in
             ${pattern}*) keep=false; break ;;
           esac
+          if ! $anchored; then
+            case "$file" in
+              */${pattern}*) keep=false; break ;;
+            esac
+          fi
         done < .oxfmtignore
       fi
       if $keep; then
@@ -329,14 +365,19 @@ else
       exit_code=0
       if [ "$check" = "license-headers" ]; then
         header_checked_files=()
+        # --cached --others --exclude-standard: tracked files PLUS untracked
+        # (not gitignored) ones. A consumer's gate may run full mode on a
+        # worktree containing brand-new, never-added files (agent-authored
+        # docs/tests); tracked-only enumeration would miss them here and let
+        # the pre-commit hook's --staged mode reject them later at git commit.
         while IFS= read -r file; do
           [ -n "$file" ] || continue
           [ -f "$file" ] || continue
           if is_license_header_file "$file"; then
             header_checked_files+=("$file")
           fi
-        done < <(git ls-files 2>/dev/null || true)
-        run_license_header_check "$TMPDIR/$fname.out" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
+        done < <(git ls-files --cached --others --exclude-standard 2>/dev/null || true)
+        run_license_header_check "$CHECKS_REPORT_DIR/$fname.log" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
       elif [ "$check" = "test" ]; then
         # CI runners (4 vCPU, all checks already running concurrently) get
         # destabilized by worker-per-file --parallel: the VM is OOM-killed and
@@ -347,7 +388,7 @@ else
         # integration tests (e.g. review-loop worktree tests) time out under
         # --parallel worker contention.
         if [ "${CI:-}" = "true" ]; then
-          bun test --coverage --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+          bun test --coverage --timeout 15000 >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
           # The coverage floor is enforced HERE, not by bun. bun's
           # `coverageThreshold` is a per-file rule, so it cannot express an
           # aggregate floor, and it fails silently (no text naming coverage as
@@ -357,17 +398,31 @@ else
           # passed: a test failure is its own diagnostic, and a partial run's
           # lcov would report a meaningless number.
           if [ "$exit_code" -eq 0 ]; then
-            bun coverage:ratchet >>"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+            bun coverage:ratchet >>"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
           fi
         else
-          bun test --parallel --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+          # Through the wrapper, not `bun test` directly, so a check:full run
+          # leaves the same reports/test/ artifact a direct run does and the
+          # failures are queryable with `bun run test:failures` afterwards. The
+          # CI branch above keeps its own invocation: the coverage lane owns the
+          # ratchet and must not be rerouted.
+          bun run test >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
         fi
+        # NOT gated here yet: `bun run analytics:privacy-contract` reads the
+        # report's per-file records, and those cannot currently be trusted.
+        # Bun's junit reporter collides on basename — two test files with the
+        # same basename in different directories collapse to one `file=`
+        # attribute, so 53 of 1306 files in a full run have no record at all
+        # even though every one of their tests ran and passed. Wiring the gate
+        # on that input blocks a green release, which is worse than the nested
+        # runs it replaced. The command and its tests ship; the check.sh gate
+        # waits on per-file accounting the report can stand behind.
       elif [ "$check" = "test:client" ]; then
-        bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       elif [ "$check" = "review-loop:test" ]; then
-        bun test tests/review-loop --timeout 15000 >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        bun test tests/review-loop --timeout 15000 >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       else
-        bun run "$check" >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
+        bun run "$check" >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       fi
       echo "$exit_code" >"$TMPDIR/$fname.exit"
     ) &
@@ -398,8 +453,18 @@ else
       echo ""
       echo "✗ $check failed (exit code $exit_code):"
       echo "---"
-      cat "$TMPDIR/$fname.out"
+      cat "$CHECKS_REPORT_DIR/$fname.log"
       echo "---"
+      # Where to look, rather than what to run again. The output above is the
+      # whole of it, but a terminal scroll-back is not a place you can query.
+      case "$check" in
+        test|test:client|review-loop:test)
+          echo "→ bun run test:failures      (report already on disk; do not re-run to look)"
+          ;;
+        *)
+          echo "→ $CHECKS_REPORT_DIR/$fname.log"
+          ;;
+      esac
     else
       passed_checks+=("$check")
     fi

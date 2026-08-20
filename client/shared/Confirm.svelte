@@ -27,10 +27,10 @@
 
 <Modal {open} {title} onClose={busy ? () => {} : onCancel} {body} size="sm">
   {#snippet footer()}
-    <Btn variant="secondary" disabled={busy} onClick={onCancel}>
+    <Btn variant="secondary" disabled={busy} onClick={onCancel} testid="confirm-cancel">
       {#snippet children()}{resolvedCancelLabel}{/snippet}
     </Btn>
-    <Btn variant={danger ? 'danger' : 'primary'} disabled={busy} onClick={onConfirm}>
+    <Btn variant={danger ? 'danger' : 'primary'} disabled={busy} onClick={onConfirm} testid="confirm-accept">
       {#snippet children()}{busy ? 'Working…' : resolvedConfirmLabel}{/snippet}
     </Btn>
   {/snippet}

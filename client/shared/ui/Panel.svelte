@@ -38,7 +38,7 @@
 
 <style>
   .ui-panel {
-    background: var(--surface);
+    background: var(--surface-1);
     border: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -53,7 +53,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    border-bottom: 1px solid var(--hair);
+    border-bottom: 1px solid var(--border);
     gap: 12px;
     flex-shrink: 0;
   }
@@ -72,12 +72,12 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
   .ui-panel__count {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .ui-panel__action {
     display: flex;

@@ -4,11 +4,17 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json bun.lock ./
 COPY review-loop/package.json ./review-loop/
+COPY mutation-improve/package.json ./mutation-improve/
+COPY opencode-agent/package.json ./opencode-agent/
+COPY sdd-runner/package.json ./sdd-runner/
 RUN bun install --frozen-lockfile
 
 FROM base AS prod-deps
 COPY package.json bun.lock ./
 COPY review-loop/package.json ./review-loop/
+COPY mutation-improve/package.json ./mutation-improve/
+COPY opencode-agent/package.json ./opencode-agent/
+COPY sdd-runner/package.json ./sdd-runner/
 RUN bun install --frozen-lockfile --production
 
 FROM base AS build

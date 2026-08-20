@@ -18,6 +18,7 @@ import {
   toConsolidations,
 } from './consolidate-helpers.js'
 import { reportConsolidationResult, type ConsolidationResultForReporting } from './consolidate-reporting.js'
+import type { BehaviorAuditProgressReporter } from './extract.js'
 import { readExtractedFile } from './extracted-store.js'
 import { saveConsolidatedManifest, type ConsolidatedManifest, type IncrementalManifest } from './incremental.js'
 import {
@@ -29,9 +30,12 @@ import {
   recordItemSkipped,
 } from './phase-stats.js'
 import { saveProgress } from './progress-io.js'
-import type { BehaviorAuditProgressReporter } from './progress-reporter.js'
-import { invalidatePhase3ForReevaluation } from './progress-resets.js'
-import { getFailedFeatureKeyAttempts, markFeatureKeyDone, markFeatureKeyFailed } from './progress.js'
+import {
+  invalidatePhase3ForReevaluation,
+  getFailedFeatureKeyAttempts,
+  markFeatureKeyDone,
+  markFeatureKeyFailed,
+} from './progress.js'
 import type { Progress } from './progress.js'
 import { writeConsolidatedFile } from './report-writer.js'
 

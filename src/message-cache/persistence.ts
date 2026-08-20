@@ -8,7 +8,7 @@ import { sql } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { messageMetadata } from '../db/schema.js'
 import { logger } from '../logger.js'
-import type { CachedMessage } from './types.js'
+import type { CachedMessage } from './index.js'
 
 const log = logger.child({ scope: 'message-cache:persistence' })
 

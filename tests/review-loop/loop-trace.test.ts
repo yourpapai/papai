@@ -16,24 +16,14 @@ import {
   emitRoundStart,
   emitRoundSummary,
   emitVerifyComplete,
-  newCollector,
-  tallyDecision,
-  tallyFixerSeverity,
-  tallyInspector,
-  tallyPhaseMs,
-  tallyReviewerIssues,
-  tallyUsage,
   truncate,
 } from '../../review-loop/src/loop-trace.js'
+import { newCollector, tallyDecision, tallyFixerSeverity } from '../../review-loop/src/round-collector.js'
 import { createCapturingTraceLogger, type TraceEvent } from '../../review-loop/src/trace-log.js'
-
-function requireInspectComplete(evt: TraceEvent): Extract<TraceEvent, { event: 'inspect_complete' }> {
-  if (evt.event !== 'inspect_complete') throw new Error(`expected inspect_complete, got ${evt.event}`)
-  return evt
-}
 
 const issue: ReviewerIssue = {
   title: 'T',
+  kind: 'defect',
   severity: 'high',
   summary: 's',
   whyItMatters: 'w',
@@ -45,19 +35,36 @@ const issue: ReviewerIssue = {
   confidence: 0.5,
 }
 
+function requireInspectComplete(evt: TraceEvent): Extract<TraceEvent, { event: 'inspect_complete' }> {
+  if (evt.event !== 'inspect_complete') throw new Error(`expected inspect_complete, got ${evt.event}`)
+  return evt
+}
+
 describe('loop-trace emitters', () => {
   test('emitRoundStart pushes a round_start event', () => {
     const { logger, events } = createCapturingTraceLogger()
     emitRoundStart(logger, 1, 5, 2, 'bun check')
     expect(events).toHaveLength(1)
-    expect(events[0]).toMatchObject({ event: 'round_start', round: 1, maxRounds: 5, checkCommand: 'bun check' })
+    expect(events[0]).toMatchObject({
+      phase: 'round',
+      event: 'round_start',
+      round: 1,
+      maxRounds: 5,
+      checkCommand: 'bun check',
+    })
   })
 
   test('emitReviewComplete maps issue fields', () => {
     const { logger, events } = createCapturingTraceLogger()
     emitReviewComplete(logger, 1, [issue])
-    expect(events[0]).toMatchObject({ event: 'review_complete', issueCount: 1 })
-    expect(events[0]).toMatchObject({ issues: [{ title: 'T', severity: 'high', file: 'f.ts' }] })
+    expect(events[0]).toMatchObject({
+      phase: 'review',
+      event: 'review_complete',
+      issueCount: 1,
+    })
+    expect(events[0]).toMatchObject({
+      issues: [{ title: 'T', severity: 'high', file: 'f.ts' }],
+    })
   })
 
   test('emitMatchComplete, emitBuildComplete, emitFixComplete push expected shapes', () => {
@@ -66,17 +73,43 @@ describe('loop-trace emitters', () => {
     emitBuildComplete(logger, 1, 'id', true, 1, 42)
     emitFixComplete(logger, 1, 'id', true, 'deadbeef', 1)
     expect(events.map((e) => e.event)).toEqual(['match_complete', 'build_complete', 'fix_complete'])
-    expect(events[1]).toMatchObject({ passed: true, attempt: 1, durationMs: 42 })
-    expect(events[2]).toMatchObject({ fixed: true, commitSha: 'deadbeef', attempt: 1 })
+    expect(events.map((e) => e.phase)).toEqual(['match', 'build', 'fix'])
+    expect(events[1]).toMatchObject({
+      passed: true,
+      attempt: 1,
+      durationMs: 42,
+    })
+    expect(events[2]).toMatchObject({
+      fixed: true,
+      commitSha: 'deadbeef',
+      attempt: 1,
+    })
   })
 
   test('emitVerifyComplete spreads targetFiles', () => {
     const { logger, events } = createCapturingTraceLogger()
-    emitVerifyComplete(logger, 1, 'id', 'valid', 'auto', 'high', null, 'r', ['a.ts', 'b.ts'])
+    emitVerifyComplete(
+      logger,
+      1,
+      'id',
+      'valid',
+      'auto',
+      {
+        reviewerSeverity: 'high',
+        fixerSeverity: null,
+        reviewerExposure: 'caller',
+        fixerExposure: 'none',
+      },
+      'r',
+      ['a.ts', 'b.ts'],
+    )
     expect(events[0]).toMatchObject({
+      phase: 'verify',
       event: 'verify_complete',
       verdict: 'valid',
       reviewerSeverity: 'high',
+      reviewerExposure: 'caller',
+      fixerExposure: 'none',
       targetFiles: ['a.ts', 'b.ts'],
     })
   })
@@ -86,11 +119,22 @@ describe('loop-trace emitters', () => {
     const collector = newCollector()
     tallyDecision(collector, 'valid', true)
     tallyFixerSeverity(collector, 'medium')
-    const metric = { round: 1, newIssues: 1, cumulativeOpen: 2, noProgressRounds: 0, ...collector }
+    const metric = {
+      round: 1,
+      newIssues: 1,
+      cumulativeOpen: 2,
+      noProgressRounds: 0,
+      ...collector,
+    }
     emitRoundSummary(logger, metric)
     emitLoopEnd(logger, 1, 'clean', [metric])
-    expect(events[0]).toMatchObject({ event: 'round_summary', round: 1 })
+    expect(events[0]).toMatchObject({
+      phase: 'round',
+      event: 'round_summary',
+      round: 1,
+    })
     expect(events[1]).toMatchObject({
+      phase: 'loop',
       event: 'loop_end',
       doneReason: 'clean',
       rounds: 1,
@@ -98,56 +142,19 @@ describe('loop-trace emitters', () => {
     })
   })
 
-  test('tallyDecision buckets verdicts; tallyReviewerIssues counts severity; truncate shortens', () => {
-    const c = newCollector()
-    tallyDecision(c, 'valid', true)
-    tallyDecision(c, 'valid', false)
-    tallyDecision(c, 'invalid', false)
-    tallyDecision(c, 'plan_drift', false)
-    tallyDecision(c, 'needs_human', false)
-    tallyDecision(c, 'already_fixed', false)
-    expect(c.decisions.fixed).toBe(1)
-    expect(c.decisions.needs_human).toBe(2)
-    expect(c.decisions.invalid).toBe(1)
-    expect(c.decisions.plan_drift).toBe(1)
-    expect(c.decisions.already_fixed).toBe(1)
-    tallyReviewerIssues(c, [issue, { ...issue, severity: 'low' }])
-    expect(c.reviewerSeverity.high).toBe(1)
-    expect(c.reviewerSeverity.low).toBe(1)
-    expect(truncate('abcdefghij', 5).length).toBeLessThan(6)
+  test('truncate shortens', () => {
+    expect(truncate('abcdefghij', 5)).toBe('abcd…')
   })
-})
 
-describe('tallyInspector', () => {
-  test('increments runs on every call; rejected only when addresses=false', () => {
-    const c = newCollector()
-    tallyInspector(c, true)
-    tallyInspector(c, false)
-    expect(c.inspector.runs).toBe(2)
-    expect(c.inspector.rejected).toBe(1)
+  test('truncate leaves text at or under the limit unchanged', () => {
+    expect(truncate('abc', 5)).toBe('abc')
+    expect(truncate('abcde', 5)).toBe('abcde')
   })
-})
 
-describe('tallyPhaseMs', () => {
-  test('accumulates ms per phase bucket', () => {
-    const c = newCollector()
-    tallyPhaseMs(c, 'review', 100)
-    tallyPhaseMs(c, 'review', 50)
-    tallyPhaseMs(c, 'build', 200)
-    expect(c.phaseMs.review).toBe(150)
-    expect(c.phaseMs.build).toBe(200)
-  })
-})
-
-describe('tallyUsage', () => {
-  test('accumulates tokens and cost', () => {
-    const c = newCollector()
-    tallyUsage(c, { inputTokens: 100, outputTokens: 50, reasoningTokens: 10, costUsd: 0.01, wallMs: 1000 })
-    tallyUsage(c, { inputTokens: 200, outputTokens: 25, reasoningTokens: 5, costUsd: 0.02, wallMs: 500 })
-    expect(c.usage.inputTokens).toBe(300)
-    expect(c.usage.outputTokens).toBe(75)
-    expect(c.usage.reasoningTokens).toBe(15)
-    expect(c.usage.costUsd).toBeCloseTo(0.03)
+  test('emitters stamp each event with an ISO timestamp', () => {
+    const { logger, events } = createCapturingTraceLogger()
+    emitRoundStart(logger, 1, 5, 2, 'bun check')
+    expect(events[0]!.ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u)
   })
 })
 
@@ -158,6 +165,7 @@ describe('emitInspectComplete', () => {
     expect(events).toHaveLength(1)
     const evt = requireInspectComplete(events[0]!)
     expect(evt.event).toBe('inspect_complete')
+    expect(evt.phase).toBe('inspect')
     expect(evt.addresses).toBe(false)
     expect(evt.reasoning.length).toBeLessThanOrEqual(200)
   })

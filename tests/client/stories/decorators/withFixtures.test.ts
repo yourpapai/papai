@@ -9,11 +9,14 @@ import { adminState } from '../../../../client/admin/admin.svelte.js'
 import { adminGlobals } from '../../../../client/admin/global-stats.svelte.js'
 import { settingsSession } from '../../../../client/settings/session.svelte.js'
 import {
+  applyGateSettingsSession,
   applyReadySettingsSession,
+  fixturesLoader,
   resetAllSingletons,
   resetSettingsSession,
   resolveScenario,
 } from '../../../../client/stories/decorators/withFixtures.js'
+import { sseStub } from '../../../../client/stories/stubs/sse.js'
 
 describe('withFixtures', () => {
   test('resolveScenario returns a matching handler bundle for a known name', () => {
@@ -92,5 +95,121 @@ describe('withFixtures', () => {
     expect(windowValue).toBe('30d')
     expect(adminGlobals.fetchedAt).toBeNull()
     expect(adminGlobals.data).toBeNull()
+  })
+
+  test('applyGateSettingsSession(unauthenticated) sets status with no failure message', () => {
+    resetSettingsSession()
+
+    applyGateSettingsSession('unauthenticated')
+
+    const status: string = settingsSession.status
+    expect(status).toBe('unauthenticated')
+    expect(settingsSession.failureMessage).toBe('')
+  })
+
+  test('applyGateSettingsSession(failed) sets status with a failure message', () => {
+    resetSettingsSession()
+
+    applyGateSettingsSession('failed')
+
+    const status: string = settingsSession.status
+    expect(status).toBe('failed')
+    expect(settingsSession.failureMessage).toBe('request failed with status 503')
+  })
+
+  test('fixturesLoader does nothing when the fixtures parameter is not a string', async () => {
+    resetSettingsSession()
+
+    const result = await fixturesLoader({ parameters: {} })
+
+    expect(result).toEqual({})
+    const status: string = settingsSession.status
+    expect(status).toBe('loading')
+  })
+
+  test('fixturesLoader applies the unauthenticated gate from settingsGate', async () => {
+    resetSettingsSession()
+
+    await fixturesLoader({ parameters: { fixtures: 'admin-populated', settingsGate: 'unauthenticated' } })
+
+    const status: string = settingsSession.status
+    expect(status).toBe('unauthenticated')
+    expect(settingsSession.failureMessage).toBe('')
+  })
+
+  test('fixturesLoader applies the failed gate from settingsGate', async () => {
+    resetSettingsSession()
+
+    await fixturesLoader({ parameters: { fixtures: 'admin-populated', settingsGate: 'failed' } })
+
+    const status: string = settingsSession.status
+    expect(status).toBe('failed')
+    expect(settingsSession.failureMessage).toBe('request failed with status 503')
+  })
+
+  test('fixturesLoader ignores an unrecognized settingsGate value', async () => {
+    resetSettingsSession()
+
+    await fixturesLoader({ parameters: { fixtures: 'admin-populated', settingsGate: 'bogus' } })
+
+    const status: string = settingsSession.status
+    expect(status).toBe('loading')
+  })
+
+  test('fixturesLoader with settingsReady: true applies the personal ready session', async () => {
+    resetSettingsSession()
+
+    await fixturesLoader({ parameters: { fixtures: 'admin-populated', settingsReady: true } })
+
+    const status: string = settingsSession.status
+    expect(status).toBe('ready')
+    const ctx = settingsSession.contexts[0]
+    expect(ctx?.kind).toBe('personal')
+  })
+
+  test('fixturesLoader with settingsReady: "admin" applies the admin ready session', async () => {
+    resetSettingsSession()
+
+    await fixturesLoader({ parameters: { fixtures: 'admin-populated', settingsReady: 'admin' } })
+
+    expect(settingsSession.isBotAdmin).toBe(true)
+    expect(settingsSession.isSuperAdmin).toBe(true)
+  })
+
+  test('fixturesLoader with settingsReady: "group" applies the group ready session', async () => {
+    resetSettingsSession()
+
+    await fixturesLoader({ parameters: { fixtures: 'admin-populated', settingsReady: 'group' } })
+
+    const ctx = settingsSession.contexts[0]
+    expect(ctx?.kind).toBe('group')
+  })
+
+  test('fixturesLoader seeds SSE events from sseSeed', async () => {
+    resetSettingsSession()
+    sseStub.reset()
+
+    await fixturesLoader({
+      parameters: { fixtures: 'admin-populated', sseSeed: [{ type: 'ping', payload: { ok: true } }] },
+    })
+
+    expect(sseStub.history()).toEqual([{ type: 'ping', payload: { ok: true } }])
+  })
+
+  test('fixturesLoader does not seed SSE events when sseSeed is not an array', async () => {
+    resetSettingsSession()
+    sseStub.reset()
+
+    await fixturesLoader({ parameters: { fixtures: 'admin-populated', sseSeed: 'not-an-array' } })
+
+    expect(sseStub.history()).toEqual([])
+  })
+
+  test('fixturesLoader skips MSW setup when no worker is present on the context', async () => {
+    resetSettingsSession()
+
+    const result = await fixturesLoader({ parameters: { fixtures: 'admin-populated' } })
+
+    expect(result).toEqual({})
   })
 })

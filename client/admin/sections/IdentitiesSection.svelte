@@ -119,7 +119,7 @@
   .placeholder {
     margin: 0;
     padding: 24px;
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 12px;
     text-align: center;

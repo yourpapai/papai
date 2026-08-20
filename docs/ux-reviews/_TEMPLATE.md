@@ -31,10 +31,27 @@ See LICENSE in the project root for details.
 
 ## Findings
 
-Severity-ranked, highest first. Each finding = dimension · severity · where visible · source anchor · suggested fix.
+Severity-ranked, highest first. Each finding = id · status · dimension · severity · where visible ·
+source anchor · suggested fix.
+
+`Id` is kebab-case, section-prefixed, assigned by hand, and never derived from the heading — a
+reworded title must not orphan it. Ids are never reused.
+
+`Status` is one of:
+
+- `open` — still reproduces.
+- `fixed` — no longer reproduces; requires a `**Resolved:**` line naming the commit or sub-project.
+- `superseded` — no longer meaningful; requires a `**Resolved:**` line.
+- `wont-fix` — examined, and no change is warranted: either the finding's premise was wrong, or the current behaviour is accepted as-is. Requires a `- **Resolved:**` line carrying the rationale; unlike `fixed` and `superseded`, it needs no commit hash.
+- `deferred` — a real gap, acknowledged, blocked on work outside this project's scope. Requires a `- **Resolved:**` line carrying the rationale and naming the blocker; no commit hash. Deferred findings are listed in `_BACKLOG.md`'s `## Deferred` section so they stay visible.
+
+There is no `partial`. A partially-fixed finding stays `open` with its text narrowed to the residue,
+keeping its id.
 
 ### [High] &lt;short title&gt;
 
+- **Id:** &lt;section&gt;-&lt;short-defect-slug&gt;
+- **Status:** open
 - **Dimension:** &lt;2. Affordance & signifiers&gt;
 - **Where visible:** &lt;state / viewport screenshot&gt;
 - **Source:** `client/settings/sections/<Section>.svelte:NN`
@@ -42,6 +59,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Med] &lt;short title&gt;
 
+- **Id:** …
+- **Status:** open
 - **Dimension:** …
 - **Where visible:** …
 - **Source:** `…:NN`
@@ -49,6 +68,8 @@ Severity-ranked, highest first. Each finding = dimension · severity · where vi
 
 ### [Low] &lt;short title&gt;
 
+- **Id:** …
+- **Status:** open
 - **Dimension:** …
 - **Where visible:** …
 - **Source:** `…:NN`

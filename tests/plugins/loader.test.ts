@@ -15,12 +15,8 @@ import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { pluginRuntimeEvents } from '../../src/db/schema.js'
 import { getTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
 import { contributionRegistry } from '../../src/plugins/contributions.js'
-import {
-  activatePlugins,
-  deactivateAllPlugins,
-  getActivatedPluginIds,
-  toPluginImportSpecifier,
-} from '../../src/plugins/loader.js'
+import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from '../../src/plugins/loader.js'
+import { toPluginImportSpecifier } from '../../src/plugins/module-import.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
 import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'

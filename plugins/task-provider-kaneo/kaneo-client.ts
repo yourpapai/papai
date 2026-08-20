@@ -4,11 +4,11 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../../src/logger.js'
-import type { KaneoConfig } from './client.js'
 import { ColumnResource } from './column-resource.js'
 import { CommentResource } from './comment-resource.js'
 import { LabelResource } from './label-resource.js'
 import { ProjectResource } from './project-resource.js'
+import type { KaneoConfig } from './provider.js'
 import { TaskResource } from './task-resource.js'
 
 export class KaneoClient {

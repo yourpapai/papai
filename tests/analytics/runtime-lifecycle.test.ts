@@ -18,12 +18,8 @@ import type { AnalyticsRuntimeDeps } from '../../src/analytics/runtime.js'
 import { createRecordingHealth, createRecordingSinks } from '../../src/analytics/runtime.testing.js'
 import type { AnalyticsSourceContext, ChatMessageAcceptedFact } from '../../src/analytics/source-facts.js'
 import { getActiveAnalyticsRuntime, startAnalytics, stopAnalytics } from '../../src/analytics/start-analytics.js'
-import {
-  getEpochState,
-  getOpenEpoch,
-  incrementEpochSourceCounter,
-  openEpoch,
-} from '../../src/analytics/storage/epoch-store.js'
+import { incrementEpochSourceCounter } from '../../src/analytics/storage/epoch-source-counters.js'
+import { getEpochState, getOpenEpoch, openEpoch } from '../../src/analytics/storage/epoch-store.js'
 import { initAnalyticsRuntime, stopAnalyticsRuntime } from '../../src/analytics/subscriber.js'
 import { createTurnContextRegistry } from '../../src/analytics/turn-context.js'
 import { toScopedContextId } from '../../src/chat/scoped-context.js'

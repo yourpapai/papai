@@ -36,16 +36,16 @@
   }
   .ui-empty__icon {
     font-size: 22px;
-    color: var(--fg4);
+    color: var(--text-dim);
     line-height: 1;
   }
   .ui-empty__title {
     font-size: 13px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
   .ui-empty__hint {
     font-size: 11px;
-    color: var(--fg2);
+    color: var(--text-muted);
     max-width: 320px;
   }
   .ui-empty__action {

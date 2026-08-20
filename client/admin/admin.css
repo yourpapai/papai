@@ -5,39 +5,17 @@
 
 .eyebrow {
   margin-bottom: 4px;
-  color: var(--fg3);
+  color: var(--text-dim);
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.admin-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px;
-  border-right: 1px solid var(--border);
-  background: var(--surface);
-  position: sticky;
-  top: 0;
-  align-self: start;
-  max-height: 100vh;
-  overflow-y: auto;
-}
-
-.admin-sidebar a {
-  padding: 10px 12px;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  color: var(--fg2);
-  text-decoration: none;
-}
-
-.admin-sidebar a:hover,
-.admin-sidebar a.active {
-  border-color: var(--strong);
-  background: var(--raised);
-  color: var(--fg);
+/* The shared primitives carry their own rings; this covers the bare elements the admin
+   shell renders itself: the nav links and the top-bar links. */
+.ui-shell :focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .admin-section-header {
@@ -50,7 +28,7 @@
 
 .admin-data-section,
 .admin-subsection-grid section {
-  color: var(--fg);
+  color: var(--text);
 }
 
 .admin-filter-form {
@@ -71,7 +49,7 @@
 .admin-subsection-grid h3,
 .admin-table th,
 .admin-key-value-list dt {
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 .admin-filter-form input,
@@ -82,7 +60,7 @@
   border: 1px solid var(--strong);
   border-radius: 2px;
   background: var(--bg);
-  color: var(--fg);
+  color: var(--text);
 }
 
 .admin-filter-form button:disabled {
@@ -122,7 +100,7 @@
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 0;
-  background: var(--surface);
+  background: var(--surface-1);
 }
 
 .status-error {
@@ -130,22 +108,24 @@
 }
 
 .placeholder {
-  color: var(--fg2);
+  color: var(--text-muted);
 }
 
 .admin-grid {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: 0;
+  flex: 1 1 auto;
   min-height: 0;
 }
 
 .admin-grid__main {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 24px;
+  gap: var(--s6);
+  padding: var(--s6);
   min-width: 0;
+  overflow-y: auto;
 }
 
 .admin-section {
@@ -153,17 +133,12 @@
   scroll-margin-top: 96px;
 }
 
-@media (max-width: 720px) {
+/* Below this the rail hides and the jump menu takes over. 900px, not 720px: with a
+   fixed 220px rail, a 760px viewport leaves the content column ~492px -- narrower than
+   the 608px it gets at 640px, where the rail is already gone. */
+@media (max-width: 900px) {
   .admin-grid {
     grid-template-columns: 1fr;
-  }
-
-  .admin-sidebar {
-    flex-flow: row wrap;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-    position: static;
-    max-height: none;
   }
 
   .admin-section-header {
@@ -176,18 +151,18 @@
 
 .masked-value {
   background: var(--inset);
-  border: 1px solid var(--hair);
+  border: 1px solid var(--border);
   padding: 4px 10px;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--fg3);
+  color: var(--text-dim);
   letter-spacing: 0.04em;
 }
 
 .masked-hint {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--fg4);
+  color: var(--text-dim);
   margin-left: 6px;
   text-transform: uppercase;
   letter-spacing: 0.08em;

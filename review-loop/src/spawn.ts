@@ -29,26 +29,55 @@ interface SpawnCtx {
   stderr: string
   pending: string
   timedOut: boolean
+  stalled: boolean
   timer: ReturnType<typeof setTimeout> | null
   killTimer: ReturnType<typeof setTimeout> | null
+  inactivityTimer: ReturnType<typeof setTimeout> | null
   readonly onLine?: LineSink
 }
 
+function terminate(ctx: SpawnCtx, graceMs: number): void {
+  killGroup(ctx.child, 'SIGTERM')
+  ctx.killTimer = setTimeout(() => {
+    killGroup(ctx.child, 'SIGKILL')
+  }, graceMs)
+}
+
 function setupKillTimers(ctx: SpawnCtx, options: { timeout?: number; killGraceMs?: number }): void {
-  const grace = options.killGraceMs ?? 5000
   if (options.timeout === undefined || options.timeout <= 0) return
   ctx.timer = setTimeout(() => {
     ctx.timedOut = true
-    killGroup(ctx.child, 'SIGTERM')
-    ctx.killTimer = setTimeout(() => {
-      killGroup(ctx.child, 'SIGKILL')
-    }, grace)
+    terminate(ctx, options.killGraceMs ?? 5000)
   }, options.timeout)
+}
+
+// Inactivity watchdog: an agent whose LLM stream hangs produces no stdout at
+// all, and would otherwise burn the entire wall-clock timeout doing nothing.
+// The timer resets on every stdout chunk, so long-but-active steps (slow
+// generations, long tool runs that stream) are never killed. A quiet child is
+// SIGTERMed, then SIGKILLed after the same grace the wall-clock timeout uses.
+function resetInactivityTimer(ctx: SpawnCtx, options: { inactivityTimeoutMs?: number; killGraceMs?: number }): void {
+  const window = options.inactivityTimeoutMs
+  if (window === undefined || window <= 0) return
+  if (ctx.inactivityTimer !== null) clearTimeout(ctx.inactivityTimer)
+  ctx.inactivityTimer = setTimeout(() => {
+    ctx.timedOut = true
+    ctx.stalled = true
+    terminate(ctx, options.killGraceMs ?? 5000)
+  }, window)
 }
 
 function clearKillTimers(ctx: SpawnCtx): void {
   if (ctx.timer !== null) clearTimeout(ctx.timer)
   if (ctx.killTimer !== null) clearTimeout(ctx.killTimer)
+  if (ctx.inactivityTimer !== null) clearTimeout(ctx.inactivityTimer)
+}
+
+function timeoutResult(ctx: SpawnCtx, options: { timeout?: number; inactivityTimeoutMs?: number }): SpawnResult {
+  const note = ctx.stalled
+    ? `Process stalled: no output for ${options.inactivityTimeoutMs ?? 0}ms\n`
+    : `Process timed out after ${options.timeout}ms\n`
+  return { exitCode: 1, stdout: ctx.stdout, stderr: `${ctx.stderr}${note}`, timedOut: true, stalled: ctx.stalled }
 }
 
 export const realSpawn: SpawnFn = (command, args, options, onLine): Promise<SpawnResult> => {
@@ -63,13 +92,17 @@ export const realSpawn: SpawnFn = (command, args, options, onLine): Promise<Spaw
       stderr: '',
       pending: '',
       timedOut: false,
+      stalled: false,
       timer: null,
       killTimer: null,
+      inactivityTimer: null,
       onLine,
     }
     setupKillTimers(ctx, options)
+    resetInactivityTimer(ctx, options)
     ctx.child.stdout?.on('data', (chunk: Buffer) => {
       ctx.stdout += chunk.toString()
+      resetInactivityTimer(ctx, options)
       const split = splitLines(ctx.pending, chunk.toString())
       ctx.pending = split.remaining
       for (const line of split.lines) {
@@ -89,12 +122,7 @@ export const realSpawn: SpawnFn = (command, args, options, onLine): Promise<Spaw
         ctx.onLine?.(ctx.pending)
       }
       if (ctx.timedOut) {
-        resolve({
-          exitCode: 1,
-          stdout: ctx.stdout,
-          stderr: `${ctx.stderr}Process timed out after ${options.timeout}ms\n`,
-          timedOut: true,
-        })
+        resolve(timeoutResult(ctx, options))
         return
       }
       resolve({ exitCode: code ?? (signal === null ? 0 : 1), stdout: ctx.stdout, stderr: ctx.stderr, timedOut: false })

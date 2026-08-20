@@ -35,7 +35,6 @@ export type {
   PluginInstance,
   PluginPromptFragment,
   PluginScheduledJob,
-  PluginScheduledJobRuntimeContext,
   PluginTaskProviderFacade,
   PluginTool,
   PluginToolRuntimeContext,
@@ -56,6 +55,7 @@ export const PLUGIN_PERMISSIONS = [
   'http',
   'attachments.read',
   'coding.secrets',
+  'contextVault.read',
 ] as const
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number]

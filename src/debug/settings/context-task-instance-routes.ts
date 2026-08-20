@@ -12,6 +12,7 @@ import { logger } from '../../logger.js'
 import { getTaskProviderProvision } from '../../providers/registry.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
+import { listActiveTaskInstanceOptions } from './task-instance-options.js'
 
 const log = logger.child({ scope: 'debug-server:settings-context-task-instance' })
 
@@ -31,18 +32,6 @@ export function isBoundInstanceProvisionable(taskInstanceId: string | null | und
   const taskInstance = getTaskInstance(taskInstanceId)
   if (taskInstance === null || taskInstance.status !== 'active') return false
   return getTaskProviderProvision(taskInstance.type) !== undefined
-}
-
-/** Active task instances offered as binding targets; unreadable rows are excluded. */
-function listActiveTaskInstanceOptions(): { id: string; type: string; status: string; name?: string }[] {
-  return listTaskInstancesSafe()
-    .instances.filter((taskInstance) => taskInstance.status === 'active')
-    .map((taskInstance) => ({
-      id: taskInstance.id,
-      type: taskInstance.type,
-      status: taskInstance.status,
-      name: taskInstance.config['baseUrl'],
-    }))
 }
 
 function handleGet(req: Request, url: URL): Response {

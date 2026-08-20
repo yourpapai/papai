@@ -7,11 +7,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import {
-  resetBlobStoreForTesting,
   setBlobStoreForTesting,
+  resetBlobStoreForTesting,
   createInMemoryBlobStoreForTesting,
-  saveAttachment,
-} from '../src/attachments/index.js'
+} from '../src/attachments/blob-store.js'
+import { saveAttachment } from '../src/attachments/store.js'
 import { setCachedConfig } from '../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import { buildUserTurnMessages } from '../src/llm-orchestrator-attachments.js'

@@ -21,3 +21,5 @@
 <Story name="Search type" args={{ value: '', placeholder: 'Find', type: 'search' }} />
 
 <Story name="Readonly" args={{ value: 'tg:1001', readonly: true }} />
+
+<Story name="Disabled" args={{ value: 'tg:1001', disabled: true }} />

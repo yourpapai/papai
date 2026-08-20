@@ -4,37 +4,13 @@
 // See LICENSE in the project root for details.
 
 import type { ReviewerIssue } from './issue-schema.js'
-import {
-  emptyDecisions,
-  emptySeverityCounts,
-  type Decisions,
-  type PhaseMs,
-  type RoundMetric,
-  type Severity,
-  type SeverityCounts,
-  type TraceLogger,
-  type UsageTotals,
-} from './trace-log.js'
+import type { ExposureKind, RoundMetric, Severity, TraceLogger } from './trace-log.js'
 
-export interface RoundCollector {
-  decisions: Decisions
-  reviewerSeverity: SeverityCounts
-  fixerSeverity: SeverityCounts
-  inspector: { runs: number; rejected: number }
-  phaseMs: PhaseMs
-  usage: UsageTotals
-}
-
-export function newCollector(): RoundCollector {
-  return {
-    decisions: emptyDecisions(),
-    reviewerSeverity: emptySeverityCounts(),
-    fixerSeverity: emptySeverityCounts(),
-    inspector: { runs: 0, rejected: 0 },
-    phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
-    usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd: 0 },
-  }
-}
+/**
+ * The trace-event emitters, split from the collector half (now
+ * `round-collector.ts`) when this file passed `max-lines`. Each emitter is a
+ * one-liner at the call site and appends exactly one event.
+ */
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -45,55 +21,6 @@ export function truncate(text: string, maxLength: number): string {
     return text
   }
   return `${text.slice(0, maxLength - 1)}\u2026`
-}
-
-export function tallyDecision(collector: RoundCollector, verdict: string, fixed: boolean): void {
-  let bucket: keyof Decisions
-  if (verdict === 'valid') {
-    bucket = fixed ? 'fixed' : 'needs_human'
-  } else if (verdict === 'invalid') {
-    bucket = 'invalid'
-  } else if (verdict === 'already_fixed') {
-    bucket = 'already_fixed'
-  } else if (verdict === 'needs_human') {
-    bucket = 'needs_human'
-  } else if (verdict === 'inspector_rejected') {
-    bucket = 'inspector_rejected'
-  } else {
-    bucket = 'plan_drift'
-  }
-  collector.decisions[bucket] += 1
-}
-
-export function tallyFixerSeverity(collector: RoundCollector, severity: Severity | undefined): void {
-  if (severity !== undefined) {
-    collector.fixerSeverity[severity] += 1
-  }
-}
-
-export function tallyReviewerIssues(collector: RoundCollector, newIssues: readonly ReviewerIssue[]): void {
-  for (const issue of newIssues) {
-    collector.reviewerSeverity[issue.severity] += 1
-  }
-}
-
-export function tallyInspector(collector: RoundCollector, addresses: boolean): void {
-  collector.inspector.runs += 1
-  if (!addresses) collector.inspector.rejected += 1
-}
-
-export function tallyPhaseMs(collector: RoundCollector, phase: keyof PhaseMs, ms: number): void {
-  collector.phaseMs[phase] += ms
-}
-
-export function tallyUsage(
-  collector: RoundCollector,
-  usage: { inputTokens: number; outputTokens: number; reasoningTokens: number; costUsd: number; wallMs: number },
-): void {
-  collector.usage.inputTokens += usage.inputTokens
-  collector.usage.outputTokens += usage.outputTokens
-  collector.usage.reasoningTokens += usage.reasoningTokens
-  collector.usage.costUsd += usage.costUsd
 }
 
 export function emitInspectComplete(
@@ -149,14 +76,26 @@ export function emitMatchComplete(trace: TraceLogger, round: number, newCount: n
   void trace.append({ ts: nowIso(), round, phase: 'match', event: 'match_complete', newCount, matchedCount })
 }
 
+/**
+ * The four assessments travel as one object rather than four adjacent
+ * positional arguments: two severities and two exposures of near-identical
+ * type, in a row, is a transposition waiting to happen — and a silent one,
+ * since swapping reviewer and fixer still typechecks.
+ */
+export interface VerifyAssessments {
+  reviewerSeverity: Severity
+  fixerSeverity: Severity | null
+  reviewerExposure: ExposureKind
+  fixerExposure: ExposureKind
+}
+
 export function emitVerifyComplete(
   trace: TraceLogger,
   round: number,
   issueId: string,
   verdict: string,
   fixability: string,
-  reviewerSeverity: Severity,
-  fixerSeverity: Severity | null,
+  assessments: VerifyAssessments,
   reasoning: string,
   targetFiles: readonly string[],
 ): void {
@@ -168,8 +107,7 @@ export function emitVerifyComplete(
     issueId,
     verdict,
     fixability,
-    reviewerSeverity,
-    fixerSeverity,
+    ...assessments,
     reasoning,
     targetFiles: [...targetFiles],
   })
@@ -222,7 +160,7 @@ export function emitRoundSummary(trace: TraceLogger, metric: RoundMetric): void 
 export function emitLoopEnd(
   trace: TraceLogger,
   round: number,
-  doneReason: 'clean' | 'max_rounds' | 'no_progress',
+  doneReason: 'clean' | 'max_rounds' | 'no_progress' | 'stopped',
   metrics: readonly RoundMetric[],
 ): void {
   void trace.append({

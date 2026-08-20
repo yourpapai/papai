@@ -43,6 +43,46 @@ describe('worktree', () => {
     expect(branch.stdout.trim()).toContain('review-loop/test-run')
   })
 
+  test('createWorktree installs dependencies when the worktree has a package.json', async () => {
+    const repoRoot = makeTempDir('worktree-repo-')
+    await execGit(repoRoot, ['init'])
+    await execGit(repoRoot, ['config', 'user.email', 'test@test.com'])
+    await execGit(repoRoot, ['config', 'user.name', 'Test'])
+    await execGit(repoRoot, ['checkout', '-b', 'main'])
+
+    writeFileSync(path.join(repoRoot, 'package.json'), '{"name":"wt-test","dependencies":{}}')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init'])
+
+    const wtPath = path.join(repoRoot, '.review-loop', 'worktree')
+    await createWorktree(repoRoot, wtPath, 'test-run')
+
+    expect(existsSync(path.join(wtPath, 'node_modules'))).toBe(true)
+  })
+
+  test('createWorktree without a package.json skips the install', async () => {
+    const repoRoot = makeTempDir('worktree-repo-')
+    await execGit(repoRoot, ['init'])
+    await execGit(repoRoot, ['config', 'user.email', 'test@test.com'])
+    await execGit(repoRoot, ['config', 'user.name', 'Test'])
+    await execGit(repoRoot, ['checkout', '-b', 'main'])
+
+    writeFileSync(path.join(repoRoot, 'README.md'), 'hello')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init'])
+
+    const wtPath = path.join(repoRoot, '.review-loop', 'worktree')
+    await createWorktree(repoRoot, wtPath, 'test-run')
+
+    expect(existsSync(wtPath)).toBe(true)
+    expect(existsSync(path.join(wtPath, 'node_modules'))).toBe(false)
+  })
+
+  test('execGit rejects when the git command fails', async () => {
+    const repoRoot = makeTempDir('worktree-repo-')
+    await expect(execGit(repoRoot, ['status'])).rejects.toThrow()
+  })
+
   test('worktreeExists returns true after create, false after remove', async () => {
     const repoRoot = makeTempDir('worktree-repo-')
     await execGit(repoRoot, ['init'])
@@ -131,6 +171,37 @@ describe('worktree', () => {
     await execGit(repoRoot, ['init'])
     const result = await detectGitRoot(repoRoot)
     expect(result).toBe(realpathSync(repoRoot))
+  })
+
+  test('createWorktree uses the branchPrefix argument', async () => {
+    const repoRoot = makeTempDir('wt-prefix-')
+    await execGit(repoRoot, ['init', '--quiet'])
+    await execGit(repoRoot, ['config', 'user.email', 't@t'])
+    await execGit(repoRoot, ['config', 'user.name', 't'])
+    writeFileSync(path.join(repoRoot, 'a.txt'), 'x')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init', '--quiet'])
+    const wt = path.join(repoRoot, 'wt')
+    await createWorktree(repoRoot, wt, 'run-1', 'mutation-improve')
+    const { stdout } = await execGit(repoRoot, ['branch', '--list'])
+    expect(stdout).toContain('mutation-improve/run-1')
+  })
+
+  test('removeWorktree deletes a branch under branchPrefix', async () => {
+    const repoRoot = makeTempDir('wt-prefix-rm-')
+    await execGit(repoRoot, ['init', '--quiet'])
+    await execGit(repoRoot, ['config', 'user.email', 't@t'])
+    await execGit(repoRoot, ['config', 'user.name', 't'])
+    writeFileSync(path.join(repoRoot, 'a.txt'), 'x')
+    await execGit(repoRoot, ['add', '.'])
+    await execGit(repoRoot, ['commit', '-m', 'init', '--quiet'])
+    const wt = path.join(repoRoot, 'wt')
+    await createWorktree(repoRoot, wt, 'run-2', 'mutation-improve')
+    const { stdout: afterCreate } = await execGit(repoRoot, ['branch', '--list'])
+    expect(afterCreate).toContain('mutation-improve/run-2')
+    await removeWorktree(repoRoot, wt, 'run-2', 'mutation-improve')
+    const { stdout } = await execGit(repoRoot, ['branch', '--list'])
+    expect(stdout).not.toContain('mutation-improve/run-2')
   })
 })
 

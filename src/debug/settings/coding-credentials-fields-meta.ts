@@ -63,7 +63,7 @@ export const FIELDS_META: Record<CodingNamespace, readonly FieldMeta[]> = {
   forge: [
     {
       key: 'kind',
-      label: 'Code host',
+      label: 'Host type',
       required: true,
       sensitive: false,
       control: 'select',
@@ -71,7 +71,7 @@ export const FIELDS_META: Record<CodingNamespace, readonly FieldMeta[]> = {
     },
     {
       key: 'instance_url',
-      label: 'Instance URL (enterprise / self-hosted)',
+      label: 'Instance URL',
       required: false,
       sensitive: false,
     },

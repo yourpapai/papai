@@ -6,6 +6,8 @@
 <script lang="ts">
   import { untrack } from 'svelte'
 
+  import { FetchError } from '../../shared/fetcher-helpers.js'
+  import { formatFetchError } from '../../shared/format-error.js'
   import Confirm from '../../shared/Confirm.svelte'
   import Btn from '../../shared/ui/Btn.svelte'
   import ErrorState from '../../shared/ui/ErrorState.svelte'
@@ -14,6 +16,7 @@
   import PageHeader from '../../shared/ui/PageHeader.svelte'
   import Secret from '../../shared/ui/Secret.svelte'
   import Select from '../../shared/ui/Select.svelte'
+  import StatusPill from '../../shared/ui/StatusPill.svelte'
   import SettingsFieldShell from '../components/SettingsFieldShell.svelte'
   import type { CodingCredentialField, CodingCredentialsResponse } from '../fetcher-schemas.js'
   import { clearCodingCredentials, fetchCodingCredentials, patchCodingCredentials } from '../coding-credentials-fetchers.js'
@@ -24,6 +27,36 @@
     return kind === 'github-enterprise' || kind === 'gitlab-self-hosted'
   }
 
+  // Client-side mirror of FORGE_KINDS in src/coding-credentials/types.ts. Display names only —
+  // the wire values remain exactly what the server sends.
+  const FORGE_DISPLAY_NAMES: Record<string, string> = {
+    github: 'GitHub',
+    'github-enterprise': 'GitHub Enterprise',
+    gitlab: 'GitLab',
+    'gitlab-self-hosted': 'GitLab (self-hosted)',
+  }
+
+  // Brand hosts shown to the user for the two SaaS kinds. Deliberately NOT the API bases
+  // deriveApiBaseUrl builds (src/coding-credentials/types.ts) — those are api.github.com and
+  // gitlab.com/api/v4, which name an endpoint rather than the host someone recognizes.
+  // Self-hosted kinds derive their host from the instance URL instead.
+  const FORGE_SAAS_HOSTS: Record<string, string> = {
+    github: 'github.com',
+    gitlab: 'gitlab.com',
+  }
+
+  function forgeHost(kind: string, instanceUrl: string): string | null {
+    const saas = FORGE_SAAS_HOSTS[kind]
+    if (saas !== undefined) return saas
+    if (instanceUrl === '') return null
+    try {
+      return new URL(instanceUrl).host
+    } catch {
+      // A malformed stored value degrades to something readable rather than throwing.
+      return instanceUrl
+    }
+  }
+
   interface Props {
     contextId: string
   }
@@ -31,6 +64,9 @@
 
   let data: CodingCredentialsResponse | null = $state(null)
   let error: string | null = $state(null)
+  // The field the server blamed, when it named one. Resolved against the fields actually on
+  // screen so an unknown or hidden key falls back to the banner instead of vanishing.
+  let errorField: string | null = $state(null)
   let status: string | null = $state(null)
   let loading = $state(false)
   let saving = $state(false)
@@ -40,32 +76,64 @@
 
   const currentData = $derived(loadedContextId === contextId ? data : null)
   const fields = $derived(currentData?.fields ?? [])
+  const inlineField = $derived(
+    fields.some((f) => f.key === errorField && shouldShowField(f)) ? errorField : null,
+  )
   const unreadableError = $derived(currentData?.unreadable === true ? currentData.error : null)
 
-  // Whole-record save is meaningful only when a field's draft differs from its stored value.
-  const formDirty = $derived(fields.filter(shouldShowField).some((f) => (drafts[f.key] ?? '') !== (f.sensitive ? '' : f.value)))
+  // Whole-record save is meaningful only when a field's draft differs from the baseline the
+  // field visibly shows on first render (see displayedValue) — not the raw stored value,
+  // which would flag an untouched empty select as dirty (its first option renders, but its
+  // stored value is '').
+  const formDirty = $derived(fields.filter(shouldShowField).some((f) => (drafts[f.key] ?? '') !== displayedValue(f)))
 
   // Compute whether instance_url field should be shown based on selected kind
   const kindField = $derived(fields.find((f) => f.key === 'kind'))
   const currentKind = $derived(drafts['kind'] ?? kindField?.value ?? '')
   const showInstanceUrl = $derived(needsInstanceUrl(currentKind))
 
+  // Header status reports SAVED state, never drafts — otherwise the pill and sub would
+  // flicker as the user edits a form they have not submitted.
+  const savedKind = $derived(fields.find((f) => f.key === 'kind')?.value ?? '')
+  const savedInstanceUrl = $derived(fields.find((f) => f.key === 'instance_url')?.value ?? '')
+
+  const statusPill = $derived.by((): string | null => {
+    if (currentData === null) return null
+    if (currentData.unreadable === true) return 'error'
+    if (!currentData.configured) return 'not connected'
+    return currentData.complete ? 'connected' : 'pending'
+  })
+
+  const headerSub = $derived.by((): string | undefined => {
+    if (currentData === null || currentData.unreadable === true || !currentData.configured) return undefined
+    // An unknown or absent stored kind (the `missing` array contains 'kind') leaves nothing
+    // to name, so the sub is omitted rather than rendering a bare separator.
+    const name = FORGE_DISPLAY_NAMES[savedKind]
+    if (name === undefined) return undefined
+    if (!currentData.complete) return `${name} · needs an access token`
+    const host = forgeHost(savedKind, savedInstanceUrl)
+    return host === null ? name : `${name} · ${host}`
+  })
+
+  // The baseline value a field visibly shows before any edits, shared by initialDrafts (what
+  // the draft starts as) and formDirty (what an untouched draft is compared against) so the
+  // two can never drift apart: a sensitive field always starts blank (masked when stored,
+  // empty when not — mirroring the display, which never shows the real secret), and an empty
+  // select defaults to its first option because a browser <select> cannot render blank.
+  function displayedValue(f: CodingCredentialField): string {
+    if (f.sensitive) return ''
+    if (f.control === 'select' && (f.value ?? '') === '') return f.options?.[0] ?? ''
+    return f.value
+  }
   function initialDrafts(nextFields: CodingCredentialField[]): Record<string, string> {
-    return Object.fromEntries(
-      nextFields.map((f) => {
-        if (f.sensitive && f.hasValue) return [f.key, '']
-        // Default an empty select to its first option so the persisted value matches
-        // what the dropdown visibly shows (an empty <select> renders the first option).
-        if (f.control === 'select' && (f.value ?? '') === '') return [f.key, f.options?.[0] ?? '']
-        return [f.key, f.value]
-      }),
-    )
+    return Object.fromEntries(nextFields.map((f) => [f.key, displayedValue(f)]))
   }
   function displaySecret(value: string): string {
     return value.includes('*') ? maskSecret(value) : '••••••••'
   }
   async function load(id: string): Promise<boolean> {
     error = null
+    errorField = null
     status = null
     loading = true
     try {
@@ -77,7 +145,10 @@
       replacing = {}
       return true
     } catch (err) {
-      if (id === contextId) error = err instanceof Error ? err.message : String(err)
+      if (id === contextId) {
+        error = formatFetchError(err)
+        errorField = err instanceof FetchError ? (err.field ?? null) : null
+      }
       return false
     } finally {
       if (id === contextId) loading = false
@@ -99,6 +170,12 @@
     return !field.sensitive || replacing[field.key] === true || !field.hasValue
   }
 
+  function placeholderFor(field: CodingCredentialField): string {
+    if (field.key === 'forge_token') return 'token with repo read/write access'
+    if (field.key === 'instance_url') return 'https://gitlab.example.com'
+    return field.sensitive ? 'enter a new value' : ''
+  }
+
   function shouldShowField(field: CodingCredentialField): boolean {
     if (field.key === 'instance_url') return showInstanceUrl
     return true
@@ -116,11 +193,19 @@
       if (field.sensitive && field.hasValue && replacing[field.key] !== true) continue
       values[field.key] = drafts[field.key] ?? ''
     }
+    // Submit-time invariant: a SaaS kind must not keep a stored self-hosted instance URL.
+    // The loop above skips hidden fields, so an omitted key would leave the stale value in
+    // place — the route merges submitted values over the stored record. Send '' explicitly.
+    // Guarded on the field existing so a legacy token-only record does not gain a new key.
+    if (fields.some((f) => f.key === 'instance_url') && !needsInstanceUrl(currentKind)) {
+      values['instance_url'] = ''
+    }
     return values
   }
   async function saveAll(): Promise<void> {
     if (loading || saving || loadedContextId !== contextId) return
     error = null
+    errorField = null
     status = null
     saving = true
     try {
@@ -128,7 +213,8 @@
       const ok = await load(contextId)
       if (ok) status = 'Code host saved.'
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = formatFetchError(err)
+      errorField = err instanceof FetchError ? (err.field ?? null) : null
     } finally {
       saving = false
     }
@@ -148,7 +234,7 @@
       await clearCodingCredentials({ contextId, namespace: 'forge' })
       ok = true
     } catch (err) {
-      clearError = err instanceof Error ? err.message : String(err)
+      clearError = formatFetchError(err)
     } finally {
       clearing = false
     }
@@ -168,13 +254,14 @@
 </script>
 
 <section id="code-host" class="settings-section">
-  <PageHeader eyebrow="Coding sessions" title="Code host">
+  <PageHeader eyebrow="Coding sessions" title="Code host" sub={headerSub}>
     {#snippet action()}
+      {#if statusPill !== null}<StatusPill status={statusPill} />{/if}
       <IconButton label="Refresh" glyph="⟳" busy={loading} onClick={() => void load(contextId)} testid="code-host-refresh" />
     {/snippet}
   </PageHeader>
 
-  {#if currentData !== null && error !== null}<p class="status-error" role="alert">{error}</p>{/if}
+  {#if currentData !== null && error !== null && inlineField === null}<p class="status-error" role="alert">{error}</p>{/if}
   {#if status !== null}<p class="status-success" role="status">{status}</p>{/if}
 
   {#if currentData === null && loading}
@@ -186,72 +273,86 @@
       <p class="status-error" role="alert">Stored credentials are unreadable. Re-enter your token to repair this context.</p>
     {/if}
 
-    <div class="settings-byok-fields">
-      {#each fields as field (field.key)}
-        {#if shouldShowField(field)}
-          <SettingsFieldShell
-            label={field.label}
-            required={field.required}
-            editorOpen={editorOpen(field)}
-            testid={`coding-row-${field.key}`}>
-            {#snippet head()}
-              {#if field.sensitive && field.hasValue && !editorOpen(field)}
-                <Secret value={displaySecret(field.value)} />
-                <Btn variant="secondary" size="sm" testid={`coding-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
-                  {#snippet children()}Replace{/snippet}
-                </Btn>
-              {/if}
-            {/snippet}
-            {#snippet editor(labelId)}
-              {#if field.control === 'select'}
-                <Select
-                  value={drafts[field.key] ?? ''}
-                  options={(field.options ?? []).map((o) => ({ value: o, label: o }))}
-                  onChange={(v) => updateDraft(field.key, v)}
-                  disabled={saving || loading}
-                  testid={`coding-select-${field.key}`} />
-              {:else}
-                <Input
-                  type={field.sensitive ? 'password' : 'text'}
-                  value={drafts[field.key] ?? ''}
-                  placeholder={field.sensitive ? 'enter a new value' : ''}
-                  onInput={(value) => updateDraft(field.key, value)}
-                  testid={`coding-input-${field.key}`} />
-                {#if field.sensitive && field.hasValue}
-                  <Btn variant="ghost" size="sm" testid={`coding-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
-                    {#snippet children()}Cancel{/snippet}
+    {#if fields.length === 0}
+      <p class="placeholder" data-testid="code-host-no-fields">No code host fields available — try Refresh.</p>
+    {:else}
+      {#if !currentData.complete}
+        <p class="placeholder" data-testid="code-host-setup-hint">Coding sessions push branches and open pull requests as you. Create a personal access token that can read and write repository contents and pull requests, then paste it below — it is encrypted and never shown again.</p>
+      {/if}
+
+      <div class="settings-byok-fields">
+        {#each fields as field (field.key)}
+          {#if shouldShowField(field)}
+            {@const instanceUrlShown = field.key === 'instance_url' && showInstanceUrl}
+            <SettingsFieldShell
+              label={field.label}
+              required={field.required || instanceUrlShown}
+              editorOpen={editorOpen(field)}
+              error={inlineField === field.key ? (error ?? undefined) : undefined}
+              hint={instanceUrlShown
+                ? 'Needed because you chose a self-hosted code host. Your operator must also allow this host for coding sessions.'
+                : undefined}
+              testid={`coding-row-${field.key}`}>
+              {#snippet head()}
+                {#if field.sensitive && field.hasValue && !editorOpen(field)}
+                  <Secret value={displaySecret(field.value)} />
+                  <Btn variant="secondary" size="sm" testid={`coding-replace-${field.key}`} onClick={() => replaceSecret(field.key)}>
+                    {#snippet children()}Replace{/snippet}
                   </Btn>
                 {/if}
-              {/if}
-            {/snippet}
-          </SettingsFieldShell>
-        {/if}
-      {/each}
+              {/snippet}
+              {#snippet editor(labelId)}
+                {#if field.control === 'select'}
+                  <Select
+                    value={drafts[field.key] ?? ''}
+                    options={(field.options ?? []).map((o) => ({ value: o, label: o }))}
+                    onChange={(v) => updateDraft(field.key, v)}
+                    disabled={saving || loading}
+                    testid={`coding-select-${field.key}`} />
+                {:else}
+                  <Input
+                    type={field.sensitive ? 'password' : 'text'}
+                    value={drafts[field.key] ?? ''}
+                    placeholder={placeholderFor(field)}
+                    onInput={(value) => updateDraft(field.key, value)}
+                    disabled={saving || loading}
+                    testid={`coding-input-${field.key}`} />
+                  {#if field.sensitive && field.hasValue}
+                    <Btn variant="ghost" size="sm" testid={`coding-cancel-${field.key}`} onClick={() => cancelReplace(field.key)}>
+                      {#snippet children()}Cancel{/snippet}
+                    </Btn>
+                  {/if}
+                {/if}
+              {/snippet}
+            </SettingsFieldShell>
+          {/if}
+        {/each}
 
-      <div class="settings-field__actions">
-        {#if currentData.configured}
+        <div class="settings-field__actions">
+          {#if currentData.configured}
+            <Btn
+              variant="danger"
+              size="sm"
+              testid="code-host-clear"
+              disabled={saving || loading || clearing}
+              onClick={() => {
+                pendingClear = true
+                clearError = null
+              }}>
+              {#snippet children()}{clearing ? 'Clearing…' : 'Clear'}{/snippet}
+            </Btn>
+          {/if}
           <Btn
-            variant="ghost"
+            variant="primary"
             size="sm"
-            testid="code-host-clear"
-            disabled={saving || loading || clearing}
-            onClick={() => {
-              pendingClear = true
-              clearError = null
-            }}>
-            {#snippet children()}{clearing ? 'Clearing…' : 'Clear'}{/snippet}
+            testid="code-host-save"
+            disabled={!formDirty || saving || loading || clearing}
+            onClick={() => void saveAll()}>
+            {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
           </Btn>
-        {/if}
-        <Btn
-          variant="primary"
-          size="sm"
-          testid="code-host-save"
-          disabled={!formDirty || saving || loading || clearing}
-          onClick={() => void saveAll()}>
-          {#snippet children()}{saving ? 'Saving…' : 'Save'}{/snippet}
-        </Btn>
+        </div>
       </div>
-    </div>
+    {/if}
   {/if}
 
   <Confirm
@@ -277,5 +378,12 @@
   .settings-field__actions {
     display: flex;
     justify-content: flex-end;
+    gap: var(--gap-tight);
+    /* Land the row's right edge on the field cards' content edge: the cards inset their
+       contents by var(--gap-inline) plus their 1px border. Value confirmed against the
+       Populated baseline rather than derived, because the two did not agree: the card's
+       content edge sits 14px left of this row's un-padded right edge (viewport-flush),
+       not the 13px that padding+border alone would predict. */
+    padding-inline: 14px;
   }
 </style>

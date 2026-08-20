@@ -7,12 +7,7 @@ import type { LinkageMode } from './consolidate-keywords-clustering.js'
 import type { ConsolidatedBehavior } from './report-writer.js'
 
 export { loadProgress, saveProgress } from './progress-io.js'
-export {
-  invalidatePhase3ForReevaluation,
-  resetPhase1bAndBelow,
-  resetPhase2AndPhase3,
-  resetPhase3,
-} from './progress-resets.js'
+export { invalidatePhase3ForReevaluation, resetPhase2AndPhase3, resetPhase3 } from './progress-resets.js'
 export type PhaseStatus = 'not-started' | 'in-progress' | 'done'
 
 export interface FailedEntry {

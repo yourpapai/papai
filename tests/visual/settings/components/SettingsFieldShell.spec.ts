@@ -33,3 +33,7 @@ test.describe('settings/components/SettingsFieldShell', () => {
   })
 })
 // @generated-end auto-screenshots
+
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()

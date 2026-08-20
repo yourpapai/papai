@@ -1,0 +1,847 @@
+name: OpenCode Issue Agent
+
+# Event-driven, never long-polling: every trigger starts a fresh job that
+# restores its state from the hidden <!-- AGENT_STATE --> block on the issue,
+# advances the state machine as far as it can, and exits.
+#
+# `issue_comment` on an **issue** is intentionally unfiltered. The agent holds a
+# conversation — questions, requested changes, plain answers to its own
+# clarifying questions — and a `contains(…, '/approve')`-style filter would make
+# every one of those reachable only by slash command. The in-process guardrails
+# drop what does not apply, cheaply and with a reason in the log.
+#
+# On a **pull request** the trade runs the other way and the third arm of the
+# condition below does filter on the body — on *every* command, not on `/review`
+# alone, because once a pull request exists it is the surface the issue is driven
+# from and a command typed on the issue is refused and pointed here. What is
+# still dropped is prose: every pull request in a repository collects ordinary
+# code-review comments, and each one would otherwise start a job and buy an API
+# call reading the pull request's head.
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  # A red run on agent/issue-N brings the agent back to fix its own pull request.
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+  # Design D7 — the archive door: a merged pull request on `agent/issue-<n>`
+  # runs the `ARCHIVE` phase, which archives the change folder as a follow-up
+  # commit on the base branch. `closed` fires for every close; the in-process
+  # guardrail checks `merged` and the agent branch, so an unmerged close or a
+  # foreign fork never boots a runner with the keys mounted (the `if:` below
+  # mirrors that filter).
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+# No workflow-level `concurrency`. The group has to name the branch, and on a
+# pull-request comment the branch is only knowable after an API call — see the
+# `agent` job, which declares the group itself.
+
+env:
+  # obra/superpowers, pinned to a commit rather than a branch. This checkout is
+  # third-party markdown that goes straight into the agent's system prompt, so a
+  # moving ref would let it change under review. Bump deliberately, then re-run
+  # `bun run opencode-agent:verify-skills`.
+  SUPERPOWERS_REF: 44c9b2d6e889982ac18c27d05a19fefe335194e1
+
+jobs:
+  # The door. It decides whether this event may boot a runner at all, and names
+  # the issue the run belongs to; the job below does the work and holds every
+  # secret. Splitting them buys three things:
+  #
+  #   - the concurrency group can name the resolved branch. `jobs.<id>.concurrency`
+  #     may read `needs`, and on a pull-request comment the branch is knowable
+  #     only after an API call, so no workflow-level expression can produce it;
+  #   - "the issue number is resolved before anything that can fail" stops being
+  #     a fact about step order and becomes structural — nothing can be inserted
+  #     above it, because it is not in that job;
+  #   - the filter is asked once. Duplicating it on both jobs is how two copies
+  #     drift, and leaving this one unconditional would boot a runner for every
+  #     comment on every issue and pull request in the repository — and spend an
+  #     API call reading a pull request's head for every ordinary code-review
+  #     comment on it, the exact lookup `resolvePullRequestTrigger` orders its
+  #     checks to avoid.
+  resolve:
+    name: Resolve the issue this run belongs to
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    # No secret is mounted here and nothing is written. The workflow-level
+    # `write` grants stay with the job that writes; this one reads one pull
+    # request, and naming that permission drops every other to `none`.
+    permissions:
+      pull-requests: read
+
+    outputs:
+      issue: ${{ steps.issue.outputs.number }}
+      # Derived here rather than in the script so the parse below stays exactly
+      # the text `workflow.test.ts` differential-tests against
+      # `issueNumberFromBranch`. Guarded on the number: an unresolved run must
+      # not name a branch-shaped group, and `agent` refuses to start anyway.
+      branch: ${{ steps.issue.outputs.number && format('agent/issue-{0}', steps.issue.outputs.number) }}
+
+    # First-pass filter, mirrored and unit-tested in src/guardrails.ts. Doing it
+    # here too keeps an unauthorized event from ever booting a runner with the
+    # API keys mounted.
+    #
+    # Human events need maintainer rights; workflow_run events are machine
+    # events on a branch the agent owns, so they carry no author association.
+    #
+    # The third arm is the pull-request door, and it mirrors what the pipeline
+    # now accepts: `parsePullRequestEvent`'s shape filter, the resolver's
+    # slash-command test, and `checkSender`. It admits **every** command rather
+    # than `/review` alone, because a pull request is now the surface an issue
+    # with one is driven from — `commandSurface` refuses a command typed on the
+    # issue there — so a narrower arm here would leave `/retry`, `/cancel` and
+    # `/ask` with nowhere to be typed at all. The list is spelled out one
+    # `contains` at a time because GitHub expressions have no way to ask "does
+    # this string start with any of these"; `workflow.test.ts` checks it against
+    # `SLASH_COMMANDS` so a new command cannot be added to the vocabulary and
+    # forgotten here. Four things about it are deliberate.
+    # It reads `github.event.comment.author_association` outright, with none of
+    # the `|| issue.author_association` fallback the arm above uses — that
+    # payload always carries a comment, `parsePullRequestEvent` takes the
+    # commenter's rights, and the pull request's own author has nothing to do
+    # with who may command the agent from it. The `contains` group is a
+    # first-pass filter only: `parseSlashCommand` re-parses, requires the
+    # command to start a line and ignores fenced code blocks, and none of that
+    # is expressible here — the arm exists so an event that will be dropped
+    # anyway never boots a runner. Everything the resolver refuses — a fork, a
+    # closed or merged pull request, a branch the agent does not own — needs an
+    # API call and is not attempted here. And the arm above keeps its
+    # `pull_request == null`: it is what still drops a pull-request comment
+    # carrying no command at all.
+    #
+    # The fourth arm is Design D7's archive door: a merged pull request on an
+    # agent branch whose head is this repository. The in-process parse checks the
+    # same four things; this arm keeps a fork's `agent/issue-42` or an unmerged
+    # close from ever booting a runner with the API keys mounted.
+    #
+    # Everything below `if:` is a folded block scalar, so a `#` line in there is
+    # not a YAML comment — it folds into the expression, and GitHub rejects the
+    # whole file with no job ever starting. Commentary on the arms goes here,
+    # above the key.
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'failure' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       startsWith(github.event.workflow_run.head_branch, 'agent/issue-'))
+      ||
+      (github.event_name != 'workflow_run' &&
+       github.event.issue.pull_request == null &&
+       github.event.sender.type != 'Bot' &&
+       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.issue.author_association))
+       ||
+       (github.event_name == 'issue_comment' &&
+        github.event.action == 'created' &&
+        github.event.issue.pull_request != null &&
+        (contains(github.event.comment.body, '/approve') ||
+         contains(github.event.comment.body, '/changes') ||
+         contains(github.event.comment.body, '/ask') ||
+         contains(github.event.comment.body, '/retry') ||
+         contains(github.event.comment.body, '/cancel') ||
+         contains(github.event.comment.body, '/review') ||
+         contains(github.event.comment.body, '/continue')) &&
+        github.event.sender.type != 'Bot' &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
+       ||
+       (github.event_name == 'pull_request' &&
+        github.event.action == 'closed' &&
+        github.event.pull_request.merged == true &&
+        startsWith(github.event.pull_request.head.ref, 'agent/issue-') &&
+        github.event.pull_request.head_repository.full_name == github.repository)
+
+    steps:
+      # The one fact a pull-request comment's payload does not carry. Every block
+      # of state lives on the **issue**, and `github.event.issue.number` there is
+      # the *pull request*; the link back is the branch, exactly as it is for a
+      # red CI run, because `head.ref` is `agent/issue-<n>`.
+      #
+      # The `/review` filter that keeps this lookup off every ordinary
+      # code-review comment is the **job's** `if:` above, not this step's: by
+      # the time any step runs, the third arm has already required it. This
+      # condition only picks the pull-request kind out of the three the job
+      # admits, so an issue comment and a red CI run skip it. Worth stating,
+      # because the step reads as if it carried that filter itself — and the
+      # day somebody relaxes the job condition, this is where the cost lands.
+      # `resolvePullRequestTrigger` orders its own checks the same way and for
+      # the same reason.
+      #
+      # Nothing here judges the pull request. The fork guard, the open test and
+      # the branch shape belong to that resolver, in a job that can say on the
+      # issue what it refused; this step needs only a key to serialize on, and a
+      # fork's `agent/issue-42` queueing behind the real branch is the harmless
+      # direction to be wrong in — the job it queues behind is refused before it
+      # touches anything.
+      - name: Resolve the pull request's head branch
+        id: head
+        if: github.event.issue.pull_request != null
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          # Where `gh` expands `{owner}/{repo}` from. This job has no checkout to
+          # infer it from, and deliberately so.
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # Deliberately not best-effort, unlike every feedback write this
+          # pipeline makes: this answer is the only thing that says which issue
+          # the run is about, and the concurrency key is computed from it. A
+          # failed lookup has to leave a red run somebody can see, not a job that
+          # silently reviews nothing.
+          ref="$(gh api "repos/{owner}/{repo}/pulls/$PR_NUMBER" --jq .head.ref)"
+          echo "branch=$ref" >> "$GITHUB_OUTPUT"
+
+      # Which issue this run belongs to, resolved once and read by both feedback
+      # steps at the bottom of the job below. In this job, before anything can
+      # fail, because that is the point: a run that dies in `bun install`, or is
+      # cancelled while the model is thinking, must still know where to post.
+      #
+      # Three sources, because the three event kinds carry different things.
+      # `github.event.issue.number` is the issue-triggered path and is empty on a
+      # `workflow_run` event, which knows only the branch that went red. That gap
+      # is not cosmetic: the fallback step below was gated on the issue number
+      # alone, so a runner that died during a CI-fix run posted nothing anywhere.
+      # On a pull-request comment that same field is the *pull request*, which is
+      # why it is passed through as empty there — a number no state block lives
+      # under is worse than none — and the head branch resolved above stands in.
+      # `agent/issue-<n>` is the one link from a branch back to the conversation
+      # that started it, and `issueNumberFromBranch` in opencode-agent/src/git.ts
+      # already parses exactly that shape. The two must agree, so
+      # tests/opencode-agent/workflow.test.ts runs *this script* against *that
+      # function* over a corpus of branch names rather than trusting two
+      # hand-written parsers to stay in step.
+      - name: Resolve the issue number this run belongs to
+        id: issue
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.pull_request == null && github.event.issue.number || '' }}
+          # Three event kinds name their issue three ways. An issue event carries
+          # the number directly; a `workflow_run` carries the branch that went
+          # red; a `pull_request` webhook (the archive door, D7) carries its own
+          # `head.ref`. The script below parses `agent/issue-<n>` from whichever
+          # branch this resolves to.
+          HEAD_BRANCH: ${{ steps.head.outputs.branch || github.event.workflow_run.head_branch || github.event.pull_request.head.ref }}
+        run: |
+          number="$ISSUE_NUMBER"
+          if [ -z "$number" ]; then
+            case "$HEAD_BRANCH" in
+              # Anchored at both ends like BRANCH_PATTERN is: a suffix carrying
+              # anything but digits — `agent/issue-12/nested`, `agent/issue-x` —
+              # is not a branch this pipeline owns, and a branch that merely
+              # contains the prefix is not one either.
+              agent/issue-*[!0-9]*) ;;
+              agent/issue-?*) number="${HEAD_BRANCH#agent/issue-}" ;;
+            esac
+          fi
+          # The same bounds `issueNumberFromBranch` applies: positive, and inside
+          # the safe-integer range. The length test comes first so an absurd
+          # suffix cannot wrap in the arithmetic below into a number that looks
+          # like somebody's issue.
+          if [ "${#number}" -gt 16 ]; then number=''; fi
+          if [ -n "$number" ]; then
+            # Leading zeros stripped so the value printed matches the integer
+            # `issueNumberFromBranch` would have parsed — `agent/issue-007` is
+            # issue 7, and the differential test below compares the two.
+            #
+            # `sed` rather than the shorter `$((10#$number))`. That arithmetic
+            # form crashes Semgrep's `gha-curl-pipe-shell` rule with a
+            # MatchingError, and `--strict` turns one crashed rule into a failed
+            # security scan for the whole repository. Bisected to this line.
+            # `test` is safe to compare with directly: unlike `$(( ))` it reads a
+            # leading zero as decimal, so the strip is about the printed value,
+            # not about the comparison.
+            number="$(printf '%s' "$number" | sed 's/^0*//')"
+            number="${number:-0}"
+            if [ "$number" -le 0 ] || [ "$number" -gt 9007199254740991 ]; then number=''; fi
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+  agent:
+    name: Run agent pipeline
+    needs: resolve
+    runs-on: ubuntu-latest
+
+    # One source of truth for this job's ceiling, read here **and** forwarded to
+    # the pipeline as `AGENT_JOB_TIMEOUT_MINUTES` below. It used to be a literal
+    # here and a separate `AGENT_TIMEOUT_MS` there, two numbers in two files kept
+    # in step by hand — and a live run died 30 minutes into a turn with 59 minutes
+    # of runner it was never allowed to use, reporting a hang that had not
+    # happened. A **repository variable** rather than a workflow-level `env`
+    # because `vars` is available to a job-level `timeout-minutes` and `env` is
+    # not, which is the whole reason one spelling is expressible at all.
+    #
+    # 300 rather than the 90 it read before, and rather than the 360 GitHub allows.
+    # 90 was measurably the binding bound: run 31669199768 parked "out of time"
+    # after 87m33s on step 12 of a 30-step plan, having spent 736k of a 5M token
+    # ceiling — time ran out, tokens were nowhere near. At ~7.7 minutes a step that
+    # plan needs about four hours, and on a public repository standard runners are
+    # free, so the minutes cost nothing; what a long job spends is a concurrency
+    # slot and this issue's serialization group.
+    #
+    # Not 360, which is the runner's own hard cap: `timeout-minutes` may only lower
+    # it, and at 360 the deadline this pipeline derives would land *after* the one
+    # GitHub enforces — the start is recorded by the step below, a few seconds into
+    # the job — so the stop would be killed mid-post, which is the silence the
+    # derived deadline exists to prevent. 300 keeps a full hour of real slack.
+    timeout-minutes: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 300 }}
+
+    # The only gate left here, and it is deliberate rather than a leftover: the
+    # filter ran on the door above, and what this adds is that a run whose issue
+    # could not be named never starts. Every path that leaves the output empty —
+    # a CI branch like `agent/issue-x` that passes `startsWith` and fails the
+    # parse, a `/review` on a pull request the agent did not open — is a path the
+    # pipeline would drop in-process with nothing posted anywhere, so refusing it
+    # a runner costs no feedback and saves a job with every secret mounted. It
+    # also keeps the two feedback steps below honest: they post to
+    # `needs.resolve.outputs.issue`, which cannot be empty by the time they run.
+    #
+    # A `resolve` that *failed* — the head lookup rejected — skips this job by
+    # the ordinary `needs` rule, and leaves a red run to look at.
+    if: needs.resolve.outputs.issue != ''
+
+    # One run at a time per issue. `cancel-in-progress` stays false: a
+    # half-finished run must be allowed to post its state comment, or the next
+    # trigger restores stale state.
+    #
+    # All three event kinds must resolve to the *same* key. Keying issue events
+    # on the issue number and CI events on the branch would put a CI-fix run and
+    # a maintainer-triggered run for one issue in different groups, so they would
+    # not serialize — and both push to the same branch. The branch name is the
+    # identity they share, and a pull-request comment is what makes that
+    # load-bearing rather than tidy: `github.event.issue.number` is the pull
+    # request there, so the group any workflow-level expression could compute is
+    # `agent/issue-<pr>` — a group nothing else uses, in which a `/review` job
+    # and a `/retry` job for one issue push the same branch at once. Resolving
+    # the branch first is the only way to spell this, and `jobs.<id>.concurrency`
+    # may read `needs`.
+    concurrency:
+      group: opencode-agent-${{ needs.resolve.outputs.branch }}
+      cancel-in-progress: false
+
+    steps:
+      # First, before anything that takes time, because what it records is when
+      # *this job* started — which is when `timeout-minutes` above starts counting
+      # and is a fact no event payload carries. The pipeline adds the ceiling to it
+      # and gets the moment the runner will be killed, so it can stop and report
+      # before that happens instead of vanishing mid-turn.
+      #
+      # A few seconds late by construction: the job spends a moment on setup before
+      # any step runs, so the derived deadline sits slightly *after* the real one.
+      # `AGENT_TEARDOWN_RESERVE_MS` is minutes wide and absorbs it.
+      - name: Record when this job started
+        id: started
+        run: echo "epoch=$(date +%s%3N)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history: the pipeline cuts agent/issue-N from origin/<base> and
+          # fast-forwards an existing agent branch from a prior run.
+          fetch-depth: 0
+          # The token would otherwise be written into .git/config as an
+          # http.<remote>.extraheader — a file the model's `build` profile can
+          # read, and one that scrubbing the process environment does nothing
+          # about. The pipeline supplies the credential per git invocation
+          # through GIT_CONFIG_* on the child instead.
+          persist-credentials: false
+          # No `ref:`. Every event kind checks out the default branch, and the
+          # pipeline switches to `agent/issue-N` itself through `ensureBranch`,
+          # which fetches it — `fetch-depth: 0` fetches every head, so the
+          # remote-tracking ref is already here.
+          #
+          # This is the security-relevant half. `agent/issue-N` is a branch the
+          # agent writes to, so checking it out here would have `bun install`
+          # and the pipeline's own source come from a branch whose contents the
+          # model influences, in a job holding every repository secret. The
+          # issue-triggered path already worked this way; the CI path was the
+          # odd one out.
+
+      # Skills are fetched rather than vendored: obra/superpowers is MIT and
+      # separately maintained, and a pinned checkout keeps updates to a ref bump
+      # instead of a copy. The loader treats a phase's required skills as
+      # mandatory, so a failed fetch surfaces on the issue instead of silently
+      # producing a thinner prompt.
+      - name: Fetch obra/superpowers skills
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: obra/superpowers
+          ref: ${{ env.SUPERPOWERS_REF }}
+          path: .superpowers
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # `public/` is gitignored, so a fresh checkout has no client bundles and
+      # `tests/debug/` fails fast in `beforeAll` without them. Every other lane
+      # gets them without asking — `ci.yml`'s Checks job downloads the
+      # `build-output` artifact, `check.sh` runs this same guard before its
+      # fan-out — and this job has neither, because it runs whatever argv
+      # `AGENT_CHECKS` names.
+      #
+      # `DEFAULT_CHECKS` now spells the suite `bun run test`, whose wrapper builds
+      # them itself, so this is belt-and-braces: it keeps the property true for a
+      # repository that overrides `AGENT_CHECKS` with a bare `bun test`. Worth the
+      # ~2s (the guard no-ops when the bundles exist) because the failure it
+      # prevents is the expensive kind — a loop that reproduces failures CI does
+      # not have repairs the wrong thing, which is how run 31779566286 spent a
+      # pull request's whole `ciAttempts` budget writing a fix to this very file
+      # and reporting "nothing changed".
+      - name: Build the client bundles the checks need
+        run: bun scripts/ensure-client-built.ts
+
+      # Runs the production skill loader, not a bash reimplementation of it, so
+      # a checkout that is missing or has renamed a required skill fails here —
+      # named — instead of silently producing a thinner prompt. Placed before
+      # the model credentials are used so a bad checkout costs nothing.
+      - name: Verify the skills landed
+        run: bun run opencode-agent:verify-skills
+
+      # The review-loop workspace shells out to `opencode run`, so the CLI has to
+      # be on PATH. It reads its provider config from OPENCODE_CONFIG_CONTENT,
+      # which the pipeline generates from the OpenAI settings below.
+      - name: Install the OpenCode CLI
+        run: |
+          bun add --global opencode-ai@1.18.7
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      # Design D3/D7 — the openspec CLI drives the planning protocol (`new
+      # change`, `status --json`, `instructions --json`, `validate --strict`) and
+      # the archive door. Pinned like every other third-party surface this
+      # pipeline trusts: a moving ref would change the planning contract under
+      # review.
+      - name: Install the OpenSpec CLI
+        run: bun add --global @fission-ai/openspec@1.8.0
+
+      # `id:` is load-bearing, not decoration: the pipeline writes
+      # `reported=true` to $GITHUB_OUTPUT for every path that has already put a
+      # comment on the issue, and the fallback step below is gated on
+      # `steps.pipeline.outputs.reported`.
+      - name: Run the agent pipeline
+        id: pipeline
+        env:
+          # Repository access. Swap for a GitHub App installation token when you
+          # want the agent's pull requests to trigger other workflows — pushes
+          # made with GITHUB_TOKEN deliberately do not, which also means CI will
+          # not run on the agent's branch and the CI-fix path never fires.
+          GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+          # The only model credentials. One OpenAI-compatible endpoint covers
+          # OpenAI, Azure-style gateways, OpenRouter and self-hosted servers, so
+          # there are no provider-specific keys to keep in step.
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          # The models.dev provider id LLM_MODEL is looked up under, not a second
+          # endpoint: the transport stays openai-compatible whatever this says.
+          # Unset means `openai`, which is what the pipeline hardcoded before the
+          # variable existed. Set it to the model's real provider — `anthropic`,
+          # `alibaba`, `zai` — when the endpoint is a gateway, or OpenCode finds
+          # no catalogue row and the model runs with no context window and no
+          # reasoning support declared.
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          # The last resort, for a model no catalogue carries at all — a
+          # self-hosted alias or a fine-tune. Unset means "ask the catalogue".
+          AGENT_MODEL_CONTEXT: ${{ vars.AGENT_MODEL_CONTEXT }}
+          AGENT_MODEL_OUTPUT: ${{ vars.AGENT_MODEL_OUTPUT }}
+          AGENT_MODEL_REASONING: ${{ vars.AGENT_MODEL_REASONING }}
+          # Per-profile model and effort. The light model reaches the read-only
+          # phases and `small_model` only; the effort tiers are whatever the
+          # configured model offers, and are refused by OpenCode if it does not.
+          LLM_MODEL_LIGHT: ${{ vars.LLM_MODEL_LIGHT }}
+          AGENT_EFFORT_PLAN: ${{ vars.AGENT_EFFORT_PLAN }}
+          AGENT_EFFORT_BUILD: ${{ vars.AGENT_EFFORT_BUILD }}
+
+          # Pipeline configuration — see opencode-agent/README.md.
+          # Passed through unset when the variable is unset, with no
+          # `|| github.repository_owner` default. That default looked harmless
+          # and was the bug: `AGENT_SELF_LOGIN` is an override that wins
+          # outright, so an owner-shaped value stopped src/identity.ts from ever
+          # asking the token who it is. The agent posts as `github-actions[bot]`,
+          # failed to recognise its own state comments, and restarted every
+          # issue at phase one on every event — `/approve` and `/changes` were
+          # rejected as invalid in INIT_OR_CLARIFY.
+          AGENT_SELF_LOGIN: ${{ vars.AGENT_SELF_LOGIN }}
+          AGENT_WORKFLOW_NAME: OpenCode Issue Agent
+          # AGENT_BASE_BRANCH is deliberately unset: the pipeline reads the
+          # branch off the payload's repository.default_branch. Passing it here
+          # would mask that path and let it rot untested.
+          AGENT_CHECK_COMMAND: ${{ vars.AGENT_CHECK_COMMAND }}
+          AGENT_REVIEW_COMMAND: ${{ vars.AGENT_REVIEW_COMMAND }}
+          AGENT_CHECKS: ${{ vars.AGENT_CHECKS }}
+          # Who git commits claim to be. Defaults to github-actions[bot] /
+          # 41898282+github-actions[bot]@users.noreply.github.com — the token's
+          # real service identity, whose noreply verifies. Explicit vars win
+          # per field over per-run actor resolution in commit-identity.ts
+          # (explicit > actor > service); see opencode-agent/README.md.
+          AGENT_COMMIT_NAME: ${{ vars.AGENT_COMMIT_NAME }}
+          AGENT_COMMIT_EMAIL: ${{ vars.AGENT_COMMIT_EMAIL }}
+          AGENT_MAX_CHANGED_FILES: ${{ vars.AGENT_MAX_CHANGED_FILES }}
+          AGENT_MAX_CHANGED_LINES: ${{ vars.AGENT_MAX_CHANGED_LINES }}
+          AGENT_REVIEW_MAX_ROUNDS: ${{ vars.AGENT_REVIEW_MAX_ROUNDS }}
+          AGENT_REVIEW_POOL_SIZE: ${{ vars.AGENT_REVIEW_POOL_SIZE }}
+          AGENT_CI_FIX_MAX_ROUNDS: ${{ vars.AGENT_CI_FIX_MAX_ROUNDS }}
+          AGENT_COMMIT_REPAIR_MAX_ROUNDS: ${{ vars.AGENT_COMMIT_REPAIR_MAX_ROUNDS }}
+          AGENT_MAX_CI_ATTEMPTS: ${{ vars.AGENT_MAX_CI_ATTEMPTS }}
+          AGENT_MAX_REVIEW_ATTEMPTS: ${{ vars.AGENT_MAX_REVIEW_ATTEMPTS }}
+          AGENT_REVIEW_HINT_LINES: ${{ vars.AGENT_REVIEW_HINT_LINES }}
+          AGENT_MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS }}
+          AGENT_TIMEOUT_MS: ${{ vars.AGENT_TIMEOUT_MS }}
+          # The job's own clock, as the two facts that describe it. The start comes
+          # from the step above — nothing in the payload says when a job began — and
+          # the ceiling is the *same* expression the job's `timeout-minutes:` reads,
+          # deliberately: one value, two readers, no pair to keep in step by hand.
+          # With either unset there is no job deadline and the pipeline behaves
+          # exactly as it did before, bounded by `AGENT_TIMEOUT_MS` alone.
+          AGENT_JOB_STARTED_MS: ${{ steps.started.outputs.epoch }}
+          AGENT_JOB_TIMEOUT_MINUTES: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 300 }}
+          AGENT_TEARDOWN_RESERVE_MS: ${{ vars.AGENT_TEARDOWN_RESERVE_MS }}
+          # The middle slice of that clock: what a turn stopped part-way through gets
+          # to finish the file it is in and say where it stopped. Held back from the
+          # work rather than from the reserve above, which pays for the commit and the
+          # comment and cannot be given away to a prompt.
+          AGENT_WRAP_UP_MS: ${{ vars.AGENT_WRAP_UP_MS }}
+          AGENT_MAX_TOKENS: ${{ vars.AGENT_MAX_TOKENS }}
+          # The namespace the status labels live under, or `none` to switch
+          # them off. Forwarded like the other knobs because a repository with
+          # its own label conventions is the ordinary case, not the exception.
+          AGENT_LABEL_PREFIX: ${{ vars.AGENT_LABEL_PREFIX }}
+          AGENT_LOG_LEVEL: ${{ vars.AGENT_LOG_LEVEL || 'info' }}
+          # The one knob here that is a **secret** rather than a `vars` entry,
+          # and the only one whose absence is the ordinary case. With it unset
+          # the run behaves exactly as it did before the transcript existed: one
+          # warning, no file, no artefact, and a public log identical to the one
+          # a keyless run always wrote. With it set, the maintainer-only detail
+          # the Actions log deliberately withholds is encrypted under it — so
+          # the value is what decides whether that detail is readable at all,
+          # and it must never appear in a `vars` entry, which is world-readable
+          # on a public repository.
+          AGENT_LOG_KEY: ${{ secrets.AGENT_LOG_KEY }}
+        run: |
+          bun run opencode-agent/src/index.ts \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --repo-root "$GITHUB_WORKSPACE"
+
+      # The encrypted debug transcript, if this run had a key.
+      #
+      # `always()`, because the run this artefact is most wanted for is the one
+      # that died: the writer creates the file empty up front and encrypts one
+      # self-contained envelope per line, so a runner killed mid-turn leaves a
+      # truncated file that still reads up to the last whole line.
+      #
+      # `hashFiles(...) != ''` is how a keyless run — the ordinary case — skips
+      # this without a red step: no key, no file, nothing to upload. It is also
+      # what keeps `steps.transcript.outputs.artifact-id` empty, which is the
+      # gate the comment below reads.
+      #
+      # Uploading ciphertext to an artefact anyone with repository read access
+      # can download is the whole design, not an oversight: the file is
+      # AES-256-GCM under `AGENT_LOG_KEY`, and pipeline credentials are redacted
+      # by value *before* encryption, so even the key holder never reads one
+      # back. Seven days because this is an incident aid, not a record.
+      - name: Upload the encrypted debug transcript
+        id: transcript
+        if: always() && hashFiles('.opencode-agent/debug-transcript.enc') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: debug-transcript-${{ github.run_id }}
+          path: .opencode-agent/debug-transcript.enc
+          retention-days: 7
+
+      # The two facts a dead pipeline cannot report about itself, collected while
+      # the runner still exists.
+      #
+      # Issue #239 failed three times in one phase and the cause could not be
+      # settled from any surviving evidence. The runner is ephemeral, the workflow
+      # uploads no artefacts, and the model turn is unrecoverable by design — so
+      # "the OpenCode server went away" was established, and *why* was not. The two
+      # candidates were an out-of-memory kill and a second `opencode` the model had
+      # started from `bash`; both are visible here for the width of a few
+      # milliseconds after the job fails, and nowhere else, ever again.
+      #
+      # **Names and counts only, never command lines.** `ps` is asked for `comm`
+      # rather than `args` deliberately: the argument vector of a tool child is
+      # model-authored content, and this log is world-readable on a public
+      # repository — the same rule `opencode-agent/src/activity.ts` enforces on the
+      # event stream, which is what keeps the pipeline's own logs safe to publish.
+      # Two live `opencode` processes is the finding; what either was told to do is
+      # not this step's to print. Get that from a local `--event-path` run.
+      #
+      # Every probe is individually optional and none may fail the job: `dmesg`
+      # needs privileges the runner may not grant, and the cgroup file is v2-only.
+      # A step that reports nothing is a step that found nothing worth reporting.
+      - name: Post-mortem for a failed pipeline
+        if: failure() && steps.pipeline.conclusion == 'failure'
+        run: |
+          echo '--- processes still alive (names only, no command lines) ---'
+          # `awk` drops the zero-RSS rows, which are kernel threads: there are over
+          # a hundred of them on a hosted runner and they would fill this list
+          # entirely, burying the handful of processes the failure is about.
+          ps -eo pid,ppid,pgid,rss,etime,comm --sort=-rss | awk 'NR == 1 || $4 > 0' | head -30
+
+          echo '--- how many of them are opencode ---'
+          # More than one is the finding: the pipeline spawns exactly one server,
+          # so a second is something the model started.
+          # `|| true`, not `|| echo 0`: `pgrep -c` already prints `0` when nothing
+          # matched *and* exits 1, so the obvious fallback prints the count twice.
+          pgrep -c -x opencode || true
+
+          echo '--- kernel out-of-memory kills ---'
+          # Collected to a file and then tested for size, rather than branching on
+          # the pipeline's status: the exit code of `a | grep | tail` is `tail`'s,
+          # which is 0 whether or not `grep` matched, so the obvious `if` would
+          # announce an OOM kill on every healthy runner.
+          # `sudo -n` so a runner that will not grant it says so and moves on.
+          sudo -n dmesg -T 2>/dev/null | grep -iE 'killed process|out of memory' | tail -20 > /tmp/agent-oom.txt || true
+          if [ -s /tmp/agent-oom.txt ]; then
+            cat /tmp/agent-oom.txt
+          else
+            echo 'No OOM kill found, or dmesg is not readable on this runner.'
+          fi
+
+          echo '--- peak memory for this job cgroup ---'
+          cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo 'memory.peak is unavailable (cgroup v1, or not exposed).'
+          free -m || true
+
+          echo '--- opencode server log (size only; contents are model-adjacent) ---'
+          # Deliberately `wc -c`, not `cat`. The size says whether the server got
+          # far enough to write anything and whether it died mid-write; the
+          # contents are read from a local reproduction, not from a public log.
+          find "$HOME/.local/share/opencode/log" -type f -exec wc -c {} + 2>/dev/null || echo 'No opencode log directory.'
+
+      # For a job that stopped with nothing on the issue: an install failure, a
+      # runner timeout, a cancelled job, a config error thrown before the first
+      # comment could be posted, a crash.
+      #
+      # It posts on the **issue** even for an issue whose commands have moved to
+      # its pull request, and that is the one place that asymmetry is right: this
+      # step speaks for the runs where the pipeline never got far enough to
+      # restore any state at all, so whether a pull request exists is precisely
+      # what it cannot know. The issue number is the one fact `resolve` computed
+      # before this job existed. What it *can* get right is the advice, which
+      # named a surface that would now refuse it.
+      #
+      # `if: failure()` alone did not select that, though the comment here used
+      # to claim it did. It selects every red job, and six pipeline paths exit 1
+      # only *after* posting their own report — `failRun` and `failAnswer`, both
+      # over-budget stops, `refuseExhausted` and the CI-budget notice. So every
+      # genuine failure drew a second comment contradicting the first: "The issue
+      # state is unchanged" beside a state block that had just moved to FAILED,
+      # and "reply `/retry`" beside a notice explaining why `/retry` would be
+      # refused. Only CI-triggered runs escaped, by accident —
+      # `github.event.issue.number` is empty on a workflow_run event.
+      #
+      # The pipeline knows which of its exits posted, so it says so: `runCli`
+      # appends `reported=true` to $GITHUB_OUTPUT before returning, and the
+      # runner processes a step's file commands in a `finally` around the
+      # handler, so the marker survives that same step exiting 1. The job stays
+      # red either way — the exit code is real signal.
+      #
+      # That gate is the part that works and it is unchanged. The other two
+      # conditions were the ones still too narrow, and both widenings sit
+      # *inside* it so neither can bring the double comment back:
+      #
+      #   - the issue number now comes from the resolve job, so the accident
+      #     above stops cutting both ways. A CI-fix runner that dies used to be
+      #     spared the duplicate and denied the report; it gets the report now,
+      #     and the `reported` gate is what keeps the duplicate away. Reading it
+      #     from another job is what keeps this working when this one dies
+      #     anywhere at all: the answer was computed before this job existed, so
+      #     there is no longer a step order to preserve, and no failure in this
+      #     job can take it away. It also cannot be empty here — the job's `if:`
+      #     said so — and the test is kept anyway, because a step that posts to
+      #     issue "" is a worse way to learn that somebody dropped the gate.
+      #   - `cancelled()` joins `failure()`. A cancelled job is the documented
+      #     consequence of a run with no visible progress: a run that looks hung
+      #     is a run somebody cancels, and that is exactly when the issue must
+      #     not fall silent. `failure()` is false for a cancelled job, so it was
+      #     never covered.
+      #
+      # The heading followed `cancelled()` in: it read "Agent job failed", which
+      # is now wrong for half of what this step speaks for. Telling a maintainer
+      # who cancelled a run that it failed is a small lie the comment has no
+      # need to tell, and "did not finish" is true of a crash, a runner timeout
+      # and a cancellation alike — which is exactly the set the `reported` gate
+      # leaves for this step.
+      # `id:` is load-bearing here too, for the same reason it is on the pipeline
+      # step: this is the run's *only* comment when the pipeline never got to
+      # post one, so the transcript step below has to be able to append to it.
+      - name: Report an infrastructure failure on the issue
+        id: failure-notice
+        if: (failure() || cancelled()) && needs.resolve.outputs.issue && steps.pipeline.outputs.reported != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ needs.resolve.outputs.issue }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s\n\n%s\n\n%s\n' \
+            '### Agent job did not finish' \
+            "The workflow run failed or was cancelled before or during the pipeline. Logs: $RUN_URL" \
+            'The issue state is unchanged. Reply `/retry` once the cause is addressed — on the pull request, if this issue has one open.' \
+            > /tmp/agent-failure.md
+          # `gh api` rather than `gh issue comment`, for the id alone. The latter
+          # prints the comment's *URL*, whose last path segment is
+          # `<issue>#issuecomment-<id>` — so the obvious `${url##*/}` yields a
+          # fragment the transcript step cannot address. The API answers with the
+          # id itself and needs no parsing.
+          id=$(gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" -F body=@/tmp/agent-failure.md --jq .id)
+          echo "comment=$id" >> "$GITHUB_OUTPUT"
+
+      # Two links and a sentence, which is the whole flow a maintainer was
+      # promised: click the artefact (one click, downloads while logged in),
+      # open the viewer, drop the file in, paste the key.
+      #
+      # Gated on the artefact **id** rather than on the run's outcome: a
+      # transcript is worth reading after a green run too — a phase that did the
+      # wrong thing correctly leaves no failure to attach a comment to — and a
+      # keyless run must stay silent, which an empty id is exactly.
+      #
+      # It **appends to the run's own reply** rather than posting a comment of
+      # its own, which is one third of why issue #281 drew three bot comments per
+      # command. The pipeline publishes the comment it posted; the step above
+      # publishes the one *it* posted when the pipeline never got that far; and a
+      # run that produced neither — no issue resolved at all — has nothing to
+      # append to and posts, which is the only case left where this adds a
+      # comment. Ordered after the failure notice for exactly that reason: the
+      # other way round, both would post.
+      #
+      # The key is never in the comment, and there is no URL parameter that
+      # could carry it. That is the point of the split: the artefact is behind
+      # repository access, the key is behind the secret store, and the page
+      # brings them together in a tab that talks to neither.
+      - name: Link the transcript on the run's reply
+        if: always() && needs.resolve.outputs.issue && steps.transcript.outputs.artifact-id != ''
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ needs.resolve.outputs.issue }}
+          REPO: ${{ github.repository }}
+          # Whichever comment this run left, in the order they are written.
+          REPLY_COMMENT: ${{ steps.pipeline.outputs.reply-comment }}
+          NOTICE_COMMENT: ${{ steps.failure-notice.outputs.comment }}
+          # The upload action's own output rather than a hand-built path: it is
+          # the URL GitHub actually serves the artefact from, and a URL assembled
+          # here would be a second spelling to keep in step with theirs.
+          ARTIFACT_URL: ${{ steps.transcript.outputs.artifact-url }}
+          # Derived rather than hardcoded, so a fork publishes its own page: this
+          # is the default Pages URL for `<owner>.github.io/<repo>`, which is
+          # what `transcript-viewer-pages.yml` deploys to.
+          VIEWER_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: |
+          printf '%s\n\n%s\n\n%s\n\n%s\n' \
+            '<details><summary>🔐 Encrypted debug transcript for this run</summary>' \
+            "- [Download the transcript]($ARTIFACT_URL) — the \`.enc\` file, inside the zip." \
+            "- [Open the viewer]($VIEWER_URL) — drop the file in and paste this repository's \`AGENT_LOG_KEY\`." \
+            '</details>' \
+            > /tmp/agent-transcript.md
+
+          target="${REPLY_COMMENT:-$NOTICE_COMMENT}"
+          if [ -z "$target" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body-file /tmp/agent-transcript.md
+            exit 0
+          fi
+
+          # Read-modify-write, because the REST API replaces a comment body
+          # rather than appending to it. A refused read leaves the body unset and
+          # the append is skipped rather than blanking a real comment.
+          gh api "repos/$REPO/issues/comments/$target" --jq .body > /tmp/agent-reply.md
+          printf '\n\n' >> /tmp/agent-reply.md
+          cat /tmp/agent-transcript.md >> /tmp/agent-reply.md
+          gh api "repos/$REPO/issues/comments/$target" --method PATCH -F body=@/tmp/agent-reply.md
+
+      # The second half of the `agent:working` mitigation, and it has to live
+      # here rather than in the pipeline. The in-run reconcile in
+      # opencode-agent/src/labels.ts takes the marker off at the end of every run
+      # that reaches its end — and the one failure mode the marker has is a run
+      # that never does: a runner killed by `timeout-minutes`, a cancelled job,
+      # an out-of-memory kill. Neither mitigation covers the other. This step
+      # cannot repair a label somebody edited by hand and cannot know which
+      # labels the state implies; the reconcile cannot run in a process that is
+      # already gone. So an issue is left claiming an agent is working on it
+      # until somebody happens to trigger another run, which is the state a list
+      # view is least able to argue with.
+      #
+      # Best-effort like every other feedback write, per the rule labels.ts
+      # states: a job whose only red step is this one has reported a failure that
+      # did not happen. Note that a failure here is the *ordinary* case on a
+      # healthy run — the reconcile already removed the label, and removing a
+      # label an issue does not carry is a 404.
+      - name: Take the working label off the issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          # From the resolve job, for the reason the step above reads it there:
+          # `always()` has to survive this job dying anywhere, and an answer
+          # computed in another job cannot be taken away by a failure in this
+          # one. The empty test in the body stays — it is what makes this script
+          # runnable on its own, and the test suite runs it.
+          ISSUE_NUMBER: ${{ needs.resolve.outputs.issue }}
+          # The branch this run belongs to, which is the only handle this step
+          # has on the *pull request*. Once one exists the reconcile writes its
+          # labels there rather than on the issue (see `feedback-target.ts`), so
+          # a cleanup that only reached the issue would leave the marker exactly
+          # where it is now most likely to be. Resolved from the branch rather
+          # than passed down, because no event payload carries a pull request
+          # number for a run triggered from the issue or from CI.
+          BRANCH: ${{ needs.resolve.outputs.branch }}
+          GH_REPO: ${{ github.repository }}
+          # Read exactly the way `labelPrefix()` in src/config-values.ts reads
+          # it: trimmed, defaulted, and `none` compared case-insensitively. A
+          # repository that switched labelling off must not have this step reach
+          # for its labels either — opting out of a channel has to opt out of
+          # every writer on it, or the knob is a half-truth.
+          LABEL_PREFIX: ${{ vars.AGENT_LABEL_PREFIX }}
+        run: |
+          # `sed` rather than the shorter `${VAR##+([[:space:]])}`: extglob is
+          # the one construct in this file Semgrep's bash grammar cannot parse,
+          # and `--strict` fails the whole security scan on a single unparsed
+          # line — so an unscannable workflow costs more than a spawned process.
+          prefix="$(printf '%s' "$LABEL_PREFIX" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+          prefix="${prefix:-agent:}"
+
+          if [ "${prefix,,}" = 'none' ]; then
+            echo 'AGENT_LABEL_PREFIX=none: labelling is switched off, leaving the labels alone.'
+            exit 0
+          fi
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo 'No issue number for this run; there is nothing to clean up.'
+            exit 0
+          fi
+
+          # One label, never a clear-and-reapply: every other agent label states
+          # which state the issue is parked in, and this step has no idea which
+          # that is. Only the marker that claims a run is in flight is this
+          # step's to contradict.
+          # One statement, not a `\`-continued `||`: that continuation is the
+          # second thing Semgrep's bash grammar gives up on here.
+          if ! gh issue edit "$ISSUE_NUMBER" --remove-label "${prefix}working"; then
+            echo "Could not remove ${prefix}working; the next run's reconcile takes it off."
+          fi
+
+          # And on the pull request, which is where the marker lives once one is
+          # open. Both, not one or the other: which of the two carries it depends
+          # on how far the run got before it was killed, and this step cannot
+          # know that. Every part of this is best-effort — no branch, no open
+          # pull request, or a lookup that fails, are all "nothing to clean up".
+          if [ -z "$BRANCH" ]; then
+            exit 0
+          fi
+          pr="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' || true)"
+          if [ -n "$pr" ]; then
+            if ! gh pr edit "$pr" --remove-label "${prefix}working"; then
+              echo "Could not remove ${prefix}working from that pull request; the next run's reconcile takes it off."
+            fi
+          fi

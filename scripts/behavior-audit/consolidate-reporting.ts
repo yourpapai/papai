@@ -4,8 +4,8 @@
 // See LICENSE in the project root for details.
 
 import { formatElapsedMs } from './config.js'
+import type { BehaviorAuditProgressReporter } from './extract.js'
 import { formatPerItemSuffix, type AgentUsage } from './phase-stats.js'
-import type { BehaviorAuditProgressReporter } from './progress-reporter.js'
 
 export type ConsolidationResultForReporting =
   | { readonly kind: 'consolidated'; readonly usage: AgentUsage }

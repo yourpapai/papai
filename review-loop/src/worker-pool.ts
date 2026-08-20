@@ -6,6 +6,7 @@
 import path from 'node:path'
 
 import type { ReviewLoopConfig } from './config.js'
+import { headSha, measureDiffSince, type DiffStats } from './diff-stats.js'
 import type { RunState } from './run-state.js'
 import { execGit, rebaseOnto, mergeFastForward, removeWorktree } from './worktree.js'
 
@@ -17,6 +18,24 @@ export interface Worker {
   lockedFiles: ReadonlySet<string>
   headSha(): Promise<string>
   resetToBaseline(sha: string): Promise<void>
+}
+
+export interface WorkerPoolHooks {
+  onMergeDiff?: (workerId: number, diff: DiffStats) => void
+  warn?: (message: string) => void
+  /**
+   * Called after a fix reaches the primary branch, **under the primary lock**.
+   *
+   * Under the lock deliberately: its one caller fast-forwards the checkout onto
+   * this branch, and a second worker merging into the branch while that runs is
+   * the race the lock already exists to prevent. It is awaited for the same
+   * reason — a hook that returned before it finished would put the two merges
+   * back in parallel through a longer route.
+   *
+   * Whatever it does, it must not throw: this is a fix that has already been
+   * accepted, and the merge that matters happens again in `finalizeRun`.
+   */
+  onPrimaryAdvanced?: (branch: string) => Promise<void>
 }
 
 export interface WorkerPool {
@@ -88,11 +107,24 @@ function mergeWorkerIntoPrimary(
   primaryWorktreePath: string,
   primaryBranch: string,
   worker: Worker,
+  hooks: WorkerPoolHooks,
 ): Promise<{ ok: true } | { ok: false; conflictFiles: string[] }> {
   return withPrimaryLock(internals, async () => {
     const rebase = await rebaseOnto(worker.worktreePath, primaryBranch, worker.branch)
     if (!rebase.ok) return { ok: false, conflictFiles: rebase.conflictFiles }
+    const before = await headSha(execGit, primaryWorktreePath)
     await mergeFastForward(primaryWorktreePath, worker.branch)
+    try {
+      const diff = await measureDiffSince(execGit, primaryWorktreePath, before)
+      hooks.onMergeDiff?.(worker.id, diff)
+    } catch (error) {
+      hooks.warn?.(
+        `[worker-${worker.id}] merge diff stats failed: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+    // After the diff and still inside the lock: this is where a fix stops being
+    // local to the run and becomes something a caller can push.
+    await hooks.onPrimaryAdvanced?.(primaryBranch)
     return { ok: true }
   })
 }
@@ -144,7 +176,11 @@ async function buildWorkers(
   return workers
 }
 
-export async function createWorkerPool(config: ReviewLoopConfig, runState: RunState): Promise<WorkerPool> {
+export async function createWorkerPool(
+  config: ReviewLoopConfig,
+  runState: RunState,
+  hooks: WorkerPoolHooks = {},
+): Promise<WorkerPool> {
   const repoRoot = config.repoRoot
   const primaryBranch = `review-loop/${runState.runId}`
   const primaryWorktreePath = runState.worktreePath
@@ -167,7 +203,7 @@ export async function createWorkerPool(config: ReviewLoopConfig, runState: RunSt
     },
 
     mergeWorkerIntoPrimary: (worker: Worker) =>
-      mergeWorkerIntoPrimary(internals, primaryWorktreePath, primaryBranch, worker),
+      mergeWorkerIntoPrimary(internals, primaryWorktreePath, primaryBranch, worker, hooks),
 
     workerPaths: () => internals.workers.map((w) => w.worktreePath),
 

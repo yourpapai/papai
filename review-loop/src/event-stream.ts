@@ -12,7 +12,7 @@ export type OpencodeEvent =
   | {
       type: 'step_finish'
       reason: string
-      tokens: { input: number; output: number; reasoning: number }
+      tokens: { input: number; output: number; reasoning: number; cacheRead: number; cacheWrite: number }
       cost: number
     }
 
@@ -23,7 +23,7 @@ interface RawPart {
   state?: { status?: unknown; input?: unknown }
   text?: unknown
   reason?: unknown
-  tokens?: { input?: unknown; output?: unknown; reasoning?: unknown }
+  tokens?: { input?: unknown; output?: unknown; reasoning?: unknown; cache?: { read?: unknown; write?: unknown } }
   cost?: unknown
 }
 
@@ -78,6 +78,7 @@ function parseStepFinish(rawPart: RawPart): OpencodeEvent | null {
     return null
   }
   const tokens = isObject(rawPart.tokens) ? rawPart.tokens : {}
+  const cache = isObject(tokens.cache) ? tokens.cache : {}
   return {
     type: 'step_finish',
     reason: rawPart.reason,
@@ -85,6 +86,8 @@ function parseStepFinish(rawPart: RawPart): OpencodeEvent | null {
       input: asNumber(tokens.input),
       output: asNumber(tokens.output),
       reasoning: asNumber(tokens.reasoning),
+      cacheRead: asNumber(cache.read),
+      cacheWrite: asNumber(cache.write),
     },
     cost: asNumber(rawPart.cost),
   }

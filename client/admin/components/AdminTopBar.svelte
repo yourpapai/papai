@@ -14,19 +14,41 @@
   import { adminGlobals } from '../global-stats.svelte.js'
   import type { StatsWindow } from '../global-stats.svelte.js'
 
+  import AdminJumpMenu from './AdminJumpMenu.svelte'
+
+  // 1s, because the label renders seconds below one minute. Reading `now` rather than
+  // calling Date.now() is what puts the tick in the derivation's dependency set.
+  let now = $state(Date.now())
+
+  $effect(() => {
+    const handle = setInterval(() => {
+      now = Date.now()
+    }, 1000)
+    return (): void => {
+      clearInterval(handle)
+    }
+  })
+
   const refreshedLabel = $derived.by(() => {
     if (adminState.lastRefreshedAt === null) return 'never'
-    const seconds = Math.max(0, Math.floor((Date.now() - adminState.lastRefreshedAt) / 1000))
+    const seconds = Math.max(0, Math.floor((now - adminState.lastRefreshedAt) / 1000))
     if (seconds < 60) return `${seconds}s ago`
     const minutes = Math.floor(seconds / 60)
     return `${minutes}m ago`
+  })
+
+  // `warn`, not `danger`: the numbers on screen are stale, not wrong.
+  const health = $derived.by(() => {
+    if (adminGlobals.loading) return { tone: 'neutral' as const, text: 'loading' }
+    if (adminGlobals.error !== null) return { tone: 'warn' as const, text: 'stale' }
+    return { tone: 'accent' as const, text: 'live' }
   })
 </script>
 
 <TopBar page="admin">
   {#snippet statusRow()}
     <div class="admin-topbar__status">
-      <Pill tone="accent" dot>{#snippet children()}configured{/snippet}</Pill>
+      <Pill tone={health.tone} dot>{#snippet children()}{health.text}{/snippet}</Pill>
       <span class="admin-topbar__sep"></span>
       <a class="admin-topbar__back" href="/debug">← /debug</a>
       <span class="admin-topbar__spacer"></span>
@@ -49,6 +71,7 @@
         {#snippet children()}refresh all{/snippet}
       </Btn>
     </div>
+    <AdminJumpMenu activeId={adminState.currentSection} />
   {/snippet}
 </TopBar>
 
@@ -66,7 +89,7 @@
     background: var(--border);
   }
   .admin-topbar__back {
-    color: var(--fg2);
+    color: var(--text-muted);
     text-decoration: none;
     font-family: var(--font-mono);
     font-size: 12px;
@@ -75,12 +98,12 @@
     color: var(--accent);
   }
   .admin-topbar__lbl {
-    color: var(--fg3);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     font-size: 11px;
   }
   .admin-topbar__stat {
-    color: var(--fg);
+    color: var(--text);
     font-family: var(--font-mono);
     font-size: 12px;
   }

@@ -71,12 +71,6 @@ export const TokenInfoSchema = z.object({
   outputTokens: z.number(),
 })
 
-export const ToolCallSchema = z.object({
-  toolName: z.string(),
-  durationMs: z.number(),
-  success: z.boolean(),
-})
-
 export const ToolCallDetailSchema = z.object({
   toolName: z.string(),
   durationMs: z.number(),
@@ -187,34 +181,18 @@ export const PollerEventSchema = z.object({
   alertsRunning: z.boolean().optional(),
 })
 
-export const MessageCacheEventSchema = z.object({
-  size: z.number().optional(),
-  pendingWrites: z.number().optional(),
-})
-
 import { TurnSchema, NotificationSchema, ToolFailureSchema } from './turn-assembly.js'
 import type { Turn, Notification, ToolFailure } from './turn-assembly.js'
 
 // Re-export turn schemas from turn-assembly
-export {
-  TurnToolCallSchema,
-  TurnReplySchema,
-  TurnSchema,
-  NotificationSchema,
-  ToolFailureSchema,
-} from './turn-assembly.js'
 export type { Turn, Notification, ToolFailure } from './turn-assembly.js'
 
 // Inferred types
-export type Fact = z.infer<typeof FactSchema>
-export type Instruction = z.infer<typeof InstructionSchema>
 export type Session = z.infer<typeof SessionSchema>
 export type Wizard = z.infer<typeof WizardSchema>
 export type SchedulerInfo = z.infer<typeof SchedulerInfoSchema>
 export type PollersInfo = z.infer<typeof PollersInfoSchema>
 export type MessageCacheInfo = z.infer<typeof MessageCacheInfoSchema>
-export type TokenInfo = z.infer<typeof TokenInfoSchema>
-export type ToolCall = z.infer<typeof ToolCallSchema>
 export type LlmTrace = z.infer<typeof LlmTraceSchema>
 export type LogEntry = z.infer<typeof LogEntrySchema>
 export type StateInitEvent = z.infer<typeof StateInitEventSchema>
@@ -223,7 +201,6 @@ export type CacheEvent = z.infer<typeof CacheEventSchema>
 export type UserIdEvent = z.infer<typeof UserIdEventSchema>
 export type SchedulerTickEvent = z.infer<typeof SchedulerTickEventSchema>
 export type PollerEvent = z.infer<typeof PollerEventSchema>
-export type MessageCacheEvent = z.infer<typeof MessageCacheEventSchema>
 
 // Validation helpers
 export function parseWizard(data: unknown): Wizard {

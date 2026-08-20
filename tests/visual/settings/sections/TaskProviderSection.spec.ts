@@ -12,6 +12,11 @@ test.describe('settings/sections/TaskProviderSection', () => {
     await expect(sharedPage).toHaveScreenshot()
   })
 
+  test('Bound', async ({ sharedPage }) => {
+    await switchStory(sharedPage, 'settings-sections-taskprovidersection--bound')
+    await expect(sharedPage).toHaveScreenshot()
+  })
+
   test('Error', async ({ sharedPage }) => {
     await switchStory(sharedPage, 'settings-sections-taskprovidersection--error')
     await expect(sharedPage).toHaveScreenshot()
@@ -19,8 +24,31 @@ test.describe('settings/sections/TaskProviderSection', () => {
 })
 // @generated-end auto-screenshots
 
+import { pinDefaultViewport } from '../../support/viewport.js'
+
+pinDefaultViewport()
+
 test('TaskProvider — narrow', async ({ sharedPage }) => {
   await switchStory(sharedPage, 'settings-sections-taskprovidersection--populated')
   await sharedPage.setViewportSize({ width: 640, height: 900 })
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('TaskProvider — select focused', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-taskprovidersection--populated')
+  await sharedPage.getByTestId('context-task-instance').focus()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('TaskProvider — bind hovered', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-taskprovidersection--populated')
+  await sharedPage.getByTestId('context-task-instance-save').hover()
+  await expect(sharedPage).toHaveScreenshot()
+})
+
+test('TaskProvider — provision reveal', async ({ sharedPage }) => {
+  await switchStory(sharedPage, 'settings-sections-taskprovidersection--bound')
+  await sharedPage.getByTestId('provision-kaneo').click()
+  await expect(sharedPage.getByTestId('provision-result')).toBeVisible()
   await expect(sharedPage).toHaveScreenshot()
 })

@@ -3,18 +3,30 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { runBuildCheck } from '../../review-loop/src/build-checker.js'
 import { MergeConflictError } from '../../review-loop/src/cli-errors.js'
-import { finalizeRun, parseCliArgs, resolvePlanPath, runCli, type FinalizeDeps } from '../../review-loop/src/cli.js'
+import {
+  finalizeRun,
+  parseCliArgs,
+  readPersistedRunStats,
+  resolvePlanPath,
+  runCli,
+  STOPPED_EXIT_CODE,
+  writeRunArtifacts,
+  type CliOutcome,
+  type FinalizeDeps,
+} from '../../review-loop/src/cli.js'
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import { createIssueLedger, saveIssueLedger, type IssueLedger } from '../../review-loop/src/issue-ledger.js'
 import { createRunState, PersistedRunStateSchema, type RunState } from '../../review-loop/src/run-state.js'
+import { RunStats } from '../../review-loop/src/run-stats.js'
 import { execGit } from '../../review-loop/src/worktree.js'
-import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
+import { captureStream, cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir, quietGit } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
@@ -281,17 +293,21 @@ interface RunCliFixture {
   planPath: string
   repoPath: string
   workDir: string
-  runCliWithPath: (args: string[]) => Promise<void>
+  runCliWithPath: (args: string[]) => Promise<CliOutcome>
+  /** Everything the run printed, so its notices are assertable rather than assumed. */
+  output: () => string
   getRunDir: () => string
 }
 
-async function setupRunCliFixtures(
+function setupRunCliFixtures(
   opts: {
     poolSize?: number
     inspector?: boolean
     checkCommand?: string
+    /** Extra config keys, for the settings only one or two tests care about. */
+    extraConfig?: Record<string, unknown>
   } = {},
-): Promise<RunCliFixture> {
+): RunCliFixture {
   const dir = makeTempDir('cli-integration-')
   const binDir = path.join(dir, 'bin')
   const scenarioPath = path.join(dir, 'scenario.json')
@@ -312,33 +328,34 @@ async function setupRunCliFixtures(
     reviewer: { model: 'test-reviewer', extraArgs: [] },
     fixer: { model: 'test-fixer', extraArgs: [] },
     matcher: { model: 'test-matcher', extraArgs: [] },
+    ...opts.extraConfig,
   }
   if (opts.inspector === true) {
     config['inspector'] = { model: 'test-inspector', extraArgs: [] }
   }
   writeFileSync(configPath, JSON.stringify(config))
 
-  const { execFileSync } = await import('node:child_process')
-  execFileSync('git', ['init', repoPath])
-  execFileSync('git', ['-C', repoPath, 'config', 'user.email', 'test@test.com'])
-  execFileSync('git', ['-C', repoPath, 'config', 'user.name', 'Test'])
-  execFileSync('git', ['-C', repoPath, 'checkout', '-b', 'main'])
+  quietGit(['init', repoPath])
+  quietGit(['-C', repoPath, 'config', 'user.email', 'test@test.com'])
+  quietGit(['-C', repoPath, 'config', 'user.name', 'Test'])
+  quietGit(['-C', repoPath, 'checkout', '-b', 'main'])
   writeFileSync(path.join(repoPath, '.gitignore'), '.review-loop/\n')
   writeFileSync(path.join(repoPath, 'README.md'), 'hello')
-  execFileSync('git', ['-C', repoPath, 'add', '.'])
-  execFileSync('git', ['-C', repoPath, 'commit', '-m', 'init'])
+  quietGit(['-C', repoPath, 'add', '.'])
+  quietGit(['-C', repoPath, 'commit', '-m', 'init'])
 
   mkdirSync(binDir, { recursive: true })
   const scriptPath = path.join(binDir, 'opencode')
   writeFileSync(scriptPath, createFakeOpencodeScript(scenarioPath))
   chmodSync(scriptPath, 0o755)
 
-  const runCliWithPath = async (args: string[]): Promise<void> => {
+  const stream = captureStream()
+  const runCliWithPath = async (args: string[]): Promise<CliOutcome> => {
     const oldPath = process.env['PATH']
     process.env['PATH'] = `${binDir}:${oldPath}`
     process.env['FAKE_OPENCODE_SCENARIO'] = scenarioPath
     try {
-      await runCli(args)
+      return await runCli(args, stream)
     } finally {
       process.env['PATH'] = oldPath
       delete process.env['FAKE_OPENCODE_SCENARIO']
@@ -352,7 +369,7 @@ async function setupRunCliFixtures(
     return path.join(runRoot, entries[0]!)
   }
 
-  return { dir, configPath, planPath, repoPath, workDir, runCliWithPath, getRunDir }
+  return { dir, configPath, planPath, repoPath, workDir, runCliWithPath, getRunDir, output: stream.text }
 }
 
 async function createResumableRunState(
@@ -380,7 +397,7 @@ async function createResumableRunState(
 
 describe('runCli', () => {
   test('--pool-size overrides config.poolSize', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 3 })
+    const fixture = setupRunCliFixtures({ poolSize: 3 })
     const scenario = {
       reviewerIssues: [JSON.stringify({ issues: [] })],
       fixerResults: [],
@@ -394,7 +411,7 @@ describe('runCli', () => {
   })
 
   test('--no-inspect skips inspector calls', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 1, inspector: true })
+    const fixture = setupRunCliFixtures({ poolSize: 1, inspector: true })
     const scenario = {
       reviewerIssues: [
         JSON.stringify({
@@ -448,7 +465,7 @@ describe('runCli', () => {
   })
 
   test('stale worker worktrees from a prior run are cleaned at startup', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 1 })
+    const fixture = setupRunCliFixtures({ poolSize: 1 })
     const runId = '2026-07-15T10-30-00-000Z-stale'
     const primaryWorktreePath = path.join(fixture.workDir, 'worktrees', runId)
     const staleWorkerPath = path.join(fixture.workDir, 'worktrees', `${runId}-worker-1`)
@@ -469,7 +486,7 @@ describe('runCli', () => {
   })
 
   test('stale worker worktrees from a prior crashed run are cleaned on a fresh start (no --resume-run)', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 1 })
+    const fixture = setupRunCliFixtures({ poolSize: 1 })
     const crashedRunId = '2026-07-15T10-30-00-000Z-crashed'
     const crashedWorkerPath = path.join(fixture.workDir, 'worktrees', `${crashedRunId}-worker-1`)
 
@@ -495,7 +512,7 @@ describe('runCli', () => {
   })
 
   test('on fixer timeout (non-zero exit), the crashing issue is marked needs_human and the run still completes', async () => {
-    const fixture = await setupRunCliFixtures({ poolSize: 2 })
+    const fixture = setupRunCliFixtures({ poolSize: 2 })
     // Reviewer reports one issue; fixer exits non-zero (simulating timeout/error).
     const scenario = {
       reviewerIssues: [
@@ -543,7 +560,7 @@ describe('runCli', () => {
     // writeRunArtifacts, so any throw (build failure, merge conflict) skipped
     // the summary/metrics/trace write — leaving the user with no post-mortem
     // for a multi-hour run. writeRunArtifacts must run first.
-    const fixture = await setupRunCliFixtures({ poolSize: 1, checkCommand: 'false' })
+    const fixture = setupRunCliFixtures({ poolSize: 1, checkCommand: 'false' })
 
     const scenario = {
       reviewerIssues: [JSON.stringify({ issues: [] })],
@@ -557,5 +574,324 @@ describe('runCli', () => {
 
     const runDir = fixture.getRunDir()
     expect(existsSync(path.join(runDir, 'summary.txt'))).toBe(true)
+  })
+})
+
+describe('writeRunArtifacts stats persistence', () => {
+  test('writeRunArtifacts persists runStats into metrics.json and a Stats line into summary.txt', async () => {
+    const runDir = makeTempDir('rl-artifacts-')
+    const stats = new RunStats({
+      pricing: { 'm-*': { input: 3, output: 15 } },
+      startedAt: 0,
+      now: (): number => 60_000,
+    })
+    stats.addUsage('reviewer', { input: 100_000, output: 10_000, reasoning: 0, model: 'm-x' })
+    stats.addToolCalls('reviewer', 5)
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, metrics: [], ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 60_000, stats },
+    )
+    const persisted = await readPersistedRunStats(runDir)
+    expect(persisted?.totals.toolCalls).toBe(5)
+    expect(persisted?.totals.estimatedCostUsd).toBeCloseTo(0.45, 10)
+    const summary = await readFile(path.join(runDir, 'summary.txt'), 'utf8')
+    expect(summary).toContain('Stats: tools 5')
+  })
+
+  test('readPersistedRunStats reads a metrics.json written before exposure existed', async () => {
+    // The rounds array is never parsed back — only runStats is — so an older
+    // file must keep loading. This pins that the envelope stays narrow: a
+    // future tightening that validates rounds would silently drop the stats
+    // rehydrated on --resume-run.
+    const runDir = makeTempDir('metrics-legacy-')
+    writeFileSync(
+      path.join(runDir, 'metrics.json'),
+      JSON.stringify({
+        rounds: [{ round: 1, newIssues: 2, inspector: { runs: 1, rejected: 0 } }],
+        runStats: {
+          totals: { input: 0, output: 0, reasoning: 0, toolCalls: 7, added: 0, removed: 0 },
+          perLabel: {},
+        },
+      }),
+    )
+    const persisted = await readPersistedRunStats(runDir)
+    expect(persisted?.totals.toolCalls).toBe(7)
+  })
+
+  test('readPersistedRunStats returns undefined when metrics.json is missing or has no runStats', async () => {
+    const runDir = makeTempDir('rl-nostats-')
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
+  })
+
+  test('writeRunArtifacts without stats writes no runStats and no Stats line', async () => {
+    const runDir = makeTempDir('rl-artifacts-nostats-')
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, metrics: [], ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 1000 },
+    )
+    const metricsText = await readFile(path.join(runDir, 'metrics.json'), 'utf8')
+    expect(metricsText).not.toContain('runStats')
+    const summary = await readFile(path.join(runDir, 'summary.txt'), 'utf8')
+    expect(summary).not.toContain('Stats:')
+  })
+
+  test('writeRunArtifacts tolerates a result without metrics', async () => {
+    const runDir = makeTempDir('rl-artifacts-nometrics-')
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 1000 },
+    )
+    const metricsText = await readFile(path.join(runDir, 'metrics.json'), 'utf8')
+    expect(metricsText).toContain('"inputTokens": 0')
+  })
+
+  test('writeRunArtifacts warns and still writes summary when metrics.json write fails', async () => {
+    const runDir = makeTempDir('rl-artifacts-eisdir-')
+    mkdirSync(path.join(runDir, 'metrics.json'))
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    await writeRunArtifacts(
+      runDir,
+      { doneReason: 'clean', rounds: 1, metrics: [], ledger: { issues: {} } },
+      { poolSize: 1, inspect: false, wallMs: 1000 },
+    )
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]![0])).toContain('metrics.json write failed')
+    expect(existsSync(path.join(runDir, 'summary.txt'))).toBe(true)
+  })
+
+  test('readPersistedRunStats returns undefined for invalid JSON', async () => {
+    const runDir = makeTempDir('rl-badstats-json-')
+    writeFileSync(path.join(runDir, 'metrics.json'), 'not json')
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
+  })
+
+  test('readPersistedRunStats returns undefined when runStats violates the schema', async () => {
+    const runDir = makeTempDir('rl-badstats-schema-')
+    writeFileSync(path.join(runDir, 'metrics.json'), JSON.stringify({ runStats: { totals: { input: 'x' } } }))
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
+  })
+
+  test('readPersistedRunStats returns undefined when metrics.json has no runStats key', async () => {
+    const runDir = makeTempDir('rl-badstats-key-')
+    writeFileSync(path.join(runDir, 'metrics.json'), JSON.stringify({ doneReason: 'clean' }))
+    await expect(readPersistedRunStats(runDir)).resolves.toBeUndefined()
+  })
+})
+
+/** The scenario in which one finding is found, fixed and merged back. */
+function oneFixScenario(): Record<string, unknown> {
+  return {
+    reviewerIssues: [
+      JSON.stringify({
+        issues: [
+          {
+            title: 'Race condition',
+            severity: 'high',
+            summary: 'Concurrent messages bypass lock.',
+            whyItMatters: 'Stale replies.',
+            evidence: 'queue.ts:84',
+            file: 'src/queue.ts',
+            lineStart: 84,
+            lineEnd: 107,
+            suggestedFix: 'Lock earlier.',
+            confidence: 0.9,
+          },
+        ],
+      }),
+      JSON.stringify({ issues: [] }),
+    ],
+    matches: [],
+    fixerResults: [
+      JSON.stringify({
+        verdict: 'valid',
+        fixability: 'auto',
+        reasoning: 'Unsafe.',
+        targetFiles: ['src/queue.ts'],
+        fixed: true,
+        commitSha: 'abc123',
+        commitMessage: 'fix: race',
+      }),
+    ],
+    fixerCreatesFile: 'src/queue.ts',
+  }
+}
+
+describe('runCli commit identity', () => {
+  afterEach(() => {
+    for (const key of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL']) {
+      Reflect.deleteProperty(process.env, key)
+    }
+  })
+
+  test('commits the loop own fixes as the configured author', async () => {
+    const fixture = setupRunCliFixtures({
+      poolSize: 1,
+      extraConfig: { commitAuthor: { name: 'opencode-agent[bot]', email: 'agent@users.noreply.github.com' } },
+    })
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(oneFixScenario()))
+
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath, '--no-inspect'])
+
+    const author = quietGit(['-C', fixture.repoPath, 'log', '-1', '--format=%an <%ae>|%cn'])
+    expect(author.trim()).toBe('opencode-agent[bot] <agent@users.noreply.github.com>|opencode-agent[bot]')
+  })
+
+  test('leaves git alone when no author is configured', async () => {
+    const fixture = setupRunCliFixtures({ poolSize: 1 })
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(oneFixScenario()))
+
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath, '--no-inspect'])
+
+    expect(quietGit(['-C', fixture.repoPath, 'log', '-1', '--format=%an']).trim()).toBe('Test')
+    expect(process.env['GIT_AUTHOR_NAME']).toBeUndefined()
+  })
+})
+
+/**
+ * A resumed run whose worktree is still on disk, which is the only way to reach
+ * `prepareWorktree`'s other two branches. Stopped at once by a spent budget, so
+ * the worktree survives the run and can be looked at: a run that finishes merges
+ * and removes it.
+ */
+async function resumableDirtyRun(runId: string): Promise<{ fixture: RunCliFixture; worktreePath: string }> {
+  const fixture = setupRunCliFixtures({ poolSize: 1, extraConfig: { runTimeoutMs: 1 } })
+  const worktreePath = path.join(fixture.workDir, 'worktrees', runId)
+  await createResumableRunState(fixture.repoPath, fixture.workDir, fixture.planPath, runId)
+  await execGit(fixture.repoPath, ['worktree', 'add', worktreePath, '-b', `review-loop/${runId}`])
+  // A scenario with a finding in it: a review that comes back clean is a run that
+  // *finished*, and a finished run merges its worktree and removes it.
+  writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(oneFixScenario()))
+  return { fixture, worktreePath }
+}
+
+describe('runCli on a worktree a previous run left behind', () => {
+  test('keeps uncommitted work it was not told to discard, and says so', async () => {
+    const { fixture, worktreePath } = await resumableDirtyRun('2026-07-15T10-30-00-000Z-dirty')
+    writeFileSync(path.join(worktreePath, 'stray.ts'), 'half a fix\n')
+    const warn = spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await fixture.runCliWithPath([
+      '--config',
+      fixture.configPath,
+      '--plan',
+      fixture.planPath,
+      '--resume-run',
+      '2026-07-15T10-30-00-000Z-dirty',
+    ])
+
+    expect(warn.mock.calls.flat().join(' ')).toContain('Pass --reset-worktree to discard them before resuming')
+    expect(existsSync(path.join(worktreePath, 'stray.ts'))).toBe(true)
+  })
+
+  test('discards it when told to reset', async () => {
+    const { fixture, worktreePath } = await resumableDirtyRun('2026-07-15T10-30-00-000Z-reset')
+    writeFileSync(path.join(worktreePath, 'stray.ts'), 'half a fix\n')
+
+    await fixture.runCliWithPath([
+      '--config',
+      fixture.configPath,
+      '--plan',
+      fixture.planPath,
+      '--resume-run',
+      '2026-07-15T10-30-00-000Z-reset',
+      '--reset-worktree',
+    ])
+
+    expect(existsSync(path.join(worktreePath, 'stray.ts'))).toBe(false)
+  })
+
+  test('says nothing about a worktree that is clean', async () => {
+    const { fixture } = await resumableDirtyRun('2026-07-15T10-30-00-000Z-clean')
+    const warn = spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await fixture.runCliWithPath([
+      '--config',
+      fixture.configPath,
+      '--plan',
+      fixture.planPath,
+      '--resume-run',
+      '2026-07-15T10-30-00-000Z-clean',
+    ])
+
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('uncommitted changes')
+  })
+})
+
+describe('runCli under a run budget', () => {
+  test('says why it stopped, and where the fixes it kept are', async () => {
+    const fixture = setupRunCliFixtures({ poolSize: 1, extraConfig: { runTimeoutMs: 1 } })
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(oneFixScenario()))
+
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+
+    const runId = path.basename(fixture.getRunDir())
+    // The caller of this loop reads its stdout, and a maintainer reads it after
+    // the fact: both need the reason and the branch, not just an exit code.
+    expect(fixture.output()).toContain('[review-loop] stopped: out of time for this run')
+    expect(fixture.output()).toContain(`accepted fixes are on review-loop/${runId}; merge it by hand`)
+  })
+
+  test('says instead that the fixes are already published, when they are', async () => {
+    const fixture = setupRunCliFixtures({
+      poolSize: 1,
+      extraConfig: { runTimeoutMs: 1, mergeEachFix: true },
+    })
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(oneFixScenario()))
+
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+
+    expect(fixture.output()).toContain('every accepted fix is already on the working branch')
+    expect(fixture.output()).not.toContain('merge it by hand')
+  })
+
+  test('a budget it has not spent stops nothing', async () => {
+    // The budget counts from the start of the *process*, so the arithmetic that
+    // charges setup to it has to subtract rather than add: an hour's budget on a
+    // run that takes seconds must leave the run alone.
+    const fixture = setupRunCliFixtures({ poolSize: 1, extraConfig: { runTimeoutMs: 3_600_000 } })
+    const scenario = { reviewerIssues: [JSON.stringify({ issues: [] })], fixerResults: [] }
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(scenario))
+
+    const outcome = await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+
+    expect(outcome.exitCode).toBe(0)
+    expect(fixture.output()).not.toContain('[review-loop] stopped:')
+  })
+
+  test('reports the wall clock it actually took', async () => {
+    // `Date.now() - startedAt`: the sign of that subtraction is the difference
+    // between a duration and an epoch, and both print without complaint.
+    const fixture = setupRunCliFixtures({ poolSize: 1 })
+    const scenario = { reviewerIssues: [JSON.stringify({ issues: [] })], fixerResults: [] }
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(scenario))
+
+    await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+
+    const summary = readFileSync(path.join(fixture.getRunDir(), 'summary.txt'), 'utf8')
+    const wall = /Duration: (?<value>[\d.]+)(?<unit>s|m|ms)/u.exec(summary)?.groups
+    expect(wall?.['unit']).toBe('s')
+    expect(Number(wall?.['value'])).toBeLessThan(600)
+  })
+
+  test('stops itself, keeps its artifacts and skips the final build gate', async () => {
+    const fixture = setupRunCliFixtures({
+      poolSize: 1,
+      // The gate writes a file, so "it did not run" is something to assert
+      // rather than something to trust.
+      checkCommand: 'touch gate-ran',
+      extraConfig: { runTimeoutMs: 1 },
+    })
+    writeFileSync(path.join(path.dirname(fixture.configPath), 'scenario.json'), JSON.stringify(oneFixScenario()))
+
+    const outcome = await fixture.runCliWithPath(['--config', fixture.configPath, '--plan', fixture.planPath])
+
+    expect(outcome.exitCode).toBe(STOPPED_EXIT_CODE)
+    const runDir = fixture.getRunDir()
+    expect(readFileSync(path.join(runDir, 'metrics.json'), 'utf8')).toContain('"doneReason": "stopped"')
+    expect(readFileSync(path.join(runDir, 'summary.txt'), 'utf8')).toContain('stopped early')
+    expect(existsSync(path.join(fixture.workDir, 'worktrees', path.basename(runDir), 'gate-ran'))).toBe(false)
   })
 })

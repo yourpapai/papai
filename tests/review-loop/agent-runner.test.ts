@@ -22,18 +22,26 @@ import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
-type MockSpawnResult = { exitCode: number; stdout: string; stderr: string; timedOut?: boolean }
+type MockSpawnResult = { exitCode: number; stdout: string; stderr: string; timedOut?: boolean; stalled?: boolean }
 
 function createMockSpawn(results: MockSpawnResult[]): {
-  calls: Array<{ command: string; args: readonly string[]; cwd: string }>
-  spawn: (command: string, args: readonly string[], opts: { cwd: string }) => Promise<MockSpawnResult>
+  calls: Array<{ command: string; args: readonly string[]; cwd: string; inactivityTimeoutMs?: number }>
+  spawn: (
+    command: string,
+    args: readonly string[],
+    opts: { cwd: string; inactivityTimeoutMs?: number },
+  ) => Promise<MockSpawnResult>
 } {
-  const calls: Array<{ command: string; args: readonly string[]; cwd: string }> = []
+  const calls: Array<{ command: string; args: readonly string[]; cwd: string; inactivityTimeoutMs?: number }> = []
   let index = 0
   return {
     calls,
-    spawn: (command: string, args: readonly string[], opts: { cwd: string }): Promise<MockSpawnResult> => {
-      calls.push({ command, args, cwd: opts.cwd })
+    spawn: (
+      command: string,
+      args: readonly string[],
+      opts: { cwd: string; inactivityTimeoutMs?: number },
+    ): Promise<MockSpawnResult> => {
+      calls.push({ command, args, cwd: opts.cwd, inactivityTimeoutMs: opts.inactivityTimeoutMs })
       const result = results[index] ?? results[results.length - 1]!
       index += 1
       return Promise.resolve(result)
@@ -235,6 +243,84 @@ describe('agent-runner', () => {
     expect(mock.calls).toHaveLength(1)
   })
 
+  test('retries once when the agent stalls (hung stream killed by inactivity watchdog)', async () => {
+    // A stalled agent produced no stdout for the inactivity window — almost
+    // always a transient provider hang, so unlike a wall-clock timeout it is
+    // worth one retry instead of discarding the iteration.
+    const dir = makeTempDir('agent-runner-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = createMockSpawn([
+      { exitCode: 1, stdout: '', stderr: 'Process stalled: no output for 600000ms\n', timedOut: true, stalled: true },
+      { exitCode: 0, stdout: 'done', stderr: '' },
+    ])
+
+    const result = await runAgent({
+      spawn: mock.spawn,
+      model: 'test-model',
+      cwd: dir,
+      prompt: 'review the code',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      onRetry: () => {
+        writeFileSync(path.join(dir, '.review-loop', path.basename(outputPath)), JSON.stringify({ issues: [] }))
+      },
+    })
+
+    expect(result.value).toEqual({ issues: [] })
+    expect(mock.calls).toHaveLength(2)
+  })
+
+  test('throws after retry when the agent stalls again', async () => {
+    const dir = makeTempDir('agent-runner-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = createMockSpawn([
+      { exitCode: 1, stdout: '', stderr: 'Process stalled: no output for 600000ms\n', timedOut: true, stalled: true },
+      { exitCode: 1, stdout: '', stderr: 'Process stalled: no output for 600000ms\n', timedOut: true, stalled: true },
+    ])
+
+    await expect(
+      runAgent({
+        spawn: mock.spawn,
+        model: 'test-model',
+        cwd: dir,
+        prompt: 'review the code',
+        outputPath,
+        outputSchema: ReviewerIssuesSchema,
+        label: 'reviewer',
+        logPath: path.join(dir, 'log.txt'),
+        extraArgs: [],
+      }),
+    ).rejects.toThrow('stalled')
+    expect(mock.calls).toHaveLength(2)
+  })
+
+  test('forwards inactivityTimeoutMs to the spawn options', async () => {
+    const dir = makeTempDir('agent-runner-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = createMockSpawn([{ exitCode: 0, stdout: 'done', stderr: '' }])
+
+    mkdirSync(path.join(dir, '.review-loop'), { recursive: true })
+    writeFileSync(path.join(dir, '.review-loop', path.basename(outputPath)), JSON.stringify({ issues: [] }))
+
+    await runAgent({
+      spawn: mock.spawn,
+      model: 'test-model',
+      cwd: dir,
+      prompt: 'review the code',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      inactivityTimeoutMs: 123_000,
+    })
+
+    expect(mock.calls[0]?.inactivityTimeoutMs).toBe(123_000)
+  })
+
   test('retries once on non-timeout spawn failure', async () => {
     const dir = makeTempDir('agent-runner-')
     const outputPath = path.join(dir, 'issues.json')
@@ -312,19 +398,14 @@ describe('agent-runner', () => {
       }),
     ]
     const live: string[][] = []
-    const events: string[] = []
     const reporter: ProgressReporter = {
       dynamic: false,
-      event: (m) => {
-        events.push(m)
-      },
+      event() {},
       live: (m) => {
         live.push([...m])
       },
       clearLive() {},
-      log: (m) => {
-        events.push(m)
-      },
+      log() {},
     }
     const spawn = (
       _command: string,
@@ -355,7 +436,7 @@ describe('agent-runner', () => {
     const liveOutput = live.map((batch) => batch.join('\n')).join('\n')
     expect(liveOutput).toContain('reviewer')
     expect(liveOutput).toContain('read')
-    expect(events.some((e) => e.includes('in 100 / out 5'))).toBe(true)
+    expect(liveOutput).toContain('in 100 / out 5')
     expect(readFileSync(logPath, 'utf8')).toContain('step_start')
   })
 })
@@ -365,7 +446,11 @@ function mockSpawnWithStepFinish(outputPath: string): SpawnFn {
     // Emit a step_finish event line, then write the result file.
     const stepFinish = JSON.stringify({
       type: 'step_finish',
-      part: { reason: 'stop', tokens: { input: 100, output: 50, reasoning: 10 }, cost: 0.01 },
+      part: {
+        reason: 'stop',
+        tokens: { input: 100, output: 50, reasoning: 10, cache: { read: 700, write: 50 } },
+        cost: 0.01,
+      },
     })
     // Two step_finish events to test accumulation:
     return new Promise((resolve) => {
@@ -431,6 +516,8 @@ describe('runAgent return type', () => {
     expect(result.value.ok).toBe(true)
     expect(result.usage.inputTokens).toBe(200)
     expect(result.usage.outputTokens).toBe(100)
+    expect(result.usage.cachedReadTokens).toBe(1400)
+    expect(result.usage.cachedWriteTokens).toBe(100)
     expect(result.usage.costUsd).toBeCloseTo(0.02)
     expect(result.usage.wallMs).toBeGreaterThanOrEqual(0)
   })
@@ -490,7 +577,11 @@ describe('runAgent return type', () => {
     const outputPath = path.join(cwd, 'result.json')
     const stepFinish = JSON.stringify({
       type: 'step_finish',
-      part: { reason: 'stop', tokens: { input: 100, output: 50, reasoning: 10 }, cost: 0.01 },
+      part: {
+        reason: 'stop',
+        tokens: { input: 100, output: 50, reasoning: 10, cache: { read: 700, write: 50 } },
+        cost: 0.01,
+      },
     })
     function spawnFailing(
       _cmd: string,
@@ -526,6 +617,8 @@ describe('runAgent return type', () => {
     expect(error.usage.inputTokens).toBe(400)
     expect(error.usage.outputTokens).toBe(200)
     expect(error.usage.reasoningTokens).toBe(40)
+    expect(error.usage.cachedReadTokens).toBe(2800)
+    expect(error.usage.cachedWriteTokens).toBe(200)
     expect(error.usage.costUsd).toBeCloseTo(0.04)
   })
 

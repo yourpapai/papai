@@ -1,0 +1,169 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { z } from 'zod'
+
+/**
+ * What a plan is, under design D5: `tasks.md` checkboxes.
+ *
+ * The plan no longer travels as a JSON steps object rendered into a comment and
+ * a hidden block — the folder is truth (D1), and `tasks.md` is the plan's only
+ * shape. `REVIEW_AND_MUTATE` walks its checkboxes one turn at a time and ticks
+ * each box in the same commit as the step's work; this module owns the parser
+ * that turns the file into the ordered box list the walk reads, plus the
+ * `PlanStep`/`describeStep` the implement prompt still borrows to phrase a turn.
+ *
+ * A leaf on purpose: this module imports nothing but zod, so nothing here can
+ * pull the pipeline's graph in by accident.
+ */
+
+export const planStepSchema = z.object({
+  title: z.string().min(1),
+  files: z.array(z.string()).default([]),
+  verification: z.string().default(''),
+})
+
+export type PlanStep = z.infer<typeof planStepSchema>
+
+/**
+ * Most steps one plan may declare, and what happens past it.
+ *
+ * A cap because every step is a model turn plus a commit plus a push: a plan of two
+ * hundred "steps" is not a finer plan, it is a plan whose steps are single edits,
+ * and walking it would spend a whole job's clock on the overhead between them.
+ *
+ * Twenty-five because it is comfortably more than any plan this pipeline has
+ * produced and comfortably fewer than a job can walk: at the observed few minutes a
+ * step, past this the run is parking and continuing rather than finishing, which is
+ * a plan that wanted splitting into issues.
+ */
+export const MAX_PLAN_STEPS = 25
+
+/**
+ * Where in a plan a run was, for the two readers that have to be told.
+ *
+ * One-based and carrying the total, because both readers count from one: the notice a
+ * maintainer reads ("step 3 of 5") and the wrap-up prompt the interrupted model
+ * answers. The title rides along for the comment only — the model already has the
+ * plan in its own session.
+ *
+ * `null` everywhere this is optional means "a plan with no steps", which is a real
+ * and permanent case rather than a missing value: an invented "step 1 of 1" would
+ * tell a maintainer the plan had a structure it does not.
+ */
+export interface StepMarker {
+  number: number
+  total: number
+  title: string
+}
+
+/**
+ * One step, as the prompt that implements it states it.
+ *
+ * Deliberately the same three facts the comment shows, in a flatter shape: the model
+ * is being told what to do now, not shown a numbered list to choose from.
+ */
+export const describeStep = (step: PlanStep): string =>
+  [
+    `Title: ${step.title}`,
+    `Files: ${step.files.length === 0 ? '(none declared — decide from the plan)' : step.files.join(', ')}`,
+    `Verified by: ${step.verification.trim() === '' ? '(not stated — verify it yourself)' : step.verification.trim()}`,
+  ].join('\n')
+
+/** Longest a commit subject may be, which is git's own convention rather than a rule. */
+const SUBJECT_LIMIT = 72
+
+/**
+ * One `tasks.md` checkbox, as `REVIEW_AND_MUTATE` walks it (design D5).
+ *
+ * `line` is the 1-based line number in the file, so the box-check edit (`- [ ]`
+ * → `- [x]`) targets the exact line. `checked` is the state the parser read —
+ * the walk checks each box in the same commit as the step's work.
+ */
+export interface TaskCheckbox {
+  line: number
+  text: string
+  checked: boolean
+}
+
+const CHECKBOX = /^(\s*)- \[([ x])\] (.*)$/u
+
+/**
+ * Parses a `tasks.md` body into its ordered checkbox list.
+ *
+ * The walk reads the unchecked boxes from `state.stepsDone`; everything else
+ * (prose, headings, `---` rules) is ignored. Indented sub-item checkboxes are
+ * included — they are real steps a maintainer can break work into — and keep
+ * their indentation in the edit because {@link checkBoxText} rewrites only the
+ * `[ ]` marker.
+ */
+export const parseTaskCheckboxes = (markdown: string): TaskCheckbox[] => {
+  const boxes: TaskCheckbox[] = []
+  const lines = markdown.split('\n')
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = CHECKBOX.exec(lines[index] ?? '')
+    if (match === null) continue
+    const checked = match[2] === 'x'
+    boxes.push({ line: index + 1, text: match[3]?.trim() ?? '', checked })
+  }
+  return boxes
+}
+
+/**
+ * One `tasks.md` checkbox with its **absolute** position in the plan, as
+ * `REVIEW_AND_MUTATE` walks it (design D5).
+ *
+ * `number`/`total` are the marker a maintainer reads ("step 3 of 5"), counted
+ * among **every** box in the file — checked or not — so the number a step
+ * carries is stable across a run that checks the boxes ahead of it. `line` is
+ * the 1-based file line the box-check edit targets; `checked` is the state the
+ * parser read, which the walk treats as "done" and skips without a turn.
+ */
+export interface PlanBox {
+  number: number
+  total: number
+  text: string
+  line: number
+  checked: boolean
+}
+
+/**
+ * Every checkbox in a `tasks.md`, in file order, with absolute numbering.
+ *
+ * The walk reads the file once and visits each box by absolute index: a checked
+ * box is done and is skipped (the box-check is the persistence), an unchecked
+ * one gets a turn. Numbering among all boxes — not just the unchecked ones — is
+ * what keeps "step 3 of 5" honest on a `/continue` that arrives after steps 1
+ * and 2 have had their boxes ticked; numbering among the unchecked alone would
+ * re-label the third as the first and hide which step the cursor is on.
+ */
+export const planBoxes = (markdown: string): PlanBox[] => {
+  const checkboxes = parseTaskCheckboxes(markdown)
+  const total = checkboxes.length
+  return checkboxes.map((box, index) => ({
+    number: index + 1,
+    total,
+    text: box.text,
+    line: box.line,
+    checked: box.checked,
+  }))
+}
+
+/**
+ * The box-check edit for a line: `[ ]` → `[x] on its way into the step's commit.
+ * Rewrites only the marker, so an indented sub-item keeps its indentation and
+ * the text after the marker is untouched.
+ */
+export const checkBoxText = (line: string): string => line.replace(/^(\s*- \[) \]/u, '$1x]')
+
+/**
+ * A step's title, safe to put in a commit subject.
+ *
+ * One line and clamped. Not a safety boundary — commits are spawned as an argv
+ * vector with `shell: false`, so a title cannot become a command — but a model-written
+ * title is free to be a paragraph, and `git log --oneline` is how a maintainer reads
+ * a step-wise branch.
+ */
+export const stepSubject = (title: string): string => (title.split('\n')[0] ?? '').trim().slice(0, SUBJECT_LIMIT)

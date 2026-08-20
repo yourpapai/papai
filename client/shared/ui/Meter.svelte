@@ -44,18 +44,18 @@
   }
   .ui-meter__label {
     font-size: 12px;
-    color: var(--fg2);
+    color: var(--text-muted);
   }
   .ui-meter__value {
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg);
+    color: var(--text);
   }
   .ui-meter__value--over {
     color: var(--warn);
   }
   .ui-meter__suffix {
-    color: var(--fg3);
+    color: var(--text-dim);
   }
   .ui-meter__track {
     height: 5px;

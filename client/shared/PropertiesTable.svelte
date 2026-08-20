@@ -41,7 +41,7 @@
   .tree-empty {
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--fg4);
+    color: var(--text-dim);
     padding: 8px 0;
   }
   .tree-container {
@@ -55,11 +55,11 @@
     padding: 4px 0;
   }
   .tree-key-cell {
-    color: var(--fg2);
+    color: var(--text-muted);
     white-space: nowrap;
   }
   .tree-value-cell {
-    color: var(--fg);
+    color: var(--text);
     min-width: 0;
     overflow-wrap: anywhere;
   }

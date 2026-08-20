@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-export type { CompiledRecurrence, ParseResult } from './recurrence/recurrence.js'
-export { nextOccurrence, occurrencesBetween, parseRrule, recurrenceSpecToRrule } from './recurrence/recurrence.js'
+export type { CompiledRecurrence } from './recurrence/recurrence.js'
+export { nextOccurrence, occurrencesBetween, recurrenceSpecToRrule } from './recurrence/recurrence.js'
 
 import type { CompiledRecurrence } from './recurrence/recurrence.js'
 

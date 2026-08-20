@@ -81,4 +81,27 @@ describe('settings entry', () => {
     expect(window.location.search).not.toContain('code=')
     expect(document.body.textContent).toContain('/config')
   })
+
+  test('start mounts before bootstrap resolves, so the wait is never a blank page', async () => {
+    let releaseBootstrap = (): void => undefined
+    const gate = new Promise<void>((resolve) => {
+      releaseBootstrap = resolve
+    })
+    setMockFetch(async () => {
+      await gate
+      return json(bootstrapPayload, 200)
+    })
+    history.replaceState(null, '', '/settings')
+    document.body.innerHTML = '<div id="app"></div>'
+    const target = document.querySelector<HTMLElement>('#app')!
+    const started = start(target)
+    await drain()
+    // Bootstrap has not resolved yet: the component is mounted and showing the gate.
+    expect(document.body.textContent).toContain('Loading your settings')
+    releaseBootstrap()
+    await started
+    await drain()
+    expect(settingsSession.status).toBe('ready')
+    expect(document.querySelector('#profile')).not.toBeNull()
+  })
 })
