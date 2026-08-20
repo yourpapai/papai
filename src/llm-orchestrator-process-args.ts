@@ -15,6 +15,8 @@ export type ProcessMessageRest = readonly [
   actorRole?: ActorRole,
   originatingMessageIds?: readonly string[],
   segments?: readonly MessageSegment[],
+  isBotAdmin?: boolean,
+  platformInstanceId?: string,
 ]
 
 export type ProcessMessageFn = (
