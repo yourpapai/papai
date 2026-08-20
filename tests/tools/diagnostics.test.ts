@@ -3,11 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, afterEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import type { Tool } from 'ai'
+
+import { enableByokForContext, setByokRoles, upsertByokProvider } from '../../src/byok-llm/store.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
+import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
+import type { LlmProviderAccount } from '../../src/llm-providers/types.js'
 import { logMultistream, logger } from '../../src/logger.js'
-import { makeRunDiagnosticsTool, type DiagnosticsDeps } from '../../src/tools/diagnostics.js'
+import { makeRunDiagnosticsTool, maybeAddDiagnosticsTools, type DiagnosticsDeps } from '../../src/tools/diagnostics.js'
 import { applyGuestReadOnlyFilter, makeTools } from '../../src/tools/index.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import type { MakeToolsOptions } from '../../src/tools/types.js'
@@ -190,5 +197,85 @@ describe('run_diagnostics tool preferences', () => {
       { toolCallId: 't1', messages: [], context: {} },
     )
     expect(out).toMatchObject({ status: 'permission_denied' })
+  })
+})
+
+describe('run_diagnostics llm_config probe', () => {
+  const originalKey = process.env['INSTANCE_CONFIG_KEY']
+
+  const makeByokProvider = (): LlmProviderAccount => ({
+    id: 'prov-byok',
+    label: 'BYOK provider',
+    providerType: 'custom',
+    baseUrl: 'https://byok.invalid/v1',
+    apiKey: 'sk-byok',
+    verification: { status: 'unverified', error: null, at: null, models: [], modelsFetchedAt: null },
+  })
+
+  const seedByokMain = (configContextId: string): void => {
+    enableByokForContext(configContextId, 'admin-1')
+    upsertByokProvider(configContextId, makeByokProvider(), 'admin-1')
+    setByokRoles(
+      configContextId,
+      { main: { providerId: 'prov-byok', model: 'byok-main' }, small: null, embedding: null },
+      'admin-1',
+    )
+  }
+
+  const assembledLlmConfig = (options: MakeToolsOptions): Promise<unknown> => {
+    const tools: Record<string, Tool> = {}
+    maybeAddDiagnosticsTools(tools, options)
+    const runDiagnostics = tools['run_diagnostics']
+    assert(runDiagnostics !== undefined, 'run_diagnostics must be assembled')
+    return getToolExecutor(runDiagnostics)({})
+  }
+
+  beforeEach(async () => {
+    mockLogger()
+    process.env['INSTANCE_CONFIG_KEY'] = 'd'.repeat(64)
+    await setupTestDb()
+    clearLlmAdminCacheForTesting()
+  })
+
+  afterEach(() => {
+    if (originalKey === undefined) delete process.env['INSTANCE_CONFIG_KEY']
+    else process.env['INSTANCE_CONFIG_KEY'] = originalKey
+  })
+
+  test('reports byok when the config context has an enabled BYOK bundle', async () => {
+    seedByokMain(CONTEXT)
+    const result: unknown = await assembledLlmConfig(adminDmOptions())
+    assert(isRecord(result), 'diagnostics result must be an object')
+
+    expect(result['llm_config']).toBe('byok')
+  })
+
+  test('reports byok when the BYOK bundle is bound on the group config context of a thread-scoped storage context', async () => {
+    const configContextId = toScopedContextId({ platformInstanceId: 'pi-diag', nativeContextId: 'diag-group' })
+    const threadStorageId = toScopedThreadContextId({
+      platformInstanceId: 'pi-diag',
+      nativeContextId: 'diag-group',
+      threadId: 't-1',
+    })
+    seedByokMain(configContextId)
+    const result: unknown = await assembledLlmConfig(adminDmOptions({ storageContextId: threadStorageId }))
+    assert(isRecord(result), 'diagnostics result must be an object')
+
+    expect(result['llm_config']).toBe('byok')
+  })
+
+  test('reports central when only the admin/global config resolves', async () => {
+    const provider = createLlmProvider(
+      { label: 'admin-llm', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
+      'admin-1',
+    )
+    setAdminRoleBindings(
+      { main: { providerId: provider.id, model: 'gpt-main' }, small: null, embedding: null },
+      'admin-1',
+    )
+    const result: unknown = await assembledLlmConfig(adminDmOptions())
+    assert(isRecord(result), 'diagnostics result must be an object')
+
+    expect(result['llm_config']).toBe('central')
   })
 })
