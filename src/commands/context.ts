@@ -236,9 +236,7 @@ async function handleContextCommand(
       },
       '/context collector failed',
     )
-    await reply.text(
-      t('commands.context.buildFailed', getContextLanguage(auth.configContextId ?? auth.storageContextId)),
-    )
+    await reply.text(t('commands.context.buildFailed', locale))
     return
   }
 
