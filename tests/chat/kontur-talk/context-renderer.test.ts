@@ -44,3 +44,18 @@ describe('renderKonturTalkContext', () => {
     expect(result.content).not.toContain('undefined')
   })
 })
+
+describe('renderKonturTalkContext locale', () => {
+  test('ru localizes the header word and tokens unit', () => {
+    const result = renderKonturTalkContext(makeSnapshot({ locale: 'ru' }))
+    assert(result.method === 'formatted')
+    expect(result.content).toContain('**Контекст** · gpt-4o · 6,770 / 128,000 токенов (5.3%)')
+  })
+
+  test('ru localizes the approximate footer', () => {
+    const result = renderKonturTalkContext(makeSnapshot({ locale: 'ru', approximate: true }))
+    assert(result.method === 'formatted')
+    expect(result.content).toContain('_количество токенов приблизительное_')
+    expect(result.content).not.toContain('token counts are approximate')
+  })
+})

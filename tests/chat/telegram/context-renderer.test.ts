@@ -54,3 +54,33 @@ describe('renderTelegramContext', () => {
     expect(result.content).toMatch(/approximate/iu)
   })
 })
+
+describe('renderTelegramContext locale', () => {
+  test('ru localizes the header word and tokens unit', () => {
+    const result = renderTelegramContext({ ...standardContextSnapshot, locale: 'ru' })
+    assert(result.method === 'text')
+    expect(result.content).toContain('Контекст · gpt-4o · 6,770 / 128,000 токенов (5.3%)')
+  })
+
+  test('ru keeps the tk token suffix and en-US digit grouping', () => {
+    const result = renderTelegramContext({ ...standardContextSnapshot, locale: 'ru' })
+    assert(result.method === 'text')
+    expect(result.content).toContain('tk')
+    expect(result.content).not.toContain('тк')
+    expect(result.content).toContain('6,770')
+    expect(result.content).toContain('128,000')
+  })
+
+  test('ru localizes the approximate footer', () => {
+    const result = renderTelegramContext({ ...standardContextSnapshot, locale: 'ru', approximate: true })
+    assert(result.method === 'text')
+    expect(result.content).toContain('_количество токенов приблизительное_')
+    expect(result.content).not.toContain('token counts are approximate')
+  })
+
+  test('ru header without maxTokens uses the tokens unit', () => {
+    const result = renderTelegramContext({ ...standardContextSnapshot, locale: 'ru', maxTokens: null })
+    assert(result.method === 'text')
+    expect(result.content).toContain('Контекст · gpt-4o · 6,770 токенов')
+  })
+})

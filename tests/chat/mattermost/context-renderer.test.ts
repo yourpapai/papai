@@ -53,3 +53,25 @@ describe('renderMattermostContext', () => {
     expect(result.content).toMatch(/_token counts are approximate_/iu)
   })
 })
+
+describe('renderMattermostContext locale', () => {
+  test('ru localizes the header word and tokens unit', () => {
+    const result = renderMattermostContext({ ...standardContextSnapshot, locale: 'ru' })
+    assert(result.method === 'formatted')
+    expect(result.content).toContain('**Контекст** · gpt-4o · 6,770 / 128,000 токенов (5.3%)')
+  })
+
+  test('ru localizes the approximate footer', () => {
+    const result = renderMattermostContext({ ...standardContextSnapshot, locale: 'ru', approximate: true })
+    assert(result.method === 'formatted')
+    expect(result.content).toContain('_количество токенов приблизительное_')
+    expect(result.content).not.toContain('token counts are approximate')
+  })
+
+  test('ru keeps en-US digit grouping', () => {
+    const result = renderMattermostContext({ ...standardContextSnapshot, locale: 'ru' })
+    assert(result.method === 'formatted')
+    expect(result.content).toContain('6,770')
+    expect(result.content).toContain('128,000')
+  })
+})
