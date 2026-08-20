@@ -11,7 +11,7 @@
 ## 3. Analytics fact schemas
 
 - [x] 3.1 Add a fact-schema test (follow the local `tests/analytics/normalizer.test.ts` / event-props pattern): `tool_started` and `tool_completed` props payloads with `domain: 'diagnostics'` validate; a payload with a bogus domain still rejects. Verify: `bun test tests/analytics/` (new cases fail)
-- [ ] 3.2 Add `'diagnostics'` to the two `domain: z.enum([...])` literals (`ToolStartedPropsSchema` ~line 61, `ToolCompletedPropsSchema` ~line 73) in `src/analytics/event-props-execution.ts`, in place, no shared-schema extraction. Verify: `bun test tests/analytics/`
+- [x] 3.2 Add `'diagnostics'` to the two `domain: z.enum([...])` literals (`ToolStartedPropsSchema` ~line 61, `ToolCompletedPropsSchema` ~line 73) in `src/analytics/event-props-execution.ts`, in place, no shared-schema extraction. Verify: `bun test tests/analytics/`
 
 ## 4. Tool preferences (regression-only, no src change)
 
