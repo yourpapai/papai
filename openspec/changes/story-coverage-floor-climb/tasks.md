@@ -79,20 +79,28 @@ Section targets sum to 47 against a 44.6-unit deficit — a 2.4-unit margin.
 
 ## 4. Chat and settings surfaces (target: 17 function-units)
 
-4.1 and 4.2 were **not needed**. After section 3.2 the gate measured lines
-72.11% and functions 70.44%, clearing both target floors, so 4.3's stop rule
-applies: `src/chat/` and `src/debug/` stay as headroom for the next ratchet.
+4.1 was **not needed**; 4.2 was. After section 3.2 the gate measured lines
+72.11% and functions 70.44%, which clears both target floors but not the
+ratchet: `nextFloor` subtracts `EPSILON = 0.005` before flooring to two
+decimals, so a measured 70.44% writes a 0.69 functions floor, not 0.70. 4.3's
+stop rule reads against the floor 6.1 has to write, so section 4 stayed open
+until the measurement carried that margin. 4.2 supplied it and `src/chat/`
+stays as headroom for the next ratchet.
 
 - [ ] 4.1 Stories for the zero-function files under `src/chat/` (51 candidates:
       adapter helpers reachable from the existing Telegram and Discord story
       lanes).
       Verify: `bun test:stories:coverage` reports at least 11 further
       function-units
-- [ ] 4.2 Stories for the zero-function files under `src/debug/` (22
+- [x] 4.2 Stories for the zero-function files under `src/debug/` (22
       candidates: settings routes reachable through the settings story
       surface).
       Verify: `bun test:stories:coverage` reports at least 6 further
       function-units
+      Result: +6.1 function-units (70.44% -> 71.02%, lines 72.11% -> 72.52%)
+      from three admin-operations stories covering the LLM provider and role
+      routes, the user/open-access/authorized-group routes, and the MCP
+      catalog, plugin-server and super-admin message-history purge routes.
 - [x] 4.3 If the gate still measures below lines 71.00% or functions 70.00%,
       continue through the D2 order until it clears both. If it clears earlier,
       stop: the remaining files are headroom for the next ratchet.
@@ -100,16 +108,20 @@ applies: `src/chat/` and `src/debug/` stay as headroom for the next ratchet.
 
 ## 5. Catalog and ledger records
 
-- [ ] 5.1 Register each new story in `tests/stories/catalog/coverage.ts` and add
+- [x] 5.1 Register each new story in `tests/stories/catalog/coverage.ts` and add
       its behavior-ledger entry in `tests/stories/catalog/behaviors.ts`; no
       `blocked:missing-implementation` or `retired` entry is used as evidence.
       Verify: `bun test:stories:contracts`
 
 ## 6. Raise the floor
 
-- [ ] 6.1 Raise the floor from the green run and confirm it lands at 0.71/0.70.
+- [x] 6.1 Raise the floor from the green run and confirm it lands at 0.71/0.70.
       Verify: `bun coverage:ratchet:stories` writes the new values and
       `bun test:stories:coverage` exits 0 against them
+      Result: the ratchet wrote lines **0.72**, functions **0.70** — the lines
+      floor lands one hundredth above the change's target because the sections
+      that bought the functions margin carried lines with them. The gate reruns
+      green against both.
 
 ## 7. Re-record the qualification baseline
 

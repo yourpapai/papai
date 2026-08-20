@@ -223,6 +223,10 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-settings-admin-guardrails',
   'SCN-settings-admin-tool-defaults',
   'SCN-settings-admin-analytics',
+  // Phase 6 — admin operations surfaces (story-coverage-floor-climb)
+  'SCN-settings-admin-llm-providers',
+  'SCN-settings-admin-roster-access',
+  'SCN-settings-admin-mcp-and-history',
   'SCN-analytics-governed-turn',
   // Phase 6 — consent-gated analytics (story-coverage-floor-climb)
   'SCN-analytics-consent-grant',
@@ -1644,6 +1648,27 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-08-03',
     storyIds: [
       'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-analytics: an operator reviews and updates the analytics policy through settings',
+    ],
+  },
+  'SCN-settings-admin-llm-providers': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/admin-operations.story.test.ts#SCN-settings-admin-llm-providers: an admin relabels the LLM provider and rebinds the model roles',
+    ],
+  },
+  'SCN-settings-admin-roster-access': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/admin-operations.story.test.ts#SCN-settings-admin-roster-access: an admin manages the member roster, open DM access, and authorized groups',
+    ],
+  },
+  'SCN-settings-admin-mcp-and-history': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/admin-operations.story.test.ts#SCN-settings-admin-mcp-and-history: an admin edits the MCP catalog while only a super admin may purge history',
     ],
   },
   'SCN-analytics-consent-grant': {
