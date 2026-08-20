@@ -49,6 +49,6 @@ Ordered per design.md Migration Plan: every step is shippable alone, steps 1–2
 
 ## 7. Docs and final verification
 
-- [ ] 7.1 Rewrite `docs/architecture/sdd-pipeline.md`: Commands (new surface), Live rendering (TUI + LineRenderer fallback), Autonomy (single mode, assist semantics, unconditional audit), deadline section (config key + D10 race), watch section deleted; transcripts/session ledger documented. Verify: manual read against `sdd --help` output
-- [ ] 7.2 Note the `shared-tui-renderer` pending change re-scope (sdd-runner consumes format helpers only — `DynamicRenderer` deleted) in that change's proposal. Verify: `openspec show shared-tui-renderer --json`
-- [ ] 7.3 Run full gate: `bun test`, `bun run typecheck`, `bun run lint`, `bun run sdd-runner:format:check`, `bun security`; `openspec validate sdd-runner-simplify --strict`. Verify: all green, no new baseline entries needed for changed files under `scripts/mutation/baseline.json` (check `bun run test:mutate:changed` on the branch)
+- [x] 7.1 Rewrite `docs/architecture/sdd-pipeline.md`: Commands (new surface), Live rendering (TUI + LineRenderer fallback), Autonomy (single mode, assist semantics, unconditional audit), deadline section (config key + D10 race), watch section deleted; transcripts/session ledger documented. Verify: manual read against `sdd --help` output
+- [x] 7.2 Note the `shared-tui-renderer` pending change re-scope (sdd-runner consumes format helpers only — `DynamicRenderer` deleted) in that change's proposal. Verify: `openspec show shared-tui-renderer --json`
+- [x] 7.3 Run full gate: `bun test`, `bun run typecheck`, `bun run lint`, `bun run sdd-runner:format:check`, `bun security`; `openspec validate sdd-runner-simplify --strict`. Verify: all green, no new baseline entries needed for changed files under `scripts/mutation/baseline.json` (check `bun run test:mutate:changed` on the branch)
