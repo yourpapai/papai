@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import { subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
-import { logBuffer, logBufferStream, LogRingBuffer, type LogEntry } from '../../src/debug/log-buffer.js'
+import { logBuffer, logBufferStream, LogRingBuffer, shapeLogEntry, type LogEntry } from '../../src/debug/log-buffer.js'
 
 const makeEntry = (overrides: Partial<LogEntry> = {}): LogEntry => ({
   level: 30,
@@ -335,5 +335,89 @@ describe('LogRingBuffer filtering', () => {
       { scope: 'a', count: 2 },
       { scope: 'b', count: 1 },
     ])
+  })
+})
+
+describe('shapeLogEntry', () => {
+  test('keeps level, time, msg, scope and turnId', () => {
+    const entry = makeEntry({
+      scope: 'bot',
+      turnId: 'turn-1',
+      userText: 'find my tasks',
+      chatUserId: 'user-7',
+      err: { message: 'boom' },
+    })
+
+    expect(shapeLogEntry(entry)).toEqual({
+      level: 30,
+      time: entry.time,
+      msg: 'test message',
+      scope: 'bot',
+      turnId: 'turn-1',
+    })
+  })
+
+  test('keeps additional keys with number or boolean values', () => {
+    const entry = makeEntry({ durationMs: 42, retried: true, attempt: 2, cached: false })
+
+    expect(shapeLogEntry(entry)).toEqual({
+      level: 30,
+      time: entry.time,
+      msg: 'test message',
+      durationMs: 42,
+      retried: true,
+      attempt: 2,
+      cached: false,
+    })
+  })
+
+  test('drops additional keys with string, object, array or null values', () => {
+    const entry = makeEntry({
+      scope: 'llm-orch',
+      userText: 'secret',
+      chatUserId: 'user-7',
+      err: { message: 'boom' },
+      toolNames: ['searchTasks', 'createTask'],
+      lastPrompt: null,
+    })
+
+    expect(shapeLogEntry(entry)).toEqual({
+      level: 30,
+      time: entry.time,
+      msg: 'test message',
+      scope: 'llm-orch',
+    })
+  })
+
+  test('does not invent missing optional fields', () => {
+    const shaped = shapeLogEntry(makeEntry({ durationMs: 5 }))
+
+    expect('scope' in shaped).toBe(false)
+    expect('turnId' in shaped).toBe(false)
+  })
+
+  test('does not mutate the input entry', () => {
+    const entry = makeEntry({ userText: 'secret', err: { message: 'boom' }, durationMs: 3 })
+    const snapshot = structuredClone(entry)
+
+    shapeLogEntry(entry)
+
+    expect(entry).toEqual(snapshot)
+  })
+
+  test('is idempotent on already-shaped entries', () => {
+    const entry = makeEntry({
+      scope: 'bot',
+      turnId: 'turn-9',
+      userText: 'secret',
+      durationMs: 7,
+      cached: false,
+      err: { message: 'boom' },
+    })
+
+    const shapedOnce = shapeLogEntry(entry)
+    const shapedTwice = shapeLogEntry(shapedOnce)
+
+    expect(shapedTwice).toEqual(shapedOnce)
   })
 })

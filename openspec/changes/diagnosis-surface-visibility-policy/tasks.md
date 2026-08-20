@@ -9,7 +9,7 @@ See LICENSE in the project root for details.
 
 ## 1. Log-entry anonymity-safe shaping helper
 
-- [ ] 1.1 Extend `tests/debug/log-buffer.test.ts` with failing assertions for a
+- [x] 1.1 Extend `tests/debug/log-buffer.test.ts` with failing assertions for a
       pure shaping helper: keeps `level`, `time`, `msg`, `scope`, `turnId` plus
       any additional keys whose value is `number`/`boolean`; drops every other
       key (strings, objects, arrays); idempotent on already-safe entries.

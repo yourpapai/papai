@@ -107,6 +107,25 @@ export class LogRingBuffer {
 /** @public -- default instance, used by server.ts routes */
 export const logBuffer = new LogRingBuffer()
 
+const SHAPE_SKIP_KEYS = new Set(['level', 'time', 'msg', 'scope', 'turnId'])
+
+/**
+ * @public -- anonymity-safe egress shape for a log entry: keeps the attribution-free core
+ * (`level`, `time`, `msg`, optional `scope`/`turnId`) plus additional keys whose values are
+ * numbers or booleans; drops every other additional key (strings, objects, arrays, nulls).
+ * Idempotent: shaping an already-shaped entry returns an equal entry.
+ */
+export function shapeLogEntry(entry: LogEntry): LogEntry {
+  const shaped: LogEntry = { level: entry.level, time: entry.time, msg: entry.msg }
+  if (entry.scope !== undefined) shaped.scope = entry.scope
+  if (entry.turnId !== undefined) shaped.turnId = entry.turnId
+  for (const [key, value] of Object.entries(entry)) {
+    if (SHAPE_SKIP_KEYS.has(key)) continue
+    if (typeof value === 'number' || typeof value === 'boolean') shaped[key] = value
+  }
+  return shaped
+}
+
 function isLogEntry(value: unknown): value is LogEntry {
   if (typeof value !== 'object' || value === null) return false
   if (!('level' in value) || !('msg' in value) || !('time' in value)) return false
