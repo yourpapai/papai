@@ -1,6 +1,6 @@
 ## 1. Tool domain recognized
 
-- [ ] 1.1 Extend the `isToolDomain` case in `tests/tools/tool-metadata.test.ts` with `expect(isToolDomain('diagnostics')).toBe(true)` (mutation-killing assertion for the new array literal); confirm it fails for the right reason. Verify: `bun test tests/tools/tool-metadata.test.ts`
+- [x] 1.1 Extend the `isToolDomain` case in `tests/tools/tool-metadata.test.ts` with `expect(isToolDomain('diagnostics')).toBe(true)` (mutation-killing assertion for the new array literal); confirm it fails for the right reason. Verify: `bun test tests/tools/tool-metadata.test.ts`
 - [ ] 1.2 Add `'diagnostics'` to the `TOOL_DOMAINS` const array in `src/tools/tool-metadata.ts` — no `TOOL_METADATA` entries (phantom names pollute slug generation and behavior-audit closure); the unchanged `EXPECTED_STATIC` equality test proves no tools were added. Verify: `bun test tests/tools/tool-metadata.test.ts`
 
 ## 2. Analytics classification

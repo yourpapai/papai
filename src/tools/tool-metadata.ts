@@ -25,6 +25,7 @@ export const TOOL_DOMAINS = [
   'mcp',
   'plugin',
   'memory',
+  'diagnostics',
 ] as const
 
 export type ToolDomain = (typeof TOOL_DOMAINS)[number]
