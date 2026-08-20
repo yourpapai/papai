@@ -6,6 +6,8 @@
 import type { ModelMessage } from 'ai'
 
 import type { ContextSection, ContextSnapshot } from '../chat/types.js'
+import { t } from '../i18n/index.js'
+import type { Dictionary, Locale } from '../i18n/index.js'
 import { logger } from '../logger.js'
 import { resolveMaxTokens } from '../model-context.js'
 
@@ -15,6 +17,9 @@ export { resolveMaxTokens } from '../model-context.js'
 const log = logger.child({ scope: 'commands:context-collector' })
 
 type Fact = { identifier: string; title: string; url: string; last_seen: string }
+
+/** Section ids the collector emits; each has a `contextView.sections.<id>` catalog entry. */
+type SectionId = keyof Dictionary['contextView']['sections']
 
 export interface ContextCollectorDeps {
   getMainModel: () => string | null
@@ -28,7 +33,11 @@ export interface ContextCollectorDeps {
   getActiveToolDefinitions: () => Record<string, unknown>
   getDisclosedToolDefinitions: () => Record<string, unknown>
   countTokens: (text: string) => number
+  /** Locale for section labels and detail strings; defaults to `en`. */
+  locale?: Locale
 }
+
+const sectionLabel = (id: SectionId, locale: Locale): string => t(`contextView.sections.${id}`, locale)
 
 const FALLBACK_MODEL = 'unknown'
 
@@ -104,7 +113,7 @@ const makeSafeCounter = (raw: (text: string) => number): SafeCounter => {
   }
 }
 
-const buildSystemPromptSection = (deps: ContextCollectorDeps, counter: SafeCounter): ContextSection => {
+const buildSystemPromptSection = (deps: ContextCollectorDeps, counter: SafeCounter, locale: Locale): ContextSection => {
   const fullPrompt = deps.buildSystemPrompt()
   const customInstructions = deps.buildInstructionsBlock()
   const addendum = deps.getProviderAddendum()
@@ -113,14 +122,28 @@ const buildSystemPromptSection = (deps: ContextCollectorDeps, counter: SafeCount
   const addendumTokens = counter.count(addendum)
   const baseTokens = Math.max(0, totalTokens - customTokens - addendumTokens)
 
-  const children: ContextSection[] = [{ id: 'base_instructions', label: 'Base instructions', tokens: baseTokens }]
-  if (customTokens > 0) children.push({ id: 'custom_instructions', label: 'Custom instructions', tokens: customTokens })
-  if (addendumTokens > 0) children.push({ id: 'provider_addendum', label: 'Provider addendum', tokens: addendumTokens })
+  const children: ContextSection[] = [
+    { id: 'base_instructions', label: sectionLabel('base_instructions', locale), tokens: baseTokens },
+  ]
+  if (customTokens > 0) {
+    children.push({
+      id: 'custom_instructions',
+      label: sectionLabel('custom_instructions', locale),
+      tokens: customTokens,
+    })
+  }
+  if (addendumTokens > 0) {
+    children.push({
+      id: 'provider_addendum',
+      label: sectionLabel('provider_addendum', locale),
+      tokens: addendumTokens,
+    })
+  }
 
-  return { id: 'system_prompt', label: 'System prompt', tokens: totalTokens, children }
+  return { id: 'system_prompt', label: sectionLabel('system_prompt', locale), tokens: totalTokens, children }
 }
 
-const buildMemorySection = (deps: ContextCollectorDeps, counter: SafeCounter): ContextSection => {
+const buildMemorySection = (deps: ContextCollectorDeps, counter: SafeCounter, locale: Locale): ContextSection => {
   const memoryMessage = deps.getMemoryMessage()
   const summary = deps.getSummary() ?? ''
   const facts = deps.getFacts()
@@ -131,30 +154,34 @@ const buildMemorySection = (deps: ContextCollectorDeps, counter: SafeCounter): C
   const summaryTokens = counter.count(summary)
   const factsTokens = counter.count(factText)
 
-  const children: ContextSection[] = [{ id: 'summary', label: 'Summary', tokens: summaryTokens }]
+  const children: ContextSection[] = [{ id: 'summary', label: sectionLabel('summary', locale), tokens: summaryTokens }]
   const factsChild: ContextSection = {
     id: 'known_entities',
-    label: 'Known entities',
+    label: sectionLabel('known_entities', locale),
     tokens: factsTokens,
-    detail: `${String(facts.length)} fact${facts.length === 1 ? '' : 's'}`,
+    detail: t(facts.length === 1 ? 'contextView.factSingular' : 'contextView.factPlural', locale, {
+      count: facts.length,
+    }),
   }
   children.push(factsChild)
 
-  return { id: 'memory_context', label: 'Memory context', tokens: totalTokens, children }
+  return { id: 'memory_context', label: sectionLabel('memory_context', locale), tokens: totalTokens, children }
 }
 
-const buildHistorySection = (deps: ContextCollectorDeps, counter: SafeCounter): ContextSection => {
+const buildHistorySection = (deps: ContextCollectorDeps, counter: SafeCounter, locale: Locale): ContextSection => {
   const history = deps.getHistory()
   const tokens = counter.count(serializeHistory(history))
   return {
     id: 'conversation_history',
-    label: 'Conversation history',
+    label: sectionLabel('conversation_history', locale),
     tokens,
-    detail: `${String(history.length)} message${history.length === 1 ? '' : 's'}`,
+    detail: t(history.length === 1 ? 'contextView.messageSingular' : 'contextView.messagePlural', locale, {
+      count: history.length,
+    }),
   }
 }
 
-const buildToolsSection = (deps: ContextCollectorDeps, counter: SafeCounter): ContextSection => {
+const buildToolsSection = (deps: ContextCollectorDeps, counter: SafeCounter, locale: Locale): ContextSection => {
   // Progressive disclosure only exposes the always-on/meta tools at a turn's first step; the
   // rest of the catalog is discoverable via search_tools but its schemas only enter context
   // when load_tool pulls them in. Count the disclosed surface (what actually costs tokens now)
@@ -165,9 +192,9 @@ const buildToolsSection = (deps: ContextCollectorDeps, counter: SafeCounter): Co
   const tokens = counter.count(serializeTools(disclosed))
   return {
     id: 'tools',
-    label: 'Tools',
+    label: sectionLabel('tools', locale),
     tokens,
-    detail: `${String(activeCount)} active · ${String(availableCount)} available (progressive disclosure)`,
+    detail: t('contextView.progressiveDisclosure', locale, { active: activeCount, available: availableCount }),
   }
 }
 
@@ -175,12 +202,13 @@ export const collectContext = (contextId: string, deps: ContextCollectorDeps): C
   log.debug({ contextId }, 'collectContext called')
   const modelName = deps.getMainModel() ?? FALLBACK_MODEL
   const counter = makeSafeCounter(deps.countTokens)
+  const locale = deps.locale ?? 'en'
 
   const sections: ContextSection[] = [
-    buildSystemPromptSection(deps, counter),
-    buildMemorySection(deps, counter),
-    buildHistorySection(deps, counter),
-    buildToolsSection(deps, counter),
+    buildSystemPromptSection(deps, counter, locale),
+    buildMemorySection(deps, counter, locale),
+    buildHistorySection(deps, counter, locale),
+    buildToolsSection(deps, counter, locale),
   ]
 
   const totalTokens = sections.reduce((acc, s) => acc + s.tokens, 0)
@@ -198,5 +226,5 @@ export const collectContext = (contextId: string, deps: ContextCollectorDeps): C
     'Context collected',
   )
 
-  return { modelName, sections, totalTokens, maxTokens, approximate: counter.approximate }
+  return { modelName, sections, totalTokens, maxTokens, approximate: counter.approximate, locale }
 }

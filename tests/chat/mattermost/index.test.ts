@@ -567,6 +567,7 @@ describe('MattermostChatProvider', () => {
         totalTokens: 1500,
         maxTokens: 128_000,
         approximate: false,
+        locale: 'en',
         sections: [
           { id: 'system_prompt', label: 'System prompt', tokens: 500 },
           { id: 'tools', label: 'Tools', tokens: 1000 },

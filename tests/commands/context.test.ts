@@ -53,6 +53,7 @@ function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCom
       totalTokens: 6500,
       maxTokens: 128_000,
       approximate: false,
+      locale: 'en',
     }),
     buildProvider: safeBuildProvider,
     buildLiveToolSet: (
@@ -158,6 +159,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -192,6 +194,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -236,6 +239,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -321,6 +325,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -363,6 +368,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -549,6 +555,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -593,6 +600,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),

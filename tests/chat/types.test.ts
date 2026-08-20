@@ -180,6 +180,7 @@ describe('ContextSnapshot and related types', () => {
       totalTokens: 1500,
       maxTokens: 128_000,
       approximate: false,
+      locale: 'en',
     }
     expect(snapshot.modelName).toBe('gpt-4o')
     expect(snapshot.totalTokens).toBe(1500)
@@ -195,6 +196,7 @@ describe('ContextSnapshot and related types', () => {
       totalTokens: 0,
       maxTokens: null,
       approximate: true,
+      locale: 'en',
     }
     expect(snapshot.maxTokens).toBeNull()
     expect(snapshot.approximate).toBe(true)

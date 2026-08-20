@@ -22,6 +22,7 @@ describe('context-types', () => {
       totalTokens: 0,
       maxTokens: null,
       approximate: false,
+      locale: 'en',
     }
     expect(snapshot.modelName).toBe('gpt-4o')
     expect(snapshot.maxTokens).toBeNull()

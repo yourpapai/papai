@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { Locale } from '../i18n/index.js'
+
 /** One section of the LLM context window, with an optional nested breakdown. */
 export type ContextSection = {
   /** Stable machine id (`system_prompt`, `summary`, …); the language-independent key for emoji/label lookups. */
@@ -23,6 +25,8 @@ export type ContextSnapshot = {
   maxTokens: number | null
   /** True when token counts came from a char/4 fallback because tokenization failed. */
   approximate: boolean
+  /** Locale the section labels, detail strings, and renderer chrome are resolved in. */
+  locale: Locale
 }
 
 /** One field inside a Discord-style embed. */

@@ -14,6 +14,7 @@ const makeSnapshot = (overrides?: Partial<ContextSnapshot>): ContextSnapshot => 
   totalTokens: 1000,
   maxTokens: 8000,
   approximate: false,
+  locale: 'en',
   sections: [],
   ...overrides,
 })

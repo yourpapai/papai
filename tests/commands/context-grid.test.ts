@@ -13,6 +13,7 @@ const baseSnapshot = (overrides: Partial<ContextSnapshot> = {}): ContextSnapshot
   totalTokens: 0,
   maxTokens: 128_000,
   approximate: false,
+  locale: 'en',
   sections: [],
   ...overrides,
 })

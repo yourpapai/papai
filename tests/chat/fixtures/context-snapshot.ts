@@ -10,6 +10,7 @@ export const standardContextSnapshot: ContextSnapshot = {
   totalTokens: 6_770,
   maxTokens: 128_000,
   approximate: false,
+  locale: 'en',
   sections: [
     {
       id: 'system_prompt',
