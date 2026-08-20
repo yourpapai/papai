@@ -23,4 +23,4 @@
 
 ## 6. Full verification
 
-- [ ] 6.1 Run `bun run test:affected` in the loop, then the full `bun run test` plus `bun run typecheck` and `bun run lint`; read `reports/test/` artifacts for any failure, confirm zero regressions and that no affected `docs/architecture/*.md` page still omits `diagnostics`. Verify: `bun run test && bun run typecheck && bun run lint`
+- [x] 6.1 Run `bun run test:affected` in the loop, then the full `bun run test` plus `bun run typecheck` and `bun run lint`; read `reports/test/` artifacts for any failure, confirm zero regressions and that no affected `docs/architecture/*.md` page still omits `diagnostics`. Verify: `bun run test && bun run typecheck && bun run lint`
