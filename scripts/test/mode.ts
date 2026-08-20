@@ -16,7 +16,7 @@ export const CHILD_TIMEOUT_MS = '15000'
 export const CHILD_TIMEOUT_DEMOTE_MS = '30000'
 
 /** A 1-minute load at or above this fraction of the cores demotes a parallel-capable host. */
-export const LOAD_DEMOTION_RATIO = 0.75
+const LOAD_DEMOTION_RATIO = 0.75
 
 export interface ExecutionPlan {
   mode: ExecutionMode
