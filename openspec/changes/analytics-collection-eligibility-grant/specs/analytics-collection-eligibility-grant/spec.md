@@ -15,22 +15,28 @@ can emit events at all, and the symmetric path by which that ref is cleared.
 
 ### Requirement: Consent grants a purpose-keyed eligibility ref
 
-When a subject selects a pseudonymous analytics lane through the settings
+When a subject consents to a pseudonymous analytics lane through the settings
 preference handler, the system SHALL derive the collection ref key for that
 subject and purpose and persist an `allow` eligibility row, in the same
 transaction as the preference write.
 
+The handler's consent vocabulary is the two `PreferenceLane` values,
+`localLongitudinal` and `externalPseudonymous`, each `allow` or `deny`. Those
+are what gate the runtime's `local_pseudonymous` / `external_pseudonymous`
+lanes, so "consents to a pseudonymous lane" below means either preference lane
+reading `allow` after the write.
+
 #### Scenario: Subject opts into a pseudonymous lane
 
-- **WHEN** the settings preference handler stores `local_pseudonymous` or
-  `external_pseudonymous` for a subject
+- **WHEN** the settings preference handler stores `allow` for
+  `localLongitudinal` or `externalPseudonymous`
 - **THEN** an `allow` row exists for the derived ref key, and the next
   eligibility decision for that subject and lane no longer denies with
   `governance_incomplete`
 
-#### Scenario: Aggregate lane needs no ref
+#### Scenario: A subject who consents to neither lane needs no ref
 
-- **WHEN** the subject selects `local_aggregate` or `external_aggregate`
+- **WHEN** the write leaves both preference lanes reading `deny`
 - **THEN** no eligibility row is written, and the aggregate lane decision is
   unchanged
 
@@ -52,17 +58,18 @@ When a subject moves off a pseudonymous lane, the system SHALL clear the
 eligibility ref through the existing revocation path, in the same transaction
 as the preference write.
 
-#### Scenario: Subject switches to an aggregate lane
+#### Scenario: Subject withdraws one of two consents
 
-- **WHEN** the stored lane changes from `external_pseudonymous` to
-  `local_aggregate`
+- **WHEN** `externalPseudonymous` changes to `deny` while `localLongitudinal`
+  still reads `allow`
+- **THEN** the eligibility row stays in state `allow`, because consent to
+  either lane is consent to collect
+
+#### Scenario: Subject withdraws every consent
+
+- **WHEN** the write leaves both preference lanes reading `deny`
 - **THEN** the eligibility row is no longer in state `allow`, and the next
   pseudonymous decision for that subject denies
-
-#### Scenario: Subject turns analytics off
-
-- **WHEN** the stored lane changes to `off`
-- **THEN** the eligibility row is no longer in state `allow`
 
 ### Requirement: No grant without consent
 
@@ -72,8 +79,8 @@ SHALL NOT produce an `allow` row.
 
 #### Scenario: Runtime start with a stored pseudonymous preference and no ref
 
-- **WHEN** the analytics runtime starts for a subject whose stored lane is
-  pseudonymous but who has no eligibility row
+- **WHEN** the analytics runtime evaluates a fact for a subject whose stored
+  preference lane reads `allow` but who has no eligibility row
 - **THEN** the decision denies with `governance_incomplete` and no row is
   created
 
