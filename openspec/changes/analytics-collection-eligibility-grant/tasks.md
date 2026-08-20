@@ -52,7 +52,7 @@ See LICENSE in the project root for details.
 
 ## 5. Docs and close out
 
-- [ ] 5.1 Add the Stage C operator step to
+- [x] 5.1 Add the Stage C operator step to
       `docs/operations/analytics-runbook.md` now that a shipped grant
       mechanism exists; review the `/stats/*` anonymity contract in
       `docs/architecture/overview.md` for changes.

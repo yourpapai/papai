@@ -179,7 +179,16 @@ becomes zero-delta evidence by estimating crash loss.
   Stage B UTC weeks (executable: `assessStageCEntry`).
 - **Operate:** enable `local_pseudonymous` for explicit test actors or one
   controlled installation only; in consent mode only post-allow activity is
-  eligible. Run at least two weekly review cycles and one complete
+  eligible. Each pilot actor must then grant collection eligibility from their
+  own settings page — `PUT /settings/api/analytics/preferences` with
+  `localLongitudinal` (or `externalPseudonymous`) set to `allow`. That write
+  derives the actor's `collection-eligibility:v1` ref and commits it in the same
+  transaction as the consent record, so the two cannot diverge; until it lands,
+  every pseudonymous decision for that actor denies with
+  `governance_incomplete` and no event is written. Setting both lanes back to
+  `deny` revokes the ref in the same way. There is no operator-side grant: the
+  ref exists only as the shipped consequence of the actor's own consent.
+  Run at least two weekly review cycles and one complete
   authenticated export/withdraw/delete exercise; hand-calculate sessions,
   activation, outcomes, intent coverage, and censoring against the
   materializations; drill HMAC key backup/restore and a planned rekey.
