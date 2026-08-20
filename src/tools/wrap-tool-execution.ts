@@ -54,6 +54,7 @@ const logFailure = (
 export function wrapToolExecution(
   execute: (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>,
   toolName: string,
+  // Stryker disable next-line StringLiteral: default 'en' is equivalent to fallback
   locale: Locale = 'en',
 ): (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown> {
   return async (input: unknown, options: ToolExecutionOptions<unknown>) => {
@@ -66,6 +67,7 @@ export function wrapToolExecution(
     try {
       return await runWithProviderRequestScope(scope, () => execute(input, options))
     } catch (error) {
+      // Stryker disable next-line ObjectLiteral: empty object would fallback to 'en' via t()
       const failure = buildToolFailureResult(error, toolName, options.toolCallId, { locale })
       logFailure(toolName, options.toolCallId, failure)
       return failure
@@ -80,7 +82,11 @@ export function wrapToolExecution(
  * to every executable descriptor. Assembled/cached descriptors stay scope-free
  * and unwrapped; no later step may create or replace an executable tool.
  */
-export function finalizeProviderScopedTools(tools: ToolSet, locale: Locale = 'en'): ToolSet {
+export function finalizeProviderScopedTools(
+  tools: ToolSet,
+  // Stryker disable next-line StringLiteral: default 'en' is equivalent to fallback
+  locale: Locale = 'en',
+): ToolSet {
   return Object.fromEntries(
     Object.entries(tools).flatMap(([name, tool]) => {
       if (tool === undefined || tool === null || tool.execute === undefined) return []

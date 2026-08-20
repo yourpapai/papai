@@ -287,6 +287,12 @@ describe('extractAppError defensive extraction', () => {
     expect(extractAppError(null)).toBe(null)
   })
 
+  test('returns null for plain string and number inputs', () => {
+    expect(extractAppError('plain string')).toBe(null)
+    expect(extractAppError(42)).toBe(null)
+    expect(extractAppError(undefined)).toBe(null)
+  })
+
   test('returns null for {appError: non-AppError}', () => {
     expect(extractAppError({ appError: 'not-an-error' })).toBe(null)
   })

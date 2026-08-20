@@ -39,16 +39,21 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 export const isBaselineMap = (value: unknown): value is BaselineMap =>
   isRecord(value) && Object.values(value).every((v) => typeof v === 'number' && Number.isFinite(v))
 
+const isLocaleDataFile = (relPath: string): boolean => relPath.startsWith('src/i18n/locales/')
+
 /**
  * Build a baseline map from per-file run results. Files with no scoreable
  * mutants (`scored === 0`) are excluded: a 0 score from "no mutants" is not a
  * real coverage signal — `resolveRatchet` skips them anyway, and recording a
  * placeholder would lock such files to a meaningless threshold.
+ * Locale data files (`src/i18n/locales/`) are also excluded — they are plain
+ * string catalogs with no branching logic worth mutating.
  */
 export const buildBaselineFromPerFile = (perFile: readonly PerFileScore[]): BaselineMap => {
   const out: BaselineMap = {}
   for (const entry of perFile) {
     if (entry.merged.scored === 0) continue
+    if (isLocaleDataFile(entry.sourceFile)) continue
     out[entry.sourceFile] = entry.merged.score
   }
   return out

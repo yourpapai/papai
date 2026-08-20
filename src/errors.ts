@@ -115,6 +115,7 @@ const getSystemMessage = (error: SystemError, locale: Locale): string => {
       return t('errors.system.configMissing', locale, { variable: error.variable })
     case 'network-error':
       return t('errors.system.networkError', locale, { message: error.message })
+    // Stryker disable next-line StringLiteral,ConditionalExpression: explicit 'unexpected' duplicates default but keeps switch exhaustive - equivalent mutants
     case 'unexpected':
       return t('errors.system.unexpected', locale)
     default:
