@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 ## 1. Tool options surface
 
 - [x] 1.1 Add failing test: `MakeToolsOptions` accepts optional `isBotAdmin?: boolean` and `platformInstanceId?: string` (accepts `{isBotAdmin: true, platformInstanceId: 'pi-1'}`, `{isBotAdmin: false}`, and omitting both) — `bun test tests/tools/types.test.ts`
-- [ ] 1.2 Add the two optional fields to `MakeToolsOptions` in `src/tools/types.ts` with doc comments mirroring the existing field style — `bun test tests/tools/types.test.ts`
+- [x] 1.2 Add the two optional fields to `MakeToolsOptions` in `src/tools/types.ts` with doc comments mirroring the existing field style — `bun test tests/tools/types.test.ts`
 
 ## 2. Identity thread through queue and handler
 
