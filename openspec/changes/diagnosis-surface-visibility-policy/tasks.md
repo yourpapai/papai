@@ -48,7 +48,7 @@ See LICENSE in the project root for details.
       `recentNotifications` / `recentToolFailures` excluded, `recentLlm`
       included but shaped; scheduler/pollers/messageCache/stats unchanged).
       Verify: `bun test tests/debug/per-session-visibility.test.ts tests/debug/sse-log-filter.test.ts` (fails)
-- [ ] 3.2 Edit `src/debug/state-collector.ts`: delete `adminUserId` /
+- [x] 3.2 Edit `src/debug/state-collector.ts`: delete `adminUserId` /
       `adminVisibility` module state, `init()`, and
       `isScopeVisibleToCurrentAdmin`; registry value becomes
       `{ filter, adminUserId }`; `onEvent` loses its visibility early-return
