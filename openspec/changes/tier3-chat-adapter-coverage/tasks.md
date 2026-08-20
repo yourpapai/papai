@@ -65,7 +65,7 @@ See LICENSE in the project root for details.
 
 ## 6. Close out
 
-- [ ] 6.1 Run `bun test`, `bun run typecheck`, `bun run lint`,
+- [x] 6.1 Run `bun test`, `bun run typecheck`, `bun run lint`,
       `bun test:stories:coverage`, `bun test:smoke`, `bun test:platform`;
       update `docs/architecture/behaviors.md` if the scenarios surface
       undocumented live-status ordering.
