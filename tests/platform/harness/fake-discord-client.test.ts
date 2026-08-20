@@ -135,6 +135,36 @@ describe('fake Discord client', () => {
     fake.assertClean()
   })
 
+  test('serves a seeded parent message through channel.messages.fetch', async () => {
+    const fake = createFakeDiscordClient({ botId: 'discord-bot', username: 'papai' })
+    fake.seedChannelMessage({ id: 'parent-1', author: { id: 'discord-bot', username: 'papai' }, content: 'earlier' })
+
+    await expect(fake.channel.messages.fetch('parent-1')).resolves.toEqual({
+      id: 'parent-1',
+      author: { id: 'discord-bot', username: 'papai' },
+      content: 'earlier',
+    })
+    await expect(fake.channel.messages.fetch('never-seeded')).rejects.toThrow('Unknown Message')
+
+    await fake.client.destroy()
+    fake.assertClean()
+  })
+
+  test('fails only the next channel send when one is armed', async () => {
+    const fake = createFakeDiscordClient({ botId: 'discord-bot', username: 'papai' })
+    fake.failNextChannelSend()
+
+    await expect(fake.channel.send({ content: 'status' })).rejects.toThrow('configured channel send rejection')
+    // A failed send produced no message, so it must leave no trace the way a real
+    // rejected REST call leaves none -- and the arming must not survive it.
+    expect(fake.channelCalls()).toEqual([])
+    await fake.channel.send({ content: 'reply' })
+    expect(fake.sentContents()).toEqual(['reply'])
+
+    await fake.client.destroy()
+    fake.assertClean()
+  })
+
   test('records a rejected defer attempt and waits for response settlement before cleanup', async () => {
     const fake = createFakeDiscordClient({
       botId: 'discord-bot',

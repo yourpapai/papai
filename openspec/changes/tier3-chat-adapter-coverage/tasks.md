@@ -9,7 +9,7 @@ See LICENSE in the project root for details.
 
 ## 1. Discord fake boundary
 
-- [ ] 1.1 Failing contract tests in
+- [x] 1.1 Failing contract tests in
       `tests/platform/harness/fake-discord-client.test.ts` for parent-message
       `messages.fetch` serving via `seedChannelMessage` and one-shot
       `failNextChannelSend`; then implement both in

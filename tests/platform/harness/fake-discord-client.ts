@@ -21,7 +21,13 @@ type ChannelCall =
   | { method: 'delete'; messageId: string }
   | { method: 'sendTyping' }
 
-type FakeChannel = SendableChannel & { type: number }
+/** Shape `channel.messages.fetch` resolves with, per `DispatchableMessage`. */
+export type SeededChannelMessage = { id: string; author: { id: string; username: string }; content: string }
+
+type FakeChannel = SendableChannel & {
+  type: number
+  messages: { fetch: (id: string) => Promise<SeededChannelMessage> }
+}
 type RuntimeButtonInteraction = ButtonInteractionLike & { type: 3; componentType: 2 }
 
 export type FakeDiscordClient = {
@@ -32,6 +38,10 @@ export type FakeDiscordClient = {
   emitReady(): void
   emitMessage(message: DispatchableMessage): void
   emitButton(overrides?: Partial<ButtonInteractionLike>): void
+  /** Make the parent available to `channel.messages.fetch`, as a real channel history would. */
+  seedChannelMessage(message: SeededChannelMessage): void
+  /** Arm a one-shot rejection of the next `channel.send`, mirroring a single failed REST call. */
+  failNextChannelSend(): void
   flush(): Promise<void>
   button(overrides?: Partial<ButtonInteractionLike>): ButtonInteractionLike
   sentContents(): readonly string[]
@@ -66,6 +76,8 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
   const followUps: Array<{ content: string; flags?: number; ephemeral?: boolean }> = []
   const eventQueue: QueuedEvent[] = []
   const pendingInteractionResponses = new Set<Promise<unknown>>()
+  const seededMessages = new Map<string, SeededChannelMessage>()
+  let failNextSend = false
   let sentCount = 0
   let destroyed = false
   let loginToken: string | null = null
@@ -96,6 +108,12 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
     id: 'channel-1',
     type: 0,
     send(payload) {
+      if (failNextSend) {
+        // Consumed by the attempt: a rejected send leaves no message, so it records
+        // nothing, and the arming does not carry over to the next send.
+        failNextSend = false
+        return Promise.reject(new Error('configured channel send rejection'))
+      }
       const id = `sent-${String(++sentCount)}`
       sends.push(payload.content ?? '')
       calls.push({ method: 'send', content: payload.content })
@@ -114,6 +132,15 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
     sendTyping() {
       calls.push({ method: 'sendTyping' })
       return Promise.resolve()
+    },
+    messages: {
+      fetch(id) {
+        const seeded = seededMessages.get(id)
+        // discord.js rejects with this API error for an id the channel does not hold;
+        // the adapter's reply-to-bot detection only sees the rejection.
+        if (seeded === undefined) return Promise.reject(new Error('Unknown Message'))
+        return Promise.resolve(seeded)
+      },
     },
   }
 
@@ -190,6 +217,12 @@ export function createFakeDiscordClient(options: FakeDiscordClientOptions): Fake
     },
     emitButton(overrides): void {
       enqueueListeners('interactionCreate', [createButton(overrides)])
+    },
+    seedChannelMessage(message): void {
+      seededMessages.set(message.id, message)
+    },
+    failNextChannelSend(): void {
+      failNextSend = true
     },
     async flush(): Promise<void> {
       while (eventQueue.length > 0) {
