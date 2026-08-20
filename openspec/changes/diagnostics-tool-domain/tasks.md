@@ -19,7 +19,7 @@
 
 ## 5. Docs restating the bounded domain list
 
-- [ ] 5.1 Update the "richer domains collapse onto …" sentence in `src/tools/AGENTS.md` to include `diagnostics`; check `docs/architecture/tools.md` and update if it repeats the list; update the `tool_started`/`tool_completed` domain-enum rows in `docs/research/analytics-metrics/02-metric-catalog.md`. Verify: `grep -rn "diagnostics" src/tools/AGENTS.md docs/architecture/tools.md docs/research/analytics-metrics/02-metric-catalog.md`
+- [x] 5.1 Update the "richer domains collapse onto …" sentence in `src/tools/AGENTS.md` to include `diagnostics`; check `docs/architecture/tools.md` and update if it repeats the list; update the `tool_started`/`tool_completed` domain-enum rows in `docs/research/analytics-metrics/02-metric-catalog.md`. Verify: `grep -rn "diagnostics" src/tools/AGENTS.md docs/architecture/tools.md docs/research/analytics-metrics/02-metric-catalog.md`
 
 ## 6. Full verification
 
