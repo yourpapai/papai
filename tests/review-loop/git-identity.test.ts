@@ -63,6 +63,16 @@ describe('a commit made under the applied identity', () => {
       // would sneak back into the environment this test is about not having.
       GIT_CONFIG_GLOBAL: '/dev/null',
       GIT_CONFIG_SYSTEM: '/dev/null',
+      // Emptying the config files is not enough: with no `user.*` set, git
+      // synthesises an identity from the OS username and hostname and commits
+      // anyway. That fallback is what a hosted runner cannot do (no gecos, no
+      // resolvable hostname), so `user.useConfigOnly` disables it and the
+      // runner's real "Author identity unknown" failure reproduces on any
+      // machine. Env-supplied identities still win over it, which is what the
+      // second half of this test asserts.
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'user.useConfigOnly',
+      GIT_CONFIG_VALUE_0: 'true',
     }
 
     expect(() => {
