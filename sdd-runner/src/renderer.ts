@@ -44,9 +44,11 @@ export function renderPipelineMap(
   details: {
     readonly stageTimes?: ReadonlyMap<string, { wallMs: number; costUsd: number }>
     readonly activeElapsedMs?: number
+    /** Terminal width; at 60+ cols stages join one line, below they stack. */
+    readonly width?: number
   } = {},
 ): string[] {
-  return STAGE_ORDER.map((stage) => {
+  const lines = STAGE_ORDER.map((stage) => {
     let status: 'done' | 'active' | 'pending' | 'skipped' = state.stages[stage]
     if (stage === 'atomicity' && state.depth === 'S') status = 'skipped'
     const icon = STAGE_ICONS[status] ?? STAGE_ICONS['pending']
@@ -62,6 +64,8 @@ export function renderPipelineMap(
     }
     return `${icon} ${stage} ${status}${suffix}`
   })
+  if (details.width !== undefined && details.width >= 60) return [lines.join(` ${MIDDLE_DOT} `)]
+  return lines
 }
 
 /** Elapsed-seconds formatting for stage markers (D10). */

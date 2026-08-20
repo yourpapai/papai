@@ -78,7 +78,7 @@ function slotRow(slot: SlotState): string {
 
 export function createRunView(): (props: RunViewProps) => ReturnType<typeof createElement> {
   return function RunView(props: RunViewProps): ReturnType<typeof createElement> {
-    const pipeline = renderPipelineMap(props.state)
+    const pipeline = renderPipelineMap(props.state, { width: props.width })
     const burndown = props.state.perRound.map(
       (record) =>
         `round ${record.round}: ${record.counts.blocker}b ${record.counts.material}m ${record.counts.nitpick}n`,

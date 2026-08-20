@@ -29,10 +29,10 @@ Ordered per design.md Migration Plan: every step is shippable alone, steps 1–2
 - [x] 4.3 Implement the running screen over the existing fold layer (`foldSlots`/`foldFindings`/`ReplayFolder`); no new state in components. Verify: `bun test tests/sdd-runner/tui-running.test.ts`
 - [x] 4.4 Failing tests for the gate screen: item list with evidence, checkbox toggles, TextInput redirects/answers, approve gated on ack + blockers answered, consequences rendered beside `(a)pprove/(e)xtend/(x)abort`, policy-prechecked items read-only. Verify: `bun test tests/sdd-runner/tui-gate.test.ts`
 - [x] 4.5 Implement the gate screen calling the decision logic extracted from `gate-session.ts`, persisting through `gate-answers.ts` (write-then-parse self-check guards every write); delete `clack-prompter.ts`/`composition-prompter.ts`/readline path. Verify: `bun test tests/sdd-runner/tui-gate.test.ts && bun test tests/sdd-runner/gate-answers.test.ts`
-- [ ] 4.6 Failing tests + implementation for calm-stop keys (`q`/first Ctrl-C → calm stop; second → exit 130; `exitOnCtrlC: false`) and the deadline countdown display with first-writer-wins race vs the expiry claim (D10). Verify: `bun test tests/sdd-runner/tui-signals.test.ts`
-- [ ] 4.7 Failing tests + implementation for the disposable-view restore: unmount, re-mount from `events.ndjson` replay alone, including partially-answered gate state. Verify: `bun test tests/sdd-runner/tui-restore.test.ts`
-- [ ] 4.8 Failing tests + implementation for narrow-terminal degradation (stacked regions under 60 cols, no truncated decision lines). Verify: `bun test tests/sdd-runner/tui-narrow.test.ts`
-- [ ] 4.9 TTY/CI detection matrix tests (stdout TTY × stdin TTY × `CI` × `TERM=dumb` → TUI or LineRenderer; `SDD_DEBUG=1` raises line altitude). Verify: `bun test tests/sdd-runner/render-mode.test.ts`
+- [x] 4.6 Failing tests + implementation for calm-stop keys (`q`/first Ctrl-C → calm stop; second → exit 130; `exitOnCtrlC: false`) and the deadline countdown display with first-writer-wins race vs the expiry claim (D10). Verify: `bun test tests/sdd-runner/tui-signals.test.ts`
+- [x] 4.7 Failing tests + implementation for the disposable-view restore: unmount, re-mount from `events.ndjson` replay alone, including partially-answered gate state. Verify: `bun test tests/sdd-runner/tui-restore.test.ts`
+- [x] 4.8 Failing tests + implementation for narrow-terminal degradation (stacked regions under 60 cols, no truncated decision lines). Verify: `bun test tests/sdd-runner/tui-narrow.test.ts`
+- [x] 4.9 TTY/CI detection matrix tests (stdout TTY × stdin TTY × `CI` × `TERM=dumb` → TUI or LineRenderer; `SDD_DEBUG=1` raises line altitude). Verify: `bun test tests/sdd-runner/render-mode.test.ts`
 
 ## 5. Config: five keys, single autonomy mode (coexists)
 
