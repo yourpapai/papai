@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { Box, Text, render, useInput } from 'ink'
-import { createElement, useCallback, useEffect, useState } from 'react'
+import { createElement, useCallback, useEffect, useRef, useState } from 'react'
 
 import { renderGateAnswers, responseFromAnswers } from './gate-answers.js'
 import type { GateAnswers } from './gate-answers.js'
@@ -27,13 +27,20 @@ export type { KeyFlags } from './gate-session-state.js'
 export interface KeyFeed {
   readonly onKey: (handler: (input: string, key: KeyFlags) => void) => () => void
   readonly emit: (input: string, key: KeyFlags) => void
+  /** Resolves once a consumer subscribes, so scripted keys are never emitted before the session listens. */
+  readonly whenSubscribed: Promise<void>
 }
 
 export function createKeyFeed(): KeyFeed {
   const handlers: Array<(input: string, key: KeyFlags) => void> = []
+  let resolveSubscribed!: () => void
+  const whenSubscribed = new Promise<void>((resolve) => {
+    resolveSubscribed = resolve
+  })
   return {
     onKey: (handler) => {
       handlers.push(handler)
+      resolveSubscribed()
       return () => {
         const index = handlers.indexOf(handler)
         handlers.splice(index, 1)
@@ -42,6 +49,7 @@ export function createKeyFeed(): KeyFeed {
     emit: (input, key) => {
       for (const handler of [...handlers]) handler(input, key)
     },
+    whenSubscribed,
   }
 }
 
@@ -64,20 +72,23 @@ export function GateSessionTui(props: GateSessionTuiProps): ReturnType<typeof cr
     input: null,
     inputText: '',
   })
+  const stateRef = useRef<SessionState>(state)
   const settle = useCallback(
     (decision: Decision) => {
-      onSettle(decisionAnswers(state, view, decision))
+      onSettle(decisionAnswers(stateRef.current, view, decision))
     },
-    [state, view, onSettle],
+    [view, onSettle],
   )
   const handle = useCallback(
     (input: string, key: KeyFlags) => {
-      const action = reduceSession(state, view, input, key)
-      if (action.kind === 'state') setState(action.state)
-      else if (action.kind === 'settle') settle(action.decision)
+      const action = reduceSession(stateRef.current, view, input, key)
+      if (action.kind === 'state') {
+        stateRef.current = action.state
+        setState(action.state)
+      } else if (action.kind === 'settle') settle(action.decision)
       else if (action.kind === 'abandon') onAbandoned()
     },
-    [state, view, settle, onAbandoned],
+    [view, settle, onAbandoned],
   )
   useInput(
     (input, key) => {
@@ -166,21 +177,11 @@ function keyOf(token: string): KeyFlags {
   }
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
-
 async function feedScript(feed: KeyFeed, script: string): Promise<void> {
-  let chain = delay(20)
+  await feed.whenSubscribed
   for (const token of tokensOf(script)) {
-    chain = chain.then(() => {
-      feed.emit(token, keyOf(token))
-      return delay(10)
-    })
+    feed.emit(token, keyOf(token))
   }
-  await chain
 }
 
 /**
@@ -231,11 +232,7 @@ export function runTuiGateSession(deps: TuiGateSessionDeps): Promise<TuiGateSess
     )
     if (keys === undefined) return
     void feedScript(keys, deps.keyScript ?? '').then(() => {
-      // give a settle triggered by the last key a beat to land before
-      // declaring the exhausted script abandoned
-      void delay(50).then(() => {
-        finish({ status: 'abandoned' })
-      })
+      finish({ status: 'abandoned' })
     })
   })
 }

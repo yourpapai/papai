@@ -12,7 +12,8 @@ import type { GateAnswers, GateAnswerItem } from '../../sdd-runner/src/gate-answ
 import { renderGateAnswers, responseFromAnswers } from '../../sdd-runner/src/gate-answers.js'
 import { parseGateResponse } from '../../sdd-runner/src/gate-model.js'
 import type { GateSessionView } from '../../sdd-runner/src/gate-session.js'
-import { GateSessionTui, runTuiGateSession } from '../../sdd-runner/src/tui-gate-session.js'
+import type { KeyFlags } from '../../sdd-runner/src/tui-gate-session.js'
+import { createKeyFeed, GateSessionTui, runTuiGateSession } from '../../sdd-runner/src/tui-gate-session.js'
 
 const VIEW: GateSessionView = {
   gateMode: 'early',
@@ -125,6 +126,56 @@ describe('TUI gate session driver (4.5)', () => {
     const finalView: GateSessionView = { ...VIEW, gateMode: 'final' }
     const { settled } = await drive(['e'], finalView)
     expect(settled.length).toBe(0)
+  })
+})
+
+describe('GateSessionTui scripted key feed', () => {
+  it('applies a synchronous key burst after subscription without losing keys', async () => {
+    const feed = createKeyFeed()
+    const settled: GateAnswers[] = []
+    render(
+      createElement(GateSessionTui, {
+        view: VIEW,
+        onSettle: (answers) => {
+          settled.push(answers)
+        },
+        onAbandoned: () => {},
+        keys: feed,
+      }),
+    )
+    await feed.whenSubscribed
+    const plain: KeyFlags = {
+      upArrow: false,
+      downArrow: false,
+      return: false,
+      escape: false,
+      backspace: false,
+      delete: false,
+    }
+    const down: KeyFlags = { ...plain, downArrow: true }
+    const cr: KeyFlags = { ...plain, return: true }
+    const burst: ReadonlyArray<readonly [string, KeyFlags]> = [
+      ['\u001b[B', down],
+      ['\u001b[B', down],
+      ['\r', cr],
+      ['O', plain],
+      ['V', plain],
+      ['E', plain],
+      ['R', plain],
+      ['R', plain],
+      ['I', plain],
+      ['D', plain],
+      ['E', plain],
+      ['\r', cr],
+      ['\u001b[B', down],
+      [' ', plain],
+      ['a', plain],
+    ]
+    for (const [token, key] of burst) {
+      feed.emit(token, key)
+    }
+    expect(settled.length).toBe(1)
+    expect(settled[0]?.decision).toBe('approve')
   })
 })
 
