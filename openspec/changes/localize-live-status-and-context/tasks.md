@@ -40,5 +40,5 @@ See LICENSE in the project root for details.
 
 - [x] 4.1 Run the full test suite and read the persisted report: `bun run test`
 - [x] 4.2 Run typecheck and lint: `bun run typecheck && bun run lint`
-- [ ] 4.3 Run the remaining checks (knip, format) via the wrapped gate: `bun check:full`
+- [x] 4.3 Run the remaining checks (knip, format) via the wrapped gate: `bun check:full`
 - [ ] 4.4 Update affected docs — sweep `docs/architecture/*.md` (behaviors.md live-status entry, commands.md `/context` notes) for any now-stale "English-only" claims about these two surfaces; record the localization there: `git status --short docs/`
