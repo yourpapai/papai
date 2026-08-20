@@ -172,6 +172,27 @@ export async function runAggregatedInspector(
   return { ...result.value, kind: 'inspected', usage: result.usage }
 }
 
+function buildAggregatedInspectorUnavailable(
+  deps: { log: ProgressReporter; trace: TraceLogger },
+  issues: readonly { id: string }[],
+  round: number,
+  collector: RoundCollector,
+  error: unknown,
+): { kind: 'unavailable'; reasoning: string; usage: AgentUsage; results: AggregatedInspectorResult['results'] } {
+  const reasoning = `inspector unavailable: ${error instanceof Error ? error.message : String(error)}`
+  deps.log.log(`[inspect] aggregated inspector unavailable: ${reasoning}`)
+  for (const { id } of issues) {
+    emitInspectComplete(deps.trace, round, id, false, 0, reasoning)
+    tallyInspector(collector, false)
+  }
+  return {
+    kind: 'unavailable',
+    reasoning,
+    usage: error instanceof AgentRunError ? error.usage : emptyUsage(),
+    results: issues.map(({ id }) => ({ id, addresses: false, reasoning, confidence: 0 })),
+  }
+}
+
 export async function runAggregatedInspectorOrTreatAsRejection(
   deps: {
     config: {
@@ -215,17 +236,6 @@ export async function runAggregatedInspectorOrTreatAsRejection(
       collector,
     )
   } catch (error) {
-    const reasoning = `inspector unavailable: ${error instanceof Error ? error.message : String(error)}`
-    deps.log.log(`[inspect] aggregated inspector unavailable: ${reasoning}`)
-    for (const { id } of issues) {
-      emitInspectComplete(deps.trace, round, id, false, 0, reasoning)
-      tallyInspector(collector, false)
-    }
-    return {
-      kind: 'unavailable',
-      reasoning,
-      usage: error instanceof AgentRunError ? error.usage : emptyUsage(),
-      results: issues.map(({ id }) => ({ id, addresses: false, reasoning, confidence: 0 })),
-    }
+    return buildAggregatedInspectorUnavailable(deps, issues, round, collector, error)
   }
 }
