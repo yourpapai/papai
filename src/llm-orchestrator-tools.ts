@@ -144,6 +144,10 @@ export type InvocationSource = {
   history: readonly ModelMessage[]
   userText: string
   actorRole?: ActorRole
+  /** Whether the acting user is a bot admin; absent means not an admin. */
+  isBotAdmin?: boolean
+  /** Platform instance the turn originated from; absent when unknown. */
+  platformInstanceId?: string
 }
 
 /** Constructs LlmInvocationOptions by binding askPermissionViaChat to the reply surface. */
