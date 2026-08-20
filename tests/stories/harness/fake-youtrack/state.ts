@@ -118,6 +118,16 @@ export const createFakeYouTrackState = (): FakeYouTrackState => {
     sprints: new Map(),
     seq: 0,
   }
+  seedFakeYouTrackDefaults(state)
+  return state
+}
+
+/**
+ * Seeds the baseline every fake instance starts from: the shared state bundle
+ * and the default agile board. `resetFakeYouTrackState` reapplies it so a reset
+ * instance is indistinguishable from a freshly created one.
+ */
+const seedFakeYouTrackDefaults = (state: FakeYouTrackState): void => {
   state.stateValues.set(
     STATE_BUNDLE_ID,
     STATE_VALUES.map((name, index) => ({
@@ -129,7 +139,6 @@ export const createFakeYouTrackState = (): FakeYouTrackState => {
   )
   const boardId = nextId(state, 'agile')
   state.agiles.set(boardId, { id: boardId, name: 'Main Board' })
-  return state
 }
 
 export const resetFakeYouTrackState = (state: FakeYouTrackState): void => {
@@ -142,6 +151,7 @@ export const resetFakeYouTrackState = (state: FakeYouTrackState): void => {
   state.agiles.clear()
   state.sprints.clear()
   state.seq = 0
+  seedFakeYouTrackDefaults(state)
 }
 
 export const nextId = (state: FakeYouTrackState, prefix: string): string => {

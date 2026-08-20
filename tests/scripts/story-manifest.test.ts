@@ -250,6 +250,7 @@ describe('story manifest', () => {
 
     expect(manifest.runtimeInputs.files.map(({ path: filePath }) => filePath)).toEqual([
       'bun.lock',
+      'context-vault-indexer/lock.ts',
       'docs/architecture/behaviors.md',
       'package.json',
       'plugins/example/plugin.json',
