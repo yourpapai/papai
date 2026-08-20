@@ -4,11 +4,18 @@
 // See LICENSE in the project root for details.
 
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
+import { logMultistream, logger } from '../../src/logger.js'
+import { makeRunDiagnosticsTool, type DiagnosticsDeps } from '../../src/tools/diagnostics.js'
 import { applyGuestReadOnlyFilter, makeTools } from '../../src/tools/index.js'
 import type { MakeToolsOptions } from '../../src/tools/types.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { getToolExecutor, mockLogger, seedTestPlatformInstance, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
 
 const CONTEXT = 'diag-gate-user'
 
@@ -67,5 +74,81 @@ describe('run_diagnostics gate matrix', () => {
     const guestTools = applyGuestReadOnlyFilter(descriptors)
 
     expect(guestTools).not.toHaveProperty('run_diagnostics')
+  })
+})
+
+describe('run_diagnostics payload', () => {
+  const PROBE = 'probe-error-canary'
+
+  const failingDeps = (): DiagnosticsDeps => ({
+    platformInstanceActive: (): boolean => {
+      throw new Error(PROBE)
+    },
+  })
+
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  test('returns only the whitelisted fields with healthy probe values', async () => {
+    seedTestPlatformInstance({ id: 'pi-diag-payload' })
+    const result: unknown = await getToolExecutor(makeRunDiagnosticsTool('pi-diag-payload'))({})
+    assert(isRecord(result), 'diagnostics result must be an object')
+
+    expect(Object.keys(result).sort()).toEqual([
+      'descriptor_cache_present',
+      'llm_config',
+      'mcp_pool',
+      'platform_instance_active',
+      'queue_count',
+      'task_instance',
+      'uptime_seconds',
+    ])
+    expect(result['platform_instance_active']).toBe(true)
+    expect(result['task_instance']).toEqual({ status: 'not_configured' })
+    expect(result['llm_config']).toBe('unconfigured')
+    expect(typeof result['uptime_seconds']).toBe('number')
+    expect(result['uptime_seconds']).toBeGreaterThanOrEqual(0)
+  })
+
+  test('reports the task instance id and type only when configured', async () => {
+    const deps: DiagnosticsDeps = { taskInstance: () => ({ id: 'ti-1', type: 'kaneo' }) }
+    const result: unknown = await getToolExecutor(makeRunDiagnosticsTool('pi-diag-payload', deps))({})
+    assert(isRecord(result), 'diagnostics result must be an object')
+
+    expect(result['task_instance']).toEqual({ status: 'configured', id: 'ti-1', type: 'kaneo' })
+  })
+
+  test('no token/key/credential-bearing value appears in the result or log output', async () => {
+    seedTestPlatformInstance({ id: 'pi-diag-payload' })
+    const logLines: string[] = []
+    const stream = { write: (chunk: string): void => void logLines.push(chunk) }
+    logMultistream.add(stream)
+    logger.level = 'debug'
+    try {
+      const result = await getToolExecutor(makeRunDiagnosticsTool('pi-diag-payload'))({})
+      const serialized = JSON.stringify(result) + logLines.join('')
+      expect(serialized).not.toContain('token')
+      expect(serialized).not.toContain('apiKey')
+      expect(serialized).not.toContain('api_key')
+      expect(serialized).not.toContain('secret')
+      expect(serialized).not.toContain('credential')
+      expect(serialized).not.toContain('baseUrl')
+    } finally {
+      logger.level = 'silent'
+    }
+  })
+
+  test('a throwing probe degrades to a per-field error marker instead of an uncaught failure', async () => {
+    seedTestPlatformInstance({ id: 'pi-diag-payload' })
+    const raw: unknown = await getToolExecutor(makeRunDiagnosticsTool('pi-diag-payload', failingDeps()))({})
+    assert(isRecord(raw), 'diagnostics result must be an object')
+    const result = raw
+
+    expect(result['platform_instance_active']).toBe('probe_error')
+    // The other probes still report their values.
+    expect(result['llm_config']).toBe('unconfigured')
+    expect(typeof result['uptime_seconds']).toBe('number')
+    expect(JSON.stringify(result)).not.toContain(PROBE)
   })
 })
