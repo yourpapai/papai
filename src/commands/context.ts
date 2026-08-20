@@ -216,6 +216,7 @@ async function handleContextCommand(
     deps.buildLiveToolSet,
     msg.user.username,
   )
+  const locale = getContextLanguage(auth.configContextId ?? auth.storageContextId)
   let snapshot: ContextSnapshot
   try {
     snapshot = await buildContextSnapshot(
@@ -224,10 +225,8 @@ async function handleContextCommand(
       provider,
       resolvedToolSurface,
       deps,
-      getContextLanguage(auth.configContextId ?? auth.storageContextId),
+      locale,
     )
-    // The command owns the rendered locale: same config-context fallback the error text above uses.
-    snapshot.locale = getContextLanguage(auth.configContextId ?? auth.storageContextId)
   } catch (error) {
     log.warn(
       {

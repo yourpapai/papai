@@ -42,7 +42,7 @@ function captureCommand(commands: Map<string, CommandHandler>): CommandHandler {
 
 function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCommandDeps {
   return {
-    collectContext: (): ContextSnapshot => ({
+    collectContext: (_contextId, collectorDeps): ContextSnapshot => ({
       modelName: 'gpt-4o',
       sections: [
         { id: 'system_prompt', label: 'System prompt', tokens: 1000 },
@@ -53,7 +53,7 @@ function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCom
       totalTokens: 6500,
       maxTokens: 128_000,
       approximate: false,
-      locale: 'en',
+      locale: collectorDeps.locale ?? 'en',
     }),
     buildProvider: safeBuildProvider,
     buildLiveToolSet: (
