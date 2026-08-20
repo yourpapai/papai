@@ -65,6 +65,8 @@ export type ResolvedProcessMessageInputs = {
   readonly originatingMessageIds: readonly string[]
   readonly actorRole: ActorRole
   readonly segments: readonly MessageSegment[]
+  readonly isBotAdmin: boolean
+  readonly platformInstanceId: string | undefined
 }
 
 export const resolveProcessMessageInputs = (
@@ -79,6 +81,8 @@ export const resolveProcessMessageInputs = (
     actorRole = 'member',
     originatingMessageIdsInput,
     segmentsInput,
+    isBotAdmin = false,
+    platformInstanceId,
   ] = rest
   return {
     configContextId,
@@ -88,5 +92,7 @@ export const resolveProcessMessageInputs = (
     originatingMessageIds: resolveOriginatingMessageIds(originatingMessageIdsInput),
     actorRole,
     segments: resolveSegments(segmentsInput),
+    isBotAdmin,
+    platformInstanceId,
   }
 }
