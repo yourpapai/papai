@@ -109,7 +109,7 @@ See LICENSE in the project root for details.
 
 ## 6. Full gate
 
-- [ ] 6.1 Run the full suite and all checks: `bun run test`,
+- [x] 6.1 Run the full suite and all checks: `bun run test`,
       `bun run typecheck`, `bun run lint`, `bun run check:full` (knip confirms
       no stale importers of the removed `init` /
       `isScopeVisibleToCurrentAdmin` exports); re-read `reports/test/` via
