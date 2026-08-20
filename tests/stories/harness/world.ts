@@ -173,7 +173,7 @@ export type ScenarioWorld = Readonly<{
   assertPrerequisitesOpen(operation: string): void
   registerRuntimeExtension(extension: ScenarioRuntimeExtension): void
   startScheduler(): Promise<void>
-  startAnalyticsRuntime(mode: 'governed' | 'governed-pseudonymous'): void
+  startAnalyticsRuntime(mode: 'governed'): void
   message(user: UserHandle, context: ContextHandle, text: string): IncomingMessage
   repliesForThread(thread: ThreadHandle): readonly ScenarioReply[]
   /** The thread-aware storage context id production code would compute for this context. */
@@ -622,7 +622,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     runtimeExtensions = [...runtimeExtensions, extension]
   }
 
-  const startAnalyticsRuntime = (mode: 'governed' | 'governed-pseudonymous'): void => {
+  const startAnalyticsRuntime = (mode: 'governed'): void => {
     assertPrerequisitesOpen('given.analyticsRuntime')
     const testKey = `v1:${'a'.repeat(64)}`
     const priorAnalytics = process.env[ANALYTICS_HMAC_KEYRING_ENV]
@@ -643,7 +643,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
         reviewDateMs: nowMs + 365 * 24 * 60 * 60 * 1000,
         acknowledgedAtMs: nowMs,
         policyEffectiveAtMs: nowMs,
-        localMode: mode === 'governed-pseudonymous' ? 'local_pseudonymous' : 'local_aggregate',
+        localMode: 'local_aggregate',
         updatedAtMs: nowMs,
       })
       .where(eq(analyticsPolicy.singletonId, 1))

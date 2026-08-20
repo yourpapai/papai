@@ -233,7 +233,7 @@ type ScenarioGiven = Readonly<{
   notifyToken(token: string): void
   mcpPluginServer(platformInstanceId: string, pluginId: string): void
   publicBaseUrl(url: string): void
-  analyticsRuntime(mode: 'governed' | 'governed-pseudonymous'): void
+  analyticsRuntime(mode: 'governed'): void
   allowPublicUrl(): void
   exhaustedWebFetchQuota(context: ContextHandle): void
   recurringTask(
