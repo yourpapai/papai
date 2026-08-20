@@ -6,7 +6,7 @@
 ## 2. Analytics classification
 
 - [x] 2.1 Add a failing test in `tests/analytics/tool-classification.test.ts` pinning the exact contents of `DOMAIN_MAP` by object equality, including `diagnostics: 'diagnostics'` (kills the mapping-literal mutant before any diagnostics tool exists). Verify: `bun test tests/analytics/tool-classification.test.ts`
-- [ ] 2.2 In `src/analytics/tool-classification.ts`: add `'diagnostics'` to the `AnalyticsToolDomain` union, `export` the `DOMAIN_MAP` const, add the `diagnostics: 'diagnostics'` entry. Verify: `bun test tests/analytics/tool-classification.test.ts && bun run typecheck` (typecheck proves `Record<ToolDomain, …>` exhaustiveness)
+- [x] 2.2 In `src/analytics/tool-classification.ts`: add `'diagnostics'` to the `AnalyticsToolDomain` union, `export` the `DOMAIN_MAP` const, add the `diagnostics: 'diagnostics'` entry. Verify: `bun test tests/analytics/tool-classification.test.ts && bun run typecheck` (typecheck proves `Record<ToolDomain, …>` exhaustiveness)
 
 ## 3. Analytics fact schemas
 
