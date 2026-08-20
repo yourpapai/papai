@@ -3,6 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { handleActivities, handleAttachments, handleWatchersAndVotes, handleWorkItems } from './router-collaboration.js'
+import { handleDirectory } from './router-directory.js'
+import { handleQueryEndpoints } from './router-queries.js'
+import { errorResponse, fakeUser, findIssue, json, matchPath, noContent, visibilityProjection } from './shared.js'
 import {
   type FakeYouTrackCtx,
   type FakeYouTrackState,
@@ -19,38 +23,14 @@ import {
   type StoredProject,
   type StoredSprint,
   type StoredStateValue,
+  type StoredVisibility,
 } from './state.js'
-
-// ---------- Response helpers ----------
-
-export const json = (data: unknown, status = 200): Response =>
-  new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
-
-const noContent = (): Response => new Response(null, { status: 204 })
-
-export const errorResponse = (status: number, message: string): Response =>
-  json({ error: message, error_description: message }, status)
-
-// ---------- Path matcher ----------
-
-const matchPath = (pattern: string, path: string): Record<string, string> | null => {
-  const pp = pattern.split('/')
-  const ap = path.split('/')
-  if (pp.length !== ap.length) return null
-  const params: Record<string, string> = {}
-  for (let i = 0; i < pp.length; i += 1) {
-    const seg = pp[i] ?? ''
-    const val = ap[i] ?? ''
-    if (seg.startsWith(':')) params[seg.slice(1)] = decodeURIComponent(val)
-    else if (seg !== val) return null
-  }
-  return params
-}
 
 // ---------- Projection helpers ----------
 
 const projectFields = (p: StoredProject): Record<string, unknown> => ({
   id: p.id,
+  ringId: p.ringId,
   $type: 'Project',
   name: p.name,
   shortName: p.shortName,
@@ -132,6 +112,7 @@ const handleProjects = (ctx: FakeYouTrackCtx): Response | undefined => {
       const id = nextId(state, 'project')
       const project: StoredProject = {
         id,
+        ringId: `ring-${id}`,
         name: body.name ?? '',
         shortName,
         description: body.description,
@@ -182,14 +163,29 @@ const applyCustomFieldPayload = (issue: StoredIssue, payload: unknown): void => 
   }
 }
 
-// ---------- Issue projections (read path) ----------
-
-const findIssue = (state: FakeYouTrackState, ref: string): StoredIssue | undefined => {
-  const direct = state.issues.get(ref)
-  if (direct !== undefined) return direct
-  const dbId = state.issuesByReadable.get(ref)
-  return dbId === undefined ? undefined : state.issues.get(dbId)
+const readIdList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return []
+  const entries: unknown[] = value
+  return entries.flatMap((entry) => {
+    if (entry === null || typeof entry !== 'object') return []
+    const id = (entry as { id?: unknown }).id
+    return typeof id === 'string' ? [id] : []
+  })
 }
+
+/** The inverse of `visibilityProjection`: YouTrack switches on `$type`, and a
+ *  limited visibility carries the users and groups permitted to see the issue. */
+const readVisibilityPayload = (payload: unknown): StoredVisibility => {
+  const body = (payload ?? {}) as { $type?: unknown; permittedUsers?: unknown; permittedGroups?: unknown }
+  if (body.$type !== 'LimitedVisibility') return { kind: 'unlimited' }
+  return {
+    kind: 'limited',
+    userIds: readIdList(body.permittedUsers),
+    groupIds: readIdList(body.permittedGroups),
+  }
+}
+
+// ---------- Issue projections (read path) ----------
 
 const issueCustomFields = (issue: StoredIssue): unknown[] => {
   const fields: unknown[] = []
@@ -249,11 +245,16 @@ const issueProjection = (state: FakeYouTrackState, issue: StoredIssue): Record<s
     links: issueLinksProjection(state, issue),
     tags: [],
     commentsCount: [...state.comments.values()].filter((c) => c.issueId === issue.id).length,
-    votes: 0,
+    votes: issue.voted ? 1 : 0,
+    watchers: {
+      issueWatchers: issue.watcherIds.map((userId) => ({ user: fakeUser(userId), isStarred: true })),
+      hasStar: issue.watcherIds.length > 0,
+    },
+    visibility: visibilityProjection(issue.visibility),
   }
 }
 
-const issueListProjection = (state: FakeYouTrackState, issue: StoredIssue): Record<string, unknown> => {
+export const issueListProjection = (state: FakeYouTrackState, issue: StoredIssue): Record<string, unknown> => {
   const project = state.projects.get(issue.projectDbId)
   const customFields: unknown[] = []
   if (issue.state !== undefined) {
@@ -353,10 +354,16 @@ const handleIssues = (ctx: FakeYouTrackCtx): Response | undefined => {
     }
     if (method === 'POST') {
       if (issue === undefined) return errorResponse(404, 'issue not found')
-      const body = (ctx.body ?? {}) as { summary?: string; description?: string; customFields?: unknown }
+      const body = (ctx.body ?? {}) as {
+        summary?: string
+        description?: string
+        customFields?: unknown
+        visibility?: unknown
+      }
       if (body.summary !== undefined) issue.summary = body.summary
       if (body.description !== undefined) issue.description = body.description
       if (body.customFields !== undefined) applyCustomFieldPayload(issue, body.customFields)
+      if (body.visibility !== undefined) issue.visibility = readVisibilityPayload(body.visibility)
       issue.updated = nextTs(state)
       return json(issueProjection(state, issue))
     }
@@ -403,6 +410,9 @@ const handleIssues = (ctx: FakeYouTrackCtx): Response | undefined => {
       priority: undefined,
       dueDateMs: undefined,
       assigneeLogin: undefined,
+      watcherIds: [],
+      voted: false,
+      visibility: { kind: 'unlimited' },
     }
     applyCustomFieldPayload(issue, body.customFields)
     state.issues.set(dbId, issue)
@@ -754,6 +764,12 @@ const handlers: ReadonlyArray<(ctx: FakeYouTrackCtx) => Response | undefined> = 
   handleIssues,
   handleComments,
   handleRelations,
+  handleWatchersAndVotes,
+  handleAttachments,
+  handleWorkItems,
+  handleActivities,
+  handleQueryEndpoints,
+  handleDirectory,
 ]
 
 export const handleFakeYouTrackRequest = (ctx: FakeYouTrackCtx): Response => {

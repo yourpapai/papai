@@ -16,11 +16,17 @@
 
 export type StoredProject = {
   id: string
+  /** The Hub id the team endpoints are keyed by; YouTrack exposes it as `ringId`. */
+  ringId: string
   name: string
   shortName: string
   description: string | undefined
   archived: boolean
 }
+
+export type StoredVisibility =
+  | { kind: 'unlimited' }
+  | { kind: 'limited'; userIds: readonly string[]; groupIds: readonly string[] }
 
 export type StoredIssue = {
   id: string
@@ -35,6 +41,42 @@ export type StoredIssue = {
   priority: string | undefined
   dueDateMs: number | undefined
   assigneeLogin: string | undefined
+  watcherIds: string[]
+  voted: boolean
+  visibility: StoredVisibility
+}
+
+export type StoredAttachment = {
+  id: string
+  issueId: string
+  name: string
+  mimeType: string
+  size: number
+  created: number
+}
+
+export type StoredWorkItem = {
+  id: string
+  issueId: string
+  minutes: number
+  dateMs: number
+  text: string | undefined
+  typeId: string | undefined
+}
+
+export type StoredUser = {
+  id: string
+  ringId: string
+  login: string
+  fullName: string
+  email: string
+}
+
+export type StoredSavedQuery = {
+  id: string
+  name: string
+  /** `null` models a saved query that carries no search string. */
+  query: string | null
 }
 
 export type StoredComment = {
@@ -86,6 +128,14 @@ export type FakeYouTrackState = {
   stateValues: Map<string, StoredStateValue[]>
   agiles: Map<string, StoredAgile>
   sprints: Map<string, StoredSprint>
+  attachments: Map<string, StoredAttachment>
+  workItems: Map<string, StoredWorkItem>
+  savedQueries: Map<string, StoredSavedQuery>
+  users: Map<string, StoredUser>
+  /** The Hub team roster, keyed by project ringId, holding user ringIds. */
+  teams: Map<string, string[]>
+  /** Per-query count of `-1` answers already served; see `router-queries.ts`. */
+  countFlakes: Map<string, number>
   seq: number
 }
 
@@ -101,6 +151,14 @@ export type FakeYouTrackCtx = {
 
 export const STATE_BUNDLE_ID = 'state-bundle-1'
 export const PRIORITY_BUNDLE_ID = 'enum-bundle-1'
+export const SAVED_QUERY_ALL_ID = 'saved-query-all'
+export const SAVED_QUERY_EMPTY_ID = 'saved-query-empty'
+export const WORK_ITEM_TYPES: readonly { id: string; name: string }[] = [
+  { id: 'wit-development', name: 'Development' },
+  { id: 'wit-testing', name: 'Testing' },
+]
+/** `me` is the authenticated user every fake request acts as. */
+export const DIRECTORY_LOGINS: readonly string[] = ['me', 'bob', 'carol']
 export const STATE_VALUES: readonly string[] = ['Open', 'In Progress', 'Done']
 export const PRIORITY_VALUES: readonly string[] = ['high', 'normal', 'low']
 
@@ -116,6 +174,12 @@ export const createFakeYouTrackState = (): FakeYouTrackState => {
     stateValues: new Map(),
     agiles: new Map(),
     sprints: new Map(),
+    attachments: new Map(),
+    workItems: new Map(),
+    savedQueries: new Map(),
+    users: new Map(),
+    teams: new Map(),
+    countFlakes: new Map(),
     seq: 0,
   }
   seedFakeYouTrackDefaults(state)
@@ -139,6 +203,19 @@ const seedFakeYouTrackDefaults = (state: FakeYouTrackState): void => {
   )
   const boardId = nextId(state, 'agile')
   state.agiles.set(boardId, { id: boardId, name: 'Main Board' })
+  // Two saved queries: one that searches, and one that carries no search string
+  // at all -- YouTrack allows both, and the provider rejects the second.
+  state.savedQueries.set(SAVED_QUERY_ALL_ID, { id: SAVED_QUERY_ALL_ID, name: 'Everything', query: '' })
+  state.savedQueries.set(SAVED_QUERY_EMPTY_ID, { id: SAVED_QUERY_EMPTY_ID, name: 'Unset', query: null })
+  for (const login of DIRECTORY_LOGINS) {
+    state.users.set(login, {
+      id: login,
+      ringId: `ring-${login}`,
+      login,
+      fullName: `Fake ${login}`,
+      email: `${login}@youtrack.invalid`,
+    })
+  }
 }
 
 export const resetFakeYouTrackState = (state: FakeYouTrackState): void => {
@@ -150,6 +227,12 @@ export const resetFakeYouTrackState = (state: FakeYouTrackState): void => {
   state.stateValues.clear()
   state.agiles.clear()
   state.sprints.clear()
+  state.attachments.clear()
+  state.workItems.clear()
+  state.savedQueries.clear()
+  state.users.clear()
+  state.teams.clear()
+  state.countFlakes.clear()
   state.seq = 0
   seedFakeYouTrackDefaults(state)
 }

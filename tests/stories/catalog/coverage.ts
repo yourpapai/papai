@@ -352,6 +352,12 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-plugin-audio-transcribe-transformer',
   'SCN-context-vault-push',
   'SCN-context-vault-indexer-singleton',
+  // Phase 6 — YouTrack operations surfaces (story-coverage-floor-climb)
+  'SCN-task-youtrack-real-collaboration',
+  'SCN-task-youtrack-real-attachments-and-history',
+  'SCN-task-youtrack-real-worklog',
+  'SCN-task-youtrack-real-queries',
+  'SCN-task-youtrack-real-project-team',
   // Phase 6 — Kaneo column and label operations (story-coverage-floor-climb)
   'SCN-task-kaneo-status-lifecycle',
   'SCN-task-kaneo-status-delete-unconfirmed',
@@ -1475,6 +1481,36 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '3',
     storyIds: [
       'tests/platform/scenarios/telegram-callback-routing.platform.ts#routes a Telegram permission callback through ChatRouter and production setupBot',
+    ],
+  },
+  'SCN-task-youtrack-real-collaboration': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real-collaboration.story.test.ts#SCN-task-youtrack-real-collaboration: watchers, votes and visibility move through the real provider',
+    ],
+  },
+  'SCN-task-youtrack-real-attachments-and-history': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real-collaboration.story.test.ts#SCN-task-youtrack-real-attachments-and-history: a relayed file is attached, listed, removed, and the activity feed reads back',
+    ],
+  },
+  'SCN-task-youtrack-real-worklog': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real-worklog-and-queries.story.test.ts#SCN-task-youtrack-real-worklog: time is logged, corrected and deleted through the real provider',
+    ],
+  },
+  'SCN-task-youtrack-real-queries': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real-worklog-and-queries.story.test.ts#SCN-task-youtrack-real-queries: counting, saved queries and the YouTrack command language all run against the real provider',
+    ],
+  },
+  'SCN-task-youtrack-real-project-team': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real-worklog-and-queries.story.test.ts#SCN-task-youtrack-real-project-team: project membership resolves YouTrack ids into Hub ids in both directions',
     ],
   },
   'SCN-task-kaneo-status-lifecycle': {

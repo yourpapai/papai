@@ -56,7 +56,7 @@ Section targets sum to 47 against a 44.6-unit deficit — a 2.4-unit margin.
       `provision-messages.ts` and `validation-error.ts` sit behind the
       self-service account-provisioning flow, which needs a registration seam
       the fake Kaneo does not model. Section target already met without them.
-- [ ] 2.2 Stories covering `plugins/task-provider-youtrack/operations/`
+- [x] 2.2 Stories covering `plugins/task-provider-youtrack/operations/`
       (collaboration, team, work items, activities, attachments, count,
       project fields, saved queries, commands) and the derived-field helpers.
       Verify: `bun test:stories:coverage` reports at least 8 further

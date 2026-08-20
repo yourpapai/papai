@@ -6,9 +6,32 @@
 import { handleFakeYouTrackRequest } from './router.js'
 import { createFakeYouTrackState, type FakeYouTrackCtx } from './state.js'
 
+/**
+ * Attachment uploads are the one non-JSON body the provider sends: a multipart
+ * form whose single `upload` part carries the file. The router only ever needs
+ * the part's name, type and size, so the body is normalized to that shape
+ * rather than retaining the bytes.
+ */
+const readMultipartBody = async (request: Request): Promise<unknown> => {
+  const form = await request.formData()
+  const parts: Record<string, unknown> = {}
+  for (const [name, value] of form.entries()) {
+    if (typeof value === 'string') {
+      parts[name] = value
+      continue
+    }
+    const file = value as Blob & { name?: string }
+    parts[name] = { name: file.name ?? name, type: file.type, size: file.size }
+  }
+  return parts
+}
+
 const readJsonBody = async (request: Request): Promise<unknown> => {
   const hasBody = request.method === 'POST' || request.method === 'PUT'
   if (!hasBody) return undefined
+  if ((request.headers.get('content-type') ?? '').startsWith('multipart/form-data')) {
+    return readMultipartBody(request)
+  }
   const text = await request.text()
   if (text.length === 0) return undefined
   try {
