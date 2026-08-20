@@ -63,6 +63,12 @@ describe('a commit made under the applied identity', () => {
       // would sneak back into the environment this test is about not having.
       GIT_CONFIG_GLOBAL: '/dev/null',
       GIT_CONFIG_SYSTEM: '/dev/null',
+      // A machine with a resolvable username and hostname auto-derives
+      // `user@host` instead of failing; config-only mode forces the same
+      // "Author identity unknown" refusal everywhere, runner or laptop.
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'user.useConfigOnly',
+      GIT_CONFIG_VALUE_0: 'true',
     }
 
     expect(() => {
