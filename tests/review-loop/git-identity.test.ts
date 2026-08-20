@@ -63,10 +63,19 @@ describe('a commit made under the applied identity', () => {
       // would sneak back into the environment this test is about not having.
       GIT_CONFIG_GLOBAL: '/dev/null',
       GIT_CONFIG_SYSTEM: '/dev/null',
+      // An unset HOME can make git fall back to the passwd entry's home and
+      // read that user's real .gitconfig; an empty dir leaves nothing to find.
+      HOME: makeTempDir('review-loop-identity-home-'),
     }
 
     expect(() => {
-      execFileSync('git', ['-C', repo, 'commit', '-m', 'no identity'], { env: identityless, stdio: 'pipe' })
+      execFileSync(
+        'git',
+        // useConfigOnly forbids the passwd/hostname identity auto-detection
+        // that would let this commit succeed on a host where git can guess one.
+        ['-C', repo, '-c', 'user.useConfigOnly=true', 'commit', '-m', 'no identity'],
+        { env: identityless, stdio: 'pipe' },
+      )
     }).toThrow()
 
     applyCommitIdentity({ name: 'bot', email: 'bot@example.com' }, identityless)

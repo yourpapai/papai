@@ -1,6 +1,6 @@
 ## 1. Hermetic git-identity test fix
 
-- [ ] 1.1 In `tests/review-loop/git-identity.test.ts`, make the negative-path commit deterministic: pass `-c user.useConfigOnly=true` on the no-identity `git commit` and set `HOME` to an empty temp dir (created via the existing `makeTempDir` helper and included in `cleanupTempDirs` cleanup) in the `identityless` env, so passwd-fallback config cannot leak in. Positive path unchanged. Verify: `bun test tests/review-loop/git-identity.test.ts` and `CI=true bun test tests/review-loop/git-identity.test.ts`
+- [x] 1.1 In `tests/review-loop/git-identity.test.ts`, make the negative-path commit deterministic: pass `-c user.useConfigOnly=true` on the no-identity `git commit` and set `HOME` to an empty temp dir (created via the existing `makeTempDir` helper and included in `cleanupTempDirs` cleanup) in the `identityless` env, so passwd-fallback config cannot leak in. Positive path unchanged. Verify: `bun test tests/review-loop/git-identity.test.ts` and `CI=true bun test tests/review-loop/git-identity.test.ts`
 
 ## 2. Load-aware execution plan (pure logic)
 
