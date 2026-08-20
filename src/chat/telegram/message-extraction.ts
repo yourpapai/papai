@@ -25,6 +25,7 @@ export interface ContextInfo {
 export interface MessageIds {
   messageIdStr: string | undefined
   replyToMessageIdStr: string | undefined
+  replyToAuthorIdStr: string | undefined
   replyToMessageText: string | undefined
   quoteText: string | undefined
 }
@@ -35,7 +36,7 @@ export interface MinimalMessage {
   entities?: MessageEntity[]
   caption_entities?: MessageEntity[]
   message_id?: number
-  reply_to_message?: { message_id?: number; text?: string }
+  reply_to_message?: { message_id?: number; from?: { id?: number }; text?: string }
   quote?: { text?: string }
   message_thread_id?: number
 }
@@ -70,12 +71,15 @@ export function extractMessageIds(ctx: MinimalContext): MessageIds {
   const source = ctx.message ?? ctx.editedMessage
   const messageId = source?.message_id
   const messageIdStr = messageId === undefined ? undefined : String(messageId)
-  const replyToMessageId = source?.reply_to_message?.message_id
+  const replyToMessage = source?.reply_to_message
+  const replyToMessageId = replyToMessage?.message_id
   const replyToMessageIdStr = replyToMessageId === undefined ? undefined : String(replyToMessageId)
-  const replyToMessageText = source?.reply_to_message?.text
+  const replyToAuthorId = replyToMessage?.from?.id
+  const replyToAuthorIdStr = replyToAuthorId === undefined ? undefined : String(replyToAuthorId)
+  const replyToMessageText = replyToMessage?.text
   const quoteText = source?.quote?.text
 
-  return { messageIdStr, replyToMessageIdStr, replyToMessageText, quoteText }
+  return { messageIdStr, replyToMessageIdStr, replyToAuthorIdStr, replyToMessageText, quoteText }
 }
 
 export function logMessageExtraction(
@@ -85,13 +89,15 @@ export function logMessageExtraction(
   replyToMessageIdStr: string | undefined,
   replyToMessageText: string | undefined,
   quoteText: string | undefined,
+  replyToAuthorIdStr?: string,
 ): void {
   const hasReply = replyToMessageIdStr !== undefined
   const hasQuote = quoteText !== undefined && quoteText !== ''
+  const carriesForeignText = (replyToMessageText !== undefined && replyToMessageText !== '') || hasQuote
   log.debug(
     {
       userId: id,
-      chatUserId: String(id),
+      chatUserId: carriesForeignText ? replyToAuthorIdStr : String(id),
       contextId,
       messageId: messageIdStr,
       hasReply,
