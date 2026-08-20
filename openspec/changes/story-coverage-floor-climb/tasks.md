@@ -125,19 +125,19 @@ stays as headroom for the next ratchet.
 
 ## 7. Re-record the qualification baseline
 
-- [ ] 7.1 Verify the foundation (`test:stories:contracts`,
+- [x] 7.1 Verify the foundation (`test:stories:contracts`,
       `test:stories:coverage`, `test:stories:manifest`) and commit the frozen
       input set with nothing unrelated staged. That commit is the baseline
       candidate. This section is owed regardless of the climb's outcome: the
       recorded baseline was already retired by `tier3-chat-adapter-coverage`
       (see design D5).
       Verify: all three commands exit 0
-- [ ] 7.2 Replace the `## Foundation baseline` section in
+- [x] 7.2 Replace the `## Foundation baseline` section in
       `docs/superpowers/specs/2026-08-04-global-refactor-behavior-coverage-roadmap-design.md`
       with the new literal SHA and tree hash, marking the previous baseline
       superseded. No shell variable names remain.
       Verify: the section contains no `$` and names the new SHA
-- [ ] 7.3 Prove compatibility:
+- [x] 7.3 Prove compatibility:
       `BASE_REF=<baselineSha> bun test:stories:compat --manifest-only` then
       `BASE_REF=<baselineSha> bun test:stories:compat`.
       Verify: both exit 0

@@ -208,64 +208,56 @@ The roadmap is complete when:
 
 ## Foundation baseline
 
-Recorded 2026-08-20. Phase 0's baseline exists; a qualifying refactor measures
-against the literals below.
+Recorded 2026-08-20, superseding the baseline taken earlier that day at
+`b8badfbbfa02485e4fa2d6a0818682dbd8a4c12a` (tree hash
+`5f5db4a39db11d56d084612836b827bd271579ee04dcb6271ef43592288809f1`), which the
+story work on this branch retired by editing frozen inputs. A qualifying
+refactor measures against the literals below.
 
 | field | value |
 | --- | --- |
-| `baselineSha` | `b8badfbbfa02485e4fa2d6a0818682dbd8a4c12a` |
-| `treeHash` | `5f5db4a39db11d56d084612836b827bd271579ee04dcb6271ef43592288809f1` |
-| frozen inputs | 163 files |
-| manifest scenarios | 178 |
+| `baselineSha` | `cfe3da15087e40950b3a2ff94ef65cc4d5fe97f9` |
+| `treeHash` | `c289d710ca91c37534d7450ded5e7550cc11dee84d04c4ea04d54f233b295e04` |
+| frozen inputs | 173 files |
+| manifest scenarios | 192 |
 | bun | 1.3.13 |
 | story seed | 41021 |
 
 Verified green on that commit:
 
 1. `bun test:stories:contracts` — 444 pass, 0 fail, 24 files
-2. `bun test:stories:coverage` — 177 pass, 0 fail; lines 68.76%, functions
-   65.87%, against floors 0.68 / 0.65
-3. `bun test:stories:manifest` — 213/235 catalog records executable
-   (T0 164, T1 29, T2 8, T3 11, T4 1)
-4. `BASE_REF=b8badfbbfa02485e4fa2d6a0818682dbd8a4c12a bun test:stories:compat --manifest-only`
-5. `BASE_REF=b8badfbbfa02485e4fa2d6a0818682dbd8a4c12a bun test:stories:compat`
+2. `bun test:stories:coverage` — 191 pass, 0 fail; lines 72.52%, functions
+   71.02%, against floors 0.72 / 0.70
+3. `bun test:stories:manifest` — 232/254 catalog records executable
+   (T0 178, T1 29, T2 8, T3 16, T4 1)
+4. `BASE_REF=cfe3da15087e40950b3a2ff94ef65cc4d5fe97f9 bun test:stories:compat --manifest-only`
+5. `BASE_REF=cfe3da15087e40950b3a2ff94ef65cc4d5fe97f9 bun test:stories:compat`
 
-### Why the floors read 0.68 / 0.65 and not 0.71 / 0.70
+### Why the floors read 0.72 / 0.70
 
-Phase 0 called for restoring the 71%/70% floors without lowering them. They
-were re-recorded at the measured value instead, because restoring them was not
-reachable and the baseline was blocked behind them.
+The earlier baseline re-recorded the floors at 0.68 / 0.65 rather than restoring
+the 0.71 / 0.70 that `a20e59c06` had raised from a green run over **895** scoped
+source files. The tree had grown to 1104 files (1048 after the runtime-code
+filter) while the story lane gained only 8 story files, and `meanMetric` is an
+unweighted mean of per-file ratios with unloaded files seeded at 0%, so the file
+count moved the number by itself. That floor measured a materially smaller tree,
+not this one.
 
-The 0.71/0.70 floor was raised at `a20e59c06` from a green run over **895**
-scoped source files. This commit has **1104** (1048 after the runtime-code
-filter): +209 files, +23%, across 136 branch commits, while the story lane
-gained 8 story files and lost none. `meanMetric` is an unweighted mean of
-per-file ratios with unloaded files seeded at 0%, so that file count moved the
-number by itself. The floor was a measurement of a materially smaller tree, not
-a promise about this one.
-
-Restated in file-units — one fully covered file is worth 1/1048 = 0.095pp —
-the deficit to 0.71/0.70 is 23.5 line-units and **43.3 function-units**. The
-twelve files named in the gate's own diagnostic block hold 11.8 function-units
-in total; adding every one of the 28 never-loaded files at 100% reaches 39.8,
-still 3.5 short.
-
-The re-recorded values use the ratchet's own epsilon convention,
+`openspec/changes/story-coverage-floor-climb/` closed the 43.3-function-unit gap
+that restatement named, by writing Tier 0 stories over the zero-function files in
+`plugins/task-provider-kaneo/`, `plugins/task-provider-youtrack/`,
+`src/analytics/governance/`, `src/analytics/derive/` and
+`src/debug/settings/admin/`. The ratchet then wrote 0.72 / 0.70 from the green
+run above, using its own epsilon convention
 `floor((measured - 0.005) * 100) / 100` (`nextFloor` in
-`scripts/coverage/ratchet-lib.ts`), so they are derived the same way as every
-value that file has held. Lowering was a manual edit by necessity: `nextFloor`
-only ever raises, which keeps any reduction a reviewable act rather than a
-silent side effect. `meanMetric` and `story-scope.ts` were not touched.
-
-The climb back to 0.71/0.70 is tracked as
-`openspec/changes/story-coverage-floor-climb/`, sized against the 43.3-unit
-measurement. 220 scoped files carry zero covered functions, so headroom is not
-the constraint.
+`scripts/coverage/ratchet-lib.ts`). The lines floor lands one hundredth above the
+change's 0.71 target because the sections bought to clear functions carried lines
+with them. `meanMetric` and `story-scope.ts` were not touched.
 
 ### Scope of this baseline
 
 `scripts/story/coverage-floor.json` is **not** a frozen input — it is absent
-from the manifest's 163 files. The compatibility proof is behavioral, so a
+from the manifest's 173 files. The compatibility proof is behavioral, so a
 refactor is measured against the frozen suite rather than against whatever
 floor was in force when the baseline was taken. Changing the floor value alone
 does not retire this baseline; editing anything under `tests/stories/**`,
