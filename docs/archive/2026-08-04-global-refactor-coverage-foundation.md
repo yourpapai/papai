@@ -477,14 +477,28 @@ IDs, and the behavior ledger with its catalog cross-check
 `tests/stories/harness/behavior-coverage.test.ts`) are all in the tree.
 
 Task 2 (restore the Tier 0 floor) and Task 5 (record the qualification
-baseline) did not. As of this date `bun test:stories:coverage` measures lines
-68.76% against the 71.00% floor and functions 65.87% against 70.00% — the
-master merge added production files the frozen lane never loads, and
-`meanMetric` is an unweighted mean over the scoped file set, so file count
-alone moved the number. No baseline SHA or tree hash was ever written into
+baseline) did not. As of this date `bun test:stories:coverage` measured lines
+68.76% against the 71.00% floor and functions 65.87% against 70.00%. The cause
+recorded here at adoption time — the master merge — turned out to be a minor
+term: that merge added 19 source files, while the scope grew from 895 files at
+`a20e59c06` (the commit that raised the floor from a green run) to 1104 at
+adoption, +23% across 136 branch commits, against 8 added story files. Since
+`meanMetric` is an unweighted per-file mean with unloaded files seeded at 0%,
+that file count moved the number on its own. No baseline SHA or tree hash was
+ever written into
 `docs/superpowers/specs/2026-08-04-global-refactor-behavior-coverage-roadmap-design.md`,
-so `test:stories:compat` has no reference commit.
+so `test:stories:compat` had no reference commit.
 
-Both residual tasks are now tracked as
-`openspec/changes/story-coverage-floor-qualification/`. This plan stays
-archived as the record of what shipped.
+The two residual tasks split on that evidence:
+
+- **Task 5 and the floor re-recording** — `story-coverage-floor-qualification`.
+  The floor was re-recorded at the measured value (lines 0.68, functions 0.65)
+  using the ratchet's own epsilon convention, and the qualification baseline was
+  recorded against it. Restoring 0.71/0.70 was not reachable as Task 2 scoped
+  it: the deficit is 43.3 function-units, and the twelve diagnostic-named files
+  plus every never-loaded file, all taken to 100%, total 39.8.
+- **Task 2's coverage climb** — `story-coverage-floor-climb`, sized against that
+  43.3-unit measurement. 220 scoped files carry zero covered functions, so the
+  headroom is ample; the work is writing ~44 files' worth of two-oracle stories.
+
+This plan stays archived as the record of what shipped.

@@ -42,7 +42,7 @@ See LICENSE in the project root for details.
 
 ## 4. Hand off the climb
 
-- [ ] 4.1 Record the residual coverage work as its own OpenSpec change, sized
+- [x] 4.1 Record the residual coverage work as its own OpenSpec change, sized
       against the measured function deficit and naming the files that hold the
       headroom. Point the archived foundation plan's residual section at it.
       Verify: `openspec validate <successor> --strict` exits 0
