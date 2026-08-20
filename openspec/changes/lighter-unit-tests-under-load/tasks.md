@@ -15,7 +15,7 @@
 
 ## 4. Agent-facing guidance docs
 
-- [ ] 4.1 Update `AGENTS.md` ("Running and inspecting checks" section), `tests/CLAUDE.md`, and `docs/architecture/commands.md` (bun script semantics) with the shared-host rules: `bun run test:affected` in the edit loop and one full suite before finishing; never two full suites concurrently, prefer serial with a >= 20 min shell timeout budget; after a shell-timeout kill query `bun run test:status` / `test:log` before restarting; a load-induced flake is re-run file-by-file (`bun run test <paths>`) before being called a regression. Also document the new mode selection (load demotion at >= 0.75 × cores, 30 s timeout on demoted runs, non-TTY streaming default) where those files describe wrapper behavior. Verify: `bun run format:check` and manual read-through of the three files
+- [x] 4.1 Update `AGENTS.md` ("Running and inspecting checks" section), `tests/CLAUDE.md`, and `docs/architecture/commands.md` (bun script semantics) with the shared-host rules: `bun run test:affected` in the edit loop and one full suite before finishing; never two full suites concurrently, prefer serial with a >= 20 min shell timeout budget; after a shell-timeout kill query `bun run test:status` / `test:log` before restarting; a load-induced flake is re-run file-by-file (`bun run test <paths>`) before being called a regression. Also document the new mode selection (load demotion at >= 0.75 × cores, 30 s timeout on demoted runs, non-TTY streaming default) where those files describe wrapper behavior. Verify: `bun run format:check` and manual read-through of the three files
 
 ## 5. Full verification
 

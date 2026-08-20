@@ -5,8 +5,20 @@ Runtime: **Bun** test runner (`bun:test`). No Jest or Vitest.
 ## Running the suite
 
 `bun run test` is a wrapper (`scripts/test/run-cli.ts`), not a bare `bun test`. It builds the client bundles
-if they are missing, picks parallel or serial from the core count, and writes `reports/test/last-run.{log,junit.xml,json}`
-before printing a summary of at most fourteen lines. The exit code is the child's, unchanged.
+if they are missing, picks parallel or serial — in precedence order: explicit `--serial`/`--parallel`, truthy
+`CI`, load demotion, then core count. Load demotion: a 1-minute load average ≥ 0.75 × cores demotes a
+many-core host to serial with a 30 s per-test timeout and a `(serial · load)` marker in the summary; loadavg
+0, the Windows shape, never demotes. It then writes `reports/test/last-run.{log,junit.xml,json}` before
+printing a summary of at most fourteen lines. When stdout is not a TTY the child's output is mirrored live to
+stderr (with `--stream` it is mirrored on a TTY too) instead of only after exit. The exit code is the
+child's, unchanged.
+
+**Shared-host rules** (several agents on one machine is the normal case here): use `bun run test:affected` in
+the edit loop and run one full suite before finishing; never run two full suites concurrently; prefer serial
+and budget a ≥ 20 min shell timeout for a full run — the wrapper's load demotion already handles this
+automatically when no mode flag is explicit. If a shell timeout kills a run, query `bun run test:status` /
+`test:log` before restarting — the persisted report may already answer. A load-induced flake is re-run
+file-by-file (`bun run test <paths>`) before being called a regression.
 
 **Do not re-run a check to see its output differently.** `bun run test:failures`, `test:show <id>`,
 `test:log <pattern>`, `test:status` and `test:slowest` all answer from the persisted report without starting
@@ -35,7 +47,8 @@ silently mis-filed). But **do not build a gate on `report.files`** until this is
 ## Parallel Execution & Isolation
 
 The default local server-side run (`bun run test`) is `bun test --parallel`: each test
-file runs in its own worker process (implies `--isolate`). CI (`scripts/check.sh` with
+file runs in its own worker process (implies `--isolate`) — unless the wrapper's load
+demotion (see "Running the suite") has switched it to serial. CI (`scripts/check.sh` with
 `CI=true`) runs the suite serially to keep the 4-vCPU runner stable, but tests **must**
 still be isolation-clean:
 
