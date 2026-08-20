@@ -513,6 +513,7 @@
   "src/tools/workspace-files.ts": 0.6382978723404256,
   "src/tools/wrap-tool-execution.ts": 0.6571428571428571,
   "src/types/config.ts": 0.7435897435897436,
+  "src/usage/failures.ts": 0.9090909090909091,
   "src/users.ts": 0.6746987951807228,
   "src/utils/config-language.ts": 0.75,
   "src/utils/scheduler.events.ts": 0.9,
