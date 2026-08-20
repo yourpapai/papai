@@ -207,6 +207,34 @@ findings: `ROADMAP.md`.
   into an implementation walk with no steps. The `PLAN_REVIEW` digest shows the
   ticked boxes to a maintainer, whose `/changes` re-plans it; nothing can tell
   "already built" from "ticked and abandoned" by reading the folder.
+- **Fix-class issues skip specs by triage's call, ratified at the park.** Triage's
+  `capture` reply carries a required `skipSpecs` boolean decided under an explicit
+  rule — a spec-level change is one where a downstream observer of the system's
+  contract would see an added, changed or removed requirement; fixes restoring
+  intended behaviour, refactors, docs and tooling are not — with **bias to `true`
+  for fix-class issues** (a false capability pressures the model into inventing
+  deltas to satisfy `validate --strict`; a false skip is quiet and reversible). A
+  recommending capture must write "None — skip_specs proposed because ⟨reason⟩"
+  into the proposal's Capabilities section, and `/changes` at the `DESIGN_SPEC`
+  park is the correction point. When the flag is true, the scaffold stamps
+  `skip_specs: true` into `.openspec.yaml` itself — a deterministic TS patch in
+  the driver (`newChange` options), fed by the zod-validated output; the model
+  never writes metadata (single-sourced channel, diff-guard scope unchanged).
+  Under the flag the CLI reports `specs: skipped` and counts the dependency
+  satisfied, so PLANNING composes design (recording the deliberate skip in the
+  drafter prompt) plus tasks and never drafts deltas; the validate-retry loop
+  stays for genuine failures. `skipSpecs` also doubles as the **depth-lane
+  signal**: fix-class issues take the shallow lane (proposal-lite → design-skip
+  → tasks), feature-class issues the deep lane. The full depth doctrine —
+  distributed exploration, gate depths, the planning-turn `INCOMPLETE` watch
+  item — lives in `openspec/changes/opencode-agent-skip-specs-depth/design.md`
+  (Decisions 5–6).
+- **Capabilities are named at feature-domain granularity, never issue-sized.**
+  Capture and specs-drafter prompts both carry the doctrine: names like
+  `user-profile-memory` or `sdd-automation`, not one micro-capability per issue;
+  and while `openspec/specs/` holds no archived corpus, **new capabilities
+  only** — there is nothing yet to modify. Guidance, not a validator: the
+  `DESIGN_SPEC` park enforces, the prompt states the rule it cites.
 - **The plan counts one identity token, not two artefact revisions.** Under D1
   only `planRevision` remains — a machine identity for "a new plan happened",
   bumped by `PLAN_POSTED` alone, not an artefact revision. The former
