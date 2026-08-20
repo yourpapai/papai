@@ -14,34 +14,55 @@ See LICENSE in the project root for details.
       and list the zero-function files in the D2 target order.
       Verify: `bun test:stories:coverage` exits 0 at the current floor and the
       file-unit deficit is recorded
+- [ ] 1.2 Record the per-section function-unit targets from 1.1's measurement,
+      replacing the provisional numbers in sections 2-4 if the deficit has
+      moved. The targets sum to the deficit plus a two-unit margin.
+      Verify: the section targets sum to at least the measured deficit
 
-## 2. Provider operations
+## 2. Provider operations (target: 16 function-units)
 
 - [ ] 2.1 Stories covering the zero-function files in
       `plugins/task-provider-kaneo/` (column and label operations, provisioning
       requests and messages, validation errors), two oracles each.
-      Verify: `bun test:stories` and `bun test:stories:coverage` (functions
-      strictly above the previous run)
+      Verify: `bun test:stories` and `bun test:stories:coverage` reports at
+      least 8 function-units above the section's starting measurement
 - [ ] 2.2 Stories covering `plugins/task-provider-youtrack/operations/`
       (collaboration, team, work items, activities, attachments, count,
       project fields, saved queries, commands) and the derived-field helpers.
-      Verify: `bun test:stories:coverage`
+      Verify: `bun test:stories:coverage` reports at least 8 further
+      function-units
 
-## 3. Analytics stores and jobs
+## 3. Analytics stores and jobs (target: 14 function-units)
 
-- [ ] 3.1 Stories for the zero-function files in
-      `src/analytics/governance/` reachable without a granted eligibility ref,
-      including the denial branches. Do not seed `setEligibilityState`.
-      Verify: `bun test:stories:coverage`
-- [ ] 3.2 Stories for `src/analytics/derive/` and `src/analytics/delivery/`.
-      Verify: `bun test:stories:coverage`
+- [ ] 3.1 Stories for the zero-function files in `src/analytics/governance/`,
+      granting collection eligibility the way production does — by storing a
+      pseudonymous preference through the settings preference handler, never by
+      calling `setEligibilityState` from the story. Cover both sides: a
+      consenting subject reaching a decision that admits, and a non-consenting
+      one denied with `governance_incomplete`.
+      Verify: `bun test:stories:coverage` reports at least 8 further
+      function-units
+- [ ] 3.2 Stories for `src/analytics/derive/` and `src/analytics/delivery/`,
+      reachable now that a granted ref exists.
+      Verify: `bun test:stories:coverage` reports at least 6 further
+      function-units
 
-## 4. Chat and settings surfaces
+## 4. Chat and settings surfaces (target: 16 function-units)
 
-- [ ] 4.1 Stories for the zero-function files under `src/chat/` and
-      `src/debug/`, continuing only until the gate reports at or above lines
-      71.00% and functions 70.00%.
-      Verify: `bun test:stories:coverage` exits 0 at the raised floor
+- [ ] 4.1 Stories for the zero-function files under `src/chat/` (51 candidates:
+      adapter helpers reachable from the existing Telegram and Discord story
+      lanes).
+      Verify: `bun test:stories:coverage` reports at least 10 further
+      function-units
+- [ ] 4.2 Stories for the zero-function files under `src/debug/` (22
+      candidates: settings routes reachable through the settings story
+      surface).
+      Verify: `bun test:stories:coverage` reports at least 6 further
+      function-units
+- [ ] 4.3 If the gate still measures below lines 71.00% or functions 70.00%,
+      continue through the D2 order until it clears both. If it clears earlier,
+      stop: the remaining files are headroom for the next ratchet.
+      Verify: `bun test:stories:coverage` measures at or above both floors
 
 ## 5. Catalog and ledger records
 
@@ -61,7 +82,9 @@ See LICENSE in the project root for details.
 - [ ] 7.1 Verify the foundation (`test:stories:contracts`,
       `test:stories:coverage`, `test:stories:manifest`) and commit the frozen
       input set with nothing unrelated staged. That commit is the baseline
-      candidate.
+      candidate. This section is owed regardless of the climb's outcome: the
+      recorded baseline was already retired by `tier3-chat-adapter-coverage`
+      (see design D5).
       Verify: all three commands exit 0
 - [ ] 7.2 Replace the `## Foundation baseline` section in
       `docs/superpowers/specs/2026-08-04-global-refactor-behavior-coverage-roadmap-design.md`

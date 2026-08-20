@@ -16,6 +16,12 @@ as much as a 20-function one. Two consequences drive the plan:
 - **Budget in file-units, not percentages.** Restoring 0.71/0.70 costs 23.5
   line-units and 43.3 function-units. Functions is the binding constraint
   throughout; a plan that clears functions clears lines.
+- **Those unit counts are a floor on the file count, not an estimate of it.**
+  43.3 function-units is what 43 files are worth only if each goes from 0 to
+  *every* function covered. A story realistically leaves a file partly covered,
+  so the honest expectation is 70-90 files touched. This is why sections 2-4
+  each carry a numeric unit target: the gate alone reports only pass/fail
+  against the floor, which gives no read on pace until the very end.
 - **Prefer many small files over a few large ones** when the contract value is
   equal. This is a property of the metric, not a reason to write shallow tests —
   where the two conflict, the two-oracle requirement wins and the file is
@@ -47,19 +53,35 @@ has no seam for, and a story written to load one would assert nothing a user or
 operator can observe — exactly the load-only coverage the predecessor's spec
 forbids. With 201 files of headroom outside them, nothing forces the issue.
 
-## D4 — The eligibility gap still blocks canonical-event stories
+## D4 — The eligibility gap is closed; grant through the production path
 
-`decideEligibility` (`src/analytics/governance/eligibility.ts:143`) denies with
-`governance_incomplete` when `collectionEligibility` is null, and
-`setEligibilityState` has zero production callers, so no production path grants
-a ref. Analytics targets are therefore limited to surfaces reachable without a
-granted ref — including the denial branches themselves, which are real
-behavior. Seeding `setEligibilityState` from a story is rejected: it would prove
-a path production cannot reach. `analytics-collection-eligibility-grant` closes
-the gap; if it lands first, the canonical-event surfaces open up and the
-analytics group gets cheaper.
+`decideEligibility` (`src/analytics/governance/eligibility.ts`) denies with
+`governance_incomplete` while `collectionEligibility` is null. When this change
+was proposed nothing in production wrote that ref, which confined analytics
+stories to the denial branches. `analytics-collection-eligibility-grant` has
+since landed: `collectionEligibilityEffect`
+(`src/debug/settings/analytics-consent.ts`) calls `grantEligibilityInTx` inside
+the same transaction as the settings preference write, so a consenting subject
+now gets a ref through a path a user actually walks.
+
+Analytics stories therefore grant eligibility **by storing a pseudonymous
+preference through the settings handler**, never by calling
+`setEligibilityState` directly. The distinction is the whole point: driving the
+consent surface proves the production path, whereas seeding the store proves a
+path production does not reach. Both sides stay in scope — a granted subject
+reaching a canonical event, and an ungranted one denied with
+`governance_incomplete` — because the denial branch is real behavior a
+non-consenting user gets.
 
 ## D5 — Ordering against the baseline
+
+The baseline recorded by `story-coverage-floor-qualification` is **already
+retired before this change starts**: `tier3-chat-adapter-coverage` edited
+`tests/stories/catalog/coverage.ts` and
+`tests/stories/harness/catalog-coverage.test.ts`, both frozen inputs, so the
+manifest `treeHash` has already moved off the recorded literal. Section 7 is
+therefore owed whether or not the climb reaches the floor, and it re-records
+once at the end rather than chasing each story batch.
 
 The story additions touch frozen inputs, so the baseline recorded by
 `story-coverage-floor-qualification` dies the moment the first story lands. The

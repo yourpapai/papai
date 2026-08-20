@@ -43,7 +43,11 @@ concentrate where a chat-driven story naturally reaches:
 - Work the provider-operation and analytics-governance clusters first: they hold
   the densest reachable headroom (`plugins/task-provider-*/operations/` and
   `src/analytics/governance/` alone are 30 zero-function files) and are driven
-  through seams the harness already exposes.
+  through seams the harness already exposes. The analytics cluster got cheaper
+  since this was written: `analytics-collection-eligibility-grant` has landed, so
+  a story can grant collection eligibility through the settings preference
+  handler and reach the canonical-event surfaces, not only the denial branches
+  (design D4).
 - Raise the floor from the green run with `bun coverage:ratchet:stories` and
   commit the `scripts/story/coverage-floor.json` change.
 - Re-record the qualification baseline afterwards: raising the floor edits a
