@@ -306,6 +306,7 @@
   "src/debug/mcp-routes.ts": 1,
   "src/debug/schemas.ts": 0.34210526315789475,
   "src/debug/settings/admin/tool-defaults-routes.ts": 0.736,
+  "src/debug/settings/analytics-routes.ts": 0.6804979253112033,
   "src/debug/settings/coding-credentials-fields-meta.ts": 0.6101694915254238,
   "src/debug/settings/coding-credentials-routes.ts": 0.7889182058047494,
   "src/debug/settings/context-task-instance-routes.ts": 0.5867768595041323,
