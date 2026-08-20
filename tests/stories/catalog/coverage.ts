@@ -103,7 +103,7 @@ export type CatalogCoverage =
     }>
 
 export const CATALOG_SOURCE =
-  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census); extended 2026-07-29 with 21 uncatalogued-cluster behavior ids (@0/@3/@4) (phase3-catalog-foundation); extended 2026-08-01 with 3 real-Kaneo (@0) chat-loop story ids attached to the YouTrack real-provider records (t0-real-kaneo-provider); extended 2026-08-03 with 1 analytics settings (@0) story id (analytics-settings-census); extended 2026-08-04 with 4 aggregate delivery (@0) ids (analytics-aggregate-delivery-coverage)' as const
+  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census); extended 2026-07-29 with 21 uncatalogued-cluster behavior ids (@0/@3/@4) (phase3-catalog-foundation); extended 2026-08-01 with 3 real-Kaneo (@0) chat-loop story ids attached to the YouTrack real-provider records (t0-real-kaneo-provider); extended 2026-08-03 with 1 analytics settings (@0) story id (analytics-settings-census); extended 2026-08-04 with 4 aggregate delivery (@0) ids (analytics-aggregate-delivery-coverage); extended 2026-08-20 with 5 Discord/Mattermost adapter (@3) ids (tier3-chat-adapter-coverage)' as const
 
 export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-create-update',
@@ -352,6 +352,12 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-plugin-audio-transcribe-transformer',
   'SCN-context-vault-push',
   'SCN-context-vault-indexer-singleton',
+  // Phase 5 — Discord/Mattermost platform-adapter scenarios (tier3-chat-adapter-coverage)
+  'SCN-interaction-discord-reply-mention',
+  'SCN-interaction-discord-status-lifecycle',
+  'SCN-interaction-discord-status-send-failure',
+  'SCN-mattermost-thread-reply',
+  'SCN-mattermost-status-lifecycle',
 ] as const)
 
 export const PHASE3_UNCATALOGUED_CLUSTER_IDS = [
@@ -1423,6 +1429,41 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '3',
     storyIds: [
       'tests/platform/scenarios/discord-callback-routing.platform.ts#defers an unmatched Discord callback to the standalone message fallback',
+    ],
+  },
+  'SCN-interaction-discord-reply-mention': {
+    verifiedAt: '2026-08-20',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-reply-mention.platform.ts#dispatches a reply to a bot message exactly as an explicit Discord mention',
+    ],
+  },
+  'SCN-interaction-discord-status-lifecycle': {
+    verifiedAt: '2026-08-20',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-live-status.platform.ts#creates, updates in order, and dismisses the Discord live status',
+    ],
+  },
+  'SCN-interaction-discord-status-send-failure': {
+    verifiedAt: '2026-08-20',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-live-status.platform.ts#delivers the reply without status edits when the Discord status send fails',
+    ],
+  },
+  'SCN-mattermost-thread-reply': {
+    verifiedAt: '2026-08-20',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/mattermost-thread-reply.platform.ts#answers into the incoming Mattermost thread root under a thread-scoped storage context',
+    ],
+  },
+  'SCN-mattermost-status-lifecycle': {
+    verifiedAt: '2026-08-20',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/mattermost-status-lifecycle.platform.ts#patches the Mattermost live status through the turn and deletes it before answering',
     ],
   },
   'SCN-interaction-telegram-callback': {

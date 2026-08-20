@@ -123,4 +123,7 @@ export const PLATFORM_COVERAGE_FILES: readonly string[] = [
   'src/chat/discord/button-dispatch.ts',
   'src/chat/telegram/interaction-helpers.ts',
   'src/chat/router-helpers.ts',
+  'src/chat/discord/dispatch-helpers.ts',
+  'src/chat/discord/reply-context.ts',
+  'src/chat/discord/reply-helpers.ts',
 ]

@@ -24,7 +24,7 @@ describe('@3 catalog crosscheck', () => {
     )
     const t3 = executable.filter((coverage) => coverage.provingTier === '3')
 
-    expect(t3).toHaveLength(11)
+    expect(t3).toHaveLength(16)
     const platformStoryScenarioIds: string[] = Object.keys(PLATFORM_STORIES)
     for (const scenarioId of [
       'SCN-interaction-discord-command-routing',
@@ -35,6 +35,11 @@ describe('@3 catalog crosscheck', () => {
       'SCN-interaction-discord-router-wrapped',
       'SCN-interaction-discord-standalone-fallback',
       'SCN-interaction-telegram-callback',
+      'SCN-interaction-discord-reply-mention',
+      'SCN-interaction-discord-status-lifecycle',
+      'SCN-interaction-discord-status-send-failure',
+      'SCN-mattermost-thread-reply',
+      'SCN-mattermost-status-lifecycle',
     ]) {
       expect(platformStoryScenarioIds).toContain(scenarioId)
     }
@@ -77,6 +82,9 @@ describe('@3 catalog crosscheck', () => {
       'src/chat/discord/button-dispatch.ts',
       'src/chat/telegram/interaction-helpers.ts',
       'src/chat/router-helpers.ts',
+      'src/chat/discord/dispatch-helpers.ts',
+      'src/chat/discord/reply-context.ts',
+      'src/chat/discord/reply-helpers.ts',
     ])
   })
 })

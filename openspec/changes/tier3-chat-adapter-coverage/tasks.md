@@ -50,12 +50,12 @@ See LICENSE in the project root for details.
 
 ## 5. Catalog registration
 
-- [ ] 5.1 Register five `PLATFORM_STORIES` entries in
+- [x] 5.1 Register five `PLATFORM_STORIES` entries in
       `tests/platform/scenarios/catalog.ts`, extend `PLATFORM_COVERAGE_FILES`
       with the newly covered Discord sources, and import the four scenario
       modules in `tests/platform/run-platform.ts`.
       Verify: `bun test:platform`
-- [ ] 5.2 Add five `SCN-*` ids to `CATALOG_SCENARIO_IDS` with executable
+- [x] 5.2 Add five `SCN-*` ids to `CATALOG_SCENARIO_IDS` with executable
       records (`provingTier: '3'`, seam `platform-adapter-fakes`) and extend
       `CATALOG_SOURCE` in `tests/stories/catalog/coverage.ts`; raise the
       Tier 3 cardinality from 11 to 16 in

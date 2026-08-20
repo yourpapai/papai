@@ -217,8 +217,8 @@ describe('scenario catalog coverage', () => {
   test('classifies every catalog scenario exactly once', () => {
     const ledgerIds = catalogCoverage.map(({ scenarioId }) => scenarioId)
 
-    expect(CATALOG_SCENARIO_IDS).toHaveLength(235)
-    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(235)
+    expect(CATALOG_SCENARIO_IDS).toHaveLength(240)
+    expect(new Set(CATALOG_SCENARIO_IDS).size).toBe(240)
     expect(sorted(ledgerIds)).toEqual(sorted(CATALOG_SCENARIO_IDS))
   })
 
@@ -298,7 +298,7 @@ describe('scenario catalog coverage', () => {
   test('marks only platform-adapter interaction scenarios as forward-only', () => {
     const interactionCoverage = catalogCoverage.filter(({ scenarioId }) => scenarioId.startsWith('SCN-interaction-'))
 
-    expect(interactionCoverage).toHaveLength(9)
+    expect(interactionCoverage).toHaveLength(12)
     expect(interactionCoverage.map(({ catalogStatus }) => catalogStatus)).toEqual([
       'forward-only',
       'forward-only',
@@ -309,6 +309,9 @@ describe('scenario catalog coverage', () => {
       'gap',
       'gap',
       'gap',
+      'confirmed',
+      'confirmed',
+      'confirmed',
     ])
     expect(
       interactionCoverage.find(({ scenarioId }) => scenarioId === 'SCN-interaction-permission-decision')?.kind,
@@ -435,7 +438,7 @@ describe('scenario catalog coverage', () => {
   })
 
   test('tracks the executable coverage total', () => {
-    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(213)
+    expect(catalogCoverage.filter((coverage) => coverage.kind === 'executable')).toHaveLength(218)
   })
 
   test('stamps every executable record with a live proving tier', () => {
@@ -444,7 +447,7 @@ describe('scenario catalog coverage', () => {
       .filter((coverage) => !LIVE_STORY_TIERS.includes(coverage.provingTier))
       .map(({ scenarioId, provingTier }) => `${scenarioId} -> T${provingTier}`)
 
-    expect(executable).toHaveLength(213)
+    expect(executable).toHaveLength(218)
     expect(offLaneTiers).toEqual([])
     expect(new Set(executable.map((coverage) => coverage.provingTier))).toEqual(new Set(['0', '1', '2', '3', '4']))
   })
