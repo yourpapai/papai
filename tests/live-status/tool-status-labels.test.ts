@@ -5,13 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type { Locale } from '../../src/i18n/index.js'
 import { formatToolStatus } from '../../src/live-status/tool-status-labels.js'
-
-// The locale parameter arrives with the localization implementation; widening the
-// current two-argument signature through this alias keeps the suite compiling until
-// then (a function taking fewer parameters is assignable to one taking more).
-const formatToolStatusFor = formatToolStatus as (toolName: string, input: unknown, locale: Locale) => string
 
 describe('formatToolStatus', () => {
   test('web_fetch shows the host without quotes', () => {
@@ -210,30 +204,30 @@ describe('reminder/alert live-status labels', () => {
 
 describe('formatToolStatus locale', () => {
   test('ru renders the catalog label for a registered tool with a quoted arg', () => {
-    expect(formatToolStatusFor('search_tasks', { query: 'deploy' }, 'ru')).toBe('🔍 Ищу задачи: "deploy"…')
+    expect(formatToolStatus('search_tasks', { query: 'deploy' }, 'ru')).toBe('🔍 Ищу задачи: "deploy"…')
   })
 
   test('ru renders the catalog label for a registered tool with no arg', () => {
-    expect(formatToolStatusFor('update_task', {}, 'ru')).toBe('✏️ Обновляю задачу…')
+    expect(formatToolStatus('update_task', {}, 'ru')).toBe('✏️ Обновляю задачу…')
   })
 
   test('ru keeps the quote:false bare-host form for web_fetch', () => {
-    expect(formatToolStatusFor('web_fetch', { url: 'https://example.com/x' }, 'ru')).toBe('🌐 Загружаю example.com…')
+    expect(formatToolStatus('web_fetch', { url: 'https://example.com/x' }, 'ru')).toBe('🌐 Загружаю example.com…')
   })
 
   test('ru renders the localized runningTool fallback for unregistered tools', () => {
-    expect(formatToolStatusFor('add_watcher', {}, 'ru')).toBe('⚙️ Выполняю add watcher…')
+    expect(formatToolStatus('add_watcher', {}, 'ru')).toBe('⚙️ Выполняю add watcher…')
   })
 
   test('ru truncation and quoting stay identical to the en path', () => {
     const long = `  multi\nline   ${'a'.repeat(50)}`
-    expect(formatToolStatusFor('search_memory', { query: long }, 'ru')).toBe(
+    expect(formatToolStatus('search_memory', { query: long }, 'ru')).toBe(
       `🔍 Ищу в памяти: "multi line ${'a'.repeat(29)}…"…`,
     )
   })
 
   test('explicit en is byte-identical to the default no-locale output', () => {
-    expect(formatToolStatusFor('search_tasks', { query: 'deploy' }, 'en')).toBe(
+    expect(formatToolStatus('search_tasks', { query: 'deploy' }, 'en')).toBe(
       formatToolStatus('search_tasks', { query: 'deploy' }),
     )
   })

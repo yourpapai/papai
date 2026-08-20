@@ -20,7 +20,6 @@ import {
   prepareDefaultCountTokens,
 } from '../../src/commands/context-collector.js'
 import { alertConditionSchema } from '../../src/deferred-prompts/types.js'
-import type { Locale } from '../../src/i18n/index.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 function makeDeps(overrides: Partial<ContextCollectorDeps> | null): ContextCollectorDeps {
@@ -55,14 +54,6 @@ function requireSection(sections: readonly ContextSection[], label: ContextSecti
   assert.ok(section !== undefined)
   return section
 }
-
-// The locale dep arrives with the localization implementation; threading it through this
-// intersection keeps the suite compiling until then (extra properties are fine on a
-// non-literal passed to a narrower parameter type).
-const withLocale = (deps: ContextCollectorDeps, locale: Locale): ContextCollectorDeps & { locale: Locale } => ({
-  ...deps,
-  locale,
-})
 
 describe('collectContext', () => {
   beforeEach(() => {
@@ -200,7 +191,7 @@ describe('collectContext locale', () => {
   })
 
   test('ru deps resolve top-level labels from the contextView catalog', () => {
-    const snapshot = collectContext('user1', withLocale(makeDeps(null), 'ru'))
+    const snapshot = collectContext('user1', { ...makeDeps(null), locale: 'ru' })
     expect(snapshot.sections.map((s) => s.label)).toEqual([
       'Системный промпт',
       'Контекст памяти',
@@ -223,7 +214,7 @@ describe('collectContext locale', () => {
         { identifier: '#2', title: 'B', url: '', last_seen: '2026-04-11' },
       ],
     })
-    const snapshot = collectContext('user1', withLocale(deps, 'ru'))
+    const snapshot = collectContext('user1', { ...deps, locale: 'ru' })
     const memory = requireSection(snapshot.sections, 'Контекст памяти')
     assert.ok(memory.children !== undefined)
     expect(memory.children.map((c) => c.label)).toEqual(['Сводка', 'Известные сущности'])
@@ -236,7 +227,7 @@ describe('collectContext locale', () => {
     const deps = makeDeps({
       getFacts: () => [{ identifier: '#1', title: 'A', url: '', last_seen: '2026-04-11' }],
     })
-    const snapshot = collectContext('user1', withLocale(deps, 'ru'))
+    const snapshot = collectContext('user1', { ...deps, locale: 'ru' })
     const memory = requireSection(snapshot.sections, 'Контекст памяти')
     assert.ok(memory.children !== undefined)
     expect(memory.children[1]?.detail).toBe('1 факт')
@@ -245,22 +236,20 @@ describe('collectContext locale', () => {
   test('ru deps localize the message-count detail (singular and plural)', () => {
     const one = collectContext(
       'user1',
-      withLocale(makeDeps({ getHistory: () => [{ role: 'user', content: 'привет' }] }), 'ru'),
+      makeDeps({ locale: 'ru', getHistory: () => [{ role: 'user', content: 'привет' }] }),
     )
     expect(requireSection(one.sections, 'История диалога').detail).toBe('1 сообщение')
 
     const three = collectContext(
       'user1',
-      withLocale(
-        makeDeps({
-          getHistory: () => [
-            { role: 'user', content: 'а' },
-            { role: 'assistant', content: 'б' },
-            { role: 'user', content: 'в' },
-          ],
-        }),
-        'ru',
-      ),
+      makeDeps({
+        locale: 'ru',
+        getHistory: () => [
+          { role: 'user', content: 'а' },
+          { role: 'assistant', content: 'б' },
+          { role: 'user', content: 'в' },
+        ],
+      }),
     )
     expect(requireSection(three.sections, 'История диалога').detail).toBe('3 сообщений')
   })
@@ -270,7 +259,7 @@ describe('collectContext locale', () => {
       getActiveToolDefinitions: () => ({ a: {}, b: {}, c: {} }),
       getDisclosedToolDefinitions: () => ({ search_tools: {}, load_tool: {} }),
     })
-    const snapshot = collectContext('user1', withLocale(deps, 'ru'))
+    const snapshot = collectContext('user1', { ...deps, locale: 'ru' })
     expect(requireSection(snapshot.sections, 'Инструменты').detail).toBe(
       '2 активных · 3 доступных (прогрессивное раскрытие)',
     )
@@ -281,7 +270,7 @@ describe('collectContext locale', () => {
       buildInstructionsBlock: () => '=== Custom instructions ===\n- короткие слова\n',
       getProviderAddendum: () => 'дополнение провайдера',
     })
-    const snapshot = collectContext('user1', withLocale(deps, 'ru'))
+    const snapshot = collectContext('user1', { ...deps, locale: 'ru' })
     const sysPrompt = requireSection(snapshot.sections, 'Системный промпт')
     assert.ok(sysPrompt.children !== undefined)
     expect(sysPrompt.children.map((c) => c.label)).toEqual([
