@@ -7,6 +7,7 @@ import { tool } from 'ai'
 import type { Tool } from 'ai'
 import { z } from 'zod'
 
+import { getLatestCachedToolsForContext } from '../cache.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getContextSettings } from '../instances/context-store.js'
 import { getPlatformInstance } from '../instances/platform-store.js'
@@ -61,7 +62,14 @@ const defaultQueueCount = (): number => registry.getAllQueues().size
 
 const defaultUptimeSeconds = (): number => Math.floor(process.uptime())
 
-const resolveDeps = (deps: DiagnosticsDeps, configContextId: string): Required<DiagnosticsDeps> => ({
+const defaultDescriptorCachePresent = (storageContextId: string): boolean =>
+  storageContextId !== '' && getLatestCachedToolsForContext(storageContextId) !== undefined
+
+const resolveDeps = (
+  deps: DiagnosticsDeps,
+  configContextId: string,
+  storageContextId: string,
+): Required<DiagnosticsDeps> => ({
   platformInstanceActive:
     deps.platformInstanceActive ??
     ((platformInstanceId) => getPlatformInstance(platformInstanceId)?.status === 'active'),
@@ -69,7 +77,7 @@ const resolveDeps = (deps: DiagnosticsDeps, configContextId: string): Required<D
   llmConfig: deps.llmConfig ?? (() => defaultLlmConfig(configContextId)),
   mcpPool: deps.mcpPool ?? defaultMcpPool,
   queueCount: deps.queueCount ?? defaultQueueCount,
-  descriptorCachePresent: deps.descriptorCachePresent ?? (() => false),
+  descriptorCachePresent: deps.descriptorCachePresent ?? (() => defaultDescriptorCachePresent(storageContextId)),
   uptimeSeconds: deps.uptimeSeconds ?? defaultUptimeSeconds,
 })
 
@@ -101,8 +109,9 @@ export function makeRunDiagnosticsTool(
   platformInstanceId: string,
   deps: DiagnosticsDeps = {},
   configContextId = '',
+  storageContextId = '',
 ): Tool {
-  const resolved = resolveDeps(deps, configContextId)
+  const resolved = resolveDeps(deps, configContextId, storageContextId)
   return tool({
     description:
       'Run a read-only bot health diagnostics snapshot: platform instance state, task instance configuration, LLM config resolution, MCP pool health, message queue depth, tool descriptor cache presence, and uptime. Admin-only; returns no secrets.',
@@ -135,5 +144,10 @@ export function maybeAddDiagnosticsTools(tools: Record<string, Tool>, options: M
   if (options.isBotAdmin !== true || options.contextType !== 'dm' || mode !== 'normal') return
   const configContextId =
     options.storageContextId === undefined ? '' : getConfigContextIdFromStorageContextId(options.storageContextId)
-  tools['run_diagnostics'] = makeRunDiagnosticsTool(options.platformInstanceId ?? '', {}, configContextId)
+  tools['run_diagnostics'] = makeRunDiagnosticsTool(
+    options.platformInstanceId ?? '',
+    {},
+    configContextId,
+    options.storageContextId ?? '',
+  )
 }

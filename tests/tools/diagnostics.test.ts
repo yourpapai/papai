@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import type { Tool } from 'ai'
 
 import { enableByokForContext, setByokRoles, upsertByokProvider } from '../../src/byok-llm/store.js'
+import { setCachedTools } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
@@ -181,6 +182,45 @@ describe('run_diagnostics payload', () => {
     expect(result['llm_config']).toBe('unconfigured')
     expect(typeof result['uptime_seconds']).toBe('number')
     expect(JSON.stringify(result)).not.toContain(PROBE)
+  })
+})
+
+describe('run_diagnostics descriptor_cache_present probe', () => {
+  const CACHE_CTX = 'diag-cache-ctx'
+  const CACHE_USER = 'diag-cache-user'
+
+  const assembledDescriptorCache = (options: MakeToolsOptions): Promise<unknown> => {
+    const tools: Record<string, Tool> = {}
+    maybeAddDiagnosticsTools(tools, options)
+    const runDiagnostics = tools['run_diagnostics']
+    assert(runDiagnostics !== undefined, 'run_diagnostics must be assembled')
+    return getToolExecutor(runDiagnostics)({})
+  }
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('reports true when descriptors are cached for the storage context (production wiring passes empty deps)', async () => {
+    seedTestPlatformInstance({ id: 'pi-diag' })
+    setCachedTools('provider-backed:no-staged-download:no-resolver:diag-cache-ctx:diag-cache-user::admin', {
+      some_tool: {},
+    })
+    const result: unknown = await assembledDescriptorCache(
+      adminDmOptions({ storageContextId: CACHE_CTX, chatUserId: CACHE_USER, platformInstanceId: 'pi-diag' }),
+    )
+    assert(isRecord(result), 'diagnostics result must be an object')
+
+    expect(result['descriptor_cache_present']).toBe(true)
+  })
+
+  test('reports false for a storage context with no cached descriptors', async () => {
+    seedTestPlatformInstance({ id: 'pi-diag' })
+    const result: unknown = await assembledDescriptorCache(adminDmOptions({ platformInstanceId: 'pi-diag' }))
+    assert(isRecord(result), 'diagnostics result must be an object')
+
+    expect(result['descriptor_cache_present']).toBe(false)
   })
 })
 
