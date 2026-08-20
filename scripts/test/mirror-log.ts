@@ -56,7 +56,13 @@ export async function mirrorLogWhile(path: string, until: Promise<unknown>, deps
   const drain = (): void => {
     const size = deps.size(path)
     if (size === null || size <= offset) return
-    deps.write(deps.read(path, offset, size))
+    try {
+      deps.write(deps.read(path, offset, size))
+    } catch {
+      // The file vanished (or became unreadable) between the stat and this
+      // read: skip the poll exactly like a failed stat, leaving `offset` alone.
+      return
+    }
     offset = size
   }
 

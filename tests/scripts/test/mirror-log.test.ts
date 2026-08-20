@@ -22,12 +22,14 @@ const tailHarness = (): {
   sleepCalls: number[]
   append: (chunk: string | Uint8Array) => void
   vanish: () => void
+  failRead: () => void
   poll: () => Promise<void>
   exit: () => void
   exited: Promise<void>
 } => {
   let bytes: Buffer = Buffer.alloc(0)
   let missing = false
+  let readFails = false
   const written: string[] = []
   const sleepCalls: number[] = []
   const resolvers: Array<() => void> = []
@@ -38,7 +40,10 @@ const tailHarness = (): {
 
   const deps: MirrorDeps = {
     size: (): number | null => (missing ? null : bytes.length),
-    read: utf8TailRead((_path, start, end): Uint8Array => bytes.subarray(start, end)),
+    read: utf8TailRead((_path, start, end): Uint8Array => {
+      if (readFails) throw new Error('ENOENT: log unlinked between stat and read')
+      return bytes.subarray(start, end)
+    }),
     write: (chunk: string): void => {
       written.push(chunk)
     },
@@ -59,6 +64,9 @@ const tailHarness = (): {
     },
     vanish: (): void => {
       missing = true
+    },
+    failRead: (): void => {
+      readFails = true
     },
     poll: async (): Promise<void> => {
       resolvers.shift()?.()
@@ -134,6 +142,19 @@ describe('mirrorLogWhile', () => {
 
     h.append('gone ')
     h.vanish()
+    await h.poll()
+    h.exit()
+    await tail
+
+    expect(h.written).toEqual([])
+  })
+
+  test('a log that vanishes between stat and read is skipped without throwing', async () => {
+    const h = tailHarness()
+    const tail = mirrorLogWhile('/tmp/log', h.exited, h.deps)
+
+    h.append('gone ')
+    h.failRead()
     await h.poll()
     h.exit()
     await tail
