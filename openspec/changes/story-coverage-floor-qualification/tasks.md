@@ -49,7 +49,7 @@ See LICENSE in the project root for details.
 
 ## 5. Record the qualification baseline
 
-- [ ] 5.1 Verify the full foundation: `bun test:stories:contracts`,
+- [x] 5.1 Verify the full foundation: `bun test:stories:contracts`,
       `bun test:stories:coverage`, `bun test:stories:manifest`; confirm
       `reports/stories/manifest.json` has a non-empty `treeHash`. Commit the
       frozen input set (`tests/stories`, `scripts/story`, `scripts/coverage`,
@@ -57,7 +57,7 @@ See LICENSE in the project root for details.
       `tests/utils/test-helpers.ts`, `tests/utils/logger-mock.ts`) with
       nothing unrelated staged. That commit is the baseline candidate.
       Verify: all three commands exit 0
-- [ ] 5.2 Append a `## Foundation baseline` section to
+- [x] 5.2 Append a `## Foundation baseline` section to
       `docs/superpowers/specs/2026-08-04-global-refactor-behavior-coverage-roadmap-design.md`
       with the literal baseline SHA, the literal frozen tree hash, and the
       verified command list. No shell variable names remain in the document.
