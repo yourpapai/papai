@@ -30,6 +30,7 @@ export type AnalyticsToolDomain =
   | 'coding'
   | 'config'
   | 'meta'
+  | 'diagnostics'
   | 'other'
 export type AnalyticsToolRisk = 'read' | 'write' | 'destructive' | 'open_world'
 
@@ -53,7 +54,7 @@ const originOf = (toolName: string, slug: string): AnalyticsToolOrigin => {
   return slug === EXTERNAL_OTHER_TOOL_SLUG ? 'external_plugin' : 'core'
 }
 
-const DOMAIN_MAP: Readonly<Record<ToolDomain, AnalyticsToolDomain>> = {
+export const DOMAIN_MAP: Readonly<Record<ToolDomain, AnalyticsToolDomain>> = {
   task: 'task',
   project: 'task',
   comment: 'task',
@@ -75,7 +76,7 @@ const DOMAIN_MAP: Readonly<Record<ToolDomain, AnalyticsToolDomain>> = {
   time: 'other',
   mcp: 'other',
   plugin: 'other',
-  diagnostics: 'meta',
+  diagnostics: 'diagnostics',
 }
 
 const riskOf = (risk: ToolRisk): AnalyticsToolRisk => (risk === 'open-world' ? 'open_world' : risk)

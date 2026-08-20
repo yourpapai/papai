@@ -618,7 +618,9 @@ bun test:mutate --update-baseline  # full run; ratchet scripts/mutation/baseline
 bun test:mutate:seed --scores=reports/paired/scores.json  # re-apply persisted scores (CI commit step; lost-seed recovery)
 ```
 
-Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`, each
+Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`,
+`disableTypeChecks: false` so the sandbox leaves non-target file bytes
+untouched — pinned by `tests/scripts/mutation/stryker-config.test.ts`; each
 source file paired with the test set that actually covers it — coverage-derived
 via `scripts/mutation/coverage-map.ts`, with the companion as fallback). The CI
 `mutation-testing` job is a
