@@ -42,10 +42,10 @@ Ordered per design.md Migration Plan: every step is shippable alone, steps 1–2
 
 ## 6. CLI cutover (BREAKING — one revertible commit)
 
-- [ ] 6.1 Failing tests for the `sdd [<target>]` routing table: task-file → start; exact id/prefix → state-routed; single gate-pending/interrupted/completed → route; ambiguous/no-target-multi → list candidates + exit; legacy subcommand shapes and removed flags fail naming the replacement. Verify: `bun test tests/sdd-runner/cli-routing.test.ts`
-- [ ] 6.2 Implement the routing verb + `sdd stop [id]` + `--config`/`--depth`/`--pr`/`--reopen [<n>]`; delete `start`/`resume`/`gate`/`continue`/`report`/`audit`/`watch` subcommands, `cli-flags.ts` decision flags, `watch` verb files, and `DynamicRenderer`; update `sdd-runner:start` script and `USAGE`. Verify: `bun test tests/sdd-runner/cli-routing.test.ts && bun run sdd-runner:typecheck`
-- [ ] 6.3 Failing tests + implementation for completed-run report footer naming `transcripts/` and `sessions.jsonl` paths. Verify: `bun test tests/sdd-runner/report-footer.test.ts`
-- [ ] 6.4 Drop `@clack/prompts` from `sdd-runner/package.json`; confirm `ink`/`react`/`ink-testing-library` are the only interactive-surface deps. Verify: `bun install && bun run sdd-runner:typecheck && bun run sdd-runner:lint`
+- [x] 6.1 Failing tests for the `sdd [<target>]` routing table: task-file → start; exact id/prefix → state-routed; single gate-pending/interrupted/completed → route; ambiguous/no-target-multi → list candidates + exit; legacy subcommand shapes and removed flags fail naming the replacement. Verify: `bun test tests/sdd-runner/cli-routing.test.ts`
+- [x] 6.2 Implement the routing verb + `sdd stop [id]` + `--config`/`--depth`/`--pr`/`--reopen [<n>]`; delete `start`/`resume`/`gate`/`continue`/`report`/`audit`/`watch` subcommands, `cli-flags.ts` decision flags, `watch` verb files, and `DynamicRenderer`; update `sdd-runner:start` script and `USAGE`. Verify: `bun test tests/sdd-runner/cli-routing.test.ts && bun run sdd-runner:typecheck`
+- [x] 6.3 Failing tests + implementation for completed-run report footer naming `transcripts/` and `sessions.jsonl` paths. Verify: `bun test tests/sdd-runner/report-footer.test.ts`
+- [x] 6.4 Drop `@clack/prompts` from `sdd-runner/package.json`; confirm `ink`/`react`/`ink-testing-library` are the only interactive-surface deps. Verify: `bun install && bun run sdd-runner:typecheck && bun run sdd-runner:lint`
 
 ## 7. Docs and final verification
 

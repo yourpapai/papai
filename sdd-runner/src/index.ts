@@ -9,10 +9,9 @@ import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
 import { realSpawn } from '../../review-loop/src/spawn.js'
-import { buildAuditReport } from './audit.js'
 import { main } from './cli.js'
 import type { CliHarness } from './cli.js'
-import { parseCliArgs } from './cli.js'
+import { parseSddArgs } from './cli.js'
 import { discoverBranch, loadRunnerConfig } from './config.js'
 import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
@@ -26,21 +25,20 @@ import { createRenderer } from './renderer.js'
 import type { Verbosity } from './renderer.js'
 import { buildReport } from './report.js'
 import type { ChangeDirSummary, ReportInput } from './report.js'
-import { listPendingGates, loadRunState, resolveRunId } from './run-state.js'
+import { loadRunState, resolveRunId } from './run-state.js'
+import { requestCalmStop } from './stop-controller.js'
 import { registerTerminalTitle, TERMINAL_TITLE_RESTORE } from './terminal-title.js'
 
 export const USAGE = [
-  'sdd-runner — autonomous SDD pipeline',
+  'sdd — autonomous SDD pipeline',
   '',
   'Usage:',
-  '  sdd-runner start <task-file> [--depth S|M|L] [--verbosity brief|normal|debug]',
-  '  sdd-runner continue [runId]',
-  '  sdd-runner resume <runId>',
-  '  sdd-runner gate [resume <runId> [--confirm-all] [--extend] [--veto <id>=<redirect>]... [--abort]]',
-  '  sdd-runner report <runId> [--pr]',
+  '  sdd [<task-file> | <run-id>] [--depth S|M|L] [--pr] [--reopen [<n>]] [--config <path>]',
+  '  sdd stop [<run-id>]',
   '',
-  'On a terminal, `gate resume <runId>` (or `continue`) opens an interactive gate session.',
-  'Without a TTY, pass decision flags or hand-edit the gate file. Bare `gate` lists pending gates.',
+  'A task file starts a run; a run id routes by its state (gate decision, resume, report).',
+  'No target routes to the sole candidate or lists candidates.',
+  'Gate decisions: the TUI on a terminal; otherwise hand-edit the gate file.',
 ].join('\n')
 
 export async function readChangeSummary(repoRoot: string, changeName: string): Promise<ChangeDirSummary> {
@@ -101,8 +99,9 @@ function shellExec(
     })
 }
 
-async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness> {
-  const configPath = process.env['SDD_RUNNER_CONFIG'] ?? path.join(import.meta.dir, '..', 'config.json')
+async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: string): Promise<CliHarness> {
+  const configPath =
+    configOverride ?? process.env['SDD_RUNNER_CONFIG'] ?? path.join(import.meta.dir, '..', 'config.json')
   const config = await loadRunnerConfig(configPath)
   const driver: OpenSpecDriver = createOpenSpecDriver({ exec: shellExec(config.repoRoot), cwd: config.repoRoot })
   const execGit = makeExecGit()
@@ -121,22 +120,20 @@ async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness
     interactive: (): boolean => stdinIsInteractive(),
   }
   return {
+    workDir: config.workDir,
     runStart: (options) => runStart(orchestratorDeps, options),
     runResume: (runId, autonomy) => runResume(orchestratorDeps, runId, autonomy),
-    runGateResume: async (runId, options) => {
+    runGateResume: async (runId) => {
       const resolved = await resolveRunId(config.workDir, runId)
-      return runGateResume(orchestratorDeps, resolved, options)
+      return runGateResume(orchestratorDeps, resolved, {})
     },
     runContinue: (runId, autonomy) => runContinue(orchestratorDeps, runId, autonomy),
-    listPendingGates: () => listPendingGates(config.workDir),
-    buildAuditReport: (runId) => resolveAndCall(config.workDir, runId, (r) => buildAuditReport(config.workDir, r)),
+    requestCalmStop: async (runId) => {
+      const state = await loadRunState(config.workDir, runId)
+      requestCalmStop(state.runDir)
+    },
     runGateReopen: (runId, gateVersion) =>
       resolveAndCall(config.workDir, runId, (r) => runGateReopen(orchestratorDeps, config.workDir, r, gateVersion)),
-    runWatch: async (runId) => {
-      const resolved = await resolveRunId(config.workDir, runId)
-      const { runWatchLoop } = await import('./watch-loop.js')
-      await runWatchLoop(config.workDir, resolved)
-    },
     buildReport: (runId, pr) => buildRunReport(config, runId, pr, execGit),
     stdout: (line) => {
       process.stdout.write(`${line}\n`)
@@ -185,9 +182,8 @@ export async function runEntry(): Promise<void> {
     process.stdout.write(`${USAGE}\n`)
     return
   }
-  const cmd = parseCliArgs(argv)
-  const verbosity = cmd.subcommand === 'start' || cmd.subcommand === 'gate' ? (cmd.verbosity ?? 'normal') : 'normal'
-  const harness = await buildHarness(verbosity)
+  const parsed = parseSddArgs(argv)
+  const harness = await buildHarness('normal', parsed.configPath)
   const code = await main(argv, harness)
   process.exit(code)
 }

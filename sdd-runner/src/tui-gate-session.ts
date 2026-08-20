@@ -216,11 +216,10 @@ export function runTuiGateSession(deps: TuiGateSessionDeps): Promise<TuiGateSess
               resolve({ status: 'answered', decision: answers.decision, gateMd: outcome.gateMd })
             })
             .catch((error: unknown) => {
-              if (!settled && !abandoned) {
-                settled = true
-                instance.unmount()
-                reject(error instanceof Error ? error : new Error(String(error)))
-              }
+              if (settled || abandoned) return
+              settled = true
+              instance.unmount()
+              reject(error instanceof Error ? error : new Error(String(error)))
             })
         },
         onAbandoned: () => {
@@ -232,7 +231,11 @@ export function runTuiGateSession(deps: TuiGateSessionDeps): Promise<TuiGateSess
     )
     if (keys === undefined) return
     void feedScript(keys, deps.keyScript ?? '').then(() => {
-      finish({ status: 'abandoned' })
+      // give a settle triggered by the last key a beat to land before
+      // declaring the exhausted script abandoned
+      void delay(50).then(() => {
+        finish({ status: 'abandoned' })
+      })
     })
   })
 }

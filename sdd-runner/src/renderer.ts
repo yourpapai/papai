@@ -5,7 +5,6 @@
 
 import { STAGE_ORDER } from './events.js'
 import type { EventInput } from './events.js'
-import { DynamicRenderer } from './live-renderer.js'
 import { createReplayFolder } from './replay.js'
 import type { DigestRecord, ReplayFolder, ReplayState } from './replay.js'
 import type { ResolveCostFn } from './usage-aggregate.js'
@@ -169,16 +168,12 @@ export class LineRenderer implements Renderer {
 }
 
 /**
- * Pick a renderer for the run. `opts.dynamic` defaults to `true`; CI / non-TTY /
- * `--verbosity brief` always get the append-only `LineRenderer`. The dynamic
- * branch returns `DynamicRenderer` (see `live-renderer.ts`) when a TTY is
- * present and verbosity is not `brief`.
+ * The line renderer is the one renderer: the Ink TUI is the interactive
+ * surface (see `run-view.ts`), and every non-TUI context — CI, pipes, log
+ * files — gets append-only lines.
  */
 export function createRenderer(stream: RendererStream, verbosity: Verbosity, opts?: RendererOptions): Renderer {
-  const wantsDynamic = opts?.dynamic !== false
-  if (wantsDynamic && stream.isTTY === true && verbosity !== 'brief') {
-    return new DynamicRenderer(stream, verbosity, undefined, opts?.resolveCost)
-  }
+  void opts
   return new LineRenderer(stream, verbosity)
 }
 
