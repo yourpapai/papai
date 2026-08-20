@@ -10,7 +10,7 @@ See LICENSE in the project root for details.
 ## 1. i18n catalog groundwork (`liveStatus.*` + `contextView.*`)
 
 - [x] 1.1 Extend `tests/i18n/parity.test.ts` (and dictionary shape tests) to require the new `liveStatus` and `contextView` subtrees, en/ru — fails until catalogs land: `bun test tests/i18n/parity.test.ts`
-- [ ] 1.2 Add the `liveStatus` subtree to `src/i18n/types.ts` + `src/i18n/locales/en.ts`: `thinking`, `preparingResponse`, `runningTool` (slot `{tool}`), `tools.<key>` for all 32 REGISTRY tools (en = current labels): `bun test tests/i18n/ && bun run typecheck`
+- [x] 1.2 Add the `liveStatus` subtree to `src/i18n/types.ts` + `src/i18n/locales/en.ts`: `thinking`, `preparingResponse`, `runningTool` (slot `{tool}`), `tools.<key>` for all 32 REGISTRY tools (en = current labels): `bun test tests/i18n/ && bun run typecheck`
 - [ ] 1.3 Fill the `liveStatus` subtree in `src/i18n/locales/ru.ts` (`💭 Думаю…`, `💬 Готовлю ответ…`, `⚙️ Выполняю {tool}…`, gerund tool labels): `bun test tests/i18n/parity.test.ts`
 - [ ] 1.4 Add the `contextView` subtree to types + `en.ts`: `sections.<id>` for the nine section ids (`system_prompt`…`tools`), fact/message counts (singular/plural `{count}` keys), progressive-disclosure line (`{active}`/`{available}`), and renderer chrome (header word, `tokens` unit, `tk` suffix, `(approximate)` marker, approximate footer): `bun test tests/i18n/ && bun run typecheck`
 - [ ] 1.5 Fill the `contextView` subtree in `ru.ts` (`Контекст`, `токенов`, `факт`/`фактов`, `сообщений`, `{active} активных · {available} доступных (прогрессивное раскрытие)`, `(приблизительно)`, `_количество токенов приблизительное_`): `bun test tests/i18n/parity.test.ts`
