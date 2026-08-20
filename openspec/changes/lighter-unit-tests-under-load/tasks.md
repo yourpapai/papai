@@ -19,4 +19,4 @@
 
 ## 5. Full verification
 
-- [ ] 5.1 Run the full gates: `bun run test` (green on an idle host; summary shows selected mode), `bun run typecheck`, `bun run lint`, `bun run format:check`; confirm `bun run test:status` still answers from the persisted report and no `docs/architecture/*.md` page beyond `commands.md` describes wrapper mode selection (update any that do)
+- [x] 5.1 Run the full gates: `bun run test` (green on an idle host; summary shows selected mode), `bun run typecheck`, `bun run lint`, `bun run format:check`; confirm `bun run test:status` still answers from the persisted report and no `docs/architecture/*.md` page beyond `commands.md` describes wrapper mode selection (update any that do)
