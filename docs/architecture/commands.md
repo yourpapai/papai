@@ -64,15 +64,18 @@ The compatibility proof is a **behavioral and seam-API proof**, not purely behav
 
 ## TDD Enforcement (Hooks)
 
-Every `Write`/`Edit`/`MultiEdit` on an implementation file in `src/` or `client/` triggers an automated hook pipeline enforcing Red → Green → Refactor; it runs checks sequentially and **blocks** on failure.
+Every `Write`/`Edit`/`MultiEdit` on an implementation file in `src/` or `client/` triggers an automated hook pipeline that **steers** toward Red → Green → Refactor. Local hooks are advisory — the hard gate is CI (`test:mutate:changed` + coverage ratchet).
 
-**Scope** — only implementation files: path starts with `src/`/`client/`, extension `.ts`/`.js`/`.tsx`/`.jsx`, not a test (`*.test.*`/`*.spec.*`). Everything else passes through, but test-file edits still verify the changed test passes. The `client/` tree mirrors `src/` for test resolution (`client/debug/foo.ts` → `tests/client/debug/foo.test.ts`).
+**Scope** — only implementation files: path starts with `src/`/`client/`/`plugins/`/`review-loop/src/`/`sdd-runner/src/`, extension `.ts`/`.js`/`.tsx`/`.jsx`, not a test (`*.test.*`/`*.spec.*`). Everything else passes through. The `client/` tree mirrors `src/` for test resolution (`client/debug/foo.ts` → `tests/client/debug/foo.test.ts`).
 
-**Pipeline** — before write: (1) write-policy gate, (2) test-first gate. After write: (3) test tracker for new tests, (4) import gate for tests under `tests/`, (5) targeted run of the edited file's companion test.
+**Pipeline** — before write: (1) write-policy gate. After write: (2) test-first nudge (advisory, once per file per session), (3) test tracker for new tests, (4) import gate for tests under `tests/`.
 
-Step 5 is the inner loop's whole point: a couple of seconds after the edit, rather than minutes later in a full-suite run. Its output is capped at 3 000 characters (`.hooks/tdd/test-runner.mjs`).
+- (1) **Write-policy gate** blocks inline suppressions (`eslint-disable`, `oxlint-disable`, `@ts-ignore`, `@ts-nocheck`, `@ts-expect-error`) and direct edits to `.oxlintrc.json`.
+- (2) **Test-first nudge** — when a gateable impl file is written without a covering test (no parallel `tests/` file, and no `tests/` file written this session that maps to it), the hook allows the write and emits a single advisory per file per session: `Wrote src/foo.ts without a covering test — next time write the failing test first, follow TDD. Expected test: tests/foo.test.ts`. Dedup is via `SessionState.tddNudgedFiles`. No stub is created. The nudge surfaces as `PostToolUse` hook output (Claude) or `promptAsync` (opencode). The previous `verifyTestsPass` targeted run (step 5, `bun test <file>` + 3k cap via `.hooks/tdd/test-runner.mjs`) has been removed — targeted runs are now the agent's responsibility (`bun test <file>`), and the hook no longer pollutes context.
+- (3) **Test tracker** records `tests/` files written this session so a subsequent impl write to the matching `src/` file is considered covered.
+- (4) **Import gate** blocks `tests/` writes that don't import their corresponding impl module (e.g. `tests/foo.test.ts` must import `../../src/foo.js`).
 
-**Not wired.** `.hooks/tdd/checks/` also contains `snapshot-surface.mjs`, `verify-no-new-surface.mjs` and `check-uncommitted.mjs`. They are implemented and tested but no harness imports them, and this list used to describe two of them as live steps. The surface pair needs a session baseline that nothing currently writes; wiring them is a separate piece of work, not a documentation fix. They are named here so the next reader can tell "deliberately dormant" from "silently broken".
+**Not wired.** `.hooks/tdd/checks/` also contains `snapshot-surface.mjs`, `verify-no-new-surface.mjs`, `check-uncommitted.mjs`, and the removed `verify-tests-pass.mjs`/`test-runner.mjs`+`coverage*.mjs` call sites. They are implemented and tested but no harness imports them for the main pipeline, and this list used to describe two of them as live steps. The surface pair needs a session baseline that nothing currently writes; wiring them is a separate piece of work, not a documentation fix. They are named here so the next reader can tell "deliberately dormant" from "silently broken".
 
 **Write protections (blocked escape hatches):**
 
