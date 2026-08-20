@@ -99,8 +99,9 @@ function clientVisibility(adminUserId: string | undefined): AdminVisibility {
  * carries an explicit matching `chatUserId`, or when its `turnId` resolves to a
  * turn whose scope is visible to that admin. Everything else — foreign or
  * unattributable — must be shaped.
+ * @public -- shared by the REST /logs route so SSE and REST egress agree.
  */
-function isOwnLogEntry(entry: LogEntry, adminUserId: string | undefined): boolean {
+export function isOwnLogEntry(entry: LogEntry, adminUserId: string | undefined): boolean {
   if (adminUserId === undefined) return false
   const explicit = entry['chatUserId']
   if (typeof explicit === 'string') return explicit === adminUserId

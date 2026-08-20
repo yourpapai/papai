@@ -14,8 +14,9 @@ import { routePluginMcpPaths } from '../mcp-server/index.js'
 import { handleAdminRecentRequests } from './admin-system.js'
 import { routePublicAuthPaths } from './auth-routes.js'
 import { handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
-import { logBuffer, logBufferStream } from './log-buffer.js'
+import { logBufferStream } from './log-buffer.js'
 import { parseLogFilter } from './log-filter-model.js'
+import { handleLogs, handleLogStats, handleLogScopes } from './log-routes.js'
 import { handleMcpStatus } from './mcp-routes.js'
 import { handleNotifyRoute } from './notify-route.js'
 import {
@@ -27,7 +28,7 @@ import {
 } from './server-route-options.js'
 import { handleDeferred, handleIdentity, handleMemos, handleRecurring } from './server-route-support.js'
 import { isSettingsPath, routeSettingsRequest } from './settings-router.js'
-import { addClient, removeClient, findTurnById, isVisibleToAdmin } from './state-collector.js'
+import { addClient, isVisibleToAdmin, removeClient, findTurnById } from './state-collector.js'
 import { handleStatsGlobal, handleStatsSubject } from './stats-routes.js'
 import { routeTranscriptPaths } from './transcript-viewer.js'
 
@@ -89,34 +90,17 @@ function handleEvents(req: Request, session: AuthenticatedRequest): Response {
   })
 }
 
-function parseIntParam(value: string | null): number | undefined {
-  if (value === null) return undefined
-  const parsed = Number.parseInt(value, 10)
-  return Number.isNaN(parsed) ? undefined : parsed
-}
-
-function searchParam(value: string | null): string | undefined {
-  if (value !== null) return value
-  return undefined
-}
-
-function handleLogs(url: URL): Response {
-  const filter = parseLogFilter(url.searchParams)
-  const results = logBuffer.search({
-    ...filter,
-    limit: parseIntParam(url.searchParams.get('limit')),
-    before: searchParam(url.searchParams.get('before')),
-  })
-  return jsonResponse(results)
-}
-
-function handleLogScopes(): Response {
-  return jsonResponse(logBuffer.distinctScopes())
-}
-
-function handleLogStats(url: URL): Response {
-  const filter = parseLogFilter(url.searchParams)
-  return jsonResponse({ ...logBuffer.stats(), matchingCount: logBuffer.countMatching(filter) })
+/** Diagnosis-surface routes are read-only: only GET is served, anything else 405s. */
+function isDiagnosisPath(pathname: string): boolean {
+  return (
+    pathname === '/events' ||
+    pathname === '/logs' ||
+    pathname === '/logs/stats' ||
+    pathname === '/logs/scopes' ||
+    pathname.startsWith('/turns/') ||
+    pathname === '/stats/global' ||
+    pathname.startsWith('/stats/subject/')
+  )
 }
 
 export type { WebServerRouteOptions } from './server-route-options.js'
@@ -175,9 +159,12 @@ function routeProtectedPaths(
   url: URL,
   session: AuthenticatedRequest,
 ): Response | Promise<Response> | null {
+  if (req.method !== 'GET' && isDiagnosisPath(url.pathname)) {
+    return new Response('Method not allowed', { status: 405 })
+  }
   if (url.pathname === '/events') return handleEvents(req, session)
-  if (url.pathname === '/logs') return handleLogs(url)
-  if (url.pathname === '/logs/stats') return handleLogStats(url)
+  if (url.pathname === '/logs') return handleLogs(url, session)
+  if (url.pathname === '/logs/stats') return handleLogStats(url, session)
   if (url.pathname === '/logs/scopes') return handleLogScopes()
   if (url.pathname.startsWith('/turns/')) return handleTurnLookup(url, session)
   if (url.pathname === '/recurring') return handleRecurring(url)

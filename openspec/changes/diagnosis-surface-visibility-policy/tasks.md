@@ -81,7 +81,7 @@ See LICENSE in the project root for details.
       `tests/debug/server.test.ts`, `logs-route-content.test.ts`,
       `server-stats.test.ts`).
       Verify: `bun test tests/debug/server.test.ts tests/debug/logs-route-content.test.ts tests/debug/server-stats.test.ts` (fails)
-- [ ] 4.3 Edit `src/debug/server.ts`: `isAuthorizedRequest` returns the
+- [x] 4.3 Edit `src/debug/server.ts`: `isAuthorizedRequest` returns the
       `AuthenticatedRequest`; thread `session.adminUserId` into `handleEvents`
       (→ `addClient`), `handleLogs` (attribution + shaping +
       filter-after-shape, `limit`/`before` last), and `handleTurnLookup`
