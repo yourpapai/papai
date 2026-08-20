@@ -31,7 +31,7 @@ const buildFooter = (snapshot: ContextSnapshot): string => {
   return `${total} / ${max} tokens (${pct}%)${approximate}`
 }
 
-const emojiFor = (label: string): string => SECTION_EMOJIS[label] ?? '⬜'
+const emojiFor = (id: string): string => SECTION_EMOJIS[id] ?? '⬜'
 
 const buildFieldValue = (section: ContextSection): string => {
   const lines: string[] = [`${formatNumber(section.tokens)} tokens`]
@@ -49,7 +49,7 @@ const buildFieldValue = (section: ContextSection): string => {
 
 const buildFields = (snapshot: ContextSnapshot): EmbedField[] =>
   snapshot.sections.map((section) => ({
-    name: `${emojiFor(section.label)} ${section.label}`,
+    name: `${emojiFor(section.id)} ${section.label}`,
     value: buildFieldValue(section),
     inline: false,
   }))

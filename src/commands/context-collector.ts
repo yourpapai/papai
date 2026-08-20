@@ -113,11 +113,11 @@ const buildSystemPromptSection = (deps: ContextCollectorDeps, counter: SafeCount
   const addendumTokens = counter.count(addendum)
   const baseTokens = Math.max(0, totalTokens - customTokens - addendumTokens)
 
-  const children: ContextSection[] = [{ label: 'Base instructions', tokens: baseTokens }]
-  if (customTokens > 0) children.push({ label: 'Custom instructions', tokens: customTokens })
-  if (addendumTokens > 0) children.push({ label: 'Provider addendum', tokens: addendumTokens })
+  const children: ContextSection[] = [{ id: 'base_instructions', label: 'Base instructions', tokens: baseTokens }]
+  if (customTokens > 0) children.push({ id: 'custom_instructions', label: 'Custom instructions', tokens: customTokens })
+  if (addendumTokens > 0) children.push({ id: 'provider_addendum', label: 'Provider addendum', tokens: addendumTokens })
 
-  return { label: 'System prompt', tokens: totalTokens, children }
+  return { id: 'system_prompt', label: 'System prompt', tokens: totalTokens, children }
 }
 
 const buildMemorySection = (deps: ContextCollectorDeps, counter: SafeCounter): ContextSection => {
@@ -131,21 +131,23 @@ const buildMemorySection = (deps: ContextCollectorDeps, counter: SafeCounter): C
   const summaryTokens = counter.count(summary)
   const factsTokens = counter.count(factText)
 
-  const children: ContextSection[] = [{ label: 'Summary', tokens: summaryTokens }]
+  const children: ContextSection[] = [{ id: 'summary', label: 'Summary', tokens: summaryTokens }]
   const factsChild: ContextSection = {
+    id: 'known_entities',
     label: 'Known entities',
     tokens: factsTokens,
     detail: `${String(facts.length)} fact${facts.length === 1 ? '' : 's'}`,
   }
   children.push(factsChild)
 
-  return { label: 'Memory context', tokens: totalTokens, children }
+  return { id: 'memory_context', label: 'Memory context', tokens: totalTokens, children }
 }
 
 const buildHistorySection = (deps: ContextCollectorDeps, counter: SafeCounter): ContextSection => {
   const history = deps.getHistory()
   const tokens = counter.count(serializeHistory(history))
   return {
+    id: 'conversation_history',
     label: 'Conversation history',
     tokens,
     detail: `${String(history.length)} message${history.length === 1 ? '' : 's'}`,
@@ -162,6 +164,7 @@ const buildToolsSection = (deps: ContextCollectorDeps, counter: SafeCounter): Co
   const availableCount = Object.keys(deps.getActiveToolDefinitions()).length
   const tokens = counter.count(serializeTools(disclosed))
   return {
+    id: 'tools',
     label: 'Tools',
     tokens,
     detail: `${String(activeCount)} active · ${String(availableCount)} available (progressive disclosure)`,

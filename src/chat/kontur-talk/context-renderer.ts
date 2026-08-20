@@ -18,10 +18,10 @@ const buildHeader = (snapshot: ContextSnapshot): string => {
   return `**Context** · ${snapshot.modelName} · ${total} / ${max} tokens (${pct}%)`
 }
 
-const emojiFor = (label: string): string => SECTION_EMOJIS[label] ?? '⬜'
+const emojiFor = (id: string): string => SECTION_EMOJIS[id] ?? '⬜'
 
 const topRow = (section: ContextSection): string =>
-  `| ${emojiFor(section.label)} **${section.label}** | ${formatNumber(section.tokens)} |`
+  `| ${emojiFor(section.id)} **${section.label}** | ${formatNumber(section.tokens)} |`
 
 const childRow = (child: ContextSection): string => {
   const label = child.detail === undefined ? child.label : `${child.label} (${child.detail})`

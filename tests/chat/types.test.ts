@@ -147,6 +147,7 @@ describe('ChatProvider interface', () => {
 describe('ContextSnapshot and related types', () => {
   test('ContextSection has required fields and optional children/detail', () => {
     const section: ContextSection = {
+      id: 'system_prompt',
       label: 'System prompt',
       tokens: 1000,
     }
@@ -157,8 +158,9 @@ describe('ContextSnapshot and related types', () => {
   })
 
   test('ContextSection accepts children and detail', () => {
-    const child: ContextSection = { label: 'Base instructions', tokens: 800 }
+    const child: ContextSection = { id: 'base_instructions', label: 'Base instructions', tokens: 800 }
     const section: ContextSection = {
+      id: 'system_prompt',
       label: 'System prompt',
       tokens: 1000,
       children: [child],
@@ -172,8 +174,8 @@ describe('ContextSnapshot and related types', () => {
     const snapshot: ContextSnapshot = {
       modelName: 'gpt-4o',
       sections: [
-        { label: 'System prompt', tokens: 1000 },
-        { label: 'Tools', tokens: 500 },
+        { id: 'system_prompt', label: 'System prompt', tokens: 1000 },
+        { id: 'tools', label: 'Tools', tokens: 500 },
       ],
       totalTokens: 1500,
       maxTokens: 128_000,

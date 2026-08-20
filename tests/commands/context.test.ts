@@ -45,10 +45,10 @@ function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCom
     collectContext: (): ContextSnapshot => ({
       modelName: 'gpt-4o',
       sections: [
-        { label: 'System prompt', tokens: 1000 },
-        { label: 'Memory context', tokens: 500 },
-        { label: 'Conversation history', tokens: 2000 },
-        { label: 'Tools', tokens: 3000 },
+        { id: 'system_prompt', label: 'System prompt', tokens: 1000 },
+        { id: 'memory_context', label: 'Memory context', tokens: 500 },
+        { id: 'conversation_history', label: 'Conversation history', tokens: 2000 },
+        { id: 'tools', label: 'Tools', tokens: 3000 },
       ],
       totalTokens: 6500,
       maxTokens: 128_000,

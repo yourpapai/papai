@@ -29,7 +29,7 @@ See LICENSE in the project root for details.
 ## 3. /context view (Part 2)
 
 - [x] 3.1 Test-first: `ContextSection` carries a stable `id`; `context-grid.ts` `SECTION_EMOJIS` and the Mattermost renderer's `emojiFor` key on ids, same emoji map for ru and en snapshots: `bun test tests/commands/context-grid.test.ts`
-- [ ] 3.2 Implement: add `id` to `ContextSection` (`context-types.ts`) and re-key `SECTION_EMOJIS` by id; update the Mattermost emoji lookup: `bun test tests/commands/context-grid.test.ts tests/chat/mattermost/context-renderer.test.ts`
+- [x] 3.2 Implement: add `id` to `ContextSection` (`context-types.ts`) and re-key `SECTION_EMOJIS` by id; update the Mattermost emoji lookup: `bun test tests/commands/context-grid.test.ts tests/chat/mattermost/context-renderer.test.ts`
 - [ ] 3.3 Test-first: collector emits section ids with labels via `t('contextView.sections.<id>', locale)` and localized detail strings (`{count} фактов`, `{count} сообщений`, progressive-disclosure line); en output unchanged: `bun test tests/commands/context-collector.test.ts`
 - [ ] 3.4 Implement: `collectContext` resolves labels/details through the catalog (locale threaded via deps or snapshot); add `locale: Locale` to `ContextSnapshot`: `bun test tests/commands/context-collector.test.ts`
 - [ ] 3.5 Test-first + implement: `src/commands/context.ts` sets `snapshot.locale = getContextLanguage(auth.configContextId ?? auth.storageContextId)`: `bun test tests/commands/context.test.ts`

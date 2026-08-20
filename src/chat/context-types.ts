@@ -5,6 +5,8 @@
 
 /** One section of the LLM context window, with an optional nested breakdown. */
 export type ContextSection = {
+  /** Stable machine id (`system_prompt`, `summary`, …); the language-independent key for emoji/label lookups. */
+  id: string
   label: string
   tokens: number
 } & Partial<{

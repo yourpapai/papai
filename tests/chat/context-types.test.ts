@@ -9,7 +9,8 @@ import type { ContextSection, ContextSnapshot } from '../../src/chat/context-typ
 
 describe('context-types', () => {
   test('ContextSection has required fields', () => {
-    const section: ContextSection = { label: 'test', tokens: 100 }
+    const section: ContextSection = { id: 'system_prompt', label: 'test', tokens: 100 }
+    expect(section.id).toBe('system_prompt')
     expect(section.label).toBe('test')
     expect(section.tokens).toBe(100)
   })
