@@ -8,6 +8,13 @@ import { describe, expect, test } from 'bun:test'
 import { en } from '../../../src/i18n/locales/en.js'
 import type { Dictionary } from '../../../src/i18n/types.js'
 
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+
+const subtreeOf = (node: unknown, key: string): Record<string, unknown> => {
+  const value = isRecord(node) ? node[key] : undefined
+  return isRecord(value) ? value : {}
+}
+
 describe('en dictionary', () => {
   test('satisfies the Dictionary type', () => {
     const catalog: Dictionary = en
@@ -32,5 +39,12 @@ describe('en dictionary', () => {
       'Provider reasoning available ({count} characters). Enable raw detail to view.',
     )
     expect(en.commands.start.welcome).toContain('Welcome to papai!')
+  })
+
+  test('pins the liveStatus seed texts byte-identical to the pre-i18n constants', () => {
+    const liveStatus = subtreeOf(en, 'liveStatus')
+    expect(liveStatus['thinking']).toBe('💭 Thinking…')
+    expect(liveStatus['preparingResponse']).toBe('💬 Preparing response…')
+    expect(liveStatus['runningTool']).toBe('⚙️ Running {tool}…')
   })
 })

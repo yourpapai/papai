@@ -9,6 +9,15 @@ import { en } from '../../../src/i18n/locales/en.js'
 import { ru } from '../../../src/i18n/locales/ru.js'
 import type { Dictionary } from '../../../src/i18n/types.js'
 
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+
+const subtreeOf = (node: unknown, key: string): Record<string, unknown> => {
+  const value = isRecord(node) ? node[key] : undefined
+  return isRecord(value) ? value : {}
+}
+
+const textOf = (value: unknown): string => (typeof value === 'string' ? value : '')
+
 describe('ru dictionary', () => {
   test('is typed against the same Dictionary shape', () => {
     const catalog: Dictionary = ru
@@ -46,5 +55,39 @@ describe('ru dictionary', () => {
     expect(ru.systemPrompt.providerlessDeferred).toContain('берёт на себя расписание')
     expect(ru.systemPrompt.deferred).not.toContain('handled by schedule')
     expect(ru.systemPrompt.providerlessDeferred).not.toContain('handled by schedule')
+  })
+
+  test('translates the liveStatus seed texts', () => {
+    const liveStatus = subtreeOf(ru, 'liveStatus')
+    expect(liveStatus['thinking']).toBe('💭 Думаю…')
+    expect(liveStatus['preparingResponse']).toBe('💬 Готовлю ответ…')
+    expect(liveStatus['runningTool']).toBe('⚙️ Выполняю {tool}…')
+  })
+
+  test('translates the contextView chrome', () => {
+    const contextView = subtreeOf(ru, 'contextView')
+    expect(contextView['headerWord']).toBe('Контекст')
+    expect(contextView['tokensUnit']).toContain('токенов')
+    expect(contextView['tokenSuffix']).toBe('tk')
+    expect(contextView['approximateMarker']).toBe('(приблизительно)')
+    expect(contextView['approximateFooter']).toContain('количество токенов приблизительное')
+  })
+
+  test('keeps every interpolated slot the en contextView/liveStatus catalogs declare', () => {
+    const enLiveStatus = subtreeOf(en, 'liveStatus')
+    const ruLiveStatus = subtreeOf(ru, 'liveStatus')
+    expect(textOf(enLiveStatus['runningTool'])).toContain('{tool}')
+    expect(textOf(ruLiveStatus['runningTool'])).toContain('{tool}')
+    const enContextView = subtreeOf(en, 'contextView')
+    const ruContextView = subtreeOf(ru, 'contextView')
+    expect(textOf(enContextView['progressiveDisclosure'])).toContain('{active}')
+    expect(textOf(enContextView['progressiveDisclosure'])).toContain('{available}')
+    expect(textOf(ruContextView['progressiveDisclosure'])).toContain('{active}')
+    expect(textOf(ruContextView['progressiveDisclosure'])).toContain('{available}')
+    expect(textOf(ruContextView['progressiveDisclosure'])).toContain('прогрессивное раскрытие')
+    for (const key of ['factSingular', 'factPlural', 'messageSingular', 'messagePlural'] as const) {
+      expect(textOf(enContextView[key])).toContain('{count}')
+      expect(textOf(ruContextView[key])).toContain('{count}')
+    }
   })
 })
