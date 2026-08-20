@@ -39,11 +39,11 @@ See LICENSE in the project root for details.
 
 ## 4. Mattermost scenarios
 
-- [ ] 4.1 Add `tests/platform/scenarios/mattermost-thread-reply.platform.ts`:
+- [x] 4.1 Add `tests/platform/scenarios/mattermost-thread-reply.platform.ts`:
       outbound post carries the incoming `root_id`; turn uses the
       thread-scoped storage context id.
       Verify: `bun test:platform`
-- [ ] 4.2 Add
+- [x] 4.2 Add
       `tests/platform/scenarios/mattermost-status-lifecycle.platform.ts`:
       create, ordered patches, terminating delete.
       Verify: `bun test:platform`

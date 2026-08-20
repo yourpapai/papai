@@ -12,6 +12,8 @@
 export type PlatformStory = { scenarioId: string; title: string; file: string }
 
 const FETCH_CHAT_LINK = 'tests/platform/scenarios/mattermost-fetch-chat-link.platform.ts'
+const MATTERMOST_THREAD_REPLY = 'tests/platform/scenarios/mattermost-thread-reply.platform.ts'
+const MATTERMOST_STATUS_LIFECYCLE = 'tests/platform/scenarios/mattermost-status-lifecycle.platform.ts'
 const HTTP_ACTION = 'tests/platform/scenarios/mattermost-http-action.platform.ts'
 const DISCORD_INTERACTIONS = 'tests/platform/scenarios/discord-interactions.platform.ts'
 const DISCORD_CALLBACK_ROUTING = 'tests/platform/scenarios/discord-callback-routing.platform.ts'
@@ -26,6 +28,16 @@ export const PLATFORM_STORIES = {
     scenarioId: 'SCN-fetch-chat-link',
     title: 'resolves a Mattermost permalink thread through fetch_chat_link against a fake server',
     file: FETCH_CHAT_LINK,
+  },
+  'SCN-mattermost-thread-reply': {
+    scenarioId: 'SCN-mattermost-thread-reply',
+    title: 'answers into the incoming Mattermost thread root under a thread-scoped storage context',
+    file: MATTERMOST_THREAD_REPLY,
+  },
+  'SCN-mattermost-status-lifecycle': {
+    scenarioId: 'SCN-mattermost-status-lifecycle',
+    title: 'patches the Mattermost live status through the turn and deletes it before answering',
+    file: MATTERMOST_STATUS_LIFECYCLE,
   },
   'SCN-http-mattermost-action': {
     scenarioId: 'SCN-http-mattermost-action',

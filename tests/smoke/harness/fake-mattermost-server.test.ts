@@ -16,7 +16,7 @@ import { z } from 'zod'
 import { waitFor } from '../../utils/test-helpers.js'
 import { startFakeMattermostServer } from './fake-mattermost-server.js'
 
-const channelSchema = z.object({ id: z.string(), type: z.string() })
+const channelSchema = z.object({ id: z.string(), type: z.string(), team_id: z.string().optional() })
 const frameSchema = z.record(z.string(), z.unknown())
 const postedFrameSchema = z.object({ data: z.object({ post: z.string() }) })
 const embeddedPostSchema = z.object({ message: z.string(), user_id: z.string() })
@@ -198,6 +198,21 @@ describe('fake Mattermost server — T3 post + thread endpoints', () => {
       })
       expect(patched.status).toBe(404)
       expect(mm.postMutations()).toEqual([])
+    } finally {
+      await mm.stop()
+    }
+  })
+
+  test('reports a configured channel as a group and every other one as a DM', async () => {
+    const mm = startFakeMattermostServer({ groupChannelIds: ['team-chat'] })
+    try {
+      const group = channelSchema.parse(await (await fetch(`${mm.localBaseUrl}/api/v4/channels/team-chat`)).json())
+      // 'O' is Mattermost's open (public) channel type; the adapter reads anything
+      // other than 'D' as a group, which is what makes the turn thread-scoped.
+      expect(group).toMatchObject({ id: 'team-chat', type: 'O' })
+      expect(group.team_id).toBeString()
+      const dm = channelSchema.parse(await (await fetch(`${mm.localBaseUrl}/api/v4/channels/dm-chat`)).json())
+      expect(dm).toMatchObject({ id: 'dm-chat', type: 'D' })
     } finally {
       await mm.stop()
     }

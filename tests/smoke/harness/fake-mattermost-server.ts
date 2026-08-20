@@ -53,6 +53,7 @@ export type FakeMattermostServer = {
   stop(): Promise<void>
 }
 
+const GROUP_TEAM_ID = 'team-1'
 const CHANNEL_RE = /^\/api\/v4\/channels\/[^/]+$/u
 const MEMBER_RE = /^\/api\/v4\/channels\/[^/]+\/members\/[^/]+$/u
 const POST_SINGLE_RE = /^\/api\/v4\/posts\/([^/]+)$/u
@@ -70,10 +71,11 @@ const patchBodySchema = z.object({ message: z.string().optional() })
 const wsFrameSchema = z.object({ action: z.string().optional() })
 
 export function startFakeMattermostServer(
-  opts: { botUserId?: string; botUsername?: string } = {},
+  opts: { botUserId?: string; botUsername?: string; groupChannelIds?: readonly string[] } = {},
 ): FakeMattermostServer {
   const botUserId = opts.botUserId ?? 'bot-user-1'
   const botUsername = opts.botUsername ?? 'smokebot'
+  const groupChannelIds = new Set(opts.groupChannelIds ?? [])
 
   let activeWs: ServerWebSocket<unknown> | null = null
   let markConnected: () => void = () => {}
@@ -112,7 +114,11 @@ export function startFakeMattermostServer(
       return Response.json({ id: botUserId, username: botUsername })
     }
     if (req.method === 'GET' && CHANNEL_RE.test(path)) {
-      return Response.json({ id: path.split('/').at(-1), type: 'D' })
+      const channelId = path.split('/').at(-1) ?? ''
+      // Everything is a DM unless the scenario declared it a group: only a non-'D'
+      // channel makes the adapter thread-scope the turn's storage context id.
+      if (!groupChannelIds.has(channelId)) return Response.json({ id: channelId, type: 'D' })
+      return Response.json({ id: channelId, type: 'O', team_id: GROUP_TEAM_ID, display_name: channelId })
     }
     if (req.method === 'GET' && MEMBER_RE.test(path)) {
       const segments = path.split('/')
