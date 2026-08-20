@@ -268,7 +268,7 @@ export function buildTools(
     registerProviderBackedTool(tools, 'promote_memo', makePromoteMemoTool(provider, storageOwnerId))
   maybeAddIdentityTools(tools, provider, chatUserId, contextType)
   if (contextType === 'group' && chatParticipantResolver !== undefined && contextId !== undefined) {
-    tools['resolve_chat_participant'] = makeResolveChatParticipantTool(chatParticipantResolver, contextId)
+    tools['resolve_chat_participant'] = makeResolveChatParticipantTool(chatParticipantResolver, contextId, chatUserId)
   }
   return tools
 }
@@ -294,7 +294,7 @@ export function buildProviderlessTools(
     allowTaskDependentDeferredPrompts: false,
   })
   if (contextType === 'group' && chatParticipantResolver !== undefined && contextId !== undefined) {
-    tools['resolve_chat_participant'] = makeResolveChatParticipantTool(chatParticipantResolver, contextId)
+    tools['resolve_chat_participant'] = makeResolveChatParticipantTool(chatParticipantResolver, contextId, chatUserId)
   }
   return tools
 }

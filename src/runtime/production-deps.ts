@@ -149,12 +149,12 @@ function setupProductionBot(state: ProductionState, router: ChatRouter, adminUse
   const processMessage: BotDeps['processMessage'] = (...args) =>
     import('../llm-orchestrator.js').then((mod) => mod.processMessage(...args))
   const stagedDownloadFn = createStagedDownloader(router)
-  const chatParticipantResolver: BotDeps['chatParticipantResolver'] = (contextId, query, limit) =>
+  const chatParticipantResolver: BotDeps['chatParticipantResolver'] = (contextId, query, ...rest) =>
     resolveChatParticipant(
       contextId,
       query,
       (userId) => router.resolveUserLabel(userId, { contextId, contextType: 'group' }),
-      limit,
+      ...rest,
     )
   const analytics = state.analytics
   const rephrase = resolveProductionRephrase(analytics)

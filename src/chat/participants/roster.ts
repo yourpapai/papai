@@ -30,6 +30,7 @@ export type ChatParticipantResolver = (
   contextId: string,
   query: string,
   limit?: number,
+  chatUserId?: string,
 ) => Promise<ParticipantCandidate[]>
 
 type RawCandidate = { userId: string; username: string | null }
@@ -102,28 +103,15 @@ export function computeScore(query: string, displayName: string | null, username
   return 0
 }
 
-/**
- * Resolve a name query to a ranked list of chat participants.
- * Steps:
- *   1. Gather candidates (group_members ∪ message_metadata senders, deduped).
- *   2. Resolve display names via resolveLabel (p-limited), fall back to username, then userId.
- *   3. Fuzzy-match & rank against query. Return top-N (limit).
- */
-export async function resolveChatParticipant(
-  contextId: string,
+/** Resolve display names for all candidates (p-limited), falling back to username, then userId. */
+function resolveCandidates(
+  raw: readonly RawCandidate[],
   query: string,
   resolveLabel: ResolveUserLabelFn,
-  limit: number = DEFAULT_LIMIT,
 ): Promise<ParticipantCandidate[]> {
-  log.debug({ contextId, query, limit }, 'resolveChatParticipant')
-  // Defense-in-depth: ''.startsWith('') matches everyone; schema already rejects empty queries.
-  if (query.trim() === '') return []
-  const raw = gatherParticipants(contextId)
-  if (raw.length === 0) return []
-
   // Per-call limiter: a module-level limiter would serialize concurrent invocations from different callers.
   const limiter = pLimit(LABEL_RESOLVE_CONCURRENCY)
-  const resolved: ParticipantCandidate[] = await Promise.all(
+  return Promise.all(
     raw.map((candidate) =>
       limiter(async (): Promise<ParticipantCandidate> => {
         let displayName: string
@@ -138,15 +126,33 @@ export async function resolveChatParticipant(
           displayName = candidate.username ?? candidate.userId
         }
         const score = computeScore(query, displayName, candidate.username)
-        return {
-          userId: candidate.userId,
-          displayName,
-          username: candidate.username,
-          score,
-        }
+        return { userId: candidate.userId, displayName, username: candidate.username, score }
       }),
     ),
   )
+}
+
+/**
+ * Resolve a name query to a ranked list of chat participants.
+ * Steps:
+ *   1. Gather candidates (group_members ∪ message_metadata senders, deduped).
+ *   2. Resolve display names via resolveCandidates (p-limited), fall back to username, then userId.
+ *   3. Fuzzy-match & rank against query. Return top-N (limit).
+ */
+export async function resolveChatParticipant(
+  contextId: string,
+  query: string,
+  resolveLabel: ResolveUserLabelFn,
+  limit: number = DEFAULT_LIMIT,
+  chatUserId?: string,
+): Promise<ParticipantCandidate[]> {
+  log.debug({ contextId, query, limit, ...(chatUserId === undefined ? {} : { chatUserId }) }, 'resolveChatParticipant')
+  // Defense-in-depth: ''.startsWith('') matches everyone; schema already rejects empty queries.
+  if (query.trim() === '') return []
+  const raw = gatherParticipants(contextId)
+  if (raw.length === 0) return []
+
+  const resolved = await resolveCandidates(raw, query, resolveLabel)
 
   const matched = resolved.filter((c) => c.score > 0)
   matched.sort((a, b) => {
@@ -155,6 +161,9 @@ export async function resolveChatParticipant(
   })
 
   const result = matched.slice(0, limit)
-  log.info({ contextId, query, count: result.length }, 'resolveChatParticipant completed')
+  log.info(
+    { contextId, query, count: result.length, ...(chatUserId === undefined ? {} : { chatUserId }) },
+    'resolveChatParticipant completed',
+  )
   return result
 }
