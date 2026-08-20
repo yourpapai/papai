@@ -57,6 +57,6 @@ See LICENSE in the project root for details.
       mechanism exists; review the `/stats/*` anonymity contract in
       `docs/architecture/overview.md` for changes.
       Verify: docs updated in the same commit as the wiring
-- [ ] 5.2 Run `bun test`, `bun run typecheck`, `bun run lint`, and
+- [x] 5.2 Run `bun test`, `bun run typecheck`, `bun run lint`, and
       `bun security` (credential/consent surface).
       Verify: all commands exit 0
