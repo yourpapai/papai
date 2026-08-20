@@ -15,6 +15,8 @@ const FETCH_CHAT_LINK = 'tests/platform/scenarios/mattermost-fetch-chat-link.pla
 const HTTP_ACTION = 'tests/platform/scenarios/mattermost-http-action.platform.ts'
 const DISCORD_INTERACTIONS = 'tests/platform/scenarios/discord-interactions.platform.ts'
 const DISCORD_CALLBACK_ROUTING = 'tests/platform/scenarios/discord-callback-routing.platform.ts'
+const DISCORD_REPLY_MENTION = 'tests/platform/scenarios/discord-reply-mention.platform.ts'
+const DISCORD_LIVE_STATUS = 'tests/platform/scenarios/discord-live-status.platform.ts'
 const KONTUR_TALK_REPLIES = 'tests/platform/scenarios/kontur-talk-replies.platform.ts'
 const TELEGRAM_ADMIN_AUTHORIZATION = 'tests/platform/scenarios/telegram-admin-authorization.platform.ts'
 const TELEGRAM_CALLBACK_ROUTING = 'tests/platform/scenarios/telegram-callback-routing.platform.ts'
@@ -49,6 +51,21 @@ export const PLATFORM_STORIES = {
     scenarioId: 'SCN-interaction-discord-response-lifecycle',
     title: 'preserves the Discord interaction response lifecycle after defer failure',
     file: DISCORD_INTERACTIONS,
+  },
+  'SCN-interaction-discord-reply-mention': {
+    scenarioId: 'SCN-interaction-discord-reply-mention',
+    title: 'dispatches a reply to a bot message exactly as an explicit Discord mention',
+    file: DISCORD_REPLY_MENTION,
+  },
+  'SCN-interaction-discord-status-lifecycle': {
+    scenarioId: 'SCN-interaction-discord-status-lifecycle',
+    title: 'creates, updates in order, and dismisses the Discord live status',
+    file: DISCORD_LIVE_STATUS,
+  },
+  'SCN-interaction-discord-status-send-failure': {
+    scenarioId: 'SCN-interaction-discord-status-send-failure',
+    title: 'delivers the reply without status edits when the Discord status send fails',
+    file: DISCORD_LIVE_STATUS,
   },
   'SCN-interaction-kontur-reply-formatting': {
     scenarioId: 'SCN-interaction-kontur-reply-formatting',

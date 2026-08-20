@@ -18,11 +18,11 @@ See LICENSE in the project root for details.
 
 ## 2. Discord scenarios
 
-- [ ] 2.1 Add `tests/platform/scenarios/discord-reply-mention.platform.ts`:
+- [x] 2.1 Add `tests/platform/scenarios/discord-reply-mention.platform.ts`:
       reply-to-bot dispatches identically to an explicit mention; reply to a
       non-bot parent dispatches nothing.
       Verify: `bun test:platform`
-- [ ] 2.2 Add `tests/platform/scenarios/discord-live-status.platform.ts`:
+- [x] 2.2 Add `tests/platform/scenarios/discord-live-status.platform.ts`:
       create/update/dismiss ordering, and the fallback when the status send
       fails once.
       Verify: `bun test:platform`
