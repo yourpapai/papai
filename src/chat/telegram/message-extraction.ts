@@ -91,6 +91,7 @@ export function logMessageExtraction(
   log.debug(
     {
       userId: id,
+      chatUserId: String(id),
       contextId,
       messageId: messageIdStr,
       hasReply,

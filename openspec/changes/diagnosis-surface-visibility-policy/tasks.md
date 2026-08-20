@@ -59,7 +59,7 @@ See LICENSE in the project root for details.
       any other importer) in the same edit.
       Verify: `bun test tests/debug/` (per-session, sse-log-filter,
       state-collector*, turn-assembly suites pass)
-- [ ] 3.3 Sweep `src/` for pino sites that log user-controlled content without
+- [x] 3.3 Sweep `src/` for pino sites that log user-controlled content without
       `chatUserId`/`turnId` attribution and attach the missing field (fail-safe
       direction: unattributable content strips for everyone).
       Verify: `bun run test:affected` + `bun run lint`
