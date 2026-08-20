@@ -179,7 +179,10 @@ becomes zero-delta evidence by estimating crash loss.
   Stage B UTC weeks (executable: `assessStageCEntry`).
 - **Operate:** enable `local_pseudonymous` for explicit test actors or one
   controlled installation only; in consent mode only post-allow activity is
-  eligible. Run at least two weekly review cycles and one complete
+  eligible. An actor joins the pseudonymous lane by setting the local
+  longitudinal preference to allow at `/settings` (this provisions their
+  collection eligibility ref); without that opt-in every event stays
+  aggregate-only. Run at least two weekly review cycles and one complete
   authenticated export/withdraw/delete exercise; hand-calculate sessions,
   activation, outcomes, intent coverage, and censoring against the
   materializations; drill HMAC key backup/restore and a planned rekey.

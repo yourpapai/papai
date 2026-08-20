@@ -46,6 +46,17 @@ checks against materializations, and the exit review.
 
 | Day (UTC) | Eligible | Reason | Freshness | Recon delta | Rejects | Overflow | Expiry | Notes |
 |---|---|---|---|---|---|---|---|---|
+| 2026-08-14 | true | — | none | 0 | 99 (invalid_value=99) | 0 | ok | — |
+| 2026-08-15 | false | delta | none | 0 | 0 | 0 | ok | — |
+| 2026-08-16 | false | delta | none | 0 | 0 | 0 | ok | — |
+| 2026-08-17 | false | delta | 2026-08-18T00:00 | 0 | 23 (invalid_value=23) | 0 | ok | — |
+| 2026-08-18 | false | delta | 2026-08-19T00:00 | 0 | 4 (invalid_value=4) | 0 | ok | — |
+| 2026-08-19 | false | delta | 2026-08-20T00:00 | 0 | 0 | 0 | ok | — |
+
+Days 2026-08-17–19 stayed `delta` because the pre-fix writer was still in
+production until v6.14.0 (deployed 2026-08-20, contains the writer fix +
+migration `078`); those closes are the same 2026-08-17 incident, not new ones.
+Clean-day evidence restarts 2026-08-20.
 
 ### Drills
 
@@ -74,3 +85,10 @@ checks against materializations, and the exit review.
 
 - 2026-08-15: `invalid_value` rejects expected to drop to ~0 with v6.13.0 (#209 fix live); verify against the first post-deploy daily rows.
 - 2026-08-17: **window interruption.** Days 2026-08-15/16 reported `reconciliation=delta` (live-epoch delta): the live aggregate lane wrote epoch contribution rows but never the matching `opportunity`/`aggregate_only` epoch source counters, so every epoch closed with `delta = |0 − contributions|`. Invisible during Stage B because the long-lived epoch stayed open all window (open epochs aren't delta-checked); surfaced when the v6.13.x deploys closed epochs. Fixed in the aggregate writer (counters now bump in contribution units, same transaction, live lane only) + migration `078` repairs the two poisoned closed epochs from their contribution cell keys. Consecutive-clean-day evidence restarts from the deploy containing this fix; the two delta days are kept as honest negatives, not edited.
+- 2026-08-20: **pseudonymous lane collected nothing since entry.** Post-v6.14.0 verification showed all closed epochs `publishable` (08-17 incident cleared), but `analytics_events` empty with 2222+ aggregate opportunities. Root cause: no production caller provisions the `allow` row in `analytics_collection_eligibility` — `setEligibilityState` is test-only; `PUT /settings/api/analytics/preferences` writes the preference row but never collection eligibility, so `decideEligibility` denies every non-guest actor with `governance_incomplete` and all events degrade to aggregate-only. Fix pending: preference PUT `localLongitudinal=allow` must also provision the collection ref; `deny` must revoke. Hand-calculation drills and pseudonymous evidence deferred until the fix deploys and data accrues.
+  - **Fix shipped** (change `provision-collection-eligibility`): the
+    preferences PUT now provisions/revokes
+    `analytics_collection_eligibility` alongside the preference write. After
+    deploying, the pilot actor must open `/settings` → Analytics and re-save
+    `localLongitudinal: allow` once; canonical events then accrue from that
+    moment.
