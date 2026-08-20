@@ -114,6 +114,6 @@ export function makeRunDiagnosticsTool(platformInstanceId: string, deps: Diagnos
  * assembled for a bot admin in a DM, in normal mode.
  */
 export function maybeAddDiagnosticsTools(tools: Record<string, Tool>, options: MakeToolsOptions): void {
-  if (options.isBotAdmin !== true || options.contextType !== 'dm' || options.mode === 'proactive') return
+  if (options.isBotAdmin !== true || options.contextType !== 'dm' || options.mode !== 'normal') return
   tools['run_diagnostics'] = makeRunDiagnosticsTool(options.platformInstanceId ?? '', {})
 }

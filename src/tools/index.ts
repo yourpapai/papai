@@ -15,6 +15,7 @@ import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
 import { maybeSeedAdminToolDefaults } from './admin-tool-defaults.js'
 import { BUILTIN_TOOL_NAMES } from './builtin-names.js'
+import { maybeAddDiagnosticsTools } from './diagnostics.js'
 import { emitResolvedSurfaceOpportunities } from './feature-opportunities.js'
 import { extendSchemaForAsk, gatedExecute, type AskPermissionFn } from './permission-gate.js'
 import { getToolMetadata } from './tool-metadata.js'
@@ -219,7 +220,9 @@ export async function buildToolDescriptors(provider: TaskProvider, options: Make
     Object.assign(mcpTools, result.extraMcpTools)
   }
 
-  return { ...tools, ...mcpTools, ...pluginTools }
+  const merged: ToolSet = { ...tools, ...mcpTools, ...pluginTools }
+  maybeAddDiagnosticsTools(merged, options)
+  return merged
 }
 
 export async function buildProviderlessToolDescriptors(options: MakeToolsOptions): Promise<ToolSet> {
@@ -259,7 +262,9 @@ export async function buildProviderlessToolDescriptors(options: MakeToolsOptions
     Object.assign(mcpTools, result.extraMcpTools)
   }
 
-  return { ...tools, ...mcpTools, ...pluginTools }
+  const merged: ToolSet = { ...tools, ...mcpTools, ...pluginTools }
+  maybeAddDiagnosticsTools(merged, options)
+  return merged
 }
 
 /**
