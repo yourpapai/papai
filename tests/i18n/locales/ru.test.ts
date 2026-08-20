@@ -64,6 +64,13 @@ describe('ru dictionary', () => {
     expect(liveStatus['runningTool']).toBe('⚙️ Выполняю {tool}…')
   })
 
+  test('translates liveStatus tool labels as Russian gerunds', () => {
+    const tools = subtreeOf(subtreeOf(ru, 'liveStatus'), 'tools')
+    expect(tools['search_tasks']).toBe('Ищу задачи')
+    expect(tools['web_fetch']).toBe('Загружаю')
+    expect(tools['create_task']).toBe('Создаю задачу')
+  })
+
   test('translates the contextView chrome', () => {
     const contextView = subtreeOf(ru, 'contextView')
     expect(contextView['headerWord']).toBe('Контекст')
