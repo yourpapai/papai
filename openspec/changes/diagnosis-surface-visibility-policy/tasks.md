@@ -19,7 +19,7 @@ See LICENSE in the project root for details.
 
 ## 2. LLM trace attribution and shaping
 
-- [ ] 2.1 Extend `tests/debug/llm-trace-collector.test.ts` with failing
+- [x] 2.1 Extend `tests/debug/llm-trace-collector.test.ts` with failing
       assertions: `llm:end`/`llm:error` traces copy `data.chatUserId` into a new
       `LlmTrace.chatUserId` (absent → undefined, legacy shapes unchanged).
       Verify: `bun test tests/debug/llm-trace-collector.test.ts` (fails)

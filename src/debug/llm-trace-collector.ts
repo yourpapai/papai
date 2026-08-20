@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { Scope } from './event-bus.js'
-import { str, num, bool, tokenUsage, parseStepsDetail } from './state-collector-utils.js'
+import { str, num, bool, optStr, tokenUsage, parseStepsDetail } from './state-collector-utils.js'
 
 export type LlmTraceToolCall = {
   toolName: string
@@ -19,6 +19,7 @@ export type LlmTraceToolCall = {
 export type LlmTrace = {
   timestamp: number
   userId: string
+  chatUserId: string | undefined
   model: string
   steps: number
   totalTokens: { inputTokens: number; outputTokens: number }
@@ -89,6 +90,7 @@ function buildEndTrace(event: TraceEvent, userId: string, pending: PendingLlmTra
   return {
     timestamp: event.timestamp,
     userId,
+    chatUserId: optStr(event.data['chatUserId']),
     model: resolveModel(pending, event.data),
     steps: num(event.data['steps']),
     totalTokens: tokenUsage(event.data['tokenUsage']),
@@ -116,6 +118,7 @@ function buildErrorTrace(event: TraceEvent, userId: string, pending: PendingLlmT
   return {
     timestamp: event.timestamp,
     userId,
+    chatUserId: optStr(event.data['chatUserId']),
     model: resolveModel(pending, event.data),
     steps: 0,
     totalTokens: { inputTokens: 0, outputTokens: 0 },
