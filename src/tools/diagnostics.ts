@@ -50,7 +50,7 @@ const defaultTaskInstance = (configContextId: string): { id: string; type: strin
 const defaultLlmConfig = (configContextId: string): DiagnosticsLlmConfigStatus => {
   const resolved = resolveLlmConfig(configContextId)
   if (!resolved.ok) return 'unconfigured'
-  return resolved.source === 'global' ? 'central' : 'byok'
+  return resolved.main.source === 'global' ? 'central' : 'byok'
 }
 
 const defaultMcpPool = (): { serverCount: number; healthyCount: number } => {

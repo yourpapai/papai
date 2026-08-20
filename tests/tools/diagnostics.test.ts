@@ -341,4 +341,26 @@ describe('run_diagnostics llm_config probe', () => {
 
     expect(result['llm_config']).toBe('central')
   })
+
+  test('reports central when the main model runs on admin/global creds even if small/embedding resolve BYOK (mixed source)', async () => {
+    const provider = createLlmProvider(
+      { label: 'admin-llm', providerType: 'openai', baseUrl: 'https://admin.invalid/v1', apiKey: 'sk-admin' },
+      'admin-1',
+    )
+    setAdminRoleBindings(
+      { main: { providerId: provider.id, model: 'gpt-main' }, small: null, embedding: null },
+      'admin-1',
+    )
+    enableByokForContext(CONTEXT, 'admin-1')
+    upsertByokProvider(CONTEXT, makeByokProvider(), 'admin-1')
+    setByokRoles(
+      CONTEXT,
+      { main: { providerId: '', model: '' }, small: { providerId: 'prov-byok', model: 'byok-small' }, embedding: null },
+      'admin-1',
+    )
+    const result: unknown = await assembledLlmConfig(adminDmOptions())
+    assert(isRecord(result), 'diagnostics result must be an object')
+
+    expect(result['llm_config']).toBe('central')
+  })
 })
