@@ -45,6 +45,24 @@ describe('log-routes egress', () => {
     expect(pick(anon, 'durationMs')).toBe(2)
   })
 
+  test('handleLogs pages with before cursor and limit over filtered results', async () => {
+    await setupTestDb()
+    logBuffer.clear()
+    logBuffer.push({ level: 30, time: '2026-07-02T00:00:01.000Z', msg: 'a', scope: 'chat:telegram' })
+    logBuffer.push({ level: 30, time: '2026-07-02T00:00:02.000Z', msg: 'b', scope: 'chat:telegram' })
+    logBuffer.push({ level: 30, time: '2026-07-02T00:00:03.000Z', msg: 'c', scope: 'tool:x' })
+
+    const filtered = handleLogs(new URL('http://x/logs?include=chat'), sessionFor('a1'))
+    const filteredRaw: unknown = JSON.parse(await filtered.text())
+    assert(Array.isArray(filteredRaw), 'expected array')
+    expect(filteredRaw.map((e) => pick(e, 'msg'))).toEqual(['a', 'b'])
+
+    const page = handleLogs(new URL('http://x/logs?before=2026-07-02T00:00:03.000Z&limit=1'), sessionFor('a1'))
+    const pageRaw: unknown = JSON.parse(await page.text())
+    assert(Array.isArray(pageRaw), 'expected array')
+    expect(pageRaw.map((e) => pick(e, 'msg'))).toEqual(['b'])
+  })
+
   test('handleLogStats matchingCount counts post-shaping matches only', async () => {
     await setupTestDb()
     logBuffer.clear()

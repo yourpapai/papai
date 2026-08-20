@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import { emitGlobal } from './event-bus.js'
-import { applyFilter, type LogFilter } from './log-filter-model.js'
 
 export type LogEntry = {
   level: number
@@ -13,12 +12,6 @@ export type LogEntry = {
   turnId?: string
   msg: string
   [key: string]: unknown
-}
-
-type SearchParams = LogFilter & {
-  limit?: number
-  /** Cursor for backward paging: return only entries with `time` strictly less than this ISO timestamp. */
-  before?: string
 }
 
 type BufferStats = {
@@ -62,19 +55,6 @@ export class LogRingBuffer {
   entries(): LogEntry[] {
     if (this.buffer.length < this.capacity) return this.buffer.slice()
     return [...this.buffer.slice(this.head), ...this.buffer.slice(0, this.head)]
-  }
-
-  search(params: SearchParams): LogEntry[] {
-    let results = applyFilter(this.entries(), params)
-    if (params.before !== undefined) {
-      results = results.filter((e) => e.time < params.before!)
-    }
-    const limit = params.limit ?? 100
-    return results.slice(-limit)
-  }
-
-  countMatching(filter: LogFilter): number {
-    return applyFilter(this.entries(), filter).length
   }
 
   distinctScopes(): Array<{ scope: string; count: number }> {
