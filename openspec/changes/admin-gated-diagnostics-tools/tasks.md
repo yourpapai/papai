@@ -12,7 +12,7 @@ See LICENSE in the project root for details.
 
 ## 2. Identity thread through queue and handler
 
-- [ ] 2.1 Add failing tests in `tests/bot-message-handler.test.ts`: authorized admin message enqueues `isBotAdmin: true` + `platformInstanceId: <msg.platformInstanceId>`; non-admin enqueues `isBotAdmin: false`; `platformInstanceId` absent when the message carries none — `bun test tests/bot-message-handler.test.ts`
+- [x] 2.1 Add failing tests in `tests/bot-message-handler.test.ts`: authorized admin message enqueues `isBotAdmin: true` + `platformInstanceId: <msg.platformInstanceId>`; non-admin enqueues `isBotAdmin: false`; `platformInstanceId` absent when the message carries none — `bun test tests/bot-message-handler.test.ts`
 - [ ] 2.2 Add failing queue-coalescing test (follow existing `actorRole` coverage): `isBotAdmin`/`platformInstanceId` survive `flush()` taking the last message's values when messages coalesce — `bun test tests/message-queue.test.ts`
 - [ ] 2.3 Add `isBotAdmin?: boolean` / `platformInstanceId?: string` to `QueueItem` + `CoalescedItem` (`src/message-queue/types.ts`), carry both from the last message in coalescing (`src/message-queue/queue.ts`), pass `auth.isBotAdmin`/`msg.platformInstanceId` from `enqueueTurn` and forward `coalescedItem.isBotAdmin`/`platformInstanceId` in `runTurnProcess` (`src/bot-message-handler.ts`) — `bun test tests/bot-message-handler.test.ts tests/message-queue.test.ts`
 
