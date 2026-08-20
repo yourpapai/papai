@@ -88,4 +88,34 @@ describe('en dictionary', () => {
       expect(tools[tool]).toBe(label)
     }
   })
+
+  test('pins the contextView chrome byte-identical to the current renderer strings', () => {
+    const contextView = subtreeOf(en, 'contextView')
+    expect(contextView['headerWord']).toBe('Context')
+    expect(contextView['tokensUnit']).toBe('tokens')
+    expect(contextView['tokenSuffix']).toBe('tk')
+    expect(contextView['approximateMarker']).toBe('(approximate)')
+    expect(contextView['approximateFooter']).toBe('token counts are approximate')
+  })
+
+  test('pins the contextView sections and detail templates to the current collector strings', () => {
+    const contextView = subtreeOf(en, 'contextView')
+    const sections = subtreeOf(contextView, 'sections')
+    expect(sections['system_prompt']).toBe('System prompt')
+    expect(sections['base_instructions']).toBe('Base instructions')
+    expect(sections['custom_instructions']).toBe('Custom instructions')
+    expect(sections['provider_addendum']).toBe('Provider addendum')
+    expect(sections['memory_context']).toBe('Memory context')
+    expect(sections['summary']).toBe('Summary')
+    expect(sections['known_entities']).toBe('Known entities')
+    expect(sections['conversation_history']).toBe('Conversation history')
+    expect(sections['tools']).toBe('Tools')
+    expect(contextView['factSingular']).toBe('{count} fact')
+    expect(contextView['factPlural']).toBe('{count} facts')
+    expect(contextView['messageSingular']).toBe('{count} message')
+    expect(contextView['messagePlural']).toBe('{count} messages')
+    expect(contextView['progressiveDisclosure']).toBe(
+      '{active} active · {available} available (progressive disclosure)',
+    )
+  })
 })

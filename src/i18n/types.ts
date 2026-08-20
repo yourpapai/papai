@@ -159,6 +159,33 @@ export interface Dictionary {
       get_current_time: string
     }
   }
+  /** `/context` view texts; section labels keyed by stable section id. */
+  contextView: {
+    sections: {
+      system_prompt: string
+      base_instructions: string
+      custom_instructions: string
+      provider_addendum: string
+      memory_context: string
+      summary: string
+      known_entities: string
+      conversation_history: string
+      tools: string
+    }
+    /** Slot `{count}` receives the fact/entity count. */
+    factSingular: string
+    factPlural: string
+    /** Slot `{count}` receives the history message count. */
+    messageSingular: string
+    messagePlural: string
+    /** Slots `{active}`/`{available}` receive the disclosed/full tool counts. */
+    progressiveDisclosure: string
+    headerWord: string
+    tokensUnit: string
+    tokenSuffix: string
+    approximateMarker: string
+    approximateFooter: string
+  }
   /** User-facing AppError / tool-failure bodies; interpolated ids stay verbatim. */
   errors: {
     llm: {

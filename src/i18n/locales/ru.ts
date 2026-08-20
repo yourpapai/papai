@@ -4,6 +4,8 @@
 // See LICENSE in the project root for details.
 
 import type { Dictionary } from '../types.js'
+import { ruContextView } from './ru-context-view.js'
+import { ruLiveStatus } from './ru-live-status.js'
 import { ruSystemPrompt } from './ru-system-prompt.js'
 
 /** Russian catalog — typed against the same shape as `en`. */
@@ -175,45 +177,8 @@ export const ru: Dictionary = {
     russian: 'Русский',
     saved: 'Язык сохранён.',
   },
-  liveStatus: {
-    thinking: '💭 Думаю…',
-    preparingResponse: '💬 Готовлю ответ…',
-    runningTool: '⚙️ Выполняю {tool}…',
-    tools: {
-      web_fetch: 'Загружаю',
-      fetch_chat_link: 'Читаю ссылку',
-      search_memory: 'Ищу в памяти',
-      list_memory: 'Вспоминаю',
-      remember_memory: 'Сохраняю в память',
-      search_memos: 'Ищу в заметках',
-      save_memo: 'Сохраняю заметку',
-      list_memos: 'Показываю заметки',
-      create_task: 'Создаю задачу',
-      update_task: 'Обновляю задачу',
-      delete_task: 'Удаляю задачу',
-      get_task: 'Читаю задачу',
-      list_tasks: 'Показываю задачи',
-      search_tasks: 'Ищу задачи',
-      count_tasks: 'Считаю задачи',
-      add_comment: 'Добавляю комментарий',
-      create_project: 'Создаю проект',
-      list_projects: 'Показываю проекты',
-      list_files: 'Показываю файлы',
-      search_staged_files: 'Ищу файлы',
-      upload_attachment: 'Прикрепляю файл',
-      resolve_staged_file: 'Прикрепляю файл',
-      create_recurring_task: 'Настраиваю повторяющуюся задачу',
-      create_reminder: 'Настраиваю напоминание',
-      create_alert: 'Настраиваю оповещение',
-      list_reminders: 'Показываю напоминания и оповещения',
-      get_reminder: 'Читаю детали напоминания',
-      update_reminder: 'Обновляю напоминание',
-      cancel_reminder: 'Отменяю напоминание',
-      lookup_group_history: 'Проверяю историю',
-      find_user: 'Ищу пользователя',
-      get_current_time: 'Проверяю время',
-    },
-  },
+  liveStatus: ruLiveStatus,
+  contextView: ruContextView,
   errors: {
     llm: {
       apiError: 'Ошибка ИИ-сервиса: {message}. Попробуйте ещё раз.',
