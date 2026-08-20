@@ -140,6 +140,69 @@ describe('registerContextCommand', () => {
     await setupTestDb()
   })
 
+  test('sets snapshot.locale from the context language (configContextId wins, ru renders ru)', async () => {
+    const { setConfigValue } = await import('../../src/config.js')
+    setConfigValue('ctx-context-ru', 'language', 'ru')
+    const commands = new Map<string, CommandHandler>()
+    const seenSnapshots: ContextSnapshot[] = []
+    const chat: ChatProvider = {
+      ...createMockChat({ commandHandlers: commands }),
+      renderContext: (snapshot) => {
+        seenSnapshots.push(snapshot)
+        return { method: 'text', content: 'rendered' }
+      },
+    }
+    const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
+
+    const { reply } = createMockReply()
+    const auth = { ...createAuth('user1'), configContextId: 'ctx-context-ru' }
+    await handler(createDmMessage('user1'), reply, auth)
+
+    expect(seenSnapshots).toHaveLength(1)
+    expect(seenSnapshots[0]?.locale).toBe('ru')
+  })
+
+  test('sets snapshot.locale from the storage context when configContextId is absent', async () => {
+    const { setConfigValue } = await import('../../src/config.js')
+    setConfigValue('user-storage-ru', 'language', 'ru')
+    const commands = new Map<string, CommandHandler>()
+    const seenSnapshots: ContextSnapshot[] = []
+    const chat: ChatProvider = {
+      ...createMockChat({ commandHandlers: commands }),
+      renderContext: (snapshot) => {
+        seenSnapshots.push(snapshot)
+        return { method: 'text', content: 'rendered' }
+      },
+    }
+    const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
+
+    const { reply } = createMockReply()
+    const auth = createAuth('user-storage-ru')
+    await handler(createDmMessage('user-storage-ru'), reply, auth)
+
+    expect(seenSnapshots).toHaveLength(1)
+    expect(seenSnapshots[0]?.locale).toBe('ru')
+  })
+
+  test('defaults snapshot.locale to en when no language is configured', async () => {
+    const commands = new Map<string, CommandHandler>()
+    const seenSnapshots: ContextSnapshot[] = []
+    const chat: ChatProvider = {
+      ...createMockChat({ commandHandlers: commands }),
+      renderContext: (snapshot) => {
+        seenSnapshots.push(snapshot)
+        return { method: 'text', content: 'rendered' }
+      },
+    }
+    const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
+
+    const { reply } = createMockReply()
+    await handler(createDmMessage('user1'), reply, createAuth('user1'))
+
+    expect(seenSnapshots).toHaveLength(1)
+    expect(seenSnapshots[0]?.locale).toBe('en')
+  })
+
   test('builds full direct tool definitions on cache miss', async () => {
     const provider = createMockProvider()
     const commands = new Map<string, CommandHandler>()
