@@ -44,8 +44,7 @@ import {
   shiftTelegramEntity,
   telegramIsBotMentioned,
 } from './reply-helpers.js'
-export { extractReplyContext } from './message-extraction.js'
-export type { TelegramBotApiLike, TelegramBotFactory, TelegramBotLike } from './bot-factory.js'
+export type { TelegramBotFactory, TelegramBotLike } from './bot-factory.js'
 const log = logger.child({ scope: 'chat:telegram' })
 export type TelegramConstructorConfig = {
   readonly token?: string
