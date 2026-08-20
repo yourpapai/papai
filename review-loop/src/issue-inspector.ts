@@ -152,11 +152,7 @@ export async function runAggregatedInspector(
     spawn: deps.spawn,
     model: deps.model,
     cwd: deps.cwd,
-    prompt: buildAggregatedInspectPrompt(
-      deps.issues.map((i) => i.issue),
-      diff,
-      agentWritePath(deps.cwd, deps.outputPath),
-    ),
+    prompt: buildAggregatedInspectPrompt(deps.issues, diff, agentWritePath(deps.cwd, deps.outputPath)),
     outputPath: deps.outputPath,
     outputSchema: AggregatedInspectorResultSchema,
     label: deps.label,

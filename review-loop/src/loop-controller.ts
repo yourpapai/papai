@@ -81,6 +81,7 @@ function pushRoundMetric(
     exposureDivergent: collector.exposureDivergent,
     reviewerKind: collector.reviewerKind,
     checkBehind: collector.checkBehind,
+    deferred: collector.deferred,
     phaseMs: collector.phaseMs,
     usage: collector.usage,
   }

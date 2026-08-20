@@ -968,18 +968,23 @@ describe('batchVerify dispatch', () => {
       const prompt = args[args.length - 1]!
       const out = prompt.match(/(?:to|JSON to):\s*(\S+)/u)![1]!
       fixerCalls += 1
+      // The batch fixer contract is one result per member id (design D3).
+      const ids = [...prompt.matchAll(/"id":\s*"([^"]+)"/gu)].map((m) => m[1]!)
       writeFileSync(
         path.resolve(opts.cwd, out),
         JSON.stringify({
-          verdict: 'valid',
-          fixability: 'auto',
-          fixed: true,
-          reasoning: 'batch fix',
-          targetFiles: [],
-          severity: 'low',
+          results: ids.map((id) => ({
+            id,
+            verdict: 'valid',
+            fixability: 'auto',
+            fixed: true,
+            reasoning: 'batch fix',
+            targetFiles: [`fixed-${id}.ts`],
+            severity: 'low',
+          })),
         }),
       )
-      writeFileSync(path.join(opts.cwd, `fixed-${fixerCalls}.ts`), 'ok\n')
+      for (const id of ids) writeFileSync(path.join(opts.cwd, `fixed-${id}.ts`), 'ok\n')
       return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
     }
     const { pool } = fakePool({ size: 1, worktreePaths: [workerRepo] })

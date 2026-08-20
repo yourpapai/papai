@@ -155,6 +155,10 @@ describe('sessionIdOfLine', () => {
     expect(sessionIdOfLine(JSON.stringify({ sessionID: null, part: {} }))).toBeNull()
   })
 
+  test('returns null when sessionID is an empty string, not a usable id', () => {
+    expect(sessionIdOfLine(JSON.stringify({ sessionID: '', part: {} }))).toBeNull()
+  })
+
   test('returns null for malformed JSON', () => {
     expect(sessionIdOfLine('{ not json')).toBeNull()
   })

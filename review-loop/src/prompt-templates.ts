@@ -232,7 +232,7 @@ export function buildRetryFixWithInspectorFeedbackPrompt(
 }
 
 export function buildAggregatedInspectPrompt(
-  issues: readonly ReviewerIssue[],
+  issues: readonly { id: string; issue: ReviewerIssue }[],
   diff: string,
   outputPath: string,
 ): string {
@@ -250,11 +250,7 @@ export function buildAggregatedInspectPrompt(
     '`confidence` is a probability between 0 and 1, NOT a 1-5 rating.',
     '',
     'Issues:',
-    JSON.stringify(
-      issues.map((issue, idx) => ({ id: String(idx), issue })),
-      null,
-      2,
-    ),
+    JSON.stringify(issues, null, 2),
     '',
     'Diff (baseline..HEAD):',
     diff,

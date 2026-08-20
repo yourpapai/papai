@@ -38,7 +38,7 @@ On build fail: attribute failing files to owning clusters, mark those members `n
 
 *Alternative: bisect on build fail* — deferred; simple file-attribution covers the i18n case (each low touches one file). Bisect is available as follow-up if cross-file failures appear.
 
-Merges: one `mergeWorkerIntoPrimary` per successful cluster (still under `primaryMutex` `worker-pool.ts:95`), preserving the “never merge a failing fix” invariant. Deferred verification means a cluster that never reached the merge still has its diff discardable via `resetToBaseline` on next retry.
+Merges: surviving batches are committed on the worker (one `fix(review-loop): <theme> (+N)` each, stacking in cluster order) and published by **one** `mergeWorkerIntoPrimary` over the stacked commits (still under `primaryMutex` `worker-pool.ts:95`), preserving the “never merge a failing fix” invariant — a single stacked merge cannot merge a rejected batch's edits because rejected members' files are never staged, and an approved member whose files a decided member also claims is held back for split retry instead (a shared worktree cannot stage one without the other). Deferred verification means a cluster that never reached the merge still has its diff discardable via `resetToBaseline` on next retry.
 
 ### D5 — Deferral on budget
 

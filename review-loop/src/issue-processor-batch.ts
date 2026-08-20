@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
 
 import { agentWritePath, runAgent } from './agent-runner.js'
+import { medianOf, shouldDeferBatch } from './batch-defer.js'
+import { claimedFilesOf, type BatchMember, type FixedBatch } from './batch-outcomes.js'
+import { verifyAndMergeBatches } from './batch-verify.js'
 import { clusterRecords } from './issue-clustering.js'
-import { recordNeedsHuman, recordVerify, saveIssueLedger } from './issue-ledger.js'
-import type { LedgerIssueRecord } from './issue-ledger.js'
+import { recordNeedsHuman, recordVerify, saveIssueLedger, type LedgerIssueRecord } from './issue-ledger.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
-import { FixerResultSchema } from './issue-schema.js'
+import { ClusterFixerResultSchema, type FixerResult } from './issue-schema.js'
 import { emitFixComplete } from './loop-trace.js'
 import { emitDecision } from './progress-log.js'
 import {
@@ -14,6 +18,8 @@ import {
   tallyDecision,
   tallyExposure,
   tallyFixerSeverity,
+  tallyPhaseMs,
+  tallyUsage,
   type RoundCollector,
 } from './round-collector.js'
 import { workerOutputPath } from './run-state.js'
@@ -34,23 +40,6 @@ function buildClusterFixPrompt(
   ].join('\n\n')
 }
 
-function applyBatchSuccess(
-  cluster: { records: LedgerIssueRecord[] },
-  deps: IssueProcessorDeps,
-  round: number,
-  collector: RoundCollector,
-  fixerResult: import('./issue-schema.js').FixerResult,
-): void {
-  for (const record of cluster.records) {
-    recordVerify(deps.ledger, deps.trace, round, record, fixerResult)
-    tallyDecision(collector, fixerResult.verdict, fixerResult.fixed)
-    tallyFixerSeverity(collector, fixerResult.severity)
-    tallyExposure(collector, exposureKind(record.issue.exposure), exposureKind(fixerResult.exposure))
-    emitDecision(deps.log, record, fixerResult.verdict)
-    emitFixComplete(deps.trace, round, record.id, fixerResult.fixed, null, 1)
-  }
-}
-
 function applyBatchFailure(
   cluster: { records: LedgerIssueRecord[] },
   deps: IssueProcessorDeps,
@@ -58,7 +47,7 @@ function applyBatchFailure(
   collector: RoundCollector,
   msg: string,
 ): void {
-  const fb: import('./issue-schema.js').FixerResult = {
+  const fb: FixerResult = {
     verdict: 'needs_human',
     fixability: 'manual',
     reasoning: `batch failed: ${msg}`,
@@ -73,14 +62,44 @@ function applyBatchFailure(
   }
 }
 
+const omittedMemberResult = (id: string): FixerResult => ({
+  verdict: 'needs_human',
+  fixability: 'manual',
+  reasoning: `batch fixer omitted member ${id} from its result`,
+  targetFiles: [],
+  fixed: false,
+})
+
+/** Records one fixer result and the tallies every decided member owes; returns it for batching when claimed fixed. */
+function settleMember(
+  deps: IssueProcessorDeps,
+  round: number,
+  collector: RoundCollector,
+  record: LedgerIssueRecord,
+  fixerResult: FixerResult,
+): BatchMember | null {
+  recordVerify(deps.ledger, deps.trace, round, record, fixerResult)
+  if (fixerResult.fixed && fixerResult.verdict === 'valid') return { record, fixerResult }
+  tallyDecision(collector, fixerResult.verdict, fixerResult.fixed)
+  tallyFixerSeverity(collector, fixerResult.severity)
+  tallyExposure(collector, exposureKind(record.issue.exposure), exposureKind(fixerResult.exposure))
+  emitDecision(deps.log, record, fixerResult.verdict)
+  emitFixComplete(deps.trace, round, record.id, false, null, 1)
+  return null
+}
+
+/**
+ * One fixer run over one cluster. Members the fixer did not settle (`fixed`
+ * false or a non-`valid` verdict) are decided here; claimed-fixed members are
+ * returned for the round-level verification phase, which owns their outcome.
+ */
 async function runOneBatch(
   cluster: { id: string; records: LedgerIssueRecord[] },
   deps: IssueProcessorDeps,
   round: number,
   collector: RoundCollector,
-): Promise<boolean> {
+): Promise<FixedBatch | null> {
   const worker = await deps.pool.acquire(cluster.records[0]!.issue.file)
-  let batchFixed = false
   try {
     const outputPath = workerOutputPath(deps.runState.runDir, worker.id, `batch-${cluster.id}.json`)
     const prompt = buildClusterFixPrompt(
@@ -88,29 +107,38 @@ async function runOneBatch(
       agentWritePath(worker.worktreePath, outputPath),
       deps.config.checkCommand,
     )
+    const fixerStart = Date.now()
     const result = await runAgent({
       spawn: deps.spawn,
       model: deps.config.fixer.model,
       cwd: worker.worktreePath,
       prompt,
       outputPath,
-      outputSchema: FixerResultSchema,
+      outputSchema: ClusterFixerResultSchema,
       label: `fixer-batch-${cluster.id}`,
       reporter: deps.log,
       logPath: deps.runState.logPath,
       extraArgs: deps.config.fixer.extraArgs,
       timeoutMs: deps.config.fixer.timeoutMs ?? deps.config.agentTimeoutMs,
     })
-    const fixerResult = result.value
-    applyBatchSuccess(cluster, deps, round, collector, fixerResult)
-    batchFixed = fixerResult.fixed && fixerResult.verdict === 'valid'
+    tallyPhaseMs(collector, 'verify', Date.now() - fixerStart)
+    tallyUsage(collector, result.usage)
+
+    const byId = new Map(result.value.results.map((r) => [r.id, r] as const))
+    const members: BatchMember[] = []
+    for (const record of cluster.records) {
+      const member = settleMember(deps, round, collector, record, byId.get(record.id) ?? omittedMemberResult(record.id))
+      if (member !== null) members.push(member)
+    }
+    if (members.length === 0) return null
+    return { members, claims: claimedFilesOf(members) }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     applyBatchFailure(cluster, deps, round, collector, msg)
+    return null
   } finally {
     deps.pool.release(worker)
   }
-  return batchFixed
 }
 
 export async function processBatched(
@@ -120,25 +148,39 @@ export async function processBatched(
   pending: readonly LedgerIssueRecord[],
 ): Promise<number> {
   const clusters = clusterRecords(pending)
-  let fixedBatches = 0
-  let chain: Promise<void> = Promise.resolve()
-  const batchResults: Promise<boolean>[] = []
+  const fixDurations: number[] = []
+  const fixedBatches: FixedBatch[] = []
+  // Sequential on purpose: `poolSize=1` means every cluster shares one worker,
+  // so each fixer starts from the previous batch's uncommitted diff — the
+  // aggregated diff the round-level verification phase later judges. The stop
+  // and deferral questions are asked inside the chain, at the moment a batch
+  // would start, because the answer depends on the batches before it.
+  let chain: Promise<unknown> = Promise.resolve()
   for (const cluster of clusters) {
-    if ((deps.stop?.requested() ?? null) !== null) break
-    const p: Promise<boolean> = chain.then(() => runOneBatch(cluster, deps, round, collector))
-    batchResults.push(p)
-    chain = p.then(
-      () => undefined,
-      () => undefined,
-    )
+    chain = chain.then((): Promise<unknown> => {
+      if ((deps.stop?.requested() ?? null) !== null) return Promise.resolve()
+      const remainingMs = deps.stop?.remainingMs?.() ?? Infinity
+      if (shouldDeferBatch(cluster.records, remainingMs, medianOf(fixDurations))) {
+        collector.deferred += cluster.records.length
+        for (const record of cluster.records) {
+          emitDecision(deps.log, record, 'deferred', 'budget short; re-considered next round')
+        }
+        return Promise.resolve()
+      }
+      const start = Date.now()
+      return runOneBatch(cluster, deps, round, collector).then((batch) => {
+        fixDurations.push(Date.now() - start)
+        if (batch !== null) fixedBatches.push(batch)
+      })
+    })
   }
-  const results = await Promise.all(batchResults)
-  for (const r of results) if (r) fixedBatches += 1
+  await chain
+  const fixed = fixedBatches.length > 0 ? await verifyAndMergeBatches(deps, round, collector, fixedBatches) : 0
   try {
     const save = deps.saveLedger ?? saveIssueLedger
     await save(deps.ledger)
   } catch {
     // best-effort final save
   }
-  return fixedBatches
+  return fixed
 }

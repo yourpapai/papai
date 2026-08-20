@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { ReviewerIssueSchema } from '../../review-loop/src/issue-schema.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
 import {
+  buildAggregatedInspectPrompt,
   buildFixPrompt,
   buildInspectPrompt,
   buildRetryFixPrompt,
@@ -125,6 +126,51 @@ describe('buildInspectPrompt', () => {
     const prompt = buildInspectPrompt(inspectorIssue, 'd', 'r', 'o.json')
     expect(prompt).toContain('between 0 and 1')
     expect(prompt).toContain('NOT a 1-5 rating')
+  })
+})
+
+describe('buildAggregatedInspectPrompt', () => {
+  const memberA: ReviewerIssue = {
+    title: 'English literal not localized',
+    kind: 'defect',
+    severity: 'low',
+    summary: 's',
+    whyItMatters: 'w',
+    evidence: 'src/a.ts 1-2',
+    file: 'src/a.ts',
+    lineStart: 1,
+    lineEnd: 2,
+    suggestedFix: 'localize',
+    confidence: 0.9,
+  }
+  const memberB: ReviewerIssue = { ...memberA, title: 'Literal in b', file: 'src/b.ts', evidence: 'src/b.ts 1-2' }
+
+  test('embeds each member id so the inspector can echo per-id verdicts', () => {
+    const prompt = buildAggregatedInspectPrompt(
+      [
+        { id: 'ledger-aaa', issue: memberA },
+        { id: 'ledger-bbb', issue: memberB },
+      ],
+      'the aggregated diff',
+      'out.json',
+    )
+    expect(prompt).toContain('ledger-aaa')
+    expect(prompt).toContain('ledger-bbb')
+    // The id the inspector must echo is the ledger id, not a positional index:
+    // the result rows are matched back to records by this string.
+    expect(prompt).not.toContain('"id": "0"')
+    expect(prompt).not.toContain('"id": "1"')
+    expect(prompt).toContain('English literal not localized')
+    expect(prompt).toContain('the aggregated diff')
+    expect(prompt).toContain('out.json')
+    expect(prompt).toContain('"results"')
+  })
+
+  test('states the per-id result contract and the already-passed build', () => {
+    const prompt = buildAggregatedInspectPrompt([{ id: 'x', issue: memberA }], 'd', 'o.json')
+    expect(prompt).toContain('You are an inspector')
+    expect(prompt).toContain('{id, addresses, reasoning, confidence}')
+    expect(prompt).toContain('build check has already passed')
   })
 })
 
