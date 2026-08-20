@@ -498,3 +498,12 @@ product cannot reach — a subsystem proof wearing an end-to-end story's clothes
 which is what the T0 lane exists to prevent. Closing the gap for real means
 wiring the grant into the allow path, which is a production privacy-governance
 change and needs its own change proposal and review.
+
+## Residual — adopted into OpenSpec 2026-08-20
+
+The production gap this plan ran into — no code path grants an analytics
+collection-eligibility ref, so every pseudonymous lane denies with
+`governance_incomplete` and Stage C of the analytics runbook has no shipped
+mechanism — is now tracked as
+`openspec/changes/analytics-collection-eligibility-grant/`. This plan stays
+archived as the record of Task 1's shipped work and of why Tasks 2-4 stopped.

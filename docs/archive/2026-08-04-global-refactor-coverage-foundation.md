@@ -467,3 +467,24 @@ git commit -m "docs(coverage): record qualification baseline"
 - [ ] Run `bun test:stories:coverage`; expected exit code `0`, with lines `>= 71.00%` and functions `>= 70.00%`.
 - [ ] Run both compatibility commands using the recorded baseline SHA; expected exit code `0`.
 - [ ] Verify each documented behavior marker has exactly one behavior-ledger record and that no `partial` record is used to qualify a global production refactor.
+
+## Residual — adopted into OpenSpec 2026-08-20
+
+Tasks 1, 3, and 4 shipped: the below-floor diagnostics
+(`scripts/coverage/story-coverage-report.ts`), the stable documented-behavior
+IDs, and the behavior ledger with its catalog cross-check
+(`tests/stories/catalog/behaviors.ts`, `behavior-inventory.ts`,
+`tests/stories/harness/behavior-coverage.test.ts`) are all in the tree.
+
+Task 2 (restore the Tier 0 floor) and Task 5 (record the qualification
+baseline) did not. As of this date `bun test:stories:coverage` measures lines
+68.76% against the 71.00% floor and functions 65.87% against 70.00% — the
+master merge added production files the frozen lane never loads, and
+`meanMetric` is an unweighted mean over the scoped file set, so file count
+alone moved the number. No baseline SHA or tree hash was ever written into
+`docs/superpowers/specs/2026-08-04-global-refactor-behavior-coverage-roadmap-design.md`,
+so `test:stories:compat` has no reference commit.
+
+Both residual tasks are now tracked as
+`openspec/changes/story-coverage-floor-qualification/`. This plan stays
+archived as the record of what shipped.
