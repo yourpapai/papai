@@ -103,6 +103,9 @@ describe('run_diagnostics payload', () => {
     },
   })
 
+  const isProbeWarn = (line: string): boolean =>
+    line.includes('"level":40') && line.includes('Diagnostics probe failed')
+
   beforeEach(async () => {
     await setupTestDb()
   })
@@ -182,6 +185,27 @@ describe('run_diagnostics payload', () => {
     expect(result['llm_config']).toBe('unconfigured')
     expect(typeof result['uptime_seconds']).toBe('number')
     expect(JSON.stringify(result)).not.toContain(PROBE)
+  })
+
+  test('a failed probe logs the result field name and the normalized error cause', async () => {
+    seedTestPlatformInstance({ id: 'pi-diag-payload' })
+    const logLines: string[] = []
+    const stream = { write: (chunk: string): void => void logLines.push(chunk) }
+    logMultistream.add(stream)
+    logger.level = 'debug'
+    try {
+      const raw: unknown = await getToolExecutor(makeRunDiagnosticsTool('pi-diag-payload', failingDeps()))({})
+      assert(isRecord(raw), 'diagnostics result must be an object')
+
+      expect(raw['platform_instance_active']).toBe('probe_error')
+      const warns = logLines.filter(isProbeWarn)
+      expect(warns).toHaveLength(1)
+      expect(warns[0]).toContain('"field":"platform_instance_active"')
+      expect(warns[0]).toContain('"errorClass":"Error"')
+      expect(warns[0]).not.toContain(PROBE)
+    } finally {
+      logger.level = 'silent'
+    }
   })
 })
 

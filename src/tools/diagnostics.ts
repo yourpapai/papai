@@ -16,6 +16,7 @@ import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { mcpPool } from '../mcp/client-pool.js'
 import { registry } from '../message-queue/index.js'
+import { toolErrorClass } from './tool-logging.js'
 import type { MakeToolsOptions } from './types.js'
 
 const log = logger.child({ scope: 'tool:run-diagnostics' })
@@ -82,11 +83,11 @@ const resolveDeps = (
 })
 
 /** Runs one probe; a throwing probe degrades to the per-field error marker. */
-function runProbe<T>(probe: () => T): T | typeof PROBE_ERROR {
+function runProbe<T>(field: string, probe: () => T): T | typeof PROBE_ERROR {
   try {
     return probe()
-  } catch {
-    log.warn({ tool: 'run_diagnostics' }, 'Diagnostics probe failed')
+  } catch (error) {
+    log.warn({ tool: 'run_diagnostics', field, errorClass: toolErrorClass(error) }, 'Diagnostics probe failed')
     return PROBE_ERROR
   }
 }
@@ -94,7 +95,7 @@ function runProbe<T>(probe: () => T): T | typeof PROBE_ERROR {
 const summarizeTaskInstance = (
   probe: () => { id: string; type: string } | null,
 ): DiagnosticsTaskInstanceSummary | typeof PROBE_ERROR => {
-  const resolved = runProbe(probe)
+  const resolved = runProbe('task_instance', probe)
   if (resolved === PROBE_ERROR) return PROBE_ERROR
   if (resolved === null) return { status: 'not_configured' }
   return { status: 'configured', id: resolved.id, type: resolved.type }
@@ -119,13 +120,15 @@ export function makeRunDiagnosticsTool(
     execute: () => {
       const taskInstance = summarizeTaskInstance(resolved.taskInstance)
       const result = {
-        platform_instance_active: runProbe(() => resolved.platformInstanceActive(platformInstanceId)),
+        platform_instance_active: runProbe('platform_instance_active', () =>
+          resolved.platformInstanceActive(platformInstanceId),
+        ),
         task_instance: taskInstance,
-        llm_config: runProbe(resolved.llmConfig),
-        mcp_pool: runProbe(resolved.mcpPool),
-        queue_count: runProbe(resolved.queueCount),
-        descriptor_cache_present: runProbe(resolved.descriptorCachePresent),
-        uptime_seconds: runProbe(resolved.uptimeSeconds),
+        llm_config: runProbe('llm_config', resolved.llmConfig),
+        mcp_pool: runProbe('mcp_pool', resolved.mcpPool),
+        queue_count: runProbe('queue_count', resolved.queueCount),
+        descriptor_cache_present: runProbe('descriptor_cache_present', resolved.descriptorCachePresent),
+        uptime_seconds: runProbe('uptime_seconds', resolved.uptimeSeconds),
       }
       log.info({ tool: 'run_diagnostics', platformInstanceId }, 'Diagnostics snapshot collected')
       return Promise.resolve(result)
