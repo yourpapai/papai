@@ -77,7 +77,7 @@ describe('routeInteraction (post-retirement)', () => {
 
   test('rejects an unauthorized interaction', async () => {
     const { reply, getReplies } = createMockReply()
-    const handled = await routeInteraction(interaction('anything'), reply, auth(false))
+    const handled = await routeInteraction(interaction('anything'), reply, { ...auth(false), reason: 'dm_not_allowed' })
     expect(handled).toBe(true)
     expect(getReplies()[0]).toContain('not authorized')
   })

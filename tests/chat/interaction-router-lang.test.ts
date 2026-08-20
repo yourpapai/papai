@@ -65,14 +65,16 @@ describe('routeInteraction lang: callbacks', () => {
     expect(getReplies()[0]).toBe('Language saved.')
   })
 
-  test('an unauthorized actor is rejected and nothing is persisted', async () => {
+  test('an unauthorized actor is rejected with a localized reply and nothing is persisted', async () => {
+    setConfigValue(CONFIG_CTX, 'language', 'ru')
     const { reply, getReplies } = createMockReply()
 
-    const handled = await routeInteraction(interaction('lang:ru'), reply, auth(false))
+    const handled = await routeInteraction(interaction('lang:ru'), reply, { ...auth(false), reason: 'dm_not_allowed' })
 
     expect(handled).toBe(true)
-    expect(getReplies()[0]).toContain('not authorized')
-    expect(getConfigValue(CONFIG_CTX, 'language')).toBeNull()
+    expect(getReplies()[0]).toBe('Вы не авторизованы для работы с этим ботом.')
+    expect(getConfigValue(CONFIG_CTX, 'language')).toBe('ru')
+    expect(getConfigValue(STORAGE_CTX, 'language')).toBeNull()
   })
 
   test('a guest pressing the picker is a consumed no-op that persists nothing', async () => {

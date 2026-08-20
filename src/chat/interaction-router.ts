@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { replyToUnauthorized } from '../bot-unauthorized-reply.js'
 import { getConfigValue, setConfigValue, unsetConfigValue } from '../config.js'
 import { t, isSupportedLocale, type Locale } from '../i18n/index.js'
 import { logger } from '../logger.js'
@@ -153,7 +154,7 @@ export async function routeInteraction(
   auth: AuthorizationResult,
 ): Promise<boolean> {
   if (!auth.allowed) {
-    await reply.text('You are not authorized to use this bot.')
+    await replyToUnauthorized(reply, auth, interaction.contextId)
     return true
   }
 
