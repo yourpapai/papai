@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
+import type { McpServers } from '../../opencode-agent/src/mcp-servers.js'
 import {
   buildOpencodeConfig,
   modelRef,
@@ -111,7 +112,11 @@ describe('buildOpencodeConfig · propose agent registration', () => {
  * auto-compaction switched off, since `isOverflow` returns `false` at zero.
  */
 describe('buildOpencodeConfig · catalogue provider id', () => {
-  const borrowed: OpenAiSettings = { ...settings, provider: 'anthropic', model: 'claude-sonnet-4-6' }
+  const borrowed: OpenAiSettings = {
+    ...settings,
+    provider: 'anthropic',
+    model: 'claude-sonnet-4-6',
+  }
 
   it('emits `<provider>/<model>` as the reference both execution paths read', () => {
     expect(modelRef(borrowed)).toBe('anthropic/claude-sonnet-4-6')
@@ -119,9 +124,16 @@ describe('buildOpencodeConfig · catalogue provider id', () => {
   })
 
   it('round-trips a model id that itself contains slashes', () => {
-    const nested: OpenAiSettings = { ...settings, provider: 'openrouter', model: 'anthropic/claude-3.5' }
+    const nested: OpenAiSettings = {
+      ...settings,
+      provider: 'openrouter',
+      model: 'anthropic/claude-3.5',
+    }
 
-    expect(parseModelRef(modelRef(nested))).toEqual({ providerID: 'openrouter', modelID: 'anthropic/claude-3.5' })
+    expect(parseModelRef(modelRef(nested))).toEqual({
+      providerID: 'openrouter',
+      modelID: 'anthropic/claude-3.5',
+    })
   })
 
   it('keys the provider block by the configured id', () => {
@@ -173,7 +185,11 @@ describe('buildOpencodeConfig · model facts', () => {
   it('carries the resolved limit and capabilities onto the model entry', () => {
     const entry = modelEntry({
       ...settings,
-      facts: { limit: { context: 200_000, output: 64_000 }, reasoning: true, tool_call: true },
+      facts: {
+        limit: { context: 200_000, output: 64_000 },
+        reasoning: true,
+        tool_call: true,
+      },
     })
 
     expect(entry).toEqual({
@@ -193,7 +209,10 @@ describe('buildOpencodeConfig · model facts', () => {
   })
 
   it('reaches the subprocess config too, so both execution paths agree', () => {
-    const withFacts: OpenAiSettings = { ...settings, facts: { limit: { context: 128_000, output: 8_192 } } }
+    const withFacts: OpenAiSettings = {
+      ...settings,
+      facts: { limit: { context: 128_000, output: 8_192 } },
+    }
     const inlined = opencodeConfigEnv(withFacts)['OPENCODE_CONFIG_CONTENT']
 
     expect(inlined).toBe(JSON.stringify(buildOpencodeConfig(withFacts)))
@@ -213,7 +232,10 @@ describe('buildOpencodeConfig · model facts', () => {
  * primary agent — so a per-call setting could never reach it.
  */
 describe('buildOpencodeConfig · per-profile model and effort', () => {
-  const withProfiles = (profiles: ModelProfiles): OpenAiSettings => ({ ...settings, profiles })
+  const withProfiles = (profiles: ModelProfiles): OpenAiSettings => ({
+    ...settings,
+    profiles,
+  })
 
   it('points only the read-only profile and small_model at the light model (D2)', () => {
     const config = buildOpencodeConfig(withProfiles({ ...NO_MODEL_PROFILES, light: 'gpt-5-mini' }))
@@ -251,7 +273,11 @@ describe('buildOpencodeConfig · per-profile model and effort', () => {
 
   it('keeps the three permission profiles byte-identical either way', () => {
     const configured = buildOpencodeConfig(
-      withProfiles({ light: 'gpt-5-mini', planEffort: 'low', buildEffort: 'high' }),
+      withProfiles({
+        light: 'gpt-5-mini',
+        planEffort: 'low',
+        buildEffort: 'high',
+      }),
     )
 
     expect(configured.permission).toEqual(READ_ONLY_PERMISSION)
@@ -277,5 +303,151 @@ describe('buildOpencodeConfig · per-profile model and effort', () => {
     expect(BASELINE_CONFIG).not.toBe(PRE_CHANGE_CONFIG)
     expect(BASELINE_CONFIG.replace(',"setCacheKey":true', '')).toBe(PRE_CHANGE_CONFIG)
     expect(JSON.stringify(buildOpencodeConfig(settings))).toBe(BASELINE_CONFIG)
+  })
+})
+
+/**
+ * MCP servers (the `AGENT_MCP_SERVERS` knob), emitted by the same single
+ * builder that serves both execution paths.
+ *
+ * The grant keys are **generated** from the server names, never hand-keyed: a
+ * bare server name is a silent no-op as a permission key, and generation is
+ * what dissolves that typo class. `<name>_*` is the wildcard form verified to
+ * admit the server's whole toolset, and it lands after the named allows in
+ * every map it joins — the resolved rules list is an ordered concatenation and
+ * the later rule wins, which is why the allows sit after `"*": "deny"`.
+ */
+describe('buildOpencodeConfig · MCP servers', () => {
+  const servers: McpServers = {
+    fetcher: {
+      type: 'local',
+      command: ['bunx', 'mcp-server-fetch@1.0.0'],
+      environment: { FETCH_TIMEOUT: '5000' },
+    },
+    index: {
+      type: 'remote',
+      url: 'https://mcp.example.com/sse',
+      headers: { Authorization: 'Bearer tok-1234' },
+    },
+  }
+  const withServers: OpenAiSettings = { ...settings, mcpServers: servers }
+
+  it('emits the mcp block, carrying each entry under its name', () => {
+    // The remote differs from its declaration by exactly `oauth: false` — the
+    // one transformation emission performs (D2, asserted below); the local
+    // entry rides through as declared.
+    expect(buildOpencodeConfig(withServers).mcp).toEqual({
+      fetcher: {
+        type: 'local',
+        command: ['bunx', 'mcp-server-fetch@1.0.0'],
+        environment: { FETCH_TIMEOUT: '5000' },
+      },
+      index: {
+        type: 'remote',
+        url: 'https://mcp.example.com/sse',
+        headers: { Authorization: 'Bearer tok-1234' },
+        oauth: false,
+      },
+    })
+  })
+
+  it('forces oauth: false on every remote, whatever the declaration could have said', () => {
+    // D2's emission half. An OAuth remote parks at `needs_auth` for ever in an
+    // unattended job; the parse refuses the `oauth` key outright, and this is
+    // the same rule on the way out — a maintainer who omitted the field still
+    // gets the clean `failed`-with-HTTP-error degradation.
+    expect(buildOpencodeConfig(withServers).mcp?.['index']).toMatchObject({
+      url: 'https://mcp.example.com/sse',
+      oauth: false,
+    })
+  })
+
+  it('grants "<name>_*": "allow" in plan and build, after their existing allows', () => {
+    const config = buildOpencodeConfig(withServers)
+
+    // Exact key order, because the order is the design: allows after
+    // `"*": "deny"`, generated MCP keys after the allows.
+    expect(Object.keys({ ...config.agent?.['plan']?.permission })).toEqual([
+      '*',
+      'read',
+      'grep',
+      'glob',
+      'list',
+      'todowrite',
+      'fetcher_*',
+      'index_*',
+    ])
+    expect(Object.keys({ ...config.agent?.['build']?.permission })).toEqual([
+      '*',
+      'read',
+      'grep',
+      'glob',
+      'list',
+      'todowrite',
+      'edit',
+      'bash',
+      'external_directory',
+      'fetcher_*',
+      'index_*',
+    ])
+    const planGrant: Record<string, unknown> = { ...config.agent?.['plan']?.permission }
+    const buildGrant: Record<string, unknown> = { ...config.agent?.['build']?.permission }
+
+    expect(planGrant['fetcher_*']).toBe('allow')
+    expect(buildGrant['index_*']).toBe('allow')
+  })
+
+  it('gives the drafting profile no MCP key (D1)', () => {
+    // The `propose` map is deliberately the most confined — read plus edit, no
+    // bash — and MCP tools would be its only unconfined egress. Drafting turns
+    // compose prose.
+    const propose: Record<string, unknown> = { ...buildOpencodeConfig(withServers).agent?.['propose']?.permission }
+
+    expect(propose['fetcher_*']).toBeUndefined()
+    expect(propose['index_*']).toBeUndefined()
+    expect(Object.keys(propose).some((key) => key.endsWith('_*'))).toBe(false)
+  })
+
+  it('carries the generated key in the global default too', () => {
+    // The default is what an agent this pipeline does not name inherits — and
+    // deny-by-default would otherwise keep every MCP tool invisible there.
+    const permission: Record<string, unknown> = { ...buildOpencodeConfig(withServers).permission }
+
+    expect(permission['fetcher_*']).toBe('allow')
+    expect(permission['index_*']).toBe('allow')
+  })
+
+  it('emits "allow" only — "ask" would deadlock an unattended job', () => {
+    const config = buildOpencodeConfig(withServers)
+    // Spreads, not `?? {}`: a spread of an absent map is an empty object with
+    // no conditional in sight, and every entry the maps do carry lands here.
+    const maps = [
+      { ...config.permission },
+      { ...config.agent?.['plan']?.permission },
+      { ...config.agent?.['build']?.permission },
+    ]
+    const grantValues = maps
+      .flatMap((map) => Object.entries(map))
+      .filter(([key]) => key.endsWith('_*'))
+      .map(([, value]) => value)
+
+    expect(grantValues.length).toBeGreaterThan(0)
+    expect([...new Set(grantValues)]).toEqual(['allow'])
+  })
+
+  it('reaches the subprocess config identically, so both paths agree', () => {
+    const inlined = opencodeConfigEnv(withServers)['OPENCODE_CONFIG_CONTENT']
+
+    expect(inlined).toBe(JSON.stringify(buildOpencodeConfig(withServers)))
+    const parsed: unknown = JSON.parse(String(inlined))
+    expect(parsed).toMatchObject({ mcp: { index: { oauth: false } } })
+  })
+
+  it('is byte-identical to the baseline with no servers declared', () => {
+    // Both absences: the field unset, and the empty map `AGENT_MCP_SERVERS={}`
+    // parses to. An empty `mcp` block or a stray grant key would break the
+    // additive guarantee the same way a moved permission did.
+    expect(JSON.stringify(buildOpencodeConfig(settings))).toBe(BASELINE_CONFIG)
+    expect(JSON.stringify(buildOpencodeConfig({ ...settings, mcpServers: {} }))).toBe(BASELINE_CONFIG)
   })
 })

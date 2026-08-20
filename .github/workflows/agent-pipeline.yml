@@ -481,6 +481,13 @@ jobs:
           AGENT_CHECK_COMMAND: ${{ vars.AGENT_CHECK_COMMAND }}
           AGENT_REVIEW_COMMAND: ${{ vars.AGENT_REVIEW_COMMAND }}
           AGENT_CHECKS: ${{ vars.AGENT_CHECKS }}
+          # MCP servers for the agent, as a JSON document — the second non-scalar
+          # knob after AGENT_CHECKS. Two spellings on purpose (the secret wins,
+          # like AGENT_GITHUB_TOKEN): a token-bearing declaration belongs in a
+          # secret, which GitHub masks in logs and encrypts at rest, while a
+          # token-free one may live in a variable, visible to non-admin
+          # maintainers and diffable in settings. See opencode-agent/README.md.
+          AGENT_MCP_SERVERS: ${{ secrets.AGENT_MCP_SERVERS || vars.AGENT_MCP_SERVERS }}
           # Who git commits claim to be. Defaults to github-actions[bot] /
           # 41898282+github-actions[bot]@users.noreply.github.com — the token's
           # real service identity, whose noreply verifies. Explicit vars win

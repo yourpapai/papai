@@ -411,7 +411,12 @@ findings: `ROADMAP.md`.
   `index.ts` configures everything downstream with the placeholder, because the
   SDK puts the config into the spawned server's environment where `bash` can
   read it. Never pass `config.openai` to an OpenCode path — pass the contained
-  settings. That proxy is also where **transient failures are retried**, because
+  settings. `AGENT_MCP_SERVERS` rides the same seam (`mcpServers` on
+  `OpenAiSettings`, carried through `proxiedSettings` by its spread), so the
+  in-process session and `OPENCODE_CONFIG_CONTENT` carry one server set — and
+  the knob's `headers`/`environment` values join `pipelineSecrets`, though the
+  config content itself stays model-readable (documented residual risk).
+  That proxy is also where **transient failures are retried**, because
   it is the one layer that sees a real HTTP status and the only one the review
   loop's subprocesses also pass through; do not add a second retry in the
   adapter, where the status is already gone.

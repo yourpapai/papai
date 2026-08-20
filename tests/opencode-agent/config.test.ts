@@ -7,7 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { logKey } from '../../opencode-agent/src/config-values.js'
 import { ConfigError, loadConfig, loadOpenAiSettings } from '../../opencode-agent/src/config.js'
-import { pipelineSecrets } from '../../opencode-agent/src/secrets.js'
+import { pipelineSecrets, redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
 
 /** `openssl rand -base64 32`, and the bytes it decodes to. */
 const KEY_B64 = Buffer.from(Array.from({ length: 32 }, (_, index) => index + 1)).toString('base64')
@@ -201,5 +201,83 @@ describe('per-profile model and effort', () => {
     const config = loadConfig({ ...ENV, LLM_MODEL_LIGHT: 'gpt-5-mini' }, '/repo')
 
     expect(config.openai.profiles?.light).toBe('gpt-5-mini')
+  })
+})
+
+/**
+ * `AGENT_MCP_SERVERS` — the second non-scalar knob, riding `OpenAiSettings`
+ * the way `profiles` does so the one config builder both execution paths read
+ * carries it by construction.
+ */
+describe('AGENT_MCP_SERVERS', () => {
+  const KNOB =
+    '{"fetcher":{"type":"local","command":["bunx","mcp-server-fetch@1.0.0"],' +
+    '"environment":{"FETCH_TIMEOUT_SECRET":"FETCH_TIMEOUT_SECRET"}},' +
+    '"index":{"type":"remote","url":"https://mcp.example.com/sse",' +
+    '"headers":{"Authorization":"Bearer tok-abcdefgh1234"}}}'
+
+  test('is absent when unset, so the emitted config is exactly today', () => {
+    expect(loadOpenAiSettings(ENV).mcpServers).toBeUndefined()
+    expect(loadOpenAiSettings({ ...ENV, AGENT_MCP_SERVERS: '  ' }).mcpServers).toBeUndefined()
+  })
+
+  test('rides the settings as parsed when set', () => {
+    const settings = loadOpenAiSettings({ ...ENV, AGENT_MCP_SERVERS: KNOB })
+
+    expect(settings.mcpServers).toEqual({
+      fetcher: {
+        type: 'local',
+        command: ['bunx', 'mcp-server-fetch@1.0.0'],
+        environment: { FETCH_TIMEOUT_SECRET: 'FETCH_TIMEOUT_SECRET' },
+      },
+      index: {
+        type: 'remote',
+        url: 'https://mcp.example.com/sse',
+        headers: { Authorization: 'Bearer tok-abcdefgh1234' },
+      },
+    })
+  })
+
+  test('loadConfig surfaces it on PipelineConfig', () => {
+    expect(loadConfig({ ...ENV, AGENT_MCP_SERVERS: KNOB }, '/repo').openai.mcpServers?.['index']).toMatchObject({
+      url: 'https://mcp.example.com/sse',
+    })
+  })
+
+  test('an unloadable value fails at job start, naming the variable', () => {
+    expect(() => loadOpenAiSettings({ ...ENV, AGENT_MCP_SERVERS: 'not json' })).toThrow(ConfigError)
+    expect(() => loadOpenAiSettings({ ...ENV, AGENT_MCP_SERVERS: 'not json' })).toThrow('AGENT_MCP_SERVERS')
+  })
+
+  test('every headers and environment value joins the pipeline secrets', () => {
+    // The scrub and the redaction both match by **value**, so a credential that
+    // never appears in this list survives both. The header token here is
+    // `Bearer tok-abcdefgh1234` — long enough to clear the minimum-length rule
+    // on its own, which is what lets the two assertions below say "the value,
+    // exactly".
+    const config = loadConfig({ ...ENV, AGENT_MCP_SERVERS: KNOB }, '/repo')
+    const secrets = pipelineSecrets(config)
+
+    expect(secrets).toContain('Bearer tok-abcdefgh1234')
+    expect(secrets).toContain('FETCH_TIMEOUT_SECRET')
+  })
+
+  test('the joined values leave the scrubbed environment and the outbound text', () => {
+    const config = loadConfig({ ...ENV, AGENT_MCP_SERVERS: KNOB }, '/repo')
+    const secrets = pipelineSecrets(config)
+    const env: Record<string, string | undefined> = {
+      LEAKED_HEADER: 'Bearer tok-abcdefgh1234',
+      LEAKED_ENV: 'FETCH_TIMEOUT_SECRET',
+      UNRELATED: 'harmless-value',
+    }
+
+    expect(scrubSecrets(env, secrets).sort()).toEqual(['LEAKED_ENV', 'LEAKED_HEADER'])
+    expect(redactSecrets('token Bearer tok-abcdefgh1234 and FETCH_TIMEOUT_SECRET', secrets)).toBe(
+      'token [redacted] and [redacted]',
+    )
+  })
+
+  test('an unset knob changes the secret list not at all', () => {
+    expect(pipelineSecrets(loadConfig(ENV, '/repo'))).toEqual(['tok', 'sk-test'])
   })
 })
