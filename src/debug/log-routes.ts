@@ -6,7 +6,7 @@
 import type { AuthenticatedRequest } from '../dashboard-auth/index.js'
 import { logBuffer, shapeLogEntry, type LogEntry } from './log-buffer.js'
 import { parseLogFilter, entryMatchesFilter } from './log-filter-model.js'
-import { isOwnLogEntry } from './state-collector.js'
+import { isOwnLogEntry, ownTurnIdsForAdmin } from './state-collector.js'
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
@@ -25,7 +25,11 @@ function searchParam(value: string | null): string | undefined {
 
 /** Session-scoped egress: own entries verbatim, everything else shaped. */
 function egressEntries(adminUserId: string): LogEntry[] {
-  return logBuffer.entries().map((entry) => (isOwnLogEntry(entry, adminUserId) ? entry : shapeLogEntry(entry)))
+  // Resolve turn attribution once per request (O(turns)), not per entry.
+  const ownTurnIds = ownTurnIdsForAdmin(adminUserId)
+  return logBuffer
+    .entries()
+    .map((entry) => (isOwnLogEntry(entry, adminUserId, ownTurnIds) ? entry : shapeLogEntry(entry)))
 }
 
 export function handleLogs(url: URL, session: AuthenticatedRequest): Response {

@@ -10,6 +10,8 @@ import { userCachesForTesting } from '../../src/cache.js'
 import { emitGlobal, emitUser } from '../../src/debug/event-bus.js'
 import {
   addClient,
+  isOwnLogEntry,
+  ownTurnIdsForAdmin,
   pendingTraces,
   recentLlm,
   resetClientsForTest,
@@ -143,6 +145,28 @@ describe('log:entry egress attribution', () => {
 
     const msgs = framesOfType(seen, 'log:entry').map((f) => strOf(f.data['msg']))
     expect(msgs).toEqual(['needle found', 'other'])
+  })
+})
+
+describe('own-turn attribution index', () => {
+  test('ownTurnIdsForAdmin collects visible turn ids once; isOwnLogEntry consults the set', () => {
+    const { controller } = collect()
+    addClient(controller, PASS_ALL)
+
+    emitUser('turn:start', 'a1', { turnId: 't-inflight-own' })
+    emitUser('turn:start', 'a2', { turnId: 't-inflight-foreign' })
+    emitUser('turn:start', 'a1', { turnId: 't-recent-own' })
+    emitUser('turn:end', 'a1', { turnId: 't-recent-own', status: 'ok' })
+
+    const own = ownTurnIdsForAdmin('a1')
+    expect(own.has('t-inflight-own')).toBe(true)
+    expect(own.has('t-recent-own')).toBe(true)
+    expect(own.has('t-inflight-foreign')).toBe(false)
+    expect(ownTurnIdsForAdmin(undefined).size).toBe(0)
+
+    expect(isOwnLogEntry({ level: 30, time: 't1', msg: 'm', turnId: 't-recent-own' }, 'a1', own)).toBe(true)
+    expect(isOwnLogEntry({ level: 30, time: 't2', msg: 'm', turnId: 't-inflight-foreign' }, 'a1', own)).toBe(false)
+    expect(isOwnLogEntry({ level: 30, time: 't3', msg: 'm', turnId: 't-unknown' }, 'a1', own)).toBe(false)
   })
 })
 
