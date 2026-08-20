@@ -3,17 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { parseWrapperArgs, selectMode } from './mode.js'
+import { CHILD_TIMEOUT_MS, parseWrapperArgs, selectMode } from './mode.js'
 import type { ExecutionMode } from './mode.js'
 import { LAST_RUN_JUNIT, LAST_RUN_LOG, REPORT_DIR } from './paths.js'
 import { buildReport } from './report.js'
 import type { RunReport, RunScope } from './report.js'
-
-/**
- * The per-test timeout every wrapper-driven run gets. Passed before the caller's
- * passthrough args so an explicit `--timeout` on the command line still wins.
- */
-const CHILD_TIMEOUT_MS = '15000'
 
 /** How many failures the summary names before it defers to `bun run test:failures`. */
 const MAX_LISTED_FAILURES = 5
@@ -45,6 +39,8 @@ export interface RunDeps {
   env: Record<string, string | undefined>
   /** Core count consulted by `selectMode`. */
   cores: number
+  /** 1-minute load average consulted by `selectMode` for load demotion. */
+  load1: number
   /** Build the client bundles if they are missing, before anything else runs. */
   ensureClientBuilt: () => void
   /** Drop the previous run's log and junit so a run that writes neither cannot inherit them. */
@@ -157,8 +153,8 @@ export function runWrapper(argv: readonly string[], deps: RunDeps): number {
   deps.ensureClientBuilt()
 
   const args = parseWrapperArgs(argv)
-  const mode = selectMode(args.mode, deps.env, deps.cores)
-  const flags = childFlagsFor(mode, args.passthrough, !args.bypass)
+  const plan = selectMode(args.mode, deps.env, deps.cores, deps.load1)
+  const flags = childFlagsFor(plan.mode, args.passthrough, !args.bypass)
 
   // `--watch` / `--update-snapshots` are interactive; there is no meaningful "last run".
   if (args.bypass) return deps.spawn(['bun', 'test', ...flags]).exitCode
@@ -176,7 +172,7 @@ export function runWrapper(argv: readonly string[], deps: RunDeps): number {
     wallMs: child.wallMs,
     argv: flags,
     scope: scopeFor(args.paths),
-    mode,
+    mode: plan.mode,
     fingerprint: deps.fingerprint(),
     gitSha: deps.gitSha(),
   })

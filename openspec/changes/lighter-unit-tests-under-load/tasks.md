@@ -4,7 +4,7 @@
 
 ## 2. Load-aware execution plan (pure logic)
 
-- [ ] 2.1 Add failing cases to `tests/scripts/test/mode.test.ts`: `selectMode`-level plan resolution returning `{ mode, loadDemoted }` — loaded many-core host (load1 >= 0.75 × cores) → serial + demoted; explicit `--parallel` under load → parallel, not demoted; explicit `--serial` under load → serial, not demoted; truthy `CI` under load → serial, not demoted; idle many-core host → parallel; few-core host under load → serial, not demoted; loadavg 0 with many cores (Windows shape) → parallel; exact 0.75 × cores boundary → serial + demoted. Verify: `bun test tests/scripts/test/mode.test.ts` (red)
+- [x] 2.1 Add failing cases to `tests/scripts/test/mode.test.ts`: `selectMode`-level plan resolution returning `{ mode, loadDemoted }` — loaded many-core host (load1 >= 0.75 × cores) → serial + demoted; explicit `--parallel` under load → parallel, not demoted; explicit `--serial` under load → serial, not demoted; truthy `CI` under load → serial, not demoted; idle many-core host → parallel; few-core host under load → serial, not demoted; loadavg 0 with many cores (Windows shape) → parallel; exact 0.75 × cores boundary → serial + demoted. Verify: `bun test tests/scripts/test/mode.test.ts` (red)
 - [ ] 2.2 Implement in `scripts/test/mode.ts`: add `LOAD_DEMOTION_RATIO = 0.75`, change `selectMode(explicit, env, cores, load1)` to return an `ExecutionPlan { mode: ExecutionMode; loadDemoted: boolean }` with precedence explicit > CI > load > cores; only the load branch sets `loadDemoted`; name the timeout constants `CHILD_TIMEOUT_MS` / `CHILD_TIMEOUT_DEMOTE_MS` (exported or moved for run.ts). Verify: `bun test tests/scripts/test/mode.test.ts` (green)
 
 ## 3. Orchestration: timeout scaling, disclosure, stream default

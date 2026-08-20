@@ -33,7 +33,10 @@ const realEnsureClientBuilt = (cwd: string): void => {
     required: REQUIRED_BUNDLES,
     missing: missingBundles,
     build: (): void => {
-      const proc = Bun.spawnSync(['bun', 'scripts/build-client.ts'], { cwd, stdio: ['ignore', 'inherit', 'inherit'] })
+      const proc = Bun.spawnSync(['bun', 'scripts/build-client.ts'], {
+        cwd,
+        stdio: ['ignore', 'inherit', 'inherit'],
+      })
       if (proc.exitCode !== 0) throw new Error(`bun build:client failed with exit code ${String(proc.exitCode)}`)
     },
     log: (message: string): void => {
@@ -71,7 +74,11 @@ const captureChild = (argv: readonly string[], cwd: string, stream: boolean): Sp
   const fd = fs.openSync(logPath, 'w')
   const startedAt = Date.now()
   try {
-    const proc = Bun.spawnSync([...argv], { cwd, env: childEnv(cwd), stdio: ['inherit', fd, fd] })
+    const proc = Bun.spawnSync([...argv], {
+      cwd,
+      env: childEnv(cwd),
+      stdio: ['inherit', fd, fd],
+    })
     const output = fs.readFileSync(logPath, 'utf8')
     if (stream) process.stderr.write(output)
     return { exitCode: proc.exitCode, output, wallMs: Date.now() - startedAt }
@@ -83,8 +90,16 @@ const captureChild = (argv: readonly string[], cwd: string, stream: boolean): Sp
 /** Bypass runs keep the terminal: nothing is captured because nothing is persisted. */
 const inheritChild = (argv: readonly string[], cwd: string): SpawnResult => {
   const startedAt = Date.now()
-  const proc = Bun.spawnSync([...argv], { cwd, env: childEnv(cwd), stdio: ['inherit', 'inherit', 'inherit'] })
-  return { exitCode: proc.exitCode, output: '', wallMs: Date.now() - startedAt }
+  const proc = Bun.spawnSync([...argv], {
+    cwd,
+    env: childEnv(cwd),
+    stdio: ['inherit', 'inherit', 'inherit'],
+  })
+  return {
+    exitCode: proc.exitCode,
+    output: '',
+    wallMs: Date.now() - startedAt,
+  }
 }
 
 const readFileOrNull = (filePath: string): string | null => {
@@ -97,7 +112,10 @@ const readFileOrNull = (filePath: string): string | null => {
 
 const realGitSha = (cwd: string): string | null => {
   try {
-    const proc = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd, stdio: ['ignore', 'pipe', 'ignore'] })
+    const proc = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], {
+      cwd,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
     if (proc.exitCode !== 0) return null
     const sha = proc.stdout.toString().trim()
     return sha === '' ? null : sha
@@ -110,6 +128,7 @@ const realDeps = (cwd: string, bypass: boolean, stream: boolean): RunDeps => ({
   cwd,
   env: process.env,
   cores: os.availableParallelism(),
+  load1: os.loadavg()[0] ?? 0,
   ensureClientBuilt: (): void => {
     realEnsureClientBuilt(cwd)
   },

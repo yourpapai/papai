@@ -5,6 +5,25 @@
 
 export type ExecutionMode = 'parallel' | 'serial'
 
+/**
+ * The per-test timeout every wrapper-driven run gets. Passed before the caller's
+ * passthrough args so an explicit `--timeout` on the command line still wins.
+ * Lives here next to the demotion logic that picks between the two.
+ */
+export const CHILD_TIMEOUT_MS = '15000'
+
+/** The timeout a load-demoted serial run gets instead: slower host, more headroom. */
+export const CHILD_TIMEOUT_DEMOTE_MS = '30000'
+
+/** A 1-minute load at or above this fraction of the cores demotes a parallel-capable host. */
+export const LOAD_DEMOTION_RATIO = 0.75
+
+export interface ExecutionPlan {
+  mode: ExecutionMode
+  /** True only when the load branch demoted a parallel-capable host to serial. */
+  loadDemoted: boolean
+}
+
 export interface WrapperArgs {
   /** Explicit `--serial` / `--parallel` override, else `null`. */
   mode: ExecutionMode | null
@@ -83,20 +102,32 @@ export function parseWrapperArgs(argv: readonly string[]): WrapperArgs {
 }
 
 /**
- * Resolve the execution mode, in order: explicit override wins; a truthy `CI`
- * means `serial`; a machine with at least 8 cores means `parallel`; else `serial`.
+ * Resolve the execution plan, in order: explicit override wins; a truthy `CI`
+ * means `serial`; a many-core host (>= 8 cores) whose 1-minute load has reached
+ * `LOAD_DEMOTION_RATIO x cores` is demoted to `serial` (and marked as such);
+ * a machine with at least 8 cores means `parallel`; else `serial`.
  *
- * Pure: `env` and `cores` are parameters, nothing is read from the host.
+ * Only the load branch sets `loadDemoted`: explicit serial, CI serial, and
+ * few-core serial are all choices, not demotions. Platforms without loadavg
+ * report 0, which never meets the threshold.
+ *
+ * Pure: `env`, `cores` and `load1` are parameters, nothing is read from the host.
  */
 export function selectMode(
   explicit: ExecutionMode | null,
   env: Record<string, string | undefined>,
   cores: number,
-): ExecutionMode {
-  if (explicit !== null) return explicit
+  load1: number,
+): ExecutionPlan {
+  if (explicit !== null) return { mode: explicit, loadDemoted: false }
 
   const ci = env['CI']
-  if (ci !== undefined && ci !== '' && ci !== 'false') return 'serial'
+  if (ci !== undefined && ci !== '' && ci !== 'false') return { mode: 'serial', loadDemoted: false }
 
-  return cores >= 8 ? 'parallel' : 'serial'
+  if (cores >= 8) {
+    if (load1 >= LOAD_DEMOTION_RATIO * cores) return { mode: 'serial', loadDemoted: true }
+    return { mode: 'parallel', loadDemoted: false }
+  }
+
+  return { mode: 'serial', loadDemoted: false }
 }

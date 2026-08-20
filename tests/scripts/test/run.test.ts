@@ -28,6 +28,7 @@ interface HarnessOptions {
   readonly junit?: string | null
   readonly exitCode?: number
   readonly cores?: number
+  readonly load1?: number
   readonly env?: Record<string, string | undefined>
   readonly wallMs?: number
 }
@@ -58,6 +59,7 @@ const harness = (options: HarnessOptions = {}): Harness => {
     cwd: CWD,
     env: options.env ?? {},
     cores: options.cores ?? 4,
+    load1: options.load1 ?? 0,
     ensureClientBuilt: (): void => {
       order.push('ensureClientBuilt')
     },
@@ -100,7 +102,14 @@ const syntheticReport = (failureCount: number, runErrorCount: number): RunReport
   mode: 'parallel',
   fingerprint: 'abc123abc123abc1',
   gitSha: null,
-  totals: { files: 1294, tests: 12_868, pass: 12_847, fail: failureCount, skip: 2, expects: 76_195 },
+  totals: {
+    files: 1294,
+    tests: 12_868,
+    pass: 12_847,
+    fail: failureCount,
+    skip: 2,
+    expects: 76_195,
+  },
   files: {},
   failures: Array.from({ length: failureCount }, (_unused, index) => ({
     id: index + 1,
@@ -217,7 +226,10 @@ describe('runWrapper scope', () => {
 
     runWrapper(['tests/utils', 'tests/scripts'], instance.deps)
 
-    expect(lastReport(instance).scope).toEqual({ kind: 'paths', paths: ['tests/utils', 'tests/scripts'] })
+    expect(lastReport(instance).scope).toEqual({
+      kind: 'paths',
+      paths: ['tests/utils', 'tests/scripts'],
+    })
   })
 
   test('records a bare run as a full scope', () => {
@@ -368,7 +380,10 @@ describe('runWrapper run errors', () => {
 
     runWrapper(['--serial'], instance.deps)
 
-    expect(instance.written[0]).toMatchObject({ log: UNHANDLED_LOG, junitXml: null })
+    expect(instance.written[0]).toMatchObject({
+      log: UNHANDLED_LOG,
+      junitXml: null,
+    })
   })
 })
 
