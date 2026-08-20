@@ -36,8 +36,7 @@ function makeDeps(dir: string): OrchestratorDeps {
       repoRoot: dir,
       workDir: path.join(dir, '.sdd-runner'),
       model: 'm',
-      models: {},
-      timeouts: { wallClockMs: 1000, inactivityMs: 1000 },
+      budget: 5,
     },
     spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
     execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
@@ -75,7 +74,7 @@ function makeCtx(state: RunState): Parameters<typeof resumeFromPoint>[0]['ctx'] 
 function makeAgent(): Parameters<typeof resumeFromPoint>[0]['agent'] {
   return {
     spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
-    config: { repoRoot: '', workDir: '', model: 'm', models: {}, timeouts: { wallClockMs: 1, inactivityMs: 1 } },
+    config: { repoRoot: '', workDir: '', model: 'm', budget: 5 },
     execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
     emit: () => {},
   }

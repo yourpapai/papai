@@ -212,8 +212,7 @@ function makeAgent(
     repoRoot: dir,
     workDir: path.join(dir, '.sdd-runner'),
     model: 'm',
-    models: {},
-    timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+    budget: 5,
   }
   let index = 0
   const spawn: SpawnFn = (_command, args, options) => {
@@ -425,8 +424,7 @@ describe('runResume consults the session ledger (orchestrator wiring)', () => {
         repoRoot,
         workDir,
         model: 'm',
-        models: {},
-        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+        budget: 5,
       },
       spawn,
       execGit: () => Promise.resolve({ stdout: '', stderr: '' }),

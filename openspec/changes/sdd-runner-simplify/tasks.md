@@ -36,9 +36,9 @@ Ordered per design.md Migration Plan: every step is shippable alone, steps 1–2
 
 ## 5. Config: five keys, single autonomy mode (coexists)
 
-- [ ] 5.1 Failing tests for the strict schema: exactly `repoRoot`/`workDir`/`model`/`budget`(default 5)/`deadline`(optional); each removed key (`autonomy`, `models`, `timeouts`, `budgetUsd`) rejected by name with replacement pointer. Verify: `bun test tests/sdd-runner/config-strict.test.ts`
-- [ ] 5.2 Implement the strict schema; compile timeout constants; fold `deadline` into the existing waiter arming (derived wait: deadline set + non-TTY ⇒ wait). Verify: `bun test tests/sdd-runner/config-strict.test.ts && bun test tests/sdd-runner/`
-- [ ] 5.3 Failing tests + implementation for single-mode autonomy: ladder always evaluates and settles what it can (assist semantics per D7), audit records unconditional, level conditionals removed from the gate prelude, `autoExtendsUsed` and the count bound removed from R2 (trajectory window + R4 budget guard remain the sole extension eligibility). Verify: `bun test tests/sdd-runner/auto-policy.test.ts && bun test tests/sdd-runner/gate-prelude.test.ts`
+- [x] 5.1 Failing tests for the strict schema: exactly `repoRoot`/`workDir`/`model`/`budget`(default 5)/`deadline`(optional); each removed key (`autonomy`, `models`, `timeouts`, `budgetUsd`) rejected by name with replacement pointer. Verify: `bun test tests/sdd-runner/config-strict.test.ts`
+- [x] 5.2 Implement the strict schema; compile timeout constants; fold `deadline` into the existing waiter arming (derived wait: deadline set + non-TTY ⇒ wait). Verify: `bun test tests/sdd-runner/config-strict.test.ts && bun test tests/sdd-runner/`
+- [x] 5.3 Failing tests + implementation for single-mode autonomy: ladder always evaluates and settles what it can (assist semantics per D7), audit records unconditional, level conditionals removed from the gate prelude, `autoExtendsUsed` and the count bound removed from R2 (trajectory window + R4 budget guard remain the sole extension eligibility). Verify: `bun test tests/sdd-runner/auto-policy.test.ts && bun test tests/sdd-runner/gate-prelude.test.ts`
 
 ## 6. CLI cutover (BREAKING — one revertible commit)
 

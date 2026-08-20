@@ -53,9 +53,10 @@ describe('parseCliArgs', () => {
     expect(() => parseCliArgs(['start', 'task.md', '--wait'])).toThrow(/unknown flag: --wait/u)
   })
 
-  it('parses --autonomy and --auto-deadline on start', () => {
-    const cmd = parseCliArgs(['start', 'task.md', '--autonomy', 'assist', '--auto-deadline', '10'])
-    expect(cmd).toMatchObject({ autonomy: 'assist', autoDeadlineMinutes: 10 })
+  it('parses --auto-deadline on start; the removed --autonomy flag fails naming the removal', () => {
+    const cmd = parseCliArgs(['start', 'task.md', '--auto-deadline', '10'])
+    expect(cmd).toMatchObject({ autoDeadlineMinutes: 10 })
+    expect(() => parseCliArgs(['start', 'task.md', '--autonomy', 'assist'])).toThrow(/removed/u)
   })
 
   it('defaults autonomy and deadline to absent on start', () => {
@@ -64,24 +65,10 @@ describe('parseCliArgs', () => {
     expect('autoDeadlineMinutes' in cmd).toBe(false)
   })
 
-  it('rejects an invalid --autonomy level and a non-numeric --auto-deadline', () => {
-    expect(() => parseCliArgs(['start', 'task.md', '--autonomy', 'yolo'])).toThrow(/invalid --autonomy: yolo/u)
+  it('rejects a non-numeric --auto-deadline', () => {
     expect(() => parseCliArgs(['start', 'task.md', '--auto-deadline', 'soon'])).toThrow(
       /invalid --auto-deadline: soon/u,
     )
-  })
-
-  it('maps the observe autonomy level to itself', () => {
-    expect(parseCliArgs(['start', 'task.md', '--autonomy', 'observe'])).toMatchObject({ autonomy: 'observe' })
-  })
-
-  it('keeps a deadline-only start free of an autonomy key and vice versa', () => {
-    const deadlineOnly = parseCliArgs(['start', 'task.md', '--auto-deadline', '10'])
-    expect('autonomy' in deadlineOnly).toBe(false)
-    expect(deadlineOnly).toMatchObject({ autoDeadlineMinutes: 10 })
-    const autonomyOnly = parseCliArgs(['start', 'task.md', '--autonomy', 'auto'])
-    expect('autoDeadlineMinutes' in autonomyOnly).toBe(false)
-    expect(autonomyOnly).toMatchObject({ autonomy: 'auto' })
   })
 
   it('rejects zero, negative, infinite, and reformatted --auto-deadline values', () => {
@@ -97,43 +84,34 @@ describe('parseCliArgs', () => {
   })
 
   it('reports an empty value when a value-taking flag ends the args', () => {
-    expect(() => parseCliArgs(['start', 'task.md', '--autonomy'])).toThrow(/invalid --autonomy: $/u)
     expect(() => parseCliArgs(['start', 'task.md', '--auto-deadline'])).toThrow(/invalid --auto-deadline: $/u)
     expect(() => parseCliArgs(['start', 'task.md', '--depth'])).toThrow(/invalid --depth: $/u)
     expect(() => parseCliArgs(['start', 'task.md', '--verbosity'])).toThrow(/invalid --verbosity: $/u)
   })
 
-  it('parses standard flags that come before the autonomy flags', () => {
-    expect(parseCliArgs(['start', 'task.md', '--verbosity', 'debug', '--autonomy', 'auto'])).toMatchObject({
+  it('parses standard flags together with --auto-deadline', () => {
+    expect(parseCliArgs(['start', 'task.md', '--verbosity', 'debug', '--auto-deadline', '7'])).toMatchObject({
       verbosity: 'debug',
-      autonomy: 'auto',
+      autoDeadlineMinutes: 7,
     })
   })
 
-  it('parses --autonomy and --auto-deadline on resume and continue', () => {
-    expect(parseCliArgs(['resume', 'run-1', '--autonomy', 'auto'])).toMatchObject({
-      subcommand: 'resume',
-      runId: 'run-1',
-      autonomy: 'auto',
-    })
+  it('parses --auto-deadline on resume and continue', () => {
     expect(parseCliArgs(['resume', 'run-1', '--auto-deadline', '5'])).toMatchObject({
       subcommand: 'resume',
       runId: 'run-1',
       autoDeadlineMinutes: 5,
     })
-    expect(parseCliArgs(['continue', 'run-1', '--autonomy', 'assist'])).toMatchObject({
-      subcommand: 'continue',
-      runId: 'run-1',
-      autonomy: 'assist',
-    })
-    expect(parseCliArgs(['continue', '--autonomy', 'auto'])).toMatchObject({
+    expect(parseCliArgs(['continue', '--auto-deadline', '3'])).toMatchObject({
       subcommand: 'continue',
       runId: null,
-      autonomy: 'auto',
+      autoDeadlineMinutes: 3,
     })
   })
 
-  it('rejects --autonomy on report as an unknown flag', () => {
+  it('rejects --autonomy everywhere as removed', () => {
+    expect(() => parseCliArgs(['start', 'task.md', '--autonomy', 'auto'])).toThrow(/removed/u)
+    expect(() => parseCliArgs(['resume', 'run-1', '--autonomy', 'auto'])).toThrow(/removed/u)
     expect(() => parseCliArgs(['report', 'run-1', '--autonomy', 'auto'])).toThrow(/unknown flag/u)
   })
 
@@ -425,13 +403,10 @@ describe('main autonomy and gate decision wiring', () => {
     expect(reopenCalls).toEqual([])
   })
 
-  it('nests parsed autonomy overrides under autonomy on start options', async () => {
+  it('nests a parsed deadline override under autonomy on start options', async () => {
     const cap = captureHarness()
-    await main(['start', 'task.md', '--autonomy', 'assist', '--auto-deadline', '10'], cap.harness)
-    expect(cap.startOptions[0]).toMatchObject({
-      taskFile: 'task.md',
-      autonomy: { level: 'assist', deadlineMinutes: 10 },
-    })
+    await main(['start', 'task.md', '--auto-deadline', '10'], cap.harness)
+    expect(cap.startOptions[0]).toMatchObject({ taskFile: 'task.md' })
   })
 
   it('sends empty autonomy overrides on start when no autonomy flags are given', async () => {
@@ -440,10 +415,10 @@ describe('main autonomy and gate decision wiring', () => {
     expect(cap.startOptions[0]).toMatchObject({ autonomy: {} })
   })
 
-  it('forwards autonomy overrides on resume and continue', async () => {
+  it('forwards deadline overrides on resume and continue', async () => {
     const cap = captureHarness()
-    await main(['resume', 'run-1', '--autonomy', 'auto'], cap.harness)
-    expect(cap.resumeCalls[0]).toEqual(['run-1', { level: 'auto' }])
+    await main(['resume', 'run-1', '--auto-deadline', '5'], cap.harness)
+    expect(cap.resumeCalls[0]).toEqual(['run-1', { deadlineMinutes: 5 }])
     await main(['continue', 'run-1', '--auto-deadline', '5'], cap.harness)
     expect(cap.continueCalls[0]).toEqual(['run-1', { deadlineMinutes: 5 }])
     await main(['resume', 'run-2'], cap.harness)
@@ -567,13 +542,13 @@ describe('audit and gate reopen verbs', () => {
     expect('noWait' in withVerbosity).toBe(false)
   })
 
-  it('a standard start flag followed by autonomy flags parses both', () => {
-    expect(parseCliArgs(['start', 'task.md', '--depth', 'L', '--autonomy', 'auto'])).toStrictEqual({
+  it('a standard start flag followed by a deadline flag parses both', () => {
+    expect(parseCliArgs(['start', 'task.md', '--depth', 'L', '--auto-deadline', '9'])).toStrictEqual({
       subcommand: 'start',
       taskFile: 'task.md',
       depth: 'L',
       verbosity: 'normal',
-      autonomy: 'auto',
+      autoDeadlineMinutes: 9,
     })
     expect(parseCliArgs(['start', 'task.md', '--depth', 'S', '--verbosity', 'debug'])).toMatchObject({
       depth: 'S',
@@ -685,15 +660,13 @@ describe('quiet verbosity (13.7)', () => {
     expect(() => parseCliArgs(['gate', 'resume', 'r1', '--verbosity', ''])).toThrow('invalid --verbosity: ')
   })
 
-  it('deadline-only and level-only overrides carry exactly one key', () => {
+  it('a deadline-only start carries exactly one override key', () => {
     const deadlineOnly = parseCliArgs(['start', 'task.md', '--auto-deadline', '10'])
     expect('autonomy' in deadlineOnly).toBe(false)
-    const levelOnly = parseCliArgs(['start', 'task.md', '--autonomy', 'assist'])
-    expect('autoDeadlineMinutes' in levelOnly).toBe(false)
+    expect(deadlineOnly).toMatchObject({ autoDeadlineMinutes: 10 })
   })
 
-  it('rejects a trailing --autonomy or --verbosity value naming the empty value', () => {
-    expect(() => parseCliArgs(['start', 'task.md', '--autonomy'])).toThrow(/invalid --autonomy: $/u)
+  it('rejects a trailing --verbosity value naming the empty value', () => {
     expect(() => parseCliArgs(['gate', 'resume', 'r1', '--verbosity'])).toThrow(/invalid --verbosity: $/u)
   })
 })

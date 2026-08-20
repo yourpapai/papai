@@ -92,8 +92,7 @@ function makeFixture(dir: string, script: Record<string, ArtifactWrite[]>, valid
     repoRoot: dir,
     workDir: path.join(dir, '.sdd-runner'),
     model: 'test-model',
-    models: {},
-    timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+    budget: 5,
   }
   const spawn: SpawnFn = (_command, args, options) => {
     prompts.push(String(args[args.length - 1]))

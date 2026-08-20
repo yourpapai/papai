@@ -8,8 +8,8 @@ import path from 'node:path'
 
 import type { AgentLayerDeps } from './agent-layer.js'
 import { deriveChangeName } from './config.js'
-import { resolveAutonomyConfig } from './config.js'
-import type { AutonomyConfig, AutonomyLevel } from './config.js'
+import { autonomyOf } from './config.js'
+import type { AutonomyConfig } from './config.js'
 import { runDraft } from './draft.js'
 import type { DepthProfile, EventInput } from './events.js'
 import { buildBus, logPathFor, nowOf, presentGateAt } from './gate-digest.js'
@@ -35,16 +35,11 @@ export { runGateResume } from './extend-round.js'
 export { runContinue } from './continue.js'
 
 export interface AutonomyOverrides {
-  readonly level?: AutonomyLevel
   readonly deadlineMinutes?: number
 }
 
 function resolveAutonomy(deps: OrchestratorDeps, overrides: AutonomyOverrides = {}): AutonomyConfig {
-  if (overrides.level === undefined && overrides.deadlineMinutes === undefined && deps.autonomy !== undefined) {
-    return deps.autonomy
-  }
-  const base = resolveAutonomyConfig(deps.config, overrides)
-  return deps.autonomy === undefined ? base : { ...base, level: overrides.level ?? deps.autonomy.level }
+  return autonomyOf(deps.config, overrides.deadlineMinutes)
 }
 
 export interface StartOptions {

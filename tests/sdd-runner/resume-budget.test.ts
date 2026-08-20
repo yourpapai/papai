@@ -50,8 +50,7 @@ function makeAgent(dir: string, emitted: EventInput[]): { agent: AgentLayerDeps;
     repoRoot: dir,
     workDir: path.join(dir, '.sdd-runner'),
     model: 'm',
-    models: {},
-    timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+    budget: 5,
   }
   const spawns: number[] = []
   let call = 0
@@ -163,8 +162,7 @@ describe('continued-session usage flows through accounting and the budget guard 
         repoRoot: dir,
         workDir: path.join(dir, '.sdd-runner'),
         model: 'm',
-        models: {},
-        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+        budget: 5,
       },
       spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
       execGit: () => Promise.resolve({ stdout: '', stderr: '' }),

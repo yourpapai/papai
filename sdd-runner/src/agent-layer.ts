@@ -12,7 +12,7 @@ import { parsePorcelainPaths } from '../../mutation-improve/src/diff-guard.js'
 import { agentWritePath, runAgent } from '../../review-loop/src/agent-runner.js'
 import type { AgentUsage, SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { createAgentReporter } from './agent-reporter.js'
-import { modelFor } from './config.js'
+import { INACTIVITY_TIMEOUT_MS, WALL_CLOCK_TIMEOUT_MS, modelFor } from './config.js'
 import type { AgentRole, ExecGitFn, RunnerConfig } from './config.js'
 import type { EventInput } from './events.js'
 import { nextSessionAttempt, recordSessionId, settleSessionAttempt, transcriptPathFor } from './session-ledger.js'
@@ -264,8 +264,8 @@ function runSpawn<T>(
     logPath: inputs.logPath,
     extraArgs: inputs.continuation === null ? [] : ['--session', inputs.continuation.sessionId],
     noRetry: inputs.continuation !== null,
-    timeoutMs: deps.config.timeouts.wallClockMs,
-    inactivityTimeoutMs: deps.config.timeouts.inactivityMs,
+    timeoutMs: WALL_CLOCK_TIMEOUT_MS,
+    inactivityTimeoutMs: INACTIVITY_TIMEOUT_MS,
     reporter: inputs.reporter,
     sessionLedger: inputs.sessionLedger,
     sessionAttempt: inputs.ledgerAttempt,

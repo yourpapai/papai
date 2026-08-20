@@ -35,8 +35,7 @@ function makeDeps(dir: string): OrchestratorDeps {
       repoRoot: dir,
       workDir: path.join(dir, '.sdd-runner'),
       model: 'm',
-      models: {},
-      timeouts: { wallClockMs: 1000, inactivityMs: 1000 },
+      budget: 5,
     },
     spawn: (_command, _args, options) => {
       const target = path.join(options.cwd, '.review-loop', 'veto-updater.json')

@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import { autonomyOverridesOf, parseGateResumeFlags, parseTrailingFlags } from './cli-flags.js'
-import type { AutonomyLevel } from './config.js'
 import type { DepthProfile } from './events.js'
 import type {
   RunContinueResult,
@@ -38,7 +37,6 @@ export interface CliHarness {
 }
 
 export interface AutonomyOverrides {
-  readonly level?: AutonomyLevel
   readonly deadlineMinutes?: number
 }
 
@@ -61,16 +59,16 @@ export async function main(argv: readonly string[], harness: CliHarness): Promis
       taskFile: cmd.taskFile,
       depthOverride: cmd.depth,
       verbosity: cmd.verbosity,
-      autonomy: autonomyOverridesOf(cmd.autonomy, cmd.autoDeadlineMinutes),
+      autonomy: autonomyOverridesOf(cmd.autoDeadlineMinutes),
     })
     return 0
   }
   if (cmd.subcommand === 'resume') {
-    await harness.runResume(cmd.runId, autonomyOverridesOf(cmd.autonomy, cmd.autoDeadlineMinutes))
+    await harness.runResume(cmd.runId, autonomyOverridesOf(cmd.autoDeadlineMinutes))
     return 0
   }
   if (cmd.subcommand === 'continue') {
-    await harness.runContinue(cmd.runId, autonomyOverridesOf(cmd.autonomy, cmd.autoDeadlineMinutes))
+    await harness.runContinue(cmd.runId, autonomyOverridesOf(cmd.autoDeadlineMinutes))
     return 0
   }
   if (cmd.subcommand === 'audit') return runAudit(harness, cmd.runId)
@@ -118,21 +116,18 @@ export type CliCommand =
       readonly taskFile: string
       readonly depth?: DepthProfile
       readonly verbosity: Verbosity
-      readonly autonomy?: AutonomyLevel
       readonly autoDeadlineMinutes?: number
     }
   | {
       readonly subcommand: 'resume'
       readonly runId: string
       readonly verbosity?: Verbosity
-      readonly autonomy?: AutonomyLevel
       readonly autoDeadlineMinutes?: number
     }
   | {
       readonly subcommand: 'continue'
       readonly runId: string | null
       readonly verbosity?: Verbosity
-      readonly autonomy?: AutonomyLevel
       readonly autoDeadlineMinutes?: number
     }
   | {
@@ -176,8 +171,10 @@ function parseStart(args: readonly string[]): CliCommand {
       if (vb === undefined) throw new Error(`invalid --verbosity: ${val}`)
       verbosity = vb
       i += 2
-    } else if (arg === '--autonomy' || arg === '--auto-deadline') {
+    } else if (arg === '--auto-deadline') {
       break
+    } else if (arg === '--autonomy') {
+      throw new Error('the --autonomy flag was removed: autonomy is single-mode now (budget/deadline config keys)')
     } else {
       throw new Error(`unknown flag: ${arg}`)
     }

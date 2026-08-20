@@ -8,12 +8,12 @@ import { describe, expect, it } from 'bun:test'
 import { autonomyOverridesOf, parseTrailingFlags } from '../../sdd-runner/src/cli-flags.js'
 
 describe('parseTrailingFlags', () => {
-  it('parses autonomy, deadline, and verbosity together', () => {
-    expect(parseTrailingFlags(['--autonomy', 'auto', '--auto-deadline', '5', '--verbosity', 'quiet'], 0)).toEqual({
-      autonomy: 'auto',
+  it('parses deadline and verbosity; the removed --autonomy flag fails naming the removal', () => {
+    expect(parseTrailingFlags(['--auto-deadline', '5', '--verbosity', 'quiet'], 0)).toEqual({
       autoDeadlineMinutes: 5,
       verbosity: 'quiet',
     })
+    expect(() => parseTrailingFlags(['--autonomy', 'auto'], 0)).toThrow(/removed/u)
   })
 
   it('empty input yields an empty object and unknown flags throw', () => {
@@ -23,7 +23,7 @@ describe('parseTrailingFlags', () => {
   })
 
   it('autonomyOverridesOf shapes the orchestrator override object', () => {
-    expect(autonomyOverridesOf(undefined, undefined)).toEqual({})
-    expect(autonomyOverridesOf('assist', 10)).toEqual({ level: 'assist', deadlineMinutes: 10 })
+    expect(autonomyOverridesOf(undefined)).toEqual({})
+    expect(autonomyOverridesOf(10)).toEqual({ deadlineMinutes: 10 })
   })
 })

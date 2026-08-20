@@ -94,7 +94,7 @@ export async function presentGateAt(
   const signals = await gatherGateSignals(deps, state, ctx, reviewResult)
   const policyInput = { mode, version, ...signals }
   const evaluation = options.skipPolicy === true ? null : runPolicyLadder(deps, state, ctx, reviewResult, policyInput)
-  const plan = planForGate(deps, state, evaluation)
+  const plan = planForGate(state, evaluation)
   if (plan !== null && plan.action === 'settle' && mode === 'final') {
     return autoSettleFinalGate(deps, state, ctx, plan.decision, policyInput)
   }
@@ -121,7 +121,7 @@ export async function presentGateAt(
   )
   state.gate = { mode, version }
   state.status = 'running'
-  const deadline = deadlineStampFor(deps, deps.autonomy?.level ?? 'observe')
+  const deadline = deadlineStampFor(deps)
   state.gateDeadlineAt = deadline.gateDeadlineAt
   state.gateDeadlineReArmed = false
   await saveRunState(state, nowOf(deps))

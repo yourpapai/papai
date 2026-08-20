@@ -55,8 +55,7 @@ function makeDeps(dir: string, spawn: SpawnFn): AgentLayerDeps {
     repoRoot: dir,
     workDir: path.join(dir, '.sdd-runner'),
     model: 'default-model',
-    models: {},
-    timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+    budget: 5,
   }
   return {
     spawn,

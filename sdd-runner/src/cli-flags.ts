@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import type { AutonomyOverrides } from './cli.js'
-import type { AutonomyLevel } from './config.js'
 import type { Verbosity } from './renderer.js'
 
 const GATE_VERBOSITY_VALUES: Record<string, Verbosity> = {
@@ -12,19 +11,6 @@ const GATE_VERBOSITY_VALUES: Record<string, Verbosity> = {
   brief: 'brief',
   normal: 'normal',
   debug: 'debug',
-}
-
-const AUTONOMY_VALUES: Record<string, AutonomyLevel> = { observe: 'observe', assist: 'assist', auto: 'auto' }
-
-interface ParsedAutonomyFlags {
-  readonly autonomy?: AutonomyLevel
-  readonly autoDeadlineMinutes?: number
-}
-
-function parseAutonomyFlag(val: string): AutonomyLevel {
-  const level = AUTONOMY_VALUES[val]
-  if (level === undefined) throw new Error(`invalid --autonomy: ${val}`)
-  return level
 }
 
 function parseAutoDeadlineFlag(val: string): number {
@@ -35,21 +21,19 @@ function parseAutoDeadlineFlag(val: string): number {
   return minutes
 }
 
-export interface TrailingFlags extends ParsedAutonomyFlags {
+export interface TrailingFlags {
+  readonly autoDeadlineMinutes?: number
   readonly verbosity?: 'quiet' | 'brief' | 'normal' | 'debug'
 }
 
 export function parseTrailingFlags(args: readonly string[], start: number): TrailingFlags {
-  let autonomy: AutonomyLevel | undefined
   let autoDeadlineMinutes: number | undefined
   let verbosity: TrailingFlags['verbosity'] | undefined
   let i = start
   while (i < args.length) {
     const arg = args[i]
     if (arg === '--autonomy') {
-      const val = args[i + 1] ?? ''
-      autonomy = parseAutonomyFlag(val)
-      i += 2
+      throw new Error('the --autonomy flag was removed: autonomy is single-mode now (budget/deadline config keys)')
     } else if (arg === '--auto-deadline') {
       const val = args[i + 1] ?? ''
       autoDeadlineMinutes = parseAutoDeadlineFlag(val)
@@ -64,23 +48,16 @@ export function parseTrailingFlags(args: readonly string[], start: number): Trai
       throw new Error(`unknown flag: ${arg}`)
     }
   }
-  if (autonomy === undefined && autoDeadlineMinutes === undefined && verbosity === undefined) return {}
+  if (autoDeadlineMinutes === undefined && verbosity === undefined) return {}
   return {
-    ...(autonomy === undefined ? {} : { autonomy }),
     ...(autoDeadlineMinutes === undefined ? {} : { autoDeadlineMinutes }),
     ...(verbosity === undefined ? {} : { verbosity }),
   }
 }
 
-export function autonomyOverridesOf(
-  autonomy: AutonomyLevel | undefined,
-  deadline: number | undefined,
-): AutonomyOverrides {
-  if (autonomy === undefined && deadline === undefined) return {}
-  return {
-    ...(autonomy === undefined ? {} : { level: autonomy }),
-    ...(deadline === undefined ? {} : { deadlineMinutes: deadline }),
-  }
+export function autonomyOverridesOf(deadline: number | undefined): AutonomyOverrides {
+  if (deadline === undefined) return {}
+  return { deadlineMinutes: deadline }
 }
 
 export function parseVetoArg(raw: string): { id: string; redirect?: string } {

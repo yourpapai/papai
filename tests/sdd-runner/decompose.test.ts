@@ -50,8 +50,7 @@ function makeConfig(dir: string): RunnerConfig {
     repoRoot: dir,
     workDir: path.join(dir, '.sdd-runner'),
     model: 'm',
-    models: {},
-    timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+    budget: 5,
   }
 }
 

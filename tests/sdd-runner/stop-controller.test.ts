@@ -149,7 +149,7 @@ describe('calm stop honored at orchestrator round/stage boundaries', () => {
       return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 })
     }
     const deps: OrchestratorDeps = {
-      config: { repoRoot, workDir, model: 'm', models: {}, timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 } },
+      config: { repoRoot, workDir, model: 'm', budget: 5 },
       spawn,
       execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
       driver: {
