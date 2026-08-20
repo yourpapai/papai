@@ -10,6 +10,8 @@ import type { Tool } from 'ai'
 
 import { enableByokForContext, setByokRoles, upsertByokProvider } from '../../src/byok-llm/store.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
 import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import type { LlmProviderAccount } from '../../src/llm-providers/types.js'
@@ -131,6 +133,21 @@ describe('run_diagnostics payload', () => {
     assert(isRecord(result), 'diagnostics result must be an object')
 
     expect(result['task_instance']).toEqual({ status: 'configured', id: 'ti-1', type: 'kaneo' })
+  })
+
+  test('default probe reads the assigned task instance from the config context (production wiring passes empty deps)', async () => {
+    seedTestPlatformInstance({ id: 'pi-diag' })
+    insertTaskInstance({
+      id: 'ti-diag-assigned',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+    setContextSettings({ contextId: CONTEXT, taskInstanceId: 'ti-diag-assigned', platformInstanceId: 'pi-diag' })
+    const result: unknown = await getToolExecutor(makeRunDiagnosticsTool('pi-diag', {}, CONTEXT))({})
+    assert(isRecord(result), 'diagnostics result must be an object')
+
+    expect(result['task_instance']).toEqual({ status: 'configured', id: 'ti-diag-assigned', type: 'kaneo' })
   })
 
   test('no token/key/credential-bearing value appears in the result or log output', async () => {

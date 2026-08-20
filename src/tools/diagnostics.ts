@@ -8,7 +8,9 @@ import type { Tool } from 'ai'
 import { z } from 'zod'
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
+import { getContextSettings } from '../instances/context-store.js'
 import { getPlatformInstance } from '../instances/platform-store.js'
+import { getTaskInstance } from '../instances/task-store.js'
 import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { mcpPool } from '../mcp/client-pool.js'
@@ -38,7 +40,11 @@ export type DiagnosticsDeps = Partial<
   }>
 >
 
-const defaultTaskInstance = (): { id: string; type: string } | null => null
+const defaultTaskInstance = (configContextId: string): { id: string; type: string } | null => {
+  const settings = getContextSettings(configContextId)
+  const instance = getTaskInstance(settings?.taskInstanceId ?? null)
+  return instance === null ? null : { id: instance.id, type: instance.type }
+}
 
 const defaultLlmConfig = (configContextId: string): DiagnosticsLlmConfigStatus => {
   const resolved = resolveLlmConfig(configContextId)
@@ -59,7 +65,7 @@ const resolveDeps = (deps: DiagnosticsDeps, configContextId: string): Required<D
   platformInstanceActive:
     deps.platformInstanceActive ??
     ((platformInstanceId) => getPlatformInstance(platformInstanceId)?.status === 'active'),
-  taskInstance: deps.taskInstance ?? defaultTaskInstance,
+  taskInstance: deps.taskInstance ?? (() => defaultTaskInstance(configContextId)),
   llmConfig: deps.llmConfig ?? (() => defaultLlmConfig(configContextId)),
   mcpPool: deps.mcpPool ?? defaultMcpPool,
   queueCount: deps.queueCount ?? defaultQueueCount,
