@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { CommandHandler, ReplyFn } from '../../src/chat/types.js'
 import { registerStartCommand } from '../../src/commands/start.js'
-import { getConfigValue } from '../../src/config.js'
+import { getConfigValue, setConfigValue } from '../../src/config.js'
 import { createMockChatWithCommandHandlers, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 /** Reply capturing `buttons` and `formatted` calls. */
@@ -134,8 +134,46 @@ describe('start command', () => {
       commandMatch: 'start',
       isMentioned: false,
     }
-    await handler!(msg, reply, { allowed: false, isBotAdmin: false, isGroupAdmin: false, storageContextId: 'u2' })
+    await handler!(msg, reply, {
+      allowed: false,
+      isBotAdmin: false,
+      isGroupAdmin: false,
+      storageContextId: 'u2',
+      reason: 'dm_not_allowed',
+    })
     expect(captured).not.toBeNull()
     expect(captured!).toContain('not authorized')
+  })
+
+  test('unauthorized user in a ru-configured context gets the Russian rejection', async () => {
+    setConfigValue('u5', 'language', 'ru')
+    let captured: string | null = null
+    const reply = {
+      text: (content: string): Promise<void> => {
+        captured = content
+        return Promise.resolve()
+      },
+      formatted: (): Promise<void> => Promise.resolve(),
+      file: (): Promise<void> => Promise.resolve(),
+      typing: (): void => {},
+      buttons: (): Promise<undefined> => Promise.resolve(undefined),
+    }
+    const msg = {
+      user: { id: 'u5', username: 'user', isAdmin: false },
+      contextId: 'u5',
+      contextType: 'dm' as const,
+      text: '/start',
+      platformInstanceId: 'test-instance',
+      commandMatch: 'start',
+      isMentioned: false,
+    }
+    await handler!(msg, reply, {
+      allowed: false,
+      isBotAdmin: false,
+      isGroupAdmin: false,
+      storageContextId: 'u5',
+      reason: 'user_blocked',
+    })
+    expect(captured!).toBe('Вы не авторизованы для работы с этим ботом.')
   })
 })

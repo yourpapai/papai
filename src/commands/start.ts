@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { replyToUnauthorized } from '../bot-unauthorized-reply.js'
 import { maybePostLanguagePicker } from '../chat/language-picker.js'
 import type { ChatProvider, CommandHandler } from '../chat/types.js'
 import { t } from '../i18n/index.js'
@@ -14,7 +15,7 @@ const log = logger.child({ scope: 'commands:start' })
 export function registerStartCommand(chat: ChatProvider): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
     if (!auth.allowed) {
-      await reply.text('You are not authorized to use this bot.')
+      await replyToUnauthorized(reply, auth, msg.contextId)
       return
     }
 
