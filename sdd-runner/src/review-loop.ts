@@ -49,6 +49,12 @@ export interface ReviewLoopDeps {
     readonly round: number
   }
   /**
+   * Calm-stop seam (D6): consulted between rounds — a stop lands after the
+   * in-flight round completes and its artifacts are recorded. Omitted → no
+   * stop path (tests, embedders).
+   */
+  readonly stop?: { readonly stopRequested: () => boolean }
+  /**
    * Round-boundary steering seam (D6): consume `steer.md` at each round-cap
    * evaluation point and re-read the persisted round cap so a steered
    * `extend` takes effect at the next boundary without consuming
@@ -244,6 +250,10 @@ async function runRound(
   const openBlockers = resolved.resolutions.filter((entry) => entry.class === 'BLOCKER')
   const openMaterial = resolved.resolutions.filter((entry) => entry.class === 'MATERIAL')
   const openNitpicks = resolved.resolutions.filter((entry) => entry.class === 'NITPICK')
+  if (deps.stop?.stopRequested() === true) {
+    // Calm stop (D6): the in-flight round is fully recorded; do not enter the next.
+    return { outcome: 'cap-hit', rounds: round, openBlockers, openMaterial, openNitpicks }
+  }
   const nextCap = applySteerAtBoundary(deps, effectiveCap)
   if (round >= nextCap) return { outcome: 'cap-hit', rounds: round, openBlockers, openMaterial, openNitpicks }
   return runRound(deps, options, round + 1, nextCap, openBlockers.length)

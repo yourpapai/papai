@@ -18,16 +18,16 @@ import { runIntake } from './intake.js'
 import { createMaterializer } from './materialize.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
 import type { Verbosity } from './renderer.js'
-import { replayEvents } from './replay.js'
-import { resolveResumeDecision } from './resume-decision.js'
 import type { ResumedSession } from './resume-decision.js'
 import { resumeFromPoint } from './resume-flow.js'
+import { deriveResumeDecision, reportResumeDecision, settleStoppedResult } from './resume-flow.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { createRunState, loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
 import type { RunState } from './run-state.js'
-import { readSessionLedger } from './session-ledger.js'
 import { createStageMachine } from './stage-machine.js'
+import { createStopMarkerSeam } from './stop-controller.js'
+import type { CalmStopController } from './stop-controller.js'
 
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 export type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
@@ -56,7 +56,7 @@ export interface StartOptions {
 
 export interface RunResumeResult {
   readonly runId: string
-  readonly halted: 'gate' | 'gate-pending'
+  readonly halted: 'gate' | 'gate-pending' | 'stopped'
   readonly gateMdPath?: string
   readonly version?: number
 }
@@ -118,52 +118,23 @@ export async function runResume(
   const decision = await deriveResumeDecision(deps, state)
   reportResumeDecision(deps, emit, decision)
   const depth = state.depth ?? 'S'
+  const stop = createStopMarkerSeam(state.runDir)
   const env = buildPipelineEnv(deps, state, emit, {
     taskText: '',
     changeName: state.changeName,
     depthOverride: depth,
     autonomy,
   })
-  return resumeFromPoint(
-    { deps: env.deps, state, ctx: env.ctx, agent: env.agent },
+  const result = await resumeFromPoint(
+    { deps: env.deps, state, ctx: env.ctx, agent: env.agent, stop },
     {
-      runReviewStage: (d, entry) => runReviewStage(env, d, '', entry),
+      runReviewStage: (d, entry) => runReviewStage(env, d, '', entry, stop),
       runPostReviewToGate: (d, reviewResult, version) => runPostReviewToGate(env, d, reviewResult, version),
     },
     decision,
     depth,
   )
-}
-
-/** Resolve the D2 resume decision: artifact-first, session-second, rebuild-last. */
-async function deriveResumeDecision(
-  deps: OrchestratorDeps,
-  state: RunState,
-): Promise<ReturnType<typeof resolveResumeDecision>> {
-  const status = await deps.driver.status(state.changeName)
-  return resolveResumeDecision(
-    state,
-    status.artifacts,
-    replayEvents(logPathFor(state)),
-    readSessionLedger(state.runDir),
-  )
-}
-
-function reportResumeDecision(
-  deps: OrchestratorDeps,
-  emit: (event: EventInput) => void,
-  decision: ReturnType<typeof resolveResumeDecision>,
-): void {
-  emit({
-    altitude: 'L2',
-    type: 'resume',
-    path: decision.path,
-    stage: decision.stage,
-    ...(decision.session === undefined ? {} : { session: decision.session.opencodeSessionId }),
-  })
-  deps.stdout?.(
-    `resume: ${decision.path}${decision.session === undefined ? '' : ` (session ${decision.session.opencodeSessionId})`}`,
-  )
+  return settleStoppedResult(deps, state, stop, result)
 }
 
 function buildPipelineEnv(
@@ -210,14 +181,17 @@ function isSeverityConverged(reviewResult: ReviewLoopResult): boolean {
   )
 }
 
-async function runPlanningStages(env: PipelineEnv): Promise<{ depth: DepthProfile; reviewResult: ReviewLoopResult }> {
+async function runPlanningStages(
+  env: PipelineEnv,
+  stop?: CalmStopController,
+): Promise<{ depth: DepthProfile; reviewResult: ReviewLoopResult }> {
   const { deps, state } = env
   const depth = await runIntakeStage(env)
   await saveRunState(state, nowOf(deps))
   await runDraftStage(env, depth)
   state.stage = 'draft'
   await saveRunState(state, nowOf(deps))
-  const reviewResult = await runReviewStage(env, depth, env.input.taskText)
+  const reviewResult = await runReviewStage(env, depth, env.input.taskText, {}, stop)
   state.stage = 'review'
   await saveRunState(state, nowOf(deps))
   return { depth, reviewResult }
@@ -263,6 +237,7 @@ async function runReviewStage(
     readonly cap?: number
     readonly resumeSession?: ResumedSession
   } = {},
+  stop?: CalmStopController,
 ): Promise<ReviewLoopResult> {
   const { deps, state, machine, agent, ctx, input } = env
   const materialize = createMaterializer(ctx.sidecarDir, ctx.changeDir, ctx.emit, deps.config.repoRoot)
@@ -276,6 +251,7 @@ async function runReviewStage(
         sidecarDir: ctx.sidecarDir,
         cwd: ctx.cwd,
         materialize,
+        stop,
         steer: steerSeamFor(state, (line) => deps.stdout?.(`steer: ${line}`)),
         resumeSession: entry.resumeSession,
       },

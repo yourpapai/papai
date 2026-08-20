@@ -18,9 +18,9 @@ Ordered per design.md Migration Plan: every step is shippable alone, steps 1–2
 
 ## 3. Calm stop seam (coexists)
 
-- [ ] 3.1 Failing tests for the boundary-honoring stop controller: stop request honored between rounds/stages, in-flight agents complete, artifacts and event log consistent, status `stopped`. Verify: `bun test tests/sdd-runner/stop-controller.test.ts`
-- [ ] 3.2 Implement the stop seam (review-loop `stop-controller` shape) wired into the orchestrator's round/stage boundaries. Verify: `bun test tests/sdd-runner/stop-controller.test.ts`
-- [ ] 3.3 Failing tests + implementation for the cross-process marker file (`stop-requested`) the seam checks at boundaries. Verify: `bun test tests/sdd-runner/stop-marker.test.ts`
+- [x] 3.1 Failing tests for the boundary-honoring stop controller: stop request honored between rounds/stages, in-flight agents complete, artifacts and event log consistent, status `stopped`. Verify: `bun test tests/sdd-runner/stop-controller.test.ts`
+- [x] 3.2 Implement the stop seam (review-loop `stop-controller` shape) wired into the orchestrator's round/stage boundaries. Verify: `bun test tests/sdd-runner/stop-controller.test.ts`
+- [x] 3.3 Failing tests + implementation for the cross-process marker file (`stop-requested`) the seam checks at boundaries. Verify: `bun test tests/sdd-runner/stop-marker.test.ts`
 
 ## 4. Ink TUI (coexists until cutover)
 

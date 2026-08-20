@@ -23,7 +23,9 @@ export interface GateReopenResult {
 }
 
 export interface CliHarness {
-  readonly runStart: (options: StartOptions) => Promise<RunStartResult>
+  readonly runStart: (
+    options: StartOptions,
+  ) => Promise<RunStartResult | { readonly runId: string; readonly halted: 'stopped' }>
   readonly runResume: (runId: string, autonomy?: AutonomyOverrides) => Promise<RunResumeResult>
   readonly runGateResume: (runId: string, options: GateResumeOptions) => Promise<RunGateResumeResult>
   readonly runContinue: (runId: string | null, autonomy?: AutonomyOverrides) => Promise<RunContinueResult>

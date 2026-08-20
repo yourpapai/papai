@@ -7,14 +7,18 @@ import { readdirSync } from 'node:fs'
 
 import type { AgentLayerDeps } from './agent-layer.js'
 import type { DepthProfile } from './events.js'
+import type { EventInput } from './events.js'
 import { logPathFor, nowOf, readReviewResultFromSidecars } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
 import { replayEvents } from './replay.js'
+import { resolveResumeDecision } from './resume-decision.js'
 import type { ResumeDecision } from './resume-decision.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { resolveRoundCap, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
+import { readSessionLedger } from './session-ledger.js'
+import type { CalmStopController } from './stop-controller.js'
 
 /** The orchestrator-owned stage runners the resume flow drives. */
 export interface ResumeStageRunners {
@@ -39,6 +43,8 @@ export interface ResumeEnv {
   readonly state: RunState
   readonly ctx: StageContext
   readonly agent: AgentLayerDeps
+  /** Calm-stop seam consulted between rounds/stages (D6). */
+  readonly stop?: { readonly stopRequested: () => boolean }
 }
 
 export function nextGateVersion(state: RunState): number {
@@ -98,4 +104,56 @@ export async function resumeFromPoint(
     return { runId, halted: 'gate', gateMdPath: gate.gateMdPath, version: gate.version }
   }
   throw new Error(`resume from stage '${decision.stage}' (${decision.reason}) is not supported yet`)
+}
+
+/**
+ * Calm-stop settlement (D6): if a stop was requested and honored, consume the
+ * marker, record `status: stopped`, and report the stopped halt instead of a
+ * gate halt — the run stays resumable.
+ */
+export async function settleStoppedResult<T extends { readonly runId: string; readonly halted: string }>(
+  deps: OrchestratorDeps,
+  state: RunState,
+  stop: CalmStopController,
+  result: T,
+): Promise<T | { readonly runId: string; readonly halted: 'stopped' }> {
+  if (!stop.stopRequested()) return result
+  stop.consumeMarker()
+  if (state.status !== 'stopped') {
+    state.status = 'stopped'
+    await saveRunState(state, nowOf(deps))
+  }
+  deps.stdout?.(`run ${state.runId} stopped calmly — resume with sdd-runner resume ${state.runId}`)
+  return { runId: state.runId, halted: 'stopped' }
+}
+
+/** Resolve the D2 resume decision: artifact-first, session-second, rebuild-last. */
+export async function deriveResumeDecision(
+  deps: OrchestratorDeps,
+  state: RunState,
+): Promise<ReturnType<typeof resolveResumeDecision>> {
+  const status = await deps.driver.status(state.changeName)
+  return resolveResumeDecision(
+    state,
+    status.artifacts,
+    replayEvents(logPathFor(state)),
+    readSessionLedger(state.runDir),
+  )
+}
+
+export function reportResumeDecision(
+  deps: OrchestratorDeps,
+  emit: (event: EventInput) => void,
+  decision: ReturnType<typeof resolveResumeDecision>,
+): void {
+  emit({
+    altitude: 'L2',
+    type: 'resume',
+    path: decision.path,
+    stage: decision.stage,
+    ...(decision.session === undefined ? {} : { session: decision.session.opencodeSessionId }),
+  })
+  deps.stdout?.(
+    `resume: ${decision.path}${decision.session === undefined ? '' : ` (session ${decision.session.opencodeSessionId})`}`,
+  )
 }

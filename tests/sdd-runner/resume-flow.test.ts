@@ -116,7 +116,7 @@ describe('resumeFromPoint', () => {
       { path: 'stage-rebuild', stage: 'review', round: 2, reason: 'review loop not converged' },
       'S',
     )
-    expect(calls).toEqual(['review:startRound=1', 'gate'])
+    expect(calls).toEqual(['review:round=1', 'gate'])
     expect(result.halted).toBe('gate')
     expect(result.version).toBe(1)
   })
