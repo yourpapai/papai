@@ -7,6 +7,7 @@ import { expect, test } from 'bun:test'
 
 import { and, eq } from 'drizzle-orm'
 
+import { ANALYTICS_JOB_SPECS, createAnalyticsJobHandlers } from '../../../src/analytics/jobs/register.js'
 import {
   setGroupAnnounceSubscribed,
   setUserAnnounceSubscribed,
@@ -49,6 +50,7 @@ import { kvList } from '../../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import { defaultTaskProviderResolver } from '../../../src/providers/resolver.js'
 import type { TaskCapability, TaskProvider } from '../../../src/providers/types.js'
+import { buildAnalyticsJobDeps } from '../../../src/scheduler-instance.js'
 import { tick } from '../../../src/scheduler.js'
 import { setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
 import type { ScenarioProactiveDeliveryPlan } from './chat.js'
@@ -279,6 +281,7 @@ type ScenarioWhen = Readonly<{
       getEmbedding?: (text: string, configContextId: string) => Promise<number[] | null>
     }>,
   ): Promise<void>
+  analyticsJobs(options?: Readonly<{ aheadMs?: number }>): Promise<void>
   recurringTick(): Promise<void>
   startScheduler(): Promise<void>
   scheduledPoll(): Promise<void>
@@ -357,6 +360,9 @@ const scopedGroupId = (group: GroupHandle): string =>
 
 /** Fixed reference instant for sweep-trigger primitives; scenarios seed activity timestamps relative to this. */
 export const FIXED_SWEEP_NOW = '2026-07-20T00:00:00.000Z'
+
+/** Past the derive job's 120 s live watermark, with room for a slow scenario. */
+const ANALYTICS_JOB_SETTLE_AHEAD_MS = 180_000
 
 /** A candidate captured-memory record for `when.captureSweep`; `source`/timestamps are filled in internally. */
 export type CaptureSweepRecord = Readonly<{
@@ -950,6 +956,22 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
           }),
       }
       await sweepPromotions(sweepPromotionsDeps)
+    },
+    async analyticsJobs(options): Promise<void> {
+      world.events.setPhase('when.analyticsJobs')
+      await world.ensureStarted()
+      // The derive job ignores anything newer than its live watermark, so a
+      // story that just produced events has to run the jobs from a clock far
+      // enough ahead for those events to have settled. `nowMs` is the same
+      // injected seam production hands the scheduler.
+      const aheadMs = options?.aheadMs ?? ANALYTICS_JOB_SETTLE_AHEAD_MS
+      const handlers = createAnalyticsJobHandlers({
+        ...buildAnalyticsJobDeps(),
+        nowMs: () => Date.now() + aheadMs,
+      })
+      for (const spec of ANALYTICS_JOB_SPECS) {
+        await handlers[spec.name]()
+      }
     },
     async recurringTick(): Promise<void> {
       world.events.setPhase('when.recurringTick')

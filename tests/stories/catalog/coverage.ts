@@ -227,6 +227,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   // Phase 6 — consent-gated analytics (story-coverage-floor-climb)
   'SCN-analytics-consent-grant',
   'SCN-analytics-subject-rights',
+  'SCN-analytics-derived-materialization',
   'SCN-analytics-aggregate-release-settings',
   'SCN-analytics-aggregate-release-denials',
   'SCN-analytics-aggregate-delivery-captured',
@@ -1657,6 +1658,13 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     provingTier: '0',
     storyIds: [
       'tests/stories/analytics/subject-consent.story.test.ts#SCN-analytics-subject-rights: a consenting subject exports, withdraws, and deletes their analytics record through settings',
+    ],
+  },
+  'SCN-analytics-derived-materialization': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/derived-materialization.story.test.ts#SCN-analytics-derived-materialization: the derive job materializes sessions, friction, and feature days from the events of a consenting subject',
     ],
   },
   'SCN-analytics-governed-turn': {

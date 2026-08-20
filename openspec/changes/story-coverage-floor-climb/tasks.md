@@ -72,12 +72,16 @@ Section targets sum to 47 against a 44.6-unit deficit — a 2.4-unit margin.
       one denied with `governance_incomplete`.
       Verify: `bun test:stories:coverage` reports at least 8 further
       function-units
-- [ ] 3.2 Stories for `src/analytics/derive/` and `src/analytics/delivery/`,
+- [x] 3.2 Stories for `src/analytics/derive/` and `src/analytics/delivery/`,
       reachable now that a granted ref exists.
       Verify: `bun test:stories:coverage` reports at least 6 further
       function-units
 
 ## 4. Chat and settings surfaces (target: 17 function-units)
+
+4.1 and 4.2 were **not needed**. After section 3.2 the gate measured lines
+72.11% and functions 70.44%, clearing both target floors, so 4.3's stop rule
+applies: `src/chat/` and `src/debug/` stay as headroom for the next ratchet.
 
 - [ ] 4.1 Stories for the zero-function files under `src/chat/` (51 candidates:
       adapter helpers reachable from the existing Telegram and Discord story
@@ -89,7 +93,7 @@ Section targets sum to 47 against a 44.6-unit deficit — a 2.4-unit margin.
       surface).
       Verify: `bun test:stories:coverage` reports at least 6 further
       function-units
-- [ ] 4.3 If the gate still measures below lines 71.00% or functions 70.00%,
+- [x] 4.3 If the gate still measures below lines 71.00% or functions 70.00%,
       continue through the D2 order until it clears both. If it clears earlier,
       stop: the remaining files are headroom for the next ratchet.
       Verify: `bun test:stories:coverage` measures at or above both floors
