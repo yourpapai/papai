@@ -5,6 +5,135 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.14.0] - 2026-08-20
+
+### Added
+
+- **agent:** Implement issue #286 — step 1/11: 1.1 Create `tests/tools/suggest-next-task.test.ts` with failing unit tes
+- **agent:** Implement issue #286 — step 2/11: 1.2 Create `src/tools/suggest-next-task.ts` implementing the exported pu
+- **agent:** Implement issue #286 — step 3/11: 2.1 Add a failing case to the `mapTaskListItem` block in `tests/plugins/
+- **agent:** Implement issue #286 — step 4/11: 2.2 Add `createdAt?: string | null` to `TaskListItem` in `src/providers/
+- **agent:** Implement issue #286 — step 5/11: 3.1 Add failing happy-path tool tests (fake provider via `createMockProv
+- **agent:** Implement issue #286 — step 6/11: 3.2 Add failing edge-branch tool tests: `{ status: 'project_required' }`
+- **agent:** Implement issue #286 — step 7/11: 4.1 Implement `makeSuggestNextTaskTool(provider, userId?, storageContext
+- **agent:** Implement issue #286 — step 8/11: 5.1 Register `suggest_next_task: makeSuggestNextTaskTool(provider, userI
+- **agent:** Implement issue #286 — step 9/11: 5.2 Update tool-inventory enumerations: `tests/llm-orchestrator-tools.te
+- **agent:** Implement issue #286 — step 10/11: 6.1 Document the tool: one line in `src/tools/CLAUDE.md` (tool-list cont
+- **agent:** Implement issue #286 — step 11/11: 6.2 Run the full gates: `bun run test` (inspect via `test:failures`/`tes
+- **opencode-agent:** Resolve the model under a configurable catalogue id
+- **opencode-agent:** Name the resolved model reference in the run log
+- **sdd-runner:** Answer with the whole models.dev entry, not only its cost
+- **opencode-agent:** Read hand-declared model metadata at load
+- **opencode-agent:** Resolve model facts and splice them into the config
+- **opencode-agent:** Per-profile model and effort, and a prompt cache key
+- **opencode-agent:** Per-run actor commit identity with service fallback
+- **agent:** Implement issue #301 — step 1/12: 1.1 Record the `mcp` config surface from the pinned SDK:
+- **agent:** Implement issue #301 — step 2/12: 1.2 Compile the CI-constraint facts with citations, not re-derivation:
+- **agent:** Implement issue #301 — step 3/12: 2.1 Write the throwaway stdio MCP server (minimal JSON-RPC responder,
+- **agent:** Implement issue #301 — step 4/12: 2.2 Feed `OPENCODE_CONFIG_CONTENT` with an `mcp` block to the real
+- **agent:** Implement issue #301 — step 5/12: 2.3 Verify merge-vs-override semantics between a checkout-local config
+- **agent:** Implement issue #301 — step 6/12: 2.4 Confirm the permission key form that grants `<server>_<tool>` tools
+- **agent:** Implement issue #301 — step 7/12: 2.5 Record the OAuth dead end (`McpStatusNeedsAuth`, browser flow) and
+- **agent:** Implement issue #301 — step 8/12: 3.1 Create `opencode-agent/docs/mcp-integration-research.md` with the
+- **agent:** Implement issue #301 — step 9/12: 3.2 Write §2 — the comparison core: every candidate surface
+- **agent:** Implement issue #301 — step 10/12: 3.3 Write §4–§6: the deny-by-default permission interaction and grant
+- **agent:** Implement issue #301 — step 11/12: 3.4 Optionally add the one-line link in `opencode-agent/ROADMAP.md` —
+- **agent:** Implement issue #301 — step 12/12: 4.1 Run the full suite and checks over the docs-only diff, confirm the
+- **agent:** Implement issue #298 — step 1/14: 1.1 Write failing `tests/i18n/dictionary.test.ts`: en catalog satisfies
+- **agent:** Implement issue #298 — step 2/14: 1.2 Write failing key-parity test in `tests/i18n/parity.test.ts` that wa
+- **agent:** Implement issue #298 — step 3/14: 2.1 Write failing tests covering: `isConfigKey('language')` is true; con
+- **agent:** Implement issue #298 — step 4/14: 2.2 Add the internal `language_prompted` config key (guarded by `isConfi
+- **agent:** Implement issue #298 — step 5/14: 3.1 Write failing `lang:` callback-route tests: `lang:en`/`lang:ru` from
+- **agent:** Implement issue #298 — step 6/14: 3.2 Write failing tests for the picker trigger: `/start` and the first a
+- **agent:** Implement issue #298 — step 7/14: 4.1 Write failing system-prompt tests: for `ru` the assembled prompt use
+- **agent:** Implement issue #298 — step 8/14: 4.2 Assert locale resolution in the orchestrator: the locale passed to `
+- **agent:** Implement issue #298 — step 9/14: 5.1 Commands: update `tests/commands/` to assert ru rendering for a ru-c
+- **agent:** Implement issue #298 — step 10/14: 5.2 Unauthorized replies: failing test for ru rendering of each `auth.re
+- **agent:** Implement issue #298 — step 11/14: 5.3 Progress lines: failing tests for ru/en tool started/finished lines,
+- **agent:** Implement issue #298 — step 12/14: 5.4 Stop/steer acks and announcements: failing tests for localized acks
+- **agent:** Implement issue #298 — step 13/14: 6.1 Add the language select to the Profile section of the settings SPA (
+- **agent:** Implement issue #298 — step 14/14: 7.1 Run the full suite and gates: `bun test`, `bun run typecheck`, `bun
+
+### Changed
+
+- **tools:** Drop no-op createdAt overlay on RankableTask and test aliases
+- **tools:** Drop dead projectId fallback in buildSuggestions
+- **recurrence:** Drop NEXT_WINDOW_DAYS probe now that next() is lazy
+- **llm:** Remove dead configContextId plumbing from InvokeModelArgs and system-prompt options
+- **prompt:** Drop dead locale fallback in assembleSystemPrompt (require locale)
+- **tests:** Dedupe i18n module loader into shared loadI18nModule test helper
+
+### Documentation
+
+- **openspec:** Draft artifacts for suggest-next-task
+- **openspec:** Capture three changes for opencode-agent model parameters
+- **opencode-agent:** Document LLM_PROVIDER and wire it through the workflow
+- **opencode-agent:** Document the metadata ladder and its reader
+- **opencode-agent:** Document the profile→model/effort mapping
+- **openspec:** Draft artifacts for opencode-agent-mcp-integration-research
+- **openspec:** Draft artifacts for multi-language-support
+- **behaviors:** Correct locale-derivation clause after InvokeModelArgs threading removal
+
+### Fixed
+
+- **analytics:** Balance closed-epoch books for live aggregate writes
+- **suggest-next-task:** Score any past due date as at least one overdue day
+- **sdd-runner:** Nest autonomy overrides on start; kill cli/orchestrator mutation regressions
+- **i18n:** Thread turn locale into verified-completion from orchestrator send and proactive delivery
+- **i18n:** Localize final-reply Done. fallback via completion.doneFallback catalog key
+- **chat:** Ignore guest presses of lang: picker callbacks
+- **i18n:** Correct ru system-prompt typos (задь→задай) and translate handled by schedule fragments
+- **llm:** Move trailing getContextLanguage import to top import block in llm-orchestrator-unconfigur
+- **i18n:** Localize the stop-run summary via the turn locale (extract systemPrompt catalog sections
+- **message-edit:** Localize W2 side-effects prompt, buttons, and acks via turn locale
+- **i18n:** Localize stale-callback, permission-decision, and expired-prompt replies via context loca
+- **message-edit:** Localize the W2 supersede notice via context locale
+- **i18n:** Localize the ask-permission prompt body and Allow/Deny buttons via context locale
+- **i18n:** Localize AppError and tool-failure user messages via context locale
+- **chat:** Localize unauthorized interaction replies via replyToUnauthorized
+- **commands:** Localize /start unauthorized reply via replyToUnauthorized
+- **i18n:** Localize the Mattermost empty-mention hint via context locale
+- **tools:** Build search_tools failure userMessage in the context locale
+- **chat:** Close language-picker check-then-act race by marking language_prompted before the awaited
+- **mutation:** Ignore src/i18n/locales and restore ratchet for errors/wrap
+
+### Miscellaneous
+
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold suggest-next-task
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold opencode-agent-mcp-integration-research
+- **openspec:** Scaffold multi-language-support
+- **knip:** Drop stale i18n and config-language suppressions after multi-language-support landed
+
+### Testing
+
+- **tools:** Add suggest_next_task to SCOPE_CONDITIONAL_TOOL_NAMES inventory
+- **review-loop,sdd-runner:** Kill cache-token and trace mutants to restore mutation ratchet
+- **sdd-runner:** Kill mutation regressions across nine files
+- **sdd-runner:** Pin autonomy precedence against per-process and config ceilings (0.8562)
+- Fix CI fallout from the first-interaction language picker
+- **commands:** Cover /start language-picker trigger and language_prompted marker
+
+### Ci
+
+- **deploy:** Set ANALYTICS_SNAPSHOT_PATH so the scheduler snapshot job runs
+
+### Deps
+
+- Bump the bun-dependencies group with 19 updates
+
+### Sdd-runner
+
+- Fix exit-143 leak, gate verbosity forwarding, and mutation ratchet regressions
+- Mutation kills for watch verb additions to cli
 ## [6.13.1] - 2026-08-17
 
 ### Added
