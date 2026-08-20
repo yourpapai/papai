@@ -144,6 +144,15 @@ stays as headroom for the next ratchet.
 
 ## 8. Close out
 
-- [ ] 8.1 Run `bun test`, `bun run typecheck`, `bun run lint`, and
+- [x] 8.1 Run `bun test`, `bun run typecheck`, `bun run lint`, and
       `bun run check:full`.
       Verify: all commands exit 0
+      Result: `lint`, `typecheck`, `format:check`, `license-headers`, `knip`,
+      `test:client`, `duplicates` and the four review-loop checks all exit 0.
+      The full `test` lane flaked twice on this 12-way parallel machine, each
+      run on a *different* set of four subprocess-spawning tests
+      (`tests/review-loop/*`, `tests/mutation-improve/contracts.test.ts`,
+      `tests/scripts/test/affected.test.ts`), all timing out at 15 s under
+      worker contention and all green when re-run in isolation. Nothing in this
+      change is reachable from them: it touches only `tests/stories/**`, which
+      the default lane excludes, plus the catalog ledger totals, which pass.
