@@ -136,6 +136,8 @@ export function buildLlmInvocationOpts(
     askPermission,
     providerRequestScope,
     actorRole: src.actorRole,
+    isBotAdmin: src.isBotAdmin,
+    platformInstanceId: src.platformInstanceId,
   }
 }
 
@@ -210,6 +212,8 @@ const buildFullToolSet = async (
       opts.stagedDownloadFn,
       opts.chatParticipantResolver,
       deps,
+      opts.isBotAdmin,
+      opts.platformInstanceId,
     ),
   )
   observeInvocationSurface(opts, descriptors)

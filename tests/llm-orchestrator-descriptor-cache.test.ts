@@ -42,6 +42,8 @@ describe('getOrCreateDescriptors', () => {
       undefined,
       undefined,
       deps,
+      false,
+      undefined,
     )
     const second = await getOrCreateDescriptors(
       'ctx-desc-cache',
@@ -52,6 +54,8 @@ describe('getOrCreateDescriptors', () => {
       undefined,
       undefined,
       deps,
+      false,
+      undefined,
     )
 
     expect(buildToolDescriptors).toHaveBeenCalledTimes(1)

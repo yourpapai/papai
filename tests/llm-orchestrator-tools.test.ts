@@ -567,4 +567,18 @@ describe('buildLlmInvocationOpts / actorRole threading', () => {
     const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined, NO_ANALYTICS_SCOPE)
     expect(opts.actorRole).toBeUndefined()
   })
+
+  test('copies isBotAdmin and platformInstanceId from InvocationSource into LlmInvocationOptions', () => {
+    const src = makeSource({ isBotAdmin: true, platformInstanceId: 'pi-1' })
+    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined, NO_ANALYTICS_SCOPE)
+    expect(opts.isBotAdmin).toBe(true)
+    expect(opts.platformInstanceId).toBe('pi-1')
+  })
+
+  test('isBotAdmin and platformInstanceId are undefined when not set on InvocationSource', () => {
+    const src = makeSource()
+    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined, NO_ANALYTICS_SCOPE)
+    expect(opts.isBotAdmin).toBeUndefined()
+    expect(opts.platformInstanceId).toBeUndefined()
+  })
 })

@@ -19,7 +19,11 @@ import { resolveConfigId } from './llm-orchestrator-config.js'
 import { buildHistory } from './llm-orchestrator-history.js'
 import { replayLeftoverSteerAsFreshTurn } from './llm-orchestrator-leftover-replay.js'
 import { shouldBackstopGroupMembership } from './llm-orchestrator-membership.js'
-import { resolveProcessMessageInputs, type ProcessMessageRest } from './llm-orchestrator-process-args.js'
+import {
+  resolveProcessMessageInputs,
+  type ProcessMessageRest,
+  type ResolvedProcessMessageInputs,
+} from './llm-orchestrator-process-args.js'
 import { handleLlmTurnError, invokeWithLiveStatus, logProcessMessage } from './llm-orchestrator-support.js'
 import { buildLlmInvocationOpts, prepareLlmInvocation, type InvocationSource } from './llm-orchestrator-tools.js'
 import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
@@ -221,6 +225,29 @@ const recordFinishedTurn = (
   })
 }
 
+function buildInvocationSource(
+  reply: ReplyFn,
+  contextId: string,
+  chatUserId: string,
+  username: string | null,
+  userText: string,
+  contextType: 'dm' | 'group',
+  inputs: Pick<ResolvedProcessMessageInputs, 'actorRole' | 'isBotAdmin' | 'platformInstanceId'>,
+): Omit<InvocationSource, 'history'> {
+  const { actorRole, isBotAdmin, platformInstanceId } = inputs
+  return {
+    reply,
+    contextId,
+    chatUserId,
+    username,
+    userText,
+    contextType,
+    actorRole,
+    isBotAdmin,
+    platformInstanceId,
+  }
+}
+
 export const processMessage = async (
   reply: ReplyFn,
   contextId: string,
@@ -230,8 +257,8 @@ export const processMessage = async (
   contextType: 'dm' | 'group',
   ...rest: ProcessMessageRest
 ): Promise<void> => {
-  const { configContextId, deps, newAttachmentIds, resolvedTurnId, originatingMessageIds, actorRole, segments } =
-    resolveProcessMessageInputs(rest, defaultDeps)
+  const inputs = resolveProcessMessageInputs(rest, defaultDeps)
+  const { configContextId, deps, newAttachmentIds, resolvedTurnId, originatingMessageIds, segments } = inputs
   logProcessMessage(contextId, configContextId, chatUserId, userText, newAttachmentIds, resolvedTurnId)
   const configId = resolveConfigId(contextId, configContextId)
   const turnScope = resolveNormalTurnProviderScope(resolvedTurnId)
@@ -246,15 +273,7 @@ export const processMessage = async (
     segments,
     contextType,
   )
-  const invocationSource = {
-    reply,
-    contextId,
-    chatUserId,
-    username,
-    userText,
-    contextType,
-    actorRole,
-  }
+  const invocationSource = buildInvocationSource(reply, contextId, chatUserId, username, userText, contextType, inputs)
   appendHistory(contextId, [turn.historyMessage])
   const leftover = await runTurn({
     invocationSource,

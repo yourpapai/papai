@@ -26,12 +26,15 @@ export const getOrCreateDescriptors = async (
   stagedDownloadFn: StagedFileDownloadFn | undefined,
   chatParticipantResolver: ChatParticipantResolver | undefined,
   deps: PrepareLlmInvocationDeps,
+  isBotAdmin: boolean | undefined,
+  platformInstanceId: string | undefined,
 ): Promise<ToolSet> => {
   const providerCacheScope = provider === null ? 'providerless' : 'provider-backed'
   const stagedDownloadScope = stagedDownloadFn === undefined ? 'no-staged-download' : 'with-staged-download'
   const resolverScope = chatParticipantResolver === undefined ? 'no-resolver' : 'with-resolver'
   const usernameSuffix = username ?? ''
-  const cacheKey = `${providerCacheScope}:${stagedDownloadScope}:${resolverScope}:${contextId}:${chatUserId}:${usernameSuffix}`
+  const adminScope = isBotAdmin === true ? 'admin' : 'user'
+  const cacheKey = `${providerCacheScope}:${stagedDownloadScope}:${resolverScope}:${contextId}:${chatUserId}:${usernameSuffix}:${adminScope}`
   const cached = getCachedTools(cacheKey)
   if (cached !== undefined && cached !== null && isToolSet(cached)) {
     log.debug({ contextId, chatUserId, hasUsername: username !== null }, 'Using cached tool descriptors')
@@ -45,6 +48,8 @@ export const getOrCreateDescriptors = async (
     contextType,
     stagedDownloadFn,
     chatParticipantResolver,
+    isBotAdmin,
+    platformInstanceId,
   }
   const descriptors =
     provider === null
