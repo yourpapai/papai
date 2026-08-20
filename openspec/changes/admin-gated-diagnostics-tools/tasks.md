@@ -38,4 +38,4 @@ See LICENSE in the project root for details.
 ## 6. Full verification and docs
 
 - [x] 6.1 Update `src/tools/CLAUDE.md` (extend the `MakeToolsOptions` exposure list with `isBotAdmin`/`platformInstanceId`; add a diagnostics bullet under "Current Context-Sensitive Tool Areas") and `docs/architecture/tools.md` (document the admin+DM+normal-mode gate, fail-closed identity thread, and the admin cache-key segment) — `bun run lint && bun run typecheck`
-- [ ] 6.2 Run the full suite and all checks: `bun run test`, then `bun check:full` (lint, typecheck, knip, format); fix anything surfaced only at whole-repo scope
+- [x] 6.2 Run the full suite and all checks: `bun run test`, then `bun check:full` (lint, typecheck, knip, format); fix anything surfaced only at whole-repo scope
