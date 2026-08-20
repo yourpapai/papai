@@ -5,8 +5,10 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { createStatusEngine, THINKING } from '../../src/live-status/status-engine.js'
+import { createStatusEngine } from '../../src/live-status/status-engine.js'
 import type { StatusEngineDeps } from '../../src/live-status/status-engine.js'
+
+const THINKING = '💭 Thinking…'
 
 type EngineHarness = {
   emitted: string[]
@@ -23,6 +25,7 @@ const makeHarness = (options?: { active?: boolean; minLabelMs?: number }): Engin
       emitted.push(text)
     },
     isActive: () => options?.active !== false,
+    idleText: THINKING,
     minLabelMs: options?.minLabelMs ?? 1000,
     now: () => current,
     schedule: (fn, ms) => {

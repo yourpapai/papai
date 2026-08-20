@@ -5,8 +5,9 @@
 
 import { observeActiveFeatureUsed } from '../analytics/feature-observer.js'
 import type { ReplyFn, StatusHandle } from '../chat/types.js'
+import { t } from '../i18n/index.js'
 import { logger } from '../logger.js'
-import { createStatusEngine, THINKING } from './status-engine.js'
+import { createStatusEngine } from './status-engine.js'
 import type { StatusEngine } from './status-engine.js'
 import { formatToolStatus } from './tool-status-labels.js'
 
@@ -169,7 +170,7 @@ const startStatus = async (
     recorder.emitOpportunity(false, 'platform_unsupported')
     return
   }
-  const created = await reply.createStatus(THINKING).catch(() => undefined)
+  const created = await reply.createStatus(t('liveStatus.thinking')).catch(() => undefined)
   if (created === undefined) {
     observeActiveFeatureUsed({ feature: 'live_status', operation: 'create', outcome: 'failure' })
     recorder.recordLifecycle('create', 'failed')
@@ -236,6 +237,7 @@ export function createLiveStatusReporter(reply: ReplyFn, options?: LiveStatusRep
       recorder.recordUpdate(state.handle.update(text))
     },
     isActive: (): boolean => state.handle !== undefined,
+    idleText: t('liveStatus.thinking'),
     minLabelMs: options?.minLabelMs ?? DEFAULT_MIN_LABEL_MS,
     now: clock,
     schedule: options?.schedule ?? defaultSchedule,
