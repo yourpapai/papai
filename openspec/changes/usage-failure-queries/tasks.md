@@ -17,4 +17,4 @@ See LICENSE in the project root for details.
 
 - [x] 3.1 Run full suite and read failures from the persisted report: `bun run test` then `bun run test:failures`
 - [x] 3.2 Run all static checks: `bun check:full` (lint + typecheck + knip + format + duplicates)
-- [ ] 3.3 Confirm no docs/architecture/*.md pages are affected (read-only helper, no runtime wiring); update any that are
+- [x] 3.3 Confirm no docs/architecture/*.md pages are affected (read-only helper, no runtime wiring); update any that are
