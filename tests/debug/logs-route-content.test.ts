@@ -146,3 +146,86 @@ describe('/logs filtering routes', () => {
     expect(typeof pick(stats, 'count')).toBe('number')
   })
 })
+
+describe('/logs per-session egress (second admin)', () => {
+  const PORT = 19234
+  const base2 = `http://127.0.0.1:${PORT}`
+  const PRIMARY = 'admin-user'
+  const SECOND = 'admin-two'
+
+  const secondCookie = (): { Cookie: string } => ({
+    Cookie: `${SESSION_COOKIE_NAME}=${mintSession(SECOND, { secure: false }).cookieValue}`,
+  })
+
+  beforeAll(async () => {
+    mockLogger()
+    await setupTestDb()
+    setStoreDb(getTestDb().$client)
+    process.env['DEBUG_PORT'] = String(PORT)
+    startDebugServer(PRIMARY, { debugEnabled: true })
+    logBuffer.clear()
+    logBuffer.push({
+      level: 30,
+      time: '2026-06-15T00:00:00.000Z',
+      msg: 'own entry',
+      chatUserId: SECOND,
+      userText: 'own secret',
+      durationMs: 5,
+    })
+    logBuffer.push({
+      level: 30,
+      time: '2026-06-15T00:00:01.000Z',
+      msg: 'foreign entry',
+      chatUserId: PRIMARY,
+      userText: 'foreign secret',
+    })
+    logBuffer.push({
+      level: 30,
+      time: '2026-06-15T00:00:02.000Z',
+      msg: 'anon entry',
+      userText: 'anon secret',
+      messageLength: 7,
+    })
+  })
+
+  afterAll(() => {
+    stopDebugServer()
+    setStoreDb(null)
+    logBuffer.clear()
+    delete process.env['DEBUG_PORT']
+  })
+
+  test('own entries verbatim; foreign and unattributable entries shaped', async () => {
+    const res = await fetch(`${base2}/logs`, { headers: secondCookie() })
+    expect(res.status).toBe(200)
+    const body = await readJsonArray(res)
+    expect(body).toHaveLength(3)
+
+    const own = body.find((e) => pick(e, 'msg') === 'own entry')
+    expect(pick(own, 'userText')).toBe('own secret')
+    expect(pick(own, 'durationMs')).toBe(5)
+
+    const foreign = body.find((e) => pick(e, 'msg') === 'foreign entry')
+    expect(pick(foreign, 'userText')).toBeUndefined()
+    expect(pick(foreign, 'chatUserId')).toBeUndefined()
+    expect(pick(foreign, 'msg')).toBe('foreign entry')
+
+    const anon = body.find((e) => pick(e, 'msg') === 'anon entry')
+    expect(pick(anon, 'userText')).toBeUndefined()
+    expect(pick(anon, 'messageLength')).toBe(7)
+  })
+
+  test('q matches only post-shaping content for the session admin', async () => {
+    const stillThere = await fetch(`${base2}/logs?q=own%20secret`, { headers: secondCookie() })
+    expect(await readJsonArray(stillThere)).toHaveLength(1)
+
+    const stripped = await fetch(`${base2}/logs?q=foreign%20secret`, { headers: secondCookie() })
+    expect(await readJsonArray(stripped)).toHaveLength(0)
+  })
+
+  test('/logs/stats matchingCount is computed post-shaping', async () => {
+    const res = await fetch(`${base2}/logs/stats?q=secret`, { headers: secondCookie() })
+    const stats: unknown = JSON.parse(await res.text())
+    expect(pick(stats, 'matchingCount')).toBe(1)
+  })
+})

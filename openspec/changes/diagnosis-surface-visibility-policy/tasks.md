@@ -70,7 +70,7 @@ See LICENSE in the project root for details.
       with `chatUserId` so the existing "unredacted" expectations describe the
       session admin's own entries (stays green before implementation).
       Verify: `bun test tests/debug/logs-route-content.test.ts` (passes)
-- [ ] 4.2 Add failing route tests: a second admin's session gets own-attributed
+- [x] 4.2 Add failing route tests: a second admin's session gets own-attributed
       entries verbatim and foreign/unattributable entries shaped on `GET /logs`
       (with `q` matching only post-shaping content and `/logs/stats`
       `matchingCount` computed post-shaping); `/turns/:id` returns 404 for a
