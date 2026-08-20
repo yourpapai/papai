@@ -18,6 +18,7 @@ import path from 'node:path'
 import { PUBLIC_DIR } from '../build-client.js'
 import { ensureClientBuilt, missingBundles, REQUIRED_BUNDLES } from '../ensure-client-built.js'
 import { computeFingerprint, defaultFingerprintDeps } from './fingerprint.js'
+import { mirrorLogWhile } from './mirror-log.js'
 import { parseWrapperArgs } from './mode.js'
 import { LAST_RUN_JUNIT, LAST_RUN_LOG, REPORT_DIR } from './paths.js'
 import { writeReport } from './report.js'
@@ -67,21 +68,43 @@ const childEnv = (cwd: string): Record<string, string | undefined> => ({
 /**
  * stdout and stderr share one file descriptor, so the captured log is byte-complete and
  * correctly interleaved. Piping them apart reorders `console.log` against `(fail)`.
+ *
+ * Async `Bun.spawn` (not `spawnSync`, which blocks until exit) so the poll-based
+ * tailer can mirror the growing log to stderr while the child runs.
  */
-const captureChild = (argv: readonly string[], cwd: string, stream: boolean): SpawnResult => {
+const captureChild = async (argv: readonly string[], cwd: string, stream: boolean): Promise<SpawnResult> => {
   const logPath = absolute(cwd, LAST_RUN_LOG)
   fs.mkdirSync(absolute(cwd, REPORT_DIR), { recursive: true })
   const fd = fs.openSync(logPath, 'w')
   const startedAt = Date.now()
+  const proc = Bun.spawn([...argv], {
+    cwd,
+    env: childEnv(cwd),
+    stdio: ['inherit', fd, fd],
+  })
   try {
-    const proc = Bun.spawnSync([...argv], {
-      cwd,
-      env: childEnv(cwd),
-      stdio: ['inherit', fd, fd],
-    })
+    if (stream) {
+      await mirrorLogWhile(logPath, proc.exited, {
+        size: (p): number | null => {
+          try {
+            return fs.statSync(p).size
+          } catch {
+            return null
+          }
+        },
+        read: (p, start, end): string => fs.readFileSync(p).subarray(start, end).toString('utf8'),
+        write: (chunk: string): void => {
+          process.stderr.write(chunk)
+        },
+        sleep: (ms: number): Promise<void> =>
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, ms)
+          }),
+      })
+    }
+    const exitCode = await proc.exited
     const output = fs.readFileSync(logPath, 'utf8')
-    if (stream) process.stderr.write(output)
-    return { exitCode: proc.exitCode, output, wallMs: Date.now() - startedAt }
+    return { exitCode, output, wallMs: Date.now() - startedAt }
   } finally {
     fs.closeSync(fd)
   }
@@ -124,7 +147,7 @@ const realGitSha = (cwd: string): string | null => {
   }
 }
 
-const realDeps = (cwd: string, bypass: boolean, stream: boolean): RunDeps => ({
+const realDeps = (cwd: string, bypass: boolean): RunDeps => ({
   cwd,
   env: process.env,
   cores: os.availableParallelism(),
@@ -138,7 +161,8 @@ const realDeps = (cwd: string, bypass: boolean, stream: boolean): RunDeps => ({
     fs.rmSync(absolute(cwd, LAST_RUN_LOG), { force: true })
     fs.rmSync(absolute(cwd, LAST_RUN_JUNIT), { force: true })
   },
-  spawn: (argv): SpawnResult => (bypass ? inheritChild(argv, cwd) : captureChild(argv, cwd, stream)),
+  spawn: (argv, options): Promise<SpawnResult> =>
+    bypass ? Promise.resolve(inheritChild(argv, cwd)) : captureChild(argv, cwd, options.stream),
   fingerprint: (): string => computeFingerprint(defaultFingerprintDeps(cwd)),
   gitSha: (): string | null => realGitSha(cwd),
   readJUnit: (): string | null => readFileOrNull(absolute(cwd, LAST_RUN_JUNIT)),
@@ -158,12 +182,13 @@ const realDeps = (cwd: string, bypass: boolean, stream: boolean): RunDeps => ({
   now: (): string => new Date().toISOString(),
 })
 
-function main(): void {
+async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const parsed = parseWrapperArgs(argv)
-  process.exit(runWrapper(argv, realDeps(path.resolve(import.meta.dir, '..', '..'), parsed.bypass, parsed.stream)))
+  const exitCode = await runWrapper(argv, realDeps(path.resolve(import.meta.dir, '..', '..'), parsed.bypass))
+  process.exit(exitCode)
 }
 
 if (import.meta.main) {
-  main()
+  await main()
 }

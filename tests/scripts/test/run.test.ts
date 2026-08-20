@@ -71,15 +71,15 @@ const harness = (options: HarnessOptions = {}): Harness => {
     clearArtifacts: (): void => {
       order.push('clearArtifacts')
     },
-    spawn: (argv, spawnOptions): { exitCode: number; output: string; wallMs: number } => {
+    spawn: (argv, spawnOptions): Promise<{ exitCode: number; output: string; wallMs: number }> => {
       order.push('spawn')
       spawns.push([...argv])
       streams.push(spawnOptions.stream)
-      return {
+      return Promise.resolve({
         exitCode: options.exitCode ?? 0,
         output: options.log ?? GREEN_LOG,
         wallMs: options.wallMs ?? 168,
-      }
+      })
     },
     fingerprint: (): string => 'abc123abc123abc1',
     gitSha: (): string | null => 'deadbeef',
@@ -142,10 +142,10 @@ const lastReport = (instance: Harness): RunReport => {
 }
 
 describe('runWrapper child argv', () => {
-  test('carries the reporter, outfile, timeout and every passthrough arg in order', () => {
+  test('carries the reporter, outfile, timeout and every passthrough arg in order', async () => {
     const instance = harness()
 
-    runWrapper(['--serial', '-t', 'foo', 'tests/utils', '--bail'], instance.deps)
+    await runWrapper(['--serial', '-t', 'foo', 'tests/utils', '--bail'], instance.deps)
 
     expect(instance.spawns).toEqual([
       [
@@ -163,10 +163,10 @@ describe('runWrapper child argv', () => {
     ])
   })
 
-  test('prefixes --parallel when the resolved mode is parallel', () => {
+  test('prefixes --parallel when the resolved mode is parallel', async () => {
     const instance = harness()
 
-    runWrapper(['--parallel', 'tests/utils'], instance.deps)
+    await runWrapper(['--parallel', 'tests/utils'], instance.deps)
 
     expect(instance.spawns[0]).toEqual([
       'bun',
@@ -180,27 +180,27 @@ describe('runWrapper child argv', () => {
     ])
   })
 
-  test('resolves the mode from env and cores when no override is given', () => {
+  test('resolves the mode from env and cores when no override is given', async () => {
     const instance = harness({ cores: 16 })
 
-    runWrapper([], instance.deps)
+    await runWrapper([], instance.deps)
 
     expect(instance.spawns[0]).toContain('--parallel')
     expect(lastReport(instance).mode).toBe('parallel')
   })
 
-  test('records the child flags, not the bun prefix, as the report argv', () => {
+  test('records the child flags, not the bun prefix, as the report argv', async () => {
     const instance = harness()
 
-    runWrapper(['--serial', 'tests/utils'], instance.deps)
+    await runWrapper(['--serial', 'tests/utils'], instance.deps)
 
     expect(lastReport(instance).argv[0]).toBe('--timeout')
   })
 
-  test('injects the demoted 30s timeout when the plan is load-demoted', () => {
+  test('injects the demoted 30s timeout when the plan is load-demoted', async () => {
     const instance = harness({ cores: 16, load1: 16 })
 
-    runWrapper([], instance.deps)
+    await runWrapper([], instance.deps)
 
     expect(instance.spawns[0]).toContain('--timeout')
     expect(instance.spawns[0]).toEqual([
@@ -214,10 +214,10 @@ describe('runWrapper child argv', () => {
     expect(lastReport(instance).loadDemoted).toBe(true)
   })
 
-  test('injects the standard 15s timeout when the plan is not demoted', () => {
+  test('injects the standard 15s timeout when the plan is not demoted', async () => {
     const instance = harness({ cores: 16, load1: 0 })
 
-    runWrapper([], instance.deps)
+    await runWrapper([], instance.deps)
 
     expect(instance.spawns[0]).toEqual([
       'bun',
@@ -231,10 +231,10 @@ describe('runWrapper child argv', () => {
     expect(lastReport(instance).loadDemoted).toBe(false)
   })
 
-  test('an explicit --timeout in passthrough still wins over the injected value', () => {
+  test('an explicit --timeout in passthrough still wins over the injected value', async () => {
     const instance = harness({ cores: 16, load1: 16 })
 
-    runWrapper(['--timeout', '20000'], instance.deps)
+    await runWrapper(['--timeout', '20000'], instance.deps)
 
     const argv = instance.spawns[0]!
     const injected = argv.indexOf('--timeout')
@@ -248,38 +248,38 @@ describe('runWrapper child argv', () => {
 
 describe('runWrapper exit-code fidelity', () => {
   for (const code of [0, 1, 143]) {
-    test(`returns the child's exit code ${String(code)} unchanged`, () => {
+    test(`returns the child's exit code ${String(code)} unchanged`, async () => {
       const instance = harness({ exitCode: code })
 
-      expect(runWrapper([], instance.deps)).toBe(code)
+      expect(await runWrapper([], instance.deps)).toBe(code)
     })
   }
 })
 
 describe('runWrapper ordering', () => {
-  test('calls ensureClientBuilt exactly once, before the spawn', () => {
+  test('calls ensureClientBuilt exactly once, before the spawn', async () => {
     const instance = harness()
 
-    runWrapper([], instance.deps)
+    await runWrapper([], instance.deps)
 
     expect(instance.order.filter((name) => name === 'ensureClientBuilt')).toHaveLength(1)
     expect(instance.order.indexOf('ensureClientBuilt')).toBeLessThan(instance.order.indexOf('spawn'))
   })
 
-  test('clears the stale artifacts before the spawn and writes after it', () => {
+  test('clears the stale artifacts before the spawn and writes after it', async () => {
     const instance = harness()
 
-    runWrapper([], instance.deps)
+    await runWrapper([], instance.deps)
 
     expect(instance.order).toEqual(['ensureClientBuilt', 'clearArtifacts', 'spawn', 'writeArtifacts'])
   })
 })
 
 describe('runWrapper scope', () => {
-  test('records positional paths as a paths scope', () => {
+  test('records positional paths as a paths scope', async () => {
     const instance = harness()
 
-    runWrapper(['tests/utils', 'tests/scripts'], instance.deps)
+    await runWrapper(['tests/utils', 'tests/scripts'], instance.deps)
 
     expect(lastReport(instance).scope).toEqual({
       kind: 'paths',
@@ -287,53 +287,53 @@ describe('runWrapper scope', () => {
     })
   })
 
-  test('records a bare run as a full scope', () => {
+  test('records a bare run as a full scope', async () => {
     const instance = harness()
 
-    runWrapper(['--serial'], instance.deps)
+    await runWrapper(['--serial'], instance.deps)
 
     expect(lastReport(instance).scope).toEqual({ kind: 'full' })
   })
 
-  test('does not mistake a value-taking flag argument for a path', () => {
+  test('does not mistake a value-taking flag argument for a path', async () => {
     const instance = harness()
 
-    runWrapper(['-t', 'tests/utils'], instance.deps)
+    await runWrapper(['-t', 'tests/utils'], instance.deps)
 
     expect(lastReport(instance).scope).toEqual({ kind: 'full' })
   })
 })
 
 describe('runWrapper bypass', () => {
-  test('--watch spawns without any reporter flag', () => {
+  test('--watch spawns without any reporter flag', async () => {
     const instance = harness()
 
-    runWrapper(['--watch'], instance.deps)
+    await runWrapper(['--watch'], instance.deps)
 
     expect(instance.spawns[0]).toEqual(['bun', 'test', '--timeout', '15000', '--watch'])
   })
 
-  test('--watch never writes artifacts, clears nothing and prints no summary', () => {
+  test('--watch never writes artifacts, clears nothing and prints no summary', async () => {
     const instance = harness()
 
-    runWrapper(['--watch'], instance.deps)
+    await runWrapper(['--watch'], instance.deps)
 
     expect(instance.written).toHaveLength(0)
     expect(instance.printed).toHaveLength(0)
     expect(instance.order).toEqual(['ensureClientBuilt', 'spawn'])
   })
 
-  test('--watch still returns the child exit code', () => {
+  test('--watch still returns the child exit code', async () => {
     const instance = harness({ exitCode: 130 })
 
-    expect(runWrapper(['--watch'], instance.deps)).toBe(130)
+    expect(await runWrapper(['--watch'], instance.deps)).toBe(130)
   })
 
   for (const flag of ['-u', '--update-snapshots']) {
-    test(`${flag} bypasses persistence too`, () => {
+    test(`${flag} bypasses persistence too`, async () => {
       const instance = harness()
 
-      runWrapper([flag], instance.deps)
+      await runWrapper([flag], instance.deps)
 
       expect(instance.written).toHaveLength(0)
       expect(instance.spawns[0]).not.toContain('--reporter=junit')
@@ -342,10 +342,10 @@ describe('runWrapper bypass', () => {
 })
 
 describe('runWrapper summary', () => {
-  test('a green run prints only the counts line and the artifact line', () => {
+  test('a green run prints only the counts line and the artifact line', async () => {
     const instance = harness()
 
-    runWrapper(['--serial'], instance.deps)
+    await runWrapper(['--serial'], instance.deps)
 
     expect(instance.printed).toEqual([
       '1 file · 2 tests · 2 pass · 0 fail · 0 skip · 0.2s (serial)',
@@ -353,34 +353,34 @@ describe('runWrapper summary', () => {
     ])
   })
 
-  test('a load-demoted run renders the (serial · load) marker in the counts line', () => {
+  test('a load-demoted run renders the (serial · load) marker in the counts line', async () => {
     const instance = harness({ cores: 16, load1: 16 })
 
-    runWrapper([], instance.deps)
+    await runWrapper([], instance.deps)
 
     expect(instance.printed[0]).toBe('1 file · 2 tests · 2 pass · 0 fail · 0 skip · 0.2s (serial · load)')
   })
 
-  test('an explicit serial run prints a plain mode, no load marker', () => {
+  test('an explicit serial run prints a plain mode, no load marker', async () => {
     const instance = harness({ cores: 16, load1: 16 })
 
-    runWrapper(['--serial'], instance.deps)
+    await runWrapper(['--serial'], instance.deps)
 
     expect(instance.printed[0]).toBe('1 file · 2 tests · 2 pass · 0 fail · 0 skip · 0.2s (serial)')
   })
 
-  test('a parallel run prints a plain mode, no load marker', () => {
+  test('a parallel run prints a plain mode, no load marker', async () => {
     const instance = harness({ cores: 16, load1: 0 })
 
-    runWrapper([], instance.deps)
+    await runWrapper([], instance.deps)
 
     expect(instance.printed[0]).toBe('1 file · 2 tests · 2 pass · 0 fail · 0 skip · 0.2s (parallel)')
   })
 
-  test('a failing run lists every failure with id, location and title', () => {
+  test('a failing run lists every failure with id, location and title', async () => {
     const instance = failingHarness()
 
-    runWrapper(['--serial'], instance.deps)
+    await runWrapper(['--serial'], instance.deps)
 
     expect(instance.printed[1]).toBe('4 failures — bun run test:show <id>')
     expect(instance.printed[2]).toContain('#1')
@@ -388,19 +388,19 @@ describe('runWrapper summary', () => {
     expect(instance.printed[5]).toContain('B > x')
   })
 
-  test('a failing run keeps the artifact line last and stays under 20 lines', () => {
+  test('a failing run keeps the artifact line last and stays under 20 lines', async () => {
     const instance = failingHarness()
 
-    runWrapper(['--serial'], instance.deps)
+    await runWrapper(['--serial'], instance.deps)
 
     expect(instance.printed.at(-1)).toBe('reports/test/last-run.{log,junit.xml,json}')
     expect(instance.printed.length).toBeLessThanOrEqual(20)
   })
 
-  test('a four-failure run needs no "more" pointer', () => {
+  test('a four-failure run needs no "more" pointer', async () => {
     const instance = failingHarness()
 
-    runWrapper(['--serial'], instance.deps)
+    await runWrapper(['--serial'], instance.deps)
 
     expect(instance.printed.filter((line) => line.includes('more —'))).toHaveLength(0)
   })
@@ -432,10 +432,10 @@ describe('formatSummary', () => {
 })
 
 describe('runWrapper run errors', () => {
-  test('builds a report when bun wrote no junit file at all', () => {
+  test('builds a report when bun wrote no junit file at all', async () => {
     const instance = harness({ log: UNHANDLED_LOG, junit: null, exitCode: 1 })
 
-    runWrapper(['--serial'], instance.deps)
+    await runWrapper(['--serial'], instance.deps)
 
     const report = lastReport(instance)
     expect(report.totals.fail).toBe(1)
@@ -443,10 +443,10 @@ describe('runWrapper run errors', () => {
     expect(report.runErrors).toHaveLength(1)
   })
 
-  test('names the module error in the summary', () => {
+  test('names the module error in the summary', async () => {
     const instance = harness({ log: UNHANDLED_LOG, junit: null, exitCode: 1 })
 
-    runWrapper(['--serial'], instance.deps)
+    await runWrapper(['--serial'], instance.deps)
 
     const summary = instance.printed.join('\n')
     expect(summary).toContain('1 module error')
@@ -454,10 +454,10 @@ describe('runWrapper run errors', () => {
     expect(summary).toContain('reports/fixture-gen/unhandled.test.ts')
   })
 
-  test('passes the null junit through to writeArtifacts unchanged', () => {
+  test('passes the null junit through to writeArtifacts unchanged', async () => {
     const instance = harness({ log: UNHANDLED_LOG, junit: null, exitCode: 1 })
 
-    runWrapper(['--serial'], instance.deps)
+    await runWrapper(['--serial'], instance.deps)
 
     expect(instance.written[0]).toMatchObject({
       log: UNHANDLED_LOG,
@@ -467,46 +467,46 @@ describe('runWrapper run errors', () => {
 })
 
 describe('runWrapper stream default', () => {
-  test('streams when --stream is passed on a TTY', () => {
+  test('streams when --stream is passed on a TTY', async () => {
     const instance = harness({ stdoutIsTTY: true })
 
-    runWrapper(['--stream'], instance.deps)
+    await runWrapper(['--stream'], instance.deps)
 
     expect(instance.streams).toEqual([true])
   })
 
-  test('streams when stdout is not a TTY, with no --stream', () => {
+  test('streams when stdout is not a TTY, with no --stream', async () => {
     const instance = harness({ stdoutIsTTY: false })
 
-    runWrapper([], instance.deps)
+    await runWrapper([], instance.deps)
 
     expect(instance.streams).toEqual([true])
   })
 
-  test('does not stream on a TTY without --stream', () => {
+  test('does not stream on a TTY without --stream', async () => {
     const instance = harness({ stdoutIsTTY: true })
 
-    runWrapper([], instance.deps)
+    await runWrapper([], instance.deps)
 
     expect(instance.streams).toEqual([false])
   })
 
-  test('a non-TTY run with --stream still streams', () => {
+  test('a non-TTY run with --stream still streams', async () => {
     const instance = harness({ stdoutIsTTY: false })
 
-    runWrapper(['--stream'], instance.deps)
+    await runWrapper(['--stream'], instance.deps)
 
     expect(instance.streams).toEqual([true])
   })
 })
 
 describe('runWrapper stream invariance', () => {
-  test('a streamed run and a non-streamed run produce identical artifacts, report and exit code', () => {
+  test('a streamed run and a non-streamed run produce identical artifacts, report and exit code', async () => {
     const streamed = harness({ stdoutIsTTY: false })
     const quiet = harness({ stdoutIsTTY: true })
 
-    const streamedCode = runWrapper([], streamed.deps)
-    const quietCode = runWrapper([], quiet.deps)
+    const streamedCode = await runWrapper([], streamed.deps)
+    const quietCode = await runWrapper([], quiet.deps)
 
     expect(streamedCode).toBe(quietCode)
     expect(streamed.streams).toEqual([true])
@@ -517,12 +517,12 @@ describe('runWrapper stream invariance', () => {
     expect(streamed.printed).toEqual(quiet.printed)
   })
 
-  test('the persisted report carries the additive loadDemoted field', () => {
+  test('the persisted report carries the additive loadDemoted field', async () => {
     const demoted = harness({ cores: 16, load1: 16 })
     const notDemoted = harness({ cores: 16, load1: 0 })
 
-    runWrapper([], demoted.deps)
-    runWrapper([], notDemoted.deps)
+    await runWrapper([], demoted.deps)
+    await runWrapper([], notDemoted.deps)
 
     expect(lastReport(demoted).loadDemoted).toBe(true)
     expect(lastReport(notDemoted).loadDemoted).toBe(false)

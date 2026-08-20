@@ -47,7 +47,7 @@ export interface RunDeps {
   ensureClientBuilt: () => void
   /** Drop the previous run's log and junit so a run that writes neither cannot inherit them. */
   clearArtifacts: () => void
-  spawn: (argv: readonly string[], options: { stream: boolean }) => SpawnResult
+  spawn: (argv: readonly string[], options: { stream: boolean }) => Promise<SpawnResult>
   fingerprint: () => string
   gitSha: () => string | null
   /** `null` when Bun wrote no junit file — which is what happens when every file fails to load. */
@@ -156,8 +156,11 @@ const scopeFor = (paths: readonly string[]): RunScope =>
 /**
  * Run the suite and leave a queryable artifact behind. Returns the child's exit code
  * unchanged — the wrapper reports, it never re-judges.
+ *
+ * Async because the real spawn streams the child's log live while it runs; the
+ * async surface stops here and at `main` (see design.md).
  */
-export function runWrapper(argv: readonly string[], deps: RunDeps): number {
+export async function runWrapper(argv: readonly string[], deps: RunDeps): Promise<number> {
   deps.ensureClientBuilt()
 
   const args = parseWrapperArgs(argv)
@@ -168,11 +171,11 @@ export function runWrapper(argv: readonly string[], deps: RunDeps): number {
   const stream = args.bypass ? args.stream : args.stream || !deps.stdoutIsTTY
 
   // `--watch` / `--update-snapshots` are interactive; there is no meaningful "last run".
-  if (args.bypass) return deps.spawn(['bun', 'test', ...flags], { stream: args.stream }).exitCode
+  if (args.bypass) return (await deps.spawn(['bun', 'test', ...flags], { stream: args.stream })).exitCode
 
   deps.clearArtifacts()
   const startedAt = deps.now()
-  const child = deps.spawn(['bun', 'test', ...flags], { stream })
+  const child = await deps.spawn(['bun', 'test', ...flags], { stream })
   const junitXml = deps.readJUnit()
 
   const report = buildReport({
