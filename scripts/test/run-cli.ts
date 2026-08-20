@@ -18,7 +18,7 @@ import path from 'node:path'
 import { PUBLIC_DIR } from '../build-client.js'
 import { ensureClientBuilt, missingBundles, REQUIRED_BUNDLES } from '../ensure-client-built.js'
 import { computeFingerprint, defaultFingerprintDeps } from './fingerprint.js'
-import { mirrorLogWhile } from './mirror-log.js'
+import { mirrorLogWhile, utf8TailRead } from './mirror-log.js'
 import { parseWrapperArgs } from './mode.js'
 import { LAST_RUN_JUNIT, LAST_RUN_LOG, REPORT_DIR } from './paths.js'
 import { writeReport } from './report.js'
@@ -92,7 +92,7 @@ const captureChild = async (argv: readonly string[], cwd: string, stream: boolea
             return null
           }
         },
-        read: (p, start, end): string => fs.readFileSync(p).subarray(start, end).toString('utf8'),
+        read: utf8TailRead((p, start, end): Uint8Array => fs.readFileSync(p).subarray(start, end)),
         write: (chunk: string): void => {
           process.stderr.write(chunk)
         },

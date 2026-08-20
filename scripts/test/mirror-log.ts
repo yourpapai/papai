@@ -19,6 +19,22 @@ export interface MirrorDeps {
 }
 
 /**
+ * Build a `read` dep that decodes the tail's byte ranges as one UTF-8 stream.
+ *
+ * `mirrorLogWhile` only ever requests contiguous, ever-advancing ranges, so the
+ * decoder can hold a multi-byte character that a poll boundary split in half and
+ * complete it on the next drain; decoding each range on its own would mirror
+ * both halves as U+FFFD. A trailing incomplete sequence (a truncated log) is
+ * held back rather than mirrored as U+FFFD.
+ */
+export const utf8TailRead = (
+  readBytes: (path: string, start: number, end: number) => Uint8Array,
+): MirrorDeps['read'] => {
+  const decoder = new TextDecoder('utf-8')
+  return (path, start, end): string => decoder.decode(readBytes(path, start, end), { stream: true })
+}
+
+/**
  * Mirror the bytes appended to `path` while `until` is pending, then drain once
  * more and stop. The invariants the wrapper relies on:
  *
