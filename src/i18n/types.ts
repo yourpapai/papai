@@ -174,9 +174,13 @@ export interface Dictionary {
     }
     /** Slot `{count}` receives the fact/entity count. */
     factSingular: string
+    /** Count-of-2-to-4 form; identical to `factPlural` in locales without a paucal (en). */
+    factPaucal: string
     factPlural: string
     /** Slot `{count}` receives the history message count. */
     messageSingular: string
+    /** Count-of-2-to-4 form; identical to `messagePlural` in locales without a paucal (en). */
+    messagePaucal: string
     messagePlural: string
     /** Slots `{active}`/`{available}` receive the disclosed/full tool counts. */
     progressiveDisclosure: string

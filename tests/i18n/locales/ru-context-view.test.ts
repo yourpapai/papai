@@ -21,8 +21,10 @@ describe('ruContextView fragment', () => {
     expect(ruContextView.approximateMarker).toBe('(приблизительно)')
     expect(ruContextView.approximateFooter).toBe('количество токенов приблизительное')
     expect(ruContextView.factSingular).toBe('{count} факт')
+    expect(ruContextView.factPaucal).toBe('{count} факта')
     expect(ruContextView.factPlural).toBe('{count} фактов')
     expect(ruContextView.messageSingular).toBe('{count} сообщение')
+    expect(ruContextView.messagePaucal).toBe('{count} сообщения')
     expect(ruContextView.messagePlural).toBe('{count} сообщений')
     expect(ruContextView.progressiveDisclosure).toBe(
       '{active} активных · {available} доступных (прогрессивное раскрытие)',

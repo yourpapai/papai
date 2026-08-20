@@ -92,7 +92,14 @@ describe('ru dictionary', () => {
     expect(textOf(ruContextView['progressiveDisclosure'])).toContain('{active}')
     expect(textOf(ruContextView['progressiveDisclosure'])).toContain('{available}')
     expect(textOf(ruContextView['progressiveDisclosure'])).toContain('прогрессивное раскрытие')
-    for (const key of ['factSingular', 'factPlural', 'messageSingular', 'messagePlural'] as const) {
+    for (const key of [
+      'factSingular',
+      'factPaucal',
+      'factPlural',
+      'messageSingular',
+      'messagePaucal',
+      'messagePlural',
+    ] as const) {
       expect(textOf(enContextView[key])).toContain('{count}')
       expect(textOf(ruContextView[key])).toContain('{count}')
     }

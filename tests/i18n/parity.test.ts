@@ -90,7 +90,14 @@ const CONTEXT_SECTION_IDS = [
   'tools',
 ] as const
 
-const CONTEXT_COUNT_KEYS = ['factSingular', 'factPlural', 'messageSingular', 'messagePlural'] as const
+const CONTEXT_COUNT_KEYS = [
+  'factSingular',
+  'factPaucal',
+  'factPlural',
+  'messageSingular',
+  'messagePaucal',
+  'messagePlural',
+] as const
 
 const CONTEXT_CHROME_KEYS = [
   'headerWord',

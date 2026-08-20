@@ -39,6 +39,19 @@ export interface ContextCollectorDeps {
 
 const sectionLabel = (id: SectionId, locale: Locale): string => t(`contextView.sections.${id}`, locale)
 
+const pluralRules: Record<Locale, Intl.PluralRules> = {
+  en: new Intl.PluralRules('en'),
+  ru: new Intl.PluralRules('ru'),
+}
+
+/** CLDR categories: `one` → singular, `few` → paucal (ru 2-4 except 11-14), else plural. */
+const countForm = (count: number, locale: Locale): 'Singular' | 'Paucal' | 'Plural' => {
+  const category = pluralRules[locale].select(count)
+  if (category === 'one') return 'Singular'
+  if (category === 'few') return 'Paucal'
+  return 'Plural'
+}
+
 const FALLBACK_MODEL = 'unknown'
 
 /**
@@ -159,9 +172,7 @@ const buildMemorySection = (deps: ContextCollectorDeps, counter: SafeCounter, lo
     id: 'known_entities',
     label: sectionLabel('known_entities', locale),
     tokens: factsTokens,
-    detail: t(facts.length === 1 ? 'contextView.factSingular' : 'contextView.factPlural', locale, {
-      count: facts.length,
-    }),
+    detail: t(`contextView.fact${countForm(facts.length, locale)}`, locale, { count: facts.length }),
   }
   children.push(factsChild)
 
@@ -175,9 +186,7 @@ const buildHistorySection = (deps: ContextCollectorDeps, counter: SafeCounter, l
     id: 'conversation_history',
     label: sectionLabel('conversation_history', locale),
     tokens,
-    detail: t(history.length === 1 ? 'contextView.messageSingular' : 'contextView.messagePlural', locale, {
-      count: history.length,
-    }),
+    detail: t(`contextView.message${countForm(history.length, locale)}`, locale, { count: history.length }),
   }
 }
 

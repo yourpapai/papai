@@ -111,8 +111,10 @@ describe('en dictionary', () => {
     expect(sections['conversation_history']).toBe('Conversation history')
     expect(sections['tools']).toBe('Tools')
     expect(contextView['factSingular']).toBe('{count} fact')
+    expect(contextView['factPaucal']).toBe('{count} facts')
     expect(contextView['factPlural']).toBe('{count} facts')
     expect(contextView['messageSingular']).toBe('{count} message')
+    expect(contextView['messagePaucal']).toBe('{count} messages')
     expect(contextView['messagePlural']).toBe('{count} messages')
     expect(contextView['progressiveDisclosure']).toBe(
       '{active} active · {available} available (progressive disclosure)',
