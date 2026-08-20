@@ -26,7 +26,7 @@ See LICENSE in the project root for details.
 - [x] 2.2 Add `chatUserId` to `buildEndTrace`/`buildErrorTrace` in
       `src/debug/llm-trace-collector.ts`.
       Verify: `bun test tests/debug/llm-trace-collector.test.ts` (passes)
-- [ ] 2.3 Add failing assertions for a trace shaping helper (same file):
+- [x] 2.3 Add failing assertions for a trace shaping helper (same file):
       non-own traces drop `generatedText`, `stepsDetail`, and
       `toolCalls[].args`/`toolCalls[].result`, keeping `toolName`, durations,
       success flags, model ids, token/step counters; own traces pass verbatim;

@@ -6,7 +6,12 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { Scope } from '../../src/debug/event-bus.js'
-import { handleLlmTraceEvent, pendingTraces, type LlmTrace } from '../../src/debug/llm-trace-collector.js'
+import {
+  handleLlmTraceEvent,
+  pendingTraces,
+  shapeLlmTrace,
+  type LlmTrace,
+} from '../../src/debug/llm-trace-collector.js'
 
 const userScope = (userId: string): Scope => ({ kind: 'user', userId })
 
@@ -189,5 +194,145 @@ describe('chatUserId attribution', () => {
     expect(trace.totalTokens).toEqual({ inputTokens: 3, outputTokens: 1 })
     expect(trace.duration).toBe(4)
     expect(trace.error).toBeUndefined()
+  })
+})
+
+describe('shapeLlmTrace', () => {
+  const makeTrace = (overrides: Partial<LlmTrace> = {}): LlmTrace => ({
+    timestamp: 10,
+    userId: 'u:1',
+    chatUserId: 'chat-1',
+    model: 'gpt-x',
+    steps: 2,
+    totalTokens: { inputTokens: 10, outputTokens: 5 },
+    duration: 42,
+    toolCalls: [
+      {
+        toolName: 'get_task',
+        durationMs: 5,
+        success: true,
+        toolCallId: 'c1',
+        args: { query: 'secret query' },
+        result: { tasks: [{ title: 'secret title' }] },
+        error: undefined,
+      },
+      {
+        toolName: 'create_task',
+        durationMs: 7,
+        success: false,
+        toolCallId: 'c2',
+        args: { title: 'secret title' },
+        result: undefined,
+        error: 'boom',
+      },
+    ],
+    error: undefined,
+    responseId: 'resp-1',
+    actualModel: 'gpt-x-actual',
+    finishReason: 'stop',
+    messageCount: 3,
+    toolCount: 2,
+    exposedToolCount: 2,
+    fullToolCount: 4,
+    toolSchemaBytes: 2048,
+    routingIntent: 'chat',
+    routingConfidence: 0.5,
+    routingReason: 'classifier',
+    generatedText: 'secret answer',
+    stepsDetail: [
+      {
+        stepNumber: 1,
+        text: 'secret step text',
+        toolCalls: [{ toolName: 'get_task', toolCallId: 'c1', args: { query: 'secret query' } }],
+        usage: { inputTokens: 4, outputTokens: 2 },
+      },
+    ],
+    ...overrides,
+  })
+
+  test('own trace passes verbatim', () => {
+    const trace = makeTrace()
+
+    expect(shapeLlmTrace(trace, 'chat-1')).toBe(trace)
+  })
+
+  test('non-own trace drops generatedText, stepsDetail and toolCall args/result, keeps the rest', () => {
+    const shaped = shapeLlmTrace(makeTrace(), 'chat-2')
+
+    expect(shaped).toEqual({
+      timestamp: 10,
+      userId: 'u:1',
+      chatUserId: 'chat-1',
+      model: 'gpt-x',
+      steps: 2,
+      totalTokens: { inputTokens: 10, outputTokens: 5 },
+      duration: 42,
+      toolCalls: [
+        {
+          toolName: 'get_task',
+          durationMs: 5,
+          success: true,
+          toolCallId: 'c1',
+          args: undefined,
+          result: undefined,
+          error: undefined,
+        },
+        {
+          toolName: 'create_task',
+          durationMs: 7,
+          success: false,
+          toolCallId: 'c2',
+          args: undefined,
+          result: undefined,
+          error: 'boom',
+        },
+      ],
+      error: undefined,
+      responseId: 'resp-1',
+      actualModel: 'gpt-x-actual',
+      finishReason: 'stop',
+      messageCount: 3,
+      toolCount: 2,
+      exposedToolCount: 2,
+      fullToolCount: 4,
+      toolSchemaBytes: 2048,
+      routingIntent: 'chat',
+      routingConfidence: 0.5,
+      routingReason: 'classifier',
+      generatedText: undefined,
+      stepsDetail: undefined,
+    })
+  })
+
+  test('unattributed trace is shaped even for a defined viewer', () => {
+    const shaped = shapeLlmTrace(makeTrace({ chatUserId: undefined }), 'chat-2')
+
+    expect(shaped.generatedText).toBeUndefined()
+    expect(shaped.stepsDetail).toBeUndefined()
+    expect(shaped.toolCalls[0]!.args).toBeUndefined()
+  })
+
+  test('shapes when no viewer is bound', () => {
+    const shaped = shapeLlmTrace(makeTrace(), undefined)
+
+    expect(shaped.generatedText).toBeUndefined()
+  })
+
+  test('does not mutate the input trace', () => {
+    const trace = makeTrace()
+    const snapshot = structuredClone(trace)
+
+    shapeLlmTrace(trace, 'chat-2')
+
+    expect(trace).toEqual(snapshot)
+  })
+
+  test('is idempotent on already-shaped traces', () => {
+    const trace = makeTrace()
+
+    const shapedOnce = shapeLlmTrace(trace, 'chat-2')
+    const shapedTwice = shapeLlmTrace(shapedOnce, 'chat-2')
+
+    expect(shapedTwice).toEqual(shapedOnce)
   })
 })
