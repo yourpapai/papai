@@ -24,7 +24,7 @@ import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import type { GateAssumption, GateFinding } from './gate-model.js'
 import { settleApprovedGate, settleVeto } from './gate-resume-tail.js'
 export { settleApprovedGate } from './gate-resume-tail.js'
-import { desugarFlags, readlinePrompter, runGateSession } from './gate-session.js'
+import { desugarFlags } from './gate-session.js'
 import type { GateSessionView } from './gate-session.js'
 import { resumeGate, vetoRedirects } from './gate.js'
 import { createMaterializer } from './materialize.js'
@@ -34,6 +34,7 @@ import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
 import type { RunState } from './run-state.js'
+import { runTuiGateSession } from './tui-gate-session.js'
 
 export interface RunGateResumeResult {
   readonly runId: string
@@ -165,9 +166,9 @@ function buildAck(requiredAck: string | undefined): { id: string; text: string }
 }
 
 /**
- * Front half of the gate resume: TTY with no decision flags → interactive
- * session (abandoned sessions write nothing and short-circuit); decision
- * flags → flag desugaring; otherwise the hand-edited file path (no writes —
+ * Front half of the gate resume: TTY with no decision flags → TUI session
+ * (abandoned sessions write nothing and short-circuit); decision flags →
+ * flag desugaring; otherwise the hand-edited file path (no writes —
  * `resumeGate` parses whatever is on disk).
  */
 async function collectGateDecision(
@@ -187,10 +188,10 @@ async function collectGateDecision(
   }
   const interactive = deps.interactive?.() === true
   if (interactive) {
-    const session = await runGateSession({
-      prompter: deps.makePrompter?.() ?? readlinePrompter({ input: process.stdin, output: process.stdout }),
+    const session = await runTuiGateSession({
       view,
       writeGateMd: (md) => writeFile(gateMdPath, md),
+      ...(deps.gateKeyScript === undefined ? {} : { keyScript: deps.gateKeyScript }),
     })
     if (session.status === 'abandoned') {
       deps.stdout?.('gate session abandoned — nothing written, the gate remains pending')

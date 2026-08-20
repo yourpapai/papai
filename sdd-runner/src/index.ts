@@ -13,17 +13,15 @@ import { buildAuditReport } from './audit.js'
 import { main } from './cli.js'
 import type { CliHarness } from './cli.js'
 import { parseCliArgs } from './cli.js'
-import { makePrompterFor } from './composition-prompter.js'
 import { discoverBranch, loadRunnerConfig } from './config.js'
 import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
 import { buildResolveCost } from './gate-digest.js'
-import { stdinIsInteractive } from './gate-session.js'
-import type { Prompter } from './gate-session.js'
 import { runGateReopen } from './gate.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { runContinue, runGateResume, runResume, runStart } from './orchestrator.js'
+import { stdinIsInteractive } from './prompter.js'
 import { createRenderer } from './renderer.js'
 import type { Verbosity } from './renderer.js'
 import { buildReport } from './report.js'
@@ -121,7 +119,6 @@ async function buildHarness(verbosity: Verbosity = 'normal'): Promise<CliHarness
       process.stdout.write(`${line}\n`)
     },
     interactive: (): boolean => stdinIsInteractive(),
-    makePrompter: (): Prompter => makePrompterFor(stdinIsInteractive(), process.env),
   }
   return {
     runStart: (options) => runStart(orchestratorDeps, options),

@@ -21,8 +21,6 @@ import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { runContinue, runGateResume, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
 import type { RunGateResumeResult } from '../../sdd-runner/src/orchestrator.js'
-import { scriptedPrompter } from '../../sdd-runner/src/prompter.js'
-import type { Prompter } from '../../sdd-runner/src/prompter.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState } from '../../sdd-runner/src/run-state.js'
@@ -1177,12 +1175,11 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
     const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
     const gatePath = path.join(fixture.deps.config.workDir, 'runs', started.runId, 'gate-1.md')
     const before = fs.readFileSync(gatePath, 'utf8')
-    const { prompter } = scriptedPrompter(['q'])
     const stdoutLines: string[] = []
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       interactive: () => true,
-      makePrompter: () => prompter,
+      gateKeyScript: 'q',
       stdout: (line: string) => {
         stdoutLines.push(line)
       },
@@ -1230,11 +1227,10 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
   it('a TTY with no decision flags runs the interactive session and writes its answers', async () => {
     const fixture = gatedFixture()
     const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
-    const { prompter } = scriptedPrompter(['a', 'approve'])
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       interactive: (): boolean => true,
-      makePrompter: (): Prompter => prompter,
+      gateKeyScript: 'a',
     }
     const result = await runGateResume(deps, started.runId, {})
     expect(result.outcome).toBe('approved')
@@ -1256,11 +1252,10 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
     const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
     const gate1Path = path.join(runDir, 'gate-1.md')
     const before = fs.readFileSync(gate1Path, 'utf8')
-    const { prompter } = scriptedPrompter([])
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       interactive: (): boolean => true,
-      makePrompter: (): Prompter => prompter,
+      gateKeyScript: '',
     }
     const result = await runGateResume(deps, started.runId, {})
     expect(result.outcome).toBe('abandoned')

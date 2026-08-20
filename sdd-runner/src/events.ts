@@ -257,6 +257,12 @@ function nextSeq(logPath: string): number {
   return lines.length + 1
 }
 
+/** Validate an event input and attach stamp fields without touching disk. */
+export function stampEvent(init: EventInput, seq: number, ts: string): SddEvent {
+  const parsedInput = EventInputSchema.parse(init)
+  return SddEventSchema.parse({ ...parsedInput, seq, ts })
+}
+
 export function appendEvent(logPath: string, event: unknown, now: Date = new Date()): SddEvent {
   const parsedInput = EventInputSchema.parse(event)
   const stamped = { ...parsedInput, seq: nextSeq(logPath), ts: now.toISOString() }

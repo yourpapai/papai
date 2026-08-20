@@ -16,7 +16,6 @@ import { readChangeDigest } from './gate-digest-extract.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
 import { planForGate, runPolicyLadder, writePresentedRecord } from './gate-prelude.js'
-import type { Prompter } from './gate-session.js'
 import { autoExtendRound, autoSettleFinalGate } from './gate-settle.js'
 import { gatherGateSignals } from './gate-signals.js'
 import type { PresentGateInput } from './gate.js'
@@ -43,7 +42,8 @@ export interface OrchestratorDeps {
   readonly now?: () => Date
   readonly resolveCost?: ResolveCostFn
   readonly interactive?: () => boolean
-  readonly makePrompter?: () => Prompter
+  /** Scripted keys driving the TUI gate session in tests (live stdin otherwise). */
+  readonly gateKeyScript?: string
   /**
    * Per-process resolved autonomy config (CLI > config > default, normalized
    * cost ceiling). The policy module reads this; it never sees the CLI.

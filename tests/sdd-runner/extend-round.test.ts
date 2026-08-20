@@ -13,7 +13,6 @@ import { runGateResume } from '../../sdd-runner/src/extend-round.js'
 import { prepareResumeInput } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
-import { scriptedPrompter } from '../../sdd-runner/src/prompter.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 
 function makeSidecarDir(): { dir: string; sidecarDir: string } {
@@ -415,8 +414,7 @@ describe('runGateResume waiter bypass flags (D11)', () => {
   it('a TTY with a deadline pending skips the waiter and runs the interactive session', async () => {
     const fx = await makeBypassFixture()
     fs.writeFileSync(path.join(fx.workDir, 'runs', fx.runId, 'gate-1.md'), '## Final gate\n\nABORT\n')
-    const { prompter } = scriptedPrompter(['q'])
-    const deps: OrchestratorDeps = { ...fx.deps, interactive: () => true, makePrompter: () => prompter }
+    const deps: OrchestratorDeps = { ...fx.deps, interactive: () => true, gateKeyScript: 'q' }
     const result = await runGateResume(deps, fx.runId, {})
     expect(result.outcome).toBe('abandoned')
   })
