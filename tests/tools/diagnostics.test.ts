@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { logMultistream, logger } from '../../src/logger.js'
 import { makeRunDiagnosticsTool, type DiagnosticsDeps } from '../../src/tools/diagnostics.js'
 import { applyGuestReadOnlyFilter, makeTools } from '../../src/tools/index.js'
+import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import type { MakeToolsOptions } from '../../src/tools/types.js'
 import { getToolExecutor, mockLogger, seedTestPlatformInstance, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
@@ -150,5 +151,44 @@ describe('run_diagnostics payload', () => {
     expect(result['llm_config']).toBe('unconfigured')
     expect(typeof result['uptime_seconds']).toBe('number')
     expect(JSON.stringify(result)).not.toContain(PROBE)
+  })
+})
+
+describe('run_diagnostics tool preferences', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('tool_prefs deny removes run_diagnostics from an otherwise-qualifying admin DM toolset', async () => {
+    setToolPrefs('diag-prefs-deny', { domainDefaults: {}, toolOverrides: { run_diagnostics: 'deny' } })
+
+    const tools = await makeTools(
+      createMockProvider(),
+      adminDmOptions({ storageContextId: 'diag-prefs-deny', chatUserId: 'diag-prefs-deny' }),
+    )
+
+    expect(tools).not.toHaveProperty('run_diagnostics')
+  })
+
+  test('tool_prefs ask wraps run_diagnostics so an ungranted call returns permission_denied', async () => {
+    setToolPrefs('diag-prefs-ask', { domainDefaults: {}, toolOverrides: { run_diagnostics: 'ask' } })
+
+    const tools = await makeTools(
+      createMockProvider(),
+      adminDmOptions({ storageContextId: 'diag-prefs-ask', chatUserId: 'diag-prefs-ask' }),
+    )
+
+    expect(tools).toHaveProperty('run_diagnostics')
+    const wrapped = tools['run_diagnostics']
+    expect(wrapped).toBeDefined()
+    assert(wrapped !== undefined)
+    // ask wraps the execute fn; with no chat surface (askPermission undefined)
+    // an ungranted call returns the structured permission_denied result.
+    const out: unknown = await getToolExecutor(wrapped)(
+      { _permission_reason: 'health check' },
+      { toolCallId: 't1', messages: [], context: {} },
+    )
+    expect(out).toMatchObject({ status: 'permission_denied' })
   })
 })
