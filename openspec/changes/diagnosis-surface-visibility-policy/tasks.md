@@ -23,7 +23,7 @@ See LICENSE in the project root for details.
       assertions: `llm:end`/`llm:error` traces copy `data.chatUserId` into a new
       `LlmTrace.chatUserId` (absent → undefined, legacy shapes unchanged).
       Verify: `bun test tests/debug/llm-trace-collector.test.ts` (fails)
-- [ ] 2.2 Add `chatUserId` to `buildEndTrace`/`buildErrorTrace` in
+- [x] 2.2 Add `chatUserId` to `buildEndTrace`/`buildErrorTrace` in
       `src/debug/llm-trace-collector.ts`.
       Verify: `bun test tests/debug/llm-trace-collector.test.ts` (passes)
 - [ ] 2.3 Add failing assertions for a trace shaping helper (same file):
