@@ -123,7 +123,10 @@ export function makeRunDiagnosticsTool(
  * assembled for a bot admin in a DM, in normal mode.
  */
 export function maybeAddDiagnosticsTools(tools: Record<string, Tool>, options: MakeToolsOptions): void {
-  if (options.isBotAdmin !== true || options.contextType !== 'dm' || options.mode !== 'normal') return
+  // `mode` is optional and defaults to 'normal' (MakeToolsOptions); the
+  // orchestrator descriptor-cache path omits it, so normalize before gating.
+  const mode = options.mode ?? 'normal'
+  if (options.isBotAdmin !== true || options.contextType !== 'dm' || mode !== 'normal') return
   const configContextId =
     options.storageContextId === undefined ? '' : getConfigContextIdFromStorageContextId(options.storageContextId)
   tools['run_diagnostics'] = makeRunDiagnosticsTool(options.platformInstanceId ?? '', {}, configContextId)

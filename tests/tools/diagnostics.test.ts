@@ -49,6 +49,12 @@ describe('run_diagnostics gate matrix', () => {
     expect(tools).toHaveProperty('run_diagnostics')
   })
 
+  test('an admin DM toolset exposes run_diagnostics when mode is omitted (orchestrator descriptor-cache path)', async () => {
+    const tools = await makeTools(createMockProvider(), adminDmOptions({ mode: undefined }))
+
+    expect(tools).toHaveProperty('run_diagnostics')
+  })
+
   test('isBotAdmin false excludes run_diagnostics', async () => {
     const tools = await makeTools(createMockProvider(), adminDmOptions({ isBotAdmin: false }))
 
