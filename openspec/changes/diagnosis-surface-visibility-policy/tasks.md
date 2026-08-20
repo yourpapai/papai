@@ -14,7 +14,7 @@ See LICENSE in the project root for details.
       any additional keys whose value is `number`/`boolean`; drops every other
       key (strings, objects, arrays); idempotent on already-safe entries.
       Verify: `bun test tests/debug/log-buffer.test.ts` (fails)
-- [ ] 1.2 Implement the helper in `src/debug/log-buffer.ts` (no new module).
+- [x] 1.2 Implement the helper in `src/debug/log-buffer.ts` (no new module).
       Verify: `bun test tests/debug/log-buffer.test.ts` (passes)
 
 ## 2. LLM trace attribution and shaping
