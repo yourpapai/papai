@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { stageFileMetadata } from '../src/attachments/staged.js'
 import type { IncomingMessage } from '../src/chat/types.js'
+import { logger, logMultistream } from '../src/logger.js'
 import { cacheMessage } from '../src/message-cache/cache.js'
 import { buildPromptWithReplyContext, buildReplyContextChain } from '../src/reply-context.js'
 import { clearMessageCache, mockLogger, mockMessageCache, setupTestDb } from './utils/test-helpers.js'
@@ -479,5 +480,28 @@ describe('staged-file context in buildPromptWithReplyContext', () => {
     const msg = makeDmMessage({ text: 'see this', replyToMessageId: 'parent-1' })
 
     expect(buildPromptWithReplyContext(msg, [], 'store-1')).toBe('see this')
+  })
+})
+
+describe('buildPromptWithReplyContext log attribution', () => {
+  // No mockLogger here: the module-bound child logger is the real pino instance,
+  // so attribution is asserted against actual egress (see tests/tools/logging-privacy.test.ts).
+  test('reply-context debug entry carries chatUserId so the author keeps their previews', () => {
+    const logLines: string[] = []
+    logMultistream.add({ level: 'debug', stream: { write: (chunk: string): void => void logLines.push(chunk) } })
+    logger.level = 'debug'
+    try {
+      const msg = makeDmMessage({
+        text: 'body',
+        replyContext: { messageId: 'msg123', text: 'Task #123 needs review' },
+      })
+      buildPromptWithReplyContext(msg)
+    } finally {
+      logger.level = 'silent'
+    }
+    const entry = logLines.find((line) => line.includes('"msg":"Building prompt with reply context"'))
+    expect(entry, 'expected a reply-context debug log entry').toBeDefined()
+    expect(entry).toContain('"chatUserId":"user1"')
+    expect(entry).toContain('"replyTextPreview":"Task #123 needs review"')
   })
 })

@@ -66,6 +66,7 @@ function logReplyContextDebug(msg: IncomingMessage): void {
 
   log.debug(
     {
+      chatUserId: msg.user.id,
       messageId: msg.messageId,
       replyToMessageId: msg.replyContext.messageId,
       replyTextLength,
