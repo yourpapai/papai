@@ -486,22 +486,38 @@ describe('staged-file context in buildPromptWithReplyContext', () => {
 describe('buildPromptWithReplyContext log attribution', () => {
   // No mockLogger here: the module-bound child logger is the real pino instance,
   // so attribution is asserted against actual egress (see tests/tools/logging-privacy.test.ts).
-  test('reply-context debug entry carries chatUserId so the author keeps their previews', () => {
+  // The previews carry the *parent author's* text, so the entry must be attributed to
+  // that author (isOwnLogEntry passes verbatim on matching chatUserId) — never to the
+  // replier, and never to anyone when the author is unknown (strips for every session).
+  const captureReplyContextEntry = (replyContext: Partial<NonNullable<IncomingMessage['replyContext']>>): string => {
     const logLines: string[] = []
     logMultistream.add({ level: 'debug', stream: { write: (chunk: string): void => void logLines.push(chunk) } })
     logger.level = 'debug'
     try {
-      const msg = makeDmMessage({
-        text: 'body',
-        replyContext: { messageId: 'msg123', text: 'Task #123 needs review' },
-      })
-      buildPromptWithReplyContext(msg)
+      buildPromptWithReplyContext(
+        makeDmMessage({ text: 'body', replyContext: { messageId: 'msg123', ...replyContext } }),
+      )
     } finally {
       logger.level = 'silent'
     }
     const entry = logLines.find((line) => line.includes('"msg":"Building prompt with reply context"'))
     expect(entry, 'expected a reply-context debug log entry').toBeDefined()
-    expect(entry).toContain('"chatUserId":"user1"')
+    return entry!
+  }
+
+  test('reply-context debug entry is attributed to the parent author, not the replier', () => {
+    const entry = captureReplyContextEntry({
+      authorId: 'author9',
+      text: 'Task #123 needs review',
+    })
+    expect(entry).toContain('"chatUserId":"author9"')
+    expect(entry).not.toContain('"chatUserId":"user1"')
+    expect(entry).toContain('"replyTextPreview":"Task #123 needs review"')
+  })
+
+  test('reply-context debug entry omits chatUserId when the parent author is unknown', () => {
+    const entry = captureReplyContextEntry({ text: 'Task #123 needs review' })
+    expect(entry).not.toContain('chatUserId')
     expect(entry).toContain('"replyTextPreview":"Task #123 needs review"')
   })
 })
