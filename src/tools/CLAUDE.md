@@ -92,6 +92,8 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): Tool {
 - `chatUserId`: real chat actor ID
 - `mode`: `normal` or `proactive`
 - `contextType`: `dm` or `group`
+- `isBotAdmin`: whether the actor is a bot admin (absent/false = not an admin)
+- `platformInstanceId`: the platform instance the turn originated from
 
 Those options matter. For example:
 
@@ -147,6 +149,7 @@ This pattern applies to destructive removals such as task deletion, project dele
 - history lookup: `lookup_group_history` searches the main group history when the current context is a thread-scoped group conversation
 - chat-history search: `search_chat_history` FTS5 keyword-searches observed messages in `message_metadata` (group-wide in groups, DM-scoped in DMs); available in both DM and group contexts whenever `storageContextId` + `chatUserId` are set. It also supports `semantic`/`auto` mode (embedding-based via the BYOK `embedding` role, falling back to keyword when no embedding model resolves). `get_message` fetches a single message by id and `get_message_context` returns a temporal/thread/reply_chain window around a message; both share the same scope enforcement and return `not_found` for out-of-scope ids (no existence leak)
 - plugin tools: when `storageContextId` and `chatUserId` are set, `makeTools()` merges tools from plugins that are active **and** eligible for the current context. Plugin _eligibility_ and plugin-declared MCP descriptors resolve against the **group config-context id**, but each plugin tool's `PluginToolRuntimeContext` receives the **raw thread-scoped `storageContextId`** — so plugins that route async work (e.g. `acp` milestone notifications) target the originating thread. `plugin_kv`/`contextConfig` re-derive the config-context id internally where they need group scope. Plugin tool names are namespaced (`plugin_<plugin_id>__<tool_name>`) and execute against a permission-gated task-provider facade — plugins never receive the raw provider. See the Plugin System section in `CLAUDE.md` and `docs/plugins/developer-guide.md`.
+- diagnostics: `run_diagnostics` (`src/tools/diagnostics.ts`, `maybeAddDiagnosticsTools` called from both descriptor builders) is gated on `isBotAdmin === true && contextType === 'dm' && mode === 'normal'` — fail-closed, so proactive runs and `/context` tool resolution never see it. It returns a whitelisted, secret-free runtime health snapshot (per-probe try/catch degrading to a `probe_error` marker); registered `read('diagnostics')` in `tool-metadata.ts` so prefs/presets treat it as a read tool.
 
 ## Logging
 
