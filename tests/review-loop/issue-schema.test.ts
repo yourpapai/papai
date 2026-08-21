@@ -12,6 +12,7 @@ import {
   ReviewerIssueSchema,
   ReviewerIssuesSchema,
   VerifierDecisionSchema,
+  getIssueSpans,
 } from '../../review-loop/src/issue-schema.js'
 
 const validIssue = {
@@ -98,6 +99,21 @@ describe('issue-schema', () => {
     })
     expect(parsed.commitMessage).toBe('fix(review-loop): tighten guard')
     expect(parsed.severity).toBe('low')
+  })
+
+  test('FixerResultSchema accepts every independently-assessed severity', () => {
+    // The fixer re-grades the issue on its own; every enum member the
+    // reviewer may carry must also parse on the fixer's side.
+    const base = {
+      verdict: 'valid',
+      fixability: 'auto',
+      reasoning: 'r',
+      targetFiles: ['a.ts'],
+      fixed: true,
+    }
+    for (const severity of ['critical', 'high', 'medium', 'low'] as const) {
+      expect(FixerResultSchema.parse({ ...base, severity }).severity).toBe(severity)
+    }
   })
 
   test('VerifierDecisionSchema accepts plan_drift verdict (additive)', () => {
@@ -242,5 +258,44 @@ describe('spans', () => {
       ],
     }
     expect(() => ReviewerIssuesSchema.parse({ issues: [validIssue, theme] })).not.toThrow()
+  })
+})
+
+describe('getIssueSpans', () => {
+  test('returns the theme spans unchanged when present', () => {
+    const spans = [
+      { file: 'src/a.ts', lineStart: 1, lineEnd: 2, evidence: 'e1' },
+      { file: 'src/b.ts', lineStart: 3, lineEnd: 4, evidence: 'e2' },
+    ]
+    const parsed = ReviewerIssueSchema.parse({ ...validIssue, spans })
+    expect(getIssueSpans(parsed)).toEqual(spans)
+  })
+
+  test('mirrors the legacy single location when spans is absent', () => {
+    // Attribution walks spans to claim files; a legacy issue must still
+    // resolve to its one mirrored span, not to undefined.
+    const parsed = ReviewerIssueSchema.parse(validIssue)
+    expect(getIssueSpans(parsed)).toEqual([
+      {
+        file: parsed.file,
+        lineStart: parsed.lineStart,
+        lineEnd: parsed.lineEnd,
+        evidence: parsed.evidence,
+      },
+    ])
+  })
+
+  test('mirrors the legacy single location when spans is empty', () => {
+    // The schema rejects an empty array, but the ledger is durable: an issue
+    // written before that validation must still resolve to a span.
+    const parsed = ReviewerIssueSchema.parse(validIssue)
+    expect(getIssueSpans({ ...parsed, spans: [] })).toEqual([
+      {
+        file: parsed.file,
+        lineStart: parsed.lineStart,
+        lineEnd: parsed.lineEnd,
+        evidence: parsed.evidence,
+      },
+    ])
   })
 })

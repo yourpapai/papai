@@ -172,6 +172,34 @@ describe('buildAggregatedInspectPrompt', () => {
     expect(prompt).toContain('{id, addresses, reasoning, confidence}')
     expect(prompt).toContain('build check has already passed')
   })
+
+  test('gates addresses=true on diff lines that resolve the specific complaint', () => {
+    const prompt = buildAggregatedInspectPrompt([{ id: 'x', issue: memberA }], 'd', 'o.json')
+    expect(prompt).toContain('Return addresses=true ONLY if')
+    expect(prompt).toContain('When addresses=false, reasoning MUST be actionable')
+  })
+
+  test('states the exact result schema and the 0-1 confidence range', () => {
+    const prompt = buildAggregatedInspectPrompt([{ id: 'x', issue: memberA }], 'd', 'o.json')
+    expect(prompt).toContain(
+      '{"results": [{"id": string, "addresses": boolean, "reasoning": string, "confidence": number}]}',
+    )
+    expect(prompt).toContain('between 0 and 1')
+    expect(prompt).toContain('NOT a 1-5 rating')
+  })
+
+  test('carries the inspector scope rules over the aggregated batch', () => {
+    const prompt = buildAggregatedInspectPrompt([{ id: 'x', issue: memberA }], 'd', 'o.json')
+    expect(prompt).toContain('Do not flag unrelated problems')
+    expect(prompt).toContain('Do not run checks')
+  })
+
+  test('labels the issues block and the diff as the baseline..HEAD diff', () => {
+    const prompt = buildAggregatedInspectPrompt([{ id: 'x', issue: memberA }], 'the diff body', 'o.json')
+    expect(prompt).toContain('Issues:')
+    expect(prompt).toContain('Diff (baseline..HEAD):')
+    expect(prompt).toContain('the diff body')
+  })
 })
 
 describe('buildRetryFixWithInspectorFeedbackPrompt', () => {
@@ -391,5 +419,20 @@ describe('reviewer coalescence', () => {
     expect(prompt).toContain('spans')
     expect(prompt).toMatch(/ONE theme issue/iu)
     expect(prompt).toMatch(/un-migrated English literals/iu)
+  })
+
+  test('documents the spans shape beside the issue schema', () => {
+    // The inline shape must carry every field attribution walks: file,
+    // lineStart, lineEnd, evidence — a missing key loses the claim silently.
+    const prompt = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(prompt).toContain('"spans": [{"file": string, "lineStart": number, "lineEnd": number, "evidence": string}]')
+    expect(prompt).toContain('(optional, theme issue coalescence)')
+  })
+
+  test('requires the legacy fields mirrored from the first span', () => {
+    const prompt = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(prompt).toContain('mirrored from the first span')
+    expect(prompt).toContain('for backward compatibility')
+    expect(prompt).toContain('identical to a legacy issue')
   })
 })
