@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 
 import { emitUser } from '../../src/debug/event-bus.js'
 import type { DebugEvent } from '../../src/debug/event-bus.js'
-import { addClient, init, removeClient } from '../../src/debug/state-collector.js'
+import { addClient, init, removeClient, startEventCollector } from '../../src/debug/state-collector.js'
 import {
   recentTurns,
   recentNotifications,
@@ -49,6 +49,8 @@ describe('turn assembly', () => {
 
   test('turn:start creates an in-flight turn', () => {
     init('admin-1')
+    startEventCollector()
+    startEventCollector()
     addClient(track(createMockController()))
 
     emitUser('turn:start', 'admin-1', { turnId: 't1' })
@@ -62,6 +64,7 @@ describe('turn assembly', () => {
 
   test('turn:end finalizes turn and moves to recentTurns', () => {
     init('admin-1')
+    startEventCollector()
     addClient(track(createMockController()))
 
     emitUser('turn:start', 'admin-1', { turnId: 't1' })
@@ -77,6 +80,7 @@ describe('turn assembly', () => {
 
   test('overlapping turns for the admin user are tracked separately', () => {
     init('admin-1')
+    startEventCollector()
     addClient(track(createMockController()))
 
     emitUser('turn:start', 'admin-1', { turnId: 't1' })
@@ -89,6 +93,7 @@ describe('turn assembly', () => {
 
   test('512-entry cap on recentTurns', () => {
     init('admin-1')
+    startEventCollector()
     addClient(track(createMockController()))
 
     for (let i = 0; i < 513; i++) {
@@ -103,6 +108,7 @@ describe('turn assembly', () => {
 
   test('tool calls are accumulated on in-flight turn', () => {
     init('admin-1')
+    startEventCollector()
     addClient(track(createMockController()))
 
     emitUser('turn:start', 'admin-1', { turnId: 't1' })
@@ -123,6 +129,7 @@ describe('turn assembly', () => {
 
   test('turn:error sets error status and message', () => {
     init('admin-1')
+    startEventCollector()
     addClient(track(createMockController()))
 
     emitUser('turn:start', 'admin-1', { turnId: 't1' })
@@ -149,6 +156,7 @@ describe('notification ring buffer', () => {
 
   test('reply:sent pushes to recentNotifications', () => {
     init('admin-1')
+    startEventCollector()
     addClient(track(createMockController()))
 
     emitUser('reply:sent', 'admin-1', { turnId: 't1', durationMs: 300 })
@@ -159,6 +167,7 @@ describe('notification ring buffer', () => {
 
   test('typing events push to recentNotifications', () => {
     init('admin-1')
+    startEventCollector()
     addClient(track(createMockController()))
 
     emitUser('typing:start', 'admin-1', {})
@@ -171,6 +180,7 @@ describe('notification ring buffer', () => {
 
   test('notify:* events push to recentNotifications', () => {
     init('admin-1')
+    startEventCollector()
     addClient(track(createMockController()))
 
     emitUser('notify:reminder', 'admin-1', { taskId: 'task-1' })
@@ -181,6 +191,7 @@ describe('notification ring buffer', () => {
 
   test('2048-entry cap on recentNotifications', () => {
     init('admin-1')
+    startEventCollector()
     addClient(track(createMockController()))
 
     for (let i = 0; i < 2049; i++) {
@@ -207,6 +218,7 @@ describe('tool failure ring buffer', () => {
 
   test('tool:failure_classified pushes to recentToolFailures', () => {
     init('admin-1')
+    startEventCollector()
     addClient(track(createMockController()))
 
     emitUser('tool:failure_classified', 'admin-1', {
@@ -220,6 +232,7 @@ describe('tool failure ring buffer', () => {
 
   test('1024-entry cap on recentToolFailures', () => {
     init('admin-1')
+    startEventCollector()
     addClient(track(createMockController()))
 
     for (let i = 0; i < 1025; i++) {

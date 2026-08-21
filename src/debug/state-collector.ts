@@ -8,11 +8,17 @@ import { getPollerSnapshot } from '../deferred-prompts/poller.js'
 import { getMessageCacheSnapshot } from '../message-cache/cache.js'
 import { getSchedulerSnapshot } from '../scheduler.js'
 import { subscribe, unsubscribe, type DebugEvent } from './event-bus.js'
-import { recentLlm, pushTrace, handleLlmTraceEvent, type LlmTrace } from './llm-trace-collector.js'
+import { recentLlm, pushTrace, handleLlmTraceEvent, resetLlmBuffers, type LlmTrace } from './llm-trace-collector.js'
 import type { LogEntry } from './log-buffer.js'
 import { entryMatchesFilter, type LogFilter } from './log-filter-model.js'
-import { recentTurns, recentNotifications, recentToolFailures, handleTurnAssembly } from './turn-assembly.js'
-import type { Turn } from './turn-assembly.js'
+import {
+  recentTurns,
+  recentNotifications,
+  recentToolFailures,
+  handleTurnAssembly,
+  resetTurnBuffers,
+} from './turn-assembly.js'
+import type { Notification, ToolFailure, Turn } from './turn-assembly.js'
 
 export { resetTurnBuffers, findTurnById } from './turn-assembly.js'
 export { recentLlm, pendingTraces } from './llm-trace-collector.js'
@@ -23,6 +29,8 @@ let adminVisibility: AdminVisibility = { adminUserId: '', groupIds: new Set() }
 const clients = new Map<ReadableStreamDefaultController, LogFilter>()
 const PASS_ALL: LogFilter = { include: [], exclude: [], level: 0 }
 const encoder = new TextEncoder()
+
+let collectorStarted = false
 
 const HEARTBEAT_MS = 15000
 const PING_FRAME = encoder.encode(': ping\n\n')
@@ -57,6 +65,36 @@ export function pingClientsForTest(): void {
 /** @public -- test seam: drain all SSE clients to restore a clean baseline. */
 export function resetClientsForTest(): void {
   for (const client of [...clients.keys()]) removeClient(client)
+}
+
+/**
+ * Subscribe the persistent capture handler on the debug event bus. Capture is
+ * unfiltered and independent of SSE clients; visibility is enforced at
+ * broadcast/read time. Idempotent: production wiring calls it exactly once.
+ */
+export function startEventCollector(): void {
+  if (collectorStarted) return
+  collectorStarted = true
+  subscribe(onEvent)
+}
+
+/** @public -- test seam: unsubscribe the capture handler. */
+export function stopEventCollectorForTest(): void {
+  if (!collectorStarted) return
+  collectorStarted = false
+  unsubscribe(onEvent)
+}
+
+/** @public -- test seam: stop the collector, drain clients, clear buffers, zero stats. */
+export function resetCollectorForTest(): void {
+  stopEventCollectorForTest()
+  resetClientsForTest()
+  resetTurnBuffers()
+  resetLlmBuffers()
+  stats.startedAt = Date.now()
+  stats.totalMessages = 0
+  stats.totalLlmCalls = 0
+  stats.totalToolCalls = 0
 }
 
 export const stats = {
@@ -96,6 +134,22 @@ export function isScopeVisibleToCurrentAdmin(scope: Turn['scope'] | null | undef
   return isVisibleToAdmin(scope, adminVisibility)
 }
 
+function visibleTurnsToCurrentAdmin(): Turn[] {
+  return recentTurns.filter((turn) => isVisibleToAdmin(turn.scope, adminVisibility))
+}
+
+function visibleNotificationsToCurrentAdmin(): Notification[] {
+  return recentNotifications.filter((entry) => isVisibleToAdmin(entry.scope, adminVisibility))
+}
+
+function visibleToolFailuresToCurrentAdmin(): ToolFailure[] {
+  return recentToolFailures.filter((entry) => isVisibleToAdmin(entry.scope, adminVisibility))
+}
+
+function visibleLlmToCurrentAdmin(): LlmTrace[] {
+  return recentLlm.filter((trace) => trace.userId === adminUserId)
+}
+
 export function addClient(controller: ReadableStreamDefaultController, filter: LogFilter = PASS_ALL): void {
   clients.set(controller, filter)
 
@@ -105,10 +159,10 @@ export function addClient(controller: ReadableStreamDefaultController, filter: L
     pollers: getPollerSnapshot(),
     messageCache: getMessageCacheSnapshot(),
     stats,
-    recentLlm,
-    recentTurns,
-    recentNotifications,
-    recentToolFailures,
+    recentLlm: visibleLlmToCurrentAdmin(),
+    recentTurns: visibleTurnsToCurrentAdmin(),
+    recentNotifications: visibleNotificationsToCurrentAdmin(),
+    recentToolFailures: visibleToolFailuresToCurrentAdmin(),
   }
 
   sendTo(controller, {
@@ -119,7 +173,6 @@ export function addClient(controller: ReadableStreamDefaultController, filter: L
   })
 
   if (clients.size === 1) {
-    subscribe(onEvent)
     startHeartbeat()
   }
 }
@@ -128,7 +181,6 @@ export function removeClient(controller: ReadableStreamDefaultController): void 
   clients.delete(controller)
 
   if (clients.size === 0) {
-    unsubscribe(onEvent)
     stopHeartbeat()
   }
 }
@@ -136,6 +188,7 @@ export function removeClient(controller: ReadableStreamDefaultController): void 
 let statsDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 function scheduleStatsBroadcast(): void {
+  if (clients.size === 0) return
   if (statsDebounceTimer !== null) return
   statsDebounceTimer = setTimeout(() => {
     statsDebounceTimer = null
@@ -149,18 +202,24 @@ function scheduleStatsBroadcast(): void {
 }
 
 function broadcastTrace(trace: LlmTrace, timestamp: number): void {
+  if (adminUserId === null || trace.userId !== adminUserId) return
   broadcast({ type: 'llm:full', timestamp, data: { ...trace }, scope: { kind: 'global' } })
 }
 
-function onEvent(event: DebugEvent): void {
+function broadcastIfVisible(event: DebugEvent): void {
+  if (clients.size === 0) return
   if (!isVisibleToAdmin(event.scope, adminVisibility)) return
+  broadcast(event)
+}
+
+function onEvent(event: DebugEvent): void {
   handleLlmTraceEvent(event, { pushTrace, broadcastTrace }, stats, scheduleStatsBroadcast)
   if (event.type === 'message:received') {
     stats.totalMessages++
     scheduleStatsBroadcast()
   }
-  handleTurnAssembly(event, broadcast)
-  broadcast(event)
+  handleTurnAssembly(event, broadcastIfVisible)
+  broadcastIfVisible(event)
 }
 
 function isLogEntry(data: Record<string, unknown>): data is LogEntry {

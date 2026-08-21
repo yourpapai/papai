@@ -15,27 +15,16 @@ import {
   recentLlm,
   removeClient,
   resetTurnBuffers,
+  startEventCollector,
   stats,
+  stopEventCollectorForTest,
 } from '../../src/debug/state-collector.js'
-import * as stateCollector from '../../src/debug/state-collector.js'
 import { recentNotifications } from '../../src/debug/turn-assembly.js'
 import { resetStats, setupTestDb } from '../utils/test-helpers.js'
 
 beforeEach(async () => {
   await setupTestDb()
 })
-
-// Seams from the persistent-capture rework (plan 2.2). Until those exports exist
-// these are no-ops, keeping this suite loadable while the new coverage is red.
-const startCollectorIfPresent = (): void => {
-  const seam: unknown = Reflect.get(stateCollector, 'startEventCollector')
-  if (typeof seam === 'function') Reflect.apply(seam, undefined, [])
-}
-
-const stopCollectorIfPresent = (): void => {
-  const seam: unknown = Reflect.get(stateCollector, 'stopEventCollectorForTest')
-  if (typeof seam === 'function') Reflect.apply(seam, undefined, [])
-}
 
 type MockController = {
   ctrl: ReadableStreamDefaultController
@@ -131,6 +120,10 @@ function getTraceEventData(event: { event: string; data: Record<string, unknown>
 
 describe('state-collector', () => {
   const controllers: ReadableStreamDefaultController[] = []
+
+  beforeEach(() => {
+    startEventCollector()
+  })
 
   afterEach(() => {
     for (const ctrl of controllers) removeClient(ctrl)
@@ -523,20 +516,20 @@ describe('state-collector', () => {
 
     test('startEventCollector subscribes the collector exactly once and is idempotent', () => {
       init('admin-1')
-      stopCollectorIfPresent()
+      stopEventCollectorForTest()
       const before = subscribeCountForTest()
 
-      startCollectorIfPresent()
+      startEventCollector()
       expect(subscribeCountForTest()).toBe(before + 1)
 
-      startCollectorIfPresent()
-      startCollectorIfPresent()
+      startEventCollector()
+      startEventCollector()
       expect(subscribeCountForTest()).toBe(before + 1)
     })
 
     test('admin and global events with zero clients are captured and replayed via state:init', () => {
       init('admin-1')
-      startCollectorIfPresent()
+      startEventCollector()
 
       emitGlobal('llm:start', { userId: 'admin-1', model: 'm-admin' })
       emitGlobal('llm:end', {
@@ -598,7 +591,7 @@ describe('state-collector', () => {
 
     test('non-admin events with zero clients are captured but hidden from the admin state:init', () => {
       init('admin-1')
-      startCollectorIfPresent()
+      startEventCollector()
 
       emitUser('llm:start', 'other-user', { model: 'm-other' })
       emitUser('llm:end', 'other-user', {
@@ -644,7 +637,7 @@ describe('state-collector', () => {
 
     test('stats increment with no client connected', () => {
       init('admin-1')
-      startCollectorIfPresent()
+      startEventCollector()
 
       emitGlobal('message:received', { userId: 'admin-1', textLength: 10 })
       emitUser('message:received', 'other-user', { textLength: 5 })
@@ -662,7 +655,7 @@ describe('state-collector', () => {
 
     test('non-admin events are captured but never broadcast to a connected client', () => {
       init('admin-1')
-      startCollectorIfPresent()
+      startEventCollector()
       const { ctrl, enqueueMock } = createMockController()
       addClient(track(ctrl))
       expect(enqueueMock).toHaveBeenCalledTimes(1)

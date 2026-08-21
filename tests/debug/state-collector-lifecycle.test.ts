@@ -13,8 +13,8 @@ import {
   pingClientsForTest,
   removeClient,
   resetClientsForTest,
+  startEventCollector,
 } from '../../src/debug/state-collector.js'
-import * as stateCollector from '../../src/debug/state-collector.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
 type IntervalTimerPatch = {
@@ -65,13 +65,6 @@ const createMockClient = (): MockClient => {
   return { ctrl, enqueueMock }
 }
 
-const startCollectorIfPresent = (): void => {
-  // startEventCollector() arrives with the persistent-capture rework (plan 2.2).
-  // Until then the export is absent and this is a no-op, keeping the suite loadable.
-  const seam: unknown = Reflect.get(stateCollector, 'startEventCollector')
-  if (typeof seam === 'function') Reflect.apply(seam, undefined, [])
-}
-
 const added: ReadableStreamDefaultController[] = []
 const track = (ctrl: ReadableStreamDefaultController): ReadableStreamDefaultController => {
   added.push(ctrl)
@@ -91,7 +84,7 @@ afterEach(() => {
 describe('state-collector client lifecycle', () => {
   test('addClient and removeClient leave the event-bus subscription unchanged', () => {
     init('admin')
-    startCollectorIfPresent()
+    startEventCollector()
     const first = createMockClient()
     const second = createMockClient()
 
@@ -154,7 +147,7 @@ describe('state-collector client lifecycle', () => {
 describe('state-collector dead-client removal', () => {
   test('ping drops dead clients and reaches live ones without touching the subscription', () => {
     init('admin')
-    startCollectorIfPresent()
+    startEventCollector()
     const live = createMockClient()
     const dead = createMockClient()
 
@@ -172,14 +165,15 @@ describe('state-collector dead-client removal', () => {
 
     dead.enqueueMock.mockImplementation(() => {})
     pingClientsForTest()
-    expect(dead.enqueueMock).toHaveBeenCalledTimes(1)
+    // state:init + the one throwing ping that triggered the drop; nothing after.
+    expect(dead.enqueueMock).toHaveBeenCalledTimes(2)
     expect(live.enqueueMock).toHaveBeenCalledTimes(3)
     expect(subscribeCountForTest()).toBe(before)
   })
 
   test('last client dying during broadcast is dropped without unsubscribing', () => {
     init('admin')
-    startCollectorIfPresent()
+    startEventCollector()
     const timers = patchIntervalTimers()
     try {
       const client = createMockClient()
@@ -198,7 +192,8 @@ describe('state-collector dead-client removal', () => {
 
       client.enqueueMock.mockImplementation(() => {})
       emitGlobal('log:entry', { level: 30, time: 't', msg: 'x' })
-      expect(client.enqueueMock).toHaveBeenCalledTimes(1)
+      // state:init + the one throwing broadcast enqueue; the drop means no more frames.
+      expect(client.enqueueMock).toHaveBeenCalledTimes(2)
       expect(subscribeCountForTest()).toBe(before)
     } finally {
       timers.restore()
