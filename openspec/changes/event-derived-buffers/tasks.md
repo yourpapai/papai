@@ -10,7 +10,7 @@
 
 ## 3. Production wiring (red first)
 
-- [ ] 3.1 Update `tests/runtime/production-deps.test.ts`: capture the subscriber baseline after `createProductionRuntimeDeps()` and assert creation subscribes the collector exactly once, independent of runtime start/stop. Verify: `bun test tests/runtime/production-deps.test.ts` (expected red until 3.2)
+- [x] 3.1 Update `tests/runtime/production-deps.test.ts`: capture the subscriber baseline after `createProductionRuntimeDeps()` and assert creation subscribes the collector exactly once, independent of runtime start/stop. Verify: `bun test tests/runtime/production-deps.test.ts` (expected red until 3.2)
 - [ ] 3.2 Call `startEventCollector()` once inside `createProductionRuntimeDeps` in `src/runtime/production-deps.ts` (no `PapaiRuntimeDeps` shape change; do not unsubscribe on stop). Verify: `bun test tests/runtime/production-deps.test.ts`
 
 ## 4. Regression sweep, mutation gate, docs
