@@ -98,6 +98,34 @@ describe('regenerateFromEditedText', () => {
     expect(editCalls[0]!.markdown).toBe('⟲ Superseded by your edit.')
   })
 
+  test('forwards isBotAdmin and platformInstanceId to the regenerated turn', async () => {
+    const ctxId = scopedDm('regen-admin-user')
+    addUser({ userId: 'regen-admin-user', platformInstanceId: PLATFORM_ID, addedBy: ADMIN_ID })
+
+    const msg: IncomingMessage = { ...createDmMessage('regen-admin-user'), text: 'redo it', messageId: 'm1' }
+    const last: LastTurn = {
+      originatingMessageIds: ['m1'],
+      completedEffects: [],
+      replyTarget: undefined,
+      finishedAt: Date.now(),
+    }
+    const reply: ReplyFn = {
+      text: () => Promise.resolve(),
+      formatted: () => Promise.resolve(),
+      typing: () => {},
+      buttons: () => Promise.resolve(undefined),
+    }
+
+    const processCalls: ProcessCall[] = []
+    const deps: EditHandlerDeps = { processMessage: buildProcessSpy(processCalls) }
+
+    await regenerateFromEditedText(msg, reply, { ...authFor(ctxId), isBotAdmin: true }, last, deps)
+
+    expect(processCalls.length).toBe(1)
+    expect(processCalls[0]!.rest[7]).toBe(true)
+    expect(processCalls[0]!.rest[8]).toBe(msg.platformInstanceId)
+  })
+
   test('supersedes the old reply in the context language', async () => {
     const ctxId = scopedDm('regen-ru-user')
     addUser({ userId: 'regen-ru-user', platformInstanceId: PLATFORM_ID, addedBy: ADMIN_ID })

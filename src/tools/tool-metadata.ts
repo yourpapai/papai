@@ -183,6 +183,8 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   // outrank the dynamic plugin_ open-world fallback and stay guest-eligible.
   plugin_context_vault__list_agent_specs: read('plugin'),
   plugin_context_vault__get_agent_spec: read('plugin'),
+
+  run_diagnostics: read('diagnostics'),
 }
 
 export function getToolMetadata(toolName: string): ToolClassification | undefined {
