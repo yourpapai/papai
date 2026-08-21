@@ -5,7 +5,24 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import type { ParsedPluginManifest } from '../../src/plugins/types.js'
 import { pluginManifestSchema } from '../../src/plugins/types.js'
+
+/**
+ * Parses a manifest that must be rejected and returns each rejection as the
+ * pair a plugin author actually sees: the message telling them what is wrong
+ * and the dotted field path telling them where. Asserting only that a parse
+ * failed leaves both unpinned — an empty message on no field fails a parse
+ * just as well, and is useless to the author reading it.
+ */
+const rejectionsOf = (manifest: unknown): ReadonlyArray<{ message: string; path: string }> => {
+  const result = pluginManifestSchema.safeParse(manifest)
+
+  expect(result.success).toBe(false)
+  if (result.success) return []
+
+  return result.error.issues.map((issue) => ({ message: issue.message, path: issue.path.join('.') }))
+}
 
 describe('pluginManifestSchema providerConfigSchema scope', () => {
   const base = {
@@ -185,7 +202,7 @@ describe('pluginManifestSchema strict validation', () => {
   })
 
   test('rejects configKeys without matching context-scoped config requirement', () => {
-    const result = pluginManifestSchema.safeParse({
+    const result = rejectionsOf({
       id: 'bad-config-keys',
       name: 'Bad Config Keys',
       version: '1.0.0',
@@ -195,11 +212,14 @@ describe('pluginManifestSchema strict validation', () => {
       configRequirements: [{ key: 'other_key', label: 'Other', required: true, scope: 'context' }],
     })
 
-    expect(result.success).toBe(false)
+    expect(result).toContainEqual({
+      message: 'Every contributes.configKeys entry must match a context-scoped configRequirements entry',
+      path: 'contributes.configKeys',
+    })
   })
 
   test('rejects admin-scoped configKeys entries', () => {
-    const result = pluginManifestSchema.safeParse({
+    const result = rejectionsOf({
       id: 'admin-config-key',
       name: 'Admin Config Key',
       version: '1.0.0',
@@ -209,11 +229,14 @@ describe('pluginManifestSchema strict validation', () => {
       configRequirements: [{ key: 'api_token', label: 'API Token', required: true, scope: 'admin' }],
     })
 
-    expect(result.success).toBe(false)
+    expect(result).toContainEqual({
+      message: 'Every contributes.configKeys entry must match a context-scoped configRequirements entry',
+      path: 'contributes.configKeys',
+    })
   })
 
   test('rejects provider-only fields without provider.task permission', () => {
-    const result = pluginManifestSchema.safeParse({
+    const result = rejectionsOf({
       id: 'provider-fields-without-permission',
       name: 'Provider Fields Without Permission',
       version: '1.0.0',
@@ -227,11 +250,14 @@ describe('pluginManifestSchema strict validation', () => {
       providerConfigValidator: 'validateConfig',
     })
 
-    expect(result.success).toBe(false)
+    expect(result).toContainEqual({
+      message: "Provider-only manifest fields require the 'provider.task' permission",
+      path: 'permissions',
+    })
   })
 
   test('rejects providerConfigValidator when no task provider type is declared', () => {
-    const result = pluginManifestSchema.safeParse({
+    const result = rejectionsOf({
       id: 'validator-without-provider-type',
       name: 'Validator Without Provider Type',
       version: '1.0.0',
@@ -243,7 +269,39 @@ describe('pluginManifestSchema strict validation', () => {
       providerConfigValidator: 'validateConfig',
     })
 
-    expect(result.success).toBe(false)
+    expect(result).toContainEqual({
+      message: 'providerConfigValidator requires contributes.taskProviderTypes',
+      path: 'providerConfigValidator',
+    })
+  })
+
+  test('accepts providerConfigValidator alongside a declared task provider type', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'validator-with-provider-type',
+      name: 'Validator With Provider Type',
+      version: '1.0.0',
+      description: 'validator with provider type',
+      apiVersion: 1,
+      main: 'index.ts',
+      permissions: ['provider.task'],
+      contributes: { taskProviderTypes: ['kaneo'] },
+      providerConfigValidator: 'validateConfig',
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  test('accepts a manifest that declares neither a validator nor a provider type', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'no-validator-no-provider',
+      name: 'No Validator No Provider',
+      version: '1.0.0',
+      description: 'neither half of the validator pairing',
+      apiVersion: 1,
+      main: 'index.ts',
+    })
+
+    expect(result.success).toBe(true)
   })
 
   test('accepts providerAllowedHosts for http-only plugins', () => {
@@ -278,7 +336,7 @@ describe('pluginManifestSchema strict validation', () => {
   })
 
   test('rejects mcp-only manifests without main when provider-only metadata is present', () => {
-    const result = pluginManifestSchema.safeParse({
+    const result = rejectionsOf({
       id: 'mcp-only-provider-metadata',
       name: 'MCP Only Provider Metadata',
       version: '1.0.0',
@@ -290,11 +348,14 @@ describe('pluginManifestSchema strict validation', () => {
       mcp: { transport: 'streamable-http', url: 'https://mcp.example.com' },
     })
 
-    expect(result.success).toBe(false)
+    expect(result).toContainEqual({
+      message: 'main is required unless the manifest is an explicit MCP-only plugin',
+      path: 'main',
+    })
   })
 
   test('rejects mcp manifests that also declare runtime contributions without main', () => {
-    const result = pluginManifestSchema.safeParse({
+    const result = rejectionsOf({
       id: 'mixed-mcp-runtime',
       name: 'Mixed MCP Runtime',
       version: '1.0.0',
@@ -311,7 +372,62 @@ describe('pluginManifestSchema strict validation', () => {
       mcp: { transport: 'streamable-http', url: 'https://mcp.example.com' },
     })
 
-    expect(result.success).toBe(false)
+    expect(result).toContainEqual({
+      message: 'main is required unless the manifest is an explicit MCP-only plugin',
+      path: 'main',
+    })
+  })
+})
+
+describe('pluginManifestSchema contribution permissions', () => {
+  const base = {
+    id: 'contribution-permissions',
+    name: 'Contribution Permissions',
+    version: '1.0.0',
+    description: 'contribution permission pairing',
+    apiVersion: 1,
+    main: 'index.ts',
+  }
+
+  test('rejects contributes.commands without the commands permission', () => {
+    const result = rejectionsOf({ ...base, contributes: { commands: ['do_thing'] }, permissions: [] })
+
+    expect(result).toContainEqual({
+      message: "Declaring contributes.commands requires the 'commands' permission",
+      path: 'permissions',
+    })
+  })
+
+  test('accepts contributes.commands with the commands permission', () => {
+    const result = pluginManifestSchema.safeParse({
+      ...base,
+      contributes: { commands: ['do_thing'] },
+      permissions: ['commands'],
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects contributes.jobs without the scheduler permission', () => {
+    const result = rejectionsOf({
+      ...base,
+      contributes: { jobs: ['nightly_digest'] },
+      permissions: [],
+    })
+
+    expect(result).toContainEqual({
+      message: "Declaring contributes.jobs requires the 'scheduler' permission",
+      path: 'permissions',
+    })
+  })
+
+  test('rejects contributes.taskProviderTypes without the provider.task permission', () => {
+    const result = rejectionsOf({ ...base, contributes: { taskProviderTypes: ['kaneo'] }, permissions: [] })
+
+    expect(result).toContainEqual({
+      message: "Declaring contributes.taskProviderTypes requires the 'provider.task' permission",
+      path: 'permissions',
+    })
   })
 })
 
@@ -331,7 +447,7 @@ describe('pluginManifestSchema attachmentTransformers and providerAllowedHostsFr
   })
 
   test('rejects attachmentTransformers without attachments.read permission', () => {
-    const result = pluginManifestSchema.safeParse({
+    const result = rejectionsOf({
       id: 'audio-transcribe-no-perm',
       name: 'Audio Transcribe No Perm',
       version: '1.0.0',
@@ -341,7 +457,10 @@ describe('pluginManifestSchema attachmentTransformers and providerAllowedHostsFr
       contributes: { tools: [], promptFragments: [], attachmentTransformers: ['my_transformer'] },
       permissions: [],
     })
-    expect(result.success).toBe(false)
+    expect(result).toContainEqual({
+      message: "Declaring contributes.attachmentTransformers requires the 'attachments.read' permission",
+      path: 'contributes.attachmentTransformers',
+    })
   })
 
   test('accepts providerAllowedHostsFromConfig referencing an admin-scoped config key', () => {
@@ -360,7 +479,7 @@ describe('pluginManifestSchema attachmentTransformers and providerAllowedHostsFr
   })
 
   test('rejects providerAllowedHostsFromConfig referencing a context-scoped or missing key', () => {
-    const result = pluginManifestSchema.safeParse({
+    const result = rejectionsOf({
       id: 'http-config-hosts-bad',
       name: 'HTTP Config Hosts Bad',
       version: '1.0.0',
@@ -371,7 +490,11 @@ describe('pluginManifestSchema attachmentTransformers and providerAllowedHostsFr
       providerAllowedHostsFromConfig: ['base_url'],
       configRequirements: [],
     })
-    expect(result.success).toBe(false)
+    expect(result).toContainEqual({
+      message:
+        'providerAllowedHostsFromConfig keys must reference at least one configRequirements entry (admin or context scope)',
+      path: 'providerAllowedHostsFromConfig',
+    })
   })
 
   test('rejects mcp + attachmentTransformers-only manifest without main (fix 1: runtimeContributionCount includes transformers)', () => {
@@ -434,5 +557,201 @@ describe('pluginManifestSchema attachmentTransformers and providerAllowedHostsFr
       configRequirements: [{ key: 'base_url', label: 'Base URL', required: false, sensitive: false, scope: 'admin' }],
     })
     expect(result.success).toBe(false)
+  })
+})
+
+describe('pluginManifestSchema config-sourced host allowlists', () => {
+  const base = {
+    id: 'host-allowlists',
+    name: 'Host Allowlists',
+    version: '1.0.0',
+    description: 'config-sourced host allowlists',
+    apiVersion: 1,
+    main: 'index.ts',
+    permissions: ['provider.task'],
+    contributes: { taskProviderTypes: ['kaneo'] },
+  }
+
+  const instanceField = { key: 'baseUrl', label: 'Base URL', required: true, scope: 'instance' } as const
+  const contextRequirement = { key: 'base_url', label: 'Base URL', required: true, scope: 'context' } as const
+
+  test('accepts an instance host key that resolves to a declared providerConfigSchema entry', () => {
+    const result = pluginManifestSchema.safeParse({
+      ...base,
+      providerConfigSchema: [instanceField],
+      providerAllowedInstanceHostsFromConfig: ['baseUrl'],
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects an instance host key absent from providerConfigSchema', () => {
+    const result = rejectionsOf({
+      ...base,
+      providerConfigSchema: [],
+      providerAllowedInstanceHostsFromConfig: ['baseUrl'],
+    })
+
+    expect(result).toContainEqual({
+      message:
+        'providerAllowedInstanceHostsFromConfig keys must reference an instance-scoped providerConfigSchema entry',
+      path: 'providerAllowedInstanceHostsFromConfig',
+    })
+  })
+
+  // The two allowlists are not interchangeable, and neither may fall back to the
+  // other's declarations. Hosts derived from instance config are operator-trusted
+  // and bypass the https and public-IP checks in src/plugins/dynamic-hosts.ts;
+  // hosts derived from context config are not. Letting a context-scoped
+  // configRequirements entry satisfy the instance list would hand an untrusted
+  // per-context value that bypass.
+  test('does not let a configRequirements key satisfy providerAllowedInstanceHostsFromConfig', () => {
+    const result = rejectionsOf({
+      ...base,
+      configRequirements: [contextRequirement],
+      providerConfigSchema: [],
+      providerAllowedInstanceHostsFromConfig: ['base_url'],
+    })
+
+    expect(result).toContainEqual({
+      message:
+        'providerAllowedInstanceHostsFromConfig keys must reference an instance-scoped providerConfigSchema entry',
+      path: 'providerAllowedInstanceHostsFromConfig',
+    })
+  })
+
+  test('does not let a providerConfigSchema key satisfy providerAllowedHostsFromConfig', () => {
+    const result = rejectionsOf({
+      ...base,
+      configRequirements: [],
+      providerConfigSchema: [instanceField],
+      providerAllowedHostsFromConfig: ['baseUrl'],
+    })
+
+    expect(result).toContainEqual({
+      message:
+        'providerAllowedHostsFromConfig keys must reference at least one configRequirements entry (admin or context scope)',
+      path: 'providerAllowedHostsFromConfig',
+    })
+  })
+})
+
+describe('pluginManifestSchema field patterns', () => {
+  const base = {
+    id: 'field-patterns',
+    name: 'Field Patterns',
+    version: '1.0.0',
+    description: 'field-level pattern checks',
+    apiVersion: 1,
+    main: 'index.ts',
+  }
+
+  test.each(['1.2.3', '10.20.30', '1.2.3-beta.1', '1.2.3+build.5'])('accepts semver version %s', (version) => {
+    expect(pluginManifestSchema.safeParse({ ...base, version }).success).toBe(true)
+  })
+
+  test.each(['1.2', '1', 'v1.2.3', '1.2.3.4', '1.2.3 beta'])('rejects non-semver version %s', (version) => {
+    expect(rejectionsOf({ ...base, version })).toContainEqual({
+      message: 'version must be semver (major.minor.patch)',
+      path: 'version',
+    })
+  })
+
+  test.each(['1validate', 'validate-config'])('rejects providerConfigValidator name %s', (name) => {
+    const result = rejectionsOf({
+      ...base,
+      permissions: ['provider.task'],
+      contributes: { taskProviderTypes: ['kaneo'] },
+      providerConfigValidator: name,
+    })
+
+    expect(result).toContainEqual({
+      message: 'Provider config validator must be a valid identifier',
+      path: 'providerConfigValidator',
+    })
+  })
+})
+
+describe('pluginManifestSchema parsed defaults', () => {
+  const minimal = {
+    id: 'parsed-defaults',
+    name: 'Parsed Defaults',
+    version: '1.0.0',
+    description: 'defaults applied by parsing',
+    apiVersion: 1,
+    main: 'index.ts',
+  }
+
+  // Asserted on the parse *output*, not on a hand-constructed PluginManifest:
+  // the hand-constructed type carries whatever the fixture wrote, so it proves
+  // nothing about what the schema fills in for a manifest that omits the field.
+  const parse = (manifest: unknown): ParsedPluginManifest => {
+    const result = pluginManifestSchema.safeParse(manifest)
+
+    expect(result.success).toBe(true)
+    if (!result.success) throw result.error
+
+    return result.data
+  }
+
+  test('defaults storageScope to context and preserves an explicit group scope', () => {
+    expect(parse(minimal).storageScope).toBe('context')
+    // Both members spelled out explicitly: the omitted case above is satisfied by
+    // the `.default()`, which Zod applies without re-validating it against the enum.
+    expect(parse({ ...minimal, storageScope: 'context' }).storageScope).toBe('context')
+    expect(parse({ ...minimal, storageScope: 'group' }).storageScope).toBe('group')
+  })
+
+  test('defaults the boolean flags to false', () => {
+    const parsed = parse({
+      ...minimal,
+      configRequirements: [{ key: 'api_token', label: 'API Token', required: true }],
+    })
+
+    expect(parsed.defaultEnabled).toBe(false)
+    expect(parsed.mcpServer).toBe(false)
+    expect(parsed.configRequirements[0]?.sensitive).toBe(false)
+  })
+
+  test('defaults every omitted list to an empty array rather than undefined', () => {
+    const parsed = parse(minimal)
+
+    expect({
+      permissions: parsed.permissions,
+      requiredTaskCapabilities: parsed.requiredTaskCapabilities,
+      requiredChatCapabilities: parsed.requiredChatCapabilities,
+      configRequirements: parsed.configRequirements,
+      providerCapabilities: parsed.providerCapabilities,
+      providerTraits: parsed.providerTraits,
+      providerConfigSchema: parsed.providerConfigSchema,
+      providerContextConfigSchema: parsed.providerContextConfigSchema,
+      providerAllowedHosts: parsed.providerAllowedHosts,
+      providerAllowedHostsFromConfig: parsed.providerAllowedHostsFromConfig,
+      providerAllowedInstanceHostsFromConfig: parsed.providerAllowedInstanceHostsFromConfig,
+    }).toEqual({
+      permissions: [],
+      requiredTaskCapabilities: [],
+      requiredChatCapabilities: [],
+      configRequirements: [],
+      providerCapabilities: [],
+      providerTraits: [],
+      providerConfigSchema: [],
+      providerContextConfigSchema: [],
+      providerAllowedHosts: [],
+      providerAllowedHostsFromConfig: [],
+      providerAllowedInstanceHostsFromConfig: [],
+    })
+  })
+
+  test('defaults an omitted contributes block to empty lists throughout', () => {
+    expect(parse(minimal).contributes).toEqual({
+      tools: [],
+      promptFragments: [],
+      commands: [],
+      jobs: [],
+      configKeys: [],
+      taskProviderTypes: [],
+      attachmentTransformers: [],
+    })
   })
 })

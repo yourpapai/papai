@@ -5,7 +5,7 @@
 
 import type { ToolSet } from 'ai'
 
-import { getCachedTools } from '../cache.js'
+import { getLatestCachedToolsForContext } from '../cache.js'
 import { logger } from '../logger.js'
 import { defaultTaskProviderResolver } from '../providers/resolver.js'
 import type { TaskProvider } from '../providers/types.js'
@@ -123,7 +123,6 @@ export async function resolveContextToolSurface(
   contextType: 'dm' | 'group',
   provider: TaskProvider | null,
   buildLiveToolSet: BuildLiveToolSet,
-  username?: string | null,
 ): Promise<ResolvedContextToolSurface> {
   try {
     const liveTools = await buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
@@ -142,7 +141,7 @@ export async function resolveContextToolSurface(
     )
   }
 
-  return buildDegradedToolSurface(storageContextId, actorUserId, provider, username)
+  return buildDegradedToolSurface(storageContextId)
 }
 
 function toToolRecord(value: unknown): Record<string, unknown> {
@@ -154,41 +153,15 @@ function isToolSet(value: Record<string, unknown>): value is ToolSet {
   return Object.values(value).every((entry) => typeof entry === 'object' && entry !== null)
 }
 
-function buildInvocationCacheKey(
-  storageContextId: string,
-  actorUserId: string,
-  provider: TaskProvider | null,
-  username: string | null | undefined,
-): string {
-  const providerCacheScope = provider === null ? 'providerless' : 'provider-backed'
-  const stagedDownloadScope = 'no-staged-download'
-  const usernameSuffix = username ?? ''
-  return `${providerCacheScope}:${stagedDownloadScope}:${storageContextId}:${actorUserId}:${usernameSuffix}`
-}
-
-function resolveCachedToolSet(
-  storageContextId: string,
-  actorUserId: string,
-  provider: TaskProvider | null,
-  username: string | null | undefined,
-): ToolSet {
-  const cachedTools = toToolRecord(
-    getCachedTools(buildInvocationCacheKey(storageContextId, actorUserId, provider, username)),
-  )
-  return isToolSet(cachedTools) ? cachedTools : {}
-}
-
-function buildDegradedToolSurface(
-  storageContextId: string,
-  actorUserId: string,
-  provider: TaskProvider | null,
-  username: string | null | undefined,
-): ResolvedContextToolSurface {
-  const cachedTools = applyToolPreferences(
-    resolveCachedToolSet(storageContextId, actorUserId, provider, username),
-    storageContextId,
-    undefined,
-  )
-
-  return { definitions: toToolRecord(cachedTools) }
+/**
+ * Degraded fallback surface built from the most recently written cached
+ * descriptors for the context. Reuses `getLatestCachedToolsForContext`, which
+ * enumerates every descriptor-cache key variant (provider/staged/resolver/admin
+ * scopes) the orchestrator writes, instead of duplicating a key format that
+ * drifted from `getOrCreateDescriptors`.
+ */
+function buildDegradedToolSurface(storageContextId: string): ResolvedContextToolSurface {
+  const cachedTools = toToolRecord(getLatestCachedToolsForContext(storageContextId))
+  const toolSet = isToolSet(cachedTools) ? cachedTools : {}
+  return { definitions: toToolRecord(applyToolPreferences(toolSet, storageContextId, undefined)) }
 }

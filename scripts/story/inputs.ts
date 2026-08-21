@@ -28,6 +28,8 @@ export const FROZEN_COVERAGE_SUPPORT: readonly string[] = [
   'scripts/coverage/normalize-lcov.ts',
   'scripts/coverage/ratchet-lib.ts',
   'scripts/coverage/story-coverage-gate.ts',
+  'scripts/coverage/story-coverage-report.ts',
+  'scripts/coverage/story-scope.ts',
 ]
 
 const FROZEN_COVERAGE_SUPPORT_PATHS = new Set(FROZEN_COVERAGE_SUPPORT)

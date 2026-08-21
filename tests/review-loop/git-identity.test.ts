@@ -66,16 +66,20 @@ describe('a commit made under the applied identity', () => {
       // An unset HOME can make git fall back to the passwd entry's home and
       // read that user's real .gitconfig; an empty dir leaves nothing to find.
       HOME: makeTempDir('review-loop-identity-home-'),
+      // Emptying the config files is not enough: with no `user.*` set, git
+      // synthesises an identity from the OS username and hostname and commits
+      // anyway. That fallback is what a hosted runner cannot do (no gecos, no
+      // resolvable hostname), so `user.useConfigOnly` disables it and the
+      // runner's real "Author identity unknown" failure reproduces on any
+      // machine. Env-supplied identities still win over it, which is what the
+      // second half of this test asserts.
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'user.useConfigOnly',
+      GIT_CONFIG_VALUE_0: 'true',
     }
 
     expect(() => {
-      execFileSync(
-        'git',
-        // useConfigOnly forbids the passwd/hostname identity auto-detection
-        // that would let this commit succeed on a host where git can guess one.
-        ['-C', repo, '-c', 'user.useConfigOnly=true', 'commit', '-m', 'no identity'],
-        { env: identityless, stdio: 'pipe' },
-      )
+      execFileSync('git', ['-C', repo, 'commit', '-m', 'no identity'], { env: identityless, stdio: 'pipe' })
     }).toThrow()
 
     applyCommitIdentity({ name: 'bot', email: 'bot@example.com' }, identityless)

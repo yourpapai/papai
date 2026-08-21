@@ -15,6 +15,9 @@ import type { Pseudonym } from '../controlled-types.js'
 import { createPseudonym } from '../identity/pseudonym.js'
 import { createDefaultGovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
 import type { GovernanceDualWriteResolver } from '../rekey/governance-dual-write.js'
+import { upsertPreferenceRowInTx } from './preference-row.js'
+import type { PreferenceTx as Tx } from './preference-row.js'
+import type { PreferenceSource } from './preference-types.js'
 
 const log = logger.child({ scope: 'analytics:governance:preference-store' })
 
@@ -27,7 +30,6 @@ export type PreferenceStoreDeps = Readonly<{
 
 export type PreferenceLane = 'local_longitudinal' | 'external_pseudonymous'
 export type PreferenceValue = 'allow' | 'deny'
-export type PreferenceSource = 'settings' | 'authenticated_request' | 'operator_migration'
 
 export type PreferenceMutationResult = Readonly<{
   status: 'applied'
@@ -74,80 +76,6 @@ export const listPolicyAudit = (
     .where(eq(analyticsPolicyAudit.governanceActorKey, governanceActorKey))
     .orderBy(asc(analyticsPolicyAudit.occurredAt), asc(analyticsPolicyAudit.auditId))
     .all()
-
-type Tx = Parameters<ReturnType<typeof defaultGetDrizzleDb>['transaction']>[0] extends (tx: infer T) => unknown
-  ? T
-  : never
-
-type PreferenceUpsertInput = Readonly<{
-  governanceActorKey: string
-  keyVersion: string
-  policyVersion: number
-  source: PreferenceSource
-  nowMs: number
-  apply: (
-    current: AnalyticsPreferenceRow | undefined,
-  ) => Pick<AnalyticsPreferenceRow, 'localLongitudinal' | 'externalPseudonymous'>
-}>
-
-const insertPreferenceRow = (
-  tx: Tx,
-  input: PreferenceUpsertInput,
-  lanes: Pick<AnalyticsPreferenceRow, 'localLongitudinal' | 'externalPseudonymous'>,
-): void => {
-  tx.insert(analyticsPreferences)
-    .values({
-      governanceActorKey: input.governanceActorKey,
-      keyVersion: input.keyVersion,
-      localLongitudinal: lanes.localLongitudinal,
-      externalPseudonymous: lanes.externalPseudonymous,
-      policyVersion: input.policyVersion,
-      source: input.source,
-      effectiveAt: input.nowMs,
-      updatedAt: input.nowMs,
-    })
-    .run()
-}
-
-const updatePreferenceRow = (
-  tx: Tx,
-  input: PreferenceUpsertInput,
-  lanes: Pick<AnalyticsPreferenceRow, 'localLongitudinal' | 'externalPseudonymous'>,
-): void => {
-  tx.update(analyticsPreferences)
-    .set({
-      keyVersion: input.keyVersion,
-      localLongitudinal: lanes.localLongitudinal,
-      externalPseudonymous: lanes.externalPseudonymous,
-      policyVersion: input.policyVersion,
-      source: input.source,
-      effectiveAt: input.nowMs,
-      updatedAt: input.nowMs,
-    })
-    .where(eq(analyticsPreferences.governanceActorKey, input.governanceActorKey))
-    .run()
-}
-
-export const upsertPreferenceRowInTx = (tx: Tx, input: PreferenceUpsertInput): AnalyticsPreferenceRow => {
-  const current = tx
-    .select()
-    .from(analyticsPreferences)
-    .where(eq(analyticsPreferences.governanceActorKey, input.governanceActorKey))
-    .get()
-  const lanes = input.apply(current)
-  if (current === undefined) {
-    insertPreferenceRow(tx, input, lanes)
-  } else {
-    updatePreferenceRow(tx, input, lanes)
-  }
-  const row = tx
-    .select()
-    .from(analyticsPreferences)
-    .where(eq(analyticsPreferences.governanceActorKey, input.governanceActorKey))
-    .get()
-  if (row === undefined) throw new Error('preference upsert failed to persist')
-  return row
-}
 
 const appendAuditRow = (
   tx: Tx,
@@ -198,6 +126,14 @@ const mirrorPreferenceInTx = (
   })
 }
 
+/**
+ * Runs inside the preference transaction, after the row is upserted and before
+ * it commits, and receives the resulting lane state. Throwing rolls the whole
+ * preference write back -- that is how a consent record is kept from outliving
+ * the collection-eligibility ref it depends on.
+ */
+export type PreferenceAppliedInTx = (tx: Tx, row: AnalyticsPreferenceRow) => void
+
 export const setPreference = (
   input: Readonly<{
     governanceActorKey: string
@@ -207,6 +143,7 @@ export const setPreference = (
     policyVersion: number
     source: PreferenceSource
     nowMs: number
+    onAppliedInTx?: PreferenceAppliedInTx
   }>,
   deps: PreferenceStoreDeps = DEFAULT_DEPS,
 ): PreferenceMutationResult => {
@@ -240,6 +177,7 @@ export const setPreference = (
       policyVersion: input.policyVersion,
       nowMs: input.nowMs,
     })
+    input.onAppliedInTx?.(tx, upserted)
     return upserted
   })
   log.info({ action: input.value, lane: input.lane }, 'analytics preference applied')
@@ -289,6 +227,3 @@ export const withdrawPreference = (
   log.info({ action: 'withdraw' }, 'analytics preference withdrawn')
   return { status: 'applied', auditId, row }
 }
-
-export type { PreferenceUpsertInput }
-export type { Tx as PreferenceTx }
