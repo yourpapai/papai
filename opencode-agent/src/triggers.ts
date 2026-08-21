@@ -3,9 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { renderExhausted, renderReviewsExhausted } from './budget-notices.js'
 import { applyCiTrigger } from './ci-trigger.js'
-import { acceptedCommands, commandApplies, COMMAND_SIGNALS } from './commands.js'
+import { refuseCommand, refuseExhausted, refuseReviews } from './command-refusals.js'
+import { commandApplies, COMMAND_SIGNALS } from './commands.js'
 import type { ParsedCommand } from './commands.js'
 import { applyClarifyIntent, applyIntent, applySteeringIntent, readAndSkip } from './comment-intent.js'
 import { commandSurface } from './feedback-target.js'
@@ -13,7 +13,7 @@ import { react } from './feedback.js'
 import { branchNameFor } from './git.js'
 import type { PhaseInput } from './phase-context.js'
 import { postAndAppend } from './run-post.js'
-import { renderCommandElsewhere, renderRefusedCommand } from './run-report.js'
+import { renderCommandElsewhere } from './run-report.js'
 import { canTransition } from './transitions.js'
 import { moveOrSkip, skip } from './trigger-outcome.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
@@ -87,12 +87,10 @@ export const applyTrigger = (input: PhaseInput): Promise<TriggerOutcome> => {
 /**
  * The archive door (D7): a merged PR moves `COMPLETE` → `ARCHIVE`.
  *
- * `moveOrSkip` turns anything other than COMPLETE into a quiet skip with a
- * reason: a merged-PR event that arrives mid-pipeline, before delivery, has no
- * archive to run (the folder is still being drafted against), and a second
- * merge on an already-archived issue finds no `ARCHIVE` row from `COMPLETE` and
- * is skipped the same way. No comment is posted on a skip, mirroring the CI
- * path: the event is machine noise the issue does not need to hear about.
+ * `moveOrSkip` turns anything other than COMPLETE into a quiet skip: a
+ * merged-PR event mid-pipeline has no archive to run, and a second merge on
+ * an already-archived issue finds no `ARCHIVE` row from `COMPLETE`. No
+ * comment on a skip, mirroring the CI path — machine noise.
  */
 export const applyArchiveTrigger = (input: PhaseInput): TriggerOutcome => {
   const { state, deps } = input
@@ -101,11 +99,6 @@ export const applyArchiveTrigger = (input: PhaseInput): TriggerOutcome => {
 
 /**
  * The pull-request door, which takes the same commands the issue does.
- *
- * It used to take `/review` and nothing else. That narrowing was right while the
- * issue was still the surface a maintainer drove the agent from; it is wrong now
- * that a delivered issue refuses commands and points here, because the two rules
- * together would leave `/retry`, `/cancel` and `/ask` with nowhere to be typed.
  *
  * Everything goes through {@link applyCommand}, deliberately: the `prNumber`
  * predicate, both budgets and the list a refusal offers are one seam in
@@ -131,15 +124,12 @@ const applyPullRequestCommand = (input: PhaseInput, command: ParsedCommand | nul
 /**
  * The reply to a command typed on the issue after the pull request took over.
  *
- * Its own function rather than a branch of {@link refuseCommand}, for the reason
- * `refuseExhausted` is its own: the sentence is different in kind. That one says
- * "this phase does not accept that", which here would be a lie — the command is
- * perfectly good and would have worked one page over. This one says where, and
- * says nothing about the state, which has not moved.
- *
- * A `skipped` run, not a failure: nothing broke and nothing was spent. `reported`
- * is true, because the issue does carry this run's account of what it did — it
- * declined to act, and said so.
+ * Its own function rather than a branch of {@link refuseCommand}: the sentence
+ * is different in kind. That one says "this phase does not accept that", which
+ * here would be a lie — the command is perfectly good and would have worked
+ * one page over. This one says where, and says nothing about the state. A
+ * `skipped` run with `reported: true`: the issue carries this run's account —
+ * it declined to act, and said so.
  */
 const commandBelongsOnPr = async (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
   const { state, thread, deps } = input
@@ -154,19 +144,57 @@ const commandBelongsOnPr = async (input: PhaseInput, command: ParsedCommand): Pr
   return { state, halt: skip(state, `${command.command} belongs on the pull request`, true), answer: false }
 }
 
+/**
+ * The two non-moving side operations, decided before the signal lookup.
+ *
+ * `/ask` is always available: answering asks nothing of the state machine, so
+ * there is no phase in which it can be the wrong thing to do. The machine now
+ * agrees — `ANSWERED` is a non-moving signal accepted in every phase. It did
+ * not use to: it lived in three rows of the transition table while this line
+ * let `/ask` through everywhere, so a question in COMPLETE, FAILED or any
+ * mid-pipeline phase paid for the model turn and then crashed the runner on
+ * an `InvalidTransitionError` nobody on the issue ever saw.
+ *
+ * `/sync` is that shape's sibling — no `COMMAND_SIGNALS` entry, so the
+ * transition table is never consulted and no phase, park or resume question
+ * exists to answer. `COMPLETE`, `FAILED` and `INCOMPLETE` all take it, which
+ * is the point: a pull request that fell behind its base is repaired from
+ * wherever it was left. The predicate is the one `acceptedCommands` reads, so
+ * the gate and the offer cannot drift; without a pull request there is no
+ * branch-with-a-PR to merge base into, and the refusal is the ordinary
+ * wrong-command one listing what does apply.
+ */
+const sideOperation = (input: PhaseInput, command: ParsedCommand): TriggerOutcome | null => {
+  const { state } = input
+  if (command.command === '/ask') return { state, halt: null, answer: true }
+  if (command.command === '/sync') {
+    if (commandApplies('/sync', state)) return { state, halt: null, answer: false, sync: true }
+    return null
+  }
+  return null
+}
+
+/**
+ * A command with no signal that reached the signal lookup — either an unknown
+ * spell, or `/sync` without a pull request, the one signal-less command that
+ * can be refused. Both go through the wrong-command door, which lists what
+ * does apply here.
+ */
+const refuseUnknown = (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
+  const reason =
+    command.command === '/sync'
+      ? `${command.command} does not apply to this issue`
+      : `Unknown command ${command.command}`
+  return refuseCommand(input, command.command, reason)
+}
+
 const applyCommand = async (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
   const { state, deps } = input
-  // Always available: answering asks nothing of the state machine, so there is
-  // no phase in which it can be the wrong thing to do. The machine now agrees —
-  // `ANSWERED` is a non-moving signal accepted in every phase. It did not use
-  // to: it lived in three rows of the transition table while this line let
-  // `/ask` through everywhere, so a question in COMPLETE, FAILED or any
-  // mid-pipeline phase paid for the model turn and then crashed the runner on
-  // an `InvalidTransitionError` nobody on the issue ever saw.
-  if (command.command === '/ask') return Promise.resolve({ state, halt: null, answer: true })
+  const side = sideOperation(input, command)
+  if (side !== null) return side
 
   const signal = COMMAND_SIGNALS[command.command]
-  if (signal === undefined) return refuseCommand(input, command.command, `Unknown command ${command.command}`)
+  if (signal === undefined) return refuseUnknown(input, command)
 
   // The half of "does this command apply here" the transition table cannot
   // answer, asked before either budget: `/review` on a *cancelled* issue is a
@@ -217,83 +245,4 @@ const afterCommandCleanup = async (input: PhaseInput, command: ParsedCommand): P
   } catch (error) {
     deps.log.warn({ issue: state.issueId, error: errorMessage(error) }, 'Could not delete the agent branch for /cancel')
   }
-}
-
-/**
- * Answers a refused command on the issue, then skips.
- *
- * Only explicit commands come here. A classified plain comment cannot reach it
- * — `applyIntent` runs solely in the waiting phases, both of which accept both
- * of the signals it can produce, and `applyClarifyIntent` produces no signal at
- * all — and the CI paths above have their own, deliberately quieter, reporting.
- */
-const refuseCommand = async (input: PhaseInput, command: string, reason: string): Promise<TriggerOutcome> => {
-  const { state, thread, deps } = input
-  deps.log.warn({ issue: state.issueId, phase: state.phase, command }, 'Refused a slash command')
-
-  // Redundancy rather than the fix, and worth one call for the timing alone:
-  // the comment below is the better answer — it names what the phase *does*
-  // accept, from the transition table — but it arrives after `postAndAppend`,
-  // while the reaction lands before the run has done anything at all.
-  await react(deps, input.trigger, 'confused')
-  await postAndAppend(thread, input, renderRefusedCommand(command, state.phase, acceptedCommands(state)), state)
-
-  return { state, halt: skip(state, reason, true), answer: false }
-}
-
-/**
- * Turns down a `/retry` the retry budget can no longer pay for, before the
- * signal is applied.
- *
- * Before, because this is the last moment the state is still the one the
- * maintainer is looking at. The ceiling used to be checked in `driveMachine`,
- * one step too late: `applyTrigger` had already applied `RETRY`, which clears
- * `resumeFrom` while carrying `attempts` across, so the give-up notice posted a
- * state that had left `FAILED` for the handler phase it was resuming into.
- * Nothing could re-enter that phase — `/retry` needs `FAILED` and a plain
- * comment needs a waiting phase — so spending the budget parked the issue
- * somewhere only `/cancel` reached, and the notice's own advice was guaranteed
- * to be refused. Refusing here leaves `FAILED` and its `resumeFrom` untouched,
- * which is what makes raising `AGENT_MAX_ATTEMPTS` and retrying a real remedy
- * rather than a suggestion.
- *
- * Beside {@link refuseCommand} rather than inside it because the two say
- * different things. That one lists the commands the phase does accept, which
- * here would name `/retry` itself — the command being refused — and its "does
- * not apply right now" is wrong twice over: the command applies perfectly, a
- * bound was reached. So this one carries the give-up wording, logs a spent
- * budget, and reports a `failed` run rather than a skipped one, exactly as the
- * check it replaces did.
- */
-const refuseExhausted = async (input: PhaseInput): Promise<TriggerOutcome> => {
-  const { state, thread, deps } = input
-  const reason = `Retry budget exhausted (${state.attempts} of ${deps.config.maxAttempts} attempts)`
-  deps.log.warn({ issue: state.issueId, attempts: state.attempts, resumeFrom: state.resumeFrom }, 'Retry budget spent')
-
-  await postAndAppend(thread, input, renderExhausted(reason), state)
-
-  return { state, halt: { status: 'failed', reason, state, reported: true }, answer: false }
-}
-
-/**
- * The same refusal against the review budget, and the same "before the move"
- * reason: a `/review` applied and then regretted would park the issue in
- * `CODE_REVIEW`, a handler phase no trigger re-enters, under a notice inviting
- * the very command that had just become impossible. That is the exact shape of
- * the bug {@link refuseExhausted} was written to close, on the other ceiling.
- *
- * Beside it rather than inside it because the remedy differs: nothing is parked
- * here, so `/retry` cannot help, and `renderReviewsExhausted` names
- * `AGENT_MAX_REVIEW_ATTEMPTS` instead. `failed` rather than a skip, matching
- * both the retry notice and the CI one — a bound was reached and the run has
- * said so on the issue.
- */
-const refuseReviews = async (input: PhaseInput): Promise<TriggerOutcome> => {
-  const { state, thread, deps } = input
-  const reason = `Review budget exhausted (${state.reviewAttempts} of ${deps.config.maxReviewAttempts} reviews)`
-  deps.log.warn({ issue: state.issueId, reviewAttempts: state.reviewAttempts, pr: state.prNumber }, 'Reviews spent')
-
-  await postAndAppend(thread, input, renderReviewsExhausted(reason, state.prUrl), state)
-
-  return { state, halt: { status: 'failed', reason, state, reported: true }, answer: false }
 }
