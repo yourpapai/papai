@@ -15,15 +15,15 @@ See LICENSE in the project root for details.
 
 ## 1. Fixture capability: scenario-configurable user labels
 
-- [ ] 1.1 Add a failing contract test to `tests/stories/harness/chat.test.ts`: a fresh
+- [x] 1.1 Add a failing contract test to `tests/stories/harness/chat.test.ts`: a fresh
       `ScenarioChat` returns `null` from `resolveUserLabel` for an unseeded id, returns
       the seeded label after `setUserLabel(userId, label)`, and rejects for an id seeded
       to throw. Verify: `STORY tests/stories/harness/chat.test.ts` (expect red).
-- [ ] 1.2 Implement `setUserLabel` and `resolveUserLabel` on `createScenarioChat`
+- [x] 1.2 Implement `setUserLabel` and `resolveUserLabel` on `createScenarioChat`
       (`tests/stories/harness/chat.ts`), mirroring the `addGroupAdmin` shape. `resolveUserLabel`
       is optional on `ChatProvider`, so no type change is needed. Verify:
       `STORY tests/stories/harness/chat.test.ts` (expect green).
-- [ ] 1.3 Add `given.seedChatUserLabel(...)` to `tests/stories/harness/fixtures.ts`,
+- [x] 1.3 Add `given.seedChatUserLabel(...)` to `tests/stories/harness/fixtures.ts`,
       mirroring `seedGroupAdmin` — including the "requires a chat instance" throw — and
       cover it in `tests/stories/harness/fixtures.test.ts`. Verify:
       `STORY tests/stories/harness/fixtures.test.ts`.
