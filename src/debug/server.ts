@@ -14,6 +14,7 @@ import { routePluginMcpPaths } from '../mcp-server/index.js'
 import { handleAdminRecentRequests } from './admin-system.js'
 import { routePublicAuthPaths } from './auth-routes.js'
 import { handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
+import { jsonResponse } from './json-response.js'
 import { logBufferStream } from './log-buffer.js'
 import { parseLogFilter } from './log-filter-model.js'
 import { handleLogs, handleLogStats, handleLogScopes } from './log-routes.js'
@@ -59,10 +60,6 @@ function isAuthorizedRequest(req: Readonly<Request>): AuthenticatedRequest | nul
   if (session === null) return null
   recordActivity(session.sessionIdHash, req)
   return session
-}
-
-function jsonResponse(body: unknown): Response {
-  return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
 }
 
 function handleEvents(req: Request, session: AuthenticatedRequest): Response {
