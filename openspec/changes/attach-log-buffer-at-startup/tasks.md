@@ -16,7 +16,7 @@
 
 ## 5. Targeted regression suites
 
-- [ ] 5.1 Run every existing suite that exercises start/stop and the /logs routes: `bun test tests/debug/log-buffer.test.ts tests/debug/server.test.ts tests/debug/billing-route.test.ts tests/debug/server-stats.test.ts tests/debug/logs-route-content.test.ts tests/debug/debug-smoke.test.ts`
+- [x] 5.1 Run every existing suite that exercises start/stop and the /logs routes: `bun test tests/debug/log-buffer.test.ts tests/debug/server.test.ts tests/debug/billing-route.test.ts tests/debug/server-stats.test.ts tests/debug/logs-route-content.test.ts tests/debug/debug-smoke.test.ts`
 
 ## 6. Full verification and docs
 
