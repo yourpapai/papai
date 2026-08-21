@@ -113,7 +113,8 @@
     "codeindex:index": "bun run scripts/codeindex-cli.ts index",
     "codeindex:reindex": "bun run scripts/codeindex-cli.ts reindex",
     "codeindex:stats": "bun run scripts/codeindex-cli.ts stats",
-    "license:headers": "bun scripts/add-license-headers.ts"
+    "license:headers": "bun scripts/add-license-headers.ts",
+    "loc:history": "bun scripts/loc-history.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.29",
