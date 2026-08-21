@@ -271,9 +271,15 @@ wrong actor while everything remains correctly composed.
 
 That blast radius lands on one dimension. **`authorization-routing` closes on one
 scenario per distinct denial surface**, not per distinct claim. Four of the
-fourteen open dimensions are authorization-routing — `reply-to-bot-routing`,
+fourteen open dimensions were authorization-routing — `reply-to-bot-routing`,
 `identity-provisioning`, `mid-run-control`, `chat-participant-resolution` — and
-each already names its surfaces in its rationale. Every other dimension takes the
+each already names its surfaces in its rationale.
+`participant-resolution-stories` has since closed `chat-participant-resolution`'s
+two dimensions, leaving twelve open. It also sharpened the bar in passing: a
+denial surface has to be *reachable* to count. Two of the three conjuncts in that
+behavior's registration gate are always satisfied by production wiring, so a
+scenario over them would have been evidence about a fabricated configuration, not
+about the gate. Every other dimension takes the
 rule as written above.
 
 This is a targeted deepening, not the retro-fit rejected three paragraphs up.
