@@ -185,6 +185,141 @@ describe('collectContext', () => {
   })
 })
 
+describe('collectContext locale', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  test('ru deps resolve top-level labels from the contextView catalog', () => {
+    const snapshot = collectContext('user1', { ...makeDeps(null), locale: 'ru' })
+    expect(snapshot.sections.map((s) => s.label)).toEqual([
+      'Системный промпт',
+      'Контекст памяти',
+      'История диалога',
+      'Инструменты',
+    ])
+    expect(snapshot.sections.map((s) => s.id)).toEqual([
+      'system_prompt',
+      'memory_context',
+      'conversation_history',
+      'tools',
+    ])
+  })
+
+  test('ru deps localize memory children labels and the facts detail (paucal)', () => {
+    const deps = makeDeps({
+      getSummary: () => 'краткая сводка',
+      getFacts: () => [
+        { identifier: '#1', title: 'A', url: '', last_seen: '2026-04-11' },
+        { identifier: '#2', title: 'B', url: '', last_seen: '2026-04-11' },
+      ],
+    })
+    const snapshot = collectContext('user1', { ...deps, locale: 'ru' })
+    const memory = requireSection(snapshot.sections, 'Контекст памяти')
+    assert.ok(memory.children !== undefined)
+    expect(memory.children.map((c) => c.label)).toEqual(['Сводка', 'Известные сущности'])
+    const knownEntities = memory.children[1]
+    assert.ok(knownEntities !== undefined)
+    expect(knownEntities.detail).toBe('2 факта')
+  })
+
+  test('ru deps pick the grammatical fact form per count (paucal 2-4, genitive plural 12-14)', () => {
+    const factDetail = (n: number): string | undefined => {
+      const facts = Array.from({ length: n }, (_, i) => ({
+        identifier: `#${i + 1}`,
+        title: 'A',
+        url: '',
+        last_seen: '2026-04-11',
+      }))
+      const snapshot = collectContext('user1', { ...makeDeps({ getFacts: () => facts }), locale: 'ru' })
+      const memory = requireSection(snapshot.sections, 'Контекст памяти')
+      assert.ok(memory.children !== undefined)
+      return memory.children[1]?.detail
+    }
+    expect(factDetail(2)).toBe('2 факта')
+    expect(factDetail(4)).toBe('4 факта')
+    expect(factDetail(5)).toBe('5 фактов')
+    expect(factDetail(12)).toBe('12 фактов')
+    expect(factDetail(14)).toBe('14 фактов')
+    expect(factDetail(21)).toBe('21 факт')
+  })
+
+  test('ru deps render the singular fact detail for a single fact', () => {
+    const deps = makeDeps({
+      getFacts: () => [{ identifier: '#1', title: 'A', url: '', last_seen: '2026-04-11' }],
+    })
+    const snapshot = collectContext('user1', { ...deps, locale: 'ru' })
+    const memory = requireSection(snapshot.sections, 'Контекст памяти')
+    assert.ok(memory.children !== undefined)
+    expect(memory.children[1]?.detail).toBe('1 факт')
+  })
+
+  test('ru deps localize the message-count detail (singular, paucal, genitive plural)', () => {
+    const messageDetail = (n: number): string | undefined => {
+      const history = Array.from({ length: n }, (_, i) => ({ role: 'user' as const, content: `msg${i + 1}` }))
+      const snapshot = collectContext('user1', makeDeps({ locale: 'ru', getHistory: () => history }))
+      return requireSection(snapshot.sections, 'История диалога').detail
+    }
+    expect(messageDetail(1)).toBe('1 сообщение')
+    expect(messageDetail(3)).toBe('3 сообщения')
+    expect(messageDetail(4)).toBe('4 сообщения')
+    expect(messageDetail(11)).toBe('11 сообщений')
+    expect(messageDetail(12)).toBe('12 сообщений')
+    expect(messageDetail(22)).toBe('22 сообщения')
+  })
+
+  test('ru deps localize the progressive-disclosure tools detail', () => {
+    const deps = makeDeps({
+      getActiveToolDefinitions: () => ({ a: {}, b: {}, c: {} }),
+      getDisclosedToolDefinitions: () => ({ search_tools: {}, load_tool: {} }),
+    })
+    const snapshot = collectContext('user1', { ...deps, locale: 'ru' })
+    expect(requireSection(snapshot.sections, 'Инструменты').detail).toBe(
+      '2 активных · 3 доступных (прогрессивное раскрытие)',
+    )
+  })
+
+  test('ru deps localize the system-prompt children labels', () => {
+    const deps = makeDeps({
+      buildInstructionsBlock: () => '=== Custom instructions ===\n- короткие слова\n',
+      getProviderAddendum: () => 'дополнение провайдера',
+    })
+    const snapshot = collectContext('user1', { ...deps, locale: 'ru' })
+    const sysPrompt = requireSection(snapshot.sections, 'Системный промпт')
+    assert.ok(sysPrompt.children !== undefined)
+    expect(sysPrompt.children.map((c) => c.label)).toEqual([
+      'Базовые инструкции',
+      'Пользовательские инструкции',
+      'Дополнение провайдера',
+    ])
+  })
+
+  test('default (no-locale) deps render the en labels and details unchanged', () => {
+    const deps = makeDeps({
+      getSummary: () => 'brief summary',
+      getFacts: () => [
+        { identifier: '#1', title: 'A', url: '', last_seen: '2026-04-11' },
+        { identifier: '#2', title: 'B', url: '', last_seen: '2026-04-11' },
+      ],
+      getHistory: () => [{ role: 'user', content: 'hi' }],
+      getActiveToolDefinitions: () => ({ a: {}, b: {}, c: {} }),
+      getDisclosedToolDefinitions: () => ({ search_tools: {} }),
+    })
+    const snapshot = collectContext('user1', deps)
+    expect(snapshot.sections.map((s) => s.label)).toEqual([
+      'System prompt',
+      'Memory context',
+      'Conversation history',
+      'Tools',
+    ])
+    const memory = requireSection(snapshot.sections, 'Memory context')
+    assert.ok(memory.children !== undefined)
+    expect(memory.children[1]?.detail).toBe('2 facts')
+    expect(requireSection(snapshot.sections, 'Conversation history').detail).toBe('1 message')
+    expect(requireSection(snapshot.sections, 'Tools').detail).toBe('1 active · 3 available (progressive disclosure)')
+  })
+})
+
 describe('resolveEncodingName', () => {
   test('picks o200k_base for GPT-4o family', () => {
     expect(resolveEncodingName('gpt-4o')).toBe('o200k_base')

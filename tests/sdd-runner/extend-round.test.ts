@@ -13,7 +13,6 @@ import { runGateResume } from '../../sdd-runner/src/extend-round.js'
 import { prepareResumeInput } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
-import { scriptedPrompter } from '../../sdd-runner/src/prompter.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 
 function makeSidecarDir(): { dir: string; sidecarDir: string } {
@@ -110,7 +109,7 @@ describe('settleApprovedGate export (7.1)', () => {
     const result = await settleApprovedGate(
       {
         deps: {
-          config: { repoRoot: dir, workDir, model: 'm', models: {}, timeouts: { wallClockMs: 1, inactivityMs: 1 } },
+          config: { repoRoot: dir, workDir, model: 'm', budget: 5 },
           spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
           execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
           driver: createOpenSpecDriver({
@@ -125,7 +124,7 @@ describe('settleApprovedGate export (7.1)', () => {
         sidecarDir: path.join(state.runDir, 'sidecars'),
         agent: {
           spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
-          config: { repoRoot: dir, workDir, model: 'm', models: {}, timeouts: { wallClockMs: 1, inactivityMs: 1 } },
+          config: { repoRoot: dir, workDir, model: 'm', budget: 5 },
           execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
           emit,
         },
@@ -177,8 +176,7 @@ describe('runGateResume deadline waiter entry (D11)', () => {
         repoRoot: dir,
         workDir,
         model: 'm',
-        models: {},
-        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+        budget: 5,
       },
       spawn: (_command, args, options) => {
         const prompt = String(args[args.length - 1])
@@ -318,8 +316,7 @@ describe('runGateResume waiter bypass flags (D11)', () => {
         repoRoot: dir,
         workDir,
         model: 'm',
-        models: {},
-        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+        budget: 5,
       },
       spawn: (_command, args, options) => {
         const prompt = String(args[args.length - 1])
@@ -415,8 +412,7 @@ describe('runGateResume waiter bypass flags (D11)', () => {
   it('a TTY with a deadline pending skips the waiter and runs the interactive session', async () => {
     const fx = await makeBypassFixture()
     fs.writeFileSync(path.join(fx.workDir, 'runs', fx.runId, 'gate-1.md'), '## Final gate\n\nABORT\n')
-    const { prompter } = scriptedPrompter(['q'])
-    const deps: OrchestratorDeps = { ...fx.deps, interactive: () => true, makePrompter: () => prompter }
+    const deps: OrchestratorDeps = { ...fx.deps, interactive: () => true, gateKeyScript: 'q' }
     const result = await runGateResume(deps, fx.runId, {})
     expect(result.outcome).toBe('abandoned')
   })

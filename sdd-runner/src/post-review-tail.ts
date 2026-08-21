@@ -34,7 +34,7 @@ export async function runPostConvergenceTail(input: PostConvergenceTailInput): P
   const machine = createStageMachine({ emit: ctx.emit })
   await machine.runStage('decompose', () =>
     runDecompose(
-      { driver: deps.driver, agent, sidecarDir: ctx.sidecarDir, cwd: ctx.cwd },
+      { driver: deps.driver, agent, runDir: state.runDir, sidecarDir: ctx.sidecarDir, cwd: ctx.cwd },
       { changeName: state.changeName },
     ),
   )
@@ -46,6 +46,7 @@ export async function runPostConvergenceTail(input: PostConvergenceTailInput): P
         {
           driver: deps.driver,
           agent,
+          runDir: state.runDir,
           sidecarDir: ctx.sidecarDir,
           cwd: ctx.cwd,
         },

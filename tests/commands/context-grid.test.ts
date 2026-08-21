@@ -13,6 +13,7 @@ const baseSnapshot = (overrides: Partial<ContextSnapshot> = {}): ContextSnapshot
   totalTokens: 0,
   maxTokens: 128_000,
   approximate: false,
+  locale: 'en',
   sections: [],
   ...overrides,
 })
@@ -21,7 +22,7 @@ describe('buildContextGrid', () => {
   test('returns a string with GRID_ROWS lines of GRID_COLS cells when maxTokens is known', () => {
     const snapshot = baseSnapshot({
       totalTokens: 1_000,
-      sections: [{ label: 'System prompt', tokens: 1_000 }],
+      sections: [{ id: 'system_prompt', label: 'System prompt', tokens: 1_000 }],
     })
     const grid = buildContextGrid(snapshot)
     const lines = grid.split('\n')
@@ -36,10 +37,10 @@ describe('buildContextGrid', () => {
       totalTokens: 4,
       maxTokens: 128_000,
       sections: [
-        { label: 'System prompt', tokens: 1 },
-        { label: 'Memory context', tokens: 1 },
-        { label: 'Conversation history', tokens: 1 },
-        { label: 'Tools', tokens: 1 },
+        { id: 'system_prompt', label: 'System prompt', tokens: 1 },
+        { id: 'memory_context', label: 'Memory context', tokens: 1 },
+        { id: 'conversation_history', label: 'Conversation history', tokens: 1 },
+        { id: 'tools', label: 'Tools', tokens: 1 },
       ],
     })
     const grid = buildContextGrid(snapshot)
@@ -53,7 +54,7 @@ describe('buildContextGrid', () => {
   test('fills the grid proportionally when usage is substantial', () => {
     const snapshot = baseSnapshot({
       totalTokens: 64_000,
-      sections: [{ label: 'System prompt', tokens: 64_000 }],
+      sections: [{ id: 'system_prompt', label: 'System prompt', tokens: 64_000 }],
     })
     const grid = buildContextGrid(snapshot)
     const usedCells = Array.from(grid).filter((c) => c === '🟦').length
@@ -66,8 +67,8 @@ describe('buildContextGrid', () => {
       maxTokens: null,
       totalTokens: 400,
       sections: [
-        { label: 'System prompt', tokens: 200 },
-        { label: 'Tools', tokens: 200 },
+        { id: 'system_prompt', label: 'System prompt', tokens: 200 },
+        { id: 'tools', label: 'Tools', tokens: 200 },
       ],
     })
     const grid = buildContextGrid(snapshot)
@@ -89,7 +90,7 @@ describe('buildContextGrid', () => {
   test('caps oversized usage at full grid', () => {
     const snapshot = baseSnapshot({
       totalTokens: 200_000,
-      sections: [{ label: 'System prompt', tokens: 200_000 }],
+      sections: [{ id: 'system_prompt', label: 'System prompt', tokens: 200_000 }],
     })
     const grid = buildContextGrid(snapshot)
     const cells = Array.from(grid.replace(/\n/gu, ''))
@@ -97,15 +98,41 @@ describe('buildContextGrid', () => {
   })
 })
 
-describe('SECTION_EMOJIS', () => {
-  test('contains expected section labels', () => {
-    expect(SECTION_EMOJIS['System prompt']).toBe('🟦')
-    expect(SECTION_EMOJIS['Memory context']).toBe('🟩')
-    expect(SECTION_EMOJIS['Conversation history']).toBe('🟨')
-    expect(SECTION_EMOJIS['Tools']).toBe('🟪')
+describe('SECTION_EMOJIS keyed by stable section ids', () => {
+  test('maps the four top-level section ids to their emojis', () => {
+    expect(SECTION_EMOJIS['system_prompt']).toBe('🟦')
+    expect(SECTION_EMOJIS['memory_context']).toBe('🟩')
+    expect(SECTION_EMOJIS['conversation_history']).toBe('🟨')
+    expect(SECTION_EMOJIS['tools']).toBe('🟪')
   })
 
-  test('returns undefined for unknown labels', () => {
-    expect(SECTION_EMOJIS['Unknown section']).toBeUndefined()
+  test('renders the identical grid for ru and en snapshots with the same ids', () => {
+    const enGrid = buildContextGrid(
+      baseSnapshot({
+        totalTokens: 4,
+        sections: [
+          { id: 'system_prompt', label: 'System prompt', tokens: 1 },
+          { id: 'memory_context', label: 'Memory context', tokens: 1 },
+          { id: 'conversation_history', label: 'Conversation history', tokens: 1 },
+          { id: 'tools', label: 'Tools', tokens: 1 },
+        ],
+      }),
+    )
+    const ruGrid = buildContextGrid(
+      baseSnapshot({
+        totalTokens: 4,
+        sections: [
+          { id: 'system_prompt', label: 'Системный промпт', tokens: 1 },
+          { id: 'memory_context', label: 'Контекст памяти', tokens: 1 },
+          { id: 'conversation_history', label: 'История диалога', tokens: 1 },
+          { id: 'tools', label: 'Инструменты', tokens: 1 },
+        ],
+      }),
+    )
+    expect(ruGrid).toBe(enGrid)
+    expect(enGrid).toContain('🟦')
+    expect(enGrid).toContain('🟩')
+    expect(enGrid).toContain('🟨')
+    expect(enGrid).toContain('🟪')
   })
 })

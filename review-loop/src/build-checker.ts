@@ -76,3 +76,14 @@ export async function runBuildWithLogging(
   reporter.event(`[build] ${phase.result.passed ? 'passed' : 'FAILED'} · ${formatDuration(phase.durationMs)}`)
   return phase.result
 }
+
+export function runAggregatedBuild(
+  exec: ShellExecFn,
+  reporter: ProgressReporter,
+  cwd?: string,
+): Promise<BuildCheckResult> {
+  // Aggregated verification: one build over the working-tree diff after all batches.
+  // For now, a single invocation of the same build command; attribution is handled
+  // by the caller via diff --name-only vs spans.
+  return runBuildWithLogging(exec, reporter, cwd)
+}

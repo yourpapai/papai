@@ -7,6 +7,7 @@
   "buildTimeoutMs": 600000,
   "runTimeoutMs": 0,
   "poolSize": 3,
+  "batchVerify": false,
   "checkCommand": "bun check:full",
   "commitAuthor": { "name": "review-loop[bot]", "email": "review-loop@users.noreply.github.com" },
   "reviewer": {

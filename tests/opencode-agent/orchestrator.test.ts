@@ -14,7 +14,7 @@ import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
 import { diffGuardError, turnDeadlineError } from '../../opencode-agent/src/errors.js'
 import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import { GitError } from '../../opencode-agent/src/git.js'
-import type { Git, Salvage } from '../../opencode-agent/src/git.js'
+import type { Git, MergeOutcome, Salvage } from '../../opencode-agent/src/git.js'
 import type { PullRequestHead, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github-pulls.js'
 import type { ReactionContent, ReactionRef, ReactionTarget } from '../../opencode-agent/src/github-reactions.js'
 import type { GitHubApi } from '../../opencode-agent/src/github.js'
@@ -109,6 +109,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,
+  stallTimeoutMs: 300_000,
   // No job deadline by default, which is what every run had before it existed:
   // the wall-clock stop is off unless a test switches it on.
   jobDeadlineMs: null,
@@ -116,6 +117,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   wrapUpMs: 120_000,
   ciFixMaxRounds: 2,
   commitRepairMaxRounds: 3,
+  syncRepairMaxRounds: 3,
   maxCiAttempts: 2,
   maxAttempts: 3,
   maxReviewAttempts: 2,
@@ -273,6 +275,8 @@ interface PipelineIo {
   readContents: Record<string, string>
   /** What `git` would report as the remote's default branch. */
   detectedBranch: string | null
+  /** What a `/sync` run's `mergeBase` reports; up-to-date when unset. */
+  syncOutcome: MergeOutcome | null
   /**
    * What the diff guard measured for the commit `commitAll` made.
    *
@@ -427,6 +431,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     reviewCalls: [],
     reviewError: null,
     detectedBranch: BASE_BRANCH,
+    syncOutcome: null,
     committedTotals: { files: 2, lines: 12 },
     salvaged: { kind: 'committed', totals: { files: 3, lines: 140 }, overCap: null },
     salvageError: null,
@@ -635,6 +640,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.gitCalls.push(`push:${branch}${options?.noVerify === true ? ':no-verify' : ''}`)
       return Promise.resolve()
     },
+    reconcile: (branch) => {
+      io.gitCalls.push(`reconcile:${branch}`)
+      return Promise.resolve()
+    },
     defaultBranch: () => Promise.resolve(io.detectedBranch),
     // Constant, which is the ordinary case: the review loop is a fake here, so
     // nothing moves the branch behind the pipeline's back. A test that wants the
@@ -646,6 +655,18 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     },
     revertPaths: (sha, paths) => {
       io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
+      return Promise.resolve()
+    },
+    mergeBase: (base) => {
+      io.gitCalls.push(`mergeBase:${base}`)
+      return Promise.resolve(io.syncOutcome ?? { kind: 'up-to-date' as const })
+    },
+    completeMerge: (message) => {
+      io.gitCalls.push(`completeMerge:${message.split('\n')[0]}`)
+      return Promise.resolve()
+    },
+    abortMerge: () => {
+      io.gitCalls.push('abortMerge')
       return Promise.resolve()
     },
   }
@@ -771,11 +792,15 @@ const hostileGit = (): Git => {
     deleteRemoteBranch: (): Promise<void> => refuse('deleteRemoteBranch'),
     commitAll: (): Promise<CommitOutcome> => refuse('commit'),
     salvageAll: (): Promise<Salvage> => refuse('salvage'),
+    reconcile: (): Promise<void> => refuse('reconcile'),
     push: (): Promise<void> => refuse('push'),
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
     headSha: (): Promise<string> => refuse('rev-parse'),
     changedSince: (): Promise<string[]> => refuse('diff --name-only'),
     revertPaths: (): Promise<void> => refuse('revert'),
+    mergeBase: (): Promise<never> => refuse('merge'),
+    completeMerge: (): Promise<void> => refuse('commit'),
+    abortMerge: (): Promise<void> => refuse('merge --abort'),
   }
 }
 
@@ -1758,13 +1783,14 @@ describe('/review — the review loop as a command', () => {
     // `ensureBranch` first, and it is not optional: unlike the review that used
     // to run inside phase 3, this one usually runs in a job that implemented
     // nothing, so the remote branch is the only copy of the work.
-    // `changedSince` sits between the commit and the push, and belongs in this
-    // exact-sequence assertion rather than beside it: the whole point of the
-    // guard is that nothing reaches `push` before it has been asked what the
-    // loop's own commits touched.
+    // `reconcile` sits before `changedSince`, which sits between the commit and
+    // the push: a remote that advanced mid-run is merged in before the guard
+    // asks what the loop's own commits touched, so nothing rides the merge into
+    // a push it cannot survive.
     expect(harness.io.gitCalls).toEqual([
       `ensureBranch:agent/issue-${ISSUE}:${BASE_BRANCH}`,
       `commit:fix(agent): apply review-loop findings for issue #${ISSUE}`,
+      `reconcile:agent/issue-${ISSUE}`,
       'changedSince:head-sha',
       `push:agent/issue-${ISSUE}`,
     ])

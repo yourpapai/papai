@@ -132,6 +132,22 @@ describe('createStopController', () => {
   })
 })
 
+describe('remainingMs', () => {
+  test('counts down from the budget while the run carries on', () => {
+    const stop = createStopController({ runTimeoutMs: 60_000, host: fakeHost() })
+
+    const remaining = stop.remainingMs!()
+    expect(remaining).toBeLessThanOrEqual(60_000)
+    expect(remaining).toBeGreaterThan(59_000)
+  })
+
+  test('is unbounded when the run has no budget, so nothing is ever deferred for time', () => {
+    const stop = createStopController({ runTimeoutMs: 0, host: fakeHost() })
+
+    expect(stop.remainingMs!()).toBe(Infinity)
+  })
+})
+
 describe('remainingBudget', () => {
   test('charges the run for the time it spent getting ready', () => {
     // The budget is the caller's, and the caller starts counting when it spawns

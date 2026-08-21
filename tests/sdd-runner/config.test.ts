@@ -8,7 +8,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { deriveChangeName, discoverBranch, loadRunnerConfig, modelFor } from '../../sdd-runner/src/config.js'
+import {
+  autonomyOf,
+  deriveChangeName,
+  discoverBranch,
+  loadRunnerConfig,
+  modelFor,
+} from '../../sdd-runner/src/config.js'
 
 const tmpDirs: string[] = []
 
@@ -38,32 +44,29 @@ describe('loadRunnerConfig', () => {
       repoRoot: dir,
       workDir: '.sdd-runner',
       model: 'anthropic/claude-opus-4-1',
-      models: { estimator: 'openai/gpt-5' },
-      timeouts: { wallClockMs: 900_000, inactivityMs: 300_000 },
-      budgetUsd: 25,
+      budget: 25,
+      deadline: 30,
     })
     const config = await loadRunnerConfig(configPath)
     expect(config.repoRoot).toBe(dir)
     expect(config.workDir).toBe(path.join(dir, '.sdd-runner'))
     expect(config.model).toBe('anthropic/claude-opus-4-1')
-    expect(config.models).toEqual({ estimator: 'openai/gpt-5' })
-    expect(config.timeouts).toEqual({ wallClockMs: 900_000, inactivityMs: 300_000 })
-    expect(config.budgetUsd).toBe(25)
+    expect(config.budget).toBe(25)
+    expect(config.deadline).toBe(30)
   })
 
-  it('applies watchdog-precedent timeout defaults when omitted', async () => {
+  it('defaults workDir and budget when omitted', async () => {
     const dir = makeDir()
     const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model' })
     const config = await loadRunnerConfig(configPath)
-    expect(config.timeouts.wallClockMs).toBe(1_800_000)
-    expect(config.timeouts.inactivityMs).toBe(600_000)
     expect(config.workDir).toBe(path.join(dir, '.sdd-runner'))
-    expect(config.budgetUsd).toBeUndefined()
+    expect(config.budget).toBe(5)
+    expect(config.deadline).toBeUndefined()
   })
 
   it('rejects an invalid config naming the path', async () => {
     const dir = makeDir()
-    const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model', timeouts: { wallClockMs: -5 } })
+    const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model', budget: -5 })
     await expect(loadRunnerConfig(configPath)).rejects.toThrow(/config\.json/u)
   })
 
@@ -73,67 +76,30 @@ describe('loadRunnerConfig', () => {
   })
 })
 
-describe('autonomy block', () => {
-  it('applies safe defaults when the block is omitted', async () => {
+describe('autonomy derivation', () => {
+  it('derives single-mode assist autonomy with budget as the one ceiling', async () => {
     const dir = makeDir()
-    const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model' })
+    const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model', budget: 7 })
     const config = await loadRunnerConfig(configPath)
-    expect(config.autonomy).toEqual({
-      level: 'observe',
-      costCeilingUsd: 5.0,
-      autoExtendMax: 1,
-      deadlineMinutes: undefined,
-      rules: {},
-    })
+    expect(autonomyOf(config)).toEqual({ level: 'assist', costCeilingUsd: 7 })
   })
 
-  it('parses a full autonomy block', async () => {
+  it('deadline keys arm the wait; an explicit override wins', async () => {
     const dir = makeDir()
-    const configPath = writeConfig(dir, {
-      repoRoot: dir,
-      model: 'test-model',
-      autonomy: {
-        level: 'assist',
-        costCeilingUsd: 2.5,
-        autoExtendMax: 2,
-        deadlineMinutes: 10,
-        rules: { R1: true, R2: false },
-      },
-    })
+    const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model', deadline: 10 })
     const config = await loadRunnerConfig(configPath)
-    expect(config.autonomy!.level).toBe('assist')
-    expect(config.autonomy!.costCeilingUsd).toBe(2.5)
-    expect(config.autonomy!.autoExtendMax).toBe(2)
-    expect(config.autonomy!.deadlineMinutes).toBe(10)
-    expect(config.autonomy!.rules).toEqual({ R1: true, R2: false })
-  })
-
-  it('parses rules entries naming R4/R5 even though the policy ignores them', async () => {
-    const dir = makeDir()
-    const configPath = writeConfig(dir, {
-      repoRoot: dir,
-      model: 'test-model',
-      autonomy: { rules: { R4: false, R5: false } },
-    })
-    const config = await loadRunnerConfig(configPath)
-    expect(config.autonomy!.rules).toEqual({ R4: false, R5: false })
-  })
-
-  it('rejects an invalid autonomy level', async () => {
-    const dir = makeDir()
-    const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model', autonomy: { level: 'yolo' } })
-    await expect(loadRunnerConfig(configPath)).rejects.toThrow(/config\.json/u)
+    expect(autonomyOf(config).deadlineMinutes).toBe(10)
+    expect(autonomyOf(config, 25).deadlineMinutes).toBe(25)
   })
 })
 
 describe('modelFor', () => {
-  it('returns the per-role override when present, else the default model', async () => {
+  it('the single model serves every role', async () => {
     const dir = makeDir()
-    const configPath = writeConfig(dir, { repoRoot: dir, model: 'default-model', models: { skeptic: 'skeptic-model' } })
+    const configPath = writeConfig(dir, { repoRoot: dir, model: 'default-model' })
     const config = await loadRunnerConfig(configPath)
-    expect(modelFor(config, 'skeptic')).toBe('skeptic-model')
+    expect(modelFor(config, 'skeptic')).toBe('default-model')
     expect(modelFor(config, 'reviewer')).toBe('default-model')
-    expect(modelFor(config, 'resolver')).toBe('default-model')
   })
 })
 

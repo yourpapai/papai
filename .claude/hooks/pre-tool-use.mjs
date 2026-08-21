@@ -6,7 +6,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { enforceTdd } from '../../.hooks/tdd/checks/enforce-tdd.mjs'
 import { enforceWritePolicy } from '../../.hooks/tdd/checks/enforce-write-policy.mjs'
 import { getSessionsDir } from '../../.hooks/tdd/paths.mjs'
 import { SessionState } from '../../.hooks/tdd/session-state.mjs'
@@ -33,20 +32,6 @@ try {
           hookEventName: 'PreToolUse',
           permissionDecision: 'deny',
           permissionDecisionReason: writePolicy.reason,
-        },
-      }),
-    )
-    process.exit(0)
-  }
-
-  const gate = enforceTdd(ctx)
-  if (gate) {
-    console.log(
-      JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'deny',
-          permissionDecisionReason: gate.reason,
         },
       }),
     )

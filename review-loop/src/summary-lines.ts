@@ -48,6 +48,17 @@ export function buildInspectorLine(metrics: readonly RoundMetric[], inspect: boo
 }
 
 /**
+ * Deferred findings are not a verdict on the code, only on the clock: they were
+ * never dispatched, stay `discovered`, and a later round sees them again. Said
+ * only when something was actually held back.
+ */
+export function buildDeferredLine(metrics: readonly RoundMetric[]): string | null {
+  const deferred = metrics.reduce((s, m) => s + m.deferred, 0)
+  if (deferred === 0) return null
+  return `Deferred: ${deferred} (budget short; re-considered next round)`
+}
+
+/**
  * Reported from the reviewer's answers, with the fixer's second opinion folded
  * in only as the divergence count — the two distributions side by side would
  * invite reading one as a correction of the other, and neither is authoritative.

@@ -4,19 +4,24 @@
 // See LICENSE in the project root for details.
 
 import type { ProgressSnapshot } from './progress.js'
-import type { TurnStall } from './turn-stall.js'
 
 /**
  * Failures a phase handler can raise. Almost all of them end the same way — the
  * orchestrator parks the run in FAILED and posts the message on the issue — so
  * the message text is very nearly the whole contract.
  *
- * `code` is the exception, and {@link TURN_DEADLINE} is why it now matters to more
- * than a log reader: one failure here is **not** the work breaking, and the
- * handler that raised it has to be able to tell. One class per file is the
- * workspace's rule, so that distinction is a code and a payload on this class
- * rather than a subclass of it — which also keeps every existing `catch` and every
- * renderer reading a `PipelineError` exactly as it was.
+ * `code` is the exception, and {@link import('./turn-errors.js').turnDeadlineError}
+ * is why it now matters to more than a log reader: a handful of failures here
+ * are **not** the work breaking, and the handler that raised one has to be able
+ * to tell. One class per file is the workspace's rule, so that distinction is a
+ * code and a payload on this class rather than a subclass of it — which also
+ * keeps every existing `catch` and every renderer reading a `PipelineError`
+ * exactly as it was.
+ *
+ * The turn-family failures — the four a handler branches on by code — live in
+ * `turn-errors.ts` since the stall bound pushed them out of this file, and are
+ * re-exported below so callers keep naming one module. Same arrangement as
+ * `config-clock-values.ts`.
  */
 export class PipelineError extends Error {
   /** Machine-readable tag, useful when scanning job logs. */
@@ -60,7 +65,7 @@ export const diffGuardError = (reason: string): PipelineError =>
 
 /**
  * What GitHub says when the repository or organisation has "Allow GitHub Actions
- * to create and approve pull requests" switched off.
+ * to create or approve pull requests" switched off.
  *
  * Matched on the sentence rather than the status, because the status does not
  * distinguish it: this refusal arrives as a 403 exactly like a token missing
@@ -71,6 +76,24 @@ const PR_CREATION_FORBIDDEN = 'not permitted to create or approve pull requests'
 
 export const isPullRequestCreationForbidden = (error: unknown): boolean =>
   error instanceof Error && error.message.includes(PR_CREATION_FORBIDDEN)
+
+/**
+ * The refusal a **push** carrying base's own workflow changes triggers, and the
+ * one `/sync` can run into by design: GitHub refuses a push from a token
+ * without the `workflows` permission that creates or updates a file under
+ * `.github/workflows/`, and a base-merge carries base's edits to exactly there.
+ *
+ * Matched on fragments of GitHub's own sentence rather than the status, beside
+ * {@link PR_CREATION_FORBIDDEN} and for the same reason: the 403 that carries
+ * it also covers conditions with completely different remedies, and a matcher
+ * widened past this one sentence sends a maintainer to fix a thing that was
+ * never the problem. All three fragments are from that sentence, so a
+ * different 403 quoting none of them still misses.
+ */
+const WORKFLOW_PUSH_REFUSED_FRAGMENTS = ['refusing to allow', 'to create or update workflow', 'scope'] as const
+
+export const isWorkflowPushForbidden = (error: unknown): boolean =>
+  error instanceof Error && WORKFLOW_PUSH_REFUSED_FRAGMENTS.every((fragment) => error.message.includes(fragment))
 
 /**
  * The refusal above, turned into something a maintainer can act on.
@@ -93,8 +116,8 @@ export const isPullRequestCreationForbidden = (error: unknown): boolean =>
  * `AGENT_GITHUB_TOKEN` is the way out of both, and the one to reach for first: a
  * PAT or App installation token is not "GitHub Actions" as far as this rule is
  * concerned, so it needs no policy change at all — it is scoped to this one
- * workflow rather than loosening every repository in the organisation, and it is
- * what a repository wanting CI to run on the agent's branch needs anyway, since
+ * workflow rather than loosening every repository in the organisation, and it
+ * is what a repository wanting CI to run on the agent's branch needs anyway, since
  * pushes made with `GITHUB_TOKEN` deliberately trigger no workflows.
  *
  * The compare link is the third way out and the only one that needs no
@@ -128,128 +151,6 @@ export const pullRequestForbiddenError = (compareUrl: string, branch: string): P
 
 export const openCodeError = (message: string): PipelineError => new PipelineError('OPENCODE', message)
 
-/** The one code a handler branches on rather than merely logs. */
-const TURN_DEADLINE = 'TURN_DEADLINE'
-
-/**
- * A model turn stopped by its own bound, said in a way the phase can act on and a
- * reader can believe.
- *
- * The message this replaces was `The model did not answer within 1800000ms`, about
- * a turn that answered **355 times** at roughly twelve tool calls a minute and was
- * cut off mid-`bash`. That wording describes a hang, so it sent whoever read it
- * looking for one and gave them a healthy turn and no explanation. What is true is
- * that the turn was working and ran out of clock, and the numbers saying so were
- * already in hand — the heartbeat had been printing them once a minute.
- *
- * Distinguishable by code because the consequence differs, which is the whole
- * finding: every other rejection out of a prompt means the work broke and belongs
- * in `failRun` as ❌ with an attempt spent, and this one means a ceiling was
- * reached in a run where nothing broke — so it salvages the tree, parks in
- * `INCOMPLETE` and spends nothing.
- */
-export const turnDeadlineError = (elapsedMs: number, progress: ProgressSnapshot): PipelineError =>
-  new PipelineError(
-    TURN_DEADLINE,
-    `The turn ran out of time after ${elapsedMs}ms and was stopped part-way through: ` +
-      `${progress.toolCalls} tool calls, ${progress.tokens.toLocaleString('en-US')} tokens, ` +
-      `last action "${progress.lastAction}". The bound is \`AGENT_TIMEOUT_MS\`, shrunk to fit what was left of ` +
-      "the job's own deadline.",
-    progress,
-  )
-
-/**
- * Whether a rejection is that stop.
- *
- * A predicate here rather than a `code` comparison at the call site, for the reason
- * {@link isPullRequestCreationForbidden} is one: the tag is this module's business,
- * and a handler spelling it out is a second copy of a string that has to agree.
- */
-export const isTurnDeadline = (error: unknown): error is PipelineError =>
-  error instanceof PipelineError && error.code === TURN_DEADLINE
-
-/** The other failure a reader cannot diagnose from its message alone. */
-const SERVER_GONE = 'OPENCODE_SERVER_GONE'
-
-/**
- * A turn whose OpenCode server stopped answering, named rather than quoted.
- *
- * Issue #239 failed twice with `The socket connection was closed unexpectedly`,
- * which is Bun's wording for a `fetch` whose peer went away and names neither
- * end of it. Every reader starts at the model provider, because that is the only
- * remote a model turn obviously has. It was the `opencode serve` **this job
- * spawned** — established only afterwards, and only by inference: the
- * `session.get` that `tokensUsed()` makes next failed too, and that call is a
- * loopback request no provider is on the path of. So the evidence was in hand at
- * the moment of failure and thrown away, and the run reported the one sentence
- * that sends you the wrong way.
- *
- * This asks the question instead of leaving it to be reconstructed from two log
- * lines a week later. The transport's own message is kept, because it is the only
- * account of *how* the socket went; what is added is which socket it was, and
- * where to look for the cause — the post-mortem step, which reports an
- * out-of-memory kill and a second `opencode` process precisely because neither is
- * visible from here.
- *
- * Distinguishable by code for the reason {@link turnDeadlineError} is, and it is
- * checked **after** that one: a deadline is a ceiling the phase salvages work for,
- * and a turn cut off by its own bound must keep meaning that even when the probe
- * that runs afterwards finds the server gone too.
- */
-export const serverGoneError = (transport: string): PipelineError =>
-  new PipelineError(
-    SERVER_GONE,
-    'The local OpenCode server stopped answering mid-turn, so this turn ended with nothing to show for it. ' +
-      `The transport reported: ${transport}. That is the \`opencode serve\` this job spawned on loopback — ` +
-      'not the model provider — so look at the run’s post-mortem step for an out-of-memory kill or for a ' +
-      'second `opencode` process the model started from `bash`.',
-  )
-
-/** Whether a rejection is that death. */
-export const isServerGone = (error: unknown): error is PipelineError =>
-  error instanceof PipelineError && error.code === SERVER_GONE
-
-/**
- * A turn the model never answered, because the provider was still refusing it.
- *
- * The failure issue #239 had no name for, and the one that cost the most: the
- * session retried the model call twenty-five times over twelve minutes, went
- * idle without finishing another step, and the prompt returned a perfectly
- * ordinary envelope carrying no text. Every layer downstream read that as a
- * finished turn — `decodeReply` checks the transport's `error` field and this
- * failure is not in it, and the implement phase discards the reply — so the
- * phase committed a working tree holding one stray pid file, opened a pull
- * request and reported the plan implemented.
- *
- * Raised as an ordinary failure and **not** as a ceiling: it is neither of the
- * two stops that salvage. There is nothing to salvage, since a turn the model
- * never answered wrote nothing, and the remedy is a `/retry` — which is exactly
- * right for the cause this shape usually has. A rate limit or a spent
- * subscription window clears with time, and the run parks in `FAILED` with its
- * resume point intact until somebody says go again.
- *
- * The count and the status code are the message, because they are what tells a
- * maintainer which wait they are in for: twenty-five retries and a 429 is a
- * quota to wait out, one failure and a 401 is a credential to fix.
- */
-export const providerStalledError = (stall: TurnStall): PipelineError =>
-  new PipelineError(
-    'PROVIDER_STALLED',
-    'The model never answered this turn: the provider was still failing when the session gave up' +
-      retriesClause(stall.retries) +
-      failureClause(stall.failure) +
-      '. Nothing was written, so nothing is lost — but the turn has to fail here rather than commit whatever the ' +
-      'tree happened to hold, which is how a run with no deliverable once delivered a pull request. ' +
-      'A quota or rate limit clears with time: reply `/retry` when it has.',
-  )
-
-const retriesClause = (retries: number): string => (retries === 0 ? '' : ` after ${retries} retries`)
-
-const failureClause = (failure: TurnStall['failure']): string => {
-  if (failure === null) return ''
-  return failure.statusCode === null ? ` (${failure.name})` : ` (${failure.name} ${failure.statusCode})`
-}
-
 export const modelResponseError = (message: string, raw: string): PipelineError =>
   new PipelineError('MODEL_RESPONSE', `${message}\n\nRaw reply:\n${raw.slice(0, 2000)}`)
 
@@ -259,6 +160,21 @@ export const missingSkillError = (phase: string, names: readonly string[]): Pipe
     `Phase ${phase} requires skills that are not installed: ${names.join(', ')}. ` +
       'Check that the superpowers checkout step ran and populated .superpowers/skills.',
   )
+
+// The turn family — every failure a handler branches on by `code` rather than
+// merely logs. Declared in `turn-errors.ts` since the stall bound pushed them
+// out of this file; re-exported rather than moved out of reach for the same
+// reason `check-spec.ts`'s knobs are: callers name this module for the
+// vocabulary, and a moved export would be a rename dressed up as a file split.
+export {
+  isServerGone,
+  isTurnDeadline,
+  isTurnStall,
+  providerStalledError,
+  serverGoneError,
+  turnDeadlineError,
+  turnStallError,
+} from './turn-errors.js'
 
 /**
  * The end of an exhaustive `switch` over a discriminated union.

@@ -42,17 +42,18 @@ function captureCommand(commands: Map<string, CommandHandler>): CommandHandler {
 
 function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCommandDeps {
   return {
-    collectContext: (): ContextSnapshot => ({
+    collectContext: (_contextId, collectorDeps): ContextSnapshot => ({
       modelName: 'gpt-4o',
       sections: [
-        { label: 'System prompt', tokens: 1000 },
-        { label: 'Memory context', tokens: 500 },
-        { label: 'Conversation history', tokens: 2000 },
-        { label: 'Tools', tokens: 3000 },
+        { id: 'system_prompt', label: 'System prompt', tokens: 1000 },
+        { id: 'memory_context', label: 'Memory context', tokens: 500 },
+        { id: 'conversation_history', label: 'Conversation history', tokens: 2000 },
+        { id: 'tools', label: 'Tools', tokens: 3000 },
       ],
       totalTokens: 6500,
       maxTokens: 128_000,
       approximate: false,
+      locale: collectorDeps.locale ?? 'en',
     }),
     buildProvider: safeBuildProvider,
     buildLiveToolSet: (
@@ -139,6 +140,69 @@ describe('registerContextCommand', () => {
     await setupTestDb()
   })
 
+  test('sets snapshot.locale from the context language (configContextId wins, ru renders ru)', async () => {
+    const { setConfigValue } = await import('../../src/config.js')
+    setConfigValue('ctx-context-ru', 'language', 'ru')
+    const commands = new Map<string, CommandHandler>()
+    const seenSnapshots: ContextSnapshot[] = []
+    const chat: ChatProvider = {
+      ...createMockChat({ commandHandlers: commands }),
+      renderContext: (snapshot) => {
+        seenSnapshots.push(snapshot)
+        return { method: 'text', content: 'rendered' }
+      },
+    }
+    const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
+
+    const { reply } = createMockReply()
+    const auth = { ...createAuth('user1'), configContextId: 'ctx-context-ru' }
+    await handler(createDmMessage('user1'), reply, auth)
+
+    expect(seenSnapshots).toHaveLength(1)
+    expect(seenSnapshots[0]?.locale).toBe('ru')
+  })
+
+  test('sets snapshot.locale from the storage context when configContextId is absent', async () => {
+    const { setConfigValue } = await import('../../src/config.js')
+    setConfigValue('user-storage-ru', 'language', 'ru')
+    const commands = new Map<string, CommandHandler>()
+    const seenSnapshots: ContextSnapshot[] = []
+    const chat: ChatProvider = {
+      ...createMockChat({ commandHandlers: commands }),
+      renderContext: (snapshot) => {
+        seenSnapshots.push(snapshot)
+        return { method: 'text', content: 'rendered' }
+      },
+    }
+    const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
+
+    const { reply } = createMockReply()
+    const auth = createAuth('user-storage-ru')
+    await handler(createDmMessage('user-storage-ru'), reply, auth)
+
+    expect(seenSnapshots).toHaveLength(1)
+    expect(seenSnapshots[0]?.locale).toBe('ru')
+  })
+
+  test('defaults snapshot.locale to en when no language is configured', async () => {
+    const commands = new Map<string, CommandHandler>()
+    const seenSnapshots: ContextSnapshot[] = []
+    const chat: ChatProvider = {
+      ...createMockChat({ commandHandlers: commands }),
+      renderContext: (snapshot) => {
+        seenSnapshots.push(snapshot)
+        return { method: 'text', content: 'rendered' }
+      },
+    }
+    const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
+
+    const { reply } = createMockReply()
+    await handler(createDmMessage('user1'), reply, createAuth('user1'))
+
+    expect(seenSnapshots).toHaveLength(1)
+    expect(seenSnapshots[0]?.locale).toBe('en')
+  })
+
   test('builds full direct tool definitions on cache miss', async () => {
     const provider = createMockProvider()
     const commands = new Map<string, CommandHandler>()
@@ -158,6 +222,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -192,6 +257,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -236,6 +302,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -321,6 +388,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -363,6 +431,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -549,6 +618,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),
@@ -593,6 +663,7 @@ describe('registerContextCommand', () => {
             totalTokens: 0,
             maxTokens: 128_000,
             approximate: false,
+            locale: 'en',
           }
         },
       }),

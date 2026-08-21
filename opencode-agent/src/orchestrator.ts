@@ -168,6 +168,7 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
       ...base,
       state: entry.state,
       answer: entry.answer,
+      sync: entry.sync === true,
       posted: false,
       // Captured once. This job's session total is cumulative across the phases
       // it runs, so adding it to the *restored* figure gives a monotonic total;
@@ -218,7 +219,8 @@ const flushAround = async (deps: PhaseDeps, run: () => Promise<RunResult>): Prom
  * happening. Asked of the same `HANDLERS` table {@link driveMachine} looks the
  * phase up in, so the marker cannot disagree with what the machine does next.
  */
-const willWork = (entry: TriggerOutcome): boolean => entry.answer || hasHandler(entry.state.phase)
+const willWork = (entry: TriggerOutcome): boolean =>
+  entry.answer || entry.sync === true || hasHandler(entry.state.phase)
 
 /**
  * The slash command this trigger carries, if a person typed one.

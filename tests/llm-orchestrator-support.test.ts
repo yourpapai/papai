@@ -6,8 +6,13 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { generateText, stepCountIs } from 'ai'
 import type { ModelMessage } from 'ai'
+import { MockLanguageModelV3 } from 'ai/test'
 
+import type { AiProgressReporter } from '../src/ai-progress-reporter.js'
+import { NO_ANALYTICS_SCOPE } from '../src/analytics/provider-request-scope.js'
+import type { ReplyFn, StatusHandle } from '../src/chat/types.js'
 import { setConfigValue } from '../src/config.js'
 import { providerError } from '../src/errors.js'
 import * as historyModule from '../src/history.js'
@@ -16,7 +21,9 @@ import {
   handleLlmTurnError,
   handleOrchestratorMessageError,
   handleToolCallFinish,
+  invokeWithLiveStatus,
 } from '../src/llm-orchestrator-support.js'
+import type { InvokeModelArgs } from '../src/llm-orchestrator-types.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import { llmError } from './utils/test-errors.js'
 import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
@@ -317,5 +324,103 @@ describe('orchestrator support replies per locale', () => {
       durationMs: 5,
     })
     expect(getReplies()).toEqual(['⚠️ Инструмент "search_tools" завершился ошибкой: Действие не выполнено: boom.'])
+  })
+})
+
+describe('invokeWithLiveStatus locale', () => {
+  const model = new MockLanguageModelV3({
+    doGenerate: {
+      content: [{ type: 'text', text: 'Готово!' }],
+      finishReason: { unified: 'stop', raw: undefined },
+      usage: {
+        inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 0, text: 0, reasoning: 0 },
+      },
+      warnings: [],
+    },
+  })
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  const makeStatusReply = (): { reply: ReplyFn; created: string[]; updates: string[] } => {
+    const created: string[] = []
+    const updates: string[] = []
+    const base = createMockReply()
+    const handle: StatusHandle = {
+      update: (text: string): Promise<void> => {
+        updates.push(text)
+        return Promise.resolve()
+      },
+      dismiss: (): Promise<void> => Promise.resolve(),
+    }
+    const reply: ReplyFn = {
+      ...base.reply,
+      createStatus: (initialText: string): Promise<StatusHandle> => {
+        created.push(initialText)
+        return Promise.resolve(handle)
+      },
+    }
+    return { reply, created, updates }
+  }
+
+  const makeInvokeArgs = (contextId: string): InvokeModelArgs & { turnId: string } => ({
+    contextId,
+    chatUserId: 'user-1',
+    contextType: 'dm',
+    mainModel: 'gpt-4o',
+    model,
+    provider: null,
+    tools: {},
+    enabledToolNames: new Set<string>(),
+    messages: [{ role: 'user', content: 'привет' }],
+    turnId: 'turn-live-status-locale',
+    providerRequestScope: NO_ANALYTICS_SCOPE,
+    deps: {
+      generateText: (options) => generateText(options),
+      stepCountIs,
+      buildModel: () => model,
+      resolve: () => null,
+      maybeAutoProvision: () => Promise.resolve(false),
+    },
+  })
+
+  const makeProgressReporter = (): AiProgressReporter => ({
+    toolStarted: (): void => {},
+    toolFinished: (): void => {},
+    reasoning: (): void => {},
+    flush: () => Promise.resolve(),
+  })
+
+  test('a ru context drives the thinking status and the preparing placeholder in ru', async () => {
+    setConfigValue('ctx-live-ru', 'language', 'ru')
+    const { reply, created, updates } = makeStatusReply()
+
+    await invokeWithLiveStatus({
+      reply,
+      invokeArgs: makeInvokeArgs('ctx-live-ru'),
+      progressReporter: makeProgressReporter(),
+      liveStatusEnabled: true,
+    })
+
+    expect(created).toEqual(['💭 Думаю…'])
+    expect(updates).toContain('💬 Готовлю ответ…')
+    expect(updates).not.toContain('💬 Preparing response…')
+  })
+
+  test('an unset context stays en and renders the en placeholder', async () => {
+    const { reply, created, updates } = makeStatusReply()
+
+    await invokeWithLiveStatus({
+      reply,
+      invokeArgs: makeInvokeArgs('ctx-live-en'),
+      progressReporter: makeProgressReporter(),
+      liveStatusEnabled: true,
+    })
+
+    expect(created).toEqual(['💭 Thinking…'])
+    expect(updates).toContain('💬 Preparing response…')
   })
 })

@@ -92,6 +92,7 @@ const makeWalk = (
         envelope,
         system: 'system prompt',
         handoff: null,
+        note: null,
         tasksPath: TASKS_PATH,
       }),
   }

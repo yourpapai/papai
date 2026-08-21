@@ -189,6 +189,7 @@ describe('KonturTalkChatProvider', () => {
       totalTokens: 1000,
       maxTokens: 8000,
       approximate: false,
+      locale: 'en',
       sections: [],
     })
     expect(result.method).toBe('formatted')

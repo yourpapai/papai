@@ -142,13 +142,14 @@ jobs:
        (github.event_name == 'issue_comment' &&
         github.event.action == 'created' &&
         github.event.issue.pull_request != null &&
-        (contains(github.event.comment.body, '/approve') ||
-         contains(github.event.comment.body, '/changes') ||
-         contains(github.event.comment.body, '/ask') ||
-         contains(github.event.comment.body, '/retry') ||
-         contains(github.event.comment.body, '/cancel') ||
-         contains(github.event.comment.body, '/review') ||
-         contains(github.event.comment.body, '/continue')) &&
+         (contains(github.event.comment.body, '/approve') ||
+          contains(github.event.comment.body, '/changes') ||
+          contains(github.event.comment.body, '/ask') ||
+          contains(github.event.comment.body, '/retry') ||
+          contains(github.event.comment.body, '/cancel') ||
+          contains(github.event.comment.body, '/review') ||
+          contains(github.event.comment.body, '/continue') ||
+          contains(github.event.comment.body, '/sync')) &&
         github.event.sender.type != 'Bot' &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
        ||
@@ -506,6 +507,11 @@ jobs:
           AGENT_REVIEW_HINT_LINES: ${{ vars.AGENT_REVIEW_HINT_LINES }}
           AGENT_MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS }}
           AGENT_TIMEOUT_MS: ${{ vars.AGENT_TIMEOUT_MS }}
+          # The health bound beside the clock one: how long a turn may make no
+          # progress — no finished step, no new tool call — while the provider
+          # keeps failing it, before it is aborted as a stall. Unset here is the
+          # compiled-in five-minute default; `0` is the explicit off switch.
+          AGENT_STALL_TIMEOUT_MS: ${{ vars.AGENT_STALL_TIMEOUT_MS }}
           # The job's own clock, as the two facts that describe it. The start comes
           # from the step above — nothing in the payload says when a job began — and
           # the ceiling is the *same* expression the job's `timeout-minutes:` reads,

@@ -120,8 +120,7 @@ function makeLoopFixture(dir: string, script: Record<string, string[]>): LoopFix
     repoRoot: dir,
     workDir: path.join(dir, '.sdd-runner'),
     model: 'test-model',
-    models: {},
-    timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+    budget: 5,
   }
   const spawn: SpawnFn = (_command, args, options) => {
     const prompt = String(args[args.length - 1])
@@ -150,6 +149,7 @@ function makeLoopFixture(dir: string, script: Record<string, string[]>): LoopFix
       emitted.push(EventInputSchema.parse(event))
     },
     sidecarDir: path.join(dir, 'sidecars'),
+    runDir: dir,
     cwd: dir,
     materialize: (round) => {
       materialized.push(round)

@@ -138,6 +138,12 @@ export interface PhaseInput {
  */
 export interface MachineInput extends PhaseInput {
   answer: boolean
+  /**
+   * Set when the trigger is the `/sync` side operation. The cascade runs the
+   * sync handler instead of a phase, ahead of both budget stops — see
+   * `phases/sync.ts` for why `/sync` owns its own ceilings.
+   */
+  sync?: boolean
   /** Whether this run has already written a state block to the thread. */
   posted: boolean
   /** Tokens this issue had spent before this job started. */
