@@ -30,9 +30,9 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('070_message_metadata_history_search')
   })
 
-  test('079_tool_call_duration_normalize is the last migration', () => {
+  test('080_localized_announcement_bodies is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('079_tool_call_duration_normalize')
+    expect(lastMigration.id).toBe('080_localized_announcement_bodies')
   })
 
   test('077_context_vault_file_artifacts is registered immediately after 076_context_vault', () => {
