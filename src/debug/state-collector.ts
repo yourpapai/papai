@@ -30,8 +30,6 @@ const clients = new Map<ReadableStreamDefaultController, LogFilter>()
 const PASS_ALL: LogFilter = { include: [], exclude: [], level: 0 }
 const encoder = new TextEncoder()
 
-let collectorStarted = false
-
 const HEARTBEAT_MS = 15000
 const PING_FRAME = encoder.encode(': ping\n\n')
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
@@ -73,15 +71,11 @@ export function resetClientsForTest(): void {
  * broadcast/read time. Idempotent: production wiring calls it exactly once.
  */
 export function startEventCollector(): void {
-  if (collectorStarted) return
-  collectorStarted = true
   subscribe(onEvent)
 }
 
 /** @public -- test seam: unsubscribe the capture handler. */
 export function stopEventCollectorForTest(): void {
-  if (!collectorStarted) return
-  collectorStarted = false
   unsubscribe(onEvent)
 }
 
