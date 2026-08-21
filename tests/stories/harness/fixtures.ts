@@ -247,13 +247,14 @@ const SCENARIO_PLUGIN: DiscoveredPlugin = {
   manifestHash: 'scenario-approved-plugin-hash',
 }
 
-export type ScenarioGroupAdminSeed = Readonly<{
+export type ScenarioChatSeed = Readonly<{
   addGroupAdmin(groupId: string, userId: string): void
+  setUserLabel(userId: string, label: string | Error): void
 }>
 
 export type ScenarioFixturesOptions = Readonly<{
   taskProvider?: TaskProvider
-  chat?: ScenarioGroupAdminSeed
+  chat?: ScenarioChatSeed
 }>
 
 /** Real, plugin-contributed task provider types the story lane can approve and activate. */
@@ -282,6 +283,8 @@ export type ScenarioFixtures = Readonly<{
   enableGuestMode(groupId: string): void
   addGroupMember(input?: Readonly<{ groupId?: string; userId?: string }>): void
   seedGroupAdmin(input: Readonly<{ groupId: string; userId: string }>): void
+  /** Seed the display label a userId resolves to through the chat provider; an Error makes it reject. */
+  seedChatUserLabel(input: Readonly<{ userId: string; label: string | Error }>): void
   seedIdentity(
     input: Readonly<{
       userId: string
@@ -426,6 +429,11 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       const chat = options.chat
       if (chat === undefined) throw new Error('Scenario fixtures require a chat instance to seed group admins')
       chat.addGroupAdmin(input.groupId, input.userId)
+    },
+    seedChatUserLabel(input): void {
+      const chat = options.chat
+      if (chat === undefined) throw new Error('Scenario fixtures require a chat instance to seed user labels')
+      chat.setUserLabel(input.userId, input.label)
     },
     seedIdentity(input): void {
       setIdentityMapping({

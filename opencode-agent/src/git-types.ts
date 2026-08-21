@@ -53,9 +53,21 @@ export class GitError extends Error {
   }
 }
 
+/** Options for {@link Git.ensureBranch}. */
+export interface EnsureBranchOptions {
+  /**
+   * Stand on the branch even when its dependency manifests differ from base.
+   *
+   * `/sync` passes this: a drifted branch is the condition it exists to repair,
+   * so the drift refusal would block the remedy behind the very drift it names.
+   * Every other caller takes the refusal — see `git-drift.ts`.
+   */
+  allowDependencyDrift?: boolean
+}
+
 /** Git operations the pipeline performs, each returning plain data. */
 export interface Git {
-  ensureBranch(branch: string, base: string): Promise<void>
+  ensureBranch(branch: string, base: string, options?: EnsureBranchOptions): Promise<void>
   /**
    * Force-resets `branch` to `base`, discarding any prior commits on it (D12).
    *

@@ -257,6 +257,21 @@ describe('scenario chat', () => {
     })
   })
 
+  test('resolves seeded user labels and reports unseeded ids as unresolved', async () => {
+    const chat = createScenarioChat('user labels', createScenarioEvents('user labels'))
+    chat.setUserLabel('user-1', 'Alice Anders')
+
+    expect(await chat.resolveUserLabel('user-1', undefined)).toBe('Alice Anders')
+    expect(await chat.resolveUserLabel('user-2', undefined)).toBeNull()
+  })
+
+  test('throws from resolveUserLabel when an id is seeded with an error', async () => {
+    const chat = createScenarioChat('user label failure', createScenarioEvents('user label failure'))
+    chat.setUserLabel('user-1', new Error('platform lookup failed'))
+
+    await expect(chat.resolveUserLabel('user-1', undefined)).rejects.toThrow('platform lookup failed')
+  })
+
   test('reply snapshots do not leak mutations', async () => {
     const chat = createScenarioChat('snapshots', createScenarioEvents('snapshots'))
     chat.onMessage((_message, reply) => reply.text('safe', { threadId: 'thread-1' }))

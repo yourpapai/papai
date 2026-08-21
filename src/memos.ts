@@ -136,7 +136,7 @@ function sanitizeFtsQuery(query: string): string {
 }
 
 export function keywordSearchMemos(userId: string, query: string, limit: number = 5): readonly Memo[] {
-  log.debug({ userId, query, limit }, 'keywordSearchMemos called')
+  log.debug({ userId, chatUserId: userId, query, limit }, 'keywordSearchMemos called')
   const db = getDrizzleDb()
   const safeQuery = sanitizeFtsQuery(query)
   const rows = db
@@ -161,7 +161,7 @@ export function keywordSearchMemos(userId: string, query: string, limit: number 
     )
     .limit(limit)
     .all()
-  log.info({ userId, query, resultCount: rows.length }, 'Keyword search completed')
+  log.info({ userId, chatUserId: userId, query, resultCount: rows.length }, 'Keyword search completed')
   emitUser('memo:searched', userId, { query, resultCount: rows.length })
   return rows.map(drizzleRowToMemo)
 }

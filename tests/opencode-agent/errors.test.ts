@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  dependencyDriftError,
   isTurnDeadline,
   isTurnStall,
   openCodeError,
@@ -94,5 +95,25 @@ describe('isTurnStall', () => {
 
     expect(isTurnDeadline(stall)).toBe(false)
     expect(isTurnDeadline(turnDeadlineError(1_800_000, PROGRESS))).toBe(true)
+  })
+})
+
+describe('dependencyDriftError', () => {
+  test('names the drifted files and both ways back in step, never a bare /retry', () => {
+    // The message reaches the issue as `lastError` while the issue invites a
+    // `/retry` by reflex — so it has to say up front that a retry alone cannot
+    // change the condition, and name the two moves that can: `/sync` where a
+    // pull request exists, a hand merge where one does not.
+    const error = dependencyDriftError('agent/issue-323', 'master', ['bun.lock', 'sdd-runner/package.json'])
+
+    expect(error.code).toBe('DEPENDENCY_DRIFT')
+    expect(error.progress).toBeNull()
+    const message = error.message
+    expect(message).toContain('bun.lock, sdd-runner/package.json')
+    expect(message).toContain('`agent/issue-323`')
+    expect(message).toContain('`master`')
+    expect(message).toContain('/sync')
+    expect(message).toContain('not something `/retry` can change')
+    expect(message).toContain('cannot install from the agent branch by design')
   })
 })

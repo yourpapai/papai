@@ -9,6 +9,7 @@ import { computeScore, gatherParticipants, resolveChatParticipant } from '../../
 import { toScopedContextId, toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
 import { groupMembers, messageMetadata } from '../../../src/db/schema.js'
+import { logger, logMultistream } from '../../../src/logger.js'
 import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 
 // plain contextId (non-thread-scoped; config = same)
@@ -211,5 +212,33 @@ describe('resolveChatParticipant', () => {
     await resolveChatParticipant(GROUP_CTX, 'bulk', resolveLabel)
     // All 12 members must be resolved despite p-limit capping concurrency
     expect(resolved).toHaveLength(12)
+  })
+})
+
+describe('resolveChatParticipant log attribution', () => {
+  // No mockLogger here: the module-bound child logger is the real pino instance,
+  // so attribution is asserted against actual egress (mirrors tests/message-cache/store.test.ts).
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  test('debug and completion entries carry chatUserId so the querying admin keeps their own query text', async () => {
+    insertSender(GROUP_CTX, 'm1', 'u1', 'alice')
+    const logLines: string[] = []
+    logMultistream.add({ level: 'debug', stream: { write: (chunk: string): void => void logLines.push(chunk) } })
+    logger.level = 'debug'
+    try {
+      await resolveChatParticipant(GROUP_CTX, 'alice', () => Promise.resolve(null), 5, 'user-9')
+    } finally {
+      logger.level = 'silent'
+    }
+    const debugEntry = logLines.find((line) => line.includes('"msg":"resolveChatParticipant"}'))
+    expect(debugEntry, 'expected a resolveChatParticipant debug log entry').toBeDefined()
+    expect(debugEntry).toContain('"chatUserId":"user-9"')
+    expect(debugEntry).toContain('"query":"alice"')
+    const infoEntry = logLines.find((line) => line.includes('"msg":"resolveChatParticipant completed"'))
+    expect(infoEntry, 'expected a resolveChatParticipant completion log entry').toBeDefined()
+    expect(infoEntry).toContain('"chatUserId":"user-9"')
+    expect(infoEntry).toContain('"query":"alice"')
   })
 })

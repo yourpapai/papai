@@ -52,8 +52,11 @@ export type ScenarioChat = Omit<ChatProvider, 'onInteraction'> &
   RuntimeIngress &
   Readonly<{
     onInteraction: NonNullable<ChatProvider['onInteraction']>
+    resolveUserLabel: NonNullable<ChatProvider['resolveUserLabel']>
     allReplies(): readonly ScenarioReply[]
     addGroupAdmin(groupId: string, userId: string): void
+    /** Seed the label a userId resolves to; an Error makes the lookup reject. */
+    setUserLabel(userId: string, label: string | Error): void
     configureProactiveDelivery(plans: readonly ScenarioProactiveDeliveryPlan[]): void
     proactiveAttempts(): readonly ScenarioProactiveAttempt[]
   }>
@@ -108,6 +111,7 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
   let proactiveAttempts: readonly ScenarioProactiveAttempt[] = []
   const commands = new Map<string, CommandHandler>()
   const groupAdmins = new Set<string>()
+  const userLabels = new Map<string, string | Error>()
 
   const hasGroupAdmin = (platformInstanceId: string, nativeGroupId: string, userId: string): boolean =>
     groupAdmins.has(`${toScopedContextId({ platformInstanceId, nativeContextId: nativeGroupId })}:${userId}`)
@@ -347,6 +351,16 @@ export function createScenarioChat(scenarioName: string, events: ScenarioEvents)
     proactiveAttempts: () => clone(proactiveAttempts),
     addGroupAdmin(groupId: string, userId: string): void {
       groupAdmins.add(`${groupId}:${userId}`)
+    },
+    setUserLabel(userId: string, label: string | Error): void {
+      userLabels.set(userId, label)
+    },
+    // Unseeded ids resolve to null, matching a real provider that does not know the user.
+    resolveUserLabel(userId: string): Promise<string | null> {
+      const label = userLabels.get(userId)
+      if (label === undefined) return Promise.resolve(null)
+      if (label instanceof Error) return Promise.reject(label)
+      return Promise.resolve(label)
     },
   }
 }

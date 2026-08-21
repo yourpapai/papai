@@ -151,6 +151,37 @@ export const pullRequestForbiddenError = (compareUrl: string, branch: string): P
 
 export const openCodeError = (message: string): PipelineError => new PipelineError('OPENCODE', message)
 
+/**
+ * A branch whose dependency manifests differ from base, refused at the branch
+ * switch — see `git-drift.ts` for why the run cannot proceed and whose decision
+ * that is. The message is the whole contract: it reaches the issue as
+ * `lastError`, and the one thing it must never suggest is `/retry` on its own,
+ * which would re-run the phase into the same refusal until the budget is gone.
+ *
+ * Modelled on {@link pullRequestForbiddenError}: a condition the run's own
+ * commands cannot change, both remedies named, and the "nothing is lost" fact
+ * stated — the branch and its work are fine; only the job cannot serve them.
+ */
+export const dependencyDriftError = (branch: string, base: string, files: readonly string[]): PipelineError =>
+  new PipelineError(
+    'DEPENDENCY_DRIFT',
+    [
+      `\`${branch}\` and \`${base}\` disagree on the dependency manifests (${files.join(', ')}).`,
+      '',
+      `Nothing is lost — \`${branch}\` and all its work are untouched. But this job installs dependencies`,
+      `from \`${base}\` before checking out \`${branch}\`, so what is installed cannot serve the branch:`,
+      'typecheck and tests fail on imports the installed lockfile does not carry.',
+      '',
+      'This is not something `/retry` can change. Bring the branch back in step with the base first:',
+      '',
+      `- If a pull request is open for \`${branch}\`, reply \`/sync\` on it — it merges \`origin/${base}\` in.`,
+      `- Otherwise merge \`origin/${base}\` into \`${branch}\` by hand, then reply \`/retry\`.`,
+      '',
+      `If \`${branch}\` changed dependencies on purpose, a maintainer must reconcile the manifests by`,
+      'hand — the job cannot install from the agent branch by design.',
+    ].join('\n'),
+  )
+
 export const modelResponseError = (message: string, raw: string): PipelineError =>
   new PipelineError('MODEL_RESPONSE', `${message}\n\nRaw reply:\n${raw.slice(0, 2000)}`)
 

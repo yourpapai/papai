@@ -19,18 +19,20 @@ export { recordOccurrence } from './recurring-occurrences.js'
 const log = logger.child({ scope: 'recurring' })
 const generateId = (): string => crypto.randomUUID()
 
+function nextRunFor(input: RecurringTaskInput): string | null {
+  if (input.triggerType !== 'cron' || input.rrule === undefined || input.dtstartUtc === undefined) return null
+  return computeNextRun({ rrule: input.rrule, dtstartUtc: input.dtstartUtc, timezone: input.timezone ?? 'UTC' })
+}
+
 export const createRecurringTask = (input: RecurringTaskInput): RecurringTaskRecord => {
-  log.debug({ userId: input.userId, title: input.title, triggerType: input.triggerType }, 'createRecurringTask called')
+  log.debug(
+    { userId: input.userId, chatUserId: input.userId, title: input.title, triggerType: input.triggerType },
+    'createRecurringTask called',
+  )
 
   const id = generateId()
   const now = new Date().toISOString()
-
-  const compiled =
-    input.triggerType === 'cron' && input.rrule !== undefined && input.dtstartUtc !== undefined
-      ? { rrule: input.rrule, dtstartUtc: input.dtstartUtc, timezone: input.timezone ?? 'UTC' }
-      : null
-
-  const nextRun = compiled === null ? null : computeNextRun(compiled)
+  const nextRun = nextRunFor(input)
 
   const db = getDrizzleDb()
   db.insert(recurringTasks)
@@ -57,7 +59,7 @@ export const createRecurringTask = (input: RecurringTaskInput): RecurringTaskRec
     })
     .run()
 
-  log.info({ id, userId: input.userId, title: input.title }, 'Recurring task created')
+  log.info({ id, userId: input.userId, chatUserId: input.userId, title: input.title }, 'Recurring task created')
 
   const record = getRecurringTask(id)!
   emitUser('recurring:created', input.userId, {

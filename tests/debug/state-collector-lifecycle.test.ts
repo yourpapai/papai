@@ -7,13 +7,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { emitGlobal } from '../../src/debug/event-bus.js'
 import { subscribeCountForTest } from '../../src/debug/event-bus.testing.js'
-import {
-  addClient,
-  init,
-  pingClientsForTest,
-  removeClient,
-  resetClientsForTest,
-} from '../../src/debug/state-collector.js'
+import { addClient, pingClientsForTest, removeClient, resetClientsForTest } from '../../src/debug/state-collector.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
 // Track controllers so afterEach tears down shared module singletons (clients set,
@@ -36,7 +30,6 @@ afterEach(() => {
 
 describe('state-collector heartbeat', () => {
   test('ping reaches live clients and drops dead ones', () => {
-    init('admin')
     const enqueued: Uint8Array[] = []
     const live = track({
       enqueue: (c: Uint8Array): void => void enqueued.push(c),
@@ -46,7 +39,7 @@ describe('state-collector heartbeat', () => {
     } as ReadableStreamDefaultController)
 
     // sends state:init (1 enqueue), subscribes onEvent, starts heartbeat
-    addClient(live)
+    addClient(live, undefined, 'admin')
     pingClientsForTest()
 
     // The live client received the state:init frame plus a comment-frame ping.
@@ -54,8 +47,6 @@ describe('state-collector heartbeat', () => {
   })
 
   test('ping dead client routes through removeClient, unsubscribing onEvent', () => {
-    init('admin')
-
     const enqueueMock = mock<(chunk: unknown) => void>(() => {})
     const controller = track({
       enqueue: (chunk: unknown): void => enqueueMock(chunk),
@@ -65,7 +56,7 @@ describe('state-collector heartbeat', () => {
     })
 
     const before = subscribeCountForTest()
-    addClient(controller)
+    addClient(controller, undefined, 'admin')
     expect(subscribeCountForTest()).toBe(before + 1)
 
     enqueueMock.mockImplementation(() => {
@@ -79,8 +70,6 @@ describe('state-collector heartbeat', () => {
 
 describe('state-collector client lifecycle', () => {
   test('last client dying during broadcast unsubscribes onEvent', () => {
-    init('admin')
-
     // Succeeds on the initial state:init enqueue (so onEvent subscribes), then throws.
     const enqueueMock = mock<(chunk: unknown) => void>(() => {})
     const controller = track({
@@ -91,7 +80,7 @@ describe('state-collector client lifecycle', () => {
     })
 
     const before = subscribeCountForTest()
-    addClient(controller)
+    addClient(controller, undefined, 'admin')
     expect(subscribeCountForTest()).toBe(before + 1)
 
     // Flip the mock so subsequent enqueue throws, then broadcast via emitGlobal.

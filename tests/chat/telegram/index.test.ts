@@ -966,7 +966,7 @@ describe('TelegramChatProvider', () => {
       const ctx: MinimalContext = {
         message: {
           message_id: 100,
-          reply_to_message: { message_id: 50, text: 'original message' },
+          reply_to_message: { message_id: 50, from: { id: 70 }, text: 'original message' },
           quote: { text: 'quoted text' },
         },
       }
@@ -974,6 +974,7 @@ describe('TelegramChatProvider', () => {
       expect(result).toEqual({
         messageIdStr: '100',
         replyToMessageIdStr: '50',
+        replyToAuthorIdStr: '70',
         replyToMessageText: 'original message',
         quoteText: 'quoted text',
       })
@@ -985,6 +986,7 @@ describe('TelegramChatProvider', () => {
       expect(result).toEqual({
         messageIdStr: undefined,
         replyToMessageIdStr: undefined,
+        replyToAuthorIdStr: undefined,
         replyToMessageText: undefined,
         quoteText: undefined,
       })
@@ -1002,6 +1004,7 @@ describe('TelegramChatProvider', () => {
       expect(result).toEqual({
         messageIdStr: '200',
         replyToMessageIdStr: '80',
+        replyToAuthorIdStr: undefined,
         replyToMessageText: 'origin',
         quoteText: 'quoted',
       })
@@ -1021,7 +1024,7 @@ describe('TelegramChatProvider', () => {
 
     test('logMessageExtraction logs debug info', () => {
       expect(() => {
-        logMessageExtraction(123, 'ctx123', 'msg456', 'reply789', 'original text', 'quoted text')
+        logMessageExtraction(123, 'ctx123', 'msg456', 'reply789', 'original text', 'quoted text', '777')
       }).not.toThrow()
     })
   })

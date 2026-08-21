@@ -206,8 +206,17 @@ export class TelegramChatProvider implements ChatProvider {
     )
     if (contextInfo === null) return null
     const { id, contextId, contextType, text, isMentioned } = contextInfo
-    const { messageIdStr, replyToMessageIdStr, replyToMessageText, quoteText } = extractMessageIds(ctx)
-    logMessageExtraction(id, contextId, messageIdStr, replyToMessageIdStr, replyToMessageText, quoteText)
+    const { messageIdStr, replyToMessageIdStr, replyToAuthorIdStr, replyToMessageText, quoteText } =
+      extractMessageIds(ctx)
+    logMessageExtraction(
+      id,
+      contextId,
+      messageIdStr,
+      replyToMessageIdStr,
+      replyToMessageText,
+      quoteText,
+      replyToAuthorIdStr,
+    )
     const replyContext = extractReplyContext(ctx, contextId)
     const isReplyToBot = replyContext?.authorId !== undefined && String(ctx.me.id) === replyContext.authorId
     const threadId = await resolveThreadId(ctx, isMentioned, contextType, this.bot.api)

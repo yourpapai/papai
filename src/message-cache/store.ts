@@ -80,8 +80,12 @@ export function searchMessages(
   query: string,
   filters: SearchFilters,
   limit: number,
+  chatUserId?: string,
 ): CachedMessage[] {
-  log.debug({ scopeKind: scope.kind, query, limit }, 'searchMessages called')
+  log.debug(
+    { scopeKind: scope.kind, query, limit, ...(chatUserId === undefined ? {} : { chatUserId }) },
+    'searchMessages called',
+  )
   const safeQuery = sanitizeFtsQuery(query)
   const conditions: (SQL | undefined)[] = [
     scopeWhere(scope),

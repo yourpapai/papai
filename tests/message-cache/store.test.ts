@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { logger, logMultistream } from '../../src/logger.js'
 import { cacheMessage } from '../../src/message-cache/cache.js'
 import { getMessage, getMessageByContext, getMessageContext, searchMessages } from '../../src/message-cache/store.js'
 import type { MessageScope } from '../../src/message-cache/store.js'
@@ -163,6 +164,29 @@ describe('message-cache store: searchMessages (FTS5)', () => {
     await flushPendingWrites()
     const results = searchMessages(groupScope('g'), 'deploy', {}, 10)
     expect(results[0]?.messageId).toBe('2')
+  })
+})
+
+describe('message-cache store: searchMessages log attribution', () => {
+  // No mockLogger here: the module-bound child logger is the real pino instance,
+  // so attribution is asserted against actual egress (see tests/tools/logging-privacy.test.ts).
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  test('debug entry carries chatUserId so the querying admin keeps their own query text', () => {
+    const logLines: string[] = []
+    logMultistream.add({ level: 'debug', stream: { write: (chunk: string): void => void logLines.push(chunk) } })
+    logger.level = 'debug'
+    try {
+      searchMessages(groupScope('g'), 'deploy', {}, 10, 'user-9')
+    } finally {
+      logger.level = 'silent'
+    }
+    const entry = logLines.find((line) => line.includes('"msg":"searchMessages called"'))
+    expect(entry, 'expected a searchMessages debug log entry').toBeDefined()
+    expect(entry).toContain('"chatUserId":"user-9"')
+    expect(entry).toContain('"query":"deploy"')
   })
 })
 
