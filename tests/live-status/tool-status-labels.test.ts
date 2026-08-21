@@ -136,6 +136,16 @@ describe('formatToolStatus', () => {
   test('humanizeToolName collapses consecutive separators via the + quantifier', () => {
     expect(formatToolStatus('mcp_x__foo--bar', {})).toBe('⚙️ Running foo bar…')
   })
+
+  test('humanizeToolName trims the separator-separated base before rendering', () => {
+    expect(formatToolStatus('mcp_s__foo_', {})).toBe('⚙️ Running foo…')
+  })
+
+  test('asRecord rejects a function even when it carries an allowlisted field', () => {
+    const input = (): string => 'x'
+    input.query = 'q'
+    expect(formatToolStatus('search_memory', input)).toBe('🔍 Searching memory…')
+  })
 })
 
 describe('REGISTRY entries render their exact emoji, label, and arg form', () => {
