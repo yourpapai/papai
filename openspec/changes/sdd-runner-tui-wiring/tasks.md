@@ -26,5 +26,5 @@ Test-first per design.md Migration Plan; each step shippable alone. TDD: failing
 
 ## 5. Docs and final verification
 
-- [ ] 5.1 Check `docs/architecture/sdd-pipeline.md` live-rendering section against actual behavior; correct any wording that diverges (mount points, exclusivity). Verify: manual read against `sdd --help` and a TTY smoke run
-- [ ] 5.2 Full gate: `bun test`, `bun run typecheck`, `bun run lint`, `bun run sdd-runner:format:check`; `openspec validate sdd-runner-tui-wiring --strict`. Verify: all green
+- [x] 5.1 Check `docs/architecture/sdd-pipeline.md` live-rendering section against actual behavior; correct any wording that diverges (mount points, exclusivity). Verify: manual read against `sdd --help` and a TTY smoke run
+- [x] 5.2 Full gate: `bun test`, `bun run typecheck`, `bun run lint`, `bun run sdd-runner:format:check`; `openspec validate sdd-runner-tui-wiring --strict`. Verify: all green
