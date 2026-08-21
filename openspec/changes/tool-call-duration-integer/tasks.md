@@ -18,10 +18,10 @@ See LICENSE in the project root for details.
 
 ## 2. Implementation
 
-- [ ] 2.1 In `src/llm-orchestrator-tool-events.ts` `handleToolCallFinishEvent`
+- [x] 2.1 In `src/llm-orchestrator-tool-events.ts` `handleToolCallFinishEvent`
   usage emission: `durationMs: Math.max(0, Math.round(event.durationMs))`.
   Verify: `bun test tests/llm-orchestrator-tool-events.test.ts` (green)
-- [ ] 2.2 Add `src/db/migrations/079_tool_call_duration_normalize.ts` per
+- [x] 2.2 Add `src/db/migrations/079_tool_call_duration_normalize.ts` per
   design D2 and register it in `src/db/index.ts`. Verify:
   `bun test tests/db/migrations` (green)
 
