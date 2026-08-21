@@ -417,6 +417,17 @@ describe('runGateResume waiter bypass flags (D11)', () => {
     expect(result.outcome).toBe('abandoned')
   })
 
+  it('an abandoned session announces itself even when deps carry no stdout sink', async () => {
+    const fx = await makeBypassFixture()
+    fs.writeFileSync(path.join(fx.workDir, 'runs', fx.runId, 'gate-1.md'), '## Final gate\n\nABORT\n')
+    const { stdout: _omitted, ...depsWithoutStdout } = fx.deps
+    const deps: OrchestratorDeps = { ...depsWithoutStdout, interactive: () => true, gateKeyScript: 'q' }
+    const result = await runGateResume(deps, fx.runId, {})
+    expect(result.outcome).toBe('abandoned')
+    const state = await loadRunState(fx.workDir, fx.runId)
+    expect(state.gate).not.toBeNull()
+  })
+
   it('an extend flag bypasses the waiter even with a deadline pending', async () => {
     const fx = await makeBypassFixture()
     const state = await loadRunState(fx.workDir, fx.runId)
