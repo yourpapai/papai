@@ -145,13 +145,9 @@ export function peekSteer(runDir: string): SteerLanding | null {
  * never leaks into a later presentation. Returns the bell/notification line
  * to print at presentation time (null when no deadline is configured).
  */
-export function deadlineStampFor(
-  deps: OrchestratorDeps,
-  level: string,
-): { gateDeadlineAt: string | null; notify: string | null } {
-  const autonomy = deps.autonomy ?? AUTONOMY_DEFAULTS
-  const minutes = autonomy.deadlineMinutes
-  if (level !== 'auto' || minutes === undefined) {
+export function deadlineStampFor(deps: OrchestratorDeps): { gateDeadlineAt: string | null; notify: string | null } {
+  const minutes = (deps.autonomy ?? AUTONOMY_DEFAULTS).deadlineMinutes
+  if (minutes === undefined) {
     return { gateDeadlineAt: null, notify: null }
   }
   const at = new Date(nowOf(deps).getTime() + minutes * 60_000)

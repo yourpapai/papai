@@ -41,7 +41,8 @@ export function buildDriftCheck(
       outputPath: 'drift.json',
       outputSchema: DriftReportSchema,
       label: 'drift',
-      logPath: path.join(sidecarDir, 'logs', 'drift.log'),
+      runDir: state.runDir,
+      round: state.round,
       sidecarDir,
     })
   }

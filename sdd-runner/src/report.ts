@@ -176,6 +176,8 @@ export async function buildReport(input: ReportInput): Promise<string> {
     ...commits,
     '',
     `run: ${input.runId}`,
+    `transcripts: runs/${input.runId}/transcripts/`,
+    `sessions: runs/${input.runId}/sessions.jsonl`,
   )
   if (input.pr) lines.push('', 'Archive: post-merge follow-up on master (human-triggered).')
   return lines.join('\n')

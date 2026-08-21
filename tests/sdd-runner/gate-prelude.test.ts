@@ -14,7 +14,6 @@ describe('renderPreviewBlock', () => {
       rule: 'R1',
       action: 'approve',
       evidenceDigest: 'abc123',
-      permittedAt: 'assist',
     }
     const block = renderPreviewBlock(decision)
     const lines = block.split('\n').filter((line) => line.trim().length > 0)
@@ -31,7 +30,6 @@ describe('renderPreviewBlock', () => {
       rule: 'none',
       action: 'gate',
       evidenceDigest: 'd',
-      permittedAt: 'observe',
     }
     const block = renderPreviewBlock(decision)
     expect(/^- \[/mu.test(block)).toBe(false)

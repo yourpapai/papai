@@ -32,6 +32,7 @@ export function countTaskSections(tasksMd: string): number {
 export interface StageDeps {
   readonly driver: OpenSpecDriver
   readonly agent: AgentLayerDeps
+  readonly runDir: string
   readonly sidecarDir: string
   readonly cwd: string
 }
@@ -70,7 +71,8 @@ async function attemptDecompose(
     outputPath: 'decompose-tasks.json',
     outputSchema: DecomposeReportSchema,
     label: 'decomposer',
-    logPath: `${deps.sidecarDir}/logs/decomposer.log`,
+    runDir: deps.runDir,
+    round: 0,
     sidecarDir: deps.sidecarDir,
   })
   const validation = await deps.driver.validateStrict(changeName)
@@ -115,7 +117,8 @@ async function attemptAtomicity(
     outputPath: 'atomicity.json',
     outputSchema: AtomicityReportSchema,
     label: 'atomicity',
-    logPath: `${deps.sidecarDir}/logs/atomicity.log`,
+    runDir: deps.runDir,
+    round: 0,
     sidecarDir: deps.sidecarDir,
   })
   const validation = await deps.driver.validateStrict(changeName)

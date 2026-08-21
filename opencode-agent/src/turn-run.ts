@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { withDeadline } from './deadline.js'
-import { isTurnDeadline, providerStalledError, serverGoneError, turnDeadlineError } from './errors.js'
+import { isTurnDeadline, isTurnStall, serverGoneError, turnDeadlineError, turnStallError } from './errors.js'
 import { withHeartbeat } from './heartbeat.js'
 import type { Logger } from './logger.js'
 import type { ProgressTracker } from './progress.js'
@@ -59,10 +59,42 @@ export interface TurnBounds {
    * Resolved per turn in {@link bounded}, so the bound tracks the resource it protects.
    */
   timeoutMs?: number | (() => number)
+  /**
+   * The stall bound: abort a turn that has made no progress — no finished model
+   * step, no newly started tool call — for this long while provider retries or
+   * session errors accumulate. From `AGENT_STALL_TIMEOUT_MS`; `0` or absent
+   * disables it, which is the pre-knob behaviour exactly.
+   *
+   * A health check beside the clock above, not a second clock: the whole-turn
+   * deadline fires on elapsed time whether the provider is serving the turn or
+   * not, and the incident that added this bound was four runs that burned 90
+   * minutes each inside a healthy-looking deadline because a gateway answered
+   * HTTP 200 and streamed nothing. Both conditions are required before it
+   * fires — the retry evidence is what separates a provider wave from one very
+   * long generation.
+   */
+  stallTimeoutMs?: number
+  /**
+   * The clock the stall bound reads, defaulting to the real one.
+   *
+   * The fourth reader of the run's clock, for the same reason the per-turn
+   * bound is one: a stall window measured against `Date.now()` directly is one
+   * no test can stand on either side of, and a tracker stamping progress on
+   * its own injected clock would be measured against a different instant than
+   * the one it was stamped at.
+   */
+  now?: () => number
   /** Where progress goes. The adapter is the only thing that can see it. */
   log: Logger
   /** Heartbeat period while a turn is outstanding. `0` disables it. */
   heartbeatMs?: number
+  /**
+   * The heartbeat's scheduler, injected so a test fires the tick on demand
+   * rather than after a real minute. The same seam `HeartbeatOptions` carries,
+   * handed through because a caller that wired a watcher has to be able to
+   * drive the clock it rides on.
+   */
+  schedule?: (tick: () => void, everyMs: number) => { cancel: () => void }
 }
 
 /**
@@ -94,15 +126,73 @@ const turnBound = (bounds: TurnBounds): number => {
   return typeof timeout === 'function' ? timeout() : timeout
 }
 
+/** The two things a stall watcher needs: a way to lose the race, and the tick. */
+interface StallWatcher {
+  /**
+   * Rejects with the stall when the watcher fires; otherwise forever pending.
+   * Typed `unknown` — it never resolves, and the race only ever reads its
+   * rejection.
+   */
+  expiry: Promise<unknown>
+  /** Asked on every heartbeat tick while the turn is outstanding. */
+  reader: () => void
+}
+
+/**
+ * The mid-turn stall bound, riding the heartbeat's tick.
+ *
+ * `withDeadline`-shaped on purpose: the work promise loses a race it cannot
+ * cancel — nothing here can stop an in-flight HTTP request, and pretending
+ * otherwise is the lie `deadline.ts` refuses to tell either. What the race
+ * buys is *which* failure happens: `turnStallError` at the first heartbeat
+ * past the window, instead of `turnDeadlineError` at the whole-turn cap an
+ * hour later — cheap, before the runner's own clock is at risk, and carrying
+ * the provider's retry count as the cause.
+ *
+ * Two conditions, and the second is the whole guard against false positives:
+ * `tracker.stall()` is non-null only while retry evidence has accumulated
+ * since the last progress, so a turn that is merely thinking — one very long
+ * generation, no events, provider quiet — is the deadline's business and not
+ * this one's. The clock half comes from the stamp the tracker keeps beside
+ * that evidence, read against the same injected clock that stamped it.
+ *
+ * `null` when the bound is off (`AGENT_STALL_TIMEOUT_MS=0`, or a caller that
+ * never wired one), which wires no reader and races nothing — the pipeline's
+ * behaviour from before the knob existed, exactly.
+ */
+const stallWatcher = (bounds: TurnBounds, tracker: ProgressTracker): StallWatcher | null => {
+  const stallMs = bounds.stallTimeoutMs ?? 0
+  if (stallMs <= 0) return null
+
+  const now = bounds.now ?? ((): number => Date.now())
+  // Never resolves — only the reader's rejection settles it — so racing the
+  // work against it is a pure "who fires first", exactly `withDeadline`'s
+  // expiry. `withResolvers` rather than a captured `reject` so there is no
+  // placeholder for the executor to overwrite.
+  const expiry = Promise.withResolvers<unknown>()
+  return {
+    expiry: expiry.promise,
+    reader: (): void => {
+      const stall = tracker.stall()
+      if (stall === null || now() - stall.lastProgressAt < stallMs) return
+      expiry.reject(turnStallError(stallMs, stall, tracker.snapshot()))
+    },
+  }
+}
+
 /**
  * The bound and the heartbeat, in the one order that works.
  *
  * Heartbeat outside the deadline, never inside it: a deadline that fires leaves
  * the underlying call pending, so an inner heartbeat's cleanup would never run
- * and its interval would hold the process open past the end of the job.
+ * and its interval would hold the process open past the end of the job. The
+ * stall race sits **inside** the deadline for the same reason the work does —
+ * whichever of the two bounds fires first wins, and the loser's cleanup runs
+ * in the heartbeat's `finally` with the work's.
  */
-const bounded = (work: Promise<unknown>, bounds: TurnBounds, tracker: ProgressTracker): Promise<unknown> =>
-  withHeartbeat(
+const bounded = (work: Promise<unknown>, bounds: TurnBounds, tracker: ProgressTracker): Promise<unknown> => {
+  const watcher = stallWatcher(bounds, tracker)
+  return withHeartbeat(
     // The snapshot is read *at the rejection*, not when the bound was armed: what
     // the phase needs to report is what the turn had managed by the time it was
     // stopped, and this is the last frame that can still see the tracker.
@@ -110,13 +200,18 @@ const bounded = (work: Promise<unknown>, bounds: TurnBounds, tracker: ProgressTr
     // The bound itself is read here, per turn, for the reason `timeoutMs` may be a
     // function: a job now runs a turn per plan step, and a bound derived from the
     // job's remaining clock has to be asked again each time or it stops tracking it.
-    withDeadline(work, turnBound(bounds), (elapsed) => turnDeadlineError(elapsed, tracker.snapshot())),
+    withDeadline(watcher === null ? work : Promise.race([work, watcher.expiry]), turnBound(bounds), (elapsed) =>
+      turnDeadlineError(elapsed, tracker.snapshot()),
+    ),
     {
       everyMs: bounds.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
       log: bounds.log,
       snapshot: tracker.snapshot,
+      reader: watcher?.reader,
+      schedule: bounds.schedule,
     },
   )
+}
 
 /**
  * Runs one turn and, when it breaks, says whether the server it was talking to is
@@ -139,42 +234,6 @@ const bounded = (work: Promise<unknown>, bounds: TurnBounds, tracker: ProgressTr
  * Not a retry, and it must not become one: the one layer that may retry is
  * `provider-proxy.ts`, which is the only one that still has an HTTP status.
  */
-/**
- * The third way a turn ends badly: it returns, and the model never answered.
- *
- * Beside `runTurn` because it is the same question — how did this turn end —
- * asked of the one case that does not arrive as a rejection. The turn resolves
- * normally, the reply decodes normally, and there is simply nothing in it,
- * because the session spent its whole time being refused by the provider and
- * then gave up. Issue #239 shipped a pull request out of that: an empty turn,
- * a `git add --all` over a tree holding one stray pid file, and a delivery.
- *
- * **Both** signals are required, and neither is sufficient. An empty reply on
- * its own is a shape a healthy turn can reach — this pipeline discards the text
- * of an implement turn precisely because it does not depend on it — so failing
- * on it alone would fail runs that worked. A stall on its own says only that
- * the provider had a bad minute somewhere in a turn that then recovered, which
- * the tracker already reports by clearing it at the next finished step. Together
- * they are the thing itself: no answer, and the provider still failing at the
- * moment the session stopped trying.
- *
- * Takes the tracker rather than a pre-read stall so the read happens **after**
- * the turn returns, which is the only instant that answers the question.
- */
-export const requireAnswer = (text: string, tracker: ProgressTracker, bounds: TurnBounds): void => {
-  if (text.trim().length > 0) return
-
-  const stall = tracker.stall()
-  if (stall === null) return
-
-  bounds.log.error(
-    { retries: stall.retries, error: stall.failure?.name ?? null, statusCode: stall.failure?.statusCode ?? null },
-    'The turn returned with no answer while the provider was still failing; failing the turn rather than ' +
-      'committing whatever the tree holds',
-  )
-  throw providerStalledError(stall)
-}
-
 export const runTurn = async (
   connection: TurnConnection,
   sessionId: string,
@@ -185,7 +244,13 @@ export const runTurn = async (
   try {
     return await bounded(connection.sendPrompt(sessionId, body), bounds, tracker)
   } catch (error) {
+    // A stall leaves before the probe like a deadline does, and for the same
+    // reason plus one: the server is up and answering — it is the provider
+    // that is not — so a probe that relabelled this as `serverGoneError`
+    // would send a maintainer to the post-mortem step for an outage that is
+    // nowhere in it.
     if (isTurnDeadline(error)) throw error
+    if (isTurnStall(error)) throw error
 
     const alive = await connection.alive(sessionId).catch(() => false)
     if (alive) throw error

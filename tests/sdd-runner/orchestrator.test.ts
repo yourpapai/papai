@@ -21,8 +21,6 @@ import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { runContinue, runGateResume, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
 import type { RunGateResumeResult } from '../../sdd-runner/src/orchestrator.js'
-import { scriptedPrompter } from '../../sdd-runner/src/prompter.js'
-import type { Prompter } from '../../sdd-runner/src/prompter.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState } from '../../sdd-runner/src/run-state.js'
@@ -75,7 +73,20 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
       files_written: ['openspec/changes/add-thing/design.md'],
     }),
     'findings-1.json': JSON.stringify({ findings: [] }),
-    'resolutions-1.json': JSON.stringify({ resolutions: [], assumptions: [] }),
+    'resolutions-1.json': JSON.stringify({
+      resolutions: [],
+      assumptions: [
+        {
+          id: 'A1',
+          text: 'guests stay read-only',
+          basis: 'default',
+          confidence: 'medium',
+          blast_radius: 'group replies',
+          status: 'open',
+          evidence: { files: ['openspec/changes/thing/proposal.md'] },
+        },
+      ],
+    }),
     'decompose-tasks.json': JSON.stringify({
       tasks_file: 'openspec/changes/add-thing/tasks.md',
     }),
@@ -156,8 +167,7 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
       repoRoot,
       workDir: path.join(repoRoot, '.sdd-runner'),
       model: 'test-model',
-      models: {},
-      timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+      budget: 5,
     },
     spawn,
     execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
@@ -263,180 +273,57 @@ describe('runStart', () => {
 })
 
 describe('autonomy resolution onto OrchestratorDeps', () => {
-  it('runStart accepts autonomy overrides on StartOptions and resolves observe defaults from a bare config', async () => {
+  it('runStart accepts deadline overrides; budget stays the config-file ceiling', async () => {
     const fixture = makeFixture()
     const result = await runStart(fixture.deps, {
       taskFile: fixture.taskFile,
       depthOverride: 'S',
-      autonomy: { level: 'assist', deadlineMinutes: 10 },
-    })
-    expect(result.halted).toBe('gate')
-    const { resolveAutonomyConfig } = await import('../../sdd-runner/src/config.js')
-    const resolved = resolveAutonomyConfig(
-      { ...fixture.deps.config, autonomy: { level: 'observe', costCeilingUsd: 5, autoExtendMax: 1, rules: {} } },
-      { level: 'assist', deadlineMinutes: 10 },
-    )
-    expect(resolved).toMatchObject({ level: 'assist', deadlineMinutes: 10, costCeilingUsd: 5 })
-  })
-
-  it('resolves per-process deps.autonomy when start passes empty overrides', async () => {
-    const fixture = makeFixture()
-    const preloaded: OrchestratorDeps = {
-      ...fixture.deps,
-      autonomy: { level: 'observe', costCeilingUsd: 7, autoExtendMax: 2, deadlineMinutes: 42, rules: {} },
-    }
-    const result = await runStart(preloaded, { taskFile: fixture.taskFile, depthOverride: 'S' })
-    expect(result.halted).toBe('gate')
-    const state = await loadRunState(preloaded.config.workDir, result.runId)
-    expect(state.gate).toEqual({ mode: 'final', version: 1 })
-    // per-process observe config leaves the gate pending (no auto-settle)
-    expect(state.status).toBe('running')
-  })
-
-  it('an explicit start override replaces the per-process autonomy level', async () => {
-    const fixture = makeFixture()
-    const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
-      void modelId
-      return { input: 1, output: 2, source: 'primary' }
-    }
-    const deps: OrchestratorDeps = {
-      ...fixture.deps,
-      resolveCost: meteredCost,
-      autonomy: { level: 'observe', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
-    }
-    const result = await runStart(deps, {
-      taskFile: fixture.taskFile,
-      depthOverride: 'S',
-      autonomy: { level: 'assist' },
-    })
-    const state = await loadRunState(deps.config.workDir, result.runId)
-    expect(state.status).toBe('completed')
-    expect(state.gate).toBeNull()
-  })
-
-  it('empty start overrides defer to per-process autonomy, ignoring the config-file ceiling', async () => {
-    const fixture = makeFixture()
-    const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
-      void modelId
-      return { input: 1, output: 2, source: 'primary' }
-    }
-    const usageLine = JSON.stringify({
-      type: 'step_finish',
-      part: { reason: 'stop', tokens: { input: 2_000_000, output: 1_000_000 }, cost: 0 },
-    })
-    const deps: OrchestratorDeps = {
-      ...fixture.deps,
-      resolveCost: meteredCost,
-      spawn: (command, args, options, onLine) => {
-        onLine?.(usageLine)
-        return fixture.deps.spawn(command, args, options)
-      },
-      config: {
-        ...fixture.deps.config,
-        autonomy: { level: 'auto', costCeilingUsd: 0.001, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
-      },
-      autonomy: { level: 'auto', costCeilingUsd: 50, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
-    }
-    const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S', autonomy: {} })
-    const state = await loadRunState(deps.config.workDir, result.runId)
-    // the per-process ceiling (50) governs: spend ~4 is under it, R1 approves
-    expect(state.status).toBe('completed')
-    expect(state.gate).toBeNull()
-  })
-
-  it('a level-only start override still re-resolves the ceiling from the config file', async () => {
-    const fixture = makeFixture()
-    const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
-      void modelId
-      return { input: 1, output: 2, source: 'primary' }
-    }
-    const usageLine = JSON.stringify({
-      type: 'step_finish',
-      part: { reason: 'stop', tokens: { input: 2_000_000, output: 1_000_000 }, cost: 0 },
-    })
-    const deps: OrchestratorDeps = {
-      ...fixture.deps,
-      resolveCost: meteredCost,
-      spawn: (command, args, options, onLine) => {
-        onLine?.(usageLine)
-        return fixture.deps.spawn(command, args, options)
-      },
-      config: {
-        ...fixture.deps.config,
-        autonomy: { level: 'observe', costCeilingUsd: 0.001, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
-      },
-      autonomy: { level: 'auto', costCeilingUsd: 50, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
-    }
-    const result = await runStart(deps, {
-      taskFile: fixture.taskFile,
-      depthOverride: 'S',
-      autonomy: { level: 'auto' },
-    })
-    const state = await loadRunState(deps.config.workDir, result.runId)
-    // an override re-resolves from config: the 0.001 ceiling makes R4 fail closed over ~$4 of spend
-    expect(state.status).toBe('running')
-    expect(state.gate).toEqual({ mode: 'final', version: 1 })
-  })
-
-  it('a deadline-only start override keeps the per-process level and its ceiling', async () => {
-    const fixture = makeFixture()
-    const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
-      void modelId
-      return { input: 1, output: 2, source: 'primary' }
-    }
-    const deps: OrchestratorDeps = {
-      ...fixture.deps,
-      resolveCost: meteredCost,
-      config: {
-        ...fixture.deps.config,
-        autonomy: { level: 'observe', costCeilingUsd: 50, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
-      },
-      autonomy: { level: 'auto', costCeilingUsd: 50, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
-    }
-    const result = await runStart(deps, {
-      taskFile: fixture.taskFile,
-      depthOverride: 'S',
       autonomy: { deadlineMinutes: 10 },
     })
+    expect(result.halted).toBe('gate')
+    const { autonomyOf } = await import('../../sdd-runner/src/config.js')
+    expect(autonomyOf(fixture.deps.config, 10)).toMatchObject({ level: 'assist', deadlineMinutes: 10 })
+    expect(autonomyOf({ ...fixture.deps.config, budget: 2 })).toMatchObject({ costCeilingUsd: 2 })
+  })
+
+  it('the ladder always runs: a converged clean run auto-approves with no level to set', async () => {
+    const fixture = makeFixture({
+      'resolutions-1.json': JSON.stringify({ resolutions: [], assumptions: [] }),
+    })
+    const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
+      void modelId
+      return { input: 1, output: 2, source: 'primary' }
+    }
+    const deps: OrchestratorDeps = { ...fixture.deps, resolveCost: meteredCost }
+    const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
     const state = await loadRunState(deps.config.workDir, result.runId)
-    // the merged config keeps level auto from the per-process autonomy: R1 approves
     expect(state.status).toBe('completed')
     expect(state.gate).toBeNull()
   })
 
-  it('resolveAutonomyConfig normalizes the effective ceiling against budgetUsd (min) and applies CLI overrides', async () => {
-    const { resolveAutonomyConfig } = await import('../../sdd-runner/src/config.js')
-    const base = {
-      repoRoot: '/repo',
-      workDir: '/repo/.sdd-runner',
-      model: 'm',
-      models: {},
-      timeouts: { wallClockMs: 1, inactivityMs: 1 },
-      autonomy: {
-        level: 'observe' as const,
-        costCeilingUsd: 5,
-        autoExtendMax: 1,
-        deadlineMinutes: undefined,
-        rules: {},
-      },
-    }
-    expect(resolveAutonomyConfig(base)).toMatchObject({ level: 'observe', costCeilingUsd: 5 })
-    expect(resolveAutonomyConfig({ ...base, budgetUsd: 2 })).toMatchObject({ costCeilingUsd: 2 })
-    expect(resolveAutonomyConfig({ ...base, budgetUsd: 50 })).toMatchObject({ costCeilingUsd: 5 })
-    expect(resolveAutonomyConfig(base, { level: 'auto', deadlineMinutes: 10 })).toMatchObject({
-      level: 'auto',
-      deadlineMinutes: 10,
-    })
-  })
-
-  it('budgetUsd alone never gated anything before this change (no consumer in the pre-change pipeline path)', async () => {
+  it('the R4 budget guard fails closed against the config budget', async () => {
     const fixture = makeFixture()
-    const result = await runStart(
-      { ...fixture.deps, config: { ...fixture.deps.config, budgetUsd: 0.000001 } },
-      { taskFile: fixture.taskFile, depthOverride: 'S' },
-    )
-    expect(result.halted).toBe('gate')
-    expect(fs.existsSync(result.gateMdPath)).toBe(true)
+    const meteredCost = (modelId: string): { input: number; output: number; source: 'primary' } | null => {
+      void modelId
+      return { input: 1, output: 2, source: 'primary' }
+    }
+    const usageLine = JSON.stringify({
+      type: 'step_finish',
+      part: { reason: 'stop', tokens: { input: 2_000_000, output: 1_000_000 }, cost: 0 },
+    })
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      resolveCost: meteredCost,
+      spawn: (command, args, options, onLine) => {
+        onLine?.(usageLine)
+        return fixture.deps.spawn(command, args, options)
+      },
+      config: { ...fixture.deps.config, budget: 0.001 },
+    }
+    const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const state = await loadRunState(deps.config.workDir, result.runId)
+    expect(state.status).toBe('running')
+    expect(state.gate).toEqual({ mode: 'final', version: 1 })
   })
 })
 
@@ -909,8 +796,11 @@ describe('runResume', () => {
     expect(result.halted).toBe('gate')
     expect(result.version).toBe(1)
     const gateMd = fs.readFileSync(requireGateMdPath({ gateMdPath: result.gateMdPath }), 'utf8')
-    // settled by the answered early gate: rendered as the final converged gate, no cap-hit extend directive
-    expect(gateMd).toContain('## Final gate')
+    // settled by the answered early gate: the ladder auto-approves the converged final gate (single mode),
+    // writing the attributed response — no cap-hit extend directive
+    expect(gateMd).toContain('## Gate response')
+    expect(gateMd).toContain('decided-by: policy R1')
+    expect(gateMd).not.toContain('RUN 1 MORE')
     expect(gateMd).not.toContain('→ RUN 1 MORE')
   })
 })
@@ -1177,12 +1067,11 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
     const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
     const gatePath = path.join(fixture.deps.config.workDir, 'runs', started.runId, 'gate-1.md')
     const before = fs.readFileSync(gatePath, 'utf8')
-    const { prompter } = scriptedPrompter(['q'])
     const stdoutLines: string[] = []
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       interactive: () => true,
-      makePrompter: () => prompter,
+      gateKeyScript: 'q',
       stdout: (line: string) => {
         stdoutLines.push(line)
       },
@@ -1230,11 +1119,10 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
   it('a TTY with no decision flags runs the interactive session and writes its answers', async () => {
     const fixture = gatedFixture()
     const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
-    const { prompter } = scriptedPrompter(['a', 'approve'])
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       interactive: (): boolean => true,
-      makePrompter: (): Prompter => prompter,
+      gateKeyScript: 'a',
     }
     const result = await runGateResume(deps, started.runId, {})
     expect(result.outcome).toBe('approved')
@@ -1256,11 +1144,10 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
     const runDir = path.join(fixture.deps.config.workDir, 'runs', started.runId)
     const gate1Path = path.join(runDir, 'gate-1.md')
     const before = fs.readFileSync(gate1Path, 'utf8')
-    const { prompter } = scriptedPrompter([])
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       interactive: (): boolean => true,
-      makePrompter: (): Prompter => prompter,
+      gateKeyScript: '',
     }
     const result = await runGateResume(deps, started.runId, {})
     expect(result.outcome).toBe('abandoned')
@@ -1377,6 +1264,9 @@ describe('runGateResume', () => {
       taskFile: fixture.taskFile,
       depthOverride: 'S',
     })
+    const gatePath = path.join(fixture.deps.config.workDir, 'runs', started.runId, 'gate-1.md')
+    const gateMd = fs.readFileSync(gatePath, 'utf8')
+    fs.writeFileSync(gatePath, gateMd.replace(/- \[ \] /gu, '- [x] '))
     const result = await runGateResume(fixture.deps, started.runId, {})
     expect(result.outcome).toBe('approved')
     const state = await loadRunState(fixture.deps.config.workDir, started.runId)
@@ -1651,6 +1541,9 @@ describe('runGateResume', () => {
       '## ADDED Requirements\n### Requirement: Hand-edit\n',
     )
     const before = fixture.spawnOrder.length
+    const gatePath = path.join(fixture.deps.config.workDir, 'runs', started.runId, 'gate-1.md')
+    const gateMd = fs.readFileSync(gatePath, 'utf8')
+    fs.writeFileSync(gatePath, gateMd.replace(/- \[ \] /gu, '- [x] '))
     const result = await runGateResume(fixture.deps, started.runId, {})
     expect(result.outcome).toBe('approved')
     const driftSpawn = fixture.spawnOrder.slice(before).find((name) => name === 'drift.json')
@@ -2027,8 +1920,7 @@ describe('presentGateAt cost fallback', () => {
         repoRoot,
         workDir,
         model: 'zai-coding-plan/glm-5.2',
-        models: {},
-        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+        budget: 5,
       },
       spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
       execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
@@ -2101,8 +1993,7 @@ describe('presentGateAt change digest', () => {
         repoRoot,
         workDir,
         model: 'test-model',
-        models: {},
-        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+        budget: 5,
       },
       spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
       execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
@@ -2214,7 +2105,20 @@ describe('runResume hardening', () => {
     fs.writeFileSync(path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'), '## ADDED Requirements\n')
     fs.writeFileSync(
       path.join(runDir, 'sidecars', 'resolutions-1.json'),
-      JSON.stringify({ resolutions: [], assumptions: [] }),
+      JSON.stringify({
+        resolutions: [],
+        assumptions: [
+          {
+            id: 'A1',
+            text: 'undecidable without a human',
+            basis: 'default',
+            confidence: 'medium',
+            blast_radius: 'repo',
+            status: 'open',
+            evidence: { files: ['openspec/changes/thing/proposal.md'] },
+          },
+        ],
+      }),
     )
     const now = '2026-01-01T00:00:00.000Z'
     const events = [
@@ -2308,12 +2212,14 @@ describe('assist auto-settle (7.2)', () => {
     return { input: 1, output: 2, source: 'primary' }
   }
 
-  it('a converged run at assist auto-approves the final gate with zero prompts and full attribution', async () => {
-    const fixture = makeFixture()
+  it('the ladder auto-approves a converged clean run with zero prompts and full attribution', async () => {
+    const fixture = makeFixture({
+      'resolutions-1.json': JSON.stringify({ resolutions: [], assumptions: [] }),
+    })
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+      autonomy: { level: 'assist', costCeilingUsd: 5 },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
 
@@ -2332,7 +2238,7 @@ describe('assist auto-settle (7.2)', () => {
     expect(autoDecisions[0]).toMatchObject({ rule: 'R1', decision: 'approve', gateVersion: 1 })
   })
 
-  it('observe stays byte-identical: no auto-settle, gate pending, preview recorded', async () => {
+  it('an undecidable gate stays pending with its audit recorded unconditionally', async () => {
     const fixture = makeFixture()
     const result = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
     const state = await loadRunState(fixture.deps.config.workDir, result.runId)
@@ -2341,6 +2247,11 @@ describe('assist auto-settle (7.2)', () => {
     const gateMd = fs.readFileSync(result.gateMdPath, 'utf8')
     expect(gateMd).not.toContain('## Gate response')
     expect(gateMd).toContain('### Auto-decision preview')
+    const sidecar = fs.readFileSync(
+      path.join(fixture.deps.config.workDir, 'runs', result.runId, 'auto-policy.jsonl'),
+      'utf8',
+    )
+    expect(sidecar).toContain('"decision":"gate"')
   })
 })
 
@@ -2381,12 +2292,14 @@ describe('assist auto-settle (7.2)', () => {
     return { input: 1, output: 2, source: 'primary' }
   }
 
-  it('a converged run at assist auto-approves the final gate with zero prompts and full attribution', async () => {
-    const fixture = makeFixture()
+  it('the ladder auto-approves a converged clean run with zero prompts and full attribution', async () => {
+    const fixture = makeFixture({
+      'resolutions-1.json': JSON.stringify({ resolutions: [], assumptions: [] }),
+    })
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+      autonomy: { level: 'assist', costCeilingUsd: 5 },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
 
@@ -2405,7 +2318,7 @@ describe('assist auto-settle (7.2)', () => {
     expect(autoDecisions[0]).toMatchObject({ rule: 'R1', decision: 'approve', gateVersion: 1 })
   })
 
-  it('observe stays byte-identical: no auto-settle, gate pending, preview recorded', async () => {
+  it('an undecidable gate stays pending with its audit recorded unconditionally', async () => {
     const fixture = makeFixture()
     const result = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
     const state = await loadRunState(fixture.deps.config.workDir, result.runId)
@@ -2414,6 +2327,11 @@ describe('assist auto-settle (7.2)', () => {
     const gateMd = fs.readFileSync(result.gateMdPath, 'utf8')
     expect(gateMd).not.toContain('## Gate response')
     expect(gateMd).toContain('### Auto-decision preview')
+    const sidecar = fs.readFileSync(
+      path.join(fixture.deps.config.workDir, 'runs', result.runId, 'auto-policy.jsonl'),
+      'utf8',
+    )
+    expect(sidecar).toContain('"decision":"gate"')
   })
 })
 
@@ -2461,7 +2379,7 @@ describe('R3 accept-items partial path (7.5)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+      autonomy: { level: 'assist', costCeilingUsd: 5 },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
 
@@ -2537,7 +2455,7 @@ describe('R2 trajectory auto-extend (8.2)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+      autonomy: { level: 'assist', costCeilingUsd: 5 },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
 
@@ -2566,7 +2484,7 @@ describe('R2 trajectory auto-extend (8.2)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+      autonomy: { level: 'assist', costCeilingUsd: 5 },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
     const events = readEvents(path.join(deps.config.workDir, 'runs', result.runId, 'events.ndjson'))

@@ -14,7 +14,7 @@ import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
 import { diffGuardError, turnDeadlineError } from '../../opencode-agent/src/errors.js'
 import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import { GitError } from '../../opencode-agent/src/git.js'
-import type { Git, Salvage } from '../../opencode-agent/src/git.js'
+import type { Git, MergeOutcome, Salvage } from '../../opencode-agent/src/git.js'
 import type { PullRequestHead, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github-pulls.js'
 import type { ReactionContent, ReactionRef, ReactionTarget } from '../../opencode-agent/src/github-reactions.js'
 import type { GitHubApi } from '../../opencode-agent/src/github.js'
@@ -109,6 +109,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,
+  stallTimeoutMs: 300_000,
   // No job deadline by default, which is what every run had before it existed:
   // the wall-clock stop is off unless a test switches it on.
   jobDeadlineMs: null,
@@ -116,6 +117,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   wrapUpMs: 120_000,
   ciFixMaxRounds: 2,
   commitRepairMaxRounds: 3,
+  syncRepairMaxRounds: 3,
   maxCiAttempts: 2,
   maxAttempts: 3,
   maxReviewAttempts: 2,
@@ -273,6 +275,8 @@ interface PipelineIo {
   readContents: Record<string, string>
   /** What `git` would report as the remote's default branch. */
   detectedBranch: string | null
+  /** What a `/sync` run's `mergeBase` reports; up-to-date when unset. */
+  syncOutcome: MergeOutcome | null
   /**
    * What the diff guard measured for the commit `commitAll` made.
    *
@@ -427,6 +431,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     reviewCalls: [],
     reviewError: null,
     detectedBranch: BASE_BRANCH,
+    syncOutcome: null,
     committedTotals: { files: 2, lines: 12 },
     salvaged: { kind: 'committed', totals: { files: 3, lines: 140 }, overCap: null },
     salvageError: null,
@@ -652,6 +657,18 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
       return Promise.resolve()
     },
+    mergeBase: (base) => {
+      io.gitCalls.push(`mergeBase:${base}`)
+      return Promise.resolve(io.syncOutcome ?? { kind: 'up-to-date' as const })
+    },
+    completeMerge: (message) => {
+      io.gitCalls.push(`completeMerge:${message.split('\n')[0]}`)
+      return Promise.resolve()
+    },
+    abortMerge: () => {
+      io.gitCalls.push('abortMerge')
+      return Promise.resolve()
+    },
   }
 
   const agent: OpenCodeAgent = {
@@ -781,6 +798,9 @@ const hostileGit = (): Git => {
     headSha: (): Promise<string> => refuse('rev-parse'),
     changedSince: (): Promise<string[]> => refuse('diff --name-only'),
     revertPaths: (): Promise<void> => refuse('revert'),
+    mergeBase: (): Promise<never> => refuse('merge'),
+    completeMerge: (): Promise<void> => refuse('commit'),
+    abortMerge: (): Promise<void> => refuse('merge --abort'),
   }
 }
 

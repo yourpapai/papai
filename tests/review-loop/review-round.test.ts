@@ -29,6 +29,23 @@ const severities = (issues: readonly ReviewerIssue[]): string[] => issues.map((i
  * remember is a courtesy, and severity is the standing proof that self-assigned
  * ratings inflate — which is why `exposure` was built as a citation instead.
  */
+describe('theme spans', () => {
+  test('capCleanupSeverity preserves spans', () => {
+    const themed: ReviewerIssue = {
+      ...issue,
+      kind: 'cleanup',
+      severity: 'critical',
+      spans: [
+        { file: 'src/a.ts', lineStart: 1, lineEnd: 2, evidence: 'e1' },
+        { file: 'src/b.ts', lineStart: 3, lineEnd: 4, evidence: 'e2' },
+      ],
+    }
+    const out = capCleanupSeverity([themed])
+    expect(out[0]?.spans).toHaveLength(2)
+    expect(out[0]?.severity).toBe('medium')
+  })
+})
+
 describe('capCleanupSeverity', () => {
   test('a cleanup above medium is recorded as medium', () => {
     const issues = capCleanupSeverity([

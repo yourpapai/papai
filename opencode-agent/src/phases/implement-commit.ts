@@ -6,7 +6,7 @@
 import { buildCommitRepairPrompt, commitWithRepair } from '../commit-repair.js'
 import type { CommitRejection } from '../commit-repair.js'
 import type { StagedTotals } from '../diff-guard.js'
-import { isTurnDeadline } from '../errors.js'
+import { isTurnDeadline, isTurnStall } from '../errors.js'
 import type { PipelineError } from '../errors.js'
 import { droppedBy } from '../git-commit.js'
 import type { PhaseInput } from '../phase-context.js'
@@ -113,10 +113,12 @@ export const commitStep = async (walk: StepCommitInput, marker: StepMarker | nul
     )
     return { totals: committed.totals, dropped: committed.dropped, repairs: paid.repairs, stopped: null }
   } catch (error) {
-    // The same split `promptForStep` makes, for the same reason: a ceiling reached is
-    // not the work breaking, and only the deadline may start a salvage. Every other
-    // rejection — the refusal that outlived its rounds included — still ends the run.
-    if (!isTurnDeadline(error)) throw error
+    // The same split `promptForStep` makes, for the same reason: a bound
+    // reached — the whole-turn deadline or the provider-stall window — is not
+    // the work breaking, and only those two may start a salvage. Every other
+    // rejection — the refusal that outlived its rounds included — still ends
+    // the run.
+    if (!isTurnDeadline(error) && !isTurnStall(error)) throw error
     return { totals: null, dropped: [], repairs: paid.repairs, stopped: error }
   }
 }
