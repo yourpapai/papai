@@ -7,12 +7,35 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { emitGlobal, emitUser, emitGroup } from '../../src/debug/event-bus.js'
-import { addClient, init, removeClient } from '../../src/debug/state-collector.js'
+import { subscribeCountForTest } from '../../src/debug/event-bus.testing.js'
+import {
+  addClient,
+  findTurnById,
+  init,
+  recentLlm,
+  removeClient,
+  resetTurnBuffers,
+  stats,
+} from '../../src/debug/state-collector.js'
+import * as stateCollector from '../../src/debug/state-collector.js'
+import { recentNotifications } from '../../src/debug/turn-assembly.js'
 import { resetStats, setupTestDb } from '../utils/test-helpers.js'
 
 beforeEach(async () => {
   await setupTestDb()
 })
+
+// Seams from the persistent-capture rework (plan 2.2). Until those exports exist
+// these are no-ops, keeping this suite loadable while the new coverage is red.
+const startCollectorIfPresent = (): void => {
+  const seam: unknown = Reflect.get(stateCollector, 'startEventCollector')
+  if (typeof seam === 'function') Reflect.apply(seam, undefined, [])
+}
+
+const stopCollectorIfPresent = (): void => {
+  const seam: unknown = Reflect.get(stateCollector, 'stopEventCollectorForTest')
+  if (typeof seam === 'function') Reflect.apply(seam, undefined, [])
+}
 
 type MockController = {
   ctrl: ReadableStreamDefaultController
@@ -146,11 +169,11 @@ describe('state-collector', () => {
     expect(initData).toHaveProperty('stats')
     expect(initData).toHaveProperty('recentLlm')
 
-    const stats = initData['stats']
-    assert.ok(isRecord(stats))
-    expect(stats['totalMessages']).toBe(0)
-    expect(stats['totalLlmCalls']).toBe(0)
-    expect(stats['totalToolCalls']).toBe(0)
+    const statsSnapshot = initData['stats']
+    assert.ok(isRecord(statsSnapshot))
+    expect(statsSnapshot['totalMessages']).toBe(0)
+    expect(statsSnapshot['totalLlmCalls']).toBe(0)
+    expect(statsSnapshot['totalToolCalls']).toBe(0)
   })
 
   test('admin events are broadcast to clients', () => {
@@ -489,6 +512,181 @@ describe('state-collector', () => {
       const events = getAllSseEvents(enqueueMock)
       const eventNames = events.map((e) => e.event)
       expect(eventNames).toContain('scheduler:tick')
+    })
+  })
+
+  describe('persistent capture', () => {
+    beforeEach(() => {
+      resetStats()
+      resetTurnBuffers()
+    })
+
+    test('startEventCollector subscribes the collector exactly once and is idempotent', () => {
+      init('admin-1')
+      stopCollectorIfPresent()
+      const before = subscribeCountForTest()
+
+      startCollectorIfPresent()
+      expect(subscribeCountForTest()).toBe(before + 1)
+
+      startCollectorIfPresent()
+      startCollectorIfPresent()
+      expect(subscribeCountForTest()).toBe(before + 1)
+    })
+
+    test('admin and global events with zero clients are captured and replayed via state:init', () => {
+      init('admin-1')
+      startCollectorIfPresent()
+
+      emitGlobal('llm:start', { userId: 'admin-1', model: 'm-admin' })
+      emitGlobal('llm:end', {
+        userId: 'admin-1',
+        model: 'm-admin',
+        steps: 1,
+        totalDuration: 42,
+        tokenUsage: { inputTokens: 3, outputTokens: 4 },
+      })
+      emitGlobal('message:received', { userId: 'admin-1', textLength: 12 })
+      emitUser('turn:start', 'admin-1', { turnId: 'turn-admin', incomingMessageCount: 1 })
+      emitUser('turn:end', 'admin-1', { turnId: 'turn-admin', status: 'ok' })
+      emitGlobal('notify:digest', { itemCount: 1 })
+
+      expect(stats.totalMessages).toBe(1)
+      expect(stats.totalLlmCalls).toBe(1)
+
+      const trace = recentLlm[0]
+      assert.ok(trace !== undefined)
+      expect(trace.userId).toBe('admin-1')
+      expect(trace.model).toBe('m-admin')
+
+      const turn = findTurnById('turn-admin')
+      assert.ok(turn !== undefined)
+      expect(turn.status).toBe('ok')
+
+      expect(recentNotifications).toHaveLength(1)
+
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      const { data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
+      const initData = data['data']
+      assert.ok(isRecord(initData))
+
+      const initLlm = initData['recentLlm']
+      assert.ok(Array.isArray(initLlm))
+      expect(initLlm).toHaveLength(1)
+      const initTrace: unknown = initLlm[0]
+      assert.ok(isRecord(initTrace))
+      expect(initTrace['userId']).toBe('admin-1')
+
+      const initTurns = initData['recentTurns']
+      assert.ok(Array.isArray(initTurns))
+      expect(initTurns).toHaveLength(1)
+      const initTurn: unknown = initTurns[0]
+      assert.ok(isRecord(initTurn))
+      expect(initTurn['turnId']).toBe('turn-admin')
+
+      const initNotifications = initData['recentNotifications']
+      assert.ok(Array.isArray(initNotifications))
+      expect(initNotifications).toHaveLength(1)
+
+      const initStats = initData['stats']
+      assert.ok(isRecord(initStats))
+      expect(initStats['totalMessages']).toBe(1)
+      expect(initStats['totalLlmCalls']).toBe(1)
+    })
+
+    test('non-admin events with zero clients are captured but hidden from the admin state:init', () => {
+      init('admin-1')
+      startCollectorIfPresent()
+
+      emitUser('llm:start', 'other-user', { model: 'm-other' })
+      emitUser('llm:end', 'other-user', {
+        model: 'm-other',
+        steps: 2,
+        totalDuration: 7,
+        tokenUsage: { inputTokens: 1, outputTokens: 2 },
+      })
+      emitUser('message:received', 'other-user', { textLength: 4 })
+      emitUser('turn:start', 'other-user', { turnId: 'turn-other', incomingMessageCount: 1 })
+      emitUser('turn:end', 'other-user', { turnId: 'turn-other', status: 'error', error: 'boom' })
+      emitUser('notify:mention', 'other-user', { count: 1 })
+
+      const trace = recentLlm[0]
+      assert.ok(trace !== undefined)
+      expect(trace.userId).toBe('other-user')
+
+      const turn = findTurnById('turn-other')
+      assert.ok(turn !== undefined)
+      expect(turn.status).toBe('error')
+
+      expect(recentNotifications).toHaveLength(1)
+
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      const { data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
+      const initData = data['data']
+      assert.ok(isRecord(initData))
+
+      const initLlm = initData['recentLlm']
+      assert.ok(Array.isArray(initLlm))
+      expect(initLlm).toHaveLength(0)
+
+      const initTurns = initData['recentTurns']
+      assert.ok(Array.isArray(initTurns))
+      expect(initTurns.filter(isRecord).map((t) => t['turnId'])).not.toContain('turn-other')
+
+      const initNotifications = initData['recentNotifications']
+      assert.ok(Array.isArray(initNotifications))
+      expect(initNotifications).toHaveLength(0)
+    })
+
+    test('stats increment with no client connected', () => {
+      init('admin-1')
+      startCollectorIfPresent()
+
+      emitGlobal('message:received', { userId: 'admin-1', textLength: 10 })
+      emitUser('message:received', 'other-user', { textLength: 5 })
+      emitUser('llm:start', 'other-user', { model: 'm-other' })
+      emitUser('llm:end', 'other-user', {
+        model: 'm-other',
+        steps: 1,
+        totalDuration: 5,
+        tokenUsage: { inputTokens: 1, outputTokens: 1 },
+      })
+
+      expect(stats.totalMessages).toBe(2)
+      expect(stats.totalLlmCalls).toBe(1)
+    })
+
+    test('non-admin events are captured but never broadcast to a connected client', () => {
+      init('admin-1')
+      startCollectorIfPresent()
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+      expect(enqueueMock).toHaveBeenCalledTimes(1)
+
+      emitUser('llm:start', 'other-user', { model: 'm-other' })
+      emitUser('llm:end', 'other-user', {
+        model: 'm-other',
+        steps: 1,
+        totalDuration: 9,
+        tokenUsage: { inputTokens: 2, outputTokens: 2 },
+      })
+      emitUser('message:received', 'other-user', { textLength: 4 })
+      emitUser('turn:start', 'other-user', { turnId: 'turn-live', incomingMessageCount: 1 })
+      emitUser('turn:end', 'other-user', { turnId: 'turn-live', status: 'ok' })
+
+      expect(enqueueMock).toHaveBeenCalledTimes(1)
+
+      const trace = recentLlm[0]
+      assert.ok(trace !== undefined)
+      expect(trace.userId).toBe('other-user')
+
+      const turn = findTurnById('turn-live')
+      assert.ok(turn !== undefined)
+      expect(turn.status).toBe('ok')
     })
   })
 })
