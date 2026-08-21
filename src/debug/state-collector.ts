@@ -8,19 +8,28 @@ import { getPollerSnapshot } from '../deferred-prompts/poller.js'
 import { getMessageCacheSnapshot } from '../message-cache/cache.js'
 import { getSchedulerSnapshot } from '../scheduler.js'
 import { subscribe, unsubscribe, type DebugEvent } from './event-bus.js'
-import { recentLlm, pushTrace, handleLlmTraceEvent, type LlmTrace } from './llm-trace-collector.js'
+import { recentLlm, pushTrace, handleLlmTraceEvent, shapeLlmTrace, type LlmTrace } from './llm-trace-collector.js'
+import { shapeLogEntry } from './log-buffer.js'
 import type { LogEntry } from './log-buffer.js'
 import { entryMatchesFilter, type LogFilter } from './log-filter-model.js'
-import { recentTurns, recentNotifications, recentToolFailures, handleTurnAssembly } from './turn-assembly.js'
-import type { Turn } from './turn-assembly.js'
+import {
+  recentTurns,
+  recentNotifications,
+  recentToolFailures,
+  inFlightTurns,
+  findTurnById,
+  handleTurnAssembly,
+} from './turn-assembly.js'
 
 export { resetTurnBuffers, findTurnById } from './turn-assembly.js'
 export { recentLlm, pendingTraces } from './llm-trace-collector.js'
 
-let adminUserId: string | null = null
-let adminVisibility: AdminVisibility = { adminUserId: '', groupIds: new Set() }
+type ClientRegistration = {
+  filter: LogFilter
+  adminUserId: string | undefined
+}
 
-const clients = new Map<ReadableStreamDefaultController, LogFilter>()
+const clients = new Map<ReadableStreamDefaultController, ClientRegistration>()
 const PASS_ALL: LogFilter = { include: [], exclude: [], level: 0 }
 const encoder = new TextEncoder()
 
@@ -66,11 +75,6 @@ export const stats = {
   totalToolCalls: 0,
 }
 
-export function init(adminId: string): void {
-  adminUserId = adminId
-  adminVisibility = { adminUserId: adminId, groupIds: new Set() }
-}
-
 export type AdminVisibility = {
   adminUserId: string
   groupIds: ReadonlySet<string>
@@ -87,34 +91,82 @@ export function isVisibleToAdmin(
   return false
 }
 
-/**
- * Visibility check for a persisted turn's scope against the process's current admin.
- * Closes over the module-private `adminVisibility` so REST handlers can enforce the
- * same contract as the SSE path without importing mutable module state.
- */
-export function isScopeVisibleToCurrentAdmin(scope: Turn['scope'] | null | undefined): boolean {
-  return isVisibleToAdmin(scope, adminVisibility)
+function clientVisibility(adminUserId: string | undefined): AdminVisibility {
+  return { adminUserId: adminUserId ?? '', groupIds: new Set() }
 }
 
-export function addClient(controller: ReadableStreamDefaultController, filter: LogFilter = PASS_ALL): void {
-  clients.set(controller, filter)
+/**
+ * Turn ids whose scope is visible to the session admin, resolved in a single
+ * pass over the turn buffers — the per-request attribution index for bulk log
+ * egress (O(turns) once, not O(entries x turns)).
+ * @public -- shared by the REST /logs route so bulk egress avoids per-entry scans.
+ */
+export function ownTurnIdsForAdmin(adminUserId: string | undefined): Set<string> {
+  const own = new Set<string>()
+  if (adminUserId === undefined) return own
+  const vis = clientVisibility(adminUserId)
+  for (const turn of inFlightTurns.values()) {
+    if (isVisibleToAdmin(turn.scope, vis)) own.add(turn.turnId)
+  }
+  for (const turn of recentTurns) {
+    if (isVisibleToAdmin(turn.scope, vis)) own.add(turn.turnId)
+  }
+  return own
+}
 
-  const initData: Record<string, unknown> = {
-    sessions: adminUserId === null ? [] : getSessionSnapshots(adminUserId),
+/**
+ * Attribution check for log egress: an entry is the client admin's own when it
+ * carries an explicit matching `chatUserId`, or when its `turnId` resolves to a
+ * turn whose scope is visible to that admin. Everything else — foreign or
+ * unattributable — must be shaped.
+ * @public -- shared by the REST /logs route so SSE and REST egress agree.
+ * `ownTurnIds`, when provided, is the pre-resolved per-request attribution set
+ * (see `ownTurnIdsForAdmin`); without it the single-entry path falls back to a
+ * `findTurnById` lookup.
+ */
+export function isOwnLogEntry(
+  entry: LogEntry,
+  adminUserId: string | undefined,
+  ownTurnIds?: ReadonlySet<string>,
+): boolean {
+  if (adminUserId === undefined) return false
+  const explicit = entry['chatUserId']
+  if (typeof explicit === 'string') return explicit === adminUserId
+  const turnId = entry['turnId']
+  if (typeof turnId === 'string' && turnId !== '') {
+    if (ownTurnIds !== undefined) return ownTurnIds.has(turnId)
+    const turn = findTurnById(turnId)
+    if (turn !== undefined && isVisibleToAdmin(turn.scope, clientVisibility(adminUserId))) return true
+  }
+  return false
+}
+
+function buildInitData(adminUserId: string | undefined): Record<string, unknown> {
+  const vis = clientVisibility(adminUserId)
+  return {
+    sessions: adminUserId === undefined ? [] : getSessionSnapshots(adminUserId),
     scheduler: getSchedulerSnapshot(),
     pollers: getPollerSnapshot(),
     messageCache: getMessageCacheSnapshot(),
     stats,
-    recentLlm,
-    recentTurns,
-    recentNotifications,
-    recentToolFailures,
+    recentLlm: recentLlm.map((trace) => shapeLlmTrace(trace, adminUserId)),
+    recentTurns: recentTurns.filter((turn) => isVisibleToAdmin(turn.scope, vis)),
+    recentNotifications: recentNotifications.filter((n) => isVisibleToAdmin(n.scope, vis)),
+    recentToolFailures: recentToolFailures.filter((f) => isVisibleToAdmin(f.scope, vis)),
   }
+}
+
+export function addClient(
+  controller: ReadableStreamDefaultController,
+  filter: LogFilter = PASS_ALL,
+  adminUserId?: string,
+): void {
+  clients.set(controller, { filter, adminUserId })
 
   sendTo(controller, {
     type: 'state:init',
     timestamp: Date.now(),
-    data: initData,
+    data: buildInitData(adminUserId),
     scope: { kind: 'global' },
   })
 
@@ -148,12 +200,33 @@ function scheduleStatsBroadcast(): void {
   }, 500)
 }
 
+function deliver(controller: ReadableStreamDefaultController, payload: Uint8Array | null): void {
+  if (payload === null) return
+  try {
+    controller.enqueue(payload)
+  } catch {
+    removeClient(controller)
+  }
+}
+
+function frameForClient(event: DebugEvent, registration: ClientRegistration): Uint8Array | null {
+  if (event.type === 'log:entry') {
+    if (!isLogEntry(event.data)) return null
+    const shaped = isOwnLogEntry(event.data, registration.adminUserId) ? event.data : shapeLogEntry(event.data)
+    if (!entryMatchesFilter(shaped, registration.filter)) return null
+    return formatSse({ ...event, data: shaped })
+  }
+  return formatSse(event)
+}
+
 function broadcastTrace(trace: LlmTrace, timestamp: number): void {
-  broadcast({ type: 'llm:full', timestamp, data: { ...trace }, scope: { kind: 'global' } })
+  for (const [client, registration] of clients) {
+    const shaped = shapeLlmTrace(trace, registration.adminUserId)
+    deliver(client, formatSse({ type: 'llm:full', timestamp, data: { ...shaped }, scope: { kind: 'global' } }))
+  }
 }
 
 function onEvent(event: DebugEvent): void {
-  if (!isVisibleToAdmin(event.scope, adminVisibility)) return
   handleLlmTraceEvent(event, { pushTrace, broadcastTrace }, stats, scheduleStatsBroadcast)
   if (event.type === 'message:received') {
     stats.totalMessages++
@@ -168,14 +241,11 @@ function isLogEntry(data: Record<string, unknown>): data is LogEntry {
 }
 
 function broadcast(event: DebugEvent): void {
-  const payload = formatSse(event)
-  for (const [client, filter] of clients) {
-    if (event.type === 'log:entry' && isLogEntry(event.data) && !entryMatchesFilter(event.data, filter)) continue
-    try {
-      client.enqueue(payload)
-    } catch {
-      removeClient(client)
+  for (const [client, registration] of clients) {
+    if (event.type !== 'log:entry' && !isVisibleToAdmin(event.scope, clientVisibility(registration.adminUserId))) {
+      continue
     }
+    deliver(client, frameForClient(event, registration))
   }
 }
 

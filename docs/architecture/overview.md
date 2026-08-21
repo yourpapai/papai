@@ -68,3 +68,15 @@ Non-command text goes straight to the LLM queue with no interception (`src/bot.t
 - **Never returned:** message text, memo bodies, observation text, attachment filenames, raw URLs/paths, usernames or display names, workspace names, tags, project names, status names, RRULE text, any other free-form content.
 
 Any leak of content from these routes is a **release-blocking defect**.
+
+### Anonymity contract for the diagnosis surface
+
+The diagnosis surface (`GET /logs*`, the `/events` SSE stream, `GET /turns/*`, and the trace/turn buffers behind them — see ADR-0426) applies the same content/structure split **per session**: visibility is evaluated against the bot-admin identity the requesting dashboard session was minted for, never a process-wide admin.
+
+- **Per-session visibility principal.** An entry, trace, turn, or notification is released in full only when it is `global`-scoped or attributed to the session admin's own user id (explicit `chatUserId`, or a `turnId` resolving to a turn visible to that admin). Everything else — foreign, group-scoped, or unattributable — egresses only in the anonymity-safe shape. Concurrent sessions never widen each other's egress.
+- **Allowed for any log entry:** structural fields (`level`, `time`, `msg`, `scope`, `turnId`) plus additional keys whose values are numbers or booleans. LLM traces outside the session's visibility keep structural/numeric diagnostics (model ids, step/token/duration counters, tool names, success flags).
+- **Never returned outside the owning session:** message/user text, generated text, tool-call arguments and results, step text, and any other free-form string or object payload. Connection filters (`q`, include/exclude) and `/logs/stats` `matchingCount` are computed **after** shaping, so search can only match content a session may see.
+- **Aggregate-only routes.** `/logs/stats` and `/logs/scopes` return counts, capacities, oldest/newest timestamps, and scope-name counts only; `state:init` keeps global diagnostics (scheduler, pollers, message cache, counters) for every session while its content-bearing buffers are per-admin filtered.
+- **Read-only enforcement.** `/events`, `/logs`, `/logs/stats`, `/logs/scopes`, `/turns/*`, `/stats/global`, `/stats/subject/*` answer `GET` only; any other method returns `405` and mutates nothing.
+
+Unattributable content strips for **everyone** — including its author — so a log site that wants its content visible to the owning admin must attach `chatUserId`/`turnId`. Any cross-session content leak from this surface is a **release-blocking defect**.

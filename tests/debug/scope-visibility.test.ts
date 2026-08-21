@@ -5,27 +5,27 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { init, isScopeVisibleToCurrentAdmin } from '../../src/debug/state-collector.js'
+import { isVisibleToAdmin, type AdminVisibility } from '../../src/debug/state-collector.js'
 
-describe('isScopeVisibleToCurrentAdmin', () => {
-  test("returns true for the current admin's own user scope, false for others", () => {
-    init('admin-a')
+describe('isVisibleToAdmin', () => {
+  test("returns true for the admin's own user scope, false for others", () => {
+    const vis: AdminVisibility = { adminUserId: 'admin-a', groupIds: new Set() }
 
-    expect(isScopeVisibleToCurrentAdmin({ kind: 'user', userId: 'admin-a' })).toBe(true)
-    expect(isScopeVisibleToCurrentAdmin({ kind: 'user', userId: 'someone-else' })).toBe(false)
+    expect(isVisibleToAdmin({ kind: 'user', userId: 'admin-a' }, vis)).toBe(true)
+    expect(isVisibleToAdmin({ kind: 'user', userId: 'someone-else' }, vis)).toBe(false)
   })
 
-  test('returns true for global scope and false for any group scope (group visibility disabled)', () => {
-    init('admin-a')
+  test('returns true for global scope and false for any group scope outside the set', () => {
+    const vis: AdminVisibility = { adminUserId: 'admin-a', groupIds: new Set() }
 
-    expect(isScopeVisibleToCurrentAdmin({ kind: 'global' })).toBe(true)
-    expect(isScopeVisibleToCurrentAdmin({ kind: 'group', groupId: 'g1' })).toBe(false)
+    expect(isVisibleToAdmin({ kind: 'global' }, vis)).toBe(true)
+    expect(isVisibleToAdmin({ kind: 'group', groupId: 'g1' }, vis)).toBe(false)
   })
 
   test('returns false for null/undefined or a malformed scope', () => {
-    init('admin-a')
+    const vis: AdminVisibility = { adminUserId: 'admin-a', groupIds: new Set() }
 
-    expect(isScopeVisibleToCurrentAdmin(null)).toBe(false)
-    expect(isScopeVisibleToCurrentAdmin(undefined)).toBe(false)
+    expect(isVisibleToAdmin(null, vis)).toBe(false)
+    expect(isVisibleToAdmin(undefined, vis)).toBe(false)
   })
 })

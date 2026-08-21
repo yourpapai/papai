@@ -7,15 +7,17 @@ import path from 'node:path'
 
 import { handleMattermostActionRequest, isMattermostActionPath } from '../chat/mattermost/action-callbacks.js'
 import { handleContextVaultPush } from '../context-vault/push-route.js'
-import { authenticate, recordActivity } from '../dashboard-auth/index.js'
+import { authenticate, recordActivity, type AuthenticatedRequest } from '../dashboard-auth/index.js'
 import { listAllIdentityMappings } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
 import { routePluginMcpPaths } from '../mcp-server/index.js'
 import { handleAdminRecentRequests } from './admin-system.js'
 import { routePublicAuthPaths } from './auth-routes.js'
 import { handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
-import { logBuffer, logBufferStream } from './log-buffer.js'
+import { jsonResponse } from './json-response.js'
+import { logBufferStream } from './log-buffer.js'
 import { parseLogFilter } from './log-filter-model.js'
+import { handleLogs, handleLogStats, handleLogScopes } from './log-routes.js'
 import { handleMcpStatus } from './mcp-routes.js'
 import { handleNotifyRoute } from './notify-route.js'
 import {
@@ -27,7 +29,7 @@ import {
 } from './server-route-options.js'
 import { handleDeferred, handleIdentity, handleMemos, handleRecurring } from './server-route-support.js'
 import { isSettingsPath, routeSettingsRequest } from './settings-router.js'
-import { addClient, init, removeClient, findTurnById, isScopeVisibleToCurrentAdmin } from './state-collector.js'
+import { addClient, isVisibleToAdmin, removeClient, findTurnById } from './state-collector.js'
 import { handleStatsGlobal, handleStatsSubject } from './stats-routes.js'
 import { routeTranscriptPaths } from './transcript-viewer.js'
 
@@ -53,24 +55,20 @@ function getHostname(): string {
   return DEFAULT_HOSTNAME
 }
 
-function isAuthorizedRequest(req: Readonly<Request>): boolean {
+function isAuthorizedRequest(req: Readonly<Request>): AuthenticatedRequest | null {
   const session = authenticate(req)
-  if (session === null) return false
+  if (session === null) return null
   recordActivity(session.sessionIdHash, req)
-  return true
+  return session
 }
 
-function jsonResponse(body: unknown): Response {
-  return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
-}
-
-function handleEvents(req: Request): Response {
+function handleEvents(req: Request, session: AuthenticatedRequest): Response {
   const filter = parseLogFilter(new URL(req.url).searchParams)
   let ctrl: ReadableStreamDefaultController
   const stream = new ReadableStream({
     start(controller): void {
       ctrl = controller
-      addClient(controller, filter)
+      addClient(controller, filter, session.adminUserId)
       controller.enqueue(new TextEncoder().encode('retry: 3000\n\n'))
       req.signal.addEventListener('abort', () => {
         removeClient(controller)
@@ -89,34 +87,17 @@ function handleEvents(req: Request): Response {
   })
 }
 
-function parseIntParam(value: string | null): number | undefined {
-  if (value === null) return undefined
-  const parsed = Number.parseInt(value, 10)
-  return Number.isNaN(parsed) ? undefined : parsed
-}
-
-function searchParam(value: string | null): string | undefined {
-  if (value !== null) return value
-  return undefined
-}
-
-function handleLogs(url: URL): Response {
-  const filter = parseLogFilter(url.searchParams)
-  const results = logBuffer.search({
-    ...filter,
-    limit: parseIntParam(url.searchParams.get('limit')),
-    before: searchParam(url.searchParams.get('before')),
-  })
-  return jsonResponse(results)
-}
-
-function handleLogScopes(): Response {
-  return jsonResponse(logBuffer.distinctScopes())
-}
-
-function handleLogStats(url: URL): Response {
-  const filter = parseLogFilter(url.searchParams)
-  return jsonResponse({ ...logBuffer.stats(), matchingCount: logBuffer.countMatching(filter) })
+/** Diagnosis-surface routes are read-only: only GET is served, anything else 405s. */
+function isDiagnosisPath(pathname: string): boolean {
+  return (
+    pathname === '/events' ||
+    pathname === '/logs' ||
+    pathname === '/logs/stats' ||
+    pathname === '/logs/scopes' ||
+    pathname.startsWith('/turns/') ||
+    pathname === '/stats/global' ||
+    pathname.startsWith('/stats/subject/')
+  )
 }
 
 export type { WebServerRouteOptions } from './server-route-options.js'
@@ -139,14 +120,14 @@ function handleClientFile(prefix: 'debug' | 'admin' | 'settings', pathname: stri
   return new Response('Not found', { status: 404 })
 }
 
-function handleTurnLookup(url: URL): Response {
+function handleTurnLookup(url: URL, session: AuthenticatedRequest): Response {
   const turnId = url.pathname.slice('/turns/'.length)
   if (turnId !== '') {
     const turn = findTurnById(turnId)
     // Enforce the same visibility contract as the SSE path: a turn outside the
     // operator's own contexts must not be reachable by REST id lookup. Return 404
     // (not 403) so the route does not confirm the existence of a foreign turn.
-    if (turn !== undefined && isScopeVisibleToCurrentAdmin(turn.scope)) {
+    if (turn !== undefined && isVisibleToAdmin(turn.scope, { adminUserId: session.adminUserId, groupIds: new Set() })) {
       return jsonResponse(turn)
     }
   }
@@ -170,12 +151,19 @@ function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> |
   return null
 }
 
-function routeProtectedPaths(req: Request, url: URL): Response | Promise<Response> | null {
-  if (url.pathname === '/events') return handleEvents(req)
-  if (url.pathname === '/logs') return handleLogs(url)
-  if (url.pathname === '/logs/stats') return handleLogStats(url)
+function routeProtectedPaths(
+  req: Request,
+  url: URL,
+  session: AuthenticatedRequest,
+): Response | Promise<Response> | null {
+  if (req.method !== 'GET' && isDiagnosisPath(url.pathname)) {
+    return new Response('Method not allowed', { status: 405 })
+  }
+  if (url.pathname === '/events') return handleEvents(req, session)
+  if (url.pathname === '/logs') return handleLogs(url, session)
+  if (url.pathname === '/logs/stats') return handleLogStats(url, session)
   if (url.pathname === '/logs/scopes') return handleLogScopes()
-  if (url.pathname.startsWith('/turns/')) return handleTurnLookup(url)
+  if (url.pathname.startsWith('/turns/')) return handleTurnLookup(url, session)
   if (url.pathname === '/recurring') return handleRecurring(url)
   if (url.pathname === '/deferred') return handleDeferred(url)
   if (url.pathname === '/memos') return handleMemos(url)
@@ -248,11 +236,12 @@ export async function routeRequest(
   const publicCapabilityResponse = await routePublicCapabilityPaths(req, url)
   if (publicCapabilityResponse !== null) return publicCapabilityResponse
 
-  if (!isAuthorizedRequest(req)) {
+  const session = isAuthorizedRequest(req)
+  if (session === null) {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  const protectedResponse = routeProtectedPaths(req, url)
+  const protectedResponse = routeProtectedPaths(req, url, session)
   if (protectedResponse !== null) return protectedResponse
 
   const adminResponse = routeAdminPaths(req, url)
@@ -261,8 +250,7 @@ export async function routeRequest(
   return routeDebugClientPath(url)
 }
 
-export function startDebugServer(adminUserId: string, options?: WebServerStartOptions | string): void {
-  init(adminUserId)
+export function startDebugServer(_adminUserId: string, options?: WebServerStartOptions | string): void {
   const resolved = resolveWebServerStartOptions(options, getLogLevel())
   const serverRouteOptions: WebServerRouteOptions = {
     debugEnabled: resolved.debugEnabled,

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { emitGlobal, emitUser, emitGroup } from '../../src/debug/event-bus.js'
-import { addClient, init, removeClient } from '../../src/debug/state-collector.js'
+import { addClient, removeClient } from '../../src/debug/state-collector.js'
 import { resetStats, setupTestDb } from '../utils/test-helpers.js'
 
 beforeEach(async () => {
@@ -121,9 +121,8 @@ describe('state-collector', () => {
   }
 
   test('addClient sends state:init immediately', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(track(ctrl))
+    addClient(track(ctrl), undefined, 'admin-1')
 
     expect(enqueueMock).toHaveBeenCalledTimes(1)
     const { event, data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
@@ -132,9 +131,8 @@ describe('state-collector', () => {
   })
 
   test('state:init contains all snapshot sections', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(track(ctrl))
+    addClient(track(ctrl), undefined, 'admin-1')
 
     const { data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
     const initData = data['data']
@@ -154,9 +152,8 @@ describe('state-collector', () => {
   })
 
   test('admin events are broadcast to clients', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(track(ctrl))
+    addClient(track(ctrl), undefined, 'admin-1')
 
     emitGlobal('message:received', { userId: 'admin-1', textLength: 10 })
 
@@ -166,9 +163,8 @@ describe('state-collector', () => {
   })
 
   test('non-admin user events are filtered out', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(track(ctrl))
+    addClient(track(ctrl), undefined, 'admin-1')
 
     emitUser('message:received', 'other-user', { textLength: 10 })
 
@@ -176,9 +172,8 @@ describe('state-collector', () => {
   })
 
   test('global events (no userId) pass through unfiltered', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(track(ctrl))
+    addClient(track(ctrl), undefined, 'admin-1')
 
     emitGlobal('scheduler:tick', { tickCount: 1, dueTaskCount: 0 })
 
@@ -188,9 +183,8 @@ describe('state-collector', () => {
   })
 
   test('removeClient stops delivery to that client', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(ctrl)
+    addClient(ctrl, undefined, 'admin-1')
     removeClient(ctrl)
 
     emitGlobal('message:received', { userId: 'admin-1', textLength: 5 })
@@ -199,11 +193,10 @@ describe('state-collector', () => {
   })
 
   test('dead client (enqueue throws) is removed silently', () => {
-    init('admin-1')
     const { ctrl, enqueueMock: badEnqueue } = createMockController()
     const { ctrl: goodCtrl, enqueueMock: goodEnqueue } = createMockController()
-    addClient(track(ctrl))
-    addClient(track(goodCtrl))
+    addClient(track(ctrl), undefined, 'admin-1')
+    addClient(track(goodCtrl), undefined, 'admin-1')
 
     badEnqueue.mockImplementation(() => {
       throw new Error('stream closed')
@@ -219,9 +212,8 @@ describe('state-collector', () => {
 
   describe('llm trace accumulation', () => {
     test('llm:end captures full trace data', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:start', {
         userId: 'admin-1',
@@ -239,6 +231,7 @@ describe('state-collector', () => {
       })
       emitGlobal('llm:end', {
         userId: 'admin-1',
+        chatUserId: 'admin-1',
         model: 'gpt-4',
         steps: 2,
         totalDuration: 2500,
@@ -282,9 +275,8 @@ describe('state-collector', () => {
     })
 
     test('llm:tool_result captures error details', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
       emitUser('llm:tool_result', 'admin-1', {
@@ -297,6 +289,7 @@ describe('state-collector', () => {
       })
       emitGlobal('llm:end', {
         userId: 'admin-1',
+        chatUserId: 'admin-1',
         model: 'gpt-4',
         steps: 1,
         totalDuration: 1000,
@@ -315,13 +308,13 @@ describe('state-collector', () => {
     })
 
     test('llm:end broadcasts stepsDetail with per-step info', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
       emitGlobal('llm:end', {
         userId: 'admin-1',
+        chatUserId: 'admin-1',
         model: 'gpt-4',
         steps: 2,
         totalDuration: 2000,
@@ -356,9 +349,8 @@ describe('state-collector', () => {
     })
 
     test('llm:error broadcasts an error trace with captured message', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
       emitGlobal('llm:error', { userId: 'admin-1', model: 'gpt-4', error: 'boom' })
@@ -371,9 +363,8 @@ describe('state-collector', () => {
     })
 
     test('llm:error without prior llm:start still emits trace with zero duration', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:error', { userId: 'admin-1', model: 'gpt-4', error: 'crash' })
 
@@ -384,13 +375,13 @@ describe('state-collector', () => {
     })
 
     test('llm:end passes through text, finishReason, and inline tool result/error', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
       emitGlobal('llm:end', {
         userId: 'admin-1',
+        chatUserId: 'admin-1',
         model: 'gpt-4',
         steps: 1,
         totalDuration: 500,
@@ -444,9 +435,8 @@ describe('state-collector', () => {
 
   describe('scope-based visibility filtering', () => {
     test('user-scoped event for admin passes through', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitUser('message:received', 'admin-1', { textLength: 10 })
 
@@ -456,9 +446,8 @@ describe('state-collector', () => {
     })
 
     test('user-scoped event for other user is filtered out', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitUser('message:received', 'other-user', { textLength: 10 })
 
@@ -468,9 +457,8 @@ describe('state-collector', () => {
     })
 
     test('group-scoped event is filtered out when groupIds is empty', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGroup('message:received', 'group-a', { textLength: 10 })
 
@@ -480,9 +468,8 @@ describe('state-collector', () => {
     })
 
     test('global-scoped event passes through', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('scheduler:tick', { tickCount: 1, dueTaskCount: 0 })
 

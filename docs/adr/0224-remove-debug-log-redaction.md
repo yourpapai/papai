@@ -9,7 +9,7 @@ See LICENSE in the project root for details.
 
 ## Status
 
-Implemented
+Implemented — posture (admin sees all users' content) superseded by [ADR-0426](0426-diagnosis-surface-per-session-visibility.md); the redaction removal itself is retained for entries a session is authorized to see
 
 ## Date
 

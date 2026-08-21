@@ -98,10 +98,6 @@ export function entryMatchesFilter(entry: LogEntry, filter: LogFilter): boolean 
   return true
 }
 
-export function applyFilter(entries: readonly LogEntry[], filter: LogFilter): LogEntry[] {
-  return entries.filter((e) => entryMatchesFilter(e, filter))
-}
-
 /** Parse a LogFilter out of URL query params (repeated include/exclude supported). */
 export function parseLogFilter(params: URLSearchParams): LogFilter {
   const filter: LogFilter = {

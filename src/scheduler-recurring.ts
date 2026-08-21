@@ -111,7 +111,7 @@ export const finalizeCreatedRecurringTask = async (
   chatProviderRef: ChatProvider | null,
 ): Promise<void> => {
   log.info(
-    { recurringTaskId: task.id, createdTaskId: created.id, title: task.title },
+    { recurringTaskId: task.id, createdTaskId: created.id, title: task.title, chatUserId: task.userId },
     'Recurring task instance created',
   )
   emitUser('scheduler:task_executed', task.userId, {

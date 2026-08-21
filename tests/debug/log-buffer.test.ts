@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import { subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
-import { logBuffer, logBufferStream, LogRingBuffer, type LogEntry } from '../../src/debug/log-buffer.js'
+import { logBuffer, logBufferStream, LogRingBuffer, shapeLogEntry, type LogEntry } from '../../src/debug/log-buffer.js'
 
 const makeEntry = (overrides: Partial<LogEntry> = {}): LogEntry => ({
   level: 30,
@@ -72,122 +72,6 @@ describe('LogRingBuffer', () => {
 
     expect(buf.entries()).toHaveLength(0)
     expect(buf.stats().count).toBe(0)
-  })
-})
-
-describe('search', () => {
-  test('filters by minimum level', () => {
-    const buf = new LogRingBuffer(10)
-    buf.push(makeEntry({ level: 20, msg: 'debug' }))
-    buf.push(makeEntry({ level: 30, msg: 'info' }))
-    buf.push(makeEntry({ level: 50, msg: 'error' }))
-
-    const results = buf.search({ include: [], exclude: [], level: 30 })
-    expect(results).toHaveLength(2)
-    expect(results[0]!.msg).toBe('info')
-    expect(results[1]!.msg).toBe('error')
-  })
-
-  test('filters by exact scope', () => {
-    const buf = new LogRingBuffer(10)
-    buf.push(makeEntry({ scope: 'bot', msg: 'bot msg' }))
-    buf.push(makeEntry({ scope: 'llm-orch', msg: 'llm msg' }))
-
-    const results = buf.search({ include: ['llm-orch'], exclude: [], level: 0 })
-    expect(results).toHaveLength(1)
-    expect(results[0]!.msg).toBe('llm msg')
-  })
-
-  test('filters by text (case-insensitive substring)', () => {
-    const buf = new LogRingBuffer(10)
-    buf.push(makeEntry({ msg: 'Calling generateText' }))
-    buf.push(makeEntry({ msg: 'Task created' }))
-
-    const results = buf.search({ include: [], exclude: [], level: 0, q: 'generatetext' })
-    expect(results).toHaveLength(1)
-    expect(results[0]!.msg).toBe('Calling generateText')
-  })
-
-  test('combines filters with AND', () => {
-    const buf = new LogRingBuffer(10)
-    buf.push(makeEntry({ level: 30, scope: 'bot', msg: 'received message' }))
-    buf.push(makeEntry({ level: 30, scope: 'llm-orch', msg: 'calling generateText' }))
-    buf.push(makeEntry({ level: 50, scope: 'llm-orch', msg: 'error in generateText' }))
-
-    const results = buf.search({ include: ['llm-orch'], exclude: [], level: 40 })
-    expect(results).toHaveLength(1)
-    expect(results[0]!.msg).toBe('error in generateText')
-  })
-
-  test('filters by turnId', () => {
-    const buf = new LogRingBuffer(10)
-    buf.push(makeEntry({ msg: 'msg-a', turnId: 'turn-1' }))
-    buf.push(makeEntry({ msg: 'msg-b', turnId: 'turn-2' }))
-    buf.push(makeEntry({ msg: 'msg-c', turnId: 'turn-1' }))
-
-    const results = buf.search({ include: [], exclude: [], level: 0, turnId: 'turn-1' })
-    expect(results).toHaveLength(2)
-    expect(results[0]!.msg).toBe('msg-a')
-    expect(results[1]!.msg).toBe('msg-c')
-  })
-
-  test('turnId filter combines with other filters', () => {
-    const buf = new LogRingBuffer(10)
-    buf.push(makeEntry({ level: 30, msg: 'info-a', turnId: 'turn-1' }))
-    buf.push(makeEntry({ level: 50, msg: 'error-a', turnId: 'turn-1' }))
-    buf.push(makeEntry({ level: 50, msg: 'error-b', turnId: 'turn-2' }))
-
-    const results = buf.search({ include: [], exclude: [], level: 40, turnId: 'turn-1' })
-    expect(results).toHaveLength(1)
-    expect(results[0]!.msg).toBe('error-a')
-  })
-
-  test('respects limit (returns last N)', () => {
-    const buf = new LogRingBuffer(10)
-    for (let i = 0; i < 5; i++) {
-      buf.push(makeEntry({ msg: `msg-${i}` }))
-    }
-
-    const results = buf.search({ include: [], exclude: [], level: 0, limit: 2 })
-    expect(results).toHaveLength(2)
-    expect(results[0]!.msg).toBe('msg-3')
-    expect(results[1]!.msg).toBe('msg-4')
-  })
-
-  test('defaults to limit 100', () => {
-    const buf = new LogRingBuffer(200)
-    for (let i = 0; i < 150; i++) {
-      buf.push(makeEntry({ msg: `msg-${i}` }))
-    }
-
-    const results = buf.search({ include: [], exclude: [], level: 0 })
-    expect(results).toHaveLength(100)
-  })
-
-  test('returns empty array on empty buffer', () => {
-    const buf = new LogRingBuffer(10)
-    expect(buf.search({ include: [], exclude: [], level: 0 })).toEqual([])
-  })
-
-  test('before cursor returns the newest entries strictly older than the cursor', () => {
-    const buf = new LogRingBuffer(10)
-    buf.push(makeEntry({ time: '2026-03-28T10:00:00.000Z', msg: 'a' }))
-    buf.push(makeEntry({ time: '2026-03-28T10:00:01.000Z', msg: 'b' }))
-    buf.push(makeEntry({ time: '2026-03-28T10:00:02.000Z', msg: 'c' }))
-    buf.push(makeEntry({ time: '2026-03-28T10:00:03.000Z', msg: 'd' }))
-
-    const results = buf.search({ include: [], exclude: [], level: 0, before: '2026-03-28T10:00:02.000Z' })
-    expect(results.map((e) => e.msg)).toEqual(['a', 'b'])
-  })
-
-  test('before cursor pages backward in combination with limit', () => {
-    const buf = new LogRingBuffer(10)
-    for (let i = 0; i < 6; i++) {
-      buf.push(makeEntry({ time: `2026-03-28T10:00:0${i}.000Z`, msg: `m${i}` }))
-    }
-    // newest 2 strictly older than m5's time → m3, m4
-    const page = buf.search({ include: [], exclude: [], level: 0, before: '2026-03-28T10:00:05.000Z', limit: 2 })
-    expect(page.map((e) => e.msg)).toEqual(['m3', 'm4'])
   })
 })
 
@@ -297,34 +181,6 @@ describe('log:entry emit (unredacted)', () => {
 describe('LogRingBuffer filtering', () => {
   const at = (t: string, o: Partial<LogEntry> = {}): LogEntry => ({ level: 30, time: t, msg: 'm', ...o })
 
-  test('search applies include/exclude and paging', () => {
-    const buf = new LogRingBuffer(10)
-    buf.push(at('2026-07-02T00:00:01.000Z', { scope: 'chat:telegram' }))
-    buf.push(at('2026-07-02T00:00:02.000Z', { scope: 'chat:mattermost' }))
-    buf.push(at('2026-07-02T00:00:03.000Z', { scope: 'tool:x' }))
-
-    const chat = buf.search({ include: ['chat'], exclude: [], level: 0, limit: 100 })
-    expect(chat.map((e) => e.scope)).toEqual(['chat:telegram', 'chat:mattermost'])
-
-    const excluded = buf.search({ include: ['chat'], exclude: ['chat:telegram'], level: 0, limit: 100 })
-    expect(excluded.map((e) => e.scope)).toEqual(['chat:mattermost'])
-  })
-
-  test('search before-cursor pages backward over filtered results', () => {
-    const buf = new LogRingBuffer(10)
-    buf.push(at('2026-07-02T00:00:01.000Z', { scope: 'a' }))
-    buf.push(at('2026-07-02T00:00:02.000Z', { scope: 'a' }))
-    const page = buf.search({ include: [], exclude: [], level: 0, before: '2026-07-02T00:00:02.000Z', limit: 100 })
-    expect(page.map((e) => e.time)).toEqual(['2026-07-02T00:00:01.000Z'])
-  })
-
-  test('countMatching ignores paging', () => {
-    const buf = new LogRingBuffer(10)
-    buf.push(at('2026-07-02T00:00:01.000Z', { scope: 'a' }))
-    buf.push(at('2026-07-02T00:00:02.000Z', { scope: 'b' }))
-    expect(buf.countMatching({ include: ['a'], exclude: [], level: 0 })).toBe(1)
-  })
-
   test('distinctScopes returns sorted scope + counts, skips scope-less', () => {
     const buf = new LogRingBuffer(10)
     buf.push(at('t1', { scope: 'b' }))
@@ -335,5 +191,89 @@ describe('LogRingBuffer filtering', () => {
       { scope: 'a', count: 2 },
       { scope: 'b', count: 1 },
     ])
+  })
+})
+
+describe('shapeLogEntry', () => {
+  test('keeps level, time, msg, scope and turnId', () => {
+    const entry = makeEntry({
+      scope: 'bot',
+      turnId: 'turn-1',
+      userText: 'find my tasks',
+      chatUserId: 'user-7',
+      err: { message: 'boom' },
+    })
+
+    expect(shapeLogEntry(entry)).toEqual({
+      level: 30,
+      time: entry.time,
+      msg: 'test message',
+      scope: 'bot',
+      turnId: 'turn-1',
+    })
+  })
+
+  test('keeps additional keys with number or boolean values', () => {
+    const entry = makeEntry({ durationMs: 42, retried: true, attempt: 2, cached: false })
+
+    expect(shapeLogEntry(entry)).toEqual({
+      level: 30,
+      time: entry.time,
+      msg: 'test message',
+      durationMs: 42,
+      retried: true,
+      attempt: 2,
+      cached: false,
+    })
+  })
+
+  test('drops additional keys with string, object, array or null values', () => {
+    const entry = makeEntry({
+      scope: 'llm-orch',
+      userText: 'secret',
+      chatUserId: 'user-7',
+      err: { message: 'boom' },
+      toolNames: ['searchTasks', 'createTask'],
+      lastPrompt: null,
+    })
+
+    expect(shapeLogEntry(entry)).toEqual({
+      level: 30,
+      time: entry.time,
+      msg: 'test message',
+      scope: 'llm-orch',
+    })
+  })
+
+  test('does not invent missing optional fields', () => {
+    const shaped = shapeLogEntry(makeEntry({ durationMs: 5 }))
+
+    expect('scope' in shaped).toBe(false)
+    expect('turnId' in shaped).toBe(false)
+  })
+
+  test('does not mutate the input entry', () => {
+    const entry = makeEntry({ userText: 'secret', err: { message: 'boom' }, durationMs: 3 })
+    const snapshot = structuredClone(entry)
+
+    shapeLogEntry(entry)
+
+    expect(entry).toEqual(snapshot)
+  })
+
+  test('is idempotent on already-shaped entries', () => {
+    const entry = makeEntry({
+      scope: 'bot',
+      turnId: 'turn-9',
+      userText: 'secret',
+      durationMs: 7,
+      cached: false,
+      err: { message: 'boom' },
+    })
+
+    const shapedOnce = shapeLogEntry(entry)
+    const shapedTwice = shapeLogEntry(shapedOnce)
+
+    expect(shapedTwice).toEqual(shapedOnce)
   })
 })
