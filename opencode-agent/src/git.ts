@@ -6,6 +6,7 @@
 import type { DiffLimits } from './diff-guard.js'
 import { commitAll, salvageAll } from './git-commit.js'
 import type { CommitOutcome, GitFn, Salvage } from './git-commit.js'
+import { reconcile } from './git-reconcile.js'
 import { revertPaths } from './git-revert.js'
 import type { Logger } from './logger.js'
 import type { CommandResult, CommandRunner } from './shell.js'
@@ -116,6 +117,13 @@ export interface Git {
    * that broke, and this refusing is a run that was already out of time.
    */
   salvageAll(message: string): Promise<Salvage>
+  /**
+   * Merges a remote agent branch that advanced since this checkout last
+   * fetched it, so the next push is a fast-forward again. A no-op when the
+   * remote has not moved or holds no such branch; a conflict aborts the merge
+   * and throws naming the conflicted paths. See `git-reconcile.ts`.
+   */
+  reconcile(branch: string): Promise<void>
   push(branch: string, options?: PushOptions): Promise<void>
   /** The remote's default branch, or `null` when the checkout cannot tell. */
   defaultBranch(): Promise<string | null>
@@ -268,7 +276,12 @@ export const createGit = (options: GitOptions): Git => {
       ),
     commitAll: (message) => commitAll(gitOrThrow, options, message),
     salvageAll: (message) => salvageAll(gitOrThrow, options, message),
+    reconcile: (branch) => reconcile(git, gitOrThrow, options, branch),
     push: async (branch, pushOptions) => {
+      // The reconcile is what makes this push able to succeed at all after a
+      // human moved the branch mid-phase; on a quiet remote it costs one fetch
+      // and an ancestor check.
+      await reconcile(git, gitOrThrow, options, branch)
       const verify = pushOptions?.noVerify === true ? ['--no-verify'] : []
       await gitOrThrow('push', ...verify, '-u', 'origin', branch)
     },

@@ -308,6 +308,23 @@ findings: `ROADMAP.md`.
   checkout about to be deleted. `phases/review-push.ts` asks the **branch**
   instead (`git.headSha` either side of the loop) and pushes when it moved; a
   commit this process made needs no second opinion and is pushed on that alone.
+  **Every push reconciles with the remote first, because the branch is shared
+  with humans, not owned.** Run 32374999214 (PR #313): a maintainer pushed merge
+  `1f7ce71b` to `agent/issue-305` three hours into a review loop, and every later
+  pipeline push was rejected non-fast-forward — `ensureBranch` fetches once per
+  phase and nothing until the push looked at the remote again, so five review
+  fixes died with the runner and the run parked in `FAILED` inviting a `/retry`
+  that re-runs the whole loop. `git-reconcile.ts` (split from `git.ts` along
+  `git-revert.ts`'s seam) fetches the branch and merges `origin/<branch>` when
+  HEAD does not contain it — **merge, never rebase, never force**: the branch is
+  shared by design, and rewrites or force would discard the human line or
+  history the loop's `primary` branch shares. A conflict aborts the merge and
+  throws naming the conflicted paths; a fetch that finds no remote branch is a
+  first push, not an error; base-branch pushes (`ARCHIVE`) do not reconcile. On
+  the review path the reconcile runs **before `dropUnpushable`**, so a protected
+  path that arrived via the human line is reverted before the push instead of
+  riding the merge into a GitHub refusal of the whole push (the issue #240
+  class); `push()`'s own internal reconcile is then an idempotent no-op.
   It also pushes **as each fix lands**, on the `[review-loop] published` marker
   the loop prints: `mergeEachFix` in the generated config makes the loop merge per
   fix instead of once at the end behind its build gate, and the push stays on this

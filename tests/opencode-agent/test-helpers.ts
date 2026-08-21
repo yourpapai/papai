@@ -314,6 +314,10 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       io.gitCalls.push(`salvage:${message.split('\n')[0]}`)
       return Promise.resolve({ kind: 'clean' })
     },
+    reconcile: (branch: string): Promise<void> => {
+      io.gitCalls.push(`reconcile:${branch}`)
+      return Promise.resolve()
+    },
     push: (branch: string, _options?: PushOptions): Promise<void> => {
       io.gitCalls.push(`push:${branch}`)
       return Promise.resolve()

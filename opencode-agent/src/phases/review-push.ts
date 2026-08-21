@@ -108,6 +108,13 @@ export const createPush = (input: PhaseInput, branch: string): DurablePush => {
     const [last, head] = await Promise.all([pushedAt, readHead(input)])
     if (!committed && last !== null && head !== null && last === head) return advanced
 
+    // Before the protected-path revert, not after it: a reconciling merge can
+    // bring the human line's own commits in, and only once it has landed can
+    // `dropUnpushable` see — and take back out — a path a push cannot carry.
+    // The other order lets a workflow file ride the merge into a push GitHub
+    // refuses whole (the issue #240 failure class). `push` reconciles again
+    // internally, idempotently — the ancestor check answers "already merged".
+    if (last !== null) await deps.git.reconcile(branch)
     if (last !== null) await dropUnpushable(input, last, blocked)
     await deps.git.push(branch)
     pushedAt = Promise.resolve(head)

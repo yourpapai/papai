@@ -635,6 +635,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.gitCalls.push(`push:${branch}${options?.noVerify === true ? ':no-verify' : ''}`)
       return Promise.resolve()
     },
+    reconcile: (branch) => {
+      io.gitCalls.push(`reconcile:${branch}`)
+      return Promise.resolve()
+    },
     defaultBranch: () => Promise.resolve(io.detectedBranch),
     // Constant, which is the ordinary case: the review loop is a fake here, so
     // nothing moves the branch behind the pipeline's back. A test that wants the
@@ -771,6 +775,7 @@ const hostileGit = (): Git => {
     deleteRemoteBranch: (): Promise<void> => refuse('deleteRemoteBranch'),
     commitAll: (): Promise<CommitOutcome> => refuse('commit'),
     salvageAll: (): Promise<Salvage> => refuse('salvage'),
+    reconcile: (): Promise<void> => refuse('reconcile'),
     push: (): Promise<void> => refuse('push'),
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
     headSha: (): Promise<string> => refuse('rev-parse'),
@@ -1758,13 +1763,14 @@ describe('/review — the review loop as a command', () => {
     // `ensureBranch` first, and it is not optional: unlike the review that used
     // to run inside phase 3, this one usually runs in a job that implemented
     // nothing, so the remote branch is the only copy of the work.
-    // `changedSince` sits between the commit and the push, and belongs in this
-    // exact-sequence assertion rather than beside it: the whole point of the
-    // guard is that nothing reaches `push` before it has been asked what the
-    // loop's own commits touched.
+    // `reconcile` sits before `changedSince`, which sits between the commit and
+    // the push: a remote that advanced mid-run is merged in before the guard
+    // asks what the loop's own commits touched, so nothing rides the merge into
+    // a push it cannot survive.
     expect(harness.io.gitCalls).toEqual([
       `ensureBranch:agent/issue-${ISSUE}:${BASE_BRANCH}`,
       `commit:fix(agent): apply review-loop findings for issue #${ISSUE}`,
+      `reconcile:agent/issue-${ISSUE}`,
       'changedSince:head-sha',
       `push:agent/issue-${ISSUE}`,
     ])
