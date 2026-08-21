@@ -3,11 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { KeyringState } from '../analytics/identity/keyring.js'
 import { NO_ANALYTICS_SCOPE, type ProviderRequestScope } from '../analytics/provider-request-scope.js'
-import type { AnalyticsObserver } from '../analytics/runtime.js'
-import { getActiveAnalyticsRuntime, startAnalytics, stopAnalytics } from '../analytics/start-analytics.js'
-import type { AuthorizedTurnContextRegistry } from '../analytics/turn-context.js'
+import { stopAnalytics } from '../analytics/start-analytics.js'
 import { announceNewVersion } from '../announcements.js'
 import { isS3Configured } from '../attachments/index.js'
 import { createStagedDownloader } from '../attachments/staged-download.js'
@@ -21,6 +18,7 @@ import { closeDrizzleDb } from '../db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from '../db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../debug/chat-router-runtime.js'
 import { routeRequest, startDebugServer, stopDebugServer } from '../debug/server.js'
+import { startEventCollector } from '../debug/state-collector.js'
 import { bootstrapInstancesFromEnv } from '../instances/bootstrap.js'
 import { seedDefaultLlmProviderFromEnv } from '../llm-providers/env-bootstrap.js'
 import { getAdminRoleBindings, primeLlmAdminCache } from '../llm-providers/store.js'
@@ -38,6 +36,7 @@ import {
 } from '../providers/membership/index.js'
 import { initUsageRecorder } from '../usage/index.js'
 import { toolCapabilityCatalog } from './capability-catalog.js'
+import { startAnalyticsRuntime, type ProductionAnalyticsRuntime } from './production-analytics.js'
 import type { ProductionBackgroundHandle } from './production-background.js'
 import { startProductionExtensions, type ProductionExtensionState } from './production-extensions.js'
 import { resolveProductionRephrase } from './production-rephrase.js'
@@ -45,12 +44,6 @@ import type { PapaiRuntimeDeps, PartialRuntimeDeps } from './types.js'
 
 const log = logger.child({ scope: 'main' })
 const INGRESS_ERROR = 'Programmatic ingress is available only when configured'
-
-type ProductionAnalyticsRuntime = Readonly<{
-  observer: AnalyticsObserver
-  registry: AuthorizedTurnContextRegistry
-  keyring?: KeyringState
-}>
 
 type ProductionState = ProductionExtensionState & {
   background: ProductionBackgroundHandle | null
@@ -74,12 +67,7 @@ function startDatabase(state: ProductionState): void {
     log.warn('admin LLM role bindings are not configured; the bot will reply "misconfigured" until a provider is set')
   }
   initUsageRecorder()
-  try {
-    startAnalytics()
-    state.analytics ??= getActiveAnalyticsRuntime()
-  } catch (error) {
-    log.error({ error: error instanceof Error ? error.message : String(error) }, 'Analytics runtime start failed')
-  }
+  startAnalyticsRuntime(state)
 }
 
 async function stopDatabase(): Promise<void> {
@@ -214,6 +202,20 @@ export type ProductionRuntimeOptions = Readonly<{
   analytics?: ProductionAnalyticsRuntime
 }>
 
+function createWebDeps(options: ProductionRuntimeOptions): PapaiRuntimeDeps['web'] {
+  const debugServerOptions = {
+    debugEnabled: process.env['DEBUG_SERVER'] === 'true',
+    pluginProviderRuntimeDeps: options.pluginProviderRuntimeDeps,
+  }
+  return {
+    start: (adminUserId) => {
+      startDebugServer(adminUserId, debugServerOptions)
+    },
+    stop: stopDebugServer,
+    route: (request) => routeRequest(request, debugServerOptions),
+  }
+}
+
 function createDefaultDeps(state: ProductionState, options: ProductionRuntimeOptions): PapaiRuntimeDeps {
   return {
     database: {
@@ -245,20 +247,7 @@ function createDefaultDeps(state: ProductionState, options: ProductionRuntimeOpt
     },
     application: createApplicationDeps(state),
     background: createBackgroundDeps(state),
-    web: {
-      start: (adminUserId) => {
-        startDebugServer(adminUserId, {
-          debugEnabled: process.env['DEBUG_SERVER'] === 'true',
-          pluginProviderRuntimeDeps: options.pluginProviderRuntimeDeps,
-        })
-      },
-      stop: stopDebugServer,
-      route: (request) =>
-        routeRequest(request, {
-          debugEnabled: process.env['DEBUG_SERVER'] === 'true',
-          pluginProviderRuntimeDeps: options.pluginProviderRuntimeDeps,
-        }),
-    },
+    web: createWebDeps(options),
     capabilities: toolCapabilityCatalog,
   }
 }
@@ -267,6 +256,9 @@ export function createProductionRuntimeDeps(
   overrides: PartialRuntimeDeps = {},
   options: ProductionRuntimeOptions = {},
 ): PapaiRuntimeDeps {
+  // Persistent debug-event capture: starts with the production deps and is
+  // never unsubscribed (idempotent across repeated constructions).
+  startEventCollector()
   const defaults = createDefaultDeps(
     {
       activePlatforms: [],
