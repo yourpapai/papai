@@ -741,5 +741,27 @@ describe('state-collector', () => {
       assert.ok(turn !== undefined)
       expect(turn.status).toBe('ok')
     })
+
+    test('resetCollectorForTest cancels an armed stats debounce so it cannot fire into a later client', async () => {
+      init('admin-1')
+      startEventCollector()
+
+      const first = createMockController()
+      addClient(track(first.ctrl))
+      emitGlobal('message:received', { userId: 'admin-1', textLength: 5 })
+      expect(stats.totalMessages).toBe(1)
+
+      resetCollectorForTest()
+
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+      expect(enqueueMock).toHaveBeenCalledTimes(1)
+
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 600)
+      })
+
+      expect(getAllSseEvents(enqueueMock).map((e) => e.event)).toEqual(['state:init'])
+    })
   })
 })

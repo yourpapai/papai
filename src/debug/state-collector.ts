@@ -85,12 +85,16 @@ export function stopEventCollectorForTest(): void {
   unsubscribe(onEvent)
 }
 
-/** @public -- test seam: stop the collector, drain clients, clear buffers, zero stats. */
+/** @public -- test seam: stop the collector, drain clients, clear buffers, zero stats, cancel the pending stats debounce. */
 export function resetCollectorForTest(): void {
   stopEventCollectorForTest()
   resetClientsForTest()
   resetTurnBuffers()
   resetLlmBuffers()
+  if (statsDebounceTimer !== null) {
+    clearTimeout(statsDebounceTimer)
+    statsDebounceTimer = null
+  }
   stats.startedAt = Date.now()
   stats.totalMessages = 0
   stats.totalLlmCalls = 0
