@@ -12,7 +12,7 @@
 
 ## 4. Comment and doc touch-ups
 
-- [ ] 4.1 Update the stale `@public -- ... attached via logMultistream.add()` comment on `logBufferStream` in `src/debug/log-buffer.ts` and the "captured from when the server started" comment at `tests/debug/server.test.ts:325` to reflect module-load attachment. Verify the level test still passes: `bun test tests/debug/server.test.ts`
+- [x] 4.1 Update the stale `@public -- ... attached via logMultistream.add()` comment on `logBufferStream` in `src/debug/log-buffer.ts` and the "captured from when the server started" comment at `tests/debug/server.test.ts:325` to reflect module-load attachment. Verify the level test still passes: `bun test tests/debug/server.test.ts`
 
 ## 5. Targeted regression suites
 
