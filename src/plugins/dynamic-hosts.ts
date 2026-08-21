@@ -5,6 +5,7 @@
 
 import { listPluginConfigValues } from '../config.js'
 import { logger } from '../logger.js'
+import type { PluginLogger } from './context.js'
 import type { DynamicHostsFn } from './provider-runtime.js'
 import { getPluginAdminConfig } from './store.js'
 import type { PluginManifest } from './types.js'
@@ -74,4 +75,28 @@ export function buildContextDynamicHosts(manifest: PluginManifest): DynamicHosts
     cachedAt = now
     return hosts
   }
+}
+
+/** Derive the operator-trusted instance host allowlist from a provider instance config.
+ *
+ * Reads only the manifest-declared `providerAllowedInstanceHostsFromConfig` keys,
+ * parsing each value as a URL hostname. Non-URL / blank values are silently skipped.
+ * The resulting hosts are operator-trusted (task-instance config is admin-set) and
+ * bypass https + public-IP checks in the provider runtime. */
+export function deriveInstanceHosts(
+  config: Record<string, string>,
+  instanceHostKeys: readonly string[],
+  pluginLog: PluginLogger,
+): ReadonlySet<string> {
+  const hosts = new Set<string>()
+  for (const key of instanceHostKeys) {
+    const value = config[key]
+    if (value === undefined || value.trim() === '') continue
+    try {
+      hosts.add(new URL(value).hostname.toLowerCase())
+    } catch {
+      pluginLog.warn({ key }, 'providerAllowedInstanceHostsFromConfig value is not a valid URL; skipping')
+    }
+  }
+  return hosts
 }

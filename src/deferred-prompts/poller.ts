@@ -12,9 +12,9 @@ import { logger } from '../logger.js'
 import { recordProactiveInHistory } from '../proactive-history.js'
 import { scheduler } from '../scheduler-instance.js'
 import { getUserTimezoneOrDefault } from '../utils/config-timezone.js'
-import { logSettledErrors, MAX_CONCURRENT_LLM_CALLS, MAX_CONCURRENT_USERS, pollAlertsOnce } from './poller-alerts.js'
+import { logSettledErrors, MAX_CONCURRENT_LLM_CALLS } from './poller-alerts.js'
 import { groupScheduledPromptsByDelivery } from './poller-groups.js'
-import { stopRegisteredPollerTask } from './poller-lifecycle.js'
+import { createPollerLifecycle, type PollerSnapshot } from './poller-lifecycle.js'
 import { finalizeAllPrompts, mergeExecutionMetadata } from './poller-scheduled.js'
 import { resolveProactivePlatformInstanceId, sendProactiveMessage } from './proactive-delivery.js'
 import { getStorageContextId } from './proactive-llm-helpers.js'
@@ -25,9 +25,6 @@ import type { ScheduledPrompt } from './types.js'
 export { pollAlertsOnce } from './poller-alerts.js'
 
 const log = logger.child({ scope: 'deferred:poller' })
-const ALERT_POLL_MS = 5 * 60_000,
-  SCHEDULED_POLL_MS = 60_000
-let isRunning = false
 const inFlightPrompts = new Set<string>()
 const promptToExecCtx = (prompt: ScheduledPrompt): DeferredExecutionContext => ({
   createdByUserId: prompt.createdByUserId,
@@ -106,47 +103,13 @@ export async function pollScheduledOnce(chat: ChatProvider, buildProviderFn: Bui
   }
 }
 export function startPollers(chat: ChatProvider, buildProviderFn: BuildProviderFn): void {
-  if (isRunning) {
-    log.warn('Pollers already running')
-    return
-  }
-  isRunning = true
-  scheduler.register('deferred-scheduled-poll', {
-    interval: SCHEDULED_POLL_MS,
-    handler: () => pollScheduledOnce(chat, buildProviderFn),
-    options: { immediate: true },
-  })
-
-  scheduler.register('deferred-alert-poll', {
-    interval: ALERT_POLL_MS,
-    handler: () => pollAlertsOnce(chat, buildProviderFn),
-    options: { immediate: true },
-  })
-  scheduler.start('deferred-scheduled-poll')
-  scheduler.start('deferred-alert-poll')
-  log.info({ scheduledPollMs: SCHEDULED_POLL_MS, alertPollMs: ALERT_POLL_MS }, 'Started deferred prompt pollers')
+  defaultPollerLifecycle.startPollers(chat, buildProviderFn)
 }
 export function stopPollers(): void {
-  log.info('Stopping deferred prompt pollers')
-  stopRegisteredPollerTask(scheduler, 'deferred-scheduled-poll')
-  stopRegisteredPollerTask(scheduler, 'deferred-alert-poll')
-  isRunning = false
-}
-export type PollerSnapshot = {
-  scheduledRunning: boolean
-  alertsRunning: boolean
-  scheduledIntervalMs: number
-  alertIntervalMs: number
-  maxConcurrentLlmCalls: number
-  maxConcurrentUsers: number
+  defaultPollerLifecycle.stopPollers()
 }
 export function getPollerSnapshot(): PollerSnapshot {
-  return {
-    scheduledRunning: isRunning,
-    alertsRunning: isRunning,
-    scheduledIntervalMs: SCHEDULED_POLL_MS,
-    alertIntervalMs: ALERT_POLL_MS,
-    maxConcurrentLlmCalls: MAX_CONCURRENT_LLM_CALLS,
-    maxConcurrentUsers: MAX_CONCURRENT_USERS,
-  }
+  return defaultPollerLifecycle.getPollerSnapshot()
 }
+
+const defaultPollerLifecycle = createPollerLifecycle(scheduler)

@@ -5,6 +5,9 @@
 
 import { scenario } from '../harness/scenario.js'
 
+const proactiveReplyCount = (world: { chat: { allReplies(): readonly { kind: string }[] } }): number =>
+  world.chat.allReplies().filter((reply) => reply.kind === 'proactive').length
+
 scenario('SCN-http-notify: an authorized notify delivers a proactive message', async ({ given, when, then, world }) => {
   const alice = given.user('alice')
   const dm = given.dm(alice)
@@ -20,6 +23,35 @@ scenario('SCN-http-notify: an authorized notify delivers a proactive message', a
     body,
   })
   then.responseStatus(unauthorized, 401)
+  if (proactiveReplyCount(world) !== 0) throw new Error('Rejected notify requests must not deliver proactive messages')
+
+  then.responseStatus(
+    await when.request('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer notify-secret' },
+      body: '{not valid json',
+    }),
+    400,
+  )
+  if (proactiveReplyCount(world) !== 0) throw new Error('Rejected notify requests must not deliver proactive messages')
+
+  then.responseStatus(
+    await when.request('/api/notify', {
+      headers: { Authorization: 'Bearer notify-secret' },
+    }),
+    405,
+  )
+  if (proactiveReplyCount(world) !== 0) throw new Error('Rejected notify requests must not deliver proactive messages')
+
+  then.responseStatus(
+    await when.request('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer notify-secret' },
+      body: JSON.stringify({ contextId, contextType: 'dm' }),
+    }),
+    400,
+  )
+  if (proactiveReplyCount(world) !== 0) throw new Error('Rejected notify requests must not deliver proactive messages')
 
   // Authorized notify delivers a real proactive message captured by the scenario chat.
   const delivered = await when.request('/api/notify', {

@@ -5,7 +5,7 @@
   "description": "Kaneo task-tracker integration.",
   "apiVersion": 1,
   "main": "index.ts",
-  "permissions": ["provider.task", "identity"],
+  "permissions": ["provider.task", "identity", "http"],
   "contributes": {
     "taskProviderTypes": ["kaneo"]
   },
@@ -41,6 +41,7 @@
   ],
   "providerTraits": ["workspace-scoped", "task-label-read-requires-provider-specific-api"],
   "providerAllowedHosts": [],
+  "providerAllowedInstanceHostsFromConfig": ["baseUrl"],
   "providerConfigValidator": "validateConfig",
   "defaultEnabled": false
 }

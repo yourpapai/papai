@@ -156,6 +156,14 @@ When DI is not available and module evaluation order matters:
 - Run E2E with `bun test:e2e`.
 - The Docker-backed Kaneo harness is **Tier 1: Provider-Real E2E**. Tier 0 does not replace it; provider-real tests remain responsible for Kaneo/container/API behavior.
 - Every catalog record carries a **proving tier** — the lowest tier that can prove the behavior — in `tests/stories/catalog/coverage.ts`. Executable records may only claim a tier in `LIVE_STORY_TIERS`, and their story ids must sit under that tier's `TIER_SUITE_ROOTS` prefix. Seam-pending records name the tier that unblocks them; `blocked:missing-implementation` records name none, because no tier reaches them. The runner prints per-tier totals on every run.
+- The catalog is **bidirectional**. Alongside the forward check (every record points at a
+  real story), a census asserts the reverse: every story scenario a lane declares is either
+  claimed by a record or listed in `tests/stories/catalog/supporting.ts` with a rationale.
+  Tier 0 observes `scenario(...)` calls, Tier 1 observes `PARITY_GROUPS`, and Tiers 2/3
+  observe `title(...)` markers in glob-discovered `.smoke.ts` / `.platform.ts` files —
+  which also fails any test that bypasses the `title()` helper. Writing a story therefore
+  requires a catalog decision at authoring time; an uncataloged scenario fails
+  `bun test:stories:contracts` (T0/T1) or the default `bun test` lane (T2/T3).
 - The 0Q compatibility proof is Tier 0 only. Higher tiers are regression lanes and never gate a refactor qualification. Canonical tier definitions: the Realism Tiers table in `docs/operations/e2e-planning-workflow.md` (the original owning spec is archived in `docs/archive/`).
 - Prefer `KaneoTestClient` for new resource-management-heavy suites.
 - Track resources created outside the test client with `testClient.trackTask(...)` or the matching tracker helper when the suite uses `KaneoTestClient`.
@@ -164,15 +172,17 @@ When DI is not available and module evaluation order matters:
 
 ### Tier 3 — platform-adapter lane (`tests/platform/`, nightly)
 
-Real adapter code (Mattermost) exercised in-container against fake platform
-servers (HTTP/WS), reusing the T2 harness (`tests/smoke/harness/`). Scenario
-files use the non-discovered `.platform.ts` suffix, so the default `bun test`
-never boots Docker. Run locally with `bun run test:platform`. The lane is
-**nightly only** (`.github/workflows/nightly.yml`), never a PR gate. Live
-scenarios: `SCN-fetch-chat-link` (permalink resolver) and
-`SCN-http-mattermost-action` (signed action-callback route). The Discord and
-Telegram interaction pends remain `needs-seam@3`, deferred until fake
-discord.js / grammY servers exist. The action-callback scenario relies on the
+Real adapter code is exercised against deterministic platform boundaries:
+Mattermost runs in-container against fake HTTP/WS servers and reuses the T2
+harness (`tests/smoke/harness/`); Discord uses an injected client fake; Kontur
+Talk uses an in-process HTTP fake; and Telegram uses an injected bot fake with
+tracked lifecycle cleanup. Scenario files use the non-discovered `.platform.ts`
+suffix, so the default `bun test` never boots Docker. Run locally with
+`bun run test:platform`. The lane is **nightly only**
+(`.github/workflows/nightly.yml`), never a PR gate. Its eight live scenarios
+cover the Mattermost permalink and signed-action paths plus Discord command
+routing, formatted chunking, and response lifecycle, Kontur reply formatting,
+and Telegram admin authorization. The action-callback scenario relies on the
 `PAPAI_MATTERMOST_ACTION_SIGNING_SECRET` env seam so the container verifies
 against a test-known secret.
 
@@ -205,8 +215,11 @@ never lowers the floor.
 `bun test:stories:coverage` runs the hermetic story lane with `--coverage`,
 copies the sandbox child's lcov to `reports/stories/coverage/lcov.info`, and
 fails the run if production-code (`src/` + `plugins/`) line/function coverage
-drops below the committed floor in `scripts/story/coverage-floor.json` (starts
-at `0.50/0.50`, unmeasured). This is the refactor-resilient tier's own
+drops below the committed floor in `scripts/story/coverage-floor.json`. The
+metric excludes `tests/**` and `*.testing.ts` doubles, and counts files no
+story imports as 0% rather than omitting them, so it reads lower than a
+conventional coverage percentage and falls when new uncovered modules land.
+This is the refactor-resilient tier's own
 reachability number, separate from the in-process floor in `bunfig.toml` (see
 the Coverage floor section above). Raise it from a green run with
 `bun coverage:ratchet:stories`, then commit the JSON change. CI runs the

@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.14.1] - 2026-08-20
+
+### Added
+
+- **openspec:** Add knowledge-base plugin
+- **agent:** Implement issue #307 — step 1/5: 1.1 Create `tests/usage/failures.test.ts` on the pattern of `tests/usage
+- **agent:** Implement issue #307 — step 2/5: 2.1 Create `src/usage/failures.ts` with `listRecentFailures(options: { w
+- **agent:** Implement issue #307 — step 3/5: 3.1 Run full suite and read failures from the persisted report: `bun run
+- **agent:** Implement issue #307 — step 4/5: 3.2 Run all static checks: `bun check:full` (lint + typecheck + knip + f
+- **agent:** Implement issue #307 — step 5/5: 3.3 Confirm no docs/architecture/*.md pages are affected (read-only help
+
+### Documentation
+
+- **openspec:** Draft artifacts for usage-failure-queries
+
+### Fixed
+
+- **analytics:** Provision collection eligibility on preference opt-in
+
+### Miscellaneous
+
+- **mutation:** Ratchet baseline
+- **openspec:** Scaffold usage-failure-queries
+- **mutation:** Ratchet baseline
+- **openspec:** Archive 23 completed changes and seed main specs
+
+### Ci
+
+- **deploy:** Set ANALYTICS_SNAPSHOT_DIR for rekey and snapshot remount
 ## [6.14.0] - 2026-08-20
 
 ### Added

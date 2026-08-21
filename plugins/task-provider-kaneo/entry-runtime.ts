@@ -3,11 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+type KaneoHttpFetch = (url: string, init?: RequestInit) => Promise<Response>
+
 type KaneoConfig = {
   apiKey: string
   baseUrl: string
 } & Partial<{
   sessionCookie: string
+  fetch: KaneoHttpFetch
 }>
 
 type TaskProviderLike = {
@@ -47,15 +50,16 @@ function getKaneoProviderModule(): KaneoProviderModule {
   return moduleValue
 }
 
-export function createKaneoProvider(config: Record<string, string>): TaskProviderLike {
+export function createKaneoProvider(config: Record<string, string>, fetch?: KaneoHttpFetch): TaskProviderLike {
   const { isKaneoSessionCookie } = getKaneoClientModule()
   const { KaneoProvider } = getKaneoProviderModule()
 
   const baseUrl = config['baseUrl'] ?? ''
   const credential = config['credential'] ?? ''
+  const fetchTransport = fetch === undefined ? {} : { fetch }
   const kaneoConfig: KaneoConfig = isKaneoSessionCookie(credential)
-    ? { apiKey: '', baseUrl, sessionCookie: credential }
-    : { apiKey: credential, baseUrl }
+    ? { apiKey: '', baseUrl, sessionCookie: credential, ...fetchTransport }
+    : { apiKey: credential, baseUrl, ...fetchTransport }
 
   return new KaneoProvider(kaneoConfig, config['workspaceId'] ?? '')
 }

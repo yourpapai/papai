@@ -6,12 +6,41 @@
 import { describe, expect, test } from 'bun:test'
 
 import { createFactKeyDeriver } from '../../src/analytics/normalizer-shared.js'
-import { classifyAnalyticsTool } from '../../src/analytics/tool-classification.js'
+import { classifyAnalyticsTool, DOMAIN_MAP } from '../../src/analytics/tool-classification.js'
 import type { AnalyticsToolOrigin } from '../../src/analytics/tool-classification.js'
 
 const nameKeys = createFactKeyDeriver({ key: Buffer.alloc(32, 7), keyVersion: 'v1' })
 const deriveNameKey = (origin: AnalyticsToolOrigin, rawToolName: string): ReturnType<typeof nameKeys.toolKey> =>
   nameKeys.toolKey(origin, rawToolName)
+
+describe('DOMAIN_MAP', () => {
+  test('pins the exact registry-domain to fact-domain mapping', () => {
+    expect(DOMAIN_MAP).toEqual({
+      task: 'task',
+      project: 'task',
+      comment: 'task',
+      label: 'task',
+      status: 'task',
+      work: 'task',
+      sprint: 'task',
+      query: 'task',
+      history: 'task',
+      memo: 'memo',
+      instruction: 'memo',
+      memory: 'memo',
+      recurring: 'schedule',
+      deferred: 'schedule',
+      attachment: 'attachment',
+      web: 'web',
+      identity: 'identity',
+      collaboration: 'identity',
+      time: 'other',
+      mcp: 'other',
+      plugin: 'other',
+      diagnostics: 'diagnostics',
+    })
+  })
+})
 
 describe('classifyAnalyticsTool', () => {
   test('a core builtin resolves to its raw slug with metadata classification', () => {
@@ -51,6 +80,11 @@ describe('classifyAnalyticsTool', () => {
   test('identity domains cover identity and collaboration registry entries', () => {
     expect(classifyAnalyticsTool('set_my_identity').toolDomain).toBe('identity')
     expect(classifyAnalyticsTool('find_user').toolDomain).toBe('identity')
+  })
+
+  test('run_diagnostics classifies as a diagnostics read', () => {
+    expect(classifyAnalyticsTool('run_diagnostics').toolDomain).toBe('diagnostics')
+    expect(classifyAnalyticsTool('run_diagnostics').risk).toBe('read')
   })
 
   test('meta tools classify as core meta reads', () => {

@@ -230,6 +230,21 @@ describe('parseToolPrefs legacy migration', () => {
   })
 })
 
+describe('diagnostics domain (regression-only)', () => {
+  test('parseToolPrefs preserves a diagnostics domainDefault instead of dropping the key', () => {
+    const prefs = parseToolPrefs('{"domainDefaults":{"diagnostics":"ask"}}')
+    expect(prefs.domainDefaults).toEqual({ diagnostics: 'ask' })
+    expect(prefs.riskDefaults).toEqual({})
+    expect(prefs.toolOverrides).toEqual({})
+  })
+
+  test('empty prefs resolve every tool to allow via resolveToolPermission', () => {
+    for (const name of ['create_task', 'delete_task', 'web_fetch']) {
+      expect(resolveToolPermission(empty, name)).toBe('allow')
+    }
+  })
+})
+
 describe('cycleTool', () => {
   test('cycles allow → ask → deny → allow', () => {
     let prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: {} }

@@ -20,6 +20,7 @@ import type {
   ResolveUserContext,
 } from '../types.js'
 import { isTelegramGroupAdmin } from './admin-helpers.js'
+import type { TelegramBotFactory, TelegramBotLike } from './bot-factory.js'
 import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
 import { createTelegramFileFetcher } from './file-fetcher.js'
@@ -43,10 +44,12 @@ import {
   shiftTelegramEntity,
   telegramIsBotMentioned,
 } from './reply-helpers.js'
+export type { TelegramBotFactory, TelegramBotLike } from './bot-factory.js'
 const log = logger.child({ scope: 'chat:telegram' })
-type TelegramConstructorConfig = {
+export type TelegramConstructorConfig = {
   readonly token?: string
   readonly platformInstanceId: string
+  readonly botFactory?: TelegramBotFactory
 }
 const resolvePlatformInstanceId = (value: string | undefined): string => {
   if (value === undefined || value.trim() === '') throw new Error('platformInstanceId is required')
@@ -62,7 +65,7 @@ export class TelegramChatProvider implements ChatProvider {
   readonly capabilities = telegramCapabilities
   readonly traits = telegramTraits
   readonly configRequirements = telegramConfigRequirements
-  private readonly bot: Bot
+  private readonly bot: TelegramBotLike
   private readonly token: string
   private readonly platformInstanceId: string
   private botUsername: string | null = null
@@ -76,7 +79,7 @@ export class TelegramChatProvider implements ChatProvider {
     }
     this.token = token
     this.platformInstanceId = platformInstanceId
-    this.bot = new Bot(token)
+    this.bot = config.botFactory?.(token) ?? new Bot(token)
     log.debug({ platformInstanceId: this.platformInstanceId }, 'TelegramChatProvider constructed')
     this.bot.on('callback_query:data', (ctx) => this.dispatchCallbackQuery(ctx))
   }
@@ -125,16 +128,14 @@ export class TelegramChatProvider implements ChatProvider {
   }
   onMessageEdit(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
     const deliver = async (ctx: Context): Promise<void> => {
+      if (ctx.editedMessage?.text === undefined) return
       const isAdmin = await this.checkAdminStatus(ctx)
       const msg = await this.extractMessage(ctx, isAdmin)
       if (msg === null) return
       const reply = this.buildReplyFn(ctx, msg.threadId, false)
       await handler({ ...msg, editedAt: ctx.editedMessage?.edit_date ?? 0 }, reply)
     }
-    // Channel-broadcast edits (edited_channel_post) are intentionally not subscribed:
-    // channels are not a papai context type (user-auth based; channel posts carry
-    // sender_chat with no `from`), and forum-topic edits arrive as edited_message.
-    this.bot.on('edited_message:text', deliver)
+    this.bot.on('edited_message', deliver)
   }
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     const chatId = parseInt(target.contextId, 10)

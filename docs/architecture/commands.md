@@ -46,12 +46,20 @@ Before parsing arguments, the parent removes only its standard `manifest.json` a
 
 Qualification freezes all of `tests/stories/**`, the listed enforcement scripts (including the `scripts/coverage/` modules they import: `normalize-lcov.ts`, `ratchet-lib.ts`, `story-coverage-gate.ts`), and the auxiliary Bun/test-support inputs byte-for-byte, not just files ending in `.story.test.ts`. A refactor may change production/runtime composition, but it must not change frozen harness, fixture, preload, story, launcher, manifest, guard, test setup, or test-helper bytes while claiming compatibility with a recorded baseline. The explicit baseline commit must already contain every frozen file; an older ref fails actionably by listing them as added candidate files.
 
+Chat-adapter transport is outside 0Q: `SCN-interaction-discord-router-wrapped`,
+`SCN-interaction-discord-standalone-fallback`, and
+`SCN-interaction-telegram-callback` are executable Tier 3 (forward-only) records
+exercised by the nightly Tier 3 platform-adapter lane; they are never a
+refactor-qualification gate.
+
 To establish a baseline on master:
 
 1. Run `bun test:stories:contracts` and `bun test:stories`, then commit the complete harness and enforcement scripts.
 2. Record that commit SHA and the `treeHash` from `reports/stories/manifest.json` (CI also retains both in the manifest artifact).
 3. Rebase the refactor branch onto that exact baseline commit.
 4. Run `BASE_REF=<baseline-sha> bun test:stories:compat --manifest-only` for the exact preflight proof. It reads baseline blobs directly from Git and fails with added/removed/changed paths without starting the story child. Then run `BASE_REF=<baseline-sha> bun test:stories:compat` to preflight again and execute the unchanged suite.
+
+The currently recorded baseline — SHA, tree hash, and the commands verified against it — lives in the `Foundation baseline` section of `docs/superpowers/specs/2026-08-04-global-refactor-behavior-coverage-roadmap-design.md`. It is a `hermetic-stories-continue` commit, so per step 1 above it must be re-recorded from the merge before another branch cites it. Note that `scripts/story/coverage-floor.json` is not a frozen input: changing the floor value alone does not retire a baseline.
 
 Neither normal nor compatibility runs retry failures. `reports/stories/**` is ignored build output and must not be committed.
 

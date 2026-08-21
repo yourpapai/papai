@@ -17,7 +17,7 @@ for a chat user as part of the onboarding workflow.
 
 ## Permissions
 
-`provider.task`, `identity`.
+`provider.task`, `identity`, `http`.
 
 ## Provider capabilities
 

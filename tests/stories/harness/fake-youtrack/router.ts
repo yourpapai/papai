@@ -3,139 +3,34 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { Server } from 'bun'
-
-/**
- * A stateful in-memory fake YouTrack REST server. It models exactly the request
- * shapes YouTrackProvider builds and the `fields=` projection shapes its mappers
- * parse (plugins/task-provider-youtrack/mappers.ts). It is NOT a fidelity model
- * of a real YouTrack — both this fake and the parity expectations are authored
- * here, so this lane proves request-building + response-mapping + contract
- * conformance, never drift against a live YouTrack.
- */
-
-export type FakeYouTrackServer = {
-  url: string
-  stop(): Promise<void>
-  reset(): void
-}
-
-// ---------- Stored entities ----------
-
-type StoredProject = {
-  id: string
-  name: string
-  shortName: string
-  description: string | undefined
-  archived: boolean
-}
-
-type StoredIssue = {
-  id: string
-  idReadable: string
-  numberInProject: number
-  summary: string
-  description: string | undefined
-  projectDbId: string
-  created: number
-  updated: number
-  state: string | undefined
-  priority: string | undefined
-  dueDateMs: number | undefined
-  assigneeLogin: string | undefined
-}
-
-type StoredComment = {
-  id: string
-  issueId: string
-  text: string
-  created: number
-  updated: number | undefined
-}
-
-type StoredLink = {
-  id: string
-  ownerIssueId: string
-  targetIssueId: string
-  typeName: string
-  direction: string
-}
-
-type State = {
-  projects: Map<string, StoredProject>
-  issues: Map<string, StoredIssue>
-  issuesByReadable: Map<string, string>
-  comments: Map<string, StoredComment>
-  links: Map<string, StoredLink>
-  seq: number
-}
-
-type Ctx = {
-  method: string
-  path: string
-  query: URLSearchParams
-  body: unknown
-  state: State
-}
-
-// ---------- Bundle seeds (values the provider resolves status/priority against) ----------
-
-const STATE_BUNDLE_ID = 'state-bundle-1'
-const PRIORITY_BUNDLE_ID = 'enum-bundle-1'
-const STATE_VALUES: readonly string[] = ['Open', 'In Progress', 'Done']
-const PRIORITY_VALUES: readonly string[] = ['high', 'normal', 'low']
-
-// ---------- State + id helpers ----------
-
-const createState = (): State => ({
-  projects: new Map(),
-  issues: new Map(),
-  issuesByReadable: new Map(),
-  comments: new Map(),
-  links: new Map(),
-  seq: 0,
-})
-
-const nextId = (state: State, prefix: string): string => {
-  state.seq += 1
-  return `${prefix}-${state.seq}`
-}
-
-const nextTs = (state: State): number => {
-  state.seq += 1
-  return 1_700_000_000_000 + state.seq
-}
-
-// ---------- Response helpers ----------
-
-const json = (data: unknown, status = 200): Response =>
-  new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
-
-const noContent = (): Response => new Response(null, { status: 204 })
-
-const errorResponse = (status: number, message: string): Response =>
-  json({ error: message, error_description: message }, status)
-
-// ---------- Path matcher ----------
-
-const matchPath = (pattern: string, path: string): Record<string, string> | null => {
-  const pp = pattern.split('/')
-  const ap = path.split('/')
-  if (pp.length !== ap.length) return null
-  const params: Record<string, string> = {}
-  for (let i = 0; i < pp.length; i += 1) {
-    const seg = pp[i] ?? ''
-    const val = ap[i] ?? ''
-    if (seg.startsWith(':')) params[seg.slice(1)] = decodeURIComponent(val)
-    else if (seg !== val) return null
-  }
-  return params
-}
+import { handleActivities, handleAttachments, handleWatchersAndVotes, handleWorkItems } from './router-collaboration.js'
+import { handleDirectory } from './router-directory.js'
+import { handleQueryEndpoints } from './router-queries.js'
+import { errorResponse, fakeUser, findIssue, json, matchPath, noContent, visibilityProjection } from './shared.js'
+import {
+  type FakeYouTrackCtx,
+  type FakeYouTrackState,
+  nextId,
+  nextTs,
+  PRIORITY_BUNDLE_ID,
+  PRIORITY_VALUES,
+  STATE_BUNDLE_ID,
+  STATE_VALUES,
+  type StoredAgile,
+  type StoredComment,
+  type StoredIssue,
+  type StoredLink,
+  type StoredProject,
+  type StoredSprint,
+  type StoredStateValue,
+  type StoredVisibility,
+} from './state.js'
 
 // ---------- Projection helpers ----------
 
 const projectFields = (p: StoredProject): Record<string, unknown> => ({
   id: p.id,
+  ringId: p.ringId,
   $type: 'Project',
   name: p.name,
   shortName: p.shortName,
@@ -173,7 +68,7 @@ const bundleValuesResponse = (segment: string): unknown => {
 
 // ---------- Project + custom-field-schema handler ----------
 
-const handleProjects = (ctx: Ctx): Response | undefined => {
+const handleProjects = (ctx: FakeYouTrackCtx): Response | undefined => {
   const { method, path, state, query } = ctx
 
   const cfPath = matchPath('/api/admin/projects/:id/customFields', path)
@@ -217,6 +112,7 @@ const handleProjects = (ctx: Ctx): Response | undefined => {
       const id = nextId(state, 'project')
       const project: StoredProject = {
         id,
+        ringId: `ring-${id}`,
         name: body.name ?? '',
         shortName,
         description: body.description,
@@ -267,14 +163,29 @@ const applyCustomFieldPayload = (issue: StoredIssue, payload: unknown): void => 
   }
 }
 
-// ---------- Issue projections (read path) ----------
-
-const findIssue = (state: State, ref: string): StoredIssue | undefined => {
-  const direct = state.issues.get(ref)
-  if (direct !== undefined) return direct
-  const dbId = state.issuesByReadable.get(ref)
-  return dbId === undefined ? undefined : state.issues.get(dbId)
+const readIdList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return []
+  const entries: unknown[] = value
+  return entries.flatMap((entry) => {
+    if (entry === null || typeof entry !== 'object') return []
+    const id = (entry as { id?: unknown }).id
+    return typeof id === 'string' ? [id] : []
+  })
 }
+
+/** The inverse of `visibilityProjection`: YouTrack switches on `$type`, and a
+ *  limited visibility carries the users and groups permitted to see the issue. */
+const readVisibilityPayload = (payload: unknown): StoredVisibility => {
+  const body = (payload ?? {}) as { $type?: unknown; permittedUsers?: unknown; permittedGroups?: unknown }
+  if (body.$type !== 'LimitedVisibility') return { kind: 'unlimited' }
+  return {
+    kind: 'limited',
+    userIds: readIdList(body.permittedUsers),
+    groupIds: readIdList(body.permittedGroups),
+  }
+}
+
+// ---------- Issue projections (read path) ----------
 
 const issueCustomFields = (issue: StoredIssue): unknown[] => {
   const fields: unknown[] = []
@@ -301,7 +212,7 @@ const issueCustomFields = (issue: StoredIssue): unknown[] => {
   return fields
 }
 
-const issueLinksProjection = (state: State, issue: StoredIssue): unknown[] => {
+const issueLinksProjection = (state: FakeYouTrackState, issue: StoredIssue): unknown[] => {
   const out: unknown[] = []
   for (const link of state.links.values()) {
     if (link.ownerIssueId !== issue.id) continue
@@ -317,7 +228,7 @@ const issueLinksProjection = (state: State, issue: StoredIssue): unknown[] => {
   return out
 }
 
-const issueProjection = (state: State, issue: StoredIssue): Record<string, unknown> => {
+const issueProjection = (state: FakeYouTrackState, issue: StoredIssue): Record<string, unknown> => {
   const project = state.projects.get(issue.projectDbId)
   return {
     id: issue.id,
@@ -334,11 +245,16 @@ const issueProjection = (state: State, issue: StoredIssue): Record<string, unkno
     links: issueLinksProjection(state, issue),
     tags: [],
     commentsCount: [...state.comments.values()].filter((c) => c.issueId === issue.id).length,
-    votes: 0,
+    votes: issue.voted ? 1 : 0,
+    watchers: {
+      issueWatchers: issue.watcherIds.map((userId) => ({ user: fakeUser(userId), isStarred: true })),
+      hasStar: issue.watcherIds.length > 0,
+    },
+    visibility: visibilityProjection(issue.visibility),
   }
 }
 
-const issueListProjection = (state: State, issue: StoredIssue): Record<string, unknown> => {
+export const issueListProjection = (state: FakeYouTrackState, issue: StoredIssue): Record<string, unknown> => {
   const project = state.projects.get(issue.projectDbId)
   const customFields: unknown[] = []
   if (issue.state !== undefined) {
@@ -389,7 +305,7 @@ const interpretQuery = (raw: string): ParsedQuery => {
   return { shortName, freeText: rest.trim(), sortField, sortDir }
 }
 
-const handleIssueQuery = (ctx: Ctx): Response => {
+const handleIssueQuery = (ctx: FakeYouTrackCtx): Response => {
   const { state, query } = ctx
   const parsed = interpretQuery(query.get('query') ?? '')
   let issues = [...state.issues.values()]
@@ -415,7 +331,7 @@ const handleIssueQuery = (ctx: Ctx): Response => {
 
 // ---------- Issue handler ----------
 
-const handleIssues = (ctx: Ctx): Response | undefined => {
+const handleIssues = (ctx: FakeYouTrackCtx): Response | undefined => {
   const { method, path, state } = ctx
 
   if (path === '/api/issues' && method === 'GET') {
@@ -438,10 +354,16 @@ const handleIssues = (ctx: Ctx): Response | undefined => {
     }
     if (method === 'POST') {
       if (issue === undefined) return errorResponse(404, 'issue not found')
-      const body = (ctx.body ?? {}) as { summary?: string; description?: string; customFields?: unknown }
+      const body = (ctx.body ?? {}) as {
+        summary?: string
+        description?: string
+        customFields?: unknown
+        visibility?: unknown
+      }
       if (body.summary !== undefined) issue.summary = body.summary
       if (body.description !== undefined) issue.description = body.description
       if (body.customFields !== undefined) applyCustomFieldPayload(issue, body.customFields)
+      if (body.visibility !== undefined) issue.visibility = readVisibilityPayload(body.visibility)
       issue.updated = nextTs(state)
       return json(issueProjection(state, issue))
     }
@@ -463,6 +385,16 @@ const handleIssues = (ctx: Ctx): Response | undefined => {
     const projectId = body.project?.id ?? ''
     const project = state.projects.get(projectId)
     if (project === undefined) return errorResponse(404, 'project not found')
+    if (typeof body.summary === 'string' && body.summary.includes('workflow-required')) {
+      return json(
+        {
+          error: 'Assertion failed',
+          error_description: 'Requires these custom fields: Priority, Due Date',
+          error_type: 'workflow',
+        },
+        400,
+      )
+    }
     const dbId = nextId(state, 'issue')
     const number = [...state.issues.values()].filter((i) => i.projectDbId === project.id).length + 1
     const issue: StoredIssue = {
@@ -478,6 +410,9 @@ const handleIssues = (ctx: Ctx): Response | undefined => {
       priority: undefined,
       dueDateMs: undefined,
       assigneeLogin: undefined,
+      watcherIds: [],
+      voted: false,
+      visibility: { kind: 'unlimited' },
     }
     applyCustomFieldPayload(issue, body.customFields)
     state.issues.set(dbId, issue)
@@ -500,7 +435,7 @@ const commentProjection = (c: StoredComment): unknown => ({
   reactions: [],
 })
 
-const handleComments = (ctx: Ctx): Response | undefined => {
+const handleComments = (ctx: FakeYouTrackCtx): Response | undefined => {
   const { method, path, state, query } = ctx
 
   const onePath = matchPath('/api/issues/:id/comments/:commentId', path)
@@ -561,7 +496,7 @@ const LINK_TYPES: ReadonlyArray<{ id: string; name: string; directed: boolean }>
   { id: 'lt-subtask', name: 'Subtask', directed: true },
 ]
 
-const decodeLinkId = (state: State, linkId: string): { typeName: string; direction: string } => {
+const decodeLinkId = (state: FakeYouTrackState, linkId: string): { typeName: string; direction: string } => {
   const stored = state.links.get(linkId)
   if (stored !== undefined) return { typeName: stored.typeName, direction: stored.direction }
   const suffix = linkId.slice(-1)
@@ -582,7 +517,7 @@ const readLinkTargetId = (body: unknown): string => {
   return ''
 }
 
-const handleRelations = (ctx: Ctx): Response | undefined => {
+const handleRelations = (ctx: FakeYouTrackCtx): Response | undefined => {
   const { method, path, state } = ctx
 
   if (path === '/api/issueLinkTypes' && method === 'GET') {
@@ -617,45 +552,230 @@ const handleRelations = (ctx: Ctx): Response | undefined => {
   return undefined
 }
 
-// ---------- Server bootstrap ----------
+// ---------- State-bundle handler ----------
 
-export const startFakeYouTrackServer = (): FakeYouTrackServer => {
-  const state = createState()
-  const handlers: Array<(ctx: Ctx) => Response | undefined> = [
-    handleProjects,
-    handleIssues,
-    handleComments,
-    handleRelations,
-  ]
+const stateValueProjection = (v: StoredStateValue): Record<string, unknown> => ({
+  id: v.id,
+  name: v.name,
+  ordinal: v.ordinal,
+  isResolved: v.isResolved,
+})
 
-  const server: Server<undefined> = Bun.serve({
-    port: 0,
-    async fetch(req): Promise<Response> {
-      const url = new URL(req.url)
-      const hasBody = req.method === 'POST' || req.method === 'PUT'
-      const bodyText = hasBody ? await req.text() : ''
-      const body: unknown = bodyText.length > 0 ? JSON.parse(bodyText) : undefined
-      const ctx: Ctx = { method: req.method, path: url.pathname, query: url.searchParams, body, state }
-      for (const handler of handlers) {
-        const res = handler(ctx)
-        if (res !== undefined) return res
-      }
-      return errorResponse(404, `no route for ${req.method} ${url.pathname}`)
-    },
-  })
+const handleStateBundles = (ctx: FakeYouTrackCtx): Response | undefined => {
+  const { method, path, state, body } = ctx
+  if (!path.startsWith('/api/admin/customFieldSettings/bundles/state/')) return undefined
 
-  return {
-    url: `http://localhost:${server.port}`,
-    stop: async (): Promise<void> => {
-      await server.stop(true)
-    },
-    reset: (): void => {
-      state.projects.clear()
-      state.issues.clear()
-      state.issuesByReadable.clear()
-      state.comments.clear()
-      state.links.clear()
-      state.seq = 0
-    },
+  const metaPath = matchPath('/api/admin/customFieldSettings/bundles/state/:bundleId', path)
+  if (metaPath !== null && method === 'GET') {
+    const bundleId = metaPath['bundleId'] ?? ''
+    const projects = [...state.projects.values()].map((p) => ({ id: p.id }))
+    return json({
+      id: bundleId,
+      name: 'States',
+      ...(projects.length > 0 ? { aggregated: { project: projects } } : {}),
+    })
   }
+
+  const collectionPath = matchPath('/api/admin/customFieldSettings/bundles/state/:bundleId/values', path)
+  if (collectionPath !== null) {
+    const bundleId = collectionPath['bundleId'] ?? ''
+    if (method === 'GET') {
+      const values = [...(state.stateValues.get(bundleId) ?? [])].sort((a, b) => a.ordinal - b.ordinal)
+      return json(values.map(stateValueProjection))
+    }
+    if (method === 'POST') {
+      const b = (body ?? {}) as { name?: string; isResolved?: boolean }
+      const values = state.stateValues.get(bundleId) ?? []
+      const created: StoredStateValue = {
+        id: nextId(state, 'state-val'),
+        name: b.name ?? '',
+        ordinal: values.length,
+        isResolved: b.isResolved ?? false,
+      }
+      state.stateValues.set(bundleId, [...values, created])
+      return json(stateValueProjection(created))
+    }
+    return undefined
+  }
+
+  const statusPath = matchPath('/api/admin/customFieldSettings/bundles/state/:bundleId/values/:statusId', path)
+  if (statusPath !== null) {
+    const bundleId = statusPath['bundleId'] ?? ''
+    const statusId = statusPath['statusId'] ?? ''
+    const values = state.stateValues.get(bundleId) ?? []
+    if (method === 'POST') {
+      const b = (body ?? {}) as { name?: string; isResolved?: boolean; ordinal?: number }
+      const existing = values.find((v) => v.id === statusId)
+      if (existing === undefined) return errorResponse(404, 'state value not found')
+      const updated: StoredStateValue = {
+        ...existing,
+        ...(b.name === undefined ? {} : { name: b.name }),
+        ...(b.isResolved === undefined ? {} : { isResolved: b.isResolved }),
+        ...(b.ordinal === undefined ? {} : { ordinal: b.ordinal }),
+      }
+      state.stateValues.set(
+        bundleId,
+        values.map((v) => (v.id === statusId ? updated : v)),
+      )
+      return json(stateValueProjection(updated))
+    }
+    if (method === 'DELETE') {
+      state.stateValues.set(
+        bundleId,
+        values.filter((v) => v.id !== statusId),
+      )
+      return noContent()
+    }
+  }
+
+  return undefined
+}
+
+// ---------- Agile/sprint handler ----------
+
+const resolvedStateNames = (state: FakeYouTrackState): ReadonlySet<string> => {
+  const names = new Set<string>()
+  for (const values of state.stateValues.values()) {
+    for (const value of values) {
+      if (value.isResolved) names.add(value.name)
+    }
+  }
+  return names
+}
+
+const unresolvedIssuesCount = (state: FakeYouTrackState, sprint: StoredSprint): number => {
+  const resolved = resolvedStateNames(state)
+  return sprint.issueIds.filter((issueId) => {
+    const issue = state.issues.get(issueId)
+    if (issue === undefined) return false
+    return issue.state === undefined || !resolved.has(issue.state)
+  }).length
+}
+
+const agileProjection = (state: FakeYouTrackState, agile: StoredAgile): Record<string, unknown> => ({
+  id: agile.id,
+  $type: 'Agile',
+  name: agile.name,
+  sprints: [...state.sprints.values()].filter((s) => s.agileId === agile.id).map((s) => ({ id: s.id })),
+})
+
+const sprintProjection = (state: FakeYouTrackState, sprint: StoredSprint): Record<string, unknown> => ({
+  id: sprint.id,
+  $type: 'Sprint',
+  name: sprint.name,
+  archived: sprint.archived,
+  goal: sprint.goal ?? null,
+  isDefault: sprint.isDefault,
+  start: sprint.start ?? null,
+  finish: sprint.finish ?? null,
+  unresolvedIssuesCount: unresolvedIssuesCount(state, sprint),
+})
+
+type SprintWriteBody = Readonly<{
+  name?: string
+  goal?: string | null
+  start?: number | null
+  finish?: number | null
+  isDefault?: boolean
+  archived?: boolean
+}>
+
+const handleAgiles = (ctx: FakeYouTrackCtx): Response | undefined => {
+  const { method, path, state, query } = ctx
+  if (!path.startsWith('/api/agiles')) return undefined
+
+  const assignPath = matchPath('/api/agiles/:id/sprints/:sprintId/issues', path)
+  if (assignPath !== null && method === 'POST') {
+    const sprint = state.sprints.get(assignPath['sprintId'] ?? '')
+    if (sprint === undefined || sprint.agileId !== (assignPath['id'] ?? ''))
+      return errorResponse(404, 'sprint not found')
+    const body = (ctx.body ?? {}) as { id?: string }
+    const issue = body.id === undefined ? undefined : state.issues.get(body.id)
+    if (issue === undefined) return errorResponse(404, 'issue not found')
+    if (!sprint.issueIds.includes(issue.id))
+      state.sprints.set(sprint.id, { ...sprint, issueIds: [...sprint.issueIds, issue.id] })
+    return json(sprintProjection(state, state.sprints.get(sprint.id) ?? sprint))
+  }
+
+  const oneSprintPath = matchPath('/api/agiles/:id/sprints/:sprintId', path)
+  if (oneSprintPath !== null && method === 'POST') {
+    const sprint = state.sprints.get(oneSprintPath['sprintId'] ?? '')
+    if (sprint === undefined || sprint.agileId !== (oneSprintPath['id'] ?? ''))
+      return errorResponse(404, 'sprint not found')
+    const body = (ctx.body ?? {}) as SprintWriteBody
+    const updated: StoredSprint = {
+      ...sprint,
+      ...(body.name === undefined ? {} : { name: body.name }),
+      ...(body.goal === undefined ? {} : { goal: body.goal ?? undefined }),
+      ...(body.start === undefined ? {} : { start: body.start ?? undefined }),
+      ...(body.finish === undefined ? {} : { finish: body.finish ?? undefined }),
+      ...(body.isDefault === undefined ? {} : { isDefault: body.isDefault }),
+      ...(body.archived === undefined ? {} : { archived: body.archived }),
+    }
+    state.sprints.set(sprint.id, updated)
+    return json(sprintProjection(state, updated))
+  }
+
+  const sprintsPath = matchPath('/api/agiles/:id/sprints', path)
+  if (sprintsPath !== null) {
+    const agile = state.agiles.get(sprintsPath['id'] ?? '')
+    if (agile === undefined) return errorResponse(404, 'agile board not found')
+    if (method === 'GET') {
+      const list = [...state.sprints.values()].filter((s) => s.agileId === agile.id)
+      const top = Number(query.get('$top') ?? '100')
+      const skip = Number(query.get('$skip') ?? '0')
+      return json(list.slice(skip, skip + top).map((s) => sprintProjection(state, s)))
+    }
+    if (method === 'POST') {
+      const body = (ctx.body ?? {}) as SprintWriteBody
+      const sprint: StoredSprint = {
+        id: nextId(state, 'sprint'),
+        agileId: agile.id,
+        name: body.name ?? '',
+        goal: body.goal ?? undefined,
+        start: typeof body.start === 'number' ? body.start : undefined,
+        finish: typeof body.finish === 'number' ? body.finish : undefined,
+        archived: false,
+        isDefault: body.isDefault ?? false,
+        issueIds: [],
+      }
+      state.sprints.set(sprint.id, sprint)
+      return json(sprintProjection(state, sprint))
+    }
+    return undefined
+  }
+
+  if (path === '/api/agiles' && method === 'GET') {
+    const all = [...state.agiles.values()].map((a) => agileProjection(state, a))
+    const top = Number(query.get('$top') ?? '100')
+    const skip = Number(query.get('$skip') ?? '0')
+    return json(all.slice(skip, skip + top))
+  }
+
+  return undefined
+}
+
+// ---------- Handler chain ----------
+
+const handlers: ReadonlyArray<(ctx: FakeYouTrackCtx) => Response | undefined> = [
+  handleStateBundles,
+  handleAgiles,
+  handleProjects,
+  handleIssues,
+  handleComments,
+  handleRelations,
+  handleWatchersAndVotes,
+  handleAttachments,
+  handleWorkItems,
+  handleActivities,
+  handleQueryEndpoints,
+  handleDirectory,
+]
+
+export const handleFakeYouTrackRequest = (ctx: FakeYouTrackCtx): Response => {
+  for (const handler of handlers) {
+    const response = handler(ctx)
+    if (response !== undefined) return response
+  }
+  return errorResponse(404, `no route for ${ctx.method} ${ctx.path}`)
 }

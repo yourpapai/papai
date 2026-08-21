@@ -98,6 +98,7 @@ export const KNOWN_TOOL_SLUGS = [
   'resolve_chat_participant',
   'resolve_staged_file',
   'resume_recurring_task',
+  'run_diagnostics',
   'run_saved_query',
   'save_instruction',
   'save_memo',

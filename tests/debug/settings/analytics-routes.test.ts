@@ -5,14 +5,30 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
-import { analyticsEvents, analyticsPolicyAudit, analyticsDeliveries } from '../../../src/db/schema.js'
+import type { AnalyticsEventV1 } from '../../../src/analytics/contracts.js'
+import { KeyVersionSchema, VersionStringSchema } from '../../../src/analytics/controlled-types.js'
+import { insertEligibleCanonicalEvent } from '../../../src/analytics/governance/collection-serialization.js'
+import { getEligibilityRef } from '../../../src/analytics/governance/collection-store.js'
+import { normalize } from '../../../src/analytics/normalizer.js'
+import type { NormalizationResult } from '../../../src/analytics/normalizer.js'
+import type { AnalyticsSourceContext } from '../../../src/analytics/source-facts.js'
+import { openEpoch } from '../../../src/analytics/storage/epoch-store.js'
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
+import {
+  analyticsCollectionEligibility,
+  analyticsEpochSourceCounters,
+  analyticsEvents,
+  analyticsPolicyAudit,
+  analyticsDeliveries,
+} from '../../../src/db/schema.js'
 import { routeSettingsApi } from '../../../src/debug/settings-api-router.js'
 import { handleAnalyticsRoutes } from '../../../src/debug/settings/analytics-routes.js'
 import type { AnalyticsActorRouteDeps } from '../../../src/debug/settings/analytics-routes.js'
 import { addUser } from '../../../src/users.js'
-import { IDENTITY_A, makeSubjectDeps, seedSubjectEvent } from '../../analytics/subject-fixtures.js'
+import { AKEYS, IDENTITY_A, makeSubjectDeps, refKeyFor, seedSubjectEvent } from '../../analytics/subject-fixtures.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from './helpers.js'
 
@@ -57,6 +73,50 @@ const PATHS = {
   withdraw: '/settings/api/analytics/withdraw',
   delete: '/settings/api/analytics/delete',
 } as const
+
+const ROUTE_EPOCH_ID = 'epoch-route-wiring'
+
+const routeWiringSource = (): AnalyticsSourceContext => ({
+  platform: 'telegram',
+  platformInstanceId: 'pi-1',
+  chatUserId: 'user-a',
+  nativeContextId: 'user-a',
+  storageContextId: toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'user-a' }),
+  configContextId: toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'user-a' }),
+  contextType: 'dm',
+  actorRole: 'member',
+  taskInstanceId: null,
+  taskProvider: 'none',
+  invocationMode: 'normal',
+  rawTurnId: 'turn-route-1',
+})
+
+const buildRouteWiringEvent = (sourceEventId: string, nowMs: number): AnalyticsEventV1 => {
+  const result: NormalizationResult = normalize(
+    {
+      version: 1,
+      type: 'chat_message_accepted',
+      sourceEventId,
+      occurredAtMs: nowMs,
+      source: routeWiringSource(),
+      inputCount: 1,
+      inputLengthChars: 200,
+      attachmentCount: 0,
+      isCommand: false,
+      command: 'none',
+    },
+    {
+      hmacKey: AKEYS.v3,
+      keyVersion: KeyVersionSchema.parse('v3'),
+      installId: 'install-route-1',
+      appVersion: VersionStringSchema.parse('6.14.0'),
+      policyVersion: 3,
+      ingestedAtMs: nowMs + 1,
+    },
+  )
+  if (result.status !== 'ok') throw new Error(`expected ok, got rejection: ${result.reason}`)
+  return result.event
+}
 
 const MUTATIONS: readonly { method: string; path: string; body: unknown }[] = [
   { method: 'PUT', path: PATHS.preferences, body: { localLongitudinal: 'deny' } },
@@ -262,5 +322,127 @@ describe('settings analytics actor routes', () => {
       new URL('https://x/settings/api/analytics/unknown'),
     )
     expect(unknown).toBeNull()
+  })
+
+  test('PUT localLongitudinal allow provisions the actor collection eligibility ref', async () => {
+    const put = await call(PATHS.preferences, {
+      method: 'PUT',
+      headers: authed(true),
+      body: JSON.stringify({ localLongitudinal: 'allow' }),
+    })
+    expect(put.status).toBe(200)
+    const updated = PreferenceUpdateSchema.parse(await put.json())
+    expect(updated.preference.localLongitudinal).toBe('allow')
+
+    const ref = getEligibilityRef(refKeyFor(IDENTITY_A, 'v3'), { getDrizzleDb: () => db })
+    expect(ref).not.toBeNull()
+    expect(ref?.keyVersion).toBe('v3')
+  })
+
+  test('PUT localLongitudinal deny revokes eligibility with a generation bump and is idempotent', async () => {
+    const allow = await call(PATHS.preferences, {
+      method: 'PUT',
+      headers: authed(true),
+      body: JSON.stringify({ localLongitudinal: 'allow' }),
+    })
+    expect(allow.status).toBe(200)
+    const allowedRow = db
+      .select({ generation: analyticsCollectionEligibility.generation })
+      .from(analyticsCollectionEligibility)
+      .where(eq(analyticsCollectionEligibility.refKey, refKeyFor(IDENTITY_A, 'v3')))
+      .get()
+    expect(allowedRow).toBeDefined()
+
+    const deny = await call(PATHS.preferences, {
+      method: 'PUT',
+      headers: authed(true),
+      body: JSON.stringify({ localLongitudinal: 'deny' }),
+    })
+    expect(deny.status).toBe(200)
+    const deniedRow = db
+      .select()
+      .from(analyticsCollectionEligibility)
+      .where(eq(analyticsCollectionEligibility.refKey, refKeyFor(IDENTITY_A, 'v3')))
+      .get()
+    expect(deniedRow?.state).toBe('deny')
+    expect(deniedRow?.generation).toBeGreaterThan(allowedRow!.generation)
+    expect(getEligibilityRef(refKeyFor(IDENTITY_A, 'v3'), { getDrizzleDb: () => db })).toBeNull()
+
+    const denyAgain = await call(PATHS.preferences, {
+      method: 'PUT',
+      headers: authed(true),
+      body: JSON.stringify({ localLongitudinal: 'deny' }),
+    })
+    expect(denyAgain.status).toBe(200)
+    expect(
+      db
+        .select({ state: analyticsCollectionEligibility.state })
+        .from(analyticsCollectionEligibility)
+        .where(eq(analyticsCollectionEligibility.refKey, refKeyFor(IDENTITY_A, 'v3')))
+        .get()?.state,
+    ).toBe('deny')
+  })
+
+  test('PUT without localLongitudinal leaves collection eligibility untouched', async () => {
+    const allow = await call(PATHS.preferences, {
+      method: 'PUT',
+      headers: authed(true),
+      body: JSON.stringify({ localLongitudinal: 'allow' }),
+    })
+    expect(allow.status).toBe(200)
+
+    const externalOnly = await call(PATHS.preferences, {
+      method: 'PUT',
+      headers: authed(true),
+      body: JSON.stringify({ externalPseudonymous: 'allow' }),
+    })
+    expect(externalOnly.status).toBe(200)
+    expect(getEligibilityRef(refKeyFor(IDENTITY_A, 'v3'), { getDrizzleDb: () => db })).not.toBeNull()
+  })
+
+  test('eligibility provisioned via the route gates canonical inserts and denial fails closed', async () => {
+    const nowMs = Date.now()
+    openEpoch({ epochId: ROUTE_EPOCH_ID, startedAtMs: nowMs }, { getDrizzleDb: () => db })
+    const buildEvent = (sourceEventId: string): AnalyticsEventV1 => buildRouteWiringEvent(sourceEventId, nowMs)
+
+    const allow = await call(PATHS.preferences, {
+      method: 'PUT',
+      headers: authed(true),
+      body: JSON.stringify({ localLongitudinal: 'allow' }),
+    })
+    expect(allow.status).toBe(200)
+    const ref = getEligibilityRef(refKeyFor(IDENTITY_A, 'v3'), { getDrizzleDb: () => db })
+    expect(ref).not.toBeNull()
+
+    const inserted = insertEligibleCanonicalEvent(
+      { event: buildEvent('se-route-1'), processEpochId: ROUTE_EPOCH_ID, collectionRef: ref! },
+      { getDrizzleDb: () => db },
+    )
+    expect(inserted.status).toBe('inserted')
+    expect(db.select({ eventId: analyticsEvents.eventId }).from(analyticsEvents).all()).toHaveLength(1)
+
+    const deny = await call(PATHS.preferences, {
+      method: 'PUT',
+      headers: authed(true),
+      body: JSON.stringify({ localLongitudinal: 'deny' }),
+    })
+    expect(deny.status).toBe(200)
+    expect(getEligibilityRef(refKeyFor(IDENTITY_A, 'v3'), { getDrizzleDb: () => db })).toBeNull()
+
+    const refused = insertEligibleCanonicalEvent(
+      { event: buildEvent('se-route-2'), processEpochId: ROUTE_EPOCH_ID, collectionRef: ref! },
+      { getDrizzleDb: () => db },
+    )
+    expect(refused.status).toBe('not_eligible')
+    expect(db.select({ eventId: analyticsEvents.eventId }).from(analyticsEvents).all()).toHaveLength(1)
+    const counterTotal = (disposition: string): number =>
+      db
+        .select({ value: analyticsEpochSourceCounters.value })
+        .from(analyticsEpochSourceCounters)
+        .where(eq(analyticsEpochSourceCounters.disposition, disposition))
+        .all()
+        .reduce((sum, row) => sum + row.value, 0)
+    expect(counterTotal('governance_ineligible')).toBe(1)
+    expect(counterTotal('canonical')).toBe(1)
   })
 })
