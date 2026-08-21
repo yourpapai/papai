@@ -2127,7 +2127,13 @@ One wrinkle this surfaced but did not create: `bun install` runs against the
 default branch's lockfile, and `ensureBranch` switches the tree afterwards, so a
 dependency the agent adds on its own branch is not installed. That was already
 true of the issue-triggered path — it is uniform now rather than new — and
-belongs with S2 rather than here.
+belongs with S2 rather than here. The **detection** half is since closed:
+`ensureBranch` refuses a branch whose dependency manifests differ from base
+(`git-drift.ts`, after run 32507905723 burned a turn on exactly this), naming
+`/sync` as the remedy. The **install** half stays open by design — installing
+from the agent branch would run model-influenced install scripts in the secrets
+job — so an implementation that genuinely adds a dependency remains a
+maintainer reconciliation.
 
 **Verified after all.** Semgrep installs from PyPI, so the pinned 1.156.0 went
 into a virtualenv and the CI command ran here: `0 findings`. The rule no longer

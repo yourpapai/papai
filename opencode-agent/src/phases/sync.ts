@@ -84,7 +84,11 @@ export const runSync = async (input: MachineInput): Promise<RunResult> => {
   deps.log.info({ issue: state.issueId, branch, base, phase: state.phase }, 'Running the /sync side operation')
 
   try {
-    await deps.git.ensureBranch(branch, base)
+    // The drift refusal is lifted here and nowhere else: a branch whose
+    // dependency manifests differ from base is the condition `/sync` exists to
+    // repair, so refusing to stand on it would block the remedy behind the very
+    // drift the refusal names (see `git-drift.ts`).
+    await deps.git.ensureBranch(branch, base, { allowDependencyDrift: true })
     const end = await syncEnd(input, branch, base, await deps.git.mergeBase(base))
     return await finish(input, end)
   } catch (error) {

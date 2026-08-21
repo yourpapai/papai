@@ -158,7 +158,18 @@ findings: `ROADMAP.md`.
   on any branch, which is how three handlers acquired the same defect; the fake in
   `phases.test.ts` refuses every driver call and every `readFile` until
   `ensureBranch` has been called, so a phase that reads too early fails the test
-  the way it failed the run.
+  the way it failed the run. The same call **refuses a dependency-drifted branch**
+  (`git-drift.ts`): the workflow installs from the base checkout and no second
+  install follows the branch switch, so a branch whose `bun.lock` / `package.json`
+  manifests differ from base runs every check against a `node_modules` that cannot
+  serve it — run 32507905723 paid for a full PLANNING turn and then died in the
+  pre-commit hook on `TS2307` for an import base had stopped carrying. The refusal
+  (`dependencyDriftError`) names `/sync` and the hand-merge as the remedies and
+  never a bare `/retry`; `/sync` passes `allowDependencyDrift` because a drifted
+  branch is the condition it exists to repair, and the guard must not block its
+  own way out. A branch that _intentionally_ changed dependencies is out of reach
+  by design — the job cannot install from the agent branch — and the message says
+  so; revisit only with a security answer for model-influenced install scripts.
 - **An artifact's output path is not always a file, and a pattern is judged
   rather than written.** Three of the `spec-driven` schema's four artifacts
   resolve to a path the drafter can hand to `writeFile`; `specs` does not. A

@@ -5,6 +5,7 @@
 
 import { commitAll, salvageAll } from './git-commit.js'
 import type { GitFn } from './git-commit.js'
+import { assertManifestsInSync } from './git-drift.js'
 import { abortMerge, completeMerge, mergeBase } from './git-merge.js'
 import { reconcile } from './git-reconcile.js'
 import { revertPaths } from './git-revert.js'
@@ -15,7 +16,7 @@ import type { Git, GitCredential, GitOptions } from './git-types.js'
 // stays the one module anybody names — the arrangement `types.ts` set with
 // `phase-names.ts`. Declared in `git-types.ts`, the split this file's own
 // growth forced beside the four operation modules below.
-export type { Git, GitCredential, GitOptions, PushOptions } from './git-types.js'
+export type { Git, GitCredential, GitOptions, EnsureBranchOptions, PushOptions } from './git-types.js'
 export { GitError } from './git-types.js'
 export type { MergeOutcome } from './git-merge.js'
 export type { Salvage } from './git-commit.js'
@@ -88,18 +89,32 @@ const makeRunners = (options: GitOptions): { git: GitFn; gitOrThrow: GitFn } => 
  * Checks out `branch`, reusing the remote branch when the pipeline has already
  * pushed one for this issue — a retry must continue the same branch rather than
  * silently discarding the earlier attempt's commits.
+ *
+ * Then refuses the checkout the job cannot serve: a branch whose dependency
+ * manifests differ from `origin/<base>`, because the workflow installed
+ * dependencies from base before this process ever switched trees. `/sync`
+ * lifts that refusal via `allowDependencyDrift` — it is the remedy, and the
+ * guard must never block its own way out. See `git-drift.ts`.
  */
-const ensureBranch = async (git: GitFn, gitOrThrow: GitFn, branch: string, base: string): Promise<void> => {
+const ensureBranch = async (
+  git: GitFn,
+  gitOrThrow: GitFn,
+  branch: string,
+  base: string,
+  options?: import('./git-types.js').EnsureBranchOptions,
+): Promise<void> => {
   await gitOrThrow('fetch', 'origin', base)
 
   const remote = await git('rev-parse', '--verify', `refs/remotes/origin/${branch}`)
   if (remote.exitCode === 0) {
     await gitOrThrow('fetch', 'origin', branch)
     await gitOrThrow('checkout', '-B', branch, `origin/${branch}`)
-    return
+  } else {
+    await gitOrThrow('checkout', '-B', branch, `origin/${base}`)
   }
 
-  await gitOrThrow('checkout', '-B', branch, `origin/${base}`)
+  if (options?.allowDependencyDrift === true) return
+  await assertManifestsInSync(gitOrThrow, branch, base)
 }
 
 const LOCAL_HEAD = /^origin\/(\S+)$/u
@@ -133,7 +148,7 @@ export const createGit = (options: GitOptions): Git => {
   const { git, gitOrThrow } = makeRunners(options)
 
   return {
-    ensureBranch: (branch, base) => ensureBranch(git, gitOrThrow, branch, base),
+    ensureBranch: (branch, base, branchOptions) => ensureBranch(git, gitOrThrow, branch, base, branchOptions),
     resetBranchToBase: async (branch, base) => {
       await gitOrThrow('fetch', 'origin', base)
       // `-B` force-resets the local branch to `origin/<base>`, discarding any
