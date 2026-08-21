@@ -26,41 +26,22 @@ afterEach(() => {
 })
 
 describe('USAGE', () => {
-  it('lists the four subcommands', () => {
-    expect(USAGE).toContain('start')
-    expect(USAGE).toContain('resume')
-    expect(USAGE).toContain('gate resume')
-    expect(USAGE).toContain('report')
-  })
-
-  it('prints the full multi-line usage text', () => {
-    expect(USAGE).toContain('sdd-runner — autonomous SDD pipeline')
-    expect(USAGE).toContain('Usage:')
-    expect(USAGE).toContain('sdd-runner start <task-file> [--depth S|M|L] [--verbosity brief|normal|debug]')
-    expect(USAGE).toContain('sdd-runner continue [runId]')
-    expect(USAGE).toContain('sdd-runner resume <runId>')
-    expect(USAGE).toContain(
-      'sdd-runner gate [resume <runId> [--confirm-all] [--extend] [--veto <id>=<redirect>]... [--abort]]',
-    )
-    expect(USAGE).toContain('sdd-runner report <runId> [--pr]')
-    expect(USAGE).toContain('opens an interactive gate session')
-    expect(USAGE).toContain('Bare `gate` lists pending gates.')
-    expect(USAGE).toContain('\n')
+  it('names the routing verb and the calm-stop verb', () => {
+    expect(USAGE).toContain('sdd [<task-file> | <run-id>]')
+    expect(USAGE).toContain('sdd stop [<run-id>]')
   })
 
   it('pins every usage line, including the blank separators', () => {
     expect(USAGE.split('\n')).toEqual([
-      'sdd-runner — autonomous SDD pipeline',
+      'sdd — autonomous SDD pipeline',
       '',
       'Usage:',
-      '  sdd-runner start <task-file> [--depth S|M|L] [--verbosity brief|normal|debug]',
-      '  sdd-runner continue [runId]',
-      '  sdd-runner resume <runId>',
-      '  sdd-runner gate [resume <runId> [--confirm-all] [--extend] [--veto <id>=<redirect>]... [--abort]]',
-      '  sdd-runner report <runId> [--pr]',
+      '  sdd [<task-file> | <run-id>] [--depth S|M|L] [--pr] [--reopen [<n>]] [--config <path>]',
+      '  sdd stop [<run-id>]',
       '',
-      'On a terminal, `gate resume <runId>` (or `continue`) opens an interactive gate session.',
-      'Without a TTY, pass decision flags or hand-edit the gate file. Bare `gate` lists pending gates.',
+      'A task file starts a run; a run id routes by its state (gate decision, resume, report).',
+      'No target routes to the sole candidate or lists candidates.',
+      'Gate decisions: the TUI on a terminal; otherwise hand-edit the gate file.',
     ])
   })
 })
@@ -146,8 +127,8 @@ describe('runEntry --help (subprocess)', () => {
     })
     expect(proc.exitCode).toBe(0)
     const out = new TextDecoder().decode(proc.stdout)
-    expect(out).toContain('sdd-runner — autonomous SDD pipeline')
-    expect(out).toContain('sdd-runner report <runId> [--pr]')
+    expect(out).toContain('sdd — autonomous SDD pipeline')
+    expect(out).toContain('sdd stop [<run-id>]')
   })
 
   it('prints USAGE and exits 0 for -h', () => {
@@ -155,16 +136,16 @@ describe('runEntry --help (subprocess)', () => {
       cwd: import.meta.dir + '/../../',
     })
     expect(proc.exitCode).toBe(0)
-    expect(new TextDecoder().decode(proc.stdout)).toContain('sdd-runner — autonomous SDD pipeline')
+    expect(new TextDecoder().decode(proc.stdout)).toContain('sdd — autonomous SDD pipeline')
   })
 
-  it('an unknown subcommand exits non-zero with the parse error on stderr', () => {
-    const proc = Bun.spawnSync(['bun', 'sdd-runner/src/index.ts', 'frobnicate'], {
+  it('an unknown flag exits non-zero with the parse error on stderr', () => {
+    const proc = Bun.spawnSync(['bun', 'sdd-runner/src/index.ts', 'x.md', '--bogus'], {
       cwd: import.meta.dir + '/../../',
     })
     expect(proc.exitCode).not.toBe(0)
     const err = new TextDecoder().decode(proc.stderr)
-    expect(err).toContain('subcommand')
+    expect(err).toContain('unknown flag')
   })
 })
 
@@ -181,7 +162,7 @@ describe('runEntry in-process (help route)', () => {
       process.argv = ['bun', 'sdd-runner', '--help']
       writes.length = 0
       await runEntry()
-      expect(writes.join('')).toContain('sdd-runner — autonomous SDD pipeline')
+      expect(writes.join('')).toContain('sdd — autonomous SDD pipeline')
     } finally {
       process.argv = originalArgv
       spy.mockRestore()

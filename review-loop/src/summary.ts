@@ -17,6 +17,7 @@ import type { PersistedStats, StatsSnapshot } from './run-stats.js'
 import { burndownBlock } from './summary-burndown.js'
 import {
   buildCheckBehindLine,
+  buildDeferredLine,
   buildExposureLine,
   buildInspectorLine,
   buildKindLine,
@@ -44,6 +45,7 @@ export interface MetricsJson {
     needsHuman: number
     reopened: number
     inspectorRejected: number
+    deferred: number
   }
   runStats?: PersistedStats
 }
@@ -194,6 +196,9 @@ export function buildSummary(input: SummaryInput): string {
   const inspectorLine = buildInspectorLine(input.metrics, input.options.inspect)
   if (inspectorLine !== null) lines.push(inspectorLine)
 
+  const deferredLine = buildDeferredLine(input.metrics)
+  if (deferredLine !== null) lines.push(deferredLine)
+
   const exposureLine = buildExposureLine(input.metrics)
   if (exposureLine !== null) lines.push(exposureLine)
 
@@ -242,6 +247,7 @@ export function buildMetricsJson(
       needsHuman: sumDecisions(metrics, 'needs_human'),
       reopened: 0,
       inspectorRejected: metrics.reduce((s, m) => s + m.inspector.rejected, 0),
+      deferred: metrics.reduce((s, m) => s + m.deferred, 0),
     },
     ...(runStats === undefined ? {} : { runStats }),
   }

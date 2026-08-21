@@ -19,81 +19,79 @@ export const AgentRoleSchema = z.enum([
 ])
 export type AgentRole = z.infer<typeof AgentRoleSchema>
 
-export const AutonomyLevelSchema = z.enum(['observe', 'assist', 'auto'])
-export type AutonomyLevel = z.infer<typeof AutonomyLevelSchema>
+/**
+ * Single-mode autonomy (D7): the ladder always evaluates and settles what it
+ * can; there is no level switch anymore. `level` stays in the runtime shape
+ * the gate prelude reads, pinned to `assist`.
+ */
+export interface AutonomyConfig {
+  readonly level: 'assist'
+  readonly costCeilingUsd: number
+  readonly deadlineMinutes?: number
+}
 
-export const AutonomyConfigSchema = z.object({
-  level: AutonomyLevelSchema.default('observe'),
-  costCeilingUsd: z.number().positive().default(5.0),
-  autoExtendMax: z.number().int().nonnegative().default(1),
-  deadlineMinutes: z.number().positive().optional(),
-  rules: z.partialRecord(z.enum(['R1', 'R2', 'R3', 'R4', 'R5']), z.boolean()).default({}),
-})
-export type AutonomyConfig = z.infer<typeof AutonomyConfigSchema>
+/** Compiled timeout constants (the removed `timeouts` block's replacements). */
+export const WALL_CLOCK_TIMEOUT_MS = 1_800_000
+export const INACTIVITY_TIMEOUT_MS = 600_000
 
-export const RunnerConfigSchema = z.object({
+const REMOVED_KEY_POINTERS: Readonly<Record<string, string>> = {
+  autonomy: "replace with the top-level 'budget' and 'deadline' keys",
+  models: "replace with the single top-level 'model'",
+  timeouts: 'replaced by compiled timeout constants — remove the key',
+  budgetUsd: "replace with the top-level 'budget' key",
+}
+
+const FiveKeySchema = z.object({
   repoRoot: z.string().min(1),
   workDir: z.string().min(1).default('.sdd-runner'),
   model: z.string().min(1),
-  models: z.partialRecord(AgentRoleSchema, z.string().min(1)).default({}),
-  timeouts: z
-    .object({
-      wallClockMs: z.number().int().positive().default(1_800_000),
-      inactivityMs: z.number().int().positive().default(600_000),
-    })
-    .default({ wallClockMs: 1_800_000, inactivityMs: 600_000 }),
-  budgetUsd: z.number().positive().optional(),
-  autonomy: AutonomyConfigSchema.default({
-    level: 'observe',
-    costCeilingUsd: 5.0,
-    autoExtendMax: 1,
-    rules: {},
-  }),
+  budget: z.number().positive().default(5),
+  deadline: z.number().positive().optional(),
 })
 
-/** Safe autonomy defaults used when a hand-built config omits the block. */
-export const AUTONOMY_DEFAULTS: AutonomyConfig = {
-  level: 'observe',
-  costCeilingUsd: 5.0,
-  autoExtendMax: 1,
-  deadlineMinutes: undefined,
-  rules: {},
-}
+export const RunnerConfigSchema = z.strictObject({
+  ...FiveKeySchema.shape,
+})
 
-/**
- * Resolve the effective autonomy config for a process: a CLI `--autonomy` /
- * `--auto-deadline` override wins per-command, else the parsed config block,
- * else the safe defaults. The effective cost ceiling normalizes the top-level
- * `budgetUsd` (previously parsed but unenforced) against
- * `autonomy.costCeilingUsd` via min() so a stricter run budget can only make
- * auto-decisions more conservative.
- */
-export function resolveAutonomyConfig(
-  config: RunnerConfig,
-  overrides: { readonly level?: AutonomyLevel; readonly deadlineMinutes?: number } = {},
-): AutonomyConfig {
-  const base = config.autonomy ?? AUTONOMY_DEFAULTS
-  const level = overrides.level ?? base.level
-  const deadlineMinutes = overrides.deadlineMinutes ?? base.deadlineMinutes
-  const ceiling = Math.min(config.budgetUsd ?? Number.POSITIVE_INFINITY, base.costCeilingUsd)
-  return { ...base, level, deadlineMinutes, costCeilingUsd: ceiling }
-}
-
-export interface RunnerConfig extends Omit<z.infer<typeof RunnerConfigSchema>, 'workDir' | 'autonomy'> {
+export interface RunnerConfig {
+  readonly repoRoot: string
   readonly workDir: string
-  readonly autonomy?: AutonomyConfig
+  readonly model: string
+  readonly budget: number
+  readonly deadline?: number
 }
 
-export async function loadRunnerConfig(configPath: string): Promise<RunnerConfig> {
-  let raw: string
+export const AUTONOMY_DEFAULTS: AutonomyConfig = { level: 'assist', costCeilingUsd: 5 }
+
+function removedKeyError(key: string): Error {
+  const pointer = REMOVED_KEY_POINTERS[key] ?? 'not part of the five-key config — remove it'
+  return new Error(`config key '${key}' was removed: ${pointer}`)
+}
+
+async function loadRaw(configPath: string): Promise<string> {
   try {
-    raw = await readFile(configPath, 'utf8')
+    return await readFile(configPath, 'utf8')
   } catch (error) {
     throw new Error(`runner config not found: ${configPath}`, { cause: error })
   }
+}
+
+export async function loadRunnerConfig(configPath: string): Promise<RunnerConfig> {
+  const raw = await loadRaw(configPath)
+  let json: unknown
+  try {
+    json = JSON.parse(raw)
+  } catch (error) {
+    throw new Error(`runner config invalid at ${configPath}: not valid JSON`, { cause: error })
+  }
+  if (typeof json === 'object' && json !== null && !Array.isArray(json)) {
+    for (const key of Object.keys(json)) {
+      if (key in REMOVED_KEY_POINTERS) throw removedKeyError(key)
+    }
+  }
   let parsed: z.infer<typeof RunnerConfigSchema>
   try {
-    parsed = RunnerConfigSchema.parse(JSON.parse(raw))
+    parsed = RunnerConfigSchema.parse(json)
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     throw new Error(`runner config invalid at ${configPath}: ${detail}`, { cause: error })
@@ -104,8 +102,22 @@ export async function loadRunnerConfig(configPath: string): Promise<RunnerConfig
   return { ...parsed, repoRoot, workDir }
 }
 
-export function modelFor(config: RunnerConfig, role: AgentRole): string {
-  return config.models[role] ?? config.model
+/**
+ * Effective autonomy derived from the five keys (single mode): the ladder
+ * always runs; `budget` is the one cost ceiling, `deadline` the one wait.
+ */
+export function autonomyOf(config: RunnerConfig, deadlineMinutesOverride?: number): AutonomyConfig {
+  return {
+    level: 'assist',
+    costCeilingUsd: config.budget,
+    ...(deadlineMinutesOverride === undefined && config.deadline === undefined
+      ? {}
+      : { deadlineMinutes: deadlineMinutesOverride ?? config.deadline }),
+  }
+}
+
+export function modelFor(config: RunnerConfig, _role: AgentRole): string {
+  return config.model
 }
 
 export function deriveChangeName(taskFileName: string, taskFileContent: string): string {

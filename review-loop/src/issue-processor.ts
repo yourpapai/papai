@@ -209,6 +209,10 @@ export async function processPendingIssues(
   collector: RoundCollector,
   pending: readonly LedgerIssueRecord[],
 ): Promise<number> {
+  if (deps.config.batchVerify) {
+    const { processBatched } = await import('./issue-processor-batch.js')
+    return processBatched(deps, round, collector, pending)
+  }
   let fixed = 0
   let index = 0
   const ordered = orderByExposure(pending)

@@ -49,6 +49,12 @@ export const ReviewLoopConfigSchema = z.object({
    * why an unattended CI run wants it on and a laptop does not.
    */
   mergeEachFix: z.boolean().default(false),
+  /**
+   * Batched verification: one fixer per theme batch, one build + one inspector
+   * per round over the aggregated diff. Off by default — see `issue-clustering.ts`
+   * and `loop-controller.ts` batch path.
+   */
+  batchVerify: z.boolean().default(false),
   reviewer: AgentConfigSchema,
   fixer: AgentConfigSchema,
   inspector: AgentConfigSchema.optional(),

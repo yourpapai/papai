@@ -173,6 +173,14 @@ const HumanEditsEvent = z.object({
   files: z.array(z.string().min(1)).min(1),
 })
 
+const ResumeEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('resume'),
+  path: z.enum(['artifact-skip', 'session-continuation', 'stage-rebuild']),
+  stage: StageIdSchema,
+  session: z.string().min(1).optional(),
+})
+
 export const AutoDecisionRuleSchema = z.enum(['R1', 'R2', 'R3', 'R4', 'R5', 'none'])
 export type AutoDecisionRule = z.infer<typeof AutoDecisionRuleSchema>
 
@@ -206,6 +214,7 @@ const EVENT_VARIANTS = [
   DepthEvent,
   GateEvent,
   HumanEditsEvent,
+  ResumeEvent,
   AutoDecisionEvent,
 ] as const
 
@@ -232,6 +241,7 @@ export const SddEventSchema = z.discriminatedUnion('type', [
   DepthEvent.extend(StampShape),
   GateEvent.extend(StampShape),
   HumanEditsEvent.extend(StampShape),
+  ResumeEvent.extend(StampShape),
   AutoDecisionEvent.extend(StampShape),
 ])
 export type SddEvent = z.infer<typeof SddEventSchema>
@@ -245,6 +255,12 @@ function nextSeq(logPath: string): number {
     .split('\n')
     .filter((line) => line.length > 0)
   return lines.length + 1
+}
+
+/** Validate an event input and attach stamp fields without touching disk. */
+export function stampEvent(init: EventInput, seq: number, ts: string): SddEvent {
+  const parsedInput = EventInputSchema.parse(init)
+  return SddEventSchema.parse({ ...parsedInput, seq, ts })
 }
 
 export function appendEvent(logPath: string, event: unknown, now: Date = new Date()): SddEvent {

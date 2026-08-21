@@ -15,14 +15,7 @@ const CHANGE_DIR = 'openspec/changes/thing'
 const RUN_DIR = '.sdd-runner/runs/run-1'
 
 function autonomy(overrides: Partial<AutonomyConfig> = {}): AutonomyConfig {
-  return {
-    level: 'assist',
-    costCeilingUsd: 5,
-    autoExtendMax: 1,
-    deadlineMinutes: undefined,
-    rules: {},
-    ...overrides,
-  }
+  return { level: 'assist', costCeilingUsd: 5, ...overrides }
 }
 
 function converged(overrides: Partial<ReviewLoopResult> = {}): ReviewLoopResult {
@@ -184,7 +177,7 @@ describe('evaluateFinalGate (R1)', () => {
 
   it('approves a converged final gate with all-low-blast assumptions at assist', () => {
     const decision = evaluateFinalGate(signals({ assumptions: lowBlast }))
-    expect(decision).toMatchObject({ rule: 'R1', action: 'approve', permittedAt: 'assist' })
+    expect(decision).toMatchObject({ rule: 'R1', action: 'approve' })
     expect(decision.evidenceDigest.length).toBeGreaterThan(0)
   })
 
@@ -211,19 +204,7 @@ describe('evaluateFinalGate (R1)', () => {
 
   it('does not fire R1 when a surviving assumption is high-blast; offers R3 accept-items instead', () => {
     const decision = evaluateFinalGate(signals({ assumptions: [...lowBlast, ...highBlast] }))
-    expect(decision).toMatchObject({ rule: 'R3', action: 'accept-items', permittedAt: 'assist' })
-  })
-
-  it('R1 disabled via rules map falls through to a human gate', () => {
-    const decision = evaluateFinalGate(signals({ assumptions: lowBlast, config: autonomy({ rules: { R1: false } }) }))
-    expect(decision).toMatchObject({ rule: 'R1', action: 'gate' })
-  })
-
-  it('R3 disabled via rules map suppresses accept-items on a mixed gate', () => {
-    const decision = evaluateFinalGate(
-      signals({ assumptions: [...lowBlast, ...highBlast], config: autonomy({ rules: { R3: false } }) }),
-    )
-    expect(decision).toMatchObject({ action: 'gate' })
+    expect(decision).toMatchObject({ rule: 'R3', action: 'accept-items' })
   })
 })
 
@@ -244,19 +225,12 @@ describe('R4 budget guard', () => {
     const decision = evaluateFinalGate(signals({ assumptions: lowBlast, spentUsd: 4.9 }))
     expect(decision).toMatchObject({ rule: 'R4', action: 'gate' })
   })
-
-  it('ignores a rules entry naming R4 (never-cut invariant)', () => {
-    const decision = evaluateFinalGate(
-      signals({ assumptions: lowBlast, spentUsd: 4.9, config: autonomy({ rules: { R4: false } }) }),
-    )
-    expect(decision).toMatchObject({ rule: 'R4', action: 'gate' })
-  })
 })
 
 describe('evaluateCapHit (R2)', () => {
   it('extends on a strictly decreasing burndown with open MATERIALs and budget headroom', () => {
     const decision = evaluateCapHit(signals({ reviewResult: capHit(), trajectory: trajectory([3, 1]) }))
-    expect(decision).toMatchObject({ rule: 'R2', action: 'extend', permittedAt: 'assist' })
+    expect(decision).toMatchObject({ rule: 'R2', action: 'extend' })
   })
 
   it('does not extend on a flat or increasing trajectory', () => {
@@ -290,23 +264,16 @@ describe('evaluateCapHit (R2)', () => {
     expect(decision.action).toBe('gate')
   })
 
-  it('does not extend past the autoExtendMax bound', () => {
+  it('extends regardless of prior extend count: trajectory window and budget are the sole bounds', () => {
     const decision = evaluateCapHit(
-      signals({ reviewResult: capHit(), trajectory: trajectory([3, 1]), autoExtendsUsed: 1 }),
+      signals({ reviewResult: capHit(), trajectory: trajectory([5, 3, 1]), autoExtendsUsed: 4 }),
     )
-    expect(decision.action).toBe('gate')
+    expect(decision).toMatchObject({ rule: 'R2', action: 'extend' })
   })
 
   it('does not extend when projected spend would cross the ceiling', () => {
     const decision = evaluateCapHit(signals({ reviewResult: capHit(), trajectory: trajectory([3, 1]), spentUsd: 4.9 }))
     expect(decision).toMatchObject({ rule: 'R4', action: 'gate' })
-  })
-
-  it('R2 disabled via rules map presents the human gate', () => {
-    const decision = evaluateCapHit(
-      signals({ reviewResult: capHit(), trajectory: trajectory([3, 1]), config: autonomy({ rules: { R2: false } }) }),
-    )
-    expect(decision).toMatchObject({ rule: 'R2', action: 'gate' })
   })
 })
 

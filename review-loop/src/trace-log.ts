@@ -132,6 +132,8 @@ export const RoundMetricSchema = z.object({
   exposureDivergent: z.number().int().nonnegative(),
   reviewerKind: KindCountsSchema,
   checkBehind: CheckBehindByKindSchema,
+  // Defaulted so traces written before deferral existed still parse.
+  deferred: z.number().int().nonnegative().default(0),
   phaseMs: PhaseMsSchema,
   usage: UsageTotalsSchema,
 })

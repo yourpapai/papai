@@ -18,6 +18,7 @@ import {
   runStageAgent,
 } from '../../sdd-runner/src/agent-layer.js'
 import type { AgentLayerDeps, Finding, RunStageAgentOptions } from '../../sdd-runner/src/agent-layer.js'
+import { INACTIVITY_TIMEOUT_MS } from '../../sdd-runner/src/config.js'
 import type { RunnerConfig } from '../../sdd-runner/src/config.js'
 import { EventInputSchema } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
@@ -42,8 +43,7 @@ function makeConfig(dir: string): RunnerConfig {
     repoRoot: dir,
     workDir: path.join(dir, '.sdd-runner'),
     model: 'default-model',
-    models: { reviewer: 'reviewer-model' },
-    timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+    budget: 5,
   }
 }
 
@@ -147,7 +147,8 @@ function makeOptions(dir: string, basename: string): RunStageAgentOptions<{ find
     outputPath: basename,
     outputSchema: FindingsSidecarSchema,
     label: 'reviewer-r1',
-    logPath: path.join(dir, 'logs', 'reviewer-r1.log'),
+    runDir: dir,
+    round: 1,
     sidecarDir: path.join(dir, 'sidecars'),
   }
 }
@@ -263,15 +264,15 @@ describe('runStageAgent', () => {
     const info = await runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
     expect(info.attempts).toBe(1)
     expect(info.value.findings[0]?.id).toBe('F1')
-    expect(fake.models[0]).toBe('reviewer-model')
-    expect(fake.inactivity[0]).toBe(5_000)
+    expect(fake.models[0]).toBe('default-model')
+    expect(fake.inactivity[0]).toBe(INACTIVITY_TIMEOUT_MS)
     const persisted: unknown = JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'findings-1.json'), 'utf8'))
     expect(FindingsSidecarSchema.safeParse(persisted).success).toBe(true)
     expect(emitted[0]).toMatchObject({
       type: 'spawned',
       agent: 'reviewer-r1',
       role: 'reviewer',
-      model: 'reviewer-model',
+      model: 'default-model',
     })
     const doneEvents = emitted.filter((e): e is Extract<EventInput, { type: 'done' }> => e.type === 'done')
     expect(doneEvents).toHaveLength(1)

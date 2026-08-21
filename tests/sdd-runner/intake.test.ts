@@ -122,8 +122,7 @@ function makeFixture(dir: string, estimatorOutput?: string): IntakeFixture {
     repoRoot: dir,
     workDir: path.join(dir, '.sdd-runner'),
     model: 'test-model',
-    models: {},
-    timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+    budget: 5,
   }
   const spawn: SpawnFn = (_command, _args, options) => {
     spawned.count += 1
@@ -140,6 +139,7 @@ function makeFixture(dir: string, estimatorOutput?: string): IntakeFixture {
       emitted.push(EventInputSchema.parse(event))
     },
     sidecarDir: path.join(dir, 'sidecars'),
+    runDir: dir,
     cwd: dir,
   }
   return { deps, emitted, spawned }

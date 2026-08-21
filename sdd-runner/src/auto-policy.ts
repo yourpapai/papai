@@ -5,11 +5,9 @@
 
 import { createHash } from 'node:crypto'
 
-import type { AutonomyConfig, AutonomyLevel } from './config.js'
+import type { AutonomyConfig } from './config.js'
 import type { DigestRecord } from './replay.js'
 import type { ReviewLoopResult } from './review-loop.js'
-
-export type { AutonomyLevel } from './config.js'
 
 /**
  * R3 classification input: a gate assumption in sidecar shape. `evidence`
@@ -58,7 +56,6 @@ export interface PolicyDecision {
   readonly rule: 'R1' | 'R2' | 'R3' | 'R4' | 'R5' | 'none'
   readonly action: 'approve' | 'extend' | 'accept-items' | 'gate'
   readonly evidenceDigest: string
-  readonly permittedAt: AutonomyLevel
 }
 
 const R2_WINDOW = 2
@@ -119,11 +116,6 @@ export function classifyAssumptions(
   })
 }
 
-function ruleEnabled(config: AutonomyConfig, rule: PolicyRule): boolean {
-  if (rule === 'R4' || rule === 'R5') return true
-  return config.rules[rule] !== false
-}
-
 function digestOf(parts: readonly unknown[]): string {
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 16)
 }
@@ -157,7 +149,6 @@ function gateDecision(rule: PolicyDecision['rule'], signals: PolicySignals, note
     rule,
     action: 'gate',
     evidenceDigest: digestOf([note, signals.reviewResult.outcome, signals.spentUsd, signals.autoExtendsUsed]),
-    permittedAt: 'observe',
   }
 }
 
@@ -167,7 +158,6 @@ function r4FailsClosed(signals: PolicySignals): PolicyDecision | null {
       rule: 'R4',
       action: 'gate',
       evidenceDigest: digestOf(['cost-unknown', signals.reviewResult.outcome]),
-      permittedAt: 'observe',
     }
   }
   if (projectedSpend(signals) >= signals.config.costCeilingUsd) {
@@ -175,7 +165,6 @@ function r4FailsClosed(signals: PolicySignals): PolicyDecision | null {
       rule: 'R4',
       action: 'gate',
       evidenceDigest: digestOf(['over-ceiling', signals.spentUsd, signals.config.costCeilingUsd]),
-      permittedAt: 'observe',
     }
   }
   return null
@@ -194,7 +183,6 @@ function r1Decision(signals: PolicySignals): PolicyDecision | null {
     signals.reviewResult.openNitpicks.length === 0
   const allLowBlast = signals.assumptions.every((assumption) => assumption.blast === 'low')
   if (!(converged && zeroFindings && allLowBlast)) return null
-  if (!ruleEnabled(signals.config, 'R1')) return gateDecision('R1', signals, 'r1-disabled')
   return {
     rule: 'R1',
     action: 'approve',
@@ -206,7 +194,6 @@ function r1Decision(signals: PolicySignals): PolicyDecision | null {
       signals.spentUsd,
       signals.costKnown,
     ]),
-    permittedAt: 'assist',
   }
 }
 
@@ -222,39 +209,29 @@ function r3Decision(signals: PolicySignals): PolicyDecision | null {
   const hasHighBlast = signals.assumptions.some((a) => a.blast === 'high')
   if (lowBlast.length === 0 || !hasHighBlast) return null
   if (signals.deadlineExpired) return gateDecision('none', signals, 'r3-suppressed-at-expiry')
-  if (!ruleEnabled(signals.config, 'R3')) return gateDecision('R3', signals, 'r3-disabled')
   return {
     rule: 'R3',
     action: 'accept-items',
     evidenceDigest: digestOf(['r3', lowBlast.map((a) => a.id), lowBlast.map((a) => a.files)]),
-    permittedAt: 'assist',
   }
 }
 
 /**
  * R2 trajectory-auto-extend (cap-hit ladder): zero open BLOCKERs, at least one
  * open MATERIAL, strictly decreasing open-findings totals over the last k=2
- * rounds, auto-extend budget remaining.
+ * rounds — the trajectory window and the R4 budget guard are the sole
+ * extension eligibility (no count bound).
  */
 function r2Decision(signals: PolicySignals): PolicyDecision | null {
   const capHit = signals.reviewResult.outcome === 'cap-hit'
   const noBlockers = signals.reviewResult.openBlockers.length === 0
   const hasMaterial = signals.reviewResult.openMaterial.length > 0
   if (!(capHit && noBlockers && hasMaterial)) return null
-  if (!ruleEnabled(signals.config, 'R2')) return gateDecision('R2', signals, 'r2-disabled')
-  const eligible =
-    strictlyDecreasingLastK(signals.trajectory, R2_WINDOW) && signals.autoExtendsUsed < signals.config.autoExtendMax
-  if (!eligible) return null
+  if (!strictlyDecreasingLastK(signals.trajectory, R2_WINDOW)) return null
   return {
     rule: 'R2',
     action: 'extend',
-    evidenceDigest: digestOf([
-      'r2',
-      signals.trajectory.map(openTotal),
-      signals.autoExtendsUsed,
-      signals.config.autoExtendMax,
-    ]),
-    permittedAt: 'assist',
+    evidenceDigest: digestOf(['r2', signals.trajectory.map(openTotal)]),
   }
 }
 

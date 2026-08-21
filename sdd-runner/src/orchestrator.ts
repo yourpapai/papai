@@ -3,29 +3,31 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { AgentLayerDeps } from './agent-layer.js'
 import { deriveChangeName } from './config.js'
-import { resolveAutonomyConfig } from './config.js'
-import type { AutonomyConfig, AutonomyLevel } from './config.js'
+import { autonomyOf } from './config.js'
+import type { AutonomyConfig } from './config.js'
 import { runDraft } from './draft.js'
 import type { DepthProfile, EventInput } from './events.js'
-import { buildBus, logPathFor, nowOf, presentGateAt, readReviewResultFromSidecars } from './gate-digest.js'
+import { buildBus, logPathFor, nowOf, presentGateAt } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
 import { runIntake } from './intake.js'
 import { createMaterializer } from './materialize.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
 import type { Verbosity } from './renderer.js'
-import { replayEvents } from './replay.js'
+import type { ResumedSession } from './resume-decision.js'
+import { resumeFromPoint } from './resume-flow.js'
+import { deriveResumeDecision, reportResumeDecision, settleStoppedResult } from './resume-flow.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { createRunState, loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
 import type { RunState } from './run-state.js'
-import { deriveResumePoint } from './run-state.js'
 import { createStageMachine } from './stage-machine.js'
+import { createStopMarkerSeam } from './stop-controller.js'
+import type { CalmStopController } from './stop-controller.js'
 
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 export type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
@@ -33,16 +35,11 @@ export { runGateResume } from './extend-round.js'
 export { runContinue } from './continue.js'
 
 export interface AutonomyOverrides {
-  readonly level?: AutonomyLevel
   readonly deadlineMinutes?: number
 }
 
 function resolveAutonomy(deps: OrchestratorDeps, overrides: AutonomyOverrides = {}): AutonomyConfig {
-  if (overrides.level === undefined && overrides.deadlineMinutes === undefined && deps.autonomy !== undefined) {
-    return deps.autonomy
-  }
-  const base = resolveAutonomyConfig(deps.config, overrides)
-  return deps.autonomy === undefined ? base : { ...base, level: overrides.level ?? deps.autonomy.level }
+  return autonomyOf(deps.config, overrides.deadlineMinutes)
 }
 
 export interface StartOptions {
@@ -54,7 +51,7 @@ export interface StartOptions {
 
 export interface RunResumeResult {
   readonly runId: string
-  readonly halted: 'gate' | 'gate-pending'
+  readonly halted: 'gate' | 'gate-pending' | 'stopped'
   readonly gateMdPath?: string
   readonly version?: number
 }
@@ -113,68 +110,26 @@ export async function runResume(
     return { runId, halted: 'gate-pending' }
   }
   const emit = buildBus(deps, logPathFor(state))
-  const status = await deps.driver.status(state.changeName)
-  const resume = deriveResumePoint(state, status.artifacts, replayEvents(logPathFor(state)))
+  const decision = await deriveResumeDecision(deps, state)
+  reportResumeDecision(deps, emit, decision)
   const depth = state.depth ?? 'S'
+  const stop = createStopMarkerSeam(state.runDir)
   const env = buildPipelineEnv(deps, state, emit, {
     taskText: '',
     changeName: state.changeName,
     depthOverride: depth,
     autonomy,
   })
-  return resumeFromPoint(deps, env, resume, depth)
-}
-
-async function resumeFromPoint(
-  deps: OrchestratorDeps,
-  env: PipelineEnv,
-  resume: ReturnType<typeof deriveResumePoint>,
-  depth: DepthProfile,
-): Promise<RunResumeResult> {
-  const { state } = env
-  const runId = state.runId
-  if (resume.stage === 'review') {
-    const reviewResult = await runReviewStage(env, depth, '')
-    state.stage = 'review'
-    await saveRunState(state, nowOf(deps))
-    const gate = await runPostReviewToGate(env, depth, reviewResult)
-    return { runId, halted: 'gate', gateMdPath: gate.gateMdPath, version: gate.version }
-  }
-  if (resume.stage === 'decompose' || resume.stage === 'atomicity' || resume.stage === 'gate') {
-    const reviewResult = await readReviewResultFromSidecars(
-      env.ctx.sidecarDir,
-      state.round,
-      resume.stage === 'gate' ? 'converged' : 'cap-hit',
-    )
-    const reviewSettled = replayEvents(logPathFor(state)).gate?.answered === true
-    const outcome = reviewSettled ? 'converged' : reviewResult.outcome
-    const settledResult: ReviewLoopResult = { ...reviewResult, outcome }
-    const version = nextGateVersion(state)
-    const gate = await runPostConvergenceTail({
-      deps,
-      state,
-      ctx: env.ctx,
-      agent: env.agent,
-      depth,
-      reviewResult: settledResult,
-      version,
-    })
-    return { runId, halted: 'gate', gateMdPath: gate.gateMdPath, version: gate.version }
-  }
-  throw new Error(`resume from stage '${resume.stage}' (${resume.reason}) is not supported yet`)
-}
-
-function nextGateVersion(state: RunState): number {
-  const versions = [0]
-  try {
-    for (const entry of readdirSync(state.runDir)) {
-      const match = entry.match(/^gate-(\d+)\.md$/u)
-      if (match !== null) versions.push(Number(match[1]))
-    }
-  } catch {
-    // run dir unreadable — start at 1
-  }
-  return Math.max(...versions) + 1
+  const result = await resumeFromPoint(
+    { deps: env.deps, state, ctx: env.ctx, agent: env.agent, stop },
+    {
+      runReviewStage: (d, entry) => runReviewStage(env, d, '', entry, stop),
+      runPostReviewToGate: (d, reviewResult, version) => runPostReviewToGate(env, d, reviewResult, version),
+    },
+    decision,
+    depth,
+  )
+  return settleStoppedResult(deps, state, stop, result)
 }
 
 function buildPipelineEnv(
@@ -221,14 +176,17 @@ function isSeverityConverged(reviewResult: ReviewLoopResult): boolean {
   )
 }
 
-async function runPlanningStages(env: PipelineEnv): Promise<{ depth: DepthProfile; reviewResult: ReviewLoopResult }> {
+async function runPlanningStages(
+  env: PipelineEnv,
+  stop?: CalmStopController,
+): Promise<{ depth: DepthProfile; reviewResult: ReviewLoopResult }> {
   const { deps, state } = env
   const depth = await runIntakeStage(env)
   await saveRunState(state, nowOf(deps))
   await runDraftStage(env, depth)
   state.stage = 'draft'
   await saveRunState(state, nowOf(deps))
-  const reviewResult = await runReviewStage(env, depth, env.input.taskText)
+  const reviewResult = await runReviewStage(env, depth, env.input.taskText, {}, stop)
   state.stage = 'review'
   await saveRunState(state, nowOf(deps))
   return { depth, reviewResult }
@@ -239,7 +197,7 @@ async function runIntakeStage(env: PipelineEnv): Promise<DepthProfile> {
   let depth: DepthProfile = input.depthOverride ?? 'S'
   await machine.runStage('intake', async () => {
     const result = await runIntake(
-      { driver: deps.driver, agent, emit: ctx.emit, sidecarDir: ctx.sidecarDir, cwd: ctx.cwd },
+      { driver: deps.driver, agent, emit: ctx.emit, sidecarDir: ctx.sidecarDir, runDir: state.runDir, cwd: ctx.cwd },
       { changeName: input.changeName, taskText: input.taskText, depthOverride: input.depthOverride },
     )
     depth = result.depth
@@ -250,13 +208,13 @@ async function runIntakeStage(env: PipelineEnv): Promise<DepthProfile> {
 }
 
 async function runDraftStage(env: PipelineEnv, depth: DepthProfile): Promise<void> {
-  const { deps, machine, agent, ctx, input } = env
+  const { deps, state, machine, agent, ctx, input } = env
   await machine.runStage('draft', () =>
     runDraft(
       {
         driver: deps.driver,
         agent,
-        logPath: path.join(ctx.sidecarDir, 'logs'),
+        runDir: state.runDir,
         sidecarDir: ctx.sidecarDir,
         cwd: ctx.cwd,
       },
@@ -265,7 +223,17 @@ async function runDraftStage(env: PipelineEnv, depth: DepthProfile): Promise<voi
   )
 }
 
-async function runReviewStage(env: PipelineEnv, depth: DepthProfile, taskText: string): Promise<ReviewLoopResult> {
+async function runReviewStage(
+  env: PipelineEnv,
+  depth: DepthProfile,
+  taskText: string,
+  entry: {
+    readonly startRound?: number
+    readonly cap?: number
+    readonly resumeSession?: ResumedSession
+  } = {},
+  stop?: CalmStopController,
+): Promise<ReviewLoopResult> {
   const { deps, state, machine, agent, ctx, input } = env
   const materialize = createMaterializer(ctx.sidecarDir, ctx.changeDir, ctx.emit, deps.config.repoRoot)
   let reviewResult!: ReviewLoopResult
@@ -274,10 +242,13 @@ async function runReviewStage(env: PipelineEnv, depth: DepthProfile, taskText: s
       {
         agent,
         emit: ctx.emit,
+        runDir: state.runDir,
         sidecarDir: ctx.sidecarDir,
         cwd: ctx.cwd,
         materialize,
+        stop,
         steer: steerSeamFor(state, (line) => deps.stdout?.(`steer: ${line}`)),
+        resumeSession: entry.resumeSession,
       },
       {
         changeName: input.changeName,
@@ -286,6 +257,7 @@ async function runReviewStage(env: PipelineEnv, depth: DepthProfile, taskText: s
         taskText,
         conventions: deps.conventions ?? '',
       },
+      { startRound: entry.startRound, cap: entry.cap },
     )
     state.round = reviewResult.rounds
   })

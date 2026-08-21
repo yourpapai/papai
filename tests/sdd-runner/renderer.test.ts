@@ -336,7 +336,7 @@ describe('createRenderer resolveCost threading', () => {
     }
   }
 
-  it('forwards opts.resolveCost to DynamicRenderer (estimated footer visible on a TTY stream)', () => {
+  it('a TTY stream gets the byte-frozen line renderer (DynamicRenderer deleted)', () => {
     const { output, stream } = ttyStream()
     const renderer = createRenderer(stream, 'normal', { resolveCost: resolvePriced })
     renderer.renderEvent({ altitude: 'L1', type: 'spawned', agent: 'resolver-r1', role: 'reviewer', model: MODEL })
@@ -347,7 +347,7 @@ describe('createRenderer resolveCost threading', () => {
       tokens: { input: 1000, output: 500, reasoning: 100 },
       costUsd: 0,
     })
-    expect(output.join('')).toContain('~$0.0021')
+    expect(output.join('')).toContain('resolver-r1 spawned')
   })
 
   it('ignores opts.resolveCost for LineRenderer (byte-frozen output, no estimated cost)', () => {

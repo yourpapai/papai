@@ -8,8 +8,13 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
-import { runInspector } from '../../review-loop/src/issue-inspector.js'
+import {
+  runAggregatedInspector,
+  runAggregatedInspectorOrTreatAsRejection,
+  runInspector,
+} from '../../review-loop/src/issue-inspector.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
+import { newCollector } from '../../review-loop/src/round-collector.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
 import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
 import { execGit } from '../../review-loop/src/worktree.js'
@@ -241,5 +246,152 @@ describe('runInspector', () => {
     const prompt = getPrompt()
     expect(prompt).toContain('new-module.ts')
     expect(prompt).toContain('export const FIX = 42')
+  })
+})
+
+function mockAggregatedSpawn(verdicts: Record<string, boolean>): SpawnFn {
+  return (_cmd, args, opts) => {
+    const prompt = args[args.length - 1] ?? ''
+    const outputPath = prompt.match(/JSON to:\s*(\S+)/u)?.[1]
+    if (outputPath === undefined) return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' } satisfies SpawnResult)
+    const ids = [...prompt.matchAll(/"id":\s*"([^"]+)"/gu)].map((m) => m[1]!)
+    writeFileSync(
+      path.resolve(opts.cwd, outputPath),
+      JSON.stringify({
+        results: ids.map((id) => ({
+          id,
+          addresses: verdicts[id] ?? true,
+          reasoning: 'mock aggregated',
+          confidence: 0.8,
+        })),
+      }),
+    )
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' } satisfies SpawnResult)
+  }
+}
+
+describe('runAggregatedInspector', () => {
+  const members = [
+    { id: 'rec-a', issue: { ...issue, file: 'src/a.ts' } },
+    { id: 'rec-b', issue: { ...issue, file: 'src/b.ts' } },
+  ]
+
+  test('returns per-id verdicts and emits one inspect_complete per member', async () => {
+    const repoRoot = makeTempDir('agg-inspector-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    await setupRepo(runState.worktreePath)
+    const baselineSha = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+    writeFileSync(path.join(runState.worktreePath, 'README.md'), 'fix applied\n')
+    const { logger, events } = createCapturingTraceLogger()
+    const collector = newCollector()
+
+    const result = await runAggregatedInspector(
+      {
+        spawn: mockAggregatedSpawn({ 'rec-a': true, 'rec-b': false }),
+        cwd: runState.worktreePath,
+        issues: members,
+        baselineSha,
+        outputPath: path.join(runState.runDir, 'inspect-aggregated.json'),
+        logPath: runState.logPath,
+        reporter: silentReporter(),
+        model: 'm',
+        extraArgs: [],
+        label: 'inspector-aggregated',
+      },
+      1,
+      logger,
+      collector,
+    )
+
+    expect(result.kind).toBe('inspected')
+    expect(result.results).toEqual([
+      { id: 'rec-a', addresses: true, reasoning: 'mock aggregated', confidence: 0.8 },
+      { id: 'rec-b', addresses: false, reasoning: 'mock aggregated', confidence: 0.8 },
+    ])
+    const completes = events.filter((e) => e.event === 'inspect_complete')
+    expect(completes.map((e) => (e as { issueId?: string }).issueId)).toEqual(['rec-a', 'rec-b'])
+    expect(collector.inspector).toEqual({ runs: 2, rejected: 1 })
+  })
+
+  test('diff includes uncommitted edits across all batches', async () => {
+    const repoRoot = makeTempDir('agg-inspector-diff-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    await setupRepo(runState.worktreePath)
+    const baselineSha = (await execGit(runState.worktreePath, ['rev-parse', 'HEAD'])).stdout.trim()
+    writeFileSync(path.join(runState.worktreePath, 'src-a.ts'), 'export const A = 1\n')
+    writeFileSync(path.join(runState.worktreePath, 'src-b.ts'), 'export const B = 2\n')
+    const { logger } = createCapturingTraceLogger()
+
+    let capturedPrompt = ''
+    const spawn: SpawnFn = (_cmd, args, opts) => {
+      const prompt = args[args.length - 1]!
+      capturedPrompt = prompt
+      const outputPath = prompt.match(/JSON to:\s*(\S+)/u)![1]!
+      writeFileSync(path.resolve(opts.cwd, outputPath), JSON.stringify({ results: [] }))
+      return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' } satisfies SpawnResult)
+    }
+
+    await runAggregatedInspector(
+      {
+        spawn,
+        cwd: runState.worktreePath,
+        issues: members,
+        baselineSha,
+        outputPath: path.join(runState.runDir, 'inspect-aggregated.json'),
+        logPath: runState.logPath,
+        reporter: silentReporter(),
+        model: 'm',
+        extraArgs: [],
+        label: 'inspector-aggregated',
+      },
+      1,
+      logger,
+    )
+
+    expect(capturedPrompt).toContain('src-a.ts')
+    expect(capturedPrompt).toContain('src-b.ts')
+  })
+})
+
+describe('runAggregatedInspectorOrTreatAsRejection', () => {
+  test('agent failure degrades to unavailable with all members rejected', async () => {
+    const repoRoot = makeTempDir('agg-inspector-unavail-')
+    const config = createReviewLoopConfigFixture(repoRoot)
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    await setupRepo(runState.worktreePath)
+    const { logger } = createCapturingTraceLogger()
+    const collector = newCollector()
+    const failingSpawn: SpawnFn = () => Promise.resolve({ exitCode: 1, stdout: '', stderr: 'agent exploded' })
+
+    const result = await runAggregatedInspectorOrTreatAsRejection(
+      {
+        config: {
+          fixer: { model: 'm', extraArgs: [] },
+          agentTimeoutMs: 1000,
+        },
+        spawn: failingSpawn,
+        log: silentReporter(),
+        trace: logger,
+      },
+      runState.worktreePath,
+      [
+        { id: 'rec-a', issue },
+        { id: 'rec-b', issue },
+      ],
+      'HEAD',
+      1,
+      runState.runDir,
+      runState.logPath,
+      collector,
+    )
+
+    expect(result.kind).toBe('unavailable')
+    // The per-member results carry the same reasoning string as the outcome.
+    expect(result.results.every((r) => r.reasoning.includes('agent exploded'))).toBe(true)
+    expect(result.results.every((r) => !r.addresses)).toBe(true)
+    expect(collector.inspector.runs).toBe(2)
+    expect(collector.inspector.rejected).toBe(2)
   })
 })
