@@ -71,6 +71,25 @@ registration, but leaves ranking and mention population unprovable). This is the
 production edit in the change, discovered during apply and recorded back into the
 proposal.
 
+**The harness binds the resolver through the same code production does.**
+Found during implementation, not planning: `tests/stories/harness/world.ts` never passed
+`chatParticipantResolver` into `BotDeps`, so the registration gate failed and
+`resolve_chat_participant` was offered in no story at all. Rather than duplicate the
+binding in the harness, the production closure moved to
+`src/chat/participants/router-binding.ts` and both call sites use it. This kills a whole
+drift class the risk section below worries about: neither side can invent its own notion
+of the label context passed to `resolveUserLabel`.
+
+**Only one of the gate's three conjuncts is a denial surface.**
+The bar asks for one scenario per *distinct denial surface*, and a surface has to be
+reachable to be one. `contextType === 'group'` is: a DM turn is an ordinary thing that
+happens. `chatParticipantResolver !== undefined` and `contextId !== undefined` are not —
+production always satisfies both, and now so does the harness. Writing
+`SCN-chat-participant-no-resolver` would mean fabricating a configuration production never
+has, and a green story over a fabricated configuration is evidence about the fabrication.
+That scenario is dropped rather than deferred; the two conjuncts stay as defensive checks
+with no story behind them, which the ledger rationale records.
+
 **Denial surfaces get one scenario each, not one combined negative.**
 The gate is a conjunction, so a single "tool absent" scenario would pass if either
 conjunct alone held — and a refactor that drops the `contextType === 'group'` check would

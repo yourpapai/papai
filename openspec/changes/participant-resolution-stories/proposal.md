@@ -13,8 +13,8 @@ explicit that `SCN-context-group-identity` proves only the member-roster substra
 resolver queries — substrate, not evidence. Nothing the behavior actually claims is
 proven.
 
-It is first among Phase 2's seven behaviors on two readings: it needs no production
-seam, and it sits in the `src/tools/` registration layer that
+It is first among Phase 2's seven behaviors on two readings: it needs no new production
+capability, and it sits in the `src/tools/` registration layer that
 `plugin-core-separation-toolgate` is rewriting — so its open `authorization-routing`
 dimension falls inside that refactor's one semantic blast radius (see "What closes a
 dimension" in the roadmap design doc). `mid-run-control` shares the second property but
@@ -28,10 +28,11 @@ is `blocked:missing-implementation`.
     candidates gathered from `group_members` ∪ `message_metadata` senders; exact >
     prefix > substring ranking; the `displayName → username → userId` fallback chain;
     the resolved id reaching `delivery.mention_user_ids`.
-  - **authorization-routing** — one scenario per **denial surface**: the tool absent in
-    a DM context, and absent in a group when no `chatParticipantResolver` is injected
+  - **authorization-routing** — one scenario per **denial surface**: the tool
+    unresolvable in a DM context, resolvable in a group one
     (`src/tools/tools-builder.ts:270`). The deeper per-surface bar applies because this
-    dimension is in the refactor's semantic edge.
+    dimension is in the refactor's semantic edge. The gate's other two conjuncts are not
+    denial surfaces — production always satisfies them; see design.md.
 - Add scenario-configurable `resolveUserLabel` to the story fake chat provider
   (`tests/stories/harness/chat.ts`) so the label path is exercised rather than always
   falling back. A fixture capability the real providers already implement — not a new
@@ -55,8 +56,10 @@ None. The governing requirement, `Ledger entries are evidence-bearing`
 per-denial-surface bar for `authorization-routing` is already recorded as a roadmap
 convention and is deliberately not duplicated as a spec.
 
-One production file does change, correcting an earlier claim in this proposal that there
-would be none: `src/tools/core-capabilities.ts` gains
+Production code does change, correcting an earlier claim in this proposal that it would
+not, in two behavior-neutral ways.
+
+First, `src/tools/core-capabilities.ts` gains
 `'chat.participants.resolve': 'resolve_chat_participant'`. `CORE_TOOL_CAPABILITIES` is
 pinned as an exhaustive ordered list, so the tool's absence was a gap in that map, not a
 deliberate omission — and without an id the scripted story model cannot address the tool
@@ -64,6 +67,13 @@ at all, which blocks every `primary` scenario below. The addition is behavior-ne
 `registerOfferedCoreToolCapabilities` registers a pair only when the wire tool is already
 in the offered turn surface, and the catalog's sole consumer is
 `runtime.resolveToolCapability`, whose sole caller is `tests/stories/harness/world.ts`.
+Second, the resolver binding that `src/runtime/production-deps.ts` built inline moves to
+`src/chat/participants/router-binding.ts` so the story harness can use the same one. The
+harness had never wired `chatParticipantResolver` at all, which is why the tool appeared
+in no story; sharing the binding fixes that without letting the two sides drift on the
+label context they pass to `resolveUserLabel`. The extracted closure is the previous code
+verbatim.
+
 `skip_specs: true` therefore still holds — no observable behavior and no requirement moves.
 
 ## Non-goals
