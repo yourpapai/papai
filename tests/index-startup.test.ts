@@ -289,6 +289,7 @@ describe('production dependency composition', () => {
     }))
 
     const { createProductionRuntimeDeps } = await loadProductionDeps('web')
+    process.env['DEBUG_SERVER'] = 'true'
     const deps = createProductionRuntimeDeps()
     delete process.env['DEBUG_SERVER']
     deps.web.start('admin-1')

@@ -17,7 +17,7 @@ import { registerCommandMenuIfSupported } from '../chat/startup.js'
 import { closeDrizzleDb } from '../db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from '../db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../debug/chat-router-runtime.js'
-import { routeRequest, startDebugServer, stopDebugServer } from '../debug/server.js'
+import { routeRequest, startDebugServer, stopDebugServer, type WebServerRouteOptions } from '../debug/server.js'
 import { startEventCollector } from '../debug/state-collector.js'
 import { bootstrapInstancesFromEnv } from '../instances/bootstrap.js'
 import { seedDefaultLlmProviderFromEnv } from '../llm-providers/env-bootstrap.js'
@@ -197,16 +197,16 @@ export type ProductionRuntimeOptions = Readonly<{
 }>
 
 function createWebDeps(options: ProductionRuntimeOptions): PapaiRuntimeDeps['web'] {
-  const debugServerOptions = {
+  const debugServerOptions = (): WebServerRouteOptions => ({
     debugEnabled: process.env['DEBUG_SERVER'] === 'true',
     pluginProviderRuntimeDeps: options.pluginProviderRuntimeDeps,
-  }
+  })
   return {
     start: (adminUserId) => {
-      startDebugServer(adminUserId, debugServerOptions)
+      startDebugServer(adminUserId, debugServerOptions())
     },
     stop: stopDebugServer,
-    route: (request) => routeRequest(request, debugServerOptions),
+    route: (request) => routeRequest(request, debugServerOptions()),
   }
 }
 
