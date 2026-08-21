@@ -26,7 +26,14 @@ scenario('SCN-chat-message-normalization: standalone mentions preserve command a
 })
 
 scenario('SCN-chat-context-rendering: Telegram context output distinguishes bounded and unbounded budgets', () => {
-  const snapshot = { modelName: 'test-model', totalTokens: 1250, maxTokens: 2000, approximate: false, sections: [] }
+  const snapshot = {
+    modelName: 'test-model',
+    totalTokens: 1250,
+    maxTokens: 2000,
+    approximate: false,
+    sections: [],
+    locale: 'en' as const,
+  }
   expect(renderTelegramContext(snapshot)).toMatchObject({
     method: 'text',
     content: expect.stringContaining('62.5%') as unknown,

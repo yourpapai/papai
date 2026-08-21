@@ -16,7 +16,7 @@ import { emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { saveHistory } from './history.js'
 import { t } from './i18n/index.js'
-import { createLiveStatusReporter, PREPARING_RESPONSE } from './live-status/reporter.js'
+import { createLiveStatusReporter } from './live-status/reporter.js'
 import { hoistSystemMessages } from './llm-message-utils.js'
 import { invokeModelWithTyping, peekAttemptOrdinal } from './llm-orchestrator-invoke.js'
 import type { LlmInvokeAnalytics } from './llm-orchestrator-invoke.js'
@@ -180,7 +180,9 @@ export const invokeWithLiveStatus = async (
   args: InvokeWithLiveStatusArgs,
 ): Promise<{ finalStep: { response: { messages: ModelMessage[] } }; finishReason?: string }> => {
   const { reply, invokeArgs, progressReporter, liveStatusEnabled } = args
-  const liveStatus = createLiveStatusReporter(reply, { enabled: liveStatusEnabled })
+  // Locale is resolved once per turn: a mid-turn settings change does not re-localize in-flight statuses.
+  const locale = getContextLanguage(getConfigContextIdFromStorageContextId(invokeArgs.contextId))
+  const liveStatus = createLiveStatusReporter(reply, { enabled: liveStatusEnabled, locale })
   await liveStatus.start()
   try {
     const result = await invokeModelWithTyping(reply, { ...invokeArgs, liveStatus })
@@ -193,7 +195,7 @@ export const invokeWithLiveStatus = async (
     persistFactsFromResults(invokeArgs.contextId, result)
     // Keep the status alive as a placeholder through any verification round-trip; sendLlmResponse dismisses
     // it right before the first reply posts, so there is no empty gap between the tool status and the answer.
-    await liveStatus.placeholder(PREPARING_RESPONSE)
+    await liveStatus.placeholder(t('liveStatus.preparingResponse', locale))
     const readOnlyToolset = selectReadOnlyTools(invokeArgs.tools)
     // The verifier runs its own generateText with an independently built,
     // full keyed toolsContext record — a verifier tool call must not run

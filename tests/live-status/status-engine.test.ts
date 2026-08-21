@@ -5,8 +5,10 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { createStatusEngine, THINKING } from '../../src/live-status/status-engine.js'
+import { createStatusEngine } from '../../src/live-status/status-engine.js'
 import type { StatusEngineDeps } from '../../src/live-status/status-engine.js'
+
+const THINKING = '💭 Thinking…'
 
 type EngineHarness = {
   emitted: string[]
@@ -23,6 +25,7 @@ const makeHarness = (options?: { active?: boolean; minLabelMs?: number }): Engin
       emitted.push(text)
     },
     isActive: () => options?.active !== false,
+    idleText: THINKING,
     minLabelMs: options?.minLabelMs ?? 1000,
     now: () => current,
     schedule: (fn, ms) => {
@@ -95,5 +98,44 @@ describe('createStatusEngine', () => {
     engine.onToolStart('🔨 create_task')
     engine.onToolFinish()
     expect(harness.emitted).toEqual([])
+  })
+})
+
+describe('createStatusEngine with an injected idleText', () => {
+  const RU_IDLE = '💭 Думаю…'
+
+  test('reset baselines the injected idle text', () => {
+    const harness = makeHarness()
+    const engine = createStatusEngine({ ...harness.deps, idleText: RU_IDLE })
+    engine.reset()
+    engine.onToolStart('🔨 create_task')
+    expect(harness.emitted).toEqual(['🔨 create_task'])
+    engine.onToolFinish()
+    harness.advance(2000)
+    expect(harness.emitted).toEqual(['🔨 create_task', RU_IDLE])
+  })
+
+  test('a ru idle text reverts after the minimum hold and dedups correctly', () => {
+    const harness = makeHarness({ minLabelMs: 1000 })
+    const engine = createStatusEngine({ ...harness.deps, idleText: RU_IDLE })
+    engine.reset()
+    engine.onToolStart('🔍 Ищу задачи')
+    harness.advance(400)
+    engine.onToolFinish()
+    expect(harness.emitted).toEqual(['🔍 Ищу задачи'])
+    harness.advance(700)
+    expect(harness.emitted).toEqual(['🔍 Ищу задачи', RU_IDLE])
+    engine.onToolStart('🔍 Ищу задачи')
+    engine.onToolFinish()
+    harness.advance(2000)
+    expect(harness.emitted).toEqual(['🔍 Ищу задачи', RU_IDLE, '🔍 Ищу задачи', RU_IDLE])
+  })
+
+  test('the idle text used before the first reset is the injected one', () => {
+    const harness = makeHarness({ minLabelMs: 0 })
+    const engine = createStatusEngine({ ...harness.deps, idleText: RU_IDLE })
+    engine.onToolStart('🔨 create_task')
+    engine.onToolFinish()
+    expect(harness.emitted).toEqual(['🔨 create_task', RU_IDLE])
   })
 })
