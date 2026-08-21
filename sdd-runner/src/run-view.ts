@@ -6,7 +6,7 @@
 import { Box, Text } from 'ink'
 import { createElement } from 'react'
 
-import type { SddEvent } from './events.js'
+import type { SddEvent, EventInput } from './events.js'
 import { formatElapsed, formatTokenCount, MIDDLE_DOT, renderPipelineMap } from './renderer.js'
 import { createReplayFolder, initialReplayState } from './replay.js'
 import type { ReplayState } from './replay.js'
@@ -42,7 +42,7 @@ export function emptyRunFold(): RunFold {
 }
 
 /** Fold one event into the run-view aggregate (single loop for the bus). */
-export function foldRunView(bag: RunFold, event: SddEvent): RunFold {
+export function foldRunView(bag: RunFold, event: SddEvent | EventInput): RunFold {
   return {
     state: bag.folder.fold(event),
     slots: foldSlots(bag.slots, event),

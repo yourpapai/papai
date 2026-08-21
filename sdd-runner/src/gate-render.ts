@@ -185,7 +185,7 @@ function appendAssumptions(lines: string[], ranked: readonly GateAssumption[], r
   for (const assumption of ranked) {
     lines.push('', `- [ ] ${assumption.id} ${assumption.text}`, `  blast radius: ${assumption.blast_radius}`)
   }
-  lines.push('', '### Resume', `gate resume ${runId}`)
+  lines.push('', '### Resume', `sdd ${runId}`)
 }
 
 /** Append the sparkline line beside the per-round counts in the trajectory block. */

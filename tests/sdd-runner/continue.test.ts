@@ -61,3 +61,43 @@ describe('runContinue discovery errors', () => {
     await expect(runContinue(deps, null)).rejects.toThrow(/is not gate-pending|gate/u)
   })
 })
+
+describe('runContinue routing surfaces (mutation kills)', () => {
+  it('a completed run prints the report pointer on stdout and routes to report without a stdout dep crash', async () => {
+    const repoRoot = makeDir()
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    const state = await createRunState({ workDir, repoRoot, changeName: 'add-thing' })
+    await saveRunState({ ...state, status: 'completed' })
+    const lines: string[] = []
+    const deps = { ...makeDeps(repoRoot, workDir), stdout: (line: string): void => void lines.push(line) }
+    expect(await runContinue(deps, state.runId)).toEqual({ runId: state.runId, routed: 'report' })
+    expect(lines).toEqual([`run ${state.runId} is completed — report via: sdd ${state.runId}`])
+  })
+
+  it('several gate-pending runs print the candidate list and route nowhere', async () => {
+    const repoRoot = makeDir()
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    const first = await createRunState({ workDir, repoRoot, changeName: 'add-thing' })
+    await saveRunState({ ...first, gate: { mode: 'final', version: 1 } }, new Date('2026-01-01T00:00:01.000Z'))
+    const second = await createRunState({ workDir, repoRoot, changeName: 'other-thing' })
+    await saveRunState({ ...second, gate: { mode: 'early', version: 3 } }, new Date('2026-01-01T00:00:02.000Z'))
+    const lines: string[] = []
+    const deps = { ...makeDeps(repoRoot, workDir), stdout: (line: string): void => void lines.push(line) }
+    expect(await runContinue(deps, null)).toEqual({ runId: null, routed: 'list' })
+    expect(lines).toEqual([
+      'several runs await gate decisions:',
+      `  sdd ${second.runId}  (other-thing, gate v3)`,
+      `  sdd ${first.runId}  (add-thing, gate v1)`,
+    ])
+  })
+
+  it('the candidate listing survives a deps without stdout', async () => {
+    const repoRoot = makeDir()
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    for (const name of ['add-thing', 'other-thing']) {
+      const state = await createRunState({ workDir, repoRoot, changeName: name })
+      await saveRunState({ ...state, gate: { mode: 'final', version: 2 } })
+    }
+    expect(await runContinue(makeDeps(repoRoot, workDir), null)).toEqual({ runId: null, routed: 'list' })
+  })
+})

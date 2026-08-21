@@ -7,6 +7,9 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import type { GateAssumption } from './gate-model.js'
+import { ResolverOutputSchema } from './review-loop.js'
+
 /**
  * Change digest extracted from existing change artifacts. Rendered in the gate
  * MD so a human can answer "what is this change and what does it touch" without
@@ -130,4 +133,31 @@ export async function readChangeDigest(changeDir: string): Promise<ChangeDigest>
     tasksTotal = counts.total
   }
   return extractChangeDigest({ proposalMd, designMd, hasTasksMd, tasksDone, tasksTotal })
+}
+
+/** Assumptions from the review rounds' resolver sidecars, deduplicated by id. */
+export async function gatherAssumptions(sidecarDir: string, rounds: number): Promise<GateAssumption[]> {
+  const indices = Array.from({ length: rounds }, (_, i) => i + 1)
+  const perRound = await Promise.all(
+    indices.map(async (round) => {
+      try {
+        const raw = await readFile(path.join(sidecarDir, `resolutions-${round}.json`), 'utf8')
+        return ResolverOutputSchema.parse(JSON.parse(raw)).assumptions
+      } catch {
+        return []
+      }
+    }),
+  )
+  const byId = new Map<string, GateAssumption>()
+  for (const assumptions of perRound) {
+    for (const assumption of assumptions) {
+      byId.set(assumption.id, {
+        id: assumption.id,
+        text: assumption.text,
+        blast_radius: assumption.blast_radius,
+        evidence: { files: assumption.evidence.files },
+      })
+    }
+  }
+  return [...byId.values()]
 }
