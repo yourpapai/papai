@@ -30,6 +30,7 @@ function metricWithUsage(usage: RoundMetric['usage']): RoundMetric {
     fixerExposure: { caller: 0, none: 0, unknown: 0 },
     exposureDivergent: 0,
     reviewerKind: { defect: 0, cleanup: 0 },
+    deferred: 0,
     checkBehind: {
       defect: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
       cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },

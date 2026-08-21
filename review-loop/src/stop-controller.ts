@@ -50,6 +50,15 @@ export interface StopHost {
 export interface StopController {
   /** Why work must stop, or `null` while the run may carry on. */
   requested: () => StopReason | null
+  /**
+   * Wall clock left before the budget stop fires, or `Infinity` with no budget.
+   *
+   * The number a deferral decision needs: `requested` is a threshold already
+   * crossed, while "should this batch start" wants to know how close the run is
+   * to it. Optional on the interface because the fakes that predate it — and
+   * any caller with no budget — mean "never defer for time" by saying nothing.
+   */
+  remainingMs?: () => number
   /** Asks for a stop from anywhere else that learns the run is over. */
   request: (reason: StopReason) => void
   /** Releases the timer and the handlers, so the process is free to exit. */
@@ -107,6 +116,7 @@ const processHost: StopHost = {
 export function createStopController(options: StopControllerOptions): StopController {
   const host = options.host ?? processHost
   let reason: StopReason | null = null
+  const startedAt = Date.now()
 
   const request = (next: StopReason): void => {
     // First reason wins. What follows a stop is finalization, and a second cause
@@ -134,6 +144,8 @@ export function createStopController(options: StopControllerOptions): StopContro
 
   return {
     requested: () => reason,
+    remainingMs: () =>
+      options.runTimeoutMs <= 0 ? Infinity : remainingBudget(options.runTimeoutMs, Date.now() - startedAt),
     request,
     dispose: (): void => {
       cancelBudget?.()

@@ -42,6 +42,7 @@ export interface IntakeDeps {
   readonly agent: AgentLayerDeps
   readonly emit: (event: EventInput) => void
   readonly sidecarDir: string
+  readonly runDir: string
   readonly cwd: string
 }
 
@@ -95,7 +96,8 @@ export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promi
     outputPath: 'depth.json',
     outputSchema: DepthClassificationSchema,
     label: 'estimator',
-    logPath: `${deps.sidecarDir}/logs/estimator.log`,
+    runDir: deps.runDir,
+    round: 0,
     sidecarDir: deps.sidecarDir,
   })
   const estimated = mapSignalsToProfile(estimation.value.signals)

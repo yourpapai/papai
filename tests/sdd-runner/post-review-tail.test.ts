@@ -101,8 +101,7 @@ async function setup(): Promise<{
       repoRoot,
       workDir: path.join(repoRoot, '.sdd-runner'),
       model: 'test-model',
-      models: {},
-      timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+      budget: 5,
     },
     spawn,
     execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
@@ -192,7 +191,7 @@ describe('runPostConvergenceTail', () => {
 })
 
 describe('policy prelude at the final-gate seam', () => {
-  it('runPostConvergenceTail presents the gate with an observe preview record (sidecar + event)', async () => {
+  it('runPostConvergenceTail presents the gate with an audit record (sidecar + event)', async () => {
     const setupResult = await setup()
     const { deps, state, logPath } = setupResult
     const ctx = makeCtx(deps, state, logPath)
@@ -210,6 +209,6 @@ describe('policy prelude at the final-gate seam', () => {
     expect(fs.existsSync(path.join(state.runDir, 'auto-policy.jsonl'))).toBe(true)
     const autoDecisions = readEvents(logPath).filter((e) => e.type === 'auto_decision')
     expect(autoDecisions).toHaveLength(1)
-    expect(autoDecisions[0]).toMatchObject({ decision: 'preview', gateVersion: 1 })
+    expect(autoDecisions[0]).toMatchObject({ decision: 'gate', gateVersion: 1 })
   })
 })

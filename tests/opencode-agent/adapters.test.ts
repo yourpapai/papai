@@ -2588,3 +2588,94 @@ describe('createGit', () => {
     await expect(createGit(gitOptions(run)).push('agent/issue-1')).rejects.toThrow('no upstream')
   })
 })
+
+/**
+ * Run 32374999214 (PR #313): a maintainer pushed merge `1f7ce71b` to
+ * `agent/issue-305` while the review loop ran, and every later pipeline push
+ * was rejected non-fast-forward — because the branch had been fetched exactly
+ * once, at `ensureBranch`, hours earlier. A push now reconciles first: fetch
+ * the branch, and when the remote tip has commits local HEAD does not contain,
+ * merge it (never rebase, never force) and push the merged result.
+ */
+describe('createGit · the reconciling push', () => {
+  const REMOTE = 'refs/remotes/origin/agent/issue-1'
+  const FETCH = `git fetch origin +refs/heads/agent/issue-1:${REMOTE}`
+  const ANCESTOR = `git merge-base --is-ancestor ${REMOTE} HEAD`
+  const MERGE = ['git', '-c', 'user.name=agent', '-c', 'user.email=agent@example.com', 'merge', '--no-edit', REMOTE]
+
+  test('merges a remote branch that advanced mid-run, then pushes (no --force)', async () => {
+    // `merge-base` answers by exit code: 0 is ancestor, 1 is not. Here the
+    // remote carries the maintainer's commits, so local HEAD diverges.
+    const { calls, run } = captureGit({ [ANCESTOR]: 1 })
+
+    await createGit(gitOptions(run)).push('agent/issue-1')
+
+    expect(calls).toContainEqual(MERGE)
+    expect(calls).toContainEqual(['git', 'push', '-u', 'origin', 'agent/issue-1'])
+    expect(calls.some((call) => call.includes('--force'))).toBe(false)
+  })
+
+  test('pushes plainly when the remote tip is already an ancestor', async () => {
+    const { calls, run } = captureGit()
+
+    await createGit(gitOptions(run)).push('agent/issue-1')
+
+    expect(calls).toContainEqual(['git', 'fetch', 'origin', `+refs/heads/agent/issue-1:${REMOTE}`])
+    expect(calls).toContainEqual([...ANCESTOR.split(' ')])
+    expect(calls.some((call) => call.includes('merge'))).toBe(false)
+  })
+
+  test('treats a fetch that finds no remote branch as the first push, not an error', async () => {
+    const { calls, run } = captureGit({ [FETCH]: 1 })
+
+    await createGit(gitOptions(run)).push('agent/issue-1')
+
+    expect(calls).toContainEqual(['git', 'push', '-u', 'origin', 'agent/issue-1'])
+    expect(calls.some((call) => call.includes('merge-base'))).toBe(false)
+  })
+
+  test('stamps the committer identity on the reconciling merge, as on every commit', async () => {
+    // A hosted runner has no user.name anywhere, and a merge makes a commit:
+    // without the stamp the merge dies on committer identity and the push
+    // fails with an error about a config file, not about the branch.
+    const { calls, run } = captureGit({ [ANCESTOR]: 1 })
+
+    await createGit(gitOptions(run)).push('agent/issue-1')
+
+    expect(calls).toContainEqual(MERGE)
+  })
+
+  test('reconciling a conflict aborts the merge and names the conflicted paths', async () => {
+    const { calls, run } = captureGit(
+      { [ANCESTOR]: 1, [MERGE.join(' ')]: 1 },
+      {
+        [MERGE.join(' ')]: 'Auto-merging src/a.ts\nCONFLICT (content): Merge conflict in src/a.ts\n',
+        'git diff --name-only --diff-filter=U': 'src/a.ts\nsrc/b.ts\n',
+      },
+    )
+
+    await expect(createGit(gitOptions(run)).push('agent/issue-1')).rejects.toThrow('src/a.ts')
+    await expect(createGit(gitOptions(run)).push('agent/issue-1')).rejects.toThrow('src/b.ts')
+    expect(calls).toContainEqual(['git', 'merge', '--abort'])
+    // The push itself never ran: a mid-merge push is not a thing to attempt.
+    expect(calls.some((call) => call[1] === 'push')).toBe(false)
+  })
+
+  test('a merge that fails without conflicting is aborted too, then reported', async () => {
+    const { calls, run } = captureGit({ [ANCESTOR]: 1, [MERGE.join(' ')]: 128 })
+
+    await expect(createGit(gitOptions(run)).push('agent/issue-1')).rejects.toThrow('no upstream')
+    expect(calls).toContainEqual(['git', 'merge', '--abort'])
+  })
+
+  test('leaves the base branch push alone: only agent branches reconcile', async () => {
+    // ARCHIVE pushes the base branch, whose sharing rules are a different
+    // decision; its push stays the plain one it has always been.
+    const { calls, run } = captureGit()
+
+    await createGit(gitOptions(run)).push('master')
+
+    expect(calls).toContainEqual(['git', 'push', '-u', 'origin', 'master'])
+    expect(calls.some((call) => call[1] === 'fetch')).toBe(false)
+  })
+})

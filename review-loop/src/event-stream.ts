@@ -123,3 +123,21 @@ export function parseEventLine(line: string): OpencodeEvent | null {
       return null
   }
 }
+
+/**
+ * Lift the opencode session id from a raw event line (top-level `sessionID`).
+ * Every line of a stream carries it once the session exists; null until then
+ * and for any non-object/non-JSON line — the caller records the id the moment
+ * a session-bearing line arrives.
+ */
+export function sessionIdOfLine(line: string): string | null {
+  let raw: unknown
+  try {
+    raw = JSON.parse(line)
+  } catch {
+    return null
+  }
+  if (!isObject(raw)) return null
+  const id = (raw as { sessionID?: unknown }).sessionID
+  return typeof id === 'string' && id.length > 0 ? id : null
+}

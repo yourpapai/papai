@@ -14,7 +14,6 @@ describe('renderAutoApproveAnswers', () => {
     rule: 'R1',
     action: 'approve',
     evidenceDigest: 'd',
-    permittedAt: 'assist',
   }
 
   it('renders an approved answer section with policy attribution on every line', () => {
