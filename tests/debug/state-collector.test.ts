@@ -14,7 +14,7 @@ import {
   init,
   recentLlm,
   removeClient,
-  resetTurnBuffers,
+  resetCollectorForTest,
   startEventCollector,
   stats,
   stopEventCollectorForTest,
@@ -533,8 +533,7 @@ describe('state-collector', () => {
 
   describe('persistent capture', () => {
     beforeEach(() => {
-      resetStats()
-      resetTurnBuffers()
+      resetCollectorForTest()
     })
 
     test('startEventCollector subscribes the collector exactly once and is idempotent', () => {
