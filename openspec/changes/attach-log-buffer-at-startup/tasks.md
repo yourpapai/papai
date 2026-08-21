@@ -4,7 +4,7 @@
 
 ## 2. Attach the buffer at logger creation
 
-- [ ] 2.1 In `src/logger.ts`, add `{ level: logLevel, stream: logBufferStream }` (imported from `./debug/log-buffer.js`) to the initial `pino.multistream([...])` array alongside `process.stdout`; update the stale `@public -- debug server calls .add()...` doc comment on `logMultistream`. Verify green: `bun test tests/debug/log-buffer.test.ts tests/logger.test.ts`
+- [x] 2.1 In `src/logger.ts`, add `{ level: logLevel, stream: logBufferStream }` (imported from `./debug/log-buffer.js`) to the initial `pino.multistream([...])` array alongside `process.stdout`; update the stale `@public -- debug server calls .add()...` doc comment on `logMultistream`. Verify green: `bun test tests/debug/log-buffer.test.ts tests/logger.test.ts`
 
 ## 3. Remove server-side stream wiring
 

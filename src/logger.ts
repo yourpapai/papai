@@ -5,6 +5,8 @@
 
 import pino from 'pino'
 
+import { logBufferStream } from './debug/log-buffer.js'
+
 export const getLogLevel = (): string => {
   const envLevel = process.env['LOG_LEVEL']?.toLowerCase()
   const validLevels = ['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']
@@ -16,8 +18,11 @@ export const getLogLevel = (): string => {
 
 const logLevel = getLogLevel()
 
-/** @public -- debug server calls .add() to attach the log buffer stream */
-export const logMultistream = pino.multistream([{ level: logLevel, stream: process.stdout }])
+/** @public -- the log buffer stream is attached here at module load */
+export const logMultistream = pino.multistream([
+  { level: logLevel, stream: process.stdout },
+  { level: logLevel, stream: logBufferStream },
+])
 
 export const logger = pino(
   {

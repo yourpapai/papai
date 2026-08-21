@@ -7,7 +7,6 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
 import { logBuffer, logBufferStream, LogRingBuffer, type LogEntry } from '../../src/debug/log-buffer.js'
-import { logger } from '../../src/logger.js'
 import { waitFor } from '../utils/test-helpers.js'
 
 const makeEntry = (overrides: Partial<LogEntry> = {}): LogEntry => ({
@@ -245,6 +244,38 @@ describe('logBufferStream', () => {
   })
 })
 
+type LoggerModule = typeof import('../../src/logger.js')
+
+function isLoggerModule(value: unknown): value is LoggerModule {
+  if (typeof value !== 'object' || value === null) return false
+  const inner: unknown = Reflect.get(value, 'logger')
+  return typeof inner === 'object' && inner !== null && typeof Reflect.get(inner, 'info') === 'function'
+}
+
+/**
+ * Load a fresh evaluation of the real logger module with LOG_LEVEL=info.
+ *
+ * The global preload (tests/setup.ts) forces LOG_LEVEL=silent before any module
+ * loads, which silences the shared logger singleton — so observing the
+ * module-load buffer wiring needs a fresh evaluation at a speaking level.
+ * Restores LOG_LEVEL before returning.
+ */
+async function importFreshLoggerAtInfo(): Promise<LoggerModule> {
+  const previous = process.env['LOG_LEVEL']
+  process.env['LOG_LEVEL'] = 'info'
+  try {
+    const loaded: unknown = await import(`../../src/logger.js?log-buffer-no-server=${crypto.randomUUID()}`)
+    if (!isLoggerModule(loaded)) throw new Error('logger module did not export the expected API')
+    return loaded
+  } finally {
+    if (previous === undefined) {
+      delete process.env['LOG_LEVEL']
+    } else {
+      process.env['LOG_LEVEL'] = previous
+    }
+  }
+}
+
 describe('logger attachment (no debug server)', () => {
   afterEach(() => {
     logBuffer.clear()
@@ -252,7 +283,9 @@ describe('logger attachment (no debug server)', () => {
 
   test('a log emitted through the real logger reaches logBuffer without startDebugServer', async () => {
     const marker = `log-buffer-no-server-${crypto.randomUUID()}`
-    logger.info(marker)
+    // Fresh evaluation of the real logger module; startDebugServer is never called.
+    const freshLogger = await importFreshLoggerAtInfo()
+    freshLogger.logger.info(marker)
 
     await waitFor(() => logBuffer.entries().some((e) => e.msg === marker))
   })
