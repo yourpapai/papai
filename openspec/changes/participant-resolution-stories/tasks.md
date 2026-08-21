@@ -96,9 +96,11 @@ See LICENSE in the project root for details.
       Re-run any load-induced failure file-by-file before calling it a regression.
 - [x] 6.3 Confirm the T0 story coverage floor still holds: `bun test:stories:coverage`.
       Raise it from a green run with `bun coverage:ratchet:stories` only if it improved.
-- [ ] 6.4 After merge to master, re-record the qualification baseline: run the five
+- [x] 6.4 After merge to master, re-record the qualification baseline: run the five
       verification commands and update `## Foundation baseline` in
       `docs/superpowers/specs/2026-08-04-global-refactor-behavior-coverage-roadmap-design.md`
       with the new `baselineSha`, `treeHash`, frozen-input count and manifest scenario
       count, keeping `d17459ee5` in the supersession chain. Update the open-dimension count
-      in `## What closes a dimension` from 14 to 12.
+      in `## What closes a dimension` from 14 to 12. Recorded at `7e7794644`
+      (PR #327), retiring `d17459ee5`; the open-dimension count landed with the
+      roadmap close in the same PR.
