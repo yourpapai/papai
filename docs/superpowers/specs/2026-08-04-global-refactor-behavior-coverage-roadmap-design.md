@@ -327,13 +327,15 @@ The roadmap is complete when:
 
 ## Foundation baseline
 
-Recorded 2026-08-21 from `origin/master` at the merge of PR #322, superseding
-`2e1630c0609744a3ec4f87f15a47735657419cef` (tree hash
+Recorded 2026-08-21 from `origin/master` at the merge of PR #327, superseding
+`d17459ee57588a5ff5e4dfb5edfc9b6b525e4273` (tree hash
+`d05c67bc673db27449dacc9b7aa23dc2fd07b3785c88689c7be0ea1d9f980034`), retired by
+`participant-resolution-stories` — closing `chat-participant-resolution` adds a
+story file, wires `chatParticipantResolver` into `tests/stories/harness/world.ts`,
+and edits the two catalogs, which is four frozen inputs. That baseline in turn
+superseded `2e1630c0609744a3ec4f87f15a47735657419cef` (tree hash
 `04d272db4dac667d4736c3f6d5a949fc5bb1c9787c1cbb2118d4c244347cdfee`), retired by
-`ledger-dimension-tiers` — keying behavior-ledger evidence by coverage dimension
-edits two frozen inputs, `tests/stories/catalog/behaviors.ts` and
-`tests/stories/harness/behavior-coverage.test.ts`. That baseline in turn
-superseded two taken on 2026-08-20 and retired the same way:
+`ledger-dimension-tiers`, and two taken on 2026-08-20 and retired the same way:
 `b8badfbbfa02485e4fa2d6a0818682dbd8a4c12a` (tree hash
 `5f5db4a39db11d56d084612836b827bd271579ee04dcb6271ef43592288809f1`) and
 `cfe3da15087e40950b3a2ff94ef65cc4d5fe97f9` (tree hash
@@ -342,22 +344,22 @@ qualifying refactor measures against the literals below.
 
 | field | value |
 | --- | --- |
-| `baselineSha` | `d17459ee57588a5ff5e4dfb5edfc9b6b525e4273` |
-| `treeHash` | `d05c67bc673db27449dacc9b7aa23dc2fd07b3785c88689c7be0ea1d9f980034` |
-| frozen inputs | 173 files |
-| manifest scenarios | 192 |
+| `baselineSha` | `7e7794644bea60529d2f3442cba1d1e6b6ac9811` |
+| `treeHash` | `8d99045a19d531abcd408339179bc23f54c9de2d26180965d5ac4347a2e3c8aa` |
+| frozen inputs | 174 files |
+| manifest scenarios | 195 |
 | bun | 1.3.13 |
 | story seed | 41021 |
 
 Verified green on that commit:
 
-1. `bun test:stories:contracts` — 453 pass, 0 fail, 24 files
-2. `bun test:stories:coverage` — 191 pass, 0 fail; lines 72.68%, functions
-   71.14%, against floors 0.72 / 0.70
-3. `bun test:stories:manifest` — 232/254 catalog records executable
-   (T0 178, T1 29, T2 8, T3 16, T4 1)
-4. `BASE_REF=d17459ee57588a5ff5e4dfb5edfc9b6b525e4273 bun test:stories:compat --manifest-only`
-5. `BASE_REF=d17459ee57588a5ff5e4dfb5edfc9b6b525e4273 bun test:stories:compat`
+1. `bun test:stories:contracts` — 456 pass, 0 fail, 24 files
+2. `bun test:stories:coverage` — 194 pass, 0 fail; lines 73.15%, functions
+   71.65%, against floors 0.72 / 0.70
+3. `bun test:stories:manifest` — 235/257 catalog records executable
+   (T0 181, T1 29, T2 8, T3 16, T4 1)
+4. `BASE_REF=7e7794644bea60529d2f3442cba1d1e6b6ac9811 bun test:stories:compat --manifest-only`
+5. `BASE_REF=7e7794644bea60529d2f3442cba1d1e6b6ac9811 bun test:stories:compat`
 
 The lane measures a little above the numbers the floors were ratcheted from
 because the merge brought master's files into scope; the floors are left where
@@ -388,7 +390,7 @@ with them. `meanMetric` and `story-scope.ts` were not touched.
 ### Scope of this baseline
 
 `scripts/story/coverage-floor.json` is **not** a frozen input — it is absent
-from the manifest's 173 files. The compatibility proof is behavioral, so a
+from the manifest's 174 files. The compatibility proof is behavioral, so a
 refactor is measured against the frozen suite rather than against whatever
 floor was in force when the baseline was taken. Changing the floor value alone
 does not retire this baseline; editing anything under `tests/stories/**`,
