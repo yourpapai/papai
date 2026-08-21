@@ -144,8 +144,16 @@ function visibleToolFailuresToCurrentAdmin(): ToolFailure[] {
   return recentToolFailures.filter((entry) => isVisibleToAdmin(entry.scope, adminVisibility))
 }
 
+/**
+ * `state:init` ships only the most recent N admin-visible traces: the trace buffer
+ * holds up to 65535 entries with embedded `generatedText`/`stepsDetail`, and the
+ * dashboard's own trace working set is 1024 (`client/debug` `CAPS.TRACE`), so a
+ * longer tail would only inflate the single-frame `JSON.stringify` on connect.
+ */
+export const STATE_INIT_LLM_TAIL = 1024
+
 function visibleLlmToCurrentAdmin(): LlmTrace[] {
-  return recentLlm.filter((trace) => trace.userId === adminUserId)
+  return recentLlm.filter((trace) => trace.userId === adminUserId).slice(-STATE_INIT_LLM_TAIL)
 }
 
 export function addClient(controller: ReadableStreamDefaultController, filter: LogFilter = PASS_ALL): void {

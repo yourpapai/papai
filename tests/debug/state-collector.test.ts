@@ -17,6 +17,7 @@ import {
   resetCollectorForTest,
   startEventCollector,
   stats,
+  STATE_INIT_LLM_TAIL,
   stopEventCollectorForTest,
 } from '../../src/debug/state-collector.js'
 import { recentNotifications } from '../../src/debug/turn-assembly.js'
@@ -655,6 +656,36 @@ describe('state-collector', () => {
       const initNotifications = initData['recentNotifications']
       assert.ok(Array.isArray(initNotifications))
       expect(initNotifications).toHaveLength(0)
+    })
+
+    test('state:init caps the LLM trace tail at the most recent 1024 admin traces', () => {
+      init('admin-1')
+      startEventCollector()
+
+      for (let i = 0; i < STATE_INIT_LLM_TAIL + 3; i++) {
+        emitGlobal('llm:end', {
+          userId: 'admin-1',
+          model: 'gpt-4',
+          responseId: `resp-${i}`,
+        })
+      }
+      expect(recentLlm).toHaveLength(STATE_INIT_LLM_TAIL + 3)
+
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      const { data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
+      const initData = data['data']
+      assert.ok(isRecord(initData))
+
+      const initLlm = initData['recentLlm']
+      assert.ok(Array.isArray(initLlm))
+      expect(initLlm).toHaveLength(1024)
+      const responseIds = initLlm.filter(isRecord).map((trace) => trace['responseId'])
+      expect(responseIds[0]).toBe('resp-3')
+      expect(responseIds[1023]).toBe(`resp-${STATE_INIT_LLM_TAIL + 2}`)
+      expect(responseIds).not.toContain('resp-0')
+      expect(responseIds).not.toContain('resp-2')
     })
 
     test('stats increment with no client connected', () => {
