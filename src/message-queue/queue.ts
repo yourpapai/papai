@@ -211,6 +211,8 @@ export class MessageQueue {
       reply: lastMessage.reply,
       turnId,
       actorRole: lastMessage.item.actorRole,
+      isBotAdmin: lastMessage.item.isBotAdmin,
+      platformInstanceId: lastMessage.item.platformInstanceId,
       messageIds,
       segments,
       analyticsTurnSeed: mergeAnalyticsTurnSeeds(this.messages.map((msg) => msg.item)),

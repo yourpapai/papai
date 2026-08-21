@@ -3,6 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { readFile as readFileNode, writeFile as writeFileNode } from 'node:fs/promises'
+import { resolve as pathResolve } from 'node:path'
+
 import { z } from 'zod'
 
 import type { CommandRunner, CommandResult } from './shell.js'
@@ -27,10 +30,32 @@ export interface OpenSpecDriverDeps {
   readonly cwd: string
   /** Defaults to `openspec`; overridable for a pinned install path. */
   readonly binary?: string
+  /**
+   * File seam for the one metadata write the driver owns (design D2 of
+   * opencode-agent-skip-specs-depth): patching `skip_specs: true` into the
+   * scaffolded `.openspec.yaml`. Optional with a `node:fs` default so the
+   * production wiring in `deps.ts` stays one line.
+   */
+  readonly readFile?: (filePath: string) => Promise<string>
+  readonly writeFile?: (filePath: string, content: string) => Promise<void>
 }
 
 export interface NewChangeResult {
   readonly changeName: string
+}
+
+/**
+ * The metadata `newChange` may stamp onto the scaffold (design D2 of
+ * opencode-agent-skip-specs-depth).
+ *
+ * `skipSpecs` comes from the zod-validated triage output — never from a
+ * freeform model write — and is patched into the change's `.openspec.yaml`
+ * immediately after the CLI scaffold, so the next `openspec status` already
+ * reports `specs: skipped` and the planning turn never drafts deltas for a
+ * fix-class change.
+ */
+export interface NewChangeOptions {
+  readonly skipSpecs?: boolean
 }
 
 export interface StatusResult {
@@ -89,7 +114,7 @@ export interface OpenSpecDriver {
    * between creating and adopting instead of finding out by failing.
    */
   readonly listChangeNames: () => Promise<readonly string[]>
-  readonly newChange: (changeName: string, schema: string) => Promise<NewChangeResult>
+  readonly newChange: (changeName: string, schema: string, options?: NewChangeOptions) => Promise<NewChangeResult>
   readonly status: (changeName: string) => Promise<StatusResult>
   readonly instructions: (artifactId: string, changeName: string) => Promise<InstructionsResult>
   readonly validateStrict: (changeName: string) => Promise<ValidateResult>
@@ -157,6 +182,46 @@ const parseJson = (stdout: string, label: string): unknown => {
   }
 }
 
+/**
+ * Patches `skip_specs: true` into a scaffolded `.openspec.yaml`.
+ *
+ * A line-level edit rather than a yaml round-trip: the CLI's own keys are kept
+ * byte-for-byte, the flag is one more `key: value` line the CLI itself writes
+ * when a human sets it, and a structured parser would reorder comments and
+ * quoting the scaffold never asked to have reordered. Idempotent — a file that
+ * already carries the key is returned unchanged.
+ */
+const withSkipSpecs = (yaml: string): string => {
+  if (/^skip_specs:\s*true\s*$/mu.test(yaml)) return yaml
+  const body = yaml.endsWith('\n') ? yaml : `${yaml}\n`
+  return `${body}skip_specs: true\n`
+}
+
+/**
+ * The design D2 metadata write: deterministic TypeScript patching CLI-scaffolded
+ * metadata from a validated structured decision. The model's diff-guard scope
+ * never includes `.openspec.yaml` — this is the single-sourced channel for the
+ * flag.
+ */
+const stampSkipSpecs = async (deps: OpenSpecDriverDeps, changeName: string): Promise<void> => {
+  const read: (filePath: string) => Promise<string> =
+    deps.readFile ?? ((filePath: string) => readFileNode(filePath, 'utf8'))
+  const write: (filePath: string, content: string) => Promise<void> =
+    deps.writeFile ?? ((filePath: string, content: string) => writeFileNode(filePath, content, 'utf8'))
+  const yamlPath = pathResolve(deps.cwd, 'openspec', 'changes', changeName, '.openspec.yaml')
+  try {
+    const scaffolded = await read(yamlPath)
+    await write(yamlPath, withSkipSpecs(scaffolded))
+  } catch (error) {
+    throw new Error(
+      `openspec new change: cannot set skip_specs in .openspec.yaml for '${changeName}': ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error },
+    )
+  }
+}
+
 /** The artifact map behind `status`, decoded from the CLI's array of records. */
 const readStatus = async (deps: OpenSpecDriverDeps, changeName: string): Promise<StatusResult> => {
   const stdout = await runExpectOk(deps, ['status', '--change', changeName, '--json'], 'status')
@@ -193,8 +258,9 @@ export function createOpenSpecDriver(deps: OpenSpecDriverDeps): OpenSpecDriver {
       return (payload.changes ?? []).map((change) => change.name)
     },
 
-    newChange: async (changeName, schema) => {
+    newChange: async (changeName, schema, options) => {
       await runExpectOk(deps, ['new', 'change', changeName, '--schema', schema], 'new change')
+      if (options?.skipSpecs === true) await stampSkipSpecs(deps, changeName)
       return { changeName }
     },
 

@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { countSubscribers, getAnnouncementDraft } from '../../../src/announcements/store.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { resolveMcpPluginServerConfigs } from '../../../src/coding-credentials/mcp-plugin-servers.js'
 import { resolveMcpServers } from '../../../src/coding-credentials/resolve-mcp-servers.js'
@@ -30,6 +31,45 @@ const requireAggregateError = (value: unknown): AggregateError => {
 }
 
 describe('scenario execution', () => {
+  test('announcement prerequisites seed subscribers, a draft, and proactive delivery before startup', async () => {
+    const world = await createScenarioWorld('announcement prerequisites')
+
+    try {
+      const alice = world.api.given.user('alice')
+      const dm = world.api.given.dm(alice)
+      const team = world.api.given.group('team')
+
+      world.api.given.announcementSubscription(dm, true)
+      world.api.given.announcementSubscription(team, true)
+      world.api.given.announcementDraft({ version: '9.9.9', body: 'Announcement body' })
+      world.api.given.proactiveDelivery([])
+
+      expect(countSubscribers()).toEqual({ dm: 1, group: 1 })
+      expect(getAnnouncementDraft('9.9.9')).toMatchObject({
+        rawBody: 'Announcement body',
+        humanizedBody: 'Announcement body',
+      })
+      world.api.then.proactiveAttempts().equal([])
+      world.api.then.announcementDeliveries('9.9.9').equal([])
+    } finally {
+      await world.stop()
+    }
+  })
+
+  test('announcement draft prerequisite is blocked after startup', async () => {
+    const world = await createScenarioWorld('late announcement draft prerequisite')
+
+    try {
+      await world.start()
+
+      expect(() => world.api.given.announcementDraft({ version: '9.9.9', body: 'Announcement body' })).toThrow(
+        'given.announcementDraft requires an unstarted scenario world',
+      )
+    } finally {
+      await world.stop()
+    }
+  })
+
   test('runtime extension prerequisite starts once for a message and cleans up when the world stops', async () => {
     const lifecycle: string[] = []
     const extension: ScenarioRuntimeExtension = {

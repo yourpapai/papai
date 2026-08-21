@@ -37,6 +37,7 @@ const greenReport = (): RunReport => ({
   argv: ['--timeout', '15000'],
   scope: { kind: 'full' },
   mode: 'serial',
+  loadDemoted: false,
   fingerprint: FRESH,
   gitSha: 'deadbeef',
   totals: { files: 58, tests: 175, pass: 175, fail: 0, skip: 0, expects: 900 },

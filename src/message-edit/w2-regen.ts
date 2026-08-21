@@ -12,6 +12,7 @@ import type { AnalyticsObserver } from '../analytics/runtime.js'
 import type { AuthorizationResult, IncomingMessage, PromptHandle, ReplyFn } from '../chat/types.js'
 import { trimTurnForRegeneration } from '../history.js'
 import { t, type Locale } from '../i18n/index.js'
+import type { ProcessMessageFn } from '../llm-orchestrator-process-args.js'
 import type { LlmOrchestratorDeps } from '../llm-orchestrator-types.js'
 import { defaultDeps } from '../llm-orchestrator.js'
 import { logger } from '../logger.js'
@@ -54,6 +55,32 @@ async function supersedePriorReply(reply: ReplyFn, last: LastTurn, locale: Local
   }
 }
 
+async function kickRegenTurn(
+  processMessage: ProcessMessageFn,
+  msg: IncomingMessage,
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+  deps: EditHandlerDeps,
+): Promise<void> {
+  await processMessage(
+    reply,
+    auth.storageContextId,
+    msg.user.id,
+    msg.user.username,
+    msg.text,
+    msg.contextType,
+    auth.configContextId,
+    buildOrchestratorDeps(deps),
+    [],
+    undefined,
+    auth.isGuest === true ? 'guest' : 'member',
+    undefined,
+    undefined,
+    auth.isBotAdmin,
+    msg.platformInstanceId,
+  )
+}
+
 /**
  * Shared corrective-regen path used by both the no-side-effects branch
  * (immediate) and the side-effects `Adjust for me` button (deferred). Builds
@@ -92,19 +119,7 @@ export async function regenerateFromEditedText(
   const startedMonotonicMs = performance.now()
   emitEditRegen(funnel, 'regen_started')
   try {
-    await processMessage(
-      reply,
-      auth.storageContextId,
-      msg.user.id,
-      msg.user.username,
-      msg.text,
-      msg.contextType,
-      auth.configContextId,
-      buildOrchestratorDeps(deps),
-      [],
-      undefined,
-      auth.isGuest === true ? 'guest' : 'member',
-    )
+    await kickRegenTurn(processMessage, msg, reply, auth, deps)
   } catch (error) {
     emitEditRegen(funnel, 'regen_failed', Math.max(0, Math.round(performance.now() - startedMonotonicMs)))
     throw error

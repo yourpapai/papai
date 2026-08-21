@@ -225,7 +225,7 @@ export const handleToolCallFinishEvent = (ctx: ToolCallContext, event: ToolCallF
       toolName: event.toolCall.toolName,
       toolCallId: event.toolCall.toolCallId,
       success: event.success,
-      durationMs: event.durationMs,
+      durationMs: Math.max(0, Math.round(event.durationMs)),
       argsBytes: safeByteLength(event.toolCall.input),
       resultBytes: event.success ? safeByteLength(event.output) : null,
       ...contextEnvelope(ctx),

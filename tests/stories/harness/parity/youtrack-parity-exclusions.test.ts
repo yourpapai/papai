@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { PARITY_GROUPS } from '../../../stories/harness/parity/expectations.js'
+import { PARITY_GROUPS } from './expectations.js'
 import { YOUTRACK_PARITY_EXCLUSIONS } from './youtrack-parity-exclusions.js'
 
 describe('youtrack parity exclusions integrity', () => {

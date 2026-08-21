@@ -1521,6 +1521,7 @@ cannot drift.
 | `AGENT_CHECK_COMMAND`                      | no       | `bun check:full`                                                                | review-loop's build gate                                                                                                                                                                                                                                                                  |
 | `AGENT_REVIEW_COMMAND`                     | no       | detected                                                                        | JSON argv running the review loop; `none` disables it                                                                                                                                                                                                                                     |
 | `AGENT_CHECKS`                             | no       | `bun run` lint / typecheck / test                                               | JSON `[{ "name", "argv" }]` the CI-fix phase runs                                                                                                                                                                                                                                         |
+| `AGENT_MCP_SERVERS`                        | no       | unset — no MCP servers                                                          | Secret or variable: JSON map of MCP servers; see below                                                                                                                                                                                                                                    |
 | `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                                                             | review-loop rounds                                                                                                                                                                                                                                                                        |
 | `AGENT_REVIEW_POOL_SIZE`                   | no       | `1`                                                                             | review-loop worker pool                                                                                                                                                                                                                                                                   |
 | `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                                                             | Repair rounds per CI-fix job                                                                                                                                                                                                                                                              |
@@ -1636,6 +1637,63 @@ Both are set as `agent.<name>.variant` in the generated config rather than per
 call, which is what makes them reach the review loop: it shells out to
 `opencode run` with no `--agent`, so its workers resolve to `build` and pick the
 variant up from the same config the in-process session reads.
+
+### MCP servers
+
+`AGENT_MCP_SERVERS` declares MCP servers for the whole pipeline — one JSON map
+of server names to declarations, validated at job start before any model turn:
+
+```json
+{
+  "fetcher": {
+    "type": "local",
+    "command": ["bunx", "mcp-server-fetch@1.0.0"],
+    "environment": { "FETCH_TIMEOUT": "5000" }
+  },
+  "index": {
+    "type": "remote",
+    "url": "https://mcp.example.com/sse",
+    "headers": { "Authorization": "Bearer <token>" }
+  }
+}
+```
+
+A local entry carries a non-empty `command` array and may carry `environment`;
+a remote carries a `url` and may carry `headers`. Pin exact versions in
+`command` — the ephemeral runner refetches every job either way, and an
+unpinned `bunx` is a moving third-party dependency in a job holding every
+repository secret. An `oauth` key is refused outright: an unattended job can
+complete no browser flow, and an OAuth remote parks at `needs_auth` for ever.
+Remotes are always emitted with OAuth disabled — a failing endpoint degrades to
+its HTTP error rather than a silent stall.
+
+Server names must match `[A-Za-z0-9_-]+`, because OpenCode surfaces a server's
+tools as `<name>_<tool>` and the pipeline generates the matching
+`"<name>_*": "allow"` permission keys in the `plan` and `build` profiles and
+the global default. Grants are generated, never hand-keyed — a bare server
+name as a permission key is a silent no-op — and are `allow` only; the
+drafting (`propose`) profile gets none, keeping it the most confined surface
+the pipeline prompts. A server that fails to start or connect does not fail
+the job: its tools are simply absent, bounded by OpenCode's own 30-second
+client timeout, and the run proceeds.
+
+The knob takes **two spellings** — `secrets.AGENT_MCP_SERVERS` (which wins) or
+the `AGENT_MCP_SERVERS` variable. A declaration whose `headers` or
+`environment` carry a token belongs in the secret, which GitHub masks in logs
+and encrypts at rest; a token-free declaration may live in the variable, which
+non-admin maintainers can read and diff. Every `headers` and `environment`
+value joins the pipeline's credential list, so the environment scrub removes
+them from anything the model's shell can read and outbound text is redacted by
+value.
+
+One residual risk scrubbing cannot close: the generated config itself is
+delivered through `OPENCODE_CONFIG_CONTENT`, which the write-capable profile
+can read with one `echo`. A credential in the knob is reachable by the model
+regardless of scrubbing — declare unauthenticated local servers, or remote
+headers whose static tokens you can afford to expose. And each review-loop
+worker is its own `opencode run` subprocess, so every local server is booted
+once per concurrent worker — one more reason `AGENT_REVIEW_POOL_SIZE` defaults
+to `1`.
 
 `GITHUB_TOKEN` and `GITHUB_REPOSITORY` need no operator setup on GitHub
 Actions, unlike the variables above. `GITHUB_REPOSITORY` is one of the

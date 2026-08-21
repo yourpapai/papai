@@ -136,6 +136,8 @@ async function runTurnProcess(coalescedItem: QueuedCoalescedItem, deps: BotDeps,
     coalescedItem.actorRole,
     coalescedItem.messageIds,
     coalescedItem.segments,
+    coalescedItem.isBotAdmin,
+    coalescedItem.platformInstanceId,
   )
 }
 
@@ -247,6 +249,8 @@ function enqueueTurn(
       newAttachmentIds,
       voiceStagedIds,
       actorRole: auth.isGuest === true ? 'guest' : 'member',
+      isBotAdmin: auth.isBotAdmin,
+      platformInstanceId: msg.platformInstanceId,
       messageId: msg.messageId,
       analyticsTurnSeed: seed,
     },

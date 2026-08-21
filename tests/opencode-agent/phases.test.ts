@@ -142,7 +142,14 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
   it('auto-captures for OWNER: scaffolds the folder, sets changeName, emits CAPTURED', async () => {
     const { input, io } = makeInput({
       association: 'OWNER',
-      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: '# Goal\n\nAdd retries.' })],
+      replies: [
+        JSON.stringify({
+          status: 'capture',
+          changeName: 'add-retry-helper',
+          spec: '# Goal\n\nAdd retries.',
+          skipSpecs: false,
+        }),
+      ],
     })
 
     const outcome = await handleTriage(input)
@@ -164,7 +171,7 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
   it.each(['MEMBER', 'COLLABORATOR'])('auto-captures for %s', async (association) => {
     const { input, io } = makeInput({
       association,
-      replies: [JSON.stringify({ status: 'capture', changeName: 'add-thing', spec: 'spec' })],
+      replies: [JSON.stringify({ status: 'capture', changeName: 'add-thing', spec: 'spec', skipSpecs: false })],
     })
 
     const outcome = await handleTriage(input)
@@ -180,7 +187,7 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
   it('posts a consent comment and parks (NEEDS_CLARIFICATION) for an untrusted author', async () => {
     const { input, io } = makeInput({
       association: 'NONE',
-      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec' })],
+      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec', skipSpecs: false })],
     })
 
     const outcome = await handleTriage(input)
@@ -197,8 +204,8 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
     const { input, io } = makeInput({
       association: 'OWNER',
       replies: [
-        JSON.stringify({ status: 'capture', changeName: 'Add Retry Helper', spec: 'spec' }),
-        JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec' }),
+        JSON.stringify({ status: 'capture', changeName: 'Add Retry Helper', spec: 'spec', skipSpecs: false }),
+        JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec', skipSpecs: false }),
       ],
     })
 
@@ -217,7 +224,14 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
   it('renders the DESIGN_SPEC digest from the folder (D1): reads proposal.md back after writing it', async () => {
     const { input, io } = makeInput({
       association: 'OWNER',
-      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: '# Goal\n\nAdd retries.' })],
+      replies: [
+        JSON.stringify({
+          status: 'capture',
+          changeName: 'add-retry-helper',
+          spec: '# Goal\n\nAdd retries.',
+          skipSpecs: false,
+        }),
+      ],
     })
 
     const outcome = await handleTriage(input)
@@ -237,13 +251,77 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
     // capture starts from zero rather than adopting the old diff.
     const { input, io } = makeInput({
       association: 'OWNER',
-      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec' })],
+      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec', skipSpecs: false })],
     })
 
     await handleTriage(input)
 
     // resetBranchToBase, not ensureBranch — restart means from zero.
     expect(io.gitCalls).toContain('resetBranchToBase:agent/issue-42:main')
+  })
+})
+
+/**
+ * The skip_specs decision (change: opencode-agent-skip-specs-depth, design D1).
+ *
+ * Fix-class issues are the common case for an issue agent, and a zero-delta
+ * change folder used to die at `validate --strict` with the retry loop handing
+ * the complaint back to the model twice — pressuring it to invent deltas. So
+ * `capture` carries a `skipSpecs` boolean the model decides under an explicit
+ * rule, biased to `true` for fix-class issues; a recommending capture must
+ * state the reason in the proposal's Capabilities section so a maintainer can
+ * veto the call at the `DESIGN_SPEC` park.
+ */
+describe('handleTriage · the skip_specs decision', () => {
+  it('rejects a capture reply that omits skipSpecs: the call is the model’s to make, not a default to inherit', async () => {
+    // A silent default (missing → false) would send every fix-class issue down
+    // the spec lane and back into the invent-deltas failure the flag exists to
+    // end. The schema re-asks once, exactly as it does for a misspelled name.
+    const { input, io } = makeInput({
+      association: 'OWNER',
+      replies: [
+        JSON.stringify({ status: 'capture', changeName: 'fix-retry-bug', spec: 'spec' }),
+        JSON.stringify({ status: 'capture', changeName: 'fix-retry-bug', spec: 'spec', skipSpecs: true }),
+      ],
+    })
+
+    const outcome = await handleTriage(input)
+
+    expect(outcome.signal).toBe('CAPTURED')
+    expect(io.prompts).toHaveLength(2)
+    // The validated flag rides the scaffold call itself (design D2): the folder
+    // is flag-complete before anything reads status about it.
+    expect(io.openspecCalls).toContain('newChange:fix-retry-bug:spec-driven:skip-specs')
+  })
+
+  it('briefs the decision rule, the fix-class bias and the mandatory Capabilities-section rationale', async () => {
+    const { input, io } = makeInput({ replies: [JSON.stringify({ status: 'answer', reply: 'ok' })] })
+
+    await handleTriage(input)
+
+    const system = io.prompts[0]?.system
+    // The rule: what makes a change spec-level is observable from the contract.
+    expect(system).toContain('downstream observer')
+    // The bias: fix-class issues take the skip lane unless the fix changes the contract.
+    expect(system).toContain('fix-class')
+    // The rationale sentence a maintainer vets at the DESIGN_SPEC park.
+    expect(system).toContain('None — skip_specs proposed because ⟨reason⟩')
+    // The reply shape names the field, so the model knows it must answer it.
+    expect(system).toContain('skipSpecs')
+  })
+
+  it('briefs capability granularity: feature-domain names, new-capabilities-only while the corpus is empty', async () => {
+    // The archive door feeds agent-captured proposals into `openspec/specs/`;
+    // issue-sized micro-capabilities would pollute the corpus. Granularity is
+    // prompt doctrine enforced at the park (design D4), so the capture prompt
+    // must carry both halves of the rule.
+    const { input, io } = makeInput({ replies: [JSON.stringify({ status: 'answer', reply: 'ok' })] })
+
+    await handleTriage(input)
+
+    const system = io.prompts[0]?.system
+    expect(system).toContain('feature-domain granularity')
+    expect(system).toContain('new capabilities only')
   })
 })
 
@@ -295,7 +373,14 @@ const adoptInput = (
   const built = makeInput({
     association: 'OWNER',
     existing: [ADOPTED, 'user-profile-memory'],
-    replies: [JSON.stringify({ status: 'capture', changeName: ADOPTED, spec: '# Goal\n\nDefend the prompt.' })],
+    replies: [
+      JSON.stringify({
+        status: 'capture',
+        changeName: ADOPTED,
+        spec: '# Goal\n\nDefend the prompt.',
+        skipSpecs: false,
+      }),
+    ],
     ...options,
   })
   built.io.readContents[PROPOSAL_PATH] = '# Why\n\nThe proposal a human already wrote.'
@@ -481,6 +566,12 @@ const artifactIdOf = (path: string): string => {
 interface WireOptions {
   validate?: (call: number) => { ok: boolean; output: string }
   done?: string[]
+  /**
+   * The folder carries `skip_specs: true` (design D3 of
+   * opencode-agent-skip-specs-depth): the CLI reports `specs` as `skipped`,
+   * `tasks` stops owing it, and the drafter composes design + tasks only.
+   */
+  skipSpecs?: boolean
 }
 
 /** Wires a drafter input whose driver status evolves as the model writes each artifact. */
@@ -495,7 +586,24 @@ const wireDrafterInput = (replies: string[], opts: WireOptions = {}): { input: P
           let calls = 0
           return { ...base, validateStrict: () => Promise.resolve(opts.validate!(calls++)) }
         })()
-  built.deps.openspec = driver
+  const skipDriver: OpenSpecDriver =
+    opts.skipSpecs === true
+      ? {
+          ...driver,
+          status: (): Promise<StatusResult> =>
+            Promise.resolve({
+              schemaName: 'spec-driven',
+              artifacts: {
+                proposal: 'done',
+                specs: 'skipped',
+                design: tracked.has('design') ? 'done' : 'ready',
+                tasks: tracked.has('tasks') ? 'done' : tracked.has('design') ? 'ready' : 'blocked',
+              },
+              isPlanningComplete: tracked.has('design') && tracked.has('tasks'),
+            }),
+        }
+      : driver
+  built.deps.openspec = skipDriver
   built.deps.writeFile = (path: string, content: string): Promise<void> => {
     built.io.writes.push({ path, content })
     // The folder is truth (D1): a write lands in the folder, and a later read
@@ -697,6 +805,72 @@ describe('handlePlan · drafter loop (D3)', () => {
       expect(promptFor(artifact)).toContain('Rules:')
       for (const rule of instructionsFor(artifact).rules) expect(promptFor(artifact)).toContain(`- ${rule}`)
     }
+  })
+})
+
+/**
+ * Design D3 of opencode-agent-skip-specs-depth: a `skip_specs: true` folder is
+ * a planning input, not an error. The CLI's own status graph reports `specs` as
+ * `skipped` (probe 1.1), so the drafter composes design — recording the
+ * deliberate skip — plus tasks, and never requests spec deltas; the retry loop's
+ * complaint-driven repair survives untouched for genuine validation failures.
+ */
+describe('handlePlan · skip_specs changes compose design + tasks without spec deltas', () => {
+  it('never drafts specs, tells the drafter the skip is recorded, and still signals PLAN_POSTED', async () => {
+    const { input, io } = wireDrafterInput(
+      [JSON.stringify({ content: 'design body' }), JSON.stringify({ content: 'tasks body' })],
+      { skipSpecs: true },
+    )
+
+    const outcome = await handlePlan(input)
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    // Design then tasks — the CLI never reports `specs` as `ready`, so the glob
+    // prompt shape (and its delta drafting) never happens at all.
+    expect(io.writes.map((w) => w.path)).toEqual([
+      `/repo/openspec/changes/${CHANGE}/design.md`,
+      `/repo/openspec/changes/${CHANGE}/tasks.md`,
+    ])
+    expect(io.writes.some((w) => w.path.includes('/specs/'))).toBe(false)
+    expect(io.prompts).toHaveLength(2)
+    // Both artifact turns know the change is on the recorded-skip lane: the
+    // model is told not to invent deltas rather than left to guess why the
+    // specs artifact never arrives.
+    for (const prompt of io.prompts) {
+      expect(prompt.prompt).toContain('skip_specs')
+      expect(prompt.prompt).toContain('no spec deltas')
+    }
+  })
+
+  it('keeps the validate-retry loop for genuine failures under skip_specs', async () => {
+    const { input, io } = wireDrafterInput(
+      [JSON.stringify({ content: 'first attempt' }), JSON.stringify({ content: 'repaired attempt' })],
+      { skipSpecs: true, done: ['design'], validate: validateFailsOnce },
+    )
+
+    const outcome = await handlePlan(input)
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    expect(io.prompts).toHaveLength(2)
+    expect(io.writes.at(-1)?.content).toBe('repaired attempt')
+  })
+
+  it('briefs capability granularity in the specs drafter turn (design D4)', async () => {
+    // The specs artifact is where the planning turn names capabilities — one
+    // delta spec per capability — so the granularity doctrine reaches the
+    // drafter there: feature-domain names, new-capabilities-only while the
+    // corpus is empty. Enforced at the park, carried by the prompt.
+    const { input, io } = wireDrafterInput([
+      JSON.stringify({ files: [{ path: 'specs/retry/spec.md', content: 'spec body' }] }),
+      JSON.stringify({ content: 'design body' }),
+      JSON.stringify({ content: 'tasks body' }),
+    ])
+
+    await handlePlan(input)
+
+    const specsPrompt = io.prompts.find((p) => p.prompt.includes('Write the files under:'))
+    expect(specsPrompt?.system).toContain('feature-domain granularity')
+    expect(specsPrompt?.system).toContain('new capabilities only')
   })
 })
 

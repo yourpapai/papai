@@ -5,8 +5,20 @@ Runtime: **Bun** test runner (`bun:test`). No Jest or Vitest.
 ## Running the suite
 
 `bun run test` is a wrapper (`scripts/test/run-cli.ts`), not a bare `bun test`. It builds the client bundles
-if they are missing, picks parallel or serial from the core count, and writes `reports/test/last-run.{log,junit.xml,json}`
-before printing a summary of at most fourteen lines. The exit code is the child's, unchanged.
+if they are missing, picks parallel or serial — in precedence order: explicit `--serial`/`--parallel`, truthy
+`CI`, load demotion, then core count. Load demotion: a 1-minute load average ≥ 0.75 × cores demotes a
+many-core host to serial with a 30 s per-test timeout and a `(serial · load)` marker in the summary; loadavg
+0, the Windows shape, never demotes. It then writes `reports/test/last-run.{log,junit.xml,json}` before
+printing a summary of at most fourteen lines. When stdout is not a TTY the child's output is mirrored live to
+stderr (with `--stream` it is mirrored on a TTY too) instead of only after exit. The exit code is the
+child's, unchanged.
+
+**Shared-host rules** (several agents on one machine is the normal case here): use `bun run test:affected` in
+the edit loop and run one full suite before finishing; never run two full suites concurrently; prefer serial
+and budget a ≥ 20 min shell timeout for a full run — the wrapper's load demotion already handles this
+automatically when no mode flag is explicit. If a shell timeout kills a run, query `bun run test:status` /
+`test:log` before restarting — the persisted report may already answer. A load-induced flake is re-run
+file-by-file (`bun run test <paths>`) before being called a regression.
 
 **Do not re-run a check to see its output differently.** `bun run test:failures`, `test:show <id>`,
 `test:log <pattern>`, `test:status` and `test:slowest` all answer from the persisted report without starting
@@ -35,7 +47,8 @@ silently mis-filed). But **do not build a gate on `report.files`** until this is
 ## Parallel Execution & Isolation
 
 The default local server-side run (`bun run test`) is `bun test --parallel`: each test
-file runs in its own worker process (implies `--isolate`). CI (`scripts/check.sh` with
+file runs in its own worker process (implies `--isolate`) — unless the wrapper's load
+demotion (see "Running the suite") has switched it to serial. CI (`scripts/check.sh` with
 `CI=true`) runs the suite serially to keep the 4-vCPU runner stable, but tests **must**
 still be isolation-clean:
 
@@ -156,6 +169,14 @@ When DI is not available and module evaluation order matters:
 - Run E2E with `bun test:e2e`.
 - The Docker-backed Kaneo harness is **Tier 1: Provider-Real E2E**. Tier 0 does not replace it; provider-real tests remain responsible for Kaneo/container/API behavior.
 - Every catalog record carries a **proving tier** — the lowest tier that can prove the behavior — in `tests/stories/catalog/coverage.ts`. Executable records may only claim a tier in `LIVE_STORY_TIERS`, and their story ids must sit under that tier's `TIER_SUITE_ROOTS` prefix. Seam-pending records name the tier that unblocks them; `blocked:missing-implementation` records name none, because no tier reaches them. The runner prints per-tier totals on every run.
+- The catalog is **bidirectional**. Alongside the forward check (every record points at a
+  real story), a census asserts the reverse: every story scenario a lane declares is either
+  claimed by a record or listed in `tests/stories/catalog/supporting.ts` with a rationale.
+  Tier 0 observes `scenario(...)` calls, Tier 1 observes `PARITY_GROUPS`, and Tiers 2/3
+  observe `title(...)` markers in glob-discovered `.smoke.ts` / `.platform.ts` files —
+  which also fails any test that bypasses the `title()` helper. Writing a story therefore
+  requires a catalog decision at authoring time; an uncataloged scenario fails
+  `bun test:stories:contracts` (T0/T1) or the default `bun test` lane (T2/T3).
 - The 0Q compatibility proof is Tier 0 only. Higher tiers are regression lanes and never gate a refactor qualification. Canonical tier definitions: the Realism Tiers table in `docs/operations/e2e-planning-workflow.md` (the original owning spec is archived in `docs/archive/`).
 - Prefer `KaneoTestClient` for new resource-management-heavy suites.
 - Track resources created outside the test client with `testClient.trackTask(...)` or the matching tracker helper when the suite uses `KaneoTestClient`.
@@ -164,15 +185,17 @@ When DI is not available and module evaluation order matters:
 
 ### Tier 3 — platform-adapter lane (`tests/platform/`, nightly)
 
-Real adapter code (Mattermost) exercised in-container against fake platform
-servers (HTTP/WS), reusing the T2 harness (`tests/smoke/harness/`). Scenario
-files use the non-discovered `.platform.ts` suffix, so the default `bun test`
-never boots Docker. Run locally with `bun run test:platform`. The lane is
-**nightly only** (`.github/workflows/nightly.yml`), never a PR gate. Live
-scenarios: `SCN-fetch-chat-link` (permalink resolver) and
-`SCN-http-mattermost-action` (signed action-callback route). The Discord and
-Telegram interaction pends remain `needs-seam@3`, deferred until fake
-discord.js / grammY servers exist. The action-callback scenario relies on the
+Real adapter code is exercised against deterministic platform boundaries:
+Mattermost runs in-container against fake HTTP/WS servers and reuses the T2
+harness (`tests/smoke/harness/`); Discord uses an injected client fake; Kontur
+Talk uses an in-process HTTP fake; and Telegram uses an injected bot fake with
+tracked lifecycle cleanup. Scenario files use the non-discovered `.platform.ts`
+suffix, so the default `bun test` never boots Docker. Run locally with
+`bun run test:platform`. The lane is **nightly only**
+(`.github/workflows/nightly.yml`), never a PR gate. Its eight live scenarios
+cover the Mattermost permalink and signed-action paths plus Discord command
+routing, formatted chunking, and response lifecycle, Kontur reply formatting,
+and Telegram admin authorization. The action-callback scenario relies on the
 `PAPAI_MATTERMOST_ACTION_SIGNING_SECRET` env seam so the container verifies
 against a test-known secret.
 
@@ -205,8 +228,11 @@ never lowers the floor.
 `bun test:stories:coverage` runs the hermetic story lane with `--coverage`,
 copies the sandbox child's lcov to `reports/stories/coverage/lcov.info`, and
 fails the run if production-code (`src/` + `plugins/`) line/function coverage
-drops below the committed floor in `scripts/story/coverage-floor.json` (starts
-at `0.50/0.50`, unmeasured). This is the refactor-resilient tier's own
+drops below the committed floor in `scripts/story/coverage-floor.json`. The
+metric excludes `tests/**` and `*.testing.ts` doubles, and counts files no
+story imports as 0% rather than omitting them, so it reads lower than a
+conventional coverage percentage and falls when new uncovered modules land.
+This is the refactor-resilient tier's own
 reachability number, separate from the in-process floor in `bunfig.toml` (see
 the Coverage floor section above). Raise it from a green run with
 `bun coverage:ratchet:stories`, then commit the JSON change. CI runs the

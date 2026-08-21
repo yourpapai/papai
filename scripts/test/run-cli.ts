@@ -18,6 +18,7 @@ import path from 'node:path'
 import { PUBLIC_DIR } from '../build-client.js'
 import { ensureClientBuilt, missingBundles, REQUIRED_BUNDLES } from '../ensure-client-built.js'
 import { computeFingerprint, defaultFingerprintDeps } from './fingerprint.js'
+import { mirrorLogWhile, utf8TailRead } from './mirror-log.js'
 import { parseWrapperArgs } from './mode.js'
 import { LAST_RUN_JUNIT, LAST_RUN_LOG, REPORT_DIR } from './paths.js'
 import { writeReport } from './report.js'
@@ -33,7 +34,10 @@ const realEnsureClientBuilt = (cwd: string): void => {
     required: REQUIRED_BUNDLES,
     missing: missingBundles,
     build: (): void => {
-      const proc = Bun.spawnSync(['bun', 'scripts/build-client.ts'], { cwd, stdio: ['ignore', 'inherit', 'inherit'] })
+      const proc = Bun.spawnSync(['bun', 'scripts/build-client.ts'], {
+        cwd,
+        stdio: ['ignore', 'inherit', 'inherit'],
+      })
       if (proc.exitCode !== 0) throw new Error(`bun build:client failed with exit code ${String(proc.exitCode)}`)
     },
     log: (message: string): void => {
@@ -64,17 +68,54 @@ const childEnv = (cwd: string): Record<string, string | undefined> => ({
 /**
  * stdout and stderr share one file descriptor, so the captured log is byte-complete and
  * correctly interleaved. Piping them apart reorders `console.log` against `(fail)`.
+ *
+ * Async `Bun.spawn` (not `spawnSync`, which blocks until exit) so the poll-based
+ * tailer can mirror the growing log to stderr while the child runs.
  */
-const captureChild = (argv: readonly string[], cwd: string, stream: boolean): SpawnResult => {
+const captureChild = async (argv: readonly string[], cwd: string, stream: boolean): Promise<SpawnResult> => {
   const logPath = absolute(cwd, LAST_RUN_LOG)
   fs.mkdirSync(absolute(cwd, REPORT_DIR), { recursive: true })
   const fd = fs.openSync(logPath, 'w')
   const startedAt = Date.now()
   try {
-    const proc = Bun.spawnSync([...argv], { cwd, env: childEnv(cwd), stdio: ['inherit', fd, fd] })
+    const proc = Bun.spawn([...argv], {
+      cwd,
+      env: childEnv(cwd),
+      stdio: ['inherit', fd, fd],
+    })
+    if (stream) {
+      // One read fd for the whole run: each poll reads only the new byte range,
+      // instead of re-reading (and re-allocating) the entire log every 250 ms.
+      const readFd = fs.openSync(logPath, 'r')
+      try {
+        await mirrorLogWhile(logPath, proc.exited, {
+          size: (p): number | null => {
+            try {
+              return fs.statSync(p).size
+            } catch {
+              return null
+            }
+          },
+          read: utf8TailRead((_p, start, end): Uint8Array => {
+            const bytes = new Uint8Array(end - start)
+            fs.readSync(readFd, bytes, 0, bytes.length, start)
+            return bytes
+          }),
+          write: (chunk: string): void => {
+            process.stderr.write(chunk)
+          },
+          sleep: (ms: number): Promise<void> =>
+            new Promise<void>((resolve) => {
+              setTimeout(resolve, ms)
+            }),
+        })
+      } finally {
+        fs.closeSync(readFd)
+      }
+    }
+    const exitCode = await proc.exited
     const output = fs.readFileSync(logPath, 'utf8')
-    if (stream) process.stderr.write(output)
-    return { exitCode: proc.exitCode, output, wallMs: Date.now() - startedAt }
+    return { exitCode, output, wallMs: Date.now() - startedAt }
   } finally {
     fs.closeSync(fd)
   }
@@ -83,8 +124,16 @@ const captureChild = (argv: readonly string[], cwd: string, stream: boolean): Sp
 /** Bypass runs keep the terminal: nothing is captured because nothing is persisted. */
 const inheritChild = (argv: readonly string[], cwd: string): SpawnResult => {
   const startedAt = Date.now()
-  const proc = Bun.spawnSync([...argv], { cwd, env: childEnv(cwd), stdio: ['inherit', 'inherit', 'inherit'] })
-  return { exitCode: proc.exitCode, output: '', wallMs: Date.now() - startedAt }
+  const proc = Bun.spawnSync([...argv], {
+    cwd,
+    env: childEnv(cwd),
+    stdio: ['inherit', 'inherit', 'inherit'],
+  })
+  return {
+    exitCode: proc.exitCode,
+    output: '',
+    wallMs: Date.now() - startedAt,
+  }
 }
 
 const readFileOrNull = (filePath: string): string | null => {
@@ -97,7 +146,10 @@ const readFileOrNull = (filePath: string): string | null => {
 
 const realGitSha = (cwd: string): string | null => {
   try {
-    const proc = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd, stdio: ['ignore', 'pipe', 'ignore'] })
+    const proc = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], {
+      cwd,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
     if (proc.exitCode !== 0) return null
     const sha = proc.stdout.toString().trim()
     return sha === '' ? null : sha
@@ -106,10 +158,12 @@ const realGitSha = (cwd: string): string | null => {
   }
 }
 
-const realDeps = (cwd: string, bypass: boolean, stream: boolean): RunDeps => ({
+const realDeps = (cwd: string, bypass: boolean): RunDeps => ({
   cwd,
   env: process.env,
   cores: os.availableParallelism(),
+  load1: os.loadavg()[0] ?? 0,
+  stdoutIsTTY: process.stdout.isTTY ?? false,
   ensureClientBuilt: (): void => {
     realEnsureClientBuilt(cwd)
   },
@@ -118,7 +172,8 @@ const realDeps = (cwd: string, bypass: boolean, stream: boolean): RunDeps => ({
     fs.rmSync(absolute(cwd, LAST_RUN_LOG), { force: true })
     fs.rmSync(absolute(cwd, LAST_RUN_JUNIT), { force: true })
   },
-  spawn: (argv): SpawnResult => (bypass ? inheritChild(argv, cwd) : captureChild(argv, cwd, stream)),
+  spawn: (argv, options): Promise<SpawnResult> =>
+    bypass ? Promise.resolve(inheritChild(argv, cwd)) : captureChild(argv, cwd, options.stream),
   fingerprint: (): string => computeFingerprint(defaultFingerprintDeps(cwd)),
   gitSha: (): string | null => realGitSha(cwd),
   readJUnit: (): string | null => readFileOrNull(absolute(cwd, LAST_RUN_JUNIT)),
@@ -138,12 +193,13 @@ const realDeps = (cwd: string, bypass: boolean, stream: boolean): RunDeps => ({
   now: (): string => new Date().toISOString(),
 })
 
-function main(): void {
+async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const parsed = parseWrapperArgs(argv)
-  process.exit(runWrapper(argv, realDeps(path.resolve(import.meta.dir, '..', '..'), parsed.bypass, parsed.stream)))
+  const exitCode = await runWrapper(argv, realDeps(path.resolve(import.meta.dir, '..', '..'), parsed.bypass))
+  process.exit(exitCode)
 }
 
 if (import.meta.main) {
-  main()
+  await main()
 }

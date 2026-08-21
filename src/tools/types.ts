@@ -57,4 +57,14 @@ export type MakeToolsOptions = {
    * Absent in DM context or when no ChatRouter is available.
    */
   chatParticipantResolver?: import('../chat/participants/roster.js').ChatParticipantResolver
+  /**
+   * Whether the current actor is a bot administrator on the platform instance
+   * the message arrived on. Gates admin-only tools. Absent means not an admin.
+   */
+  isBotAdmin?: boolean
+  /**
+   * The platform instance id the current turn originated from.
+   * Used by admin tools to scope their output to that instance.
+   */
+  platformInstanceId?: string
 }

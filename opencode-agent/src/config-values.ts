@@ -233,7 +233,10 @@ const parseBounded = (key: string, trimmed: string, range: IntRange): number => 
 // `AGENT_CHECKS` is re-exported rather than moved out of reach: `config.ts` and
 // the suites name this module for the vocabulary, and a moved export would be a
 // rename dressed up as a file split. See `check-spec.ts` for why it left.
+// `AGENT_MCP_SERVERS`, the second non-scalar, is re-exported beside it for the
+// same reason — see `mcp-servers.ts` for why it is its own module.
 export { DEFAULT_CHECKS, parseChecks } from './check-spec.js'
+export { parseMcpServers } from './mcp-servers.js'
 
 // The job-clock knobs, re-exported for the same reason and left out of reach for
 // none: they moved to `config-clock-values.ts` because their prose outgrew this

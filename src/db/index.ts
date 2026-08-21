@@ -89,6 +89,7 @@ import { migration075AnalyticsMaterializations } from './migrations/075_analytic
 import { migration076ContextVault } from './migrations/076_context_vault.js'
 import { migration077ContextVaultFileArtifacts } from './migrations/077_context_vault_file_artifacts.js'
 import { migration078RepairEpochAggregateSourceCounters } from './migrations/078_repair_epoch_aggregate_source_counters.js'
+import { migration079ToolCallDurationNormalize } from './migrations/079_tool_call_duration_normalize.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -202,6 +203,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration076ContextVault,
   migration077ContextVaultFileArtifacts,
   migration078RepairEpochAggregateSourceCounters,
+  migration079ToolCallDurationNormalize,
 ]
 
 export const initDb = (): void => {
