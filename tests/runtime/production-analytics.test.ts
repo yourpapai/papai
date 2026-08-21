@@ -3,11 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import * as realStartAnalytics from '../../src/analytics/start-analytics.js'
 import type { ProductionAnalyticsDeps, ProductionAnalyticsRuntime } from '../../src/runtime/production-analytics.js'
 import { createTrackedLoggerMock } from '../utils/logger-mock.js'
+
+// Snapshot before any mock.module call: Bun mutates the module namespace in
+// place when mocking, so spreading the live namespace later would re-spread
+// the mock instead of the real exports.
+const realStartAnalyticsExports = { ...realStartAnalytics }
 
 const makeRuntime = (): ProductionAnalyticsRuntime => ({
   observer: {
@@ -37,6 +43,13 @@ describe('startAnalyticsRuntime', () => {
   let startAnalyticsMock: ReturnType<typeof mock<() => void>>
   let activeRuntime: ProductionAnalyticsRuntime
   let tracked: ReturnType<typeof createTrackedLoggerMock>
+
+  // mock.module is process-wide and mock.restore() does not undo it; without
+  // this restore the throwing mock leaks into later files sharing the worker
+  // (provision-routes.test.ts calls the real startAnalytics()).
+  afterAll(() => {
+    void mock.module('../../src/analytics/start-analytics.js', () => ({ ...realStartAnalyticsExports }))
+  })
 
   beforeEach(() => {
     tracked = createTrackedLoggerMock()
