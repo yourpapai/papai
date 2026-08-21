@@ -9,12 +9,12 @@ import { handleMattermostActionRequest, isMattermostActionPath } from '../chat/m
 import { handleContextVaultPush } from '../context-vault/push-route.js'
 import { authenticate, recordActivity } from '../dashboard-auth/index.js'
 import { listAllIdentityMappings } from '../identity/mapping.js'
-import { getLogLevel, logger, logMultistream } from '../logger.js'
+import { getLogLevel, logger } from '../logger.js'
 import { routePluginMcpPaths } from '../mcp-server/index.js'
 import { handleAdminRecentRequests } from './admin-system.js'
 import { routePublicAuthPaths } from './auth-routes.js'
 import { handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
-import { logBuffer, logBufferStream } from './log-buffer.js'
+import { logBuffer } from './log-buffer.js'
 import { parseLogFilter } from './log-filter-model.js'
 import { handleMcpStatus } from './mcp-routes.js'
 import { handleNotifyRoute } from './notify-route.js'
@@ -268,7 +268,6 @@ export function startDebugServer(adminUserId: string, options?: WebServerStartOp
     debugEnabled: resolved.debugEnabled,
     pluginProviderRuntimeDeps: resolved.pluginProviderRuntimeDeps,
   }
-  logMultistream.add({ stream: logBufferStream, level: resolved.logLevel })
   const port = getPort()
   const hostname = getHostname()
   server = Bun.serve({ port, hostname, idleTimeout: 0, fetch: (req) => routeRequest(req, serverRouteOptions) })
@@ -282,14 +281,6 @@ export function stopDebugServer(): void {
   if (server !== null) {
     void server.stop()
     server = null
-    const streams: unknown = Reflect.get(logMultistream, 'streams')
-    if (Array.isArray(streams)) {
-      const idx = streams.findIndex(
-        (entry: unknown) =>
-          typeof entry === 'object' && entry !== null && Reflect.get(entry, 'stream') === logBufferStream,
-      )
-      if (idx !== -1) streams.splice(idx, 1)
-    }
     log.info('Debug server stopped')
   }
 }

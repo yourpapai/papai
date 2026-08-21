@@ -8,7 +8,7 @@
 
 ## 3. Remove server-side stream wiring
 
-- [ ] 3.1 In `src/debug/server.ts`, delete `logMultistream.add({ stream: logBufferStream, level: resolved.logLevel })` from `startDebugServer()` and the Reflect-based `streams` splice block from `stopDebugServer()`; remove the now-unused `logMultistream` and `logBufferStream` imports (keep `getLogLevel`, `logger`, `logBuffer`). Add a one-line note on the now-inert `logLevel` option that it no longer affects the buffer. Verify: `bun test tests/debug/server.test.ts && bun run typecheck`
+- [x] 3.1 In `src/debug/server.ts`, delete `logMultistream.add({ stream: logBufferStream, level: resolved.logLevel })` from `startDebugServer()` and the Reflect-based `streams` splice block from `stopDebugServer()`; remove the now-unused `logMultistream` and `logBufferStream` imports (keep `getLogLevel`, `logger`, `logBuffer`). Add a one-line note on the now-inert `logLevel` option that it no longer affects the buffer. Verify: `bun test tests/debug/server.test.ts && bun run typecheck`
 
 ## 4. Comment and doc touch-ups
 
