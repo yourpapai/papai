@@ -14,5 +14,5 @@
 
 ## 3. Docs and full checks
 
-- [ ] 3.1 Record the rule in `opencode-agent/CLAUDE.md`: the branch is shared with humans, every push reconciles fetch-first (merge, never rebase/force), conflicts abort-and-name-paths, and `review-push` reconciles before its protected-path revert — citing run 32374999214 / merge `1f7ce71b`
-- [ ] 3.2 Run `bun test`, `bun run typecheck`, `bun run lint`, `bun run test:affected`; update `opencode-agent/README.md` or `ROADMAP.md` only if they describe push behavior
+- [x] 3.1 Record the rule in `opencode-agent/CLAUDE.md`: the branch is shared with humans, every push reconciles fetch-first (merge, never rebase/force), conflicts abort-and-name-paths, and `review-push` reconciles before its protected-path revert — citing run 32374999214 / merge `1f7ce71b`
+- [x] 3.2 Run `bun test`, `bun run typecheck`, `bun run lint`, `bun run test:affected`; update `opencode-agent/README.md` or `ROADMAP.md` only if they describe push behavior
