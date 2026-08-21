@@ -7,11 +7,11 @@ See LICENSE in the project root for details.
 
 ## 1. Tests (fail first)
 
-- [ ] 1.1 Add failing test: `handleToolCallFinishEvent` with a fractional
+- [x] 1.1 Add failing test: `handleToolCallFinishEvent` with a fractional
   `durationMs` emits `tool:execute_end` with the rounded integer, and a
   negative `durationMs` emits `0` (mirroring the analytics lane's defense).
   Verify: `bun test tests/llm-orchestrator-tool-events.test.ts` (red)
-- [ ] 1.2 Add failing migration test: seed `tool_call_events` rows with
+- [x] 1.2 Add failing migration test: seed `tool_call_events` rows with
   `465.23`, `-3`, `321`, and NULL `duration_ms`; run migration `079`; assert
   `465`, `0`, `321`, NULL; run again, assert no change (idempotent). Verify:
   `bun test tests/db/migrations` (red)
