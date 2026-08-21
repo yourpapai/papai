@@ -125,6 +125,40 @@ is narrow, deterministic, and introduced in its own reviewed task before the
 stories that depend on it. The frozen harness may change only on master before a
 new compatibility baseline is recorded.
 
+#### Seams attach to behaviors, not to a batch
+
+Surveying the seven bullets above surfaced three candidate harness seams, and the
+open question was whether to land them as one up-front change. They do not form a
+batch:
+
+| Seam | Needed by | Verdict |
+| ---- | --------- | ------- |
+| `replyTo` on message construction | `reply-to-bot-routing` · primary | Not Phase 2 — travels with its Phase 4 half |
+| `open_dm_access` / `blocked_at` on the platform-instance row | `identity-provisioning` · authorization-routing, persistence-scope | Real, single-owner |
+| a `fail` kind on `ModelDecision` | `live-status` · failure-recovery | Unresolved — may need no seam at all |
+
+`replyTo` serves only `reply-to-bot-routing`, whose `primary` half is genuine
+in-process router logic (`src/bot-guards.ts:34`) but whose sibling dimension is
+Tier 3. That behavior is Phase 4 and the seam travels with it. `open_dm_access`
+is confirmed necessary — `seedTestPlatformInstance` in
+`tests/stories/harness/fixtures.ts:372` accepts only `id` and `type`, so no story
+can vary those columns — but it belongs to one behavior.
+
+The third is an open question, not a design decision. `invokeWithLiveStatus`
+guarantees dismissal through `finally { await liveStatus.dismiss() }`, which fires
+only when `invokeModelWithTyping` **throws**; a failing tool returns a tool result
+and never reaches it. The `/stop` force-abort path throws through an
+`AbortController` and is reachable today with the existing `gateCall()` and
+`/stop` seams — no new surface, and a real production failure rather than a
+synthetic one — but whether that abort propagates out of `invokeModelWithTyping`
+or is caught below it to build the stop summary is unverified. **Spike this before
+designing a seam for it.**
+
+Each seam therefore lands as a task inside its own behavior's change, which is
+what the paragraph above already requires, and which keeps this phase clear of
+Phase 1's prohibition on speculative test seams. It costs no baseline re-record
+beyond the one each behavior pays anyway.
+
 ### Phase 3: Close provider and process boundaries
 
 Tier 1 expands parity only for normalized provider capabilities not already
@@ -220,10 +254,37 @@ natural edit when a dimension closes deletes that sentence, and nothing in
 non-blank. The residue must survive the close, so that a later decision to raise
 the bar has something to work from.
 
-This calibration assumes a structural refactor — moving, renaming and
-recomposing. A refactor that rewrites decision logic in place weakens the
-wiring/semantics split above, and should revisit this section before relying on
-it.
+The refactor this calibration assumes is named: **`plugin-core-separation`**
+(ADR 0380), whose live changes are `plugin-core-separation-toolgate`,
+`trusted-module-hermetic-qualification` and `hermetic-e2e-core-separation-proof`.
+Moving chat and task providers behind a plugin boundary is structural — modules
+relocate, composition and DI wiring change, decisions do not — so the
+wiring/semantics split above holds and the dimension-level bar stands.
+
+**Except at the gating boundary.** `plugin-core-separation-toolgate` replaces the
+hardcoded `ACP_SESSION_ACTION_TOOLS` set inside `applyWhoMayUseFilter` with a
+`ToolGateRegistry` populated from `gate: 'operator'` declarations on plugin
+tools. The move is structural; the consequence is not. The set of tools that get
+gated stops being a literal and becomes an emergent property of what plugins
+declare, so damage there is not wiring damage — it exposes the wrong tool to the
+wrong actor while everything remains correctly composed.
+
+That blast radius lands on one dimension. **`authorization-routing` closes on one
+scenario per distinct denial surface**, not per distinct claim. Four of the
+fourteen open dimensions are authorization-routing — `reply-to-bot-routing`,
+`identity-provisioning`, `mid-run-control`, `chat-participant-resolution` — and
+each already names its surfaces in its rationale. Every other dimension takes the
+rule as written above.
+
+This is a targeted deepening, not the retro-fit rejected three paragraphs up.
+That one raised the bar everywhere on consistency grounds and would have reopened
+all five implemented records. This one raises it on one dimension because a named
+refactor measurably reaches it — Phase 5's refactor-impact map applied to
+dimensions instead of lanes, arriving early. It implicates exactly one closed
+cell: `guest-readonly`'s authorization-routing, which covers
+`applyGuestReadOnlyFilter`, the sibling tool-set filter in the layer being
+rewritten. It closed on two denial surfaces, so it already satisfies the deeper
+bar; it is named here so a later reader knows it was checked rather than missed.
 
 ## Completion criteria
 
