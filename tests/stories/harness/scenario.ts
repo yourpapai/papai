@@ -136,6 +136,8 @@ type ScenarioGiven = Readonly<{
   guestMode(group: GroupHandle, enabled: true): void
   member(group: GroupHandle, user: UserHandle): void
   groupAdmin(group: GroupHandle, user: UserHandle): void
+  /** Seed the label the chat provider resolves for a user; an Error makes the lookup reject. */
+  chatUserLabel(user: UserHandle, label: string | Error): void
   identity(
     user: UserHandle,
     identity: Readonly<{ providerUserId: string; login: string; displayName: string }>,
@@ -570,6 +572,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     groupAdmin(group, user): void {
       prerequisite('given.groupAdmin')
       world.fixtures.seedGroupAdmin({ groupId: scopedGroupId(group), userId: user.id })
+    },
+    chatUserLabel(user, label): void {
+      prerequisite('given.chatUserLabel')
+      world.fixtures.seedChatUserLabel({ userId: user.id, label })
     },
     identity(user, identity, providerName = 'kaneo'): void {
       prerequisite('given.identity')

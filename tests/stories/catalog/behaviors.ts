@@ -294,11 +294,17 @@ const BEHAVIOR_COVERAGE_RECORDS: readonly BehaviorCoverage[] = [
   },
   {
     behaviorId: 'chat-participant-resolution',
-    state: 'partial',
-    proven: {},
-    missing: { primary: '0', 'authorization-routing': '0' },
+    state: 'implemented',
+    proven: {
+      primary: {
+        provingTier: '0',
+        scenarioIds: ['SCN-chat-participant-ranking', 'SCN-chat-participant-label-fallback'],
+      },
+      'authorization-routing': { provingTier: '0', scenarioIds: ['SCN-chat-participant-dm-absent'] },
+    },
+    missing: {},
     rationale:
-      'Nothing this behavior requires is proven. SCN-context-group-identity proves only the member-roster substrate the resolver queries — substrate, not evidence. The resolve_chat_participant tool registration, fuzzy ranking, label resolution, and delivery.mention_user_ids population have no story.',
+      'The ranking story proves the group_members ∪ message_metadata union, exact > prefix > substring ordering, and the resolved id reaching delivery.mention_user_ids on a persisted group reminder; the fallback story proves an unresolvable and a throwing label both degrade to the identifier without failing the turn. authorization-routing closes on its one denial surface reachable from production wiring — a non-group context withholds the tool — since the other two conjuncts of the registration gate (a defined resolver, a defined contextId) are always satisfied by production wiring and only defensive elsewhere.',
   },
   {
     behaviorId: 'privacy-gated-analytics',

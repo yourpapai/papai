@@ -41,7 +41,6 @@ test('partial implemented behaviors are reported as ineligible for global qualif
   expect(unqualifiedBehaviors(BEHAVIOR_COVERAGE)).toContain('live-status')
   expect(unqualifiedBehaviors(BEHAVIOR_COVERAGE)).toEqual([
     'alert-edge-triggering',
-    'chat-participant-resolution',
     'identity-provisioning',
     'live-status',
     'mid-run-control',

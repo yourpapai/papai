@@ -27,6 +27,7 @@ import { TaskProviderResolver } from '../../../src/providers/resolver.js'
 import { SESSION_COOKIE_NAME } from '../../../src/settings/cookies.js'
 import { CSRF_HEADER } from '../../../src/settings/request-auth.js'
 import { isAuthorized } from '../../../src/users.js'
+import { createScenarioChat } from './chat.js'
 import { createScenarioEvents } from './events.js'
 import { createFakeMcpServer } from './fake-mcp-server.js'
 import {
@@ -147,6 +148,18 @@ describe('scenario fixtures', () => {
     expect(isAuthorized(SCENARIO_USER_ID, SCENARIO_PLATFORM_INSTANCE_ID)).toBe(true)
     expect(isAuthorizedGroup(SCENARIO_GROUP_ID)).toBe(true)
     expect(isGroupMember(SCENARIO_GROUP_ID, SCENARIO_USER_ID)).toBe(true)
+  })
+
+  test('seedChatUserLabel requires a chat instance and delegates the label to it', async () => {
+    expect(() => fixtures.seedChatUserLabel({ userId: 'user-1', label: 'Alice Anders' })).toThrow(
+      'Scenario fixtures require a chat instance to seed user labels',
+    )
+
+    const chat = createScenarioChat('label fixtures', createScenarioEvents('label fixtures'))
+    const withChat = createScenarioFixtures({ taskProvider: new MemoryTaskProvider(), chat })
+    withChat.seedChatUserLabel({ userId: 'user-1', label: 'Alice Anders' })
+
+    await expect(chat.resolveUserLabel('user-1', undefined)).resolves.toBe('Alice Anders')
   })
 
   test('seedAdmin grants platform and super admin roles', async () => {
