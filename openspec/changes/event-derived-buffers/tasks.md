@@ -1,6 +1,6 @@
 ## 1. Capture/lifecycle tests (red first)
 
-- [ ] 1.1 Rewrite `tests/debug/state-collector-lifecycle.test.ts` for the new semantics: `addClient`/`removeClient` leave `subscribeCountForTest()` unchanged, heartbeat still starts on first client and stops on last, dead-client ping/broadcast removal still drops clients. Verify: `bun test tests/debug/state-collector-lifecycle.test.ts` (expected red until 2.2)
+- [x] 1.1 Rewrite `tests/debug/state-collector-lifecycle.test.ts` for the new semantics: `addClient`/`removeClient` leave `subscribeCountForTest()` unchanged, heartbeat still starts on first client and stops on last, dead-client ping/broadcast removal still drops clients. Verify: `bun test tests/debug/state-collector-lifecycle.test.ts` (expected red until 2.2)
 - [ ] 1.2 Extend `tests/debug/state-collector.test.ts` with persistent-capture coverage: admin + non-admin + global events emitted with zero clients are captured (assert via `state:init` after `addClient`, exported buffers, `findTurnById`), stats increment with no client connected, non-admin events are never broadcast (no frames while a client is connected), `startEventCollector()` is idempotent (exactly one subscription via `subscribeCountForTest`). Verify: `bun test tests/debug/state-collector.test.ts` (expected red until 2.2)
 
 ## 2. State-collector split (capture vs fan-out)
