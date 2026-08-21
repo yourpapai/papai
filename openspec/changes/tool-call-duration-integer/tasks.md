@@ -27,8 +27,8 @@ See LICENSE in the project root for details.
 
 ## 3. Gates and docs
 
-- [ ] 3.1 Full gates: `bun run test`, `bun run typecheck`, `bun run lint`;
+- [x] 3.1 Full gates: `bun run test`, `bun run typecheck`, `bun run lint`;
   inspect failures via `bun run test:failures` / `test:show`.
-- [ ] 3.2 Append the root-cause resolution to the 2026-08-20 rejects note in
+- [x] 3.2 Append the root-cause resolution to the 2026-08-20 rejects note in
   `docs/research/analytics-metrics/11-stage-c-evidence.md` (fix shipped;
   historical rejects stand as honest history).
