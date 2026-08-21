@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ParsedCommand } from './commands.js'
 import { describeStep } from './plan-steps.js'
 import type { PlanStep, StepMarker } from './plan-steps.js'
 import { MINIMALITY_RULE } from './prompts.js'
@@ -63,7 +64,47 @@ export interface ImplementPromptInput {
    */
   step: (StepMarker & { step: PlanStep }) | null
   handoff: string | null
+  /**
+   * The maintainer's steering note — the argument a `/retry <note>` or
+   * `/continue <note>` carried — or `null` when the command had none.
+   *
+   * Prompt-scoped by construction: it rides this prompt and nothing else, per
+   * the spec's "notes are not persisted state" — no state field, no block.
+   */
+  note: string | null
 }
+
+/**
+ * The framing every steering note rides under, in one place.
+ *
+ * Pinned by `instructions.test.ts` beside `MINIMALITY_RULE`, because both
+ * halves are load-bearing. "Guidance, not a re-plan" is what keeps a note from
+ * being read as permission to rewrite the approved plan mid-resume, and naming
+ * `/changes` is what keeps the re-plan channel where it belongs — a maintainer
+ * who wants scope changed says so there, and the model that agrees says so in
+ * its reply rather than by acting on it.
+ */
+export const MAINTAINER_NOTE_FRAMING =
+  'Guidance from the maintainer, carried with this resume — guidance, not a re-plan: the approved plan and the ' +
+  'change folder remain the source of truth, and /changes on the issue is the channel for changing what is being built.'
+
+/** One enveloped steering-note section, or nothing when there is no note. */
+const noteSection = (envelope: UntrustedEnvelope, note: string | null): string[] => {
+  if (note === null || note.length === 0) return []
+  return [MAINTAINER_NOTE_FRAMING, envelope.wrap('maintainer-note', note)]
+}
+
+/**
+ * The steering note a resume command carried, or `null`.
+ *
+ * Only `/retry` and `/continue` — the two commands that resume stopped work —
+ * have their argument read as a note. `/ask`'s argument is the question itself,
+ * and no other command's argument means anything to this phase.
+ */
+export const steeringNote = (command: ParsedCommand | null): string | null =>
+  command !== null && (command.command === '/retry' || command.command === '/continue') && command.argument.length > 0
+    ? command.argument
+    : null
 
 /**
  * What to implement, for one step or for a whole plan.
@@ -107,6 +148,8 @@ export const buildImplementPrompt = (input: ImplementPromptInput): string => {
       envelope.wrap('handoff-from-the-interrupted-run', input.handoff),
     )
   }
+
+  sections.push(...noteSection(envelope, input.note))
 
   sections.push(
     'Write the tests first, then the implementation, then run the tests yourself.',

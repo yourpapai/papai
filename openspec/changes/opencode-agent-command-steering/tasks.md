@@ -21,8 +21,8 @@
 
 ## 4. Steering notes
 
-- [ ] 4.1 Test-first: note-render helper — enveloped section with fixed guidance framing (plan/folder truth, `/changes` re-plans); framing constant pinned `instructions.test.ts`-style. Verify: `bun test tests/opencode-agent/instructions.test.ts`
-- [ ] 4.2 Test-first: resumed handlers read `/retry`/`/continue` arguments — implement-from-`resumeFrom` and continuation-from-`INCOMPLETE` prompts carry the note; argument-less commands byte-identical to today; note never persisted (no new block, no handoff change). Verify: `bun test tests/opencode-agent/phases.test.ts`
+- [x] 4.1 Test-first: note-render helper — enveloped section with fixed guidance framing (plan/folder truth, `/changes` re-plans); framing constant pinned `instructions.test.ts`-style. Verify: `bun test tests/opencode-agent/instructions.test.ts`
+- [x] 4.2 Test-first: resumed handlers read `/retry`/`/continue` arguments — implement-from-`resumeFrom` and continuation-from-`INCOMPLETE` prompts carry the note; argument-less commands byte-identical to today; note never persisted (no new block, no handoff change). Verify: `bun test tests/opencode-agent/phases.test.ts`
 
 ## 5. Full verification and docs
 
