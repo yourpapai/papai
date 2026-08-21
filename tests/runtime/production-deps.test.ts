@@ -8,7 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { ChatRouter } from '../../src/chat/router.js'
 import type { IncomingInteraction, IncomingMessage } from '../../src/chat/types.js'
 import { subscribeCountForTest } from '../../src/debug/event-bus.testing.js'
-import { stopEventCollectorForTest } from '../../src/debug/state-collector.js'
+import { startEventCollector, stopEventCollectorForTest } from '../../src/debug/state-collector.js'
 import { armMemoryCapture, type ArmCaptureDeps } from '../../src/long-term-memory/capture-debounce.js'
 import { toolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
 import { createPapaiRuntime } from '../../src/runtime/create-runtime.js'
@@ -231,6 +231,10 @@ describe('createProductionRuntimeDeps', () => {
 
   test('disposes membership subscribers across sequential production dependency runtimes', async () => {
     await setupTestDb()
+    // Arm the idempotent collector before the baseline so the assertions below
+    // track only the membership subscriber; without this the test depends on a
+    // collector left subscribed by an earlier test.
+    startEventCollector()
     const baseline = subscribeCountForTest()
     const first = createProductionRuntimeDeps()
     const second = createProductionRuntimeDeps()
