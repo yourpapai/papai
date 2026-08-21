@@ -9,8 +9,8 @@
 
 ## 2. Git merge operations
 
-- [ ] 2.1 Test-first: `mergeBase(base)` returning `clean | up-to-date | conflicted(paths)` against fixture repositories (clean merge, fast-forward/current, conflict with `--diff-filter=U` path list); then implement in `git.ts` beside `ensureBranch`. Verify: `bun test tests/opencode-agent/git.test.ts`
-- [ ] 2.2 Test-first: `completeMerge()` (author per `commit-identity.ts`, no `stageAllowed`/diff-guard on the path) and `abortMerge()` (clean tree after); then implement. Verify: `bun test tests/opencode-agent/git.test.ts`
+- [x] 2.1 Test-first: `mergeBase(base)` returning `clean | up-to-date | conflicted(paths)` against fixture repositories (clean merge, fast-forward/current, conflict with `--diff-filter=U` path list); then implement in `git.ts` beside `ensureBranch`. Verify: `bun test tests/opencode-agent/git.test.ts`
+- [x] 2.2 Test-first: `completeMerge()` (author per `commit-identity.ts`, no `stageAllowed`/diff-guard on the path) and `abortMerge()` (clean tree after); then implement. Verify: `bun test tests/opencode-agent/git.test.ts`
 
 ## 3. Sync handler
 

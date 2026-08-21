@@ -6,12 +6,16 @@
 import type { DiffLimits } from './diff-guard.js'
 import { commitAll, salvageAll } from './git-commit.js'
 import type { CommitOutcome, GitFn, Salvage } from './git-commit.js'
+import { abortMerge, completeMerge, mergeBase } from './git-merge.js'
+import type { MergeOutcome } from './git-merge.js'
 import { revertPaths } from './git-revert.js'
 import type { Logger } from './logger.js'
 import type { CommandResult, CommandRunner } from './shell.js'
 
-// Re-exported so every caller keeps naming one module for "what git does here";
-// it is declared next to the commit that produces it.
+// Re-exported so callers keep naming one module for "what git does here".
+export type { MergeOutcome } from './git-merge.js'
+
+// Re-exported so callers keep naming one module for git's vocabulary.
 export type { Salvage } from './git-commit.js'
 
 export interface GitOptions {
@@ -140,6 +144,12 @@ export interface Git {
    * guard's move for a change that is already history. See `git-revert.ts`.
    */
   revertPaths(sha: string, paths: readonly string[]): Promise<void>
+  /** Merges `origin/<base>` in — the `/sync` operation. See `git-merge.ts`. */
+  mergeBase(base: string): Promise<MergeOutcome>
+  /** Commits a conflicted merge the repair rounds resolved. */
+  completeMerge(message: string): Promise<void>
+  /** Abandons a conflicted merge, leaving a clean tree. */
+  abortMerge(): Promise<void>
 }
 
 export interface PushOptions {
@@ -282,5 +292,8 @@ export const createGit = (options: GitOptions): Git => {
           .filter((line) => line.length > 0),
       ),
     revertPaths: (sha, paths) => revertPaths(gitOrThrow, options, sha, paths),
+    mergeBase: (base) => mergeBase(git, gitOrThrow, options, base),
+    completeMerge: (message) => completeMerge(gitOrThrow, options, message),
+    abortMerge: () => abortMerge(gitOrThrow),
   }
 }
