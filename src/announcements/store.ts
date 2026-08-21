@@ -7,6 +7,7 @@ import { and, eq, isNull, ne } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { announcementDeliveries, authorizedGroups, users, versionAnnouncements } from '../db/schema.js'
+import type { Locale } from '../i18n/index.js'
 import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'announcements:store' })
@@ -18,6 +19,7 @@ export type AnnouncementDraft = {
   version: string
   rawBody: string | null
   humanizedBody: string | null
+  localizedBodies: Partial<Record<Locale, string>> | null
   broadcastAt: string | null
 }
 
@@ -83,18 +85,32 @@ export function countSubscribers(): SubscriberCounts {
   return { dm: listSubscribedUsers().length, group: listSubscribedGroups().length }
 }
 
+/** Parse the `localized_bodies` JSON column; null when empty or invalid JSON. */
+const parseLocalizedBodies = (raw: string | null): Partial<Record<Locale, string>> | null => {
+  if (raw === null || raw.trim() === '') return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    return parsed as Partial<Record<Locale, string>>
+  } catch {
+    return null
+  }
+}
+
 export function getAnnouncementDraft(version: string): AnnouncementDraft | null {
   const row = getDrizzleDb()
     .select({
       version: versionAnnouncements.version,
       rawBody: versionAnnouncements.rawBody,
       humanizedBody: versionAnnouncements.humanizedBody,
+      localizedBodies: versionAnnouncements.localizedBodies,
       broadcastAt: versionAnnouncements.broadcastAt,
     })
     .from(versionAnnouncements)
     .where(eq(versionAnnouncements.version, version))
     .get()
-  return row ?? null
+  if (row === undefined) return null
+  return { ...row, localizedBodies: parseLocalizedBodies(row.localizedBodies) }
 }
 
 /** Insert the draft row once (dedup anchor). No-op if the version row already exists. */
@@ -123,6 +139,32 @@ export function updateHumanizedBody(version: string, body: string): void {
     .onConflictDoUpdate({ target: versionAnnouncements.version, set: { humanizedBody: body } })
     .run()
   log.info({ version }, 'announcement humanized body updated')
+}
+
+/**
+ * Upsert non-`en` bodies into the `localized_bodies` JSON column, merging with
+ * locales already stored. `en` is never stored here — it lives in
+ * `humanized_body` — and that column is never touched.
+ */
+export function updateLocalizedBodies(version: string, bodies: Partial<Record<Locale, string>>): void {
+  const db = getDrizzleDb()
+  const existing = db
+    .select({ localizedBodies: versionAnnouncements.localizedBodies })
+    .from(versionAnnouncements)
+    .where(eq(versionAnnouncements.version, version))
+    .get()
+  const merged: Record<string, string> = {}
+  Object.assign(merged, parseLocalizedBodies(existing?.localizedBodies ?? null))
+  for (const [locale, body] of Object.entries(bodies)) {
+    if (locale === 'en' || body === undefined) continue
+    merged[locale] = body
+  }
+  const serialized = JSON.stringify(merged)
+  db.insert(versionAnnouncements)
+    .values({ version, announcedAt: new Date().toISOString(), localizedBodies: serialized })
+    .onConflictDoUpdate({ target: versionAnnouncements.version, set: { localizedBodies: serialized } })
+    .run()
+  log.info({ version, locales: Object.keys(merged) }, 'announcement localized bodies updated')
 }
 
 export function markBroadcast(version: string, atIso: string): void {

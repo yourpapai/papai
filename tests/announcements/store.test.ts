@@ -19,11 +19,12 @@ import {
   setGroupAnnounceSubscribed,
   setUserAnnounceSubscribed,
   updateHumanizedBody,
+  updateLocalizedBodies,
   upsertAnnouncementDraft,
 } from '../../src/announcements/store.js'
 import { addAuthorizedGroup } from '../../src/authorized-groups.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
-import { users } from '../../src/db/schema.js'
+import { users, versionAnnouncements } from '../../src/db/schema.js'
 import { addUser } from '../../src/users.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
@@ -100,6 +101,45 @@ describe('announcement subscription store', () => {
     expect(draft?.humanizedBody).toBe('created')
     expect(draft?.rawBody).toBeNull()
     expect(draft?.broadcastAt).toBeNull()
+  })
+
+  test('updateLocalizedBodies merges locales without touching humanizedBody or other locales', () => {
+    upsertAnnouncementDraft({ version: '8.8.8', rawBody: 'raw', humanizedBody: 'hi' })
+    updateLocalizedBodies('8.8.8', { ru: 'первый' })
+    expect(getAnnouncementDraft('8.8.8')).toMatchObject({
+      humanizedBody: 'hi',
+      localizedBodies: { ru: 'первый' },
+    })
+
+    getDrizzleDb()
+      .update(versionAnnouncements)
+      .set({ localizedBodies: '{"de":"hallo","ru":"первый"}' })
+      .where(eq(versionAnnouncements.version, '8.8.8'))
+      .run()
+    updateLocalizedBodies('8.8.8', { ru: 'второй' })
+    // `de` is outside today's Locale union; the column must still preserve it.
+    const expectedMerged: Record<string, string> = { de: 'hallo', ru: 'второй' }
+    expect(getAnnouncementDraft('8.8.8')?.localizedBodies).toEqual(expectedMerged)
+    expect(getAnnouncementDraft('8.8.8')?.humanizedBody).toBe('hi')
+  })
+
+  test('updateLocalizedBodies never stores en and creates row when absent', () => {
+    updateLocalizedBodies('7.8.9', { en: 'english', ru: 'русский' })
+    const draft = getAnnouncementDraft('7.8.9')
+    expect(draft?.localizedBodies).toEqual({ ru: 'русский' })
+    expect(draft?.humanizedBody).toBeNull()
+  })
+
+  test('getAnnouncementDraft returns null localizedBodies when column empty or invalid JSON', () => {
+    upsertAnnouncementDraft({ version: '6.6.6', rawBody: 'raw', humanizedBody: null })
+    expect(getAnnouncementDraft('6.6.6')?.localizedBodies).toBeNull()
+
+    getDrizzleDb()
+      .update(versionAnnouncements)
+      .set({ localizedBodies: 'not json' })
+      .where(eq(versionAnnouncements.version, '6.6.6'))
+      .run()
+    expect(getAnnouncementDraft('6.6.6')?.localizedBodies).toBeNull()
   })
 
   test('delivery idempotency: only sent counts as delivered', () => {
