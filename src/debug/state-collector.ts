@@ -210,7 +210,8 @@ function deliver(controller: ReadableStreamDefaultController, payload: Uint8Arra
 }
 
 function frameForClient(event: DebugEvent, registration: ClientRegistration): Uint8Array | null {
-  if (event.type === 'log:entry' && isLogEntry(event.data)) {
+  if (event.type === 'log:entry') {
+    if (!isLogEntry(event.data)) return null
     const shaped = isOwnLogEntry(event.data, registration.adminUserId) ? event.data : shapeLogEntry(event.data)
     if (!entryMatchesFilter(shaped, registration.filter)) return null
     return formatSse({ ...event, data: shaped })

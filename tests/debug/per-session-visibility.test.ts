@@ -135,6 +135,19 @@ describe('log:entry egress attribution', () => {
     expect(byMsg.get('unattributable')!['durationMs']).toBe(3)
   })
 
+  test('malformed log:entry events are dropped, not egressed raw', () => {
+    const { controller, seen } = collect()
+    addClient(controller, PASS_ALL, 'a1')
+
+    emitGlobal('log:entry', { userText: 'not a log entry' })
+    emitGlobal('log:entry', { level: 30, time: 't1', msg: 'well-formed', userText: 'secret' })
+
+    const frames = framesOfType(seen, 'log:entry')
+    expect(frames).toHaveLength(1)
+    expect(strOf(frames[0]!.data['msg'])).toBe('well-formed')
+    expect(optStrOf(frames[0]!.data['userText'])).toBeUndefined()
+  })
+
   test('connection q filter runs after shaping', () => {
     const { controller, seen } = collect()
     addClient(controller, { ...PASS_ALL, q: 'needle' }, 'a1')
