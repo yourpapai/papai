@@ -16,6 +16,6 @@
 ## 4. Regression sweep, mutation gate, docs
 
 - [x] 4.1 Run the affected suite around the debug/runtime surfaces to catch flipped visibility expectations (e.g. `bun run test:affected --base=HEAD~1`, then targeted `bun test tests/debug/ tests/runtime/`); fix any suite still asserting drop-at-capture. Verify: `bun run test:affected --base=HEAD~1`
-- [ ] 4.2 Mutation ratchet on touched files (`src/debug/state-collector.ts`, `src/debug/llm-trace-collector.ts`, `src/runtime/production-deps.ts`); strengthen tests where survivors survive. Verify: `bun run test:mutate:changed`
+- [x] 4.2 Mutation ratchet on touched files (`src/debug/state-collector.ts`, `src/debug/llm-trace-collector.ts`, `src/runtime/production-deps.ts`); strengthen tests where survivors survive. Verify: `bun run test:mutate:changed`
 - [ ] 4.3 Update affected `docs/architecture/` pages (the debug/settings server surfaces in `overview.md`; any dashboard-buffer lifecycle wording in `behaviors.md`) to describe persistent capture with broadcast/read-time visibility. Verify: `bun run knip`
 - [ ] 4.4 Full gate: complete `bun run test`, `bun run typecheck`, `bun run lint`. Verify: `bun check:full && bun run test`

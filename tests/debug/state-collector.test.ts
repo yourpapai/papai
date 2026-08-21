@@ -653,6 +653,44 @@ describe('state-collector', () => {
       expect(stats.totalLlmCalls).toBe(1)
     })
 
+    test('tool failures are captured for everyone but state:init shows only the admin scope', () => {
+      init('admin-1')
+      startEventCollector()
+
+      emitUser('tool:failure_classified', 'admin-1', {
+        turnId: 't-admin',
+        toolName: 'search_tasks',
+        durationMs: 3,
+        ok: false,
+        failureReason: 'timeout',
+      })
+      emitUser('tool:failure_classified', 'other-user', {
+        turnId: 't-other',
+        toolName: 'search_tasks',
+        durationMs: 4,
+        ok: false,
+        failureReason: 'denied',
+      })
+
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      const { data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
+      const initData = data['data']
+      assert.ok(isRecord(initData))
+      const initToolFailures = initData['recentToolFailures']
+      assert.ok(Array.isArray(initToolFailures))
+      expect(initToolFailures).toHaveLength(1)
+      const entry: unknown = initToolFailures[0]
+      assert.ok(isRecord(entry))
+      const scope = entry['scope']
+      assert.ok(isRecord(scope))
+      expect(scope['userId']).toBe('admin-1')
+      const entryData = entry['data']
+      assert.ok(isRecord(entryData))
+      expect(entryData['turnId']).toBe('t-admin')
+    })
+
     test('non-admin events are captured but never broadcast to a connected client', () => {
       init('admin-1')
       startEventCollector()
