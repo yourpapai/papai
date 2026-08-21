@@ -14,10 +14,10 @@
 
 ## 3. Sync handler
 
-- [ ] 3.1 Test-first: `src/phases/sync.ts` clean path — `ensureBranch` → `mergeBase` clean → push, reply reports commits merged and branch, zero model turns, persisted state byte-identical (the workspace rule: assert the persisted state, not the returned status). Verify: `bun test tests/opencode-agent/phases.test.ts`
-- [ ] 3.2 Test-first: up-to-date path — nothing pushed, up-to-date reply, no model turn; and refusal translation when the push is rejected with the workflows-permission sentence (remedy names update-branch), matcher in `errors.ts` beside `pullRequestForbiddenError`. Verify: `bun test tests/opencode-agent/phases.test.ts`
-- [ ] 3.3 Test-first: conflict path — repair rounds bounded by `AGENT_SYNC_REPAIR_MAX_ROUNDS` (`boundedInt`, default 3, `ROUND_RANGE`); token ceiling asked before each round (over budget → no turn, ceiling named); exhausted → `abortMerge`, clean tree, failure reply with remedy; resolved → `completeMerge` + push. Model never runs git: the repair prompt's forbidden-git rule is a pinned constant. Verify: `bun test tests/opencode-agent/phases.test.ts tests/opencode-agent/config.test.ts`
-- [ ] 3.4 Test-first: reply is `postAnswer`'s write (plain comment on the trigger surface, no block); repair-turn spend rewritten in place via `state-persist.ts` (state otherwise unchanged). Verify: `bun test tests/opencode-agent/phases.test.ts`
+- [x] 3.1 Test-first: `src/phases/sync.ts` clean path — `ensureBranch` → `mergeBase` clean → push, reply reports commits merged and branch, zero model turns, persisted state byte-identical (the workspace rule: assert the persisted state, not the returned status). Verify: `bun test tests/opencode-agent/phases.test.ts`
+- [x] 3.2 Test-first: up-to-date path — nothing pushed, up-to-date reply, no model turn; and refusal translation when the push is rejected with the workflows-permission sentence (remedy names update-branch), matcher in `errors.ts` beside `pullRequestForbiddenError`. Verify: `bun test tests/opencode-agent/phases.test.ts`
+- [x] 3.3 Test-first: conflict path — repair rounds bounded by `AGENT_SYNC_REPAIR_MAX_ROUNDS` (`boundedInt`, default 3, `ROUND_RANGE`); token ceiling asked before each round (over budget → no turn, ceiling named); exhausted → `abortMerge`, clean tree, failure reply with remedy; resolved → `completeMerge` + push. Model never runs git: the repair prompt's forbidden-git rule is a pinned constant. Verify: `bun test tests/opencode-agent/phases.test.ts tests/opencode-agent/config.test.ts`
+- [x] 3.4 Test-first: reply is `postAnswer`'s write (plain comment on the trigger surface, no block); repair-turn spend rewritten in place via `state-persist.ts` (state otherwise unchanged). Verify: `bun test tests/opencode-agent/phases.test.ts`
 
 ## 4. Steering notes
 
