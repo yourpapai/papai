@@ -426,4 +426,23 @@ describe('runGateResume waiter bypass flags (D11)', () => {
     expect(result.outcome).toBe('extend')
     expect(result.version).toBe(2)
   }, 15_000)
+
+  it('mounts the running screen for the post-decision tail and unmounts at settle (tui wiring)', async () => {
+    const fx = await makeBypassFixture()
+    const mounts: string[] = []
+    let unmounts = 0
+    const deps: OrchestratorDeps = {
+      ...fx.deps,
+      mountRunScreen: ({ runDir }): void => {
+        mounts.push(runDir)
+      },
+      unmountRunScreen: (): void => {
+        unmounts += 1
+      },
+    }
+    const result = await runGateResume(deps, fx.runId, { confirmAll: true })
+    expect(result.outcome).toBe('approved')
+    expect(mounts).toHaveLength(1)
+    expect(unmounts).toBe(1)
+  })
 })
