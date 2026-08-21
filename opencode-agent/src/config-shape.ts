@@ -107,6 +107,19 @@ export interface PipelineConfig {
    * re-runs the model turn that had already succeeded. `1` disables repair.
    */
   commitRepairMaxRounds: number
+  /**
+   * Model turns one `/sync` conflict gets, including the first, before the
+   * merge is aborted and the human remedy is reported.
+   *
+   * The same `ROUND_RANGE` family as {@link commitRepairMaxRounds} for the
+   * same reason: a repair round is one model turn over content already in
+   * hand. There is deliberately **no** persisted per-PR counter beside it —
+   * `/sync` is human-initiated like `/ask`, so the token ceiling is the bound
+   * that stops a maintainer spamming it, exactly as it stops a maintainer
+   * spamming questions. `1` disables repair: a conflicted sync then aborts
+   * and reports the remedy immediately.
+   */
+  syncRepairMaxRounds: number
   /** Ceiling on CI-fix rounds across the whole life of one pull request. */
   maxCiAttempts: number
   /** Ceiling on `/review` rounds across the whole life of one pull request. */

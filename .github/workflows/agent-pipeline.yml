@@ -142,13 +142,14 @@ jobs:
        (github.event_name == 'issue_comment' &&
         github.event.action == 'created' &&
         github.event.issue.pull_request != null &&
-        (contains(github.event.comment.body, '/approve') ||
-         contains(github.event.comment.body, '/changes') ||
-         contains(github.event.comment.body, '/ask') ||
-         contains(github.event.comment.body, '/retry') ||
-         contains(github.event.comment.body, '/cancel') ||
-         contains(github.event.comment.body, '/review') ||
-         contains(github.event.comment.body, '/continue')) &&
+         (contains(github.event.comment.body, '/approve') ||
+          contains(github.event.comment.body, '/changes') ||
+          contains(github.event.comment.body, '/ask') ||
+          contains(github.event.comment.body, '/retry') ||
+          contains(github.event.comment.body, '/cancel') ||
+          contains(github.event.comment.body, '/review') ||
+          contains(github.event.comment.body, '/continue') ||
+          contains(github.event.comment.body, '/sync')) &&
         github.event.sender.type != 'Bot' &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
        ||

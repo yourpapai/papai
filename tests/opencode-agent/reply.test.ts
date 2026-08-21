@@ -61,6 +61,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   wrapUpMs: 120_000,
   ciFixMaxRounds: 2,
   commitRepairMaxRounds: 3,
+  syncRepairMaxRounds: 3,
   maxCiAttempts: 3,
   maxReviewAttempts: 3,
   reviewHintLines: 200,

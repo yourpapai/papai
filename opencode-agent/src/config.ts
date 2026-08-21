@@ -182,6 +182,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     wrapUpMs: boundedInt(env, 'AGENT_WRAP_UP_MS', 120_000, WRAP_UP_RANGE),
     ciFixMaxRounds: boundedInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2, ROUND_RANGE),
     commitRepairMaxRounds: boundedInt(env, 'AGENT_COMMIT_REPAIR_MAX_ROUNDS', 3, ROUND_RANGE),
+    syncRepairMaxRounds: boundedInt(env, 'AGENT_SYNC_REPAIR_MAX_ROUNDS', 3, ROUND_RANGE),
     maxCiAttempts: boundedInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3, ROUND_RANGE),
     maxReviewAttempts: boundedInt(env, 'AGENT_MAX_REVIEW_ATTEMPTS', 3, ROUND_RANGE),
     // `LINES_RANGE`, the same bound `AGENT_MAX_CHANGED_LINES` takes, because it

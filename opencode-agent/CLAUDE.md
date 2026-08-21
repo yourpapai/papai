@@ -285,6 +285,41 @@ findings: `ROADMAP.md`.
   phase either: `failAnswer` posts and leaves `phase`, `resumeFrom` and
   `attempts` alone, which is also why `resumeFrom` can never name a waiting phase
   with no handler for `/retry` to resume into.
+- **`/sync` is the `/ask` shape on the pull request: a side operation, never a
+  phase.** A PR that fell behind its base had no machine remedy before it — the
+  conflict banner was permanent until a human merged locally. `runSync` in
+  `src/phases/sync.ts` (the `answer.ts` precedent: a handler that is not a
+  phase) merges `origin/<base>` into the agent branch, and every design choice
+  follows from "moves nothing". Dispatch sits in `sideOperation` beside `/ask`
+  in `triggers.ts`, **before** the signal lookup — `/sync` has no
+  `COMMAND_SIGNALS` entry, so the transition table is never consulted, no
+  `PHASES` member or presentation row exists, and `phase`, `attempts`,
+  `resumeFrom` and every per-PR budget are byte-identical after every outcome
+  (assert the persisted state, not the returned status). It runs in
+  `driveMachine` **ahead of both budget stops**: the clean path spends nothing,
+  so `/sync` must work at the token ceiling, and the wall-clock stop parks in
+  `INCOMPLETE` — a state move, the one thing `/sync` never does; the handler
+  asks the token ceiling itself, before each repair turn only. Repair rounds
+  clone the `commit-repair.ts` doctrine (`AGENT_SYNC_REPAIR_MAX_ROUNDS`,
+  `ROUND_RANGE`): the prompt names the conflicted paths and carries the markers,
+  the model is forbidden git (`SYNC_FORBIDDEN_GIT_RULE`, pinned
+  `instructions.test.ts`-style), the pipeline alone completes the merge and
+  pushes. No persisted `syncAttempts` — `/sync` is human-initiated like `/ask`;
+  the token ceiling is the bound. The merge goes through `Git.mergeBase` /
+  `completeMerge` / `abortMerge` in `src/git-merge.ts`, **never `commitAll`**:
+  a merge carries base's own already-reviewed content, which the commit path's
+  caps and protected-path dropping would misjudge (dropping base's
+  `.github/workflows/` edits would silently un-merge them). A conflict is an
+  outcome, not an error — `MergeOutcome` — and a refused push carrying base's
+  workflow edits is translated by `isWorkflowPushForbidden` in `errors.ts`,
+  matched on GitHub's own sentence and naming the update-branch remedy. The
+  reply is `postAnswer`'s write (a plain comment, no block); a repair turn's
+  spend is the one thing that changes, rewritten in place via
+  `state-persist.ts`. Steering notes ride the same seam as the handoff:
+  `/retry <note>` / `/continue <note>` arguments reach the resumed
+  implementation prompts enveloped under `MAINTAINER_NOTE_FRAMING`
+  (`implement-prompts.ts`, pinned), framed as guidance with the plan/folder as
+  truth and `/changes` as the re-plan channel — prompt-scoped, never persisted.
 - **The review loop is `review-loop/`, not a local reimplementation.**
   `handleReview` in `src/phases/review.ts` drives that workspace through
   `review-runner.ts`, reached from `CODE_REVIEW` on an explicit `/review` and by
