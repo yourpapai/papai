@@ -20,7 +20,7 @@ import {
 } from './turn-assembly.js'
 import type { Notification, ToolFailure, Turn } from './turn-assembly.js'
 
-export { resetTurnBuffers, findTurnById } from './turn-assembly.js'
+export { findTurnById } from './turn-assembly.js'
 export { recentLlm, pendingTraces } from './llm-trace-collector.js'
 
 let adminUserId: string | null = null
