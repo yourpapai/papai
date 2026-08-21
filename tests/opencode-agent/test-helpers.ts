@@ -215,8 +215,14 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       io.openspecCalls.push('listChangeNames')
       return Promise.resolve([...io.existingChanges])
     },
-    newChange: (changeName: string, schema: string): Promise<{ changeName: string }> => {
-      io.openspecCalls.push(`newChange:${changeName}:${schema}`)
+    newChange: (
+      changeName: string,
+      schema: string,
+      newChangeOptions?: { skipSpecs?: boolean },
+    ): Promise<{ changeName: string }> => {
+      io.openspecCalls.push(
+        `newChange:${changeName}:${schema}${newChangeOptions?.skipSpecs === true ? ':skip-specs' : ''}`,
+      )
       return Promise.resolve({ changeName })
     },
     status: (changeName: string): Promise<StatusResult> => {

@@ -61,6 +61,28 @@ export const redactSecrets = (text: string, secrets: readonly string[]): string 
   )
 
 /**
+ * Every `headers` and `environment` value a declared MCP server carries.
+ *
+ * Both are credentials an operator typed into `AGENT_MCP_SERVERS`, so both
+ * belong on the one list the scrub and the redaction read — the list is what
+ * keeps a credential added to the config from being wired into one and
+ * forgotten by the other. The `MIN_SECRET_LENGTH` filter each consumer applies
+ * still governs: a value shorter than that is not made dangerous by landing
+ * here.
+ */
+const mcpSecrets = (config: PipelineConfig): readonly string[] => {
+  const servers = config.openai.mcpServers
+  if (servers === undefined) return []
+
+  const values: string[] = []
+  for (const server of Object.values(servers)) {
+    if (server.type === 'local' && server.environment !== undefined) values.push(...Object.values(server.environment))
+    if (server.type === 'remote' && server.headers !== undefined) values.push(...Object.values(server.headers))
+  }
+  return values
+}
+
+/**
  * Every credential the pipeline holds, in one place.
  *
  * Both consumers read from here — the environment scrub and the outbound
@@ -74,4 +96,5 @@ export const pipelineSecrets = (config: PipelineConfig): readonly string[] => [
   // scrub and the redaction match by value, and a credential stored as bytes
   // would otherwise survive both.
   ...(config.logKey === null ? [] : [Buffer.from(config.logKey).toString('base64')]),
+  ...mcpSecrets(config),
 ]

@@ -25,6 +25,7 @@ import {
   optionalOrNull,
   OUTPUT_RANGE,
   parseChecks,
+  parseMcpServers,
   POOL_RANGE,
   providerId,
   required,
@@ -94,6 +95,11 @@ export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
     planEffort: effortTier(env, 'AGENT_EFFORT_PLAN'),
     buildEffort: effortTier(env, 'AGENT_EFFORT_BUILD'),
   },
+  // The second non-scalar knob, read here so an unloadable value fails at job
+  // start — before any model turn is spent — and riding the settings so the
+  // one config builder both execution paths read carries it by construction.
+  // Unset is the ordinary case and emits nothing at all.
+  mcpServers: parseMcpServers(env['AGENT_MCP_SERVERS']),
 })
 
 /** Loader roots, first-hit-wins (D11): in-repo OpenSpec trees first, then the pinned superpowers checkout. */

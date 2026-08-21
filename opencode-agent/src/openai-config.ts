@@ -5,6 +5,15 @@
 
 import type { Config } from '@opencode-ai/sdk'
 
+import { mcpBlock } from './mcp-servers.js'
+import type { McpServers } from './mcp-servers.js'
+import { mcpGrants, withMcp, READ_ONLY_PERMISSION, WRITE_PERMISSION, PROPOSE_PERMISSION } from './permissions.js'
+
+// Re-exported so the suites and callers keep naming this module for the
+// capability vocabulary — same arrangement as `config-values.ts`'s re-exports,
+// a moved export would be a rename dressed up as a file split.
+export { READ_ONLY_PERMISSION, WRITE_PERMISSION, PROPOSE_PERMISSION }
+
 /**
  * Model facts an operator states outright, for a model no catalogue carries.
  *
@@ -97,6 +106,16 @@ export interface OpenAiSettings {
    */
   profiles?: ModelProfiles
   /**
+   * MCP servers declared through `AGENT_MCP_SERVERS`, or nothing declared.
+   *
+   * Rides here the way {@link profiles} does — one field on the one settings
+   * object both execution paths read — so `buildOpencodeConfig` stays
+   * synchronous and the in-process session and the review loop's
+   * `OPENCODE_CONFIG_CONTENT` cannot carry different server sets. An empty map
+   * and an absent field mean the same thing: nothing emitted.
+   */
+  mcpServers?: McpServers
+  /**
    * The **catalogue** id the model is resolved under — `LLM_PROVIDER`, or
    * {@link DEFAULT_PROVIDER_ID}.
    *
@@ -140,55 +159,11 @@ export const modelRef = (settings: OpenAiSettings): string => `${settings.provid
  * `createOpencodeServer({ config })` for the in-process session, and serialized
  * into `OPENCODE_CONFIG_CONTENT` for the `opencode run` subprocesses the
  * review-loop workspace spawns. One definition, so the two cannot drift.
- */
-/**
- * Capabilities granted by name, on top of a wildcard denial.
  *
- * Deny-by-default rather than a list of things to forbid. A forbid-list has to
- * name every dangerous tool, so a tool added by a later OpenCode release arrives
- * enabled — the same enumeration trap that made the untrusted-input envelope
- * escapable. `"*"` is a real permission key: `opencode agent list` shows the
- * built-in profile carrying `{"permission": "*", "action": "allow"}`, and a
- * config block is resolved *after* the built-ins, so this narrows them.
- *
- * `"ask"` is never used: the job is unattended and a prompt would deadlock it.
+ * The capability maps and the generated MCP grant keys live in
+ * `permissions.ts`, split from here when the MCP emission pushed this file
+ * past `max-lines` — the policy and the builder change for different reasons.
  */
-const READ_TOOLS = ['read', 'grep', 'glob', 'list', 'todowrite'] as const
-
-/** Tools the phases that write code additionally need. */
-const WRITE_TOOLS = [
-  'edit',
-  'bash',
-  // OpenCode spills large tool output to paths outside the workspace; the
-  // built-ins allow exactly those, and a bare wildcard denial would revoke them
-  // in the one profile that actually runs commands.
-  'external_directory',
-] as const
-
-/**
- * Design D8 — the one tool an artifact-writing (planner/spec) turn needs beyond
- * reading. The drafter composes proposal/spec/design/tasks content and writes it
- * into `openspec/changes/<name>/`; the diff guard's `outsidePrefix` confines
- * what survives staging to that folder, so a write anywhere else is refused even
- * though the tool itself is granted. No `bash`: composing artefacts is not
- * running commands, and the two execution profiles (`build`) keep that.
- */
-const PROPOSE_TOOLS = ['edit'] as const
-
-const grant = (tools: readonly string[]): Record<string, 'allow' | 'deny'> => ({
-  '*': 'deny',
-  ...Object.fromEntries(tools.map((tool) => [tool, 'allow'])),
-})
-
-/** Reading and searching only: no file writes, no shell, no network, no subagents. */
-export const READ_ONLY_PERMISSION = grant(READ_TOOLS)
-
-/** Everything above plus editing and running commands. */
-export const WRITE_PERMISSION = grant([...READ_TOOLS, ...WRITE_TOOLS])
-
-/** Reading plus editing, scoped by the diff guard to the change folder (D8). */
-export const PROPOSE_PERMISSION = grant([...READ_TOOLS, ...PROPOSE_TOOLS])
-
 /**
  * A profile's entry: its permission, and whichever of model and effort was named.
  *
@@ -244,7 +219,11 @@ const providerBlock = (settings: OpenAiSettings): NonNullable<Config['provider']
  * and because this is where most of this file's reasoning lives: what each profile
  * is *for* is the whole argument for what it may do and what it costs.
  */
-const agentProfiles = (settings: OpenAiSettings, light: string | undefined): Config['agent'] => {
+const agentProfiles = (
+  settings: OpenAiSettings,
+  light: string | undefined,
+  grants: Record<string, 'allow'>,
+): Config['agent'] => {
   const profiles = settings.profiles ?? NO_MODEL_PROFILES
 
   return {
@@ -254,24 +233,31 @@ const agentProfiles = (settings: OpenAiSettings, light: string | undefined): Con
     // injection during the two *review* gates, before a maintainer has approved
     // anything, cannot reach the working tree at all. This is also the one profile
     // the light model is given: no write permission, and its phases are
-    // classification and short answers.
-    plan: profile(READ_ONLY_PERMISSION, { model: light, variant: profiles.planEffort }),
+    // classification and short answers. Its tools are read-shaped, but the MCP
+    // grant still lands here: a declared server's read-shaped tools are exactly
+    // what the read-only phases exist to use.
+    plan: profile(withMcp(READ_ONLY_PERMISSION, grants), { model: light, variant: profiles.planEffort }),
     // The artefact-drafting turns (design D8): read plus edit, confined by the diff
     // guard to `openspec/changes/<change-name>/`. No `bash`. Deliberately **not**
     // given the light model — a weak spec is the input to every later phase, and
-    // the gates that would catch it cost wall clock rather than tokens.
+    // the gates that would catch it cost wall clock rather than tokens. And
+    // deliberately no MCP grant either (the knob design's D1): this is the most
+    // confined profile the pipeline prompts, and MCP tools would be its only
+    // unconfined egress — drafting turns compose prose, not tool calls.
     propose: profile(PROPOSE_PERMISSION, {}),
     // Implementation and CI repair, and the review-loop subprocesses: `opencode
     // run` without `--agent` resolves to the primary agent, which
     // `opencode agent list` reports as `build`. That is exactly why the effort is
     // set here rather than per call — a per-call setting could never reach a
     // subprocess this process does not prompt.
-    build: profile(WRITE_PERMISSION, { variant: profiles.buildEffort }),
+    build: profile(withMcp(WRITE_PERMISSION, grants), { variant: profiles.buildEffort }),
   }
 }
 
 export const buildOpencodeConfig = (settings: OpenAiSettings): Config => {
   const light = lightRef(settings)
+  const grants = mcpGrants(settings.mcpServers)
+  const mcp = mcpBlock(settings.mcpServers)
 
   return {
     $schema: 'https://opencode.ai/config.json',
@@ -280,10 +266,14 @@ export const buildOpencodeConfig = (settings: OpenAiSettings): Config => {
     // Title and summary generation, which have no business on the model an
     // implement turn uses. Emitted only when a light model was named.
     ...(light === undefined ? {} : { small_model: light }),
+    // The declared MCP servers, if any: one block both execution paths read.
+    ...(mcp === undefined ? {} : { mcp }),
     // The weaker profile is the default, so an agent this pipeline does not name
-    // inherits the restricted set rather than a free pass.
-    permission: READ_ONLY_PERMISSION,
-    agent: agentProfiles(settings, light),
+    // inherits the restricted set rather than a free pass — with the generated
+    // MCP grants on top, since deny-by-default would otherwise keep every MCP
+    // tool invisible to any agent the pipeline does not explicitly name.
+    permission: withMcp(READ_ONLY_PERMISSION, grants),
+    agent: agentProfiles(settings, light, grants),
   }
 }
 

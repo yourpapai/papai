@@ -74,6 +74,18 @@ export const PROPOSE_INSTRUCTIONS = [
 ].join('\n')
 
 /**
+ * Capability-granularity doctrine (design D4 of
+ * opencode-agent-skip-specs-depth), carried by the artifact turn that names
+ * capabilities. Guidance, not a validator — the `DESIGN_SPEC` park is the
+ * enforcement point; this is the rule it cites.
+ */
+const GRANULARITY_RULE = [
+  'Name capabilities at feature-domain granularity (e.g. `user-profile-memory`, `sdd-automation`),',
+  'never issue-sized micro-capabilities. While `openspec/specs/` holds no archived corpus,',
+  'name new capabilities only: there is nothing yet to modify.',
+].join(' ')
+
+/**
  * The same standing instructions for an artifact whose output path is a pattern:
  * the reply carries the files, each with the path it belongs at.
  */
@@ -84,6 +96,7 @@ export const PROPOSE_FILES_INSTRUCTIONS = [
   'Reply with a single JSON object and nothing else: {"files":[{"path":"<path>","content":"<markdown>"}]}',
   'Each path is relative to the change folder named in the prompt. Do not use absolute paths or `..`.',
   'Write only the artifact asked for. Do not invent capabilities or deltas the change does not claim.',
+  GRANULARITY_RULE,
   PROTECTED_PATHS_RULE,
 ].join('\n')
 
@@ -92,17 +105,18 @@ export const composeArtifact = async (
   instruction: InstructionsResult,
   complaint: string | null,
   feedback: string | null,
+  skipSpecs = false,
 ): Promise<ComposedArtifact> => {
   if (!isGlobOutputPath(instruction.resolvedOutputPath)) {
     const reply = await ask(input, draftReplySchema, PROPOSE_INSTRUCTIONS, (envelope) =>
-      draftPrompt(envelope, instruction, complaint, feedback),
+      draftPrompt(envelope, instruction, complaint, feedback, skipSpecs),
     )
     return { ok: true, files: [{ path: instruction.resolvedOutputPath, content: reply.content }] }
   }
 
   const base = globOutputBase(instruction.resolvedOutputPath, instruction.changeDir)
   const reply = await ask(input, draftFilesReplySchema, PROPOSE_FILES_INSTRUCTIONS, (envelope) =>
-    globDraftPrompt(envelope, instruction, base, complaint, feedback),
+    globDraftPrompt(envelope, instruction, base, complaint, feedback, skipSpecs),
   )
   return placeFiles(instruction.resolvedOutputPath, base, reply.files)
 }
@@ -151,6 +165,22 @@ const ask = async <T>(
   })
 }
 
+/**
+ * What a drafter turn is told when the change folder carries `skip_specs: true`
+ * (design D3 of opencode-agent-skip-specs-depth).
+ *
+ * The CLI's status graph already reports `specs` as `skipped`, so the glob
+ * prompt never fires — but the remaining artifacts are composed by a model that
+ * can see the schema has a `specs` step and would otherwise spend its turn
+ * inventing the deltas the flag exists to prevent. The note names the flag and
+ * the contract: validation passes with zero deltas.
+ */
+const SKIP_SPECS_NOTE = [
+  'This change carries `skip_specs: true` — spec deltas were deliberately skipped at capture (a fix-class change).',
+  'Compose the artifact on that basis: the change validates with no spec deltas, and you must not invent',
+  'capabilities or requirement deltas to fill the gap the skipped artifact left.',
+].join(' ')
+
 /** What the artifact is, before where it goes: instruction, template, rules. */
 const headSections = (envelope: UntrustedEnvelope, instruction: InstructionsResult): string[] =>
   [
@@ -182,10 +212,12 @@ const draftPrompt = (
   instruction: InstructionsResult,
   complaint: string | null,
   feedback: string | null,
+  skipSpecs: boolean,
 ): string =>
   [
     ...headSections(envelope, instruction),
     `Write to: ${instruction.resolvedOutputPath}`,
+    ...(skipSpecs ? [SKIP_SPECS_NOTE] : []),
     ...tailSections(envelope, complaint, feedback),
   ].join('\n\n')
 
@@ -195,6 +227,7 @@ const globDraftPrompt = (
   base: string,
   complaint: string | null,
   feedback: string | null,
+  skipSpecs: boolean,
 ): string =>
   [
     ...headSections(envelope, instruction),
@@ -203,5 +236,6 @@ const globDraftPrompt = (
       `Every path must match the pattern ${instruction.resolvedOutputPath}, and is given in the reply`,
       'relative to that folder — for example `specs/<capability-path>/spec.md`.',
     ].join('\n'),
+    ...(skipSpecs ? [SKIP_SPECS_NOTE] : []),
     ...tailSections(envelope, complaint, feedback),
   ].join('\n\n')
