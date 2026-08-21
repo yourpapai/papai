@@ -9,10 +9,12 @@ import type { LanguageModel } from 'ai'
 
 import {
   classifiedEntriesSchema,
-  EMPTY_RELEASE_NOTE,
   humanizeChangelog,
   type HumanizeChangelogDeps,
 } from '../../src/announcements/humanize.js'
+import type { Locale } from '../../src/i18n/index.js'
+import { en as enCatalog } from '../../src/i18n/locales/en.js'
+import { ru as ruCatalog } from '../../src/i18n/locales/ru.js'
 import { logger, logMultistream } from '../../src/logger.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
@@ -89,6 +91,9 @@ function deps(over: Partial<HumanizeChangelogDeps>): HumanizeChangelogDeps {
     ...over,
   }
 }
+
+/** The ru write prompt is the only one containing the Russian section headers. */
+const localeOfSystem = (system: string): Locale => (system.includes('Новое') ? 'ru' : 'en')
 
 beforeEach(async () => {
   await setupTestDb()

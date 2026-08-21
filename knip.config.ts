@@ -258,6 +258,12 @@ export default {
     // (openspec/changes/usage-failure-queries) and by tests outside knip's
     // production project scope.
     'src/usage/failures.ts': ['exports'],
+    // updateLocalizedBodies is consumed by the in-flight
+    // localized-release-announcements change
+    // (openspec/changes/localized-release-announcements); tasks 3.1
+    // (announceNewVersion dep) and 5.1 (release-notes routes) import it.
+    // Drop this entry once those tasks land.
+    'src/announcements/store.ts': ['exports'],
     // Re-export facades whose remaining flagged bindings knip cannot trace:
     // the published plugin-types package export, declared plugin-core-separation
     // compatibility boundaries, and bindings consumed by byte-frozen 0Q
