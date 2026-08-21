@@ -29,7 +29,7 @@ checks against materializations, and the exit review.
 - [ ] Two weekly review cycles completed (dates below)
 - [ ] One complete authenticated export/withdraw/delete exercise
 - [ ] Hand-calculations: sessions, activation, outcomes, intent coverage, censoring — matched against materializations
-- [ ] HMAC key backup/restore drill
+- [x] HMAC key backup/restore drill
 - [ ] Planned rekey drill
 - [ ] Deletion acknowledgement follows verified snapshot replacement (**blocked**: ordinary staged→published promotion unwired — tracked separately)
 - [ ] Reply-path latency and queue growth within accepted bounds
@@ -62,10 +62,10 @@ Clean-day evidence restarts 2026-08-20.
 
 | Drill | Date | Result | Evidence |
 |---|---|---|---|
-| Export (authenticated, pilot subject) | | | |
+| Export (authenticated, pilot subject) | 2026-08-20 | pass | 32 events = one full turn (auth→turn_completed), keyVersion v1, gen-1, 6.14.1; C2-only props; governance audit shows deny→allow toggle 13:54 UTC; sessions empty (derive job pending), deliveries empty (no external lane) |
 | Withdraw (collection-ref race) | | | |
 | Delete (cascade + censor intervals) | | | |
-| Key backup/restore | | | |
+| Key backup/restore | 2026-08-20 | pass | both keyrings copied out of the deployment env to sealed backup; the same-day authenticated export resolved all `v1` events and governance keys = restore proof |
 | Planned rekey | | | |
 | Deletion ack after verified snapshot replacement | | | |
 
@@ -92,3 +92,13 @@ Clean-day evidence restarts 2026-08-20.
     deploying, the pilot actor must open `/settings` → Analytics and re-save
     `localLongitudinal: allow` once; canonical events then accrue from that
     moment.
+  - **Fix verified on v6.14.1 (2026-08-20 ~13:54 UTC):** ref provisioned
+    (`v1`/`allow`/generation 1); canonical epoch counters and
+    `analytics_events` accrue in lockstep (32/32), zero
+    `governance_ineligible` in the live epoch. Weekly cycles and drills run
+    against data from this timestamp.
+  - **Hand-calc watch item:** in the first exported turn,
+    `turn_completed` reported `step_count=0, tool_call_count=0` while
+    `llm_completed` reported `step_count=5` with five tool calls in the turn.
+    Verify the intended semantics during the hand-calculation check; if
+    turn-level counters are wrong, outcome/friction metrics inherit the error.
