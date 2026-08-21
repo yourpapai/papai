@@ -63,6 +63,14 @@ const makeFixture = async (): Promise<Fixture> => {
   const work = join(dir, 'work')
   await gitIn(['init', '--bare', '-b', 'main', origin], dir)
   await gitIn(['init', '-b', 'main', work], dir)
+  // CI runs `bun test` directly (check.sh), without the wrapper's pinned
+  // GIT_CONFIG_GLOBAL, and a GitHub runner has no git identity — every
+  // `git commit` below would die on "empty ident name". Repo-local, and
+  // deliberately not the pipeline's author: if `completeMerge` ever stopped
+  // stamping its own committer, the author assertions must fail rather than
+  // silently pass on this fallback.
+  await gitIn(['config', 'user.name', 'Fixture Committer'], work)
+  await gitIn(['config', 'user.email', 'fixture@example.test'], work)
   await gitIn(['remote', 'add', 'origin', origin], work)
   await gitIn(['commit', '--allow-empty', '-m', 'base root'], work)
   await gitIn(['push', '-u', 'origin', 'main'], work)
