@@ -4,6 +4,8 @@
 // See LICENSE in the project root for details.
 
 import type { Dictionary } from '../types.js'
+import { enContextView } from './en-context-view.js'
+import { enLiveStatus } from './en-live-status.js'
 import { enSystemPrompt } from './en-system-prompt.js'
 
 /** English catalog — the authoritative seed of the framework texts. */
@@ -175,6 +177,8 @@ Let's get you set up! 🎯`,
     russian: 'Русский',
     saved: 'Language saved.',
   },
+  liveStatus: enLiveStatus,
+  contextView: enContextView,
   errors: {
     llm: {
       apiError: 'AI service error: {message}. Please try again.',

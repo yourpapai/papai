@@ -15,7 +15,16 @@ import type { AgentState, TransitionSignal } from './types.js'
  * stop parks. One command for both would need the state to say which kind of park
  * it is carrying, and every reader of the phase would have to ask.
  */
-export const SLASH_COMMANDS = ['/approve', '/changes', '/ask', '/retry', '/cancel', '/review', '/continue'] as const
+export const SLASH_COMMANDS = [
+  '/approve',
+  '/changes',
+  '/ask',
+  '/retry',
+  '/cancel',
+  '/review',
+  '/continue',
+  '/sync',
+] as const
 
 export type SlashCommand = (typeof SLASH_COMMANDS)[number]
 
@@ -112,19 +121,23 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
 /**
  * Commands whose availability the transition table cannot decide alone.
  *
- * There is one, and `COMPLETE` is why. That phase is where a **delivered** issue
+ * There are two. `/sync` is the `/ask` shape — no signal, so the table is never
+ * asked — and is typed on the pull request of an issue whose state names one;
+ * `prNumber !== null` is the whole predicate. `COMPLETE` is the phase where a
+ * table cannot decide for `/review` at all: that is where a **delivered** issue
  * and a **cancelled** one both live, and the phase alone cannot tell them apart:
  * `presentationKey` already splits them on the pull request, because a delivered
  * issue and an abandoned one are not the same outcome. `/review` needs the same
  * split — on a cancelled issue it would name a branch nobody asked for and
  * report against a pull request that does not exist.
  *
- * One predicate with two readers rather than two spellings of one rule:
+ * One predicate table with two readers rather than two spellings of one rule:
  * {@link acceptedCommands} shows a maintainer the list, `triggers.ts` enforces
  * it before applying the signal, and the offer and the gate cannot drift apart.
  */
 const COMMAND_APPLIES: Partial<Record<SlashCommand, (state: AgentState) => boolean>> = {
   '/review': (state) => state.prNumber !== null,
+  '/sync': (state) => state.prNumber !== null,
 }
 
 /** Whether `command` applies to this state, over and above what the phase takes. */
@@ -135,9 +148,12 @@ export const commandApplies = (command: SlashCommand, state: AgentState): boolea
 
 const accepts = (state: AgentState, command: SlashCommand): boolean => {
   const signal = COMMAND_SIGNALS[command]
-  // `/ask` is the command with no signal, and it needs no special case here:
-  // answering asks nothing of the state machine, so there is nothing to refuse.
-  if (signal === undefined) return true
+  // `/ask` and `/sync` are the commands with no signal, and neither needs the
+  // transition table: answering and syncing ask nothing of the state machine,
+  // so there is no phase to refuse them. `/sync` still asks the predicate above
+  // — with no pull request there is nothing to merge into — while `/ask` has no
+  // row there and is accepted everywhere, exactly as before.
+  if (signal === undefined) return commandApplies(command, state)
   return canTransition(state.phase, signal) && commandApplies(command, state)
 }
 

@@ -190,6 +190,74 @@ describe('applyArchiveTrigger · the merged-PR door (D7)', () => {
   })
 })
 
+describe('applyTrigger · /sync dispatch (the /ask shape)', () => {
+  const syncCommand = { command: '/sync' as const, argument: '' }
+
+  it('refuses /sync without a pull request through the wrong-command refusal', async () => {
+    // No PR, no merge target: the refusal is the wrong-command one, offering
+    // the commands that do apply — the same door every misplaced command takes.
+    const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
+    const input: PhaseInput = {
+      state: baseState({ phase: 'FAILED', resumeFrom: 'REVIEW_AND_MUTATE' }),
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: commentTrigger('/sync', 'OWNER'),
+      command: syncCommand,
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+
+    const outcome = await applyTrigger(input)
+
+    expect(outcome.halt?.status).toBe('skipped')
+    // The refusal comment itself is buffered, not posted at this layer; the
+    // reason is what the skip carries and what the refusal renderer said.
+    expect(outcome.halt?.reason).toContain('/sync does not apply to this issue')
+    // The persisted state is untouched — a refusal moves nothing.
+    expect(outcome.state.phase).toBe('FAILED')
+    expect(outcome.state.resumeFrom).toBe('REVIEW_AND_MUTATE')
+    expect(outcome.sync).toBeFalsy()
+  })
+
+  it('dispatches /sync as a side operation whenever a pull request exists, without consulting the transition table', async () => {
+    // Typed on the pull request — `commandSurface` refuses issue commands once
+    // one exists — and COMPLETE is the strongest witness: the phase has no
+    // transition out and /sync is still accepted there, because it moves
+    // nothing. The handler itself is task 3; this layer's contract is that the
+    // outcome hands the sync flag to the machine with the state unchanged.
+    const prTrigger: TriggerEvent = {
+      kind: 'pull-request',
+      eventName: 'issue_comment',
+      action: 'created',
+      senderLogin: 'maintainer',
+      senderType: 'User',
+      authorAssociation: 'OWNER',
+      prNumber: 7,
+      commentBody: '/sync',
+      commentId: 99,
+      defaultBranch: 'main',
+      issueNumber: 42,
+    }
+    const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
+    const input: PhaseInput = {
+      state: baseState({ phase: 'COMPLETE', prNumber: 7, prUrl: 'https://example.test/pull/7' }),
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: prTrigger,
+      command: syncCommand,
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+
+    const outcome = await applyTrigger(input)
+
+    expect(outcome.halt).toBeNull()
+    expect(outcome.answer).toBe(false)
+    // The side-operation flag: the machine runs the sync handler, no phase.
+    expect(outcome.sync).toBe(true)
+    // The state the cascade is handed is the state the command arrived on.
+    expect(outcome.state).toEqual(input.state)
+  })
+})
+
 describe('applyTrigger · /cancel cleanup (D9)', () => {
   it('deletes the remote agent branch when /cancel succeeds', async () => {
     const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })

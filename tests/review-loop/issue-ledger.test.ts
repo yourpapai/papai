@@ -221,4 +221,54 @@ describe('issue kind on the ledger', () => {
     recordVerification(ledger, id, validDecision)
     expect(ledger.snapshot.issues[id]?.issue.kind).toBe('cleanup')
   })
+
+  test('a theme issue with spans creates one ledger record and round-trips', async () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
+    tempDirs.push(runDir)
+
+    const ledger = await createIssueLedger(runDir)
+    const themed: ReviewerIssue = {
+      ...issue,
+      title: 'Un-migrated English literals',
+      spans: [
+        { file: 'src/a.ts', lineStart: 1, lineEnd: 2, evidence: 'e1' },
+        { file: 'src/b.ts', lineStart: 3, lineEnd: 4, evidence: 'e2' },
+        { file: 'src/c.ts', lineStart: 5, lineEnd: 6, evidence: 'e3' },
+      ],
+    }
+    const records = applyMatchedIssues(ledger, 1, [themed], [{ newIssueIndex: 0, existingId: null }])
+    expect(records).toHaveLength(1)
+    expect(records[0]?.issue.spans).toHaveLength(3)
+
+    await saveIssueLedger(ledger)
+    const loaded = await loadIssueLedger(runDir)
+    const loadedIssue = loaded.snapshot.issues[records[0]!.id]?.issue
+    expect(loadedIssue?.spans).toHaveLength(3)
+    expect(loadedIssue?.spans?.[1]?.file).toBe('src/b.ts')
+  })
+
+  test('reopening a theme issue preserves spans update', async () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
+    tempDirs.push(runDir)
+
+    const ledger = await createIssueLedger(runDir)
+    const themed: ReviewerIssue = {
+      ...issue,
+      spans: [{ file: 'src/a.ts', lineStart: 1, lineEnd: 2, evidence: 'e1' }],
+    }
+    const records = applyMatchedIssues(ledger, 1, [themed], [{ newIssueIndex: 0, existingId: null }])
+    const id = records[0]!.id
+    const rec = ledger.snapshot.issues[id]!
+    rec.status = 'closed'
+    const themed2: ReviewerIssue = {
+      ...themed,
+      spans: [
+        { file: 'src/a.ts', lineStart: 1, lineEnd: 2, evidence: 'e1' },
+        { file: 'src/b.ts', lineStart: 3, lineEnd: 4, evidence: 'e2' },
+      ],
+    }
+    applyMatchedIssues(ledger, 2, [themed2], [{ newIssueIndex: 0, existingId: id }])
+    expect(ledger.snapshot.issues[id]?.issue.spans).toHaveLength(2)
+    expect(ledger.snapshot.issues[id]?.status).toEqual('reopened')
+  })
 })

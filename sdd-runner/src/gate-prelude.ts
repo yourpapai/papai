@@ -9,7 +9,7 @@ import path from 'node:path'
 
 import { classifyAssumptions, evaluateCapHit, evaluateFinalGate } from './auto-policy.js'
 import type { PolicyDecision, PolicySignals } from './auto-policy.js'
-import type { AutonomyLevel, ClassifiedAssumption } from './auto-policy.js'
+import type { ClassifiedAssumption } from './auto-policy.js'
 import type { AutonomyConfig } from './config.js'
 import { AUTONOMY_DEFAULTS } from './config.js'
 import { readEvents } from './events.js'
@@ -145,14 +145,10 @@ export type GatePresentationPlan =
   | { readonly action: 'accept-items'; readonly decision: PolicyDecision }
   | { readonly action: 'present'; readonly decision: PolicyDecision }
 
-const LEVEL_RANK: Record<AutonomyLevel, number> = { observe: 0, assist: 1, auto: 2 }
-
-export function planGatePresentation(autonomy: AutonomyConfig, decision: PolicyDecision): GatePresentationPlan {
-  const level = autonomy.level
-  const permitted = LEVEL_RANK[level] >= LEVEL_RANK[decision.permittedAt]
-  if (permitted && decision.action === 'approve') return { action: 'settle', decision }
-  if (permitted && decision.action === 'extend') return { action: 'extend', decision }
-  if (permitted && decision.action === 'accept-items') return { action: 'accept-items', decision }
+export function planGatePresentation(decision: PolicyDecision): GatePresentationPlan {
+  if (decision.action === 'approve') return { action: 'settle', decision }
+  if (decision.action === 'extend') return { action: 'extend', decision }
+  if (decision.action === 'accept-items') return { action: 'accept-items', decision }
   return { action: 'present', decision }
 }
 
@@ -173,13 +169,12 @@ export async function writePresentedRecord(
   input: PolicyGateInput,
 ): Promise<void> {
   const { decision, classified } = evaluation
-  const level = (deps.autonomy ?? AUTONOMY_DEFAULTS).level
   const gateMdPath = path.join(state.runDir, `gate-${input.version}.md`)
   if (decision.action === 'accept-items') {
     await preCheckLowBlastItems(gateMdPath, classified, decision.rule)
   }
   await appendFile(gateMdPath, renderPreviewBlock(decision))
-  const eventKind = decision.action === 'accept-items' ? 'accept-items' : level === 'observe' ? 'preview' : 'gate'
+  const eventKind = decision.action === 'accept-items' ? 'accept-items' : 'gate'
   const record = {
     ts: nowOf(deps).toISOString(),
     gateVersion: input.version,
@@ -196,7 +191,7 @@ export async function writePresentedRecord(
     evidenceDigest: decision.evidenceDigest,
     gateVersion: input.version,
   })
-  if (level !== 'observe' && decision.action !== 'accept-items') {
+  if (decision.action !== 'accept-items') {
     await appendPolicyDebt(deps, state, decision, input.version)
   }
 }
@@ -254,7 +249,6 @@ export function renderPreviewBlock(decision: PolicyDecision): string {
     `> rule: ${decision.rule}`,
     `> decision: ${decision.action}`,
     `> evidence: ${decision.evidenceDigest}`,
-    `> permitted at level: ${decision.permittedAt}`,
     '',
   ]
   return `${lines.join('\n')}\n`
@@ -265,13 +259,9 @@ export function renderPreviewBlock(decision: PolicyDecision): string {
  * abort/veto (raw steer.md or the persisted staged set) takes precedence
  * over any pending auto-settle — the gate is presented to the human instead.
  */
-export function planForGate(
-  deps: OrchestratorDeps,
-  state: RunState,
-  evaluation: PolicyEvaluation | null,
-): GatePresentationPlan | null {
+export function planForGate(state: RunState, evaluation: PolicyEvaluation | null): GatePresentationPlan | null {
   if (evaluation === null) return null
-  const plan = planGatePresentation(deps.autonomy ?? AUTONOMY_DEFAULTS, evaluation.decision)
+  const plan = planGatePresentation(evaluation.decision)
   if (plan.action === 'settle' && pendingSteerOverride(state.runDir)) {
     return { action: 'present', decision: evaluation.decision }
   }

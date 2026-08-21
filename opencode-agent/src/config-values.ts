@@ -230,6 +230,25 @@ const parseBounded = (key: string, trimmed: string, range: IntRange): number => 
   return parsed
 }
 
+/**
+ * Reads the mid-turn provider-stall window (`AGENT_STALL_TIMEOUT_MS`), where
+ * `0` is the one value below the range that means something.
+ *
+ * Every other knob in this file treats a non-positive number as unusable,
+ * because for them a small value is a ceiling that fires on ordinary work.
+ * This one's small values are *more* eager, not less, and its off switch has
+ * to be reachable: an operator investigating the provider needs to run the
+ * old behaviour — the whole-turn deadline as the only turn bound — and
+ * refusing `0` would leave them no way to say so. So `0` disables explicitly,
+ * and everything else is range-checked as usual through {@link parseBounded}.
+ */
+export const stallTimeoutMs = (env: Env, key: string, fallback: number, range: IntRange): number => {
+  const raw = optionalOrNull(env, key)
+  if (raw === null) return fallback
+  if (raw === '0') return 0
+  return parseBounded(key, raw, range)
+}
+
 // `AGENT_CHECKS` is re-exported rather than moved out of reach: `config.ts` and
 // the suites name this module for the vocabulary, and a moved export would be a
 // rename dressed up as a file split. See `check-spec.ts` for why it left.
@@ -247,10 +266,12 @@ export { parseMcpServers } from './mcp-servers.js'
 export { boolOrNull, CONTEXT_RANGE, effortTier, OUTPUT_RANGE, providerId } from './config-model-values.js'
 
 export {
+  DEFAULT_STALL_TIMEOUT_MS,
   DEFAULT_TURN_TIMEOUT_MS,
   EPOCH_MS_RANGE,
   JOB_MINUTES_RANGE,
   RESERVE_RANGE,
+  STALL_RANGE,
   TIMEOUT_RANGE,
   WRAP_UP_RANGE,
 } from './config-clock-values.js'

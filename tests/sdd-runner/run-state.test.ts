@@ -17,6 +17,7 @@ import {
   deriveResumePoint,
   listPendingGates,
   loadRunState,
+  readAllRunStates,
   resolveRoundCap,
   resolveRunId,
   saveRunState,
@@ -123,6 +124,42 @@ describe('saveRunState', () => {
     await saveRunState({ ...mid, stage: 'gate', gate: { mode: 'early', version: 1 } })
     const gated = await loadRunState(workDir, created.runId)
     expect(gated.gate).toEqual({ mode: 'early', version: 1 })
+  })
+})
+
+describe('readAllRunStates', () => {
+  it('returns every readable run, most recently updated first', async () => {
+    const workDir = makeWorkDir()
+    const older = await createRunState({ workDir, repoRoot: '/repo', changeName: 'older-change' })
+    await saveRunState({ ...older, status: 'stopped' }, new Date('2026-01-01T00:00:01Z'))
+    const newer = await createRunState({ workDir, repoRoot: '/repo', changeName: 'newer-change' })
+    await saveRunState(
+      { ...newer, stage: 'gate', gate: { mode: 'early', version: 1 } },
+      new Date('2026-01-01T00:00:02Z'),
+    )
+
+    const states = await readAllRunStates(workDir)
+
+    expect(states.map((s) => s.runId)).toEqual([newer.runId, older.runId])
+    expect(states[0]).toMatchObject({ runId: newer.runId, status: 'running', gate: { mode: 'early', version: 1 } })
+    expect(states[1]).toMatchObject({ runId: older.runId, status: 'stopped', gate: null })
+  })
+
+  it('skips runs whose state.json is missing or malformed', async () => {
+    const workDir = makeWorkDir()
+    const good = await createRunState({ workDir, repoRoot: '/repo', changeName: 'good-change' })
+    await saveRunState(good)
+    fs.mkdirSync(path.join(workDir, 'runs', 'broken-run'), { recursive: true })
+    fs.writeFileSync(path.join(workDir, 'runs', 'broken-run', 'state.json'), '{ not json')
+    fs.mkdirSync(path.join(workDir, 'runs', 'empty-run'), { recursive: true })
+
+    const states = await readAllRunStates(workDir)
+
+    expect(states.map((s) => s.runId)).toEqual([good.runId])
+  })
+
+  it('returns an empty list when the workDir has no runs directory', async () => {
+    expect(await readAllRunStates(makeWorkDir())).toEqual([])
   })
 })
 

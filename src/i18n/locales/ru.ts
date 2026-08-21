@@ -4,6 +4,8 @@
 // See LICENSE in the project root for details.
 
 import type { Dictionary } from '../types.js'
+import { ruContextView } from './ru-context-view.js'
+import { ruLiveStatus } from './ru-live-status.js'
 import { ruSystemPrompt } from './ru-system-prompt.js'
 
 /** Russian catalog — typed against the same shape as `en`. */
@@ -175,6 +177,8 @@ export const ru: Dictionary = {
     russian: 'Русский',
     saved: 'Язык сохранён.',
   },
+  liveStatus: ruLiveStatus,
+  contextView: ruContextView,
   errors: {
     llm: {
       apiError: 'Ошибка ИИ-сервиса: {message}. Попробуйте ещё раз.',

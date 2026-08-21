@@ -10,11 +10,11 @@ import path from 'node:path'
 import type { z } from 'zod'
 
 import { createLineHandler, enqueueLog } from './line-handler.js'
-import type { LineHandler } from './line-handler.js'
+import type { LineHandler, SessionLedgerSeam } from './line-handler.js'
 import type { ProgressReporter } from './progress-log.js'
 
 export { createLineHandler } from './line-handler.js'
-export type { LineHandler } from './line-handler.js'
+export type { LineHandler, SessionLedgerSeam } from './line-handler.js'
 
 export interface SpawnResult {
   exitCode: number
@@ -99,6 +99,20 @@ export interface RunAgentOptions<T> {
   onRetry?: () => void
   timeoutMs?: number
   inactivityTimeoutMs?: number
+  /**
+   * Session-capture seam (D1): called once, the moment the first
+   * session-bearing event line of this spawn arrives. The host records the id
+   * synchronously so a crash mid-agent still leaves it on disk.
+   */
+  sessionLedger?: SessionLedgerSeam
+  /** Preferred ledger attempt number for this spawn (default 1). */
+  sessionAttempt?: number
+  /**
+   * Fail fast instead of retrying a soft failure once. Resume continuations
+   * set this: their fallback path is the caller's prompt-rebuild spawn, not a
+   * second continuation of a session that may no longer exist.
+   */
+  noRetry?: boolean
 }
 
 interface AttemptResult<T> {
@@ -171,6 +185,9 @@ function attemptRun<T>(options: RunAgentOptions<T>, onLine?: LineSink): Promise<
 
 async function runAttempt<T>(options: RunAgentOptions<T>, handler: LineHandler): Promise<Attempt<T>> {
   await mkdir(path.resolve(options.cwd, '.review-loop'), { recursive: true })
+  // Re-arm session capture: a stall retry is a fresh opencode session, and its
+  // id must be recorded even though the first attempt already captured one.
+  handler.ctx.sessionId = null
   const result = await attemptRun(options, handler.onLine)
   if (result.exitCode !== 0) {
     enqueueLog(handler.ctx, `[${options.label}] stderr: ${result.stderr}\n`)
@@ -229,6 +246,7 @@ export async function runAgent<T>(options: RunAgentOptions<T>): Promise<AgentRun
     // budget), but stalls are: a hung provider stream is transient, and the
     // retry usually lands on a healthy request path.
     if (first.timedOut && !first.stalled) throw new AgentRunError(first.error.message, buildUsage())
+    if (options.noRetry === true) throw new AgentRunError(first.error.message, buildUsage())
     options.onRetry?.()
     const second = await runAttempt(options, handler)
     if (second.ok) return finalize(second.value)

@@ -56,6 +56,23 @@ export interface PipelineConfig {
   reviewPoolSize: number
   agentTimeoutMs: number
   /**
+   * How long a turn may make no progress — no finished model step, no newly
+   * started tool call — while provider retries or session errors accumulate,
+   * before it is aborted as a provider stall. `AGENT_STALL_TIMEOUT_MS`,
+   * default five minutes; `0` switches the bound off and leaves
+   * {@link agentTimeoutMs} the only turn bound, exactly as it was before this
+   * knob existed.
+   *
+   * The whole-turn deadline is a clock and this is a health check, and the
+   * incident that added it was the difference: four runs burned 90 minutes
+   * each inside their deadline because the gateway answered HTTP 200 and then
+   * streamed nothing, and nothing in the pipeline had a question to ask about
+   * *whether the turn was being served*. Both conditions are required before
+   * this bound fires — the retry evidence is what separates "provider down"
+   * from "one very long generation".
+   */
+  stallTimeoutMs: number
+  /**
    * Epoch ms at which this **job** is killed by its own `timeout-minutes`, or
    * `null` when nothing has said.
    *
@@ -107,6 +124,19 @@ export interface PipelineConfig {
    * re-runs the model turn that had already succeeded. `1` disables repair.
    */
   commitRepairMaxRounds: number
+  /**
+   * Model turns one `/sync` conflict gets, including the first, before the
+   * merge is aborted and the human remedy is reported.
+   *
+   * The same `ROUND_RANGE` family as {@link commitRepairMaxRounds} for the
+   * same reason: a repair round is one model turn over content already in
+   * hand. There is deliberately **no** persisted per-PR counter beside it —
+   * `/sync` is human-initiated like `/ask`, so the token ceiling is the bound
+   * that stops a maintainer spamming it, exactly as it stops a maintainer
+   * spamming questions. `1` disables repair: a conflicted sync then aborts
+   * and reports the remedy immediately.
+   */
+  syncRepairMaxRounds: number
   /** Ceiling on CI-fix rounds across the whole life of one pull request. */
   maxCiAttempts: number
   /** Ceiling on `/review` rounds across the whole life of one pull request. */

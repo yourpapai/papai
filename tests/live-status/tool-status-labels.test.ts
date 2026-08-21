@@ -136,6 +136,16 @@ describe('formatToolStatus', () => {
   test('humanizeToolName collapses consecutive separators via the + quantifier', () => {
     expect(formatToolStatus('mcp_x__foo--bar', {})).toBe('⚙️ Running foo bar…')
   })
+
+  test('humanizeToolName trims the separator-separated base before rendering', () => {
+    expect(formatToolStatus('mcp_s__foo_', {})).toBe('⚙️ Running foo…')
+  })
+
+  test('asRecord rejects a function even when it carries an allowlisted field', () => {
+    const input = (): string => 'x'
+    input.query = 'q'
+    expect(formatToolStatus('search_memory', input)).toBe('🔍 Searching memory…')
+  })
 })
 
 describe('REGISTRY entries render their exact emoji, label, and arg form', () => {
@@ -199,5 +209,36 @@ describe('reminder/alert live-status labels', () => {
     const out = formatToolStatus('cancel_reminder', { id: 'abc' })
     expect(out).not.toContain('deferred')
     expect(out).toContain('Cancelling')
+  })
+})
+
+describe('formatToolStatus locale', () => {
+  test('ru renders the catalog label for a registered tool with a quoted arg', () => {
+    expect(formatToolStatus('search_tasks', { query: 'deploy' }, 'ru')).toBe('🔍 Ищу задачи: "deploy"…')
+  })
+
+  test('ru renders the catalog label for a registered tool with no arg', () => {
+    expect(formatToolStatus('update_task', {}, 'ru')).toBe('✏️ Обновляю задачу…')
+  })
+
+  test('ru keeps the quote:false bare-host form for web_fetch', () => {
+    expect(formatToolStatus('web_fetch', { url: 'https://example.com/x' }, 'ru')).toBe('🌐 Загружаю example.com…')
+  })
+
+  test('ru renders the localized runningTool fallback for unregistered tools', () => {
+    expect(formatToolStatus('add_watcher', {}, 'ru')).toBe('⚙️ Выполняю add watcher…')
+  })
+
+  test('ru truncation and quoting stay identical to the en path', () => {
+    const long = `  multi\nline   ${'a'.repeat(50)}`
+    expect(formatToolStatus('search_memory', { query: long }, 'ru')).toBe(
+      `🔍 Ищу в памяти: "multi line ${'a'.repeat(29)}…"…`,
+    )
+  })
+
+  test('explicit en is byte-identical to the default no-locale output', () => {
+    expect(formatToolStatus('search_tasks', { query: 'deploy' }, 'en')).toBe(
+      formatToolStatus('search_tasks', { query: 'deploy' }),
+    )
   })
 })

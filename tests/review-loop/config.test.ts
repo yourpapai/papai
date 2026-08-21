@@ -173,6 +173,38 @@ describe('ReviewLoopConfigSchema', () => {
       }),
     ).toThrow()
   })
+
+  test('batchVerify defaults to false when absent', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+    })
+    expect(parsed.batchVerify).toBe(false)
+  })
+
+  test('batchVerify respects true', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      batchVerify: true,
+      reviewer: { model: 'm1' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+    })
+    expect(parsed.batchVerify).toBe(true)
+  })
+
+  test('legacy config without batchVerify still parses (backward compat)', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+    })
+    // batchVerify is optional on read, defaults to false, so old files remain valid
+    expect(parsed.batchVerify).toBe(false)
+  })
 })
 
 function writeConfig(dir: string, config: Record<string, unknown>): string {

@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ContextViewTexts } from './context-view-types.js'
+
 /**
  * Typed i18n catalogs.
  *
@@ -118,6 +120,49 @@ export interface Dictionary {
     russian: string
     saved: string
   }
+  /** Live-status indicator texts; one `tools.<key>` label per REGISTRY tool. */
+  liveStatus: {
+    thinking: string
+    preparingResponse: string
+    /** Slot `{tool}` receives the humanized tool name. */
+    runningTool: string
+    tools: {
+      web_fetch: string
+      fetch_chat_link: string
+      search_memory: string
+      list_memory: string
+      remember_memory: string
+      search_memos: string
+      save_memo: string
+      list_memos: string
+      create_task: string
+      update_task: string
+      delete_task: string
+      get_task: string
+      list_tasks: string
+      search_tasks: string
+      count_tasks: string
+      add_comment: string
+      create_project: string
+      list_projects: string
+      list_files: string
+      search_staged_files: string
+      upload_attachment: string
+      resolve_staged_file: string
+      create_recurring_task: string
+      create_reminder: string
+      create_alert: string
+      list_reminders: string
+      get_reminder: string
+      update_reminder: string
+      cancel_reminder: string
+      lookup_group_history: string
+      find_user: string
+      get_current_time: string
+    }
+  }
+  /** `/context` view texts; section labels keyed by stable section id. */
+  contextView: ContextViewTexts
   /** User-facing AppError / tool-failure bodies; interpolated ids stay verbatim. */
   errors: {
     llm: {

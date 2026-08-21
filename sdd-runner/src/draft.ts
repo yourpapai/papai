@@ -25,7 +25,7 @@ export function draftArtifacts(depth: DepthProfile): readonly string[] {
 export interface DraftDeps {
   readonly driver: OpenSpecDriver
   readonly agent: AgentLayerDeps
-  readonly logPath: string
+  readonly runDir: string
   readonly sidecarDir: string
   readonly cwd: string
   readonly now?: () => Date
@@ -85,7 +85,8 @@ async function attemptDraftArtifact(
     outputPath: `draft-${artifactId}.json`,
     outputSchema: DraftReportSchema,
     label: `drafter-${artifactId}`,
-    logPath: `${deps.sidecarDir}/logs/drafter-${artifactId}.log`,
+    runDir: deps.runDir,
+    round: 0,
     sidecarDir: deps.sidecarDir,
   })
   const missing = report.value.files_written.filter((file) => !fs.existsSync(path.join(deps.cwd, file)))
