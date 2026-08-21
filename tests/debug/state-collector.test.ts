@@ -742,6 +742,52 @@ describe('state-collector', () => {
       expect(turn.status).toBe('ok')
     })
 
+    test('production-shaped llm events expose admin traces by chatUserId, not storage scope', () => {
+      init('4242')
+      startEventCollector()
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+      expect(enqueueMock).toHaveBeenCalledTimes(1)
+
+      emitUser('llm:start', 'pi:cGk:ctx:c3RvcmFnZQ', { model: 'm-admin' })
+      emitUser('llm:end', 'pi:cGk:ctx:c3RvcmFnZQ', {
+        chatUserId: '4242',
+        model: 'm-admin',
+        steps: 1,
+        totalDuration: 9,
+        tokenUsage: { inputTokens: 2, outputTokens: 2 },
+      })
+      emitUser('llm:start', 'pi:cGk:ctx:b3RoZXI', { model: 'm-other' })
+      emitUser('llm:end', 'pi:cGk:ctx:b3RoZXI', {
+        chatUserId: '777',
+        model: 'm-other',
+        steps: 1,
+        totalDuration: 3,
+        tokenUsage: { inputTokens: 1, outputTokens: 1 },
+      })
+
+      const trace = recentLlm[0]
+      assert.ok(trace !== undefined)
+      expect(trace.userId).toBe('4242')
+
+      const events = getAllSseEvents(enqueueMock)
+      const eventData = getTraceEventData(getLastEventByName(events, 'llm:full'))
+      expect(eventData['userId']).toBe('4242')
+      expect(events.filter((e) => e.event === 'llm:full')).toHaveLength(1)
+
+      const second = createMockController()
+      addClient(track(second.ctrl))
+      const { data } = parseSseFromUnknown(getFirstCallArg(second.enqueueMock))
+      const initData = data['data']
+      assert.ok(isRecord(initData))
+      const initLlm = initData['recentLlm']
+      assert.ok(Array.isArray(initLlm))
+      expect(initLlm).toHaveLength(1)
+      const initTrace: unknown = initLlm[0]
+      assert.ok(isRecord(initTrace))
+      expect(initTrace['userId']).toBe('4242')
+    })
+
     test('resetCollectorForTest cancels an armed stats debounce so it cannot fire into a later client', async () => {
       init('admin-1')
       startEventCollector()

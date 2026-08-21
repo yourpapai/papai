@@ -82,6 +82,42 @@ describe('handleLlmTraceEvent', () => {
     expect(stats.totalToolCalls).toBe(1)
   })
 
+  test('llm:end chatUserId payload overrides the storage-context scope key as trace userId', () => {
+    const storageContextId = 'pi:cGk:ctx:Y2hhdA'
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 1, scope: userScope(storageContextId), data: { model: 'm' } },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      {
+        type: 'llm:end',
+        timestamp: 2,
+        scope: userScope(storageContextId),
+        data: { chatUserId: '4242', model: 'm', steps: 1, tokenUsage: { inputTokens: 1, outputTokens: 1 } },
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      {
+        type: 'llm:error',
+        timestamp: 3,
+        scope: userScope(storageContextId),
+        data: { chatUserId: '4242', model: 'm', error: 'boom' },
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(pushed).toHaveLength(2)
+    expect(pushed[0]!.userId).toBe('4242')
+    expect(pushed[1]!.userId).toBe('4242')
+  })
+
   test('concurrent contexts keep separate pending traces', () => {
     handleLlmTraceEvent(
       { type: 'llm:start', timestamp: 1, scope: userScope('a'), data: {} },
