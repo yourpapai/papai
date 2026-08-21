@@ -63,6 +63,12 @@ export function pushTrace(trace: LlmTrace): void {
   recentLlm.push(trace)
 }
 
+/** @public -- test seam: drain the captured trace buffer and pending traces. */
+export function resetLlmBuffers(): void {
+  recentLlm.length = 0
+  pendingTraces.clear()
+}
+
 function buildTraceToolCall(data: Record<string, unknown>): LlmTraceToolCall {
   return {
     toolName: str(data['toolName']),

@@ -6,7 +6,14 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { Scope } from '../../src/debug/event-bus.js'
-import { handleLlmTraceEvent, pendingTraces, type LlmTrace } from '../../src/debug/llm-trace-collector.js'
+import {
+  handleLlmTraceEvent,
+  pendingTraces,
+  pushTrace,
+  recentLlm,
+  resetLlmBuffers,
+  type LlmTrace,
+} from '../../src/debug/llm-trace-collector.js'
 
 const userScope = (userId: string): Scope => ({ kind: 'user', userId })
 
@@ -24,7 +31,7 @@ describe('handleLlmTraceEvent', () => {
   beforeEach(() => {
     pushed = []
     stats = { totalLlmCalls: 0, totalToolCalls: 0 }
-    pendingTraces.clear()
+    resetLlmBuffers()
   })
 
   test('accumulates tool calls and userId from scope across start/tool_result/end', () => {
@@ -109,5 +116,45 @@ describe('handleLlmTraceEvent', () => {
     expect(pushed).toHaveLength(1)
     expect(pushed[0]!.userId).toBe('b')
     expect(pushed[0]!.toolCalls).toHaveLength(0)
+  })
+
+  test('resetLlmBuffers clears both captured traces and pending traces after capture', () => {
+    pushTrace({
+      timestamp: 1,
+      userId: 'u',
+      model: 'm',
+      steps: 1,
+      totalTokens: { inputTokens: 1, outputTokens: 1 },
+      duration: 2,
+      toolCalls: [],
+      error: undefined,
+      responseId: undefined,
+      actualModel: undefined,
+      finishReason: undefined,
+      messageCount: undefined,
+      toolCount: undefined,
+      exposedToolCount: undefined,
+      fullToolCount: undefined,
+      toolSchemaBytes: undefined,
+      routingIntent: undefined,
+      routingConfidence: undefined,
+      routingReason: undefined,
+      generatedText: undefined,
+      stepsDetail: undefined,
+    })
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 5, scope: userScope('pending-user'), data: { model: 'm' } },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(recentLlm).toHaveLength(1)
+    expect(pendingTraces.size).toBe(1)
+
+    resetLlmBuffers()
+
+    expect(recentLlm).toHaveLength(0)
+    expect(pendingTraces.size).toBe(0)
   })
 })
