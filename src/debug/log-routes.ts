@@ -4,13 +4,10 @@
 // See LICENSE in the project root for details.
 
 import type { AuthenticatedRequest } from '../dashboard-auth/index.js'
+import { jsonResponse } from './json-response.js'
 import { logBuffer, shapeLogEntry, type LogEntry } from './log-buffer.js'
 import { parseLogFilter, entryMatchesFilter } from './log-filter-model.js'
 import { isOwnLogEntry, ownTurnIdsForAdmin } from './state-collector.js'
-
-function jsonResponse(body: unknown): Response {
-  return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
-}
 
 function parseIntParam(value: string | null): number | undefined {
   if (value === null) return undefined
