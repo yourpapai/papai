@@ -20,4 +20,4 @@
 
 ## 6. Full verification and docs
 
-- [ ] 6.1 Run one full suite plus the complete check pipeline: `bun run test && bun check:full`. Review `docs/architecture/behaviors.md` and `docs/architecture/overview.md` for any statement tying the log buffer's population to debug-server startup, and update if stale. CI's `test:mutate:changed` ratchet covers `src/logger.ts` and `src/debug/server.ts` — confirm it passes on the branch.
+- [x] 6.1 Run one full suite plus the complete check pipeline: `bun run test && bun check:full`. Review `docs/architecture/behaviors.md` and `docs/architecture/overview.md` for any statement tying the log buffer's population to debug-server startup, and update if stale. CI's `test:mutate:changed` ratchet covers `src/logger.ts` and `src/debug/server.ts` — confirm it passes on the branch.
