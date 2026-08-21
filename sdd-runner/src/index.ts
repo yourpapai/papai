@@ -15,8 +15,11 @@ import { parseSddArgs } from './cli.js'
 import { discoverBranch, loadRunnerConfig } from './config.js'
 import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
+import type { EventInput } from './events.js'
 import { buildResolveCost } from './gate-digest.js'
 import { runGateReopen } from './gate.js'
+import type { LiveViewWiring } from './live-view.js'
+import { wireLiveView } from './live-view.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { runContinue, runGateResume, runResume, runStart } from './orchestrator.js'
@@ -28,6 +31,7 @@ import type { ChangeDirSummary, ReportInput } from './report.js'
 import { loadRunState, resolveRunId } from './run-state.js'
 import { requestCalmStop } from './stop-controller.js'
 import { registerTerminalTitle, TERMINAL_TITLE_RESTORE } from './terminal-title.js'
+import { createRunScreenSession } from './tui-run-session.js'
 
 export const USAGE = [
   'sdd — autonomous SDD pipeline',
@@ -87,6 +91,25 @@ function makeExecGit(): ExecGitFn {
     })
 }
 
+/** Mode-decided live view for this process: Ink run screen on a TTY, lines otherwise. */
+function harnessLiveView(lineRender: (event: EventInput) => void): LiveViewWiring {
+  return wireLiveView(
+    { stdout: { isTTY: process.stdout.isTTY }, stdin: { isTTY: process.stdin.isTTY } },
+    process.env,
+    lineRender,
+    ({ runDir, logPath }) =>
+      createRunScreenSession({
+        logPath,
+        requestCalmStop: (): void => {
+          requestCalmStop(runDir)
+        },
+        hardExit: (code): void => {
+          process.exit(code)
+        },
+      }),
+  )
+}
+
 function shellExec(
   driverCwd: string,
 ): (args: readonly string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -107,13 +130,20 @@ async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: st
   const execGit = makeExecGit()
   const resolveCost = await buildResolveCost()
   const renderer = createRenderer(process.stdout, verbosity, { resolveCost })
+  const live = harnessLiveView(renderer.renderEvent)
   registerTitleIfTty(process.stdout)
   const orchestratorDeps = {
     config,
     spawn: realSpawn,
     execGit,
     driver,
-    render: renderer.renderEvent,
+    ...(live.mode === 'tui'
+      ? {
+          liveEvents: live.liveEvents,
+          mountRunScreen: live.mountRunScreen,
+          unmountRunScreen: live.unmountRunScreen,
+        }
+      : { render: live.render }),
     stdout: (line: string): void => {
       process.stdout.write(`${line}\n`)
     },
