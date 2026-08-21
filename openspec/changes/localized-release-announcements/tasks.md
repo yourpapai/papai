@@ -4,7 +4,7 @@ Ordered test-first: each task extends/writes the covering suite before or togeth
 
 ## 1. Storage: schema, migration 080, store
 
-- [ ] 1.1 Extend `tests/db/announcement-schema.test.ts` with a failing case for the `localizedBodies` field on `versionAnnouncements`, then add `localizedBodies: text('localized_bodies')` to `src/db/announcement-schema.ts`. Verify: `bun test tests/db/announcement-schema.test.ts`
+- [x] 1.1 Extend `tests/db/announcement-schema.test.ts` with a failing case for the `localizedBodies` field on `versionAnnouncements`, then add `localizedBodies: text('localized_bodies')` to `src/db/announcement-schema.ts`. Verify: `bun test tests/db/announcement-schema.test.ts`
 - [ ] 1.2 Write `tests/db/migrations/080_localized_announcement_bodies.test.ts` (pattern of `tests/db/migrations/063_release_announcements.test.ts`: adds `version_announcements.localized_bodies TEXT`, `columnExists`-guarded, idempotent on re-run), then implement `src/db/migrations/080_localized_announcement_bodies.ts` and register it in `src/db/index.ts`. Verify: `bun test tests/db/migrations/080_localized_announcement_bodies.test.ts`
 - [ ] 1.3 Extend `tests/announcements/store.test.ts` with failing cases for `updateLocalizedBodies(version, bodies)` (JSON upsert merging non-`en` locales without touching `humanized_body` or other locales) and for `getAnnouncementDraft` returning parsed `localizedBodies` (null when column empty/invalid JSON), then implement in `src/announcements/store.ts` per design D1. Verify: `bun test tests/announcements/store.test.ts`
 

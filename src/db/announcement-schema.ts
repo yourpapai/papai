@@ -10,6 +10,7 @@ export const versionAnnouncements = sqliteTable('version_announcements', {
   announcedAt: text('announced_at').notNull(),
   rawBody: text('raw_body'),
   humanizedBody: text('humanized_body'),
+  localizedBodies: text('localized_bodies'),
   broadcastAt: text('broadcast_at'),
 })
 

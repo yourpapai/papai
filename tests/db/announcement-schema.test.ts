@@ -23,6 +23,7 @@ describe('announcement-schema', () => {
         announcedAt: '2026-06-26T00:00:00.000Z',
         rawBody: '## What is new',
         humanizedBody: 'Some new features',
+        localizedBodies: '{"ru":"✨ Новое"}',
         broadcastAt: '2026-06-26T01:00:00.000Z',
       })
       .run()
@@ -33,6 +34,7 @@ describe('announcement-schema', () => {
       announcedAt: '2026-06-26T00:00:00.000Z',
       rawBody: '## What is new',
       humanizedBody: 'Some new features',
+      localizedBodies: '{"ru":"✨ Новое"}',
       broadcastAt: '2026-06-26T01:00:00.000Z',
     })
   })
