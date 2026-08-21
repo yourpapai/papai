@@ -7,6 +7,8 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
 import { logBuffer, logBufferStream, LogRingBuffer, type LogEntry } from '../../src/debug/log-buffer.js'
+import { logger } from '../../src/logger.js'
+import { waitFor } from '../utils/test-helpers.js'
 
 const makeEntry = (overrides: Partial<LogEntry> = {}): LogEntry => ({
   level: 30,
@@ -240,6 +242,19 @@ describe('logBufferStream', () => {
   test('write skips malformed JSON silently', () => {
     logBufferStream.write('not json\n')
     expect(logBuffer.entries()).toHaveLength(0)
+  })
+})
+
+describe('logger attachment (no debug server)', () => {
+  afterEach(() => {
+    logBuffer.clear()
+  })
+
+  test('a log emitted through the real logger reaches logBuffer without startDebugServer', async () => {
+    const marker = `log-buffer-no-server-${crypto.randomUUID()}`
+    logger.info(marker)
+
+    await waitFor(() => logBuffer.entries().some((e) => e.msg === marker))
   })
 })
 

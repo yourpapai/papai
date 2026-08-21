@@ -1,6 +1,6 @@
 ## 1. Red test — no-server buffering proof
 
-- [ ] 1.1 Add a test to `tests/debug/log-buffer.test.ts` that imports the real `logger` from `../../src/logger.js`, emits one log with a unique message without ever calling `startDebugServer`, polls `logBuffer.entries()` (waitFor-style, no sleep) until the message appears, and clears the buffer in cleanup. Do not call `mockLogger()` in this file. Verify it fails on current code: `bun test tests/debug/log-buffer.test.ts`
+- [x] 1.1 Add a test to `tests/debug/log-buffer.test.ts` that imports the real `logger` from `../../src/logger.js`, emits one log with a unique message without ever calling `startDebugServer`, polls `logBuffer.entries()` (waitFor-style, no sleep) until the message appears, and clears the buffer in cleanup. Do not call `mockLogger()` in this file. Verify it fails on current code: `bun test tests/debug/log-buffer.test.ts`
 
 ## 2. Attach the buffer at logger creation
 
