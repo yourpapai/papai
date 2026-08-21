@@ -456,6 +456,29 @@ describe('state-collector', () => {
       expect(tc0['result']).toEqual({ hits: 3 })
       expect(tc1['error']).toBe('permission denied')
     })
+
+    test('llm:end with zero clients captures the trace without broadcasting any frame', () => {
+      init('admin-1')
+
+      emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
+      emitGlobal('llm:end', {
+        userId: 'admin-1',
+        model: 'gpt-4',
+        steps: 1,
+        totalDuration: 10,
+        tokenUsage: { inputTokens: 1, outputTokens: 1 },
+      })
+
+      expect(recentLlm).toHaveLength(1)
+
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      expect(enqueueMock).toHaveBeenCalledTimes(1)
+      const events = getAllSseEvents(enqueueMock)
+      expect(getEventAt(events, 0).event).toBe('state:init')
+      expect(events.map((e) => e.event)).not.toContain('llm:full')
+    })
   })
 
   describe('scope-based visibility filtering', () => {

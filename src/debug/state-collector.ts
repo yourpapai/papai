@@ -202,6 +202,7 @@ function scheduleStatsBroadcast(): void {
 }
 
 function broadcastTrace(trace: LlmTrace, timestamp: number): void {
+  if (clients.size === 0) return
   if (adminUserId === null || trace.userId !== adminUserId) return
   broadcast({ type: 'llm:full', timestamp, data: { ...trace }, scope: { kind: 'global' } })
 }
