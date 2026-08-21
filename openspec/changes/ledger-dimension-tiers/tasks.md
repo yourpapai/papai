@@ -75,8 +75,8 @@ See LICENSE in the project root for details.
 
 ## 5. Full verification
 
-- [ ] 5.1 Run `bun run test`, `bun run typecheck`, and `bun run lint`; read
+- [x] 5.1 Run `bun run test`, `bun run typecheck`, and `bun run lint`; read
       failures from `reports/test/` rather than re-running the suite.
-- [ ] 5.2 Confirm no `docs/architecture/*.md` page needs an edit — this change
+- [x] 5.2 Confirm no `docs/architecture/*.md` page needs an edit — this change
       alters no documented behavior and moves no `<!-- behavior: -->` anchor —
       or update the affected page. Verify: `bun run test:stories:contracts`.
