@@ -26,4 +26,4 @@
 
 ## 5. Full verification and docs
 
-- [ ] 5.1 Run full `bun test`, `bun run typecheck`, `bun run lint`; update `opencode-agent/README.md` (command table, `/sync` section) and `opencode-agent/CLAUDE.md` (vocabulary, side-op rule); `openspec validate --strict` passes. Verify: `bun test && bun run typecheck && bun run lint && openspec validate --strict`
+- [x] 5.1 Run full `bun test`, `bun run typecheck`, `bun run lint`; update `opencode-agent/README.md` (command table, `/sync` section) and `opencode-agent/CLAUDE.md` (vocabulary, side-op rule); `openspec validate --strict` passes. Verify: `bun test && bun run typecheck && bun run lint && openspec validate --strict`
