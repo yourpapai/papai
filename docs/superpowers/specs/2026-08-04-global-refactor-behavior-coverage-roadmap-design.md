@@ -173,6 +173,58 @@ idempotency and recovery semantics rather than adding retry behavior solely for
 tests. Hermetic scenarios retain strict undeclared-I/O, environment, timer,
 listener, and fixture-consumption enforcement.
 
+## What closes a dimension
+
+Since `ledger-dimension-tiers`, evidence is keyed by the coverage dimension it
+proves, which makes "when may a dimension flip from open to proven?" a question
+the ledger asks on every record. The spec's `Ledger entries are evidence-bearing`
+requirement answers only the negative half — `blocked:missing-implementation`,
+`retired` and `partial` are not evidence — so the positive bar is set here.
+
+**A dimension closes on one scenario per distinct claim that dimension makes.**
+Not one scenario per dimension, and not one per sub-behavior of the documented
+bullet.
+
+That rule is read off the ledger rather than imposed on it. The thirteen
+dimensions closed before this section was written carry sixteen scenarios, and
+the five that carry two carry two because the dimension makes two claims:
+`thread-scoped-contexts` proves persistence-scope over both thread-shared config
+and Discord's channel resolution; `guest-readonly` proves authorization-routing
+over both a denied tool and an admin-only toggle; `settings-only-configuration`
+proves primary over both first-run configuration and the single-use link. The
+dimensions that carry one make one claim.
+
+The alternative bar — a dimension closes when its whole `docs/architecture/behaviors.md`
+bullet is covered — is rejected, because it would apply only to records written
+after it. `repo-catalogue`'s bullet carries roughly ten items and its three
+dimensions closed on three scenarios; holding Phase 2's behaviors to the bullet
+would make `implemented` mean one thing for records written before the change and
+another for records written after, and a ledger whose green cells are not
+comparable cannot admit a refactor. Raising the bar is legitimate, but it is a
+retro-fit that reopens the five implemented records, not a Phase 2 decision.
+
+The bar is calibrated to what this instrument is for. The ledger admits a
+**refactor**, so its question is whether restructuring production code breaks
+something observable, and Tier 0 stories run the full stack from chat input
+through real composition — which is what detects wiring and composition damage.
+Branch-semantics drift is caught by the blocking mutation ratchet, which judges
+the whole branch diff, and external-boundary damage by the Tier 1-4 regression
+lanes. Making the ledger carry all three duplicates gates already paid for, in
+the most expensive currency available: every frozen-input edit retires the
+qualification baseline.
+
+**A closing rationale states what the scenario proves and what remains unproven
+within that dimension.** Open records already name their residue precisely; the
+natural edit when a dimension closes deletes that sentence, and nothing in
+`coverageGaps()` would notice, since it checks only that the rationale is
+non-blank. The residue must survive the close, so that a later decision to raise
+the bar has something to work from.
+
+This calibration assumes a structural refactor — moving, renaming and
+recomposing. A refactor that rewrites decision logic in place weakens the
+wiring/semantics split above, and should revisit this section before relying on
+it.
+
 ## Completion criteria
 
 The roadmap is complete when:
