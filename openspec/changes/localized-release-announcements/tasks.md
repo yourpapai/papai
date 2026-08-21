@@ -10,7 +10,7 @@ Ordered test-first: each task extends/writes the covering suite before or togeth
 
 ## 2. Locale-aware humanizer + i18n key
 
-- [ ] 2.1 Add `announcements.emptyReleaseNote` to `src/i18n/locales/en.ts`, `src/i18n/locales/ru.ts`, and `src/i18n/types.ts` (behind-the-scenes one-liner per locale). Verify: `bun run typecheck` and the ru/en key-parity suite picking the key up (`bun run test:log i18n` against the persisted report, or the parity suite directly)
+- [x] 2.1 Add `announcements.emptyReleaseNote` to `src/i18n/locales/en.ts`, `src/i18n/locales/ru.ts`, and `src/i18n/types.ts` (behind-the-scenes one-liner per locale). Verify: `bun run typecheck` and the ru/en key-parity suite picking the key up (`bun run test:log i18n` against the persisted report, or the parity suite directly)
 - [ ] 2.2 Extend `tests/announcements/humanize.test.ts` with failing cases: classify pass runs once for multiple locales; write pass per requested locale with the locale's system prompt from an exhaustive `Record<Locale, string>` table (en keeps ✨ New/⚡ Improvements/🛠 Fixes; ru outputs «✨ Новое / ⚡ Улучшения / 🛠 Исправления»); zero surviving entries → localized `announcements.emptyReleaseNote` per locale; central LLM unconfigured → `{}`; one locale's write failure omitted (warn) while the other succeeds, then change `humanizeChangelog(rawSection, locales, deps?)` in `src/announcements/humanize.ts` to `Partial<Record<Locale, string>>` per design D2, removing the `EMPTY_RELEASE_NOTE` constant. Verify: `bun test tests/announcements/humanize.test.ts`
 
 ## 3. Startup flow: per-locale generation + localized admin notice

@@ -158,6 +158,7 @@ Let's get you set up! 🎯`,
   announcements: {
     adminNotice:
       '🆕 papai v{version} is ready to announce!\n\n{body}\n\n_Review and broadcast to subscribers in Settings → Release notes._',
+    emptyReleaseNote: 'This release is all behind-the-scenes improvements — nothing new to learn.',
   },
   progress: {
     toolStarted: 'Tool `{toolName}` started',

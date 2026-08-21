@@ -178,4 +178,10 @@ describe('required subtrees', () => {
   test('ru declares the contextView subtree: sections, counts, progressive disclosure, chrome', () => {
     requireContextViewSubtree(ru)
   })
+
+  test.each([en, ru])('announcements subtree declares adminNotice and emptyReleaseNote', (catalog) => {
+    const announcements = subtreeOf(catalog, 'announcements')
+    expect(isNonEmptyString(announcements['adminNotice'])).toBe(true)
+    expect(isNonEmptyString(announcements['emptyReleaseNote'])).toBe(true)
+  })
 })
