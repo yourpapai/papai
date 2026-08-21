@@ -78,6 +78,24 @@ export const isPullRequestCreationForbidden = (error: unknown): boolean =>
   error instanceof Error && error.message.includes(PR_CREATION_FORBIDDEN)
 
 /**
+ * The refusal a **push** carrying base's own workflow changes triggers, and the
+ * one `/sync` can run into by design: GitHub refuses a push from a token
+ * without the `workflows` permission that creates or updates a file under
+ * `.github/workflows/`, and a base-merge carries base's edits to exactly there.
+ *
+ * Matched on fragments of GitHub's own sentence rather than the status, beside
+ * {@link PR_CREATION_FORBIDDEN} and for the same reason: the 403 that carries
+ * it also covers conditions with completely different remedies, and a matcher
+ * widened past this one sentence sends a maintainer to fix a thing that was
+ * never the problem. All three fragments are from that sentence, so a
+ * different 403 quoting none of them still misses.
+ */
+const WORKFLOW_PUSH_REFUSED_FRAGMENTS = ['refusing to allow', 'to create or update workflow', 'scope'] as const
+
+export const isWorkflowPushForbidden = (error: unknown): boolean =>
+  error instanceof Error && WORKFLOW_PUSH_REFUSED_FRAGMENTS.every((fragment) => error.message.includes(fragment))
+
+/**
  * The refusal above, turned into something a maintainer can act on.
  *
  * The bare API message is the least useful failure this pipeline can post: it

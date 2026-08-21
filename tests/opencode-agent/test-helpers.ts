@@ -11,6 +11,7 @@ import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import type { Salvage } from '../../opencode-agent/src/git-commit.js'
 import type { Git, PushOptions } from '../../opencode-agent/src/git.js'
+import type { MergeOutcome } from '../../opencode-agent/src/git.js'
 import type { LabelApi } from '../../opencode-agent/src/github-labels.js'
 import type {
   PullRequestApi,
@@ -95,6 +96,7 @@ export const stubConfig = (repoRoot = '/repo'): PipelineConfig => ({
   wrapUpMs: 120_000,
   ciFixMaxRounds: 2,
   commitRepairMaxRounds: 3,
+  syncRepairMaxRounds: 3,
   maxCiAttempts: 2,
   maxAttempts: 3,
   maxReviewAttempts: 2,
@@ -330,6 +332,18 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     },
     revertPaths: (sha: string, paths: readonly string[]): Promise<void> => {
       io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
+      return Promise.resolve()
+    },
+    mergeBase: (base: string): Promise<MergeOutcome> => {
+      io.gitCalls.push(`mergeBase:${base}`)
+      return Promise.resolve({ kind: 'up-to-date' })
+    },
+    completeMerge: (message: string): Promise<void> => {
+      io.gitCalls.push(`completeMerge:${message.split('\n')[0]}`)
+      return Promise.resolve()
+    },
+    abortMerge: (): Promise<void> => {
+      io.gitCalls.push('abortMerge')
       return Promise.resolve()
     },
     headSha: (): Promise<string> => {

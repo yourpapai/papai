@@ -215,6 +215,7 @@ describe('the implement-phase branch sites accept a stall beside a deadline', ()
           system: 'system prompt',
           handoff: null,
           tasksPath: TASKS_PATH,
+          note: null,
         }),
     }
   }
@@ -265,6 +266,7 @@ describe('the implement-phase branch sites accept a stall beside a deadline', ()
       system: 'system prompt',
       handoff: null,
       tasksPath: TASKS_PATH,
+      note: null,
     })
 
     expect(walk.kind).toBe('interrupted')

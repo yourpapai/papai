@@ -100,6 +100,8 @@ export interface StepWalkInput {
   envelope: UntrustedEnvelope
   system: string
   handoff: string | null
+  /** The maintainer's steering note from the resume command; `implement-prompts.ts` owns its framing. */
+  note: string | null
 }
 
 /**
@@ -284,6 +286,7 @@ const promptForStep = async (
           step: { title: box.text, files: [], verification: '' },
         },
         handoff: first ? walk.handoff : null,
+        note: walk.note,
       }),
       agent: 'build',
     })

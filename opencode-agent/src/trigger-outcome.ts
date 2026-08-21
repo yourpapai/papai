@@ -22,6 +22,17 @@ export interface TriggerOutcome {
   halt: RunResult | null
   /** Set when the trigger should be handled as a question rather than a phase. */
   answer: boolean
+  /**
+   * Set when the trigger is the `/sync` side operation: run the sync handler,
+   * move no phase. `/ask`'s sibling rather than a second spelling of it, because
+   * the two differ in what they need — an answer is accepted everywhere, a sync
+   * only where a pull request exists — and in what they cost — an answer is one
+   * model turn, a sync is a merge that usually spends nothing.
+   *
+   * Optional because every outcome that is not a sync leaves it unset, exactly
+   * as `answer` would be if it arrived later than it did.
+   */
+  sync?: boolean
 }
 
 /**

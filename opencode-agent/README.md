@@ -116,15 +116,54 @@ moves the phase and the handler runs behind it in the same job, exactly as
 
 ## Talking to the agent
 
-| Command                     | Valid in                     | Effect                                                         |
-| --------------------------- | ---------------------------- | -------------------------------------------------------------- |
-| `/approve`                  | `DESIGN_SPEC`, `PLAN_REVIEW` | Proceed to the next phase                                      |
-| `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW` | Rewrite the spec or plan, with your feedback in the prompt     |
-| `/ask <question>`           | anywhere                     | Answer, grounded in the repo, without moving the state machine |
-| `/review`                   | a **delivered** `COMPLETE`   | Run the review loop over the branch and push what it finds     |
-| `/retry`                    | `FAILED`                     | Resume the exact phase that failed                             |
-| `/continue`                 | `INCOMPLETE`                 | Pick up the phase the job ran out of time for                  |
-| `/cancel`                   | anything but `COMPLETE`      | Stop for good — a cancelled issue cannot be restarted          |
+| Command                     | Valid in                      | Effect                                                         |
+| --------------------------- | ----------------------------- | -------------------------------------------------------------- |
+| `/approve`                  | `DESIGN_SPEC`, `PLAN_REVIEW`  | Proceed to the next phase                                      |
+| `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW`  | Rewrite the spec or plan, with your feedback in the prompt     |
+| `/ask <question>`           | anywhere                      | Answer, grounded in the repo, without moving the state machine |
+| `/review`                   | a **delivered** `COMPLETE`    | Run the review loop over the branch and push what it finds     |
+| `/retry [note]`             | `FAILED`                      | Resume the exact phase that failed; the note rides the prompt  |
+| `/continue [note]`          | `INCOMPLETE`                  | Pick up the phase the job ran out of time for; note as above   |
+| `/cancel`                   | anything but `COMPLETE`       | Stop for good — a cancelled issue cannot be restarted          |
+| `/sync`                     | any state with a pull request | Merge the base branch into `agent/issue-<n>` and push          |
+
+A `/retry` or `/continue` **note** is maintainer guidance, not a re-plan: it is
+enveloped into the resumed handler's prompt under a fixed framing (the plan and
+change folder remain the source of truth; `/changes` is the re-planning
+channel), and it is never persisted — its lifetime is the prompt it rode in.
+An argument-less `/retry` or `/continue` behaves exactly as before.
+
+### `/sync`
+
+A delivered pull request that falls behind its base shows GitHub's conflict
+banner and, before this command, had no machine remedy — the only fix was a
+human with a local checkout. `/sync` runs `git merge origin/<base>` into the
+agent branch from the pull request, in any state whose pull-request number is
+set:
+
+- **Clean merge** — the merge commit is pushed and reported; no model turn is
+  spent. An up-to-date branch is reported and nothing is pushed.
+- **Conflict** — bounded repair rounds (`AGENT_SYNC_REPAIR_MAX_ROUNDS`,
+  default 3): each round's prompt names the conflicted paths and carries the
+  markers; the model edits the files and is forbidden git; the pipeline
+  completes the merge and pushes. Resolution is reported as unverified by
+  checks — they run on the push.
+- **Rounds exhausted or at the token ceiling** — the merge is aborted leaving
+  the branch exactly as it was, and the reply names the human remedy: the code
+  host's own **Update branch** control, which performs the same merge with a
+  maintainer's permissions.
+- **Push refused for base's own workflow edits** — translated the same way:
+  the reply names the cause and the update-branch remedy, never the raw error.
+
+`/sync` is a **non-moving side operation** in the `/ask` shape: whatever the
+outcome, `phase`, `attempts`, `resumeFrom` and every per-PR budget are left
+exactly as they were, so every existing trigger still works and typing `/sync`
+again is always available. The merge is its own git operation and never passes
+through the commit path's caps or protected-path dropping — base's
+already-reviewed content (including its `.github/workflows/` edits) is carried
+verbatim. The reply is a plain comment on the trigger surface carrying no
+state block; a repair turn's spend is the one thing that changes, recorded by
+rewriting the running token total in place.
 
 **Where a command is typed depends on whether a pull request exists.** Until one
 does, the issue is the only surface and every command is typed there. From the
@@ -445,15 +484,15 @@ cover it.
 
 Seven bounds, each on a different kind of runaway.
 
-| Bound            | Where                                                                                                          | What it stops                                                                                                                      |
-| ---------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Prompt size      | `prompt-budget.ts`                                                                                             | 12k characters of thread, and 12k across _all_ failing checks, per prompt                                                          |
-| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                                                   | A turn that never answers — and one merely too slow, whose work is kept                                                            |
-| Provider stalls  | `AGENT_STALL_TIMEOUT_MS`, applied in `turn-run.ts` on the heartbeat tick                                       | A turn the provider stopped serving — no progress for the window while retries pile up — burned to the turn deadline; `0` disables |
-| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                                                       | A job dying on `timeout-minutes` with nothing posted at all — and it is the review loop's only ceiling too                         |
-| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                                                                 | A single 429 or 5xx failing the phase                                                                                              |
-| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, and a tree the repository will never accept                 |
-| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                                                              | An issue quietly costing more than it is worth                                                                                     |
+| Bound            | Where                                                                                                                                          | What it stops                                                                                                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prompt size      | `prompt-budget.ts`                                                                                                                             | 12k characters of thread, and 12k across _all_ failing checks, per prompt                                                                                        |
+| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                                                                                   | A turn that never answers — and one merely too slow, whose work is kept                                                                                          |
+| Provider stalls  | `AGENT_STALL_TIMEOUT_MS`, applied in `turn-run.ts` on the heartbeat tick                                                                       | A turn the provider stopped serving — no progress for the window while retries pile up — burned to the turn deadline; `0` disables                               |
+| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                                                                                       | A job dying on `timeout-minutes` with nothing posted at all — and it is the review loop's only ceiling too                                                       |
+| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                                                                                                 | A single 429 or 5xx failing the phase                                                                                                                            |
+| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS`, `AGENT_SYNC_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, a tree the repository will never accept, and a `/sync` conflict whose markers never clear |
+| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                                                                                              | An issue quietly costing more than it is worth                                                                                                                   |
 
 The prompt caps are on the **finished prompt**, not on any one input: a per-input
 cap bounds one log and nothing else, and three red checks at 8k each still put

@@ -383,6 +383,7 @@ describe('contain', () => {
     wrapUpMs: 120_000,
     ciFixMaxRounds: 2,
     commitRepairMaxRounds: 3,
+    syncRepairMaxRounds: 3,
     maxCiAttempts: 2,
     maxReviewAttempts: 3,
     reviewHintLines: 200,
