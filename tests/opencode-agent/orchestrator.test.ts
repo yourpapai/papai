@@ -634,6 +634,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.gitCalls.push(`push:${branch}${options?.noVerify === true ? ':no-verify' : ''}`)
       return Promise.resolve()
     },
+    reconcile: (branch) => {
+      io.gitCalls.push(`reconcile:${branch}`)
+      return Promise.resolve()
+    },
     defaultBranch: () => Promise.resolve(io.detectedBranch),
     // Constant, which is the ordinary case: the review loop is a fake here, so
     // nothing moves the branch behind the pipeline's back. A test that wants the
@@ -770,6 +774,7 @@ const hostileGit = (): Git => {
     deleteRemoteBranch: (): Promise<void> => refuse('deleteRemoteBranch'),
     commitAll: (): Promise<CommitOutcome> => refuse('commit'),
     salvageAll: (): Promise<Salvage> => refuse('salvage'),
+    reconcile: (): Promise<void> => refuse('reconcile'),
     push: (): Promise<void> => refuse('push'),
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
     headSha: (): Promise<string> => refuse('rev-parse'),
