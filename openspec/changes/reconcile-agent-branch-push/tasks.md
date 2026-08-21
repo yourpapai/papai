@@ -8,9 +8,9 @@
 
 ## 2. Review path ordering
 
-- [ ] 2.1 Write failing test (fake `Git` in `tests/opencode-agent/`) asserting `phases/review-push.ts` calls `reconcile(branch)` before `dropUnpushable`'s `changedSince`/`revertPaths`, so protected paths arriving via a reconciling merge are still reverted before the push
-- [ ] 2.2 Add `reconcile` to the fake `Git` in `tests/opencode-agent/test-helpers.ts` (records the call like `ensureBranch` does); implement the `reconcile` call in `pushIfMoved` in `opencode-agent/src/phases/review-push.ts`
-- [ ] 2.3 Verify: `bun test tests/opencode-agent/phases.test.ts tests/opencode-agent/orchestrator.test.ts`
+- [x] 2.1 Write failing test (fake `Git` in `tests/opencode-agent/`) asserting `phases/review-push.ts` calls `reconcile(branch)` before `dropUnpushable`'s `changedSince`/`revertPaths`, so protected paths arriving via a reconciling merge are still reverted before the push
+- [x] 2.2 Add `reconcile` to the fake `Git` in `tests/opencode-agent/test-helpers.ts` (records the call like `ensureBranch` does); implement the `reconcile` call in `pushIfMoved` in `opencode-agent/src/phases/review-push.ts`
+- [x] 2.3 Verify: `bun test tests/opencode-agent/phases.test.ts tests/opencode-agent/orchestrator.test.ts`
 
 ## 3. Docs and full checks
 

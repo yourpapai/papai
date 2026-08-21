@@ -1751,13 +1751,14 @@ describe('/review — the review loop as a command', () => {
     // `ensureBranch` first, and it is not optional: unlike the review that used
     // to run inside phase 3, this one usually runs in a job that implemented
     // nothing, so the remote branch is the only copy of the work.
-    // `changedSince` sits between the commit and the push, and belongs in this
-    // exact-sequence assertion rather than beside it: the whole point of the
-    // guard is that nothing reaches `push` before it has been asked what the
-    // loop's own commits touched.
+    // `reconcile` sits before `changedSince`, which sits between the commit and
+    // the push: a remote that advanced mid-run is merged in before the guard
+    // asks what the loop's own commits touched, so nothing rides the merge into
+    // a push it cannot survive.
     expect(harness.io.gitCalls).toEqual([
       `ensureBranch:agent/issue-${ISSUE}:${BASE_BRANCH}`,
       `commit:fix(agent): apply review-loop findings for issue #${ISSUE}`,
+      `reconcile:agent/issue-${ISSUE}`,
       'changedSince:head-sha',
       `push:agent/issue-${ISSUE}`,
     ])

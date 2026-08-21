@@ -903,6 +903,26 @@ describe('handleReview · pushes what the loop merged', () => {
     expect(built.pushes()).toEqual(['push:agent/issue-42', 'push:agent/issue-42'])
   })
 
+  it('reconciles with the remote before reverting what a push cannot carry', async () => {
+    // Run 32374999214's remedy, one layer up: the reconciling merge brings the
+    // maintainer's line into the checkout, and only after it lands can
+    // `dropUnpushable` see — and revert — a protected path that line carried.
+    // The other order lets a workflow file ride the merge into a push GitHub
+    // refuses whole, the issue #240 failure class.
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
+    const heads = queued(['before', 'after'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+
+    await handleReview(built.input)
+
+    const reconciled = built.io.gitCalls.indexOf('reconcile:agent/issue-42')
+    const changedSince = built.io.gitCalls.findIndex((call) => call.startsWith('changedSince:'))
+    expect(reconciled).toBeGreaterThanOrEqual(0)
+    expect(changedSince).toBeGreaterThanOrEqual(0)
+    expect(reconciled).toBeLessThan(changedSince)
+  })
+
   it('reports a loop that stopped at its budget as stopped, not as a failure', async () => {
     const built = reviewInput(true)
     built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
