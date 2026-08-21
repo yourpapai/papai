@@ -379,7 +379,8 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
     expect(autoDecisions).toHaveLength(1)
     expect(autoDecisions[0]).toMatchObject({ decision: 'gate', gateVersion: 1 })
 
-    expect(fixture.stdoutLines.some((l) => l.includes('gate resume'))).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes(`sdd ${fixture.state.runId}`))).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes('sdd-runner '))).toBe(false)
   })
 
   it('a converged, all-low-blast final gate settles by R1 with full attribution', async () => {

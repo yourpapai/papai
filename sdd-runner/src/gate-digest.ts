@@ -136,7 +136,7 @@ export async function presentGateAt(
   if (evaluation !== null) await writePresentedRecord(deps, state, ctx, evaluation, policyInput)
   announceDeadline(deps, deadline.notify)
   deps.stdout?.(path.relative(deps.config.repoRoot, result.gateMdPath))
-  deps.stdout?.(`Next: sdd-runner gate resume ${state.runId}`)
+  deps.stdout?.(`Next: sdd ${state.runId}`)
   return { runId: state.runId, halted: 'gate', gateMdPath: result.gateMdPath, version }
 }
 

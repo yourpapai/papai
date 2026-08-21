@@ -243,7 +243,8 @@ describe('runStart', () => {
     expect(fs.existsSync(path.join(fixture.changeDir, 'proposal.md'))).toBe(true)
     expect(fs.existsSync(path.join(fixture.changeDir, 'tasks.md'))).toBe(true)
     expect(fs.existsSync(result.gateMdPath)).toBe(true)
-    expect(fixture.stdoutLines.some((l) => l.includes('gate resume'))).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes(`sdd ${result.runId}`))).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes('sdd-runner '))).toBe(false)
   })
 
   it('drafts design.md at M and runs the atomicity check after decompose', async () => {
@@ -866,8 +867,9 @@ describe('runResume gate-pending loudness (task 4.3)', () => {
     const result = await runResume(fixture.deps, started.runId)
     expect(result.halted).toBe('gate-pending')
     expect(fixture.stdoutLines.some((l) => l.includes('awaits a gate decision'))).toBe(true)
-    expect(fixture.stdoutLines.includes(`sdd-runner gate resume ${started.runId}`)).toBe(true)
+    expect(fixture.stdoutLines.includes(`sdd ${started.runId}`)).toBe(true)
     expect(fixture.stdoutLines.some((l) => l.includes(started.runId))).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes('sdd-runner '))).toBe(false)
   })
 
   it('halting at a gate prints a copy-pasteable next-step line with the full resume command and run id', async () => {
@@ -876,7 +878,7 @@ describe('runResume gate-pending loudness (task 4.3)', () => {
       taskFile: fixture.taskFile,
       depthOverride: 'S',
     })
-    expect(fixture.stdoutLines.includes(`Next: sdd-runner gate resume ${started.runId}`)).toBe(true)
+    expect(fixture.stdoutLines.includes(`Next: sdd ${started.runId}`)).toBe(true)
   })
 })
 
@@ -895,7 +897,7 @@ describe('runContinue routing (task 4.7)', () => {
     await runGateResume(fixture.deps, started.runId, { confirmAll: true })
     const result = await runContinue(fixture.deps, started.runId)
     expect(result.routed).toBe('report')
-    expect(fixture.stdoutLines.some((l) => l.includes(`sdd-runner report ${started.runId}`))).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes(`sdd ${started.runId}`))).toBe(true)
   })
 
   it('routes an interrupted mid-stage run to stage resume', async () => {

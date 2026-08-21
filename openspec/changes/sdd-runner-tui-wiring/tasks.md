@@ -21,8 +21,8 @@ Test-first per design.md Migration Plan; each step shippable alone. TDD: failing
 
 ## 4. Cutover leftovers
 
-- [ ] 4.1 Failing tests: runner hints after a gate halt and after an interrupted stop name `sdd <run-id>` and contain no removed subcommand form. Verify: `bun test tests/sdd-runner/` (orchestrator/output hint suites)
-- [ ] 4.2 Replace the removed-verb hints in `gate-digest.ts` and `orchestrator.ts`; delete `sdd-runner:resume|gate|report` from `package.json`. Verify: `bun test tests/sdd-runner/ && bun run sdd-runner:lint`
+- [x] 4.1 Failing tests: runner hints after a gate halt and after an interrupted stop name `sdd <run-id>` and contain no removed subcommand form. Verify: `bun test tests/sdd-runner/` (orchestrator/output hint suites)
+- [x] 4.2 Replace the removed-verb hints in `gate-digest.ts` and `orchestrator.ts`; delete `sdd-runner:resume|gate|report` from `package.json`. Verify: `bun test tests/sdd-runner/ && bun run sdd-runner:lint`
 
 ## 5. Docs and final verification
 

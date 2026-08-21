@@ -111,7 +111,7 @@ export async function runResume(
   const state = await loadRunState(deps.config.workDir, runId)
   if (state.gate !== null) {
     deps.stdout?.(`run ${runId} awaits a gate decision (gate ${state.gate.version}, ${state.gate.mode})`)
-    deps.stdout?.(`sdd-runner gate resume ${runId}`)
+    deps.stdout?.(`sdd ${runId}`)
     return { runId, halted: 'gate-pending' }
   }
   const emit = buildBus(deps, logPathFor(state))

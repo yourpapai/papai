@@ -37,7 +37,7 @@ export async function runContinue(
     }
   }
   if (state.status === 'completed') {
-    deps.stdout?.(`run ${resolved} is completed — report: sdd-runner report ${resolved}`)
+    deps.stdout?.(`run ${resolved} is completed — report via: sdd ${resolved}`)
     return { runId: resolved, routed: 'report' }
   }
   const resumed = await runResume(deps, resolved, overrides)
@@ -59,9 +59,9 @@ async function pickContinueRun(deps: OrchestratorDeps): Promise<string | null> {
   if (pending.length > 1) {
     deps.stdout?.('several runs await gate decisions:')
     for (const entry of pending) {
-      deps.stdout?.(`  sdd-runner gate resume ${entry.runId}  (${entry.changeName}, gate v${entry.gateVersion})`)
+      deps.stdout?.(`  sdd ${entry.runId}  (${entry.changeName}, gate v${entry.gateVersion})`)
     }
     return null
   }
-  throw new Error('no gate-pending runs found — pass a run id, or use `sdd-runner resume <runId>`')
+  throw new Error('no gate-pending runs found — pass a run id, or run sdd with no target to list candidates')
 }
