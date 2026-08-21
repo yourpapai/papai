@@ -506,6 +506,11 @@ jobs:
           AGENT_REVIEW_HINT_LINES: ${{ vars.AGENT_REVIEW_HINT_LINES }}
           AGENT_MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS }}
           AGENT_TIMEOUT_MS: ${{ vars.AGENT_TIMEOUT_MS }}
+          # The health bound beside the clock one: how long a turn may make no
+          # progress — no finished step, no new tool call — while the provider
+          # keeps failing it, before it is aborted as a stall. Unset here is the
+          # compiled-in five-minute default; `0` is the explicit off switch.
+          AGENT_STALL_TIMEOUT_MS: ${{ vars.AGENT_STALL_TIMEOUT_MS }}
           # The job's own clock, as the two facts that describe it. The start comes
           # from the step above — nothing in the payload says when a job began — and
           # the ceiling is the *same* expression the job's `timeout-minutes:` reads,

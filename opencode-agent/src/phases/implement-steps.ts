@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { isTurnDeadline } from '../errors.js'
+import { isTurnDeadline, isTurnStall } from '../errors.js'
 import type { PipelineError } from '../errors.js'
 import { buildImplementPrompt } from '../implement-prompts.js'
 import type { PhaseInput } from '../phase-context.js'
@@ -244,11 +244,14 @@ const checkBoxInFile = async (walk: StepWalkInput, box: PlanBox): Promise<void> 
 }
 
 /**
- * One step's turn, and `null` unless the clock stopped it part-way through.
+ * One step's turn, and `null` unless the turn was stopped part-way through.
  *
- * Every other rejection is rethrown, which is the whole reason the deadline carries a
- * distinguishable code: a rate limit, a dead provider or a bad reply is the work
- * breaking, and none of them may quietly start salvaging a half-written tree.
+ * Every other rejection is rethrown, which is the whole reason the two stops
+ * carry distinguishable codes: a rate limit, a dead provider or a bad reply is
+ * the work breaking, and none of them may quietly start salvaging a
+ * half-written tree. A deadline and a stall are both bounds reached on a turn
+ * whose tree may be worth keeping, so both leave by the same door — the stall
+ * skipping the wrap-up ask it knows the model cannot answer.
  *
  * The handoff goes to the **first** step of this run and to no other, because that is
  * the step it is about: a previous job's note describes how far into the step it was
@@ -286,7 +289,7 @@ const promptForStep = async (
     })
     return null
   } catch (error) {
-    if (!isTurnDeadline(error)) throw error
+    if (!isTurnDeadline(error) && !isTurnStall(error)) throw error
     return error
   }
 }

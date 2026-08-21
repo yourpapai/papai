@@ -56,6 +56,23 @@ export interface PipelineConfig {
   reviewPoolSize: number
   agentTimeoutMs: number
   /**
+   * How long a turn may make no progress — no finished model step, no newly
+   * started tool call — while provider retries or session errors accumulate,
+   * before it is aborted as a provider stall. `AGENT_STALL_TIMEOUT_MS`,
+   * default five minutes; `0` switches the bound off and leaves
+   * {@link agentTimeoutMs} the only turn bound, exactly as it was before this
+   * knob existed.
+   *
+   * The whole-turn deadline is a clock and this is a health check, and the
+   * incident that added it was the difference: four runs burned 90 minutes
+   * each inside their deadline because the gateway answered HTTP 200 and then
+   * streamed nothing, and nothing in the pipeline had a question to ask about
+   * *whether the turn was being served*. Both conditions are required before
+   * this bound fires — the retry evidence is what separates "provider down"
+   * from "one very long generation".
+   */
+  stallTimeoutMs: number
+  /**
    * Epoch ms at which this **job** is killed by its own `timeout-minutes`, or
    * `null` when nothing has said.
    *

@@ -377,6 +377,7 @@ describe('contain', () => {
     reviewMaxRounds: 2,
     reviewPoolSize: 1,
     agentTimeoutMs: 1000,
+    stallTimeoutMs: 300_000,
     jobDeadlineMs: null,
     teardownReserveMs: 180_000,
     wrapUpMs: 120_000,

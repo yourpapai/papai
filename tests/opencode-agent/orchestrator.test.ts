@@ -109,6 +109,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,
+  stallTimeoutMs: 300_000,
   // No job deadline by default, which is what every run had before it existed:
   // the wall-clock stop is off unless a test switches it on.
   jobDeadlineMs: null,

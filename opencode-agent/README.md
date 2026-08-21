@@ -443,16 +443,17 @@ cover it.
 
 ## What bounds a run
 
-Six bounds, each on a different kind of runaway.
+Seven bounds, each on a different kind of runaway.
 
-| Bound            | Where                                                                                                          | What it stops                                                                                                      |
-| ---------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Prompt size      | `prompt-budget.ts`                                                                                             | 12k characters of thread, and 12k across _all_ failing checks, per prompt                                          |
-| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                                                   | A turn that never answers — and one merely too slow, whose work is kept                                            |
-| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                                                       | A job dying on `timeout-minutes` with nothing posted at all — and it is the review loop's only ceiling too         |
-| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                                                                 | A single 429 or 5xx failing the phase                                                                              |
-| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, and a tree the repository will never accept |
-| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                                                              | An issue quietly costing more than it is worth                                                                     |
+| Bound            | Where                                                                                                          | What it stops                                                                                                                      |
+| ---------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Prompt size      | `prompt-budget.ts`                                                                                             | 12k characters of thread, and 12k across _all_ failing checks, per prompt                                                          |
+| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                                                   | A turn that never answers — and one merely too slow, whose work is kept                                                            |
+| Provider stalls  | `AGENT_STALL_TIMEOUT_MS`, applied in `turn-run.ts` on the heartbeat tick                                       | A turn the provider stopped serving — no progress for the window while retries pile up — burned to the turn deadline; `0` disables |
+| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                                                       | A job dying on `timeout-minutes` with nothing posted at all — and it is the review loop's only ceiling too                         |
+| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                                                                 | A single 429 or 5xx failing the phase                                                                                              |
+| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, and a tree the repository will never accept                 |
+| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                                                              | An issue quietly costing more than it is worth                                                                                     |
 
 The prompt caps are on the **finished prompt**, not on any one input: a per-input
 cap bounds one log and nothing else, and three red checks at 8k each still put
@@ -465,6 +466,23 @@ The turn deadline bounds the **waiting**, not the work — nothing can cancel an
 in-flight request. What it buys is which failure happens: an error the pipeline
 can post to the issue, rather than a runner vanishing at `timeout-minutes` with
 no comment, no state block, and the issue left in whatever phase it started in.
+
+The stall bound is a health check beside that clock, and the two questions are
+different: the deadline asks _how long has this turn been outstanding_, the
+stall bound asks _is the provider still serving it_. It fires only when both
+are true — no finished model step and no newly started tool call for
+`AGENT_STALL_TIMEOUT_MS` (default five minutes), **and** provider retries or
+session errors accumulating the whole while. The retry evidence is what
+separates a provider wave from one very long generation, which is the
+deadline's business and must keep being. A turn it aborts is salvaged like a
+deadline's — whatever the tree holds is committed and pushed — minus the
+wrap-up ask, whose premise of an idle session that can still answer is exactly
+what a stall disproves; the run then parks in `FAILED` and `/retry` resumes it
+once the wave has passed. `0` switches the bound off and restores the
+turn-deadline-only behaviour. Each provider retry and session error also leaves
+its own message — the provider's own text — in the encrypted debug transcript,
+one row per occurrence; the public Actions log keeps carrying names, statuses
+and counts only.
 
 Retries live at the provider proxy rather than in the adapter. It is the layer
 that sees an actual HTTP status, so nothing has to guess which SDK error means
@@ -1533,6 +1551,7 @@ cannot drift.
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                                                           | Files one commit may carry                                                                                                                                                                                                                                                                |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                                                         | Lines one commit may change                                                                                                                                                                                                                                                               |
 | `AGENT_TIMEOUT_MS`                         | no       | `5400000`                                                                       | Timeout for one model turn, and for each subprocess                                                                                                                                                                                                                                       |
+| `AGENT_STALL_TIMEOUT_MS`                   | no       | `300000`                                                                        | No-progress window that aborts a turn the provider stopped serving; `0` disables                                                                                                                                                                                                          |
 | `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                                                         | Epoch ms this job began; the workflow's first step                                                                                                                                                                                                                                        |
 | `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset here; `300` from the workflow                                             | The job's own ceiling, shared with `timeout-minutes:`                                                                                                                                                                                                                                     |
 | `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                                                        | Held back from the job so a time stop can report                                                                                                                                                                                                                                          |

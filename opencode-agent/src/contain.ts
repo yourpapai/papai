@@ -109,6 +109,16 @@ const sessionOptions = ({
   // hour stale — and a bound that outlives the runner posts nothing at all, which
   // is exactly what it exists to prevent.
   timeoutMs: (): number => turnTimeoutMs(contained, clock()),
+  // The health bound beside the clock one, from `AGENT_STALL_TIMEOUT_MS`: a
+  // turn that has made no progress for this long while the provider keeps
+  // failing it is aborted as a stall, long before the cap above would fire.
+  // Not shrunk to fit the job — the window is a property of the provider's
+  // behaviour, not of the runner's remaining clock, and shrinking it would
+  // make the bound fiercer exactly when the job is richest in excuses to stop.
+  stallTimeoutMs: contained.stallTimeoutMs,
+  // The same clock the per-turn bound reads, so the stamp the tracker keeps
+  // and the instant it is judged against cannot disagree.
+  now: clock,
   log: input.log,
   transcript: input.transcript,
 })

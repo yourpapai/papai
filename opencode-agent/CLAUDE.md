@@ -120,7 +120,8 @@ findings: `ROADMAP.md`.
   process, a port, a base URL; `src/opencode-adapter.ts` is the **session** the
   pipeline holds — an id, a lifetime, a teardown. `src/turn-run.ts` is the fourth
   and the newest: one **turn**, which is the thing with a clock, a heartbeat and
-  three ways to end. It owns the bound, the heartbeat and the failure
+  four ways to end (answered, deadlined, stalled, dead server). It owns the
+  bounds, the heartbeat and the failure
   classification, and it never imports back from the adapter — `TurnBounds` and
   `TurnConnection` are narrow slices that `OpenCodeAgentOptions` and
   `OpenCodeConnection` extend, so each states what running a turn actually needs
@@ -930,6 +931,14 @@ not permitted to create or approve pull requests` is a repository or
   recorded from a live server — re-record rather than adjusting by inspection,
   and note that the SDK's generated `Event` union is already behind its own
   server, which is why each decode is a `safeParse` yielding `null`.
+  The **one widening that is legal** lives transcript-side:
+  `describeProviderDetail` in `activity-detail.ts` decodes the provider's own
+  message off `session.status` retry and `session.error` events — shapes from
+  the pinned SDK, `status.message` and `error.data.message` — and
+  `progress.ts` feeds it to the encrypted transcript one row per occurrence,
+  in front of the collapse gate for `foldStall`'s reason. The public log
+  carries nothing of it; a provider's failure text is the designated content of
+  the designated place, redacted by value before it is encrypted.
 - **The agent cannot commit its own workflow, and that is enforced at staging.**
   GitHub refuses a push from a GitHub App or an Actions token that creates or
   updates a file under `.github/workflows/` unless the App holds the `workflows`
@@ -1028,6 +1037,30 @@ not permitted to create or approve pull requests` is a repository or
   out a quota that clears with time. The read happens **after** the turn returns
   and in the adapter, the one place holding both signals — `runTurn` never sees
   the decoded reply.
+- **A turn the provider stopped serving is aborted mid-flight, not burned to the
+  whole-turn deadline.** The record above judges a turn that _returns_; the
+  2026-08-21 incident was four runs whose turns never did — a gateway answered
+  HTTP 200 and streamed nothing, the session retried the identical request 78
+  times, and `AGENT_TIMEOUT_MS` was the only bound that fired, at 90 minutes. So
+  `TurnStall` also carries `lastProgressAt` — stamped by the tracker at creation,
+  on every finished step and every **newly started** tool call (a tool starting is
+  as much proof the model answered as a step finishing), with `foldStall` kept
+  pure — and `turn-run.ts` rides a **second reader on the heartbeat's tick** to
+  ask, on every beat, whether `now − lastProgressAt ≥ AGENT_STALL_TIMEOUT_MS`
+  **and** retry evidence has accumulated since that progress. Both conditions,
+  always: the evidence is what separates a provider wave from one very long
+  generation, which is the deadline's business and must keep being. `0` disables
+  the knob and is exactly the old behaviour. The rejection is
+  `turnStallError` (`TURN_STALL`), raced against the work `withDeadline`-style
+  and passed through `runTurn`'s catch before the `alive()` probe. On the
+  implement path it salvages like a deadline but **skips the wrap-up ask** — the
+  soft stop's second prompt presumes an idle session that can still answer, and
+  a stall abort happens because it cannot — and then leaves by the **failure
+  door**: rethrown after the salvage so `failRun` parks `FAILED` with the stall
+  text as `lastError` and `/retry` as the remedy, not `OUT_OF_TIME`/`INCOMPLETE`,
+  which would invite a `/continue` into a wave that has not passed. Finished
+  steps are not re-run by that `/retry`; their boxes are ticked on the branch
+  and the walk skips them.
 - **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
   on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
   cannot edit or run commands, `build` can. Add a capability by naming it, never
