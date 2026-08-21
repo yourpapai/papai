@@ -50,10 +50,21 @@ None. `skip_specs: true`.
 
 ### Modified Capabilities
 
-None. No production code changes and no requirement changes. The governing requirement,
-`Ledger entries are evidence-bearing` (`story-coverage-floor-qualification`), is
-**applied** here, not amended; the per-denial-surface bar for `authorization-routing` is
-already recorded as a roadmap convention and is deliberately not duplicated as a spec.
+None. The governing requirement, `Ledger entries are evidence-bearing`
+(`story-coverage-floor-qualification`), is **applied** here, not amended; the
+per-denial-surface bar for `authorization-routing` is already recorded as a roadmap
+convention and is deliberately not duplicated as a spec.
+
+One production file does change, correcting an earlier claim in this proposal that there
+would be none: `src/tools/core-capabilities.ts` gains
+`'chat.participants.resolve': 'resolve_chat_participant'`. `CORE_TOOL_CAPABILITIES` is
+pinned as an exhaustive ordered list, so the tool's absence was a gap in that map, not a
+deliberate omission — and without an id the scripted story model cannot address the tool
+at all, which blocks every `primary` scenario below. The addition is behavior-neutral:
+`registerOfferedCoreToolCapabilities` registers a pair only when the wire tool is already
+in the offered turn surface, and the catalog's sole consumer is
+`runtime.resolveToolCapability`, whose sole caller is `tests/stories/harness/world.ts`.
+`skip_specs: true` therefore still holds — no observable behavior and no requirement moves.
 
 ## Non-goals
 
@@ -62,7 +73,7 @@ already recorded as a roadmap convention and is deliberately not duplicated as a
   refactor qualification.
 - **The p-limit bound and `computeScore` edge cases.** Unit-level and already covered;
   duplicating them pays frozen-input cost for nothing.
-- **Any change to `roster.ts` or the tool descriptor.** A defect a story reveals is a
+- **Any change to `roster.ts`, the tool descriptor, or the registration gate.** A defect a story reveals is a
   separate proposal, not a widening of this one.
 - **The other six Phase 2 behaviors.** Each lands with its own change; seams attach to
   behaviors, not to a batch.

@@ -57,6 +57,20 @@ existing call site to change, for a capability almost no scenario wants), and an
 seam (the harness guide steers configuration toward `given.*` fixtures precisely to keep
 `process.env` clean at teardown).
 
+**The capability id is added to `CORE_TOOL_CAPABILITIES` rather than worked around.**
+The scripted model addresses a tool through `callCapability(capabilityId, …)`, which
+resolves via `runtime.resolveToolCapability` against the catalog that
+`registerOfferedCoreToolCapabilities` fills from `CORE_TOOL_CAPABILITIES`.
+`resolve_chat_participant` had no entry there, so no story could call it. Since the map is
+pinned as an exhaustive ordered list in `tests/tools/core-capabilities.test.ts`, the
+absence was a gap rather than a signal to route around, and `tests/CLAUDE.md` names the
+capability catalog as part of the frozen-harness seam API. Alternatives rejected: having
+the harness special-case the wire name (puts a second, divergent naming authority in the
+harness), and asserting on `model.inspections().availableTools` alone (proves
+registration, but leaves ranking and mention population unprovable). This is the one
+production edit in the change, discovered during apply and recorded back into the
+proposal.
+
 **Denial surfaces get one scenario each, not one combined negative.**
 The gate is a conjunction, so a single "tool absent" scenario would pass if either
 conjunct alone held — and a refactor that drops the `contextType === 'group'` check would

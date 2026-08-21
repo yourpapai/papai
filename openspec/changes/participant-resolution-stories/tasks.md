@@ -28,9 +28,15 @@ See LICENSE in the project root for details.
       cover it in `tests/stories/harness/fixtures.test.ts`. Verify:
       `STORY tests/stories/harness/fixtures.test.ts`.
 
-## 2. Catalog records
+## 2. Catalogs
 
-- [ ] 2.1 Add four ids to `tests/stories/catalog/coverage.ts` with tier `'0'` and their
+- [x] 2.1 Add `'chat.participants.resolve': 'resolve_chat_participant'` to
+      `CORE_TOOL_CAPABILITIES` (`src/tools/core-capabilities.ts`), without which the
+      scripted model cannot address the tool and group 3 cannot be written. Pin it first
+      in `tests/tools/core-capabilities.test.ts` — both the exhaustive ordered map and a
+      conditional-registration case mirroring `web.fetch`. Verify:
+      `bun test tests/tools/core-capabilities.test.ts` (red, then green).
+- [ ] 2.2 Add four ids to `tests/stories/catalog/coverage.ts` with tier `'0'` and their
       story ids: `SCN-chat-participant-ranking`, `SCN-chat-participant-label-fallback`,
       `SCN-chat-participant-dm-absent`, `SCN-chat-participant-no-resolver`. The catalog is
       bidirectional — these must land in the same commit as the stories, not after.
