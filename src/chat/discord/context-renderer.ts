@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { buildContextGrid, SECTION_EMOJIS } from '../../commands/context-grid.js'
+import { t } from '../../i18n/index.js'
 import type { ContextRendered, ContextSection, ContextSnapshot, EmbedField } from '../types.js'
 
 const COLOR_GREEN = 0x2ecc71
@@ -22,19 +23,19 @@ const pickColor = (snapshot: ContextSnapshot): number | undefined => {
 
 const buildFooter = (snapshot: ContextSnapshot): string => {
   const total = formatNumber(snapshot.totalTokens)
-  const approximate = snapshot.approximate ? ' (approximate)' : ''
+  const approximate = snapshot.approximate ? ` ${t('contextView.approximateMarker', snapshot.locale)}` : ''
   if (snapshot.maxTokens === null) {
-    return `${total} tokens${approximate}`
+    return `${total} ${t('contextView.tokensUnit', snapshot.locale)}${approximate}`
   }
   const max = formatNumber(snapshot.maxTokens)
   const pct = ((snapshot.totalTokens / snapshot.maxTokens) * 100).toFixed(1)
-  return `${total} / ${max} tokens (${pct}%)${approximate}`
+  return `${total} / ${max} ${t('contextView.tokensUnit', snapshot.locale)} (${pct}%)${approximate}`
 }
 
-const emojiFor = (label: string): string => SECTION_EMOJIS[label] ?? '⬜'
+const emojiFor = (id: string): string => SECTION_EMOJIS[id] ?? '⬜'
 
-const buildFieldValue = (section: ContextSection): string => {
-  const lines: string[] = [`${formatNumber(section.tokens)} tokens`]
+const buildFieldValue = (section: ContextSection, locale: ContextSnapshot['locale']): string => {
+  const lines: string[] = [`${formatNumber(section.tokens)} ${t('contextView.tokensUnit', locale)}`]
   if (section.children !== undefined) {
     for (const child of section.children) {
       const suffix = child.detail === undefined ? '' : ` (${child.detail})`
@@ -49,8 +50,8 @@ const buildFieldValue = (section: ContextSection): string => {
 
 const buildFields = (snapshot: ContextSnapshot): EmbedField[] =>
   snapshot.sections.map((section) => ({
-    name: `${emojiFor(section.label)} ${section.label}`,
-    value: buildFieldValue(section),
+    name: `${emojiFor(section.id)} ${section.label}`,
+    value: buildFieldValue(section, snapshot.locale),
     inline: false,
   }))
 
@@ -63,7 +64,7 @@ export const renderDiscordContext = (snapshot: ContextSnapshot): ContextRendered
     footer: string
     color?: number
   } = {
-    title: `Context · ${snapshot.modelName}`,
+    title: `${t('contextView.headerWord', snapshot.locale)} · ${snapshot.modelName}`,
     description: buildContextGrid(snapshot),
     fields: buildFields(snapshot),
     footer: buildFooter(snapshot),

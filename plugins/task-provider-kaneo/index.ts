@@ -5,6 +5,8 @@
 
 import { createKaneoProvider } from './entry-runtime.js'
 
+type KaneoHttpFetch = (url: string, init?: RequestInit) => Promise<Response>
+
 type TaskProviderLike = {
   readonly name: string
 }
@@ -28,6 +30,9 @@ type TaskProviderProvisionLike = (context: {
 >
 
 type PluginContextLike = {
+  providerRuntime: {
+    forInstance: (config: Record<string, string>) => KaneoHttpFetch
+  }
   registration: {
     registerTaskProviderType(
       type: string,
@@ -80,11 +85,9 @@ export { validateConfig } from './validate-config.js'
 
 const factory: PluginFactoryLike = () => ({
   activate(ctx: PluginContextLike): void {
-    // KNOWN GAP (#15): provider clients still use global fetch instead of ctx.providerRuntime.
-    // Provider runtime enforcement needs factory/client plumbing plus dynamic-host admission.
     const provisionModule = getKaneoProvisionModule()
     ctx.registration.registerTaskProviderType('kaneo', {
-      factory: (config): TaskProviderLike => createKaneoProvider(config),
+      factory: (config): TaskProviderLike => createKaneoProvider(config, ctx.providerRuntime.forInstance(config)),
       autoProvision: provisionModule.kaneoAutoProvision,
       provision: provisionModule.kaneoProvision,
     })

@@ -16,7 +16,6 @@ import { readChangeDigest } from './gate-digest-extract.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
 import { planForGate, runPolicyLadder, writePresentedRecord } from './gate-prelude.js'
-import type { Prompter } from './gate-session.js'
 import { autoExtendRound, autoSettleFinalGate } from './gate-settle.js'
 import { gatherGateSignals } from './gate-signals.js'
 import type { PresentGateInput } from './gate.js'
@@ -43,7 +42,8 @@ export interface OrchestratorDeps {
   readonly now?: () => Date
   readonly resolveCost?: ResolveCostFn
   readonly interactive?: () => boolean
-  readonly makePrompter?: () => Prompter
+  /** Scripted keys driving the TUI gate session in tests (live stdin otherwise). */
+  readonly gateKeyScript?: string
   /**
    * Per-process resolved autonomy config (CLI > config > default, normalized
    * cost ceiling). The policy module reads this; it never sees the CLI.
@@ -94,7 +94,7 @@ export async function presentGateAt(
   const signals = await gatherGateSignals(deps, state, ctx, reviewResult)
   const policyInput = { mode, version, ...signals }
   const evaluation = options.skipPolicy === true ? null : runPolicyLadder(deps, state, ctx, reviewResult, policyInput)
-  const plan = planForGate(deps, state, evaluation)
+  const plan = planForGate(state, evaluation)
   if (plan !== null && plan.action === 'settle' && mode === 'final') {
     return autoSettleFinalGate(deps, state, ctx, plan.decision, policyInput)
   }
@@ -121,7 +121,7 @@ export async function presentGateAt(
   )
   state.gate = { mode, version }
   state.status = 'running'
-  const deadline = deadlineStampFor(deps, deps.autonomy?.level ?? 'observe')
+  const deadline = deadlineStampFor(deps)
   state.gateDeadlineAt = deadline.gateDeadlineAt
   state.gateDeadlineReArmed = false
   await saveRunState(state, nowOf(deps))

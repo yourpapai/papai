@@ -13,6 +13,8 @@ import { DepthProfileSchema, StageIdSchema } from './events.js'
 import type { DepthProfile, StageId } from './events.js'
 import type { ReplayState } from './replay.js'
 import { ROUND_CAPS } from './review-model.js'
+import { readLiteRecord } from './run-lite.js'
+import type { PersistedLite } from './run-lite.js'
 
 export const PersistedRunStateSchema = z.object({
   runId: z.string().min(1),
@@ -24,7 +26,7 @@ export const PersistedRunStateSchema = z.object({
   round: z.number().int().nonnegative(),
   roundCap: z.number().int().positive().optional(),
   gate: z.object({ mode: z.enum(['early', 'final']), version: z.number().int().positive() }).nullable(),
-  status: z.enum(['running', 'completed', 'aborted', 'failed']),
+  status: z.enum(['running', 'completed', 'aborted', 'failed', 'stopped']),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
   autoExtendsUsed: z.number().int().nonnegative().default(0),
@@ -171,6 +173,31 @@ export async function listPendingGates(workDir: string): Promise<PendingGateEntr
   )
   return perRun
     .filter((entry): entry is PendingGateEntry => entry !== null)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+/** Every persisted run state under the work dir, newest-first. */
+export async function readAllRunStates(workDir: string): Promise<PersistedLite[]> {
+  let entries: string[]
+  try {
+    entries = await readdir(path.join(workDir, 'runs'))
+  } catch {
+    return []
+  }
+  const perRun = await Promise.all(
+    entries.map(async (runId): Promise<PersistedLite | null> => {
+      try {
+        const raw = await readFile(path.join(workDir, 'runs', runId, 'state.json'), 'utf8')
+        const record = readLiteRecord(raw)
+        if (record === null) return null
+        return { runId, ...record }
+      } catch {
+        return null
+      }
+    }),
+  )
+  return perRun
+    .filter((entry): entry is PersistedLite => entry !== null)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 

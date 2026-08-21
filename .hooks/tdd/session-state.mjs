@@ -52,6 +52,7 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 1 week
  * @property {string[]} changedSourceFiles
  * @property {boolean} docReviewSuggested
  * @property {boolean} analyticsReviewSuggested
+ * @property {string[]} tddNudgedFiles
  */
 
 /**
@@ -86,6 +87,9 @@ export class SessionState {
         // Restore Maps from plain objects
         this.#state.surfaceSnapshots = new Map(Object.entries(this.#state.surfaceSnapshots || {}))
         this.#state.mutationSnapshots = new Map(Object.entries(this.#state.mutationSnapshots || {}))
+        if (!Array.isArray(this.#state.tddNudgedFiles)) {
+          this.#state.tddNudgedFiles = []
+        }
       }
     } catch {
       this.#state = this.#createEmptyState()
@@ -106,6 +110,7 @@ export class SessionState {
       changedSourceFiles: [],
       docReviewSuggested: false,
       analyticsReviewSuggested: false,
+      tddNudgedFiles: [],
     }
   }
 
@@ -237,6 +242,36 @@ export class SessionState {
     this.#ensureLoaded()
     this.#state.analyticsReviewSuggested = value
     this.#persist()
+  }
+
+  /**
+   * @returns {string[]}
+   */
+  getTddNudgedFiles() {
+    this.#ensureLoaded()
+    return this.#state.tddNudgedFiles ?? []
+  }
+
+  /**
+   * @param {string} filePath
+   * @returns {boolean}
+   */
+  hasTddNudged(filePath) {
+    this.#ensureLoaded()
+    return (this.#state.tddNudgedFiles ?? []).includes(filePath)
+  }
+
+  /**
+   * @param {string} filePath
+   * @returns {void}
+   */
+  addTddNudged(filePath) {
+    this.#ensureLoaded()
+    if (!this.#state.tddNudgedFiles) this.#state.tddNudgedFiles = []
+    if (!this.#state.tddNudgedFiles.includes(filePath)) {
+      this.#state.tddNudgedFiles.push(filePath)
+      this.#persist()
+    }
   }
 
   // Surface snapshots (check [2] and [6])

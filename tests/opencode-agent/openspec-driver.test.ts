@@ -113,6 +113,81 @@ describe('openspec driver · newChange', () => {
   })
 })
 
+/**
+ * The skip_specs metadata write (opencode-agent-skip-specs-depth, design D2).
+ *
+ * Metadata is set from the zod-validated triage output by a deterministic TS
+ * patch, never by a freeform model write: `openspec new change` scaffolds
+ * `.openspec.yaml` holding `schema` and `created`, and the skip flag is one
+ * more key on that file. The write happens immediately after the scaffold, so
+ * the very next `openspec status` already reports `specs: skipped` — the
+ * planning turn never sees a half-flagged folder.
+ */
+describe('openspec driver · setSkipSpecs', () => {
+  const YAML_PATH = '/repo/openspec/changes/add-thing/.openspec.yaml'
+
+  /** A file seam recording writes and answering reads from a seeded map. */
+  const fileSeam = (
+    files: Record<string, string | null>,
+  ): {
+    writes: { path: string; content: string }[]
+    readFile: (path: string) => Promise<string>
+    writeFile: (path: string, content: string) => Promise<void>
+  } => {
+    const writes: { path: string; content: string }[] = []
+    return {
+      writes,
+      readFile: (path): Promise<string> => {
+        const content = Object.prototype.hasOwnProperty.call(files, path) ? files[path] : null
+        if (content === null || content === undefined) return Promise.reject(new Error(`ENOENT: ${path}`))
+        return Promise.resolve(content)
+      },
+      writeFile: (path, content): Promise<void> => {
+        writes.push({ path, content })
+        files[path] = content
+        return Promise.resolve()
+      },
+    }
+  }
+
+  it('appends `skip_specs: true` to the scaffolded .openspec.yaml, keeping the CLI-written keys', async () => {
+    const { runner, calls } = fakeRunner({ 'new change': { stdout: "Created change 'add-thing'\n" } })
+    const seam = fileSeam({ [YAML_PATH]: 'schema: spec-driven\ncreated: 2026-08-20\n' })
+    const driver = createOpenSpecDriver({ ...deps(runner), readFile: seam.readFile, writeFile: seam.writeFile })
+    await driver.newChange('add-thing', 'spec-driven', { skipSpecs: true })
+    expect(calls[0]?.[0]).toBe('openspec')
+    expect(seam.writes).toEqual([
+      { path: YAML_PATH, content: 'schema: spec-driven\ncreated: 2026-08-20\nskip_specs: true\n' },
+    ])
+  })
+
+  it('writes nothing when the flag is false or unset — the spec lane is the CLI default', async () => {
+    const { runner } = fakeRunner({ 'new change': { stdout: "Created change 'add-thing'\n" } })
+    const seam = fileSeam({ [YAML_PATH]: 'schema: spec-driven\ncreated: 2026-08-20\n' })
+    const driver = createOpenSpecDriver({ ...deps(runner), readFile: seam.readFile, writeFile: seam.writeFile })
+    await driver.newChange('add-thing', 'spec-driven')
+    await driver.newChange('add-thing', 'spec-driven', { skipSpecs: false })
+    expect(seam.writes).toEqual([])
+  })
+
+  it('does not duplicate the key when the flag is already set', async () => {
+    const { runner } = fakeRunner({ 'new change': { stdout: "Created change 'add-thing'\n" } })
+    const seam = fileSeam({ [YAML_PATH]: 'schema: spec-driven\ncreated: 2026-08-20\nskip_specs: true\n' })
+    const driver = createOpenSpecDriver({ ...deps(runner), readFile: seam.readFile, writeFile: seam.writeFile })
+    await driver.newChange('add-thing', 'spec-driven', { skipSpecs: true })
+    expect(seam.writes).toEqual([
+      { path: YAML_PATH, content: 'schema: spec-driven\ncreated: 2026-08-20\nskip_specs: true\n' },
+    ])
+  })
+
+  it('throws naming the file when the scaffolded yaml cannot be read back', async () => {
+    const { runner } = fakeRunner({ 'new change': { stdout: "Created change 'add-thing'\n" } })
+    const seam = fileSeam({})
+    const driver = createOpenSpecDriver({ ...deps(runner), readFile: seam.readFile, writeFile: seam.writeFile })
+    await expect(driver.newChange('add-thing', 'spec-driven', { skipSpecs: true })).rejects.toThrow(/\.openspec\.yaml/u)
+  })
+})
+
 describe('openspec driver · status', () => {
   it('parses artifact states into a typed map and surfaces planning completeness', async () => {
     const { runner, calls } = fakeRunner({ 'status --change': { stdout: STATUS_JSON } })

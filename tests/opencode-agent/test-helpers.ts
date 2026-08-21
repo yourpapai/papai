@@ -11,6 +11,7 @@ import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import type { Salvage } from '../../opencode-agent/src/git-commit.js'
 import type { Git, PushOptions } from '../../opencode-agent/src/git.js'
+import type { MergeOutcome } from '../../opencode-agent/src/git.js'
 import type { LabelApi } from '../../opencode-agent/src/github-labels.js'
 import type {
   PullRequestApi,
@@ -89,11 +90,13 @@ export const stubConfig = (repoRoot = '/repo'): PipelineConfig => ({
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,
+  stallTimeoutMs: 300_000,
   jobDeadlineMs: null,
   teardownReserveMs: 180_000,
   wrapUpMs: 120_000,
   ciFixMaxRounds: 2,
   commitRepairMaxRounds: 3,
+  syncRepairMaxRounds: 3,
   maxCiAttempts: 2,
   maxAttempts: 3,
   maxReviewAttempts: 2,
@@ -215,8 +218,14 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       io.openspecCalls.push('listChangeNames')
       return Promise.resolve([...io.existingChanges])
     },
-    newChange: (changeName: string, schema: string): Promise<{ changeName: string }> => {
-      io.openspecCalls.push(`newChange:${changeName}:${schema}`)
+    newChange: (
+      changeName: string,
+      schema: string,
+      newChangeOptions?: { skipSpecs?: boolean },
+    ): Promise<{ changeName: string }> => {
+      io.openspecCalls.push(
+        `newChange:${changeName}:${schema}${newChangeOptions?.skipSpecs === true ? ':skip-specs' : ''}`,
+      )
       return Promise.resolve({ changeName })
     },
     status: (changeName: string): Promise<StatusResult> => {
@@ -308,6 +317,10 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       io.gitCalls.push(`salvage:${message.split('\n')[0]}`)
       return Promise.resolve({ kind: 'clean' })
     },
+    reconcile: (branch: string): Promise<void> => {
+      io.gitCalls.push(`reconcile:${branch}`)
+      return Promise.resolve()
+    },
     push: (branch: string, _options?: PushOptions): Promise<void> => {
       io.gitCalls.push(`push:${branch}`)
       return Promise.resolve()
@@ -319,6 +332,18 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     },
     revertPaths: (sha: string, paths: readonly string[]): Promise<void> => {
       io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
+      return Promise.resolve()
+    },
+    mergeBase: (base: string): Promise<MergeOutcome> => {
+      io.gitCalls.push(`mergeBase:${base}`)
+      return Promise.resolve({ kind: 'up-to-date' })
+    },
+    completeMerge: (message: string): Promise<void> => {
+      io.gitCalls.push(`completeMerge:${message.split('\n')[0]}`)
+      return Promise.resolve()
+    },
+    abortMerge: (): Promise<void> => {
+      io.gitCalls.push('abortMerge')
       return Promise.resolve()
     },
     headSha: (): Promise<string> => {

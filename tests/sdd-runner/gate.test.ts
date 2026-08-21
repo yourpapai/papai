@@ -315,8 +315,7 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
         repoRoot,
         workDir,
         model: 'test-model',
-        models: {},
-        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+        budget: 5,
       },
       spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
       execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
@@ -345,8 +344,18 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
     }
   }
 
-  it('observe preview: appends a parse-inert preview block, one sidecar line, one preview event; stdout unchanged', async () => {
-    const fixture = await makePreludeFixture([])
+  it('a presented (undecidable) gate: parse-inert preview block, one sidecar line, one gate event; stdout unchanged', async () => {
+    const fixture = await makePreludeFixture([
+      {
+        id: 'A1',
+        text: 't',
+        basis: 'default',
+        confidence: 'medium',
+        blast_radius: 'b',
+        status: 'open',
+        evidence: { files: [path.join('openspec', 'changes', 'unrecorded', 'proposal.md')] },
+      },
+    ])
     const result = await presentGateAt(fixture.deps, fixture.state, ctxOf(fixture), CONVERGED, 1, 'final')
     expect(result.halted).toBe('gate')
 
@@ -362,18 +371,18 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
 
     const sidecarLine = fs.readFileSync(path.join(fixture.state.runDir, 'auto-policy.jsonl'), 'utf8').trim()
     expect(sidecarLine.includes('\n')).toBe(false)
-    expect(JSON.parse(sidecarLine)).toMatchObject({ gateVersion: 1, decision: 'preview' })
+    expect(JSON.parse(sidecarLine)).toMatchObject({ gateVersion: 1, decision: 'gate' })
 
     const autoDecisions = readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
       (e) => e.type === 'auto_decision',
     )
     expect(autoDecisions).toHaveLength(1)
-    expect(autoDecisions[0]).toMatchObject({ decision: 'preview', gateVersion: 1 })
+    expect(autoDecisions[0]).toMatchObject({ decision: 'gate', gateVersion: 1 })
 
     expect(fixture.stdoutLines.some((l) => l.includes('gate resume'))).toBe(true)
   })
 
-  it('observe preview names R1 for a converged, all-low-blast final gate', async () => {
+  it('a converged, all-low-blast final gate settles by R1 with full attribution', async () => {
     const fixture = await makePreludeFixture([])
     const logPath = path.join(fixture.state.runDir, 'events.ndjson')
     appendEvent(logPath, {
@@ -403,19 +412,19 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
     const autoDecisions = readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
       (e) => e.type === 'auto_decision',
     )
-    expect(autoDecisions[0]).toMatchObject({ rule: 'R1' })
+    expect(autoDecisions[0]).toMatchObject({ rule: 'R1', decision: 'approve' })
     const gateMd = fs.readFileSync(path.join(fixture.state.runDir, 'gate-1.md'), 'utf8')
-    expect(gateMd).toMatch(/> rule: R1/u)
+    expect(gateMd).toContain('decided-by: policy R1')
   })
 
-  it('integrity cross-check: an unparseable resolver sidecar yields a human-gate preview, never R1', async () => {
+  it('integrity cross-check: an unparseable resolver sidecar yields a human gate, never R1', async () => {
     const fixture = await makePreludeFixture([])
     fs.writeFileSync(path.join(fixture.state.runDir, 'sidecars', 'resolutions-1.json'), '{ not json')
     await presentGateAt(fixture.deps, fixture.state, ctxOf(fixture), CONVERGED, 1, 'final')
     const autoDecisions = readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
       (e) => e.type === 'auto_decision',
     )
-    expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'preview' })
+    expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate' })
   })
 
   it('integrity cross-check: R1 requires replay-folded counts to agree with sidecar counts', async () => {
@@ -453,7 +462,7 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
       const fixture = await makePreludeFixture([])
       const deps: import('../../sdd-runner/src/gate-digest.js').OrchestratorDeps = {
         ...fixture.deps,
-        autonomy: { level: 'assist', costCeilingUsd: 5, autoExtendMax: 1, deadlineMinutes: undefined, rules: {} },
+        autonomy: { level: 'assist', costCeilingUsd: 5 },
       }
       const first = await presentGateAt(deps, fixture.state, ctxOf(fixture), CONVERGED, 1, 'final')
       expect(first.halted).toBe('gate')
@@ -496,11 +505,9 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
           stdoutLines.push(line)
         },
         autonomy: {
-          level: 'auto' as const,
+          level: 'assist' as const,
           costCeilingUsd: 5,
-          autoExtendMax: 1,
           deadlineMinutes: 10,
-          rules: {},
         },
       }
       const undecidable = {
@@ -519,11 +526,8 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
       const deps = {
         ...fixture.deps,
         autonomy: {
-          level: 'auto' as const,
+          level: 'assist' as const,
           costCeilingUsd: 5,
-          autoExtendMax: 1,
-          deadlineMinutes: undefined,
-          rules: {},
         },
       }
       const state = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
@@ -639,8 +643,7 @@ describe('gate reopen (10.2)', () => {
         repoRoot: dir,
         workDir,
         model: 'test-model',
-        models: {},
-        timeouts: { wallClockMs: 60_000, inactivityMs: 5_000 },
+        budget: 5,
       },
       spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
       execGit: () => Promise.resolve({ stdout: '', stderr: '' }),

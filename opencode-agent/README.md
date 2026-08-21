@@ -116,15 +116,54 @@ moves the phase and the handler runs behind it in the same job, exactly as
 
 ## Talking to the agent
 
-| Command                     | Valid in                     | Effect                                                         |
-| --------------------------- | ---------------------------- | -------------------------------------------------------------- |
-| `/approve`                  | `DESIGN_SPEC`, `PLAN_REVIEW` | Proceed to the next phase                                      |
-| `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW` | Rewrite the spec or plan, with your feedback in the prompt     |
-| `/ask <question>`           | anywhere                     | Answer, grounded in the repo, without moving the state machine |
-| `/review`                   | a **delivered** `COMPLETE`   | Run the review loop over the branch and push what it finds     |
-| `/retry`                    | `FAILED`                     | Resume the exact phase that failed                             |
-| `/continue`                 | `INCOMPLETE`                 | Pick up the phase the job ran out of time for                  |
-| `/cancel`                   | anything but `COMPLETE`      | Stop for good — a cancelled issue cannot be restarted          |
+| Command                     | Valid in                      | Effect                                                         |
+| --------------------------- | ----------------------------- | -------------------------------------------------------------- |
+| `/approve`                  | `DESIGN_SPEC`, `PLAN_REVIEW`  | Proceed to the next phase                                      |
+| `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW`  | Rewrite the spec or plan, with your feedback in the prompt     |
+| `/ask <question>`           | anywhere                      | Answer, grounded in the repo, without moving the state machine |
+| `/review`                   | a **delivered** `COMPLETE`    | Run the review loop over the branch and push what it finds     |
+| `/retry [note]`             | `FAILED`                      | Resume the exact phase that failed; the note rides the prompt  |
+| `/continue [note]`          | `INCOMPLETE`                  | Pick up the phase the job ran out of time for; note as above   |
+| `/cancel`                   | anything but `COMPLETE`       | Stop for good — a cancelled issue cannot be restarted          |
+| `/sync`                     | any state with a pull request | Merge the base branch into `agent/issue-<n>` and push          |
+
+A `/retry` or `/continue` **note** is maintainer guidance, not a re-plan: it is
+enveloped into the resumed handler's prompt under a fixed framing (the plan and
+change folder remain the source of truth; `/changes` is the re-planning
+channel), and it is never persisted — its lifetime is the prompt it rode in.
+An argument-less `/retry` or `/continue` behaves exactly as before.
+
+### `/sync`
+
+A delivered pull request that falls behind its base shows GitHub's conflict
+banner and, before this command, had no machine remedy — the only fix was a
+human with a local checkout. `/sync` runs `git merge origin/<base>` into the
+agent branch from the pull request, in any state whose pull-request number is
+set:
+
+- **Clean merge** — the merge commit is pushed and reported; no model turn is
+  spent. An up-to-date branch is reported and nothing is pushed.
+- **Conflict** — bounded repair rounds (`AGENT_SYNC_REPAIR_MAX_ROUNDS`,
+  default 3): each round's prompt names the conflicted paths and carries the
+  markers; the model edits the files and is forbidden git; the pipeline
+  completes the merge and pushes. Resolution is reported as unverified by
+  checks — they run on the push.
+- **Rounds exhausted or at the token ceiling** — the merge is aborted leaving
+  the branch exactly as it was, and the reply names the human remedy: the code
+  host's own **Update branch** control, which performs the same merge with a
+  maintainer's permissions.
+- **Push refused for base's own workflow edits** — translated the same way:
+  the reply names the cause and the update-branch remedy, never the raw error.
+
+`/sync` is a **non-moving side operation** in the `/ask` shape: whatever the
+outcome, `phase`, `attempts`, `resumeFrom` and every per-PR budget are left
+exactly as they were, so every existing trigger still works and typing `/sync`
+again is always available. The merge is its own git operation and never passes
+through the commit path's caps or protected-path dropping — base's
+already-reviewed content (including its `.github/workflows/` edits) is carried
+verbatim. The reply is a plain comment on the trigger surface carrying no
+state block; a repair turn's spend is the one thing that changes, recorded by
+rewriting the running token total in place.
 
 **Where a command is typed depends on whether a pull request exists.** Until one
 does, the issue is the only surface and every command is typed there. From the
@@ -443,16 +482,17 @@ cover it.
 
 ## What bounds a run
 
-Six bounds, each on a different kind of runaway.
+Seven bounds, each on a different kind of runaway.
 
-| Bound            | Where                                                                                                          | What it stops                                                                                                      |
-| ---------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Prompt size      | `prompt-budget.ts`                                                                                             | 12k characters of thread, and 12k across _all_ failing checks, per prompt                                          |
-| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                                                   | A turn that never answers — and one merely too slow, whose work is kept                                            |
-| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                                                       | A job dying on `timeout-minutes` with nothing posted at all — and it is the review loop's only ceiling too         |
-| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                                                                 | A single 429 or 5xx failing the phase                                                                              |
-| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, and a tree the repository will never accept |
-| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                                                              | An issue quietly costing more than it is worth                                                                     |
+| Bound            | Where                                                                                                                                          | What it stops                                                                                                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prompt size      | `prompt-budget.ts`                                                                                                                             | 12k characters of thread, and 12k across _all_ failing checks, per prompt                                                                                        |
+| Turn duration    | `AGENT_TIMEOUT_MS`, applied in `deadline.ts`                                                                                                   | A turn that never answers — and one merely too slow, whose work is kept                                                                                          |
+| Provider stalls  | `AGENT_STALL_TIMEOUT_MS`, applied in `turn-run.ts` on the heartbeat tick                                                                       | A turn the provider stopped serving — no progress for the window while retries pile up — burned to the turn deadline; `0` disables                               |
+| Job wall clock   | `AGENT_JOB_TIMEOUT_MINUTES`, applied in `time-budget.ts`                                                                                       | A job dying on `timeout-minutes` with nothing posted at all — and it is the review loop's only ceiling too                                                       |
+| Provider hiccups | `provider-proxy.ts` — 3 attempts, with backoff                                                                                                 | A single 429 or 5xx failing the phase                                                                                                                            |
+| Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS`, `AGENT_SYNC_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, a tree the repository will never accept, and a `/sync` conflict whose markers never clear |
+| Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                                                                                              | An issue quietly costing more than it is worth                                                                                                                   |
 
 The prompt caps are on the **finished prompt**, not on any one input: a per-input
 cap bounds one log and nothing else, and three red checks at 8k each still put
@@ -465,6 +505,23 @@ The turn deadline bounds the **waiting**, not the work — nothing can cancel an
 in-flight request. What it buys is which failure happens: an error the pipeline
 can post to the issue, rather than a runner vanishing at `timeout-minutes` with
 no comment, no state block, and the issue left in whatever phase it started in.
+
+The stall bound is a health check beside that clock, and the two questions are
+different: the deadline asks _how long has this turn been outstanding_, the
+stall bound asks _is the provider still serving it_. It fires only when both
+are true — no finished model step and no newly started tool call for
+`AGENT_STALL_TIMEOUT_MS` (default five minutes), **and** provider retries or
+session errors accumulating the whole while. The retry evidence is what
+separates a provider wave from one very long generation, which is the
+deadline's business and must keep being. A turn it aborts is salvaged like a
+deadline's — whatever the tree holds is committed and pushed — minus the
+wrap-up ask, whose premise of an idle session that can still answer is exactly
+what a stall disproves; the run then parks in `FAILED` and `/retry` resumes it
+once the wave has passed. `0` switches the bound off and restores the
+turn-deadline-only behaviour. Each provider retry and session error also leaves
+its own message — the provider's own text — in the encrypted debug transcript,
+one row per occurrence; the public Actions log keeps carrying names, statuses
+and counts only.
 
 Retries live at the provider proxy rather than in the adapter. It is the layer
 that sees an actual HTTP status, so nothing has to guess which SDK error means
@@ -1521,6 +1578,7 @@ cannot drift.
 | `AGENT_CHECK_COMMAND`                      | no       | `bun check:full`                                                                | review-loop's build gate                                                                                                                                                                                                                                                                  |
 | `AGENT_REVIEW_COMMAND`                     | no       | detected                                                                        | JSON argv running the review loop; `none` disables it                                                                                                                                                                                                                                     |
 | `AGENT_CHECKS`                             | no       | `bun run` lint / typecheck / test                                               | JSON `[{ "name", "argv" }]` the CI-fix phase runs                                                                                                                                                                                                                                         |
+| `AGENT_MCP_SERVERS`                        | no       | unset — no MCP servers                                                          | Secret or variable: JSON map of MCP servers; see below                                                                                                                                                                                                                                    |
 | `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                                                             | review-loop rounds                                                                                                                                                                                                                                                                        |
 | `AGENT_REVIEW_POOL_SIZE`                   | no       | `1`                                                                             | review-loop worker pool                                                                                                                                                                                                                                                                   |
 | `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                                                             | Repair rounds per CI-fix job                                                                                                                                                                                                                                                              |
@@ -1532,6 +1590,7 @@ cannot drift.
 | `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                                                           | Files one commit may carry                                                                                                                                                                                                                                                                |
 | `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                                                         | Lines one commit may change                                                                                                                                                                                                                                                               |
 | `AGENT_TIMEOUT_MS`                         | no       | `5400000`                                                                       | Timeout for one model turn, and for each subprocess                                                                                                                                                                                                                                       |
+| `AGENT_STALL_TIMEOUT_MS`                   | no       | `300000`                                                                        | No-progress window that aborts a turn the provider stopped serving; `0` disables                                                                                                                                                                                                          |
 | `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                                                         | Epoch ms this job began; the workflow's first step                                                                                                                                                                                                                                        |
 | `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset here; `300` from the workflow                                             | The job's own ceiling, shared with `timeout-minutes:`                                                                                                                                                                                                                                     |
 | `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                                                        | Held back from the job so a time stop can report                                                                                                                                                                                                                                          |
@@ -1636,6 +1695,63 @@ Both are set as `agent.<name>.variant` in the generated config rather than per
 call, which is what makes them reach the review loop: it shells out to
 `opencode run` with no `--agent`, so its workers resolve to `build` and pick the
 variant up from the same config the in-process session reads.
+
+### MCP servers
+
+`AGENT_MCP_SERVERS` declares MCP servers for the whole pipeline — one JSON map
+of server names to declarations, validated at job start before any model turn:
+
+```json
+{
+  "fetcher": {
+    "type": "local",
+    "command": ["bunx", "mcp-server-fetch@1.0.0"],
+    "environment": { "FETCH_TIMEOUT": "5000" }
+  },
+  "index": {
+    "type": "remote",
+    "url": "https://mcp.example.com/sse",
+    "headers": { "Authorization": "Bearer <token>" }
+  }
+}
+```
+
+A local entry carries a non-empty `command` array and may carry `environment`;
+a remote carries a `url` and may carry `headers`. Pin exact versions in
+`command` — the ephemeral runner refetches every job either way, and an
+unpinned `bunx` is a moving third-party dependency in a job holding every
+repository secret. An `oauth` key is refused outright: an unattended job can
+complete no browser flow, and an OAuth remote parks at `needs_auth` for ever.
+Remotes are always emitted with OAuth disabled — a failing endpoint degrades to
+its HTTP error rather than a silent stall.
+
+Server names must match `[A-Za-z0-9_-]+`, because OpenCode surfaces a server's
+tools as `<name>_<tool>` and the pipeline generates the matching
+`"<name>_*": "allow"` permission keys in the `plan` and `build` profiles and
+the global default. Grants are generated, never hand-keyed — a bare server
+name as a permission key is a silent no-op — and are `allow` only; the
+drafting (`propose`) profile gets none, keeping it the most confined surface
+the pipeline prompts. A server that fails to start or connect does not fail
+the job: its tools are simply absent, bounded by OpenCode's own 30-second
+client timeout, and the run proceeds.
+
+The knob takes **two spellings** — `secrets.AGENT_MCP_SERVERS` (which wins) or
+the `AGENT_MCP_SERVERS` variable. A declaration whose `headers` or
+`environment` carry a token belongs in the secret, which GitHub masks in logs
+and encrypts at rest; a token-free declaration may live in the variable, which
+non-admin maintainers can read and diff. Every `headers` and `environment`
+value joins the pipeline's credential list, so the environment scrub removes
+them from anything the model's shell can read and outbound text is redacted by
+value.
+
+One residual risk scrubbing cannot close: the generated config itself is
+delivered through `OPENCODE_CONFIG_CONTENT`, which the write-capable profile
+can read with one `echo`. A credential in the knob is reachable by the model
+regardless of scrubbing — declare unauthenticated local servers, or remote
+headers whose static tokens you can afford to expose. And each review-loop
+worker is its own `opencode run` subprocess, so every local server is booted
+once per concurrent worker — one more reason `AGENT_REVIEW_POOL_SIZE` defaults
+to `1`.
 
 `GITHUB_TOKEN` and `GITHUB_REPOSITORY` need no operator setup on GitHub
 Actions, unlike the variables above. `GITHUB_REPOSITORY` is one of the

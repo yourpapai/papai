@@ -8,19 +8,25 @@ import { describe, expect, it } from 'bun:test'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { ParsedCommand } from '../../opencode-agent/src/commands.js'
 import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
+import type { EnsureBranchOptions, MergeOutcome } from '../../opencode-agent/src/git.js'
+import type { OpenCodeAgent, AgentPromptRequest } from '../../opencode-agent/src/opencode-adapter.js'
 import type {
   InstructionsResult,
   OpenSpecDriver,
   StatusResult,
   ValidateResult,
 } from '../../opencode-agent/src/openspec-driver.js'
-import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
+import type { PhaseInput, MachineInput } from '../../opencode-agent/src/phase-context.js'
 import { handleAnswer } from '../../opencode-agent/src/phases/answer.js'
 import { handleImplement } from '../../opencode-agent/src/phases/implement.js'
 import { handlePlan } from '../../opencode-agent/src/phases/plan.js'
 import { handleReview } from '../../opencode-agent/src/phases/review.js'
+import { runSync, SYNC_FORBIDDEN_GIT_RULE } from '../../opencode-agent/src/phases/sync.js'
 import { handleTriage } from '../../opencode-agent/src/phases/triage.js'
+import type { ReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
+import type { ReportSection } from '../../opencode-agent/src/reply-comment.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
+import { serializeState } from '../../opencode-agent/src/state-manager.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
@@ -142,7 +148,14 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
   it('auto-captures for OWNER: scaffolds the folder, sets changeName, emits CAPTURED', async () => {
     const { input, io } = makeInput({
       association: 'OWNER',
-      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: '# Goal\n\nAdd retries.' })],
+      replies: [
+        JSON.stringify({
+          status: 'capture',
+          changeName: 'add-retry-helper',
+          spec: '# Goal\n\nAdd retries.',
+          skipSpecs: false,
+        }),
+      ],
     })
 
     const outcome = await handleTriage(input)
@@ -164,7 +177,7 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
   it.each(['MEMBER', 'COLLABORATOR'])('auto-captures for %s', async (association) => {
     const { input, io } = makeInput({
       association,
-      replies: [JSON.stringify({ status: 'capture', changeName: 'add-thing', spec: 'spec' })],
+      replies: [JSON.stringify({ status: 'capture', changeName: 'add-thing', spec: 'spec', skipSpecs: false })],
     })
 
     const outcome = await handleTriage(input)
@@ -180,7 +193,7 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
   it('posts a consent comment and parks (NEEDS_CLARIFICATION) for an untrusted author', async () => {
     const { input, io } = makeInput({
       association: 'NONE',
-      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec' })],
+      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec', skipSpecs: false })],
     })
 
     const outcome = await handleTriage(input)
@@ -197,8 +210,8 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
     const { input, io } = makeInput({
       association: 'OWNER',
       replies: [
-        JSON.stringify({ status: 'capture', changeName: 'Add Retry Helper', spec: 'spec' }),
-        JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec' }),
+        JSON.stringify({ status: 'capture', changeName: 'Add Retry Helper', spec: 'spec', skipSpecs: false }),
+        JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec', skipSpecs: false }),
       ],
     })
 
@@ -217,7 +230,14 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
   it('renders the DESIGN_SPEC digest from the folder (D1): reads proposal.md back after writing it', async () => {
     const { input, io } = makeInput({
       association: 'OWNER',
-      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: '# Goal\n\nAdd retries.' })],
+      replies: [
+        JSON.stringify({
+          status: 'capture',
+          changeName: 'add-retry-helper',
+          spec: '# Goal\n\nAdd retries.',
+          skipSpecs: false,
+        }),
+      ],
     })
 
     const outcome = await handleTriage(input)
@@ -237,13 +257,77 @@ describe('handleTriage · outcome: capture · D9 association gate', () => {
     // capture starts from zero rather than adopting the old diff.
     const { input, io } = makeInput({
       association: 'OWNER',
-      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec' })],
+      replies: [JSON.stringify({ status: 'capture', changeName: 'add-retry-helper', spec: 'spec', skipSpecs: false })],
     })
 
     await handleTriage(input)
 
     // resetBranchToBase, not ensureBranch — restart means from zero.
     expect(io.gitCalls).toContain('resetBranchToBase:agent/issue-42:main')
+  })
+})
+
+/**
+ * The skip_specs decision (change: opencode-agent-skip-specs-depth, design D1).
+ *
+ * Fix-class issues are the common case for an issue agent, and a zero-delta
+ * change folder used to die at `validate --strict` with the retry loop handing
+ * the complaint back to the model twice — pressuring it to invent deltas. So
+ * `capture` carries a `skipSpecs` boolean the model decides under an explicit
+ * rule, biased to `true` for fix-class issues; a recommending capture must
+ * state the reason in the proposal's Capabilities section so a maintainer can
+ * veto the call at the `DESIGN_SPEC` park.
+ */
+describe('handleTriage · the skip_specs decision', () => {
+  it('rejects a capture reply that omits skipSpecs: the call is the model’s to make, not a default to inherit', async () => {
+    // A silent default (missing → false) would send every fix-class issue down
+    // the spec lane and back into the invent-deltas failure the flag exists to
+    // end. The schema re-asks once, exactly as it does for a misspelled name.
+    const { input, io } = makeInput({
+      association: 'OWNER',
+      replies: [
+        JSON.stringify({ status: 'capture', changeName: 'fix-retry-bug', spec: 'spec' }),
+        JSON.stringify({ status: 'capture', changeName: 'fix-retry-bug', spec: 'spec', skipSpecs: true }),
+      ],
+    })
+
+    const outcome = await handleTriage(input)
+
+    expect(outcome.signal).toBe('CAPTURED')
+    expect(io.prompts).toHaveLength(2)
+    // The validated flag rides the scaffold call itself (design D2): the folder
+    // is flag-complete before anything reads status about it.
+    expect(io.openspecCalls).toContain('newChange:fix-retry-bug:spec-driven:skip-specs')
+  })
+
+  it('briefs the decision rule, the fix-class bias and the mandatory Capabilities-section rationale', async () => {
+    const { input, io } = makeInput({ replies: [JSON.stringify({ status: 'answer', reply: 'ok' })] })
+
+    await handleTriage(input)
+
+    const system = io.prompts[0]?.system
+    // The rule: what makes a change spec-level is observable from the contract.
+    expect(system).toContain('downstream observer')
+    // The bias: fix-class issues take the skip lane unless the fix changes the contract.
+    expect(system).toContain('fix-class')
+    // The rationale sentence a maintainer vets at the DESIGN_SPEC park.
+    expect(system).toContain('None — skip_specs proposed because ⟨reason⟩')
+    // The reply shape names the field, so the model knows it must answer it.
+    expect(system).toContain('skipSpecs')
+  })
+
+  it('briefs capability granularity: feature-domain names, new-capabilities-only while the corpus is empty', async () => {
+    // The archive door feeds agent-captured proposals into `openspec/specs/`;
+    // issue-sized micro-capabilities would pollute the corpus. Granularity is
+    // prompt doctrine enforced at the park (design D4), so the capture prompt
+    // must carry both halves of the rule.
+    const { input, io } = makeInput({ replies: [JSON.stringify({ status: 'answer', reply: 'ok' })] })
+
+    await handleTriage(input)
+
+    const system = io.prompts[0]?.system
+    expect(system).toContain('feature-domain granularity')
+    expect(system).toContain('new capabilities only')
   })
 })
 
@@ -295,7 +379,14 @@ const adoptInput = (
   const built = makeInput({
     association: 'OWNER',
     existing: [ADOPTED, 'user-profile-memory'],
-    replies: [JSON.stringify({ status: 'capture', changeName: ADOPTED, spec: '# Goal\n\nDefend the prompt.' })],
+    replies: [
+      JSON.stringify({
+        status: 'capture',
+        changeName: ADOPTED,
+        spec: '# Goal\n\nDefend the prompt.',
+        skipSpecs: false,
+      }),
+    ],
     ...options,
   })
   built.io.readContents[PROPOSAL_PATH] = '# Why\n\nThe proposal a human already wrote.'
@@ -481,6 +572,12 @@ const artifactIdOf = (path: string): string => {
 interface WireOptions {
   validate?: (call: number) => { ok: boolean; output: string }
   done?: string[]
+  /**
+   * The folder carries `skip_specs: true` (design D3 of
+   * opencode-agent-skip-specs-depth): the CLI reports `specs` as `skipped`,
+   * `tasks` stops owing it, and the drafter composes design + tasks only.
+   */
+  skipSpecs?: boolean
 }
 
 /** Wires a drafter input whose driver status evolves as the model writes each artifact. */
@@ -495,7 +592,24 @@ const wireDrafterInput = (replies: string[], opts: WireOptions = {}): { input: P
           let calls = 0
           return { ...base, validateStrict: () => Promise.resolve(opts.validate!(calls++)) }
         })()
-  built.deps.openspec = driver
+  const skipDriver: OpenSpecDriver =
+    opts.skipSpecs === true
+      ? {
+          ...driver,
+          status: (): Promise<StatusResult> =>
+            Promise.resolve({
+              schemaName: 'spec-driven',
+              artifacts: {
+                proposal: 'done',
+                specs: 'skipped',
+                design: tracked.has('design') ? 'done' : 'ready',
+                tasks: tracked.has('tasks') ? 'done' : tracked.has('design') ? 'ready' : 'blocked',
+              },
+              isPlanningComplete: tracked.has('design') && tracked.has('tasks'),
+            }),
+        }
+      : driver
+  built.deps.openspec = skipDriver
   built.deps.writeFile = (path: string, content: string): Promise<void> => {
     built.io.writes.push({ path, content })
     // The folder is truth (D1): a write lands in the folder, and a later read
@@ -697,6 +811,72 @@ describe('handlePlan · drafter loop (D3)', () => {
       expect(promptFor(artifact)).toContain('Rules:')
       for (const rule of instructionsFor(artifact).rules) expect(promptFor(artifact)).toContain(`- ${rule}`)
     }
+  })
+})
+
+/**
+ * Design D3 of opencode-agent-skip-specs-depth: a `skip_specs: true` folder is
+ * a planning input, not an error. The CLI's own status graph reports `specs` as
+ * `skipped` (probe 1.1), so the drafter composes design — recording the
+ * deliberate skip — plus tasks, and never requests spec deltas; the retry loop's
+ * complaint-driven repair survives untouched for genuine validation failures.
+ */
+describe('handlePlan · skip_specs changes compose design + tasks without spec deltas', () => {
+  it('never drafts specs, tells the drafter the skip is recorded, and still signals PLAN_POSTED', async () => {
+    const { input, io } = wireDrafterInput(
+      [JSON.stringify({ content: 'design body' }), JSON.stringify({ content: 'tasks body' })],
+      { skipSpecs: true },
+    )
+
+    const outcome = await handlePlan(input)
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    // Design then tasks — the CLI never reports `specs` as `ready`, so the glob
+    // prompt shape (and its delta drafting) never happens at all.
+    expect(io.writes.map((w) => w.path)).toEqual([
+      `/repo/openspec/changes/${CHANGE}/design.md`,
+      `/repo/openspec/changes/${CHANGE}/tasks.md`,
+    ])
+    expect(io.writes.some((w) => w.path.includes('/specs/'))).toBe(false)
+    expect(io.prompts).toHaveLength(2)
+    // Both artifact turns know the change is on the recorded-skip lane: the
+    // model is told not to invent deltas rather than left to guess why the
+    // specs artifact never arrives.
+    for (const prompt of io.prompts) {
+      expect(prompt.prompt).toContain('skip_specs')
+      expect(prompt.prompt).toContain('no spec deltas')
+    }
+  })
+
+  it('keeps the validate-retry loop for genuine failures under skip_specs', async () => {
+    const { input, io } = wireDrafterInput(
+      [JSON.stringify({ content: 'first attempt' }), JSON.stringify({ content: 'repaired attempt' })],
+      { skipSpecs: true, done: ['design'], validate: validateFailsOnce },
+    )
+
+    const outcome = await handlePlan(input)
+
+    expect(outcome.signal).toBe('PLAN_POSTED')
+    expect(io.prompts).toHaveLength(2)
+    expect(io.writes.at(-1)?.content).toBe('repaired attempt')
+  })
+
+  it('briefs capability granularity in the specs drafter turn (design D4)', async () => {
+    // The specs artifact is where the planning turn names capabilities — one
+    // delta spec per capability — so the granularity doctrine reaches the
+    // drafter there: feature-domain names, new-capabilities-only while the
+    // corpus is empty. Enforced at the park, carried by the prompt.
+    const { input, io } = wireDrafterInput([
+      JSON.stringify({ files: [{ path: 'specs/retry/spec.md', content: 'spec body' }] }),
+      JSON.stringify({ content: 'design body' }),
+      JSON.stringify({ content: 'tasks body' }),
+    ])
+
+    await handlePlan(input)
+
+    const specsPrompt = io.prompts.find((p) => p.prompt.includes('Write the files under:'))
+    expect(specsPrompt?.system).toContain('feature-domain granularity')
+    expect(specsPrompt?.system).toContain('new capabilities only')
   })
 })
 
@@ -903,6 +1083,26 @@ describe('handleReview · pushes what the loop merged', () => {
     expect(built.pushes()).toEqual(['push:agent/issue-42', 'push:agent/issue-42'])
   })
 
+  it('reconciles with the remote before reverting what a push cannot carry', async () => {
+    // Run 32374999214's remedy, one layer up: the reconciling merge brings the
+    // maintainer's line into the checkout, and only after it lands can
+    // `dropUnpushable` see — and revert — a protected path that line carried.
+    // The other order lets a workflow file ride the merge into a push GitHub
+    // refuses whole, the issue #240 failure class.
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
+    const heads = queued(['before', 'after'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+
+    await handleReview(built.input)
+
+    const reconciled = built.io.gitCalls.indexOf('reconcile:agent/issue-42')
+    const changedSince = built.io.gitCalls.findIndex((call) => call.startsWith('changedSince:'))
+    expect(reconciled).toBeGreaterThanOrEqual(0)
+    expect(changedSince).toBeGreaterThanOrEqual(0)
+    expect(reconciled).toBeLessThan(changedSince)
+  })
+
   it('reports a loop that stopped at its budget as stopped, not as a failure', async () => {
     const built = reviewInput(true)
     built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
@@ -1046,5 +1246,335 @@ describe('a phase checks out the branch carrying the folder before it reads the 
     // checkout, it did not become a read of something else.
     expect(handed).toEqual([tasks])
     expect(built.io.gitCalls[0]).toBe('ensureBranch:agent/issue-42:main')
+  })
+})
+
+/**
+ * The `/sync` side operation — a handler that is not a phase, the `answer.ts`
+ * precedent. It merges base into the agent branch from any PR-bearing state,
+ * moves nothing, and reports on the trigger surface through `postAnswer`'s
+ * write. The workspace rule applies throughout: assert the **persisted state**,
+ * not the returned status — the state block the run leaves behind is the only
+ * thing the next job can read.
+ */
+
+/** A reply buffer that records sections instead of posting them. */
+const recordingReply = (): { reply: ReplyBuffer; sections: ReportSection[] } => {
+  const sections: ReportSection[] = []
+  return {
+    reply: {
+      begin: (): void => {},
+      section: (_state, section): void => {
+        sections.push(section)
+      },
+      flush: (): Promise<null> => Promise.resolve(null),
+    },
+    sections,
+  }
+}
+
+const CONFLICTED_CONTENT = [
+  'ours',
+  '<<<<<<< HEAD',
+  'agent version',
+  '=======',
+  'base version',
+  '>>>>>>> origin/main',
+  '',
+].join('\n')
+
+interface SyncFixture {
+  input: MachineInput
+  io: StubIo
+  sections: ReportSection[]
+  seedState: string
+}
+
+/** The machine input a dispatched `/sync` produces, over a PR-bearing state. */
+const syncFixture = (over: {
+  merge: MergeOutcome
+  state?: Partial<AgentState>
+  /** The model's edit during a repair turn: content the conflicted file ends up holding. */
+  repair?: string
+  tokensUsed?: number
+  pushError?: Error
+}): SyncFixture => {
+  const state = baseState(42, {
+    phase: 'COMPLETE',
+    changeName: 'add-x',
+    prNumber: 7,
+    prUrl: 'https://example.test/pull/7',
+    ...over.state,
+  })
+  // The thread the restore scan reads: one agent comment carrying the block.
+  const seedState = serializeState(state)
+  const thread: IssueComment[] = [{ id: 55, body: seedState, authorLogin: AGENT_LOGIN }]
+
+  const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN, thread })
+  recording.io.readContents['/repo/src/same.txt'] = CONFLICTED_CONTENT
+  const reply = recordingReply()
+  recording.deps.reply = reply.reply
+
+  // The repair turn's edit, simulated at the moment the prompt is answered:
+  // the model edits the marked file in the working tree and nothing else.
+  const inner: OpenCodeAgent = {
+    sessionId: 's',
+    prompt: (request: AgentPromptRequest): Promise<{ text: string; sessionId: string }> => {
+      recording.io.prompts.push(request)
+      if (over.repair !== undefined) recording.io.readContents['/repo/src/same.txt'] = over.repair
+      return Promise.resolve({ text: 'resolved', sessionId: 's' })
+    },
+    tokensUsed: (): Promise<number> => Promise.resolve(0),
+    abort: (): Promise<boolean> => Promise.resolve(true),
+    close: (): Promise<void> => Promise.resolve(),
+  }
+  recording.deps.agent = (): Promise<OpenCodeAgent> => Promise.resolve(inner)
+  recording.deps.tokensUsed = (): Promise<number> => Promise.resolve(over.tokensUsed ?? 0)
+
+  const base = recording.deps.git
+  recording.deps.git = {
+    ...base,
+    // The lift is recorded in the call string so the sync expectations pin it:
+    // `/sync` is the one caller allowed onto a dependency-drifted branch, and
+    // losing that option would make the remedy refuse its own condition.
+    ensureBranch: (branch: string, main: string, options?: EnsureBranchOptions): Promise<void> => {
+      recording.io.gitCalls.push(
+        `ensureBranch:${branch}:${main}${options?.allowDependencyDrift === true ? ':allowDrift' : ''}`,
+      )
+      return Promise.resolve()
+    },
+    mergeBase: (branch: string): Promise<MergeOutcome> => {
+      recording.io.gitCalls.push(`mergeBase:${branch}`)
+      return Promise.resolve(over.merge)
+    },
+    push: (branch: string): Promise<void> => {
+      recording.io.gitCalls.push(`push:${branch}`)
+      if (over.pushError !== undefined) return Promise.reject(over.pushError)
+      return Promise.resolve()
+    },
+  }
+
+  return {
+    input: {
+      state,
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: issueTrigger('OWNER'),
+      command: { command: '/sync', argument: '' },
+      thread: recording.io.thread,
+      deps: recording.deps,
+      answer: false,
+      posted: false,
+      carriedTokens: state.tokensSpent,
+      sync: true,
+    },
+    io: recording.io,
+    sections: reply.sections,
+    seedState,
+  }
+}
+
+describe('runSync · the clean paths', () => {
+  it('merges, pushes and reports — zero model turns, persisted state byte-identical', async () => {
+    const fixture = syncFixture({ merge: { kind: 'clean', commits: 2 } })
+
+    const result = await runSync(fixture.input)
+
+    expect(result.status).toBe('completed')
+    expect(fixture.io.gitCalls).toEqual([
+      'ensureBranch:agent/issue-42:main:allowDrift',
+      'mergeBase:main',
+      'push:agent/issue-42',
+    ])
+    // Zero model turns: the clean path spends nothing.
+    expect(fixture.io.prompts).toEqual([])
+    // The reply reports the commits merged and from which branch.
+    const body = String(fixture.sections.at(-1)?.body)
+    expect(body).toContain('2 commits')
+    expect(body).toContain('`main`')
+    // The workspace rule: the persisted state is byte-identical. The in-place
+    // spend write (postAnswer's) is content-identical when nothing was spent —
+    // the block the thread carries reads exactly the one it started with.
+    expect(fixture.io.edits.at(-1)?.body).toBe(fixture.seedState)
+  })
+
+  it('reports up to date, pushes nothing, spends no turn', async () => {
+    const fixture = syncFixture({ merge: { kind: 'up-to-date' } })
+
+    const result = await runSync(fixture.input)
+
+    expect(result.status).toBe('completed')
+    expect(fixture.io.gitCalls).toEqual(['ensureBranch:agent/issue-42:main:allowDrift', 'mergeBase:main'])
+    expect(fixture.io.prompts).toEqual([])
+    expect(fixture.sections.at(-1)?.body).toContain('up to date')
+    expect(fixture.io.edits.at(-1)?.body).toBe(fixture.seedState)
+  })
+
+  it('translates a workflows-permission push refusal instead of posting the raw error', async () => {
+    const fixture = syncFixture({
+      merge: { kind: 'clean', commits: 1 },
+      pushError: new Error(
+        'git failed (1): git push origin agent/issue-42\n' +
+          'remote: ERROR: refusing to allow a GitHub App to create or update workflow ' +
+          '`.github/workflows/ci.yml` without `workflows` scope.',
+      ),
+    })
+
+    const result = await runSync(fixture.input)
+
+    expect(result.status).toBe('failed')
+    const body = String(fixture.sections.at(-1)?.body)
+    expect(body).toContain('workflow')
+    // The remedy names the code host's own update-branch control, not /retry.
+    expect(body).toContain('update-branch')
+    expect(body).not.toContain('/retry')
+    // Nothing moved and nothing was stranded elsewhere.
+    expect(fixture.io.edits.at(-1)?.body).toBe(fixture.seedState)
+    expect(result.state).toEqual(fixture.input.state)
+  })
+})
+
+describe('runSync · the conflicted path', () => {
+  it('repairs in bounded rounds and completes the merge itself', async () => {
+    const fixture = syncFixture({
+      merge: { kind: 'conflicted', paths: ['src/same.txt'] },
+      repair: 'resolved version\n',
+      tokensUsed: 1_234,
+    })
+
+    const result = await runSync(fixture.input)
+
+    expect(result.status).toBe('completed')
+    expect(fixture.io.gitCalls).toEqual([
+      'ensureBranch:agent/issue-42:main:allowDrift',
+      'mergeBase:main',
+      'completeMerge:chore(agent): sync with main',
+      'push:agent/issue-42',
+    ])
+    // One repair turn: the prompt names the conflicted path, carries the
+    // markers, and pins the forbidden-git rule.
+    expect(fixture.io.prompts).toHaveLength(1)
+    const prompt = String(fixture.io.prompts[0]?.prompt)
+    expect(prompt).toContain('src/same.txt')
+    expect(prompt).toContain('<<<<<<<')
+    expect(prompt).toContain(SYNC_FORBIDDEN_GIT_RULE)
+    // The reply says resolved and is honest that checks have not run on it.
+    const body = String(fixture.sections.at(-1)?.body)
+    expect(body.toLowerCase()).toContain('resolved')
+    expect(body).toContain('checks')
+    // The reply is postAnswer's write: a plain comment, no state block.
+    expect(fixture.sections.at(-1)?.blocks).toEqual([])
+    // The repair turn's spend is the one thing that changed: the newest state
+    // block was rewritten in place with the new total, everything else intact.
+    const edit = fixture.io.edits.at(-1)
+    expect(edit?.body).toContain('"tokensSpent": 1234')
+    expect(edit?.body).toContain('"phase": "COMPLETE"')
+    expect(edit?.body).not.toContain('"phase": "FAILED"')
+  })
+
+  it('aborts when every round ends with markers still present', async () => {
+    // No repair: the file keeps its markers through all rounds.
+    const fixture = syncFixture({ merge: { kind: 'conflicted', paths: ['src/same.txt'] }, tokensUsed: 100 })
+
+    const result = await runSync(fixture.input)
+
+    expect(result.status).toBe('failed')
+    // Exactly syncRepairMaxRounds turns — the stub config's 3.
+    expect(fixture.io.prompts).toHaveLength(3)
+    expect(fixture.io.gitCalls).toContain('abortMerge')
+    expect(fixture.io.gitCalls.filter((call) => call.startsWith('push:'))).toEqual([])
+    expect(fixture.sections.at(-1)?.body).toContain('update-branch')
+    // State untouched but for the spend the failed rounds paid.
+    const edit = fixture.io.edits.at(-1)
+    expect(edit?.body).toContain('"phase": "COMPLETE"')
+    expect(edit?.body).toContain('"tokensSpent": 100')
+  })
+
+  it('starts no repair turn at the token ceiling, and names the ceiling and the remedy', async () => {
+    const fixture = syncFixture({
+      merge: { kind: 'conflicted', paths: ['src/same.txt'] },
+      // At the ceiling the ordinary way: everything before this job spent it,
+      // and this job's session has paid for nothing at all.
+      state: { tokensSpent: 5_000_000 },
+    })
+
+    const result = await runSync(fixture.input)
+
+    expect(result.status).toBe('failed')
+    expect(fixture.io.prompts).toEqual([])
+    expect(fixture.io.gitCalls).toContain('abortMerge')
+    expect(fixture.sections.at(-1)?.body).toContain('AGENT_MAX_TOKENS')
+    expect(fixture.sections.at(-1)?.body).toContain('update-branch')
+    expect(fixture.io.edits.at(-1)?.body).toBe(fixture.seedState)
+  })
+})
+
+/**
+ * Steering notes (design D1): `/retry <note>` and `/continue <note>` arguments
+ * reach the resumed handler's prompt as enveloped maintainer guidance. The
+ * note's lifetime is the prompt it rode in — no state block, no handoff change,
+ * nothing persisted — and an argument-less command produces a byte-identical
+ * prompt to today's.
+ */
+
+/** An implement-phase input with the command the run was re-entered by. */
+const resumedInput = (command: ParsedCommand | null): { input: PhaseInput; io: StubIo } => {
+  const built = implementInput('- [ ] Add the wrapper\n')
+  return { input: { ...built.input, command }, io: built.io }
+}
+
+describe('handleImplement · steering notes', () => {
+  it('threads a /retry note into the resumed step prompt, enveloped and framed', async () => {
+    const { input, io } = resumedInput({ command: '/retry', argument: 'pull master and resolve the conflicts first' })
+
+    const outcome = await handleImplement(input)
+
+    expect(outcome.signal).toBe('CHANGES_COMMITTED')
+    const prompt = String(io.prompts[0]?.prompt)
+    expect(prompt).toContain('pull master and resolve the conflicts first')
+    expect(prompt).toContain('maintainer-note')
+  })
+
+  it('threads a /continue note the same way — both doors of the resume', async () => {
+    const { input, io } = resumedInput({
+      command: '/continue',
+      argument: 'start from the failing test, not the whole file',
+    })
+
+    await handleImplement(input)
+
+    expect(String(io.prompts[0]?.prompt)).toContain('start from the failing test, not the whole file')
+  })
+
+  /**
+   * Each run mints its own envelope nonce, so "byte-identical" is asserted
+   * after normalizing the nonce out — everything else in the prompt must be
+   * exactly the argument-less shape, which is what "argument-less commands are
+   * unchanged" means observably.
+   */
+  const nonceFree = (prompt: unknown): string =>
+    String(prompt)
+      .replace(/id="[^"]+"/gu, 'id="N"')
+      .replace(/<\/untrusted_input:[^>]+>/gu, '</untrusted_input:N>')
+
+  it('an argument-less /retry produces the identical prompt to no command at all', async () => {
+    const plain = resumedInput(null)
+    const bare = resumedInput({ command: '/retry', argument: '' })
+
+    await handleImplement(plain.input)
+    await handleImplement(bare.input)
+
+    expect(nonceFree(bare.io.prompts[0]?.prompt)).toBe(nonceFree(plain.io.prompts[0]?.prompt))
+  })
+
+  it('persists no note: the state patch and blocks are exactly the argument-less shape', async () => {
+    const noted = resumedInput({ command: '/retry', argument: 'resolve the conflicts first' })
+    const plain = resumedInput(null)
+
+    const withNote = await handleImplement(noted.input)
+    const without = await handleImplement(plain.input)
+
+    expect(withNote.patch).toEqual(without.patch)
+    expect(withNote.blocks).toEqual(without.blocks)
+    expect(String(noted.io.prompts[0]?.prompt)).not.toContain(String(plain.io.prompts[0]?.prompt))
   })
 })

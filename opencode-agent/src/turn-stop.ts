@@ -5,7 +5,7 @@
 
 import { HANDOFF_MARKER, renderArtifact } from './artifacts.js'
 import { withDeadline } from './deadline.js'
-import { openCodeError } from './errors.js'
+import { isTurnStall, openCodeError } from './errors.js'
 import type { PipelineError } from './errors.js'
 import { buildWrapUpPrompt } from './implement-prompts.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
@@ -94,29 +94,26 @@ export const stopPartWayThrough = async (context: PartWayInput): Promise<PhaseOu
   const { input, branch, stopped, system } = context
   const { deps, state } = input
 
-  deps.log.warn(
-    {
-      issue: state.issueId,
-      branch,
-      step: context.step?.number,
-      of: context.step?.total,
-      toDeadlineMs: msToDeadline(deps.config, deps.now()),
-      ...stopped.progress,
-    },
-    'Out of time part-way through the turn; stopping it and keeping what it wrote',
-  )
+  // A stall abort happens *because* the model cannot answer, so the soft stop's
+  // one premise — an idle session worth a second prompt — is the one thing this
+  // stop knows to be false. It skips the ask and goes straight to the hard
+  // abort, and after the salvage it leaves by the failure door: `failWithStall`.
+  const stalled = isTurnStall(stopped)
+  logStopping(context, stalled)
 
   const agent = await deps.agent()
   // Step 1. The abort is what stops the work; the wrap-up is what makes the window
   // worth its cost. Asking is conditional on the abort having taken, because the
   // premise of a second prompt is an idle session — a server still running a tool
   // child has no capacity to answer and the window would expire either way, buying
-  // nothing and delaying the salvage.
-  const softStopped = await agent.abort()
+  // nothing and delaying the salvage. A stall skips it outright: the premise is
+  // the thing the stall disproved.
+  const softStopped = stalled ? false : await agent.abort()
   const handoff = softStopped ? await askForHandoff(agent, system, context.step, deps) : null
 
   // Step 2. Unconditional, and it depends on nothing the model chose to do: the
-  // wrap-up may have replied, refused, or started editing again.
+  // wrap-up may have replied, refused, or started editing again. On the stall
+  // path this is the *only* abort, and the one the salvage fence below reads.
   const hardStopped = await agent.abort()
 
   // Step 3. The fence is "some abort was accepted". The soft one is the meaningful
@@ -130,7 +127,49 @@ export const stopPartWayThrough = async (context: PartWayInput): Promise<PhaseOu
     quiescent: softStopped || hardStopped,
   })
 
+  if (stalled) failWithStall(stopped)
   return parkedOutcome(context, salvage, handoff)
+}
+
+/** Says which of the two stops this is, with what the turn had managed. */
+const logStopping = (context: PartWayInput, stalled: boolean): void => {
+  const { deps, state } = context.input
+  deps.log.warn(
+    {
+      issue: state.issueId,
+      branch: context.branch,
+      step: context.step?.number,
+      of: context.step?.total,
+      toDeadlineMs: msToDeadline(deps.config, deps.now()),
+      stall: stalled,
+      ...context.stopped.progress,
+    },
+    stalled
+      ? 'The provider stalled the turn part-way through; aborting it and keeping what it wrote'
+      : 'Out of time part-way through the turn; stopping it and keeping what it wrote',
+  )
+}
+
+/**
+ * How a stall leaves, and the one deliberate difference from the deadline's
+ * exit.
+ *
+ * A deadline parks `OUT_OF_TIME` → `INCOMPLETE`, because a ceiling was reached
+ * in a run where nothing broke and `/continue` finishes the work. A stall is
+ * not that: the provider is down, the wrap-up was skipped by design, and there
+ * is no handoff to give — so the error is **rethrown** and `failRun` makes the
+ * same park a stall in any other phase already makes: `FAILED` with
+ * `resumeFrom` intact, the stall text as `lastError`, and a `/retry` that
+ * resumes the phase once the wave has passed. Finished steps are not re-run;
+ * their boxes are ticked on the branch and the walk skips them.
+ *
+ * Called after the salvage, never before it and never instead of it: whatever
+ * the tree held is on the pushed branch by the time the failure comment lands,
+ * which is the same claim the deadline's notice makes and the reason the two
+ * stops share every step but the ask.
+ */
+const failWithStall = (stopped: PipelineError): never => {
+  throw stopped
 }
 
 /**

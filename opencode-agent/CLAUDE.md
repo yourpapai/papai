@@ -120,7 +120,8 @@ findings: `ROADMAP.md`.
   process, a port, a base URL; `src/opencode-adapter.ts` is the **session** the
   pipeline holds — an id, a lifetime, a teardown. `src/turn-run.ts` is the fourth
   and the newest: one **turn**, which is the thing with a clock, a heartbeat and
-  three ways to end. It owns the bound, the heartbeat and the failure
+  four ways to end (answered, deadlined, stalled, dead server). It owns the
+  bounds, the heartbeat and the failure
   classification, and it never imports back from the adapter — `TurnBounds` and
   `TurnConnection` are narrow slices that `OpenCodeAgentOptions` and
   `OpenCodeConnection` extend, so each states what running a turn actually needs
@@ -157,7 +158,18 @@ findings: `ROADMAP.md`.
   on any branch, which is how three handlers acquired the same defect; the fake in
   `phases.test.ts` refuses every driver call and every `readFile` until
   `ensureBranch` has been called, so a phase that reads too early fails the test
-  the way it failed the run.
+  the way it failed the run. The same call **refuses a dependency-drifted branch**
+  (`git-drift.ts`): the workflow installs from the base checkout and no second
+  install follows the branch switch, so a branch whose `bun.lock` / `package.json`
+  manifests differ from base runs every check against a `node_modules` that cannot
+  serve it — run 32507905723 paid for a full PLANNING turn and then died in the
+  pre-commit hook on `TS2307` for an import base had stopped carrying. The refusal
+  (`dependencyDriftError`) names `/sync` and the hand-merge as the remedies and
+  never a bare `/retry`; `/sync` passes `allowDependencyDrift` because a drifted
+  branch is the condition it exists to repair, and the guard must not block its
+  own way out. A branch that _intentionally_ changed dependencies is out of reach
+  by design — the job cannot install from the agent branch — and the message says
+  so; revisit only with a security answer for model-influenced install scripts.
 - **An artifact's output path is not always a file, and a pattern is judged
   rather than written.** Three of the `spec-driven` schema's four artifacts
   resolve to a path the drafter can hand to `writeFile`; `specs` does not. A
@@ -207,6 +219,34 @@ findings: `ROADMAP.md`.
   into an implementation walk with no steps. The `PLAN_REVIEW` digest shows the
   ticked boxes to a maintainer, whose `/changes` re-plans it; nothing can tell
   "already built" from "ticked and abandoned" by reading the folder.
+- **Fix-class issues skip specs by triage's call, ratified at the park.** Triage's
+  `capture` reply carries a required `skipSpecs` boolean decided under an explicit
+  rule — a spec-level change is one where a downstream observer of the system's
+  contract would see an added, changed or removed requirement; fixes restoring
+  intended behaviour, refactors, docs and tooling are not — with **bias to `true`
+  for fix-class issues** (a false capability pressures the model into inventing
+  deltas to satisfy `validate --strict`; a false skip is quiet and reversible). A
+  recommending capture must write "None — skip_specs proposed because ⟨reason⟩"
+  into the proposal's Capabilities section, and `/changes` at the `DESIGN_SPEC`
+  park is the correction point. When the flag is true, the scaffold stamps
+  `skip_specs: true` into `.openspec.yaml` itself — a deterministic TS patch in
+  the driver (`newChange` options), fed by the zod-validated output; the model
+  never writes metadata (single-sourced channel, diff-guard scope unchanged).
+  Under the flag the CLI reports `specs: skipped` and counts the dependency
+  satisfied, so PLANNING composes design (recording the deliberate skip in the
+  drafter prompt) plus tasks and never drafts deltas; the validate-retry loop
+  stays for genuine failures. `skipSpecs` also doubles as the **depth-lane
+  signal**: fix-class issues take the shallow lane (proposal-lite → design-skip
+  → tasks), feature-class issues the deep lane. The full depth doctrine —
+  distributed exploration, gate depths, the planning-turn `INCOMPLETE` watch
+  item — lives in `openspec/changes/opencode-agent-skip-specs-depth/design.md`
+  (Decisions 5–6).
+- **Capabilities are named at feature-domain granularity, never issue-sized.**
+  Capture and specs-drafter prompts both carry the doctrine: names like
+  `user-profile-memory` or `sdd-automation`, not one micro-capability per issue;
+  and while `openspec/specs/` holds no archived corpus, **new capabilities
+  only** — there is nothing yet to modify. Guidance, not a validator: the
+  `DESIGN_SPEC` park enforces, the prompt states the rule it cites.
 - **The plan counts one identity token, not two artefact revisions.** Under D1
   only `planRevision` remains — a machine identity for "a new plan happened",
   bumped by `PLAN_POSTED` alone, not an artefact revision. The former
@@ -257,6 +297,41 @@ findings: `ROADMAP.md`.
   phase either: `failAnswer` posts and leaves `phase`, `resumeFrom` and
   `attempts` alone, which is also why `resumeFrom` can never name a waiting phase
   with no handler for `/retry` to resume into.
+- **`/sync` is the `/ask` shape on the pull request: a side operation, never a
+  phase.** A PR that fell behind its base had no machine remedy before it — the
+  conflict banner was permanent until a human merged locally. `runSync` in
+  `src/phases/sync.ts` (the `answer.ts` precedent: a handler that is not a
+  phase) merges `origin/<base>` into the agent branch, and every design choice
+  follows from "moves nothing". Dispatch sits in `sideOperation` beside `/ask`
+  in `triggers.ts`, **before** the signal lookup — `/sync` has no
+  `COMMAND_SIGNALS` entry, so the transition table is never consulted, no
+  `PHASES` member or presentation row exists, and `phase`, `attempts`,
+  `resumeFrom` and every per-PR budget are byte-identical after every outcome
+  (assert the persisted state, not the returned status). It runs in
+  `driveMachine` **ahead of both budget stops**: the clean path spends nothing,
+  so `/sync` must work at the token ceiling, and the wall-clock stop parks in
+  `INCOMPLETE` — a state move, the one thing `/sync` never does; the handler
+  asks the token ceiling itself, before each repair turn only. Repair rounds
+  clone the `commit-repair.ts` doctrine (`AGENT_SYNC_REPAIR_MAX_ROUNDS`,
+  `ROUND_RANGE`): the prompt names the conflicted paths and carries the markers,
+  the model is forbidden git (`SYNC_FORBIDDEN_GIT_RULE`, pinned
+  `instructions.test.ts`-style), the pipeline alone completes the merge and
+  pushes. No persisted `syncAttempts` — `/sync` is human-initiated like `/ask`;
+  the token ceiling is the bound. The merge goes through `Git.mergeBase` /
+  `completeMerge` / `abortMerge` in `src/git-merge.ts`, **never `commitAll`**:
+  a merge carries base's own already-reviewed content, which the commit path's
+  caps and protected-path dropping would misjudge (dropping base's
+  `.github/workflows/` edits would silently un-merge them). A conflict is an
+  outcome, not an error — `MergeOutcome` — and a refused push carrying base's
+  workflow edits is translated by `isWorkflowPushForbidden` in `errors.ts`,
+  matched on GitHub's own sentence and naming the update-branch remedy. The
+  reply is `postAnswer`'s write (a plain comment, no block); a repair turn's
+  spend is the one thing that changes, rewritten in place via
+  `state-persist.ts`. Steering notes ride the same seam as the handoff:
+  `/retry <note>` / `/continue <note>` arguments reach the resumed
+  implementation prompts enveloped under `MAINTAINER_NOTE_FRAMING`
+  (`implement-prompts.ts`, pinned), framed as guidance with the plan/folder as
+  truth and `/changes` as the re-plan channel — prompt-scoped, never persisted.
 - **The review loop is `review-loop/`, not a local reimplementation.**
   `handleReview` in `src/phases/review.ts` drives that workspace through
   `review-runner.ts`, reached from `CODE_REVIEW` on an explicit `/review` and by
@@ -280,6 +355,23 @@ findings: `ROADMAP.md`.
   checkout about to be deleted. `phases/review-push.ts` asks the **branch**
   instead (`git.headSha` either side of the loop) and pushes when it moved; a
   commit this process made needs no second opinion and is pushed on that alone.
+  **Every push reconciles with the remote first, because the branch is shared
+  with humans, not owned.** Run 32374999214 (PR #313): a maintainer pushed merge
+  `1f7ce71b` to `agent/issue-305` three hours into a review loop, and every later
+  pipeline push was rejected non-fast-forward — `ensureBranch` fetches once per
+  phase and nothing until the push looked at the remote again, so five review
+  fixes died with the runner and the run parked in `FAILED` inviting a `/retry`
+  that re-runs the whole loop. `git-reconcile.ts` (split from `git.ts` along
+  `git-revert.ts`'s seam) fetches the branch and merges `origin/<branch>` when
+  HEAD does not contain it — **merge, never rebase, never force**: the branch is
+  shared by design, and rewrites or force would discard the human line or
+  history the loop's `primary` branch shares. A conflict aborts the merge and
+  throws naming the conflicted paths; a fetch that finds no remote branch is a
+  first push, not an error; base-branch pushes (`ARCHIVE`) do not reconcile. On
+  the review path the reconcile runs **before `dropUnpushable`**, so a protected
+  path that arrived via the human line is reverted before the push instead of
+  riding the merge into a GitHub refusal of the whole push (the issue #240
+  class); `push()`'s own internal reconcile is then an idempotent no-op.
   It also pushes **as each fix lands**, on the `[review-loop] published` marker
   the loop prints: `mergeEachFix` in the generated config makes the loop merge per
   fix instead of once at the end behind its build gate, and the push stays on this
@@ -411,7 +503,12 @@ findings: `ROADMAP.md`.
   `index.ts` configures everything downstream with the placeholder, because the
   SDK puts the config into the spawned server's environment where `bash` can
   read it. Never pass `config.openai` to an OpenCode path — pass the contained
-  settings. That proxy is also where **transient failures are retried**, because
+  settings. `AGENT_MCP_SERVERS` rides the same seam (`mcpServers` on
+  `OpenAiSettings`, carried through `proxiedSettings` by its spread), so the
+  in-process session and `OPENCODE_CONFIG_CONTENT` carry one server set — and
+  the knob's `headers`/`environment` values join `pipelineSecrets`, though the
+  config content itself stays model-readable (documented residual risk).
+  That proxy is also where **transient failures are retried**, because
   it is the one layer that sees a real HTTP status and the only one the review
   loop's subprocesses also pass through; do not add a second retry in the
   adapter, where the status is already gone.
@@ -880,6 +977,14 @@ not permitted to create or approve pull requests` is a repository or
   recorded from a live server — re-record rather than adjusting by inspection,
   and note that the SDK's generated `Event` union is already behind its own
   server, which is why each decode is a `safeParse` yielding `null`.
+  The **one widening that is legal** lives transcript-side:
+  `describeProviderDetail` in `activity-detail.ts` decodes the provider's own
+  message off `session.status` retry and `session.error` events — shapes from
+  the pinned SDK, `status.message` and `error.data.message` — and
+  `progress.ts` feeds it to the encrypted transcript one row per occurrence,
+  in front of the collapse gate for `foldStall`'s reason. The public log
+  carries nothing of it; a provider's failure text is the designated content of
+  the designated place, redacted by value before it is encrypted.
 - **The agent cannot commit its own workflow, and that is enforced at staging.**
   GitHub refuses a push from a GitHub App or an Actions token that creates or
   updates a file under `.github/workflows/` unless the App holds the `workflows`
@@ -978,6 +1083,30 @@ not permitted to create or approve pull requests` is a repository or
   out a quota that clears with time. The read happens **after** the turn returns
   and in the adapter, the one place holding both signals — `runTurn` never sees
   the decoded reply.
+- **A turn the provider stopped serving is aborted mid-flight, not burned to the
+  whole-turn deadline.** The record above judges a turn that _returns_; the
+  2026-08-21 incident was four runs whose turns never did — a gateway answered
+  HTTP 200 and streamed nothing, the session retried the identical request 78
+  times, and `AGENT_TIMEOUT_MS` was the only bound that fired, at 90 minutes. So
+  `TurnStall` also carries `lastProgressAt` — stamped by the tracker at creation,
+  on every finished step and every **newly started** tool call (a tool starting is
+  as much proof the model answered as a step finishing), with `foldStall` kept
+  pure — and `turn-run.ts` rides a **second reader on the heartbeat's tick** to
+  ask, on every beat, whether `now − lastProgressAt ≥ AGENT_STALL_TIMEOUT_MS`
+  **and** retry evidence has accumulated since that progress. Both conditions,
+  always: the evidence is what separates a provider wave from one very long
+  generation, which is the deadline's business and must keep being. `0` disables
+  the knob and is exactly the old behaviour. The rejection is
+  `turnStallError` (`TURN_STALL`), raced against the work `withDeadline`-style
+  and passed through `runTurn`'s catch before the `alive()` probe. On the
+  implement path it salvages like a deadline but **skips the wrap-up ask** — the
+  soft stop's second prompt presumes an idle session that can still answer, and
+  a stall abort happens because it cannot — and then leaves by the **failure
+  door**: rethrown after the salvage so `failRun` parks `FAILED` with the stall
+  text as `lastError` and `/retry` as the remedy, not `OUT_OF_TIME`/`INCOMPLETE`,
+  which would invite a `/continue` into a wave that has not passed. Finished
+  steps are not re-run by that `/retry`; their boxes are ticked on the branch
+  and the walk skips them.
 - **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
   on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
   cannot edit or run commands, `build` can. Add a capability by naming it, never

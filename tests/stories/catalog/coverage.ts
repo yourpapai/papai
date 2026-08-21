@@ -13,7 +13,7 @@ export type StoryTier = (typeof STORY_TIERS)[number]
  * never speculatively: an executable record may only claim a live tier, so a
  * planned tier can never be mistaken for coverage that exists.
  */
-export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0', '1', '2', '3'])
+export const LIVE_STORY_TIERS: readonly StoryTier[] = Object.freeze(['0', '1', '2', '3', '4'])
 
 /**
  * Repository-relative suite root each tier's stories live under. A record's story
@@ -28,7 +28,7 @@ export const TIER_SUITE_ROOTS: Readonly<Record<StoryTier, string>> = Object.free
   '4': 'tests/operational/',
 })
 
-type CatalogScenarioId = (typeof CATALOG_SCENARIO_IDS)[number]
+export type CatalogScenarioId = (typeof CATALOG_SCENARIO_IDS)[number]
 
 export type NonEmptyReadonlyTuple<T> = readonly [T, ...T[]]
 
@@ -103,7 +103,7 @@ export type CatalogCoverage =
     }>
 
 export const CATALOG_SOURCE =
-  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke)' as const
+  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census); extended 2026-07-29 with 21 uncatalogued-cluster behavior ids (@0/@3/@4) (phase3-catalog-foundation); extended 2026-08-01 with 3 real-Kaneo (@0) chat-loop story ids attached to the YouTrack real-provider records (t0-real-kaneo-provider); extended 2026-08-03 with 1 analytics settings (@0) story id (analytics-settings-census); extended 2026-08-04 with 4 aggregate delivery (@0) ids (analytics-aggregate-delivery-coverage); extended 2026-08-20 with 5 Discord/Mattermost adapter (@3) ids (tier3-chat-adapter-coverage); extended 2026-08-21 with 3 chat participant resolution (@0) ids (participant-resolution-stories)' as const
 
 export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-create-update',
@@ -134,6 +134,7 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-reminder-recurring-create',
   'SCN-reminder-recurring-manage',
   'SCN-reminder-recurring-fire',
+  'SCN-scheduler-recurring-fire',
   'SCN-deferred-schedule-create',
   'SCN-deferred-alert-create',
   'SCN-deferred-manage',
@@ -220,6 +221,21 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-settings-coding-mcp',
   'SCN-settings-coding-repos',
   'SCN-settings-admin-guardrails',
+  'SCN-settings-admin-tool-defaults',
+  'SCN-settings-admin-analytics',
+  // Phase 6 — admin operations surfaces (story-coverage-floor-climb)
+  'SCN-settings-admin-llm-providers',
+  'SCN-settings-admin-roster-access',
+  'SCN-settings-admin-mcp-and-history',
+  'SCN-analytics-governed-turn',
+  // Phase 6 — consent-gated analytics (story-coverage-floor-climb)
+  'SCN-analytics-consent-grant',
+  'SCN-analytics-subject-rights',
+  'SCN-analytics-derived-materialization',
+  'SCN-analytics-aggregate-release-settings',
+  'SCN-analytics-aggregate-release-denials',
+  'SCN-analytics-aggregate-delivery-captured',
+  'SCN-analytics-aggregate-delivery-governance',
   'SCN-settings-admin-mcp-catalog',
   'SCN-settings-admin-mcp-plugin-servers',
   'SCN-settings-admin-system-access',
@@ -232,8 +248,16 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-http-admin-dashboard',
   'SCN-http-billing-stats-readonly',
   'SCN-http-debug-live-panels',
+  'SCN-http-debug-schemas',
+  'SCN-http-debug-route-family',
+  'SCN-http-dashboard-assets',
+  'SCN-http-operator-data-routes',
   'SCN-context-thread-scope',
   'SCN-context-group-identity',
+  // @0 — chat participant resolution (participant-resolution-stories)
+  'SCN-chat-participant-ranking',
+  'SCN-chat-participant-label-fallback',
+  'SCN-chat-participant-dm-absent',
   // @1 — provider-real parity lane (tier1-provider-real-parity)
   'SCN-parity-task-create',
   'SCN-parity-task-get',
@@ -278,14 +302,121 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-plugin-registry-served',
   'SCN-chat-turn-tool-loop',
   'SCN-graceful-shutdown',
+  // @0 — real YouTrack provider inside the hermetic lane (t0-real-youtrack-provider)
+  'SCN-task-youtrack-real-create',
+  'SCN-task-youtrack-real-fields',
+  'SCN-task-youtrack-real-error',
+  'SCN-task-youtrack-real-gating',
+  'SCN-task-youtrack-real-workflow',
+  'SCN-task-youtrack-real-sprint-lifecycle',
+  // @0 — real YouTrack provider conformance sweep, grouped by domain (t0-real-youtrack-provider)
+  'SCN-youtrack-conformance-tasks',
+  'SCN-youtrack-conformance-search',
+  'SCN-youtrack-conformance-comments',
+  'SCN-youtrack-conformance-relations',
+  'SCN-youtrack-conformance-projects',
+  'SCN-youtrack-conformance-errors',
+  'SCN-http-settings-auth-validation',
+  'SCN-http-dashboard-debug-gate',
+  'SCN-http-debug-protected-surfaces',
+  'SCN-settings-api-tools',
+  'SCN-settings-api-byok',
+  'SCN-settings-api-memory',
+  'SCN-settings-api-plugins',
+  'SCN-settings-api-mcp',
+  'SCN-settings-api-group',
+  'SCN-settings-api-release',
+  'SCN-coding-acp-mcp-fail-closed',
+  'SCN-coding-acp-upstream-failure',
+  'SCN-coding-acp-tool-eligibility',
+  'SCN-settings-task-instance-assignment',
+  'SCN-plugin-context-eligibility',
+  'SCN-plugin-contribution-isolation',
+  'SCN-http-mattermost-action-bad-signature',
+  // Phase 3 — uncatalogued runtime cluster (catalog foundation)
+  'SCN-memory-tool-pairing',
+  'SCN-queue-coalescing',
+  'SCN-queue-group-serialization',
+  'SCN-attachments-staged-scope-search',
+  'SCN-attachments-staged-resolution',
+  'SCN-byok-context-credentials',
+  'SCN-byok-unreadable-credentials',
+  'SCN-message-cache-persistence',
+  'SCN-usage-accounting',
+  'SCN-announcement-delivery-fanout',
+  'SCN-stats-anonymity',
+  'SCN-stats-aggregate-window',
+  'SCN-scheduler-execution-tracking',
+  'SCN-changelog-version-section',
+  'SCN-interaction-discord-command-routing',
+  'SCN-interaction-discord-format-chunking',
+  'SCN-interaction-discord-response-lifecycle',
+  'SCN-interaction-kontur-reply-formatting',
+  'SCN-interaction-telegram-admin-authorization',
+  'SCN-deferred-poller-lifecycle',
+  'SCN-plugin-deny-gating',
+  // Phase 4 — transport-free chat adapter surfaces and audio plugin (tier2-process-smoke continuation)
+  'SCN-chat-message-normalization',
+  'SCN-chat-context-rendering',
+  'SCN-chat-interaction-payload',
+  'SCN-chat-capability-gating',
+  'SCN-chat-telegram-reply-fn',
+  'SCN-plugin-audio-transcribe-transformer',
   'SCN-context-vault-push',
   'SCN-context-vault-indexer-singleton',
+  // Phase 6 — YouTrack operations surfaces (story-coverage-floor-climb)
+  'SCN-task-youtrack-real-collaboration',
+  'SCN-task-youtrack-real-attachments-and-history',
+  'SCN-task-youtrack-real-worklog',
+  'SCN-task-youtrack-real-queries',
+  'SCN-task-youtrack-real-project-team',
+  // Phase 6 — Kaneo column and label operations (story-coverage-floor-climb)
+  'SCN-task-kaneo-status-lifecycle',
+  'SCN-task-kaneo-status-delete-unconfirmed',
+  'SCN-task-kaneo-label-lifecycle',
+  // Phase 5 — Discord/Mattermost platform-adapter scenarios (tier3-chat-adapter-coverage)
+  'SCN-interaction-discord-reply-mention',
+  'SCN-interaction-discord-status-lifecycle',
+  'SCN-interaction-discord-status-send-failure',
+  'SCN-mattermost-thread-reply',
+  'SCN-mattermost-status-lifecycle',
 ] as const)
+
+export const PHASE3_UNCATALOGUED_CLUSTER_IDS = [
+  'SCN-memory-tool-pairing',
+  'SCN-queue-coalescing',
+  'SCN-queue-group-serialization',
+  'SCN-attachments-staged-scope-search',
+  'SCN-attachments-staged-resolution',
+  'SCN-byok-context-credentials',
+  'SCN-byok-unreadable-credentials',
+  'SCN-message-cache-persistence',
+  'SCN-usage-accounting',
+  'SCN-announcement-delivery-fanout',
+  'SCN-stats-anonymity',
+  'SCN-stats-aggregate-window',
+  'SCN-scheduler-execution-tracking',
+  'SCN-changelog-version-section',
+  'SCN-interaction-discord-command-routing',
+  'SCN-interaction-discord-format-chunking',
+  'SCN-interaction-discord-response-lifecycle',
+  'SCN-interaction-kontur-reply-formatting',
+  'SCN-interaction-telegram-admin-authorization',
+  'SCN-deferred-poller-lifecycle',
+  'SCN-plugin-deny-gating',
+] as const satisfies readonly CatalogScenarioId[]
+
+const PURE_HELPER_SCENARIO_IDS = new Set<CatalogScenarioId>([
+  'SCN-memory-tool-pairing',
+  'SCN-scheduler-execution-tracking',
+  'SCN-changelog-version-section',
+])
 
 const GAP_SCENARIO_IDS = new Set<CatalogScenarioId>([
   'SCN-coding-nerv-steer',
   'SCN-supervise-self-review',
   'SCN-cmd-announce',
+  ...PHASE3_UNCATALOGUED_CLUSTER_IDS.filter((scenarioId) => !PURE_HELPER_SCENARIO_IDS.has(scenarioId)),
 ])
 
 const FORWARD_ONLY_SCENARIO_IDS = new Set<CatalogScenarioId>([
@@ -316,6 +447,87 @@ type ExecutableStoryMapping = Readonly<{
 }>
 
 const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableStoryMapping>> = {
+  'SCN-attachments-staged-scope-search': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/staged-attachments.story.test.ts#SCN-attachments-staged-scope-search: staged search respects thread and group boundaries',
+    ],
+  },
+  'SCN-attachments-staged-resolution': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/staged-attachments.story.test.ts#SCN-attachments-staged-resolution: staged resolution is single-use, terminal, and re-sendable',
+    ],
+  },
+  'SCN-byok-context-credentials': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/byok-credentials.story.test.ts#SCN-byok-context-credentials: context credentials merge and clear without disclosure',
+    ],
+  },
+  'SCN-byok-unreadable-credentials': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/byok-credentials.story.test.ts#SCN-byok-unreadable-credentials: unreadable credentials fail closed without disclosure',
+    ],
+  },
+  'SCN-queue-coalescing': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/queue.story.test.ts#SCN-queue-coalescing: same-actor messages form one ordered turn',
+    ],
+  },
+  'SCN-queue-group-serialization': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/queue.story.test.ts#SCN-queue-group-serialization: actor changes flush and serialize group-thread turns',
+    ],
+  },
+  'SCN-message-cache-persistence': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/persistence-and-usage.story.test.ts#SCN-message-cache-persistence: persisted messages retain context and reply-chain boundaries',
+    ],
+  },
+  'SCN-usage-accounting': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/runtime/persistence-and-usage.story.test.ts#SCN-usage-accounting: idempotent request and tool events remain window-queryable',
+    ],
+  },
+  'SCN-announcement-delivery-fanout': {
+    verifiedAt: '2026-07-30',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/announcement-delivery.story.test.ts#SCN-announcement-delivery-fanout: eligible release subscribers receive independent best-effort delivery accounting',
+    ],
+  },
+  'SCN-memory-tool-pairing': {
+    verifiedAt: '2026-07-29',
+    storyIds: [
+      'tests/stories/pure-helpers/pure-helpers.story.test.ts#SCN-memory-tool-pairing: retained history keeps tool exchanges whole',
+    ],
+  },
+  'SCN-scheduler-execution-tracking': {
+    verifiedAt: '2026-07-29',
+    storyIds: [
+      'tests/stories/pure-helpers/pure-helpers.story.test.ts#SCN-scheduler-execution-tracking: active execution tracking clears fulfilled and rejected work',
+    ],
+  },
+  'SCN-changelog-version-section': {
+    verifiedAt: '2026-07-29',
+    storyIds: [
+      'tests/stories/pure-helpers/pure-helpers.story.test.ts#SCN-changelog-version-section: version lookup returns only the requested changelog section',
+    ],
+  },
   'SCN-coding-acp-command': {
     verifiedAt: '2026-07-13',
     storyIds: [
@@ -326,6 +538,7 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-13',
     storyIds: [
       'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#SCN-coding-acp-start-fresh: starts a configured session through the real ACP tool loop',
+      'tests/stories/integrations/coding-sessions/start-session.story.test.ts#starts a coding session through the real capability and tool loop',
     ],
   },
   'SCN-coding-acp-start-on-pr': {
@@ -508,6 +721,27 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/context/thread-scope.story.test.ts#group threads share config but isolate conversation history',
     ],
   },
+  'SCN-chat-participant-ranking': {
+    verifiedAt: '2026-08-21',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/participant-resolution.story.test.ts#SCN-chat-participant-ranking: ranks group members and recent senders exact before prefix before substring',
+    ],
+  },
+  'SCN-chat-participant-label-fallback': {
+    verifiedAt: '2026-08-21',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/participant-resolution.story.test.ts#SCN-chat-participant-label-fallback: an unresolvable label falls back to the identifier without failing the turn',
+    ],
+  },
+  'SCN-chat-participant-dm-absent': {
+    verifiedAt: '2026-08-21',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/participant-resolution.story.test.ts#SCN-chat-participant-dm-absent: the resolver tool is offered in a group turn and withheld in a DM turn',
+    ],
+  },
   'SCN-context-group-identity': {
     verifiedAt: '2026-07-19',
     storyIds: [
@@ -612,6 +846,7 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-19',
     storyIds: [
       'tests/stories/tasks/lifecycle-and-policy.story.test.ts#SCN-task-create-update: creates and renames a task through the tool loop',
+      'tests/stories/chat-task/create-and-read-task.story.test.ts#creates and reads a task through the real chat tool loop',
     ],
   },
   'SCN-task-query': {
@@ -806,6 +1041,24 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/stories/http/dashboard.story.test.ts#SCN-http-debug-live-panels: debug panels require both the world flag and the dashboard session',
     ],
   },
+  'SCN-http-debug-route-family': {
+    verifiedAt: '2026-08-01',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-debug-route-family: a dashboard session reads every live diagnostic route',
+    ],
+  },
+  'SCN-http-dashboard-assets': {
+    verifiedAt: '2026-08-01',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-dashboard-assets: dashboard assets are session-protected and non-empty',
+    ],
+  },
+  'SCN-http-operator-data-routes': {
+    verifiedAt: '2026-08-01',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-operator-data-routes: dashboard data routes preserve authentication and missing-subject contracts',
+    ],
+  },
   'SCN-http-notify': {
     verifiedAt: '2026-07-20',
     storyIds: [
@@ -834,6 +1087,12 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-07-21',
     storyIds: [
       'tests/stories/scheduling/recurring.story.test.ts#SCN-reminder-recurring-fire: a due recurrence creates a task and notifies the user',
+    ],
+  },
+  'SCN-scheduler-recurring-fire': {
+    verifiedAt: '2026-08-04',
+    storyIds: [
+      'tests/stories/scheduling/scheduler-recurring.story.test.ts#SCN-scheduler-recurring-fire: the real scheduler processes a due recurring task',
     ],
   },
   'SCN-deferred-schedule-create': {
@@ -1159,6 +1418,483 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
       'tests/platform/scenarios/mattermost-http-action.platform.ts#verifies a signed action context and dispatches over POST /mattermost/actions',
     ],
   },
+  'SCN-http-mattermost-action-bad-signature': {
+    verifiedAt: '2026-07-28',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/mattermost-http-action.platform.ts#rejects a context signed with the wrong secret (seam gates)',
+    ],
+  },
+  'SCN-interaction-discord-command-routing': {
+    verifiedAt: '2026-07-30',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-interactions.platform.ts#routes a Discord command through the provider adapter',
+    ],
+  },
+  'SCN-interaction-discord-format-chunking': {
+    verifiedAt: '2026-07-30',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-interactions.platform.ts#splits oversized formatted Discord replies into balanced chunks',
+    ],
+  },
+  'SCN-interaction-discord-response-lifecycle': {
+    verifiedAt: '2026-07-30',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-interactions.platform.ts#preserves the Discord interaction response lifecycle after defer failure',
+    ],
+  },
+  'SCN-interaction-kontur-reply-formatting': {
+    verifiedAt: '2026-07-30',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/kontur-talk-replies.platform.ts#formats Kontur Talk replies with thread overrides',
+    ],
+  },
+  'SCN-interaction-telegram-admin-authorization': {
+    verifiedAt: '2026-07-30',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/telegram-admin-authorization.platform.ts#authorizes Telegram group admins through the Bot API',
+    ],
+  },
+  'SCN-interaction-discord-router-wrapped': {
+    verifiedAt: '2026-08-02',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-callback-routing.platform.ts#routes a Discord permission callback through ChatRouter and production setupBot',
+    ],
+  },
+  'SCN-interaction-discord-standalone-fallback': {
+    verifiedAt: '2026-08-02',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-callback-routing.platform.ts#defers an unmatched Discord callback to the standalone message fallback',
+    ],
+  },
+  'SCN-interaction-discord-reply-mention': {
+    verifiedAt: '2026-08-20',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-reply-mention.platform.ts#dispatches a reply to a bot message exactly as an explicit Discord mention',
+    ],
+  },
+  'SCN-interaction-discord-status-lifecycle': {
+    verifiedAt: '2026-08-20',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-live-status.platform.ts#creates, updates in order, and dismisses the Discord live status',
+    ],
+  },
+  'SCN-interaction-discord-status-send-failure': {
+    verifiedAt: '2026-08-20',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/discord-live-status.platform.ts#delivers the reply without status edits when the Discord status send fails',
+    ],
+  },
+  'SCN-mattermost-thread-reply': {
+    verifiedAt: '2026-08-20',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/mattermost-thread-reply.platform.ts#answers into the incoming Mattermost thread root under a thread-scoped storage context',
+    ],
+  },
+  'SCN-mattermost-status-lifecycle': {
+    verifiedAt: '2026-08-20',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/mattermost-status-lifecycle.platform.ts#patches the Mattermost live status through the turn and deletes it before answering',
+    ],
+  },
+  'SCN-interaction-telegram-callback': {
+    verifiedAt: '2026-08-02',
+    provingTier: '3',
+    storyIds: [
+      'tests/platform/scenarios/telegram-callback-routing.platform.ts#routes a Telegram permission callback through ChatRouter and production setupBot',
+    ],
+  },
+  'SCN-task-youtrack-real-collaboration': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real-collaboration.story.test.ts#SCN-task-youtrack-real-collaboration: watchers, votes and visibility move through the real provider',
+    ],
+  },
+  'SCN-task-youtrack-real-attachments-and-history': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real-collaboration.story.test.ts#SCN-task-youtrack-real-attachments-and-history: a relayed file is attached, listed, removed, and the activity feed reads back',
+    ],
+  },
+  'SCN-task-youtrack-real-worklog': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real-worklog-and-queries.story.test.ts#SCN-task-youtrack-real-worklog: time is logged, corrected and deleted through the real provider',
+    ],
+  },
+  'SCN-task-youtrack-real-queries': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real-worklog-and-queries.story.test.ts#SCN-task-youtrack-real-queries: counting, saved queries and the YouTrack command language all run against the real provider',
+    ],
+  },
+  'SCN-task-youtrack-real-project-team': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real-worklog-and-queries.story.test.ts#SCN-task-youtrack-real-project-team: project membership resolves YouTrack ids into Hub ids in both directions',
+    ],
+  },
+  'SCN-task-kaneo-status-lifecycle': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/kaneo-statuses-and-labels.story.test.ts#SCN-task-kaneo-status-lifecycle: creates, renames, reorders and deletes Kaneo statuses through the real provider',
+    ],
+  },
+  'SCN-task-kaneo-status-delete-unconfirmed': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/kaneo-statuses-and-labels.story.test.ts#SCN-task-kaneo-status-delete-unconfirmed: an unconfident status delete is blocked and the column survives',
+    ],
+  },
+  'SCN-task-kaneo-label-lifecycle': {
+    verifiedAt: '2026-08-20',
+    storyIds: [
+      'tests/stories/tasks/kaneo-statuses-and-labels.story.test.ts#SCN-task-kaneo-label-lifecycle: attaches, renames and detaches a Kaneo label through the real provider',
+    ],
+  },
+  'SCN-task-youtrack-real-create': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-create: activates the real YouTrack plugin and creates a project over fake REST',
+      'tests/stories/tasks/kaneo-real.story.test.ts#SCN-task-kaneo-real-create: activates the real Kaneo plugin and creates a project over fake REST',
+    ],
+  },
+  'SCN-task-youtrack-real-fields': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-fields: maps YouTrack custom fields through the real provider',
+      'tests/stories/tasks/kaneo-real.story.test.ts#SCN-task-kaneo-real-fields: maps task status and priority fields through the real provider',
+    ],
+  },
+  'SCN-task-youtrack-real-error': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-error: translates a YouTrack 404 into a tool failure the model can report',
+      'tests/stories/tasks/kaneo-real.story.test.ts#SCN-task-kaneo-real-error: translates a Kaneo 404 into a tool failure the model can report',
+    ],
+  },
+  'SCN-task-youtrack-real-gating': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-gating: skips member provisioning for a provider without members.provision',
+    ],
+  },
+  'SCN-task-youtrack-real-workflow': {
+    verifiedAt: '2026-08-04',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real.story.test.ts#SCN-task-youtrack-real-workflow: classifies a workflow-validation error naming required fields',
+    ],
+  },
+  'SCN-task-youtrack-real-sprint-lifecycle': {
+    verifiedAt: '2026-08-04',
+    storyIds: [
+      'tests/stories/tasks/youtrack-real-sprints.story.test.ts#SCN-task-youtrack-real-sprint-lifecycle: board listing, sprint create/update, and task assignment through the real provider',
+    ],
+  },
+  'SCN-youtrack-conformance-tasks': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-tasks: real YouTrack provider satisfies the shared task groups',
+    ],
+  },
+  'SCN-youtrack-conformance-search': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-search: real YouTrack provider satisfies the shared search groups',
+    ],
+  },
+  'SCN-youtrack-conformance-comments': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-comments: real YouTrack provider satisfies the shared comment groups',
+    ],
+  },
+  'SCN-youtrack-conformance-relations': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-relations: real YouTrack provider satisfies the shared relation groups',
+    ],
+  },
+  'SCN-youtrack-conformance-projects': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-projects: real YouTrack provider resolves and round-trips createProject (shared project groups are excluded for this binding)',
+    ],
+  },
+  'SCN-youtrack-conformance-errors': {
+    verifiedAt: '2026-07-27',
+    storyIds: [
+      'tests/stories/tasks/youtrack-conformance.story.test.ts#SCN-youtrack-conformance-errors: real YouTrack provider satisfies the shared error groups',
+    ],
+  },
+  'SCN-http-settings-auth-validation': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/http/auth-claim.story.test.ts#SCN-http-settings-auth-validation: malformed exchanges and invalid logout sessions are rejected',
+    ],
+  },
+  'SCN-http-dashboard-debug-gate': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-dashboard-debug-gate: debug paths and the legacy dashboard redirect are hidden when disabled',
+    ],
+  },
+  'SCN-http-debug-protected-surfaces': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/http/dashboard.story.test.ts#SCN-http-debug-protected-surfaces: enabled diagnostic reads still require a dashboard session',
+    ],
+  },
+  'SCN-http-debug-schemas': {
+    verifiedAt: '2026-07-29',
+    storyIds: [
+      'tests/stories/http/debug-schemas.story.test.ts#SCN-http-debug-schemas: debug payload parsers accept valid events and reject malformed payloads',
+    ],
+  },
+  'SCN-settings-admin-tool-defaults': {
+    verifiedAt: '2026-07-29',
+    storyIds: [
+      'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-tool-defaults: a bot admin saves and reads back the default tool preset',
+    ],
+  },
+  'SCN-settings-admin-analytics': {
+    verifiedAt: '2026-08-03',
+    storyIds: [
+      'tests/stories/settings/admin-surfaces.story.test.ts#SCN-settings-admin-analytics: an operator reviews and updates the analytics policy through settings',
+    ],
+  },
+  'SCN-settings-admin-llm-providers': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/admin-operations.story.test.ts#SCN-settings-admin-llm-providers: an admin relabels the LLM provider and rebinds the model roles',
+    ],
+  },
+  'SCN-settings-admin-roster-access': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/admin-operations.story.test.ts#SCN-settings-admin-roster-access: an admin manages the member roster, open DM access, and authorized groups',
+    ],
+  },
+  'SCN-settings-admin-mcp-and-history': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/settings/admin-operations.story.test.ts#SCN-settings-admin-mcp-and-history: an admin edits the MCP catalog while only a super admin may purge history',
+    ],
+  },
+  'SCN-analytics-consent-grant': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/subject-consent.story.test.ts#SCN-analytics-consent-grant: consent through settings grants the collection ref that makes the pseudonymous lane admit',
+    ],
+  },
+  'SCN-analytics-subject-rights': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/subject-consent.story.test.ts#SCN-analytics-subject-rights: a consenting subject exports, withdraws, and deletes their analytics record through settings',
+    ],
+  },
+  'SCN-analytics-derived-materialization': {
+    verifiedAt: '2026-08-20',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/derived-materialization.story.test.ts#SCN-analytics-derived-materialization: the derive job materializes sessions, friction, and feature days from the events of a consenting subject',
+    ],
+  },
+  'SCN-analytics-governed-turn': {
+    verifiedAt: '2026-08-04',
+    storyIds: [
+      'tests/stories/analytics/governed-turn.story.test.ts#SCN-analytics-governed-turn: a governed turn records one epoch-bound message aggregate and the kill switch stops collection without blocking replies',
+    ],
+  },
+  'SCN-analytics-aggregate-release-settings': {
+    verifiedAt: '2026-08-04',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/aggregate-delivery.story.test.ts#SCN-analytics-aggregate-release-settings: an operator enables the aggregate lane, executes a release through settings, and a re-execute is idempotent',
+    ],
+  },
+  'SCN-analytics-aggregate-release-denials': {
+    verifiedAt: '2026-08-04',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/aggregate-delivery.story.test.ts#SCN-analytics-aggregate-release-denials: release requests are denied without a sink, with an incomplete day, and for drill-through, and non-admins cannot execute',
+    ],
+  },
+  'SCN-analytics-aggregate-delivery-captured': {
+    verifiedAt: '2026-08-04',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/aggregate-delivery.story.test.ts#SCN-analytics-aggregate-delivery-captured: the delivery worker sends a staged release to the captured sink with the payload contract and no pseudonymous fields',
+    ],
+  },
+  'SCN-analytics-aggregate-delivery-governance': {
+    verifiedAt: '2026-08-04',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/analytics/aggregate-delivery.story.test.ts#SCN-analytics-aggregate-delivery-governance: the kill switch defers a staged release and a 5xx schedules a bounded retry before delivery succeeds',
+    ],
+  },
+  'SCN-settings-api-tools': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-tools: tool permissions reject untrusted writes and round-trip a domain setting',
+    ],
+  },
+  'SCN-settings-api-byok': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-byok: BYOK writes stay in the caller context and never disclose the submitted secret',
+    ],
+  },
+  'SCN-settings-api-memory': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-memory: invalid memory updates leave the view unchanged and valid capture writes persist',
+    ],
+  },
+  'SCN-settings-api-plugins': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-plugins: plugin config rejects unknown keys and persists an authorized plugin selection',
+    ],
+  },
+  'SCN-settings-api-mcp': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-mcp: endpoint validation preserves prior state and masks persisted authorization headers',
+    ],
+  },
+  'SCN-settings-api-group': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-group: only a group administrator can update the group guest-mode setting',
+    ],
+  },
+  'SCN-settings-api-release': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/debug-settings-api.story.test.ts#SCN-settings-api-release: only a group administrator can change a group release subscription',
+    ],
+  },
+  'SCN-coding-acp-mcp-fail-closed': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/acp-mcp.story.test.ts#an unresolved MCP selection fails closed before Magi session startup',
+      'tests/stories/integrations/coding-sessions/acp-mcp.story.test.ts#malformed MCP settings fail closed before Magi session startup',
+    ],
+  },
+  'SCN-coding-acp-upstream-failure': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/integrations/coding-sessions/module-qualification.story.test.ts#configured ACP upstream failure does not persist a session or expose credentials',
+    ],
+  },
+  'SCN-coding-acp-tool-eligibility': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/integrations/runtime-extensions/tool-eligibility.story.test.ts#runtime extension ACP tool is offered and executed only in its eligible context',
+    ],
+  },
+  'SCN-settings-task-instance-assignment': {
+    verifiedAt: '2026-07-28',
+    storyIds: [
+      'tests/stories/settings/task-instance-assignment.story.test.ts#settings task assignment changes the provider used by the next chat turn',
+    ],
+  },
+  'SCN-plugin-context-eligibility': {
+    verifiedAt: '2026-07-28',
+    storyIds: ['tests/stories/integrations/plugins/eligibility.story.test.ts#plugin context eligibility'],
+  },
+  'SCN-plugin-contribution-isolation': {
+    verifiedAt: '2026-07-28',
+    storyIds: ['tests/stories/integrations/plugins/eligibility.story.test.ts#plugin isolation after lifecycle'],
+  },
+  'SCN-plugin-deny-gating': {
+    verifiedAt: '2026-07-29',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/integrations/plugins/eligibility.story.test.ts#SCN-plugin-deny-gating: unavailable plugin capabilities are removed before execution',
+    ],
+  },
+  'SCN-stats-anonymity': {
+    verifiedAt: '2026-08-01',
+    provingTier: '0',
+    storyIds: ['tests/stories/http/stats.story.test.ts#SCN-stats-anonymity: stats responses omit raw subject identity'],
+  },
+  'SCN-stats-aggregate-window': {
+    verifiedAt: '2026-08-01',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/http/stats.story.test.ts#SCN-stats-aggregate-window: global stats respect requested aggregation windows',
+    ],
+  },
+  'SCN-deferred-poller-lifecycle': {
+    verifiedAt: '2026-08-01',
+    provingTier: '4',
+    storyIds: [
+      'tests/operational/scenarios/deferred-poller-lifecycle.operational.ts#starts, runs, and stops deferred pollers without residual scheduler tasks',
+    ],
+  },
+  // Phase 4 — transport-free chat adapter surfaces and audio plugin (tier2-process-smoke continuation)
+  'SCN-chat-message-normalization': {
+    verifiedAt: '2026-08-02',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/adapter-pure-surfaces.story.test.ts#SCN-chat-message-normalization: standalone mentions preserve command and thread boundaries',
+    ],
+  },
+  'SCN-chat-context-rendering': {
+    verifiedAt: '2026-08-02',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/adapter-pure-surfaces.story.test.ts#SCN-chat-context-rendering: Telegram context output distinguishes bounded and unbounded budgets',
+    ],
+  },
+  'SCN-chat-interaction-payload': {
+    verifiedAt: '2026-08-02',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/adapter-pure-surfaces.story.test.ts#SCN-chat-interaction-payload: Discord payloads scope DM and group callbacks without transport',
+    ],
+  },
+  'SCN-chat-capability-gating': {
+    verifiedAt: '2026-08-02',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/adapter-pure-surfaces.story.test.ts#SCN-chat-capability-gating: reply features follow declared capability metadata',
+    ],
+  },
+  'SCN-chat-telegram-reply-fn': {
+    verifiedAt: '2026-08-04',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/chat/telegram-reply-fn.story.test.ts#SCN-chat-telegram-reply-fn: formatted reply, link-preview disable, and edit-target capture',
+    ],
+  },
+  'SCN-plugin-audio-transcribe-transformer': {
+    verifiedAt: '2026-08-02',
+    provingTier: '0',
+    storyIds: [
+      'tests/stories/integrations/plugins/audio-transcribe.story.test.ts#SCN-plugin-audio-transcribe-transformer: a voice attachment is transcribed through the declared host',
+    ],
+  },
   'SCN-context-vault-push': {
     verifiedAt: '2026-08-13',
     storyIds: [
@@ -1177,12 +1913,6 @@ function auditRecord(readiness: AuditReadiness, family: StoryFamily, rationale: 
   return Object.freeze({ readiness, family, rationale: toPendingReason(rationale) })
 }
 
-const needs = (
-  family: StoryFamily,
-  seams: NonEmptyReadonlyTuple<StorySeamId>,
-  unblockedByTier: StoryTier,
-  rationale: string,
-): AuditRecord => auditRecord({ state: 'needs-seam', seams, unblockedByTier }, family, rationale)
 const blocked = (family: StoryFamily, rationale: string): AuditRecord =>
   auditRecord({ state: 'blocked', blocker: 'missing-implementation' }, family, rationale)
 
@@ -1195,25 +1925,6 @@ export const AUDIT_RECORDS: Partial<Record<CatalogScenarioId, AuditRecord>> = {
   'SCN-cmd-announce': blocked(
     'F1',
     'No chat /announce command exists; admin broadcast via the settings route is covered by SCN-settings-admin-roster-announce. Keeps gap status.',
-  ),
-  // F8 — platform interactions
-  'SCN-interaction-discord-router-wrapped': needs(
-    'F8',
-    ['platform-adapter-fakes'],
-    '3',
-    'The harness enters at runtime.dispatchInteraction, below the platform adapter; this scenario verifies the discord.js wire above it (a raw callback decoded and routed into dispatch), which is Tier-3 platform-integrated territory, out of the roadmap scope. Needs a fake Discord client, not built speculatively.',
-  ),
-  'SCN-interaction-discord-standalone-fallback': needs(
-    'F8',
-    ['platform-adapter-fakes'],
-    '3',
-    'The harness enters at runtime.dispatchInteraction, below the platform adapter; this scenario verifies the discord.js standalone fallback wire above it, which is Tier-3 platform-integrated territory, out of the roadmap scope. Needs a fake Discord client, not built speculatively.',
-  ),
-  'SCN-interaction-telegram-callback': needs(
-    'F8',
-    ['platform-adapter-fakes'],
-    '3',
-    'The harness enters at runtime.dispatchInteraction, below the platform adapter; this scenario verifies the grammY callback wire above it, which is Tier-3 platform-integrated territory, out of the roadmap scope. Needs a fake Telegram API, not built speculatively.',
   ),
   // Unqueued — no production implementation exists
   'SCN-coding-nerv-create': blocked(

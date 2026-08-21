@@ -34,7 +34,16 @@ const triageSchema = z.discriminatedUnion('status', [
   // reworked onto the folder — can read the design spec from the SPEC block.
   // Slice B drops `spec`, drafts the proposal into the folder, and retires the
   // SPEC block entirely.
-  z.object({ status: z.literal('capture'), changeName: changeNameSchema, spec: z.string().min(1) }),
+  z.object({
+    status: z.literal('capture'),
+    changeName: changeNameSchema,
+    spec: z.string().min(1),
+    // The skip_specs call (opencode-agent-skip-specs-depth, design D1). Required
+    // rather than defaulted: a silent `false` would send every fix-class issue
+    // down the spec lane and back into the invent-deltas failure the flag exists
+    // to end — the re-ask the missing field triggers is one cheap repair turn.
+    skipSpecs: z.boolean(),
+  }),
   z.object({ status: z.literal('answer'), reply: z.string().min(1) }),
 ])
 
@@ -121,7 +130,7 @@ const triageRequest = async (
  */
 const captureOutcome = async (
   input: PhaseInput,
-  decision: { changeName: string; spec: string },
+  decision: { changeName: string; spec: string; skipSpecs: boolean },
   feedback: string | null,
 ): Promise<PhaseOutcome> => {
   const { deps, state, trigger } = input
@@ -131,7 +140,7 @@ const captureOutcome = async (
     return { signal: 'NEEDS_CLARIFICATION', comment: renderConsent(decision.changeName) }
   }
 
-  const adopted = await adoptOrCreate(input, decision.changeName)
+  const adopted = await adoptOrCreate(input, decision.changeName, decision.skipSpecs)
   const proposalPath = await settleProposal(input, decision, adopted, feedback)
   await scaffoldOnBranch(input, decision.changeName, adopted)
   // The park digest is a render of the folder, not a memory of the model reply:
@@ -166,14 +175,18 @@ const captureOutcome = async (
  * die on. What it is missing, PLANNING drafts through the ordinary artifact
  * loop, which is the same loop that would have drafted them for a new change.
  */
-const adoptOrCreate = async (input: PhaseInput, changeName: string): Promise<boolean> => {
+const adoptOrCreate = async (input: PhaseInput, changeName: string, skipSpecs: boolean): Promise<boolean> => {
   const { deps, state } = input
   const existing = await deps.openspec.listChangeNames()
   if (existing.includes(changeName)) {
     deps.log.info({ issue: state.issueId, changeName }, 'Adopting an existing change')
     return true
   }
-  await deps.openspec.newChange(changeName, OPENSPEC_SCHEMA)
+  // Design D2: the skip_specs stamp rides the scaffold itself, so the folder is
+  // flag-complete before anything reads status about it. An adopted folder's
+  // metadata stands as its author left it — the DESIGN_SPEC park's `/changes`
+  // is the correction point there.
+  await deps.openspec.newChange(changeName, OPENSPEC_SCHEMA, { skipSpecs })
   return false
 }
 

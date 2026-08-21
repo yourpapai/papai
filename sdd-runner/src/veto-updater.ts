@@ -182,6 +182,7 @@ export interface VetoUpdaterResult {
 
 interface AttemptInputs {
   readonly deps: VetoUpdaterDeps
+  readonly state: RunState
   readonly ctx: StageContext
   readonly changeName: string
   readonly vetoes: readonly VetoEntry[]
@@ -208,7 +209,8 @@ async function spawnVetoUpdater(input: AttemptInputs, lastError: string | null):
     outputPath: 'veto-updater.json',
     outputSchema: VetoUpdaterReportSchema,
     label: 'veto-updater',
-    logPath: path.join(input.ctx.sidecarDir, 'logs', 'veto-updater.log'),
+    runDir: input.state.runDir,
+    round: input.state.round,
     sidecarDir: input.ctx.sidecarDir,
   })
   return result.value.files_updated
@@ -242,7 +244,7 @@ export async function runVetoUpdater(
     readFindingLookup(ctx.sidecarDir, state.round),
   ])
   return attemptVetoUpdater(
-    { deps, ctx, changeName: state.changeName, vetoes, artifacts, assumptions, findings },
+    { deps, state, ctx, changeName: state.changeName, vetoes, artifacts, assumptions, findings },
     1,
     null,
   )

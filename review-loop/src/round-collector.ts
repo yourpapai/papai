@@ -39,6 +39,11 @@ export interface RoundCollector {
   exposureDivergent: number
   reviewerKind: KindCounts
   checkBehind: CheckBehindByKind
+  /**
+   * Findings this round never dispatched because the budget would not fit
+   * them — they stay `discovered` and are re-considered by a later round.
+   */
+  deferred: number
   phaseMs: PhaseMs
   usage: UsageTotals
 }
@@ -54,6 +59,7 @@ export function newCollector(): RoundCollector {
     exposureDivergent: 0,
     reviewerKind: emptyKindCounts(),
     checkBehind: emptyCheckBehindByKind(),
+    deferred: 0,
     phaseMs: { review: 0, match: 0, verify: 0, build: 0, inspect: 0, fix: 0 },
     usage: {
       inputTokens: 0,

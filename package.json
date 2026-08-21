@@ -1,6 +1,6 @@
 {
   "name": "papai",
-  "version": "6.14.0",
+  "version": "6.14.1",
   "private": true,
   "description": "papai — an intelligent Telegram bot for managing Kaneo tasks with LLM.",
   "license": "BUSL-1.1",
@@ -42,7 +42,7 @@
     "sdd-runner:typecheck": "bun run --filter sdd-runner typecheck",
     "sdd-runner:lint": "bun run --filter sdd-runner lint",
     "sdd-runner:format:check": "bun run --filter sdd-runner format:check",
-    "sdd-runner:start": "bun sdd-runner/src/index.ts start",
+    "sdd-runner:start": "bun sdd-runner/src/index.ts",
     "sdd-runner:resume": "bun sdd-runner/src/index.ts resume",
     "sdd-runner:gate": "bun sdd-runner/src/index.ts gate",
     "sdd-runner:report": "bun sdd-runner/src/index.ts report",
@@ -89,6 +89,9 @@
     "test:e2e:watch": "bun test --preload ./tests/e2e/bun-test-setup.ts --path-ignore-patterns '' tests/e2e/e2e.test.ts --watch",
     "test:smoke": "bun test ./tests/smoke/run-smoke.ts",
     "test:platform": "bun test ./tests/platform/run-platform.ts",
+    "test:platform:coverage": "rm -rf reports/coverage && bun test --coverage --coverage-reporter=lcov ./tests/platform/run-platform.ts && bun tests/platform/run-platform-coverage.ts reports/coverage/lcov.info",
+    "test:operational": "bun test ./tests/operational/run-operational.ts ./tests/operational/catalog-crosscheck.test.ts",
+    "test:operational:coverage": "rm -rf reports/coverage && bun test --coverage --coverage-reporter=lcov ./tests/operational/run-operational.ts ./tests/operational/catalog-crosscheck.test.ts && bun scripts/coverage/lane-file-coverage.ts reports/coverage/lcov.info src/deferred-prompts/poller-lifecycle.ts",
     "test:stories": "bun scripts/story/test-stories.ts",
     "test:stories:coverage": "bun scripts/story/test-stories.ts --coverage",
     "test:stories:contracts": "bun scripts/story/test-stories.ts --contracts",
@@ -110,7 +113,8 @@
     "codeindex:index": "bun run scripts/codeindex-cli.ts index",
     "codeindex:reindex": "bun run scripts/codeindex-cli.ts reindex",
     "codeindex:stats": "bun run scripts/codeindex-cli.ts stats",
-    "license:headers": "bun scripts/add-license-headers.ts"
+    "license:headers": "bun scripts/add-license-headers.ts",
+    "loc:history": "bun scripts/loc-history.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.29",

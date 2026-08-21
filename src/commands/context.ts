@@ -9,6 +9,7 @@ import type { ChatProvider, ContextRendered, ContextSnapshot } from '../chat/typ
 import { buildMessagesWithMemory } from '../conversation.js'
 import { loadHistory } from '../history.js'
 import { t } from '../i18n/index.js'
+import type { Locale } from '../i18n/index.js'
 import { buildInstructionsBlock } from '../instructions.js'
 import { resolveAdminLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
@@ -47,7 +48,6 @@ export interface ContextCommandDeps {
     contextType: 'dm' | 'group',
     provider: TaskProvider | null,
     buildLiveToolSet: BuildLiveToolSet,
-    username?: string | null,
   ) => Promise<ResolvedContextToolSurface> | ResolvedContextToolSurface
 }
 
@@ -87,6 +87,7 @@ async function buildCollectorDeps(
   provider: TaskProvider | null,
   resolvedToolSurface: ResolvedContextToolSurface,
   deps: ContextCommandDeps,
+  locale: Locale,
 ): Promise<ContextCollectorDeps> {
   const adminLlm = resolveAdminLlmConfig()
   const modelName = adminLlm.ok ? adminLlm.main.model : null
@@ -97,6 +98,7 @@ async function buildCollectorDeps(
   await prepareDefaultCountTokens(resolvedEncoding)
 
   return {
+    locale,
     getMainModel: () => modelName,
     buildSystemPrompt: () =>
       provider === null
@@ -168,8 +170,16 @@ async function buildContextSnapshot(
   provider: TaskProvider | null,
   resolvedToolSurface: ResolvedContextToolSurface,
   deps: ContextCommandDeps,
+  locale: Locale,
 ): Promise<ContextSnapshot> {
-  const collectorDeps = await buildCollectorDeps(storageContextId, contextType, provider, resolvedToolSurface, deps)
+  const collectorDeps = await buildCollectorDeps(
+    storageContextId,
+    contextType,
+    provider,
+    resolvedToolSurface,
+    deps,
+    locale,
+  )
   return deps.collectContext(storageContextId, collectorDeps)
 }
 
@@ -203,11 +213,18 @@ async function handleContextCommand(
     msg.contextType,
     provider,
     deps.buildLiveToolSet,
-    msg.user.username,
   )
+  const locale = getContextLanguage(auth.configContextId ?? auth.storageContextId)
   let snapshot: ContextSnapshot
   try {
-    snapshot = await buildContextSnapshot(auth.storageContextId, msg.contextType, provider, resolvedToolSurface, deps)
+    snapshot = await buildContextSnapshot(
+      auth.storageContextId,
+      msg.contextType,
+      provider,
+      resolvedToolSurface,
+      deps,
+      locale,
+    )
   } catch (error) {
     log.warn(
       {
@@ -217,9 +234,7 @@ async function handleContextCommand(
       },
       '/context collector failed',
     )
-    await reply.text(
-      t('commands.context.buildFailed', getContextLanguage(auth.configContextId ?? auth.storageContextId)),
-    )
+    await reply.text(t('commands.context.buildFailed', locale))
     return
   }
 

@@ -126,6 +126,8 @@ describe('story manifest', () => {
       'scripts/coverage/normalize-lcov.ts',
       'scripts/coverage/ratchet-lib.ts',
       'scripts/coverage/story-coverage-gate.ts',
+      'scripts/coverage/story-coverage-report.ts',
+      'scripts/coverage/story-scope.ts',
       'scripts/story/cli.ts',
       'scripts/story/dependencies-install.ts',
       'scripts/story/dependencies-tree.ts',
@@ -237,6 +239,28 @@ describe('story manifest', () => {
     expect(repeated.runtimeInputs).toEqual(manifest.runtimeInputs)
   })
 
+  test('captures the documented behavior source doc as an optional runtime input', async () => {
+    const root = fixture()
+    mkdirSync(path.join(root, 'docs/architecture'), { recursive: true })
+    writeFileSync(path.join(root, 'docs/architecture/behaviors.md'), '<!-- behavior:scope-model -->\n')
+
+    const manifest = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+    writeFileSync(path.join(root, 'docs/architecture/behaviors.md'), '<!-- behavior:mid-run-control -->\n')
+    const rebuilt = await buildCandidateStoryManifest({ root, seed: 41021, bunVersion: '1.2.3' })
+
+    expect(manifest.runtimeInputs.files.map(({ path: filePath }) => filePath)).toEqual([
+      'bun.lock',
+      'context-vault-indexer/lock.ts',
+      'docs/architecture/behaviors.md',
+      'package.json',
+      'plugins/example/plugin.json',
+      'public/settings.js',
+      'src/runtime.ts',
+    ])
+    expect(rebuilt.runtimeInputs.treeHash).not.toBe(manifest.runtimeInputs.treeHash)
+    expect(rebuilt.treeHash).toBe(manifest.treeHash)
+  })
+
   test('removes the temporary manifest when atomic publication fails', async () => {
     const root = fixture()
     const manifest = await buildCandidateStoryManifest({ root, seed: 41021 })
@@ -337,6 +361,23 @@ describe('story manifest', () => {
     await expect(buildBaselineStoryManifest({ root, ref: 'HEAD', seed: 41021 })).rejects.toThrow(
       'Baseline runtime inputs missing: package.json',
     )
+  })
+
+  test('captures the documented behavior source doc at baseline without emitting docs directories', async () => {
+    const root = fixture()
+    mkdirSync(path.join(root, 'docs/architecture'), { recursive: true })
+    writeFileSync(path.join(root, 'docs/architecture/behaviors.md'), '<!-- behavior:scope-model -->\n')
+    git(root, 'add', '--', 'docs/architecture/behaviors.md')
+    git(root, 'commit', '-qm', 'add documented behavior source')
+    const ref = git(root, 'rev-parse', 'HEAD')
+
+    const baseline = await buildBaselineStoryManifest({ root, ref, seed: 41021, bunVersion: '1.2.3' })
+
+    expect(baseline.runtimeInputs.files.map(({ path: filePath }) => filePath)).toContain(
+      'docs/architecture/behaviors.md',
+    )
+    expect(baseline.runtimeInputs.directories.filter((directory) => directory.startsWith('docs'))).toEqual([])
+    expect(StoryManifestSchema.parse(baseline)).toEqual(baseline)
   })
 
   test('accepts identical frozen content across different run metadata', async () => {
@@ -541,6 +582,10 @@ describe('story manifest', () => {
       target,
     })
     expect(eligibility).toEqual([
+      {
+        id: 'tests/stories/integrations/plugins/eligibility.story.test.ts#SCN-plugin-deny-gating: unavailable plugin capabilities are removed before execution',
+        checkpoints: [],
+      },
       {
         id: 'tests/stories/integrations/plugins/eligibility.story.test.ts#plugin context eligibility',
         checkpoints: [],

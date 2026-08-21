@@ -239,17 +239,31 @@ describe('analytics terminal ordering', () => {
     expect(terminal.data['argsBytes']).toBe(request.data['argsBytes'])
   })
 
-  test('analytics terminal rounds float durationMs; execute_end keeps the raw value', () => {
+  test('both lanes round fractional durationMs identically', () => {
     const { collected } = lifecycle({ ...successEvent({ title: 'done' }), durationMs: 42.4 })
     const terminal = ofType(collected, 'tool:analytics_completed')[0]!
     expect(terminal.data['durationMs']).toBe(42)
     const executeEnd = ofType(collected, 'tool:execute_end')[0]!
-    expect(executeEnd.data['durationMs']).toBe(42.4)
+    expect(executeEnd.data['durationMs']).toBe(42)
   })
 
-  test('analytics terminal clamps negative durationMs to zero', () => {
+  test('both lanes clamp negative durationMs to zero', () => {
     const { collected } = lifecycle({ ...successEvent({ title: 'done' }), durationMs: -3 })
     const terminal = ofType(collected, 'tool:analytics_completed')[0]!
     expect(terminal.data['durationMs']).toBe(0)
+    const executeEnd = ofType(collected, 'tool:execute_end')[0]!
+    expect(executeEnd.data['durationMs']).toBe(0)
+  })
+
+  test('usage execute_end rounds a fractional performance-now duration to the integer', () => {
+    const { collected } = lifecycle({ ...successEvent({ title: 'done' }), durationMs: 465.23 })
+    const executeEnd = ofType(collected, 'tool:execute_end')[0]!
+    expect(executeEnd.data['durationMs']).toBe(465)
+  })
+
+  test('usage execute_end clamps a negative clock-skew duration to zero', () => {
+    const { collected } = lifecycle({ ...successEvent({ title: 'done' }), durationMs: -0.7 })
+    const executeEnd = ofType(collected, 'tool:execute_end')[0]!
+    expect(executeEnd.data['durationMs']).toBe(0)
   })
 })

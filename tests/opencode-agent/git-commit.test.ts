@@ -66,6 +66,7 @@ const captureReply = JSON.stringify({
   status: 'capture',
   changeName: 'add-retry-helper',
   spec: '# Goal\n\nAdd retries.',
+  skipSpecs: false,
 })
 
 describe('handleTriage · capture · branch-from-first-spec (D2)', () => {

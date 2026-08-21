@@ -109,4 +109,66 @@ describe('llm-orchestrator-process-args', () => {
       expect(actorRole).toBe('member')
     })
   })
+
+  describe('ProcessMessageRest identity elements', () => {
+    test('accepts isBotAdmin and platformInstanceId as appended positional elements', () => {
+      const rest: ProcessMessageRest = [
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        'pi-1',
+      ]
+      const [, , , , , , , isBotAdmin, platformInstanceId] = rest
+      expect(isBotAdmin).toBe(true)
+      expect(platformInstanceId).toBe('pi-1')
+    })
+
+    test('appended positions keep existing positional calls valid', () => {
+      // A pre-section-3 positional call shape (7 entries) must stay assignable.
+      const rest: ProcessMessageRest = ['cfg-1', undefined, ['att-1'], 'turn-9', 'guest', ['m1'], []]
+      expect(rest).toHaveLength(7)
+    })
+
+    test('isBotAdmin and platformInstanceId are undefined when omitted', () => {
+      const rest: ProcessMessageRest = []
+      const [, , , , , , , isBotAdmin, platformInstanceId] = rest
+      expect(isBotAdmin).toBeUndefined()
+      expect(platformInstanceId).toBeUndefined()
+    })
+  })
+
+  describe('resolveProcessMessageInputs identity defaults', () => {
+    test('isBotAdmin defaults to false (fail-closed) when absent', () => {
+      const inputs = resolveProcessMessageInputs([], defaultDeps)
+      expect(inputs.isBotAdmin).toBe(false)
+    })
+
+    test('platformInstanceId defaults to undefined when absent', () => {
+      const inputs = resolveProcessMessageInputs([], defaultDeps)
+      expect(inputs.platformInstanceId).toBeUndefined()
+    })
+
+    test('preserves provided identity values', () => {
+      const inputs = resolveProcessMessageInputs(
+        [undefined, undefined, undefined, undefined, undefined, undefined, undefined, true, 'pi-9'],
+        defaultDeps,
+      )
+      expect(inputs.isBotAdmin).toBe(true)
+      expect(inputs.platformInstanceId).toBe('pi-9')
+    })
+
+    test('isBotAdmin resolves to false when explicitly absent in an otherwise full tuple', () => {
+      const inputs = resolveProcessMessageInputs(
+        ['cfg-1', undefined, undefined, 'turn-1', 'member', undefined, undefined],
+        defaultDeps,
+      )
+      expect(inputs.isBotAdmin).toBe(false)
+      expect(inputs.platformInstanceId).toBeUndefined()
+    })
+  })
 })

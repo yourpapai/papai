@@ -7,6 +7,12 @@ import { expect, test } from 'bun:test'
 
 import { and, eq } from 'drizzle-orm'
 
+import { ANALYTICS_JOB_SPECS, createAnalyticsJobHandlers } from '../../../src/analytics/jobs/register.js'
+import {
+  setGroupAnnounceSubscribed,
+  setUserAnnounceSubscribed,
+  upsertAnnouncementDraft,
+} from '../../../src/announcements/store.js'
 import { getThreadScopedStorageContextId } from '../../../src/auth.js'
 import { getCachedHistory } from '../../../src/cache.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
@@ -23,7 +29,7 @@ import {
 import { setConfigValue } from '../../../src/config.js'
 import { issueClaim } from '../../../src/dashboard-auth/index.js'
 import { getDrizzleDb } from '../../../src/db/drizzle.js'
-import { memoryRecords } from '../../../src/db/schema.js'
+import { announcementDeliveries, memoryRecords } from '../../../src/db/schema.js'
 import { pollAlertsOnce, pollScheduledOnce } from '../../../src/deferred-prompts/poller.js'
 import { sweepDirtyContexts, type SweepDeps } from '../../../src/long-term-memory/capture-sweep.js'
 import { runMemoryCapture, type RunMemoryCaptureDeps } from '../../../src/long-term-memory/capture.js'
@@ -43,16 +49,29 @@ import type {
 } from '../../../src/long-term-memory/types.js'
 import { kvList } from '../../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
-import type { TaskCapability } from '../../../src/providers/types.js'
+import { defaultTaskProviderResolver } from '../../../src/providers/resolver.js'
+import type { TaskCapability, TaskProvider } from '../../../src/providers/types.js'
+import { buildAnalyticsJobDeps } from '../../../src/scheduler-instance.js'
 import { tick } from '../../../src/scheduler.js'
 import { setToolPrefs, type ToolPrefs } from '../../../src/tools/tool-preferences.js'
+import type { ScenarioProactiveDeliveryPlan } from './chat.js'
 import { MATCH_EMBEDDING } from './embeddings.js'
-import { SCENARIO_PLATFORM_INSTANCE_ID, type DashboardSessionHandle, type SettingsSessionHandle } from './fixtures.js'
+import {
+  SCENARIO_PLATFORM_INSTANCE_ID,
+  type DashboardSessionHandle,
+  type RealTaskProviderType,
+  type SettingsSessionHandle,
+} from './fixtures.js'
 import { runWithScenarioIoGuard } from './io-guard.js'
 import type { ScenarioRuntimeExtension } from './runtime-extension.js'
 import type { ModelDecision } from './scripted-llm.js'
 import {
   ADMIN_USER_ID,
+  REAL_KANEO_BASE_URL,
+  REAL_KANEO_CREDENTIAL,
+  REAL_KANEO_WORKSPACE_ID,
+  REAL_YOUTRACK_BASE_URL,
+  REAL_YOUTRACK_TOKEN,
   type ContextHandle,
   type DmHandle,
   type GroupHandle,
@@ -117,6 +136,8 @@ type ScenarioGiven = Readonly<{
   guestMode(group: GroupHandle, enabled: true): void
   member(group: GroupHandle, user: UserHandle): void
   groupAdmin(group: GroupHandle, user: UserHandle): void
+  /** Seed the label the chat provider resolves for a user; an Error makes the lookup reject. */
+  chatUserLabel(user: UserHandle, label: string | Error): void
   identity(
     user: UserHandle,
     identity: Readonly<{ providerUserId: string; login: string; displayName: string }>,
@@ -125,6 +146,9 @@ type ScenarioGiven = Readonly<{
   providerUser(identity: Readonly<{ id: string; login: string; name?: string }>): void
   dm(user: UserHandle): DmHandle
   thread(group: GroupHandle, id: string): ThreadHandle
+  announcementSubscription(context: DmHandle | GroupHandle, enabled: boolean): void
+  announcementDraft(input: Readonly<{ version: string; body: string }>): void
+  proactiveDelivery(plans: readonly ScenarioProactiveDeliveryPlan[]): void
   attachment(
     context: ContextHandle,
     file: Readonly<{ filename: string; content: string; mimeType?: string }>,
@@ -214,6 +238,7 @@ type ScenarioGiven = Readonly<{
   notifyToken(token: string): void
   mcpPluginServer(platformInstanceId: string, pluginId: string): void
   publicBaseUrl(url: string): void
+  analyticsRuntime(mode: 'governed'): void
   allowPublicUrl(): void
   exhaustedWebFetchQuota(context: ContextHandle): void
   recurringTask(
@@ -259,7 +284,9 @@ type ScenarioWhen = Readonly<{
       getEmbedding?: (text: string, configContextId: string) => Promise<number[] | null>
     }>,
   ): Promise<void>
+  analyticsJobs(options?: Readonly<{ aheadMs?: number }>): Promise<void>
   recurringTick(): Promise<void>
+  startScheduler(): Promise<void>
   scheduledPoll(): Promise<void>
   alertPoll(): Promise<void>
   promotionSweep(
@@ -281,11 +308,20 @@ type CodingSessionsAssertion = Readonly<{
 }>
 
 type ResponseJsonAssertion = Readonly<{ contains(needle: string): void; equals(expected: unknown): void }>
+type ProactiveAttemptsAssertion = Readonly<{ equal(expectedContextIds: readonly string[]): void }>
+type AnnouncementDelivery = Readonly<{
+  contextId: string
+  contextType: 'dm' | 'group'
+  status: 'sent' | 'failed'
+}>
+type AnnouncementDeliveriesAssertion = Readonly<{ equal(expected: readonly AnnouncementDelivery[]): void }>
 
 type ScenarioThen = Readonly<{
   replyTo(user: UserHandle): ReplyAssertion
   repliesTo(user: UserHandle): ReplyHistoryAssertion
   replyIn(context: ContextHandle): ReplyAssertion
+  proactiveAttempts(): ProactiveAttemptsAssertion
+  announcementDeliveries(version: string): AnnouncementDeliveriesAssertion
   codingSessions(context: ContextHandle): CodingSessionsAssertion
   task(title: string): TaskAssertion
   responseStatus(response: Response, expected: number): void
@@ -297,11 +333,16 @@ export type ScenarioApi = Readonly<{
   when: ScenarioWhen
   then: ScenarioThen
   world: ScenarioWorld
+  resolveRealTaskProvider(context: ContextHandle): Promise<TaskProvider>
 }>
 
 type WorldFactory = (name: string) => Promise<ScenarioWorld>
 
-export type ScenarioOptions = Readonly<{ debugEnabled?: boolean }>
+export type ScenarioOptions = Readonly<{
+  debugEnabled?: boolean
+  realTaskProvider?: RealTaskProviderType
+  testTimeoutMs?: number
+}>
 
 const contextId = (context: ContextHandle): string =>
   context.kind === 'dm' ? context.user.id : context.kind === 'thread' ? context.group.id : context.id
@@ -335,6 +376,9 @@ const seedStoryLanguage = (nativeContextId: string): void => {
 
 /** Fixed reference instant for sweep-trigger primitives; scenarios seed activity timestamps relative to this. */
 export const FIXED_SWEEP_NOW = '2026-07-20T00:00:00.000Z'
+
+/** Past the derive job's 120 s live watermark, with room for a slow scenario. */
+const ANALYTICS_JOB_SETTLE_AHEAD_MS = 180_000
 
 /** A candidate captured-memory record for `when.captureSweep`; `source`/timestamps are filled in internally. */
 export type CaptureSweepRecord = Readonly<{
@@ -529,6 +573,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       prerequisite('given.groupAdmin')
       world.fixtures.seedGroupAdmin({ groupId: scopedGroupId(group), userId: user.id })
     },
+    chatUserLabel(user, label): void {
+      prerequisite('given.chatUserLabel')
+      world.fixtures.seedChatUserLabel({ userId: user.id, label })
+    },
     identity(user, identity, providerName = 'kaneo'): void {
       prerequisite('given.identity')
       world.fixtures.seedIdentity({ userId: user.id, providerName, ...identity })
@@ -539,13 +587,38 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
     },
     dm: makeDmHandle,
     thread: makeThreadHandle,
+    announcementSubscription(context, enabled): void {
+      prerequisite('given.announcementSubscription')
+      if (context.kind === 'dm') {
+        setUserAnnounceSubscribed(context.platformInstanceId, context.user.id, enabled)
+        return
+      }
+      setGroupAnnounceSubscribed(scopedGroupId(context), enabled)
+    },
+    announcementDraft({ version, body }): void {
+      prerequisite('given.announcementDraft')
+      upsertAnnouncementDraft({ version, rawBody: body, humanizedBody: body })
+    },
+    proactiveDelivery(plans): void {
+      prerequisite('given.proactiveDelivery')
+      world.chat.configureProactiveDelivery(plans)
+    },
     attachment(context, file): Promise<AttachmentHandle> {
       prerequisite('given.attachment')
       return world.fixtures.seedRelayAttachment({ contextId: scopedStorageContextId(context), ...file })
     },
     taskInstance(id = world.ids.next('task-instance'), providerType = 'kaneo'): TaskInstanceHandle {
       prerequisite('given.taskInstance')
-      world.fixtures.seedTaskInstance({ id, type: providerType })
+      world.fixtures.seedTaskInstance({
+        id,
+        type: providerType,
+        config:
+          providerType === 'youtrack'
+            ? { baseUrl: REAL_YOUTRACK_BASE_URL }
+            : providerType === 'kaneo'
+              ? { baseUrl: REAL_KANEO_BASE_URL }
+              : {},
+      })
       return makeTaskInstanceHandle(id, providerType)
     },
     taskCapabilities(capabilities): void {
@@ -559,6 +632,28 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
         platformInstanceId: context.platformInstanceId,
         taskInstanceId: taskInstance.id,
       })
+      if (taskInstance.providerType === 'youtrack') {
+        world.fixtures.seedProviderContextConfig({
+          contextId: scopedConfigContextId(context),
+          pluginId: 'task-provider-youtrack',
+          key: 'token',
+          value: REAL_YOUTRACK_TOKEN,
+        })
+      }
+      if (taskInstance.providerType === 'kaneo') {
+        world.fixtures.seedProviderContextConfig({
+          contextId: scopedConfigContextId(context),
+          pluginId: 'task-provider-kaneo',
+          key: 'credential',
+          value: REAL_KANEO_CREDENTIAL,
+        })
+        world.fixtures.seedProviderContextConfig({
+          contextId: scopedConfigContextId(context),
+          pluginId: 'task-provider-kaneo',
+          key: 'workspaceId',
+          value: REAL_KANEO_WORKSPACE_ID,
+        })
+      }
     },
     settingsSession(user): Promise<SettingsSessionHandle> {
       prerequisite('given.settingsSession')
@@ -736,6 +831,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       prerequisite('given.publicBaseUrl')
       world.fixtures.setPublicBaseUrl(url)
     },
+    analyticsRuntime(mode): void {
+      prerequisite('given.analyticsRuntime')
+      world.startAnalyticsRuntime(mode)
+    },
     allowPublicUrl(): void {
       prerequisite('given.allowPublicUrl')
       world.fixtures.allowPublicUrl()
@@ -880,10 +979,30 @@ function createWhen(world: ScenarioWorld): ScenarioWhen {
       }
       await sweepPromotions(sweepPromotionsDeps)
     },
+    async analyticsJobs(options): Promise<void> {
+      world.events.setPhase('when.analyticsJobs')
+      await world.ensureStarted()
+      // The derive job ignores anything newer than its live watermark, so a
+      // story that just produced events has to run the jobs from a clock far
+      // enough ahead for those events to have settled. `nowMs` is the same
+      // injected seam production hands the scheduler.
+      const aheadMs = options?.aheadMs ?? ANALYTICS_JOB_SETTLE_AHEAD_MS
+      const handlers = createAnalyticsJobHandlers({
+        ...buildAnalyticsJobDeps(),
+        nowMs: () => Date.now() + aheadMs,
+      })
+      for (const spec of ANALYTICS_JOB_SPECS) {
+        await handlers[spec.name]()
+      }
+    },
     async recurringTick(): Promise<void> {
       world.events.setPhase('when.recurringTick')
       await world.ensureStarted()
       await tick({ resolve: () => world.fixtures.taskProvider, chat: world.chat })
+    },
+    async startScheduler(): Promise<void> {
+      world.events.setPhase('when.startScheduler')
+      await world.startScheduler()
     },
     async scheduledPoll(): Promise<void> {
       world.events.setPhase('when.scheduledPoll')
@@ -906,6 +1025,44 @@ function createThen(world: ScenarioWorld): ScenarioThen {
       replyAssertion(world, () =>
         context.kind === 'thread' ? repliesForThread(world, context) : repliesForContext(world, contextId(context)),
       ),
+    proactiveAttempts: (): ProactiveAttemptsAssertion => ({
+      equal(expectedContextIds): void {
+        const actualContextIds = world.chat
+          .proactiveAttempts()
+          .map((attempt) => attempt.contextId)
+          .sort()
+        tracedAssertion(world, () => expect(actualContextIds).toEqual([...expectedContextIds].sort()))
+      },
+    }),
+    announcementDeliveries: (version): AnnouncementDeliveriesAssertion => ({
+      equal(expected): void {
+        tracedAssertion(world, () => {
+          const actual = getDrizzleDb()
+            .select({
+              contextId: announcementDeliveries.contextId,
+              contextType: announcementDeliveries.contextType,
+              status: announcementDeliveries.status,
+            })
+            .from(announcementDeliveries)
+            .where(eq(announcementDeliveries.version, version))
+            .all()
+            .map((delivery): AnnouncementDelivery => {
+              const { contextId: deliveryContextId, contextType, status } = delivery
+              if (contextType !== 'dm' && contextType !== 'group') {
+                throw new Error(`Unexpected announcement delivery context type: ${contextType}`)
+              }
+              if (status !== 'sent' && status !== 'failed') {
+                throw new Error(`Unexpected announcement delivery status: ${status}`)
+              }
+              return { contextId: deliveryContextId, contextType, status }
+            })
+            .sort((left, right) => left.contextId.localeCompare(right.contextId))
+          const sortedExpected = [...expected].sort((left, right) => left.contextId.localeCompare(right.contextId))
+
+          expect(actual).toEqual(sortedExpected)
+        })
+      },
+    }),
     task: (title) => ({
       async exists(): Promise<void> {
         const matches = await world.tasks.searchTasks({ query: title })
@@ -930,7 +1087,17 @@ function createThen(world: ScenarioWorld): ScenarioThen {
 }
 
 export function createScenarioApi(world: ScenarioWorld): ScenarioApi {
-  return { world, given: createGiven(world), when: createWhen(world), then: createThen(world) }
+  return {
+    world,
+    given: createGiven(world),
+    when: createWhen(world),
+    then: createThen(world),
+    async resolveRealTaskProvider(context: ContextHandle): Promise<TaskProvider> {
+      const provider = await defaultTaskProviderResolver.resolve(scopedConfigContextId(context))
+      if (provider === null) throw new Error('Scenario expected a resolvable real task provider')
+      return provider
+    },
+  }
 }
 
 function combineFailures(primary: unknown, teardown: unknown): AggregateError {
@@ -950,7 +1117,11 @@ export function executeScenario(
       createWorld ??
       ((scenarioName): Promise<ScenarioWorld> =>
         import('./world.js').then((module) =>
-          module.createScenarioWorld(scenarioName, { tempRoot: guard?.tempRoot, debugEnabled: options?.debugEnabled }),
+          module.createScenarioWorld(scenarioName, {
+            tempRoot: guard?.tempRoot,
+            debugEnabled: options?.debugEnabled,
+            realTaskProvider: options?.realTaskProvider,
+          }),
         ))
     const world = await factory(name)
     guard?.bind({ events: world.events, http: world.http })
@@ -989,5 +1160,5 @@ export function scenario(
   run: (api: ScenarioApi) => void | Promise<void>,
   options?: ScenarioOptions,
 ): void {
-  test(name, () => executeScenario(name, run, undefined, options))
+  test(name, () => executeScenario(name, run, undefined, options), options?.testTimeoutMs)
 }

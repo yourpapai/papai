@@ -101,6 +101,16 @@ Approximate costs on a 4-vCPU container, so a run can be budgeted rather than gu
 `lint` 35 s, `typecheck` 24 s, `knip` 4.6 s, `format:check` 2.9 s, `duplicates` 1.3 s. The query commands are
 all sub-second. `bun run test:raw` is the unwrapped escape hatch and writes no report.
 
+**Shared-host rules.** The wrapper picks its own mode — explicit `--serial`/`--parallel` > truthy `CI` >
+1-minute load ≥ 0.75 × cores (demotes a many-core host to serial, raises the per-test timeout to 30 s, and
+prints `(serial · load)` in the summary; loadavg 0, the Windows shape, never demotes) > core count — and
+mirrors the child's output live to stderr whenever stdout is not a TTY, so a piped run is never silent. On a
+machine shared with other agents: use `bun run test:affected` in the edit loop and run one full suite before
+finishing; never run two full suites concurrently; prefer serial and budget a ≥ 20 min shell timeout for a
+full run. If a shell timeout kills a run, query `bun run test:status` / `test:log` before restarting — the
+persisted report may already answer. A load-induced flake is re-run file-by-file (`bun run test <paths>`)
+before being called a regression.
+
 ## Pi Workflow
 
 When the harness supports `obra/superpowers` skills, preserve that workflow for what it still owns (see the routing table). Load `using-superpowers` at session start before acting; load any other applicable skill before responding, editing, or running commands; do not rely on memory of skill contents — load the current text each time.

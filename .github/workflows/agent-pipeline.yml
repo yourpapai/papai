@@ -142,13 +142,14 @@ jobs:
        (github.event_name == 'issue_comment' &&
         github.event.action == 'created' &&
         github.event.issue.pull_request != null &&
-        (contains(github.event.comment.body, '/approve') ||
-         contains(github.event.comment.body, '/changes') ||
-         contains(github.event.comment.body, '/ask') ||
-         contains(github.event.comment.body, '/retry') ||
-         contains(github.event.comment.body, '/cancel') ||
-         contains(github.event.comment.body, '/review') ||
-         contains(github.event.comment.body, '/continue')) &&
+         (contains(github.event.comment.body, '/approve') ||
+          contains(github.event.comment.body, '/changes') ||
+          contains(github.event.comment.body, '/ask') ||
+          contains(github.event.comment.body, '/retry') ||
+          contains(github.event.comment.body, '/cancel') ||
+          contains(github.event.comment.body, '/review') ||
+          contains(github.event.comment.body, '/continue') ||
+          contains(github.event.comment.body, '/sync')) &&
         github.event.sender.type != 'Bot' &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
        ||
@@ -380,6 +381,12 @@ jobs:
         with:
           bun-version: 1.3.13
 
+      # Installs from the base-branch checkout this job started on — deliberately,
+      # so a branch the model writes to never decides what install scripts run in a
+      # job holding every repository secret. The pipeline switches onto
+      # `agent/issue-N` only after this, and `ensureBranch` refuses a branch whose
+      # dependency manifests have drifted from base (see `opencode-agent/src/git-drift.ts`),
+      # so what this step installed always matches the tree the checks run in.
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -481,6 +488,13 @@ jobs:
           AGENT_CHECK_COMMAND: ${{ vars.AGENT_CHECK_COMMAND }}
           AGENT_REVIEW_COMMAND: ${{ vars.AGENT_REVIEW_COMMAND }}
           AGENT_CHECKS: ${{ vars.AGENT_CHECKS }}
+          # MCP servers for the agent, as a JSON document — the second non-scalar
+          # knob after AGENT_CHECKS. Two spellings on purpose (the secret wins,
+          # like AGENT_GITHUB_TOKEN): a token-bearing declaration belongs in a
+          # secret, which GitHub masks in logs and encrypts at rest, while a
+          # token-free one may live in a variable, visible to non-admin
+          # maintainers and diffable in settings. See opencode-agent/README.md.
+          AGENT_MCP_SERVERS: ${{ secrets.AGENT_MCP_SERVERS || vars.AGENT_MCP_SERVERS }}
           # Who git commits claim to be. Defaults to github-actions[bot] /
           # 41898282+github-actions[bot]@users.noreply.github.com — the token's
           # real service identity, whose noreply verifies. Explicit vars win
@@ -499,6 +513,11 @@ jobs:
           AGENT_REVIEW_HINT_LINES: ${{ vars.AGENT_REVIEW_HINT_LINES }}
           AGENT_MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS }}
           AGENT_TIMEOUT_MS: ${{ vars.AGENT_TIMEOUT_MS }}
+          # The health bound beside the clock one: how long a turn may make no
+          # progress — no finished step, no new tool call — while the provider
+          # keeps failing it, before it is aborted as a stall. Unset here is the
+          # compiled-in five-minute default; `0` is the explicit off switch.
+          AGENT_STALL_TIMEOUT_MS: ${{ vars.AGENT_STALL_TIMEOUT_MS }}
           # The job's own clock, as the two facts that describe it. The start comes
           # from the step above — nothing in the payload says when a job began — and
           # the ceiling is the *same* expression the job's `timeout-minutes:` reads,

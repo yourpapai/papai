@@ -14,6 +14,7 @@ import {
   buildDiffLimits,
   CONTEXT_RANGE,
   DEFAULT_REVIEW_POOL_SIZE,
+  DEFAULT_STALL_TIMEOUT_MS,
   DEFAULT_TURN_TIMEOUT_MS,
   effortTier,
   EPOCH_MS_RANGE,
@@ -25,11 +26,14 @@ import {
   optionalOrNull,
   OUTPUT_RANGE,
   parseChecks,
+  parseMcpServers,
   POOL_RANGE,
   providerId,
   required,
   RESERVE_RANGE,
   ROUND_RANGE,
+  STALL_RANGE,
+  stallTimeoutMs as stallTimeout,
   TIMEOUT_RANGE,
   TOKEN_RANGE,
   WRAP_UP_RANGE,
@@ -94,6 +98,11 @@ export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
     planEffort: effortTier(env, 'AGENT_EFFORT_PLAN'),
     buildEffort: effortTier(env, 'AGENT_EFFORT_BUILD'),
   },
+  // The second non-scalar knob, read here so an unloadable value fails at job
+  // start — before any model turn is spent — and riding the settings so the
+  // one config builder both execution paths read carries it by construction.
+  // Unset is the ordinary case and emits nothing at all.
+  mcpServers: parseMcpServers(env['AGENT_MCP_SERVERS']),
 })
 
 /** Loader roots, first-hit-wins (D11): in-repo OpenSpec trees first, then the pinned superpowers checkout. */
@@ -171,11 +180,13 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     reviewMaxRounds: boundedInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4, ROUND_RANGE),
     reviewPoolSize: boundedInt(env, 'AGENT_REVIEW_POOL_SIZE', DEFAULT_REVIEW_POOL_SIZE, POOL_RANGE),
     agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', DEFAULT_TURN_TIMEOUT_MS, TIMEOUT_RANGE),
+    stallTimeoutMs: stallTimeout(env, 'AGENT_STALL_TIMEOUT_MS', DEFAULT_STALL_TIMEOUT_MS, STALL_RANGE),
     jobDeadlineMs: buildJobDeadline(env),
     teardownReserveMs: boundedInt(env, 'AGENT_TEARDOWN_RESERVE_MS', 180_000, RESERVE_RANGE),
     wrapUpMs: boundedInt(env, 'AGENT_WRAP_UP_MS', 120_000, WRAP_UP_RANGE),
     ciFixMaxRounds: boundedInt(env, 'AGENT_CI_FIX_MAX_ROUNDS', 2, ROUND_RANGE),
     commitRepairMaxRounds: boundedInt(env, 'AGENT_COMMIT_REPAIR_MAX_ROUNDS', 3, ROUND_RANGE),
+    syncRepairMaxRounds: boundedInt(env, 'AGENT_SYNC_REPAIR_MAX_ROUNDS', 3, ROUND_RANGE),
     maxCiAttempts: boundedInt(env, 'AGENT_MAX_CI_ATTEMPTS', 3, ROUND_RANGE),
     maxReviewAttempts: boundedInt(env, 'AGENT_MAX_REVIEW_ATTEMPTS', 3, ROUND_RANGE),
     // `LINES_RANGE`, the same bound `AGENT_MAX_CHANGED_LINES` takes, because it

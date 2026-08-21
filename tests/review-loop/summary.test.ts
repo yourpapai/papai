@@ -72,6 +72,7 @@ function zeroMetric(round: number): RoundMetric {
     fixerExposure: { caller: 0, none: 0, unknown: 0 },
     exposureDivergent: 0,
     reviewerKind: { defect: 0, cleanup: 0 },
+    deferred: 0,
     checkBehind: {
       defect: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
       cleanup: { withCheck: 0, withoutCheck: 0, unmeasured: 0 },
@@ -439,6 +440,16 @@ describe('buildSummary exact structure', () => {
     expect(summary).toBe(MINIMAL_SUMMARY)
   })
 
+  test('deferred line appears only when findings were deferred', () => {
+    const metric = zeroMetric(1)
+    metric.deferred = 3
+    const summary = buildSummary(inputOf({ metrics: [metric], options: { poolSize: 1, inspect: false } }))
+    expect(summary).toContain('Deferred: 3')
+
+    const none = buildSummary(inputOf({ metrics: [zeroMetric(1)], options: { poolSize: 1, inspect: false } }))
+    expect(none).not.toContain('Deferred:')
+  })
+
   test('multiple nonzero phases join with comma separator', () => {
     const metric = busyMetric(1)
     metric.phaseMs = { review: 1000, match: 0, verify: 0, build: 0, inspect: 0, fix: 2000 }
@@ -530,6 +541,15 @@ describe('buildMetricsJson aggregation', () => {
     expect(json.totals.rejected).toBe(3)
     expect(json.totals.alreadyFixed).toBe(3)
     expect(json.totals.needsHuman).toBe(1)
+  })
+
+  test('sums deferred across rounds', () => {
+    const m1 = zeroMetric(1)
+    m1.deferred = 2
+    const m2 = zeroMetric(2)
+    m2.deferred = 1
+    const json = buildMetricsJson('stopped', 2, 0, [m1, m2], { poolSize: 1, inspect: false })
+    expect(json.totals.deferred).toBe(3)
   })
 
   test('reads open from the last metric cumulativeOpen', () => {

@@ -5,12 +5,21 @@
 
 import { expect } from 'bun:test'
 
+import { eq } from 'drizzle-orm'
+
+import { ANALYTICS_GOVERNANCE_HMAC_KEYRING_ENV, ANALYTICS_HMAC_KEYRING_ENV } from '../../../src/analytics/config.js'
+import { ANALYTICS_KILL_SWITCH_ENV } from '../../../src/analytics/governance/policy-store.js'
+import type { AnalyticsObserver } from '../../../src/analytics/runtime.js'
+import { getActiveAnalyticsRuntime, startAnalytics, stopAnalytics } from '../../../src/analytics/start-analytics.js'
+import type { AuthorizedTurnContextRegistry } from '../../../src/analytics/turn-context.js'
 import { getThreadScopedStorageContextId } from '../../../src/auth.js'
 import { setupBot, type BotDeps } from '../../../src/bot.js'
+import { createChatParticipantResolver } from '../../../src/chat/participants/router-binding.js'
 import { ChatRouter } from '../../../src/chat/router.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { IncomingInteraction, IncomingMessage } from '../../../src/chat/types.js'
-import { closeDrizzleDb } from '../../../src/db/drizzle.js'
+import { analyticsPolicy } from '../../../src/db/analytics-governance-schema.js'
+import { closeDrizzleDb, getDrizzleDb } from '../../../src/db/drizzle.js'
 import { routeRequest } from '../../../src/debug/server.js'
 import type { ProcessMessageFn } from '../../../src/llm-orchestrator-process-args.js'
 import { defaultDeps as defaultLlmDeps, processMessage } from '../../../src/llm-orchestrator.js'
@@ -20,9 +29,21 @@ import { toolCapabilityCatalog } from '../../../src/runtime/capability-catalog.j
 import { createPapaiRuntime } from '../../../src/runtime/create-runtime.js'
 import { createProductionRuntimeDeps } from '../../../src/runtime/production-deps.js'
 import type { PapaiRuntime, PapaiRuntimeDeps } from '../../../src/runtime/types.js'
+import { scheduler as schedulerSingleton } from '../../../src/scheduler-instance.js'
+import {
+  startScheduler as startRecurringScheduler,
+  stopScheduler as stopRecurringScheduler,
+} from '../../../src/scheduler.js'
 import { createScenarioChat, type ScenarioChat, type ScenarioReply } from './chat.js'
 import { createScenarioEvents, type ScenarioEvent, type ScenarioEvents } from './events.js'
-import { SCENARIO_PLATFORM_INSTANCE_ID, createScenarioFixtures, type ScenarioFixtures } from './fixtures.js'
+import { createFakeKaneoResponder } from './fake-kaneo/responder.js'
+import { createFakeYouTrackResponder } from './fake-youtrack/responder.js'
+import {
+  SCENARIO_PLATFORM_INSTANCE_ID,
+  createScenarioFixtures,
+  type RealTaskProviderType,
+  type ScenarioFixtures,
+} from './fixtures.js'
 import { MemoryTaskProvider } from './memory-task-provider.js'
 import {
   createScenarioRuntimeExtensionLifecycle,
@@ -35,6 +56,38 @@ import { createStrictHttpDispatcher, type StrictHttpDispatcher } from './strict-
 
 const FIXED_NOW = '2026-01-01T00:00:00.000Z'
 export const ADMIN_USER_ID = 'scenario-admin'
+
+const REAL_YOUTRACK_HOST = 'youtrack.invalid'
+export const REAL_YOUTRACK_BASE_URL = `https://${REAL_YOUTRACK_HOST}`
+export const REAL_YOUTRACK_TOKEN = 'fake-token'
+
+const REAL_KANEO_HOST = 'kaneo.invalid'
+export const REAL_KANEO_BASE_URL = `https://${REAL_KANEO_HOST}`
+export const REAL_KANEO_CREDENTIAL = 'fake-token'
+export const REAL_KANEO_WORKSPACE_ID = 'workspace-1'
+
+type RealProviderSetup = Readonly<{
+  instanceConfig: Record<string, string>
+  host: string
+  responder: () => (request: Request) => Promise<Response>
+}>
+
+const REAL_TASK_PROVIDER_SETUP: Readonly<Record<RealTaskProviderType, RealProviderSetup>> = {
+  youtrack: {
+    instanceConfig: { baseUrl: REAL_YOUTRACK_BASE_URL },
+    host: REAL_YOUTRACK_HOST,
+    responder: createFakeYouTrackResponder,
+  },
+  kaneo: {
+    instanceConfig: {
+      baseUrl: REAL_KANEO_BASE_URL,
+      credential: REAL_KANEO_CREDENTIAL,
+      workspaceId: REAL_KANEO_WORKSPACE_ID,
+    },
+    host: REAL_KANEO_HOST,
+    responder: createFakeKaneoResponder,
+  },
+}
 
 export type ScenarioClock = Readonly<{ now(): Date; advance(milliseconds: number): void }>
 export type ScenarioIds = Readonly<{ next(namespace: string): string }>
@@ -98,6 +151,7 @@ export type ScenarioWorldOptions = Readonly<{
   testHooks?: ScenarioWorldTestHooks
   tempRoot?: string
   debugEnabled?: boolean
+  realTaskProvider?: RealTaskProviderType
 }>
 
 export type ScenarioWorld = Readonly<{
@@ -119,6 +173,8 @@ export type ScenarioWorld = Readonly<{
   ensureStarted(): Promise<void>
   assertPrerequisitesOpen(operation: string): void
   registerRuntimeExtension(extension: ScenarioRuntimeExtension): void
+  startScheduler(): Promise<void>
+  startAnalyticsRuntime(mode: 'governed'): void
   message(user: UserHandle, context: ContextHandle, text: string): IncomingMessage
   repliesForThread(thread: ThreadHandle): readonly ScenarioReply[]
   /** The thread-aware storage context id production code would compute for this context. */
@@ -311,18 +367,31 @@ async function runCleanupStep(
   }
 }
 
-function setupScenarioBot(router: ChatRouter, model: ScriptedModel, pending: PendingWork): void {
-  setupBot(router, ADMIN_USER_ID, {
+function setupScenarioBot(
+  router: ChatRouter,
+  model: ScriptedModel,
+  pending: PendingWork,
+  analytics: Readonly<{ observer: AnalyticsObserver; registry: AuthorizedTurnContextRegistry }> | null,
+): void {
+  const deps: BotDeps = {
     processMessage: createScenarioProcessMessage(model),
     enqueueMessage: pending.enqueue,
-  })
+    // Bound exactly as production binds it, so a story sees the same label context.
+    chatParticipantResolver: createChatParticipantResolver(router),
+    ...(analytics === null ? {} : { analyticsObserver: analytics.observer, analyticsTurnRegistry: analytics.registry }),
+  }
+  setupBot(router, ADMIN_USER_ID, deps)
 }
 
 type CleanupResources = {
   runtime: PapaiRuntime | undefined
   databaseAttempted: boolean
   providerAttempted: boolean
+  schedulerStarted: boolean
+  analyticsTeardown: (() => Promise<void>) | undefined
 }
+
+const ANALYTICS_DRAIN_TIMER_SETTLE_MS = 5100
 
 type CleanupCoordinator = Readonly<{ run(): Promise<void> }>
 
@@ -342,6 +411,10 @@ function createCleanupCoordinator(
       const failures: unknown[] = []
       if (resources.runtime !== undefined)
         await runCleanupStep(events, 'world.cleanup.runtime.stop', () => resources.runtime?.stop(), failures, hooks)
+      if (resources.schedulerStarted)
+        await runCleanupStep(events, 'world.cleanup.scheduler.stop', stopRecurringScheduler, failures, hooks)
+      if (resources.analyticsTeardown !== undefined)
+        await runCleanupStep(events, 'world.cleanup.analytics.stop', resources.analyticsTeardown, failures, hooks)
       if (runtimeExtensions?.hasRegistered() === true)
         await runCleanupStep(events, 'world.cleanup.runtime-extensions.stop', runtimeExtensions.stop, failures, hooks)
       await runCleanupStep(events, 'world.cleanup.plugins.deactivate', deactivateAllPlugins, failures, hooks)
@@ -416,7 +489,13 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
   })
   const tasks = new MemoryTaskProvider({ events, nextId: (): string => ids.next('task') })
   const fixtures = createScenarioFixtures({ taskProvider: tasks, chat })
-  const resources: CleanupResources = { runtime: undefined, databaseAttempted: false, providerAttempted: false }
+  const resources: CleanupResources = {
+    runtime: undefined,
+    databaseAttempted: false,
+    providerAttempted: false,
+    schedulerStarted: false,
+    analyticsTeardown: undefined,
+  }
   let runtimeExtensions: readonly ScenarioRuntimeExtension[] = [...(options.runtimeExtensions ?? [])]
   const runtimeExtensionLifecycle = createScenarioRuntimeExtensionLifecycle(() => runtimeExtensions, {
     record(kind, data): void {
@@ -431,6 +510,8 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
   let api: ScenarioApi | undefined
   let state: 'new' | 'starting' | 'started' | 'stopping' | 'stopped' = 'new'
   let startInFlight: Promise<void> | undefined
+  let analyticsRuntimeRef: Readonly<{ observer: AnalyticsObserver; registry: AuthorizedTurnContextRegistry }> | null =
+    null
 
   try {
     resources.databaseAttempted = true
@@ -439,14 +520,28 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     fixtures.seedPlatformInstance()
     fixtures.seedSystemLlmConfig()
     resources.providerAttempted = true
-    fixtures.registerTaskProvider()
+    const realProviderType = options.realTaskProvider
+    // A real-Kaneo world lets the contributed task-provider-kaneo plugin own the 'kaneo' type;
+    // every other world (default and real-YouTrack) registers the in-memory fake so scenarios
+    // that drive task tools without a live provider stay hermetic.
+    if (realProviderType !== 'kaneo') {
+      fixtures.registerTaskProvider()
+    }
+    if (realProviderType !== undefined) {
+      const setup = REAL_TASK_PROVIDER_SETUP[realProviderType]
+      fixtures.approveRealTaskProviderPlugin(realProviderType)
+      http.serveHost(setup.host, setup.responder())
+      if (realProviderType === 'kaneo') {
+        fixtures.seedTaskInstance({ type: 'kaneo', config: setup.instanceConfig })
+      }
+    }
     const pluginProviderRuntimeDeps = { fetch: http.fetch, assertPublicUrl: (): Promise<void> => Promise.resolve() }
     const productionDeps = createProductionRuntimeDeps(
       {
         database: { start: () => undefined, stop: () => undefined },
         chat: { createRouter: () => router, ingress: chat },
         application: {
-          setupBot: (activeRouter) => setupScenarioBot(activeRouter, model, pending),
+          setupBot: (activeRouter) => setupScenarioBot(activeRouter, model, pending, analyticsRuntimeRef),
           flush: pending.settle,
         },
         web: {
@@ -530,6 +625,64 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     runtimeExtensions = [...runtimeExtensions, extension]
   }
 
+  const startAnalyticsRuntime = (mode: 'governed'): void => {
+    assertPrerequisitesOpen('given.analyticsRuntime')
+    const testKey = `v1:${'a'.repeat(64)}`
+    const priorAnalytics = process.env[ANALYTICS_HMAC_KEYRING_ENV]
+    const priorGovernance = process.env[ANALYTICS_GOVERNANCE_HMAC_KEYRING_ENV]
+    const priorKillSwitch = process.env[ANALYTICS_KILL_SWITCH_ENV]
+    process.env[ANALYTICS_HMAC_KEYRING_ENV] = testKey
+    process.env[ANALYTICS_GOVERNANCE_HMAC_KEYRING_ENV] = testKey
+    const nowMs = Date.now()
+    getDrizzleDb()
+      .update(analyticsPolicy)
+      .set({
+        policyVersion: 1,
+        noticeVersion: 1,
+        controllerContact: 'test@example.com',
+        purpose: 'automated test coverage',
+        lawfulBasisMode: 'legitimate_interest',
+        retainedEventHorizonDays: 90,
+        reviewDateMs: nowMs + 365 * 24 * 60 * 60 * 1000,
+        acknowledgedAtMs: nowMs,
+        policyEffectiveAtMs: nowMs,
+        localMode: 'local_aggregate',
+        updatedAtMs: nowMs,
+      })
+      .where(eq(analyticsPolicy.singletonId, 1))
+      .run()
+    startAnalytics()
+    const activeRuntime = getActiveAnalyticsRuntime()
+    if (activeRuntime !== null) analyticsRuntimeRef = activeRuntime
+    resources.analyticsTeardown = async (): Promise<void> => {
+      try {
+        await stopAnalytics()
+      } finally {
+        const restore = (envName: string, prior: string | undefined): void => {
+          if (prior === undefined) Reflect.deleteProperty(process.env, envName)
+          else process.env[envName] = prior
+        }
+        restore(ANALYTICS_HMAC_KEYRING_ENV, priorAnalytics)
+        restore(ANALYTICS_GOVERNANCE_HMAC_KEYRING_ENV, priorGovernance)
+        restore(ANALYTICS_KILL_SWITCH_ENV, priorKillSwitch)
+      }
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, ANALYTICS_DRAIN_TIMER_SETTLE_MS)
+      })
+    }
+    events.record('given.analyticsRuntime', { mode })
+  }
+
+  const startSchedulerFn = async (): Promise<void> => {
+    await start()
+    startRecurringScheduler(chat, { resolve: () => fixtures.taskProvider })
+    resources.schedulerStarted = true
+    await schedulerSingleton.drainAll()
+    const pendingSettle = await pending.settle()
+    await http.idle()
+    return pendingSettle
+  }
+
   const world: ScenarioWorld = {
     name,
     runtime,
@@ -552,6 +705,8 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     ensureStarted: start,
     assertPrerequisitesOpen,
     registerRuntimeExtension,
+    startScheduler: startSchedulerFn,
+    startAnalyticsRuntime,
     message: (user, context, text) => messageForContext(world, user, context, text),
     repliesForThread: (thread) => repliesForThread(world, thread),
     scopedStorageContextId: (context) => scopedStorageContextIdFor(context),

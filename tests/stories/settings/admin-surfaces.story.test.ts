@@ -22,6 +22,70 @@ const BroadcastSchema = z.object({ totalUsers: z.number(), successCount: z.numbe
 const GuardrailsViewSchema = z.object({
   guardrails: z.object({ whoMayUse: z.union([z.literal('members'), z.array(z.string())]) }),
 })
+const ToolDefaultsViewSchema = z.object({ activePreset: z.string().nullable(), hasStoredDefaults: z.boolean() })
+
+scenario(
+  'SCN-settings-admin-tool-defaults: a bot admin saves and reads back the default tool preset',
+  async ({ given, when, then }) => {
+    const alice = given.user('alice')
+    const bob = given.user('bob')
+    const admin = await given.settingsAdminSession(alice)
+    const memberSession = await when.settingsSession(bob)
+    const body = JSON.stringify({ kind: 'preset', preset: 'read-only' })
+
+    const unauthenticated = await when.request('/settings/api/admin/tool-defaults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+    then.responseStatus(unauthenticated, 401)
+
+    const initial = await when.settingsRequest(admin, '/settings/api/admin/tool-defaults')
+    then.responseStatus(initial, 200)
+    const baseline = ToolDefaultsViewSchema.parse(await initial.json())
+
+    const forbidden = await when.settingsRequest(memberSession, '/settings/api/admin/tool-defaults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+    then.responseStatus(forbidden, 403)
+
+    const afterForbidden = await when.settingsRequest(admin, '/settings/api/admin/tool-defaults')
+    then.responseStatus(afterForbidden, 200)
+    expect(ToolDefaultsViewSchema.parse(await afterForbidden.json())).toEqual(baseline)
+
+    const csrfRejected = await when.settingsRequest(
+      admin,
+      '/settings/api/admin/tool-defaults',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body },
+      { csrf: false },
+    )
+    then.responseStatus(csrfRejected, 403)
+
+    const afterCsrfRejection = await when.settingsRequest(admin, '/settings/api/admin/tool-defaults')
+    then.responseStatus(afterCsrfRejection, 200)
+    expect(ToolDefaultsViewSchema.parse(await afterCsrfRejection.json())).toEqual(baseline)
+
+    const saved = await when.settingsRequest(admin, '/settings/api/admin/tool-defaults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+    then.responseStatus(saved, 200)
+    expect(ToolDefaultsViewSchema.parse(await saved.json())).toMatchObject({
+      activePreset: 'read-only',
+      hasStoredDefaults: true,
+    })
+
+    const readback = await when.settingsRequest(admin, '/settings/api/admin/tool-defaults')
+    then.responseStatus(readback, 200)
+    expect(ToolDefaultsViewSchema.parse(await readback.json())).toMatchObject({
+      activePreset: 'read-only',
+      hasStoredDefaults: true,
+    })
+  },
+)
 const AdminAnalyticsViewSchema = z.looseObject({
   configVersion: z.number(),
   mode: z.object({ localMode: z.string() }),
@@ -250,11 +314,27 @@ scenario(
     const carolSession = await when.settingsSession(carol)
     const grantBody = JSON.stringify({ userId: bob.id, platformInstanceId: bob.platformInstanceId })
 
-    const unauthenticated = await when.request('/settings/api/admin/admins')
+    const unauthenticated = await when.request('/settings/api/admin/admins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: grantBody,
+    })
     then.responseStatus(unauthenticated, 401)
 
-    const before = await when.settingsRequest(bobSession, '/settings/api/admin/admins')
-    then.responseStatus(before, 403)
+    const initial = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(initial, 200)
+    const baseline = AdminsSchema.parse(await initial.json())
+
+    const ordinaryForbidden = await when.settingsRequest(bobSession, '/settings/api/admin/admins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: grantBody,
+    })
+    then.responseStatus(ordinaryForbidden, 403)
+
+    const afterOrdinaryForbidden = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(afterOrdinaryForbidden, 200)
+    expect(AdminsSchema.parse(await afterOrdinaryForbidden.json())).toEqual(baseline)
 
     const notSuper = await when.settingsRequest(carolSession, '/settings/api/admin/admins', {
       method: 'POST',
@@ -262,6 +342,10 @@ scenario(
       body: grantBody,
     })
     then.responseStatus(notSuper, 403)
+
+    const afterBotAdminForbidden = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(afterBotAdminForbidden, 200)
+    expect(AdminsSchema.parse(await afterBotAdminForbidden.json())).toEqual(baseline)
 
     const csrfRejected = await when.settingsRequest(
       superSession,
@@ -271,6 +355,21 @@ scenario(
     )
     then.responseStatus(csrfRejected, 403)
 
+    const afterCsrfRejection = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(afterCsrfRejection, 200)
+    expect(AdminsSchema.parse(await afterCsrfRejection.json())).toEqual(baseline)
+
+    const invalid = await when.settingsRequest(superSession, '/settings/api/admin/admins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: '', platformInstanceId: bob.platformInstanceId }),
+    })
+    then.responseStatus(invalid, 422)
+
+    const afterInvalid = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(afterInvalid, 200)
+    expect(AdminsSchema.parse(await afterInvalid.json())).toEqual(baseline)
+
     const granted = await when.settingsRequest(superSession, '/settings/api/admin/admins', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -278,9 +377,12 @@ scenario(
     })
     then.responseStatus(granted, 200)
 
-    const after = await when.settingsRequest(bobSession, '/settings/api/admin/admins')
-    then.responseStatus(after, 200)
-    expect(AdminsSchema.parse(await after.json()).admins.map((admin) => admin.userId)).toContain(bob.id)
+    const readback = await when.settingsRequest(superSession, '/settings/api/admin/admins')
+    then.responseStatus(readback, 200)
+    expect(AdminsSchema.parse(await readback.json()).admins.map((admin) => admin.userId)).toContain(bob.id)
+
+    const bobReadback = await when.settingsRequest(bobSession, '/settings/api/admin/admins')
+    then.responseStatus(bobReadback, 200)
 
     const revoked = await when.settingsRequest(superSession, '/settings/api/admin/admins', {
       method: 'DELETE',

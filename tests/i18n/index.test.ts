@@ -51,4 +51,23 @@ describe('i18n module', () => {
     expect(i18n.t('commands.stop.nothingRunning', 'ru')).not.toBe(en.commands.stop.nothingRunning)
     expect(i18n.t('commands.stop.nothingRunning', 'ru')).toBe('Сейчас ничего не выполняется.')
   })
+
+  test('t falls back to the en liveStatus text with a warn when the ru key is missing', async () => {
+    const tracked = createTrackedLoggerMock()
+    const i18n = await loadI18nModule(tracked)
+    const ruLiveStatus = ru.liveStatus
+    const original = ruLiveStatus.thinking
+    Reflect.deleteProperty(ruLiveStatus, 'thinking')
+    try {
+      const rendered = i18n.t('liveStatus.thinking', 'ru')
+      expect(rendered).toBe(en.liveStatus.thinking)
+      expect(rendered).toBe('💭 Thinking…')
+    } finally {
+      ruLiveStatus.thinking = original
+    }
+    const warns = tracked.getCallsByLevel('warn')
+    expect(warns).toHaveLength(1)
+    expect(warns[0]?.args[0]).toEqual({ key: 'liveStatus.thinking', locale: 'ru' })
+    expect(String(warns[0]?.args[1])).toContain('falling back to en')
+  })
 })

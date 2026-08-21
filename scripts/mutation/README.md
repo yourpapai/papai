@@ -127,6 +127,14 @@ fresh generation; that drift guard is worth more than a mutation score on a file
 comes from a generator anyway. Without the exclusion, every PR that adds a tool — and so
 regenerates the slug table — fails this gate on a file it never hand-wrote.
 
+The same failure shape reached beyond `generated/` targets until `stryker.config.json` pinned
+`disableTypeChecks: false`: Stryker's default prepends `// @ts-nocheck` to every TS file in the
+sandbox — including files it does **not** mutate — so the drift-guard test failed unmutated inside
+the paired test set of _any_ `src/analytics/*` target, landing those targets in `errored`. Bun
+never typechecks at test runtime, so the pragma bought nothing here; keeping it off is what makes
+the sandbox byte-faithful for non-target files. `tests/scripts/mutation/stryker-config.test.ts`
+pins the flag so a config regression fails a test instead of the gate.
+
 ## Incremental measurement (carried-over scores)
 
 A run measures only the files whose content changed since the previous run on the same branch —

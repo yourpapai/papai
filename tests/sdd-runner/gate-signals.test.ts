@@ -33,7 +33,7 @@ describe('gatherGateSignals', () => {
     const logPath = path.join(state.runDir, 'events.ndjson')
     appendEvent(logPath, { altitude: 'L2', type: 'stage_enter', stage: 'review' })
     const deps: OrchestratorDeps = {
-      config: { repoRoot: dir, workDir, model: 'm', models: {}, timeouts: { wallClockMs: 1, inactivityMs: 1 } },
+      config: { repoRoot: dir, workDir, model: 'm', budget: 5 },
       spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
       execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
       resolveCost: () => null,

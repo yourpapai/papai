@@ -8,7 +8,9 @@ Agent subprocess guards live in `src/spawn.ts` + `src/agent-runner.ts`: besides 
 
 A run has a **soft stop** of its own (`src/stop-controller.ts`): `runTimeoutMs`
 (config, `0` = no budget) and `SIGINT`/`SIGTERM` both ask the loop to stop, and it
-honours that between two issues and between two rounds — the boundaries where the
+honours that between two issues — between two batches under `batchVerify`, which
+also asks `remainingMs()` before each batch starts so a cluster the budget cannot
+fit is deferred instead — and between two rounds: the boundaries where the
 fix in hand is committed, build-checked, merged and, under `mergeEachFix`,
 published. A stopped run writes its artifacts, **skips `finalizeRun`** (a
 multi-minute build gate whose only possible outcome, on a run out of time, is to
@@ -169,6 +171,10 @@ change's task list: `--plan openspec/changes/<name>/tasks.md`.
 ## TDD Hooks
 
 The repo TDD resolver treats `review-loop/src/**` as gateable implementation code and maps it to `tests/review-loop/**`. New review-loop work must follow the same test-first flow used under `src/` and other repo-owned implementation paths.
+
+## Batch Verification
+
+When `batchVerify: true` (`config.ts`, default `false`), the reviewer may coalesce same-class findings into one theme issue with `spans: {file,lineStart,lineEnd,evidence}[]` (`issue-schema.ts`, `prompt-templates.ts` coalescence rule). `clusterRecords` (`issue-clustering.ts`) groups flat pending issues by kind + title n-gram, preserving kind-first order. `processPendingIssues` dispatches one fixer per cluster sequentially (still `poolSize=1`), with no per-issue or per-batch `build`/`inspect`. After all batches, the round runs **one `build` (`runAggregatedBuild`) and one `inspector` (`runAggregatedInspector`)** over the aggregated working-tree diff (`git add -N .; git diff baselineSha`). Build/inspect failures attribute via claimed files (issue `spans` + fixer `targetFiles` vs build output + `git diff --name-only`); ambiguous failures mark all batched members `needs_human`. Surviving members are committed per batch (`fix(review-loop): <title> (+N)`) and the stacked commits are published by **one** `mergeWorkerIntoPrimary` — never a failing fix; a surviving member whose files a decided member also claims is held back for split retry, because `git add` stages the file's current content, rejected edits included. A cluster is deferred before its fixer starts (`shouldDeferBatch`, `batch-defer.ts`) when the run budget no longer fits the median batch duration: `low`/`cleanup` first, `medium` at half that margin, `critical`/`high`/caller-exposed defects never; deferred records stay `discovered` and are counted in the summary's `Deferred:` line. This is the deferred-verification counterpart to ADR-0303's per-issue gate — see `design.md` D2–D5.
 
 ## Dependencies
 

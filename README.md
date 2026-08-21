@@ -493,7 +493,7 @@ Papai ships with four first-party plugins under [`plugins/`](plugins/). All are 
 | -------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | [Audio Transcribe](plugins/audio-transcribe/README.md)         | `audio-transcribe`       | Auto-transcribes voice notes before the LLM turn and audio files on demand via an OpenAI-compatible API    | `http`, `attachments.read`, `storage` |
 | [Synthetic Web Search](plugins/synthetic-web-search/README.md) | `synthetic-web-search`   | Web search via the Synthetic Search API; returns title/url/markdown text                                   | `http`                                |
-| [Kaneo](plugins/task-provider-kaneo/README.md)                 | `task-provider-kaneo`    | Kaneo task-tracker integration (contributes the `kaneo` provider type; supports auto-provisioning)         | `provider.task`, `identity`           |
+| [Kaneo](plugins/task-provider-kaneo/README.md)                 | `task-provider-kaneo`    | Kaneo task-tracker integration (contributes the `kaneo` provider type; supports auto-provisioning)         | `provider.task`, `identity`, `http`   |
 | [YouTrack](plugins/task-provider-youtrack/README.md)           | `task-provider-youtrack` | YouTrack task-tracker integration (contributes the `youtrack` provider type; most fully-featured provider) | `provider.task`, `identity`           |
 
 ---
@@ -618,7 +618,9 @@ bun test:mutate --update-baseline  # full run; ratchet scripts/mutation/baseline
 bun test:mutate:seed --scores=reports/paired/scores.json  # re-apply persisted scores (CI commit step; lost-seed recovery)
 ```
 
-Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`, each
+Runs paired, per-file mutation testing with Stryker (`ignoreStatic: false`,
+`disableTypeChecks: false` so the sandbox leaves non-target file bytes
+untouched — pinned by `tests/scripts/mutation/stryker-config.test.ts`; each
 source file paired with the test set that actually covers it — coverage-derived
 via `scripts/mutation/coverage-map.ts`, with the companion as fallback). The CI
 `mutation-testing` job is a

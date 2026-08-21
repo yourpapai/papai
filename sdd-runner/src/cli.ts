@@ -3,8 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { autonomyOverridesOf, parseGateResumeFlags, parseTrailingFlags } from './cli-flags.js'
-import type { AutonomyLevel } from './config.js'
+import { resolveTarget } from './cli-routing.js'
 import type { DepthProfile } from './events.js'
 import type {
   RunContinueResult,
@@ -13,9 +12,7 @@ import type {
   RunStartResult,
   StartOptions,
 } from './orchestrator.js'
-import type { GateResumeOptions } from './orchestrator.js'
-import type { Verbosity } from './renderer.js'
-import type { PendingGateEntry } from './run-state.js'
+import type { AutonomyOverrides } from './orchestrator.js'
 
 export interface GateReopenResult {
   readonly runId: string
@@ -23,271 +20,163 @@ export interface GateReopenResult {
 }
 
 export interface CliHarness {
+  /** The work dir routing decisions are made against. */
+  readonly workDir: string
   readonly runStart: (options: StartOptions) => Promise<RunStartResult>
   readonly runResume: (runId: string, autonomy?: AutonomyOverrides) => Promise<RunResumeResult>
-  readonly runGateResume: (runId: string, options: GateResumeOptions) => Promise<RunGateResumeResult>
+  readonly runGateResume: (runId: string) => Promise<RunGateResumeResult>
   readonly runContinue: (runId: string | null, autonomy?: AutonomyOverrides) => Promise<RunContinueResult>
-  readonly listPendingGates: () => Promise<PendingGateEntry[]>
   readonly buildReport: (runId: string, pr: boolean) => Promise<string>
-  readonly buildAuditReport: (runId: string) => Promise<string>
-  readonly runWatch: (runId: string) => Promise<void>
+  readonly requestCalmStop: (runId: string) => Promise<void>
   readonly runGateReopen: (runId: string, gateVersion: number) => Promise<GateReopenResult>
   readonly stdout: (line: string) => void
 }
 
-export interface AutonomyOverrides {
-  readonly level?: AutonomyLevel
-  readonly deadlineMinutes?: number
+export interface ParsedRoute {
+  readonly target: string | undefined
+  readonly verb: 'route' | 'stop'
+  readonly depth?: DepthProfile
+  readonly configPath?: string
+  readonly pr: boolean
+  readonly reopen?: true | number
 }
 
-function gateResumeOptionsOf(cmd: Extract<CliCommand, { readonly subcommand: 'gate' }>): GateResumeOptions {
+const DEPTH_VALUES: Record<string, DepthProfile> = { S: 'S', M: 'M', L: 'L' }
+
+export function parseSddArgs(argv: readonly string[]): ParsedRoute {
+  const args = [...argv]
+  const { verb, target, rest } = parseTargetArg(args)
+  let i = rest
+  for (; i < args.length && args[i]?.startsWith('-') !== true; i += 1) {
+    rejectLegacyShape(verb, target, args[i] ?? '')
+  }
+  return { target, verb, ...parseFlagArgs(args, i) }
+}
+
+function parseTargetArg(args: readonly string[]): {
+  readonly verb: 'route' | 'stop'
+  readonly target: string | undefined
+  readonly rest: number
+} {
+  if (args[0] === 'stop') {
+    if (args[1] !== undefined && !args[1].startsWith('-')) return { verb: 'stop', target: args[1], rest: 2 }
+    return { verb: 'stop', target: undefined, rest: 1 }
+  }
+  if (args[0] !== undefined && !args[0].startsWith('-')) return { verb: 'route', target: args[0], rest: 1 }
+  return { verb: 'route', target: undefined, rest: 0 }
+}
+
+function rejectLegacyShape(verb: 'route' | 'stop', target: string | undefined, positional: string): void {
+  if (verb === 'route' && target !== undefined && LEGACY_SUBCOMMANDS.has(target)) {
+    throw new Error(
+      `the '${target}' subcommand was removed: use 'sdd <task-file>' to start, 'sdd <run-id>' to route by state, 'sdd stop [<id>]' to calm-stop`,
+    )
+  }
+  throw new Error(`unexpected positional argument: ${positional} — the surface is: sdd [<target>] [flags]`)
+}
+
+interface FlagState {
+  readonly depth?: DepthProfile
+  readonly configPath?: string
+  readonly pr: boolean
+  readonly reopen?: true | number
+}
+
+function parseFlagArgs(args: readonly string[], start: number): FlagState {
+  let depth: DepthProfile | undefined
+  let configPath: string | undefined
+  let pr = false
+  let reopen: true | number | undefined
+  for (let i = start; i < args.length; i += 1) {
+    const arg = args[i] ?? ''
+    if (arg === '--depth') {
+      const val = args[i + 1] ?? ''
+      const depthValue = DEPTH_VALUES[val]
+      if (depthValue === undefined) throw new Error(`invalid --depth: ${val} (S|M|L)`)
+      depth = depthValue
+      i += 1
+    } else if (arg === '--config') {
+      configPath = args[i + 1]
+      if (configPath === undefined) throw new Error('--config requires a path')
+      i += 1
+    } else if (arg === '--pr') {
+      pr = true
+    } else if (arg === '--reopen') {
+      const next = args[i + 1]
+      if (next !== undefined && /^\d+$/u.test(next)) {
+        reopen = Number(next)
+        i += 1
+      } else {
+        reopen = true
+      }
+    } else if (REMOVED_FLAGS.has(arg)) {
+      throw new Error(
+        `${arg} was removed: hand-edit the gate file (gate-<n>.md) as the non-interactive decision path, then rerun \`sdd <run-id>\``,
+      )
+    } else {
+      throw new Error(`unknown flag: ${arg} (valid: --depth S|M|L, --config <path>, --pr, --reopen [<n>])`)
+    }
+  }
   return {
-    ...(cmd.confirmAll ? { confirmAll: true } : {}),
-    ...(cmd.abort ? { abort: true } : {}),
-    ...(cmd.extend ? { extend: true } : {}),
-    ...(cmd.waitDeadline === true ? { waitDeadline: true } : {}),
-    ...(cmd.noWait === true ? { noWait: true } : {}),
-    ...(cmd.verbosity === undefined ? {} : { verbosity: cmd.verbosity }),
-    ...(cmd.vetoes.length > 0 ? { vetoes: cmd.vetoes } : {}),
+    ...(depth === undefined ? {} : { depth }),
+    ...(configPath === undefined ? {} : { configPath }),
+    pr,
+    ...(reopen === undefined ? {} : { reopen }),
   }
 }
 
+const LEGACY_SUBCOMMANDS = new Set(['start', 'resume', 'gate', 'continue', 'report', 'audit', 'watch'])
+
+const REMOVED_FLAGS = new Set([
+  '--confirm-all',
+  '--abort',
+  '--extend',
+  '--veto',
+  '--wait-deadline',
+  '--no-wait',
+  '--autonomy',
+  '--verbosity',
+])
+
 export async function main(argv: readonly string[], harness: CliHarness): Promise<number> {
-  const cmd = parseCliArgs(argv)
-  if (cmd.subcommand === 'start') {
+  const parsed = parseSddArgs(argv)
+  if (parsed.verb === 'stop') {
+    const action = await resolveTarget({ workDir: harness.workDir, target: parsed.target, verb: 'stop' })
+    if (action.kind !== 'stop') throw new Error('stop requires an active run')
+    await harness.requestCalmStop(action.runId)
+    harness.stdout(`calm stop requested for ${action.runId} — honored at the next boundary`)
+    return 0
+  }
+  const action = await resolveTarget({ workDir: harness.workDir, target: parsed.target })
+  if (parsed.reopen !== undefined) {
+    if (action.kind === 'start') rejectStartReopen()
+    if (action.kind !== 'gate' && action.kind !== 'resume' && action.kind !== 'report') {
+      throw new Error('unroutable target for --reopen')
+    }
+    const version = parsed.reopen === true ? 1 : parsed.reopen
+    await harness.runGateReopen(action.runId, version)
+    return 0
+  }
+  if (action.kind === 'start') {
     await harness.runStart({
-      taskFile: cmd.taskFile,
-      depthOverride: cmd.depth,
-      verbosity: cmd.verbosity,
-      autonomy: autonomyOverridesOf(cmd.autonomy, cmd.autoDeadlineMinutes),
+      taskFile: action.taskFile,
+      ...(parsed.depth === undefined ? {} : { depthOverride: parsed.depth }),
     })
     return 0
   }
-  if (cmd.subcommand === 'resume') {
-    await harness.runResume(cmd.runId, autonomyOverridesOf(cmd.autonomy, cmd.autoDeadlineMinutes))
+  if (action.kind === 'gate') {
+    await harness.runGateResume(action.runId)
     return 0
   }
-  if (cmd.subcommand === 'continue') {
-    await harness.runContinue(cmd.runId, autonomyOverridesOf(cmd.autonomy, cmd.autoDeadlineMinutes))
+  if (action.kind === 'resume') {
+    await harness.runResume(action.runId)
     return 0
   }
-  if (cmd.subcommand === 'audit') return runAudit(harness, cmd.runId)
-  if (cmd.subcommand === 'watch') return runWatchCmd(harness, cmd.runId)
-  if (cmd.subcommand === 'gate') {
-    if (cmd.gateVerb === 'reopen' && cmd.runId !== null) {
-      await harness.runGateReopen(cmd.runId, cmd.reopenGateVersion ?? 1)
-      return 0
-    }
-    if (cmd.runId === null) return listPendingGates(harness)
-    await harness.runGateResume(cmd.runId, gateResumeOptionsOf(cmd))
-    return 0
-  }
-  const body = await harness.buildReport(cmd.runId, cmd.pr)
+  const body = await harness.buildReport(action.runId, parsed.pr)
   harness.stdout(body)
   return 0
 }
 
-async function listPendingGates(harness: CliHarness): Promise<number> {
-  const pending = await harness.listPendingGates()
-  if (pending.length === 0) harness.stdout('no runs await gate decisions')
-  for (const entry of pending) {
-    harness.stdout(
-      `gate-pending: ${entry.runId}  (${entry.changeName}, gate v${entry.gateVersion}, updated ${entry.updatedAt})`,
-    )
-    harness.stdout(`  sdd-runner gate resume ${entry.runId}`)
-  }
-  return 0
-}
-
-async function runWatchCmd(harness: CliHarness, runId: string): Promise<number> {
-  await harness.runWatch(runId)
-  return 0
-}
-
-async function runAudit(harness: CliHarness, runId: string): Promise<number> {
-  const body = await harness.buildAuditReport(runId)
-  harness.stdout(body)
-  return 0
-}
-
-export type CliCommand =
-  | {
-      readonly subcommand: 'start'
-      readonly taskFile: string
-      readonly depth?: DepthProfile
-      readonly verbosity: Verbosity
-      readonly autonomy?: AutonomyLevel
-      readonly autoDeadlineMinutes?: number
-    }
-  | {
-      readonly subcommand: 'resume'
-      readonly runId: string
-      readonly verbosity?: Verbosity
-      readonly autonomy?: AutonomyLevel
-      readonly autoDeadlineMinutes?: number
-    }
-  | {
-      readonly subcommand: 'continue'
-      readonly runId: string | null
-      readonly verbosity?: Verbosity
-      readonly autonomy?: AutonomyLevel
-      readonly autoDeadlineMinutes?: number
-    }
-  | {
-      readonly subcommand: 'gate'
-      readonly gateVerb?: 'reopen'
-      readonly reopenGateVersion?: number
-      readonly runId: string | null
-      readonly confirmAll: boolean
-      readonly abort: boolean
-      readonly extend: boolean
-      readonly waitDeadline?: boolean
-      readonly noWait?: boolean
-      readonly verbosity?: Verbosity
-      readonly vetoes: readonly { readonly id: string; readonly redirect?: string }[]
-    }
-  | { readonly subcommand: 'report'; readonly runId: string; readonly pr: boolean }
-  | { readonly subcommand: 'audit'; readonly runId: string }
-  | { readonly subcommand: 'watch'; readonly runId: string }
-
-const VALID_SUBCOMMANDS = new Set(['start', 'resume', 'gate', 'continue', 'report', 'audit', 'watch'])
-
-const DEPTH_VALUES: Record<string, DepthProfile> = { S: 'S', M: 'M', L: 'L' }
-const VERBOSITY_VALUES: Record<string, Verbosity> = { quiet: 'quiet', brief: 'brief', normal: 'normal', debug: 'debug' }
-function parseStart(args: readonly string[]): CliCommand {
-  const taskFile = args[1]
-  if (taskFile === undefined) throw new Error('start requires a task file path')
-  let depth: DepthProfile | undefined
-  let verbosity: Verbosity = 'normal'
-  let i = 2
-  while (i < args.length) {
-    const arg = args[i]
-    if (arg === '--depth') {
-      const val = args[i + 1] ?? ''
-      const dp = DEPTH_VALUES[val]
-      if (dp === undefined) throw new Error(`invalid --depth: ${val}`)
-      depth = dp
-      i += 2
-    } else if (arg === '--verbosity') {
-      const val = args[i + 1] ?? ''
-      const vb = VERBOSITY_VALUES[val]
-      if (vb === undefined) throw new Error(`invalid --verbosity: ${val}`)
-      verbosity = vb
-      i += 2
-    } else if (arg === '--autonomy' || arg === '--auto-deadline') {
-      break
-    } else {
-      throw new Error(`unknown flag: ${arg}`)
-    }
-  }
-  const parsed = parseTrailingFlags(args, i)
-  return { subcommand: 'start', taskFile, depth, verbosity, ...parsed }
-}
-
-function parseGate(args: readonly string[]): CliCommand {
-  if (args[1] === undefined)
-    return { subcommand: 'gate', runId: null, confirmAll: false, abort: false, extend: false, vetoes: [] }
-  if (args[1] === 'reopen') return parseGateReopen(args)
-  if (args[1] !== 'resume')
-    throw new Error('gate requires: gate resume <runId> [flags] (or bare `gate` to list pending gates)')
-  const runId = args[2]
-  if (runId === undefined) throw new Error('gate resume requires a run id (or run bare `gate` to list pending gates)')
-  const { confirmAll, abort, extend, waitDeadline, noWait, gateVerbosity, vetoes } = parseGateResumeFlags(args)
-  if (extend && (confirmAll || abort || vetoes.length > 0)) {
-    throw new Error('--extend cannot be combined with --confirm-all, --veto, or --abort')
-  }
-  if (waitDeadline && noWait) {
-    throw new Error('--wait-deadline cannot be combined with --no-wait')
-  }
-  return {
-    subcommand: 'gate',
-    runId,
-    confirmAll,
-    abort,
-    extend,
-    ...(waitDeadline ? { waitDeadline: true } : {}),
-    ...(noWait ? { noWait: true } : {}),
-    ...(gateVerbosity === undefined ? {} : { verbosity: gateVerbosity }),
-    vetoes,
-  }
-}
-
-function parseGateReopen(args: readonly string[]): CliCommand {
-  const runId = args[2]
-  if (runId === undefined) throw new Error('gate reopen requires a run id')
-  let gateVersion: number | undefined
-  let i = 3
-  while (i < args.length) {
-    const arg = args[i]
-    if (arg === '--gate') {
-      const raw = args[i + 1] ?? ''
-      const parsed = Number(raw)
-      if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`invalid --gate: ${raw}`)
-      gateVersion = parsed
-      i += 2
-    } else {
-      throw new Error(`unknown flag: ${arg}`)
-    }
-  }
-  if (gateVersion === undefined) throw new Error('gate reopen requires --gate <n>')
-  return {
-    subcommand: 'gate',
-    gateVerb: 'reopen',
-    reopenGateVersion: gateVersion,
-    runId,
-    confirmAll: false,
-    abort: false,
-    extend: false,
-    vetoes: [],
-  }
-}
-
-function parseReport(args: readonly string[]): CliCommand {
-  const runId = args[1]
-  if (runId === undefined) throw new Error('report requires a run id')
-  let pr = false
-  for (let i = 2; i < args.length; i += 1) {
-    if (args[i] === '--pr') pr = true
-    else throw new Error(`unknown flag: ${args[i]}`)
-  }
-  return { subcommand: 'report', runId, pr }
-}
-
-export function parseCliArgs(args: readonly string[]): CliCommand {
-  const subcommand = args[0]
-  if (subcommand === undefined) throw new Error('missing subcommand: start | resume | gate | continue | report | audit')
-  if (!VALID_SUBCOMMANDS.has(subcommand)) throw new Error(`unknown subcommand: ${subcommand}`)
-  if (subcommand === 'start') return parseStart(args)
-  if (subcommand === 'gate') return parseGate(args)
-  if (subcommand === 'report') return parseReport(args)
-  if (subcommand === 'audit') {
-    const runId = args[1]
-    if (runId === undefined) throw new Error('audit requires a run id')
-    if (args.length > 2) throw new Error(`unknown flag: ${args[2]}`)
-    return { subcommand: 'audit', runId }
-  }
-  if (subcommand === 'watch') {
-    const runId = args[1]
-    if (runId === undefined) throw new Error('watch requires a run id')
-    if (runId.includes('/') || runId.includes('\\')) {
-      throw new Error(`run id must not contain path separators: ${runId}`)
-    }
-    if (args.length > 2) throw new Error(`unknown flag: ${args[2]}`)
-    return { subcommand: 'watch', runId }
-  }
-  if (subcommand === 'continue') {
-    const flagStart = hasPositionalRunId(args) ? 2 : 1
-    const parsed = parseTrailingFlags(args, flagStart)
-    const runId: string | null = hasPositionalRunId(args) ? args[1]! : null
-    return { subcommand: 'continue', runId, ...parsed }
-  }
-  const runId = args[1]
-  if (runId === undefined) throw new Error('resume requires a run id')
-  const parsed = parseTrailingFlags(args, 2)
-  return { subcommand: 'resume', runId, ...parsed }
-}
-
-function hasPositionalRunId(args: readonly string[]): boolean {
-  const first = args[1]
-  return first !== undefined && !first.startsWith('--')
+function rejectStartReopen(): never {
+  throw new Error('--reopen applies to a run, not a task file')
 }

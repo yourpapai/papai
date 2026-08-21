@@ -26,7 +26,7 @@ import {
 } from '../src/analytics/provider-request-scope.js'
 import type { AnalyticsSourceContext } from '../src/analytics/source-facts.js'
 import type { StagedFileDownloadFn } from '../src/attachments/types.js'
-import { userCachesForTesting } from '../src/cache.js'
+import { userCachesForTesting, clearCachedToolsByPrefix } from '../src/cache.js'
 import type { LlmInvocationOptions, InvocationSource } from '../src/llm-orchestrator-tools.js'
 import { buildLlmInvocationOpts } from '../src/llm-orchestrator-tools.js'
 import { saveMemoryProfile } from '../src/long-term-memory/store.js'
@@ -192,6 +192,61 @@ describe('llm-orchestrator-tools / getOrCreateDescriptors cache behaviour', () =
     expect(withoutDownload.enabledToolNames.has('search_staged_files')).toBe(true)
     expect(withoutDownload.enabledToolNames.has('resolve_staged_file')).toBe(false)
     expect(withDownload.enabledToolNames.has('resolve_staged_file')).toBe(true)
+  })
+})
+
+describe('llm-orchestrator-tools / admin identity forwarding and descriptor cache key', () => {
+  let provider: TaskProvider
+
+  beforeEach(async () => {
+    void mock.module('../src/tools/index.js', () => ({
+      buildToolDescriptors: buildToolDescriptorsSpy,
+      buildProviderlessToolDescriptors: buildProviderlessToolDescriptorsSpy,
+      applyToolPreferences: (tools: ToolSet): ToolSet => tools,
+      applyGuestReadOnlyFilter,
+    }))
+    mockLogger()
+    await setupTestDb()
+    userCachesForTesting.clear()
+    toolCapabilityCatalog.clear()
+    buildToolDescriptorsSpy.mockClear()
+    buildProviderlessToolDescriptorsSpy.mockClear()
+
+    provider = createMockProvider()
+  })
+
+  test('forwards isBotAdmin and platformInstanceId into descriptor options', async () => {
+    await prepareLlmInvocation({ ...baseOpts(provider), isBotAdmin: true, platformInstanceId: 'pi-admin' })
+
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(1)
+    const options = buildToolDescriptorsSpy.mock.calls[0]?.[1]
+    expect(options?.isBotAdmin).toBe(true)
+    expect(options?.platformInstanceId).toBe('pi-admin')
+  })
+
+  test('admin and non-admin turns for the same context produce distinct descriptor cache entries', async () => {
+    buildToolDescriptorsSpy
+      .mockResolvedValueOnce({ admin_probe: makeGetCurrentTimeTool('admin') })
+      .mockResolvedValueOnce({ user_probe: makeGetCurrentTimeTool('user') })
+
+    const admin = await prepareLlmInvocation({ ...baseOpts(provider), isBotAdmin: true })
+    const user = await prepareLlmInvocation({ ...baseOpts(provider), isBotAdmin: false })
+
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(2)
+    expect(admin.enabledToolNames.has('admin_probe')).toBe(true)
+    expect(user.enabledToolNames.has('user_probe')).toBe(true)
+    expect(user.enabledToolNames.has('admin_probe')).toBe(false)
+  })
+
+  test('clearCachedToolsByPrefix still clears both admin and user variants', async () => {
+    await prepareLlmInvocation({ ...baseOpts(provider), isBotAdmin: true })
+    await prepareLlmInvocation({ ...baseOpts(provider), isBotAdmin: false })
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(2)
+
+    clearCachedToolsByPrefix(CTX_ID)
+
+    await prepareLlmInvocation({ ...baseOpts(provider), isBotAdmin: true })
+    expect(buildToolDescriptorsSpy).toHaveBeenCalledTimes(3)
   })
 })
 
@@ -511,5 +566,19 @@ describe('buildLlmInvocationOpts / actorRole threading', () => {
     const src = makeSource()
     const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined, NO_ANALYTICS_SCOPE)
     expect(opts.actorRole).toBeUndefined()
+  })
+
+  test('copies isBotAdmin and platformInstanceId from InvocationSource into LlmInvocationOptions', () => {
+    const src = makeSource({ isBotAdmin: true, platformInstanceId: 'pi-1' })
+    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined, NO_ANALYTICS_SCOPE)
+    expect(opts.isBotAdmin).toBe(true)
+    expect(opts.platformInstanceId).toBe('pi-1')
+  })
+
+  test('isBotAdmin and platformInstanceId are undefined when not set on InvocationSource', () => {
+    const src = makeSource()
+    const opts = buildLlmInvocationOpts(src, 'cfg-1', null, undefined, NO_ANALYTICS_SCOPE)
+    expect(opts.isBotAdmin).toBeUndefined()
+    expect(opts.platformInstanceId).toBeUndefined()
   })
 })

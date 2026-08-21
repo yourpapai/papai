@@ -53,6 +53,7 @@ export function createReviewLoopConfigFixture(
     maxRounds: 5,
     maxNoProgressRounds: 2,
     mergeEachFix: false,
+    batchVerify: false,
     agentTimeoutMs: 600_000,
     buildTimeoutMs: 600_000,
     runTimeoutMs: 0,

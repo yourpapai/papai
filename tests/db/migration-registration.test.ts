@@ -30,9 +30,9 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('070_message_metadata_history_search')
   })
 
-  test('078_repair_epoch_aggregate_source_counters is the last migration', () => {
+  test('079_tool_call_duration_normalize is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('078_repair_epoch_aggregate_source_counters')
+    expect(lastMigration.id).toBe('079_tool_call_duration_normalize')
   })
 
   test('077_context_vault_file_artifacts is registered immediately after 076_context_vault', () => {

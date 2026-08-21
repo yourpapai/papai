@@ -11,10 +11,22 @@ export type StrictHttpExpectation = Readonly<{
   allowRedirect?: boolean
 }>
 
+export type StrictHttpHostOptions = Readonly<{
+  allowZeroRequests?: boolean
+  allowRedirect?: boolean
+}>
+
 type Responder = (request: Request) => Response | Promise<Response>
+
+type HostSimulator = Readonly<{
+  respond: Responder
+  allowZeroRequests: boolean
+  allowRedirect: boolean
+}>
 
 export type StrictHttpDispatcher = Readonly<{
   expect(request: StrictHttpExpectation, respond: Responder): void
+  serveHost(host: string, respond: Responder, options?: StrictHttpHostOptions): void
   fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>
   verifyConsumed(): void
   idle(): Promise<void>
@@ -27,6 +39,8 @@ type PendingExpectation = Readonly<{
 
 const normalizeUrl = (url: string): string => new URL(url).toString()
 const normalizeMethod = (method: string): string => method.toUpperCase()
+const normalizeHost = (host: string): string => host.toLowerCase()
+const hostOf = (url: string): string => normalizeHost(new URL(url).hostname)
 const describe = (request: Readonly<{ method: string; url: string }>): string => `${request.method} ${request.url}`
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 
@@ -48,9 +62,44 @@ export function createStrictHttpDispatcher(events: ScenarioEvents): StrictHttpDi
   let expectations: readonly PendingExpectation[] = []
   let consumed = 0
   const inFlight: Set<Promise<unknown>> = new Set()
+  const hosts: Map<string, HostSimulator> = new Map()
+  const hostRequestCounts: Map<string, number> = new Map()
+
+  const dispatch = async (
+    expectation: PendingExpectation,
+    request: Request,
+    actual: Readonly<{ method: string; url: string }>,
+  ): Promise<Response> => {
+    const responderPromise = runResponder(expectation, request, events, actual)
+    inFlight.add(responderPromise)
+    void responderPromise
+      .finally(() => {
+        inFlight.delete(responderPromise)
+      })
+      .catch(() => {
+        // Rejection is surfaced to the caller via the `await responderPromise` below;
+        // this branch only exists so the untracked `.finally()` chain doesn't register
+        // as an unhandled rejection independently of that await.
+      })
+    const response = await responderPromise
+    const isRedirect = REDIRECT_STATUSES.has(response.status)
+    if (isRedirect && !expectation.request.allowRedirect) {
+      throw new Error(
+        events.formatFailure(
+          `redirect response rejected for ${describe(actual)}; set allowRedirect to true to permit it`,
+        ),
+      )
+    }
+    events.record('http.response', { method: actual.method, url: actual.url, status: response.status })
+    return response
+  }
 
   return {
     expect(request, respond): void {
+      const host = hostOf(normalizeUrl(request.url))
+      if (hosts.has(host)) {
+        throw new Error(events.formatFailure(`${host} is served by a host simulator; remove the expect() call`))
+      }
       expectations = [
         ...expectations,
         {
@@ -63,6 +112,23 @@ export function createStrictHttpDispatcher(events: ScenarioEvents): StrictHttpDi
         },
       ]
     },
+    serveHost(host, respond, options): void {
+      const normalized = normalizeHost(host)
+      if (hosts.has(normalized)) {
+        throw new Error(events.formatFailure(`${normalized} is already served by a host simulator`))
+      }
+      const collision = expectations.some(({ request }) => hostOf(request.url) === normalized)
+      if (collision) {
+        throw new Error(
+          events.formatFailure(`${normalized} already has declared expectations; remove them or drop serveHost`),
+        )
+      }
+      hosts.set(normalized, {
+        respond,
+        allowZeroRequests: options?.allowZeroRequests ?? false,
+        allowRedirect: options?.allowRedirect ?? false,
+      })
+    },
     async fetch(input, init): Promise<Response> {
       const request = new Request(input, init)
       const actual = { method: normalizeMethod(request.method), url: normalizeUrl(request.url) }
@@ -70,6 +136,18 @@ export function createStrictHttpDispatcher(events: ScenarioEvents): StrictHttpDi
         ...actual,
         headers: Object.fromEntries(request.headers.entries()),
       })
+
+      const actualHost = hostOf(actual.url)
+      const simulator = hosts.get(actualHost)
+      if (simulator !== undefined) {
+        hostRequestCounts.set(actualHost, (hostRequestCounts.get(actualHost) ?? 0) + 1)
+        const hostExpectation: PendingExpectation = {
+          request: { ...actual, allowRedirect: simulator.allowRedirect },
+          respond: simulator.respond,
+        }
+        const hostResponse = await dispatch(hostExpectation, request, actual)
+        return hostResponse
+      }
 
       const pending = expectations[consumed]
       if (pending === undefined) {
@@ -80,34 +158,23 @@ export function createStrictHttpDispatcher(events: ScenarioEvents): StrictHttpDi
       }
 
       consumed += 1
-      const responderPromise = runResponder(pending, request, events, actual)
-      inFlight.add(responderPromise)
-      void responderPromise
-        .finally(() => {
-          inFlight.delete(responderPromise)
-        })
-        .catch(() => {
-          // Rejection is surfaced to the caller via the `await responderPromise` below;
-          // this branch only exists so the untracked `.finally()` chain doesn't register
-          // as an unhandled rejection independently of that await.
-        })
-      const response = await responderPromise
-      const isRedirect = REDIRECT_STATUSES.has(response.status)
-      if (isRedirect && !pending.request.allowRedirect) {
-        throw new Error(
-          events.formatFailure(
-            `redirect response rejected for ${describe(actual)}; set allowRedirect to true to permit it`,
-          ),
-        )
-      }
-      events.record('http.response', { method: actual.method, url: actual.url, status: response.status })
+      const response = await dispatch(pending, request, actual)
       return response
     },
     verifyConsumed(): void {
+      const problems: string[] = []
       const remaining = expectations.slice(consumed)
-      if (remaining.length === 0) return
-      const descriptions = remaining.map(({ request }) => describe(request)).join(', ')
-      throw new Error(events.formatFailure(`unconsumed HTTP expectations: ${descriptions}`))
+      if (remaining.length > 0) {
+        problems.push(`unconsumed HTTP expectations: ${remaining.map(({ request }) => describe(request)).join(', ')}`)
+      }
+      for (const [host, simulator] of hosts) {
+        if (simulator.allowZeroRequests) continue
+        if ((hostRequestCounts.get(host) ?? 0) === 0) {
+          problems.push(`host simulator received no requests: ${host}`)
+        }
+      }
+      if (problems.length === 0) return
+      throw new Error(events.formatFailure(problems.join('; ')))
     },
     async idle(): Promise<void> {
       while (inFlight.size > 0) {

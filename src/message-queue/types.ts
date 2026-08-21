@@ -33,6 +33,10 @@ export type QueueItem = Readonly<{
   voiceStagedIds: readonly string[]
   actorRole?: ActorRole
   messageId?: string
+  /** Whether the actor of this message is a bot admin; absent means not an admin. */
+  isBotAdmin?: boolean
+  /** Platform instance the message arrived on; absent when the message carries none. */
+  platformInstanceId?: string
 }> &
   QueueContextInfo &
   QueueConfigContextInfo &
@@ -50,6 +54,10 @@ export type CoalescedItem = Readonly<{
   actorRole?: ActorRole
   messageIds: readonly string[]
   segments: readonly MessageSegment[]
+  /** Whether the actor of the coalesced turn is a bot admin; absent means not an admin. */
+  isBotAdmin?: boolean
+  /** Platform instance the coalesced turn originated from; absent when unknown. */
+  platformInstanceId?: string
 }> &
   QueueContextInfo &
   QueueConfigContextInfo &

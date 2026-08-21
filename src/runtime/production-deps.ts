@@ -13,7 +13,7 @@ import { isS3Configured } from '../attachments/index.js'
 import { createStagedDownloader } from '../attachments/staged-download.js'
 import { setupBot, withRephraseCapture, type BotDeps } from '../bot.js'
 import { seedMattermostActionSigningSecretFromEnv } from '../chat/mattermost/action-secret.js'
-import { resolveChatParticipant } from '../chat/participants/roster.js'
+import { createChatParticipantResolver } from '../chat/participants/router-binding.js'
 import { createChatProviderFromConfig } from '../chat/registry.js'
 import { ChatRouter } from '../chat/router.js'
 import { registerCommandMenuIfSupported } from '../chat/startup.js'
@@ -149,13 +149,7 @@ function setupProductionBot(state: ProductionState, router: ChatRouter, adminUse
   const processMessage: BotDeps['processMessage'] = (...args) =>
     import('../llm-orchestrator.js').then((mod) => mod.processMessage(...args))
   const stagedDownloadFn = createStagedDownloader(router)
-  const chatParticipantResolver: BotDeps['chatParticipantResolver'] = (contextId, query, ...rest) =>
-    resolveChatParticipant(
-      contextId,
-      query,
-      (userId) => router.resolveUserLabel(userId, { contextId, contextType: 'group' }),
-      ...rest,
-    )
+  const chatParticipantResolver: BotDeps['chatParticipantResolver'] = createChatParticipantResolver(router)
   const analytics = state.analytics
   const rephrase = resolveProductionRephrase(analytics)
   setupBot(

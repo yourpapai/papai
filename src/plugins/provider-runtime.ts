@@ -5,11 +5,13 @@
 
 import { assertPublicUrl as defaultAssertPublicUrl } from '../web/safe-fetch.js'
 import type { PluginLogger } from './context.js'
+import { deriveInstanceHosts } from './dynamic-hosts.js'
 
 export type PluginProviderRuntime = {
   readonly httpFetch: (url: string, init?: RequestInit) => Promise<Response>
   readonly allowedHosts: ReadonlySet<string>
   readonly logger: PluginLogger
+  readonly forInstance: (config: Record<string, string>) => (url: string, init?: RequestInit) => Promise<Response>
 }
 
 /** Returns the set of hosts contributed by admin-scoped plugin config at call time.
@@ -211,6 +213,24 @@ async function fetchWithRedirects(
   )
 }
 
+function buildScopedHttpFetch(
+  hostSet: ReadonlySet<string>,
+  dynamicHosts: DynamicHostsFn,
+  contextHosts: DynamicHostsFn,
+  deps: ProviderRuntimeDeps,
+  logger: PluginLogger,
+): (url: string, init?: RequestInit) => Promise<Response> {
+  return async (rawUrl: string, init?: RequestInit): Promise<Response> => {
+    const url = parseProviderUrl(rawUrl)
+    await validateHop(url, hostSet, dynamicHosts, contextHosts, deps.assertPublicUrl)
+
+    const signal = composeSignal(init === undefined ? undefined : init.signal)
+    const fetchInit = buildFetchInit(init, signal)
+
+    return fetchWithRedirects(url, fetchInit, hostSet, dynamicHosts, contextHosts, deps, logger, MAX_REDIRECTS)
+  }
+}
+
 /**
  * Build a frozen PluginProviderRuntime that enforces two tiers of host allowlisting:
  *
@@ -223,6 +243,12 @@ async function fetchWithRedirects(
  *   https is required and assertPublicUrl (SSRF guard) is always enforced.
  *
  * Static manifest hosts (`allowedHosts`) also receive full standard validation.
+ *
+ * `forInstance(config)` derives a per-instance httpFetch scoped to the hosts parsed from the
+ * instance config values declared in `instanceHostKeys`. The derived hosts are treated as
+ * operator-trusted (same tier as admin dynamic hosts): they bypass the https and SSRF checks
+ * because the task-instance config is operator-set, and self-hosted providers are commonly
+ * served over plain http. The returned callable rejects any host not in that derived set.
  */
 export function buildProviderRuntime(
   allowedHosts: readonly string[],
@@ -230,6 +256,7 @@ export function buildProviderRuntime(
   deps: ProviderRuntimeDeps | undefined = defaultDeps,
   dynamicHosts: DynamicHostsFn = noDynamicHosts,
   contextHosts: DynamicHostsFn = noDynamicHosts,
+  instanceHostKeys: readonly string[] = [],
 ): PluginProviderRuntime {
   const resolvedDeps = deps ?? defaultDeps
 
@@ -241,26 +268,15 @@ export function buildProviderRuntime(
   // make Set entries immutable; security comes from the private hostSet above.
   const exposedHosts: ReadonlySet<string> = Object.freeze(new Set(hostSet))
 
+  const forInstance = (config: Record<string, string>): ((url: string, init?: RequestInit) => Promise<Response>) => {
+    const instanceHosts = deriveInstanceHosts(config, instanceHostKeys, logger)
+    return buildScopedHttpFetch(new Set(), () => instanceHosts, noDynamicHosts, resolvedDeps, logger)
+  }
+
   return Object.freeze({
     allowedHosts: exposedHosts,
     logger,
-    async httpFetch(rawUrl: string, init?: RequestInit): Promise<Response> {
-      const url = parseProviderUrl(rawUrl)
-      await validateHop(url, hostSet, dynamicHosts, contextHosts, resolvedDeps.assertPublicUrl)
-
-      const signal = composeSignal(init === undefined ? undefined : init.signal)
-      const fetchInit = buildFetchInit(init, signal)
-
-      return fetchWithRedirects(
-        url,
-        fetchInit,
-        hostSet,
-        dynamicHosts,
-        contextHosts,
-        resolvedDeps,
-        logger,
-        MAX_REDIRECTS,
-      )
-    },
+    httpFetch: buildScopedHttpFetch(hostSet, dynamicHosts, contextHosts, resolvedDeps, logger),
+    forInstance,
   })
 }
