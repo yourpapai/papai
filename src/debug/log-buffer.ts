@@ -112,7 +112,7 @@ function isLogEntry(value: unknown): value is LogEntry {
   return typeof value.level === 'number' && typeof value.msg === 'string' && typeof value.time === 'string'
 }
 
-/** @public -- pino DestinationStream adapter, attached via logMultistream.add() */
+/** @public -- pino DestinationStream adapter, attached at logger module load */
 export const logBufferStream = {
   write(chunk: string): void {
     try {

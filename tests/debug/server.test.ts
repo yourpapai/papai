@@ -322,8 +322,8 @@ describe('debug-server', () => {
   test('buffer stream is registered with level matching LOG_LEVEL', () => {
     const foundLevel = findBufferStreamLevel(logMultistream, logBufferStream)
     expect(foundLevel).toBeDefined()
-    // Use the captured log level from when the server started, not current env
-    // (other tests may have modified LOG_LEVEL after server start)
+    // Use the log level captured when the logger module loaded, not current env
+    // (other tests may have modified LOG_LEVEL after module load)
     const expectedLevel = PINO_LEVEL_VALUES[capturedLogLevel]
     expect(expectedLevel).toBeDefined()
     expect(foundLevel).toBe(expectedLevel!)
