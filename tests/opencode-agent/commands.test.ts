@@ -11,14 +11,20 @@ import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 /**
  * `/sync` joins the vocabulary as the `/ask` shape: a non-moving side
- * operation, accepted wherever a pull request exists and refused as a wrong
+ * operation, accepted wherever the agent branch exists and refused as a wrong
  * command everywhere else.
  *
  * What these tests pin is the one rule with two readers — the offer a refusal
  * lists and the gate that enforces it are both `COMMAND_APPLIES`, so they
  * cannot drift — plus the property that makes the whole command safe to accept
- * in any PR-bearing phase: it injects no signal, so the transition table is
+ * in any branch-bearing phase: it injects no signal, so the transition table is
  * never consulted and no park/resume question exists to answer.
+ *
+ * "The branch exists" is `changeName !== null` by the workspace's own doctrine
+ * (a `changeName === null` state has no folder to read and no branch to switch
+ * to), widened past `prNumber` after issue #323: the drift refusal parked the
+ * issue FAILED with no pull request, named `/sync` as the remedy, and the gate
+ * refused it — a remedy the state it was prescribed for could not take.
  */
 
 const state = (phase: Phase, over: Partial<AgentState> = {}): AgentState => ({
@@ -57,34 +63,54 @@ describe('the /sync vocabulary entry', () => {
   })
 })
 
-describe('acceptedCommands offers /sync exactly when a pull request exists', () => {
+describe('acceptedCommands offers /sync exactly when the agent branch exists', () => {
   test.each([...PR_PHASES])('%s with a pull request offers it', (phase: Phase) => {
     expect(acceptedCommands(withPr(phase))).toContain('/sync')
   })
 
-  test.each([...PR_PHASES])('%s without a pull request does not', (phase: Phase) => {
-    expect(acceptedCommands(state(phase))).not.toContain('/sync')
+  test('the drift-park shape — FAILED, no pull request, work on the branch — offers it', () => {
+    // Issue #323: the run refused on drifted manifests, parked in FAILED
+    // before any pull request existed, and the only machine remedy was gated
+    // behind a pull request that nothing would open while the branch could
+    // not run a job.
+    expect(acceptedCommands(state('FAILED', { resumeFrom: 'REVIEW_AND_MUTATE' }))).toContain('/sync')
   })
 
-  test('a pre-delivery phase never offers it, with or without a pull request field', () => {
-    // `/sync` on a PR-less state is declined by design (proposal Non-goals):
-    // a FAILED-before-delivery branch is re-entered by `/retry`, which re-runs
-    // from it. The predicate carries that scope by keying on `prNumber` alone,
-    // so the offer cannot leak into the pre-delivery conversation.
-    expect(acceptedCommands(state('DESIGN_SPEC'))).not.toContain('/sync')
-    expect(acceptedCommands(state('PLAN_REVIEW'))).not.toContain('/sync')
+  test('a waiting phase on a captured branch offers it too — merging base is safe anywhere', () => {
+    expect(acceptedCommands(state('DESIGN_SPEC'))).toContain('/sync')
+    expect(acceptedCommands(state('PLAN_REVIEW'))).toContain('/sync')
+  })
+
+  test('a pre-capture state never offers it — there is no branch to merge into', () => {
+    expect(acceptedCommands(state('INIT_OR_CLARIFY', { changeName: null }))).not.toContain('/sync')
+    expect(acceptedCommands(state('FAILED', { changeName: null, resumeFrom: 'INIT_OR_CLARIFY' }))).not.toContain(
+      '/sync',
+    )
+  })
+
+  test('a cancelled issue never offers it — /cancel deleted the branch this would resurrect', () => {
+    // The one branch-less state that still names a change: the same
+    // `presentationKey` split `/review` uses, for the same reason.
+    expect(acceptedCommands(state('COMPLETE'))).not.toContain('/sync')
+    expect(acceptedCommands(withPr('COMPLETE'))).toContain('/sync')
   })
 })
 
 describe('the wrong-command refusal lists /sync exactly when it applies', () => {
-  test('a refusal in a PR-bearing phase names /sync among what works', () => {
+  test('a refusal in a branch-bearing phase names /sync among what works', () => {
     const rendered = renderRefusedCommand('/retry', 'COMPLETE', acceptedCommands(withPr('COMPLETE')))
 
     expect(rendered).toContain('`/sync`')
   })
 
-  test('a refusal on a PR-less issue does not name it', () => {
-    const rendered = renderRefusedCommand('/retry', 'FAILED', acceptedCommands(state('FAILED')))
+  test('a refusal on a drift-parked issue names it too', () => {
+    const rendered = renderRefusedCommand('/review', 'FAILED', acceptedCommands(state('FAILED')))
+
+    expect(rendered).toContain('`/sync`')
+  })
+
+  test('a refusal on a pre-capture issue does not name it', () => {
+    const rendered = renderRefusedCommand('/retry', 'FAILED', acceptedCommands(state('FAILED', { changeName: null })))
 
     expect(rendered).not.toContain('`/sync`')
   })

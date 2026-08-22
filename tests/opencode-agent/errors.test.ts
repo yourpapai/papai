@@ -7,10 +7,14 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   dependencyDriftError,
+  isDependencyDrift,
+  isRetryFutile,
   isTurnDeadline,
   isTurnStall,
+  modelResponseError,
   openCodeError,
   providerStalledError,
+  pullRequestForbiddenError,
   turnDeadlineError,
   turnStallError,
 } from '../../opencode-agent/src/errors.js'
@@ -100,10 +104,10 @@ describe('isTurnStall', () => {
 
 describe('dependencyDriftError', () => {
   test('names the drifted files and both ways back in step, never a bare /retry', () => {
-    // The message reaches the issue as `lastError` while the issue invites a
-    // `/retry` by reflex — so it has to say up front that a retry alone cannot
-    // change the condition, and name the two moves that can: `/sync` where a
-    // pull request exists, a hand merge where one does not.
+    // The message reaches the issue as `lastError` while the footer above it
+    // used to invite a `/retry` by reflex — so it has to say up front that a
+    // retry alone cannot change the condition, and name the two moves that
+    // can: `/sync`, on the issue or the pull request, and a hand merge.
     const error = dependencyDriftError('agent/issue-323', 'master', ['bun.lock', 'sdd-runner/package.json'])
 
     expect(error.code).toBe('DEPENDENCY_DRIFT')
@@ -113,7 +117,36 @@ describe('dependencyDriftError', () => {
     expect(message).toContain('`agent/issue-323`')
     expect(message).toContain('`master`')
     expect(message).toContain('/sync')
+    // The remedy must be reachable from the state it is rendered for: issue
+    // #323 was parked FAILED with no pull request, and a `/sync` that only
+    // worked on a pull request was a door out of a room with no door.
+    expect(message).toContain('on this issue, or on the pull request')
     expect(message).toContain('not something `/retry` can change')
     expect(message).toContain('cannot install from the agent branch by design')
+  })
+})
+
+describe('the retry-futile predicates', () => {
+  test('a drift refusal is a drift and is retry-futile', () => {
+    const drift = dependencyDriftError('agent/issue-323', 'master', ['bun.lock'])
+
+    expect(isDependencyDrift(drift)).toBe(true)
+    expect(isRetryFutile(drift)).toBe(true)
+  })
+
+  test('a settings-gated refusal is retry-futile but not a drift', () => {
+    const forbidden = pullRequestForbiddenError('https://example.test/compare/x', 'agent/issue-1')
+
+    expect(isDependencyDrift(forbidden)).toBe(false)
+    expect(isRetryFutile(forbidden)).toBe(true)
+  })
+
+  test('the work breaking is neither', () => {
+    const broke = modelResponseError('no JSON object', '{}')
+
+    expect(isDependencyDrift(broke)).toBe(false)
+    expect(isRetryFutile(broke)).toBe(false)
+    expect(isDependencyDrift(new Error('an ordinary crash'))).toBe(false)
+    expect(isRetryFutile(new Error('an ordinary crash'))).toBe(false)
   })
 })
