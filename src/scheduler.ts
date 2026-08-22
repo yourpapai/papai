@@ -37,7 +37,10 @@ let tickCount = 0
 const HEARTBEAT_INTERVAL = 60
 
 const executeRecurringTask = async (task: RecurringTaskRecord, deps: SchedulerDeps): Promise<void> => {
-  log.debug({ taskId: task.id, title: task.title, userId: task.userId }, 'Executing recurring task')
+  log.debug(
+    { taskId: task.id, title: task.title, userId: task.userId, chatUserId: task.userId },
+    'Executing recurring task',
+  )
 
   const chat = deps.chat ?? chatProviderRef
   if (!canRouteRecurringNotification(chat, task.userId)) {

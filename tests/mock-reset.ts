@@ -38,6 +38,10 @@ import * as _authorizedGroups from '../src/authorized-groups.js'
 import * as _bot from '../src/bot.js'
 import * as _interactionRouter from '../src/chat/interaction-router.js'
 import * as _chatMattermost from '../src/chat/mattermost/index.js'
+// Load the roster before any test can mock src/logger.js: it binds a module-level
+// child logger at first evaluation, so a delayed import under a mocked logger would
+// pin a mock for the whole serial process and break real-egress log assertions.
+import * as _chatParticipantsRoster from '../src/chat/participants/roster.js'
 import * as _chatRegistry from '../src/chat/registry.js'
 import * as _chatRouter from '../src/chat/router.js'
 import * as _chatStartup from '../src/chat/startup.js'
@@ -47,6 +51,7 @@ import * as _dbDrizzle from '../src/db/drizzle.js'
 import * as _dbIndex from '../src/db/index.js'
 import * as _chatRouterRuntime from '../src/debug/chat-router-runtime.js'
 import * as _debugServer from '../src/debug/server.js'
+import { resetCollectorForTest } from '../src/debug/state-collector.js'
 import * as _alertsPrompts from '../src/deferred-prompts/alerts.js'
 import * as _poller from '../src/deferred-prompts/poller.js'
 import * as _scheduledPrompts from '../src/deferred-prompts/scheduled.js'
@@ -87,6 +92,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/message-cache/cache.js', { ..._messageCache }],
   ['../plugins/task-provider-kaneo/provision.js', { ..._provision }],
   ['../src/chat/interaction-router.js', { ..._interactionRouter }],
+  ['../src/chat/participants/roster.js', { ..._chatParticipantsRoster }],
   ['ai', { ..._ai }],
   ['@ai-sdk/openai-compatible', { ..._openaiCompat }],
   ['../src/llm-model-builder.js', { ..._llmModelBuilder }],
@@ -144,6 +150,12 @@ const restoreOriginalModules = (): void => {
 
 beforeEach(() => {
   resetDrizzleDbForTesting()
+  // The debug-event collector is a process-global subscription armed by
+  // production wiring and several debug suites. Serial runs share one process,
+  // so a file that ends with it subscribed leaks live capture into every later
+  // file. Stop it and drain its buffers before each test, the same isolation
+  // contract as the other resets here.
+  resetCollectorForTest()
   // The new per-role admin LLM cache (provider + role-binding
   // caches in src/llm-providers/store.ts): a file that seeds an admin binding can't
   // leak a non-null binding into a later file that asserts "no config configured".

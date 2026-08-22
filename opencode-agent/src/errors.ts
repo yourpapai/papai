@@ -151,6 +151,67 @@ export const pullRequestForbiddenError = (compareUrl: string, branch: string): P
 
 export const openCodeError = (message: string): PipelineError => new PipelineError('OPENCODE', message)
 
+/**
+ * A branch whose dependency manifests differ from base, refused at the branch
+ * switch — see `git-drift.ts` for why the run cannot proceed and whose decision
+ * that is. The message is the whole contract: it reaches the issue as
+ * `lastError`, and the one thing it must never suggest is `/retry` on its own,
+ * which would re-run the phase into the same refusal until the budget is gone.
+ *
+ * Modelled on {@link pullRequestForbiddenError}: a condition the run's own
+ * commands cannot change, both remedies named, and the "nothing is lost" fact
+ * stated — the branch and its work are fine; only the job cannot serve them.
+ */
+export const dependencyDriftError = (branch: string, base: string, files: readonly string[]): PipelineError =>
+  new PipelineError(
+    'DEPENDENCY_DRIFT',
+    [
+      `\`${branch}\` and \`${base}\` disagree on the dependency manifests (${files.join(', ')}).`,
+      '',
+      `Nothing is lost — \`${branch}\` and all its work are untouched. But this job installs dependencies`,
+      `from \`${base}\` before checking out \`${branch}\`, so what is installed cannot serve the branch:`,
+      'typecheck and tests fail on imports the installed lockfile does not carry.',
+      '',
+      'This is not something `/retry` can change. Bring the branch back in step with the base first:',
+      '',
+      `- Reply \`/sync\` — on this issue, or on the pull request if one is open — and it merges \`origin/${base}\` in.`,
+      `- If \`/sync\` cannot resolve it, merge \`origin/${base}\` into \`${branch}\` by hand, then reply \`/retry\`.`,
+      '',
+      `If \`${branch}\` changed dependencies on purpose, a maintainer must reconcile the manifests by`,
+      'hand — the job cannot install from the agent branch by design.',
+    ].join('\n'),
+  )
+
+/**
+ * The drift refusal, as a fact a caller can branch on.
+ *
+ * The one failure whose budget treatment differs from every other: the guard
+ * fires at the branch switch, before any work, so {@link import('./phase-failure.js').failRun}
+ * carries `attempts` rather than spending one — the same doctrine as the
+ * over-budget stop.
+ */
+export const isDependencyDrift = (error: unknown): boolean =>
+  error instanceof PipelineError && error.code === 'DEPENDENCY_DRIFT'
+
+/**
+ * Failures whose remedies a plain `/retry` cannot reach.
+ *
+ * Both members name their own way out in the message — `/sync` or a hand merge
+ * for drift, a settings change for the pull-request refusal — and both messages
+ * say so up front, which is exactly why the failure comment's footer must not
+ * talk over them: issue #323's drift park carried "This is not something
+ * `/retry` can change" in the body and "Reply `/retry` to resume" in the
+ * footer, and the blind retries spent the budget the remedies needed.
+ *
+ * Membership is a remedy question, not a severity question: add a code here
+ * only when its message names an out-of-band action a retry cannot substitute
+ * for, and the footer will follow.
+ */
+const RETRY_FUTILE_CODES: ReadonlySet<string> = new Set(['DEPENDENCY_DRIFT', 'PR_FORBIDDEN'])
+
+export const isRetryFutile = (error: unknown): boolean =>
+  error instanceof PipelineError && RETRY_FUTILE_CODES.has(error.code)
+
 export const modelResponseError = (message: string, raw: string): PipelineError =>
   new PipelineError('MODEL_RESPONSE', `${message}\n\nRaw reply:\n${raw.slice(0, 2000)}`)
 

@@ -14,6 +14,7 @@ import { getActiveAnalyticsRuntime, startAnalytics, stopAnalytics } from '../../
 import type { AuthorizedTurnContextRegistry } from '../../../src/analytics/turn-context.js'
 import { getThreadScopedStorageContextId } from '../../../src/auth.js'
 import { setupBot, type BotDeps } from '../../../src/bot.js'
+import { createChatParticipantResolver } from '../../../src/chat/participants/router-binding.js'
 import { ChatRouter } from '../../../src/chat/router.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { IncomingInteraction, IncomingMessage } from '../../../src/chat/types.js'
@@ -375,6 +376,8 @@ function setupScenarioBot(
   const deps: BotDeps = {
     processMessage: createScenarioProcessMessage(model),
     enqueueMessage: pending.enqueue,
+    // Bound exactly as production binds it, so a story sees the same label context.
+    chatParticipantResolver: createChatParticipantResolver(router),
     ...(analytics === null ? {} : { analyticsObserver: analytics.observer, analyticsTurnRegistry: analytics.registry }),
   }
   setupBot(router, ADMIN_USER_ID, deps)

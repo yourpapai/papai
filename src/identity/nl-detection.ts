@@ -25,14 +25,14 @@ const IDENTITY_CLAIM_PATTERNS = [
  * Extract claimed identity from natural language message.
  * Returns the claimed login/username or null if not a claim.
  */
-export function extractIdentityClaim(text: string): string | null {
-  log.debug({ text }, 'extractIdentityClaim called')
+export function extractIdentityClaim(text: string, chatUserId?: string): string | null {
+  log.debug({ text, ...(chatUserId === undefined ? {} : { chatUserId }) }, 'extractIdentityClaim called')
 
   for (const pattern of IDENTITY_CLAIM_PATTERNS) {
     const match = text.match(pattern)
     if (match !== null && match[1] !== undefined) {
       const claimed = match[1].trim().toLowerCase()
-      log.debug({ claimed }, 'Identity claim detected')
+      log.debug({ claimed, ...(chatUserId === undefined ? {} : { chatUserId }) }, 'Identity claim detected')
       return claimed
     }
   }

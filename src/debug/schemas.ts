@@ -101,7 +101,7 @@ export const StepDetailSchema = z.object({
 
 export const LlmTraceSchema = z.object({
   timestamp: z.union([z.string(), z.number()]),
-  userId: z.string(),
+  userId: z.string().optional(),
   model: z.string(),
   duration: z.number(),
   steps: z.number(),

@@ -50,7 +50,7 @@ function getRecordValue(value: unknown, key: string): unknown {
   return isRecordLike(value) ? value[key] : undefined
 }
 
-function optStr(value: unknown): string | undefined {
+export function optStr(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 

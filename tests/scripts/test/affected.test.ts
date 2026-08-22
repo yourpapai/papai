@@ -338,14 +338,14 @@ describe('planCommands', () => {
 
     expect(server).toEqual({
       lane: 'server',
-      argv: ['bun', 'scripts/test/run.ts', '--selected-by', 'affected@2', 'tests/a/two.test.ts'],
+      argv: ['bun', 'scripts/test/run-cli.ts', '--selected-by', 'affected@2', 'tests/a/two.test.ts'],
     })
   })
 
   test('omits the selector flag when the wrapper cannot yet consume it', () => {
     const [server] = planCommands(selection, { selectedBySupported: false })
 
-    expect(server?.argv).toEqual(['bun', 'scripts/test/run.ts', 'tests/a/two.test.ts'])
+    expect(server?.argv).toEqual(['bun', 'scripts/test/run-cli.ts', 'tests/a/two.test.ts'])
   })
 
   test('runs the client lane through the test:client preset', () => {
@@ -375,7 +375,7 @@ describe('planCommands', () => {
   test('a full selection is one unfiltered wrapper run', () => {
     const commands = planCommands({ kind: 'full', reason: 'bunfig.toml changed' }, { selectedBySupported: true })
 
-    expect(commands).toEqual([{ lane: 'full', argv: ['bun', 'scripts/test/run.ts'] }])
+    expect(commands).toEqual([{ lane: 'full', argv: ['bun', 'scripts/test/run-cli.ts'] }])
   })
 })
 

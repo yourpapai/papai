@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import { emitGlobal } from './event-bus.js'
-import { applyFilter, type LogFilter } from './log-filter-model.js'
 
 export type LogEntry = {
   level: number
@@ -13,12 +12,6 @@ export type LogEntry = {
   turnId?: string
   msg: string
   [key: string]: unknown
-}
-
-type SearchParams = LogFilter & {
-  limit?: number
-  /** Cursor for backward paging: return only entries with `time` strictly less than this ISO timestamp. */
-  before?: string
 }
 
 type BufferStats = {
@@ -64,19 +57,6 @@ export class LogRingBuffer {
     return [...this.buffer.slice(this.head), ...this.buffer.slice(0, this.head)]
   }
 
-  search(params: SearchParams): LogEntry[] {
-    let results = applyFilter(this.entries(), params)
-    if (params.before !== undefined) {
-      results = results.filter((e) => e.time < params.before!)
-    }
-    const limit = params.limit ?? 100
-    return results.slice(-limit)
-  }
-
-  countMatching(filter: LogFilter): number {
-    return applyFilter(this.entries(), filter).length
-  }
-
   distinctScopes(): Array<{ scope: string; count: number }> {
     const counts = new Map<string, number>()
     for (const e of this.entries()) {
@@ -107,13 +87,32 @@ export class LogRingBuffer {
 /** @public -- default instance, used by server.ts routes */
 export const logBuffer = new LogRingBuffer()
 
+const SHAPE_SKIP_KEYS = new Set(['level', 'time', 'msg', 'scope', 'turnId'])
+
+/**
+ * @public -- anonymity-safe egress shape for a log entry: keeps the attribution-free core
+ * (`level`, `time`, `msg`, optional `scope`/`turnId`) plus additional keys whose values are
+ * numbers or booleans; drops every other additional key (strings, objects, arrays, nulls).
+ * Idempotent: shaping an already-shaped entry returns an equal entry.
+ */
+export function shapeLogEntry(entry: LogEntry): LogEntry {
+  const shaped: LogEntry = { level: entry.level, time: entry.time, msg: entry.msg }
+  if (entry.scope !== undefined) shaped.scope = entry.scope
+  if (entry.turnId !== undefined) shaped.turnId = entry.turnId
+  for (const [key, value] of Object.entries(entry)) {
+    if (SHAPE_SKIP_KEYS.has(key)) continue
+    if (typeof value === 'number' || typeof value === 'boolean') shaped[key] = value
+  }
+  return shaped
+}
+
 function isLogEntry(value: unknown): value is LogEntry {
   if (typeof value !== 'object' || value === null) return false
   if (!('level' in value) || !('msg' in value) || !('time' in value)) return false
   return typeof value.level === 'number' && typeof value.msg === 'string' && typeof value.time === 'string'
 }
 
-/** @public -- pino DestinationStream adapter, attached via logMultistream.add() */
+/** @public -- pino DestinationStream adapter, attached at logger module load */
 export const logBufferStream = {
   write(chunk: string): void {
     try {

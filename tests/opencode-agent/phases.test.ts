@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { ParsedCommand } from '../../opencode-agent/src/commands.js'
 import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
-import type { MergeOutcome } from '../../opencode-agent/src/git.js'
+import type { EnsureBranchOptions, MergeOutcome } from '../../opencode-agent/src/git.js'
 import type { OpenCodeAgent, AgentPromptRequest } from '../../opencode-agent/src/opencode-adapter.js'
 import type {
   InstructionsResult,
@@ -1247,6 +1247,25 @@ describe('a phase checks out the branch carrying the folder before it reads the 
     expect(handed).toEqual([tasks])
     expect(built.io.gitCalls[0]).toBe('ensureBranch:agent/issue-42:main')
   })
+
+  it('handleAnswer reads the artefact after ensureBranch, not before (issue #331)', async () => {
+    // The fourth reader to acquire the defect: `/ask` and every plain comment
+    // classified as a question ground the answer in the folder, and the answer
+    // job starts on the base branch like every other. The permissive
+    // `folderDriver` could not show it — this gate is what the run showed.
+    const built = folderReadInput({
+      phase: 'DESIGN_SPEC',
+      folder: { proposal: '# Goal\n\nAdd a retry helper with exponential backoff.' },
+      replies: ['It will back off exponentially.'],
+    })
+    startedOnBaseBranch(built.input)
+
+    const outcome = await handleAnswer(built.input)
+
+    expect(outcome.signal).toBe('ANSWERED')
+    expect(built.io.prompts[0]?.prompt).toContain('exponential backoff')
+    expect(built.io.gitCalls[0]).toBe('ensureBranch:agent/issue-42:main')
+  })
 })
 
 /**
@@ -1334,6 +1353,15 @@ const syncFixture = (over: {
   const base = recording.deps.git
   recording.deps.git = {
     ...base,
+    // The lift is recorded in the call string so the sync expectations pin it:
+    // `/sync` is the one caller allowed onto a dependency-drifted branch, and
+    // losing that option would make the remedy refuse its own condition.
+    ensureBranch: (branch: string, main: string, options?: EnsureBranchOptions): Promise<void> => {
+      recording.io.gitCalls.push(
+        `ensureBranch:${branch}:${main}${options?.allowDependencyDrift === true ? ':allowDrift' : ''}`,
+      )
+      return Promise.resolve()
+    },
     mergeBase: (branch: string): Promise<MergeOutcome> => {
       recording.io.gitCalls.push(`mergeBase:${branch}`)
       return Promise.resolve(over.merge)
@@ -1371,7 +1399,11 @@ describe('runSync · the clean paths', () => {
     const result = await runSync(fixture.input)
 
     expect(result.status).toBe('completed')
-    expect(fixture.io.gitCalls).toEqual(['ensureBranch:agent/issue-42:main', 'mergeBase:main', 'push:agent/issue-42'])
+    expect(fixture.io.gitCalls).toEqual([
+      'ensureBranch:agent/issue-42:main:allowDrift',
+      'mergeBase:main',
+      'push:agent/issue-42',
+    ])
     // Zero model turns: the clean path spends nothing.
     expect(fixture.io.prompts).toEqual([])
     // The reply reports the commits merged and from which branch.
@@ -1390,7 +1422,7 @@ describe('runSync · the clean paths', () => {
     const result = await runSync(fixture.input)
 
     expect(result.status).toBe('completed')
-    expect(fixture.io.gitCalls).toEqual(['ensureBranch:agent/issue-42:main', 'mergeBase:main'])
+    expect(fixture.io.gitCalls).toEqual(['ensureBranch:agent/issue-42:main:allowDrift', 'mergeBase:main'])
     expect(fixture.io.prompts).toEqual([])
     expect(fixture.sections.at(-1)?.body).toContain('up to date')
     expect(fixture.io.edits.at(-1)?.body).toBe(fixture.seedState)
@@ -1432,7 +1464,7 @@ describe('runSync · the conflicted path', () => {
 
     expect(result.status).toBe('completed')
     expect(fixture.io.gitCalls).toEqual([
-      'ensureBranch:agent/issue-42:main',
+      'ensureBranch:agent/issue-42:main:allowDrift',
       'mergeBase:main',
       'completeMerge:chore(agent): sync with main',
       'push:agent/issue-42',

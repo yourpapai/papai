@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { emitGlobal } from '../../src/debug/event-bus.js'
-import { addClient, removeClient, init } from '../../src/debug/state-collector.js'
+import { addClient, removeClient, startEventCollector } from '../../src/debug/state-collector.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
 beforeEach(async () => {
@@ -26,9 +26,9 @@ const collect = (): { controller: ReadableStreamDefaultController; seen: string[
 
 describe('SSE per-connection log filter', () => {
   test('log:entry events are filtered by the connection filter; other events pass', () => {
-    init('admin')
+    startEventCollector()
     const { controller, seen } = collect()
-    addClient(controller, { include: ['chat'], exclude: [], level: 0 })
+    addClient(controller, { include: ['chat'], exclude: [], level: 0 }, 'admin')
     // drop the state:init frame
     seen.length = 0
 

@@ -79,7 +79,7 @@ describe('writeGateDigest', () => {
     expect(md.indexOf('whole bot')).toBeLessThan(md.indexOf('group replies'))
     expect(md).toContain('- [ ] A2')
     expect(md).toContain('- [ ] A1')
-    expect(md).toContain('gate resume run-1')
+    expect(md).toContain('sdd run-1')
   })
 
   it('renders an early cap-hit digest focused on the open blockers with answer slots', () => {

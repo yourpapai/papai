@@ -87,14 +87,19 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
     nowOf(deps),
   )
   const emit = buildBus(deps, logPathFor(state))
-  const env = buildPipelineEnv(deps, state, emit, {
-    taskText,
-    changeName,
-    depthOverride: options.depthOverride,
-    autonomy: resolveAutonomy(deps, options.autonomy),
-  })
-  const { depth, reviewResult } = await runPlanningStages(env)
-  return runPostReviewToGate(env, depth, reviewResult)
+  deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
+  try {
+    const env = buildPipelineEnv(deps, state, emit, {
+      taskText,
+      changeName,
+      depthOverride: options.depthOverride,
+      autonomy: resolveAutonomy(deps, options.autonomy),
+    })
+    const { depth, reviewResult } = await runPlanningStages(env)
+    return await runPostReviewToGate(env, depth, reviewResult)
+  } finally {
+    deps.unmountRunScreen?.()
+  }
 }
 
 export async function runResume(
@@ -106,7 +111,7 @@ export async function runResume(
   const state = await loadRunState(deps.config.workDir, runId)
   if (state.gate !== null) {
     deps.stdout?.(`run ${runId} awaits a gate decision (gate ${state.gate.version}, ${state.gate.mode})`)
-    deps.stdout?.(`sdd-runner gate resume ${runId}`)
+    deps.stdout?.(`sdd ${runId}`)
     return { runId, halted: 'gate-pending' }
   }
   const emit = buildBus(deps, logPathFor(state))
@@ -114,22 +119,27 @@ export async function runResume(
   reportResumeDecision(deps, emit, decision)
   const depth = state.depth ?? 'S'
   const stop = createStopMarkerSeam(state.runDir)
-  const env = buildPipelineEnv(deps, state, emit, {
-    taskText: '',
-    changeName: state.changeName,
-    depthOverride: depth,
-    autonomy,
-  })
-  const result = await resumeFromPoint(
-    { deps: env.deps, state, ctx: env.ctx, agent: env.agent, stop },
-    {
-      runReviewStage: (d, entry) => runReviewStage(env, d, '', entry, stop),
-      runPostReviewToGate: (d, reviewResult, version) => runPostReviewToGate(env, d, reviewResult, version),
-    },
-    decision,
-    depth,
-  )
-  return settleStoppedResult(deps, state, stop, result)
+  deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
+  try {
+    const env = buildPipelineEnv(deps, state, emit, {
+      taskText: '',
+      changeName: state.changeName,
+      depthOverride: depth,
+      autonomy,
+    })
+    const result = await resumeFromPoint(
+      { deps: env.deps, state, ctx: env.ctx, agent: env.agent, stop },
+      {
+        runReviewStage: (d, entry) => runReviewStage(env, d, '', entry, stop),
+        runPostReviewToGate: (d, reviewResult, version) => runPostReviewToGate(env, d, reviewResult, version),
+      },
+      decision,
+      depth,
+    )
+    return await settleStoppedResult(deps, state, stop, result)
+  } finally {
+    deps.unmountRunScreen?.()
+  }
 }
 
 function buildPipelineEnv(

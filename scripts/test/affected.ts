@@ -206,7 +206,9 @@ const CLIENT_PRESET: readonly string[] = [
   '',
 ]
 
-const WRAPPER: readonly string[] = ['bun', 'scripts/test/run.ts']
+// The CLI entry of the wrapper (run-cli.ts owns the import.meta.main guard);
+// spawning the library module run.ts would load it and run nothing.
+const WRAPPER: readonly string[] = ['bun', 'scripts/test/run-cli.ts']
 
 /**
  * Commands to run, in order. A lane with no selected paths yields no command at all — handing

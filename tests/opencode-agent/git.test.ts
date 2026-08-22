@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { PipelineError } from '../../opencode-agent/src/errors.js'
 import { createGit } from '../../opencode-agent/src/git.js'
 import type { Git } from '../../opencode-agent/src/git.js'
 import { runCommand } from '../../opencode-agent/src/shell.js'
@@ -209,6 +210,68 @@ describe('completeMerge', () => {
     // The clean merge auto-commits; the pushed tree must carry base's version.
     const content = await fixture.run(['show', 'HEAD:.github/workflows/ci.yml'])
     expect(content).toBe('base workflow\n')
+  })
+})
+
+describe('ensureBranch refuses drifted dependency manifests', () => {
+  // Run 32507905723: the workflow installs from base, `ensureBranch` switches
+  // onto the agent branch afterwards, and the pre-commit typecheck died on an
+  // import the base lockfile no longer carried — after the drafter turn was
+  // already paid for. These pin the refusal at the branch switch instead, and
+  // the one caller allowed past it.
+
+  /** Narrows a caught refusal, failing the test on anything else. */
+  const asPipelineError = (error: unknown): PipelineError => {
+    if (error instanceof PipelineError) return error
+    throw new Error(`expected a PipelineError, got: ${String(error)}`)
+  }
+
+  it('refuses a branch whose bun.lock differs from base, naming the remedy', async () => {
+    const fixture = await makeFixture()
+    await commitOn(fixture, 'main', 'bun.lock', 'base lockfile\n', 'base lockfile')
+    await commitOn(fixture, 'agent/issue-42', 'src/feature.ts', 'export {}\n', 'agent work')
+    await fixture.run(['checkout', 'agent/issue-42'])
+
+    const refusal = asPipelineError(
+      await fixture.git.ensureBranch('agent/issue-42', 'main').catch((error: unknown) => error),
+    )
+
+    expect(refusal.code).toBe('DEPENDENCY_DRIFT')
+    // The message is the remedy, not a typecheck error: it names the branch,
+    // both ways back in step, and that /retry alone cannot fix this.
+    expect(refusal.message).toContain('bun.lock')
+    expect(refusal.message).toContain('`agent/issue-42`')
+    expect(refusal.message).toContain('/sync')
+  })
+
+  it('refuses a drifted workspace package.json too — the glob reaches it', async () => {
+    const fixture = await makeFixture()
+    await commitOn(fixture, 'agent/issue-42', 'sdd-runner/package.json', '{ "name": "sdd-runner" }\n', 'agent adds dep')
+    await fixture.run(['checkout', 'agent/issue-42'])
+
+    const refusal = asPipelineError(
+      await fixture.git.ensureBranch('agent/issue-42', 'main').catch((error: unknown) => error),
+    )
+
+    expect(refusal.code).toBe('DEPENDENCY_DRIFT')
+    expect(refusal.message).toContain('sdd-runner/package.json')
+  })
+
+  it('allows a branch that differs from base only outside the manifests', async () => {
+    const fixture = await makeFixture()
+    await commitOn(fixture, 'main', 'README.md', 'from base\n', 'base moves readme')
+    await commitOn(fixture, 'agent/issue-42', 'src/feature.ts', 'export {}\n', 'agent work')
+    await fixture.run(['checkout', 'agent/issue-42'])
+
+    await fixture.git.ensureBranch('agent/issue-42', 'main')
+  })
+
+  it('allowDependencyDrift stands on a drifted branch — the /sync remedy must reach it', async () => {
+    const fixture = await makeFixture()
+    await commitOn(fixture, 'main', 'bun.lock', 'base lockfile\n', 'base lockfile')
+    await fixture.run(['checkout', 'agent/issue-42'])
+
+    await fixture.git.ensureBranch('agent/issue-42', 'main', { allowDependencyDrift: true })
   })
 })
 

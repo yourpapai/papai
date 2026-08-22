@@ -63,12 +63,12 @@ See LICENSE in the project root for details.
 
 ## 4. Re-record the qualification baseline
 
-- [ ] 4.1 Land tasks 1–3 on master, then record the new baseline SHA and its
+- [x] 4.1 Land tasks 1–3 on master, then record the new baseline SHA and its
       manifest tree hash, retiring `2e1630c06`.
       Verify: `BASE_REF=<new-sha> bun run test:stories:compat --manifest-only`.
-- [ ] 4.2 Prove the recorded baseline executes.
+- [x] 4.2 Prove the recorded baseline executes.
       Verify: `BASE_REF=<new-sha> bun run test:stories:compat`.
-- [ ] 4.3 Update the Foundation baseline section of
+- [x] 4.3 Update the Foundation baseline section of
       `docs/superpowers/specs/2026-08-04-global-refactor-behavior-coverage-roadmap-design.md`
       with the new SHA, tree hash, frozen-input count, and manifest scenario
       count. Verify: `bun run format:check`.

@@ -154,11 +154,36 @@ findings: `ROADMAP.md`.
   `CODE_REVIEW` each read the folder one line **before** that call and each died
   the same way — `openspec status` exit 1, "Change '<name>' not found", followed by
   a list of the base branch's changes that reads like the folder was never
-  scaffolded. The ordering is not visible to a stub whose driver answers the same
+  scaffolded. Issue #331 is the fourth reader: `handleAnswer`'s
+  `artifactUnderReview` grounded `/ask` and question-classified comments in the
+  folder the same way, so every answer past capture died before the model turn on
+  the same exit 1 — the call sits inside `artifactUnderReview`, ahead of the
+  `instructions` ask, and only there (a `changeName === null` state has no folder
+  to read and no branch to switch to). The ordering is not visible to a stub
+  whose driver answers the same
   on any branch, which is how three handlers acquired the same defect; the fake in
   `phases.test.ts` refuses every driver call and every `readFile` until
   `ensureBranch` has been called, so a phase that reads too early fails the test
-  the way it failed the run.
+  the way it failed the run. The same call **refuses a dependency-drifted branch**
+  (`git-drift.ts`): the workflow installs from the base checkout and no second
+  install follows the branch switch, so a branch whose `bun.lock` / `package.json`
+  manifests differ from base runs every check against a `node_modules` that cannot
+  serve it — run 32507905723 paid for a full PLANNING turn and then died in the
+  pre-commit hook on `TS2307` for an import base had stopped carrying. The refusal
+  (`dependencyDriftError`) names `/sync` and the hand-merge as the remedies and
+  never a bare `/retry`; `/sync` passes `allowDependencyDrift` because a drifted
+  branch is the condition it exists to repair, and the guard must not block its
+  own way out. Issue #323 is the incident that shaped the failure's bookkeeping:
+  a drift park is by construction pre-delivery, so the `/sync` the message
+  prescribes must be reachable from the issue (see the `/sync` rule below), the
+  refusal carries `attempts` rather than spending one (it fires before any
+  work — the over-budget stop's doctrine, held in `failRun` behind
+  `isDependencyDrift`), and the failure footer does not invite a bare `/retry`
+  over a message that says retry cannot change it (`isRetryFutile` in
+  `errors.ts`; the settings-gated `PR_FORBIDDEN` is the other member). A branch
+  that _intentionally_ changed dependencies is out of reach
+  by design — the job cannot install from the agent branch — and the message says
+  so; revisit only with a security answer for model-influenced install scripts.
 - **An artifact's output path is not always a file, and a pattern is judged
   rather than written.** Three of the `spec-driven` schema's four artifacts
   resolve to a path the drafter can hand to `writeFile`; `specs` does not. A
@@ -286,12 +311,17 @@ findings: `ROADMAP.md`.
   phase either: `failAnswer` posts and leaves `phase`, `resumeFrom` and
   `attempts` alone, which is also why `resumeFrom` can never name a waiting phase
   with no handler for `/retry` to resume into.
-- **`/sync` is the `/ask` shape on the pull request: a side operation, never a
-  phase.** A PR that fell behind its base had no machine remedy before it — the
-  conflict banner was permanent until a human merged locally. `runSync` in
+- **`/sync` is the `/ask` shape: a side operation, never a phase.** A branch
+  that fell behind its base had no machine remedy before it — the conflict
+  banner was permanent until a human merged locally. `runSync` in
   `src/phases/sync.ts` (the `answer.ts` precedent: a handler that is not a
   phase) merges `origin/<base>` into the agent branch, and every design choice
-  follows from "moves nothing". Dispatch sits in `sideOperation` beside `/ask`
+  follows from "moves nothing". It applies wherever the **agent branch
+  exists** — `changeName !== null` is that fact by doctrine, the cancelled
+  `COMPLETE` is the one branch-less state still naming a change and is refused
+  so `/sync` cannot resurrect what `/cancel` deleted (issue #323: the drift
+  park is pre-delivery, and a `/sync` gated on `prNumber` was a remedy the
+  state it was prescribed for could not take). Dispatch sits in `sideOperation` beside `/ask`
   in `triggers.ts`, **before** the signal lookup — `/sync` has no
   `COMMAND_SIGNALS` entry, so the transition table is never consulted, no
   `PHASES` member or presentation row exists, and `phase`, `attempts`,

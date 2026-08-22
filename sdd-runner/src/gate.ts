@@ -209,7 +209,7 @@ export async function runGateReopen(
   state.gateDeadlineReArmed = false
   await saveRunState(state, deps.now?.() ?? new Date())
   deps.stdout?.(path.relative(state.repoRoot, gateMdPath))
-  deps.stdout?.(`Next: sdd-runner gate resume ${runId} [--confirm-all --veto <id>=<redirect> | --abort]`)
+  deps.stdout?.(`Next: sdd ${runId}`)
   return { runId, gateVersion: freshVersion, gateMdPath }
 }
 

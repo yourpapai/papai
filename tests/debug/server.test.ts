@@ -322,8 +322,8 @@ describe('debug-server', () => {
   test('buffer stream is registered with level matching LOG_LEVEL', () => {
     const foundLevel = findBufferStreamLevel(logMultistream, logBufferStream)
     expect(foundLevel).toBeDefined()
-    // Use the captured log level from when the server started, not current env
-    // (other tests may have modified LOG_LEVEL after server start)
+    // Use the log level captured when the logger module loaded, not current env
+    // (other tests may have modified LOG_LEVEL after module load)
     const expectedLevel = PINO_LEVEL_VALUES[capturedLogLevel]
     expect(expectedLevel).toBeDefined()
     expect(foundLevel).toBe(expectedLevel!)
@@ -397,6 +397,60 @@ describe('debug-server', () => {
     expect(res.status).toBe(404)
     const text = await res.text()
     expect(text).not.toContain('sensitive error text')
+  })
+
+  test('GET /turns/:id returns 404 for a turn invisible to the requesting session admin even when visible to the primary admin', async () => {
+    // Session here is test-admin; a turn owned by the process's primary admin must still 404.
+    const primaryOwned: Turn = {
+      turnId: 'turn-primary-owned',
+      scope: { kind: 'user', userId: 'primary-admin-user' },
+      startedAt: 1,
+      status: 'ok',
+      incomingMessageCount: 1,
+      toolCalls: [],
+    }
+    recentTurns.push(primaryOwned)
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/turns/turn-primary-owned`, { headers: authHeaders() })
+    expect(res.status).toBe(404)
+    await cancelBody(res)
+  })
+
+  test('GET /turns/:id returns 200 + full turn for the owning admin session', async () => {
+    const cookieValue2 = mintSession('turn-owner-admin', { secure: false }).cookieValue
+    const owned: Turn = {
+      turnId: 'turn-session-owned',
+      scope: { kind: 'user', userId: 'turn-owner-admin' },
+      startedAt: 1,
+      status: 'ok',
+      incomingMessageCount: 2,
+      toolCalls: [{ name: 'search_tasks', durationMs: 5, ok: true }],
+    }
+    recentTurns.push(owned)
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/turns/turn-session-owned`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${cookieValue2}` },
+    })
+    expect(res.status).toBe(200)
+    const body: unknown = JSON.parse(await res.text())
+    expect(assertLogEntryKey(body, 'turnId')).toBe('turn-session-owned')
+  })
+
+  test('non-GET methods on diagnosis routes return 405', async () => {
+    const targets = ['/logs', '/logs/stats', '/logs/scopes', '/turns/whatever', '/stats/global', '/stats/subject/u1']
+    for (const routePath of targets) {
+      for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+        const res = await fetch(`http://localhost:${TEST_PORT}${routePath}`, { method, headers: authHeaders() })
+        expect(`${method} ${routePath}: ${res.status}`).toBe(`${method} ${routePath}: 405`)
+        await cancelBody(res)
+      }
+    }
+  })
+
+  test('non-GET /events returns 405', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/events`, { method: 'POST', headers: authHeaders() })
+    expect(res.status).toBe(405)
+    await cancelBody(res)
   })
 
   test('GET /recurring returns 400 when userId is missing', async () => {
