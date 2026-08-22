@@ -154,7 +154,13 @@ findings: `ROADMAP.md`.
   `CODE_REVIEW` each read the folder one line **before** that call and each died
   the same way — `openspec status` exit 1, "Change '<name>' not found", followed by
   a list of the base branch's changes that reads like the folder was never
-  scaffolded. The ordering is not visible to a stub whose driver answers the same
+  scaffolded. Issue #331 is the fourth reader: `handleAnswer`'s
+  `artifactUnderReview` grounded `/ask` and question-classified comments in the
+  folder the same way, so every answer past capture died before the model turn on
+  the same exit 1 — the call sits inside `artifactUnderReview`, ahead of the
+  `instructions` ask, and only there (a `changeName === null` state has no folder
+  to read and no branch to switch to). The ordering is not visible to a stub
+  whose driver answers the same
   on any branch, which is how three handlers acquired the same defect; the fake in
   `phases.test.ts` refuses every driver call and every `readFile` until
   `ensureBranch` has been called, so a phase that reads too early fails the test
