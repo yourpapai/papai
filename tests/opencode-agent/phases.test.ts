@@ -1247,6 +1247,25 @@ describe('a phase checks out the branch carrying the folder before it reads the 
     expect(handed).toEqual([tasks])
     expect(built.io.gitCalls[0]).toBe('ensureBranch:agent/issue-42:main')
   })
+
+  it('handleAnswer reads the artefact after ensureBranch, not before (issue #331)', async () => {
+    // The fourth reader to acquire the defect: `/ask` and every plain comment
+    // classified as a question ground the answer in the folder, and the answer
+    // job starts on the base branch like every other. The permissive
+    // `folderDriver` could not show it — this gate is what the run showed.
+    const built = folderReadInput({
+      phase: 'DESIGN_SPEC',
+      folder: { proposal: '# Goal\n\nAdd a retry helper with exponential backoff.' },
+      replies: ['It will back off exponentially.'],
+    })
+    startedOnBaseBranch(built.input)
+
+    const outcome = await handleAnswer(built.input)
+
+    expect(outcome.signal).toBe('ANSWERED')
+    expect(built.io.prompts[0]?.prompt).toContain('exponential backoff')
+    expect(built.io.gitCalls[0]).toBe('ensureBranch:agent/issue-42:main')
+  })
 })
 
 /**

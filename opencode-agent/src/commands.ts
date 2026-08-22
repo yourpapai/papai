@@ -122,14 +122,24 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
  * Commands whose availability the transition table cannot decide alone.
  *
  * There are two. `/sync` is the `/ask` shape — no signal, so the table is never
- * asked — and is typed on the pull request of an issue whose state names one;
- * `prNumber !== null` is the whole predicate. `COMPLETE` is the phase where a
- * table cannot decide for `/review` at all: that is where a **delivered** issue
- * and a **cancelled** one both live, and the phase alone cannot tell them apart:
- * `presentationKey` already splits them on the pull request, because a delivered
- * issue and an abandoned one are not the same outcome. `/review` needs the same
- * split — on a cancelled issue it would name a branch nobody asked for and
- * report against a pull request that does not exist.
+ * asked — and applies wherever the **agent branch exists**: `changeName !== null`
+ * is that fact by the workspace's own doctrine (a `changeName === null` state
+ * has no folder to read and no branch to switch to), with `prNumber` named
+ * beside it because a delivered state is the other spelling of the same fact.
+ * The one branch-less state that still names a change is a **cancelled** one —
+ * `/cancel` deletes the branch (D9) and parks in `COMPLETE` with no pull
+ * request, the same split `presentationKey` makes — and `/sync` must refuse it
+ * or `ensureBranch` would resurrect the branch the cleanup deleted. It used to
+ * key on `prNumber` alone, which issue #323 broke: the drift refusal parked the
+ * issue `FAILED` with no pull request, named `/sync` as the remedy, and the
+ * gate refused it — a remedy the state it was prescribed for could not take,
+ * with the hand merge as the only way out. `COMPLETE` is the phase where
+ * a table cannot decide for `/review` at all: that is where a **delivered**
+ * issue and a **cancelled** one both live, and the phase alone cannot tell them
+ * apart: `presentationKey` already splits them on the pull request, because a
+ * delivered issue and an abandoned one are not the same outcome. `/review`
+ * needs the same split — on a cancelled issue it would name a branch nobody
+ * asked for and report against a pull request that does not exist.
  *
  * One predicate table with two readers rather than two spellings of one rule:
  * {@link acceptedCommands} shows a maintainer the list, `triggers.ts` enforces
@@ -137,7 +147,8 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
  */
 const COMMAND_APPLIES: Partial<Record<SlashCommand, (state: AgentState) => boolean>> = {
   '/review': (state) => state.prNumber !== null,
-  '/sync': (state) => state.prNumber !== null,
+  '/sync': (state) =>
+    state.prNumber !== null || (state.changeName !== null && !(state.phase === 'COMPLETE' && state.prUrl === null)),
 }
 
 /** Whether `command` applies to this state, over and above what the phase takes. */
@@ -151,8 +162,8 @@ const accepts = (state: AgentState, command: SlashCommand): boolean => {
   // `/ask` and `/sync` are the commands with no signal, and neither needs the
   // transition table: answering and syncing ask nothing of the state machine,
   // so there is no phase to refuse them. `/sync` still asks the predicate above
-  // — with no pull request there is nothing to merge into — while `/ask` has no
-  // row there and is accepted everywhere, exactly as before.
+  // — before capture there is no branch to merge base into — while `/ask` has
+  // no row there and is accepted everywhere, exactly as before.
   if (signal === undefined) return commandApplies(command, state)
   return canTransition(state.phase, signal) && commandApplies(command, state)
 }
