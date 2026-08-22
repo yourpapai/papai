@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { Scope } from './event-bus.js'
-import { str, num, bool, tokenUsage, parseStepsDetail } from './state-collector-utils.js'
+import { str, num, bool, optStr, tokenUsage, parseStepsDetail } from './state-collector-utils.js'
 
 export type LlmTraceToolCall = {
   toolName: string
@@ -18,7 +18,8 @@ export type LlmTraceToolCall = {
 
 export type LlmTrace = {
   timestamp: number
-  userId: string
+  userId: string | undefined
+  chatUserId: string | undefined
   model: string
   steps: number
   totalTokens: { inputTokens: number; outputTokens: number }
@@ -95,6 +96,7 @@ function buildEndTrace(event: TraceEvent, userId: string, pending: PendingLlmTra
   return {
     timestamp: event.timestamp,
     userId,
+    chatUserId: optStr(event.data['chatUserId']),
     model: resolveModel(pending, event.data),
     steps: num(event.data['steps']),
     totalTokens: tokenUsage(event.data['tokenUsage']),
@@ -122,6 +124,7 @@ function buildErrorTrace(event: TraceEvent, userId: string, pending: PendingLlmT
   return {
     timestamp: event.timestamp,
     userId,
+    chatUserId: optStr(event.data['chatUserId']),
     model: resolveModel(pending, event.data),
     steps: 0,
     totalTokens: { inputTokens: 0, outputTokens: 0 },
@@ -151,6 +154,26 @@ function traceKey(event: TraceEvent): string {
 function traceUserId(event: TraceEvent, correlationKey: string): string {
   const chatUserId = str(event.data['chatUserId'])
   return chatUserId === '' ? correlationKey : chatUserId
+}
+
+/**
+ * @public -- anonymity-safe egress shape for an LLM trace: a trace attributed to the viewing
+ * admin (via `chatUserId`) passes verbatim (same reference); any other trace — including
+ * unattributed ones — loses the identity fields (`userId`, `chatUserId`), `generatedText`,
+ * `stepsDetail`, and per-tool-call `args`/`result`, keeping metadata (tool names, durations,
+ * success flags, model ids, token/step counters).
+ * Pure and idempotent: never mutates the input; shaping an already-shaped trace is a no-op.
+ */
+export function shapeLlmTrace(trace: LlmTrace, viewingChatUserId: string | undefined): LlmTrace {
+  if (viewingChatUserId !== undefined && trace.chatUserId === viewingChatUserId) return trace
+  return {
+    ...trace,
+    userId: undefined,
+    chatUserId: undefined,
+    generatedText: undefined,
+    stepsDetail: undefined,
+    toolCalls: trace.toolCalls.map((call) => ({ ...call, args: undefined, result: undefined })),
+  }
 }
 
 export function handleLlmTraceEvent(

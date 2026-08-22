@@ -9,7 +9,6 @@ import { emitGlobal } from '../../src/debug/event-bus.js'
 import { subscribeCountForTest } from '../../src/debug/event-bus.testing.js'
 import {
   addClient,
-  init,
   pingClientsForTest,
   removeClient,
   resetClientsForTest,
@@ -81,9 +80,71 @@ afterEach(() => {
   resetClientsForTest()
 })
 
+describe('state-collector heartbeat', () => {
+  test('ping reaches live clients and drops dead ones', () => {
+    const enqueued: Uint8Array[] = []
+    const live = track({
+      enqueue: (c: Uint8Array): void => void enqueued.push(c),
+      close: (): void => {},
+      error: (): void => {},
+      desiredSize: 1,
+    } as ReadableStreamDefaultController)
+
+    // sends state:init (1 enqueue), subscribes onEvent, starts heartbeat
+    addClient(live, undefined, 'admin')
+    pingClientsForTest()
+
+    // The live client received the state:init frame plus a comment-frame ping.
+    expect(enqueued.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test('ping dead client routes through removeClient, unsubscribing onEvent', () => {
+    const enqueueMock = mock<(chunk: unknown) => void>(() => {})
+    const controller = track({
+      enqueue: (chunk: unknown): void => enqueueMock(chunk),
+      close: (): void => {},
+      error: (): void => {},
+      desiredSize: 1,
+    })
+
+    const before = subscribeCountForTest()
+    addClient(controller, undefined, 'admin')
+    expect(subscribeCountForTest()).toBe(before + 1)
+
+    enqueueMock.mockImplementation(() => {
+      throw new Error('closed')
+    })
+    pingClientsForTest()
+
+    expect(subscribeCountForTest()).toBe(before)
+  })
+})
+
 describe('state-collector client lifecycle', () => {
-  test('addClient and removeClient leave the event-bus subscription unchanged', () => {
-    init('admin')
+  test('last client dying during broadcast unsubscribes onEvent', () => {
+    // Succeeds on the initial state:init enqueue (so onEvent subscribes), then throws.
+    const enqueueMock = mock<(chunk: unknown) => void>(() => {})
+    const controller = track({
+      enqueue: (chunk: unknown): void => enqueueMock(chunk),
+      close: (): void => {},
+      error: (): void => {},
+      desiredSize: 1,
+    })
+
+    const before = subscribeCountForTest()
+    addClient(controller, undefined, 'admin')
+    expect(subscribeCountForTest()).toBe(before + 1)
+
+    // Flip the mock so subsequent enqueue throws, then broadcast via emitGlobal.
+    // broadcast -> enqueue throws -> removeClient -> unsubscribes onEvent
+    enqueueMock.mockImplementation(() => {
+      throw new Error('closed')
+    })
+    emitGlobal('log:entry', { level: 30, time: 't', msg: 'x' })
+    expect(subscribeCountForTest()).toBe(before)
+  })
+
+  test('addClient and removeClient leave the persistent event-bus subscription unchanged', () => {
     startEventCollector()
     const first = createMockClient()
     const second = createMockClient()
@@ -100,7 +161,6 @@ describe('state-collector client lifecycle', () => {
   })
 
   test('heartbeat starts on the first client and stops on the last', () => {
-    init('admin')
     const timers = patchIntervalTimers()
     try {
       const first = createMockClient()
@@ -124,7 +184,6 @@ describe('state-collector client lifecycle', () => {
   })
 
   test('heartbeat restarts when a new first client arrives after stopping', () => {
-    init('admin')
     const timers = patchIntervalTimers()
     try {
       const firstWave = createMockClient()
@@ -146,7 +205,6 @@ describe('state-collector client lifecycle', () => {
 
 describe('state-collector dead-client removal', () => {
   test('ping drops dead clients and reaches live ones without touching the subscription', () => {
-    init('admin')
     startEventCollector()
     const live = createMockClient()
     const dead = createMockClient()
@@ -172,7 +230,6 @@ describe('state-collector dead-client removal', () => {
   })
 
   test('last client dying during broadcast is dropped without unsubscribing', () => {
-    init('admin')
     startEventCollector()
     const timers = patchIntervalTimers()
     try {

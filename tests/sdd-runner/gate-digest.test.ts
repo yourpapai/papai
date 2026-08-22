@@ -9,8 +9,17 @@ import os from 'node:os'
 import path from 'node:path'
 
 import type { SddEvent } from '../../sdd-runner/src/events.js'
-import { applyConfirmAll, blockersOf, costAndDuration, findingsOf } from '../../sdd-runner/src/gate-digest.js'
+import {
+  applyConfirmAll,
+  blockersOf,
+  buildBus,
+  costAndDuration,
+  findingsOf,
+  readReviewResultFromSidecars,
+} from '../../sdd-runner/src/gate-digest.js'
+import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { writeGateDigest } from '../../sdd-runner/src/gate-model.js'
+import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 
 const tmpDirs: string[] = []
@@ -239,5 +248,167 @@ describe('writeGateDigest ### Extend section', () => {
   it('does not render an ### Extend section at an early gate when capHitFired is false', () => {
     const md = writeGateDigest({ ...base, mode: 'early', capHitFired: false })
     expect(md).not.toContain('### Extend')
+  })
+})
+
+describe('findingsOf nitpicks (mutation kills)', () => {
+  it('renders nitpick evidence as "resolution — outcome" with the justification fallback', () => {
+    const result: ReviewLoopResult = {
+      outcome: 'converged',
+      rounds: 1,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [
+        { id: 'N1', class: 'NITPICK', resolution: 'edited', outcome: 'cosmetic' },
+        { id: 'N2', class: 'NITPICK', resolution: 'dismissed', justification: 'follow-up filed' },
+      ],
+    }
+    expect(findingsOf(result).nitpicks).toEqual([
+      { id: 'N1', gap: 'N1', evidence: 'edited — cosmetic' },
+      { id: 'N2', gap: 'N2', evidence: 'dismissed — follow-up filed' },
+    ])
+  })
+
+  it('renders empty evidence when a nitpick has neither outcome nor justification', () => {
+    const result: ReviewLoopResult = {
+      outcome: 'converged',
+      rounds: 1,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [{ id: 'N3', class: 'NITPICK', resolution: 'assumed' }],
+    }
+    expect(findingsOf(result).nitpicks).toEqual([{ id: 'N3', gap: 'N3', evidence: 'assumed — ' }])
+  })
+})
+
+describe('readReviewResultFromSidecars', () => {
+  function writeResolutions(sidecarDir: string, round: number, payload: unknown): void {
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(path.join(sidecarDir, `resolutions-${round}.json`), JSON.stringify(payload))
+  }
+
+  const assumption = {
+    id: 'A1',
+    text: 'thing holds',
+    basis: 'default',
+    confidence: 'medium',
+    blast_radius: 'one reply',
+    status: 'open',
+    evidence: { files: ['openspec/changes/thing/proposal.md'] },
+  }
+
+  it('buckets parsed resolutions by class, preserving round and outcome', async () => {
+    const sidecarDir = path.join(makeDir(), 'sidecars')
+    writeResolutions(sidecarDir, 2, {
+      resolutions: [
+        { id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' },
+        { id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' },
+        { id: 'N1', class: 'NITPICK', resolution: 'edited', outcome: 'cosmetic' },
+      ],
+      assumptions: [assumption],
+    })
+    expect(await readReviewResultFromSidecars(sidecarDir, 2, 'converged')).toEqual({
+      outcome: 'converged',
+      rounds: 2,
+      openBlockers: [{ id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' }],
+      openMaterial: [{ id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }],
+      openNitpicks: [{ id: 'N1', class: 'NITPICK', resolution: 'edited', outcome: 'cosmetic' }],
+    })
+  })
+
+  it('falls back to empty buckets when the sidecar file is missing', async () => {
+    const sidecarDir = path.join(makeDir(), 'absent-sidecars')
+    expect(await readReviewResultFromSidecars(sidecarDir, 4, 'cap-hit')).toEqual({
+      outcome: 'cap-hit',
+      rounds: 4,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    })
+  })
+
+  it('falls back to empty buckets when the sidecar is malformed JSON or schema-invalid', async () => {
+    const broken = path.join(makeDir(), 'sidecars')
+    fs.mkdirSync(broken, { recursive: true })
+    fs.writeFileSync(path.join(broken, 'resolutions-1.json'), '{not json')
+    expect(await readReviewResultFromSidecars(broken, 1, 'converged')).toEqual({
+      outcome: 'converged',
+      rounds: 1,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    })
+
+    const invalid = path.join(makeDir(), 'sidecars')
+    writeResolutions(invalid, 1, { resolutions: [{ id: 'X1', class: 'NOT_A_CLASS' }], assumptions: [] })
+    expect(await readReviewResultFromSidecars(invalid, 1, 'converged')).toMatchObject({
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    })
+  })
+})
+
+describe('buildBus subscriber wiring', () => {
+  const event = { altitude: 'L2' as const, type: 'round_open' as const, round: 1, cap: 3 }
+
+  function makeDeps(lines: string[], overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
+    return {
+      config: { repoRoot: '/tmp', workDir: '/tmp/.sdd-runner', model: 'm', budget: 5 },
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      driver: createOpenSpecDriver({
+        exec: () => Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }),
+        cwd: '/tmp',
+      }),
+      stdout: (line: string): void => {
+        lines.push(line)
+      },
+      ...overrides,
+    }
+  }
+
+  it('appends events to the log and prefers liveEvents over render exclusively', () => {
+    const dir = makeDir()
+    const logPath = path.join(dir, 'runs', 'r1', 'events.ndjson')
+    const rendered: string[] = []
+    const lived: unknown[] = []
+    const deps = makeDeps([], {
+      render: (e: { type: string }): void => {
+        rendered.push(e.type)
+      },
+      liveEvents: (e: unknown): void => {
+        lived.push(e)
+      },
+    })
+    buildBus(deps, logPath)(event)
+    expect(fs.readFileSync(logPath, 'utf8')).toContain('"type":"round_open"')
+    expect(lived).toHaveLength(1)
+    expect(rendered).toEqual([])
+  })
+
+  it('routes to render when no liveEvents sink is wired', () => {
+    const dir = makeDir()
+    const logPath = path.join(dir, 'runs', 'r2', 'events.ndjson')
+    const rendered: string[] = []
+    const deps = makeDeps([], {
+      render: (e: { type: string }): void => {
+        rendered.push(e.type)
+      },
+    })
+    buildBus(deps, logPath)(event)
+    expect(rendered).toEqual(['round_open'])
+  })
+
+  it('reports a throwing subscriber on stdout with the event-bus prefix', () => {
+    const dir = makeDir()
+    const lines: string[] = []
+    const deps = makeDeps(lines, {
+      liveEvents: (): void => {
+        throw new Error('sink exploded')
+      },
+    })
+    expect(() => buildBus(deps, path.join(dir, 'events.ndjson'))(event)).not.toThrow()
+    expect(lines).toEqual(['[event-bus] sink exploded'])
   })
 })

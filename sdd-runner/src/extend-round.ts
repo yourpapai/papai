@@ -220,28 +220,33 @@ export async function runGateResume(
   const view = buildSessionView(state, assumptions, findings, requiredAck)
   const proceed = await collectGateDecision(deps, options, view, gateMdPath)
   if (!proceed) return { runId: state.runId, outcome: 'abandoned', version }
-  const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
-  const ctx: GateResumeContext = { deps, state, emit, version, changeDir, sidecarDir, agent }
-  const outcome = await resumeGate(
-    {
-      emit,
-      runDir: state.runDir,
-      changeDir,
-      driftCheck: buildDriftCheck(agent, state, changeDir, sidecarDir, deps.config.repoRoot),
-    },
-    {
-      version,
-      assumptions,
-      blockers: findings.blockers,
-      gateMode: state.gate.mode,
-      ...(findings.material.length > 0 ? { findings: findings.material } : {}),
-      ...(requiredAck === undefined ? {} : { requiredAck }),
-    },
-  )
-  if (outcome.kind === 'aborted') return finalizeGate(deps, state, 'aborted', version)
-  if (outcome.kind === 'approved') return settleApprovedGate(ctx, reviewResult)
-  if (outcome.kind === 'extend') return runExtendRound(deps, state, emit, agent, version)
-  return settleVeto(ctx, reviewResult, vetoRedirects(outcome))
+  deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
+  try {
+    const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
+    const ctx: GateResumeContext = { deps, state, emit, version, changeDir, sidecarDir, agent }
+    const outcome = await resumeGate(
+      {
+        emit,
+        runDir: state.runDir,
+        changeDir,
+        driftCheck: buildDriftCheck(agent, state, changeDir, sidecarDir, deps.config.repoRoot),
+      },
+      {
+        version,
+        assumptions,
+        blockers: findings.blockers,
+        gateMode: state.gate.mode,
+        ...(findings.material.length > 0 ? { findings: findings.material } : {}),
+        ...(requiredAck === undefined ? {} : { requiredAck }),
+      },
+    )
+    if (outcome.kind === 'aborted') return await finalizeGate(deps, state, 'aborted', version)
+    if (outcome.kind === 'approved') return await settleApprovedGate(ctx, reviewResult)
+    if (outcome.kind === 'extend') return await runExtendRound(deps, state, emit, agent, version)
+    return await settleVeto(ctx, reviewResult, vetoRedirects(outcome))
+  } finally {
+    deps.unmountRunScreen?.()
+  }
 }
 
 /** D11: return the waiter result when this invocation should wait, else null. */

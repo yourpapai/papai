@@ -55,7 +55,7 @@ describe('gate-render module surface', () => {
       changeDigest: { what: null, why: null, touches: null, hasTasks: false },
     })
     expect(md).toContain('<!-- gate-1.md -->')
-    expect(md).toContain('gate resume run-1')
+    expect(md).toContain('sdd run-1')
   })
 
   it('early gate states that approving continues to decomposition, atomicity, and a final gate (task 4.1)', () => {

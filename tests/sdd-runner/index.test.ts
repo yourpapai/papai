@@ -3,12 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
 import { USAGE, readChangeSummary, runEntry } from '../../sdd-runner/src/index.js'
+import { createRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
 
@@ -168,5 +170,102 @@ describe('runEntry in-process (help route)', () => {
       spy.mockRestore()
       void originalWrite
     }
+  })
+})
+
+describe('runEntry wiring routes (in-process, mutation kills)', () => {
+  interface EntryFixture {
+    readonly repoRoot: string
+    readonly workDir: string
+    readonly configPath: string
+    readonly writes: string[]
+    readonly exitCodes: number[]
+  }
+
+  let fixture: EntryFixture | null = null
+  const currentFixture = (): EntryFixture | null => fixture
+  let writeSpy: { mockRestore(): void }
+  let exitSpy: { mockRestore(): void }
+  const saved: { argv: string[]; config: string | undefined } = { argv: [], config: undefined }
+
+  function makeEntryFixture(): EntryFixture {
+    const dir = makeDir()
+    fs.writeFileSync(
+      path.join(dir, 'config.json'),
+      JSON.stringify({ repoRoot: dir, workDir: '.sdd-runner', model: 'test-model', budget: 5 }),
+    )
+    return {
+      repoRoot: dir,
+      workDir: path.join(dir, '.sdd-runner'),
+      configPath: path.join(dir, 'config.json'),
+      writes: [],
+      exitCodes: [],
+    }
+  }
+
+  beforeEach(() => {
+    writeSpy = spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      currentFixture()?.writes.push(Buffer.from(chunk).toString())
+      return true
+    })
+    exitSpy = spyOn(process, 'exit').mockImplementation((code?: number): never => {
+      currentFixture()?.exitCodes.push(code ?? 0)
+      throw new Error(`intercepted process.exit(${code ?? 0})`)
+    })
+  })
+
+  afterEach(() => {
+    process.argv = saved.argv
+    if (saved.config === undefined) delete process.env['SDD_RUNNER_CONFIG']
+    else process.env['SDD_RUNNER_CONFIG'] = saved.config
+    writeSpy.mockRestore()
+    exitSpy.mockRestore()
+    fixture = null
+  })
+
+  async function runEntryAgainst(target: EntryFixture, args: readonly string[]): Promise<void> {
+    fixture = target
+    saved.argv = process.argv
+    saved.config = process.env['SDD_RUNNER_CONFIG']
+    process.env['SDD_RUNNER_CONFIG'] = target.configPath
+    process.argv = ['bun', 'sdd', ...args]
+    await runEntry()
+  }
+
+  it('a non-help argv never prints USAGE; parse errors surface before any wiring', async () => {
+    const fx = makeEntryFixture()
+    await expect(runEntryAgainst(fx, ['task.md', '--bogus'])).rejects.toThrow(/unknown flag/u)
+    expect(fx.writes).toEqual([])
+    expect(fx.exitCodes).toEqual([])
+  })
+
+  it('stop routes through the harness: marker written, pointer printed, clean exit', async () => {
+    const fx = makeEntryFixture()
+    const state = await createRunState({ workDir: fx.workDir, repoRoot: fx.repoRoot, changeName: 'add-thing' })
+    await saveRunState(state)
+    await expect(runEntryAgainst(fx, ['stop', state.runId, '--config', fx.configPath])).rejects.toThrow(
+      /intercepted process\.exit\(0\)/u,
+    )
+    expect(fs.existsSync(path.join(fx.workDir, 'runs', state.runId, 'stop-requested'))).toBe(true)
+    expect(fx.writes.join('')).toBe(`calm stop requested for ${state.runId} — honored at the next boundary\n`)
+    expect(fx.exitCodes).toEqual([0])
+  })
+
+  it('a completed run id builds and prints its report from the wired harness', async () => {
+    const fx = makeEntryFixture()
+    execFileSync('git', ['init', '-b', 'sdd-test-branch', fx.repoRoot], { stdio: 'ignore' })
+    const state = await createRunState({ workDir: fx.workDir, repoRoot: fx.repoRoot, changeName: 'add-thing' })
+    await saveRunState({ ...state, status: 'completed' })
+    fs.writeFileSync(path.join(fx.workDir, 'runs', state.runId, 'events.ndjson'), '')
+    await expect(runEntryAgainst(fx, [state.runId, '--config', fx.configPath])).rejects.toThrow(
+      /intercepted process\.exit\(0\)/u,
+    )
+    const out = fx.writes.join('')
+    expect(out).toContain(`run: ${state.runId}`)
+    expect(out).toContain('review not reached')
+    expect(out).toContain('0/0 tasks complete')
+    expect(out).toContain('### Commits on sdd-test-branch')
+    expect(out).toContain(`transcripts: runs/${state.runId}/transcripts/`)
+    expect(fx.exitCodes).toEqual([0])
   })
 })

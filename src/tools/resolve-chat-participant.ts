@@ -12,7 +12,11 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:resolve-chat-participant' })
 
-export function makeResolveChatParticipantTool(resolver: ChatParticipantResolver, contextId: string): Tool {
+export function makeResolveChatParticipantTool(
+  resolver: ChatParticipantResolver,
+  contextId: string,
+  chatUserId?: string,
+): Tool {
   return tool({
     description:
       'Find a chat group participant by name and return their user ID. ' +
@@ -25,7 +29,7 @@ export function makeResolveChatParticipantTool(resolver: ChatParticipantResolver
     }),
     execute: async ({ query, limit }) => {
       log.debug({ contextId, limit }, 'resolve_chat_participant')
-      const candidates = await resolver(contextId, query, limit)
+      const candidates = await resolver(contextId, query, limit, chatUserId)
       log.info({ contextId, count: candidates.length }, 'resolve_chat_participant completed')
       return candidates
     },

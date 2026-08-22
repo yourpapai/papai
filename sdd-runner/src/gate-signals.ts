@@ -5,8 +5,9 @@
 
 import { readEvents } from './events.js'
 import type { SddEvent } from './events.js'
+import { gatherAssumptions } from './gate-digest-extract.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
-import { buildResolveCost, costAndDuration, gatherAssumptions, logPathFor, nowOf } from './gate-digest.js'
+import { buildResolveCost, costAndDuration, logPathFor, nowOf } from './gate-digest.js'
 import type { GateAssumption } from './gate-model.js'
 import { replayEvents } from './replay.js'
 import type { ReviewLoopResult } from './review-loop.js'

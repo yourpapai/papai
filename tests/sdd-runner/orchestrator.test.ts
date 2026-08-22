@@ -243,7 +243,8 @@ describe('runStart', () => {
     expect(fs.existsSync(path.join(fixture.changeDir, 'proposal.md'))).toBe(true)
     expect(fs.existsSync(path.join(fixture.changeDir, 'tasks.md'))).toBe(true)
     expect(fs.existsSync(result.gateMdPath)).toBe(true)
-    expect(fixture.stdoutLines.some((l) => l.includes('gate resume'))).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes(`sdd ${result.runId}`))).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes('sdd-runner '))).toBe(false)
   })
 
   it('drafts design.md at M and runs the atomicity check after decompose', async () => {
@@ -866,8 +867,9 @@ describe('runResume gate-pending loudness (task 4.3)', () => {
     const result = await runResume(fixture.deps, started.runId)
     expect(result.halted).toBe('gate-pending')
     expect(fixture.stdoutLines.some((l) => l.includes('awaits a gate decision'))).toBe(true)
-    expect(fixture.stdoutLines.includes(`sdd-runner gate resume ${started.runId}`)).toBe(true)
+    expect(fixture.stdoutLines.includes(`sdd ${started.runId}`)).toBe(true)
     expect(fixture.stdoutLines.some((l) => l.includes(started.runId))).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes('sdd-runner '))).toBe(false)
   })
 
   it('halting at a gate prints a copy-pasteable next-step line with the full resume command and run id', async () => {
@@ -876,7 +878,7 @@ describe('runResume gate-pending loudness (task 4.3)', () => {
       taskFile: fixture.taskFile,
       depthOverride: 'S',
     })
-    expect(fixture.stdoutLines.includes(`Next: sdd-runner gate resume ${started.runId}`)).toBe(true)
+    expect(fixture.stdoutLines.includes(`Next: sdd ${started.runId}`)).toBe(true)
   })
 })
 
@@ -895,7 +897,7 @@ describe('runContinue routing (task 4.7)', () => {
     await runGateResume(fixture.deps, started.runId, { confirmAll: true })
     const result = await runContinue(fixture.deps, started.runId)
     expect(result.routed).toBe('report')
-    expect(fixture.stdoutLines.some((l) => l.includes(`sdd-runner report ${started.runId}`))).toBe(true)
+    expect(fixture.stdoutLines.some((l) => l.includes(`sdd ${started.runId}`))).toBe(true)
   })
 
   it('routes an interrupted mid-stage run to stage resume', async () => {
@@ -2497,3 +2499,98 @@ describe('R2 trajectory auto-extend (8.2)', () => {
 function isExtendDecision(e: ReturnType<typeof readEvents>[number]): boolean {
   return e.type === 'auto_decision' && (e as { decision?: string }).decision === 'extend'
 }
+
+describe('live-view mounts (tui wiring)', () => {
+  function trackMounts(deps: OrchestratorDeps): { deps: OrchestratorDeps; mounts: string[]; unmounts: () => number } {
+    const mounts: string[] = []
+    let count = 0
+    return {
+      deps: {
+        ...deps,
+        mountRunScreen: ({ runDir }): void => {
+          mounts.push(runDir)
+        },
+        unmountRunScreen: (): void => {
+          count += 1
+        },
+      },
+      mounts,
+      unmounts: (): number => count,
+    }
+  }
+
+  function seedInterruptedReview(fixture: ReturnType<typeof makeFixture>, runId: string): string {
+    const workDir = fixture.deps.config.workDir
+    const runDir = path.join(workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.mkdirSync(path.join(fixture.changeDir, 'specs', 'thing'), { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'), '## ADDED Requirements\n')
+    const events = [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake', seq: 1, ts: '2026-01-01T00:00:00.000Z' },
+      {
+        altitude: 'L2',
+        type: 'depth',
+        profile: 'S',
+        rationale: 'override',
+        source: 'override',
+        seq: 2,
+        ts: '2026-01-01T00:00:00.000Z',
+      },
+      { altitude: 'L2', type: 'stage_exit', stage: 'intake', seq: 3, ts: '2026-01-01T00:00:00.000Z' },
+      { altitude: 'L2', type: 'stage_enter', stage: 'draft', seq: 4, ts: '2026-01-01T00:00:00.000Z' },
+      { altitude: 'L2', type: 'stage_exit', stage: 'draft', seq: 5, ts: '2026-01-01T00:00:00.000Z' },
+    ]
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), events.map((e) => JSON.stringify(e)).join('\n') + '\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir,
+          changeName: fixture.changeName,
+          stage: 'draft',
+          depth: 'S',
+          round: 0,
+          gate: null,
+          status: 'running',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    return runDir
+  }
+
+  it('runStart mounts the running screen and unmounts it at the halt', async () => {
+    const fixture = makeFixture()
+    const live = trackMounts(fixture.deps)
+    const result = await runStart(live.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    expect(result.halted).toBe('gate')
+    expect(live.mounts).toEqual([path.join(fixture.deps.config.workDir, 'runs', result.runId)])
+    expect(live.unmounts()).toBe(1)
+  })
+
+  it('runResume mounts and unmounts around the continued stages', async () => {
+    const fixture = makeFixture()
+    const runId = 'seeded-run-1'
+    await seedInterruptedReview(fixture, runId)
+    const live = trackMounts(fixture.deps)
+    const calls: string[] = []
+    const deps: OrchestratorDeps = { ...live.deps, driver: createTrackingDriver(fixture, calls) }
+    const result = await runResume(deps, runId)
+    expect(result.halted).toBe('gate')
+    expect(live.mounts).toEqual([path.join(fixture.deps.config.workDir, 'runs', runId)])
+    expect(live.unmounts()).toBe(1)
+  })
+
+  it('a verb without mount hooks still runs (line mode unchanged)', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    expect(result.halted).toBe('gate')
+    expect(fixture.rendered.some((e) => e.type === 'stage_enter')).toBe(true)
+  })
+})

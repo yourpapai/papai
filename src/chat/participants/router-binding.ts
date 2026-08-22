@@ -16,11 +16,11 @@ export type UserLabelSource = Readonly<{
  * story harness so neither can drift from the other's notion of the label context.
  */
 export function createChatParticipantResolver(source: UserLabelSource): ChatParticipantResolver {
-  return (contextId, query, limit) =>
+  return (contextId, query, ...rest) =>
     resolveChatParticipant(
       contextId,
       query,
       (userId) => source.resolveUserLabel(userId, { contextId, contextType: 'group' }),
-      limit,
+      ...rest,
     )
 }

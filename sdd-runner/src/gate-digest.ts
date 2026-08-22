@@ -13,6 +13,7 @@ import { createEventBus } from './event-bus.js'
 import { appendEvent } from './events.js'
 import type { EventInput, SddEvent } from './events.js'
 import { readChangeDigest } from './gate-digest-extract.js'
+import { gatherAssumptions } from './gate-digest-extract.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
 import { planForGate, runPolicyLadder, writePresentedRecord } from './gate-prelude.js'
@@ -37,6 +38,12 @@ export interface OrchestratorDeps {
   readonly execGit: ExecGitFn
   readonly driver: OpenSpecDriver
   readonly render?: (event: EventInput) => void
+  /** Live-view sink (tui mode); when present it replaces `render` on the bus. */
+  readonly liveEvents?: (event: EventInput) => void
+  /** Mount the Ink running screen for a run about to drive stages (tui mode). */
+  readonly mountRunScreen?: (ctx: { readonly runDir: string; readonly logPath: string }) => void
+  /** Unmount the running screen (run halted, process ending). */
+  readonly unmountRunScreen?: () => void
   readonly stdout?: (line: string) => void
   readonly conventions?: string
   readonly now?: () => Date
@@ -78,7 +85,8 @@ export function buildBus(deps: OrchestratorDeps, logPath: string): (event: Event
   bus.subscribe((event) => {
     appendEvent(logPath, event)
   })
-  if (deps.render !== undefined) bus.subscribe(deps.render)
+  if (deps.liveEvents !== undefined) bus.subscribe(deps.liveEvents)
+  else if (deps.render !== undefined) bus.subscribe(deps.render)
   return bus.emit
 }
 
@@ -128,7 +136,7 @@ export async function presentGateAt(
   if (evaluation !== null) await writePresentedRecord(deps, state, ctx, evaluation, policyInput)
   announceDeadline(deps, deadline.notify)
   deps.stdout?.(path.relative(deps.config.repoRoot, result.gateMdPath))
-  deps.stdout?.(`Next: sdd-runner gate resume ${state.runId}`)
+  deps.stdout?.(`Next: sdd ${state.runId}`)
   return { runId: state.runId, halted: 'gate', gateMdPath: result.gateMdPath, version }
 }
 
@@ -168,32 +176,6 @@ function gateDigestInput(state: RunState, reviewResult: ReviewLoopResult, parts:
     durationMs: parts.durationMs,
     changeDigest: parts.changeDigest,
   }
-}
-
-export async function gatherAssumptions(sidecarDir: string, rounds: number): Promise<GateAssumption[]> {
-  const indices = Array.from({ length: rounds }, (_, i) => i + 1)
-  const perRound = await Promise.all(
-    indices.map(async (round) => {
-      try {
-        const raw = await readFile(path.join(sidecarDir, `resolutions-${round}.json`), 'utf8')
-        return ResolverOutputSchema.parse(JSON.parse(raw)).assumptions
-      } catch {
-        return []
-      }
-    }),
-  )
-  const byId = new Map<string, GateAssumption>()
-  for (const assumptions of perRound) {
-    for (const assumption of assumptions) {
-      byId.set(assumption.id, {
-        id: assumption.id,
-        text: assumption.text,
-        blast_radius: assumption.blast_radius,
-        evidence: { files: assumption.evidence.files },
-      })
-    }
-  }
-  return [...byId.values()]
 }
 
 export function blockersOf(result: ReviewLoopResult): GateBlocker[] {

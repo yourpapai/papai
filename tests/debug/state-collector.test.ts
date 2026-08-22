@@ -11,7 +11,6 @@ import { subscribeCountForTest } from '../../src/debug/event-bus.testing.js'
 import {
   addClient,
   findTurnById,
-  init,
   recentLlm,
   removeClient,
   resetCollectorForTest,
@@ -138,9 +137,8 @@ describe('state-collector', () => {
   }
 
   test('addClient sends state:init immediately', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(track(ctrl))
+    addClient(track(ctrl), undefined, 'admin-1')
 
     expect(enqueueMock).toHaveBeenCalledTimes(1)
     const { event, data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
@@ -149,9 +147,8 @@ describe('state-collector', () => {
   })
 
   test('state:init contains all snapshot sections', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(track(ctrl))
+    addClient(track(ctrl), undefined, 'admin-1')
 
     const { data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
     const initData = data['data']
@@ -171,9 +168,8 @@ describe('state-collector', () => {
   })
 
   test('admin events are broadcast to clients', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(track(ctrl))
+    addClient(track(ctrl), undefined, 'admin-1')
 
     emitGlobal('message:received', { userId: 'admin-1', textLength: 10 })
 
@@ -183,9 +179,8 @@ describe('state-collector', () => {
   })
 
   test('non-admin user events are filtered out', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(track(ctrl))
+    addClient(track(ctrl), undefined, 'admin-1')
 
     emitUser('message:received', 'other-user', { textLength: 10 })
 
@@ -193,9 +188,8 @@ describe('state-collector', () => {
   })
 
   test('global events (no userId) pass through unfiltered', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(track(ctrl))
+    addClient(track(ctrl), undefined, 'admin-1')
 
     emitGlobal('scheduler:tick', { tickCount: 1, dueTaskCount: 0 })
 
@@ -205,9 +199,8 @@ describe('state-collector', () => {
   })
 
   test('removeClient stops delivery to that client', () => {
-    init('admin-1')
     const { ctrl, enqueueMock } = createMockController()
-    addClient(ctrl)
+    addClient(ctrl, undefined, 'admin-1')
     removeClient(ctrl)
 
     emitGlobal('message:received', { userId: 'admin-1', textLength: 5 })
@@ -216,11 +209,10 @@ describe('state-collector', () => {
   })
 
   test('dead client (enqueue throws) is removed silently', () => {
-    init('admin-1')
     const { ctrl, enqueueMock: badEnqueue } = createMockController()
     const { ctrl: goodCtrl, enqueueMock: goodEnqueue } = createMockController()
-    addClient(track(ctrl))
-    addClient(track(goodCtrl))
+    addClient(track(ctrl), undefined, 'admin-1')
+    addClient(track(goodCtrl), undefined, 'admin-1')
 
     badEnqueue.mockImplementation(() => {
       throw new Error('stream closed')
@@ -236,9 +228,8 @@ describe('state-collector', () => {
 
   describe('llm trace accumulation', () => {
     test('llm:end captures full trace data', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:start', {
         userId: 'admin-1',
@@ -256,6 +247,7 @@ describe('state-collector', () => {
       })
       emitGlobal('llm:end', {
         userId: 'admin-1',
+        chatUserId: 'admin-1',
         model: 'gpt-4',
         steps: 2,
         totalDuration: 2500,
@@ -299,9 +291,8 @@ describe('state-collector', () => {
     })
 
     test('llm:tool_result captures error details', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
       emitUser('llm:tool_result', 'admin-1', {
@@ -314,6 +305,7 @@ describe('state-collector', () => {
       })
       emitGlobal('llm:end', {
         userId: 'admin-1',
+        chatUserId: 'admin-1',
         model: 'gpt-4',
         steps: 1,
         totalDuration: 1000,
@@ -332,13 +324,13 @@ describe('state-collector', () => {
     })
 
     test('llm:end broadcasts stepsDetail with per-step info', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
       emitGlobal('llm:end', {
         userId: 'admin-1',
+        chatUserId: 'admin-1',
         model: 'gpt-4',
         steps: 2,
         totalDuration: 2000,
@@ -373,9 +365,8 @@ describe('state-collector', () => {
     })
 
     test('llm:error broadcasts an error trace with captured message', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
       emitGlobal('llm:error', { userId: 'admin-1', model: 'gpt-4', error: 'boom' })
@@ -388,9 +379,8 @@ describe('state-collector', () => {
     })
 
     test('llm:error without prior llm:start still emits trace with zero duration', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:error', { userId: 'admin-1', model: 'gpt-4', error: 'crash' })
 
@@ -401,13 +391,13 @@ describe('state-collector', () => {
     })
 
     test('llm:end passes through text, finishReason, and inline tool result/error', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
       emitGlobal('llm:end', {
         userId: 'admin-1',
+        chatUserId: 'admin-1',
         model: 'gpt-4',
         steps: 1,
         totalDuration: 500,
@@ -459,8 +449,6 @@ describe('state-collector', () => {
     })
 
     test('llm:end with zero clients captures the trace without broadcasting any frame', () => {
-      init('admin-1')
-
       emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
       emitGlobal('llm:end', {
         userId: 'admin-1',
@@ -473,7 +461,7 @@ describe('state-collector', () => {
       expect(recentLlm).toHaveLength(1)
 
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       expect(enqueueMock).toHaveBeenCalledTimes(1)
       const events = getAllSseEvents(enqueueMock)
@@ -484,9 +472,8 @@ describe('state-collector', () => {
 
   describe('scope-based visibility filtering', () => {
     test('user-scoped event for admin passes through', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitUser('message:received', 'admin-1', { textLength: 10 })
 
@@ -496,9 +483,8 @@ describe('state-collector', () => {
     })
 
     test('user-scoped event for other user is filtered out', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitUser('message:received', 'other-user', { textLength: 10 })
 
@@ -508,9 +494,8 @@ describe('state-collector', () => {
     })
 
     test('group-scoped event is filtered out when groupIds is empty', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGroup('message:received', 'group-a', { textLength: 10 })
 
@@ -520,9 +505,8 @@ describe('state-collector', () => {
     })
 
     test('global-scoped event passes through', () => {
-      init('admin-1')
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       emitGlobal('scheduler:tick', { tickCount: 1, dueTaskCount: 0 })
 
@@ -538,7 +522,6 @@ describe('state-collector', () => {
     })
 
     test('startEventCollector subscribes the collector exactly once and is idempotent', () => {
-      init('admin-1')
       stopEventCollectorForTest()
       const before = subscribeCountForTest()
 
@@ -551,12 +534,12 @@ describe('state-collector', () => {
     })
 
     test('admin and global events with zero clients are captured and replayed via state:init', () => {
-      init('admin-1')
       startEventCollector()
 
       emitGlobal('llm:start', { userId: 'admin-1', model: 'm-admin' })
       emitGlobal('llm:end', {
         userId: 'admin-1',
+        chatUserId: 'admin-1',
         model: 'm-admin',
         steps: 1,
         totalDuration: 42,
@@ -582,7 +565,7 @@ describe('state-collector', () => {
       expect(recentNotifications).toHaveLength(1)
 
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       const { data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
       const initData = data['data']
@@ -612,8 +595,7 @@ describe('state-collector', () => {
       expect(initStats['totalLlmCalls']).toBe(1)
     })
 
-    test('non-admin events with zero clients are captured but hidden from the admin state:init', () => {
-      init('admin-1')
+    test('non-admin events with zero clients are captured but anonymized in the admin state:init', () => {
       startEventCollector()
 
       emitUser('llm:start', 'other-user', { model: 'm-other' })
@@ -639,7 +621,7 @@ describe('state-collector', () => {
       expect(recentNotifications).toHaveLength(1)
 
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       const { data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
       const initData = data['data']
@@ -647,7 +629,12 @@ describe('state-collector', () => {
 
       const initLlm = initData['recentLlm']
       assert.ok(Array.isArray(initLlm))
-      expect(initLlm).toHaveLength(0)
+      expect(initLlm).toHaveLength(1)
+      const initTrace: unknown = initLlm[0]
+      assert.ok(isRecord(initTrace))
+      expect(initTrace['userId']).toBeUndefined()
+      expect(initTrace['chatUserId']).toBeUndefined()
+      expect(initTrace['model']).toBe('m-other')
 
       const initTurns = initData['recentTurns']
       assert.ok(Array.isArray(initTurns))
@@ -659,7 +646,6 @@ describe('state-collector', () => {
     })
 
     test('state:init caps the LLM trace tail at the most recent 1024 admin traces', () => {
-      init('admin-1')
       startEventCollector()
 
       for (let i = 0; i < STATE_INIT_LLM_TAIL + 3; i++) {
@@ -672,7 +658,7 @@ describe('state-collector', () => {
       expect(recentLlm).toHaveLength(STATE_INIT_LLM_TAIL + 3)
 
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       const { data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
       const initData = data['data']
@@ -689,7 +675,6 @@ describe('state-collector', () => {
     })
 
     test('stats increment with no client connected', () => {
-      init('admin-1')
       startEventCollector()
 
       emitGlobal('message:received', { userId: 'admin-1', textLength: 10 })
@@ -707,7 +692,6 @@ describe('state-collector', () => {
     })
 
     test('tool failures are captured for everyone but state:init shows only the admin scope', () => {
-      init('admin-1')
       startEventCollector()
 
       emitUser('tool:failure_classified', 'admin-1', {
@@ -726,7 +710,7 @@ describe('state-collector', () => {
       })
 
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
 
       const { data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
       const initData = data['data']
@@ -744,11 +728,10 @@ describe('state-collector', () => {
       expect(entryData['turnId']).toBe('t-admin')
     })
 
-    test('non-admin events are captured but never broadcast to a connected client', () => {
-      init('admin-1')
+    test('non-admin events are captured but broadcast anonymized to a connected client', () => {
       startEventCollector()
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
       expect(enqueueMock).toHaveBeenCalledTimes(1)
 
       emitUser('llm:start', 'other-user', { model: 'm-other' })
@@ -762,7 +745,19 @@ describe('state-collector', () => {
       emitUser('turn:start', 'other-user', { turnId: 'turn-live', incomingMessageCount: 1 })
       emitUser('turn:end', 'other-user', { turnId: 'turn-live', status: 'ok' })
 
-      expect(enqueueMock).toHaveBeenCalledTimes(1)
+      // Only the shaped llm:full frame arrives: the trace metadata is visible,
+      // its identity fields are not, and user-scoped non-log events are filtered.
+      expect(enqueueMock).toHaveBeenCalledTimes(2)
+      const events = getAllSseEvents(enqueueMock)
+      const llmFullEvents = events.filter((e) => e.event === 'llm:full')
+      expect(llmFullEvents).toHaveLength(1)
+      const eventData = getTraceEventData(llmFullEvents[0]!)
+      expect(eventData['userId']).toBeUndefined()
+      expect(eventData['chatUserId']).toBeUndefined()
+      expect(eventData['model']).toBe('m-other')
+      expect(eventData['generatedText']).toBeUndefined()
+      expect(events.map((e) => e.event)).not.toContain('message:received')
+      expect(events.map((e) => e.event)).not.toContain('turn:summary')
 
       const trace = recentLlm[0]
       assert.ok(trace !== undefined)
@@ -774,10 +769,9 @@ describe('state-collector', () => {
     })
 
     test('production-shaped llm events expose admin traces by chatUserId, not storage scope', () => {
-      init('4242')
       startEventCollector()
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, '4242')
       expect(enqueueMock).toHaveBeenCalledTimes(1)
 
       emitUser('llm:start', 'pi:cGk:ctx:c3RvcmFnZQ', { model: 'm-admin' })
@@ -801,37 +795,46 @@ describe('state-collector', () => {
       assert.ok(trace !== undefined)
       expect(trace.userId).toBe('4242')
 
+      // Both traces are broadcast; the admin's own passes verbatim, the foreign
+      // one loses its identity fields but keeps its metadata.
       const events = getAllSseEvents(enqueueMock)
-      const eventData = getTraceEventData(getLastEventByName(events, 'llm:full'))
-      expect(eventData['userId']).toBe('4242')
-      expect(events.filter((e) => e.event === 'llm:full')).toHaveLength(1)
+      const llmFullEvents = events.filter((e) => e.event === 'llm:full')
+      expect(llmFullEvents).toHaveLength(2)
+      const ownEventData = getTraceEventData(llmFullEvents[0]!)
+      expect(ownEventData['userId']).toBe('4242')
+      const foreignEventData = getTraceEventData(llmFullEvents[1]!)
+      expect(foreignEventData['userId']).toBeUndefined()
+      expect(foreignEventData['chatUserId']).toBeUndefined()
+      expect(foreignEventData['model']).toBe('m-other')
 
       const second = createMockController()
-      addClient(track(second.ctrl))
+      addClient(track(second.ctrl), undefined, '4242')
       const { data } = parseSseFromUnknown(getFirstCallArg(second.enqueueMock))
       const initData = data['data']
       assert.ok(isRecord(initData))
       const initLlm = initData['recentLlm']
       assert.ok(Array.isArray(initLlm))
-      expect(initLlm).toHaveLength(1)
-      const initTrace: unknown = initLlm[0]
-      assert.ok(isRecord(initTrace))
-      expect(initTrace['userId']).toBe('4242')
+      expect(initLlm).toHaveLength(2)
+      const ownInitTrace: unknown = initLlm[0]
+      assert.ok(isRecord(ownInitTrace))
+      expect(ownInitTrace['userId']).toBe('4242')
+      const foreignInitTrace: unknown = initLlm[1]
+      assert.ok(isRecord(foreignInitTrace))
+      expect(foreignInitTrace['userId']).toBeUndefined()
     })
 
     test('resetCollectorForTest cancels an armed stats debounce so it cannot fire into a later client', async () => {
-      init('admin-1')
       startEventCollector()
 
       const first = createMockController()
-      addClient(track(first.ctrl))
+      addClient(track(first.ctrl), undefined, 'admin-1')
       emitGlobal('message:received', { userId: 'admin-1', textLength: 5 })
       expect(stats.totalMessages).toBe(1)
 
       resetCollectorForTest()
 
       const { ctrl, enqueueMock } = createMockController()
-      addClient(track(ctrl))
+      addClient(track(ctrl), undefined, 'admin-1')
       expect(enqueueMock).toHaveBeenCalledTimes(1)
 
       await new Promise<void>((resolve) => {

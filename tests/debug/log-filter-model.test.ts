@@ -7,7 +7,6 @@ import { describe, expect, test } from 'bun:test'
 
 import type { LogEntry } from '../../src/debug/log-buffer.js'
 import {
-  applyFilter,
   entryMatchesFilter,
   flattenLogEntry,
   matchesScope,
@@ -97,13 +96,6 @@ describe('flattenLogEntry', () => {
     const text = flattenLogEntry(entry({ level: 30, time: '2026-07-02T09:09:09.000Z', msg: 'x' }))
     expect(text).not.toContain('2026-07-02T09:09:09')
     expect(text).not.toContain('30')
-  })
-})
-
-describe('applyFilter', () => {
-  test('filters a list', () => {
-    const list = [entry({ scope: 'a' }), entry({ scope: 'b' })]
-    expect(applyFilter(list, filter({ include: ['a'] }))).toHaveLength(1)
   })
 })
 

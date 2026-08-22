@@ -38,6 +38,10 @@ import * as _authorizedGroups from '../src/authorized-groups.js'
 import * as _bot from '../src/bot.js'
 import * as _interactionRouter from '../src/chat/interaction-router.js'
 import * as _chatMattermost from '../src/chat/mattermost/index.js'
+// Load the roster before any test can mock src/logger.js: it binds a module-level
+// child logger at first evaluation, so a delayed import under a mocked logger would
+// pin a mock for the whole serial process and break real-egress log assertions.
+import * as _chatParticipantsRoster from '../src/chat/participants/roster.js'
 import * as _chatRegistry from '../src/chat/registry.js'
 import * as _chatRouter from '../src/chat/router.js'
 import * as _chatStartup from '../src/chat/startup.js'
@@ -88,6 +92,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/message-cache/cache.js', { ..._messageCache }],
   ['../plugins/task-provider-kaneo/provision.js', { ..._provision }],
   ['../src/chat/interaction-router.js', { ..._interactionRouter }],
+  ['../src/chat/participants/roster.js', { ..._chatParticipantsRoster }],
   ['ai', { ..._ai }],
   ['@ai-sdk/openai-compatible', { ..._openaiCompat }],
   ['../src/llm-model-builder.js', { ..._llmModelBuilder }],
