@@ -51,6 +51,7 @@ import * as _dbDrizzle from '../src/db/drizzle.js'
 import * as _dbIndex from '../src/db/index.js'
 import * as _chatRouterRuntime from '../src/debug/chat-router-runtime.js'
 import * as _debugServer from '../src/debug/server.js'
+import { resetCollectorForTest } from '../src/debug/state-collector.js'
 import * as _alertsPrompts from '../src/deferred-prompts/alerts.js'
 import * as _poller from '../src/deferred-prompts/poller.js'
 import * as _scheduledPrompts from '../src/deferred-prompts/scheduled.js'
@@ -149,6 +150,12 @@ const restoreOriginalModules = (): void => {
 
 beforeEach(() => {
   resetDrizzleDbForTesting()
+  // The debug-event collector is a process-global subscription armed by
+  // production wiring and several debug suites. Serial runs share one process,
+  // so a file that ends with it subscribed leaks live capture into every later
+  // file. Stop it and drain its buffers before each test, the same isolation
+  // contract as the other resets here.
+  resetCollectorForTest()
   // The new per-role admin LLM cache (provider + role-binding
   // caches in src/llm-providers/store.ts): a file that seeds an admin binding can't
   // leak a non-null binding into a later file that asserts "no config configured".

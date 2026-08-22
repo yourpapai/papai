@@ -64,6 +64,12 @@ export function pushTrace(trace: LlmTrace): void {
   recentLlm.push(trace)
 }
 
+/** @public -- test seam: drain the captured trace buffer and pending traces. */
+export function resetLlmBuffers(): void {
+  recentLlm.length = 0
+  pendingTraces.clear()
+}
+
 function buildTraceToolCall(data: Record<string, unknown>): LlmTraceToolCall {
   return {
     toolName: str(data['toolName']),
@@ -145,6 +151,11 @@ function traceKey(event: TraceEvent): string {
   return event.scope.kind === 'user' ? event.scope.userId : str(event.data['userId'])
 }
 
+function traceUserId(event: TraceEvent, correlationKey: string): string {
+  const chatUserId = str(event.data['chatUserId'])
+  return chatUserId === '' ? correlationKey : chatUserId
+}
+
 /**
  * @public -- anonymity-safe egress shape for an LLM trace: a trace attributed to the viewing
  * admin (via `chatUserId`) passes verbatim (same reference); any other trace — including
@@ -188,7 +199,7 @@ export function handleLlmTraceEvent(
   } else if (event.type === 'llm:end') {
     const pending = pendingTraces.get(userId)
     pendingTraces.delete(userId)
-    const trace = buildEndTrace(event, userId, pending)
+    const trace = buildEndTrace(event, traceUserId(event, userId), pending)
     callbacks.pushTrace(trace)
     stats.totalLlmCalls++
     scheduleStatsBroadcast()
@@ -196,7 +207,7 @@ export function handleLlmTraceEvent(
   } else if (event.type === 'llm:error') {
     const pending = pendingTraces.get(userId)
     pendingTraces.delete(userId)
-    const trace = buildErrorTrace(event, userId, pending)
+    const trace = buildErrorTrace(event, traceUserId(event, userId), pending)
     callbacks.pushTrace(trace)
     callbacks.broadcastTrace(trace, event.timestamp)
   }

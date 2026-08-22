@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import { ChatRouter } from '../../src/chat/router.js'
 import type { IncomingInteraction, IncomingMessage } from '../../src/chat/types.js'
 import { subscribeCountForTest } from '../../src/debug/event-bus.testing.js'
+import { startEventCollector, stopEventCollectorForTest } from '../../src/debug/state-collector.js'
 import { armMemoryCapture, type ArmCaptureDeps } from '../../src/long-term-memory/capture-debounce.js'
 import { toolCapabilityCatalog } from '../../src/runtime/capability-catalog.js'
 import { createPapaiRuntime } from '../../src/runtime/create-runtime.js'
@@ -230,6 +231,10 @@ describe('createProductionRuntimeDeps', () => {
 
   test('disposes membership subscribers across sequential production dependency runtimes', async () => {
     await setupTestDb()
+    // Arm the idempotent collector before the baseline so the assertions below
+    // track only the membership subscriber; without this the test depends on a
+    // collector left subscribed by an earlier test.
+    startEventCollector()
     const baseline = subscribeCountForTest()
     const first = createProductionRuntimeDeps()
     const second = createProductionRuntimeDeps()
@@ -249,5 +254,56 @@ describe('createProductionRuntimeDeps', () => {
     expect(subscribeCountForTest()).toBe(baseline + 1)
     second.chat.clearRuntime()
     expect(subscribeCountForTest()).toBe(baseline)
+  })
+
+  test('subscribes the debug-event collector exactly once at creation, independent of runtime start/stop', async () => {
+    stopEventCollectorForTest()
+    const baseline = subscribeCountForTest()
+    const router = new ChatRouter(() => {
+      throw new Error('No adapters are created by the collector subscription test')
+    })
+    const deps = createProductionRuntimeDeps({
+      database: { start: () => undefined, stop: () => Promise.resolve() },
+      chat: {
+        createRouter: () => router,
+        setRuntime: () => undefined,
+        clearRuntime: () => undefined,
+      },
+      extensions: {
+        start: (): Promise<readonly string[]> => Promise.resolve([]),
+        stop: (): Promise<void> => Promise.resolve(),
+      },
+      application: {
+        initializeStores: () => undefined,
+        setupBot: () => undefined,
+        registerCommandMenu: (): Promise<void> => Promise.resolve(),
+        announceStartup: (): Promise<void> => Promise.resolve(),
+        flush: (): Promise<void> => Promise.resolve(),
+      },
+      background: { start: (): Promise<void> => Promise.resolve(), stop: (): Promise<void> => Promise.resolve() },
+      web: { start: (): void => undefined, stop: (): void => undefined },
+    })
+
+    expect(subscribeCountForTest()).toBe(baseline + 1)
+
+    const runtime = createPapaiRuntime(
+      {
+        adminUserId: 'admin-1',
+        pluginDirectory: 'plugins',
+        startBackgroundServices: false,
+        startNetworkServer: false,
+        sendStartupAnnouncement: false,
+      },
+      deps,
+    )
+
+    await runtime.start()
+    expect(subscribeCountForTest()).toBe(baseline + 1)
+
+    await runtime.stop()
+    expect(subscribeCountForTest()).toBe(baseline + 1)
+
+    createProductionRuntimeDeps()
+    expect(subscribeCountForTest()).toBe(baseline + 1)
   })
 })

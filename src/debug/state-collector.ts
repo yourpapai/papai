@@ -8,7 +8,14 @@ import { getPollerSnapshot } from '../deferred-prompts/poller.js'
 import { getMessageCacheSnapshot } from '../message-cache/cache.js'
 import { getSchedulerSnapshot } from '../scheduler.js'
 import { subscribe, unsubscribe, type DebugEvent } from './event-bus.js'
-import { recentLlm, pushTrace, handleLlmTraceEvent, shapeLlmTrace, type LlmTrace } from './llm-trace-collector.js'
+import {
+  recentLlm,
+  pushTrace,
+  handleLlmTraceEvent,
+  resetLlmBuffers,
+  shapeLlmTrace,
+  type LlmTrace,
+} from './llm-trace-collector.js'
 import { shapeLogEntry } from './log-buffer.js'
 import type { LogEntry } from './log-buffer.js'
 import { entryMatchesFilter, type LogFilter } from './log-filter-model.js'
@@ -16,13 +23,14 @@ import {
   recentTurns,
   recentNotifications,
   recentToolFailures,
-  inFlightTurns,
-  findTurnById,
   handleTurnAssembly,
+  resetTurnBuffers,
 } from './turn-assembly.js'
+import { clientVisibility, isVisibleToAdmin, isOwnLogEntry } from './visibility.js'
 
 export { resetTurnBuffers, findTurnById } from './turn-assembly.js'
 export { recentLlm, pendingTraces } from './llm-trace-collector.js'
+export { isVisibleToAdmin, isOwnLogEntry, ownTurnIdsForAdmin, type AdminVisibility } from './visibility.js'
 
 type ClientRegistration = {
   filter: LogFilter
@@ -36,6 +44,7 @@ const encoder = new TextEncoder()
 const HEARTBEAT_MS = 15000
 const PING_FRAME = encoder.encode(': ping\n\n')
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+let collectorStarted = false
 
 function pingClients(): void {
   for (const client of clients.keys()) {
@@ -68,6 +77,41 @@ export function resetClientsForTest(): void {
   for (const client of [...clients.keys()]) removeClient(client)
 }
 
+/**
+ * Subscribe the persistent capture handler on the debug event bus. Capture is
+ * unfiltered and independent of SSE clients; visibility is enforced at
+ * broadcast/read time. Idempotent: production wiring calls it exactly once.
+ * While the persistent collector is armed, the client-driven subscription
+ * (first `addClient` subscribes, last `removeClient` unsubscribes) stays up,
+ * so the last client leaving never stops capture.
+ */
+export function startEventCollector(): void {
+  collectorStarted = true
+  subscribe(onEvent)
+}
+
+/** @public -- test seam: unsubscribe the capture handler. */
+export function stopEventCollectorForTest(): void {
+  collectorStarted = false
+  unsubscribe(onEvent)
+}
+
+/** @public -- test seam: stop the collector, drain clients, clear buffers, zero stats, cancel the pending stats debounce. */
+export function resetCollectorForTest(): void {
+  stopEventCollectorForTest()
+  resetClientsForTest()
+  resetTurnBuffers()
+  resetLlmBuffers()
+  if (statsDebounceTimer !== null) {
+    clearTimeout(statsDebounceTimer)
+    statsDebounceTimer = null
+  }
+  stats.startedAt = Date.now()
+  stats.totalMessages = 0
+  stats.totalLlmCalls = 0
+  stats.totalToolCalls = 0
+}
+
 export const stats = {
   startedAt: Date.now(),
   totalMessages: 0,
@@ -75,71 +119,13 @@ export const stats = {
   totalToolCalls: 0,
 }
 
-export type AdminVisibility = {
-  adminUserId: string
-  groupIds: ReadonlySet<string>
-}
-
-export function isVisibleToAdmin(
-  scope: { kind?: string; userId?: string; groupId?: string } | null | undefined,
-  vis: AdminVisibility,
-): boolean {
-  if (scope === null || scope === undefined || typeof scope.kind !== 'string') return false
-  if (scope.kind === 'global') return true
-  if (scope.kind === 'user') return scope.userId === vis.adminUserId
-  if (scope.kind === 'group') return scope.groupId !== undefined && vis.groupIds.has(scope.groupId)
-  return false
-}
-
-function clientVisibility(adminUserId: string | undefined): AdminVisibility {
-  return { adminUserId: adminUserId ?? '', groupIds: new Set() }
-}
-
 /**
- * Turn ids whose scope is visible to the session admin, resolved in a single
- * pass over the turn buffers — the per-request attribution index for bulk log
- * egress (O(turns) once, not O(entries x turns)).
- * @public -- shared by the REST /logs route so bulk egress avoids per-entry scans.
+ * `state:init` ships only the most recent N traces: the trace buffer holds up
+ * to 65535 entries with embedded `generatedText`/`stepsDetail`, and the
+ * dashboard's own trace working set is 1024 (`client/debug` `CAPS.TRACE`), so a
+ * longer tail would only inflate the single-frame `JSON.stringify` on connect.
  */
-export function ownTurnIdsForAdmin(adminUserId: string | undefined): Set<string> {
-  const own = new Set<string>()
-  if (adminUserId === undefined) return own
-  const vis = clientVisibility(adminUserId)
-  for (const turn of inFlightTurns.values()) {
-    if (isVisibleToAdmin(turn.scope, vis)) own.add(turn.turnId)
-  }
-  for (const turn of recentTurns) {
-    if (isVisibleToAdmin(turn.scope, vis)) own.add(turn.turnId)
-  }
-  return own
-}
-
-/**
- * Attribution check for log egress: an entry is the client admin's own when it
- * carries an explicit matching `chatUserId`, or when its `turnId` resolves to a
- * turn whose scope is visible to that admin. Everything else — foreign or
- * unattributable — must be shaped.
- * @public -- shared by the REST /logs route so SSE and REST egress agree.
- * `ownTurnIds`, when provided, is the pre-resolved per-request attribution set
- * (see `ownTurnIdsForAdmin`); without it the single-entry path falls back to a
- * `findTurnById` lookup.
- */
-export function isOwnLogEntry(
-  entry: LogEntry,
-  adminUserId: string | undefined,
-  ownTurnIds?: ReadonlySet<string>,
-): boolean {
-  if (adminUserId === undefined) return false
-  const explicit = entry['chatUserId']
-  if (typeof explicit === 'string') return explicit === adminUserId
-  const turnId = entry['turnId']
-  if (typeof turnId === 'string' && turnId !== '') {
-    if (ownTurnIds !== undefined) return ownTurnIds.has(turnId)
-    const turn = findTurnById(turnId)
-    if (turn !== undefined && isVisibleToAdmin(turn.scope, clientVisibility(adminUserId))) return true
-  }
-  return false
-}
+export const STATE_INIT_LLM_TAIL = 1024
 
 function buildInitData(adminUserId: string | undefined): Record<string, unknown> {
   const vis = clientVisibility(adminUserId)
@@ -149,7 +135,7 @@ function buildInitData(adminUserId: string | undefined): Record<string, unknown>
     pollers: getPollerSnapshot(),
     messageCache: getMessageCacheSnapshot(),
     stats,
-    recentLlm: recentLlm.map((trace) => shapeLlmTrace(trace, adminUserId)),
+    recentLlm: recentLlm.slice(-STATE_INIT_LLM_TAIL).map((trace) => shapeLlmTrace(trace, adminUserId)),
     recentTurns: recentTurns.filter((turn) => isVisibleToAdmin(turn.scope, vis)),
     recentNotifications: recentNotifications.filter((n) => isVisibleToAdmin(n.scope, vis)),
     recentToolFailures: recentToolFailures.filter((f) => isVisibleToAdmin(f.scope, vis)),
@@ -180,7 +166,7 @@ export function removeClient(controller: ReadableStreamDefaultController): void 
   clients.delete(controller)
 
   if (clients.size === 0) {
-    unsubscribe(onEvent)
+    if (!collectorStarted) unsubscribe(onEvent)
     stopHeartbeat()
   }
 }
@@ -188,6 +174,7 @@ export function removeClient(controller: ReadableStreamDefaultController): void 
 let statsDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 function scheduleStatsBroadcast(): void {
+  if (clients.size === 0) return
   if (statsDebounceTimer !== null) return
   statsDebounceTimer = setTimeout(() => {
     statsDebounceTimer = null
