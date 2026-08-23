@@ -255,12 +255,9 @@ export default {
     // summarizer, plugin facade) and by tests outside knip's production
     // project scope.
     'src/context-vault/*.ts': ['exports', 'types'],
-    // GitHub provider client/classify/constants/schemas: in-flight seam (see
-    // entry list); the change's later tasks consume the exports.
-    'plugins/task-provider-github/{client,classify-error,constants,mappers,operations/*,schemas/*}.ts': [
-      'exports',
-      'types',
-    ],
+    // GitHub provider seam: in-flight github-issues-task-provider change
+    // (see the entry-list comment above).
+    'plugins/task-provider-github/**/*.ts': ['exports', 'types'],
     'src/db/context-vault-schema.ts': ['exports', 'types'],
     // The usage-failure query exports are consumed by the follow-up
     // dashboard/settings wiring of the usage-failure-queries change
