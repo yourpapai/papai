@@ -1,7 +1,7 @@
 {
   "repoRoot": ".",
   "workDir": ".sdd-runner",
-  "model": "opencode-go/ox-alpha-free",
-  "budget": 5,
+  "model": "zai-coding-plan/glm-5.3",
+  "budget": 10,
   "deadline": 90
 }
