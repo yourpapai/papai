@@ -17,7 +17,8 @@ import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
 import type { EventInput } from './events.js'
 import { buildResolveCost } from './gate-digest.js'
-import { runGateReopen } from './gate.js'
+import type { OrchestratorDeps } from './gate-digest.js'
+import { runGateReopen, latestSettledGateVersion } from './gate.js'
 import type { LiveViewWiring } from './live-view.js'
 import { wireLiveView } from './live-view.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
@@ -29,9 +30,11 @@ import type { Verbosity } from './renderer.js'
 import { buildReport } from './report.js'
 import type { ChangeDirSummary, ReportInput } from './report.js'
 import { loadRunState, resolveRunId } from './run-state.js'
-import { requestCalmStop } from './stop-controller.js'
+import { runSessionCreate } from './session-create.js'
+import { requestCalmStop, stopRun } from './stop-controller.js'
 import { registerTerminalTitle, TERMINAL_TITLE_RESTORE } from './terminal-title.js'
 import { createRunScreenSession } from './tui-run-session.js'
+import { runSessionPicker } from './tui-session-picker.js'
 
 export const USAGE = [
   'sdd — autonomous SDD pipeline',
@@ -41,7 +44,7 @@ export const USAGE = [
   '  sdd stop [<run-id>]',
   '',
   'A task file starts a run; a run id routes by its state (gate decision, resume, report).',
-  'No target routes to the sole candidate or lists candidates.',
+  'No target opens the session screen on a terminal — pick a run or start a new one by description.',
   'Gate decisions: the TUI on a terminal; otherwise hand-edit the gate file.',
 ].join('\n')
 
@@ -132,7 +135,7 @@ async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: st
   const renderer = createRenderer(process.stdout, verbosity, { resolveCost })
   const live = harnessLiveView(renderer.renderEvent)
   registerTitleIfTty(process.stdout)
-  const orchestratorDeps = {
+  const orchestratorDeps: OrchestratorDeps = {
     config,
     spawn: realSpawn,
     execGit,
@@ -144,11 +147,17 @@ async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: st
           unmountRunScreen: live.unmountRunScreen,
         }
       : { render: live.render }),
-    stdout: (line: string): void => {
-      process.stdout.write(`${line}\n`)
-    },
+    stdout: harnessStdout,
     interactive: (): boolean => stdinIsInteractive(),
   }
+  return harnessMembers(config, orchestratorDeps, execGit)
+}
+
+function harnessMembers(
+  config: { readonly workDir: string; readonly repoRoot: string },
+  orchestratorDeps: OrchestratorDeps,
+  execGit: ExecGitFn,
+): CliHarness {
   return {
     workDir: config.workDir,
     runStart: (options) => runStart(orchestratorDeps, options),
@@ -158,16 +167,32 @@ async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: st
       return runGateResume(orchestratorDeps, resolved, {})
     },
     runContinue: (runId, autonomy) => runContinue(orchestratorDeps, runId, autonomy),
-    requestCalmStop: async (runId) => {
-      const state = await loadRunState(config.workDir, runId)
-      requestCalmStop(state.runDir)
-    },
+    requestCalmStop: (runId) => stopRun(config.workDir, runId),
     runGateReopen: (runId, gateVersion) =>
       resolveAndCall(config.workDir, runId, (r) => runGateReopen(orchestratorDeps, config.workDir, r, gateVersion)),
     buildReport: (runId, pr) => buildRunReport(config, runId, pr, execGit),
-    stdout: (line) => {
-      process.stdout.write(`${line}\n`)
-    },
+    stdout: harnessStdout,
+    interactive: (): boolean => stdinIsInteractive(),
+    sessionPick: () => runSessionPicker({ workDir: config.workDir }),
+    sessionCreate: createSessionStarter(orchestratorDeps),
+    latestSettledGateVersion: (runId) =>
+      resolveAndCall(config.workDir, runId, (r) => latestSettledGateVersion(config.workDir, r)),
+  }
+}
+
+function harnessStdout(line: string): void {
+  process.stdout.write(`${line}\n`)
+}
+
+type DepthOverride = Parameters<typeof runStart>[1] extends { depthOverride?: infer D } ? D : never
+
+function createSessionStarter(orchestratorDeps: OrchestratorDeps): (depth?: DepthOverride) => Promise<void> {
+  return async (depth): Promise<void> => {
+    await runSessionCreate({
+      start: ({ taskText }) =>
+        runStart(orchestratorDeps, { taskText, ...(depth === undefined ? {} : { depthOverride: depth }) }),
+      stdout: harnessStdout,
+    })
   }
 }
 

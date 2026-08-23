@@ -9,12 +9,9 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { appendEvent } from '../../sdd-runner/src/events.js'
-import type { DepthProfile } from '../../sdd-runner/src/events.js'
-import type { ReplayState } from '../../sdd-runner/src/replay.js'
 import { ROUND_CAPS } from '../../sdd-runner/src/review-model.js'
 import {
   createRunState,
-  deriveResumePoint,
   listPendingGates,
   loadRunState,
   readAllRunStates,
@@ -22,7 +19,6 @@ import {
   resolveRunId,
   saveRunState,
 } from '../../sdd-runner/src/run-state.js'
-import type { PersistedRunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
 
@@ -45,42 +41,11 @@ afterEach(() => {
   }
 })
 
-const emptyReplay: ReplayState = {
-  stages: {
-    intake: 'pending',
-    draft: 'pending',
-    review: 'pending',
-    decompose: 'pending',
-    atomicity: 'pending',
-    gate: 'pending',
-  },
-  depth: null,
-  round: null,
-  perRound: [],
-  lastVerdict: null,
-  gate: null,
-  autoDecisions: [],
-}
-
-type ArtifactStates = Record<'proposal' | 'specs' | 'design' | 'assumptions' | 'review' | 'tasks', string>
-
-function artifacts(overrides: Partial<ArtifactStates> = {}): ArtifactStates {
-  return {
-    proposal: 'ready',
-    specs: 'blocked',
-    design: 'blocked',
-    assumptions: 'blocked',
-    review: 'blocked',
-    tasks: 'blocked',
-    ...overrides,
-  }
-}
-
 describe('createRunState + loadRunState', () => {
   it('creates a run dir with a schema-valid state.json and reloads it', async () => {
     const workDir = makeWorkDir()
     const state = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
-    expect(state.runId).toMatch(/^\d{4}-\d{2}-\d{2}T/u)
+    expect(state.runId).toBe('add-thing')
     expect(state.stage).toBe('intake')
     expect(state.depth).toBeNull()
     expect(state.round).toBe(0)
@@ -93,13 +58,14 @@ describe('createRunState + loadRunState', () => {
     expect(loaded).toEqual(state)
   })
 
-  it('builds the run id from the ISO timestamp with colons and dots dashed plus an 8-char uuid prefix', async () => {
+  it('honors an explicit runId override so legacy datetime dirs stay creatable', async () => {
     const workDir = makeWorkDir()
     const state = await createRunState(
-      { workDir, repoRoot: '/repo', changeName: 'add-thing' },
+      { workDir, repoRoot: '/repo', changeName: 'add-thing', runId: '2026-03-04T05-06-07-891Z-abcd1234' },
       new Date('2026-03-04T05:06:07.891Z'),
     )
-    expect(state.runId).toMatch(/^2026-03-04T05-06-07-891Z-[0-9a-f]{8}$/u)
+    expect(state.runId).toBe('2026-03-04T05-06-07-891Z-abcd1234')
+    expect(state.createdAt).toBe('2026-03-04T05:06:07.891Z')
   })
 
   it('rejects a corrupt state.json naming the run and preserving the cause', async () => {
@@ -110,6 +76,32 @@ describe('createRunState + loadRunState', () => {
     expect(failure.message).toMatch(/state\.json/u)
     expect(failure.message).toContain(state.runId)
     expect(failure.cause).toBeDefined()
+  })
+})
+
+describe('session id allocation', () => {
+  it('refuses creation while a non-terminal run holds the name, naming the holder', async () => {
+    const workDir = makeWorkDir()
+    await createRunState({ workDir, repoRoot: '/repo', changeName: 'fix-flaky-auth-test' })
+    const failure = await errorOf(createRunState({ workDir, repoRoot: '/repo', changeName: 'fix-flaky-auth-test' }))
+    expect(failure.message).toContain('fix-flaky-auth-test')
+    expect(failure.message).toMatch(/non-terminal/u)
+  })
+
+  it('suffixes the id when only terminal runs hold the name', async () => {
+    const workDir = makeWorkDir()
+    const first = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    await saveRunState({ ...first, status: 'completed' })
+    const second = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    expect(second.runId).toBe('add-thing-2')
+  })
+
+  it('uses the plain name when it is entirely free, even with sibling suffixed runs', async () => {
+    const workDir = makeWorkDir()
+    const sibling = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing-2' })
+    await saveRunState({ ...sibling, status: 'completed' })
+    const state = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    expect(state.runId).toBe('add-thing')
   })
 })
 
@@ -196,225 +188,6 @@ describe('roundCap', () => {
     const valid = fs.readFileSync(created.statePath, 'utf8')
     fs.writeFileSync(created.statePath, valid.replace(/"roundCap":\s*\d+/u, '"roundCap":0'))
     await expect(loadRunState(workDir, created.runId)).rejects.toThrow(/state\.json/u)
-  })
-})
-
-function createSeeded(workDir: string): PersistedRunState {
-  return {
-    runId: 'seeded-run',
-    repoRoot: '/repo',
-    workDir,
-    changeName: 'add-thing',
-    stage: 'review' as const,
-    depth: null as DepthProfile | null,
-    round: 0,
-    gate: null,
-    status: 'running' as const,
-    autoExtendsUsed: 0,
-    gateDeadlineAt: null,
-    gateDeadlineReArmed: false,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  }
-}
-
-describe('deriveResumePoint', () => {
-  it('resumes at the gate when gate-pending, preserving mode and round', async () => {
-    const workDir = makeWorkDir()
-    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
-    const gated = {
-      ...created,
-      stage: 'gate' as const,
-      depth: 'M' as const,
-      round: 3,
-      gate: { mode: 'final' as const, version: 2 },
-    }
-    const point = deriveResumePoint(
-      gated,
-      artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'done' }),
-      emptyReplay,
-    )
-    expect(point).toMatchObject({ stage: 'gate', round: 3 })
-  })
-
-  it('resumes at intake when depth is not yet classified', async () => {
-    const workDir = makeWorkDir()
-    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
-    expect(deriveResumePoint(created, artifacts(), emptyReplay).stage).toBe('intake')
-  })
-
-  it('resumes at draft when draft artifacts are incomplete for the depth profile', async () => {
-    const workDir = makeWorkDir()
-    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
-    const mRun = { ...created, depth: 'M' as const, stage: 'draft' as const }
-    expect(deriveResumePoint(mRun, artifacts({ proposal: 'done', specs: 'done' }), emptyReplay).stage).toBe('draft')
-    const sRun = { ...created, depth: 'S' as const, stage: 'draft' as const }
-    const point = deriveResumePoint(sRun, artifacts({ proposal: 'done', specs: 'done', review: 'ready' }), {
-      ...emptyReplay,
-      lastVerdict: null,
-    })
-    expect(point.stage).not.toBe('draft')
-  })
-
-  it('resumes mid-review at the recorded round when killed mid-round', async () => {
-    const workDir = makeWorkDir()
-    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
-    const midRound = { ...created, depth: 'M' as const, stage: 'review' as const, round: 2 }
-    const replay: ReplayState = {
-      ...emptyReplay,
-      round: { current: 2, cap: 3 },
-      lastVerdict: {
-        round: 1,
-        verdict: 'open',
-        counts: { blocker: 1, material: 0, nitpick: 0 },
-        resolved: 0,
-        dismissed: 0,
-      },
-    }
-    const point = deriveResumePoint(
-      midRound,
-      artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'ready' }),
-      replay,
-    )
-    expect(point).toMatchObject({ stage: 'review', round: 2 })
-  })
-
-  it('skips the review loop only when a converged verdict is recorded', async () => {
-    const workDir = makeWorkDir()
-    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
-    const afterReview = { ...created, depth: 'M' as const, stage: 'decompose' as const, round: 2 }
-    const converged: ReplayState = {
-      ...emptyReplay,
-      lastVerdict: {
-        round: 2,
-        verdict: 'converged',
-        counts: { blocker: 0, material: 0, nitpick: 1 },
-        resolved: 0,
-        dismissed: 0,
-      },
-    }
-    const done = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done' })
-    expect(deriveResumePoint(afterReview, done, converged).stage).toBe('decompose')
-    const notConverged: ReplayState = {
-      ...emptyReplay,
-      lastVerdict: {
-        round: 1,
-        verdict: 'open',
-        counts: { blocker: 1, material: 0, nitpick: 0 },
-        resolved: 0,
-        dismissed: 0,
-      },
-    }
-    expect(deriveResumePoint(afterReview, done, notConverged).stage).toBe('review')
-  })
-
-  it('resumes at atomicity when tasks exist but atomicity was not exited (M profile)', async () => {
-    const workDir = makeWorkDir()
-    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
-    const state = { ...created, depth: 'M' as const, stage: 'atomicity' as const, round: 1 }
-    const converged: ReplayState = {
-      ...emptyReplay,
-      lastVerdict: {
-        round: 1,
-        verdict: 'converged',
-        counts: { blocker: 0, material: 0, nitpick: 0 },
-        resolved: 0,
-        dismissed: 0,
-      },
-    }
-    const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'done' })
-    expect(deriveResumePoint(state, arts, converged).stage).toBe('atomicity')
-    const exitedReplay: ReplayState = { ...converged, stages: { ...converged.stages, atomicity: 'done' } }
-    expect(deriveResumePoint(state, arts, exitedReplay).stage).toBe('gate')
-  })
-
-  it('skips atomicity for the S profile', async () => {
-    const workDir = makeWorkDir()
-    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
-    const state = { ...created, depth: 'S' as const, stage: 'atomicity' as const, round: 1 }
-    const converged: ReplayState = {
-      ...emptyReplay,
-      lastVerdict: {
-        round: 1,
-        verdict: 'converged',
-        counts: { blocker: 0, material: 0, nitpick: 0 },
-        resolved: 0,
-        dismissed: 0,
-      },
-    }
-    const arts = artifacts({ proposal: 'done', specs: 'done', review: 'done', tasks: 'done' })
-    expect(deriveResumePoint(state, arts, converged).stage).toBe('gate')
-  })
-
-  it('resumes at decompose when a settled review left tasks.md missing with no final gate presented (task 3.1)', () => {
-    const workDir = makeWorkDir()
-    const settled: ReplayState = {
-      ...emptyReplay,
-      lastVerdict: {
-        round: 3,
-        verdict: 'open',
-        counts: { blocker: 0, material: 1, nitpick: 0 },
-        resolved: 2,
-        dismissed: 1,
-      },
-      gate: { mode: 'early', version: 1, answered: true },
-    }
-    const state = {
-      ...createSeeded(workDir),
-      depth: 'M' as const,
-      stage: 'review' as const,
-      round: 3,
-      gate: null,
-    }
-    const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'blocked' })
-    expect(deriveResumePoint(state, arts, settled)).toMatchObject({ stage: 'decompose', round: 3 })
-  })
-
-  it('resumes at atomicity when tasks.md exists at depth != S but the atomicity report is absent (task 3.1)', () => {
-    const workDir = makeWorkDir()
-    const settled: ReplayState = {
-      ...emptyReplay,
-      lastVerdict: {
-        round: 2,
-        verdict: 'converged',
-        counts: { blocker: 0, material: 0, nitpick: 1 },
-        resolved: 1,
-        dismissed: 0,
-      },
-    }
-    const state = {
-      ...createSeeded(workDir),
-      depth: 'M' as const,
-      stage: 'decompose' as const,
-      round: 2,
-      gate: null,
-    }
-    const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'done' })
-    expect(deriveResumePoint(state, arts, settled)).toMatchObject({ stage: 'atomicity', round: 2 })
-  })
-
-  it('keeps gate-pending for a run whose final gate was presented (pin, task 3.1)', () => {
-    const workDir = makeWorkDir()
-    const presented: ReplayState = {
-      ...emptyReplay,
-      lastVerdict: {
-        round: 2,
-        verdict: 'converged',
-        counts: { blocker: 0, material: 0, nitpick: 0 },
-        resolved: 0,
-        dismissed: 0,
-      },
-      gate: { mode: 'final', version: 1, answered: false },
-    }
-    const state = {
-      ...createSeeded(workDir),
-      depth: 'M' as const,
-      stage: 'gate' as const,
-      round: 2,
-      gate: { mode: 'final' as const, version: 1 },
-    }
-    const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done', tasks: 'done' })
-    expect(deriveResumePoint(state, arts, presented)).toMatchObject({ stage: 'gate', round: 2 })
   })
 })
 
@@ -524,85 +297,6 @@ describe('resolveRunId', () => {
     const message = (await errorOf(resolveRunId(workDir, 'anything'))).message
     expect(message).toContain(path.join(workDir, 'runs'))
     expect(message).toContain('anything')
-  })
-})
-
-describe('reviewSettled via deriveResumePoint', () => {
-  const settledBase = (): PersistedRunState => {
-    const base: PersistedRunState = {
-      runId: 'run-1',
-      repoRoot: '/repo',
-      workDir: '/w',
-      changeName: 'add-thing',
-      stage: 'review',
-      depth: 'M',
-      round: 1,
-      roundCap: 3,
-      autoExtendsUsed: 0,
-      gate: null,
-      gateDeadlineAt: null,
-      gateDeadlineReArmed: false,
-      status: 'running',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    }
-    return base
-  }
-  const doneArtifacts = artifacts({ proposal: 'done', specs: 'done', design: 'done', tasks: 'done' })
-
-  it('treats an answered early gate as settled and resumes past review', () => {
-    const point = deriveResumePoint(settledBase(), doneArtifacts, {
-      ...emptyReplay,
-      gate: { mode: 'early', answered: true, version: 1 },
-      lastVerdict: {
-        round: 1,
-        verdict: 'open',
-        counts: { blocker: 0, material: 0, nitpick: 0 },
-        resolved: 0,
-        dismissed: 0,
-      },
-    })
-    expect(point.stage).toBe('atomicity')
-    expect(point.reason).toBe('atomicity check not recorded')
-  })
-
-  it('an unanswered early gate with a cap-hit verdict stays at review', () => {
-    const point = deriveResumePoint(settledBase(), doneArtifacts, {
-      ...emptyReplay,
-      gate: { mode: 'early', answered: false, version: 1 },
-      lastVerdict: {
-        round: 1,
-        verdict: 'open',
-        counts: { blocker: 0, material: 0, nitpick: 0 },
-        resolved: 0,
-        dismissed: 0,
-      },
-    })
-    expect(point.stage).toBe('review')
-    expect(point.reason).toBe('review loop not converged')
-  })
-
-  it('a final answered gate does not count as an early-gate approve', () => {
-    const point = deriveResumePoint(settledBase(), doneArtifacts, {
-      ...emptyReplay,
-      gate: { mode: 'final', answered: true, version: 1 },
-    })
-    expect(point.stage).toBe('review')
-  })
-
-  it('a decompose stage exit counts as settled even without a verdict', () => {
-    const point = deriveResumePoint(settledBase(), doneArtifacts, {
-      ...emptyReplay,
-      stages: { ...emptyReplay.stages, decompose: 'done', atomicity: 'done' },
-    })
-    expect(point.stage).toBe('gate')
-    expect(point.reason).toBe('all stages complete')
-  })
-
-  it('picks the max of recorded round, replay round, and 1 when resuming mid-review', () => {
-    const base = { ...settledBase(), round: 0 }
-    const point = deriveResumePoint(base, doneArtifacts, { ...emptyReplay, round: { current: 3, cap: 3 } })
-    expect(point).toMatchObject({ stage: 'review', round: 3 })
   })
 })
 

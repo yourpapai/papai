@@ -223,6 +223,15 @@ function latestSettledGate(
   return latest
 }
 
+/** Version of the run's most recently answered gate, or null when none settled. */
+export async function latestSettledGateVersion(workDir: string, runId: string): Promise<number | null> {
+  const state = await loadRunState(workDir, runId)
+  const settled = latestSettledGate(
+    readEvents(path.join(state.runDir, 'events.ndjson')).filter((event) => event.type === 'gate'),
+  )
+  return settled?.version ?? null
+}
+
 /**
  * Re-render a settled gate file as an unanswered digest: drop the
  * `## Gate response` section, uncheck every checkbox, carry the digest

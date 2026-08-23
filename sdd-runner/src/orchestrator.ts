@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { AgentLayerDeps } from './agent-layer.js'
@@ -26,7 +26,7 @@ import type { ReviewLoopResult } from './review-loop.js'
 import { createRunState, loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { createStageMachine } from './stage-machine.js'
-import { createStopMarkerSeam } from './stop-controller.js'
+import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controller.js'
 import type { CalmStopController } from './stop-controller.js'
 
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
@@ -43,7 +43,11 @@ function resolveAutonomy(deps: OrchestratorDeps, overrides: AutonomyOverrides = 
 }
 
 export interface StartOptions {
-  readonly taskFile: string
+  readonly taskFile?: string
+  /** Inline task text (D3): starts a session without a task file. */
+  readonly taskText?: string
+  /** Explicit session name; defaults to the first heading of inline text. */
+  readonly changeName?: string
   readonly depthOverride?: DepthProfile
   readonly verbosity?: Verbosity
   readonly autonomy?: AutonomyOverrides
@@ -80,13 +84,28 @@ interface PipelineEnv {
 }
 
 export async function runStart(deps: OrchestratorDeps, options: StartOptions): Promise<RunStartResult> {
-  const taskText = await readFile(options.taskFile, 'utf8')
-  const changeName = deriveChangeName(options.taskFile, taskText)
+  let taskText: string
+  let changeName: string
+  if (options.taskFile === undefined) {
+    const text = options.taskText
+    if (text === undefined) {
+      throw new Error('runStart requires a task file or inline task text')
+    }
+    taskText = text
+    changeName = options.changeName ?? deriveChangeName('task.md', taskText)
+  } else {
+    taskText = await readFile(options.taskFile, 'utf8')
+    changeName = deriveChangeName(options.taskFile, taskText)
+  }
   const state = await createRunState(
     { workDir: deps.config.workDir, repoRoot: deps.config.repoRoot, changeName },
     nowOf(deps),
   )
+  if (options.taskText !== undefined) {
+    await writeFile(path.join(state.runDir, 'task.md'), taskText, 'utf8')
+  }
   const emit = buildBus(deps, logPathFor(state))
+  writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
   try {
     const env = buildPipelineEnv(deps, state, emit, {
@@ -98,6 +117,7 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
     const { depth, reviewResult } = await runPlanningStages(env)
     return await runPostReviewToGate(env, depth, reviewResult)
   } finally {
+    removeHolder(state.runDir)
     deps.unmountRunScreen?.()
   }
 }
@@ -119,6 +139,7 @@ export async function runResume(
   reportResumeDecision(deps, emit, decision)
   const depth = state.depth ?? 'S'
   const stop = createStopMarkerSeam(state.runDir)
+  writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
   try {
     const env = buildPipelineEnv(deps, state, emit, {
@@ -138,6 +159,7 @@ export async function runResume(
     )
     return await settleStoppedResult(deps, state, stop, result)
   } finally {
+    removeHolder(state.runDir)
     deps.unmountRunScreen?.()
   }
 }

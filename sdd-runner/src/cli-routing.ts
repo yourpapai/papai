@@ -21,6 +21,8 @@ import { readAllRunStates } from './run-state.js'
 
 export type RouteAction =
   | { readonly kind: 'start'; readonly taskFile: string }
+  | { readonly kind: 'create' }
+  | { readonly kind: 'select'; readonly candidates: readonly { runId: string; hint: string }[] }
   | { readonly kind: 'gate'; readonly runId: string }
   | { readonly kind: 'resume'; readonly runId: string }
   | { readonly kind: 'report'; readonly runId: string }
@@ -32,6 +34,8 @@ export interface ResolveTargetInput {
   readonly workDir: string
   readonly target: string | undefined
   readonly verb?: 'route' | 'stop'
+  /** Interactive terminal owns stdin+stdout: ambiguity selects, zero runs create. */
+  readonly tty?: boolean
 }
 
 function candidateList(candidates: readonly { runId: string; hint: string }[]): string {
@@ -70,7 +74,7 @@ export async function resolveTarget(input: ResolveTargetInput): Promise<RouteAct
     const runId = await resolveRunId(workDir, target)
     return routeByState(workDir, runId)
   }
-  return routeBySoleCandidate(workDir)
+  return routeBySoleCandidate(workDir, input.tty === true)
 }
 
 async function routeByState(workDir: string, runId: string): Promise<RouteAction> {
@@ -83,33 +87,50 @@ async function routeByState(workDir: string, runId: string): Promise<RouteAction
   return { kind: 'report', runId }
 }
 
-async function routeBySoleCandidate(workDir: string): Promise<RouteAction> {
+async function routeBySoleCandidate(workDir: string, tty: boolean): Promise<RouteAction> {
   const states = await readAllRunStates(workDir)
   if (states.length === 0) {
+    if (tty) return { kind: 'create' }
     throw new Error('no target given and no runs exist — pass a task file: sdd <task-file>')
   }
   const pending = await listPendingGates(workDir)
-  if (pending.length === 1) return { kind: 'gate', runId: pending[0]?.runId ?? '' }
-  if (pending.length > 1) {
-    throw new Error(
-      `several gate-pending runs — pick one:\n${candidateList(pending.map((p) => ({ runId: p.runId, hint: `gate ${p.gateMode} v${p.gateVersion}` })))}`,
-    )
-  }
+  const pendingIds = new Set(pending.map((p) => p.runId))
   const interrupted = states.filter((s) => isInterrupted(s.status) || s.status === 'running')
-  if (interrupted.length === 1) return { kind: 'resume', runId: interrupted[0]?.runId ?? '' }
-  if (interrupted.length > 1) {
-    throw new Error(
-      `several interrupted runs — pick one:\n${candidateList(interrupted.map((s) => ({ runId: s.runId, hint: s.status })))}`,
-    )
-  }
+  const interruptedIds = new Set(interrupted.map((s) => s.runId))
   const completed = states.filter((s) => s.status === 'completed')
-  if (completed.length === 1) return { kind: 'report', runId: completed[0]?.runId ?? '' }
-  if (completed.length > 1) {
-    throw new Error(
-      `several completed runs — pick one:\n${candidateList(completed.map((s) => ({ runId: s.runId, hint: 'completed' })))}`,
-    )
+  const completedIds = new Set(completed.map((s) => s.runId))
+  if (!tty) {
+    if (pending.length === 1) return { kind: 'gate', runId: pending[0]?.runId ?? '' }
+    if (pending.length > 1) {
+      const candidates = pending.map((p) => ({ runId: p.runId, hint: `gate ${p.gateMode} v${p.gateVersion}` }))
+      throw new Error(`several gate-pending runs — pick one:\n${candidateList(candidates)}`)
+    }
+    if (interrupted.length === 1) return { kind: 'resume', runId: interrupted[0]?.runId ?? '' }
+    if (interrupted.length > 1) {
+      const candidates = interrupted.map((s) => ({ runId: s.runId, hint: s.status }))
+      throw new Error(`several interrupted runs — pick one:\n${candidateList(candidates)}`)
+    }
+    if (completed.length === 1) return { kind: 'report', runId: completed[0]?.runId ?? '' }
+    if (completed.length > 1) {
+      const candidates = completed.map((s) => ({ runId: s.runId, hint: 'completed' }))
+      throw new Error(`several completed runs — pick one:\n${candidateList(candidates)}`)
+    }
+    throw new Error('no target given and no routable runs exist — pass a task file: sdd <task-file>')
   }
-  throw new Error('no target given and no routable runs exist — pass a task file: sdd <task-file>')
+  const routableCount = states.filter(
+    (s) => pendingIds.has(s.runId) || interruptedIds.has(s.runId) || completedIds.has(s.runId),
+  ).length
+  if (routableCount === 1) {
+    // A sole gate or interrupted run is the obvious next step — route to it.
+    // A sole completed run is not: its report is passive output, so a
+    // terminal opens the session screen (report stays one Enter away, and
+    // creation stays reachable instead of being stranded behind a dump).
+    const solePending = pending.length === 1 ? pending[0]?.runId : undefined
+    if (solePending !== undefined) return { kind: 'gate', runId: solePending }
+    const soleInterrupted = interrupted.length === 1 ? interrupted[0]?.runId : undefined
+    if (soleInterrupted !== undefined) return { kind: 'resume', runId: soleInterrupted }
+  }
+  return { kind: 'select', candidates: states.map((s) => ({ runId: s.runId, hint: s.status })) }
 }
 
 export { readAllRunStates }

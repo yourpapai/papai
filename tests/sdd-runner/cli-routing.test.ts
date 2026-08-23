@@ -27,7 +27,11 @@ afterEach(() => {
 function seedRun(
   workDir: string,
   runId: string,
-  mutate: (state: { gate: { mode: 'final' | 'early'; version: number } | null; status: string }) => void,
+  mutate: (state: {
+    gate: { mode: 'final' | 'early'; version: number } | null
+    status: string
+    stage?: 'intake' | 'draft' | 'review' | 'decompose' | 'atomicity' | 'gate'
+  }) => void,
 ): string {
   const runDir = path.join(workDir, 'runs', runId)
 
@@ -52,6 +56,11 @@ function seedRun(
   mkdirSync(runDir, { recursive: true })
   writeFileSync(path.join(runDir, 'state.json'), JSON.stringify(state, null, 2))
   return runId
+}
+
+function selectCandidates(action: RouteAction): { readonly runId: string; readonly hint: string }[] {
+  if (action.kind === 'select') return [...action.candidates]
+  throw new Error(`expected a select action, got '${action.kind}'`)
 }
 
 function failureMessageOf(promise: Promise<unknown>): Promise<string | null> {
@@ -135,6 +144,60 @@ describe('sdd [<target>] routing table (6.1/6.2)', () => {
     await expect(resolveTarget({ workDir: path.join(dir, '.sdd'), target: undefined })).rejects.toThrow(
       /task file|target/u,
     )
+  })
+
+  it('on a terminal, a sole completed run opens the session screen instead of dumping its report', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'sole-done', (state) => {
+      state.status = 'completed'
+    })
+    seedRun(workDir, 'dead-husk', (state) => {
+      state.status = 'aborted'
+    })
+    const action = await resolveTarget({ workDir, target: undefined, tty: true })
+    expect(action.kind).toBe('select')
+    expect(selectCandidates(action).map((c) => c.runId)).toEqual(['sole-done', 'dead-husk'])
+    expect(await resolveTarget({ workDir, target: undefined, tty: false })).toMatchObject({
+      kind: 'report',
+      runId: 'sole-done',
+    })
+  })
+
+  it('on a terminal, no target with no runs routes to the creation entry', async () => {
+    const dir = makeDir()
+    const action = await resolveTarget({ workDir: path.join(dir, '.sdd'), target: undefined, tty: true })
+    expect(action).toEqual({ kind: 'create' })
+  })
+
+  it('on a terminal, ambiguous no-target opens the session screen with every candidate', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'multi-1', (state) => {
+      state.gate = { mode: 'final', version: 1 }
+    })
+    seedRun(workDir, 'multi-2', (state) => {
+      state.gate = { mode: 'final', version: 1 }
+    })
+    seedRun(workDir, 'done-1', (state) => {
+      state.status = 'completed'
+      state.stage = 'gate'
+    })
+    const action = await resolveTarget({ workDir, target: undefined, tty: true })
+    const ids = selectCandidates(action)
+      .map((candidate) => candidate.runId)
+      .sort()
+    expect(ids).toEqual(['done-1', 'multi-1', 'multi-2'])
+  })
+
+  it('aborted-only runs are selectable on a terminal instead of failing as unroutable', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'dead-1', (state) => {
+      state.status = 'aborted'
+    })
+    const action = await resolveTarget({ workDir, target: undefined, tty: true })
+    expect(action.kind).toBe('select')
   })
 
   it('legacy subcommand shapes fail naming the replacement routing usage', async () => {

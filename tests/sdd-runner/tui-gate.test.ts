@@ -91,6 +91,20 @@ describe('TUI gate screen (4.4/4.5)', () => {
     unmount()
   })
 
+  it('marks the cursor row so keyboard navigation is visible', () => {
+    const GateScreen = createGateScreen()
+    const { lastFrame, unmount } = render(createElement(GateScreen, baseProps({ cursor: 1 })))
+    const frame = lastFrame()
+    expect(frame).toContain('❯ [x] F1')
+    expect(frame).not.toContain('❯ [x] A1')
+    expect(frame).toContain('  [x] A1 guests stay read-only')
+    unmount()
+    const { lastFrame: frame2, unmount: u2 } = render(createElement(GateScreen, baseProps({ cursor: 4 })))
+    expect(frame2()).toContain('❯ [ ] T1 trajectory is improving')
+    expect(frame2()).not.toContain('❯ [x] F2')
+    u2()
+  })
+
   it('renders consequences beside the decision menu', () => {
     const GateScreen = createGateScreen()
     const { lastFrame, unmount } = render(createElement(GateScreen, baseProps()))

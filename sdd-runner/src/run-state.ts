@@ -10,11 +10,11 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import { DepthProfileSchema, StageIdSchema } from './events.js'
-import type { DepthProfile, StageId } from './events.js'
-import type { ReplayState } from './replay.js'
+import type { DepthProfile } from './events.js'
 import { ROUND_CAPS } from './review-model.js'
 import { readLiteRecord } from './run-lite.js'
 import type { PersistedLite } from './run-lite.js'
+import { slugifySessionId } from './session-id.js'
 
 export const PersistedRunStateSchema = z.object({
   runId: z.string().min(1),
@@ -69,12 +69,6 @@ export function steerSeamFor(
   }
 }
 
-export interface ResumePoint {
-  readonly stage: StageId
-  readonly round: number
-  readonly reason: string
-}
-
 export interface CreateRunStateInput {
   readonly workDir: string
   readonly repoRoot: string
@@ -86,8 +80,46 @@ function makeRunId(now: Date): string {
   return `${now.toISOString().replace(/[:.]/gu, '-')}-${randomUUID().slice(0, 8)}`
 }
 
+const TERMINAL_STATUSES = new Set(['completed', 'aborted', 'failed'])
+const MAX_SUFFIX = 1000
+
+/**
+ * Allocate a task-name session id (D1): the slugified change name when free;
+ * a refusal naming the holder while a non-terminal run owns it; otherwise the
+ * next `<slug>-<n>` suffix past terminal holders. Legacy datetime ids stay
+ * valid through the explicit `runId` input.
+ */
+export async function allocateSessionId(workDir: string, name: string): Promise<string> {
+  if (name === '') throw new Error('cannot derive a session id from an empty change name')
+  const states = await readAllRunStates(workDir)
+  const byId = new Map(states.map((state) => [state.runId, state]))
+  const liveHolder = (id: string): PersistedLite | undefined => {
+    const found = byId.get(id)
+    return found !== undefined && !TERMINAL_STATUSES.has(found.status) ? found : undefined
+  }
+  const holder = liveHolder(name)
+  if (holder !== undefined) {
+    throw new Error(
+      `session id '${name}' is held by non-terminal run ${holder.runId} (status ${holder.status}) — pick another name or settle that run`,
+    )
+  }
+  if (!byId.has(name)) return name
+  for (let i = 2; i < MAX_SUFFIX; i += 1) {
+    const candidate = `${name}-${String(i)}`
+    const candidateHolder = liveHolder(candidate)
+    if (candidateHolder !== undefined) {
+      throw new Error(
+        `session id '${candidate}' is held by non-terminal run ${candidateHolder.runId} (status ${candidateHolder.status})`,
+      )
+    }
+    if (!byId.has(candidate)) return candidate
+  }
+  throw new Error(`no free session id derived from '${name}' (${String(MAX_SUFFIX)} suffixes exhausted)`)
+}
+
 export async function createRunState(input: CreateRunStateInput, now: Date = new Date()): Promise<RunState> {
-  const runId = input.runId ?? makeRunId(now)
+  const slug = slugifySessionId(input.changeName)
+  const runId = input.runId ?? (await allocateSessionId(input.workDir, slug === '' ? makeRunId(now) : slug))
   const runDir = path.join(input.workDir, 'runs', runId)
   await mkdir(runDir, { recursive: true })
   const depth = null
@@ -228,47 +260,4 @@ export async function saveRunState(state: RunState, now: Date = new Date()): Pro
   await mkdir(next.runDir, { recursive: true })
   await writeFile(next.statePath, `${JSON.stringify(PersistedRunStateSchema.parse(next), null, 2)}\n`)
   return next
-}
-
-function isDone(artifacts: Record<string, string>, id: string): boolean {
-  return artifacts[id] === 'done'
-}
-
-function draftComplete(state: PersistedRunState, artifacts: Record<string, string>): boolean {
-  if (!isDone(artifacts, 'proposal') || !isDone(artifacts, 'specs')) return false
-  return state.depth === 'S' || isDone(artifacts, 'design')
-}
-
-/**
- * The review loop counts as settled when a converged verdict is recorded, a
- * cap-hit verdict was accepted by a human at an early gate (approve =
- * human-decree convergence, possibly via extend rounds whose last verdict
- * stays `open`), or the pipeline already moved past review into decompose
- * (severity-based convergence — nitpick-only cap-hit — flows through without
- * any gate). A presented-but-unanswered gate cannot reach the later clauses:
- * `state.gate !== null` short-circuits earlier.
- */
-function reviewSettled(replay: ReplayState): boolean {
-  if (replay.lastVerdict?.verdict === 'converged') return true
-  if (replay.gate?.mode === 'early' && replay.gate.answered) return true
-  return replay.stages.decompose !== 'pending'
-}
-
-export function deriveResumePoint(
-  state: PersistedRunState,
-  artifacts: Record<string, string>,
-  replay: ReplayState,
-): ResumePoint {
-  if (state.gate !== null) return { stage: 'gate', round: state.round, reason: 'gate-pending' }
-  if (state.depth === null) return { stage: 'intake', round: 0, reason: 'depth not classified' }
-  if (!draftComplete(state, artifacts)) return { stage: 'draft', round: 0, reason: 'draft artifacts incomplete' }
-  if (!reviewSettled(replay)) {
-    const round = Math.max(state.round, replay.round?.current ?? 0, 1)
-    return { stage: 'review', round, reason: 'review loop not converged' }
-  }
-  if (!isDone(artifacts, 'tasks')) return { stage: 'decompose', round: state.round, reason: 'tasks.md missing' }
-  if (state.depth !== 'S' && replay.stages.atomicity !== 'done') {
-    return { stage: 'atomicity', round: state.round, reason: 'atomicity check not recorded' }
-  }
-  return { stage: 'gate', round: state.round, reason: 'all stages complete' }
 }

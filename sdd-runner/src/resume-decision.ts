@@ -5,7 +5,7 @@
 
 import type { StageId } from './events.js'
 import type { ReplayState } from './replay.js'
-import { deriveResumePoint } from './run-state.js'
+import { deriveResumePoint } from './resume-point.js'
 import type { PersistedRunState } from './run-state.js'
 import type { SessionLedgerLine } from './session-ledger.js'
 

@@ -7,7 +7,8 @@ import { describe, expect, it } from 'bun:test'
 
 import type { ReplayState } from '../../sdd-runner/src/replay.js'
 import { resolveResumeDecision } from '../../sdd-runner/src/resume-decision.js'
-import { deriveResumePoint, PersistedRunStateSchema } from '../../sdd-runner/src/run-state.js'
+import { deriveResumePoint } from '../../sdd-runner/src/resume-point.js'
+import { PersistedRunStateSchema } from '../../sdd-runner/src/run-state.js'
 
 const emptyReplay: ReplayState = {
   stages: {

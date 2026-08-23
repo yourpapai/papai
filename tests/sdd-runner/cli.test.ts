@@ -78,7 +78,7 @@ function captureHarness(workDir: string): { harness: CliHarness; calls: string[]
     },
     requestCalmStop: (runId) => {
       calls.push(`stop:${runId}`)
-      return Promise.resolve()
+      return Promise.resolve({ kind: 'marker-requested', runId })
     },
     runGateReopen: (runId, version) => {
       calls.push(`reopen:${runId}:${version}`)
@@ -151,6 +151,31 @@ describe('main routing dispatch (6.2)', () => {
     const { harness, calls } = captureHarness(workDir)
     await main(['stop'], harness)
     expect(calls[0]).toBe('stop:only-active')
+    expect(calls[1]).toBe('out:calm stop requested for only-active — honored at the next boundary')
+  })
+
+  it('sdd stop prints the settle line for a dead run', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'zombie', (state) => {
+      state.status = 'running'
+    })
+    const calls: string[] = []
+    const harness: CliHarness = {
+      ...captureHarness(workDir).harness,
+      requestCalmStop: (runId) => {
+        calls.push(`stop:${runId}`)
+        return Promise.resolve({ kind: 'settled', runId, to: 'aborted' })
+      },
+      stdout: (line) => {
+        calls.push(`out:${line}`)
+      },
+    }
+    await main(['stop', 'zombie'], harness)
+    expect(calls[0]).toBe('stop:zombie')
+    expect(calls[1]).toBe(
+      'out:run zombie has no live process — settled as aborted · nothing to resume, start fresh: sdd <task-file>',
+    )
   })
 
   it('sdd <run> --reopen forwards to the gate reopen verb', async () => {

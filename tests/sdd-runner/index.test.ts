@@ -10,7 +10,8 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { USAGE, readChangeSummary, runEntry } from '../../sdd-runner/src/index.js'
-import { createRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
+import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
+import { writeHolder } from '../../sdd-runner/src/stop-controller.js'
 
 const tmpDirs: string[] = []
 
@@ -42,7 +43,7 @@ describe('USAGE', () => {
       '  sdd stop [<run-id>]',
       '',
       'A task file starts a run; a run id routes by its state (gate decision, resume, report).',
-      'No target routes to the sole candidate or lists candidates.',
+      'No target opens the session screen on a terminal — pick a run or start a new one by description.',
       'Gate decisions: the TUI on a terminal; otherwise hand-edit the gate file.',
     ])
   })
@@ -243,11 +244,27 @@ describe('runEntry wiring routes (in-process, mutation kills)', () => {
     const fx = makeEntryFixture()
     const state = await createRunState({ workDir: fx.workDir, repoRoot: fx.repoRoot, changeName: 'add-thing' })
     await saveRunState(state)
+    writeHolder(path.join(fx.workDir, 'runs', state.runId), process.pid)
     await expect(runEntryAgainst(fx, ['stop', state.runId, '--config', fx.configPath])).rejects.toThrow(
       /intercepted process\.exit\(0\)/u,
     )
     expect(fs.existsSync(path.join(fx.workDir, 'runs', state.runId, 'stop-requested'))).toBe(true)
     expect(fx.writes.join('')).toBe(`calm stop requested for ${state.runId} — honored at the next boundary\n`)
+    expect(fx.exitCodes).toEqual([0])
+  })
+
+  it('stop settles a dead run through the real wiring: no holder, run aborted, fresh-start pointer', async () => {
+    const fx = makeEntryFixture()
+    const state = await createRunState({ workDir: fx.workDir, repoRoot: fx.repoRoot, changeName: 'add-thing' })
+    await saveRunState(state)
+    await expect(runEntryAgainst(fx, ['stop', state.runId, '--config', fx.configPath])).rejects.toThrow(
+      /intercepted process\.exit\(0\)/u,
+    )
+    expect(fs.existsSync(path.join(fx.workDir, 'runs', state.runId, 'stop-requested'))).toBe(false)
+    expect(fx.writes.join('')).toBe(
+      `run ${state.runId} has no live process — settled as aborted · nothing to resume, start fresh: sdd <task-file>\n`,
+    )
+    expect((await loadRunState(fx.workDir, state.runId)).status).toBe('aborted')
     expect(fx.exitCodes).toEqual([0])
   })
 
