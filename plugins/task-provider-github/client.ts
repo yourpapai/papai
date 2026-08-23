@@ -137,6 +137,49 @@ export const resolveApiBaseUrl = (baseUrl: string): string => {
   return value.replace(/\/+$/u, '')
 }
 
+/**
+ * Rate-limit shape detection: GitHub overloads 403 for both authorization
+ * failure and rate limiting, so headers take precedence over the status code.
+ * 429, `Retry-After`, `x-ratelimit-reset`, or `x-ratelimit-remaining: 0` all
+ * mark the error rate-limited; a plain 403 does not (it is an auth failure).
+ */
+export const isRateLimitedError = (error: unknown): boolean => {
+  if (!(error instanceof GitHubApiError)) return false
+  if (error.statusCode === 429) return true
+  if (error.headers.has('retry-after')) return true
+  if (error.headers.has('x-ratelimit-reset')) return true
+  return error.headers.get('x-ratelimit-remaining') === '0'
+}
+
+/**
+ * Aggregates a paginated GitHub list endpoint: increments `page` at the fixed
+ * `per_page` size until a page comes back short or empty. `extractPage` parses
+ * one page (callers validate with their Zod schema; search pages unwrap `items`).
+ * Recursion, not a loop: each page decides whether the next one is fetched, so
+ * the requests are inherently sequential.
+ */
+export function githubPaginate<T>(
+  config: GitHubConfig,
+  path: string,
+  options: {
+    perPage?: number
+    query?: Record<string, string | number>
+    extractPage: (data: unknown) => T[]
+  },
+): Promise<T[]> {
+  const perPage = options.perPage ?? 100
+  const collectPage = async (page: number, accumulated: T[]): Promise<T[]> => {
+    const data = await githubFetch(config, 'GET', path, {
+      query: { ...options.query, page, per_page: perPage },
+    })
+    const items = options.extractPage(data)
+    const results = [...accumulated, ...items]
+    if (items.length < perPage) return results
+    return collectPage(page + 1, results)
+  }
+  return collectPage(1, [])
+}
+
 /** Low-level fetch wrapper for the GitHub REST API. */
 export function githubFetch(
   config: GitHubConfig,

@@ -6,6 +6,8 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { z } from 'zod'
+
 import type { ProviderRequestObservation } from '../../../src/analytics/provider-observer.js'
 import type { AnalyticsRequestContext } from '../../../src/analytics/provider-observer.js'
 import {
@@ -22,7 +24,8 @@ import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 const tracked = createTrackedLoggerMock()
 void mock.module('../../../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
 
-const { githubFetch, GitHubApiError, readErrorBody } = await import('../../../plugins/task-provider-github/client.js')
+const { githubFetch, githubPaginate, GitHubApiError, isRateLimitedError, readErrorBody } =
+  await import('../../../plugins/task-provider-github/client.js')
 
 const CANARY_URL = 'canary-host.example'
 const CANARY_PATH = '/repos/octocat/Hello-World/issues/1347'
@@ -228,6 +231,143 @@ describe('readErrorBody', () => {
     response.text = (): Promise<string> => Promise.reject(new Error('unusable'))
     const body = await readErrorBody(response)
     expect(body).toBeNull()
+  })
+})
+
+describe('githubPaginate', () => {
+  const numberPage = (data: unknown): number[] => z.array(z.number()).parse(data)
+  const searchItemsPage = (data: unknown): Array<{ number: number }> => {
+    if (typeof data !== 'object' || data === null || !('items' in data)) return []
+    const items: unknown = data.items
+    if (!Array.isArray(items)) return []
+    return items.filter(
+      (item): item is { number: number } => typeof item === 'object' && item !== null && 'number' in item,
+    )
+  }
+
+  test('aggregates full pages until a short page, sending page and per_page each time', async () => {
+    const urls: string[] = []
+    let call = 0
+    // two full pages of perPage 2, then a short page that stops pagination
+    const pages: number[][] = [[1, 2], [3, 4], [5]]
+    setMockFetch((url) => {
+      call += 1
+      urls.push(url)
+      return Promise.resolve(jsonResponse(pages[call - 1]))
+    })
+    const items = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubPaginate(config, '/repos/octocat/Hello-World/issues', { perPage: 2, extractPage: numberPage }),
+    )
+    expect(items).toEqual([1, 2, 3, 4, 5])
+    expect(urls).toHaveLength(3)
+    expect(urls[0]?.endsWith('/repos/octocat/Hello-World/issues?page=1&per_page=2')).toBe(true)
+    expect(urls[1]?.endsWith('page=2&per_page=2')).toBe(true)
+    expect(urls[2]?.endsWith('page=3&per_page=2')).toBe(true)
+  })
+
+  test('stops on an empty page', async () => {
+    let call = 0
+    const pages: number[][] = [[1, 2], []]
+    setMockFetch(() => {
+      call += 1
+      return Promise.resolve(jsonResponse(pages[call - 1]))
+    })
+    const items = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubPaginate(config, '/repos/o/r/issues', { perPage: 2, extractPage: numberPage }),
+    )
+    expect(items).toEqual([1, 2])
+    expect(call).toBe(2)
+  })
+
+  test('merges extra query params with the pagination keys', async () => {
+    const urls: string[] = []
+    setMockFetch((url) => {
+      urls.push(url)
+      return Promise.resolve(jsonResponse([]))
+    })
+    await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubPaginate(config, '/repos/o/r/issues', { perPage: 100, query: { state: 'open' }, extractPage: numberPage }),
+    )
+    expect(urls[0]?.endsWith('/repos/o/r/issues?state=open&page=1&per_page=100')).toBe(true)
+  })
+
+  test('extracts items through the supplied extractor (search items shape)', async () => {
+    let call = 0
+    const pages = [{ items: [{ number: 1 }] }, { items: [] }]
+    setMockFetch(() => {
+      call += 1
+      return Promise.resolve(jsonResponse(pages[call - 1]))
+    })
+    const items = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubPaginate(config, '/search/issues', { perPage: 1, extractPage: searchItemsPage }),
+    )
+    expect(items).toEqual([{ number: 1 }])
+  })
+})
+
+describe('rate-limit detection', () => {
+  const rateLimitedFetch = (status: number, headers: Record<string, string>) => (): Promise<Response> =>
+    Promise.resolve(jsonResponse({ message: CANARY_ERROR }, status, headers))
+
+  test('a 429 is classifiable as rate-limited', async () => {
+    setMockFetch(rateLimitedFetch(429, {}))
+    const caught = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubFetch(config, 'GET', CANARY_PATH).catch((error: unknown) => error),
+    )
+    assert.ok(caught instanceof GitHubApiError)
+    assert.ok(caught instanceof GitHubApiError)
+    expect(isRateLimitedError(caught)).toBe(true)
+  })
+
+  test('a 403 with x-ratelimit-remaining: 0 is classifiable as rate-limited', async () => {
+    setMockFetch(rateLimitedFetch(403, { 'x-ratelimit-remaining': '0' }))
+    const caught = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubFetch(config, 'GET', CANARY_PATH).catch((error: unknown) => error),
+    )
+    assert.ok(caught instanceof GitHubApiError)
+    assert.ok(caught instanceof GitHubApiError)
+    expect(isRateLimitedError(caught)).toBe(true)
+  })
+
+  test('a Retry-After header marks the error rate-limited regardless of status', async () => {
+    setMockFetch(rateLimitedFetch(403, { 'Retry-After': '60' }))
+    const caught = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubFetch(config, 'GET', CANARY_PATH).catch((error: unknown) => error),
+    )
+    assert.ok(caught instanceof GitHubApiError)
+    expect(isRateLimitedError(caught)).toBe(true)
+  })
+
+  test('an x-ratelimit-reset header marks the error rate-limited regardless of status', async () => {
+    setMockFetch(rateLimitedFetch(403, { 'x-ratelimit-reset': '1697066540' }))
+    const caught = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubFetch(config, 'GET', CANARY_PATH).catch((error: unknown) => error),
+    )
+    assert.ok(caught instanceof GitHubApiError)
+    expect(isRateLimitedError(caught)).toBe(true)
+  })
+
+  test('a plain 403 without rate-limit headers is not rate-limited (auth failure shape)', async () => {
+    setMockFetch(rateLimitedFetch(403, {}))
+    const caught = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubFetch(config, 'GET', CANARY_PATH).catch((error: unknown) => error),
+    )
+    assert.ok(caught instanceof GitHubApiError)
+    expect(isRateLimitedError(caught)).toBe(false)
+  })
+
+  test('a 403 with a nonzero x-ratelimit-remaining is not rate-limited', async () => {
+    setMockFetch(rateLimitedFetch(403, { 'x-ratelimit-remaining': '56' }))
+    const caught = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubFetch(config, 'GET', CANARY_PATH).catch((error: unknown) => error),
+    )
+    assert.ok(caught instanceof GitHubApiError)
+    expect(isRateLimitedError(caught)).toBe(false)
+  })
+
+  test('non-GitHubApiError values are not rate-limited', () => {
+    expect(isRateLimitedError(new Error('nope'))).toBe(false)
+    expect(isRateLimitedError(null)).toBe(false)
   })
 })
 
