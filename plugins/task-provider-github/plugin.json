@@ -1,0 +1,42 @@
+{
+  "id": "task-provider-github",
+  "name": "GitHub Issues",
+  "version": "1.0.0",
+  "description": "GitHub Issues task-tracker integration (one repository per task instance).",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "permissions": ["provider.task", "identity"],
+  "contributes": {
+    "taskProviderTypes": ["github"]
+  },
+  "providerCapabilities": ["projects.list", "projects.read"],
+  "providerConfigSchema": [
+    {
+      "key": "repo",
+      "label": "Repository (owner/repo)",
+      "required": true,
+      "sensitive": false,
+      "scope": "instance"
+    },
+    {
+      "key": "baseUrl",
+      "label": "GitHub API URL (optional; GitHub Enterprise Server)",
+      "required": false,
+      "sensitive": false,
+      "scope": "instance"
+    }
+  ],
+  "providerContextConfigSchema": [
+    {
+      "key": "token",
+      "label": "GitHub Personal Access Token",
+      "required": true,
+      "sensitive": true,
+      "scope": "context"
+    }
+  ],
+  "providerAllowedHosts": ["api.github.com"],
+  "providerAllowedInstanceHostsFromConfig": ["baseUrl"],
+  "providerConfigValidator": "validateConfig",
+  "defaultEnabled": false
+}
