@@ -171,20 +171,23 @@
             onClick={() => void save(locale)}>
             {#snippet children()}Save{/snippet}
           </Btn>
-          <Btn
-            variant="primary"
-            size="sm"
-            disabled={busy || bodiesByLocale[locale].trim() === ''}
-            testid="release-notes-broadcast"
-            onClick={() => {
-              broadcastError = null
-              confirming = true
-            }}>
-            {#snippet children()}Broadcast{/snippet}
-          </Btn>
         </div>
       {/if}
     {/each}
+
+    <div class="settings-actions">
+      <Btn
+        variant="primary"
+        size="sm"
+        disabled={busy || (bodiesByLocale.en.trim() === '' && bodiesByLocale.ru.trim() === '')}
+        testid="release-notes-broadcast"
+        onClick={() => {
+          broadcastError = null
+          confirming = true
+        }}>
+        {#snippet children()}Broadcast{/snippet}
+      </Btn>
+    </div>
 
     {#if lastBroadcast !== null}
       <p class={lastBroadcast.broadcast.failed === 0 ? 'status-success' : 'status-error'} data-testid="release-notes-result">

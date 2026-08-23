@@ -204,6 +204,35 @@ describe('AdminReleaseNotesSection per-locale editors', () => {
     void unmount(component)
   })
 
+  test('broadcast stays enabled on the empty ru tab when en has a body', async () => {
+    setMockFetch(() => Promise.resolve(json({ ...releaseNotesPayload, bodies: { en: 'EN only', ru: null } })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminReleaseNotesSection, { target })
+
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="release-notes-locale-ru"]')?.click()
+    await drain()
+    const broadcast = target.querySelector<HTMLButtonElement>('[data-testid="release-notes-broadcast"]')
+    expect(broadcast).not.toBeNull()
+    expect(broadcast?.disabled).toBe(false)
+    void unmount(component)
+  })
+
+  test('broadcast disables when no editor has any content', async () => {
+    setMockFetch(() => Promise.resolve(json({ ...releaseNotesPayload, bodies: { en: null, ru: null }, rawBody: null })))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminReleaseNotesSection, { target })
+
+    await drain()
+
+    const broadcast = target.querySelector<HTMLButtonElement>('[data-testid="release-notes-broadcast"]')
+    expect(broadcast?.disabled).toBe(true)
+    void unmount(component)
+  })
+
   test('shows already broadcast indicator when broadcastAt is set', async () => {
     setMockFetch(() =>
       Promise.resolve(
