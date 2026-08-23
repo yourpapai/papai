@@ -248,10 +248,7 @@ describe('humanizeChangelog: per-locale bodies', () => {
     })
     expect(classifyCalls).toBe(1)
     expect(writeCalls).toBe(2)
-    // Bind through unknown: the current signature returns string | null, the
-    // per-locale contract under construction returns a body map.
-    const bodies: unknown = result
-    expect(bodies).toEqual({ en: 'Humanized!', ru: 'Humanized!' })
+    expect(result).toEqual({ en: 'Humanized!', ru: 'Humanized!' })
   })
 
   test('ru write failure yields an en-only result, a warn naming ru, and a non-null result', async () => {
@@ -264,8 +261,7 @@ describe('humanizeChangelog: per-locale bodies', () => {
         () => Promise.resolve({ text: 'EN body' }),
       ),
     })
-    const bodies: unknown = result
-    expect(bodies).toEqual({ en: 'EN body' })
+    expect(result).toEqual({ en: 'EN body' })
     const warns = humanizeWarns()
     expect(warns.some((entry) => entry['locale'] === 'ru')).toBe(true)
   })
@@ -280,8 +276,7 @@ describe('humanizeChangelog: per-locale bodies', () => {
         () => Promise.resolve({ text: 'EN body' }),
       ),
     })
-    const whitespaceBodies: unknown = result
-    expect(whitespaceBodies).toEqual({ en: 'EN body' })
+    expect(result).toEqual({ en: 'EN body' })
     const warns = humanizeWarns()
     expect(warns.some((entry) => entry['locale'] === 'ru')).toBe(true)
   })
@@ -293,8 +288,7 @@ describe('humanizeChangelog: per-locale bodies', () => {
       generateStructured: (): Promise<typeof twoClassifiedEntries> => Promise.resolve(twoClassifiedEntries),
       generate: (): Promise<{ text: string }> => Promise.reject(new Error('boom')),
     })
-    const emptyBodies: unknown = result
-    expect(emptyBodies).toEqual({})
+    expect(result).toEqual({})
   })
 
   test('empty release returns the localized announcements.emptyReleaseNote per locale', async () => {
@@ -304,8 +298,7 @@ describe('humanizeChangelog: per-locale bodies', () => {
       generateStructured: (): Promise<{ entries: [] }> => Promise.resolve({ entries: [] }),
       generate: (): Promise<{ text: string }> => Promise.resolve({ text: 'not called' }),
     })
-    const noteBodies: unknown = result
-    expect(noteBodies).toEqual({
+    expect(result).toEqual({
       en: t('announcements.emptyReleaseNote', 'en'),
       ru: t('announcements.emptyReleaseNote', 'ru'),
     })
