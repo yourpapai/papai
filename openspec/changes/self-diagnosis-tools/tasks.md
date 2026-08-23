@@ -10,7 +10,7 @@
 
 ## 3. read_llm_traces
 
-- [ ] 3.1 Red test `tests/tools/diagnostics-llm-traces.test.ts`: own traces (`chatUserId` match) verbatim; foreign/unattributed traces lose `generatedText`, `stepsDetail`, tool `args`/`result`, identity fields, keep model ids/durations/token+step counters/tool names/`error`; `errors_only` and `model` filters; limit default 25, cap 100, sliced from the tail; missing `chatUserId` shapes everything; no mutation of `recentLlm`. Verify: `bun test tests/tools/diagnostics-llm-traces.test.ts`
+- [x] 3.1 Red test `tests/tools/diagnostics-llm-traces.test.ts`: own traces (`chatUserId` match) verbatim; foreign/unattributed traces lose `generatedText`, `stepsDetail`, tool `args`/`result`, identity fields, keep model ids/durations/token+step counters/tool names/`error`; `errors_only` and `model` filters; limit default 25, cap 100, sliced from the tail; missing `chatUserId` shapes everything; no mutation of `recentLlm`. Verify: `bun test tests/tools/diagnostics-llm-traces.test.ts`
 - [ ] 3.2 Implement `src/tools/diagnostics-llm-traces.ts` (`makeReadLlmTracesTool`, DI deps, `shapeLlmTrace` per trace, tail slice, probe_error degradation). Verify: `bun test tests/tools/diagnostics-llm-traces.test.ts && bun run typecheck`
 
 ## 4. read_recent_turns
