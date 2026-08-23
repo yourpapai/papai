@@ -12,7 +12,7 @@ import type { ListTasksParams } from 'papai/plugin-types'
  */
 export const normalizeGitHubDueDateInput = (
   _dueDate: Readonly<{ date: string; time?: string }> | undefined,
-): undefined => undefined
+): string | undefined => undefined
 
 /** No date filters map onto GitHub Issues; list params pass through unchanged. */
 export const normalizeGitHubListTaskParams = (params: Readonly<ListTasksParams>): ListTasksParams => ({
