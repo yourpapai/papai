@@ -154,7 +154,13 @@ findings: `ROADMAP.md`.
   `CODE_REVIEW` each read the folder one line **before** that call and each died
   the same way — `openspec status` exit 1, "Change '<name>' not found", followed by
   a list of the base branch's changes that reads like the folder was never
-  scaffolded. The ordering is not visible to a stub whose driver answers the same
+  scaffolded. Issue #331 is the fourth reader: `handleAnswer`'s
+  `artifactUnderReview` grounded `/ask` and question-classified comments in the
+  folder the same way, so every answer past capture died before the model turn on
+  the same exit 1 — the call sits inside `artifactUnderReview`, ahead of the
+  `instructions` ask, and only there (a `changeName === null` state has no folder
+  to read and no branch to switch to). The ordering is not visible to a stub
+  whose driver answers the same
   on any branch, which is how three handlers acquired the same defect; the fake in
   `phases.test.ts` refuses every driver call and every `readFile` until
   `ensureBranch` has been called, so a phase that reads too early fails the test
@@ -167,7 +173,15 @@ findings: `ROADMAP.md`.
   (`dependencyDriftError`) names `/sync` and the hand-merge as the remedies and
   never a bare `/retry`; `/sync` passes `allowDependencyDrift` because a drifted
   branch is the condition it exists to repair, and the guard must not block its
-  own way out. A branch that _intentionally_ changed dependencies is out of reach
+  own way out. Issue #323 is the incident that shaped the failure's bookkeeping:
+  a drift park is by construction pre-delivery, so the `/sync` the message
+  prescribes must be reachable from the issue (see the `/sync` rule below), the
+  refusal carries `attempts` rather than spending one (it fires before any
+  work — the over-budget stop's doctrine, held in `failRun` behind
+  `isDependencyDrift`), and the failure footer does not invite a bare `/retry`
+  over a message that says retry cannot change it (`isRetryFutile` in
+  `errors.ts`; the settings-gated `PR_FORBIDDEN` is the other member). A branch
+  that _intentionally_ changed dependencies is out of reach
   by design — the job cannot install from the agent branch — and the message says
   so; revisit only with a security answer for model-influenced install scripts.
 - **An artifact's output path is not always a file, and a pattern is judged
@@ -297,12 +311,17 @@ findings: `ROADMAP.md`.
   phase either: `failAnswer` posts and leaves `phase`, `resumeFrom` and
   `attempts` alone, which is also why `resumeFrom` can never name a waiting phase
   with no handler for `/retry` to resume into.
-- **`/sync` is the `/ask` shape on the pull request: a side operation, never a
-  phase.** A PR that fell behind its base had no machine remedy before it — the
-  conflict banner was permanent until a human merged locally. `runSync` in
+- **`/sync` is the `/ask` shape: a side operation, never a phase.** A branch
+  that fell behind its base had no machine remedy before it — the conflict
+  banner was permanent until a human merged locally. `runSync` in
   `src/phases/sync.ts` (the `answer.ts` precedent: a handler that is not a
   phase) merges `origin/<base>` into the agent branch, and every design choice
-  follows from "moves nothing". Dispatch sits in `sideOperation` beside `/ask`
+  follows from "moves nothing". It applies wherever the **agent branch
+  exists** — `changeName !== null` is that fact by doctrine, the cancelled
+  `COMPLETE` is the one branch-less state still naming a change and is refused
+  so `/sync` cannot resurrect what `/cancel` deleted (issue #323: the drift
+  park is pre-delivery, and a `/sync` gated on `prNumber` was a remedy the
+  state it was prescribed for could not take). Dispatch sits in `sideOperation` beside `/ask`
   in `triggers.ts`, **before** the signal lookup — `/sync` has no
   `COMMAND_SIGNALS` entry, so the transition table is never consulted, no
   `PHASES` member or presentation row exists, and `phase`, `attempts`,
@@ -512,6 +531,23 @@ findings: `ROADMAP.md`.
   it is the one layer that sees a real HTTP status and the only one the review
   loop's subprocesses also pass through; do not add a second retry in the
   adapter, where the status is already gone.
+  Its listener sets **`idleTimeout: 0`, and that is not a tuning knob**. Bun
+  defaults it to ten seconds and counts a _streamed_ response as idle whenever
+  no byte moves, and what this proxy forwards is the model's completion stream —
+  so between the proxy landing (2026-08-07) and the fix, every reasoning pause
+  longer than ten seconds cut the socket mid-completion. Downstream that is
+  indistinguishable from the provider failing: OpenCode retries, meets the same
+  pause, and the turn finishes no step. It cost hours of wall clock per run
+  quietly for two weeks, and became a hard failure the day `AGENT_STALL_TIMEOUT_MS`
+  arrived (2026-08-21) — a stall detector whose trigger condition, "no progress
+  while retries accumulate", is exactly what the socket kill manufactures.
+  Neither retry layer can see it: the proxy's fires on an upstream status and
+  upstream is healthy, and the break is on the **inbound** leg. The turn is
+  already bounded by `AGENT_TIMEOUT_MS` and `AGENT_STALL_TIMEOUT_MS`, so a third
+  and fiercer bound in the transport can only fight them. `defaultServe` takes
+  its `Bun.serve` as an argument for one reason: a started server does not report
+  `idleTimeout` back, so that seam is the only way to pin the value without an
+  eleven-second test.
 - **The provider id is a catalogue key, and the transport is not.**
   `LLM_PROVIDER` (default `openai`) says which models.dev row OpenCode resolves
   `LLM_MODEL` under; `npm` stays `@ai-sdk/openai-compatible` and wins over the
@@ -1107,6 +1143,20 @@ not permitted to create or approve pull requests` is a repository or
   which would invite a `/continue` into a wave that has not passed. Finished
   steps are not re-run by that `/retry`; their boxes are ticked on the branch
   and the walk skips them.
+  **The notice blames the provider only when the provider said so.**
+  `TurnStall`'s two fields are independent evidence and only `failure` — a
+  `session.error`, carrying a name and a status — is the remote answering for
+  itself; `retries` alone says the call kept failing and nothing about which end
+  refused it, because OpenCode retries a socket that went away exactly as it
+  retries a 429. The message used to assert a provider stall unconditionally,
+  and the 2026-08-22 runs are what that cost: retries with no `session.error`,
+  a healthy provider, and the local proxy cutting the socket on Bun's
+  ten-second idle bound — every reader sent to the wrong end of the connection
+  by a sentence stating the wrong one as fact. `refusalClause` in
+  `turn-errors.ts` now names the provider when `failure` is set and both hops
+  when it is not. Keep it that way even though the proxy bug is fixed: the
+  proxy is a permanent hop, so a retry with no status will always have two ends
+  it could have come from.
 - **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
   on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
   cannot edit or run commands, `build` can. Add a capability by naming it, never
