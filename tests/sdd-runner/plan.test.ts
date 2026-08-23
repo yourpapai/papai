@@ -8,7 +8,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { materializeChildFiles, PlanSchema, topoSortChildren, validatePlan } from '../../sdd-runner/src/plan.js'
+import {
+  materializeChildFiles,
+  planDigest,
+  PlanSchema,
+  topoSortChildren,
+  validatePlan,
+} from '../../sdd-runner/src/plan.js'
 import type { PlanChild, PlanFsDeps } from '../../sdd-runner/src/plan.js'
 
 interface ChildInput {
@@ -201,6 +207,28 @@ describe('topoSortChildren', () => {
       children: [child('alpha', ['beta']), child('beta', ['alpha']), child('gamma', ['alpha']), child('delta')],
     }
     expect(() => topoSortChildren(cyclic)).toThrow(/^dependency cycle among: alpha, beta, gamma$/u)
+  })
+})
+
+describe('planDigest', () => {
+  it('is the sha-256 of JSON.stringify(topo-ordered child ids), sliced to 16 hex chars', () => {
+    const sorted = topoSortChildren({ children: [child('beta', ['alpha']), child('alpha')] })
+    expect(planDigest(sorted)).toBe('138bf4722f7ae171')
+    expect(planDigest(sorted)).toMatch(/^[0-9a-f]{16}$/u)
+  })
+
+  it('is order-sensitive by design: a re-declared order digests differently', () => {
+    const declared = topoSortChildren({ children: [child('alpha'), child('beta')] })
+    const redeclared = topoSortChildren({ children: [child('beta'), child('alpha')] })
+    expect(planDigest(declared)).not.toBe(planDigest(redeclared))
+  })
+
+  it('depends only on the ordered ids, not on instructions or capabilities', () => {
+    const bare = topoSortChildren({ children: [child('alpha'), child('beta')] })
+    const rich = topoSortChildren({
+      children: [child('alpha', [], ['codeindex']), child('beta', ['alpha'])],
+    })
+    expect(planDigest(rich)).toBe(planDigest(bare))
   })
 })
 

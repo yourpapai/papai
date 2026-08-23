@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { createHash } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -69,6 +70,14 @@ export function topoSortChildren(input: unknown): PlanChild[] {
     remaining.splice(remaining.indexOf(next), 1)
   }
   return sorted
+}
+
+/** D4: sha-256 over `JSON.stringify(topo-ordered child ids)`, sliced to a 16-hex prefix. Order-sensitive by design. */
+export function planDigest(children: readonly PlanChild[]): string {
+  return createHash('sha256')
+    .update(JSON.stringify(children.map((child) => child.id)))
+    .digest('hex')
+    .slice(0, 16)
 }
 
 /** Injected fs seam so plan materialization stays hermetic under test (D5). */
