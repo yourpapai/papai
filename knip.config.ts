@@ -117,7 +117,7 @@ export default {
     'plugins/task-provider-kaneo/auto-provision.ts!',
     // GitHub provider client/classify/constants/schemas: in-flight seam of
     // the github-issues-task-provider change; its later tasks consume them.
-    'plugins/task-provider-github/{client,classify-error,constants,mappers,schemas/*}.ts!',
+    'plugins/task-provider-github/{client,classify-error,constants,mappers,operations/*,schemas/*}.ts!',
     // Test-seam shims: re-export test-only symbols so tests have an explicit
     // import site; see the *.testing.ts ignoreIssues glob below.
     'src/**/*.testing.ts!',
@@ -257,7 +257,10 @@ export default {
     'src/context-vault/*.ts': ['exports', 'types'],
     // GitHub provider client/classify/constants/schemas: in-flight seam (see
     // entry list); the change's later tasks consume the exports.
-    'plugins/task-provider-github/{client,classify-error,constants,mappers,schemas/*}.ts': ['exports', 'types'],
+    'plugins/task-provider-github/{client,classify-error,constants,mappers,operations/*,schemas/*}.ts': [
+      'exports',
+      'types',
+    ],
     'src/db/context-vault-schema.ts': ['exports', 'types'],
     // The usage-failure query exports are consumed by the follow-up
     // dashboard/settings wiring of the usage-failure-queries change
