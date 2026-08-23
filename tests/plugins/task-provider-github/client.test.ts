@@ -448,10 +448,7 @@ describe('githubFetch boundary observation', () => {
     })
     expect(recorder.observations).toHaveLength(1)
     expect(recorder.observations[0]).toMatchObject({
-      // The analytics provider dimension is a closed enum (kaneo|youtrack|magi|
-      // mcp|llm|other); github rides the catch-all bucket until the versioned
-      // catalog gains a github value through review.
-      provider: 'other',
+      provider: 'github',
       operation: 'read',
       outcome: 'success',
       statusClass: '2xx',

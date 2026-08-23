@@ -54,10 +54,7 @@ const observeBoundary = (
       : classifyProviderError(caught)
   try {
     scope.observeProviderRequest(scope.requestContext, {
-      // The analytics provider dimension is a closed, versioned enum
-      // (kaneo|youtrack|magi|mcp|llm|other); GitHub rides the catch-all bucket
-      // until the catalog gains a github value through the review process.
-      provider: 'other',
+      provider: 'github',
       operation,
       durationMs: clock.elapsedMs(),
       outcome: caught === null ? 'success' : 'failure',
