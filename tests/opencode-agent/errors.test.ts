@@ -38,6 +38,9 @@ const PROGRESS: ProgressSnapshot = { lastAction: 'read (running)', toolCalls: 44
 
 const STALL: TurnStall = { retries: 78, failure: { name: 'APIError', statusCode: 429 }, lastProgressAt: 0 }
 
+/** Retries but no `session.error`: the shape the 2026-08-22 socket kills produced. */
+const UNATTRIBUTED: TurnStall = { retries: 10, failure: null, lastProgressAt: 0 }
+
 describe('turnStallError', () => {
   test('carries the TURN_STALL code, the stall window, the retry count and the progress', () => {
     const error = turnStallError(300_000, STALL, PROGRESS)
@@ -77,6 +80,50 @@ describe('turnStallError', () => {
 
     expect(message).toContain('no finished step')
     expect(message).toContain('no new tool call')
+  })
+
+  test('blames the provider only when the provider actually published an error', () => {
+    // The attributed case: a `session.error` with a name and a status is the
+    // evidence that the remote refused the request, so naming it is honest.
+    const message = turnStallError(300_000, STALL, PROGRESS).message
+
+    expect(message).toContain('the provider kept failing the request')
+  })
+
+  test('does not blame the provider when no provider error was ever published', () => {
+    // The 2026-08-22 runs: retries accumulated, `session.error` never fired, and
+    // the message asserted a provider stall anyway. The provider was healthy —
+    // this job's own loopback proxy was cutting the socket on Bun's ten-second
+    // idle bound. A message that names a culprit the evidence does not support
+    // sends every reader to the wrong end of the connection.
+    const message = turnStallError(300_000, UNATTRIBUTED, PROGRESS).message
+
+    expect(message).not.toContain('the provider kept failing the request')
+    expect(message).toContain('10 times')
+    expect(message).toContain('no error of its own')
+  })
+
+  test('names the loopback hop as a suspect when nothing said who refused', () => {
+    const message = turnStallError(300_000, UNATTRIBUTED, PROGRESS).message
+
+    expect(message).toContain('loopback proxy')
+  })
+
+  test('still invites /retry and names its own window when the cause is unattributed', () => {
+    // The remedy does not depend on knowing who refused: the work is on the
+    // branch either way, and the resume point is the same.
+    const message = turnStallError(300_000, UNATTRIBUTED, PROGRESS).message
+
+    expect(message).toContain('/retry')
+    expect(message).toContain('AGENT_STALL_TIMEOUT_MS')
+    expect(message).not.toContain('AGENT_TIMEOUT_MS')
+    expect(message).toContain('44 tool calls')
+  })
+
+  test('counts a single retry in the singular', () => {
+    const once: TurnStall = { retries: 1, failure: null, lastProgressAt: 0 }
+
+    expect(turnStallError(300_000, once, PROGRESS).message).toContain('retried the request 1 time and')
   })
 })
 

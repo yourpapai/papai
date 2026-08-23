@@ -1143,6 +1143,20 @@ not permitted to create or approve pull requests` is a repository or
   which would invite a `/continue` into a wave that has not passed. Finished
   steps are not re-run by that `/retry`; their boxes are ticked on the branch
   and the walk skips them.
+  **The notice blames the provider only when the provider said so.**
+  `TurnStall`'s two fields are independent evidence and only `failure` — a
+  `session.error`, carrying a name and a status — is the remote answering for
+  itself; `retries` alone says the call kept failing and nothing about which end
+  refused it, because OpenCode retries a socket that went away exactly as it
+  retries a 429. The message used to assert a provider stall unconditionally,
+  and the 2026-08-22 runs are what that cost: retries with no `session.error`,
+  a healthy provider, and the local proxy cutting the socket on Bun's
+  ten-second idle bound — every reader sent to the wrong end of the connection
+  by a sentence stating the wrong one as fact. `refusalClause` in
+  `turn-errors.ts` now names the provider when `failure` is set and both hops
+  when it is not. Keep it that way even though the proxy bug is fixed: the
+  proxy is a permanent hop, so a retry with no status will always have two ends
+  it could have come from.
 - **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
   on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
   cannot edit or run commands, `build` can. Add a capability by naming it, never
