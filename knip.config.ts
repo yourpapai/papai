@@ -115,9 +115,6 @@ export default {
     'plugins/audio-transcribe/runtime.ts!',
     'plugins/context-vault/runtime.ts!',
     'plugins/task-provider-kaneo/auto-provision.ts!',
-    // GitHub provider client/classify/constants/schemas: in-flight seam of
-    // the github-issues-task-provider change; its later tasks consume them.
-    'plugins/task-provider-github/{client,classify-error,constants,due-date,mappers,operations/*,prompt-addendum,schemas/*,url-builder}.ts!',
     // Test-seam shims: re-export test-only symbols so tests have an explicit
     // import site; see the *.testing.ts ignoreIssues glob below.
     'src/**/*.testing.ts!',
@@ -255,9 +252,6 @@ export default {
     // summarizer, plugin facade) and by tests outside knip's production
     // project scope.
     'src/context-vault/*.ts': ['exports', 'types'],
-    // GitHub provider seam: in-flight github-issues-task-provider change
-    // (see the entry-list comment above).
-    'plugins/task-provider-github/**/*.ts': ['exports', 'types'],
     'src/db/context-vault-schema.ts': ['exports', 'types'],
     // The usage-failure query exports are consumed by the follow-up
     // dashboard/settings wiring of the usage-failure-queries change

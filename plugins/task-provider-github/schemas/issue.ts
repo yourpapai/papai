@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { GitHubUserSchema } from './user.js'
 
 /** Label object form returned by single-issue endpoints. */
-export const GitHubLabelObjectSchema = z.object({
+const GitHubLabelObjectSchema = z.object({
   id: z.number().int(),
   name: z.string(),
   color: z.string().optional(),
@@ -20,7 +20,7 @@ export const GitHubLabelObjectSchema = z.object({
  */
 export const GitHubLabelSchema = z.union([z.string(), GitHubLabelObjectSchema])
 
-export const GitHubMilestoneSchema = z.object({
+const GitHubMilestoneSchema = z.object({
   id: z.number().int(),
   number: z.number().int().optional(),
   title: z.string(),
@@ -51,4 +51,3 @@ export const GitHubIssueSchema = z.object({
 
 export type GitHubIssue = z.infer<typeof GitHubIssueSchema>
 export type GitHubLabel = z.infer<typeof GitHubLabelSchema>
-export type GitHubMilestone = z.infer<typeof GitHubMilestoneSchema>
