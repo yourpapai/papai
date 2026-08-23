@@ -13,7 +13,7 @@ failing test. Behavior contracts: `specs/github-issues-task-provider/spec.md`. H
 
 ## 2. Instance-config validation
 
-- [ ] 2.1 Create `tests/plugins/task-provider-github/validate-config.test.ts` covering: valid `owner/repo`; rejects `owner/`, `/repo`, `owner`, `owner /repo`, empty; rejects non-http(s) `baseUrl`; accepts absent and empty `baseUrl`; ignores the `token` key; returns `{ ok: true }` or `{ ok: false, reason }` with human-readable reasons — then create `validate-config.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/validate-config.test.ts`
+- [x] 2.1 Create `tests/plugins/task-provider-github/validate-config.test.ts` covering: valid `owner/repo`; rejects `owner/`, `/repo`, `owner`, `owner /repo`, empty; rejects non-http(s) `baseUrl`; accepts absent and empty `baseUrl`; ignores the `token` key; returns `{ ok: true }` or `{ ok: false, reason }` with human-readable reasons — then create `validate-config.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/validate-config.test.ts`
 
 ## 3. API schemas
 
