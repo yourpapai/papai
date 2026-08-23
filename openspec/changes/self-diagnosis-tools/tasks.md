@@ -32,5 +32,5 @@
 
 ## 7. Docs and full verification
 
-- [ ] 7.1 Update `src/tools/CLAUDE.md` and `docs/architecture/tools.md` to surface the reader family (gate, shaping contract, volatility markers, prefs behavior). Verify: manual read-through against shipped behavior
+- [x] 7.1 Update `src/tools/CLAUDE.md` and `docs/architecture/tools.md` to surface the reader family (gate, shaping contract, volatility markers, prefs behavior). Verify: manual read-through against shipped behavior
 - [ ] 7.2 Full gates: `bun run test`, `bun run typecheck`, `bun run lint`, `bun check:full`; mutation ratchet `bun run test:mutate:changed` on the PR. Verify: all green in `reports/`
