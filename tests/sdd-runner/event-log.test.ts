@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { appendEvent, readEvents, stampEvent } from '../../sdd-runner/src/event-log.js'
+import { appendEvent, readEvents, stampEvent } from '../../sdd-runner/src/events.js'
 
 const tmpDirs: string[] = []
 

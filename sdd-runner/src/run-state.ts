@@ -132,9 +132,6 @@ export async function loadRunState(workDir: string, runId: string): Promise<RunS
   }
 }
 
-export { listPendingGates, readAllRunStates, resolveRunId } from './run-index.js'
-export type { PendingGateEntry } from './run-index.js'
-
 export async function saveRunState(state: RunState, now: Date = new Date()): Promise<RunState> {
   const next: RunState = { ...state, updatedAt: now.toISOString() }
   await mkdir(next.runDir, { recursive: true })
