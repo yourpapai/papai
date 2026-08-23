@@ -239,6 +239,24 @@ describe('githubListTasks', () => {
     await githubListTasks(config, 'octocat/Hello-World', { status: 'closed (not_planned)' })
     expect(secondCalls[0]?.url.searchParams.get('state')).toBe('closed')
   })
+
+  test('assigneeId filter maps onto the assignee query param', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    setMockFetch(captureRequests(calls, () => ({ data: [] })).handler)
+    await githubListTasks(config, 'octocat/Hello-World', { assigneeId: 'hubot' })
+    expect(calls[0]?.url.searchParams.get('assignee')).toBe('hubot')
+    expect(calls[0]?.url.searchParams.get('state')).toBeNull()
+  })
+
+  test('assigneeId filter combines with the status state filter', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    setMockFetch(captureRequests(calls, () => ({ data: [] })).handler)
+    await githubListTasks(config, 'octocat/Hello-World', { status: 'open', assigneeId: 'hubot' })
+    expect(calls[0]?.url.searchParams.get('state')).toBe('open')
+    expect(calls[0]?.url.searchParams.get('assignee')).toBe('hubot')
+  })
 })
 
 describe('githubSearchTasks', () => {
@@ -267,6 +285,14 @@ describe('githubSearchTasks', () => {
     const results = await githubSearchTasks(config, { query: 'everything' })
     expect(calls[0]?.url.searchParams.get('q')).toBe('repo:octocat/Hello-World is:issue everything')
     expect(results).toHaveLength(3)
+  })
+
+  test('assigneeId filter is pinned into the search qualifiers', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    setMockFetch(captureRequests(calls, () => ({ data: { total_count: 0, items: [] } })).handler)
+    await githubSearchTasks(config, { query: 'crashed', assigneeId: 'hubot' })
+    expect(calls[0]?.url.searchParams.get('q')).toBe('repo:octocat/Hello-World is:issue assignee:hubot crashed')
   })
 
   test('stops fetching once the requested window is covered', async () => {

@@ -121,11 +121,21 @@ export async function githubListTasks(
   _projectId: string,
   params?: ListTasksParams,
 ): Promise<TaskListItem[]> {
-  log.debug({ repo: config.repo, hasStatusFilter: params?.status !== undefined }, 'listTasks')
+  log.debug(
+    {
+      repo: config.repo,
+      hasStatusFilter: params?.status !== undefined,
+      hasAssigneeFilter: params?.assigneeId !== undefined,
+    },
+    'listTasks',
+  )
   const state = stateOfStatus(params?.status)
+  const query: Record<string, string> = {}
+  if (state !== undefined) query['state'] = state
+  if (params?.assigneeId !== undefined) query['assignee'] = params.assigneeId
   try {
     const issues = await githubPaginate(config, `/repos/${config.repo}/issues`, {
-      query: state === undefined ? {} : { state },
+      query,
       extractPage: (data: unknown): GitHubIssue[] => issuePageSchema.parse(data),
     })
     // The list endpoint has no is:issue filter; PR-marked items are dropped here.
@@ -179,8 +189,9 @@ export async function githubSearchTasks(
     return []
   }
   try {
+    const assigneeQualifier = params.assigneeId === undefined ? '' : `assignee:${params.assigneeId} `
     const issues = await githubPaginate(config, '/search/issues', {
-      query: { q: `repo:${config.repo} is:issue ${params.query}` },
+      query: { q: `repo:${config.repo} is:issue ${assigneeQualifier}${params.query}` },
       extractPage: (data: unknown): GitHubIssue[] => searchPageSchema.parse(data).items,
       maxItems: needed,
       isEndOfResults: isSearchResultsExhausted,
