@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
+import type { RemoveRunResult } from '../../sdd-runner/src/remove-run.js'
 import { executeSessionTarget, routeOfRow } from '../../sdd-runner/src/session-flow.js'
 import type { SessionFlowDeps, SessionTargetAction } from '../../sdd-runner/src/session-flow.js'
 import type { SessionRow } from '../../sdd-runner/src/session-list.js'
@@ -28,7 +29,10 @@ function row(overrides: Partial<SessionRow> = {}): SessionRow {
   }
 }
 
-function makeDeps(stopResult: StopRunResult = { kind: 'marker-requested', runId: 'fix-flaky-auth-test' }): {
+function makeDeps(
+  stopResult: StopRunResult = { kind: 'marker-requested', runId: 'fix-flaky-auth-test' },
+  removeResult: RemoveRunResult = { kind: 'removed', runId: 'fix-flaky-auth-test' },
+): {
   deps: SessionFlowDeps
   calls: string[]
 } {
@@ -53,6 +57,10 @@ function makeDeps(stopResult: StopRunResult = { kind: 'marker-requested', runId:
     reopenGate: (runId) => {
       calls.push(`reopen:${runId}`)
       return Promise.resolve()
+    },
+    removeRun: (runId) => {
+      calls.push(`remove:${runId}`)
+      return Promise.resolve(removeResult)
     },
     stdout: (line) => {
       calls.push(`stdout:${line}`)
@@ -112,5 +120,24 @@ describe('executeSessionTarget', () => {
     const { deps, calls } = makeDeps()
     await executeSessionTarget(action('reopen'), deps)
     expect(calls).toEqual(['reopen:fix-flaky-auth-test', 'gate:fix-flaky-auth-test'])
+  })
+
+  it('delete routes to the removal module and prints the removed notice', async () => {
+    const { deps, calls } = makeDeps()
+    await executeSessionTarget(action('delete'), deps)
+    expect(calls).toEqual(['remove:fix-flaky-auth-test', 'stdout:run fix-flaky-auth-test deleted'])
+  })
+
+  it('delete refusal prints the guard notice instead of throwing', async () => {
+    const { deps, calls } = makeDeps(undefined, {
+      kind: 'refused',
+      runId: 'fix-flaky-auth-test',
+      reason: 'running',
+    })
+    await executeSessionTarget(action('delete'), deps)
+    expect(calls).toEqual([
+      'remove:fix-flaky-auth-test',
+      'stdout:run fix-flaky-auth-test is running (gate-pending or stop-requested included) — calm-stop it first: sdd stop fix-flaky-auth-test',
+    ])
   })
 })

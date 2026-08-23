@@ -7,6 +7,8 @@ import { render, useInput } from 'ink'
 import { createElement, useCallback, useEffect, useRef, useState } from 'react'
 
 import type { KeyFlags } from './gate-session-state.js'
+import type { RemoveRunResult } from './remove-run.js'
+import { removeRunMessage } from './remove-run.js'
 import { routeOfRow } from './session-flow.js'
 import type { SessionTargetAction } from './session-flow.js'
 import { listSessions } from './session-list.js'
@@ -27,7 +29,10 @@ import type { SessionScreenAction, SessionScreenState } from './tui-session-scre
  * and get one shared scripted key stream across every iteration.
  */
 
-type ListDecision = Extract<SessionScreenAction, { kind: 'route' | 'stop' | 'reopen' | 'submitCreate' }>
+type ListDecision = Extract<
+  SessionScreenAction,
+  { kind: 'route' | 'stop' | 'reopen' | 'delete' | 'refuseDelete' | 'submitCreate' }
+>
 
 export interface SessionPickerDeps {
   /** Defaults to listing the work dir's runs. */
@@ -43,6 +48,8 @@ export interface SessionPickerDeps {
   readonly buildReport: (runId: string) => Promise<string>
   /** Starts a new run from the creation form's composed task text. */
   readonly createRun: (taskText: string) => Promise<void>
+  /** Guarded removal seam: one run dir, fresh state read + owner liveness. */
+  readonly removeRun: (runId: string) => Promise<RemoveRunResult>
 }
 
 function SessionPicker(props: {
@@ -111,7 +118,7 @@ function runListScreen(deps: {
 }
 
 function targetOf(
-  decision: Extract<ListDecision, { kind: 'route' | 'stop' | 'reopen' }>,
+  decision: Extract<ListDecision, { kind: 'route' | 'stop' | 'reopen' | 'delete' }>,
   rows: readonly SessionRow[],
 ): SessionTargetAction {
   if (decision.kind === 'route') {
@@ -145,11 +152,24 @@ async function runIteration(deps: SessionPickerDeps, script: ScriptKeys | undefi
     })
     return true
   }
+  if (decision.kind === 'refuseDelete') {
+    await runGuarded(script, (): Promise<string[]> =>
+      Promise.resolve([removeRunMessage({ kind: 'refused', runId: decision.runId, reason: 'running' })]),
+    )
+    return true
+  }
   const target = targetOf(decision, rows)
   if (target.kind === 'report') {
     await runGuarded(script, async (): Promise<string[]> => {
       const body = await deps.buildReport(target.runId)
       return body.split('\n')
+    })
+    return true
+  }
+  if (target.kind === 'delete') {
+    await runGuarded(script, async (): Promise<string[]> => {
+      const result = await deps.removeRun(target.runId)
+      return [removeRunMessage(result)]
     })
     return true
   }

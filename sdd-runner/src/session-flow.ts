@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { RemoveRunResult } from './remove-run.js'
+import { removeRunMessage } from './remove-run.js'
 import type { SessionRow } from './session-list.js'
 import { stopRunMessage } from './stop-controller.js'
 import type { StopRunResult } from './stop-controller.js'
@@ -19,6 +21,7 @@ export type SessionTargetAction =
   | { readonly kind: 'report'; readonly runId: string }
   | { readonly kind: 'stop'; readonly runId: string }
   | { readonly kind: 'reopen'; readonly runId: string }
+  | { readonly kind: 'delete'; readonly runId: string }
 
 export interface SessionFlowDeps {
   readonly runGateResume: (runId: string) => Promise<unknown>
@@ -27,6 +30,8 @@ export interface SessionFlowDeps {
   readonly requestCalmStop: (runId: string) => Promise<StopRunResult>
   /** Re-presents the latest settled gate as pending at a fresh version. */
   readonly reopenGate: (runId: string) => Promise<void>
+  /** Guarded removal (fresh state read + owner liveness) of one run dir. */
+  readonly removeRun: (runId: string) => Promise<RemoveRunResult>
   readonly stdout: (line: string) => void
 }
 
@@ -59,5 +64,10 @@ export async function executeSessionTarget(action: SessionTargetAction, deps: Se
     case 'reopen':
       await deps.reopenGate(runId)
       await deps.runGateResume(runId)
+      return
+    case 'delete': {
+      const result = await deps.removeRun(runId)
+      deps.stdout(removeRunMessage(result))
+    }
   }
 }

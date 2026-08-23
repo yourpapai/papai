@@ -5,6 +5,7 @@
 
 import { describe, expect, it, mock } from 'bun:test'
 
+import type { RemoveRunResult } from '../../sdd-runner/src/remove-run.js'
 import type { SessionTargetAction } from '../../sdd-runner/src/session-flow.js'
 import type { SessionRow } from '../../sdd-runner/src/session-list.js'
 import { runSessionPicker } from '../../sdd-runner/src/tui-session-picker.js'
@@ -55,6 +56,7 @@ interface PickerOptions {
   readonly executeImpl?: (action: SessionTargetAction) => Promise<void>
   readonly reportImpl?: (runId: string) => Promise<string>
   readonly createImpl?: (taskText: string) => Promise<void>
+  readonly removeImpl?: (runId: string) => Promise<RemoveRunResult>
 }
 
 function picker(options: PickerOptions): { readonly events: string[]; readonly result: Promise<'quit'> } {
@@ -78,6 +80,13 @@ function picker(options: PickerOptions): { readonly events: string[]; readonly r
     createRun: (taskText: string): Promise<void> => {
       events.push(`create:${JSON.stringify(taskText)}`)
       return (options.createImpl ?? ((): Promise<void> => Promise.resolve()))(taskText)
+    },
+    removeRun: (runId: string): Promise<RemoveRunResult> => {
+      events.push(`remove:${runId}`)
+      return (
+        options.removeImpl ??
+        ((): Promise<RemoveRunResult> => Promise.resolve({ kind: 'removed', runId: 'usage-failure-queries' }))
+      )(runId)
     },
   })
   return { events, result }
@@ -183,6 +192,34 @@ describe('runSessionPicker loop (scripted keys)', () => {
   it('q from the list quits immediately', async () => {
     const run = picker({ keyScript: 'q' })
     await expect(run.result).resolves.toBe('quit')
+    expect(run.events).toEqual(['list'])
+  })
+
+  it('a confirmed delete removes the run through the removal seam, then the refreshed list returns', async () => {
+    const run = picker({ keyScript: `${DOWN}${DOWN}dy q` })
+    await run.result
+    expect(run.events).toEqual(['list', 'remove:usage-failure-queries', 'list'])
+  })
+
+  it('a refused delete (fresh guard) still renders a notice and returns to the refreshed list', async () => {
+    const run = picker({
+      keyScript: `${DOWN}${DOWN}dy q`,
+      removeImpl: (): Promise<RemoveRunResult> =>
+        Promise.resolve({ kind: 'refused', runId: 'usage-failure-queries', reason: 'running' }),
+    })
+    await run.result
+    expect(run.events).toEqual(['list', 'remove:usage-failure-queries', 'list'])
+  })
+
+  it('d on a running row is a refusal notice — the removal seam is never called', async () => {
+    const run = picker({ keyScript: 'd q' })
+    await run.result
+    expect(run.events).toEqual(['list', 'list'])
+  })
+
+  it('cancelling the delete confirmation returns to the list with nothing removed', async () => {
+    const run = picker({ keyScript: `${DOWN}${DOWN}d${ESC}q` })
+    await run.result
     expect(run.events).toEqual(['list'])
   })
 

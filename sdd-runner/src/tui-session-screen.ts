@@ -21,6 +21,7 @@ import type { SessionRow } from './session-list.js'
 export type SessionScreenState =
   | { readonly screen: 'list'; readonly cursor: number }
   | { readonly screen: 'create'; readonly cursor: number; readonly form: CreateFormState }
+  | { readonly screen: 'confirmDelete'; readonly cursor: number; readonly runId: string; readonly changeName: string }
 
 export type SessionScreenAction =
   | { readonly kind: 'state'; readonly state: SessionScreenState }
@@ -28,6 +29,8 @@ export type SessionScreenAction =
   | { readonly kind: 'route'; readonly runId: string }
   | { readonly kind: 'stop'; readonly runId: string }
   | { readonly kind: 'reopen'; readonly runId: string }
+  | { readonly kind: 'delete'; readonly runId: string }
+  | { readonly kind: 'refuseDelete'; readonly runId: string }
   | { readonly kind: 'submitCreate'; readonly taskText: string }
   | { readonly kind: 'abandon' }
 
@@ -56,6 +59,18 @@ function reduceCreateScreen(
   return { kind: 'none' }
 }
 
+/**
+ * Delete confirmation sub-state: `y` executes, any other key cancels back to
+ * the list with the cursor preserved — the confirmation is the undo.
+ */
+function reduceConfirmDeleteScreen(
+  state: Extract<SessionScreenState, { screen: 'confirmDelete' }>,
+  input: string,
+): SessionScreenAction {
+  if (input === 'y') return { kind: 'delete', runId: state.runId }
+  return { kind: 'state', state: { screen: 'list', cursor: state.cursor } }
+}
+
 export function reduceSessionScreen(
   state: SessionScreenState,
   rows: readonly SessionRow[],
@@ -63,6 +78,7 @@ export function reduceSessionScreen(
   key: KeyFlags,
 ): SessionScreenAction {
   if (state.screen === 'create') return reduceCreateScreen(state, input, key)
+  if (state.screen === 'confirmDelete') return reduceConfirmDeleteScreen(state, input)
   const hover = (): SessionRow | undefined => rows[clampCursor(state.cursor, rows)]
   if (key.upArrow || key.downArrow) {
     const delta = key.downArrow ? 1 : -1
@@ -83,6 +99,15 @@ export function reduceSessionScreen(
   if (input === 'r') {
     const row = hover()
     return row !== undefined && REOPENABLE.has(row.status) ? { kind: 'reopen', runId: row.runId } : { kind: 'none' }
+  }
+  if (input === 'd') {
+    const row = hover()
+    if (row === undefined) return { kind: 'none' }
+    if (row.status === 'running') return { kind: 'refuseDelete', runId: row.runId }
+    return {
+      kind: 'state',
+      state: { screen: 'confirmDelete', cursor: state.cursor, runId: row.runId, changeName: row.changeName },
+    }
   }
   return { kind: 'none' }
 }
@@ -129,6 +154,7 @@ function decisionLabel(row: SessionRow): string {
 
 export function sessionScreenLines(rows: readonly SessionRow[], state: SessionScreenState, now: Date): string[] {
   if (state.screen === 'create') return createScreenLines(state.form)
+  if (state.screen === 'confirmDelete') return confirmDeleteLines(state)
   const lines: string[] = ['## Sessions']
   if (rows.length === 0) {
     lines.push('(no sessions)')
@@ -148,8 +174,18 @@ export function sessionScreenLines(rows: readonly SessionRow[], state: SessionSc
     lines.push(`${mark}${parts.join(' · ')}`)
   })
   lines.push('')
-  lines.push('(Enter) continue · (s)top active · (r)eopen gate · (n)ew session · (q)uit')
+  lines.push('(Enter) continue · (s)top active · (r)eopen gate · (d)elete · (n)ew session · (q)uit')
   return lines
+}
+
+function confirmDeleteLines(state: Extract<SessionScreenState, { screen: 'confirmDelete' }>): string[] {
+  return [
+    '## Delete session',
+    `Delete ${state.changeName} (${state.runId})?`,
+    'The run directory is removed permanently — state, events, and cost history go with it.',
+    '',
+    '(y) delete · (any other key) cancel',
+  ]
 }
 
 function createScreenLines(form: CreateFormState): string[] {

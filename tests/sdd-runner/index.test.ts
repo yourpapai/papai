@@ -44,9 +44,10 @@ describe('USAGE', () => {
       '',
       'A task file starts a run; a run id routes by its state (gate decision, resume, report).',
       'No target opens the session screen on a terminal — a loop, not a launcher: pick a run',
-      '(Enter/s/r), start one from a typed description (n), and every finished action returns',
-      'to the refreshed list; only an explicit quit (q) exits. Non-terminals keep the',
-      'list-and-exit contract. Gate decisions: the TUI on a terminal; else hand-edit the gate file.',
+      '(Enter/s/r/d — d deletes a dead row behind a named confirmation), start one from a typed',
+      'description (n), and every finished action returns to the refreshed list; only an explicit',
+      'quit (q) exits. Non-terminals keep the list-and-exit contract. Gate decisions: the TUI on',
+      'a terminal; else hand-edit the gate file.',
     ])
   })
 })

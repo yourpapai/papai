@@ -192,6 +192,98 @@ describe('reduceSessionScreen (screen switch: list ⇄ create)', () => {
   })
 })
 
+describe('reduceSessionScreen (delete confirmation)', () => {
+  it('d on a deletable row enters a confirmation naming the change and run id', () => {
+    expect(reduceSessionScreen(baseState(2), ROWS, 'd', keys())).toEqual({
+      kind: 'state',
+      state: {
+        screen: 'confirmDelete',
+        cursor: 2,
+        runId: 'usage-failure-queries',
+        changeName: 'usage-failure-queries',
+      },
+    })
+    expect(reduceSessionScreen(baseState(0), [row({ status: 'stopped' })], 'd', keys())).toEqual({
+      kind: 'state',
+      state: { screen: 'confirmDelete', cursor: 0, runId: 'fix-flaky-auth-test', changeName: 'fix-flaky-auth-test' },
+    })
+  })
+
+  it('d on a running row is refused with a notice action, not a confirmation', () => {
+    expect(reduceSessionScreen(baseState(0), ROWS, 'd', keys())).toEqual({
+      kind: 'refuseDelete',
+      runId: 'fix-flaky-auth-test',
+    })
+    expect(
+      reduceSessionScreen(
+        baseState(0),
+        [row({ pendingDecision: { kind: 'gate', mode: 'final', version: 1 } })],
+        'd',
+        keys(),
+      ),
+    ).toEqual({ kind: 'refuseDelete', runId: 'fix-flaky-auth-test' })
+    expect(reduceSessionScreen(baseState(0), [], 'd', keys())).toEqual({ kind: 'none' })
+  })
+
+  it('y in the confirmation emits the delete action for the named run', () => {
+    const confirming: SessionScreenState = {
+      screen: 'confirmDelete',
+      cursor: 2,
+      runId: 'usage-failure-queries',
+      changeName: 'usage-failure-queries',
+    }
+    expect(reduceSessionScreen(confirming, ROWS, 'y', keys())).toEqual({
+      kind: 'delete',
+      runId: 'usage-failure-queries',
+    })
+  })
+
+  it('any other key in the confirmation cancels back to the list with the cursor preserved', () => {
+    const confirming: SessionScreenState = {
+      screen: 'confirmDelete',
+      cursor: 2,
+      runId: 'usage-failure-queries',
+      changeName: 'usage-failure-queries',
+    }
+    for (const [input, key] of [
+      ['n', keys()],
+      ['', keys({ esc: true })],
+      ['', keys({ up: true })],
+      ['q', keys()],
+    ] as const) {
+      expect(reduceSessionScreen(confirming, ROWS, input, key)).toEqual({
+        kind: 'state',
+        state: { screen: 'list', cursor: 2 },
+      })
+    }
+  })
+})
+
+describe('SessionScreen delete confirmation rendering', () => {
+  it('names the session and run id with a hint line', () => {
+    const frame = render(
+      createElement(SessionScreen, {
+        rows: ROWS,
+        state: {
+          screen: 'confirmDelete',
+          cursor: 2,
+          runId: 'usage-failure-queries',
+          changeName: 'usage-failure-queries',
+        },
+        now: NOW,
+      }),
+    ).lastFrame()
+    expect(frame).toContain('Delete usage-failure-queries (usage-failure-queries)?')
+    expect(frame).toContain('(y) delete')
+    expect(frame).toContain('cancel')
+  })
+
+  it('the list legend offers the delete key', () => {
+    const frame = render(createElement(SessionScreen, { rows: ROWS, state: baseState(), now: NOW })).lastFrame()
+    expect(frame).toContain('(d)elete')
+  })
+})
+
 describe('SessionScreen create rendering', () => {
   it('renders the form fields, focus marker, hints, and validation notice', () => {
     const rejected = { ...initialCreateForm(), notice: 'a title is required' }

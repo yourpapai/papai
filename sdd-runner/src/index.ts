@@ -25,6 +25,7 @@ import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { runContinue, runGateResume, runResume, runStart } from './orchestrator.js'
 import { stdinIsInteractive } from './prompter.js'
+import { removeRun } from './remove-run.js'
 import { createRenderer } from './renderer.js'
 import type { Verbosity } from './renderer.js'
 import { buildReport } from './report.js'
@@ -46,9 +47,10 @@ export const USAGE = [
   '',
   'A task file starts a run; a run id routes by its state (gate decision, resume, report).',
   'No target opens the session screen on a terminal — a loop, not a launcher: pick a run',
-  '(Enter/s/r), start one from a typed description (n), and every finished action returns',
-  'to the refreshed list; only an explicit quit (q) exits. Non-terminals keep the',
-  'list-and-exit contract. Gate decisions: the TUI on a terminal; else hand-edit the gate file.',
+  '(Enter/s/r/d — d deletes a dead row behind a named confirmation), start one from a typed',
+  'description (n), and every finished action returns to the refreshed list; only an explicit',
+  'quit (q) exits. Non-terminals keep the list-and-exit contract. Gate decisions: the TUI on',
+  'a terminal; else hand-edit the gate file.',
 ].join('\n')
 
 export async function readChangeSummary(repoRoot: string, changeName: string): Promise<ChangeDirSummary> {
@@ -195,6 +197,7 @@ function sessionFlowDepsOf(members: CliHarness): SessionFlowDeps {
       if (version === undefined || version === null) throw new Error(`run ${runId} has no settled gate to reopen`)
       await members.runGateReopen(runId, version)
     },
+    removeRun: (runId) => removeRun(members.workDir, runId),
     stdout: members.stdout,
   }
 }
@@ -218,6 +221,7 @@ function sessionLoopOf(
         })
         members.stdout(`started ${started.runId}`)
       },
+      removeRun: (runId) => removeRun(config.workDir, runId),
     })
   }
 }
