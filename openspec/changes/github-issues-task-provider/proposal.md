@@ -33,7 +33,7 @@ REST wrapper `githubFetch(config, path, init?)` plus `GitHubConfig` (`{ baseUrl,
 - baseUrl resolution: strip trailing slash, default `https://api.github.com`, join path.
 - `GitHubApiError` class carrying statusCode, headers, and body (headers needed for rate-limit classification).
 - Pagination helper following GitHub `page`/`per_page` (and/or `Link` header parsing); expose a `listAll`/`paginate` utility consumed by list/search.
-- Rate-limit detection: 429, or 403 with `x-ratelimit-remaining: 0`, or presence of `Retry-After` / `x-ratelimit-reset` → throw an error classifiable as `rateLimited`.
+- Rate-limit detection: 429, `Retry-After`, or `x-ratelimit-remaining: 0` → throw an error classifiable as `rateLimited` (the `x-ratelimit-*` trio rides on essentially every GitHub response, so the mere presence of `x-ratelimit-reset` is not a signal).
 - Mirror YouTrack/Kaneo client conventions: pino logger child scope, `readErrorBody`, and the provider-request observation boundary (`requireProviderRequestScope` / `observeProviderRequest` with `provider: 'github'`) imported from `src/analytics/*` — both existing provider plugins do this.
 
 ### `classify-error.ts`

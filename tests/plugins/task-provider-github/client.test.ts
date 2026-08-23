@@ -338,13 +338,15 @@ describe('rate-limit detection', () => {
     expect(isRateLimitedError(caught)).toBe(true)
   })
 
-  test('an x-ratelimit-reset header marks the error rate-limited regardless of status', async () => {
-    setMockFetch(rateLimitedFetch(403, { 'x-ratelimit-reset': '1697066540' }))
+  test('an x-ratelimit-reset header alone does not mark the error rate-limited', async () => {
+    // GitHub returns the x-ratelimit-* trio on every response; the reset
+    // header's presence must not collapse other classifications.
+    setMockFetch(rateLimitedFetch(403, { 'x-ratelimit-reset': '1697066540', 'x-ratelimit-remaining': '56' }))
     const caught = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
       githubFetch(config, 'GET', CANARY_PATH).catch((error: unknown) => error),
     )
     assert.ok(caught instanceof GitHubApiError)
-    expect(isRateLimitedError(caught)).toBe(true)
+    expect(isRateLimitedError(caught)).toBe(false)
   })
 
   test('a plain 403 without rate-limit headers is not rate-limited (auth failure shape)', async () => {

@@ -140,14 +140,15 @@ export const resolveApiBaseUrl = (baseUrl: string): string => {
 /**
  * Rate-limit shape detection: GitHub overloads 403 for both authorization
  * failure and rate limiting, so headers take precedence over the status code.
- * 429, `Retry-After`, `x-ratelimit-reset`, or `x-ratelimit-remaining: 0` all
- * mark the error rate-limited; a plain 403 does not (it is an auth failure).
+ * 429, `Retry-After`, or `x-ratelimit-remaining: 0` mark the error
+ * rate-limited; a plain 403 does not (it is an auth failure). GitHub sends the
+ * `x-ratelimit-*` trio on essentially every response, so the mere presence of
+ * `x-ratelimit-reset` is not a rate-limit signal.
  */
 export const isRateLimitedError = (error: unknown): boolean => {
   if (!(error instanceof GitHubApiError)) return false
   if (error.statusCode === 429) return true
   if (error.headers.has('retry-after')) return true
-  if (error.headers.has('x-ratelimit-reset')) return true
   return error.headers.get('x-ratelimit-remaining') === '0'
 }
 

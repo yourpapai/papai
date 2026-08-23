@@ -96,10 +96,12 @@ task. Two exclusion points, matched to what each endpoint can express:
 ### 6. Rate-limit classification takes precedence over the 401/403 auth mapping
 
 GitHub overloads 403 for both authorization failure and rate limiting, so the
-classifier inspects headers first: 429, 403 with `x-ratelimit-remaining: 0`, or any
-response bearing `Retry-After` / `x-ratelimit-reset` classifies as `rateLimited`; only
-then do plain 401/403 fall to `authFailed`. `GitHubApiError` carries statusCode,
-headers, and body precisely so this ordering is decidable downstream of the client.
+classifier inspects headers first: 429, `Retry-After`, or `x-ratelimit-remaining: 0`
+classifies as `rateLimited`; only then do plain 401/403 fall to `authFailed`.
+`GitHubApiError` carries statusCode, headers, and body precisely so this ordering is
+decidable downstream of the client. GitHub sends the `x-ratelimit-*` trio on
+essentially every response, so the mere presence of `x-ratelimit-reset` is not a
+rate-limit signal.
 
 ### 7. Status mapping is a two-way, reason-folding mapping
 
