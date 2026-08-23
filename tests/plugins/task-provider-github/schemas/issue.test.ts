@@ -77,6 +77,12 @@ describe('GitHubIssueSchema', () => {
     )
   })
 
+  test('state_reason accepts duplicate (issue closed as duplicate)', () => {
+    expect(GitHubIssueSchema.parse({ ...validIssue, state: 'closed', state_reason: 'duplicate' }).state_reason).toBe(
+      'duplicate',
+    )
+  })
+
   test('state_reason as null accepts', () => {
     expect(GitHubIssueSchema.parse(validIssue).state_reason).toBeNull()
   })

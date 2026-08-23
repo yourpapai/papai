@@ -38,7 +38,7 @@ export const GitHubIssueSchema = z.object({
   labels: z.array(GitHubLabelSchema),
   assignees: z.array(GitHubUserSchema),
   state: z.enum(['open', 'closed']),
-  state_reason: z.enum(['completed', 'not_planned', 'reopened']).nullable(),
+  state_reason: z.enum(['completed', 'not_planned', 'reopened', 'duplicate']).nullable(),
   comments: z.number().int(),
   created_at: z.string(),
   updated_at: z.string(),
