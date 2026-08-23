@@ -101,6 +101,7 @@ export interface Dictionary {
   }
   announcements: {
     adminNotice: string
+    emptyReleaseNote: string
   }
   progress: {
     toolStarted: string

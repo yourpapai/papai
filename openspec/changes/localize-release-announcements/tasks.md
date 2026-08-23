@@ -3,7 +3,7 @@
 ## 1. i18n key: `announcements.emptyReleaseNote`
 
 - [x] 1.1 Test-first: extend `tests/i18n/parity.test.ts` (+ `tests/i18n/locales/en.test.ts`, `ru.test.ts`) to require the `announcements.emptyReleaseNote` key in both catalogs — fails until the catalogs land: `bun test tests/i18n/parity.test.ts`
-- [ ] 1.2 Add `emptyReleaseNote` to the `announcements` subtree in `src/i18n/types.ts` + `src/i18n/locales/en.ts` (move the current `EMPTY_RELEASE_NOTE` string), and its Russian rendering in `src/i18n/locales/ru.ts`: `bun test tests/i18n/ && bun run typecheck`
+- [x] 1.2 Add `emptyReleaseNote` to the `announcements` subtree in `src/i18n/types.ts` + `src/i18n/locales/en.ts` (move the current `EMPTY_RELEASE_NOTE` string), and its Russian rendering in `src/i18n/locales/ru.ts`: `bun test tests/i18n/ && bun run typecheck`
 
 ## 2. Migration 080 + store (`humanized_bodies` JSON column)
 
