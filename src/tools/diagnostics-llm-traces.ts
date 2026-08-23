@@ -30,10 +30,12 @@ const resolveDeps = (deps: ReadLlmTracesDeps): Required<ReadLlmTracesDeps> => ({
 const traceStats = (traces: LlmTrace[]): BufferStats => tailStats(traces, LLM_TRACE_CAPACITY, (t) => t.timestamp)
 
 /**
- * Shape-then-filter egress over the raw trace buffer, mirroring the dashboard
- * init frame: own traces verbatim, everything else stripped by `shapeLlmTrace`,
- * caller filters applied to post-shaping traces, then the tail sliced to the
- * clamped limit.
+ * Egress over the raw trace buffer, mirroring the dashboard init frame's
+ * tail: caller filters and the tail slice run on the raw traces, then only
+ * the returned entries are shaped (`shapeLlmTrace` preserves the filter
+ * fields `error` and `model` verbatim, so pre-shaping filtering is
+ * output-identical). Own traces pass verbatim; everything else is stripped
+ * by `shapeLlmTrace`.
  */
 function collectTraces(
   resolved: Required<ReadLlmTracesDeps>,
@@ -44,10 +46,10 @@ function collectTraces(
   if (raw === PROBE_ERROR) return PROBE_ERROR
   const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT)
   const traces = raw
-    .map((t) => shapeLlmTrace(t, chatUserId))
     .filter((t) => input.errors_only !== true || t.error !== undefined)
     .filter((t) => input.model === undefined || t.model === input.model)
     .slice(-limit)
+    .map((t) => shapeLlmTrace(t, chatUserId))
   return { traces, stats: traceStats(raw) }
 }
 

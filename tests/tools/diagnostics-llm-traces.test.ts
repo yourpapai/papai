@@ -209,6 +209,29 @@ describe('read_llm_traces', () => {
     })
   })
 
+  describe('shaping cost', () => {
+    test('shapes only the returned tail, not every buffered trace', async () => {
+      let toolCallsReads = 0
+      const countingTrace = (timestamp: number): LlmTrace => {
+        const base = trace({ chatUserId: 'user-2', timestamp })
+        const calls = base.toolCalls
+        return {
+          ...base,
+          get toolCalls() {
+            toolCallsReads++
+            return calls
+          },
+        }
+      }
+      const buffer = Array.from({ length: 60 }, (_, i) => countingTrace(i))
+
+      const result = await run(ADMIN, makeDeps(buffer), { limit: 10 })
+
+      expect(listed(result)).toHaveLength(10)
+      expect(toolCallsReads).toBeLessThanOrEqual(30)
+    })
+  })
+
   describe('volatility stats', () => {
     test('derives count/capacity/oldest/newest from the trace buffer', async () => {
       const buffer = [trace({ timestamp: 100 }), trace({ timestamp: 300 })]
