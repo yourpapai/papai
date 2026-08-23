@@ -5,11 +5,13 @@
 
 import { afterEach, describe, expect, test, beforeEach, spyOn } from 'bun:test'
 
+import type { LanguageModel } from 'ai'
 import { eq } from 'drizzle-orm'
 
 import packageJson from '../package.json' with { type: 'json' }
 import type { AnnouncementsDeps } from '../src/announcements.js'
 import { announceNewVersion } from '../src/announcements.js'
+import { humanizeChangelog } from '../src/announcements/humanize.js'
 import {
   getAnnouncementDraft,
   updateHumanizedBodies,
@@ -20,7 +22,8 @@ import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { ChatProvider } from '../src/chat/types.js'
 import * as schema from '../src/db/schema.js'
 import { versionAnnouncements } from '../src/db/schema.js'
-import type { Locale } from '../src/i18n/index.js'
+import { t, type Locale } from '../src/i18n/index.js'
+import { logger as rootLogger, logMultistream } from '../src/logger.js'
 import * as proactiveHistoryModule from '../src/proactive-history.js'
 import { extractChangelogSection } from './helpers/extract-changelog-section.js'
 import { createMockChat, getTestDb, mockLogger, seedTestPlatformInstance, setupTestDb } from './utils/test-helpers.js'
@@ -155,6 +158,160 @@ describe('announcement store: per-locale humanized bodies', () => {
       fr: 'sneaky',
     } as Partial<Record<Locale, string>>)
     expect(getAnnouncementDraft('v9.9.6')?.humanizedBodies).toEqual({ en: 'EN body', ru: 'RU body' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Humanize: per-locale bodies
+// ---------------------------------------------------------------------------
+
+// humanize.ts captures `logger.child({ scope })` at module load, so mockLogger()
+// cannot observe its warns. Capture through the real logger's public multistream
+// extension point instead (same approach as tests/announcements/humanize.test.ts)
+// and raise the root level per-test; pino children inherit it dynamically.
+const humanizeLogCaptured: string[] = []
+logMultistream.add({
+  level: 'trace',
+  stream: {
+    write(raw: string): void {
+      humanizeLogCaptured.push(raw)
+    },
+  },
+})
+const originalRootLogLevel = rootLogger.level
+
+const isLogRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+
+const humanizeWarns = (): Record<string, unknown>[] =>
+  humanizeLogCaptured
+    .flatMap((line) => {
+      try {
+        const entry: unknown = JSON.parse(line)
+        return isLogRecord(entry) ? [entry] : []
+      } catch {
+        return []
+      }
+    })
+    .filter((entry) => entry['level'] === 40 && entry['scope'] === 'announcements:humanize')
+
+const llmRole = (model: string): { apiKey: string; baseUrl: string; model: string; source: 'global' } => ({
+  apiKey: 'k',
+  baseUrl: 'https://llm.example',
+  model,
+  source: 'global',
+})
+
+const okLlmConfig = {
+  ok: true as const,
+  source: 'global' as const,
+  main: llmRole('main'),
+  small: llmRole('small'),
+  embedding: llmRole('embed'),
+}
+
+const twoClassifiedEntries = {
+  entries: [
+    { kind: 'new' as const, text: 'feat: edit a message to update the task' },
+    { kind: 'fix' as const, text: 'fix: stale memory results' },
+  ],
+}
+
+/** Write-pass stub keyed on the ru system prompt (module scope: no conditional inside a test body). */
+const localeAwareGenerate =
+  (ru: () => Promise<{ text: string }>, en: () => Promise<{ text: string }>) =>
+  (opts: { system: string }): Promise<{ text: string }> =>
+    opts.system.includes('Russian') ? ru() : en()
+
+describe('humanizeChangelog: per-locale bodies', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    rootLogger.level = 'trace'
+    humanizeLogCaptured.length = 0
+  })
+
+  afterEach(() => {
+    rootLogger.level = originalRootLogLevel
+  })
+
+  test('one classify pass serves both locale bodies', async () => {
+    let classifyCalls = 0
+    let writeCalls = 0
+    const result = await humanizeChangelog('### Added\n- thing', {
+      resolveConfig: () => okLlmConfig,
+      buildModel: (): LanguageModel => 'test-model',
+      generateStructured: (): Promise<typeof twoClassifiedEntries> => {
+        classifyCalls++
+        return Promise.resolve(twoClassifiedEntries)
+      },
+      generate: (): Promise<{ text: string }> => {
+        writeCalls++
+        return Promise.resolve({ text: 'Humanized!' })
+      },
+    })
+    expect(classifyCalls).toBe(1)
+    expect(writeCalls).toBe(2)
+    // Bind through unknown: the current signature returns string | null, the
+    // per-locale contract under construction returns a body map.
+    const bodies: unknown = result
+    expect(bodies).toEqual({ en: 'Humanized!', ru: 'Humanized!' })
+  })
+
+  test('ru write failure yields an en-only result, a warn naming ru, and a non-null result', async () => {
+    const result = await humanizeChangelog('raw', {
+      resolveConfig: () => okLlmConfig,
+      buildModel: (): LanguageModel => 'test-model',
+      generateStructured: (): Promise<typeof twoClassifiedEntries> => Promise.resolve(twoClassifiedEntries),
+      generate: localeAwareGenerate(
+        () => Promise.reject(new Error('ru boom')),
+        () => Promise.resolve({ text: 'EN body' }),
+      ),
+    })
+    const bodies: unknown = result
+    expect(bodies).toEqual({ en: 'EN body' })
+    const warns = humanizeWarns()
+    expect(warns.some((entry) => entry['locale'] === 'ru')).toBe(true)
+  })
+
+  test('ru write returning only whitespace yields an en-only result and a warn naming ru', async () => {
+    const result = await humanizeChangelog('raw', {
+      resolveConfig: () => okLlmConfig,
+      buildModel: (): LanguageModel => 'test-model',
+      generateStructured: (): Promise<typeof twoClassifiedEntries> => Promise.resolve(twoClassifiedEntries),
+      generate: localeAwareGenerate(
+        () => Promise.resolve({ text: '   ' }),
+        () => Promise.resolve({ text: 'EN body' }),
+      ),
+    })
+    const whitespaceBodies: unknown = result
+    expect(whitespaceBodies).toEqual({ en: 'EN body' })
+    const warns = humanizeWarns()
+    expect(warns.some((entry) => entry['locale'] === 'ru')).toBe(true)
+  })
+
+  test('both write passes failing yields an empty map, not null', async () => {
+    const result = await humanizeChangelog('raw', {
+      resolveConfig: () => okLlmConfig,
+      buildModel: (): LanguageModel => 'test-model',
+      generateStructured: (): Promise<typeof twoClassifiedEntries> => Promise.resolve(twoClassifiedEntries),
+      generate: (): Promise<{ text: string }> => Promise.reject(new Error('boom')),
+    })
+    const emptyBodies: unknown = result
+    expect(emptyBodies).toEqual({})
+  })
+
+  test('empty release returns the localized announcements.emptyReleaseNote per locale', async () => {
+    const result = await humanizeChangelog('raw', {
+      resolveConfig: () => okLlmConfig,
+      buildModel: (): LanguageModel => 'test-model',
+      generateStructured: (): Promise<{ entries: [] }> => Promise.resolve({ entries: [] }),
+      generate: (): Promise<{ text: string }> => Promise.resolve({ text: 'not called' }),
+    })
+    const noteBodies: unknown = result
+    expect(noteBodies).toEqual({
+      en: t('announcements.emptyReleaseNote', 'en'),
+      ru: t('announcements.emptyReleaseNote', 'ru'),
+    })
   })
 })
 
