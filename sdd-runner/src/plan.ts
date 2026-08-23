@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { createHash } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { z } from 'zod'
@@ -84,6 +84,8 @@ export function planDigest(children: readonly PlanChild[]): string {
 export interface PlanFsDeps {
   readonly mkdir: (dir: string, options: { recursive: boolean }) => Promise<string | undefined>
   readonly writeFile: (file: string, data: string) => Promise<void>
+  readonly readdir: (dir: string) => Promise<string[]>
+  readonly unlink: (file: string) => Promise<void>
 }
 
 const CHILDREN_DIR = 'children'
@@ -101,7 +103,7 @@ function renderChild(child: PlanChild): string {
 export async function materializeChildFiles(
   input: unknown,
   runDir: string,
-  deps: PlanFsDeps = { mkdir, writeFile },
+  deps: PlanFsDeps = { mkdir, writeFile, readdir, unlink },
 ): Promise<string[]> {
   const children = topoSortChildren(input)
   const childrenDir = path.join(runDir, CHILDREN_DIR)
@@ -110,6 +112,9 @@ export async function materializeChildFiles(
     name: `${index + 1}-${slugify(child.id)}.md`,
     content: renderChild(child),
   }))
+  const wanted = new Set(entries.map((entry) => entry.name))
+  const stale = (await deps.readdir(childrenDir)).filter((name) => name.endsWith('.md') && !wanted.has(name))
+  await Promise.all(stale.map((name) => deps.unlink(path.join(childrenDir, name))))
   await Promise.all(entries.map((entry) => deps.writeFile(path.join(childrenDir, entry.name), entry.content)))
   return entries.map((entry) => path.join(CHILDREN_DIR, entry.name))
 }

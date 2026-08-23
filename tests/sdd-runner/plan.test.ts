@@ -61,6 +61,7 @@ afterEach(() => {
 interface FakeFs {
   readonly deps: PlanFsDeps
   readonly mkdirs: string[]
+  readonly unlinks: string[]
   readonly fileNames: () => string[]
   readonly contentOf: (file: string) => string
   readonly contentAt: (index: number) => string
@@ -68,6 +69,7 @@ interface FakeFs {
 
 function fakeFs(): FakeFs {
   const mkdirs: string[] = []
+  const unlinks: string[] = []
   const files = new Map<string, string>()
   return {
     deps: {
@@ -75,12 +77,22 @@ function fakeFs(): FakeFs {
         mkdirs.push(dir)
         return Promise.resolve(undefined)
       },
+      readdir: (dir: string): Promise<string[]> =>
+        Promise.resolve(
+          [...files.keys()].filter((file) => path.dirname(file) === dir).map((file) => path.basename(file)),
+        ),
+      unlink: (file: string): Promise<void> => {
+        unlinks.push(file)
+        files.delete(file)
+        return Promise.resolve()
+      },
       writeFile: (file: string, data: string): Promise<void> => {
         files.set(file, data)
         return Promise.resolve()
       },
     },
     mkdirs,
+    unlinks,
     fileNames: () => [...files.keys()],
     contentOf: (file: string): string => files.get(file) ?? '',
     contentAt: (index: number): string => files.get([...files.keys()][index] ?? '') ?? '',
@@ -289,6 +301,29 @@ describe('materializeChildFiles', () => {
     expect(fake.contentAt(0)).toBe(firstContent)
     expect(fake.mkdirs).toEqual([path.join('runs', 'p', 'children'), path.join('runs', 'p', 'children')])
   })
+  it('deletes files left by a previous plan, so a replan remakes children/ exactly', async () => {
+    const fake = fakeFs()
+    await materializeChildFiles(
+      { children: [child('old-first'), child('old-second', ['old-first'])] },
+      'runs/p',
+      fake.deps,
+    )
+    await materializeChildFiles({ children: [child('fresh-only')] }, 'runs/p', fake.deps)
+    expect(fake.fileNames()).toEqual([path.join('runs', 'p', 'children', '1-fresh-only.md')])
+    expect(fake.unlinks).toEqual([
+      path.join('runs', 'p', 'children', '1-old-first.md'),
+      path.join('runs', 'p', 'children', '2-old-second.md'),
+    ])
+  })
+
+  it('keeps non-markdown files in children/ untouched', async () => {
+    const fake = fakeFs()
+    await fake.deps.writeFile(path.join('runs', 'p', 'children', 'notes.txt'), 'human notes')
+    await materializeChildFiles({ children: [child('alpha')] }, 'runs/p', fake.deps)
+    expect(fake.unlinks).toEqual([])
+    expect(fake.fileNames()).toContain(path.join('runs', 'p', 'children', 'notes.txt'))
+    expect(fake.contentOf(path.join('runs', 'p', 'children', 'notes.txt'))).toBe('human notes')
+  })
 })
 
 describe('materializeChildFiles (default fs seam)', () => {
@@ -302,5 +337,12 @@ describe('materializeChildFiles (default fs seam)', () => {
     expect(beta).toContain('# beta')
     expect(beta).toContain('do beta')
     expect(beta).toContain('deps: alpha')
+  })
+
+  it('removes stale files from a previous plan on the real fs seam', async () => {
+    const runDir = path.join(makeTmpDir(), 'runs', 'parent-8')
+    await materializeChildFiles({ children: [child('old-a'), child('old-b', ['old-a'])] }, runDir)
+    await materializeChildFiles({ children: [child('new-a'), child('new-b', ['new-a'])] }, runDir)
+    expect(fs.readdirSync(path.join(runDir, 'children')).sort()).toEqual(['1-new-a.md', '2-new-b.md'])
   })
 })
