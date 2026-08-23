@@ -115,9 +115,9 @@ export default {
     'plugins/audio-transcribe/runtime.ts!',
     'plugins/context-vault/runtime.ts!',
     'plugins/task-provider-kaneo/auto-provision.ts!',
-    // GitHub provider constants + API schemas: in-flight seam of the
+    // GitHub provider client/constants/schemas: in-flight seam of the
     // github-issues-task-provider change; its later tasks consume them.
-    'plugins/task-provider-github/{constants,schemas/*}.ts!',
+    'plugins/task-provider-github/{client,constants,schemas/*}.ts!',
     // Test-seam shims: re-export test-only symbols so tests have an explicit
     // import site; see the *.testing.ts ignoreIssues glob below.
     'src/**/*.testing.ts!',
