@@ -191,6 +191,7 @@ const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
   conclusion: 'failure',
   workflowName: 'CI',
   runUrl: 'https://example.test/run/1',
+  runId: 32652877782,
   fromThisRepository: true,
   defaultBranch: BASE_BRANCH,
   ...overrides,
@@ -613,6 +614,8 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       label(`create:${name}`, () => {
         io.labelsCreated.push({ name, color })
       }),
+    listRunJobs: (): Promise<never> => Promise.reject(new Error('no red run in this harness')),
+    jobLog: (): Promise<never> => Promise.reject(new Error('no red run in this harness')),
   }
 
   const git: Git = {

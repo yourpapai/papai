@@ -49,6 +49,7 @@ const ciTrigger: TriggerEvent = {
   conclusion: 'failure',
   workflowName: 'CI',
   runUrl: 'https://example.test/run/1',
+  runId: 32652877782,
   fromThisRepository: true,
   defaultBranch: 'main',
 }

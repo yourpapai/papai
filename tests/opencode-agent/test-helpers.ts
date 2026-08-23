@@ -12,6 +12,7 @@ import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import type { Salvage } from '../../opencode-agent/src/git-commit.js'
 import type { Git, PushOptions } from '../../opencode-agent/src/git.js'
 import type { MergeOutcome } from '../../opencode-agent/src/git.js'
+import type { RunJob } from '../../opencode-agent/src/github-actions.js'
 import type { LabelApi } from '../../opencode-agent/src/github-labels.js'
 import type {
   PullRequestApi,
@@ -142,6 +143,14 @@ export interface StubIo {
    * `openspec/changes/`. A test seeds it to drive capture down the adopt path.
    */
   existingChanges: string[]
+  /**
+   * Jobs the fake `listRunJobs` answers with. A test seeds them to drive a
+   * CI-fix round at a particular red run; the default empty list is the
+   * needs-human "no failed job could be found" shape.
+   */
+  runJobs: RunJob[]
+  /** Log text the fake `jobLog` returns, keyed by job id; absent ids answer ''. */
+  jobLogs: Record<number, string>
 }
 
 export interface StubPhaseDepsOptions {
@@ -159,6 +168,10 @@ export interface StubPhaseDepsOptions {
   selfLogin?: string
   /** The repoRoot the fake config reports. */
   repoRoot?: string
+  /** Pre-seeded `listRunJobs` answer (default: no jobs). */
+  runJobs?: readonly RunJob[]
+  /** Pre-seeded `jobLog` answers, keyed by job id. */
+  jobLogs?: Record<number, string>
 }
 
 const emptyInstructions = (): InstructionsResult => ({
@@ -197,6 +210,8 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     reads: [],
     readContents: {},
     existingChanges: [],
+    runJobs: [...(options.runJobs ?? [])],
+    jobLogs: { ...(options.jobLogs ?? {}) },
   }
   const replies = options.replies ?? []
   const login = options.selfLogin ?? 'agent-bot'
@@ -291,6 +306,8 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     getAuthenticatedLogin: (): Promise<string> => Promise.resolve(login),
     getUser: (loginArg: string): Promise<{ login: string; id: number }> =>
       Promise.resolve({ login: loginArg, id: 123 }),
+    listRunJobs: (_runId: number): Promise<readonly RunJob[]> => Promise.resolve([...io.runJobs]),
+    jobLog: (jobId: number): Promise<string> => Promise.resolve(io.jobLogs[jobId] ?? ''),
     ...reactionApi,
     ...labelApi,
     ...pullRequestApi,

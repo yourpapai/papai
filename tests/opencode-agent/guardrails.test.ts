@@ -105,6 +105,7 @@ const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
   conclusion: 'failure',
   workflowName: 'CI',
   runUrl: 'https://example.test/run/1',
+  runId: 32652877782,
   fromThisRepository: true,
   defaultBranch: 'main',
   ...overrides,
@@ -174,6 +175,7 @@ describe('parseTriggerEvent — CI events', () => {
       head_branch: 'agent/issue-42',
       conclusion: 'failure',
       html_url: 'https://example.test/run/1',
+      id: 32652877782,
       head_repository: { full_name: 'acme/widgets' },
     },
     repository: { default_branch: 'main', full_name: 'acme/widgets' },
@@ -188,12 +190,20 @@ describe('parseTriggerEvent — CI events', () => {
         head_branch: branch,
         conclusion: 'failure',
         html_url: 'u',
+        id: 32652877782,
         head_repository: { full_name: 'attacker/widgets' },
       },
     })
 
   test('recovers the issue number from the agent branch', () => {
     expect(parseTriggerEvent('workflow_run', ciPayload())).toEqual(ciEvent())
+  })
+
+  test('carries the id of the run that went red, beside its URL', () => {
+    // `runUrl` is what reports render; `runId` is what the Actions API is
+    // addressed by. Recovering an id by scraping the URL is the thing the
+    // no-scraping rule forbids, so the payload's own `id` must ride along.
+    expect(parseTriggerEvent('workflow_run', ciPayload())).toMatchObject({ runId: 32652877782 })
   })
 
   test('reports no default branch when a run payload omitted the repository', () => {
@@ -206,7 +216,7 @@ describe('parseTriggerEvent — CI events', () => {
     'returns null for unrelated branch %p',
     (branch) => {
       const payload = ciPayload({
-        workflow_run: { name: 'CI', head_branch: branch, conclusion: 'failure', html_url: 'u' },
+        workflow_run: { name: 'CI', head_branch: branch, conclusion: 'failure', html_url: 'u', id: 32652877782 },
       })
 
       expect(parseTriggerEvent('workflow_run', payload)).toBeNull()
@@ -214,7 +224,9 @@ describe('parseTriggerEvent — CI events', () => {
   )
 
   test('returns null when the run has no branch', () => {
-    const payload = ciPayload({ workflow_run: { name: 'CI', head_branch: null, conclusion: 'failure', html_url: 'u' } })
+    const payload = ciPayload({
+      workflow_run: { name: 'CI', head_branch: null, conclusion: 'failure', html_url: 'u', id: 32652877782 },
+    })
 
     expect(parseTriggerEvent('workflow_run', payload)).toBeNull()
   })
@@ -226,7 +238,15 @@ describe('parseTriggerEvent — CI events', () => {
   test.each([
     [
       'no head_repository at all',
-      ciPayload({ workflow_run: { name: 'CI', head_branch: 'agent/issue-42', conclusion: 'failure', html_url: 'u' } }),
+      ciPayload({
+        workflow_run: {
+          name: 'CI',
+          head_branch: 'agent/issue-42',
+          conclusion: 'failure',
+          html_url: 'u',
+          id: 32652877782,
+        },
+      }),
     ],
     [
       'no repository at all',
@@ -234,6 +254,7 @@ describe('parseTriggerEvent — CI events', () => {
         action: 'completed',
         workflow_run: {
           name: 'CI',
+          id: 32652877782,
           head_branch: 'agent/issue-42',
           conclusion: 'failure',
           html_url: 'u',
@@ -246,6 +267,7 @@ describe('parseTriggerEvent — CI events', () => {
       ciPayload({
         workflow_run: {
           name: 'CI',
+          id: 32652877782,
           head_branch: 'agent/issue-42',
           conclusion: 'failure',
           html_url: 'u',

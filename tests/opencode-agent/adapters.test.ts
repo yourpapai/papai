@@ -2015,6 +2015,19 @@ const PR_JSON = { number: 3, html_url: 'https://example.test/pull/3' }
 const jsonResponse = (payload: unknown): Response =>
   new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } })
 
+/**
+ * A response whose `url` is readable, the way a real transport's always is.
+ *
+ * Octokit's pagination walks `new URL(response.url)` for the object-shaped
+ * pages the Actions jobs endpoint answers with, and `new Response(...)` leaves
+ * `url` an empty string — a recorder that forgets this dies inside the plugin
+ * rather than in the code under test.
+ */
+const withUrl = (response: Response, url: string): Response => {
+  Object.defineProperty(response, 'url', { value: url })
+  return response
+}
+
 /** `[what the adapter should report, the API's `state`, its `merged_at`]`. */
 const PR_STATE_CASES: readonly (readonly [PullRequestState, string, string | null])[] = [
   ['merged', 'closed', '2026-01-01T00:00:00Z'],
@@ -2357,6 +2370,123 @@ describe('createOctokitApi', () => {
       title: 'Add retries (#42)',
       body: 'Closes #42',
     })
+  })
+
+  // Recorded from a live `listJobsForWorkflowRun` answer (yourpapai/papai run
+  // 32652877782, job 97227096004): every field below is one the adapter reads,
+  // and none added by inspection — the sdk-contract doctrine, applied at the
+  // HTTP boundary too.
+  const RUN_JOBS_JSON = {
+    total_count: 2,
+    jobs: [
+      {
+        id: 97227081604,
+        name: 'Resolve the issue this run belongs to',
+        status: 'completed',
+        conclusion: 'success',
+        steps: [
+          { name: 'Set up job', number: 1, status: 'completed', conclusion: 'success' },
+          { name: 'Complete job', number: 2, status: 'completed', conclusion: 'skipped' },
+        ],
+      },
+      {
+        id: 97227096004,
+        name: 'Run agent pipeline',
+        status: 'completed',
+        conclusion: 'failure',
+        steps: [
+          { name: 'Set up job', number: 1, status: 'completed', conclusion: 'success' },
+          { name: 'Run the agent pipeline', number: 11, status: 'completed', conclusion: 'failure' },
+        ],
+      },
+    ],
+  }
+
+  /**
+   * A recorder for the Actions endpoints, where the pages answer object-shaped
+   * (`{ total_count, jobs }`) and pagination reads `response.url` — which
+   * `withUrl` supplies, since the fetch stub otherwise leaves it empty.
+   */
+  const actionsRecordingApi = (
+    captured: CapturedRequest[],
+    payload: unknown,
+    secrets: readonly string[] = [],
+  ): GitHubApi =>
+    createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets,
+      fetch: (url, init) => {
+        captured.push({ url, method: init?.method ?? 'GET', body: parseBody(init?.body) })
+        return Promise.resolve(
+          withUrl(jsonResponse(payload), 'https://api.github.test/repos/acme/widgets/actions/runs/32652877782/jobs'),
+        )
+      },
+      log: silentOctokitLog(),
+    })
+
+  test('lists a run’s jobs with their per-step conclusions', async () => {
+    const captured: CapturedRequest[] = []
+
+    const jobs = await actionsRecordingApi(captured, RUN_JOBS_JSON).listRunJobs(32652877782)
+
+    expect(captured[0]?.method).toBe('GET')
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/actions/runs/32652877782/jobs')
+    // Paginated: a matrix build answers with more jobs than one page carries,
+    // and a diagnosis that never saw the failed job cannot name what broke.
+    expect(captured[0]?.url).toContain('per_page=100')
+    expect(jobs).toHaveLength(2)
+    expect(jobs[1]).toEqual({
+      id: 97227096004,
+      name: 'Run agent pipeline',
+      conclusion: 'failure',
+      steps: [
+        { name: 'Set up job', conclusion: 'success' },
+        { name: 'Run the agent pipeline', conclusion: 'failure' },
+      ],
+    })
+  })
+
+  test('treats an absent conclusion as null, not as a passing one', async () => {
+    // A cancelled or in-flight job carries `conclusion: null`; `success` is the
+    // one conclusion the caller filters on, so a default of that string here
+    // would make an unfinished job look finished.
+    const payload = { total_count: 1, jobs: [{ id: 1, name: 'Build', conclusion: null, steps: [] }] }
+
+    const jobs = await actionsRecordingApi([], payload).listRunJobs(1482)
+
+    expect(jobs[0]?.conclusion).toBeNull()
+  })
+
+  /** A recorder whose transport answers plain text — the log endpoint's shape. */
+  const logRecordingApi = (captured: CapturedRequest[], logText: string, secrets: readonly string[]): GitHubApi =>
+    createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets,
+      fetch: (url, init) => {
+        captured.push({ url, method: init?.method ?? 'GET', body: parseBody(init?.body) })
+        return Promise.resolve(new Response(logText, { status: 200, headers: { 'content-type': 'text/plain' } }))
+      },
+      log: silentOctokitLog(),
+    })
+
+  test('downloads a job’s log as text, redacted at the boundary', async () => {
+    // The log endpoint answers plain text, not JSON: `downloadJobLogsForWorkflowRun`
+    // follows a redirect to the log blob and hands back its body as a string.
+    // Recorded shape; the redaction is the same rule every free-text read obeys —
+    // a CI log can quote a credential back at the reader.
+    const captured: CapturedRequest[] = []
+    const logText = `2026-08-23T16:44:06.3Z error: script "test:mutate:changed" exited with code 1.\ntoken=${LEAKED}`
+
+    const log = await logRecordingApi(captured, logText, [LEAKED]).jobLog(97227096004)
+
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/actions/jobs/97227096004/logs')
+    expect(log).toContain('exited with code 1')
+    expect(log).not.toContain(LEAKED)
+    expect(log).toContain('[redacted]')
   })
 })
 
