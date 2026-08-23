@@ -196,3 +196,45 @@ describe('main routing dispatch (6.2)', () => {
     await expect(main(['gate', 'resume', 'run-1'], harness)).rejects.toThrow(/sdd <run-id>/u)
   })
 })
+
+describe('main interactive dispatch (session loop)', () => {
+  function interactiveHarness(workDir: string): { harness: CliHarness; loops: string[] } {
+    const loops: string[] = []
+    const harness: CliHarness = {
+      ...captureHarness(workDir).harness,
+      interactive: (): boolean => true,
+      sessionLoop: (options): Promise<void> => {
+        loops.push(`${options.initial}:${options.depth ?? '-'}`)
+        return Promise.resolve()
+      },
+    }
+    return { harness, loops }
+  }
+
+  it('ambiguous runs on a terminal enter the looping screen once, on the list', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'run-a', (state) => {
+      state.status = 'completed'
+    })
+    seedRun(workDir, 'run-b', (state) => {
+      state.status = 'completed'
+    })
+    const { harness, loops } = interactiveHarness(workDir)
+    await main([], harness)
+    expect(loops).toEqual(['list:-'])
+  })
+
+  it('zero runs on a terminal enter the loop on the creation screen, depth carried', async () => {
+    const dir = makeDir()
+    const { harness, loops } = interactiveHarness(path.join(dir, '.sdd'))
+    await main(['--depth', 'L'], harness)
+    expect(loops).toEqual(['create:L'])
+  })
+
+  it('a missing loop seam on an interactive route fails loudly', async () => {
+    const dir = makeDir()
+    const harness: CliHarness = { ...captureHarness(path.join(dir, '.sdd')).harness, interactive: () => true }
+    await expect(main([], harness)).rejects.toThrow(/sessionLoop/u)
+  })
+})

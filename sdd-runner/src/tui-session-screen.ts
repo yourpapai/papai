@@ -7,17 +7,20 @@ import { Box, Text } from 'ink'
 import { createElement } from 'react'
 
 import type { KeyFlags } from './gate-session-state.js'
+import { initialCreateForm, reduceCreateForm } from './session-create-form.js'
+import type { CreateFormState } from './session-create-form.js'
 import type { SessionRow } from './session-list.js'
 
 /**
  * Session screen (D2): every run as one selectable row with derived progress;
  * a pure reducer owns cursor + decisions so live stdin and scripted keys
- * drive identical logic.
+ * drive identical logic. A screen dimension (D-manager) hosts the inline
+ * creation form behind the same key pipeline.
  */
 
-export interface SessionScreenState {
-  readonly cursor: number
-}
+export type SessionScreenState =
+  | { readonly screen: 'list'; readonly cursor: number }
+  | { readonly screen: 'create'; readonly cursor: number; readonly form: CreateFormState }
 
 export type SessionScreenAction =
   | { readonly kind: 'state'; readonly state: SessionScreenState }
@@ -25,7 +28,7 @@ export type SessionScreenAction =
   | { readonly kind: 'route'; readonly runId: string }
   | { readonly kind: 'stop'; readonly runId: string }
   | { readonly kind: 'reopen'; readonly runId: string }
-  | { readonly kind: 'create' }
+  | { readonly kind: 'submitCreate'; readonly taskText: string }
   | { readonly kind: 'abandon' }
 
 const REOPENABLE = new Set(['completed', 'aborted', 'failed'])
@@ -35,20 +38,40 @@ function clampCursor(cursor: number, rows: readonly SessionRow[]): number {
   return Math.min(Math.max(cursor, 0), max)
 }
 
+/** Entry state for a session-screen mount: the list, or the creation form. */
+export function initialSessionScreenState(screen: 'list' | 'create' = 'list'): SessionScreenState {
+  if (screen === 'create') return { screen: 'create', cursor: 0, form: initialCreateForm() }
+  return { screen: 'list', cursor: 0 }
+}
+
+function reduceCreateScreen(
+  state: Extract<SessionScreenState, { screen: 'create' }>,
+  input: string,
+  key: KeyFlags,
+): SessionScreenAction {
+  const action = reduceCreateForm(state.form, input, key)
+  if (action.kind === 'state') return { kind: 'state', state: { ...state, form: action.state } }
+  if (action.kind === 'cancel') return { kind: 'state', state: { screen: 'list', cursor: state.cursor } }
+  if (action.kind === 'submit') return { kind: 'submitCreate', taskText: action.taskText }
+  return { kind: 'none' }
+}
+
 export function reduceSessionScreen(
   state: SessionScreenState,
   rows: readonly SessionRow[],
   input: string,
   key: KeyFlags,
 ): SessionScreenAction {
+  if (state.screen === 'create') return reduceCreateScreen(state, input, key)
   const hover = (): SessionRow | undefined => rows[clampCursor(state.cursor, rows)]
   if (key.upArrow || key.downArrow) {
     const delta = key.downArrow ? 1 : -1
-    return { kind: 'state', state: { cursor: clampCursor(state.cursor + delta, rows) } }
+    return { kind: 'state', state: { screen: 'list', cursor: clampCursor(state.cursor + delta, rows) } }
   }
   if (key.escape) return { kind: 'abandon' }
   if (input === 'q') return { kind: 'abandon' }
-  if (input === 'n') return { kind: 'create' }
+  if (input === 'n')
+    return { kind: 'state', state: { screen: 'create', cursor: state.cursor, form: initialCreateForm() } }
   if (key.return) {
     const row = hover()
     return row === undefined ? { kind: 'none' } : { kind: 'route', runId: row.runId }
@@ -105,6 +128,7 @@ function decisionLabel(row: SessionRow): string {
 }
 
 export function sessionScreenLines(rows: readonly SessionRow[], state: SessionScreenState, now: Date): string[] {
+  if (state.screen === 'create') return createScreenLines(state.form)
   const lines: string[] = ['## Sessions']
   if (rows.length === 0) {
     lines.push('(no sessions)')
@@ -125,6 +149,16 @@ export function sessionScreenLines(rows: readonly SessionRow[], state: SessionSc
   })
   lines.push('')
   lines.push('(Enter) continue · (s)top active · (r)eopen gate · (n)ew session · (q)uit')
+  return lines
+}
+
+function createScreenLines(form: CreateFormState): string[] {
+  const lines: string[] = ['## New session']
+  lines.push(`${form.field === 'title' ? '❯' : ' '} Title: ${form.title}`)
+  lines.push(`${form.field === 'description' ? '❯' : ' '} Description: ${form.description}`)
+  if (form.notice !== null) lines.push(`! ${form.notice}`)
+  lines.push('')
+  lines.push('(Tab) switch field · (Enter) start · (Esc) back')
   return lines
 }
 

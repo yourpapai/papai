@@ -13,8 +13,6 @@ import type {
   StartOptions,
 } from './orchestrator.js'
 import type { AutonomyOverrides } from './orchestrator.js'
-import { executeSessionTarget } from './session-flow.js'
-import type { SessionFlowDeps } from './session-flow.js'
 import { stopRunMessage } from './stop-controller.js'
 import type { StopRunResult } from './stop-controller.js'
 
@@ -22,10 +20,6 @@ export interface GateReopenResult {
   readonly runId: string
   readonly gateVersion: number
 }
-
-export type SessionPickResult =
-  | { readonly kind: 'gate' | 'resume' | 'report' | 'stop' | 'reopen'; readonly runId: string }
-  | { readonly kind: 'create' }
 
 export interface CliHarness {
   /** The work dir routing decisions are made against. */
@@ -41,10 +35,14 @@ export interface CliHarness {
   readonly stdout: (line: string) => void
   /** A live terminal owns stdin — enables the interactive session screen paths. */
   readonly interactive?: () => boolean
-  /** Opens the session screen over all runs; null = abandoned without effects. */
-  readonly sessionPick?: () => Promise<SessionPickResult | null>
-  /** Inline creation prompt: title + description → a new run. */
-  readonly sessionCreate?: (depth?: DepthProfile) => Promise<void>
+  /**
+   * The session screen loop: one call owns the whole interactive surface
+   * (list ⇄ create, actions, notices) and resolves only on explicit quit.
+   */
+  readonly sessionLoop?: (options: {
+    readonly initial: 'list' | 'create'
+    readonly depth?: DepthProfile
+  }) => Promise<void>
   /** Version of the run's most recently answered gate, null when none settled. */
   readonly latestSettledGateVersion?: (runId: string) => Promise<number | null>
 }
@@ -155,42 +153,18 @@ const REMOVED_FLAGS = new Set([
   '--verbosity',
 ])
 
-function requireSessionPick(harness: CliHarness): () => Promise<SessionPickResult | null> {
-  if (harness.sessionPick === undefined) {
-    throw new Error('interactive session selection requires a harness with sessionPick (TTY only)')
-  }
-  return harness.sessionPick
-}
-
-function flowDepsOf(harness: CliHarness): SessionFlowDeps {
-  return {
-    runGateResume: (runId) => harness.runGateResume(runId),
-    runResume: (runId) => harness.runResume(runId),
-    buildReport: (runId) => harness.buildReport(runId, false),
-    requestCalmStop: (runId) => harness.requestCalmStop(runId),
-    reopenGate: async (runId) => {
-      const version = await harness.latestSettledGateVersion?.(runId)
-      if (version === undefined || version === null) throw new Error(`run ${runId} has no settled gate to reopen`)
-      await harness.runGateReopen(runId, version)
-    },
-    stdout: harness.stdout,
-  }
-}
-
-async function runInteractive(
-  action: { readonly kind: 'select' | 'create' },
+function requireSessionLoop(
   harness: CliHarness,
-  depth?: DepthProfile,
-): Promise<number> {
-  if (action.kind === 'select') {
-    const picked = await requireSessionPick(harness)()
-    if (picked === null) return 0
-    if (picked.kind !== 'create') {
-      await executeSessionTarget(picked, flowDepsOf(harness))
-      return 0
-    }
+): (options: { readonly initial: 'list' | 'create'; readonly depth?: DepthProfile }) => Promise<void> {
+  if (harness.sessionLoop === undefined) {
+    throw new Error('interactive session screen requires a harness with sessionLoop (TTY only)')
   }
-  await harness.sessionCreate?.(depth)
+  return harness.sessionLoop
+}
+
+async function runInteractive(initial: 'list' | 'create', harness: CliHarness, depth?: DepthProfile): Promise<number> {
+  const loop = requireSessionLoop(harness)
+  await loop({ initial, ...(depth === undefined ? {} : { depth }) })
   return 0
 }
 
@@ -205,9 +179,8 @@ export async function main(argv: readonly string[], harness: CliHarness): Promis
     return 0
   }
   const action = await resolveTarget({ workDir: harness.workDir, target: parsed.target, tty })
-  if (action.kind === 'select' || action.kind === 'create') {
-    return runInteractive(action, harness, parsed.depth)
-  }
+  if (action.kind === 'select') return runInteractive('list', harness, parsed.depth)
+  if (action.kind === 'create') return runInteractive('create', harness, parsed.depth)
   if (parsed.reopen !== undefined) {
     if (action.kind === 'start') rejectStartReopen()
     if (action.kind !== 'gate' && action.kind !== 'resume' && action.kind !== 'report') {
