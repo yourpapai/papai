@@ -34,6 +34,12 @@ export type AnnouncementBodies = Partial<Record<Locale, string>>
  * The single fallback chain: the recipient's locale body, then the en body,
  * then the raw changelog section. Null only when nothing is usable.
  */
+export function selectAnnouncementBody(bodies: AnnouncementBodies, rawBody: string, locale: Locale): string
+export function selectAnnouncementBody(
+  bodies: AnnouncementBodies,
+  rawBody: string | null,
+  locale: Locale,
+): string | null
 export function selectAnnouncementBody(
   bodies: AnnouncementBodies,
   rawBody: string | null,

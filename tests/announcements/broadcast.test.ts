@@ -5,7 +5,12 @@
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 
-import { broadcastAnnouncement, groupTarget, type BroadcastDeps } from '../../src/announcements/broadcast.js'
+import {
+  broadcastAnnouncement,
+  groupTarget,
+  selectAnnouncementBody,
+  type BroadcastDeps,
+} from '../../src/announcements/broadcast.js'
 import { defaultBroadcastDepsForTest } from '../../src/announcements/broadcast.testing.js'
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import * as proactiveDeliveryModule from '../../src/deferred-prompts/proactive-delivery.js'
@@ -40,6 +45,22 @@ const BODIES: Partial<Record<'en' | 'ru', string>> = { en: 'EN body', ru: 'RU bo
 // Module scope: oxlint forbids conditional expressions inside test bodies.
 const localeForUser = (user: string): 'en' | 'ru' => (user.endsWith('-ru') ? 'ru' : 'en')
 const localeForGroup = (group: string): 'en' | 'ru' => (group.endsWith('-ru') ? 'ru' : 'en')
+
+describe('selectAnnouncementBody', () => {
+  test('non-null raw body guarantees a non-null selected body across the fallback chain', () => {
+    // The string-typed annotations pin the overload contract: with a non-null
+    // rawBody the result is string (never null), so callers passing a known
+    // non-null section need no fallback after the chain.
+    const fromLocale: string = selectAnnouncementBody(BODIES, 'raw section', 'en')
+    const fromEnFallback: string = selectAnnouncementBody({}, 'raw section', 'ru')
+    const fromRawLastResort: string = selectAnnouncementBody({}, 'raw section', 'en')
+    const nothingUsable: string | null = selectAnnouncementBody({}, null, 'en')
+    expect(fromLocale).toBe('EN body')
+    expect(fromEnFallback).toBe('raw section')
+    expect(fromRawLastResort).toBe('raw section')
+    expect(nothingUsable).toBeNull()
+  })
+})
 
 describe('broadcastAnnouncement', () => {
   test('sends to all subscribers and returns counts', async () => {

@@ -115,7 +115,7 @@ export async function announceNewVersion(
   // One locale lookup serves both the wrapper text and the admin body selection.
   const adminConfigContextId = toScopedContextId({ platformInstanceId, nativeContextId: adminUserId })
   const adminLocale = getContextLanguage(adminConfigContextId)
-  const draftBody = selectAnnouncementBody(bodies, rawSection, adminLocale) ?? rawSection
+  const draftBody = selectAnnouncementBody(bodies, rawSection, adminLocale)
   const message = t('announcements.adminNotice', adminLocale, {
     version: VERSION,
     body: draftBody,
