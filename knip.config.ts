@@ -189,12 +189,6 @@ export default {
     // listToolNames is consumed by the behavior-audit closure verifier via
     // dynamic import from scripts/behavior-audit/entry-point-maps.ts.
     'src/tools/index.ts': ['exports'],
-    // The self-diagnosis reader family lands tool-by-tool (tests + factory per
-    // file) before the change's assembly task (task 6.2 in
-    // openspec/changes/self-diagnosis-tools/tasks.md) wires the factories into
-    // maybeAddDiagnosticsTools; until then these modules have no static
-    // production importer. Temporary gap, removed when that task lands.
-    'src/tools/diagnostics-*.ts': ['files'],
     // listRoutes is consumed by the behavior-audit closure verifier via
     // dynamic import; re-exported from src/debug/server-route-options.ts.
     'src/debug/server-route-options.ts': ['exports'],

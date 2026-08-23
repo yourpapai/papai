@@ -16,6 +16,10 @@ import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { mcpPool } from '../mcp/client-pool.js'
 import { registry } from '../message-queue/index.js'
+import { makeReadLlmTracesTool } from './diagnostics-llm-traces.js'
+import { makeReadRecentLogsTool } from './diagnostics-logs.js'
+import { makeReadRecentToolFailuresTool } from './diagnostics-tool-failures.js'
+import { makeReadRecentTurnsTool } from './diagnostics-turns.js'
 import { toolErrorClass } from './tool-logging.js'
 import type { MakeToolsOptions } from './types.js'
 
@@ -137,8 +141,10 @@ export function makeRunDiagnosticsTool(
 }
 
 /**
- * Adds diagnostics tools to a descriptor set. Fails closed: the tool is only
- * assembled for a bot admin in a DM, in normal mode.
+ * Adds diagnostics tools to a descriptor set. Fails closed: the tools are only
+ * assembled for a bot admin in a DM, in normal mode. The reader family binds
+ * `options.chatUserId` as the visibility principal at assembly time — safe
+ * because these tools only assemble in the admin's own DM context.
  */
 export function maybeAddDiagnosticsTools(tools: Record<string, Tool>, options: MakeToolsOptions): void {
   // `mode` is optional and defaults to 'normal' (MakeToolsOptions); the
@@ -153,4 +159,8 @@ export function maybeAddDiagnosticsTools(tools: Record<string, Tool>, options: M
     configContextId,
     options.storageContextId ?? '',
   )
+  tools['read_recent_logs'] = makeReadRecentLogsTool(options.chatUserId)
+  tools['read_llm_traces'] = makeReadLlmTracesTool(options.chatUserId)
+  tools['read_recent_turns'] = makeReadRecentTurnsTool(options.chatUserId)
+  tools['read_recent_tool_failures'] = makeReadRecentToolFailuresTool(options.chatUserId)
 }
