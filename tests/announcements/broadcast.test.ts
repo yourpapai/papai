@@ -28,14 +28,22 @@ function makeDeps(over: Partial<BroadcastDeps>): BroadcastDeps {
     markBroadcast: () => {},
     sendDm: () => Promise.resolve(true),
     sendGroup: () => Promise.resolve(true),
+    getUserLocale: () => 'en',
+    getGroupLocale: () => 'en',
     now: () => '2026-06-26T00:00:00Z',
     ...over,
   }
 }
 
+const BODIES: Partial<Record<'en' | 'ru', string>> = { en: 'EN body', ru: 'RU body' }
+
+// Module scope: oxlint forbids conditional expressions inside test bodies.
+const localeForUser = (user: string): 'en' | 'ru' => (user.endsWith('-ru') ? 'ru' : 'en')
+const localeForGroup = (group: string): 'en' | 'ru' => (group.endsWith('-ru') ? 'ru' : 'en')
+
 describe('broadcastAnnouncement', () => {
   test('sends to all subscribers and returns counts', async () => {
-    const result = await broadcastAnnouncement(chat, '9.9.9', 'body', makeDeps({}))
+    const result = await broadcastAnnouncement(chat, '9.9.9', BODIES, 'raw section', makeDeps({}))
     expect(result).toEqual({ sent: 2, failed: 0, skipped: 0 })
   })
 
@@ -43,7 +51,8 @@ describe('broadcastAnnouncement', () => {
     const result = await broadcastAnnouncement(
       chat,
       '9.9.9',
-      'body',
+      BODIES,
+      'raw section',
       makeDeps({
         isDelivered: (_v, ctx) => ctx === 'pi:u1',
       }),
@@ -55,7 +64,8 @@ describe('broadcastAnnouncement', () => {
     const result = await broadcastAnnouncement(
       chat,
       '9.9.9',
-      'body',
+      BODIES,
+      'raw section',
       makeDeps({
         sendGroup: () => Promise.resolve(false),
       }),
@@ -67,7 +77,8 @@ describe('broadcastAnnouncement', () => {
     const result = await broadcastAnnouncement(
       chat,
       '9.9.9',
-      'body',
+      BODIES,
+      'raw section',
       makeDeps({
         sendDm: () => Promise.reject(new Error('network')),
       }),
@@ -80,7 +91,8 @@ describe('broadcastAnnouncement', () => {
     await broadcastAnnouncement(
       chat,
       '9.9.9',
-      'body',
+      BODIES,
+      'raw section',
       makeDeps({
         markBroadcast: (_v, at) => {
           markedAt = at
@@ -115,7 +127,8 @@ describe('broadcastAnnouncement', () => {
     const result = await broadcastAnnouncement(
       chat,
       '9.9.9',
-      'body',
+      BODIES,
+      'raw section',
       makeDeps({
         listSubscribedUsers: () => [],
         listSubscribedGroups: () => [],
@@ -126,6 +139,128 @@ describe('broadcastAnnouncement', () => {
     )
     expect(result).toEqual({ sent: 0, failed: 0, skipped: 0 })
     expect(broadcastMarked).toBe(true)
+  })
+})
+
+describe('broadcastAnnouncement per-recipient locale', () => {
+  test('ru DM user and ru group receive the ru body; en recipients receive the en body', async () => {
+    const dmBodies: Array<{ user: string; body: string }> = []
+    const groupBodies: Array<{ group: string; body: string }> = []
+    const result = await broadcastAnnouncement(
+      chat,
+      '9.9.9',
+      BODIES,
+      'raw section',
+      makeDeps({
+        listSubscribedUsers: () => [
+          { platformInstanceId: 'pi', platformUserId: 'u-ru' },
+          { platformInstanceId: 'pi', platformUserId: 'u-en' },
+        ],
+        listSubscribedGroups: () => [{ groupId: 'g-ru' }, { groupId: 'g-en' }],
+        getUserLocale: (_pi, user) => localeForUser(user),
+        getGroupLocale: (group) => localeForGroup(group),
+        sendDm: (_chat, _pi, user, body) => {
+          dmBodies.push({ user, body })
+          return Promise.resolve(true)
+        },
+        sendGroup: (_chat, group, body) => {
+          groupBodies.push({ group, body })
+          return Promise.resolve(true)
+        },
+      }),
+    )
+    expect(result).toEqual({ sent: 4, failed: 0, skipped: 0 })
+    expect(dmBodies).toContainEqual({ user: 'u-ru', body: 'RU body' })
+    expect(dmBodies).toContainEqual({ user: 'u-en', body: 'EN body' })
+    expect(groupBodies).toContainEqual({ group: 'g-ru', body: 'RU body' })
+    expect(groupBodies).toContainEqual({ group: 'g-en', body: 'EN body' })
+  })
+
+  test('unset locale resolves to en', async () => {
+    const dmBodies: Array<{ user: string; body: string }> = []
+    await broadcastAnnouncement(
+      chat,
+      '9.9.9',
+      BODIES,
+      'raw section',
+      makeDeps({
+        getUserLocale: () => 'en',
+        sendDm: (_chat, _pi, user, body) => {
+          dmBodies.push({ user, body })
+          return Promise.resolve(true)
+        },
+      }),
+    )
+    expect(dmBodies).toEqual([{ user: 'u1', body: 'EN body' }])
+  })
+
+  test('ru recipient with missing ru body falls back to en', async () => {
+    const dmBodies: Array<{ user: string; body: string }> = []
+    await broadcastAnnouncement(
+      chat,
+      '9.9.9',
+      { en: 'EN body' },
+      'raw section',
+      makeDeps({
+        getUserLocale: () => 'ru',
+        sendDm: (_chat, _pi, user, body) => {
+          dmBodies.push({ user, body })
+          return Promise.resolve(true)
+        },
+      }),
+    )
+    expect(dmBodies).toEqual([{ user: 'u1', body: 'EN body' }])
+  })
+
+  test('raw section is the last resort when the map has no usable body', async () => {
+    const dmBodies: Array<{ user: string; body: string }> = []
+    const groupBodies: Array<{ group: string; body: string }> = []
+    await broadcastAnnouncement(
+      chat,
+      '9.9.9',
+      {},
+      'raw section',
+      makeDeps({
+        sendDm: (_chat, _pi, user, body) => {
+          dmBodies.push({ user, body })
+          return Promise.resolve(true)
+        },
+        sendGroup: (_chat, group, body) => {
+          groupBodies.push({ group, body })
+          return Promise.resolve(true)
+        },
+      }),
+    )
+    expect(dmBodies).toEqual([{ user: 'u1', body: 'raw section' }])
+    expect(groupBodies).toEqual([{ group: 'g1', body: 'raw section' }])
+  })
+
+  test('locale selection does not change dedup keys or failure isolation', async () => {
+    const recorded: Array<{ key: string; type: 'dm' | 'group'; status: 'sent' | 'failed' }> = []
+    const result = await broadcastAnnouncement(
+      chat,
+      '9.9.9',
+      BODIES,
+      'raw section',
+      makeDeps({
+        listSubscribedUsers: () => [
+          { platformInstanceId: 'pi', platformUserId: 'u-ru' },
+          { platformInstanceId: 'pi', platformUserId: 'u-en' },
+        ],
+        getUserLocale: (_pi, user) => localeForUser(user),
+        isDelivered: (_v, ctx) => ctx === 'pi:u-ru',
+        recordDelivery: (v, ctx, type, status) => {
+          recorded.push({ key: `${v}:${ctx}`, type, status })
+        },
+        sendDm: (_chat, _pi, user) => Promise.resolve(user !== 'u-en'),
+      }),
+    )
+    // u-ru skipped (already delivered), u-en fails, default g1 group sends en fine
+    expect(result).toEqual({ sent: 1, failed: 1, skipped: 1 })
+    expect(recorded).toEqual([
+      { key: '9.9.9:pi:u-en', type: 'dm', status: 'failed' },
+      { key: '9.9.9:g1', type: 'group', status: 'sent' },
+    ])
   })
 })
 

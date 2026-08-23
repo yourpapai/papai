@@ -8,8 +8,10 @@ import pLimit from 'p-limit'
 import { getNativeContextId, toScopedContextId } from '../chat/scoped-context.js'
 import { dmTarget, type ChatProvider, type DeferredDeliveryTarget } from '../chat/types.js'
 import { sendProactiveMessage } from '../deferred-prompts/proactive-delivery.js'
+import type { Locale } from '../i18n/index.js'
 import { logger } from '../logger.js'
 import { recordProactiveInHistory } from '../proactive-history.js'
+import { getContextLanguage } from '../utils/config-language.js'
 import {
   isDelivered as defaultIsDelivered,
   listSubscribedGroups as defaultListGroups,
@@ -26,6 +28,20 @@ const MAX_CONCURRENT_SENDS = 5
 
 export type BroadcastSummary = { sent: number; failed: number; skipped: number }
 
+export type AnnouncementBodies = Partial<Record<Locale, string>>
+
+/**
+ * The single fallback chain: the recipient's locale body, then the en body,
+ * then the raw changelog section. Null only when nothing is usable.
+ */
+export function selectAnnouncementBody(
+  bodies: AnnouncementBodies,
+  rawBody: string | null,
+  locale: Locale,
+): string | null {
+  return bodies[locale] ?? bodies.en ?? rawBody ?? null
+}
+
 export interface BroadcastDeps {
   listSubscribedUsers: () => SubscribedUser[]
   listSubscribedGroups: () => SubscribedGroup[]
@@ -39,6 +55,8 @@ export interface BroadcastDeps {
     body: string,
   ) => Promise<boolean>
   sendGroup: (chat: Readonly<ChatProvider>, groupId: string, body: string) => Promise<boolean>
+  getUserLocale: (platformInstanceId: string, platformUserId: string) => Locale
+  getGroupLocale: (groupId: string) => Locale
   now: () => string
 }
 
@@ -81,6 +99,9 @@ const defaultDeps: BroadcastDeps = {
     if (ok) recordProactiveInHistory(groupId, body)
     return ok
   },
+  getUserLocale: (platformInstanceId, platformUserId) =>
+    getContextLanguage(toScopedContextId({ platformInstanceId, nativeContextId: platformUserId })),
+  getGroupLocale: (groupId) => getContextLanguage(groupId),
   now: () => new Date().toISOString(),
 }
 
@@ -90,21 +111,13 @@ export const defaultBroadcastDepsForTest = defaultDeps
 // dedup key for announcement_deliveries only; not a canonical scoped context id
 const dmContextKey = (u: SubscribedUser): string => `${u.platformInstanceId}:${u.platformUserId}`
 
-/** Fan out `body` to all opt-in subscribers. Idempotent per recipient; failure-isolated. */
-export async function broadcastAnnouncement(
-  chat: Readonly<ChatProvider>,
-  version: string,
-  body: string,
-  deps: BroadcastDeps = defaultDeps,
-): Promise<BroadcastSummary> {
-  const limit = pLimit(MAX_CONCURRENT_SENDS)
-  const summary: BroadcastSummary = { sent: 0, failed: 0, skipped: 0 }
+/** Resolve the per-recipient body; a send with nothing usable counts as failed. */
+const sendWithBody = (doSend: (body: string) => Promise<boolean>, body: string | null): Promise<boolean> =>
+  body === null ? Promise.resolve(false) : doSend(body)
 
-  const send = async (
-    contextId: string,
-    contextType: 'dm' | 'group',
-    doSend: () => Promise<boolean>,
-  ): Promise<void> => {
+/** Per-recipient dedup check, failure-isolated send, and delivery recording. */
+function makeSender(deps: BroadcastDeps, version: string, summary: BroadcastSummary) {
+  return async (contextId: string, contextType: 'dm' | 'group', doSend: () => Promise<boolean>): Promise<void> => {
     if (deps.isDelivered(version, contextId)) {
       summary.skipped += 1
       return
@@ -120,17 +133,76 @@ export async function broadcastAnnouncement(
     if (ok) summary.sent += 1
     else summary.failed += 1
   }
+}
 
-  const userTasks = deps
+type EnqueueLimited = (fn: () => Promise<void>) => Promise<void>
+
+function buildUserTasks(
+  chat: Readonly<ChatProvider>,
+  bodies: AnnouncementBodies,
+  rawBody: string | null,
+  deps: BroadcastDeps,
+  send: ReturnType<typeof makeSender>,
+  limit: EnqueueLimited,
+): Promise<void>[] {
+  return deps
     .listSubscribedUsers()
     .map((u) =>
-      limit(() => send(dmContextKey(u), 'dm', () => deps.sendDm(chat, u.platformInstanceId, u.platformUserId, body))),
+      limit(() =>
+        send(dmContextKey(u), 'dm', () =>
+          sendWithBody(
+            (body) => deps.sendDm(chat, u.platformInstanceId, u.platformUserId, body),
+            selectAnnouncementBody(bodies, rawBody, deps.getUserLocale(u.platformInstanceId, u.platformUserId)),
+          ),
+        ),
+      ),
     )
-  const groupTasks = deps
-    .listSubscribedGroups()
-    .map((g) => limit(() => send(g.groupId, 'group', () => deps.sendGroup(chat, g.groupId, body))))
+}
 
-  await Promise.allSettled([...userTasks, ...groupTasks])
+function buildGroupTasks(
+  chat: Readonly<ChatProvider>,
+  bodies: AnnouncementBodies,
+  rawBody: string | null,
+  deps: BroadcastDeps,
+  send: ReturnType<typeof makeSender>,
+  limit: EnqueueLimited,
+): Promise<void>[] {
+  return deps
+    .listSubscribedGroups()
+    .map((g) =>
+      limit(() =>
+        send(g.groupId, 'group', () =>
+          sendWithBody(
+            (body) => deps.sendGroup(chat, g.groupId, body),
+            selectAnnouncementBody(bodies, rawBody, deps.getGroupLocale(g.groupId)),
+          ),
+        ),
+      ),
+    )
+}
+
+/**
+ * Fan out per-locale bodies to all opt-in subscribers: each recipient's body is
+ * `selectAnnouncementBody(bodies, rawBody, locale)` with the locale resolved from
+ * their config context (DM scoped id / group scoped id). Idempotent per recipient;
+ * failure-isolated. Dedup keys (`isDelivered`/`recordDelivery`) are locale-independent.
+ */
+export async function broadcastAnnouncement(
+  chat: Readonly<ChatProvider>,
+  version: string,
+  bodies: AnnouncementBodies,
+  rawBody: string | null,
+  deps: BroadcastDeps = defaultDeps,
+): Promise<BroadcastSummary> {
+  const limit = pLimit(MAX_CONCURRENT_SENDS)
+  const summary: BroadcastSummary = { sent: 0, failed: 0, skipped: 0 }
+  const send = makeSender(deps, version, summary)
+
+  const tasks = [
+    ...buildUserTasks(chat, bodies, rawBody, deps, send, limit),
+    ...buildGroupTasks(chat, bodies, rawBody, deps, send, limit),
+  ]
+  await Promise.allSettled(tasks)
   deps.markBroadcast(version, deps.now())
   log.info({ version, ...summary }, 'announcement broadcast complete')
   return summary

@@ -6,7 +6,7 @@
 import { z } from 'zod'
 
 import packageJson from '../../../../package.json' with { type: 'json' }
-import { broadcastAnnouncement } from '../../../announcements/broadcast.js'
+import { broadcastAnnouncement, selectAnnouncementBody } from '../../../announcements/broadcast.js'
 import { humanizeChangelog } from '../../../announcements/humanize.js'
 import { countSubscribers, getAnnouncementDraft, updateHumanizedBody } from '../../../announcements/store.js'
 import { readChangelogFile } from '../../../changelog-reader.js'
@@ -83,12 +83,13 @@ async function handlePost(req: Request, authed: AuthenticatedSettingsRequest): P
 
   if (body.data.action === 'broadcast') {
     const draft = getAnnouncementDraft(VERSION)
-    const sendBody = draft?.humanizedBody ?? draft?.rawBody
-    if (sendBody === null || sendBody === undefined || sendBody.length === 0)
+    const bodies = draft?.humanizedBodies ?? {}
+    const rawBody = draft?.rawBody ?? null
+    if (selectAnnouncementBody(bodies, rawBody, 'en') === null)
       return settingsJson(422, { error: 'nothing to broadcast' })
     const chat = getRuntimeChatRouter()
     if (chat === null) return settingsJson(422, { error: 'chat router not running' })
-    const result = await broadcastAnnouncement(chat, VERSION, sendBody)
+    const result = await broadcastAnnouncement(chat, VERSION, bodies, rawBody)
     log.info({ version: VERSION, ...result }, 'release notes broadcast')
     return settingsJson(200, { version: VERSION, broadcast: result, counts: countSubscribers() })
   }
