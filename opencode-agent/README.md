@@ -1452,6 +1452,11 @@ guardrails and the secret wiring that bound it, from inside a job that file
 defines. The alternative costs a maintainer one commit — the agent says in its
 reply exactly what to apply.
 
+The full option space — what the remote refuses and to whom, why `ci.yml` and
+`agent-pipeline.yml` are not the same risk, and four routes that need no grant
+at all — is in [`docs/workflow-edit-options.md`](docs/workflow-edit-options.md).
+Nothing there is implemented.
+
 ### Capability containment
 
 Prompt-level defences fail eventually, so the model's capabilities are bounded
