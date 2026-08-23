@@ -44,7 +44,7 @@ export type Resolution = z.infer<typeof ResolutionSchema>
 export const ResolutionsSidecarSchema = z.object({ resolutions: z.array(ResolutionSchema) })
 
 export const AssumptionRecordSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().regex(/^A\d+$/u, 'assumptions[].id must follow the A-prefix convention (A1, A2, …)'),
   text: z.string().min(1),
   basis: z.enum(['code-evidence', 'convention', 'default']),
   confidence: z.enum(['high', 'medium', 'low']),

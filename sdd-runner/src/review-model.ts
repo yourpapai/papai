@@ -171,7 +171,7 @@ export function buildResolverPrompt(input: {
     `Write resolutions as JSON to ${input.outputTarget}:`,
     '{"resolutions": [{"id", "class", "resolution": "edited"|"evidence-answered"|"assumed"|"dismissed",',
     ' "outcome"?: string, "justification"?: string}],',
-    ' "assumptions": [{"id", "text", "basis": "code-evidence"|"convention"|"default",',
+    ' "assumptions": [{"id": "A<number>", "text", "basis": "code-evidence"|"convention"|"default",',
     ' "confidence": "high"|"medium"|"low", "blast_radius": string, "status": "open",',
     ' "evidence": {"files": ["<repo-relative paths this assumption references, at least one"]]}}]}',
   ].join('\n')

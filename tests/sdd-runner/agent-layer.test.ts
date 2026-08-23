@@ -22,6 +22,8 @@ import { INACTIVITY_TIMEOUT_MS } from '../../sdd-runner/src/config.js'
 import type { RunnerConfig } from '../../sdd-runner/src/config.js'
 import { EventInputSchema } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
+import { ResolverOutputSchema } from '../../sdd-runner/src/review-loop.js'
+import type { ResolverOutput } from '../../sdd-runner/src/review-loop.js'
 
 const tmpDirs: string[] = []
 
@@ -201,6 +203,30 @@ describe('sidecar schemas', () => {
       ],
     }
     expect(AssumptionsSidecarSchema.safeParse(badBasis).success).toBe(false)
+  })
+
+  it('rejects resolver assumptions that reuse a finding-style id instead of the A-prefix convention', () => {
+    const recordWithId = (id: string): ResolverOutput => ({
+      resolutions: [],
+      assumptions: [
+        {
+          id,
+          text: 'Plan-gate veto rounds are unbounded',
+          basis: 'default',
+          confidence: 'medium',
+          blast_radius: 'plan-gate loop',
+          status: 'open',
+          evidence: { files: ['openspec/changes/foo/design.md'] },
+        },
+      ],
+    })
+    const result = ResolverOutputSchema.safeParse(recordWithId('F4'))
+    expect(result.success).toBe(false)
+    expect(() => ResolverOutputSchema.parse(recordWithId('F4'))).toThrow(/A-prefix convention/u)
+    expect(ResolverOutputSchema.safeParse(recordWithId('A12')).success).toBe(true)
+    for (const malformed of ['A1x', 'AA1']) {
+      expect(ResolverOutputSchema.safeParse(recordWithId(malformed)).success).toBe(false)
+    }
   })
 
   it('requires per-assumption evidence.files and rejects missing or empty lists', () => {
