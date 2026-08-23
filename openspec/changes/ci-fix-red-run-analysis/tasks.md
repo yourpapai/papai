@@ -31,4 +31,4 @@
 
 ## 6. Verification
 
-- [ ] 6.1 Full suite `bun run test`, plus `bun run lint`, `bun run typecheck`, `bun check:full`; confirm zero references to `AGENT_CHECKS` remain (`rg AGENT_CHECKS`)
+- [x] 6.1 Full suite `bun run test`, plus `bun run lint`, `bun run typecheck`, `bun check:full`; confirm zero references to `AGENT_CHECKS` remain (`rg AGENT_CHECKS`)
