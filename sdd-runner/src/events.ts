@@ -3,9 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import fs from 'node:fs'
-import path from 'node:path'
-
 import { z } from 'zod'
 
 export const StageIdSchema = z.enum(['intake', 'draft', 'review', 'decompose', 'atomicity', 'gate'])
@@ -162,8 +159,28 @@ const GateEvent = z.object({
   altitude: z.literal('L2'),
   type: z.literal('gate'),
   action: z.enum(['presented', 'answered']),
-  mode: z.enum(['early', 'final']),
+  mode: z.enum(['early', 'final', 'plan']),
   version: z.number().int().positive(),
+})
+
+const PlanEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('plan'),
+  childCount: z.number().int().positive(),
+  digest: z.string().min(1),
+})
+
+const ChildSpawnedEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('child_spawned'),
+  child: z.string().min(1),
+})
+
+const ChildDoneEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('child_done'),
+  child: z.string().min(1),
+  outcome: z.enum(['done', 'failed']),
 })
 
 const HumanEditsEvent = z.object({
@@ -213,6 +230,9 @@ const EVENT_VARIANTS = [
   ArtifactEvent,
   DepthEvent,
   GateEvent,
+  PlanEvent,
+  ChildSpawnedEvent,
+  ChildDoneEvent,
   HumanEditsEvent,
   ResumeEvent,
   AutoDecisionEvent,
@@ -240,6 +260,9 @@ export const SddEventSchema = z.discriminatedUnion('type', [
   ArtifactEvent.extend(StampShape),
   DepthEvent.extend(StampShape),
   GateEvent.extend(StampShape),
+  PlanEvent.extend(StampShape),
+  ChildSpawnedEvent.extend(StampShape),
+  ChildDoneEvent.extend(StampShape),
   HumanEditsEvent.extend(StampShape),
   ResumeEvent.extend(StampShape),
   AutoDecisionEvent.extend(StampShape),
@@ -248,41 +271,4 @@ export type SddEvent = z.infer<typeof SddEventSchema>
 
 export type DoneEvent = Extract<SddEvent, { type: 'done' }>
 
-function nextSeq(logPath: string): number {
-  if (!fs.existsSync(logPath)) return 1
-  const lines = fs
-    .readFileSync(logPath, 'utf8')
-    .split('\n')
-    .filter((line) => line.length > 0)
-  return lines.length + 1
-}
-
-/** Validate an event input and attach stamp fields without touching disk. */
-export function stampEvent(init: EventInput, seq: number, ts: string): SddEvent {
-  const parsedInput = EventInputSchema.parse(init)
-  return SddEventSchema.parse({ ...parsedInput, seq, ts })
-}
-
-export function appendEvent(logPath: string, event: unknown, now: Date = new Date()): SddEvent {
-  const parsedInput = EventInputSchema.parse(event)
-  const stamped = { ...parsedInput, seq: nextSeq(logPath), ts: now.toISOString() }
-  const parsed = SddEventSchema.parse(stamped)
-  fs.mkdirSync(path.dirname(logPath), { recursive: true })
-  fs.appendFileSync(logPath, `${JSON.stringify(parsed)}\n`)
-  return parsed
-}
-
-export function readEvents(logPath: string): SddEvent[] {
-  const lines = fs.readFileSync(logPath, 'utf8').split('\n')
-  const events: SddEvent[] = []
-  lines.forEach((line, index) => {
-    if (line.length === 0) return
-    try {
-      events.push(SddEventSchema.parse(JSON.parse(line)))
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error)
-      throw new Error(`events.ndjson line ${index + 1}: ${detail}`, { cause: error })
-    }
-  })
-  return events
-}
+export { appendEvent, readEvents, stampEvent } from './event-log.js'

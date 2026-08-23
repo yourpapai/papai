@@ -30,7 +30,11 @@ export interface ReplayState {
   readonly round: { readonly current: number; readonly cap: number } | null
   readonly perRound: readonly DigestRecord[]
   readonly lastVerdict: DigestRecord | null
-  readonly gate: { readonly mode: 'early' | 'final'; readonly version: number; readonly answered: boolean } | null
+  readonly gate: {
+    readonly mode: 'early' | 'final' | 'plan'
+    readonly version: number
+    readonly answered: boolean
+  } | null
   readonly autoDecisions: readonly AutoDecisionRecord[]
 }
 
