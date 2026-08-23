@@ -10,8 +10,7 @@ import { z } from 'zod'
 import { findTurnById, recentTurns, RECENT_TURNS_CAPACITY, type Turn } from '../debug/turn-assembly.js'
 import { clientVisibility, isVisibleToAdmin } from '../debug/visibility.js'
 import { logger } from '../logger.js'
-import { PROBE_ERROR } from './diagnostics.js'
-import { toolErrorClass } from './tool-logging.js'
+import { PROBE_ERROR, runProbe } from './diagnostics.js'
 
 const log = logger.child({ scope: 'tool:read-recent-turns' })
 
@@ -36,16 +35,6 @@ const resolveDeps = (deps: ReadRecentTurnsDeps): Required<ReadRecentTurnsDeps> =
   turns: deps.turns ?? (() => recentTurns.slice()),
   findTurnById: deps.findTurnById ?? findTurnById,
 })
-
-/** Runs one probe; a throwing probe degrades to the per-field error marker. */
-function runProbe<T>(field: string, probe: () => T): T | typeof PROBE_ERROR {
-  try {
-    return probe()
-  } catch (error) {
-    log.warn({ tool: 'read_recent_turns', field, errorClass: toolErrorClass(error) }, 'Turn buffer probe failed')
-    return PROBE_ERROR
-  }
-}
 
 /** Buffer-wide volatility stats derived structurally from the turn array. */
 function turnStats(turns: Turn[]): TurnBufferStats {
@@ -88,7 +77,7 @@ function fetchTurn(
   chatUserId: string | undefined,
   turnId: string,
 ): { found: true; turn: Turn } | { found: false } | typeof PROBE_ERROR {
-  const found = runProbe('find_turn_by_id', () => resolved.findTurnById(turnId))
+  const found = runProbe('read_recent_turns', 'find_turn_by_id', () => resolved.findTurnById(turnId))
   if (found === PROBE_ERROR) return PROBE_ERROR
   if (found === undefined) return { found: false }
   if (!isVisibleToAdmin(found.scope, clientVisibility(chatUserId))) return { found: false }
@@ -126,7 +115,7 @@ export function makeReadRecentTurnsTool(chatUserId: string | undefined, deps: Re
       'Read recent conversation turns from the in-process turn buffer: timings, status, tool names/durations, and failure reasons for turns visible to you. Use turn_id to fetch a single turn; foreign or unknown ids return not_found. Admin-only; returns no message content.',
     inputSchema: readRecentTurnsInputSchema,
     execute: ({ status, turn_id, limit }): Promise<ReadRecentTurnsResult> => {
-      const raw = runProbe('turns', resolved.turns)
+      const raw = runProbe('read_recent_turns', 'turns', resolved.turns)
       const stats = raw === PROBE_ERROR ? PROBE_ERROR : turnStats(raw)
       if (turn_id !== undefined) {
         const fetched = fetchTurn(resolved, chatUserId, turn_id)

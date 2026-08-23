@@ -10,8 +10,7 @@ import { z } from 'zod'
 import { recentToolFailures, RECENT_TOOL_FAILURES_CAPACITY, type ToolFailure } from '../debug/turn-assembly.js'
 import { clientVisibility, isVisibleToAdmin } from '../debug/visibility.js'
 import { logger } from '../logger.js'
-import { PROBE_ERROR } from './diagnostics.js'
-import { toolErrorClass } from './tool-logging.js'
+import { PROBE_ERROR, runProbe } from './diagnostics.js'
 
 const log = logger.child({ scope: 'tool:read-recent-tool-failures' })
 
@@ -34,19 +33,6 @@ export type ReadRecentToolFailuresDeps = Partial<
 const resolveDeps = (deps: ReadRecentToolFailuresDeps): Required<ReadRecentToolFailuresDeps> => ({
   failures: deps.failures ?? (() => recentToolFailures.slice()),
 })
-
-/** Runs one probe; a throwing probe degrades to the per-field error marker. */
-function runProbe<T>(field: string, probe: () => T): T | typeof PROBE_ERROR {
-  try {
-    return probe()
-  } catch (error) {
-    log.warn(
-      { tool: 'read_recent_tool_failures', field, errorClass: toolErrorClass(error) },
-      'Tool-failure buffer probe failed',
-    )
-    return PROBE_ERROR
-  }
-}
 
 /** Buffer-wide volatility stats derived structurally from the failure array. */
 function failureStats(failures: ToolFailure[]): FailureBufferStats {
@@ -124,7 +110,7 @@ export function makeReadRecentToolFailuresTool(
       'Read recent tool-call failures from the in-process buffer: timestamp, scope, tool name, duration, success flag, failure reason, and turn id for entries visible to you. Admin-only; returns no tool arguments or results.',
     inputSchema: readRecentToolFailuresInputSchema,
     execute: ({ limit }): Promise<ReadRecentToolFailuresResult> => {
-      const raw = runProbe('failures', resolved.failures)
+      const raw = runProbe('read_recent_tool_failures', 'failures', resolved.failures)
       const result =
         raw === PROBE_ERROR
           ? { failures: PROBE_ERROR, stats: PROBE_ERROR }

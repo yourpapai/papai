@@ -11,8 +11,7 @@ import { logBuffer, shapeLogEntry, type LogEntry } from '../debug/log-buffer.js'
 import { entryMatchesFilter, type LogFilter } from '../debug/log-filter-model.js'
 import { isOwnLogEntry, ownTurnIdsForAdmin } from '../debug/visibility.js'
 import { logger } from '../logger.js'
-import { PROBE_ERROR } from './diagnostics.js'
-import { toolErrorClass } from './tool-logging.js'
+import { PROBE_ERROR, runProbe } from './diagnostics.js'
 
 const log = logger.child({ scope: 'tool:read-recent-logs' })
 
@@ -44,16 +43,6 @@ const resolveDeps = (deps: ReadRecentLogsDeps): Required<ReadRecentLogsDeps> => 
   ownTurnIds: deps.ownTurnIds ?? ((adminUserId: string | undefined) => ownTurnIdsForAdmin(adminUserId)),
 })
 
-/** Runs one probe; a throwing probe degrades to the per-field error marker. */
-function runProbe<T>(field: string, probe: () => T): T | typeof PROBE_ERROR {
-  try {
-    return probe()
-  } catch (error) {
-    log.warn({ tool: 'read_recent_logs', field, errorClass: toolErrorClass(error) }, 'Log buffer probe failed')
-    return PROBE_ERROR
-  }
-}
-
 type LogsFilterInput = {
   level?: number | undefined
   scope?: string | undefined
@@ -79,9 +68,9 @@ function collectEntries(
   chatUserId: string | undefined,
   input: LogsFilterInput & { limit?: number | undefined },
 ): LogEntry[] | typeof PROBE_ERROR {
-  const ownTurnIds = runProbe('own_turn_ids', () => resolved.ownTurnIds(chatUserId))
+  const ownTurnIds = runProbe('read_recent_logs', 'own_turn_ids', () => resolved.ownTurnIds(chatUserId))
   const attribution: ReadonlySet<string> = ownTurnIds === PROBE_ERROR ? new Set<string>() : ownTurnIds
-  const raw = runProbe('entries', resolved.entries)
+  const raw = runProbe('read_recent_logs', 'entries', resolved.entries)
   if (raw === PROBE_ERROR) return PROBE_ERROR
   return raw
     .map((entry) => (isOwnLogEntry(entry, chatUserId, attribution) ? entry : shapeLogEntry(entry)))
@@ -129,9 +118,9 @@ export function makeReadRecentLogsTool(chatUserId: string | undefined, deps: Rea
       "Read recent bot log entries from the in-process ring buffer. Own entries return verbatim; other users' entries are reduced to structural and numeric/boolean fields only. History starts at process start. Admin-only; returns no secrets.",
     inputSchema: readRecentLogsInputSchema,
     execute: ({ level, scope, msg, turn_id, limit, distinct_scopes }): Promise<ReadRecentLogsResult> => {
-      const stats = runProbe('stats', resolved.stats)
+      const stats = runProbe('read_recent_logs', 'stats', resolved.stats)
       if (distinct_scopes === true) {
-        const scopes = runProbe('scopes', resolved.distinctScopes)
+        const scopes = runProbe('read_recent_logs', 'scopes', resolved.distinctScopes)
         log.info({ tool: 'read_recent_logs', distinct_scopes: true }, 'Distinct log scopes collected')
         return Promise.resolve({ scopes, stats, history_starts_at_process_start: true })
       }

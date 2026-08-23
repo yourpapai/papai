@@ -9,8 +9,7 @@ import { z } from 'zod'
 
 import { recentLlm, shapeLlmTrace, LLM_TRACE_CAPACITY, type LlmTrace } from '../debug/llm-trace-collector.js'
 import { logger } from '../logger.js'
-import { PROBE_ERROR } from './diagnostics.js'
-import { toolErrorClass } from './tool-logging.js'
+import { PROBE_ERROR, runProbe } from './diagnostics.js'
 
 const log = logger.child({ scope: 'tool:read-llm-traces' })
 
@@ -34,16 +33,6 @@ const resolveDeps = (deps: ReadLlmTracesDeps): Required<ReadLlmTracesDeps> => ({
   traces: deps.traces ?? (() => recentLlm.slice()),
 })
 
-/** Runs one probe; a throwing probe degrades to the per-field error marker. */
-function runProbe<T>(field: string, probe: () => T): T | typeof PROBE_ERROR {
-  try {
-    return probe()
-  } catch (error) {
-    log.warn({ tool: 'read_llm_traces', field, errorClass: toolErrorClass(error) }, 'Trace buffer probe failed')
-    return PROBE_ERROR
-  }
-}
-
 /** Buffer-wide volatility stats derived structurally from the trace array. */
 function traceStats(traces: LlmTrace[]): TraceBufferStats {
   return {
@@ -65,7 +54,7 @@ function collectTraces(
   chatUserId: string | undefined,
   input: { errors_only?: boolean | undefined; model?: string | undefined; limit?: number | undefined },
 ): { traces: LlmTrace[]; stats: TraceBufferStats } | typeof PROBE_ERROR {
-  const raw = runProbe('traces', resolved.traces)
+  const raw = runProbe('read_llm_traces', 'traces', resolved.traces)
   if (raw === PROBE_ERROR) return PROBE_ERROR
   const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT)
   const traces = raw

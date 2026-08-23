@@ -26,6 +26,7 @@ import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers
 import { clearLlmAdminCacheForTesting } from '../../src/llm-providers/store.testing.js'
 import type { LlmProviderAccount } from '../../src/llm-providers/types.js'
 import { logMultistream, logger } from '../../src/logger.js'
+import { makeReadRecentLogsTool, type ReadRecentLogsDeps } from '../../src/tools/diagnostics-logs.js'
 import { makeRunDiagnosticsTool, maybeAddDiagnosticsTools, type DiagnosticsDeps } from '../../src/tools/diagnostics.js'
 import { applyGuestReadOnlyFilter, makeTools } from '../../src/tools/index.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
@@ -402,6 +403,38 @@ describe('run_diagnostics payload', () => {
       const warns = logLines.filter(isProbeWarn)
       expect(warns).toHaveLength(1)
       expect(warns[0]).toContain('"field":"platform_instance_active"')
+      expect(warns[0]).toContain('"errorClass":"Error"')
+      expect(warns[0]).not.toContain(PROBE)
+    } finally {
+      logger.level = 'silent'
+    }
+  })
+})
+
+describe('shared runProbe runner', () => {
+  const PROBE = 'probe-error-canary'
+
+  const isReaderProbeWarn = (line: string): boolean => line.includes('"level":40') && line.includes('probe failed')
+
+  test("a failed reader probe warns under the reader's tool label with the field and normalized error class", async () => {
+    const logLines: string[] = []
+    const stream = { write: (chunk: string): void => void logLines.push(chunk) }
+    logMultistream.add(stream)
+    logger.level = 'debug'
+    try {
+      const deps: ReadRecentLogsDeps = {
+        entries: () => {
+          throw new Error(PROBE)
+        },
+      }
+      const raw: unknown = await getToolExecutor(makeReadRecentLogsTool('diag-admin', deps))({})
+      assert(isRecord(raw), 'logs result must be an object')
+
+      expect(raw['entries']).toBe('probe_error')
+      const warns = logLines.filter(isReaderProbeWarn)
+      expect(warns).toHaveLength(1)
+      expect(warns[0]).toContain('"tool":"read_recent_logs"')
+      expect(warns[0]).toContain('"field":"entries"')
       expect(warns[0]).toContain('"errorClass":"Error"')
       expect(warns[0]).not.toContain(PROBE)
     } finally {
