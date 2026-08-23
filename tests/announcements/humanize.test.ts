@@ -139,13 +139,13 @@ describe('humanizeChangelog', () => {
     expect(seenModel).toEqual({ apiKey: 'k', baseUrl: 'https://llm.example', model: 'main' })
   })
 
-  test('one classify pass serves one write pass per locale', async () => {
+  test('one classify pass serves one write pass per supported locale by default', async () => {
     let classifyCalls = 0
     let writeCalls = 0
     const result = await humanizeChangelog(
       'raw',
       deps({
-        locales: ['en', 'ru'],
+        locales: undefined,
         generateStructured: () => {
           classifyCalls++
           return Promise.resolve(twoEntries)
