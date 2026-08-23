@@ -9,7 +9,7 @@ Implements the plan data layer only (proposal: tasks 1.1–3.3); intake behavior
 
 ## 2. Role and schema additions
 
-- [ ] 2.1 `planner` role and `PLAN_REPLAN_PASSES`. Red-first in `tests/sdd-runner/config.test.ts`: `'planner'` parses in `AgentRoleSchema`; `PLAN_REPLAN_PASSES` is exported with value `1` beside the compiled timeout constants; the five-key strict `RunnerConfigSchema` still rejects every other key. Then add both to `config.ts` — no new config keys, no `MAX_CHILDREN` (design D6). Verify: `bun run test tests/sdd-runner/config.test.ts`
+- [x] 2.1 `planner` role and `PLAN_REPLAN_PASSES`. Red-first in `tests/sdd-runner/config.test.ts`: `'planner'` parses in `AgentRoleSchema`; `PLAN_REPLAN_PASSES` is exported with value `1` beside the compiled timeout constants; the five-key strict `RunnerConfigSchema` still rejects every other key. Then add both to `config.ts` — no new config keys, no `MAX_CHILDREN` (design D6). Verify: `bun run test tests/sdd-runner/config.test.ts`
 - [ ] 2.2 Optional `capabilities` on the depth-classification sidecar. Red-first in `tests/sdd-runner/agent-layer.test.ts`: `DepthClassificationSchema` validates sidecars with and without `capabilities: string[]`. Then add the optional field to `agent-layer.ts`. Verify: `bun run test tests/sdd-runner/agent-layer.test.ts`
 
 ## 3. Events, run state, replay

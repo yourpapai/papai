@@ -9,11 +9,14 @@ import os from 'node:os'
 import path from 'node:path'
 
 import {
+  AgentRoleSchema,
   autonomyOf,
   deriveChangeName,
   discoverBranch,
   loadRunnerConfig,
   modelFor,
+  PLAN_REPLAN_PASSES,
+  RunnerConfigSchema,
   slugify,
 } from '../../sdd-runner/src/config.js'
 
@@ -135,6 +138,44 @@ describe('slugify', () => {
     expect(slugify('Add Dark Mode Toggle')).toBe('add-dark-mode-toggle')
     expect(slugify('--lead and trail--')).toBe('lead-and-trail')
     expect(slugify('a'.repeat(80))).toHaveLength(64)
+  })
+})
+
+describe('AgentRoleSchema', () => {
+  it("parses 'planner' alongside the existing roles", () => {
+    expect(AgentRoleSchema.parse('planner')).toBe('planner')
+    const existingRoles = [
+      'drafter',
+      'reviewer',
+      'skeptic',
+      'resolver',
+      'estimator',
+      'decomposer',
+      'atomicity',
+    ] as const
+    for (const role of existingRoles) {
+      expect(AgentRoleSchema.parse(role)).toBe(role)
+    }
+  })
+
+  it('rejects an unknown role', () => {
+    expect(AgentRoleSchema.safeParse('vibes').success).toBe(false)
+  })
+})
+
+describe('PLAN_REPLAN_PASSES', () => {
+  it('is exported with value 1 as a compiled constant', () => {
+    expect(PLAN_REPLAN_PASSES).toBe(1)
+  })
+})
+
+describe('RunnerConfigSchema (strict five keys)', () => {
+  it('still rejects every key beyond the five', () => {
+    const fiveKeys = { repoRoot: '/repo', workDir: '.sdd-runner', model: 'm', budget: 5, deadline: 30 }
+    expect(RunnerConfigSchema.safeParse(fiveKeys).success).toBe(true)
+    expect(RunnerConfigSchema.safeParse({ ...fiveKeys, maxChildren: 8 }).success).toBe(false)
+    expect(RunnerConfigSchema.safeParse({ ...fiveKeys, planReplanPasses: 1 }).success).toBe(false)
+    expect(RunnerConfigSchema.safeParse({ ...fiveKeys, planner: 'm' }).success).toBe(false)
   })
 })
 
