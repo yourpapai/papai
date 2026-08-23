@@ -45,8 +45,12 @@ delete issues, and the remaining surfaces arrive in later sessions.
 Stored encrypted under the namespaced key
 `plugin:task-provider-github:provider:token`; never written to logs.
 
-Outbound requests go only to `api.github.com` or the configured `baseUrl`
-host (`providerAllowedHosts` + `providerAllowedInstanceHostsFromConfig`).
+Outbound requests target only `api.github.com` or the configured `baseUrl`
+host because the client resolves that base URL once and joins API paths onto
+it. Those hosts are _declared_ in the manifest (`providerAllowedHosts` +
+`providerAllowedInstanceHostsFromConfig`); request-time host admission is not
+enforced yet and arrives when provider clients adopt `ctx.providerRuntime`
+(KNOWN GAP #15).
 
 ## Traits
 
