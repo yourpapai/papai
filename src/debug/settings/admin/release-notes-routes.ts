@@ -6,7 +6,7 @@
 import { z } from 'zod'
 
 import packageJson from '../../../../package.json' with { type: 'json' }
-import { broadcastAnnouncement, selectAnnouncementBody } from '../../../announcements/broadcast.js'
+import { broadcastAnnouncement } from '../../../announcements/broadcast.js'
 import { humanizeChangelog } from '../../../announcements/humanize.js'
 import { countSubscribers, getAnnouncementDraft, updateHumanizedBodies } from '../../../announcements/store.js'
 import { readChangelogFile } from '../../../changelog-reader.js'
@@ -95,7 +95,9 @@ async function handlePost(req: Request, authed: AuthenticatedSettingsRequest): P
     const draft = getAnnouncementDraft(VERSION)
     const bodies = draft?.humanizedBodies ?? {}
     const rawBody = draft?.rawBody ?? null
-    if (selectAnnouncementBody(bodies, rawBody, 'en') === null)
+    // per-recipient fallback (locale -> en -> raw) happens in broadcastAnnouncement;
+    // reject only when no recipient could resolve any body at all
+    if (Object.keys(bodies).length === 0 && rawBody === null)
       return settingsJson(422, { error: 'nothing to broadcast' })
     const chat = getRuntimeChatRouter()
     if (chat === null) return settingsJson(422, { error: 'chat router not running' })

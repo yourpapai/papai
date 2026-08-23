@@ -205,4 +205,13 @@ describe('admin release-notes route', () => {
     const json = z.object({ error: z.string() }).parse(await res.json())
     expect(json.error).toBe('chat router not running')
   })
+
+  test('POST broadcast with only a ru body and no raw → passes guard (ru recipients resolvable)', async () => {
+    // save-path upsert inserts without rawBody; a ru-only map must not 422 as empty
+    updateHumanizedBodies(VERSION, { ru: 'ru only' })
+    const res = await post(adminSession, { action: 'broadcast' })
+    expect(res.status).toBe(422)
+    const json = z.object({ error: z.string() }).parse(await res.json())
+    expect(json.error).toBe('chat router not running')
+  })
 })
