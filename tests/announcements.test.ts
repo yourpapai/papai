@@ -12,12 +12,7 @@ import packageJson from '../package.json' with { type: 'json' }
 import type { AnnouncementsDeps } from '../src/announcements.js'
 import { announceNewVersion } from '../src/announcements.js'
 import { humanizeChangelog } from '../src/announcements/humanize.js'
-import {
-  getAnnouncementDraft,
-  updateHumanizedBodies,
-  upsertAnnouncementDraft,
-  updateHumanizedBody,
-} from '../src/announcements/store.js'
+import { getAnnouncementDraft, updateHumanizedBodies, upsertAnnouncementDraft } from '../src/announcements/store.js'
 import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { ChatProvider } from '../src/chat/types.js'
 import * as schema from '../src/db/schema.js'
@@ -355,7 +350,7 @@ describe('announceNewVersion', () => {
       },
       humanizeChangelog: (): Promise<Partial<Record<Locale, string>>> => Promise.resolve({}),
       persistDraft: upsertAnnouncementDraft,
-      updateHumanizedBody: updateHumanizedBody,
+      updateHumanizedBodies: updateHumanizedBodies,
       isVersionAnnounced: (version): boolean => {
         const row = getTestDb()
           .select()

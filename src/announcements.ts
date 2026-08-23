@@ -6,10 +6,11 @@
 import { eq } from 'drizzle-orm'
 
 import packageJson from '../package.json' with { type: 'json' }
+import { selectAnnouncementBody } from './announcements/broadcast.js'
 import { humanizeChangelog as defaultHumanizeChangelog } from './announcements/humanize.js'
 import {
   upsertAnnouncementDraft as defaultUpsertDraft,
-  updateHumanizedBody as defaultUpdateHumanizedBody,
+  updateHumanizedBodies as defaultUpdateHumanizedBodies,
 } from './announcements/store.js'
 import { readChangelogFile as defaultReadChangelogFile } from './changelog-reader.js'
 import { toScopedContextId } from './chat/scoped-context.js'
@@ -28,8 +29,8 @@ export interface AnnouncementsDeps {
   humanizeChangelog: (rawSection: string) => Promise<Partial<Record<Locale, string>>>
   // synchronous (SQLite); call site does not await
   persistDraft: (input: { version: string; rawBody: string; humanizedBody: string | null }) => void
-  // synchronous (SQLite)
-  updateHumanizedBody: (version: string, body: string) => void
+  // synchronous (SQLite); read-modify-write merge per locale
+  updateHumanizedBodies: (version: string, bodies: Partial<Record<Locale, string>>) => void
   isVersionAnnounced: (version: string) => boolean
 }
 
@@ -42,7 +43,7 @@ const defaultAnnouncementsDeps: AnnouncementsDeps = {
   readChangelogFile: defaultReadChangelogFile,
   humanizeChangelog: defaultHumanizeChangelog,
   persistDraft: defaultUpsertDraft,
-  updateHumanizedBody: defaultUpdateHumanizedBody,
+  updateHumanizedBodies: defaultUpdateHumanizedBodies,
   isVersionAnnounced: defaultIsVersionAnnounced,
 }
 
@@ -109,19 +110,19 @@ export async function announceNewVersion(
 
   deps.persistDraft({ version: VERSION, rawBody: rawSection, humanizedBody: null })
   const bodies = await deps.humanizeChangelog(rawSection)
-  // Interim en-only seam until announceNewVersion gains per-locale persistence (step 4.4).
-  const humanized = bodies.en ?? null
-  if (humanized !== null) deps.updateHumanizedBody(VERSION, humanized)
+  if (Object.keys(bodies).length > 0) deps.updateHumanizedBodies(VERSION, bodies)
 
-  const draftBody = humanized ?? rawSection
+  // One locale lookup serves both the wrapper text and the admin body selection.
   const adminConfigContextId = toScopedContextId({ platformInstanceId, nativeContextId: adminUserId })
-  const message = t('announcements.adminNotice', getContextLanguage(adminConfigContextId), {
+  const adminLocale = getContextLanguage(adminConfigContextId)
+  const draftBody = selectAnnouncementBody(bodies, rawSection, adminLocale) ?? rawSection
+  const message = t('announcements.adminNotice', adminLocale, {
     version: VERSION,
     body: draftBody,
   })
   const success = await sendAnnouncementToAdmin(platformInstanceId, adminUserId, message, chat)
 
-  log.info({ version: VERSION, success, humanized: humanized !== null }, 'Version announcement notice complete')
+  log.info({ version: VERSION, success, locales: Object.keys(bodies) }, 'Version announcement notice complete')
 }
 
 async function loadChangelogSection(deps: AnnouncementsDeps): Promise<string | null> {

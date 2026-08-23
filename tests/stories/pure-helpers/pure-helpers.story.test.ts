@@ -64,7 +64,7 @@ scenario('SCN-changelog-version-section: version lookup returns only the request
     readChangelogFile: () => Promise.resolve(''),
     humanizeChangelog: (raw) => Promise.resolve({ en: raw }),
     persistDraft: () => {},
-    updateHumanizedBody: () => {},
+    updateHumanizedBodies: () => {},
     isVersionAnnounced: () => false,
   }
 
