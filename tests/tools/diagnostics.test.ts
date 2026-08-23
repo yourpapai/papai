@@ -11,6 +11,15 @@ import type { Tool } from 'ai'
 import { enableByokForContext, setByokRoles, upsertByokProvider } from '../../src/byok-llm/store.js'
 import { setCachedTools } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { recentLlm, resetLlmBuffers, type LlmTrace } from '../../src/debug/llm-trace-collector.js'
+import { logBuffer } from '../../src/debug/log-buffer.js'
+import {
+  recentToolFailures,
+  recentTurns,
+  resetTurnBuffers,
+  type ToolFailure,
+  type Turn,
+} from '../../src/debug/turn-assembly.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { createLlmProvider, setAdminRoleBindings } from '../../src/llm-providers/store.js'
@@ -39,6 +48,9 @@ const adminDmOptions = (overrides: Partial<MakeToolsOptions> = {}): MakeToolsOpt
   platformInstanceId: 'pi-diag',
   ...overrides,
 })
+
+const recordField = (items: unknown[], field: string): unknown[] =>
+  items.map((item) => (isRecord(item) ? item[field] : undefined))
 
 describe('run_diagnostics gate matrix', () => {
   beforeEach(async () => {
@@ -91,6 +103,195 @@ describe('run_diagnostics gate matrix', () => {
     const guestTools = applyGuestReadOnlyFilter(descriptors)
 
     expect(guestTools).not.toHaveProperty('run_diagnostics')
+  })
+})
+
+const READER_TOOLS = ['read_recent_logs', 'read_llm_traces', 'read_recent_turns', 'read_recent_tool_failures'] as const
+
+describe('diagnostics reader family gate matrix', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('an admin DM normal-mode toolset exposes the full reader family', async () => {
+    const tools = await makeTools(createMockProvider(), adminDmOptions())
+
+    for (const name of READER_TOOLS) expect(tools).toHaveProperty(name)
+  })
+
+  test('an admin DM toolset exposes the reader family when mode is omitted (orchestrator descriptor-cache path)', async () => {
+    const tools = await makeTools(createMockProvider(), adminDmOptions({ mode: undefined }))
+
+    for (const name of READER_TOOLS) expect(tools).toHaveProperty(name)
+  })
+
+  test('isBotAdmin false excludes the reader family', async () => {
+    const tools = await makeTools(createMockProvider(), adminDmOptions({ isBotAdmin: false }))
+
+    for (const name of READER_TOOLS) expect(tools).not.toHaveProperty(name)
+  })
+
+  test('omitting isBotAdmin excludes the reader family', async () => {
+    const tools = await makeTools(
+      createMockProvider(),
+      adminDmOptions({ isBotAdmin: undefined, platformInstanceId: undefined }),
+    )
+
+    for (const name of READER_TOOLS) expect(tools).not.toHaveProperty(name)
+  })
+
+  test('a group context excludes the reader family even for an admin', async () => {
+    const tools = await makeTools(createMockProvider(), adminDmOptions({ contextType: 'group' }))
+
+    for (const name of READER_TOOLS) expect(tools).not.toHaveProperty(name)
+  })
+
+  test('proactive mode excludes the reader family even for an admin DM', async () => {
+    const tools = await makeTools(createMockProvider(), adminDmOptions({ mode: 'proactive' }))
+
+    for (const name of READER_TOOLS) expect(tools).not.toHaveProperty(name)
+  })
+
+  test('a guest-filtered toolset never contains the reader family', async () => {
+    const descriptors = await makeTools(createMockProvider(), adminDmOptions({ isBotAdmin: false }))
+
+    const guestTools = applyGuestReadOnlyFilter(descriptors)
+
+    for (const name of READER_TOOLS) expect(guestTools).not.toHaveProperty(name)
+  })
+})
+
+describe('diagnostics reader family visibility principal', () => {
+  const PRINCIPAL = 'diag-family-principal'
+
+  const principalTurn = (turnId: string, userId: string): Turn => ({
+    turnId,
+    scope: { kind: 'user', userId },
+    startedAt: 1000,
+    endedAt: 2000,
+    status: 'ok',
+    incomingMessageCount: 1,
+    toolCalls: [],
+  })
+
+  const principalTrace = (chatUserId: string | undefined): LlmTrace => ({
+    timestamp: 1000,
+    userId: 'internal',
+    chatUserId,
+    model: 'gpt-main',
+    steps: 1,
+    totalTokens: { inputTokens: 10, outputTokens: 5 },
+    duration: 500,
+    toolCalls: [],
+    error: undefined,
+    responseId: 'resp-1',
+    actualModel: undefined,
+    finishReason: 'stop',
+    messageCount: 2,
+    toolCount: 0,
+    exposedToolCount: 0,
+    fullToolCount: 0,
+    toolSchemaBytes: 0,
+    routingIntent: undefined,
+    routingConfidence: undefined,
+    routingReason: undefined,
+    generatedText: chatUserId === undefined ? undefined : `reply-for-${chatUserId}`,
+    stepsDetail: undefined,
+  })
+
+  const principalFailure = (turnId: string, userId: string): ToolFailure => ({
+    timestamp: 1000,
+    scope: { kind: 'user', userId },
+    data: { turnId, toolName: 'create_task', durationMs: 90, ok: false, failureReason: 'provider 500' },
+  })
+
+  let tools: Record<string, Tool>
+
+  beforeEach(() => {
+    mockLogger()
+    logBuffer.clear()
+    resetTurnBuffers()
+    resetLlmBuffers()
+
+    logBuffer.push({
+      level: 30,
+      time: '2026-08-23T00:00:01.000Z',
+      msg: 'own entry',
+      chatUserId: PRINCIPAL,
+      ownText: 'own verbatim',
+    })
+    logBuffer.push({
+      level: 30,
+      time: '2026-08-23T00:00:02.000Z',
+      msg: 'foreign entry',
+      chatUserId: 'user-2',
+      foreignText: 'leak',
+    })
+    recentLlm.push(principalTrace(PRINCIPAL))
+    recentLlm.push(principalTrace('user-2'))
+    recentTurns.push(principalTurn('turn-own', PRINCIPAL))
+    recentTurns.push(principalTurn('turn-foreign', 'user-2'))
+    recentTurns.push({ ...principalTurn('turn-global', 'x'), scope: { kind: 'global' } })
+    recentToolFailures.push(principalFailure('failure-own', PRINCIPAL))
+    recentToolFailures.push(principalFailure('failure-foreign', 'user-2'))
+
+    tools = {}
+    maybeAddDiagnosticsTools(tools, adminDmOptions({ chatUserId: PRINCIPAL }))
+  })
+
+  afterEach(() => {
+    logBuffer.clear()
+    resetTurnBuffers()
+    resetLlmBuffers()
+  })
+
+  test('read_recent_logs egresses under the assembly-time chatUserId principal', async () => {
+    const result: unknown = await getToolExecutor(tools['read_recent_logs']!)({})
+
+    assert(isRecord(result))
+    const entries = result['entries']
+    assert(Array.isArray(entries))
+    const byMsg = new Map<string, Record<string, unknown>>()
+    for (const e of entries) {
+      assert(isRecord(e))
+      byMsg.set(String(e['msg']), e)
+    }
+    expect(byMsg.get('own entry')!['ownText']).toBe('own verbatim')
+    expect(byMsg.get('foreign entry')!['foreignText']).toBeUndefined()
+    expect(JSON.stringify(result)).not.toContain('leak')
+  })
+
+  test('read_llm_traces egresses under the assembly-time chatUserId principal', async () => {
+    const result: unknown = await getToolExecutor(tools['read_llm_traces']!)({})
+
+    assert(isRecord(result))
+    const traces = result['traces']
+    assert(Array.isArray(traces))
+    expect(traces).toHaveLength(2)
+    const texts = recordField(traces, 'generatedText')
+    expect(texts).toContain(`reply-for-${PRINCIPAL}`)
+    expect(texts).toContain(undefined)
+  })
+
+  test('read_recent_turns egresses under the assembly-time chatUserId principal', async () => {
+    const result: unknown = await getToolExecutor(tools['read_recent_turns']!)({})
+
+    assert(isRecord(result))
+    const turns = result['turns']
+    assert(Array.isArray(turns))
+    const ids = recordField(turns, 'turnId')
+    expect(ids).toEqual(['turn-own', 'turn-global'])
+  })
+
+  test('read_recent_tool_failures egresses under the assembly-time chatUserId principal', async () => {
+    const result: unknown = await getToolExecutor(tools['read_recent_tool_failures']!)({})
+
+    assert(isRecord(result))
+    const failures = result['failures']
+    assert(Array.isArray(failures))
+    const ids = recordField(failures, 'turnId')
+    expect(ids).toEqual(['failure-own'])
   })
 })
 
