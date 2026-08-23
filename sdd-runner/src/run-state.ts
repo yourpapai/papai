@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { z } from 'zod'
@@ -13,8 +13,6 @@ import { DepthProfileSchema, StageIdSchema } from './events.js'
 import type { DepthProfile, StageId } from './events.js'
 import type { ReplayState } from './replay.js'
 import { ROUND_CAPS } from './review-model.js'
-import { readLiteRecord } from './run-lite.js'
-import type { PersistedLite } from './run-lite.js'
 
 export const PersistedRunStateSchema = z.object({
   runId: z.string().min(1),
@@ -25,13 +23,15 @@ export const PersistedRunStateSchema = z.object({
   depth: DepthProfileSchema.nullable(),
   round: z.number().int().nonnegative(),
   roundCap: z.number().int().positive().optional(),
-  gate: z.object({ mode: z.enum(['early', 'final']), version: z.number().int().positive() }).nullable(),
+  gate: z.object({ mode: z.enum(['early', 'final', 'plan']), version: z.number().int().positive() }).nullable(),
   status: z.enum(['running', 'completed', 'aborted', 'failed', 'stopped']),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
   autoExtendsUsed: z.number().int().nonnegative().default(0),
   gateDeadlineAt: z.string().min(1).nullable().default(null),
   gateDeadlineReArmed: z.boolean().default(false),
+  plan: z.object({ childIds: z.array(z.string().min(1)).min(1), digest: z.string().min(1) }).optional(),
+  children: z.record(z.string(), z.object({ status: z.enum(['pending', 'running', 'done', 'failed']) })).optional(),
 })
 
 export type PersistedRunState = z.infer<typeof PersistedRunStateSchema>
@@ -132,96 +132,8 @@ export async function loadRunState(workDir: string, runId: string): Promise<RunS
   }
 }
 
-export interface PendingGateEntry {
-  readonly runId: string
-  readonly changeName: string
-  readonly gateMode: 'early' | 'final'
-  readonly gateVersion: number
-  readonly updatedAt: string
-}
-
-/**
- * Scan each run's `state.json` under `runs/` and keep only gate-pending runs
- * (a non-null `gate` field), most recently updated first. Unreadable or
- * corrupt entries are skipped — a listing must not fail because one run dir
- * is mid-write.
- */
-export async function listPendingGates(workDir: string): Promise<PendingGateEntry[]> {
-  let entries: string[]
-  try {
-    entries = await readdir(path.join(workDir, 'runs'))
-  } catch {
-    return []
-  }
-  const perRun = await Promise.all(
-    entries.map(async (runId): Promise<PendingGateEntry | null> => {
-      try {
-        const raw = await readFile(path.join(workDir, 'runs', runId, 'state.json'), 'utf8')
-        const persisted = PersistedRunStateSchema.parse(JSON.parse(raw))
-        if (persisted.gate === null) return null
-        return {
-          runId,
-          changeName: persisted.changeName,
-          gateMode: persisted.gate.mode,
-          gateVersion: persisted.gate.version,
-          updatedAt: persisted.updatedAt,
-        }
-      } catch {
-        return null
-      }
-    }),
-  )
-  return perRun
-    .filter((entry): entry is PendingGateEntry => entry !== null)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-}
-
-/** Every persisted run state under the work dir, newest-first. */
-export async function readAllRunStates(workDir: string): Promise<PersistedLite[]> {
-  let entries: string[]
-  try {
-    entries = await readdir(path.join(workDir, 'runs'))
-  } catch {
-    return []
-  }
-  const perRun = await Promise.all(
-    entries.map(async (runId): Promise<PersistedLite | null> => {
-      try {
-        const raw = await readFile(path.join(workDir, 'runs', runId, 'state.json'), 'utf8')
-        const record = readLiteRecord(raw)
-        if (record === null) return null
-        return { runId, ...record }
-      } catch {
-        return null
-      }
-    }),
-  )
-  return perRun
-    .filter((entry): entry is PersistedLite => entry !== null)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-}
-
-/**
- * Resolve a run-id argument: exact directory match wins; otherwise a unique
- * prefix among known runs; unknown ids and ambiguous prefixes fail loudly
- * with the candidate ids listed (prefixes are an interactive convenience —
- * scripts should use full ids).
- */
-export async function resolveRunId(workDir: string, arg: string): Promise<string> {
-  let entries: string[]
-  try {
-    entries = await readdir(path.join(workDir, 'runs'))
-  } catch {
-    throw new Error(`no runs found under ${path.join(workDir, 'runs')} (unknown run id: ${arg})`)
-  }
-  if (entries.includes(arg)) return arg
-  const prefixed = entries.filter((runId) => runId.startsWith(arg))
-  if (prefixed.length === 1) return prefixed[0] ?? arg
-  if (prefixed.length > 1) {
-    throw new Error(`ambiguous run id: ${arg} — candidates:\n${prefixed.map((id) => `  ${id}`).join('\n')}`)
-  }
-  throw new Error(`unknown run id: ${arg}`)
-}
+export { listPendingGates, readAllRunStates, resolveRunId } from './run-index.js'
+export type { PendingGateEntry } from './run-index.js'
 
 export async function saveRunState(state: RunState, now: Date = new Date()): Promise<RunState> {
   const next: RunState = { ...state, updatedAt: now.toISOString() }
@@ -254,12 +166,47 @@ function reviewSettled(replay: ReplayState): boolean {
   return replay.stages.decompose !== 'pending'
 }
 
+/**
+ * Pre-part-3 consumers branch on 'early' vs 'final' only; a 'plan' gate has
+ * no resume path until part 3 wires it, so narrowing past it throws. No 'plan'
+ * value is produced in part 1, so the guard is compile-time scaffolding.
+ */
+export function narrowGateMode(mode: 'early' | 'final' | 'plan'): 'early' | 'final' {
+  if (mode === 'plan') throw new Error("gate mode 'plan' has no resume path before part 3 wiring")
+  return mode
+}
+
+interface PendingChild {
+  readonly id: string
+  readonly position: number
+  readonly total: number
+}
+
+/** Next child in topo order whose status is not done; a missing map counts as all-pending (D10). */
+function nextPendingChild(state: PersistedRunState): PendingChild | null {
+  if (state.plan === undefined) return null
+  const childIds = state.plan.childIds
+  const children = state.children ?? {}
+  for (const [index, id] of childIds.entries()) {
+    if (children[id]?.status !== 'done') return { id, position: index + 1, total: childIds.length }
+  }
+  return null
+}
+
 export function deriveResumePoint(
   state: PersistedRunState,
   artifacts: Record<string, string>,
   replay: ReplayState,
 ): ResumePoint {
   if (state.gate !== null) return { stage: 'gate', round: state.round, reason: 'gate-pending' }
+  const pendingChild = nextPendingChild(state)
+  if (pendingChild !== null) {
+    return {
+      stage: 'decompose',
+      round: state.round,
+      reason: `children pending: next ${pendingChild.id} (${pendingChild.position} of ${pendingChild.total})`,
+    }
+  }
   if (state.depth === null) return { stage: 'intake', round: 0, reason: 'depth not classified' }
   if (!draftComplete(state, artifacts)) return { stage: 'draft', round: 0, reason: 'draft artifacts incomplete' }
   if (!reviewSettled(replay)) {
