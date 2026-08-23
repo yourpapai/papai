@@ -5,7 +5,7 @@
 
 ## 2. read_recent_logs
 
-- [ ] 2.1 Red test `tests/tools/diagnostics-logs.test.ts` with injected fake buffers: own entries (explicit `chatUserId` match and `ownTurnIds` turn attribution) verbatim; foreign and unattributed entries shaped to structural + numeric/boolean fields; shape-then-filter ordering (a `msg` text filter cannot match content stripping removes); level/scope/turnId filters; limit default 50 and hard cap 200; `distinct_scopes: true` returns scope/count pairs; result carries `stats` (count/capacity/oldest/newest) and `history_starts_at_process_start: true`; throwing probe degrades to `probe_error`; buffers byte-identical after invocation. Verify: `bun test tests/tools/diagnostics-logs.test.ts`
+- [x] 2.1 Red test `tests/tools/diagnostics-logs.test.ts` with injected fake buffers: own entries (explicit `chatUserId` match and `ownTurnIds` turn attribution) verbatim; foreign and unattributed entries shaped to structural + numeric/boolean fields; shape-then-filter ordering (a `msg` text filter cannot match content stripping removes); level/scope/turnId filters; limit default 50 and hard cap 200; `distinct_scopes: true` returns scope/count pairs; result carries `stats` (count/capacity/oldest/newest) and `history_starts_at_process_start: true`; throwing probe degrades to `probe_error`; buffers byte-identical after invocation. Verify: `bun test tests/tools/diagnostics-logs.test.ts`
 - [ ] 2.2 Implement `src/tools/diagnostics-logs.ts` (`makeReadRecentLogsTool`, DI deps, `LogFilter`-based shape-then-filter mirroring `handleLogs`, `ownTurnIdsForAdmin` resolved once per call, per-probe try/catch, metadata-only logging). Verify: `bun test tests/tools/diagnostics-logs.test.ts && bun run typecheck`
 
 ## 3. read_llm_traces
