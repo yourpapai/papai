@@ -117,7 +117,7 @@ export default {
     'plugins/task-provider-kaneo/auto-provision.ts!',
     // GitHub provider client/classify/constants/schemas: in-flight seam of
     // the github-issues-task-provider change; its later tasks consume them.
-    'plugins/task-provider-github/{client,classify-error,constants,mappers,operations/*,schemas/*,url-builder}.ts!',
+    'plugins/task-provider-github/{client,classify-error,constants,due-date,mappers,operations/*,prompt-addendum,schemas/*,url-builder}.ts!',
     // Test-seam shims: re-export test-only symbols so tests have an explicit
     // import site; see the *.testing.ts ignoreIssues glob below.
     'src/**/*.testing.ts!',
