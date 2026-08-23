@@ -16,6 +16,9 @@ import {
   inFlightTurns,
   findTurnById,
   handleTurnAssembly,
+  RECENT_TURNS_CAPACITY,
+  RECENT_NOTIFICATIONS_CAPACITY,
+  RECENT_TOOL_FAILURES_CAPACITY,
 } from '../../src/debug/turn-assembly.js'
 import { resetTurnBuffers } from '../../src/debug/turn-assembly.testing.js'
 import { setupTestDb } from '../utils/test-helpers.js'
@@ -215,6 +218,20 @@ describe('tool failure ring buffer', () => {
     }
 
     expect(recentToolFailures.length).toBe(1024)
+  })
+})
+
+describe('buffer capacity exports', () => {
+  test('RECENT_TURNS_CAPACITY equals the recentTurns ring buffer capacity', () => {
+    expect(RECENT_TURNS_CAPACITY).toBe(512)
+  })
+
+  test('RECENT_NOTIFICATIONS_CAPACITY equals the recentNotifications ring buffer capacity', () => {
+    expect(RECENT_NOTIFICATIONS_CAPACITY).toBe(2048)
+  })
+
+  test('RECENT_TOOL_FAILURES_CAPACITY equals the recentToolFailures ring buffer capacity', () => {
+    expect(RECENT_TOOL_FAILURES_CAPACITY).toBe(1024)
   })
 })
 

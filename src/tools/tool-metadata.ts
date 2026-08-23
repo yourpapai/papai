@@ -185,6 +185,10 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   plugin_context_vault__get_agent_spec: read('plugin'),
 
   run_diagnostics: read('diagnostics'),
+  read_recent_logs: read('diagnostics'),
+  read_llm_traces: read('diagnostics'),
+  read_recent_turns: read('diagnostics'),
+  read_recent_tool_failures: read('diagnostics'),
 }
 
 export function getToolMetadata(toolName: string): ToolClassification | undefined {

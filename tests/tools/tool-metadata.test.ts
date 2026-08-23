@@ -223,6 +223,10 @@ const EXPECTED_STATIC: Readonly<Record<string, ToolClassification>> = {
   plugin_context_vault__list_agent_specs: { domain: 'plugin', operation: 'read', risk: 'read' },
   plugin_context_vault__get_agent_spec: { domain: 'plugin', operation: 'read', risk: 'read' },
   run_diagnostics: { domain: 'diagnostics', operation: 'read', risk: 'read' },
+  read_recent_logs: { domain: 'diagnostics', operation: 'read', risk: 'read' },
+  read_llm_traces: { domain: 'diagnostics', operation: 'read', risk: 'read' },
+  read_recent_turns: { domain: 'diagnostics', operation: 'read', risk: 'read' },
+  read_recent_tool_failures: { domain: 'diagnostics', operation: 'read', risk: 'read' },
 }
 
 describe('static tool classification table', () => {

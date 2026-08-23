@@ -13,6 +13,7 @@ import {
   recentLlm,
   resetLlmBuffers,
   shapeLlmTrace,
+  LLM_TRACE_CAPACITY,
   type LlmTrace,
 } from '../../src/debug/llm-trace-collector.js'
 
@@ -416,5 +417,11 @@ describe('shapeLlmTrace', () => {
     const shapedTwice = shapeLlmTrace(shapedOnce, 'chat-2')
 
     expect(shapedTwice).toEqual(shapedOnce)
+  })
+})
+
+describe('buffer capacity exports', () => {
+  test('LLM_TRACE_CAPACITY equals the recentLlm ring buffer capacity', () => {
+    expect(LLM_TRACE_CAPACITY).toBe(65535)
   })
 })

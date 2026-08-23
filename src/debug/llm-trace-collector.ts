@@ -54,7 +54,7 @@ type TraceCallbacks = {
   broadcastTrace: (trace: LlmTrace, ts: number) => void
 }
 
-const LLM_TRACE_CAPACITY = 65535
+export const LLM_TRACE_CAPACITY = 65535
 
 export const recentLlm: LlmTrace[] = []
 export const pendingTraces = new Map<string, PendingLlmTrace>()

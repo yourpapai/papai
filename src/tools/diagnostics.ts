@@ -16,6 +16,10 @@ import { resolveLlmConfig } from '../llm-providers/resolver.js'
 import { logger } from '../logger.js'
 import { mcpPool } from '../mcp/client-pool.js'
 import { registry } from '../message-queue/index.js'
+import { makeReadLlmTracesTool } from './diagnostics-llm-traces.js'
+import { makeReadRecentLogsTool } from './diagnostics-logs.js'
+import { makeReadRecentToolFailuresTool } from './diagnostics-tool-failures.js'
+import { makeReadRecentTurnsTool } from './diagnostics-turns.js'
 import { toolErrorClass } from './tool-logging.js'
 import type { MakeToolsOptions } from './types.js'
 
@@ -29,6 +33,28 @@ export type DiagnosticsTaskInstanceSummary =
 
 /** Per-field marker when a probe fails; the tool itself never throws. */
 export const PROBE_ERROR = 'probe_error' as const
+
+/** Buffer-wide volatility stats carried by every diagnostics reader result. */
+export type BufferStats = {
+  count: number
+  capacity: number
+  oldest: number | null
+  newest: number | null
+}
+
+/**
+ * Derives the reader family's shared buffer stats structurally from a
+ * tail-buffer snapshot: element count, the fixed capacity constant, and the
+ * first and last elements' timestamps.
+ */
+export function tailStats<T>(xs: readonly T[], capacity: number, at: (x: T) => number): BufferStats {
+  return {
+    count: xs.length,
+    capacity,
+    oldest: xs.length > 0 ? at(xs[0]!) : null,
+    newest: xs.length > 0 ? at(xs[xs.length - 1]!) : null,
+  }
+}
 
 export type DiagnosticsDeps = Partial<
   Readonly<{
@@ -82,12 +108,16 @@ const resolveDeps = (
   uptimeSeconds: deps.uptimeSeconds ?? defaultUptimeSeconds,
 })
 
-/** Runs one probe; a throwing probe degrades to the per-field error marker. */
-function runProbe<T>(field: string, probe: () => T): T | typeof PROBE_ERROR {
+/**
+ * Runs one probe; a throwing probe degrades to the per-field error marker.
+ * Shared by `run_diagnostics` and the reader family — `tool` labels the
+ * calling tool in the warn metadata.
+ */
+export function runProbe<T>(toolName: string, field: string, probe: () => T): T | typeof PROBE_ERROR {
   try {
     return probe()
   } catch (error) {
-    log.warn({ tool: 'run_diagnostics', field, errorClass: toolErrorClass(error) }, 'Diagnostics probe failed')
+    log.warn({ tool: toolName, field, errorClass: toolErrorClass(error) }, 'Diagnostics probe failed')
     return PROBE_ERROR
   }
 }
@@ -95,7 +125,7 @@ function runProbe<T>(field: string, probe: () => T): T | typeof PROBE_ERROR {
 const summarizeTaskInstance = (
   probe: () => { id: string; type: string } | null,
 ): DiagnosticsTaskInstanceSummary | typeof PROBE_ERROR => {
-  const resolved = runProbe('task_instance', probe)
+  const resolved = runProbe('run_diagnostics', 'task_instance', probe)
   if (resolved === PROBE_ERROR) return PROBE_ERROR
   if (resolved === null) return { status: 'not_configured' }
   return { status: 'configured', id: resolved.id, type: resolved.type }
@@ -120,15 +150,19 @@ export function makeRunDiagnosticsTool(
     execute: () => {
       const taskInstance = summarizeTaskInstance(resolved.taskInstance)
       const result = {
-        platform_instance_active: runProbe('platform_instance_active', () =>
+        platform_instance_active: runProbe('run_diagnostics', 'platform_instance_active', () =>
           resolved.platformInstanceActive(platformInstanceId),
         ),
         task_instance: taskInstance,
-        llm_config: runProbe('llm_config', resolved.llmConfig),
-        mcp_pool: runProbe('mcp_pool', resolved.mcpPool),
-        queue_count: runProbe('queue_count', resolved.queueCount),
-        descriptor_cache_present: runProbe('descriptor_cache_present', resolved.descriptorCachePresent),
-        uptime_seconds: runProbe('uptime_seconds', resolved.uptimeSeconds),
+        llm_config: runProbe('run_diagnostics', 'llm_config', resolved.llmConfig),
+        mcp_pool: runProbe('run_diagnostics', 'mcp_pool', resolved.mcpPool),
+        queue_count: runProbe('run_diagnostics', 'queue_count', resolved.queueCount),
+        descriptor_cache_present: runProbe(
+          'run_diagnostics',
+          'descriptor_cache_present',
+          resolved.descriptorCachePresent,
+        ),
+        uptime_seconds: runProbe('run_diagnostics', 'uptime_seconds', resolved.uptimeSeconds),
       }
       log.info({ tool: 'run_diagnostics', platformInstanceId }, 'Diagnostics snapshot collected')
       return Promise.resolve(result)
@@ -137,8 +171,10 @@ export function makeRunDiagnosticsTool(
 }
 
 /**
- * Adds diagnostics tools to a descriptor set. Fails closed: the tool is only
- * assembled for a bot admin in a DM, in normal mode.
+ * Adds diagnostics tools to a descriptor set. Fails closed: the tools are only
+ * assembled for a bot admin in a DM, in normal mode. The reader family binds
+ * `options.chatUserId` as the visibility principal at assembly time — safe
+ * because these tools only assemble in the admin's own DM context.
  */
 export function maybeAddDiagnosticsTools(tools: Record<string, Tool>, options: MakeToolsOptions): void {
   // `mode` is optional and defaults to 'normal' (MakeToolsOptions); the
@@ -153,4 +189,8 @@ export function maybeAddDiagnosticsTools(tools: Record<string, Tool>, options: M
     configContextId,
     options.storageContextId ?? '',
   )
+  tools['read_recent_logs'] = makeReadRecentLogsTool(options.chatUserId)
+  tools['read_llm_traces'] = makeReadLlmTracesTool(options.chatUserId)
+  tools['read_recent_turns'] = makeReadRecentTurnsTool(options.chatUserId)
+  tools['read_recent_tool_failures'] = makeReadRecentToolFailuresTool(options.chatUserId)
 }
