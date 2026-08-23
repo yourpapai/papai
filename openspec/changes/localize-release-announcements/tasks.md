@@ -35,6 +35,6 @@
 ## 6. Full gates and docs
 
 - [x] 6.1 Run the full test suite once and read the persisted report (`bun run test:status` / `test:failures` for follow-ups): `bun run test`
-- [ ] 6.2 Run typecheck and lint: `bun run typecheck && bun run lint`
+- [x] 6.2 Run typecheck and lint: `bun run typecheck && bun run lint`
 - [ ] 6.3 Run the remaining checks (knip, format, license headers) via the wrapped gate: `bun check:full`
 - [ ] 6.4 Update `docs/architecture/behaviors.md` — the `release-announcements` behavior entry: per-locale humanization (one classify, per-locale writes, failure isolation + en fallback), `humanized_bodies` JSON column (migration `080`, legacy `humanized_body` = en body, no backfill, en dual-write), per-recipient locale resolution (DM scoped id / group scoped id) with locale → en → raw fallback, per-locale admin editing: `git status --short docs/`
