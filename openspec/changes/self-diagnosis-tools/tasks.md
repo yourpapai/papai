@@ -21,7 +21,7 @@
 ## 5. read_recent_tool_failures
 
 - [x] 5.1 Red test `tests/tools/diagnostics-tool-failures.test.ts`: entries filtered by `isVisibleToAdmin`; whitelisted egress fields only (timestamp, scope, toolName, durationMs, ok, failureReason, turnId); limit default 25, cap 1024; derived stats; no mutation. Verify: `bun test tests/tools/diagnostics-tool-failures.test.ts`
-- [ ] 5.2 Implement `src/tools/diagnostics-tool-failures.ts` (`makeReadRecentToolFailuresTool`, DI deps, probe_error degradation). Verify: `bun test tests/tools/diagnostics-tool-failures.test.ts && bun run typecheck`
+- [x] 5.2 Implement `src/tools/diagnostics-tool-failures.ts` (`makeReadRecentToolFailuresTool`, DI deps, probe_error degradation). Verify: `bun test tests/tools/diagnostics-tool-failures.test.ts && bun run typecheck`
 
 ## 6. Assembly, gating, tool_prefs
 
