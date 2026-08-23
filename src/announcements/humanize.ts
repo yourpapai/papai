@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import { generateText, Output, type LanguageModel } from 'ai'
-import pLimit from 'p-limit'
 import { z } from 'zod'
 
 import { SUPPORTED_LOCALES, t, type Locale } from '../i18n/index.js'
@@ -14,9 +13,6 @@ import type { LlmConfigResult } from '../llm-providers/types.js'
 import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'announcements:humanize' })
-
-/** Sequential write-pass queue: one locale at a time, in locale order. */
-const writeQueue = pLimit(1)
 
 export const classifiedEntriesSchema = z.object({
   entries: z.array(
@@ -194,13 +190,10 @@ export async function humanizeChangelog(
   if (classified.entries.length === 0) return emptyReleaseNote(localesOf(resolved))
 
   const bodies: Partial<Record<Locale, string>> = {}
-  // writeQueue is pLimit(1): write passes run sequentially in locale order
-  // (deliberate — no concurrency machinery for two calls; a later locale still
-  // runs after an earlier one fails).
-  await Promise.all(
-    localesOf(resolved).map((locale) =>
-      writeQueue(() => writeLocaleBody(locale, classified.entries, classified.model, resolved, bodies)),
-    ),
+  await localesOf(resolved).reduce(
+    (chain, locale) =>
+      chain.then(() => writeLocaleBody(locale, classified.entries, classified.model, resolved, bodies)),
+    Promise.resolve(),
   )
   return bodies
 }

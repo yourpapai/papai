@@ -14,7 +14,7 @@ import {
 } from '../../src/announcements/humanize.js'
 import { t } from '../../src/i18n/index.js'
 import { logger, logMultistream } from '../../src/logger.js'
-import { setupTestDb } from '../utils/test-helpers.js'
+import { setupTestDb, waitFor } from '../utils/test-helpers.js'
 
 // humanize.ts captures `logger.child({ scope })` once at module load, and the
 // global `tests/setup.ts` preload pins LOG_LEVEL=silent before that load, so the
@@ -159,6 +159,39 @@ describe('humanizeChangelog', () => {
     expect(classifyCalls).toBe(1)
     expect(writeCalls).toBe(2)
     expect(result).toEqual({ en: 'ok', ru: 'ok' })
+  })
+
+  test("a pending write pass in one invocation doesn't gate another invocation (no module-level queue)", async () => {
+    const aWriteStarted = Promise.withResolvers<undefined>()
+    const aGate = Promise.withResolvers<{ text: string }>()
+    const a = humanizeChangelog(
+      'raw',
+      deps({
+        locales: ['en', 'ru'],
+        generate: () => {
+          aWriteStarted.resolve(undefined)
+          return aGate.promise
+        },
+      }),
+    )
+    await aWriteStarted.promise
+    let bWriteCalled = false
+    const b = humanizeChangelog(
+      'raw',
+      deps({
+        generate: () => {
+          bWriteCalled = true
+          return Promise.resolve({ text: 'B body' })
+        },
+      }),
+    )
+    try {
+      await waitFor(() => bWriteCalled)
+    } finally {
+      aGate.resolve({ text: 'A body' })
+    }
+    expect(await a).toEqual({ en: 'A body', ru: 'A body' })
+    expect(await b).toEqual({ en: 'B body' })
   })
 
   test('a failing locale write is isolated: the other locale still lands, with a warn naming the locale', async () => {
