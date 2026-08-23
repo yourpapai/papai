@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { logger } from '../../../src/logger.js'
 import { classifyGitHubError } from '../classify-error.js'
 import type { GitHubConfig } from '../client.js'
-import { githubFetch, githubPaginate } from '../client.js'
+import { GitHubApiError, githubFetch, githubPaginate } from '../client.js'
 import { mapIssueToListItem, mapIssueToSearchResult, mapIssueToTask } from '../mappers.js'
 import type { GitHubIssue } from '../schemas/issue.js'
 import { GitHubIssueSchema } from '../schemas/issue.js'
@@ -146,18 +146,45 @@ export interface GitHubSearchTasksParams {
   offset?: number
 }
 
+/** GitHub's search API serves only the first 1000 results of any query. */
+const GITHUB_SEARCH_MAX_RESULTS = 1000
+
+const errorBodyMessage = (body: unknown): string => {
+  if (typeof body === 'string') return body
+  if (typeof body === 'object' && body !== null) {
+    const message: unknown = (body as { message?: unknown }).message
+    if (typeof message === 'string') return message
+  }
+  return ''
+}
+
+/** Matches the 422 GitHub answers once a search page would reach past the first 1000 results. */
+const isSearchResultsExhausted = (error: unknown): boolean =>
+  error instanceof GitHubApiError &&
+  error.statusCode === 422 &&
+  errorBodyMessage(error.body).includes('first 1000 search results')
+
 export async function githubSearchTasks(
   config: GitHubConfig,
   params: GitHubSearchTasksParams,
 ): Promise<TaskSearchResult[]> {
   log.debug({ repo: config.repo, query: params.query, limit: params.limit, offset: params.offset }, 'searchTasks')
+  const offset = params.offset ?? 0
+  const limit = params.limit ?? Number.MAX_SAFE_INTEGER
+  // Fetch only the pages covering [offset, offset + limit), never past GitHub's
+  // 1000-result search ceiling: pages reaching beyond it fail the whole request.
+  const needed = Math.min(offset + limit, GITHUB_SEARCH_MAX_RESULTS)
+  if (needed <= offset) {
+    log.info({ count: 0 }, 'Tasks searched')
+    return []
+  }
   try {
     const issues = await githubPaginate(config, '/search/issues', {
       query: { q: `repo:${config.repo} is:issue ${params.query}` },
       extractPage: (data: unknown): GitHubIssue[] => searchPageSchema.parse(data).items,
+      maxItems: needed,
+      isEndOfResults: isSearchResultsExhausted,
     })
-    const offset = params.offset ?? 0
-    const limit = params.limit ?? Number.MAX_SAFE_INTEGER
     const results = issues.slice(offset, offset + limit).map((issue) => mapIssueToSearchResult(issue, config.repo))
     log.info({ count: results.length }, 'Tasks searched')
     return results

@@ -154,10 +154,14 @@ export const isRateLimitedError = (error: unknown): boolean => {
 
 /**
  * Aggregates a paginated GitHub list endpoint: increments `page` at the fixed
- * `per_page` size until a page comes back short or empty. `extractPage` parses
+ * `perPage` size until a page comes back short or empty. `extractPage` parses
  * one page (callers validate with their Zod schema; search pages unwrap `items`).
- * Recursion, not a loop: each page decides whether the next one is fetched, so
- * the requests are inherently sequential.
+ * `maxItems` bounds the fetch window — pagination stops (trimmed to `maxItems`)
+ * once that many items are collected. `isEndOfResults` lets a caller treat a
+ * page-fetch error as the end of the listing, keeping what was already
+ * collected (GitHub search 422s once a page would reach past its first 1000
+ * results). Recursion, not a loop: each page decides whether the next one is
+ * fetched, so the requests are inherently sequential.
  */
 export function githubPaginate<T>(
   config: GitHubConfig,
@@ -166,16 +170,25 @@ export function githubPaginate<T>(
     perPage?: number
     query?: Record<string, string | number>
     extractPage: (data: unknown) => T[]
+    maxItems?: number
+    isEndOfResults?: (error: unknown) => boolean
   },
 ): Promise<T[]> {
   const perPage = options.perPage ?? 100
+  const maxItems = options.maxItems ?? Number.MAX_SAFE_INTEGER
   const collectPage = async (page: number, accumulated: T[]): Promise<T[]> => {
-    const data = await githubFetch(config, 'GET', path, {
-      query: { ...options.query, page, per_page: perPage },
-    })
+    let data: unknown
+    try {
+      data = await githubFetch(config, 'GET', path, {
+        query: { ...options.query, page, per_page: perPage },
+      })
+    } catch (error) {
+      if (options.isEndOfResults?.(error) === true) return accumulated
+      throw error
+    }
     const items = options.extractPage(data)
     const results = [...accumulated, ...items]
-    if (items.length < perPage) return results
+    if (items.length < perPage || results.length >= maxItems) return results.slice(0, maxItems)
     return collectPage(page + 1, results)
   }
   return collectPage(1, [])

@@ -244,6 +244,12 @@ describe('githubPaginate', () => {
       (item): item is { number: number } => typeof item === 'object' && item !== null && 'number' in item,
     )
   }
+  const statusPageResponder =
+    (pages: ReadonlyArray<Readonly<{ body: unknown; status: number }>>) =>
+    (call: number): { body: unknown; status: number } =>
+      pages[call] ?? { body: [], status: 200 }
+  const endsAtUnprocessableEntity = (error: unknown): boolean =>
+    error instanceof GitHubApiError && error.statusCode === 422
 
   test('aggregates full pages until a short page, sending page and per_page each time', async () => {
     const urls: string[] = []
@@ -302,6 +308,66 @@ describe('githubPaginate', () => {
       githubPaginate(config, '/search/issues', { perPage: 1, extractPage: searchItemsPage }),
     )
     expect(items).toEqual([{ number: 1 }])
+  })
+
+  test('stops and trims once maxItems is collected', async () => {
+    let call = 0
+    const pages: number[][] = [[1, 2], [3, 4], [5]]
+    setMockFetch(() => {
+      call += 1
+      return Promise.resolve(jsonResponse(pages[call - 1]))
+    })
+    const items = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubPaginate(config, '/repos/o/r/issues', { perPage: 2, maxItems: 3, extractPage: numberPage }),
+    )
+    expect(items).toEqual([1, 2, 3])
+    expect(call).toBe(2)
+  })
+
+  test('isEndOfResults keeps accumulated items instead of failing pagination', async () => {
+    let call = 0
+    const respond = statusPageResponder([
+      { body: [1, 2], status: 200 },
+      { body: { message: 'Only the first 1000 search results are available' }, status: 422 },
+    ])
+    setMockFetch(() => {
+      const current = call
+      call += 1
+      const page = respond(current)
+      return Promise.resolve(jsonResponse(page.body, page.status))
+    })
+    const items = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubPaginate(config, '/search/issues', {
+        perPage: 2,
+        extractPage: numberPage,
+        isEndOfResults: endsAtUnprocessableEntity,
+      }),
+    )
+    expect(items).toEqual([1, 2])
+    expect(call).toBe(2)
+  })
+
+  test('a non-matching error still fails pagination despite isEndOfResults', async () => {
+    let call = 0
+    const respond = statusPageResponder([
+      { body: [1, 2], status: 200 },
+      { body: { message: 'boom' }, status: 500 },
+    ])
+    setMockFetch(() => {
+      const current = call
+      call += 1
+      const page = respond(current)
+      return Promise.resolve(jsonResponse(page.body, page.status))
+    })
+    const caught = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubPaginate(config, '/repos/o/r/issues', {
+        perPage: 2,
+        extractPage: numberPage,
+        isEndOfResults: endsAtUnprocessableEntity,
+      }).catch((error: unknown) => error),
+    )
+    assert.ok(caught instanceof GitHubApiError)
+    expect(caught.statusCode).toBe(500)
   })
 })
 

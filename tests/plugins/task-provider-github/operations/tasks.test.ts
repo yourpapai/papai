@@ -268,4 +268,68 @@ describe('githubSearchTasks', () => {
     expect(calls[0]?.url.searchParams.get('q')).toBe('repo:octocat/Hello-World is:issue everything')
     expect(results).toHaveLength(3)
   })
+
+  test('stops fetching once the requested window is covered', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    const fullPage = Array.from({ length: 100 }, (_, i) => issueResponse({ number: i + 1, id: i + 1 }))
+    setMockFetch(
+      captureRequests(
+        calls,
+        sequenceResponder([{ data: { total_count: 500, items: fullPage } }, { data: { total_count: 500, items: [] } }]),
+      ).handler,
+    )
+    const results = await githubSearchTasks(config, { query: 'bug', limit: 5 })
+    expect(calls).toHaveLength(1)
+    expect(results).toHaveLength(5)
+    expect(results[4]?.id).toBe('5')
+  })
+
+  test('caps the fetch window at GitHub 1000-result search ceiling', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    const pages: Array<{ data: unknown; status?: number }> = Array.from({ length: 10 }, (_page, page) => ({
+      data: {
+        total_count: 1500,
+        items: Array.from({ length: 100 }, (_, i) =>
+          issueResponse({ number: page * 100 + i + 1, id: page * 100 + i + 1 }),
+        ),
+      },
+    }))
+    pages.push({ data: { message: 'Only the first 1000 search results are available' }, status: 422 })
+    setMockFetch(captureRequests(calls, sequenceResponder(pages)).handler)
+    const results = await githubSearchTasks(config, { query: 'everything' })
+    expect(calls).toHaveLength(10)
+    expect(calls[9]?.url.searchParams.get('page')).toBe('10')
+    expect(results).toHaveLength(1000)
+    expect(results[999]?.id).toBe('1000')
+  })
+
+  test('treats the beyond-cap 422 as end of results instead of failing the search', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    const fullPage = Array.from({ length: 100 }, (_, i) => issueResponse({ number: i + 1, id: i + 1 }))
+    setMockFetch(
+      captureRequests(
+        calls,
+        sequenceResponder([
+          { data: { total_count: 1500, items: fullPage } },
+          { data: { message: 'Only the first 1000 search results are available' }, status: 422 },
+        ]),
+      ).handler,
+    )
+    const results = await githubSearchTasks(config, { query: 'everything' })
+    expect(calls).toHaveLength(2)
+    expect(results).toHaveLength(100)
+    expect(results[99]?.id).toBe('100')
+  })
+
+  test('skips fetching entirely when the window starts past the search cap', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    setMockFetch(captureRequests(calls, () => ({ data: { total_count: 0, items: [] } })).handler)
+    const results = await githubSearchTasks(config, { query: 'everything', offset: 1000 })
+    expect(calls).toHaveLength(0)
+    expect(results).toEqual([])
+  })
 })
