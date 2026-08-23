@@ -124,22 +124,53 @@ const TURN_STALL = 'TURN_STALL'
  * Like {@link turnDeadlineError} it carries the `ProgressSnapshot`: the turn
  * may hold partial work worth salvaging, and "what had it managed" is the
  * first question a maintainer asks. Unlike it, the remedy is not a bigger
- * window — a wave clears with time, so the notice says what stalled, names
+ * window — a stall clears with time, so the notice says what stalled, names
  * `AGENT_STALL_TIMEOUT_MS` and never `AGENT_TIMEOUT_MS`, and invites the
- * `/retry` that resumes from the same phase once the provider is back.
+ * `/retry` that resumes from the same phase once it has.
+ *
+ * **Who it blames is decided by {@link refusalClause}, not by the header.** It
+ * used to open "The provider stalled this turn" and assert that the provider
+ * kept failing the request, unconditionally — a claim the record often cannot
+ * support, because `retries` and `failure` are independent and only the second
+ * is evidence about the remote. The 2026-08-22 runs are the cost: retries
+ * accumulated, `session.error` never fired, and every reader was sent to the
+ * model provider by a message stating it as fact. The provider was healthy —
+ * this job's own loopback proxy was closing the socket on Bun's ten-second idle
+ * bound (`provider-proxy.ts`, now `idleTimeout: 0`). The bug is fixed and the
+ * wording still matters: the proxy is a permanent hop, so "a retry with no
+ * status" will always have two ends it could have come from.
  */
 export const turnStallError = (windowMs: number, stall: TurnStall, progress: ProgressSnapshot): PipelineError =>
   new PipelineError(
     TURN_STALL,
-    `The provider stalled this turn: for the last ${windowMs}ms it produced no finished step and started ` +
-      `no new tool call, while the provider kept failing the request${retriesClause(stall.retries)}` +
-      `${failureClause(stall.failure)}. ` +
+    `This turn stalled: for the last ${windowMs}ms it produced no finished step and started ` +
+      `no new tool call, while ${refusalClause(stall)}. ` +
       `The turn had managed ${progress.toolCalls} tool calls, ${progress.tokens.toLocaleString('en-US')} tokens, ` +
-      `last action "${progress.lastAction}". This is a provider stall, not the whole-turn deadline — a wave ` +
-      'clears with time, so reply `/retry` when it has; finished work is safe on the branch. ' +
+      `last action "${progress.lastAction}". This is a stall, not the whole-turn deadline: finished work is safe ` +
+      'on the branch, and a stall usually clears with time — reply `/retry` when it has. ' +
       'The window is `AGENT_STALL_TIMEOUT_MS`.',
     progress,
   )
+
+/**
+ * What refused the request, said only as far as the record actually goes.
+ *
+ * A `session.error` carries a name and a status, which is the provider
+ * answering for itself — there, naming it is honest. Retries alone are not:
+ * OpenCode retries a request whose socket went away exactly as it retries a
+ * 429, so a retry with no status says only that the call kept failing, and the
+ * path it failed on has two hops. Naming both is what the evidence supports,
+ * and it is the difference between a maintainer checking the run log and a
+ * maintainer waiting out a provider outage that is not happening.
+ */
+const refusalClause = (stall: TurnStall): string =>
+  stall.failure === null
+    ? `the session retried the request ${plural(stall.retries, 'time')} and the provider published no error of ` +
+      'its own, so what refused it is not established here — the model endpoint is this job’s loopback proxy in ' +
+      'front of the real one, and a retry carrying no status can come from either hop'
+    : `the provider kept failing the request${retriesClause(stall.retries)}${failureClause(stall.failure)}`
+
+const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? '' : 's'}`
 
 /** Whether a rejection is that abort. */
 export const isTurnStall = (error: unknown): error is PipelineError =>
