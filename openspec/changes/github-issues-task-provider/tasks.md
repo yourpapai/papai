@@ -27,7 +27,7 @@ failing test. Behavior contracts: `specs/github-issues-task-provider/spec.md`. H
 
 ## 5. Error classification
 
-- [ ] 5.1 Create `tests/plugins/task-provider-github/classify-error.test.ts` with the full matrix: plain 401/403 → `authFailed`; rate-limit-shaped 403/429 → `rateLimited` (header precedence over auth mapping); 404 → task-not-found for issue context vs project-not-found for repo context; 400/422 → `validationFailed`; 5xx → `unexpected`; network message patterns (`fetch`, `econnrefused`, `enotfound`, network/connect) → `systemError.networkError`; already-classified errors pass through; non-Error values → `unexpected`; classification context (taskId/projectId) is preserved — then create `classify-error.ts` (`GitHubClassifiedError` wrapping `AppError` from `papai/plugin-types`) to pass. Verify: `bun test tests/plugins/task-provider-github/classify-error.test.ts`
+- [x] 5.1 Create `tests/plugins/task-provider-github/classify-error.test.ts` with the full matrix: plain 401/403 → `authFailed`; rate-limit-shaped 403/429 → `rateLimited` (header precedence over auth mapping); 404 → task-not-found for issue context vs project-not-found for repo context; 400/422 → `validationFailed`; 5xx → `unexpected`; network message patterns (`fetch`, `econnrefused`, `enotfound`, network/connect) → `systemError.networkError`; already-classified errors pass through; non-Error values → `unexpected`; classification context (taskId/projectId) is preserved — then create `classify-error.ts` (`GitHubClassifiedError` wrapping `AppError` from `papai/plugin-types`) to pass. Verify: `bun test tests/plugins/task-provider-github/classify-error.test.ts`
 
 ## 6. Mappers
 
