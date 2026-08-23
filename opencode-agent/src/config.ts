@@ -25,7 +25,6 @@ import {
   optional,
   optionalOrNull,
   OUTPUT_RANGE,
-  parseChecks,
   parseMcpServers,
   POOL_RANGE,
   providerId,
@@ -45,10 +44,7 @@ import { parseRepository } from './repository.js'
 
 // Re-exported so the many modules that already import them from here keep
 // working; they are declared next to the validators that raise and consume them.
-// `parseChecks` is *imported* as well as re-exported, and has to be: a bare re-export
-// binds no local name, and `loadConfig` calls it — which typechecks and then throws
-// `ReferenceError` at runtime.
-export { DEFAULT_CHECKS, ConfigError, parseChecks } from './config-values.js'
+export { ConfigError } from './config-values.js'
 export type { Env } from './config-values.js'
 export type { PipelineConfig } from './config-shape.js'
 
@@ -176,7 +172,6 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     commitAuthorEmail: optional(env, 'AGENT_COMMIT_EMAIL', '41898282+github-actions[bot]@users.noreply.github.com'),
     checkCommand: optional(env, 'AGENT_CHECK_COMMAND', 'bun check:full'),
     reviewCommand: resolveReviewCommand(env['AGENT_REVIEW_COMMAND'], repoRoot, existsSync),
-    checks: parseChecks(env['AGENT_CHECKS']),
     reviewMaxRounds: boundedInt(env, 'AGENT_REVIEW_MAX_ROUNDS', 4, ROUND_RANGE),
     reviewPoolSize: boundedInt(env, 'AGENT_REVIEW_POOL_SIZE', DEFAULT_REVIEW_POOL_SIZE, POOL_RANGE),
     agentTimeoutMs: boundedInt(env, 'AGENT_TIMEOUT_MS', DEFAULT_TURN_TIMEOUT_MS, TIMEOUT_RANGE),

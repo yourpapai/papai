@@ -14,6 +14,7 @@ import type { Logger } from './logger.js'
 import type { SkillDocument } from './obra-skills.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
+import type { TranscriptSink } from './progress.js'
 import type { ReplyBuffer } from './reply-buffer.js'
 import type { ReviewRunResult } from './review-runner.js'
 import type { TriggerEvent } from './trigger-events.js'
@@ -104,6 +105,13 @@ export interface PhaseDeps {
    * checks and the deadline the session is handed cannot disagree.
    */
   now: () => number
+  /**
+   * The encrypted transcript, when the run has a key — the designated place
+   * for content the public Actions log must not carry. Optional the way the
+   * run itself is: a run without `AGENT_LOG_KEY` has nowhere to write, and a
+   * phase that folds content degrades to silence there, not to a throw.
+   */
+  transcript?: TranscriptSink
   /**
    * The Actions log's collapsible sections, as an injected boundary like every
    * other.

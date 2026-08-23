@@ -3,17 +3,23 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { formatFailures, runCheckLoop } from '../check-loop.js'
-import type { CheckLoopResult } from '../check-loop.js'
-import { buildCommitRepairPrompt, commitWithRepair } from '../commit-repair.js'
-import { droppedBy } from '../git-commit.js'
+import { promptForJson } from '../ask-json.js'
+import type { CheckSpec } from '../check-loop.js'
+import { runCheckLoop } from '../check-loop.js'
+import { diagnosisSchema } from '../ci-diagnosis.js'
+import { buildDiagnosisPrompt } from '../ci-diagnosis.js'
+import type { Diagnosis } from '../ci-diagnosis.js'
 import { branchNameFor } from '../git.js'
 import { composeSystemPrompt } from '../obra-skills.js'
-import type { OpenCodeAgent } from '../opencode-adapter.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildCiFixPrompt, MINIMALITY_RULE } from '../prompts.js'
-import type { UntrustedEnvelope } from '../prompts.js'
 import { PROTECTED_PATHS_RULE } from '../protected-paths.js'
+import { selectFailedJobs } from '../red-run.js'
+import type { FailedJob } from '../red-run.js'
+import { commitAndPush } from './ci-commit.js'
+import type { CiTurn } from './ci-commit.js'
+import { renderCiReport } from './ci-report.js'
+import type { RoundCommit, RoundProof } from './ci-report.js'
 import { mintEnvelope } from './envelope.js'
 
 /**
@@ -24,9 +30,10 @@ import { mintEnvelope } from './envelope.js'
  */
 export const CI_FIX_INSTRUCTIONS = [
   'Continuous integration is red on a pull request you opened. Diagnose and fix the root cause.',
-  'Reproduce the failure from the check output before changing anything.',
+  'Diagnose from the failed jobs and logs of the red run itself, never from a memorized check list.',
+  'Reproduce the failure from the repository’s own CI configuration before changing anything; if you cannot, say so.',
   'Never weaken, skip, or delete a test to make a check pass, and never add lint-disable or type-ignore comments.',
-  'If the failure is unrelated to this branch, say so in your summary rather than papering over it.',
+  'If the failure is unrelated to this branch, or outside this pipeline’s reach, say so rather than papering over it.',
   MINIMALITY_RULE,
   PROTECTED_PATHS_RULE,
 ].join('\n')
@@ -34,17 +41,82 @@ export const CI_FIX_INSTRUCTIONS = [
 /**
  * Entered when a check run goes red on the agent's own pull request.
  *
- * The loop reproduces CI locally rather than reading its logs: the runner has
- * the branch checked out anyway, and a reproduced failure is worth more to the
- * model than a log excerpt from a different machine. Each round is capped, and
- * `ciAttempts` caps the rounds across the pull request's whole life so a
- * genuinely broken branch cannot bounce between the agent and CI forever.
+ * The round reads the run it was asked to repair: its failed jobs and logs
+ * through the Actions API, distilled by `red-run.ts`. One diagnosis turn
+ * returns a verdict that picks the branch — a reproduced failure enters the
+ * bounded loop against the derived command; a log-justified fix is made with
+ * its weaker proof named; a needs-human verdict reports job, reason and remedy
+ * without repairing. The incident that bought this (runs 32641725211 /
+ * 32652877782, PR #337) spent a pull request's whole CI budget "repairing" a
+ * mutation-ratchet failure a static check list could not even see.
  */
 export const handleCiFix: PhaseHandler = async (input): Promise<PhaseOutcome> => {
   const { deps, state } = input
   const branch = branchNameFor(state.issueId)
   await deps.git.ensureBranch(branch, await deps.baseBranch())
 
+  const turn = await openTurn(input)
+
+  const discovered = await discoverFailures(input)
+  if (discovered.readError !== null || discovered.jobs.length === 0) return undiagnosedRound(input, discovered)
+
+  const jobs = discovered.jobs
+  const diagnosis = await diagnose(input, turn, jobs)
+  // Content goes to the encrypted transcript, never the public Actions log:
+  // the verdict and the CI logs are the round's substance, and the log channel
+  // keeps names and counts only.
+  foldToTranscript(input, jobs, diagnosis)
+
+  const repair = await repairUnder(diagnosis, input, jobs, turn)
+  // A needs-human round writes nothing on purpose: its remedy is outside this
+  // pipeline's reach, so there is no tree worth committing and no push to make.
+  const commit: RoundCommit =
+    diagnosis.verdict === 'needs-human' ? { pushed: false, dropped: [] } : await commitAndPush(input, branch, turn)
+
+  deps.log.info(
+    {
+      issue: state.issueId,
+      branch,
+      verdict: diagnosis.verdict,
+      passed: repair.loop?.passed ?? null,
+      logBased: repair.logBased,
+      pushed: commit.pushed,
+      dropped: commit.dropped,
+    },
+    'CI fix round finished',
+  )
+
+  return {
+    signal: 'CI_FIXED',
+    comment: renderCiReport(
+      input,
+      { ...repair, diagnosis, failures: jobs, readError: null },
+      commit,
+      deps.config.runUrl,
+    ),
+    // Rewritten every round, never accumulated: this says what *this* round
+    // could not push, so a round that pushed clears a path a maintainer has
+    // since applied by hand.
+    patch: { ciBlockedPaths: diagnosis.verdict === 'needs-human' ? state.ciBlockedPaths : [...commit.dropped] },
+  }
+}
+
+/** The round's substance, into the encrypted transcript a maintainer is told to read. */
+const foldToTranscript = (input: PhaseInput, jobs: readonly FailedJob[], diagnosis: Diagnosis): void => {
+  const sink = input.deps.transcript
+  if (sink === undefined) return
+  const at = (): string => new Date(input.deps.now()).toISOString()
+  sink.write({ time: at(), tool: 'ci-fix', status: 'diagnosis', detail: JSON.stringify(diagnosis), durationMs: null })
+  for (const job of jobs)
+    sink.write({ time: at(), tool: 'ci-fix', status: `ci-log:${job.name}`, detail: job.log, durationMs: null })
+}
+
+/** The session and the two things every prompt in this phase is composed against. */
+type Turn = CiTurn
+
+/** Boots the session and the system prompt every turn in this phase shares. */
+const openTurn = async (input: PhaseInput): Promise<Turn> => {
+  const { deps } = input
   const envelope = mintEnvelope()
   const agent = await deps.agent()
   const system = composeSystemPrompt({
@@ -54,201 +126,146 @@ export const handleCiFix: PhaseHandler = async (input): Promise<PhaseOutcome> =>
     nonce: envelope.nonce,
     instructions: CI_FIX_INSTRUCTIONS,
   })
+  return { agent, envelope, system }
+}
 
-  const outcome = await runCheckLoop({
-    checks: deps.config.checks,
-    run: deps.runCheck,
-    maxRounds: deps.config.ciFixMaxRounds,
-    repair: async (failures, round) => {
-      deps.log.warn(
-        { issue: state.issueId, round, checks: failures.map((failure) => failure.name) },
-        'Repairing red checks',
-      )
-      await agent.prompt({
-        system,
-        prompt: buildCiFixPrompt(envelope, failures, round, state.ciBlockedPaths),
-        agent: 'build',
-      })
-    },
-  })
-
-  const commit = await commitAndPush(input, branch, { agent, envelope, system })
-  deps.log.info(
-    { issue: state.issueId, branch, passed: outcome.passed, pushed: commit.pushed, dropped: commit.dropped },
-    'CI fix round finished',
+/** The round that never reached a diagnosis: nothing repaired, nothing pushed, everything said. */
+const undiagnosedRound = (input: PhaseInput, discovered: Discovered): PhaseOutcome => {
+  const { deps } = input
+  deps.log.warn(
+    { issue: input.state.issueId, readError: discovered.readError, failedJobs: discovered.jobs.length },
+    'CI fix round could not diagnose the red run',
   )
-
+  const proof: RoundProof = {
+    diagnosis: null,
+    failures: discovered.jobs,
+    loop: null,
+    logBased: false,
+    readError: discovered.readError,
+  }
+  // No model turn, no commit: there is nothing to repair and nothing to
+  // push, and the state's blocked paths are facts about rounds that did.
   return {
     signal: 'CI_FIXED',
-    comment: renderCiReport(input, outcome, commit, deps.config.runUrl),
-    // Rewritten every round, never accumulated: this says what *this* round
-    // could not push, so a round that pushed clears a path a maintainer has
-    // since applied by hand.
-    patch: { ciBlockedPaths: [...commit.dropped] },
+    comment: renderCiReport(input, proof, { pushed: false, dropped: [] }, deps.config.runUrl),
   }
 }
 
-/** The session and the two things every prompt in this phase is composed against. */
-interface Turn {
-  agent: OpenCodeAgent
-  envelope: UntrustedEnvelope
-  system: string
-}
-
-/**
- * Commits the repair, and lets the repository refuse it once or twice first.
- *
- * The checks this phase reproduces are the ones **CI** ran; the ones a commit has
- * to satisfy are the repository's own, over the staged files, and they are not the
- * same set — so a round that got every configured check green can still be turned
- * away at the commit, which used to lose the fix and the whole phase with it. Same
- * treatment as the implementation's commit, and the same session: this one has the
- * repair in its context already.
- */
-const commitAndPush = async (input: PhaseInput, branch: string, turn: Turn): Promise<RoundCommit> => {
+/** The one diagnosis turn, through the re-asking JSON seam. */
+const diagnose = (input: PhaseInput, turn: Turn, jobs: readonly FailedJob[]): Promise<Diagnosis> => {
   const { deps, state } = input
-  const committed = await commitWithRepair({
-    commit: () => deps.git.commitAll(`fix(agent): repair CI for issue #${state.issueId}\n\nRefs #${state.issueId}`),
-    repair: async (rejection, round) => {
-      await turn.agent.prompt({
-        system: turn.system,
-        prompt: buildCommitRepairPrompt(turn.envelope, rejection, round),
-        agent: 'build',
-      })
-    },
-    maxRounds: deps.config.commitRepairMaxRounds,
+  return promptForJson({
+    agent: turn.agent,
+    schema: diagnosisSchema,
+    envelope: turn.envelope,
     log: deps.log,
-    issue: state.issueId,
+    request: {
+      system: turn.system,
+      prompt: buildDiagnosisPrompt(turn.envelope, jobs, redRunUrl(input), state.ciBlockedPaths),
+      agent: 'build',
+    },
   })
-  if (committed.kind !== 'committed') return { pushed: false, dropped: droppedBy(committed) }
+}
 
-  await deps.git.push(branch)
-  return { pushed: true, dropped: committed.dropped }
+/** What the red run could say about itself, or why it could say nothing. */
+interface Discovered {
+  jobs: readonly FailedJob[]
+  readError: string | null
 }
 
 /**
- * What the round's commit came to, as the report needs it.
+ * The failed jobs of the red run, with their logs.
  *
- * A boolean was enough while "nothing was pushed" had one meaning. It has two:
- * the round changed nothing, and the round wrote only files the remote refuses.
- * The second is what run 31779566286 reported as the first, three times.
+ * A refused read (a token without `actions: read`, a GHES host without the
+ * endpoint) degrades to a needs-human round naming the error rather than a
+ * crash: the fallback comment covers crashes, but here a degraded sentence on
+ * the pull request is the more useful answer.
  */
-interface RoundCommit {
-  pushed: boolean
-  dropped: readonly string[]
+const discoverFailures = async (input: PhaseInput): Promise<Discovered> => {
+  const { deps, trigger } = input
+  if (trigger.kind !== 'ci') return { jobs: [], readError: null }
+
+  try {
+    const jobs = await deps.github.listRunJobs(trigger.runId)
+    return { jobs: await selectFailedJobs(jobs, (id) => deps.github.jobLog(id)), readError: null }
+  } catch (error) {
+    return { jobs: [], readError: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 /** The red run that brought the pipeline here; absent unless CI triggered it. */
 const redRunUrl = (input: PhaseInput): string | null => (input.trigger.kind === 'ci' ? input.trigger.runUrl : null)
 
-/**
- * The two runs this comment is about, told apart.
- *
- * There have always been two — the red one being repaired and the agent one
- * doing the repairing — and this comment used to print only the first, under the
- * bare word "run". A maintainer reading it had no way to tell which was meant,
- * and no link at all to the job whose log would say what the repair actually
- * did. Both come in as arguments: the red one is a fact about the event, the
- * agent one a fact about the environment, and neither is a renderer's to fetch.
- */
-const runLines = (red: string | null, agent: string | null): readonly string[] => [
-  ...(red === null ? [] : [`- Red run I am repairing: ${red}`]),
-  ...(agent === null ? [] : [`- This repair ran in: ${agent}`]),
-]
+/** The logs of the run being repaired, as one paragraph the repair prompt carries. */
+const ciLogOf = (jobs: readonly FailedJob[]): string => jobs.map((job) => `${job.name}\n${job.log}`).join('\n\n')
 
 /**
- * What the round's checks proved, which is less than it used to claim.
+ * Repairs under the verdict's branch, and reports which proof the round holds.
  *
- * A round that pushed nothing leaves the branch exactly as CI found it, so a
- * green verdict is a fact about **this job** and not about the code anyone will
- * merge — and the gap between those two is not pedantic. The repair turn holds
- * `bash`: run 31779566286 got its green by running `bun run build:client` and
- * `docker pull` on its own runner, then re-running the tests. Nothing in the
- * loop can see that, so the honest move is to say which of the two the verdict
- * describes rather than to imply the stronger one.
- */
-const verdictLine = (outcome: CheckLoopResult, pushed: boolean): string => {
-  const rounds = `after ${outcome.rounds} round(s)`
-  if (!outcome.passed) return `- Local checks: ❌ still red ${rounds}`
-  return pushed
-    ? `- Local checks: ✅ green ${rounds}`
-    : `- Local checks: ✅ green in this job ${rounds} — but nothing was pushed, so the branch is unchanged`
-}
-
-/** Whether the round pushed, and — when it did not — which of the two reasons. */
-const pushedLine = (commit: RoundCommit): string => {
-  if (commit.pushed) return '- Pushed a fix: yes'
-  return commit.dropped.length === 0
-    ? '- Pushed a fix: no — nothing changed'
-    : '- Pushed a fix: no — the fix exists, but this pipeline cannot push it'
-}
-
-/**
- * The paragraph a blocked round earns, and the reason this phase reports at all.
+ * `fix` + `reproduction` — the derived command runs once, locally. Failing
+ * enters the existing bounded loop scoped to that one command, every repair
+ * prompt carrying the local failure **and** the CI log it reproduced. Passing
+ * while CI was red is *not* success — the incident's rounds were green exactly
+ * this way, against checks they never ran — so the round falls through to the
+ * log-based path rather than claiming an observed pass.
  *
- * Three things it has to say, because leaving any one of them out is what let
- * the same round run three times: which file, that the work was really done, and
- * that applying it is a maintainer's job rather than something `/retry` reaches.
- * A `/retry` here buys another job that re-derives the same blocked edit — the
- * remedy is outside the pipeline entirely.
+ * `fix` without `reproduction` — one repair turn from the log. The model holds
+ * `bash` and may verify what it can, but nothing in the round observed the
+ * derived command pass, and the report says so.
  */
-const blockedNote = (dropped: readonly string[]): readonly string[] => {
-  if (dropped.length === 0) return []
-  return [
-    '',
-    `I wrote a fix, but it touches ${dropped.map((path) => `\`${path}\``).join(', ')} — which this pipeline's ` +
-      'token cannot push, so it was left out of the commit rather than discarding everything else with it.',
-    '',
-    'Apply it by hand, or grant the GitHub App the `workflows` permission. Replying `/retry` will not help: ' +
-      'another round reaches the same edit and drops it again.',
-  ]
-}
-
-/**
- * What a round that left checks red says about why.
- *
- * "I changed nothing" is only true of a round that wrote nothing. A round whose
- * fix was dropped changed plenty and delivered none of it, and telling that
- * maintainer the agent sat on its hands sends them looking for the wrong
- * problem — the note above has already said where the fix went.
- */
-const stillRedNote = (commit: RoundCommit): string => {
-  if (commit.pushed)
-    return 'I could not get every check green. The pull request has my partial fix; the remaining failures are below.'
-  return commit.dropped.length > 0
-    ? 'The checks below are still red, and the fix I wrote is not on the branch for the reason above.'
-    : 'I could not reproduce or fix the failure locally, so I changed nothing.'
-}
-
-const renderCiReport = (
+const repairUnder = async (
+  diagnosis: Diagnosis,
   input: PhaseInput,
-  outcome: CheckLoopResult,
-  commit: RoundCommit,
-  agentRunUrl: string | null,
-): string => {
-  const { state, deps } = input
-  const { pushed } = commit
-  const lines = [
-    `### CI fix attempt ${state.ciAttempts} of ${deps.config.maxCiAttempts}`,
-    '',
-    ...runLines(redRunUrl(input), agentRunUrl),
-    verdictLine(outcome, pushed),
-    pushedLine(commit),
-    ...blockedNote(commit.dropped),
-  ]
+  jobs: readonly FailedJob[],
+  turn: Turn,
+): Promise<Omit<RoundProof, 'diagnosis' | 'failures' | 'readError'>> => {
+  const { deps, state } = input
+  if (diagnosis.verdict === 'needs-human') return { loop: null, logBased: false }
 
-  if (!outcome.passed) {
-    lines.push(
-      '',
-      stillRedNote(commit),
-      '',
-      '<details><summary>Remaining failures</summary>',
-      '',
-      formatFailures(outcome.failures),
-      '',
-      '</details>',
-    )
+  const ciLog = ciLogOf(jobs)
+
+  if (diagnosis.reproduction !== undefined) {
+    const check: CheckSpec = { name: jobs[0]?.name ?? 'ci', argv: diagnosis.reproduction.argv }
+    const first = await deps.runCheck(check)
+    if (first.exitCode !== 0) {
+      const loop = await runCheckLoop({
+        checks: [check],
+        run: deps.runCheck,
+        maxRounds: deps.config.ciFixMaxRounds,
+        repair: async (failures, round) => {
+          deps.log.warn(
+            { issue: state.issueId, round, checks: failures.map((failure) => failure.name) },
+            'Repairing red checks',
+          )
+          await turn.agent.prompt({
+            system: turn.system,
+            prompt: buildCiFixPrompt(turn.envelope, failures, round, state.ciBlockedPaths, undefined, {
+              command: check.argv,
+              ciLog,
+            }),
+            agent: 'build',
+          })
+        },
+      })
+      return { loop, logBased: false }
+    }
+    deps.log.info({ issue: state.issueId }, 'Derived command passed locally while CI was red; repairing from the log')
   }
 
-  return lines.join('\n')
+  await repairFromLog(turn, jobs, state.ciBlockedPaths)
+  return { loop: null, logBased: true }
+}
+
+/** One repair turn working from the CI log, enveloped as the failures it stands for. */
+const repairFromLog = async (turn: Turn, jobs: readonly FailedJob[], blocked: readonly string[]): Promise<void> => {
+  await turn.agent.prompt({
+    system: turn.system,
+    prompt: buildCiFixPrompt(
+      turn.envelope,
+      jobs.map((job) => ({ name: job.name, exitCode: 1, output: job.log })),
+      1,
+      blocked,
+    ),
+    agent: 'build',
+  })
 }

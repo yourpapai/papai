@@ -174,6 +174,7 @@ export const buildCiFixPrompt = (
   round: number,
   blocked: readonly string[] = [],
   budget = CHECK_OUTPUT_BUDGET,
+  context: CiFixContext = {},
 ): string => {
   const shares = shareBudget(
     failures.map((failure) => failure.output.length),
@@ -183,6 +184,12 @@ export const buildCiFixPrompt = (
   return [
     `Continuous integration is red on this branch (repair round ${round}). Fix the root cause in the working tree.`,
     ...blockedPathsNote(blocked),
+    ...(context.command === undefined
+      ? []
+      : [
+          `The failing CI job was reproduced locally as \`${context.command.join(' ')}\`. The failures below are from that run.`,
+        ]),
+    ...(context.ciLog === undefined ? [] : [`## The CI log being repaired\n${envelope.wrap('ci-log', context.ciLog)}`]),
     // Check output is untrusted: a failing test prints whatever its source says,
     // and that source can come from a contributor. It used to go in raw, inside
     // a bare fence it could close, with only a *note* about it enveloped — the
@@ -196,6 +203,17 @@ export const buildCiFixPrompt = (
     'Do not weaken, skip, or delete tests to make a check pass, and do not add lint-disable or type-ignore comments.',
     'Reply with a one-paragraph summary of the fix.',
   ].join('\n\n')
+}
+
+/**
+ * The CI-side facts a repair round is composed against: the command a
+ * reproduction derived, and the log of the run being repaired. Both optional —
+ * a round may have neither — and the log is untrusted text, enveloped where it
+ * lands.
+ */
+export interface CiFixContext {
+  command?: readonly string[]
+  ciLog?: string
 }
 
 export const ANSWER_INSTRUCTIONS = [

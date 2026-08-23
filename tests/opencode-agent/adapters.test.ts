@@ -11,7 +11,7 @@ import { renderBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { CheckFailure } from '../../opencode-agent/src/check-loop.js'
 import { resolveBaseBranch, resolveReviewCommand } from '../../opencode-agent/src/config-discovery.js'
-import { loadConfig, parseChecks } from '../../opencode-agent/src/config.js'
+import { loadConfig } from '../../opencode-agent/src/config.js'
 import type { Env } from '../../opencode-agent/src/config.js'
 import { withDeadline } from '../../opencode-agent/src/deadline.js'
 import {
@@ -1849,18 +1849,6 @@ describe('config', () => {
     // An empty prefix would make every label on the issue look agent-owned to
     // the reconcile, which removes any it cannot account for.
     expect(loadConfig({ ...baseEnv, AGENT_LABEL_PREFIX: '   ' }, '/repo').labelPrefix).toBe('agent:')
-  })
-
-  test('parseChecks falls back to the defaults', () => {
-    expect(parseChecks(undefined).map((check) => check.name)).toEqual(['lint', 'typecheck', 'test'])
-  })
-
-  test('parseChecks reads a custom check list', () => {
-    expect(parseChecks('[{"name":"unit","argv":["npm","test"]}]')).toEqual([{ name: 'unit', argv: ['npm', 'test'] }])
-  })
-
-  test.each(['not json', '[]', '[{"name":"unit"}]'])('parseChecks rejects %p', (raw) => {
-    expect(() => parseChecks(raw)).toThrow('AGENT_CHECKS')
   })
 })
 

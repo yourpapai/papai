@@ -339,10 +339,16 @@ raw text in the failure comment.
    request.
 8. CI runs on the branch — only if `AGENT_GITHUB_TOKEN` is configured, see
    **Red pull requests** below — and comes back red. The `workflow_run` event
-   brings the agent back into `CI_FIX`: it checks out the branch, reproduces
-   the failing checks locally, hands the real output to the model, and
-   pushes a fix. This repeats, bounded by `AGENT_CI_FIX_MAX_ROUNDS` and
-   `AGENT_MAX_CI_ATTEMPTS`, until CI is green or the budget runs out.
+   brings the agent back into `CI_FIX`: the round reads the failed jobs and
+   logs of **that run** through the Actions API (no configured check list —
+   nothing to keep in step with CI), asks one diagnosis turn for a verdict,
+   and repairs under it. A reproduced failure enters a bounded loop against
+   the command derived from the repository's own CI files; a failure that
+   cannot be reproduced is fixed from the log with its weaker proof named; a
+   verdict of needs-human reports the job, the reason and the remedy and
+   pushes nothing. This repeats, bounded by `AGENT_CI_FIX_MAX_ROUNDS` and
+   `AGENT_MAX_CI_ATTEMPTS`, until CI is green, a human is asked for, or the
+   budget runs out.
 9. A maintainer merges the pull request like any other. `COMPLETE` stays
    re-enterable from `CI_FIX` and `CODE_REVIEW`, in case a later push
    retriggers a check or somebody wants a second pass over the diff.
@@ -1577,7 +1583,6 @@ cannot drift.
 | `AGENT_BASE_BRANCH`                        | no       | detected                                                                        | Branch the PR targets; see below                                                                                                                                                                                                                                                          |
 | `AGENT_CHECK_COMMAND`                      | no       | `bun check:full`                                                                | review-loop's build gate                                                                                                                                                                                                                                                                  |
 | `AGENT_REVIEW_COMMAND`                     | no       | detected                                                                        | JSON argv running the review loop; `none` disables it                                                                                                                                                                                                                                     |
-| `AGENT_CHECKS`                             | no       | `bun run` lint / typecheck / test                                               | JSON `[{ "name", "argv" }]` the CI-fix phase runs                                                                                                                                                                                                                                         |
 | `AGENT_MCP_SERVERS`                        | no       | unset — no MCP servers                                                          | Secret or variable: JSON map of MCP servers; see below                                                                                                                                                                                                                                    |
 | `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                                                             | review-loop rounds                                                                                                                                                                                                                                                                        |
 | `AGENT_REVIEW_POOL_SIZE`                   | no       | `1`                                                                             | review-loop worker pool                                                                                                                                                                                                                                                                   |
@@ -2082,8 +2087,7 @@ under **Setup** is simply not written. Nothing else changes.
 | `src/protected-paths.ts`                      | Paths a push by this pipeline cannot carry, dropped before the commit   |
 | `src/sdk-contract.ts`                         | The recorded request and response shapes the SDK speaks                 |
 | `src/config-values.ts`                        | Reading and range-checking one scalar from the environment              |
-| `src/check-spec.ts`                           | `AGENT_CHECKS`, the one config reading that parses a document           |
-| `src/config-discovery.ts`                     | The two settings asked of the checkout and the event, not the env       |
+| `src/check-spec.ts`                           | `src/config-discovery.ts`                                               | The two settings asked of the checkout and the event, not the env |
 | `src/deadline.ts`                             | The upper bound on waiting for work that has none of its own            |
 | `src/provider-proxy.ts`                       | Holds the provider key, and retries a transient upstream failure        |
 | `src/obra-skills.ts`                          | Superpowers skill loading and system-prompt composition                 |

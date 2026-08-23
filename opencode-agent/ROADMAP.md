@@ -519,7 +519,7 @@ detection test red, and collapsing `unavailable` into `failed` turns the report
 test red. The unreachable `reviewLoopError` factory is deleted._
 
 `src/config.ts:19-22` hardcodes `bun run test:mutate:changed`, and `:116` wires
-it in with no environment override (unlike `AGENT_CHECKS`). Any repository other
+it in with no environment override. Any repository other
 than papai has no such script, so the command exits 127, `parseMutationScore`
 finds no score, and `runMutationImprove` spends `AGENT_MAX_MUTATION_ROUNDS`
 model calls asking the agent to "kill surviving mutants" from a `command not
@@ -1954,8 +1954,7 @@ OpenCode server for a phase built to avoid it.
 
 Two files moved to keep `max-lines` honest rather than to tidy: the commit half of the
 step walk is now `phases/implement-commit.ts` (what one step costs, against
-`implement-steps.ts`'s which step runs next), and `AGENT_CHECKS`' parse moved to
-`config-values.ts`, which is where reading a value out of the environment already lived.
+`implement-steps.ts`'s which step runs next).
 
 ### S5-7 — progress, and what it is deliberately not allowed to say
 

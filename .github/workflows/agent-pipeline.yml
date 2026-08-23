@@ -39,6 +39,10 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
+  # What a CI-fix round reads: the failed jobs and their logs of the run that
+  # went red. Without it the round degrades to a needs-human report naming the
+  # 403, which is the honest answer but not the useful one.
+  actions: read
 
 # No workflow-level `concurrency`. The group has to name the branch, and on a
 # pull-request comment the branch is only knowable after an API call — see the
@@ -394,17 +398,15 @@ jobs:
       # `tests/debug/` fails fast in `beforeAll` without them. Every other lane
       # gets them without asking — `ci.yml`'s Checks job downloads the
       # `build-output` artifact, `check.sh` runs this same guard before its
-      # fan-out — and this job has neither, because it runs whatever argv
-      # `AGENT_CHECKS` names.
+      # fan-out — and this job has neither, because a CI-fix round runs whatever
+      # command it derives from this repository's own CI files.
       #
-      # `DEFAULT_CHECKS` now spells the suite `bun run test`, whose wrapper builds
-      # them itself, so this is belt-and-braces: it keeps the property true for a
-      # repository that overrides `AGENT_CHECKS` with a bare `bun test`. Worth the
-      # ~2s (the guard no-ops when the bundles exist) because the failure it
-      # prevents is the expensive kind — a loop that reproduces failures CI does
-      # not have repairs the wrong thing, which is how run 31779566286 spent a
-      # pull request's whole `ciAttempts` budget writing a fix to this very file
-      # and reporting "nothing changed".
+      # Belt-and-braces: the derived command is often `bun run test`, whose
+      # wrapper builds the bundles itself, but a workflow that runs a bare
+      # `bun test` would leave the round reproducing a failure CI does not have
+      # — which is how run 31779566286 spent a pull request's whole `ciAttempts`
+      # budget writing a fix to this very file and reporting "nothing changed".
+      # Worth the ~2s (the guard no-ops when the bundles exist).
       - name: Build the client bundles the checks need
         run: bun scripts/ensure-client-built.ts
 
@@ -487,9 +489,8 @@ jobs:
           # would mask that path and let it rot untested.
           AGENT_CHECK_COMMAND: ${{ vars.AGENT_CHECK_COMMAND }}
           AGENT_REVIEW_COMMAND: ${{ vars.AGENT_REVIEW_COMMAND }}
-          AGENT_CHECKS: ${{ vars.AGENT_CHECKS }}
-          # MCP servers for the agent, as a JSON document — the second non-scalar
-          # knob after AGENT_CHECKS. Two spellings on purpose (the secret wins,
+          # MCP servers for the agent, as a JSON document — the one non-scalar
+          # knob left. Two spellings on purpose (the secret wins,
           # like AGENT_GITHUB_TOKEN): a token-bearing declaration belongs in a
           # secret, which GitHub masks in logs and encrypts at rest, while a
           # token-free one may live in a variable, visible to non-admin

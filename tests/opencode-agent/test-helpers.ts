@@ -3,10 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { CheckRunner, CheckSpec } from '../../opencode-agent/src/check-loop.js'
 import type { CiGroups } from '../../opencode-agent/src/ci-groups.js'
-import { DEFAULT_CHECKS } from '../../opencode-agent/src/config-values.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import type { Salvage } from '../../opencode-agent/src/git-commit.js'
@@ -87,7 +87,6 @@ export const stubConfig = (repoRoot = '/repo'): PipelineConfig => ({
   commitAuthorEmail: 'agent@example.com',
   checkCommand: 'bun test',
   reviewCommand: ['bun', 'run', 'review-loop/src/cli.ts'],
-  checks: DEFAULT_CHECKS,
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,
@@ -151,6 +150,8 @@ export interface StubIo {
   runJobs: RunJob[]
   /** Log text the fake `jobLog` returns, keyed by job id; absent ids answer ''. */
   jobLogs: Record<number, string>
+  /** Rows written to the fake encrypted transcript, in order. */
+  transcriptRows: TranscriptRow[]
 }
 
 export interface StubPhaseDepsOptions {
@@ -212,6 +213,7 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     existingChanges: [],
     runJobs: [...(options.runJobs ?? [])],
     jobLogs: { ...(options.jobLogs ?? {}) },
+    transcriptRows: [],
   }
   const replies = options.replies ?? []
   const login = options.selfLogin ?? 'agent-bot'
@@ -384,6 +386,11 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
 
   const deps: PhaseDeps = {
     github,
+    transcript: {
+      write: (row): void => {
+        io.transcriptRows.push(row)
+      },
+    },
     git,
     runCheck,
     runReview,
