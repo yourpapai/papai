@@ -9,10 +9,10 @@ import type { LanguageModel } from 'ai'
 
 import {
   classifiedEntriesSchema,
-  EMPTY_RELEASE_NOTE,
   humanizeChangelog,
   type HumanizeChangelogDeps,
 } from '../../src/announcements/humanize.js'
+import { t } from '../../src/i18n/index.js'
 import { logger, logMultistream } from '../../src/logger.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
@@ -86,9 +86,16 @@ function deps(over: Partial<HumanizeChangelogDeps>): HumanizeChangelogDeps {
     buildModel: (): LanguageModel => 'test-model',
     generate: () => Promise.resolve({ text: 'Humanized!' }),
     generateStructured: () => Promise.resolve(twoEntries),
+    locales: ['en'],
     ...over,
   }
 }
+
+/** Write-pass stub keyed on the ru system prompt (module scope: no conditional inside a test body). */
+const localeAwareGenerate =
+  (ru: () => Promise<{ text: string }>, en: () => Promise<{ text: string }>) =>
+  (opts: { system: string }): Promise<{ text: string }> =>
+    opts.system.includes('Russian') ? ru() : en()
 
 beforeEach(async () => {
   await setupTestDb()
@@ -103,7 +110,7 @@ afterEach(() => {
 describe('humanizeChangelog', () => {
   test('classifies first, then writes from surviving entries only', async () => {
     let classifyPrompt = ''
-    let writePrompt = ''
+    const writePrompts: string[] = []
     const seenModel: { apiKey?: string; baseUrl?: string; model?: string } = {}
     const result = await humanizeChangelog(
       '### Added\n- thing',
@@ -119,21 +126,73 @@ describe('humanizeChangelog', () => {
           return Promise.resolve(twoEntries)
         },
         generate: (opts) => {
-          writePrompt = opts.prompt
+          writePrompts.push(opts.prompt)
           return Promise.resolve({ text: '  ✨ New\n- Thing  ' })
         },
       }),
     )
-    expect(result).toBe('✨ New\n- Thing')
+    expect(result).toEqual({ en: '✨ New\n- Thing' })
     expect(classifyPrompt).toContain('### Added')
-    expect(writePrompt).not.toContain('### Added')
-    expect(writePrompt).toContain('stale memory results')
+    expect(writePrompts).toHaveLength(1)
+    expect(writePrompts[0]).not.toContain('### Added')
+    expect(writePrompts[0]).toContain('stale memory results')
     expect(seenModel).toEqual({ apiKey: 'k', baseUrl: 'https://llm.example', model: 'main' })
   })
 
-  test('returns the empty-release note when nothing survives classification', async () => {
+  test('one classify pass serves one write pass per locale', async () => {
+    let classifyCalls = 0
+    let writeCalls = 0
+    const result = await humanizeChangelog(
+      'raw',
+      deps({
+        locales: ['en', 'ru'],
+        generateStructured: () => {
+          classifyCalls++
+          return Promise.resolve(twoEntries)
+        },
+        generate: () => {
+          writeCalls++
+          return Promise.resolve({ text: 'ok' })
+        },
+      }),
+    )
+    expect(classifyCalls).toBe(1)
+    expect(writeCalls).toBe(2)
+    expect(result).toEqual({ en: 'ok', ru: 'ok' })
+  })
+
+  test('a failing locale write is isolated: the other locale still lands, with a warn naming the locale', async () => {
+    const result = await humanizeChangelog(
+      'raw',
+      deps({
+        locales: ['en', 'ru'],
+        generate: localeAwareGenerate(
+          () => Promise.reject(new Error('ru boom')),
+          () => Promise.resolve({ text: 'EN body' }),
+        ),
+      }),
+    )
+    expect(result).toEqual({ en: 'EN body' })
+    const ruWarns = warnEntries().filter((entry) => entry['locale'] === 'ru')
+    expect(ruWarns).toHaveLength(1)
+    expect(ruWarns[0]?.['error']).toBe('ru boom')
+    expect(ruWarns[0]?.['msg']).toBe('Changelog humanization failed for locale')
+  })
+
+  test('returns the localized empty-release note per locale when nothing survives classification', async () => {
+    const result = await humanizeChangelog(
+      'raw',
+      deps({ locales: ['en', 'ru'], generateStructured: () => Promise.resolve({ entries: [] }) }),
+    )
+    expect(result).toEqual({
+      en: t('announcements.emptyReleaseNote', 'en'),
+      ru: t('announcements.emptyReleaseNote', 'ru'),
+    })
+  })
+
+  test('the en empty-release note keeps its literal pre-i18n text', async () => {
     const result = await humanizeChangelog('raw', deps({ generateStructured: () => Promise.resolve({ entries: [] }) }))
-    expect(result).toBe(EMPTY_RELEASE_NOTE)
+    expect(result.en).toBe('This release is all behind-the-scenes improvements — nothing new to learn.')
   })
 
   test('does not call the write pass when nothing survives', async () => {
@@ -151,34 +210,47 @@ describe('humanizeChangelog', () => {
     expect(writeCalled).toBe(false)
   })
 
-  test('returns null when the classify pass throws', async () => {
+  test('returns an empty map when the classify pass throws', async () => {
     const result = await humanizeChangelog('raw', deps({ generateStructured: () => Promise.reject(new Error('boom')) }))
-    expect(result).toBeNull()
+    expect(result).toEqual({})
   })
 
-  test('returns null when LLM config is missing', async () => {
+  test('returns an empty map when LLM config is missing', async () => {
     const result = await humanizeChangelog(
       'raw',
       deps({
         resolveConfig: () => ({ ok: false, type: 'missing', source: 'global', missing: ['main_model'] }),
       }),
     )
-    expect(result).toBeNull()
+    expect(result).toEqual({})
   })
 
-  test('returns null when the model throws', async () => {
+  test('returns an empty map when every write pass throws', async () => {
     const result = await humanizeChangelog(
       'raw',
       deps({
+        locales: ['en', 'ru'],
         generate: () => Promise.reject(new Error('boom')),
       }),
     )
-    expect(result).toBeNull()
+    expect(result).toEqual({})
   })
 
-  test('returns null when the model returns only whitespace', async () => {
-    const result = await humanizeChangelog('raw', deps({ generate: () => Promise.resolve({ text: '   ' }) }))
-    expect(result).toBeNull()
+  test('a whitespace-only locale write is omitted with a warn naming the locale', async () => {
+    const result = await humanizeChangelog(
+      'raw',
+      deps({
+        locales: ['en', 'ru'],
+        generate: localeAwareGenerate(
+          () => Promise.resolve({ text: '   ' }),
+          () => Promise.resolve({ text: 'EN body' }),
+        ),
+      }),
+    )
+    expect(result).toEqual({ en: 'EN body' })
+    const ruWarns = warnEntries().filter((entry) => entry['locale'] === 'ru')
+    expect(ruWarns).toHaveLength(1)
+    expect(ruWarns[0]?.['msg']).toBe('Changelog humanization returned empty output for locale')
   })
 
   test('write prompt demands plain benefit framing and the three sections', async () => {
@@ -213,7 +285,7 @@ describe('humanizeChangelog', () => {
     )
   })
 
-  test('passes the exact write system prompt to the announcement pass', async () => {
+  test('passes the exact write system prompt to the en announcement pass', async () => {
     let capturedSystem = ''
     await humanizeChangelog(
       'raw',
@@ -229,9 +301,24 @@ describe('humanizeChangelog', () => {
     )
   })
 
-  test('returns the literal empty-release note text when nothing survives', async () => {
-    const result = await humanizeChangelog('raw', deps({ generateStructured: () => Promise.resolve({ entries: [] }) }))
-    expect(result).toBe('This release is all behind-the-scenes improvements — nothing new to learn.')
+  test('ru write prompt instructs Russian output and localized section headers', async () => {
+    const systems: string[] = []
+    await humanizeChangelog(
+      'raw',
+      deps({
+        locales: ['en', 'ru'],
+        generate: (opts) => {
+          systems.push(opts.system)
+          return Promise.resolve({ text: 'ok' })
+        },
+      }),
+    )
+    const ruSystem = systems.find((system) => system.includes('Russian'))
+    expect(ruSystem).toBeDefined()
+    expect(ruSystem).toContain('Write the announcement in Russian.')
+    expect(ruSystem).toContain('"✨ Новое"')
+    expect(ruSystem).toContain('"⚡ Улучшения"')
+    expect(ruSystem).toContain('"🛠 Исправления"')
   })
 
   test('logs the not-configured warning with the child scope, exact metadata, and message', async () => {
@@ -241,7 +328,7 @@ describe('humanizeChangelog', () => {
         resolveConfig: () => ({ ok: false, type: 'missing', source: 'global', missing: ['main_model'] }),
       }),
     )
-    expect(result).toBeNull()
+    expect(result).toEqual({})
     const warn = soleWarn()
     expect(warn['scope']).toBe('announcements:humanize')
     expect(warn['msg']).toBe('Central LLM not configured; skipping changelog humanization')
@@ -252,7 +339,7 @@ describe('humanizeChangelog', () => {
 
   test('logs the humanization-failed warning with the child scope, error, and message', async () => {
     const result = await humanizeChangelog('raw', deps({ generateStructured: () => Promise.reject(new Error('boom')) }))
-    expect(result).toBeNull()
+    expect(result).toEqual({})
     const warn = soleWarn()
     expect(warn['scope']).toBe('announcements:humanize')
     expect(warn['error']).toBe('boom')
@@ -261,7 +348,7 @@ describe('humanizeChangelog', () => {
 
   test('uses the real default-deps wiring when none are passed', async () => {
     const result = await humanizeChangelog('raw')
-    expect(result).toBeNull()
+    expect(result).toEqual({})
   })
 })
 

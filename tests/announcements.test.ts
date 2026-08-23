@@ -223,9 +223,11 @@ const localeAwareGenerate =
     opts.system.includes('Russian') ? ru() : en()
 
 describe('humanizeChangelog: per-locale bodies', () => {
-  beforeEach(async () => {
-    mockLogger()
-    await setupTestDb()
+  // No mockLogger()/setupTestDb here: humanize.ts binds its child logger at module
+  // load, and mockLogger()'s mock.module would re-point the live `rootLogger`
+  // binding at the mock, leaving the real logger at its silent preload level.
+  // humanizeChangelog touches no DB.
+  beforeEach(() => {
     rootLogger.level = 'trace'
     humanizeLogCaptured.length = 0
   })
@@ -351,7 +353,7 @@ describe('announceNewVersion', () => {
         }
         return changelogProvider()
       },
-      humanizeChangelog: (): Promise<string | null> => Promise.resolve(null),
+      humanizeChangelog: (): Promise<Partial<Record<Locale, string>>> => Promise.resolve({}),
       persistDraft: upsertAnnouncementDraft,
       updateHumanizedBody: updateHumanizedBody,
       isVersionAnnounced: (version): boolean => {

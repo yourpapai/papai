@@ -17,7 +17,7 @@ import type { ChatProvider } from './chat/types.js'
 import { dmTarget } from './chat/types.js'
 import { getDrizzleDb } from './db/drizzle.js'
 import { versionAnnouncements } from './db/schema.js'
-import { t } from './i18n/index.js'
+import { t, type Locale } from './i18n/index.js'
 import { logger } from './logger.js'
 import { recordProactiveInHistory } from './proactive-history.js'
 import { extractChangelogSection } from './utils/changelog.js'
@@ -25,7 +25,7 @@ import { getContextLanguage } from './utils/config-language.js'
 
 export interface AnnouncementsDeps {
   readChangelogFile: () => Promise<string>
-  humanizeChangelog: (rawSection: string) => Promise<string | null>
+  humanizeChangelog: (rawSection: string) => Promise<Partial<Record<Locale, string>>>
   // synchronous (SQLite); call site does not await
   persistDraft: (input: { version: string; rawBody: string; humanizedBody: string | null }) => void
   // synchronous (SQLite)
@@ -108,7 +108,9 @@ export async function announceNewVersion(
   log.info({ version: VERSION }, 'Humanizing changelog and notifying admin')
 
   deps.persistDraft({ version: VERSION, rawBody: rawSection, humanizedBody: null })
-  const humanized = await deps.humanizeChangelog(rawSection)
+  const bodies = await deps.humanizeChangelog(rawSection)
+  // Interim en-only seam until announceNewVersion gains per-locale persistence (step 4.4).
+  const humanized = bodies.en ?? null
   if (humanized !== null) deps.updateHumanizedBody(VERSION, humanized)
 
   const draftBody = humanized ?? rawSection

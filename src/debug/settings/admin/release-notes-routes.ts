@@ -72,7 +72,9 @@ async function handlePost(req: Request, authed: AuthenticatedSettingsRequest): P
   if (body.data.action === 'regenerate') {
     const raw = await resolveRawSection()
     if (raw === null) return settingsJson(422, { error: 'no changelog content for this version' })
-    const humanized = await humanizeChangelog(raw)
+    // Interim en-only seam until the route gains per-locale regenerate (step 5.2).
+    const bodies = await humanizeChangelog(raw)
+    const humanized = bodies.en ?? null
     if (humanized === null) return settingsJson(422, { error: 'LLM unavailable or returned empty output' })
     updateHumanizedBody(VERSION, humanized)
     log.info({ version: VERSION }, 'release notes draft regenerated')

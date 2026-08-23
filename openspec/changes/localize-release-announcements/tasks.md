@@ -16,7 +16,7 @@
 ## 3. Per-locale humanization
 
 - [x] 3.1 Test-first: `tests/announcements.test.ts` humanize cases — one classify call for both locale bodies (deps call counts), ru write failure/empty → en-only result + `warn` naming the locale + overall result not null, both passes fail → empty map, empty release → `announcements.emptyReleaseNote` per locale via `t()`: `bun test tests/announcements.test.ts`
-- [ ] 3.2 Implement `src/announcements/humanize.ts`: `humanizeChangelog(rawSection): Promise<Partial<Record<Locale, string>>>`; classify pass unchanged and run once; write pass per locale from a `Record<Locale, string>` prompt map (output-language instruction + localized headers, e.g. `✨ Новое` / `⚡ Улучшения` / `🛠 Исправления`); per-locale try/catch; deps gain `locales` (default `SUPPORTED_LOCALES`); remove the exported `EMPTY_RELEASE_NOTE` constant in favor of the i18n key: `bun test tests/announcements.test.ts && bun run typecheck`
+- [x] 3.2 Implement `src/announcements/humanize.ts`: `humanizeChangelog(rawSection): Promise<Partial<Record<Locale, string>>>`; classify pass unchanged and run once; write pass per locale from a `Record<Locale, string>` prompt map (output-language instruction + localized headers, e.g. `✨ Новое` / `⚡ Улучшения` / `🛠 Исправления`); per-locale try/catch; deps gain `locales` (default `SUPPORTED_LOCALES`); remove the exported `EMPTY_RELEASE_NOTE` constant in favor of the i18n key: `bun test tests/announcements.test.ts && bun run typecheck`
 
 ## 4. Per-recipient broadcast
 

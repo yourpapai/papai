@@ -62,7 +62,7 @@ scenario('SCN-scheduler-execution-tracking: active execution tracking clears ful
 scenario('SCN-changelog-version-section: version lookup returns only the requested changelog section', async () => {
   const baseDeps: AnnouncementsDeps = {
     readChangelogFile: () => Promise.resolve(''),
-    humanizeChangelog: (raw) => Promise.resolve(raw),
+    humanizeChangelog: (raw) => Promise.resolve({ en: raw }),
     persistDraft: () => {},
     updateHumanizedBody: () => {},
     isVersionAnnounced: () => false,

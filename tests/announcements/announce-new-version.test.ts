@@ -26,7 +26,7 @@ function makeChat(sent: string[]): ReturnType<typeof createMockChat> {
 function makeDeps(over: Partial<AnnouncementsDeps>): AnnouncementsDeps {
   return {
     readChangelogFile: () => Promise.resolve(`## [${VERSION}]\n\n### Added\n- thing\n\n## [0.0.1]\n- old`),
-    humanizeChangelog: () => Promise.resolve('✨ New\n- A friendly thing'),
+    humanizeChangelog: () => Promise.resolve({ en: '✨ New\n- A friendly thing' }),
     persistDraft: () => {},
     updateHumanizedBody: () => {},
     isVersionAnnounced: () => false,
@@ -78,7 +78,7 @@ describe('announceNewVersion', () => {
       'pi-1',
       'admin-1',
       makeDeps({
-        humanizeChangelog: () => Promise.resolve(null),
+        humanizeChangelog: () => Promise.resolve({}),
         persistDraft: (d) => {
           persistedHumanized = d.humanizedBody
         },
