@@ -531,6 +531,23 @@ findings: `ROADMAP.md`.
   it is the one layer that sees a real HTTP status and the only one the review
   loop's subprocesses also pass through; do not add a second retry in the
   adapter, where the status is already gone.
+  Its listener sets **`idleTimeout: 0`, and that is not a tuning knob**. Bun
+  defaults it to ten seconds and counts a _streamed_ response as idle whenever
+  no byte moves, and what this proxy forwards is the model's completion stream —
+  so between the proxy landing (2026-08-07) and the fix, every reasoning pause
+  longer than ten seconds cut the socket mid-completion. Downstream that is
+  indistinguishable from the provider failing: OpenCode retries, meets the same
+  pause, and the turn finishes no step. It cost hours of wall clock per run
+  quietly for two weeks, and became a hard failure the day `AGENT_STALL_TIMEOUT_MS`
+  arrived (2026-08-21) — a stall detector whose trigger condition, "no progress
+  while retries accumulate", is exactly what the socket kill manufactures.
+  Neither retry layer can see it: the proxy's fires on an upstream status and
+  upstream is healthy, and the break is on the **inbound** leg. The turn is
+  already bounded by `AGENT_TIMEOUT_MS` and `AGENT_STALL_TIMEOUT_MS`, so a third
+  and fiercer bound in the transport can only fight them. `defaultServe` takes
+  its `Bun.serve` as an argument for one reason: a started server does not report
+  `idleTimeout` back, so that seam is the only way to pin the value without an
+  eleven-second test.
 - **The provider id is a catalogue key, and the transport is not.**
   `LLM_PROVIDER` (default `openai`) says which models.dev row OpenCode resolves
   `LLM_MODEL` under; `npm` stays `@ai-sdk/openai-compatible` and wins over the
@@ -1126,6 +1143,20 @@ not permitted to create or approve pull requests` is a repository or
   which would invite a `/continue` into a wave that has not passed. Finished
   steps are not re-run by that `/retry`; their boxes are ticked on the branch
   and the walk skips them.
+  **The notice blames the provider only when the provider said so.**
+  `TurnStall`'s two fields are independent evidence and only `failure` — a
+  `session.error`, carrying a name and a status — is the remote answering for
+  itself; `retries` alone says the call kept failing and nothing about which end
+  refused it, because OpenCode retries a socket that went away exactly as it
+  retries a 429. The message used to assert a provider stall unconditionally,
+  and the 2026-08-22 runs are what that cost: retries with no `session.error`,
+  a healthy provider, and the local proxy cutting the socket on Bun's
+  ten-second idle bound — every reader sent to the wrong end of the connection
+  by a sentence stating the wrong one as fact. `refusalClause` in
+  `turn-errors.ts` now names the provider when `failure` is set and both hops
+  when it is not. Keep it that way even though the proxy bug is fixed: the
+  proxy is a permanent hop, so a retry with no status will always have two ends
+  it could have come from.
 - **Capabilities are deny-by-default.** `openai-config.ts` grants tools by name
   on top of `"*": "deny"`, per agent profile: `plan` (the read-only phases)
   cannot edit or run commands, `build` can. Add a capability by naming it, never
