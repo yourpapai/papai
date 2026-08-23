@@ -46,7 +46,7 @@ export const GitHubIssueSchema = z.object({
   milestone: GitHubMilestoneSchema.nullable(),
   html_url: z.string(),
   // Present only when the item is a pull request; carried so listings can drop PRs.
-  pull_request: z.object({}).optional(),
+  pull_request: z.object({ url: z.string().optional() }).optional(),
 })
 
 export type GitHubIssue = z.infer<typeof GitHubIssueSchema>

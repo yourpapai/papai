@@ -31,7 +31,7 @@ failing test. Behavior contracts: `specs/github-issues-task-provider/spec.md`. H
 
 ## 6. Mappers
 
-- [ ] 6.1 Create `tests/plugins/task-provider-github/mappers.test.ts` asserting: issue → `Task` with id = stringified issue `number`, status text folding `state_reason` (`closed (not_planned)` vs `closed`), first-assignee-login-or-null assignee, url = `html_url`, projectId = `owner/repo`, commentsCount, reporter; both label forms and PR-marked issues handled; issue → `TaskListItem`/`TaskSearchResult`; repo → `Project` (id = full_name) — then create `mappers.ts` mapping to `src/providers/domain-types.ts` shapes to pass. Verify: `bun test tests/plugins/task-provider-github/mappers.test.ts`
+- [x] 6.1 Create `tests/plugins/task-provider-github/mappers.test.ts` asserting: issue → `Task` with id = stringified issue `number`, status text folding `state_reason` (`closed (not_planned)` vs `closed`), first-assignee-login-or-null assignee, url = `html_url`, projectId = `owner/repo`, commentsCount, reporter; both label forms and PR-marked issues handled; issue → `TaskListItem`/`TaskSearchResult`; repo → `Project` (id = full_name) — then create `mappers.ts` mapping to `src/providers/domain-types.ts` shapes to pass. Verify: `bun test tests/plugins/task-provider-github/mappers.test.ts`
 
 ## 7. Operations
 
