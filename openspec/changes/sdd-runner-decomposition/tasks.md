@@ -20,4 +20,4 @@ Implements the plan data layer only (proposal: tasks 1.1–3.3); intake behavior
 
 ## 4. Full verification and docs
 
-- [ ] 4.1 Full gates and docs. Run one full `bun run test` (never two full suites concurrently), `bun run typecheck`, `bun run lint` — all green. Update `docs/architecture/sdd-pipeline.md` (Event model / Durability artifacts) with a part-1-sized note: the plan data layer, the three new L2 event variants, and the additive `state.json` fields — no runtime behavior changed, so nothing else to document. Verify: all three commands exit green.
+- [x] 4.1 Full gates and docs. Run one full `bun run test` (never two full suites concurrently), `bun run typecheck`, `bun run lint` — all green. Update `docs/architecture/sdd-pipeline.md` (Event model / Durability artifacts) with a part-1-sized note: the plan data layer, the three new L2 event variants, and the additive `state.json` fields — no runtime behavior changed, so nothing else to document. Verify: all three commands exit green.
