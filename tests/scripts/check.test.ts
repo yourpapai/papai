@@ -298,12 +298,20 @@ describe('check.sh --skip-tests', () => {
         .filter((entry) => entry.length > 0)
 
       expect(calls).toContain('bun run lint')
-      expect(calls).toContain('bun run review-loop:lint')
+      expect(calls).not.toContain('bun run review-loop:lint')
       expect(calls).not.toContain('bun run test')
       expect(calls).not.toContain('bun run test:client')
       expect(calls).not.toContain('bun run review-loop:test')
       expect(calls).not.toContain('bun run :client')
       expect(calls).not.toContain('bun run review-loop:')
+      // Aggregate gates enforce workspace code through the root checks only;
+      // no per-workspace proxy script may appear in any mode.
+      const workspaceProxyCalls = calls.filter((call) =>
+        ['review-loop:', 'mutation-improve:', 'sdd-runner:', 'opencode-agent:'].some((prefix) =>
+          call.startsWith(`bun run ${prefix}`),
+        ),
+      )
+      expect(workspaceProxyCalls).toEqual([])
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }
@@ -504,7 +512,7 @@ describe('check.sh full mode', () => {
       expect(written).toContain('typecheck.log')
       // `:` is not a filename, and safe_name() has always mapped it to `_`.
       expect(written).toContain('format_check.log')
-      expect(written).toContain('review-loop_lint.log')
+      expect(written).not.toContain('review-loop_lint.log')
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }
@@ -598,10 +606,13 @@ describe('check.sh full mode', () => {
       const calls = readFileSync(logFile, 'utf8')
       expect(calls).toContain('bun run test')
       expect(calls).toContain('bun --conditions=browser test --preload ./tests/client-setup.ts')
-      expect(calls).toContain('bun test tests/review-loop')
+      expect(calls).not.toContain('bun test tests/review-loop')
       expect(calls).not.toContain('--max-concurrency')
       expect(calls).not.toContain('bun run test:client')
       expect(calls).not.toContain('bun run review-loop:test')
+      for (const prefix of ['review-loop:', 'mutation-improve:', 'sdd-runner:', 'opencode-agent:']) {
+        expect(calls).not.toContain(`bun run ${prefix}`)
+      }
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }
