@@ -174,9 +174,10 @@ async function writeLocaleBody(
  */
 export async function humanizeChangelog(
   rawSection: string,
-  deps: HumanizeChangelogDeps = defaultDeps,
+  deps: Partial<HumanizeChangelogDeps> = defaultDeps,
 ): Promise<Partial<Record<Locale, string>>> {
-  const config = deps.resolveConfig()
+  const resolved: HumanizeChangelogDeps = { ...defaultDeps, ...deps }
+  const config = resolved.resolveConfig()
   if (!config.ok) {
     log.warn(
       {
@@ -188,17 +189,17 @@ export async function humanizeChangelog(
     )
     return {}
   }
-  const classified = await runClassifyPass(rawSection, deps, config)
+  const classified = await runClassifyPass(rawSection, resolved, config)
   if (classified === null) return {}
-  if (classified.entries.length === 0) return emptyReleaseNote(localesOf(deps))
+  if (classified.entries.length === 0) return emptyReleaseNote(localesOf(resolved))
 
   const bodies: Partial<Record<Locale, string>> = {}
   // writeQueue is pLimit(1): write passes run sequentially in locale order
   // (deliberate — no concurrency machinery for two calls; a later locale still
   // runs after an earlier one fails).
   await Promise.all(
-    localesOf(deps).map((locale) =>
-      writeQueue(() => writeLocaleBody(locale, classified.entries, classified.model, deps, bodies)),
+    localesOf(resolved).map((locale) =>
+      writeQueue(() => writeLocaleBody(locale, classified.entries, classified.model, resolved, bodies)),
     ),
   )
   return bodies

@@ -183,11 +183,6 @@ export function updateHumanizedBodies(version: string, bodies: HumanizedBodies):
   log.info({ version, locales: Object.keys(incoming) }, 'announcement humanized bodies updated')
 }
 
-/** Legacy single-body seam: an `en` write with legacy-column mirroring. Migrate to updateHumanizedBodies. */
-export function updateHumanizedBody(version: string, body: string): void {
-  updateHumanizedBodies(version, { en: body })
-}
-
 export function markBroadcast(version: string, atIso: string): void {
   getDrizzleDb()
     .update(versionAnnouncements)

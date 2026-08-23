@@ -18,7 +18,7 @@ import {
   recordDelivery,
   setGroupAnnounceSubscribed,
   setUserAnnounceSubscribed,
-  updateHumanizedBody,
+  updateHumanizedBodies,
   upsertAnnouncementDraft,
 } from '../../src/announcements/store.js'
 import { addAuthorizedGroup } from '../../src/authorized-groups.js'
@@ -88,14 +88,14 @@ describe('announcement subscription store', () => {
       humanizedBody: 'hi',
       broadcastAt: null,
     })
-    updateHumanizedBody('9.9.9', 'edited')
+    updateHumanizedBodies('9.9.9', { en: 'edited' })
     expect(getAnnouncementDraft('9.9.9')?.humanizedBody).toBe('edited')
     markBroadcast('9.9.9', '2026-06-26T00:00:00Z')
     expect(getAnnouncementDraft('9.9.9')?.broadcastAt).toBe('2026-06-26T00:00:00Z')
   })
 
-  test('updateHumanizedBody creates row when absent', () => {
-    updateHumanizedBody('7.7.7', 'created')
+  test('updateHumanizedBodies creates row when absent', () => {
+    updateHumanizedBodies('7.7.7', { en: 'created' })
     const draft = getAnnouncementDraft('7.7.7')
     expect(draft?.humanizedBody).toBe('created')
     expect(draft?.rawBody).toBeNull()
