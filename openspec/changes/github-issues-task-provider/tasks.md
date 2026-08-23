@@ -17,7 +17,7 @@ failing test. Behavior contracts: `specs/github-issues-task-provider/spec.md`. H
 
 ## 3. API schemas
 
-- [ ] 3.1 Create `tests/plugins/task-provider-github/schemas/user.test.ts` and `schemas/repo.test.ts` asserting the Zod v4 shapes (user: login/id/avatar_url/html_url/type; repo: id/name/full_name/owner/html_url/private/description-nullable) accept representative GitHub payloads and reject malformed ones; then create `schemas/user.ts` and `schemas/repo.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/schemas/`
+- [x] 3.1 Create `tests/plugins/task-provider-github/schemas/user.test.ts` and `schemas/repo.test.ts` asserting the Zod v4 shapes (user: login/id/avatar_url/html_url/type; repo: id/name/full_name/owner/html_url/private/description-nullable) accept representative GitHub payloads and reject malformed ones; then create `schemas/user.ts` and `schemas/repo.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/schemas/`
 - [ ] 3.2 Create `tests/plugins/task-provider-github/schemas/issue.test.ts` asserting `issue.ts` accepts both label forms (plain strings from list endpoints, objects from single-issue), nullable body/state_reason/closed_at/milestone, optional `pull_request` marker, and exports inferred types; then create `schemas/issue.ts` to pass. Verify: `bun test tests/plugins/task-provider-github/schemas/issue.test.ts`
 
 ## 4. REST client
