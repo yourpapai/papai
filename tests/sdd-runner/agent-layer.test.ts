@@ -254,6 +254,31 @@ describe('sidecar schemas', () => {
     const bad = { implicated_files: [], signals: { cross_module: 'yes' }, rationale: 'x' }
     expect(DepthClassificationSchema.safeParse(bad).success).toBe(false)
   })
+
+  it('validates the depth classification sidecar with and without capabilities', () => {
+    const base = {
+      implicated_files: ['src/chat/router.ts'],
+      signals: {
+        cross_module: false,
+        db_migration: false,
+        provider_surface: false,
+        credentials: false,
+        novelty: 'existing-modules',
+      },
+      rationale: 'single-module chat change',
+    }
+    const withCapabilities = DepthClassificationSchema.parse({
+      ...base,
+      capabilities: ['codeindex', 'web-fetch'],
+    })
+    expect(withCapabilities.capabilities).toEqual(['codeindex', 'web-fetch'])
+
+    const withoutCapabilities = DepthClassificationSchema.parse(base)
+    expect(withoutCapabilities.capabilities).toBeUndefined()
+
+    const emptyString = DepthClassificationSchema.safeParse({ ...base, capabilities: [''] })
+    expect(emptyString.success).toBe(false)
+  })
 })
 
 describe('runStageAgent', () => {
