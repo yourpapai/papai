@@ -27,7 +27,7 @@
 
 - [x] 6.1 Red: extend `tests/tools/diagnostics.test.ts` — family absent when `isBotAdmin !== true`, `contextType !== 'dm'`, `mode === 'proactive'`, or `mode` omitted-and-non-normal; present for admin DM normal mode; each tool bound to `options.chatUserId` as visibility principal. Verify: `bun test tests/tools/diagnostics.test.ts`
 - [x] 6.2 Extend `maybeAddDiagnosticsTools` in `src/tools/diagnostics.ts` to assemble the four factories beside `run_diagnostics` (fail-closed gate unchanged). Verify: `bun test tests/tools/diagnostics.test.ts && bun run typecheck`
-- [ ] 6.3 Red test for prefs resolution: `deny` removes each reader from the resolved `ToolSet`, `ask` wraps per call (approve → executes, decline → structured `permission_denied`), implicit `allow` default, for the diagnostics domain preset tier. Verify: `bun test tests/tools/tool-preferences.test.ts`
+- [x] 6.3 Red test for prefs resolution: `deny` removes each reader from the resolved `ToolSet`, `ask` wraps per call (approve → executes, decline → structured `permission_denied`), implicit `allow` default, for the diagnostics domain preset tier. Verify: `bun test tests/tools/tool-preferences.test.ts`
 - [ ] 6.4 Register the four names in `TOOL_METADATA` (`src/tools/tool-metadata.ts`) as `read('diagnostics')`. Verify: `bun test tests/tools/tool-preferences.test.ts tests/tools/diagnostics.test.ts && bun run typecheck`
 
 ## 7. Docs and full verification
