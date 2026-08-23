@@ -1,6 +1,6 @@
 ## 1. Leaf buffer exports
 
-- [ ] 1.1 Red test: capacity constants of the turn/notification/tool-failure buffers and the LLM trace buffer are exported from `src/debug/turn-assembly.ts` / `src/debug/llm-trace-collector.ts` (assert exported values equal the internal capacities; fails first on missing exports). Verify: `bun test tests/debug/turn-assembly.test.ts tests/debug/llm-trace-collector.test.ts` (or the existing closest test files, extended)
+- [x] 1.1 Red test: capacity constants of the turn/notification/tool-failure buffers and the LLM trace buffer are exported from `src/debug/turn-assembly.ts` / `src/debug/llm-trace-collector.ts` (assert exported values equal the internal capacities; fails first on missing exports). Verify: `bun test tests/debug/turn-assembly.test.ts tests/debug/llm-trace-collector.test.ts` (or the existing closest test files, extended)
 - [ ] 1.2 Export `RECENT_TURNS_CAPACITY`, `RECENT_TOOL_FAILURES_CAPACITY` from `turn-assembly.ts` and `LLM_TRACE_CAPACITY` from `llm-trace-collector.ts`; no behavior change. Verify: `bun test tests/debug/ && bun run typecheck`
 
 ## 2. read_recent_logs
