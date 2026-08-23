@@ -10,19 +10,12 @@ import { z } from 'zod'
 import { recentToolFailures, RECENT_TOOL_FAILURES_CAPACITY, type ToolFailure } from '../debug/turn-assembly.js'
 import { clientVisibility, isVisibleToAdmin } from '../debug/visibility.js'
 import { logger } from '../logger.js'
-import { PROBE_ERROR, runProbe } from './diagnostics.js'
+import { type BufferStats, PROBE_ERROR, runProbe, tailStats } from './diagnostics.js'
 
 const log = logger.child({ scope: 'tool:read-recent-tool-failures' })
 
 const DEFAULT_LIMIT = 25
 const MAX_LIMIT = RECENT_TOOL_FAILURES_CAPACITY
-
-export type FailureBufferStats = {
-  count: number
-  capacity: number
-  oldest: number | null
-  newest: number | null
-}
 
 export type ReadRecentToolFailuresDeps = Partial<
   Readonly<{
@@ -35,14 +28,8 @@ const resolveDeps = (deps: ReadRecentToolFailuresDeps): Required<ReadRecentToolF
 })
 
 /** Buffer-wide volatility stats derived structurally from the failure array. */
-function failureStats(failures: ToolFailure[]): FailureBufferStats {
-  return {
-    count: failures.length,
-    capacity: RECENT_TOOL_FAILURES_CAPACITY,
-    oldest: failures[0]?.timestamp ?? null,
-    newest: failures[failures.length - 1]?.timestamp ?? null,
-  }
-}
+const failureStats = (failures: ToolFailure[]): BufferStats =>
+  tailStats(failures, RECENT_TOOL_FAILURES_CAPACITY, (f) => f.timestamp)
 
 /**
  * Whitelisted egress shape for a buffered tool-failure record: timestamp,
@@ -92,7 +79,7 @@ const readRecentToolFailuresInputSchema = z.object({
 
 type ReadRecentToolFailuresResult = {
   failures: Array<Record<string, unknown>> | typeof PROBE_ERROR
-  stats: FailureBufferStats | typeof PROBE_ERROR
+  stats: BufferStats | typeof PROBE_ERROR
 }
 
 /**

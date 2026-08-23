@@ -9,19 +9,12 @@ import { z } from 'zod'
 
 import { recentLlm, shapeLlmTrace, LLM_TRACE_CAPACITY, type LlmTrace } from '../debug/llm-trace-collector.js'
 import { logger } from '../logger.js'
-import { PROBE_ERROR, runProbe } from './diagnostics.js'
+import { type BufferStats, PROBE_ERROR, runProbe, tailStats } from './diagnostics.js'
 
 const log = logger.child({ scope: 'tool:read-llm-traces' })
 
 const DEFAULT_LIMIT = 25
 const MAX_LIMIT = 100
-
-export type TraceBufferStats = {
-  count: number
-  capacity: number
-  oldest: number | null
-  newest: number | null
-}
 
 export type ReadLlmTracesDeps = Partial<
   Readonly<{
@@ -34,14 +27,7 @@ const resolveDeps = (deps: ReadLlmTracesDeps): Required<ReadLlmTracesDeps> => ({
 })
 
 /** Buffer-wide volatility stats derived structurally from the trace array. */
-function traceStats(traces: LlmTrace[]): TraceBufferStats {
-  return {
-    count: traces.length,
-    capacity: LLM_TRACE_CAPACITY,
-    oldest: traces[0]?.timestamp ?? null,
-    newest: traces[traces.length - 1]?.timestamp ?? null,
-  }
-}
+const traceStats = (traces: LlmTrace[]): BufferStats => tailStats(traces, LLM_TRACE_CAPACITY, (t) => t.timestamp)
 
 /**
  * Shape-then-filter egress over the raw trace buffer, mirroring the dashboard
@@ -53,7 +39,7 @@ function collectTraces(
   resolved: Required<ReadLlmTracesDeps>,
   chatUserId: string | undefined,
   input: { errors_only?: boolean | undefined; model?: string | undefined; limit?: number | undefined },
-): { traces: LlmTrace[]; stats: TraceBufferStats } | typeof PROBE_ERROR {
+): { traces: LlmTrace[]; stats: BufferStats } | typeof PROBE_ERROR {
   const raw = runProbe('read_llm_traces', 'traces', resolved.traces)
   if (raw === PROBE_ERROR) return PROBE_ERROR
   const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT)
@@ -73,7 +59,7 @@ const readLlmTracesInputSchema = z.object({
 
 type ReadLlmTracesResult = {
   traces: LlmTrace[] | typeof PROBE_ERROR
-  stats: TraceBufferStats | typeof PROBE_ERROR
+  stats: BufferStats | typeof PROBE_ERROR
 }
 
 /**

@@ -10,19 +10,12 @@ import { z } from 'zod'
 import { findTurnById, recentTurns, RECENT_TURNS_CAPACITY, type Turn } from '../debug/turn-assembly.js'
 import { clientVisibility, isVisibleToAdmin } from '../debug/visibility.js'
 import { logger } from '../logger.js'
-import { PROBE_ERROR, runProbe } from './diagnostics.js'
+import { type BufferStats, PROBE_ERROR, runProbe, tailStats } from './diagnostics.js'
 
 const log = logger.child({ scope: 'tool:read-recent-turns' })
 
 const DEFAULT_LIMIT = 25
 const MAX_LIMIT = RECENT_TURNS_CAPACITY
-
-export type TurnBufferStats = {
-  count: number
-  capacity: number
-  oldest: number | null
-  newest: number | null
-}
 
 export type ReadRecentTurnsDeps = Partial<
   Readonly<{
@@ -37,14 +30,7 @@ const resolveDeps = (deps: ReadRecentTurnsDeps): Required<ReadRecentTurnsDeps> =
 })
 
 /** Buffer-wide volatility stats derived structurally from the turn array. */
-function turnStats(turns: Turn[]): TurnBufferStats {
-  return {
-    count: turns.length,
-    capacity: RECENT_TURNS_CAPACITY,
-    oldest: turns[0]?.startedAt ?? null,
-    newest: turns[turns.length - 1]?.startedAt ?? null,
-  }
-}
+const turnStats = (turns: Turn[]): BufferStats => tailStats(turns, RECENT_TURNS_CAPACITY, (t) => t.startedAt)
 
 /** Anonymous per-turn payload copy: the buffered record is never handed out by reference. */
 function anonymousTurn(turn: Turn): Turn {
@@ -96,11 +82,11 @@ const readRecentTurnsInputSchema = z.object({
 })
 
 type ReadRecentTurnsResult =
-  | { turns: Turn[] | typeof PROBE_ERROR; stats: TurnBufferStats | typeof PROBE_ERROR }
+  | { turns: Turn[] | typeof PROBE_ERROR; stats: BufferStats | typeof PROBE_ERROR }
   | {
       status: 'ok' | 'not_found' | 'probe_error'
       turn?: Turn
-      stats: TurnBufferStats | typeof PROBE_ERROR
+      stats: BufferStats | typeof PROBE_ERROR
     }
 
 /**

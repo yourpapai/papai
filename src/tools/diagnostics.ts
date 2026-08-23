@@ -34,6 +34,28 @@ export type DiagnosticsTaskInstanceSummary =
 /** Per-field marker when a probe fails; the tool itself never throws. */
 export const PROBE_ERROR = 'probe_error' as const
 
+/** Buffer-wide volatility stats carried by every diagnostics reader result. */
+export type BufferStats = {
+  count: number
+  capacity: number
+  oldest: number | null
+  newest: number | null
+}
+
+/**
+ * Derives the reader family's shared buffer stats structurally from a
+ * tail-buffer snapshot: element count, the fixed capacity constant, and the
+ * first and last elements' timestamps.
+ */
+export function tailStats<T>(xs: readonly T[], capacity: number, at: (x: T) => number): BufferStats {
+  return {
+    count: xs.length,
+    capacity,
+    oldest: xs.length > 0 ? at(xs[0]!) : null,
+    newest: xs.length > 0 ? at(xs[xs.length - 1]!) : null,
+  }
+}
+
 export type DiagnosticsDeps = Partial<
   Readonly<{
     platformInstanceActive: (platformInstanceId: string) => boolean
