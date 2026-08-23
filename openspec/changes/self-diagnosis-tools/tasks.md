@@ -16,7 +16,7 @@
 ## 4. read_recent_turns
 
 - [x] 4.1 Red test `tests/tools/diagnostics-turns.test.ts`: listings exclude turns whose scope fails `isVisibleToAdmin`; `status` filter over visible turns; `turn_id` fetch of own turn returns the anonymous payload (timings/status/tool names/durations/failureReason/error); foreign, invisible, and unknown `turn_id` all return `{ status: 'not_found' }` with indistinguishable shape; limit default 25, cap 512; in-flight turns included via `findTurnById`; running turns observable; no buffer mutation. Verify: `bun test tests/tools/diagnostics-turns.test.ts`
-- [ ] 4.2 Implement `src/tools/diagnostics-turns.ts` (`makeReadRecentTurnsTool`, DI deps, visibility filter, not_found fetch contract, derived stats incl. capacity constant). Verify: `bun test tests/tools/diagnostics-turns.test.ts && bun run typecheck`
+- [x] 4.2 Implement `src/tools/diagnostics-turns.ts` (`makeReadRecentTurnsTool`, DI deps, visibility filter, not_found fetch contract, derived stats incl. capacity constant). Verify: `bun test tests/tools/diagnostics-turns.test.ts && bun run typecheck`
 
 ## 5. read_recent_tool_failures
 
