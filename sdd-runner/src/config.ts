@@ -120,15 +120,20 @@ export function modelFor(config: RunnerConfig, _role: AgentRole): string {
   return config.model
 }
 
-export function deriveChangeName(taskFileName: string, taskFileContent: string): string {
-  const heading = taskFileContent.match(/^#\s+(.+)$/mu)?.[1]
-  const base = heading ?? path.basename(taskFileName).replace(/\.[^.]*$/u, '')
-  const slug = base
+/** Kebab-case slug transform shared by change names and child task files. */
+export function slugify(input: string): string {
+  return input
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, '-')
     .replace(/^-+|-+$/gu, '')
     .slice(0, 64)
     .replace(/-+$/u, '')
+}
+
+export function deriveChangeName(taskFileName: string, taskFileContent: string): string {
+  const heading = taskFileContent.match(/^#\s+(.+)$/mu)?.[1]
+  const base = heading ?? path.basename(taskFileName).replace(/\.[^.]*$/u, '')
+  const slug = slugify(base)
   if (slug.length === 0) {
     throw new Error(`cannot derive a change name from task file ${taskFileName}`)
   }

@@ -14,6 +14,7 @@ import {
   discoverBranch,
   loadRunnerConfig,
   modelFor,
+  slugify,
 } from '../../sdd-runner/src/config.js'
 
 const tmpDirs: string[] = []
@@ -118,6 +119,22 @@ describe('deriveChangeName', () => {
 
   it('rejects input that yields no usable name', () => {
     expect(() => deriveChangeName('.md', '!!!')).toThrow(/change name/u)
+  })
+})
+
+describe('slugify', () => {
+  it('is the identical transform deriveChangeName applies to its slug', () => {
+    const headingSlug = (title: string): string => deriveChangeName('task.md', `# ${title}`)
+    expect(slugify('Add Dark Mode Toggle')).toBe(headingSlug('Add Dark Mode Toggle'))
+    expect(slugify('My Task: refine (draft)')).toBe(headingSlug('My Task: refine (draft)'))
+    expect(slugify('--dashes and PUNCTUATION!!')).toBe(headingSlug('--dashes and PUNCTUATION!!'))
+    expect(slugify('b'.repeat(63) + '!!')).toBe(headingSlug('b'.repeat(63) + '!!'))
+  })
+
+  it('kebab-cases, trims separator runs, and caps length at 64', () => {
+    expect(slugify('Add Dark Mode Toggle')).toBe('add-dark-mode-toggle')
+    expect(slugify('--lead and trail--')).toBe('lead-and-trail')
+    expect(slugify('a'.repeat(80))).toHaveLength(64)
   })
 })
 
