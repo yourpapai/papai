@@ -13,7 +13,8 @@ export type GroupReleaseSubscriptionResponse = z.infer<typeof GroupReleaseSubscr
 
 export const ReleaseNotesResponseSchema = z.object({
   version: z.string(),
-  body: z.string().nullable(),
+  bodies: z.strictObject({ en: z.string().nullable(), ru: z.string().nullable() }),
+  rawBody: z.string().nullable().optional(),
   broadcastAt: z.string().nullable(),
   counts: z.object({ dm: z.number(), group: z.number() }),
 })

@@ -137,6 +137,12 @@ const requireContextViewSubtree = (catalog: unknown): void => {
   }
 }
 
+const requireAnnouncementsSubtree = (catalog: unknown): void => {
+  const announcements = subtreeOf(catalog, 'announcements')
+  expect(isNonEmptyString(announcements['adminNotice'])).toBe(true)
+  expect(isNonEmptyString(announcements['emptyReleaseNote'])).toBe(true)
+}
+
 describe('locale key parity', () => {
   test('every en key path exists in ru', () => {
     const enKeys = keyPaths(en)
@@ -177,5 +183,13 @@ describe('required subtrees', () => {
 
   test('ru declares the contextView subtree: sections, counts, progressive disclosure, chrome', () => {
     requireContextViewSubtree(ru)
+  })
+
+  test('en declares the announcements subtree: admin notice and empty release note', () => {
+    requireAnnouncementsSubtree(en)
+  })
+
+  test('ru declares the announcements subtree: admin notice and empty release note', () => {
+    requireAnnouncementsSubtree(ru)
   })
 })

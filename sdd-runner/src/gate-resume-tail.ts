@@ -9,6 +9,7 @@ import { finalizeGate, presentGateAt } from './gate-digest.js'
 import type { StageContext } from './gate-digest.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
 import type { ReviewLoopResult } from './review-loop.js'
+import { narrowGateMode } from './run-state.js'
 import { runVetoUpdater, updateAssumptionsFromVetoes } from './veto-updater.js'
 
 export async function settleApprovedGate(
@@ -45,6 +46,8 @@ export async function settleVeto(
   const driftFiles = filesUpdated.filter((file) => file.includes('specs/') || file.endsWith('tasks.md'))
   if (driftFiles.length > 0) await driftCheck(driftFiles)
   const next = version + 1
-  await presentGateAt(deps, state, stageCtx, reviewResult, next, state.gate?.mode ?? 'final', { skipPolicy: true })
+  await presentGateAt(deps, state, stageCtx, reviewResult, next, narrowGateMode(state.gate?.mode ?? 'final'), {
+    skipPolicy: true,
+  })
   return { runId: state.runId, outcome: 'veto', version: next }
 }
