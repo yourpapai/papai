@@ -4,18 +4,20 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, it } from 'bun:test'
+import assert from 'node:assert'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { runPlanBranch } from '../../sdd-runner/src/children.js'
+import { runChildren, runPlanBranch } from '../../sdd-runner/src/children.js'
+import type { RunChildRun } from '../../sdd-runner/src/children.js'
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import type { SddEvent } from '../../sdd-runner/src/events.js'
 import type { OrchestratorDeps, StageContext } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { planDigest } from '../../sdd-runner/src/plan.js'
 import type { PlanChild, PlanFsDeps } from '../../sdd-runner/src/plan.js'
-import { createRunState, loadRunState } from '../../sdd-runner/src/run-state.js'
+import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
@@ -181,5 +183,166 @@ describe('runPlanBranch (D7)', () => {
     const md = fs.readFileSync(result.gateMdPath, 'utf8')
     expect(md).toContain('- [ ] C1 auth-db — Add the auth database schema.')
     expect(md).toContain('- [ ] C2 auth-api — Add the auth API endpoints. · deps: auth-db')
+  })
+})
+
+const CHILD_DONE_USAGE = {
+  inputTokens: 100,
+  outputTokens: 50,
+  reasoningTokens: 0,
+  cachedReadTokens: 0,
+  cachedWriteTokens: 0,
+  costUsd: 0.25,
+  wallMs: 1000,
+}
+
+interface ChildShape {
+  readonly status?: RunState['status']
+  readonly gate?: { readonly mode: 'early' | 'final' | 'plan'; readonly version: number }
+  readonly withUsage?: boolean
+}
+
+interface RunnerTracker {
+  readonly runChildRun: RunChildRun
+  readonly spawned: string[]
+  readonly taskFiles: string[]
+  readonly runIds: Map<string, string>
+  readonly maxInFlight: { value: number }
+}
+
+async function seedParent(
+  fixture: ChildrenFixture,
+  childIds: readonly string[],
+  statuses: Record<string, 'pending' | 'running' | 'done'>,
+): Promise<void> {
+  fixture.state.plan = { childIds: [...childIds], digest: 'd'.repeat(16) }
+  fixture.state.children = Object.fromEntries(childIds.map((id) => [id, { status: statuses[id] ?? 'pending' }]))
+  fs.mkdirSync(path.join(fixture.state.runDir, 'sidecars'), { recursive: true })
+  fs.writeFileSync(path.join(fixture.state.runDir, 'sidecars', 'plan.json'), JSON.stringify({ children: CHILDREN }))
+  await saveRunState(fixture.state, new Date('2026-08-12T08:00:00.000Z'))
+}
+
+function makeRunner(fixture: ChildrenFixture, shapes: Record<string, ChildShape>): RunnerTracker {
+  const spawned: string[] = []
+  const taskFiles: string[] = []
+  const runIds = new Map<string, string>()
+  const maxInFlight = { value: 0 }
+  let inFlight = 0
+  const defaultShape: ChildShape = { status: 'completed', withUsage: true }
+  const runChildRun: RunChildRun = async (child, taskFile) => {
+    inFlight += 1
+    maxInFlight.value = Math.max(maxInFlight.value, inFlight)
+    spawned.push(child.id)
+    taskFiles.push(taskFile)
+    const shape = shapes[child.id] ?? defaultShape
+    const childState = await createRunState({
+      workDir: fixture.deps.config.workDir,
+      repoRoot: fixture.repoRoot,
+      changeName: child.id,
+    })
+    if (shape.status !== undefined) childState.status = shape.status
+    if (shape.gate !== undefined) childState.gate = shape.gate
+    await saveRunState(childState, new Date('2026-08-12T08:00:00.000Z'))
+    if (shape.withUsage === true) {
+      appendEvent(path.join(childState.runDir, 'events.ndjson'), {
+        altitude: 'L1',
+        type: 'done',
+        agent: 'estimator',
+        usage: CHILD_DONE_USAGE,
+      })
+    }
+    runIds.set(child.id, childState.runId)
+    inFlight -= 1
+    return { runId: childState.runId }
+  }
+  return { runChildRun, spawned, taskFiles, runIds, maxInFlight }
+}
+
+function eventsOf(fixture: ChildrenFixture, type: 'child_spawned' | 'child_done'): SddEvent[] {
+  return readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
+    (e): e is Extract<SddEvent, { type: typeof type }> => e.type === type,
+  )
+}
+
+describe('runChildren (D8)', () => {
+  it('walks childIds in order with at most one child in flight, emitting spawned/done with usage per child', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    expect(tracker.spawned).toEqual(['auth-db', 'auth-api'])
+    expect(tracker.maxInFlight.value).toBe(1)
+    const childrenDir = path.join(fixture.state.runDir, 'children')
+    expect(tracker.taskFiles).toEqual([path.join(childrenDir, '1-auth-db.md'), path.join(childrenDir, '2-auth-api.md')])
+
+    const spawned = eventsOf(fixture, 'child_spawned')
+    expect(spawned).toHaveLength(2)
+    expect(spawned[0]).toMatchObject({ child: 'auth-db', runId: tracker.runIds.get('auth-db') })
+    expect(spawned[1]).toMatchObject({ child: 'auth-api', runId: tracker.runIds.get('auth-api') })
+
+    const done = eventsOf(fixture, 'child_done')
+    expect(done).toHaveLength(2)
+    expect(done[0]).toMatchObject({ child: 'auth-db', outcome: 'done', usage: { costUsd: 0.25, inputTokens: 100 } })
+    expect(done[1]).toMatchObject({ child: 'auth-api', outcome: 'done' })
+
+    expect(fixture.state.children).toEqual({
+      'auth-db': { status: 'done' },
+      'auth-api': { status: 'done' },
+    })
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.children).toEqual({
+      'auth-db': { status: 'done' },
+      'auth-api': { status: 'done' },
+    })
+  })
+
+  it('skips children already done and continues at the next not-done child', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], { 'auth-db': 'done' })
+    const tracker = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    expect(tracker.spawned).toEqual(['auth-api'])
+    expect(eventsOf(fixture, 'child_spawned')).toHaveLength(1)
+    expect(eventsOf(fixture, 'child_done')[0]).toMatchObject({ child: 'auth-api', outcome: 'done' })
+    expect(fixture.state.children?.['auth-db']).toEqual({ status: 'done' })
+    expect(fixture.state.children?.['auth-api']).toEqual({ status: 'done' })
+  })
+
+  it('a gate-pending child records running, prints the sdd line, and returns with the parent running', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {
+      'auth-db': { status: 'running', gate: { mode: 'final', version: 1 } },
+      'auth-api': { status: 'completed' },
+    })
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runChildren(deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    const childRunId = tracker.runIds.get('auth-db')
+    assert(childRunId !== undefined)
+    expect(result).toEqual({ halted: 'gate-pending', childRunId })
+    expect(tracker.spawned).toEqual(['auth-db'])
+    expect(fixture.state.children?.['auth-db']).toEqual({ status: 'running' })
+    expect(fixture.state.children?.['auth-api']).toEqual({ status: 'pending' })
+    expect(fixture.state.status).toBe('running')
+    const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
+    expect(persisted.children?.['auth-db']).toEqual({ status: 'running' })
+    expect(persisted.status).toBe('running')
+
+    expect(eventsOf(fixture, 'child_done')).toHaveLength(0)
+    expect(stdoutLines.some((line) => line === `sdd ${childRunId}`)).toBe(true)
   })
 })
