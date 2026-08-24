@@ -52,6 +52,15 @@ const initSessionIdOf = (name: string): string => {
   return found.sessionId
 }
 
+type InitLine = Extract<ClaudeStreamLine, { kind: 'init' }>
+
+/** The init line of a fixture's stream. */
+const initLineOf = (name: string): InitLine => {
+  const found = decoded(name).find((line): line is InitLine => line !== null && line.kind === 'init')
+  if (found === undefined) throw new Error(`fixture ${name} carries no init line`)
+  return found
+}
+
 /** The value a flag takes in an argv vector, or null when the flag is absent. */
 const flagValue = (argv: readonly string[], flag: string): string | null => {
   const at = argv.indexOf(flag)
@@ -152,6 +161,34 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
 
     expect(result.sessionId).toBe('5e1c7d33-2a44-4b5e-8c6a-7d3e9f20bc31')
     expect(result.usage.total).toBe(2290)
+  })
+
+  test('the init line carries the credential source as an optional fact — recorded as "none" on the env-less route', () => {
+    // The recorded corpus's init lines carry `"apiKeySource":"none"` — the
+    // fact that proved the env OAuth token is never consulted under --bare.
+    expect(initLineOf('auth-error-turn.ndjson').apiKeySource).toBe('none')
+
+    // Absent stays a valid init line, decoding to null — an older CLI shape.
+    const absent = decodeClaudeLine({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'b609b8c-2791-462d-83d1-47ae29c783ca',
+    })
+    expect(absent).toEqual({ kind: 'init', sessionId: 'b609b8c-2791-462d-83d1-47ae29c783ca', apiKeySource: null })
+
+    // A helper-carried run reports its own source — the shape the OAuth
+    // recording (change task 4.1) pins for real.
+    const helper = decodeClaudeLine({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'c1f0e2a3-1111-2222-3333-444455556666',
+      apiKeySource: 'apiKeyHelper',
+    })
+    expect(helper).toEqual({
+      kind: 'init',
+      sessionId: 'c1f0e2a3-1111-2222-3333-444455556666',
+      apiKeySource: 'apiKeyHelper',
+    })
   })
 
   test('skips unrecognized non-result lines without failing', () => {

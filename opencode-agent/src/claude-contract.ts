@@ -43,7 +43,7 @@ export interface ClaudeUsage {
 
 /** One decoded NDJSON line, reduced to the scalars the pipeline may consume. */
 export type ClaudeStreamLine =
-  | { readonly kind: 'init'; readonly sessionId: string }
+  | { readonly kind: 'init'; readonly sessionId: string; readonly apiKeySource: string | null }
   | { readonly kind: 'assistant'; readonly tools: readonly string[] }
   | { readonly kind: 'tool-results'; readonly succeeded: number; readonly failed: number }
   | { readonly kind: 'stream-event'; readonly tool: string | null }
@@ -61,13 +61,18 @@ export type ClaudeStreamLine =
  *
  * Narrow on purpose — the recorded init line carries a dozen more fields
  * (slash commands, plugins, capabilities), none of which the pipeline reads,
- * so none of which the schema names. A `system` line of another subtype
- * (`compact_boundary`, say) skips, like every unrecognized shape.
+ * so none of which the schema names. The one exception is `apiKeySource`,
+ * the credential-source fact: it is the recorded proof of which carrier the
+ * CLI consulted (`"none"` under `--bare` with an env OAuth token — the fact
+ * behind the helper route) and the OAuth leg's recording reads it back. A
+ * `system` line of another subtype (`compact_boundary`, say) skips, like
+ * every unrecognized shape.
  */
 const initLineSchema = z.object({
   type: z.literal('system'),
   subtype: z.literal('init'),
   session_id: z.string().min(1),
+  apiKeySource: z.string().optional(),
 })
 
 /** A content block reduced to its shape and, for tool calls, its name. */
@@ -117,7 +122,8 @@ const resultLineSchema = z.object({
  */
 export const decodeClaudeLine = (raw: unknown): ClaudeStreamLine | null => {
   const init = initLineSchema.safeParse(raw)
-  if (init.success) return { kind: 'init', sessionId: init.data.session_id }
+  if (init.success)
+    return { kind: 'init', sessionId: init.data.session_id, apiKeySource: init.data.apiKeySource ?? null }
 
   const assistant = assistantLineSchema.safeParse(raw)
   if (assistant.success) {

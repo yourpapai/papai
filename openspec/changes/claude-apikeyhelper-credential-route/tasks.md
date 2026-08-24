@@ -32,9 +32,9 @@ through the update workflow to the removal outcome instead of continuing.
 
 ## 3. Contract: init-line credential source (design D4)
 
-- [ ] 3.1 Tests first in `tests/opencode-agent/claude-contract.test.ts`: the init-line schema decodes an optional `apiKeySource` string (absent stays valid); no other decoder changes.
+- [x] 3.1 Tests first in `tests/opencode-agent/claude-contract.test.ts`: the init-line schema decodes an optional `apiKeySource` string (absent stays valid); no other decoder changes.
   Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (red)
-- [ ] 3.2 Implement the optional field in `claude-contract.ts`.
+- [x] 3.2 Implement the optional field in `claude-contract.ts`.
   Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (green)
 
 ## 4. Recorder OAuth leg (design D4)
