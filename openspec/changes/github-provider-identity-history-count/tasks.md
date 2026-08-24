@@ -2,7 +2,7 @@
 
 ## 1. Schemas
 
-- [ ] 1.1 Add failing cases to `tests/plugins/task-provider-github/schemas/event.test.ts`: representative `assigned`/`labeled`/`closed` payloads with nullable `actor`/`label`/`assignee` accepted, malformed rejected (`schemaValidates`), extra GitHub fields stripped. Verify: `bun test tests/plugins/task-provider-github/schemas/event.test.ts` (red — module missing)
+- [x] 1.1 Add failing cases to `tests/plugins/task-provider-github/schemas/event.test.ts`: representative `assigned`/`labeled`/`closed` payloads with nullable `actor`/`label`/`assignee` accepted, malformed rejected (`schemaValidates`), extra GitHub fields stripped. Verify: `bun test tests/plugins/task-provider-github/schemas/event.test.ts` (red — module missing)
 - [ ] 1.2 Implement `plugins/task-provider-github/schemas/event.ts` (`GitHubIssueEventSchema` + inferred type). Verify: `bun test tests/plugins/task-provider-github/schemas/event.test.ts` (green)
 - [ ] 1.3 Add failing cases to `tests/plugins/task-provider-github/schemas/user.test.ts` for the named-user extension (optional `name` accepted, absent `name` accepted, extra fields stripped, base `GitHubUserSchema` unchanged). Implement the `.extend({ name: z.string().optional() })` schema in `plugins/task-provider-github/schemas/user.ts`. Verify: `bun test tests/plugins/task-provider-github/schemas/user.test.ts` (red then green)
 
