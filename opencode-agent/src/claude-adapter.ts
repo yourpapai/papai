@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { AgentPromptRequest, AgentPromptResult, AgentSession } from './agent-session.js'
 import { collectChild, createClaudeConfigDir, killGroup, spawnClaude, teardownClaude } from './claude-connect.js'
 import type { ClaudeChild, GroupKillSeams, SpawnClaude, TeardownSeams } from './claude-connect.js'
 import { buildClaudeArgv, decodeClaudeLine, parseNdjsonStream } from './claude-contract.js'
@@ -11,7 +12,6 @@ import { claudeTracker } from './claude-progress.js'
 import type { ClaudeCredential } from './config-values.js'
 import { claudeExitError, claudeResultError } from './errors.js'
 import type { Logger } from './logger.js'
-import type { AgentPromptRequest, AgentPromptResult, OpenCodeAgent } from './opencode-adapter.js'
 import type { ProgressTracker, TranscriptSink } from './progress.js'
 import { redactSecrets } from './secrets.js'
 import { runTurn } from './turn-run.js'
@@ -229,7 +229,7 @@ const teardownSeamsOf = (options: ClaudeAgentOptions): TeardownSeams => ({
 })
 
 /** The session object the pipeline holds, over the connection `runTurn` drives. */
-const claudeSession = (context: SessionContext, connection: TurnConnection): OpenCodeAgent => {
+const claudeSession = (context: SessionContext, connection: TurnConnection): AgentSession => {
   // The claude shim ignores both arguments; the body exists to satisfy the
   // interface `runTurn` knows.
   const stubBody = { model: { providerID: 'claude', modelID: context.options.knobs.model }, parts: [] }
@@ -271,7 +271,7 @@ const claudeSession = (context: SessionContext, connection: TurnConnection): Ope
  * Boots the claude session: one job-scoped config dir, one synthetic job-local
  * id until the first init line lands, and one process per turn.
  */
-export const createClaudeAgent = (options: ClaudeAgentOptions): Promise<OpenCodeAgent> => {
+export const createClaudeAgent = (options: ClaudeAgentOptions): Promise<AgentSession> => {
   const context: SessionContext = {
     options,
     configDir: createClaudeConfigDir(),

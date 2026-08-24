@@ -98,11 +98,11 @@ the only credentialed artifact and never runs in CI.
 
 ## 7. Seam extraction and wiring (design D2, D4, D12 step 5)
 
-- [ ] 7.1 Extract the seam interface into `opencode-agent/src/agent-session.ts` as `AgentSession`; `opencode-adapter.ts` re-exports `OpenCodeAgent` as an alias so no existing import changes; new modules and tests use the neutral name.
+- [x] 7.1 Extract the seam interface into `opencode-agent/src/agent-session.ts` as `AgentSession`; `opencode-adapter.ts` re-exports `OpenCodeAgent` as an alias so no existing import changes; new modules and tests use the neutral name.
   Verify: `bun run opencode-agent:test && bun run typecheck` (existing suites green untouched)
-- [ ] 7.2 Tests first, then implement: `contain.ts` wiring — `createClaudeAgent` selected when `AGENT_BACKEND=claude` (test seam like `OpenCodeAgentOptions.connect`), `Contained.proxy` nullable with no provider proxy started on the claude route.
+- [x] 7.2 Tests first, then implement: `contain.ts` wiring — `createClaudeAgent` selected when `AGENT_BACKEND=claude` (test seam like `OpenCodeAgentOptions.connect`), `Contained.proxy` nullable with no provider proxy started on the claude route.
   Verify: `bun test tests/opencode-agent/adapters.test.ts` (green)
-- [ ] 7.3 Tests first, then implement: `index.ts` — `runCli` skips `describeModel` on the claude route, and the one teardown call site gates on the nullable proxy.
+- [x] 7.3 Tests first, then implement: `index.ts` — `runCli` skips `describeModel` on the claude route, and the one teardown call site gates on the nullable proxy.
   Verify: `bun test tests/opencode-agent/index.test.ts` (green)
 
 ## 8. Workflow and workflow pins (design D11, D12 step 6 — protected path)

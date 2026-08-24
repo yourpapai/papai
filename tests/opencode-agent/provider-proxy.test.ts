@@ -5,7 +5,10 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import type { AgentSession } from '../../opencode-agent/src/agent-session.js'
+import type { ClaudeAgentOptions } from '../../opencode-agent/src/claude-adapter.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
+import { loadConfig } from '../../opencode-agent/src/config.js'
 import { createOctokitApi } from '../../opencode-agent/src/github.js'
 import type { GitHubApi } from '../../opencode-agent/src/github.js'
 import { contain } from '../../opencode-agent/src/index.js'
@@ -459,7 +462,9 @@ describe('contain', () => {
 
     expect(run.deps.config.openai.apiKey).toBe(PLACEHOLDER_API_KEY)
     expect(run.deps.config.openai.baseUrl).toStartWith('http://127.0.0.1:')
-    await run.proxy.close()
+    // The opencode route always starts one; the claude route's null is gated
+    // the same way index.ts gates its teardown.
+    await run.proxy?.close()
   })
 
   test('the logger it builds knows the credentials it must never print', () => {
@@ -508,7 +513,7 @@ describe('contain', () => {
     expect(seen[0]?.log).toBeDefined()
     // And still the contained credential, not the real one.
     expect(seen[0]?.openai.apiKey).toBe(PLACEHOLDER_API_KEY)
-    await run.proxy.close()
+    await run.proxy?.close()
   })
 
   test('shrinks the turn timeout to what is left of the job', async () => {
@@ -551,7 +556,7 @@ describe('contain', () => {
     await run.deps.agent()
 
     expect(asked(seen[0])).toBe(50_000)
-    await run.proxy.close()
+    await run.proxy?.close()
   })
 
   test('re-reads the turn bound for every turn, not once when the session boots', async () => {
@@ -594,7 +599,7 @@ describe('contain', () => {
 
     clock += 120_000
     expect(asked(seen[0])).toBe(140_000)
-    await run.proxy.close()
+    await run.proxy?.close()
   })
 
   test('hands the phases the same clock the session was sized against', async () => {
@@ -613,7 +618,7 @@ describe('contain', () => {
     })
 
     expect(run.deps.now()).toBe(nowMs)
-    await run.proxy.close()
+    await run.proxy?.close()
   })
 
   test('keeps the real credentials for the guards that need them', async () => {
@@ -622,7 +627,7 @@ describe('contain', () => {
     const run = await contained()
 
     expect(JSON.stringify(run.deps.config)).not.toContain(KEY)
-    await run.proxy.close()
+    await run.proxy?.close()
   })
 })
 
@@ -683,5 +688,129 @@ describe('defaultServe', () => {
     defaultServe({ fetch: (): Promise<Response> => Promise.resolve(new Response('ok')) }, bunServe).stop()
 
     expect(stopped).toEqual([true])
+  })
+})
+
+/**
+ * The claude route's wiring: no provider proxy is started (nothing on this
+ * route speaks to a gateway), and the session factory the route selects gets
+ * plain model values and the chosen credential — never the `OpenAiSettings`
+ * object, whose gateway half must not reach a claude code path (design D5).
+ */
+/** The one factory call the test expects, narrowed outside the test body. */
+const firstOptions = (seen: readonly ClaudeAgentOptions[]): ClaudeAgentOptions => {
+  const options = seen[0]
+  return (
+    options ?? {
+      directory: '',
+      knobs: { model: '', lightModel: null, planEffort: null, buildEffort: null },
+      credential: { name: 'ANTHROPIC_API_KEY', value: '' },
+      env: {},
+      log: { debug: (): void => {}, info: (): void => {}, warn: (): void => {}, error: (): void => {} },
+    }
+  )
+}
+
+describe('contain (claude route)', () => {
+  const CLAUDE_ENV = {
+    GITHUB_REPOSITORY: 'acme/widgets',
+    GITHUB_TOKEN: 'tok',
+    LLM_MODEL: 'anthropic/claude-sonnet-5',
+    AGENT_BACKEND: 'claude',
+    ANTHROPIC_API_KEY: 'sk-ant-api03-the-chosen-credential',
+    LLM_MODEL_LIGHT: 'claude-haiku-5',
+    AGENT_EFFORT_PLAN: 'low',
+    AGENT_EFFORT_BUILD: 'high',
+  }
+
+  const fakeSession = (): AgentSession => ({
+    sessionId: 'claude-job-x',
+    prompt: () => Promise.resolve({ text: '', sessionId: 'claude-job-x' }),
+    tokensUsed: () => Promise.resolve(0),
+    abort: () => Promise.resolve(true),
+    close: () => Promise.resolve(),
+  })
+
+  const claudeEvent: TriggerEvent = {
+    kind: 'issue',
+    eventName: 'issues',
+    action: 'opened',
+    senderLogin: 'maintainer',
+    senderType: 'User',
+    authorAssociation: 'OWNER',
+    issueNumber: 42,
+    issueTitle: 't',
+    issueBody: 'b',
+    isPullRequest: false,
+    commentBody: null,
+    commentId: null,
+    repositoryOwner: 'acme',
+    defaultBranch: 'master',
+  }
+
+  const claudeGithub = (): GitHubApi =>
+    createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets: [],
+      fetch: (): Promise<Response> =>
+        Promise.resolve(
+          new Response(JSON.stringify({ login: 'maintainer', id: 42 }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        ),
+    })
+
+  const claudeContain = (
+    createClaudeAgent: (options: ClaudeAgentOptions) => Promise<AgentSession>,
+  ): Promise<Contained> =>
+    contain({
+      config: loadConfig(CLAUDE_ENV, '/repo'),
+      event: claudeEvent,
+      log: silentLog,
+      run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
+      options: { argv: [], env: { POST_SCRUB: 'yes' } },
+      github: claudeGithub(),
+      createClaudeAgent,
+    })
+
+  test('starts no provider proxy, and gates nothing downstream on one', async () => {
+    const run = await claudeContain(() => Promise.resolve(fakeSession()))
+
+    expect(run.proxy).toBeNull()
+    await run.agent.get()
+    await run.agent.close()
+  })
+
+  test('hands the claude factory plain model values, the credential and the post-scrub env', async () => {
+    const seen: ClaudeAgentOptions[] = []
+    const run = await claudeContain((options) => {
+      seen.push(options)
+      return Promise.resolve(fakeSession())
+    })
+    await run.agent.get()
+
+    expect(seen).toHaveLength(1)
+    const options = firstOptions(seen)
+    expect(options.directory).toBe('/repo')
+    expect(options.knobs).toEqual({
+      model: 'anthropic/claude-sonnet-5',
+      lightModel: 'claude-haiku-5',
+      planEffort: 'low',
+      buildEffort: 'high',
+    })
+    expect(options.credential).toEqual({ name: 'ANTHROPIC_API_KEY', value: 'sk-ant-api03-the-chosen-credential' })
+    expect(options.env).toEqual({ POST_SCRUB: 'yes' })
+  })
+
+  test('the phases see the claude-route config: empty gateway reads, shared knobs', async () => {
+    const run = await claudeContain(() => Promise.resolve(fakeSession()))
+
+    expect(run.deps.config.backend).toBe('claude')
+    expect(run.deps.config.openai.apiKey).toBe('')
+    expect(run.deps.config.openai.baseUrl).toBe('')
+    expect(run.deps.config.openai.model).toBe('anthropic/claude-sonnet-5')
   })
 })
