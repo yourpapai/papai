@@ -37,8 +37,8 @@ Spec: `specs/agent-fix-command/spec.md`; how: design D1–D7.
 
 ## 4. Door-aware report wording (D7)
 
-- [ ] 4.1 Test in `tests/opencode-agent/ci-fix-red-run.test.ts`: for `trigger.kind !== 'ci'` the renderer's two zero-failure lines say no failed check run could be found on the head (never "the run is red", never "the run could not be read") and its two read-error lines name the head's check runs (never "the red run"); for `kind === 'ci'` all four lines keep today's red-run wording. Verify red: `bun test tests/opencode-agent/ci-fix-red-run.test.ts` — the new wording cases fail
-- [ ] 4.2 Implement in `opencode-agent/src/phases/ci-report.ts`: key the zero-failure and read-error branches of `failureLines` and `verdictLine` on `trigger.kind`, following the existing `redRunUrl` precedent — wording only, report shape untouched. Verify: `bun test tests/opencode-agent/ci-fix-red-run.test.ts` green
+- [x] 4.1 Test in `tests/opencode-agent/ci-fix-red-run.test.ts`: for `trigger.kind !== 'ci'` the renderer's two zero-failure lines say no failed check run could be found on the head (never "the run is red", never "the run could not be read") and its two read-error lines name the head's check runs (never "the red run"); for `kind === 'ci'` all four lines keep today's red-run wording. Verify red: `bun test tests/opencode-agent/ci-fix-red-run.test.ts` — the new wording cases fail
+- [x] 4.2 Implement in `opencode-agent/src/phases/ci-report.ts`: key the zero-failure and read-error branches of `failureLines` and `verdictLine` on `trigger.kind`, following the existing `redRunUrl` precedent — wording only, report shape untouched. Verify: `bun test tests/opencode-agent/ci-fix-red-run.test.ts` green
 
 ## 5. Workflow: pull-request arm and `checks: read` grant (D5)
 

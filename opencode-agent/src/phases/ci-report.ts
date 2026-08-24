@@ -8,6 +8,7 @@ import type { CheckLoopResult } from '../check-loop.js'
 import type { Diagnosis } from '../ci-diagnosis.js'
 import type { PhaseInput } from '../phase-context.js'
 import type { FailedJob } from '../red-run.js'
+import type { TriggerEvent } from '../trigger-events.js'
 
 /**
  * The CI-fix round's report — the wording half of the phase, split from
@@ -47,10 +48,29 @@ const runLines = (red: string | null, agent: string | null): readonly string[] =
   ...(agent === null ? [] : [`- This repair ran in: ${agent}`]),
 ]
 
-/** CI's own account of what failed — the facts every path starts from. */
-const failureLines = (proof: RoundProof): readonly string[] => {
-  if (proof.readError !== null) return [`- CI failures: unknown — the red run could not be read (${proof.readError})`]
-  if (proof.failures.length === 0) return ['- CI failures: none — the run is red but no failed job could be found']
+/**
+ * CI's own account of what failed — the facts every path starts from.
+ *
+ * The unknown and the none lines are keyed on the door, like `redRunUrl`
+ * above: a command-bought round read the head's check runs, and asserting
+ * "the run is red" or "the run could not be read" about checks it read fine
+ * (or tried and failed to read) states facts only the red-run door knows.
+ */
+const failureLines = (proof: RoundProof, kind: TriggerEvent['kind']): readonly string[] => {
+  if (proof.readError !== null) {
+    return [
+      kind === 'ci'
+        ? `- CI failures: unknown — the red run could not be read (${proof.readError})`
+        : `- CI failures: unknown — the head’s check runs could not be read (${proof.readError})`,
+    ]
+  }
+  if (proof.failures.length === 0) {
+    return [
+      kind === 'ci'
+        ? '- CI failures: none — the run is red but no failed job could be found'
+        : '- CI failures: none — no failed check run could be found on the head',
+    ]
+  }
   return proof.failures.map((job) => {
     const steps = job.failedSteps.length === 0 ? 'no step failed' : job.failedSteps.join(', ')
     return `- CI failure: **${job.name}** (failed steps: ${steps})`
@@ -64,10 +84,15 @@ const failureLines = (proof: RoundProof): readonly string[] => {
  * and not about the code anyone will merge; a log-based fix is a fact about the
  * log; a needs-human verdict is not a verdict about the code at all. Saying
  * which of these a line describes is the honesty rule the incident bought.
+ * The two degraded lines carry the same door-keying as `failureLines`.
  */
-const verdictLine = (proof: RoundProof, commit: RoundCommit): string => {
+const verdictLine = (proof: RoundProof, commit: RoundCommit, kind: TriggerEvent['kind']): string => {
   const { diagnosis, loop, logBased, readError } = proof
-  if (readError !== null) return '- Verdict: this failure needs you — the red run could not be read'
+  if (readError !== null) {
+    return kind === 'ci'
+      ? '- Verdict: this failure needs you — the red run could not be read'
+      : '- Verdict: this failure needs you — the head’s check runs could not be read'
+  }
   if (diagnosis?.verdict === 'needs-human') return '- Verdict: this failure needs you, not another repair round'
   if (loop !== null && !logBased) {
     const rounds = `after ${loop.rounds} round(s)`
@@ -77,7 +102,9 @@ const verdictLine = (proof: RoundProof, commit: RoundCommit): string => {
       : `- Local reproduction: ✅ passed ${rounds} in this job — but nothing was pushed, so the branch is unchanged`
   }
   if (logBased) return '- Proof: the CI log, not a local run — this failure could not be reproduced on this runner'
-  return '- Diagnosis: the run could not be read; nothing was attempted'
+  return kind === 'ci'
+    ? '- Diagnosis: the run could not be read; nothing was attempted'
+    : '- Diagnosis: no failed check run could be found on the head; nothing was attempted'
 }
 
 /** Whether the round pushed, and — when it did not — which of the reasons. */
@@ -158,8 +185,8 @@ export const renderCiReport = (
     `### CI fix attempt ${state.ciAttempts} of ${deps.config.maxCiAttempts}`,
     '',
     ...runLines(redRunUrl(input), agentRunUrl),
-    ...failureLines(proof),
-    verdictLine(proof, commit),
+    ...failureLines(proof, input.trigger.kind),
+    verdictLine(proof, commit, input.trigger.kind),
     pushedLine(proof, commit),
     ...humanNote(proof),
     ...blockedNote(commit.dropped),

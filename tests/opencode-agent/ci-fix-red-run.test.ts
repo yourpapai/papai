@@ -304,6 +304,64 @@ describe('handleCiFix · a command-bought round (the /fix door, D7)', () => {
   })
 })
 
+describe('handleCiFix · door-aware report wording (D7)', () => {
+  it('a command-bought round with nothing red speaks of the head’s check runs, never of a run', async () => {
+    const { input } = round({ trigger: fixTrigger(), refCheckRuns: [], replies: [] })
+
+    const outcome = await handleCiFix(input)
+
+    // Both zero-failure lines: the round read the head fine, so "the run is
+    // red" and "the run could not be read" would assert facts only the
+    // red-run door knows.
+    expect(outcome.comment).toContain('no failed check run could be found on the head')
+    expect(outcome.comment).not.toContain('the run is red')
+    expect(outcome.comment).not.toContain('could not be read')
+  })
+
+  it('a command-bought round whose head read was refused names the head’s check runs, never the red run', async () => {
+    const recording = stubPhaseDeps({ replies: [] })
+    recording.deps.github.listCheckRunsForRef = (): Promise<never> =>
+      Promise.reject(new Error('Resource not accessible'))
+    const input: PhaseInput = {
+      state: STATE,
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: fixTrigger(),
+      command: null,
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+
+    const outcome = await handleCiFix(input)
+
+    // Both read-error lines: the round tried and failed to read the head's
+    // check runs — naming "the red run" would describe a read it never made.
+    expect(outcome.comment).toContain('the head’s check runs could not be read')
+    expect(outcome.comment).not.toContain('the red run')
+  })
+
+  it('the red-run door keeps today’s wording on all four lines', async () => {
+    const zero = await handleCiFix(round({ jobs: [], replies: [] }).input)
+
+    expect(zero.comment).toContain('the run is red but no failed job could be found')
+    expect(zero.comment).toContain('the run could not be read')
+
+    const recording = stubPhaseDeps({ replies: [] })
+    recording.deps.github.listRunJobs = (): Promise<never> => Promise.reject(new Error('Resource not accessible'))
+    const input: PhaseInput = {
+      state: STATE,
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: ciTrigger(),
+      command: null,
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+
+    const refused = await handleCiFix(input)
+
+    expect(refused.comment).toContain('the red run could not be read')
+  })
+})
+
 describe('handleCiFix · a reproduced failure', () => {
   it('runs the verdict’s derived command and repairs against its local failure', async () => {
     const { input, io } = round({
