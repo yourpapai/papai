@@ -17,9 +17,10 @@ export const GitHubUserSchema = z.object({
 export type GitHubUser = z.infer<typeof GitHubUserSchema>
 
 /**
- * Collaborator and search-user shape: the simple user plus an optional
- * display name. `GitHubUserSchema` itself stays untouched.
+ * Collaborator and search-user shape: the simple user plus a display
+ * name GitHub nulls out for nameless users. `GitHubUserSchema` itself
+ * stays untouched.
  */
-export const GitHubNamedUserSchema = GitHubUserSchema.extend({ name: z.string().optional() })
+export const GitHubNamedUserSchema = GitHubUserSchema.extend({ name: z.string().nullable().optional() })
 
 export type GitHubNamedUser = z.infer<typeof GitHubNamedUserSchema>

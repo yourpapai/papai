@@ -29,7 +29,7 @@ const normalize = (value: string): string => value.trim().toLowerCase()
 const toIdentityUser = (user: GitHubNamedUser): IdentityUser => ({
   id: String(user.id),
   login: user.login,
-  name: user.name,
+  name: user.name ?? undefined,
 })
 
 /**
@@ -46,7 +46,7 @@ export function matchGitHubUsers(
   if (normalizedQuery === '') return []
   const ranked = users.map((user, index) => {
     const login = normalize(user.login)
-    const name = user.name === undefined ? null : normalize(user.name)
+    const name = typeof user.name === 'string' ? normalize(user.name) : null
     let tier = 0
     if (login === normalizedQuery) tier = 1
     else if (name !== null && (name === normalizedQuery || name.split(/\s+/u).includes(normalizedQuery))) tier = 2

@@ -29,7 +29,7 @@ const config: GitHubConfig = { baseUrl: '', repo: 'octocat/Hello-World', token: 
 const jsonResponse = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
-const user = (login: string, id: number, name?: string): Record<string, unknown> => ({
+const user = (login: string, id: number, name?: string | null): Record<string, unknown> => ({
   login,
   id,
   avatar_url: `https://avatars.githubusercontent.com/u/${id}?v=4`,
@@ -145,6 +145,19 @@ describe('createGitHubIdentityResolver.searchUsers', () => {
     const results = await resolver.searchUsers('gollum', 3)
     expect(calls[1]?.url.searchParams.get('per_page')).toBe('3')
     expect(results).toHaveLength(3)
+  })
+
+  test('collaborators with a null display name resolve by login without breaking the call', async () => {
+    const calls: CapturedRequest[] = []
+    setMockFetch(
+      routeByPathname(calls, {
+        [collaboratorsPath]: () => [user('nameless', 9, null), user('octocat', 583231, null)],
+      }),
+    )
+    const resolver = createGitHubIdentityResolver(config)
+    const results = await resolver.searchUsers('octocat')
+    expect(calls).toHaveLength(1)
+    expect(results).toEqual([{ id: '583231', login: 'octocat', name: undefined }])
   })
 
   test('upstream failure rethrows a classified error, logs error, never logs the token', async () => {

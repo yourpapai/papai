@@ -108,8 +108,10 @@ describe('GitHubNamedUserSchema', () => {
     expect(result.name).toBeUndefined()
   })
 
-  test('name as null rejects', () => {
-    expect(() => GitHubNamedUserSchema.parse({ ...validNamedUser, name: null })).toThrow()
+  test('name as null accepts (GitHub nulls it for nameless users)', () => {
+    const result = GitHubNamedUserSchema.parse({ ...validNamedUser, name: null })
+    expect(result.login).toBe('octocat')
+    expect(result.name).toBeNull()
   })
 
   test('name as number rejects', () => {
