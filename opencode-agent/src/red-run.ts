@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { clipTail } from './check-loop.js'
-import type { RunJob } from './github-actions.js'
+import type { RefCheckRun, RunJob } from './github-actions.js'
 import { mapSeries } from './sequence.js'
 
 /**
@@ -83,3 +83,35 @@ export const selectFailedJobs = (
   const budget = options.logBudget ?? DEFAULT_LOG_BUDGET
   return mapSeries(jobs.filter(isFailure), (job) => toFailedJob(job, jobLog, budget))
 }
+
+/**
+ * `failure` or `timed_out` — the terminal conclusions that mean the check ran
+ * and ended red with a verdict to fix.
+ *
+ * Pinned here rather than inherited from {@link isFailure}, whose rationale
+ * argues about cancelled and *running* jobs: a timed-out check run is a runner
+ * that hit its deadline, red on the pull request and addressable, and reading
+ * it as green would spend the round's `ciAttempts` answering "nothing found"
+ * on a red head. `cancelled`, `skipped`, `stale`, `neutral`, `action_required`
+ * and `success` stay out for the reason `isFailure`'s own rationale gives: a
+ * check that did not finish has no verdict to fix, and treating one as failed
+ * sends the diagnosis after a failure that does not exist.
+ */
+const isFailedCheck = (run: RefCheckRun): boolean => run.conclusion === 'failure' || run.conclusion === 'timed_out'
+
+/**
+ * The failed check runs of a ref, mapped into the `FailedJob` shape the
+ * diagnosis and the report already read.
+ *
+ * A command-bought round's facts: no run arrived with the command, so the
+ * output summary stands in for the job log — tail-clipped by the same budget
+ * — and there are no step conclusions to name, which the report already
+ * renders as "no step failed". Everything downstream is untouched.
+ */
+export const failedJobsFromCheckRuns = (runs: readonly RefCheckRun[]): readonly FailedJob[] =>
+  runs.filter(isFailedCheck).map((run) => ({
+    id: run.id,
+    name: run.name,
+    failedSteps: [],
+    log: clipTail(run.summary, DEFAULT_LOG_BUDGET),
+  }))

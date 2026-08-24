@@ -14,7 +14,7 @@ import { composeSystemPrompt } from '../obra-skills.js'
 import type { PhaseHandler, PhaseInput, PhaseOutcome } from '../phase-context.js'
 import { buildCiFixPrompt, MINIMALITY_RULE } from '../prompts.js'
 import { PROTECTED_PATHS_RULE } from '../protected-paths.js'
-import { selectFailedJobs } from '../red-run.js'
+import { selectFailedJobs, failedJobsFromCheckRuns } from '../red-run.js'
 import type { FailedJob } from '../red-run.js'
 import { commitAndPush } from './ci-commit.js'
 import type { CiTurn } from './ci-commit.js'
@@ -39,10 +39,13 @@ export const CI_FIX_INSTRUCTIONS = [
 ].join('\n')
 
 /**
- * Entered when a check run goes red on the agent's own pull request.
+ * Entered when a check run goes red on the agent's own pull request — through
+ * the red-run door, or through `/fix` typed by a maintainer.
  *
- * The round reads the run it was asked to repair: its failed jobs and logs
- * through the Actions API, distilled by `red-run.ts`. One diagnosis turn
+ * The round reads what its door named: the red run's failed jobs and logs
+ * through the Actions API, distilled by `red-run.ts`, or — for a
+ * command-bought round — the check runs of the pull request's head, mapped by
+ * the same module into the same `FailedJob` shape. One diagnosis turn
  * returns a verdict that picks the branch — a reproduced failure enters the
  * bounded loop against the derived command; a log-justified fix is made with
  * its weaker proof named; a needs-human verdict reports job, reason and remedy
@@ -174,20 +177,29 @@ interface Discovered {
 }
 
 /**
- * The failed jobs of the red run, with their logs.
+ * What is red, and how the round learned it.
  *
- * A refused read (a token without `actions: read`, a GHES host without the
- * endpoint) degrades to a needs-human round naming the error rather than a
- * crash: the fallback comment covers crashes, but here a degraded sentence on
- * the pull request is the more useful answer.
+ * Keyed to the door the round came through. The red run names itself, so the
+ * run's jobs and logs are the facts. A command-bought round (`/fix`) arrived
+ * with no run id at all — the command means "the pull request's checks are
+ * red", so the round reads the check runs of the head's branch, the branch the
+ * handler already resolved at its top, and no second lookup exists to make.
+ *
+ * A refused read (a token without `actions: read` or `checks: read`, a GHES
+ * host without either endpoint) degrades to a needs-human round naming the
+ * error rather than a crash: the fallback comment covers crashes, but here a
+ * degraded sentence on the pull request is the more useful answer.
  */
 const discoverFailures = async (input: PhaseInput): Promise<Discovered> => {
-  const { deps, trigger } = input
-  if (trigger.kind !== 'ci') return { jobs: [], readError: null }
+  const { deps, state, trigger } = input
 
   try {
-    const jobs = await deps.github.listRunJobs(trigger.runId)
-    return { jobs: await selectFailedJobs(jobs, (id) => deps.github.jobLog(id)), readError: null }
+    if (trigger.kind === 'ci') {
+      const jobs = await deps.github.listRunJobs(trigger.runId)
+      return { jobs: await selectFailedJobs(jobs, (id) => deps.github.jobLog(id)), readError: null }
+    }
+    const runs = await deps.github.listCheckRunsForRef(branchNameFor(state.issueId))
+    return { jobs: failedJobsFromCheckRuns(runs), readError: null }
   } catch (error) {
     return { jobs: [], readError: error instanceof Error ? error.message : String(error) }
   }

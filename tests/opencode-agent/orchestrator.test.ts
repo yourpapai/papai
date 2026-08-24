@@ -14,7 +14,7 @@ import { diffGuardError, turnDeadlineError } from '../../opencode-agent/src/erro
 import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import { GitError } from '../../opencode-agent/src/git.js'
 import type { Git, MergeOutcome, Salvage } from '../../opencode-agent/src/git.js'
-import type { RunJob } from '../../opencode-agent/src/github-actions.js'
+import type { RefCheckRun, RunJob } from '../../opencode-agent/src/github-actions.js'
 import type { PullRequestHead, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github-pulls.js'
 import type { ReactionContent, ReactionRef, ReactionTarget } from '../../opencode-agent/src/github-reactions.js'
 import type { GitHubApi } from '../../opencode-agent/src/github.js'
@@ -250,6 +250,8 @@ interface PipelineIo {
   runJobs: RunJob[]
   /** Log text the fake Actions API hands back, keyed by job id. */
   jobLogs: Record<number, string>
+  /** Check runs the fake Checks API reports for a ref; empty means none. */
+  refCheckRuns: RefCheckRun[]
   /** Model replies, consumed in order by successive prompts. */
   replies: string[]
   /** Tokens the fake session reports as spent this job. */
@@ -429,6 +431,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     checkResults: new Map(),
     runJobs: [],
     jobLogs: {},
+    refCheckRuns: [],
     replies: [],
     tokensUsed: 0,
     reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0, failure: null },
@@ -621,6 +624,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       }),
     listRunJobs: (): Promise<readonly RunJob[]> => Promise.resolve([...io.runJobs]),
     jobLog: (jobId): Promise<string> => Promise.resolve(io.jobLogs[jobId] ?? ''),
+    listCheckRunsForRef: (): Promise<readonly RefCheckRun[]> => Promise.resolve([...io.refCheckRuns]),
   }
 
   const git: Git = {

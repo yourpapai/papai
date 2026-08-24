@@ -2476,6 +2476,113 @@ describe('createOctokitApi', () => {
     expect(log).not.toContain(LEAKED)
     expect(log).toContain('[redacted]')
   })
+
+  // Recorded from a live `checks.listForRef` answer for an `agent/issue-<n>`
+  // head: every field below is one the adapter reads, none added by inspection.
+  const REF_CHECK_RUNS_JSON = {
+    total_count: 2,
+    check_runs: [
+      {
+        id: 29266900446,
+        name: 'CI',
+        status: 'completed',
+        conclusion: 'failure',
+        output: { title: 'Unhandled error', summary: 'Mutation ratchet regression: gate.ts 0.8447 < 0.8600' },
+      },
+      {
+        id: 29266900501,
+        name: 'Workflow Lint',
+        status: 'completed',
+        conclusion: 'timed_out',
+        output: { title: '', summary: 'The action has timed out after 30m0s' },
+      },
+    ],
+  }
+
+  /** A recorder for the Checks endpoint, whose pages answer object-shaped too. */
+  const checksRecordingApi = (
+    captured: CapturedRequest[],
+    payload: unknown,
+    secrets: readonly string[] = [],
+  ): GitHubApi =>
+    createOctokitApi({
+      token: 'tok',
+      owner: 'acme',
+      repo: 'widgets',
+      secrets,
+      fetch: (url, init) => {
+        captured.push({ url, method: init?.method ?? 'GET', body: parseBody(init?.body) })
+        return Promise.resolve(
+          withUrl(
+            jsonResponse(payload),
+            'https://api.github.test/repos/acme/widgets/commits/agent/issue-42/check-runs',
+          ),
+        )
+      },
+      log: silentOctokitLog(),
+    })
+
+  test('lists the head’s check runs with name, conclusion and output summary', async () => {
+    const captured: CapturedRequest[] = []
+
+    const runs = await checksRecordingApi(captured, REF_CHECK_RUNS_JSON).listCheckRunsForRef('agent/issue-42')
+
+    expect(captured[0]?.method).toBe('GET')
+    // The ref is URL-encoded by the transport (a branch name carries a slash),
+    // recorded rather than guessed: `agent%2Fissue-42`.
+    expect(captured[0]?.url).toContain('/repos/acme/widgets/commits/agent%2Fissue-42/check-runs')
+    // Paginated like every other list: a head whose checks span more than one
+    // page must not hide its failing tail.
+    expect(captured[0]?.url).toContain('per_page=100')
+    expect(runs).toEqual([
+      {
+        id: 29266900446,
+        name: 'CI',
+        conclusion: 'failure',
+        summary: 'Mutation ratchet regression: gate.ts 0.8447 < 0.8600',
+      },
+      {
+        id: 29266900501,
+        name: 'Workflow Lint',
+        conclusion: 'timed_out',
+        summary: 'The action has timed out after 30m0s',
+      },
+    ])
+  })
+
+  test('skips a row it cannot name and keeps an absent conclusion null', async () => {
+    // The jobs doctrine, applied to the sibling endpoint: a check run with no
+    // name is not one a diagnosis can quote, and a conclusion of `null` is an
+    // unfinished check — `success` is the one conclusion the caller filters on,
+    // so defaulting to it would make an unfinished check look finished.
+    const payload = {
+      total_count: 3,
+      check_runs: [
+        { conclusion: 'failure', output: { summary: 'nameless' } },
+        { id: 29266900502, name: 'Still running', status: 'in_progress', conclusion: null, output: {} },
+      ],
+    }
+
+    const runs = await checksRecordingApi([], payload).listCheckRunsForRef('agent/issue-42')
+
+    expect(runs).toEqual([{ id: 29266900502, name: 'Still running', conclusion: null, summary: '' }])
+  })
+
+  test('passes the output summary through redaction at the boundary, like every free-text read', async () => {
+    // A check run's summary is free text a workflow's own step wrote, and a
+    // failing step quotes whatever it printed — credentials included.
+    const payload = {
+      total_count: 1,
+      check_runs: [
+        { id: 29266900446, name: 'CI', conclusion: 'failure', output: { summary: `failed; token=${LEAKED}` } },
+      ],
+    }
+
+    const runs = await checksRecordingApi([], payload, [LEAKED]).listCheckRunsForRef('agent/issue-42')
+
+    expect(runs[0]?.summary).toContain('[redacted]')
+    expect(runs[0]?.summary).not.toContain(LEAKED)
+  })
 })
 
 describe('logger', () => {

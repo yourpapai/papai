@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import type { RunJob } from '../../opencode-agent/src/github-actions.js'
+import type { RefCheckRun, RunJob } from '../../opencode-agent/src/github-actions.js'
 import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
 import { handleCiFix } from '../../opencode-agent/src/phases/ci-fix.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
@@ -61,6 +61,21 @@ const ciTrigger = (runId = 32652877782): TriggerEvent => ({
   defaultBranch: 'master',
 })
 
+/** A `/fix` typed on the pull request — the command-bought door (D7). */
+const fixTrigger = (): TriggerEvent => ({
+  kind: 'pull-request',
+  eventName: 'issue_comment',
+  action: 'created',
+  senderLogin: 'maintainer',
+  senderType: 'User',
+  authorAssociation: 'OWNER',
+  prNumber: 7,
+  commentBody: '/fix',
+  commentId: 99,
+  defaultBranch: 'main',
+  issueNumber: 42,
+})
+
 /** The red run of the incident: only the mutation gate is red. */
 const MUTATION_JOB: RunJob = {
   id: 97195996835,
@@ -87,6 +102,8 @@ interface RoundOptions {
   logs?: Record<number, string>
   replies?: readonly string[]
   checks?: Map<string, CommandResult>
+  trigger?: TriggerEvent
+  refCheckRuns?: readonly RefCheckRun[]
 }
 
 const round = (options: RoundOptions = {}): { input: PhaseInput; io: StubIo } => {
@@ -100,10 +117,11 @@ const round = (options: RoundOptions = {}): { input: PhaseInput; io: StubIo } =>
     recording.deps.runCheck = (check): Promise<CommandResult> =>
       Promise.resolve(checks.get(check.name) ?? { command: '', exitCode: 0, stdout: '', stderr: '' })
   }
+  recording.io.refCheckRuns = [...(options.refCheckRuns ?? [])]
   const input: PhaseInput = {
     state: STATE,
     issue: { number: 42, title: 't', body: 'b' },
-    trigger: ciTrigger(),
+    trigger: options.trigger ?? ciTrigger(),
     command: null,
     thread: recording.io.thread,
     deps: recording.deps,
@@ -171,6 +189,118 @@ describe('handleCiFix · discovering what failed', () => {
     expect(outcome.comment).toContain('Resource not accessible')
     expect(outcome.comment).toContain('needs you')
     expect(recording.io.prompts).toHaveLength(0)
+  })
+})
+
+/** Every conclusion the head's check runs may carry that is not a red verdict. */
+const NOT_RED: readonly (readonly [string, string])[] = [
+  ['cancelled', 'Cancelled check'],
+  ['skipped', 'Skipped check'],
+  ['stale', 'Stale check'],
+  ['neutral', 'Neutral check'],
+  ['action_required', 'Action-required check'],
+  ['success', 'Passing check'],
+]
+
+describe('handleCiFix · a command-bought round (the /fix door, D7)', () => {
+  it('reads the head’s check runs on the branch the handler already resolves, and repairs on them', async () => {
+    const { input, io } = round({
+      trigger: fixTrigger(),
+      refCheckRuns: [
+        { id: 1, name: 'Mutation gate', conclusion: 'failure', summary: 'Mutation ratchet regression: gate.ts 0.8447' },
+        { id: 2, name: 'Slow build', conclusion: 'timed_out', summary: 'The runner hit its 30m deadline' },
+      ],
+    })
+
+    const outcome = await handleCiFix(input)
+
+    // No run id arrived with the command: the branch is the only handle, and
+    // it is the one the handler resolved at its top — no new lookup.
+    expect(io.refReads).toEqual(['agent/issue-42'])
+    const prompt = String(io.prompts[0]?.prompt)
+    expect(prompt).toContain('Mutation gate')
+    expect(prompt).toContain('Mutation ratchet regression: gate.ts 0.8447')
+    // timed_out is a terminal conclusion that rendered red and carries output
+    // a fix round can address — a runner that hit its deadline is red.
+    expect(prompt).toContain('Slow build')
+    // The ordinary diagnosis/repair path ran on them, unchanged.
+    expect(outcome.comment).toContain('Pushed a fix: yes')
+    expect(io.gitCalls).toContain('push:agent/issue-42')
+  })
+
+  it.each(NOT_RED)('drops a check run whose conclusion is %p — no verdict to fix', async (conclusion, name) => {
+    const { input, io } = round({
+      trigger: fixTrigger(),
+      refCheckRuns: [
+        { id: 1, name, conclusion, summary: `${name} output` },
+        { id: 2, name: 'Real failure', conclusion: 'failure', summary: 'genuinely red' },
+      ],
+    })
+
+    await handleCiFix(input)
+
+    const prompt = String(io.prompts[0]?.prompt)
+    expect(prompt).not.toContain(name)
+    expect(prompt).toContain('Real failure')
+  })
+
+  it('maps survivors into the FailedJob shape — no failed steps, summary tail-clipped by the red-run budget', async () => {
+    const summary = `HEAD-MARKER-${'x'.repeat(9_000)}TAIL-MARKER`
+    const { input, io } = round({
+      trigger: fixTrigger(),
+      refCheckRuns: [{ id: 1, name: 'Mutation gate', conclusion: 'failure', summary }],
+    })
+
+    const outcome = await handleCiFix(input)
+
+    const prompt = String(io.prompts[0]?.prompt)
+    // Failures cluster at a log's end, so the same tail budget the red-run
+    // path clips with applies to the summary it stands in for.
+    expect(prompt).toContain('TAIL-MARKER')
+    expect(prompt).not.toContain('HEAD-MARKER')
+    // A check run has no step conclusions to report; the report already has
+    // the sentence for that shape.
+    expect(outcome.comment).toContain('no step failed')
+  })
+
+  it('degrades to a needs-human round when the head’s check runs cannot be read', async () => {
+    const recording = stubPhaseDeps({ replies: [] })
+    recording.deps.github.listCheckRunsForRef = (): Promise<never> =>
+      Promise.reject(new Error('Resource not accessible'))
+    const input: PhaseInput = {
+      state: STATE,
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: fixTrigger(),
+      command: null,
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+
+    const outcome = await handleCiFix(input)
+
+    // A token without `checks: read`, or a GHES host without the endpoint:
+    // the round says what it could not do and why, instead of crashing into
+    // the fallback comment that cannot name what it read.
+    expect(outcome.comment).toContain('Resource not accessible')
+    expect(outcome.comment).toContain('needs you')
+    expect(recording.io.prompts).toHaveLength(0)
+  })
+
+  it('renders the undiagnosed round and pushes nothing when the head exposes no failed check run', async () => {
+    // The step that keeps the transition pin honest: without it, a state move
+    // that repairs nothing would pass 1.4's test while every /fix round was
+    // spending its attempt on an empty discovery.
+    const { input, io } = round({
+      trigger: fixTrigger(),
+      refCheckRuns: [{ id: 1, name: 'Passing check', conclusion: 'success', summary: 'all green' }],
+      replies: [],
+    })
+
+    const outcome = await handleCiFix(input)
+
+    expect(io.prompts).toHaveLength(0)
+    expect(io.gitCalls).not.toContain('push:agent/issue-42')
+    expect(outcome.comment).toContain('Pushed a fix: no')
   })
 })
 

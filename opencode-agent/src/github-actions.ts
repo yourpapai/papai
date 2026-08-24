@@ -32,6 +32,22 @@ export interface RunJob {
   steps: readonly RunJobStep[]
 }
 
+/**
+ * One check run of a ref, as a command-bought CI-fix round reads it.
+ *
+ * The `id` is carried even though this round downloads no log of its own: the
+ * `FailedJob` it becomes keys on one, and the day summaries prove too thin as
+ * evidence the member grows a log fetch against it without any other shape
+ * changing (the design's recorded trade-off).
+ */
+export interface RefCheckRun {
+  id: number
+  name: string
+  conclusion: string | null
+  /** The check run's `output.summary`, redacted at this boundary like every free-text read. */
+  summary: string
+}
+
 export interface ActionsApi {
   /**
    * The jobs of one workflow run, with each job's steps and their
@@ -45,6 +61,13 @@ export interface ActionsApi {
    * repository secrets in it but masks nothing a step chose to echo.
    */
   jobLog(jobId: number): Promise<string>
+  /**
+   * The check runs of a ref (branch or sha), with name, conclusion and output
+   * summary — what a command-bought CI-fix round reads, because no run id
+   * arrived with the command. The Checks API, its own `GITHUB_TOKEN`
+   * permission class: `actions: read` does not cover it.
+   */
+  listCheckRunsForRef(ref: string): Promise<readonly RefCheckRun[]>
 }
 
 /** One job row, as far as the pipeline reads it: zod at the boundary, per doctrine. */
@@ -85,6 +108,34 @@ const toRunJob = (raw: unknown): RunJob | null => {
   }
 }
 
+/** One check-run row, as far as a command-bought round reads it. */
+const refCheckRowSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  conclusion: z.string().nullable().catch(null),
+  output: z
+    .object({
+      summary: z.string().nullable().catch(null),
+    })
+    .nullable()
+    .catch(null),
+})
+
+/**
+ * Narrows one raw check-run row, redacting its free text at the boundary.
+ *
+ * The same skip-don't-default doctrine as {@link toRunJob}: a check run GitHub
+ * cannot name is not one a diagnosis can quote, and a narrowed `conclusion`
+ * stays `null` when the API left it null — an in-progress check is not a
+ * finished one.
+ */
+const toRefCheckRun = (raw: unknown, clean: (text: string) => string): RefCheckRun | null => {
+  const parsed = refCheckRowSchema.safeParse(raw)
+  if (!parsed.success) return null
+  const { id, name, conclusion, output } = parsed.data
+  return { id, name, conclusion, summary: clean(output?.summary ?? '') }
+}
+
 export const createActionsEndpoints = (
   octokit: Octokit,
   repo: { owner: string; repo: string },
@@ -111,5 +162,20 @@ export const createActionsEndpoints = (
   jobLog: async (jobId) => {
     const { data } = await octokit.rest.actions.downloadJobLogsForWorkflowRun({ ...repo, job_id: jobId })
     return clean(typeof data === 'string' ? data : '')
+  },
+
+  listCheckRunsForRef: async (ref) => {
+    const rows: readonly unknown[] = await octokit.paginate(octokit.rest.checks.listForRef, {
+      ...repo,
+      ref,
+      per_page: 100,
+    })
+
+    const runs: RefCheckRun[] = []
+    for (const row of rows) {
+      const run = toRefCheckRun(row, clean)
+      if (run !== null) runs.push(run)
+    }
+    return runs
   },
 })
