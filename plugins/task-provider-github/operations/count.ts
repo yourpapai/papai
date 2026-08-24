@@ -12,7 +12,11 @@ import type { GitHubConfig } from '../client.js'
 import { githubFetch } from '../client.js'
 import { buildGitHubIssueSearchQuery } from './tasks.js'
 
-const log = logger.child({ scope: 'provider:github:count' })
+// The child logger is created at call time, not module scope: a module-scope
+// child pins whatever logger was installed at first evaluation, which breaks
+// combined test runs where another file loads this module before the logger
+// mock is installed (see identity-resolver.ts for the same trap).
+const countLog = (): ReturnType<typeof logger.child> => logger.child({ scope: 'provider:github:count' })
 
 const countResponseSchema = z.object({ total_count: z.number() })
 
@@ -28,13 +32,14 @@ export interface GitHubCountTasksParams {
  * repo is rejected before any request is made.
  */
 export async function githubCountTasks(config: GitHubConfig, params: GitHubCountTasksParams): Promise<number> {
+  const log = countLog()
   log.debug({ repo: config.repo, query: params.query, projectId: params.projectId }, 'countTasks')
   if (params.projectId !== undefined && params.projectId !== config.repo) {
     const error = new GitHubClassifiedError(
       `Project ${params.projectId} not found`,
       providerError.projectNotFound(params.projectId),
     )
-    log.error({ projectId: params.projectId }, 'Project not found')
+    log.warn({ projectId: params.projectId }, 'Project not found')
     throw error
   }
   try {

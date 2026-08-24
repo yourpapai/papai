@@ -3,13 +3,23 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { GitHubClassifiedError } from '../../../../plugins/task-provider-github/classify-error.js'
 import type { GitHubConfig } from '../../../../plugins/task-provider-github/client.js'
 import { githubCountTasks } from '../../../../plugins/task-provider-github/operations/count.js'
-import { mockLogger, restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
+import { createTrackedLoggerMock } from '../../../utils/logger-mock.js'
+import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
+
+// count.ts creates its child logger at call time (see the module comment there),
+// so a suite-level re-install after the global mock-reset restore is enough for
+// log-level assertions even in combined runs where another file loaded the module
+// first (tests/AGENTS.md).
+const tracked = createTrackedLoggerMock()
+const installTrackedLogger = (): void => {
+  void mock.module('../../../../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
+}
 
 const config: GitHubConfig = { baseUrl: '', repo: 'octocat/Hello-World', token: 'test-token' }
 
@@ -30,11 +40,15 @@ const captureRequests = (
 
 afterEach(() => {
   restoreFetch()
+  tracked.clearCalls()
 })
 
 describe('githubCountTasks', () => {
+  beforeEach(() => {
+    installTrackedLogger()
+  })
+
   test('extracts total_count from a single search request with per_page=1 and the built q', async () => {
-    mockLogger()
     const calls: CapturedRequest[] = []
     setMockFetch(captureRequests(calls, () => jsonResponse({ total_count: 42, items: [] })))
     const count = await githubCountTasks(config, { query: 'crashed' })
@@ -47,7 +61,6 @@ describe('githubCountTasks', () => {
   })
 
   test('empty query counts all issues in the repo without an in: clause', async () => {
-    mockLogger()
     const calls: CapturedRequest[] = []
     setMockFetch(captureRequests(calls, () => jsonResponse({ total_count: 7, items: [] })))
     const count = await githubCountTasks(config, { query: '' })
@@ -56,7 +69,6 @@ describe('githubCountTasks', () => {
   })
 
   test('projectId equal to the configured repo succeeds', async () => {
-    mockLogger()
     const calls: CapturedRequest[] = []
     setMockFetch(captureRequests(calls, () => jsonResponse({ total_count: 3, items: [] })))
     const count = await githubCountTasks(config, { query: 'bug', projectId: 'octocat/Hello-World' })
@@ -65,7 +77,6 @@ describe('githubCountTasks', () => {
   })
 
   test('projectId mismatch rejects as project-not-found before any request', async () => {
-    mockLogger()
     const calls: CapturedRequest[] = []
     setMockFetch(captureRequests(calls, () => jsonResponse({ total_count: 0, items: [] })))
     const caught = await githubCountTasks(config, { query: 'bug', projectId: 'other/repo' }).catch(
@@ -75,10 +86,11 @@ describe('githubCountTasks', () => {
     expect(caught.appError).toHaveProperty('code', 'project-not-found')
     expect(caught.appError).toHaveProperty('projectId', 'other/repo')
     expect(calls).toHaveLength(0)
+    expect(tracked.getCallsByLevel('warn').some((call) => call.args[1] === 'Project not found')).toBe(true)
+    expect(tracked.getCallsByLevel('error')).toHaveLength(0)
   })
 
   test('401 classifies as auth failure', async () => {
-    mockLogger()
     setMockFetch(captureRequests([], () => jsonResponse({ message: 'Bad credentials' }, 401)))
     const caught = await githubCountTasks(config, { query: 'bug' }).catch((error: unknown) => error)
     assert.ok(caught instanceof GitHubClassifiedError)
@@ -86,7 +98,6 @@ describe('githubCountTasks', () => {
   })
 
   test('rate-limit-shaped 403 (x-ratelimit-remaining: 0) classifies as rate-limited', async () => {
-    mockLogger()
     setMockFetch(
       captureRequests([], () =>
         jsonResponse({ message: 'API rate limit exceeded' }, 403, { 'x-ratelimit-remaining': '0' }),
@@ -98,7 +109,6 @@ describe('githubCountTasks', () => {
   })
 
   test('429 with Retry-After classifies as rate-limited', async () => {
-    mockLogger()
     setMockFetch(
       captureRequests([], () => jsonResponse({ message: 'Too many requests' }, 429, { 'Retry-After': '30' })),
     )
