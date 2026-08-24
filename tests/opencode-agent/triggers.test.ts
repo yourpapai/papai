@@ -258,6 +258,54 @@ describe('applyTrigger · /sync dispatch (the /ask shape)', () => {
   })
 })
 
+describe('applyTrigger · /fix (the red-run door, bought by a command)', () => {
+  /** A `/fix` typed on the agent's pull request — the only surface that accepts it. */
+  const fixOnPullRequest = (phase: 'COMPLETE' | 'PR_DELIVERY'): PhaseInput => {
+    const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
+    return {
+      state: baseState({
+        phase,
+        prNumber: 7,
+        prUrl: 'https://example.test/pull/7',
+        ciAttempts: 1,
+      }),
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: {
+        kind: 'pull-request',
+        eventName: 'issue_comment',
+        action: 'created',
+        senderLogin: 'maintainer',
+        senderType: 'User',
+        authorAssociation: 'OWNER',
+        prNumber: 7,
+        commentBody: '/fix',
+        commentId: 99,
+        defaultBranch: 'main',
+        issueNumber: 42,
+      },
+      command: { command: '/fix', argument: '' },
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+  }
+
+  it.each(['COMPLETE', 'PR_DELIVERY'] as const)(
+    '%s → CI_FIX with ciAttempts spent — the same move the red-run door makes',
+    async (phase) => {
+      // D4: one transition, one increment site. The command injects CI_FAILED
+      // through applyCommand → moveOrSkip, and forwardTransition is the only
+      // place ciAttempts moves — so a command-bought round spends the same
+      // budget a red-run round would, by construction rather than by a second
+      // counter kept in step.
+      const outcome = await applyTrigger(fixOnPullRequest(phase))
+
+      expect(outcome.halt).toBeNull()
+      expect(outcome.state.phase).toBe('CI_FIX')
+      expect(outcome.state.ciAttempts).toBe(2)
+    },
+  )
+})
+
 describe('applyTrigger · /cancel cleanup (D9)', () => {
   it('deletes the remote agent branch when /cancel succeeds', async () => {
     const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })

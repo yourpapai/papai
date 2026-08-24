@@ -24,6 +24,7 @@ export const SLASH_COMMANDS = [
   '/review',
   '/continue',
   '/sync',
+  '/fix',
 ] as const
 
 export type SlashCommand = (typeof SLASH_COMMANDS)[number]
@@ -116,12 +117,16 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
   '/cancel': 'CANCELLED',
   '/review': 'REVIEW_REQUESTED',
   '/continue': 'CONTINUE',
+  // The `/review` shape, not the `/sync` one: `/fix` moves the machine, through
+  // the same `CI_FAILED` transition the red-run door applies — one signal, one
+  // `ciAttempts` increment site, one budget shared by both doors.
+  '/fix': 'CI_FAILED',
 }
 
 /**
  * Commands whose availability the transition table cannot decide alone.
  *
- * There are two. `/sync` is the `/ask` shape — no signal, so the table is never
+ * There are three. `/sync` is the `/ask` shape — no signal, so the table is never
  * asked — and is typed on the pull request of an issue whose state names one;
  * `prNumber !== null` is the whole predicate. `COMPLETE` is the phase where a
  * table cannot decide for `/review` at all: that is where a **delivered** issue
@@ -129,7 +134,9 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
  * `presentationKey` already splits them on the pull request, because a delivered
  * issue and an abandoned one are not the same outcome. `/review` needs the same
  * split — on a cancelled issue it would name a branch nobody asked for and
- * report against a pull request that does not exist.
+ * report against a pull request that does not exist. `/fix` shares the same
+ * predicate for the same reason as `/sync`: its round repairs the checks of a
+ * pull request, and a state naming none has nothing for it to read.
  *
  * One predicate table with two readers rather than two spellings of one rule:
  * {@link acceptedCommands} shows a maintainer the list, `triggers.ts` enforces
@@ -138,6 +145,7 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
 const COMMAND_APPLIES: Partial<Record<SlashCommand, (state: AgentState) => boolean>> = {
   '/review': (state) => state.prNumber !== null,
   '/sync': (state) => state.prNumber !== null,
+  '/fix': (state) => state.prNumber !== null,
 }
 
 /** Whether `command` applies to this state, over and above what the phase takes. */

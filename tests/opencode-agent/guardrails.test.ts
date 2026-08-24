@@ -634,6 +634,7 @@ describe('parseSlashCommand', () => {
       '/review',
       '/continue',
       '/sync',
+      '/fix',
     ])
   })
 })
