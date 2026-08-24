@@ -109,6 +109,50 @@ describe('resumePlanParent (D9 interception)', () => {
     expect(fs.existsSync(path.join(fixture.repoRoot, 'openspec', 'changes', 'composite'))).toBe(false)
   })
 
+  it('forwards the running tree spend as spendBaselineUsd into the nested starter (D10)', async () => {
+    const fixture = await makeFixture()
+    appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), {
+      altitude: 'L2',
+      type: 'child_done',
+      child: 'db-schema',
+      outcome: 'done',
+      usage: {
+        inputTokens: 100,
+        outputTokens: 50,
+        reasoningTokens: 0,
+        cachedReadTokens: 0,
+        cachedWriteTokens: 0,
+        costUsd: 1.25,
+        wallMs: 1000,
+      },
+    })
+    fixture.state.children = { 'db-schema': { status: 'done' }, 'db-api': { status: 'pending' } }
+    await saveRunState(fixture.state, new Date('2026-08-12T08:00:00.000Z'))
+    const baselines: number[] = []
+    const startChildRun: StartChildRun = async (_deps, options) => {
+      baselines.push(options.spendBaselineUsd)
+      const child = await createRunState({
+        workDir: fixture.deps.config.workDir,
+        repoRoot: fixture.repoRoot,
+        changeName: 'db-api',
+      })
+      child.status = 'stopped'
+      await saveRunState(child, new Date('2026-08-12T08:00:00.000Z'))
+      return { runId: child.runId }
+    }
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      () => undefined,
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(result.halted).toBe('stopped')
+    expect(baselines).toEqual([1.25])
+  })
+
   it('surfaces a gate-pending child and records it running', async () => {
     const fixture = await makeFixture()
     const startChildRun: StartChildRun = async (_deps, _options) => {

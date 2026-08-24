@@ -375,6 +375,17 @@ describe('runStart', () => {
     })
     expect(result.halted).toBe('gate')
   })
+
+  it('persists the D10 tree spend baseline from StartOptions into the run state', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+      spendBaselineUsd: 2.5,
+    })
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(state.spendBaselineUsd).toBe(2.5)
+  })
 })
 
 describe('runStart text source (inline session)', () => {

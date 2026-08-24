@@ -68,6 +68,7 @@ export function runPolicyLadder(
     autoExtendsUsed: state.autoExtendsUsed,
     deadlineExpired: false,
     config: autonomy,
+    spendBaselineUsd: state.spendBaselineUsd,
   }
   const decision = input.mode === 'early' ? evaluateCapHit(signals) : evaluateFinalGate(signals)
   return { decision, classified }
@@ -102,6 +103,7 @@ export function runPlanPolicy(
     deadlineExpired: false,
     config: deps.autonomy ?? AUTONOMY_DEFAULTS,
     childCount,
+    spendBaselineUsd: state.spendBaselineUsd,
   }
   return { decision: evaluatePlanGate(planSignals), classified: [] }
 }

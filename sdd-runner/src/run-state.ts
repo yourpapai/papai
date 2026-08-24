@@ -30,6 +30,8 @@ export const PersistedRunStateSchema = z.object({
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
   autoExtendsUsed: z.number().int().nonnegative().default(0),
+  /** Tree budget baseline (D10): ancestor spend a nested run adds before its single-ceiling compare. */
+  spendBaselineUsd: z.number().nonnegative().optional(),
   gateDeadlineAt: z.string().min(1).nullable().default(null),
   gateDeadlineReArmed: z.boolean().default(false),
   plan: z.object({ childIds: z.array(z.string().min(1)).min(1), digest: z.string().min(1) }).optional(),
@@ -76,6 +78,7 @@ export interface CreateRunStateInput {
   readonly repoRoot: string
   readonly changeName: string
   readonly runId?: string
+  readonly spendBaselineUsd?: number
 }
 
 function makeRunId(now: Date): string {
@@ -140,6 +143,7 @@ export async function createRunState(input: CreateRunStateInput, now: Date = new
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
     autoExtendsUsed: 0,
+    ...(input.spendBaselineUsd === undefined ? {} : { spendBaselineUsd: input.spendBaselineUsd }),
     gateDeadlineAt: null,
     gateDeadlineReArmed: false,
     runDir,

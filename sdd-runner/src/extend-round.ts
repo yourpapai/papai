@@ -244,9 +244,9 @@ export async function runGateResume(
     const { runPlanGateResume } = await import('./plan-gate-resume.js')
     const { runStart } = await import('./orchestrator.js')
     return runPlanGateResume(deps, state, options, emit, {
-      startChildRun: (_child, taskFile, _baseline, onRunDirReady) => {
+      startChildRun: (_child, taskFile, spendBaselineUsd, onRunDirReady) => {
         void onRunDirReady
-        return runStart(deps, { taskFile })
+        return runStart(deps, { taskFile, spendBaselineUsd })
       },
     })
   }

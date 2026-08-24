@@ -3,19 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { AgentLayerDeps } from './agent-layer.js'
 import { runPlanBranch } from './children.js'
-import { deriveChangeName } from './config.js'
 import { autonomyOf } from './config.js'
 import type { AutonomyConfig } from './config.js'
 import { runDraft } from './draft.js'
 import type { DepthProfile, EventInput } from './events.js'
 import { buildBus, logPathFor, nowOf } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
-import { runIntake } from './intake.js'
+import { runIntake, resolveTaskSource } from './intake.js'
 import type { IntakeResult } from './intake.js'
 import { createMaterializer } from './materialize.js'
 import { isPlanParentResume, resumePlanParent } from './plan-resume.js'
@@ -55,6 +54,8 @@ export interface StartOptions {
   readonly depthOverride?: DepthProfile
   readonly verbosity?: Verbosity
   readonly autonomy?: AutonomyOverrides
+  /** Tree spend baseline (D10) a nested run adds before its single-ceiling compare. */
+  readonly spendBaselineUsd?: number
 }
 
 export interface RunResumeResult {
@@ -88,21 +89,14 @@ interface PipelineEnv {
 }
 
 export async function runStart(deps: OrchestratorDeps, options: StartOptions): Promise<RunStartResult> {
-  let taskText: string
-  let changeName: string
-  if (options.taskFile === undefined) {
-    const text = options.taskText
-    if (text === undefined) {
-      throw new Error('runStart requires a task file or inline task text')
-    }
-    taskText = text
-    changeName = options.changeName ?? deriveChangeName('task.md', taskText)
-  } else {
-    taskText = await readFile(options.taskFile, 'utf8')
-    changeName = deriveChangeName(options.taskFile, taskText)
-  }
+  const { taskText, changeName } = await resolveTaskSource(options)
   const state = await createRunState(
-    { workDir: deps.config.workDir, repoRoot: deps.config.repoRoot, changeName },
+    {
+      workDir: deps.config.workDir,
+      repoRoot: deps.config.repoRoot,
+      changeName,
+      spendBaselineUsd: options.spendBaselineUsd,
+    },
     nowOf(deps),
   )
   if (options.taskText !== undefined) {
