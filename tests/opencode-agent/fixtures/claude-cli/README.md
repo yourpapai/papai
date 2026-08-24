@@ -31,4 +31,8 @@ State of this directory:
   these three files are shape-documentation, not observation.
 
 The recorder is the only writer of this directory; nothing here is edited by
-hand once recorded.
+hand once recorded. One credentialed run (`bun run
+opencode-agent:test:claude-live`) asserts the whole corpus's behaviours and
+stamps `VERSION` (plus `facts.json` — the determinism findings); re-run it
+with `CLAUDE_LIVE_REFRESH_FIXTURES=1` to mark the `.ndjson` corpus for
+re-recording, and see the recorder's header for what each file must carry.

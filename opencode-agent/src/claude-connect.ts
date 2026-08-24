@@ -121,7 +121,7 @@ const emptyChunks = (): AsyncIterable<Uint8Array> => {
 }
 
 /** Adapts `node:child_process`'s handle onto the narrow interface this layer names. */
-const realSpawn: SpawnClaude = (binary, argv, options): ClaudeChildProcess => {
+export const liveSpawn: SpawnClaude = (binary, argv, options): ClaudeChildProcess => {
   const child: ChildProcess = spawn(binary, [...argv], {
     detached: options.detached,
     shell: options.shell,
@@ -157,7 +157,7 @@ const realSpawn: SpawnClaude = (binary, argv, options): ClaudeChildProcess => {
  */
 export const spawnClaude = (request: ClaudeSpawnRequest, options: ClaudeSpawnOptions = {}): ClaudeChild => {
   const env = childEnv(request)
-  const spawner = options.spawn ?? realSpawn
+  const spawner = options.spawn ?? liveSpawn
   const child = spawner(CLAUDE_BINARY, request.argv, {
     detached: true,
     shell: false,
