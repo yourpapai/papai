@@ -19,8 +19,8 @@ import { writeHolder } from '../../sdd-runner/src/stop-controller.js'
  * index.ts's session-loop wiring (sessionLoopOf / sessionFlowDepsOf) has no
  * seam of its own: it exists to connect cli.ts's sessionLoop contract to the
  * real orchestrator entry points, the real gate reopen, and the real
- * remove/stop seams. The two module mocks here replace exactly the two
- * boundaries the wiring connects — the picker it drives and the orchestrator
+ * remove/stop seams. The module mocks here replace exactly the boundaries
+ * the wiring connects — the picker it drives and the orchestrator/gate-resume
  * verbs it forwards to — so the wiring itself stays the real code under test.
  *
  * Registration happens in `beforeEach` and the real modules are re-registered
@@ -31,14 +31,16 @@ import { writeHolder } from '../../sdd-runner/src/stop-controller.js'
  */
 
 type OrchestratorModule = typeof import('../../sdd-runner/src/orchestrator.js')
+type GateResumeEntryModule = typeof import('../../sdd-runner/src/gate-resume-entry.js')
 type PickerModule = typeof import('../../sdd-runner/src/tui-session-picker.js')
 
 const ORCHESTRATOR_SPECIFIER = '../../sdd-runner/src/orchestrator.js'
+const GATE_RESUME_ENTRY_SPECIFIER = '../../sdd-runner/src/gate-resume-entry.js'
 const PICKER_SPECIFIER = '../../sdd-runner/src/tui-session-picker.js'
 
 /** Real exports captured by value: a `mock.module` patch can mutate the captured namespace in place. */
-let realOrchestratorFns: Pick<OrchestratorModule, 'runStart' | 'runResume' | 'runGateResume' | 'runContinue'> | null =
-  null
+let realOrchestratorFns: Pick<OrchestratorModule, 'runStart' | 'runResume' | 'runContinue'> | null = null
+let realGateResumeFn: GateResumeEntryModule['runGateResume'] | null = null
 let realPickerFn: PickerModule['runSessionPicker'] | null = null
 
 const orchestratorCalls: { verb: string; args: unknown[] }[] = []
@@ -60,12 +62,14 @@ function installMocks(): void {
       orchestratorCalls.push({ verb: 'runResume', args: [runId] })
       return Promise.resolve({ runId })
     },
-    runGateResume: (_deps: unknown, runId: string): Promise<{ runId: string }> => {
-      orchestratorCalls.push({ verb: 'runGateResume', args: [runId] })
-      return Promise.resolve({ runId })
-    },
     runContinue: (_deps: unknown, runId: string | null): Promise<{ runId: string | null }> => {
       orchestratorCalls.push({ verb: 'runContinue', args: [runId] })
+      return Promise.resolve({ runId })
+    },
+  }))
+  void mock.module(GATE_RESUME_ENTRY_SPECIFIER, () => ({
+    runGateResume: (_deps: unknown, runId: string): Promise<{ runId: string }> => {
+      orchestratorCalls.push({ verb: 'runGateResume', args: [runId] })
       return Promise.resolve({ runId })
     },
   }))
@@ -89,8 +93,10 @@ function installMocks(): void {
 
 function restoreRealModules(): void {
   const orchestratorFns = realOrchestratorFns
+  const gateResumeFn = realGateResumeFn
   const pickerFn = realPickerFn
   if (orchestratorFns !== null) void mock.module(ORCHESTRATOR_SPECIFIER, () => orchestratorFns)
+  if (gateResumeFn !== null) void mock.module(GATE_RESUME_ENTRY_SPECIFIER, () => ({ runGateResume: gateResumeFn }))
   if (pickerFn !== null) void mock.module(PICKER_SPECIFIER, () => ({ runSessionPicker: pickerFn }))
 }
 
@@ -106,9 +112,10 @@ beforeAll(async () => {
   realOrchestratorFns = {
     runStart: orchestrator.runStart,
     runResume: orchestrator.runResume,
-    runGateResume: orchestrator.runGateResume,
     runContinue: orchestrator.runContinue,
   }
+  const gateResumeEntry: GateResumeEntryModule = await import('../../sdd-runner/src/gate-resume-entry.js')
+  realGateResumeFn = gateResumeEntry.runGateResume
   const picker: PickerModule = await import('../../sdd-runner/src/tui-session-picker.js')
   realPickerFn = picker.runSessionPicker
 })

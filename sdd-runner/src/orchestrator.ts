@@ -34,7 +34,6 @@ import type { CalmStopController } from './stop-controller.js'
 
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 export type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
-export { runGateResume } from './extend-round.js'
 export { runContinue } from './continue.js'
 
 export interface AutonomyOverrides {
