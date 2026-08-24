@@ -14,7 +14,7 @@
 ## 3. Identity resolver
 
 - [x] 3.1 Write failing `tests/plugins/task-provider-github/identity-resolver.test.ts` (`setMockFetch`/`restoreFetch` + `captureRequests`): exact-login collaborator match ranks first and issues no `/search/users` request; fuzzy display-name/word match within collaborators; collaborator miss → exactly one `/search/users` fallback with both captured URLs and `permission=push` asserted on the collaborators call; no match anywhere → `[]`; `limit` respected (default 10); upstream failure → classified error rethrown (`error` logged, token never in logs). Verify: `bun test tests/plugins/task-provider-github/identity-resolver.test.ts` (red)
-- [ ] 3.2 Implement `plugins/task-provider-github/identity-resolver.ts`: `createGitHubIdentityResolver(config)` with the exported pure matcher (trim + lowercase normalize; exact login > name equality/word match > substring on login or name). Verify: `bun test tests/plugins/task-provider-github/identity-resolver.test.ts` (green)
+- [x] 3.2 Implement `plugins/task-provider-github/identity-resolver.ts`: `createGitHubIdentityResolver(config)` with the exported pure matcher (trim + lowercase normalize; exact login > name equality/word match > substring on login or name). Verify: `bun test tests/plugins/task-provider-github/identity-resolver.test.ts` (green)
 
 ## 4. Task history (issue events)
 
