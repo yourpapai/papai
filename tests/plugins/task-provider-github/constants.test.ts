@@ -25,7 +25,7 @@ const manifestCapabilities = (): string[] => {
 }
 
 describe('GITHUB_CAPABILITIES', () => {
-  test('equals exactly the eleven session-1 + comment/label capabilities', () => {
+  test('equals exactly the thirteen session-1+2 + activities/count capabilities', () => {
     expect(GITHUB_CAPABILITIES).toEqual(
       new Set([
         'projects.list',
@@ -39,6 +39,8 @@ describe('GITHUB_CAPABILITIES', () => {
         'labels.update',
         'labels.delete',
         'labels.assign',
+        'activities.read',
+        'tasks.count',
       ]),
     )
   })
