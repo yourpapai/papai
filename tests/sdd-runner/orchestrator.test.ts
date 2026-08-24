@@ -2856,3 +2856,163 @@ function rejectingStatusExec(args: readonly string[]): Promise<{ stdout: string;
   if (args[1] === 'status') return Promise.reject(new Error('change not found'))
   return Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 })
 }
+
+describe('runGateResume plan mode (D12)', () => {
+  const PLAN = {
+    children: [
+      { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+      { id: 'db-api', instruction: 'Rename the API route helpers.', deps: ['db-schema'] },
+    ],
+  }
+
+  async function seedPlanGateParent(fixture: ReturnType<typeof makeFixture>, gateMd: string): Promise<string> {
+    const runId = 'plan-gate-parent'
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'sidecars', 'plan.json'), JSON.stringify(PLAN))
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), '')
+    await materializeChildFiles(PLAN, runDir)
+    fs.writeFileSync(path.join(runDir, 'gate-1.md'), gateMd)
+    fs.writeFileSync(path.join(runDir, 'gate-hashes-1.json'), '{}\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir: fixture.deps.config.workDir,
+          changeName: 'composite',
+          stage: 'intake',
+          depth: null,
+          round: 0,
+          gate: { mode: 'plan', version: 1 },
+          status: 'running',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          plan: { childIds: ['db-schema', 'db-api'], digest: 'd'.repeat(16) },
+          children: { 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    return runId
+  }
+
+  const CHECKED_GATE = [
+    '## Plan gate — change composite',
+    '',
+    '- [x] C1 db-schema — Rename the schema columns.',
+    '- [x] C2 db-api — Rename the API route helpers. · deps: db-schema',
+    '',
+  ].join('\n')
+
+  it('an approved plan gate (hand-edited file) settles, emits answered mode plan, and drives runChildren', async () => {
+    const fixture = makeFixture({
+      'depth.json': JSON.stringify({
+        implicated_files: ['drizzle/x.sql'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'single-module child change',
+      }),
+      'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
+    })
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runGateResume(deps, runId, {})
+
+    expect(result.outcome).toBe('approved')
+    expect(result.version).toBe(1)
+    const parent = await loadRunState(deps.config.workDir, runId)
+    expect(parent.gate).toBe(null)
+    expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
+    expect(parent.children?.['db-api']).toEqual({ status: 'pending' })
+    const child = await loadRunState(deps.config.workDir, 'db-schema')
+    expect(child.gate).not.toBe(null)
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    const answered = gateAnsweredOf(events)
+    expect(answered).toHaveLength(1)
+    expect(answered[0]).toMatchObject({ mode: 'plan', version: 1 })
+    const spawn = events.filter(
+      (e): e is Extract<ReturnType<typeof readEvents>[number], { type: 'child_spawned' }> => e.type === 'child_spawned',
+    )
+    expect(spawn).toHaveLength(1)
+    expect(spawn[0]).toMatchObject({ child: 'db-schema', runId: 'db-schema' })
+    expect(fs.existsSync(fixture.changeDir.replace(fixture.changeName, 'composite'))).toBe(false)
+  })
+
+  it('an abort flag finalizes the gate aborted before any child exists', async () => {
+    const fixture = makeFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+
+    const result = await runGateResume(fixture.deps, runId, { abort: true })
+
+    expect(result.outcome).toBe('aborted')
+    const parent = await loadRunState(fixture.deps.config.workDir, runId)
+    expect(parent.status).toBe('aborted')
+    expect(parent.gate).toBe(null)
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    expect(events.filter((e) => e.type === 'child_spawned')).toHaveLength(0)
+    const answered = gateAnsweredOf(events)
+    expect(answered[0]).toMatchObject({ mode: 'plan', version: 1 })
+    expect(await loadRunState(fixture.deps.config.workDir, 'db-schema').catch(() => null)).toBe(null)
+  })
+
+  it('vetoes desugar through the render-then-parse grammar before routing (routing lands in 6.3)', async () => {
+    const fixture = makeFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+
+    const failure = await runGateResume(fixture.deps, runId, {
+      confirmAll: true,
+      vetoes: [{ id: 'C1', redirect: 'split the schema child' }],
+    }).catch((error: unknown) => error)
+    expect(errorMessageOf(failure)).toMatch(/plan-gate veto/u)
+    const md = fs.readFileSync(path.join(fixture.deps.config.workDir, 'runs', runId, 'gate-1.md'), 'utf8')
+    expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    expect(md).toContain('→ split the schema child')
+    expect(md).toContain('- [x] C2 db-api — Rename the API route helpers. · deps: db-schema')
+  })
+
+  it('an extend flag is rejected by the parser at plan mode (cap-hit only)', async () => {
+    const fixture = makeFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+
+    const failure = await runGateResume(fixture.deps, runId, { extend: true }).catch((error: unknown) => error)
+    expect(errorMessageOf(failure)).toMatch(/RUN 1 MORE.*plan gate.*cap-hit/u)
+  })
+
+  it('an unknown veto id fails before anything is written', async () => {
+    const fixture = makeFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const before = fs.readFileSync(path.join(fixture.deps.config.workDir, 'runs', runId, 'gate-1.md'), 'utf8')
+
+    const failure = await runGateResume(fixture.deps, runId, {
+      confirmAll: true,
+      vetoes: [{ id: 'C9' }],
+    }).catch((error: unknown) => error)
+    expect(errorMessageOf(failure)).toMatch(/unknown veto id: C9/u)
+    const after = fs.readFileSync(path.join(fixture.deps.config.workDir, 'runs', runId, 'gate-1.md'), 'utf8')
+    expect(after).toBe(before)
+  })
+})
+
+function gateAnsweredOf(
+  events: readonly ReturnType<typeof readEvents>[number][],
+): Extract<ReturnType<typeof readEvents>[number], { type: 'gate' }>[] {
+  return events.filter(
+    (e): e is Extract<ReturnType<typeof readEvents>[number], { type: 'gate' }> =>
+      e.type === 'gate' && e.action === 'answered',
+  )
+}

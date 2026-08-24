@@ -31,7 +31,7 @@ export interface PlanBranchOptions {
 const DEFAULT_FS: PlanFsDeps = { mkdir, writeFile, readdir, unlink }
 
 /** D4 row text: `<child-id> — <instruction first line>` plus deps/capabilities. */
-function gateRowText(child: PlanChild): string {
+export function gateRowText(child: PlanChild): string {
   const firstLine = child.instruction.split('\n')[0] ?? child.instruction
   const deps = child.deps.length > 0 ? ` · deps: ${child.deps.join(', ')}` : ''
   const capabilities =
@@ -64,8 +64,13 @@ export async function runPlanBranch(
   state.children = seeded
   await saveRunState(state, deps.now?.() ?? new Date())
   return presentGateAt(deps, state, ctx, PLAN_REVIEW_SURROGATE, 1, 'plan', {
-    children: ordered.map((child, index) => ({ id: `C${index + 1}`, text: gateRowText(child) })),
+    children: rowsOf(ordered),
   })
+}
+
+/** D4 rows: `C<n>` ids numbered in topo order, one per child. */
+function rowsOf(ordered: readonly PlanChild[]): { readonly id: string; readonly text: string }[] {
+  return ordered.map((child, index) => ({ id: `C${index + 1}`, text: gateRowText(child) }))
 }
 
 /** Injected nested-run seam (D7): the orchestrator supplies the real runStart. */

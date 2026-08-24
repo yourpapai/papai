@@ -1,0 +1,146 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+
+import { gateRowText, runChildren } from './children.js'
+import type { RunChildRun } from './children.js'
+import type { EventInput } from './events.js'
+import type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
+import type { OrchestratorDeps, StageContext } from './gate-digest.js'
+import { finalizeGate, logPathFor, nowOf } from './gate-digest.js'
+import type { GateChild } from './gate-model.js'
+import { desugarFlags } from './gate-session.js'
+import type { GateSessionView } from './gate-session.js'
+import { resumeGate, vetoRedirects } from './gate.js'
+import { PlanSchema } from './plan.js'
+import type { PlanChild } from './plan.js'
+import { saveRunState } from './run-state.js'
+import type { RunState } from './run-state.js'
+import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controller.js'
+
+/** D12 plan session view: child rows only — the TUI keeps early/final views until part 3. */
+function planSessionView(rows: readonly { readonly id: string; readonly text: string }[]): GateSessionView {
+  return {
+    gateMode: 'plan',
+    items: rows.map((row) => ({ kind: 'child', id: row.id, text: row.text, evidence: '', blastRadius: '' })),
+    blockers: [],
+    requiredAck: null,
+  }
+}
+
+/**
+ * D12 gate-resume rows: rebuild the expected `C<n>` rows from the current
+ * plan sidecar walked in `state.plan.childIds` order — the same numbering
+ * the presented digest used.
+ */
+export async function planGateRows(sidecarDir: string, state: RunState): Promise<readonly GateChild[]> {
+  const plan = PlanSchema.parse(JSON.parse(await readFile(path.join(sidecarDir, 'plan.json'), 'utf8')))
+  const byId = new Map(plan.children.map((child) => [child.id, child]))
+  const ordered: PlanChild[] = []
+  for (const id of state.plan?.childIds ?? []) {
+    const child = byId.get(id)
+    if (child === undefined) throw new Error(`plan sidecar has no child ${id}`)
+    ordered.push(child)
+  }
+  return ordered.map((child, index) => ({ id: `C${index + 1}`, text: gateRowText(child) }))
+}
+
+/**
+ * D12 decision collection: decision flags desugar through the D4
+ * render-then-parse functions onto the gate file; otherwise the hand-edited
+ * file is parsed as-is (no TUI session at plan mode in part 2).
+ */
+async function collectPlanDecision(
+  options: GateResumeOptions,
+  rows: readonly { readonly id: string; readonly text: string }[],
+  gateMdPath: string,
+): Promise<boolean> {
+  const hasDecisionFlags =
+    options.abort === true ||
+    options.confirmAll === true ||
+    options.extend === true ||
+    (options.vetoes?.length ?? 0) > 0
+  if (hasDecisionFlags) {
+    await desugarFlags(options, planSessionView(rows), (md) => writeFile(gateMdPath, md))
+    return true
+  }
+  return true
+}
+
+export interface PlanGateResumeDeps {
+  /** Nested-run starter: the orchestrator's `runStart` by default. */
+  readonly startChildRun: RunChildRun
+}
+
+/**
+ * D12 plan-gate resume: expected content from `sidecars/plan.json` +
+ * `state.plan`; approve → `runChildren`; abort → `finalizeGate('aborted')`
+ * before any child exists; extend is unreachable (the parser rejects `→ RUN
+ * 1 MORE` at plan mode first); veto rounds land with `settlePlanVeto` (6.3).
+ */
+export async function runPlanGateResume(
+  deps: OrchestratorDeps,
+  state: RunState,
+  options: GateResumeOptions,
+  emit: (event: EventInput) => void,
+  planDeps: PlanGateResumeDeps,
+): Promise<RunGateResumeResult> {
+  const version = state.gate?.version ?? 1
+  const sidecarDir = path.join(state.runDir, 'sidecars')
+  const gateMdPath = path.join(state.runDir, `gate-${version}.md`)
+  const rows = await planGateRows(sidecarDir, state)
+  const proceed = await collectPlanDecision(options, rows, gateMdPath)
+  if (!proceed) return { runId: state.runId, outcome: 'abandoned', version }
+  writeHolder(state.runDir)
+  deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
+  try {
+    const outcome = await resumeGate(
+      {
+        emit,
+        runDir: state.runDir,
+        changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', state.changeName),
+        driftCheck: () => Promise.resolve(),
+      },
+      { version, assumptions: [], blockers: [], children: rows, gateMode: 'plan' },
+    )
+    if (outcome.kind === 'aborted') return await finalizeGate(deps, state, 'aborted', version)
+    if (outcome.kind === 'approved') return await runApprovedPlan(deps, state, emit, version, planDeps)
+    if (outcome.kind === 'extend') throw new Error('plan gate: extend is unreachable (cap-hit only)')
+    throw new Error(
+      `plan-gate veto settling is not wired yet (vetoes: ${vetoRedirects(outcome)
+        .map((veto) => veto.id)
+        .join(', ')})`,
+    )
+  } finally {
+    removeHolder(state.runDir)
+    deps.unmountRunScreen?.()
+  }
+}
+
+/** Approve settles the plan gate (gate cleared, run continues) and drives the children. */
+async function runApprovedPlan(
+  deps: OrchestratorDeps,
+  state: RunState,
+  emit: (event: EventInput) => void,
+  version: number,
+  planDeps: PlanGateResumeDeps,
+): Promise<RunGateResumeResult> {
+  state.gate = null
+  state.gateDeadlineAt = null
+  state.gateDeadlineReArmed = false
+  await saveRunState(state, nowOf(deps))
+  const ctx: StageContext = {
+    cwd: deps.config.repoRoot,
+    changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', state.changeName),
+    sidecarDir: path.join(state.runDir, 'sidecars'),
+    emit,
+  }
+  const stop = createStopMarkerSeam(state.runDir)
+  await runChildren(deps, state, ctx, { runChildRun: planDeps.startChildRun, stop })
+  return { runId: state.runId, outcome: 'approved', version }
+}
