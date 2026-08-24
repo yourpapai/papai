@@ -4,7 +4,17 @@
 // See LICENSE in the project root for details.
 
 import type { AppError } from 'papai/plugin-types'
-import type { ListTasksParams, Project, Task, TaskListItem, TaskProvider, TaskSearchResult } from 'papai/plugin-types'
+import type {
+  Comment,
+  Label,
+  ListTasksParams,
+  Project,
+  Task,
+  TaskListItem,
+  TaskProvider,
+  TaskSearchResult,
+  TaskLabel,
+} from 'papai/plugin-types'
 import { providerError } from 'papai/plugin-types'
 
 import { logger } from '../../src/logger.js'
@@ -12,6 +22,22 @@ import { classifyGitHubError, GitHubClassifiedError } from './classify-error.js'
 import type { GitHubConfig } from './client.js'
 import { GITHUB_CAPABILITIES, GITHUB_TRAITS } from './constants.js'
 import { normalizeGitHubDueDateInput, normalizeGitHubListTaskParams } from './due-date.js'
+import {
+  githubCreateTaskComment,
+  githubDeleteTaskComment,
+  githubListTaskComments,
+  githubUpdateTaskComment,
+} from './operations/comments.js'
+import {
+  githubAddTaskLabels,
+  githubCreateLabel,
+  githubDeleteLabel,
+  githubGetTaskLabels,
+  githubListLabels,
+  githubRemoveTaskLabel,
+  githubUpdateLabel,
+  resolveLabelName,
+} from './operations/labels.js'
 import { githubGetProject, githubListProjects } from './operations/projects.js'
 import {
   githubCreateTask,
@@ -102,6 +128,61 @@ export class GitHubProvider implements TaskProvider {
 
   listProjects(): Promise<Project[]> {
     return githubListProjects(this.config)
+  }
+
+  getComments(taskId: string, params?: { limit?: number; offset?: number }): Promise<Comment[]> {
+    return githubListTaskComments(this.config, taskId, params)
+  }
+
+  addComment(taskId: string, body: string): Promise<Comment> {
+    return githubCreateTaskComment(this.config, taskId, body)
+  }
+
+  updateComment(params: { taskId: string; commentId: string; body: string }): Promise<Comment> {
+    return githubUpdateTaskComment(this.config, params.taskId, params.commentId, params.body)
+  }
+
+  removeComment(params: { taskId: string; commentId: string }): Promise<{ id: string }> {
+    return githubDeleteTaskComment(this.config, params.taskId, params.commentId)
+  }
+
+  listLabels(): Promise<Label[]> {
+    return githubListLabels(this.config)
+  }
+
+  listTaskLabels(taskId: string): Promise<TaskLabel[]> {
+    return githubGetTaskLabels(this.config, taskId)
+  }
+
+  async getLabelByName(labelName: string): Promise<Label[]> {
+    const labels = await githubListLabels(this.config)
+    return labels.filter((label) => label.name === labelName)
+  }
+
+  createLabel(params: { name: string; color?: string }): Promise<Label> {
+    return githubCreateLabel(this.config, params)
+  }
+
+  async updateLabel(labelId: string, params: { name?: string; color?: string }): Promise<Label> {
+    const name = await resolveLabelName(this.config, labelId)
+    return githubUpdateLabel(this.config, name, params)
+  }
+
+  async removeLabel(labelId: string): Promise<{ id: string }> {
+    const name = await resolveLabelName(this.config, labelId)
+    return githubDeleteLabel(this.config, name)
+  }
+
+  async addTaskLabel(taskId: string, labelId: string): Promise<{ taskId: string; labelId: string }> {
+    const name = await resolveLabelName(this.config, labelId)
+    await githubAddTaskLabels(this.config, taskId, [name])
+    return { taskId, labelId }
+  }
+
+  async removeTaskLabel(taskId: string, labelId: string): Promise<{ taskId: string; labelId: string }> {
+    const name = await resolveLabelName(this.config, labelId)
+    await githubRemoveTaskLabel(this.config, taskId, name)
+    return { taskId, labelId }
   }
 
   buildTaskUrl(taskId: string, _projectId?: string): string {

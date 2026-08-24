@@ -3,9 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { Project, Task, TaskListItem, TaskSearchResult, TaskLabel, UserRef } from 'papai/plugin-types'
+import type {
+  Comment,
+  Label,
+  Project,
+  Task,
+  TaskListItem,
+  TaskSearchResult,
+  TaskLabel,
+  UserRef,
+} from 'papai/plugin-types'
 
+import type { GitHubComment } from './schemas/comment.js'
 import type { GitHubIssue, GitHubLabel } from './schemas/issue.js'
+import type { GitHubRepoLabel } from './schemas/label.js'
 import type { GitHubRepo } from './schemas/repo.js'
 import type { GitHubUser } from './schemas/user.js'
 
@@ -74,3 +85,18 @@ export const mapRepoToProject = (repo: GitHubRepo): Project => ({
   description: repo.description,
   url: repo.html_url,
 })
+
+export const mapCommentToComment = (comment: GitHubComment): Comment => ({
+  id: String(comment.id),
+  body: comment.body,
+  author: comment.user?.login,
+  createdAt: comment.created_at,
+})
+
+export const mapRepoLabelToLabel = (label: GitHubRepoLabel): Label => ({
+  id: String(label.id),
+  name: label.name,
+  color: label.color,
+})
+
+export const mapIssueLabelToLabel = (label: GitHubLabel): Label => mapLabel(label)

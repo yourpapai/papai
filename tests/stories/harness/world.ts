@@ -36,6 +36,7 @@ import {
 } from '../../../src/scheduler.js'
 import { createScenarioChat, type ScenarioChat, type ScenarioReply } from './chat.js'
 import { createScenarioEvents, type ScenarioEvent, type ScenarioEvents } from './events.js'
+import { createFakeGitHubResponder } from './fake-github/responder.js'
 import { createFakeKaneoResponder } from './fake-kaneo/responder.js'
 import { createFakeYouTrackResponder } from './fake-youtrack/responder.js'
 import {
@@ -66,6 +67,11 @@ export const REAL_KANEO_BASE_URL = `https://${REAL_KANEO_HOST}`
 export const REAL_KANEO_CREDENTIAL = 'fake-token'
 export const REAL_KANEO_WORKSPACE_ID = 'workspace-1'
 
+const REAL_GITHUB_HOST = 'github.invalid'
+export const REAL_GITHUB_BASE_URL = `https://${REAL_GITHUB_HOST}`
+export const REAL_GITHUB_REPO = 'acme/papai'
+export const REAL_GITHUB_TOKEN = 'fake-token'
+
 type RealProviderSetup = Readonly<{
   instanceConfig: Record<string, string>
   host: string
@@ -86,6 +92,11 @@ const REAL_TASK_PROVIDER_SETUP: Readonly<Record<RealTaskProviderType, RealProvid
     },
     host: REAL_KANEO_HOST,
     responder: createFakeKaneoResponder,
+  },
+  github: {
+    instanceConfig: { repo: REAL_GITHUB_REPO, baseUrl: REAL_GITHUB_BASE_URL },
+    host: REAL_GITHUB_HOST,
+    responder: createFakeGitHubResponder,
   },
 }
 

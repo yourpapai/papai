@@ -103,7 +103,7 @@ export type CatalogCoverage =
     }>
 
 export const CATALOG_SOURCE =
-  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census); extended 2026-07-29 with 21 uncatalogued-cluster behavior ids (@0/@3/@4) (phase3-catalog-foundation); extended 2026-08-01 with 3 real-Kaneo (@0) chat-loop story ids attached to the YouTrack real-provider records (t0-real-kaneo-provider); extended 2026-08-03 with 1 analytics settings (@0) story id (analytics-settings-census); extended 2026-08-04 with 4 aggregate delivery (@0) ids (analytics-aggregate-delivery-coverage); extended 2026-08-20 with 5 Discord/Mattermost adapter (@3) ids (tier3-chat-adapter-coverage); extended 2026-08-21 with 3 chat participant resolution (@0) ids (participant-resolution-stories)' as const
+  'scenario-catalog snapshot supplied 2026-07-13; extended 2026-07-23 with 12 SCN-parity-* provider-real (@1) ids (tier1-provider-real-parity); extended 2026-07-24 with 17 SCN-parity-* domain-retrofit (@1) ids (tier1b-e2e-parity-retrofit); extended 2026-07-24 with 8 SCN-* process-real smoke (@2) ids (tier2-process-smoke); extended 2026-07-27 with 10 real-YouTrack (@0) ids (t0-real-youtrack-provider); extended 2026-07-28 with 18 previously uncataloged story ids (story-catalog-census); extended 2026-07-29 with 21 uncatalogued-cluster behavior ids (@0/@3/@4) (phase3-catalog-foundation); extended 2026-08-01 with 3 real-Kaneo (@0) chat-loop story ids attached to the YouTrack real-provider records (t0-real-kaneo-provider); extended 2026-08-03 with 1 analytics settings (@0) story id (analytics-settings-census); extended 2026-08-04 with 4 aggregate delivery (@0) ids (analytics-aggregate-delivery-coverage); extended 2026-08-20 with 5 Discord/Mattermost adapter (@3) ids (tier3-chat-adapter-coverage); extended 2026-08-21 with 3 chat participant resolution (@0) ids (participant-resolution-stories); extended 2026-08-24 with 2 real-GitHub (@0) comment and label ids (github-real-comments-labels)' as const
 
 export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-create-update',
@@ -374,6 +374,9 @@ export const CATALOG_SCENARIO_IDS = Object.freeze([
   'SCN-task-kaneo-status-lifecycle',
   'SCN-task-kaneo-status-delete-unconfirmed',
   'SCN-task-kaneo-label-lifecycle',
+  // Real-GitHub comment and label operations (github-real-comments-labels)
+  'SCN-task-github-real-comments',
+  'SCN-task-github-real-labels',
   // Phase 5 — Discord/Mattermost platform-adapter scenarios (tier3-chat-adapter-coverage)
   'SCN-interaction-discord-reply-mention',
   'SCN-interaction-discord-status-lifecycle',
@@ -1562,6 +1565,18 @@ const EXECUTABLE_STORY_MAPPINGS: Partial<Record<CatalogScenarioId, ExecutableSto
     verifiedAt: '2026-08-20',
     storyIds: [
       'tests/stories/tasks/kaneo-statuses-and-labels.story.test.ts#SCN-task-kaneo-label-lifecycle: attaches, renames and detaches a Kaneo label through the real provider',
+    ],
+  },
+  'SCN-task-github-real-comments': {
+    verifiedAt: '2026-08-24',
+    storyIds: [
+      'tests/stories/tasks/github-real-comments-labels.story.test.ts#SCN-task-github-real-comments: adds, edits, lists and removes GitHub issue comments through the real provider',
+    ],
+  },
+  'SCN-task-github-real-labels': {
+    verifiedAt: '2026-08-24',
+    storyIds: [
+      'tests/stories/tasks/github-real-comments-labels.story.test.ts#SCN-task-github-real-labels: creates, assigns, renames and removes GitHub labels through the real provider',
     ],
   },
   'SCN-task-youtrack-real-create': {
