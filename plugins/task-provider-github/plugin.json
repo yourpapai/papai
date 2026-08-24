@@ -9,7 +9,19 @@
   "contributes": {
     "taskProviderTypes": ["github"]
   },
-  "providerCapabilities": ["projects.list", "projects.read"],
+  "providerCapabilities": [
+    "projects.list",
+    "projects.read",
+    "comments.read",
+    "comments.create",
+    "comments.update",
+    "comments.delete",
+    "labels.list",
+    "labels.create",
+    "labels.update",
+    "labels.delete",
+    "labels.assign"
+  ],
   "providerConfigSchema": [
     {
       "key": "repo",

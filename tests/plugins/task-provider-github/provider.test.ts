@@ -101,7 +101,21 @@ describe('GitHubProvider', () => {
     const provider: TaskProvider = makeProvider()
     expect(provider.name).toBe('github')
     expect(provider.capabilities).toEqual(GITHUB_CAPABILITIES)
-    expect(provider.capabilities).toEqual(new Set(['projects.list', 'projects.read']))
+    expect(provider.capabilities).toEqual(
+      new Set([
+        'projects.list',
+        'projects.read',
+        'comments.read',
+        'comments.create',
+        'comments.update',
+        'comments.delete',
+        'labels.list',
+        'labels.create',
+        'labels.update',
+        'labels.delete',
+        'labels.assign',
+      ]),
+    )
     expect(provider.traits).toEqual(GITHUB_TRAITS)
     expect(provider.traits.size).toBe(0)
     expect(provider.preferredUserIdentifier).toBe('login')

@@ -7,10 +7,19 @@ import type { TaskCapability } from 'papai/plugin-types'
 
 import type { TaskProviderTrait } from '../../src/providers/types.js'
 
-/** Capabilities advertised by the GitHub Issues provider (session 1 surface). */
+/** Capabilities advertised by the GitHub Issues provider. */
 export const GITHUB_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCapability>([
   'projects.list',
   'projects.read',
+  'comments.read',
+  'comments.create',
+  'comments.update',
+  'comments.delete',
+  'labels.list',
+  'labels.create',
+  'labels.update',
+  'labels.delete',
+  'labels.assign',
 ])
 
 /** GitHub Issues carry no provider-specific behavioral traits in session 1. */
