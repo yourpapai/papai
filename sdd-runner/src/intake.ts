@@ -6,6 +6,7 @@
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { DepthClassificationSchema, runStageAgent } from './agent-layer.js'
 import type { AgentLayerDeps, DepthSignals } from './agent-layer.js'
+import { PLAN_REPLAN_PASSES } from './config.js'
 import type { DepthProfile, EventInput } from './events.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { PlanSchema, topoSortChildren } from './plan.js'
@@ -87,9 +88,9 @@ export function buildEstimatorPrompt(taskText: string, cwd: string): string {
   ].join('\n')
 }
 
-function buildPlannerPrompt(taskText: string, cwd: string): string {
+function buildPlannerPrompt(taskText: string, cwd: string, validationError: string | null = null): string {
   const target = agentWritePath(cwd, 'plan.json')
-  return [
+  const lines = [
     'You are a read-only task planner for a spec-driven development pipeline.',
     'Decompose the task into child runs that each fit one change. Do not edit anything.',
     '',
@@ -99,15 +100,44 @@ function buildPlannerPrompt(taskText: string, cwd: string): string {
     `Write your plan as JSON to ${target} with this shape:`,
     '{"children": [{"id": string, "instruction": string, "deps": string[], "capabilities"?: string[]}]}',
     'Every dep must reference another child id; order children so dependencies come first.',
-  ].join('\n')
+  ]
+  if (validationError !== null) {
+    lines.push(
+      '',
+      'Previous plan failed structural validation:',
+      validationError,
+      'Fix these errors in the revised plan.',
+    )
+  }
+  return lines.join('\n')
 }
 
-async function spawnPlanner(deps: IntakeDeps, options: IntakeOptions): Promise<PlanChild[]> {
+export interface PlannerOptions {
+  readonly changeName: string
+  readonly taskText: string
+}
+
+/**
+ * Structural replan loop (D3): JSON-shape failures retry inside `runStageAgent`;
+ * structural failures from `validatePlan`/`topoSortChildren` run after the spawn,
+ * so each pass appends the validation error and respawns, bounded by
+ * `PLAN_REPLAN_PASSES`, then fails loudly naming the structural errors.
+ */
+export function runPlanner(deps: IntakeDeps, options: PlannerOptions): Promise<PlanChild[]> {
+  return attemptPlanner(deps, options, null, 0)
+}
+
+async function attemptPlanner(
+  deps: IntakeDeps,
+  options: PlannerOptions,
+  validationError: string | null,
+  pass: number,
+): Promise<PlanChild[]> {
   const plan = await runStageAgent(deps.agent, {
     role: 'planner',
     changeName: options.changeName,
     cwd: deps.cwd,
-    prompt: buildPlannerPrompt(options.taskText, deps.cwd),
+    prompt: buildPlannerPrompt(options.taskText, deps.cwd, validationError),
     outputPath: 'plan.json',
     outputSchema: PlanSchema,
     label: 'planner',
@@ -115,7 +145,17 @@ async function spawnPlanner(deps: IntakeDeps, options: IntakeOptions): Promise<P
     round: 0,
     sidecarDir: deps.sidecarDir,
   })
-  return topoSortChildren(plan.value)
+  try {
+    return topoSortChildren(plan.value)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    if (pass >= PLAN_REPLAN_PASSES) {
+      throw new Error(`planner failed structural validation after ${PLAN_REPLAN_PASSES} replan pass: ${detail}`, {
+        cause: error,
+      })
+    }
+    return attemptPlanner(deps, options, detail, pass + 1)
+  }
 }
 
 export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promise<IntakeResult> {
@@ -156,7 +196,7 @@ export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promi
     ...(disagreement ? { disagreement: true } : {}),
   })
   if (oversize) {
-    const children = await spawnPlanner(deps, options)
+    const children = await runPlanner(deps, options)
     return { kind: 'plan', children }
   }
   await deps.driver.newChange(options.changeName, 'auto-sdd')
