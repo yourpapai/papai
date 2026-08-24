@@ -13,7 +13,7 @@ pins. Reference: `specs/github-comments-labels/spec.md` (what), `design.md` (how
 ## 2. Mappers
 
 - [x] 2.1 Write failing cases in `tests/plugins/task-provider-github/mappers.test.ts`: comment → normalized `Comment` (`id: String(id)`, `body`, `author: user?.login` absent when user null, `createdAt`); repo label → `Label` (`{ id: String(id), name, color }`); string-form issue label → `{ id: name, name }` — verify with `bun test tests/plugins/task-provider-github/mappers.test.ts`
-- [ ] 2.2 Add the comment and label mappers to `plugins/task-provider-github/mappers.ts` until the mapper suite passes — verify with `bun test tests/plugins/task-provider-github/mappers.test.ts`
+- [x] 2.2 Add the comment and label mappers to `plugins/task-provider-github/mappers.ts` until the mapper suite passes — verify with `bun test tests/plugins/task-provider-github/mappers.test.ts`
 
 ## 3. Comment operations
 
