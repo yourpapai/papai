@@ -56,6 +56,6 @@ Spec: `specs/agent-fix-command/spec.md`; how: design D1–D7.
 
 ## 8. Full verification
 
-- [ ] 8.1 Run the whole workspace suite green: `bun test tests/opencode-agent/`
-- [ ] 8.2 Run the repo checks the change can reach: `bun run typecheck && bun run lint && bun workflows:lint`
-- [ ] 8.3 Reconcile `openspec/changes/opencode-agent-fix-command/` artifacts with the implementation before archive (spec scenarios ↔ sections 1–6, design D1–D7 ↔ tasks) and confirm every spec scenario has a pinning test. Verify: `openspec validate opencode-agent-fix-command --strict`
+- [x] 8.1 Run the whole workspace suite green: `bun test tests/opencode-agent/`
+- [x] 8.2 Run the repo checks the change can reach: `bun run typecheck && bun run lint && bun workflows:lint`
+- [x] 8.3 Reconcile `openspec/changes/opencode-agent-fix-command/` artifacts with the implementation before archive (spec scenarios ↔ sections 1–6, design D1–D7 ↔ tasks) and confirm every spec scenario has a pinning test. Verify: `openspec validate opencode-agent-fix-command --strict`

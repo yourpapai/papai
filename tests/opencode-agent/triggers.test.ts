@@ -402,6 +402,23 @@ describe('applyTrigger · /fix past the CI-fix ceiling (D3)', () => {
     expect(sections.filter((body) => body.includes('AGENT_MAX_CI_ATTEMPTS'))).toHaveLength(2)
   })
 
+  it('raising the ceiling makes the very same /fix work', async () => {
+    // The spec's remedy scenario: because the refusal left the state
+    // byte-identical, a bigger AGENT_MAX_CI_ATTEMPTS and the same command is
+    // the whole recovery — no re-arming, no new pull request required.
+    const { sections, recording } = withRecordingReply()
+
+    const refused = await applyTrigger(fixInput(spent(), sections, recording))
+    expect(refused.halt?.status).toBe('failed')
+
+    recording.deps.config.maxCiAttempts = 5
+    const accepted = await applyTrigger(fixInput(spent(), sections, recording))
+
+    expect(accepted.halt).toBeNull()
+    expect(accepted.state.phase).toBe('CI_FIX')
+    expect(accepted.state.ciAttempts).toBe(3)
+  })
+
   it('a /fix with no pull request is a wrong-command refusal, never a spent one', async () => {
     const { sections, recording } = withRecordingReply()
     const noPr = baseState({ phase: 'COMPLETE', ciAttempts: 2 })
