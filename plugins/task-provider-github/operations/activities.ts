@@ -55,7 +55,7 @@ const mapEventToActivity = (event: GitHubIssueEvent): Activity | null => {
  * Issue events → activity history. The endpoint has no server-side filters,
  * so every page is fetched (bounded by events-per-issue), unknown types are
  * dropped, and params apply client-side in a fixed order: author/category
- * equality, start/end ISO-string bounds, deterministic ascending timestamp
+ * equality, start/end instant bounds, deterministic ascending timestamp
  * sort, optional reverse, then the limit/offset slice.
  */
 export async function githubListTaskEvents(
@@ -74,8 +74,8 @@ export async function githubListTaskEvents(
     const filtered = activities.filter((activity) => {
       if (params?.author !== undefined && activity.author !== params.author) return false
       if (params?.categories !== undefined && !params.categories.includes(activity.category)) return false
-      if (params?.start !== undefined && activity.timestamp < params.start) return false
-      if (params?.end !== undefined && activity.timestamp > params.end) return false
+      if (params?.start !== undefined && Date.parse(activity.timestamp) < Date.parse(params.start)) return false
+      if (params?.end !== undefined && Date.parse(activity.timestamp) > Date.parse(params.end)) return false
       return true
     })
     filtered.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0))

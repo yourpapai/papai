@@ -189,6 +189,23 @@ describe('githubListTaskEvents', () => {
     expect(activities[0]?.id).toBe('2')
   })
 
+  test('start/end bounds compare instants when boundaries carry non-Z offsets', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    const page = [
+      issueEvent({ id: 1, event: 'commented', created_at: '2011-04-11T09:59:59Z' }),
+      issueEvent({ id: 2, event: 'commented', created_at: '2011-04-11T10:00:00Z' }),
+      issueEvent({ id: 3, event: 'commented', created_at: '2011-04-11T10:00:01Z' }),
+      issueEvent({ id: 4, event: 'commented', created_at: '2011-04-11T12:30:00Z' }),
+    ]
+    setMockFetch(captureRequests(calls, () => ({ data: page })).handler)
+    const activities = await githubListTaskEvents(config, '1347', {
+      start: '2011-04-11T12:00:00+02:00',
+      end: '2011-04-11T13:00:00+02:00',
+    })
+    expect(activities.map((activity) => activity.id)).toEqual(['2', '3'])
+  })
+
   test('sorts ascending, reverses, then slices with limit/offset', async () => {
     mockLogger()
     const calls: CapturedRequest[] = []
