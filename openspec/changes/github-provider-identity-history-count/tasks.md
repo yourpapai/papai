@@ -18,7 +18,7 @@
 
 ## 4. Task history (issue events)
 
-- [ ] 4.1 Write failing `tests/plugins/task-provider-github/operations/activities.test.ts`: hits `/repos/{o}/{r}/issues/{n}/events` and follows pagination; per-event mapping (`assigned`→assignee+login, `labeled`/`unlabeled`→label+name added/removed, `closed`→status+`closed`, `reopened`→status+`open`, `commented`→comment); unknown event types dropped; actor-less events carry no author; client-side `author`/`categories`/`start`/`end`/`reverse`/`limit`/`offset` ordering per design (filter → ascending sort → reverse → slice); 404 → task-not-found `AppError` code. Verify: `bun test tests/plugins/task-provider-github/operations/activities.test.ts` (red)
+- [x] 4.1 Write failing `tests/plugins/task-provider-github/operations/activities.test.ts`: hits `/repos/{o}/{r}/issues/{n}/events` and follows pagination; per-event mapping (`assigned`→assignee+login, `labeled`/`unlabeled`→label+name added/removed, `closed`→status+`closed`, `reopened`→status+`open`, `commented`→comment); unknown event types dropped; actor-less events carry no author; client-side `author`/`categories`/`start`/`end`/`reverse`/`limit`/`offset` ordering per design (filter → ascending sort → reverse → slice); 404 → task-not-found `AppError` code. Verify: `bun test tests/plugins/task-provider-github/operations/activities.test.ts` (red)
 - [ ] 4.2 Implement `plugins/task-provider-github/operations/activities.ts` (`githubListTaskEvents`, map-then-filter pipeline, errors classified with `{ taskId }`). Verify: `bun test tests/plugins/task-provider-github/operations/activities.test.ts` (green)
 
 ## 5. Task counting
