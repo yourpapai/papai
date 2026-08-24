@@ -37,7 +37,7 @@ pins. Reference: `specs/github-comments-labels/spec.md` (what), `design.md` (how
 
 ## 7. Docs
 
-- [ ] 7.1 Update `plugins/task-provider-github/README.md`: replace the "comments/labels are not offered" statement with the nine new capabilities; confirm no `docs/architecture/*.md` page references the session-1 capability set (grep for `projects.list` under `docs/`) — verify with `rg -n "comments|labels" plugins/task-provider-github/README.md && rg -n "projects.list" docs/ || true`
+- [x] 7.1 Update `plugins/task-provider-github/README.md`: replace the "comments/labels are not offered" statement with the nine new capabilities; confirm no `docs/architecture/*.md` page references the session-1 capability set (grep for `projects.list` under `docs/`) — verify with `rg -n "comments|labels" plugins/task-provider-github/README.md && rg -n "projects.list" docs/ || true`
 
 ## 8. Full verification
 
