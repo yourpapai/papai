@@ -70,7 +70,9 @@ export function buildEstimatorPrompt(taskText: string, cwd: string): string {
     `Write your classification as JSON to ${target} with this shape:`,
     '{"implicated_files": string[], "signals": {"cross_module": boolean, "db_migration": boolean,',
     ' "provider_surface": boolean, "credentials": boolean, "novelty": "new-subsystem" | "existing-modules"},',
-    ' "rationale": string}',
+    ' "oversize": boolean, "rationale": string}',
+    'Set oversize true only when the task declares scope too large for one change and must be',
+    'decomposed into child runs; false otherwise.',
     'Judge novelty from code structure (new top-level module vs existing modules), not from openspec/specs/.',
   ].join('\n')
 }

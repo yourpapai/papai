@@ -8,7 +8,6 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
-import { parsePorcelainPaths } from '../../mutation-improve/src/diff-guard.js'
 import { agentWritePath, runAgent } from '../../review-loop/src/agent-runner.js'
 import type { AgentUsage, SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { createAgentReporter } from './agent-reporter.js'
@@ -16,6 +15,7 @@ import { INACTIVITY_TIMEOUT_MS, WALL_CLOCK_TIMEOUT_MS, modelFor } from './config
 import type { AgentRole, ExecGitFn, RunnerConfig } from './config.js'
 import type { EventInput } from './events.js'
 import { nextSessionAttempt, recordSessionId, settleSessionAttempt, transcriptPathFor } from './session-ledger.js'
+import { guardWorkingTree, snapshotWorkingTree } from './working-tree-guard.js'
 
 export const FindingSchema = z.object({
   id: z.string().min(1),
@@ -70,6 +70,7 @@ export const DepthClassificationSchema = z.object({
   signals: DepthSignalsSchema,
   rationale: z.string().min(1),
   capabilities: z.array(z.string().min(1)).optional(),
+  oversize: z.boolean().optional(),
 })
 export type DepthClassification = z.infer<typeof DepthClassificationSchema>
 
@@ -107,37 +108,7 @@ export interface AgentRunInfo<T> {
   readonly attempts: number
 }
 
-export class DiffGuardViolationError extends Error {
-  readonly violations: readonly string[]
-
-  constructor(violations: readonly string[]) {
-    super(`agent edited files outside the change folder: ${violations.join(', ')}`)
-    this.name = 'DiffGuardViolationError'
-    this.violations = violations
-  }
-}
-
-const MAX_VALIDATION_ATTEMPTS = 2
-const ALLOWED_PREFIX = 'openspec/changes/'
-
-function parseDirty(stdout: string): string[] {
-  return stdout
-    .split('\n')
-    .filter((line) => line.trim().length > 0)
-    .flatMap(parsePorcelainPaths)
-    .filter((entry) => entry.length > 0)
-}
-
-async function snapshotWorkingTree(execGit: ExecGitFn, cwd: string): Promise<Set<string>> {
-  const { stdout } = await execGit(cwd, ['status', '--porcelain', '--untracked-files=all'])
-  return new Set(parseDirty(stdout))
-}
-
-async function guardWorkingTree(execGit: ExecGitFn, cwd: string, before: Set<string>): Promise<void> {
-  const after = await snapshotWorkingTree(execGit, cwd)
-  const violations = [...after].filter((entry) => !before.has(entry) && !entry.startsWith(ALLOWED_PREFIX))
-  if (violations.length > 0) throw new DiffGuardViolationError(violations)
-}
+export const MAX_VALIDATION_ATTEMPTS = 2
 
 interface ContinuationSpawn {
   readonly sessionId: string

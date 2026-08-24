@@ -4,12 +4,14 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, it } from 'bun:test'
+import assert from 'node:assert'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
 import { AgentUsageSchema, appendEvent, readEvents, stampEvent } from '../../sdd-runner/src/events.js'
 import { EventInputSchema, SddEventSchema } from '../../sdd-runner/src/events.js'
+import type { SddEvent } from '../../sdd-runner/src/events.js'
 
 const tmpDirs: string[] = []
 
@@ -214,6 +216,47 @@ describe('L2 semantic events', () => {
     const log = makeLog()
     appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1 }, at('00'))
     expect(readEvents(log)[0]).toMatchObject({ type: 'gate', mode: 'early', version: 1 })
+  })
+})
+
+describe('depth event oversize verdict', () => {
+  it('stamps a depth event carrying oversize and round-trips it through the log', () => {
+    const input = {
+      altitude: 'L2',
+      type: 'depth',
+      profile: 'M',
+      rationale: 'declares a multi-module scope',
+      source: 'estimator',
+      oversize: true,
+    } as const
+    const stamped = stampEvent(input, 4, '2026-08-10T10:00:00.000Z')
+    expect(stamped).toMatchObject({ seq: 4, type: 'depth', oversize: true })
+    expect(EventInputSchema.parse(input)).toMatchObject({ type: 'depth', oversize: true })
+    const log = makeLog()
+    appendEvent(log, input, at('00'))
+    expect(readEvents(log)[0]).toMatchObject({ seq: 1, type: 'depth', oversize: true })
+  })
+
+  it('parses pre-change depth lines without oversize, reading undefined as false', () => {
+    const log = makeLog()
+    appendEvent(
+      log,
+      { altitude: 'L2', type: 'depth', profile: 'S', rationale: 'single-file bugfix', source: 'override' },
+      at('00'),
+    )
+    appendEvent(log, { altitude: 'L2', type: 'stage_enter', stage: 'intake' }, at('01'))
+    const events = readEvents(log)
+    expect(events).toHaveLength(2)
+    const depth = events.find((e): e is Extract<SddEvent, { type: 'depth' }> => e.type === 'depth')
+    assert(depth !== undefined)
+    expect(depth.oversize).toBeUndefined()
+  })
+
+  it('rejects a depth event whose oversize is not a boolean', () => {
+    const log = makeLog()
+    const raw = '{"altitude":"L2","type":"depth","profile":"M","rationale":"x","source":"estimator","oversize":"yes"}'
+    expect(() => appendEvent(log, JSON.parse(raw), at('00'))).toThrow()
+    expect(fs.existsSync(log)).toBe(false)
   })
 })
 

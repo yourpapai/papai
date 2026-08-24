@@ -153,6 +153,7 @@ const DepthEvent = z.object({
   rationale: z.string().min(1),
   source: z.enum(['override', 'estimator', 'prescreen']),
   disagreement: z.boolean().optional(),
+  oversize: z.boolean().optional(),
 })
 
 const GateEvent = z.object({
