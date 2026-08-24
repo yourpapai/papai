@@ -14,6 +14,7 @@ import type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import { finalizeGate, logPathFor, nowOf } from './gate-digest.js'
 import type { GateChild } from './gate-model.js'
+import { settlePlanVeto } from './gate-resume-tail.js'
 import { desugarFlags } from './gate-session.js'
 import type { GateSessionView } from './gate-session.js'
 import { resumeGate, vetoRedirects } from './gate.js'
@@ -111,11 +112,7 @@ export async function runPlanGateResume(
     if (outcome.kind === 'aborted') return await finalizeGate(deps, state, 'aborted', version)
     if (outcome.kind === 'approved') return await runApprovedPlan(deps, state, emit, version, planDeps)
     if (outcome.kind === 'extend') throw new Error('plan gate: extend is unreachable (cap-hit only)')
-    throw new Error(
-      `plan-gate veto settling is not wired yet (vetoes: ${vetoRedirects(outcome)
-        .map((veto) => veto.id)
-        .join(', ')})`,
-    )
+    return await settlePlanVeto(deps, state, stageCtxOf(deps, state, emit), vetoRedirects(outcome), version)
   } finally {
     removeHolder(state.runDir)
     deps.unmountRunScreen?.()
@@ -134,13 +131,16 @@ async function runApprovedPlan(
   state.gateDeadlineAt = null
   state.gateDeadlineReArmed = false
   await saveRunState(state, nowOf(deps))
-  const ctx: StageContext = {
+  const stop = createStopMarkerSeam(state.runDir)
+  await runChildren(deps, state, stageCtxOf(deps, state, emit), { runChildRun: planDeps.startChildRun, stop })
+  return { runId: state.runId, outcome: 'approved', version }
+}
+
+function stageCtxOf(deps: OrchestratorDeps, state: RunState, emit: (event: EventInput) => void): StageContext {
+  return {
     cwd: deps.config.repoRoot,
     changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', state.changeName),
     sidecarDir: path.join(state.runDir, 'sidecars'),
     emit,
   }
-  const stop = createStopMarkerSeam(state.runDir)
-  await runChildren(deps, state, ctx, { runChildRun: planDeps.startChildRun, stop })
-  return { runId: state.runId, outcome: 'approved', version }
 }

@@ -59,6 +59,7 @@ interface Fixture {
   readonly rendered: EventInput[]
   readonly stdoutLines: string[]
   readonly spawnOrder: string[]
+  readonly prompts: string[]
 }
 
 function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
@@ -70,6 +71,7 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
   const rendered: EventInput[] = []
   const stdoutLines: string[] = []
   const spawnOrder: string[] = []
+  const prompts: string[] = []
 
   const sidecars: Record<string, string> = {
     'draft-proposal.json': JSON.stringify({
@@ -117,6 +119,7 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
   }
   const spawn: SpawnFn = (_command, args, options) => {
     const prompt = String(args[args.length - 1])
+    prompts.push(prompt)
     const match = prompt.match(/\.review-loop\/([\w-]+\.json)/u)
     const basename = match?.[1] ?? 'unknown.json'
     spawnOrder.push(basename)
@@ -205,6 +208,7 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
     rendered,
     stdoutLines,
     spawnOrder,
+    prompts,
   }
 }
 
@@ -2970,7 +2974,7 @@ describe('runGateResume plan mode (D12)', () => {
     expect(await loadRunState(fixture.deps.config.workDir, 'db-schema').catch(() => null)).toBe(null)
   })
 
-  it('vetoes desugar through the render-then-parse grammar before routing (routing lands in 6.3)', async () => {
+  it('vetoes desugar through the render-then-parse grammar before routing into the replan', async () => {
     const fixture = makeFixture()
     const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
 
@@ -2978,7 +2982,11 @@ describe('runGateResume plan mode (D12)', () => {
       confirmAll: true,
       vetoes: [{ id: 'C1', redirect: 'split the schema child' }],
     }).catch((error: unknown) => error)
-    expect(errorMessageOf(failure)).toMatch(/plan-gate veto/u)
+    // No plan.json sidecar override in this fixture: the routed replan planner
+    // fails schema validation on the fake '{}' output — proving the veto
+    // reached runPlanner after the desugar wrote the gate file.
+    expect(errorMessageOf(failure)).toMatch(/planner failed validation/u)
+    expect(fixture.spawnOrder.filter((name) => name === 'plan.json').length).toBeGreaterThan(0)
     const md = fs.readFileSync(path.join(fixture.deps.config.workDir, 'runs', runId, 'gate-1.md'), 'utf8')
     expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
     expect(md).toContain('→ split the schema child')
@@ -3016,3 +3024,174 @@ function gateAnsweredOf(
       e.type === 'gate' && e.action === 'answered',
   )
 }
+
+describe('settlePlanVeto — one re-plan per veto round, unbounded rounds (D6)', () => {
+  const INITIAL_PLAN = {
+    children: [
+      { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+      { id: 'db-api', instruction: 'Rename the API route helpers.', deps: ['db-schema'] },
+    ],
+  }
+  const REVISED_PLAN = {
+    children: [
+      { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+      { id: 'db-migrations', instruction: 'Add the migration files.', deps: ['db-schema'] },
+      { id: 'db-api', instruction: 'Rename the API route helpers.', deps: ['db-migrations'] },
+    ],
+  }
+
+  async function seedPlanGateParent(fixture: ReturnType<typeof makeFixture>, gateMd: string): Promise<string> {
+    const runId = 'plan-veto-parent'
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'sidecars', 'plan.json'), JSON.stringify(INITIAL_PLAN))
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), '')
+    await materializeChildFiles(INITIAL_PLAN, runDir)
+    fs.writeFileSync(path.join(runDir, 'gate-1.md'), gateMd)
+    fs.writeFileSync(path.join(runDir, 'gate-hashes-1.json'), '{}\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir: fixture.deps.config.workDir,
+          changeName: 'composite',
+          stage: 'intake',
+          depth: null,
+          round: 0,
+          gate: { mode: 'plan', version: 1 },
+          status: 'running',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          plan: { childIds: ['db-schema', 'db-api'], digest: 'd'.repeat(16) },
+          children: { 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    return runId
+  }
+
+  const CHECKED_GATE = [
+    '- [x] C1 db-schema — Rename the schema columns.',
+    '- [x] C2 db-api — Rename the API route helpers. · deps: db-schema',
+    '',
+  ].join('\n')
+
+  function makeVetoFixture(): ReturnType<typeof makeFixture> {
+    return makeFixture({
+      'plan.json': JSON.stringify(REVISED_PLAN),
+      'depth.json': JSON.stringify({
+        implicated_files: ['drizzle/x.sql'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'single-module child change',
+      }),
+      'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
+    })
+  }
+
+  it('a veto round re-runs the planner with the redirects, re-materializes, emits a fresh plan event, and re-presents at gate-2', async () => {
+    const fixture = makeVetoFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runGateResume(deps, runId, {
+      confirmAll: true,
+      vetoes: [{ id: 'C2', redirect: 'add a dedicated migrations child first' }],
+    })
+
+    expect(result).toEqual({ runId, outcome: 'veto', version: 2 })
+    expect(fixture.spawnOrder).toEqual(['plan.json'])
+
+    const plannerPrompt = fixture.prompts[0]
+    assert(plannerPrompt !== undefined)
+    expect(plannerPrompt).toContain('add a dedicated migrations child first')
+    expect(plannerPrompt).toContain('db-api')
+
+    const parent = await loadRunState(deps.config.workDir, runId)
+    expect(parent.plan?.childIds).toEqual(['db-schema', 'db-migrations', 'db-api'])
+    expect(parent.children).toEqual({
+      'db-schema': { status: 'pending' },
+      'db-migrations': { status: 'pending' },
+      'db-api': { status: 'pending' },
+    })
+    expect(parent.gate).toEqual({ mode: 'plan', version: 2 })
+
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    const planEvents = events.filter((e) => e.type === 'plan')
+    expect(planEvents).toHaveLength(1)
+    expect(planEvents[0]).toMatchObject({ childCount: 3 })
+    const answered = gateAnsweredOf(events)
+    expect(answered).toHaveLength(1)
+    expect(answered[0]).toMatchObject({ mode: 'plan', version: 1 })
+    expect(events.filter((e) => e.type === 'child_spawned')).toHaveLength(0)
+
+    const gate2 = fs.readFileSync(path.join(parent.runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('## Plan gate')
+    expect(gate2).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    expect(gate2).toContain('- [ ] C2 db-migrations — Add the migration files.')
+    expect(gate2).toContain('- [ ] C3 db-api — Rename the API route helpers. · deps: db-migrations')
+    expect(gate2).not.toContain('### Auto-decision preview')
+    expect(fs.existsSync(path.join(parent.runDir, 'auto-policy.jsonl'))).toBe(false)
+
+    expect(fs.existsSync(path.join(parent.runDir, 'children', '1-db-schema.md'))).toBe(true)
+    expect(fs.existsSync(path.join(parent.runDir, 'children', '2-db-migrations.md'))).toBe(true)
+    expect(fs.existsSync(path.join(parent.runDir, 'children', '3-db-api.md'))).toBe(true)
+    const sidecar: unknown = JSON.parse(fs.readFileSync(path.join(parent.runDir, 'sidecars', 'plan.json'), 'utf8'))
+    expect(sidecar).toEqual(REVISED_PLAN)
+  })
+
+  it('rounds repeat: an approve on the re-presented gate is a terminal that drives the children', async () => {
+    const fixture = makeVetoFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const vetoed = await runGateResume(fixture.deps, runId, {
+      confirmAll: true,
+      vetoes: [{ id: 'C2', redirect: 'add a dedicated migrations child first' }],
+    })
+    expect(vetoed.outcome).toBe('veto')
+
+    const result = await runGateResume(fixture.deps, runId, { confirmAll: true })
+
+    expect(result.outcome).toBe('approved')
+    const parent = await loadRunState(fixture.deps.config.workDir, runId)
+    expect(parent.gate).toBe(null)
+    expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
+    const child = await loadRunState(fixture.deps.config.workDir, 'db-schema')
+    expect(child.gate).not.toBe(null)
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    expect(events.filter((e) => e.type === 'child_spawned')).toHaveLength(1)
+  })
+
+  it('ABORT on a re-presented plan gate is a terminal before any child exists', async () => {
+    const fixture = makeVetoFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const vetoed = await runGateResume(fixture.deps, runId, {
+      confirmAll: true,
+      vetoes: [{ id: 'C2', redirect: 'add a dedicated migrations child first' }],
+    })
+    expect(vetoed.outcome).toBe('veto')
+
+    const result = await runGateResume(fixture.deps, runId, { abort: true })
+
+    expect(result.outcome).toBe('aborted')
+    const parent = await loadRunState(fixture.deps.config.workDir, runId)
+    expect(parent.status).toBe('aborted')
+    expect(parent.gate).toBe(null)
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    expect(events.filter((e) => e.type === 'child_spawned')).toHaveLength(0)
+  })
+})

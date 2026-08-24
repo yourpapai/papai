@@ -134,19 +134,31 @@ describe('runPlanGateResume (D12)', () => {
     expect(gateAnsweredOf(events)).toHaveLength(1)
   })
 
-  it('vetoes desugar through the render-then-parse grammar and the veto settle fails loudly (6.3 wires it)', async () => {
-    const { deps, state } = await seedParent(CHECKED_GATE)
+  it('vetoes desugar through the render-then-parse grammar, then route into the replan planner', async () => {
+    const { repoRoot, deps, state } = await seedParent(CHECKED_GATE)
+    const plannerPrompts: string[] = []
+    const spawnTracking: OrchestratorDeps = {
+      ...deps,
+      spawn: (_command, args) => {
+        plannerPrompts.push(String(args[args.length - 1]))
+        return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+      },
+    }
 
     const failure = await runPlanGateResume(
-      deps,
+      spawnTracking,
       state,
       { confirmAll: true, vetoes: [{ id: 'C1', redirect: 'split the schema child' }] },
       makeEmit(state),
       { startChildRun: neverStartChild },
     ).catch((error: unknown) => error)
 
+    // The fake spawn writes no sidecar, so the routed replan fails loudly —
+    // but only after the redirect reached the planner prompt.
     assert(failure instanceof Error)
-    expect(failure.message).toMatch(/plan-gate veto/u)
+    expect(plannerPrompts.some((prompt) => prompt.includes('split the schema child'))).toBe(true)
+    expect(plannerPrompts.some((prompt) => prompt.includes('db-schema'))).toBe(true)
+    expect(repoRoot.length).toBeGreaterThan(0)
     const md = fs.readFileSync(path.join(state.runDir, 'gate-1.md'), 'utf8')
     expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
     expect(md).toContain('→ split the schema child')

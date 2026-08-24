@@ -88,7 +88,12 @@ export function buildEstimatorPrompt(taskText: string, cwd: string): string {
   ].join('\n')
 }
 
-function buildPlannerPrompt(taskText: string, cwd: string, validationError: string | null = null): string {
+function buildPlannerPrompt(
+  taskText: string,
+  cwd: string,
+  validationError: string | null = null,
+  redirects: readonly string[] = [],
+): string {
   const target = agentWritePath(cwd, 'plan.json')
   const lines = [
     'You are a read-only task planner for a spec-driven development pipeline.',
@@ -101,6 +106,13 @@ function buildPlannerPrompt(taskText: string, cwd: string, validationError: stri
     '{"children": [{"id": string, "instruction": string, "deps": string[], "capabilities"?: string[]}]}',
     'Every dep must reference another child id; order children so dependencies come first.',
   ]
+  if (redirects.length > 0) {
+    lines.push(
+      '',
+      'The previous plan was vetoed. Revise it according to these redirects:',
+      ...redirects.map((r) => `- ${r}`),
+    )
+  }
   if (validationError !== null) {
     lines.push(
       '',
@@ -115,6 +127,8 @@ function buildPlannerPrompt(taskText: string, cwd: string, validationError: stri
 export interface PlannerOptions {
   readonly changeName: string
   readonly taskText: string
+  /** Plan-gate veto redirects (D6): appended to the replan prompt. */
+  readonly redirects?: readonly string[]
 }
 
 /**
@@ -137,7 +151,7 @@ async function attemptPlanner(
     role: 'planner',
     changeName: options.changeName,
     cwd: deps.cwd,
-    prompt: buildPlannerPrompt(options.taskText, deps.cwd, validationError),
+    prompt: buildPlannerPrompt(options.taskText, deps.cwd, validationError, options.redirects ?? []),
     outputPath: 'plan.json',
     outputSchema: PlanSchema,
     label: 'planner',

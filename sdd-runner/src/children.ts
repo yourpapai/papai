@@ -69,7 +69,8 @@ export async function runPlanBranch(
 }
 
 /** D4 rows: `C<n>` ids numbered in topo order, one per child. */
-function rowsOf(ordered: readonly PlanChild[]): { readonly id: string; readonly text: string }[] {
+/** D4 rows for a topo-ordered plan: `C<n>` ids numbered in order, one per child. */
+export function rowsOf(ordered: readonly PlanChild[]): { readonly id: string; readonly text: string }[] {
   return ordered.map((child, index) => ({ id: `C${index + 1}`, text: gateRowText(child) }))
 }
 
