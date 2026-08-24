@@ -8,7 +8,7 @@ import path from 'node:path'
 
 import { slugify } from './config.js'
 import { readEvents } from './events.js'
-import type { AgentUsage, EventInput } from './events.js'
+import type { AgentUsage } from './events.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
 import { presentGateAt } from './gate-digest.js'
 import { PLAN_REVIEW_SURROGATE } from './gate-prelude.js'
@@ -74,6 +74,7 @@ export interface RunChildrenOptions {
 
 export type RunChildrenResult =
   | { readonly halted: 'gate-pending'; readonly childRunId: string }
+  | { readonly halted: 'stopped'; readonly child: string; readonly childStatus: string }
   | { readonly halted: 'completed' }
 
 /** Load the current plan sidecar — the single source of full child records (D3). */
@@ -100,13 +101,35 @@ function childUsageOf(childRunDir: string, resolve: Parameters<typeof aggregateU
 }
 
 /**
+ * D9 failure stop: a child ending non-completed halts the loop immediately.
+ * The child books `failed`, the parent persists `stopped` (resumable at this
+ * child), and the operator line names the blocking child and its status.
+ */
+async function stopAtFailedChild(
+  deps: OrchestratorDeps,
+  state: RunState,
+  ctx: StageContext,
+  childId: string,
+  childStatus: string,
+): Promise<RunChildrenResult> {
+  ctx.emit({ altitude: 'L2', type: 'child_done', child: childId, outcome: 'failed' })
+  state.children = { ...state.children, [childId]: { status: 'failed' } }
+  state.status = 'stopped'
+  await saveRunState(state, deps.now?.() ?? new Date())
+  deps.stdout?.(`child ${childId} ended '${childStatus}' — parent stopped (resumable)`)
+  return { halted: 'stopped', child: childId, childStatus }
+}
+
+/**
  * Sequential topo execution loop (D8): walks `state.plan.childIds` in order,
  * one child in flight, skipping children already `done`. A completed child
  * emits `child_spawned { child, runId }` then `child_done { child, outcome:
  * 'done', usage }` with usage aggregated from the child's own event log. A
  * gate-pending child records `running`, prints its concrete `sdd <runId>`
  * line, and halts the parent `running` — resume continues at the next
- * not-done child.
+ * not-done child. A child ending aborted/failed/stopped — or whose state
+ * cannot be loaded (fail closed) — stops the loop (D9); the walk's end marks
+ * the parent `completed` exactly when every child reads `done`.
  */
 export async function runChildren(
   deps: OrchestratorDeps,
@@ -117,22 +140,24 @@ export async function runChildren(
   const children = await planChildrenOf(ctx)
   const childIds = state.plan?.childIds ?? []
   const resolve = deps.resolveCost ?? (await buildResolveCost())
-  const emit = (event: EventInput): void => {
-    ctx.emit(event)
-  }
   const runAt = async (index: number): Promise<RunChildrenResult> => {
     const childId = childIds[index]
-    if (childId === undefined) return { halted: 'completed' }
+    if (childId === undefined) {
+      state.status = 'completed'
+      await saveRunState(state, deps.now?.() ?? new Date())
+      return { halted: 'completed' }
+    }
     if (state.children?.[childId]?.status === 'done') return runAt(index + 1)
     const child = children.find((entry) => entry.id === childId)
     if (child === undefined) throw new Error(`plan sidecar has no child ${childId}`)
     const taskFile = path.join(state.runDir, 'children', `${index + 1}-${slugify(childId)}.md`)
     const handle = await options.runChildRun(child, taskFile)
-    emit({ altitude: 'L2', type: 'child_spawned', child: childId, runId: handle.runId })
-    const childState = await loadRunState(deps.config.workDir, handle.runId)
+    ctx.emit({ altitude: 'L2', type: 'child_spawned', child: childId, runId: handle.runId })
+    const childState = await loadRunState(deps.config.workDir, handle.runId).catch(() => null)
+    if (childState === null) return stopAtFailedChild(deps, state, ctx, childId, 'unloadable')
     if (childState.status === 'completed') {
       const usage = childUsageOf(childState.runDir, resolve)
-      emit({
+      ctx.emit({
         altitude: 'L2',
         type: 'child_done',
         child: childId,
@@ -150,7 +175,7 @@ export async function runChildren(
       deps.stdout?.(`sdd ${handle.runId}`)
       return { halted: 'gate-pending', childRunId: handle.runId }
     }
-    throw new Error(`child ${childId} ended in unhandled status '${childState.status}'`)
+    return stopAtFailedChild(deps, state, ctx, childId, childState.status)
   }
   return runAt(0)
 }

@@ -200,6 +200,7 @@ interface ChildShape {
   readonly status?: RunState['status']
   readonly gate?: { readonly mode: 'early' | 'final' | 'plan'; readonly version: number }
   readonly withUsage?: boolean
+  readonly unloadable?: boolean
 }
 
 interface RunnerTracker {
@@ -243,6 +244,7 @@ function makeRunner(fixture: ChildrenFixture, shapes: Record<string, ChildShape>
     if (shape.status !== undefined) childState.status = shape.status
     if (shape.gate !== undefined) childState.gate = shape.gate
     await saveRunState(childState, new Date('2026-08-12T08:00:00.000Z'))
+    if (shape.unloadable === true) fs.rmSync(childState.statePath)
     if (shape.withUsage === true) {
       appendEvent(path.join(childState.runDir, 'events.ndjson'), {
         altitude: 'L1',
@@ -344,5 +346,82 @@ describe('runChildren (D8)', () => {
 
     expect(eventsOf(fixture, 'child_done')).toHaveLength(0)
     expect(stdoutLines.some((line) => line === `sdd ${childRunId}`)).toBe(true)
+  })
+})
+
+describe('runChildren failure and completion semantics (D9)', () => {
+  it('a child ending aborted/failed/stopped stops the loop immediately, emits child_done failed, and persists the parent stopped with an operator line', async () => {
+    for (const status of ['aborted', 'failed', 'stopped'] as const) {
+      const fixture = await makeFixture()
+      await seedParent(fixture, ['auth-db', 'auth-api'], {})
+      const tracker = makeRunner(fixture, {
+        'auth-db': { status },
+        'auth-api': { status: 'completed' },
+      })
+      const stdoutLines: string[] = []
+      const deps: OrchestratorDeps = {
+        ...fixture.deps,
+        stdout: (line: string) => {
+          stdoutLines.push(line)
+        },
+      }
+
+      const result = await runChildren(deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+      expect(result).toEqual({ halted: 'stopped', child: 'auth-db', childStatus: status })
+      expect(tracker.spawned).toEqual(['auth-db'])
+      const done = eventsOf(fixture, 'child_done')
+      expect(done).toHaveLength(1)
+      expect(done[0]).toMatchObject({ child: 'auth-db', outcome: 'failed' })
+      expect(fixture.state.children?.['auth-db']).toEqual({ status: 'failed' })
+      expect(fixture.state.children?.['auth-api']).toEqual({ status: 'pending' })
+      const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
+      expect(persisted.status).toBe('stopped')
+      expect(persisted.children?.['auth-db']).toEqual({ status: 'failed' })
+      expect(stdoutLines.some((line) => line.includes(`child auth-db ended '${status}'`))).toBe(true)
+      expect(fs.existsSync(path.join(fixture.repoRoot, 'openspec', 'changes', fixture.state.changeName))).toBe(false)
+    }
+  })
+
+  it('parent completed is persisted exactly when every child id reads done', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.status).toBe('completed')
+    expect(persisted.children).toEqual({
+      'auth-db': { status: 'done' },
+      'auth-api': { status: 'done' },
+    })
+    expect(fs.existsSync(path.join(fixture.repoRoot, 'openspec', 'changes', fixture.state.changeName))).toBe(false)
+  })
+
+  it('an unloadable child state counts as not-done and fails closed', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {
+      'auth-db': { unloadable: true },
+      'auth-api': { status: 'completed' },
+    })
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runChildren(deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result).toEqual({ halted: 'stopped', child: 'auth-db', childStatus: 'unloadable' })
+    expect(tracker.spawned).toEqual(['auth-db'])
+    expect(eventsOf(fixture, 'child_done')[0]).toMatchObject({ child: 'auth-db', outcome: 'failed' })
+    const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
+    expect(persisted.status).toBe('stopped')
+    expect(stdoutLines.some((line) => line.includes(`child auth-db ended 'unloadable'`))).toBe(true)
   })
 })
