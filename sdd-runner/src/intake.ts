@@ -8,6 +8,8 @@ import { DepthClassificationSchema, runStageAgent } from './agent-layer.js'
 import type { AgentLayerDeps, DepthSignals } from './agent-layer.js'
 import type { DepthProfile, EventInput } from './events.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
+import { PlanSchema, topoSortChildren } from './plan.js'
+import type { PlanChild } from './plan.js'
 
 const PROFILE_RANK: Record<DepthProfile, number> = { S: 0, M: 1, L: 2 }
 
@@ -52,11 +54,19 @@ export interface IntakeOptions {
   readonly depthOverride?: DepthProfile
 }
 
-export interface IntakeResult {
+export interface SingleIntakeResult {
+  readonly kind: 'single'
   readonly changeName: string
   readonly depth: DepthProfile
   readonly disagreement: boolean
 }
+
+export interface PlanIntakeResult {
+  readonly kind: 'plan'
+  readonly children: PlanChild[]
+}
+
+export type IntakeResult = SingleIntakeResult | PlanIntakeResult
 
 export function buildEstimatorPrompt(taskText: string, cwd: string): string {
   const target = agentWritePath(cwd, 'depth.json')
@@ -77,8 +87,38 @@ export function buildEstimatorPrompt(taskText: string, cwd: string): string {
   ].join('\n')
 }
 
+function buildPlannerPrompt(taskText: string, cwd: string): string {
+  const target = agentWritePath(cwd, 'plan.json')
+  return [
+    'You are a read-only task planner for a spec-driven development pipeline.',
+    'Decompose the task into child runs that each fit one change. Do not edit anything.',
+    '',
+    'Task:',
+    taskText,
+    '',
+    `Write your plan as JSON to ${target} with this shape:`,
+    '{"children": [{"id": string, "instruction": string, "deps": string[], "capabilities"?: string[]}]}',
+    'Every dep must reference another child id; order children so dependencies come first.',
+  ].join('\n')
+}
+
+async function spawnPlanner(deps: IntakeDeps, options: IntakeOptions): Promise<PlanChild[]> {
+  const plan = await runStageAgent(deps.agent, {
+    role: 'planner',
+    changeName: options.changeName,
+    cwd: deps.cwd,
+    prompt: buildPlannerPrompt(options.taskText, deps.cwd),
+    outputPath: 'plan.json',
+    outputSchema: PlanSchema,
+    label: 'planner',
+    runDir: deps.runDir,
+    round: 0,
+    sidecarDir: deps.sidecarDir,
+  })
+  return topoSortChildren(plan.value)
+}
+
 export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promise<IntakeResult> {
-  await deps.driver.newChange(options.changeName, 'auto-sdd')
   if (options.depthOverride !== undefined) {
     deps.emit({
       altitude: 'L2',
@@ -87,7 +127,8 @@ export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promi
       rationale: 'override via --depth',
       source: 'override',
     })
-    return { changeName: options.changeName, depth: options.depthOverride, disagreement: false }
+    await deps.driver.newChange(options.changeName, 'auto-sdd')
+    return { kind: 'single', changeName: options.changeName, depth: options.depthOverride, disagreement: false }
   }
   const prescreen = prescreenProfile(options.taskText)
   const estimation = await runStageAgent(deps.agent, {
@@ -104,13 +145,20 @@ export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promi
   })
   const estimated = mapSignalsToProfile(estimation.value.signals)
   const { profile, disagreement } = resolveDepth(estimated, prescreen)
+  const oversize = estimation.value.oversize === true
   deps.emit({
     altitude: 'L2',
     type: 'depth',
     profile,
     rationale: estimation.value.rationale,
     source: 'estimator',
+    oversize,
     ...(disagreement ? { disagreement: true } : {}),
   })
-  return { changeName: options.changeName, depth: profile, disagreement }
+  if (oversize) {
+    const children = await spawnPlanner(deps, options)
+    return { kind: 'plan', children }
+  }
+  await deps.driver.newChange(options.changeName, 'auto-sdd')
+  return { kind: 'single', changeName: options.changeName, depth: profile, disagreement }
 }

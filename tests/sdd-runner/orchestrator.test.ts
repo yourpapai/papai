@@ -251,6 +251,26 @@ describe('holder lifecycle (process ownership)', () => {
     expect(failure instanceof Error).toBe(true)
     expect(readHolder(runDirOf(fixture))).toBe(null)
   })
+
+  it('fails loudly when intake rules the task oversize — the plan branch is not wired yet', async () => {
+    const fixture = makeFixture({
+      'depth.json': JSON.stringify({
+        implicated_files: ['src/a.ts'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'declared scope too large for one change',
+        oversize: true,
+      }),
+      'plan.json': JSON.stringify({ children: [{ id: 'c1', instruction: 'do thing one', deps: [] }] }),
+    })
+    const failure = await runStart(fixture.deps, { taskFile: fixture.taskFile }).catch((error: unknown) => error)
+    expect(errorMessageOf(failure)).toMatch(/oversize/u)
+  })
 })
 
 describe('runStart', () => {

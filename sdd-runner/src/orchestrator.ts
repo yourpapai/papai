@@ -232,6 +232,9 @@ async function runIntakeStage(env: PipelineEnv): Promise<DepthProfile> {
       { driver: deps.driver, agent, emit: ctx.emit, sidecarDir: ctx.sidecarDir, runDir: state.runDir, cwd: ctx.cwd },
       { changeName: input.changeName, taskText: input.taskText, depthOverride: input.depthOverride },
     )
+    if (result.kind === 'plan') {
+      throw new Error(`intake ruled ${input.changeName} oversize; the plan branch is not wired into runStart yet`)
+    }
     depth = result.depth
     state.depth = depth
     state.roundCap = resolveRoundCap({ depth, roundCap: undefined })
