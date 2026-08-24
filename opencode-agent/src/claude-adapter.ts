@@ -1,0 +1,292 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { collectChild, createClaudeConfigDir, killGroup, spawnClaude, teardownClaude } from './claude-connect.js'
+import type { ClaudeChild, GroupKillSeams, SpawnClaude, TeardownSeams } from './claude-connect.js'
+import { buildClaudeArgv, decodeClaudeLine, parseNdjsonStream } from './claude-contract.js'
+import type { ClaudeModelKnobs, ClaudeStreamLine } from './claude-contract.js'
+import { claudeTracker } from './claude-progress.js'
+import type { ClaudeCredential } from './config-values.js'
+import { claudeExitError, claudeResultError } from './errors.js'
+import type { Logger } from './logger.js'
+import type { AgentPromptRequest, AgentPromptResult, OpenCodeAgent } from './opencode-adapter.js'
+import type { ProgressTracker, TranscriptSink } from './progress.js'
+import { redactSecrets } from './secrets.js'
+import { runTurn } from './turn-run.js'
+import type { TurnBounds, TurnConnection } from './turn-run.js'
+
+/**
+ * The claude session the pipeline holds — the `opencode-adapter.ts` role behind
+ * the same seam: one `prompt()` per turn spawning a `claude -p` process (design
+ * D1), the init id memoized into the next turn's `--resume`, token totals read
+ * from `result` lines before any teardown, and the stop killing the whole
+ * process group. What the CLI *says* is `claude-contract.ts`; how it is
+ * *started* is `claude-connect.ts`; what the run *says* is `claude-progress.ts`.
+ */
+
+export interface ClaudeAgentOptions extends TurnBounds {
+  /** The checkout the CLI works in. */
+  directory: string
+  /** The model knobs as plain values — never the `OpenAiSettings` object (design D5). */
+  knobs: ClaudeModelKnobs
+  credential: ClaudeCredential
+  /** The post-scrub `process.env` the child inherits. */
+  env: Record<string, string | undefined>
+  log: Logger
+  /** The encrypted debug transcript, when the run has one. */
+  transcript?: TranscriptSink
+  /** Injection seam for tests: the spawn that starts each turn's CLI process. */
+  spawn?: SpawnClaude
+  /** Injection seams for the abort-path group kill. */
+  killSignal?: GroupKillSeams['signal']
+  killSleep?: GroupKillSeams['sleep']
+  /** Injection seams for the teardown-path group kill and config-dir removal. */
+  teardownSignal?: TeardownSeams['signal']
+  teardownSleep?: TeardownSeams['sleep']
+  teardownRemove?: TeardownSeams['removeDir']
+}
+
+/** How much of a stderr tail a `CLAUDE_EXIT` failure quotes, after redaction. */
+const STDERR_TAIL_CHARS = 2_000
+
+/** One turn's captured outcome. */
+interface TurnOutcome {
+  text: string
+  sessionId: string
+}
+
+/** Everything one claude session accumulates, mutated only by the functions below. */
+interface SessionState {
+  /** The memoized init id (design D1): chained into the next turn's `--resume`. */
+  cliSessionId: string | null
+  /** Token totals captured from `result` lines as they arrive (design D8). */
+  tokensTotal: number
+  sawUsage: boolean
+  /** The most recent spawned child: the abort target and the teardown subject. */
+  active: ClaudeChild | null
+  /** The last turn's outcome, handed from `sendPrompt` to `prompt`. */
+  outcome: TurnOutcome | null
+  /** Whether the spawn itself failed — the one death the alive probe relabels. */
+  spawnFailed: boolean
+  /** The prompt the current turn is running, set by `prompt` before `runTurn`. */
+  request: AgentPromptRequest | null
+}
+
+/** A session's fixed collaborators, so the turn functions live at module level. */
+interface SessionContext {
+  readonly options: ClaudeAgentOptions
+  readonly configDir: string
+  readonly bootSessionId: string
+  readonly credentialValues: readonly string[]
+  readonly tracker: ProgressTracker
+  readonly state: SessionState
+}
+
+/**
+ * Folds one decoded line into the session: memoizing the init id, capturing
+ * usage as it arrives, reporting progress, and handing the raw line to the
+ * encrypted transcript — redacted by credential value first, per the spec's
+ * redaction scenario.
+ */
+const foldLine = (context: SessionContext, line: ClaudeStreamLine, raw: unknown): void => {
+  if (line.kind === 'init') context.state.cliSessionId = line.sessionId
+  if (line.kind === 'result') {
+    // Captured as it arrives — before any teardown can race it (design D8).
+    context.state.tokensTotal += line.usage.total
+    context.state.sawUsage = true
+  }
+  context.tracker.observe(line)
+  if (context.options.transcript !== undefined) {
+    context.options.transcript.write({
+      time: new Date().toISOString(),
+      tool: 'claude',
+      status: 'line',
+      detail: redactSecrets(JSON.stringify(raw), context.credentialValues),
+      durationMs: null,
+    })
+  }
+}
+
+/** Spawns one turn's CLI process, remembering it as the kill target. */
+const spawnTurn = (context: SessionContext, invocation: ReturnType<typeof buildClaudeArgv>): ClaudeChild => {
+  try {
+    const child = spawnClaude(
+      {
+        argv: invocation.argv,
+        stdinPrompt: invocation.stdinPrompt,
+        credential: context.options.credential,
+        workspace: context.options.directory,
+        configDir: context.configDir,
+        env: context.options.env,
+      },
+      context.options.spawn === undefined ? {} : { spawn: context.options.spawn },
+    )
+    context.state.active = child
+    return child
+  } catch (error) {
+    // The transport itself never came up (ENOENT — the binary the workflow
+    // forgot to install): exactly the death the alive probe exists to relabel.
+    context.state.spawnFailed = true
+    throw error
+  }
+}
+
+/**
+ * Classifies one finished turn. The stream-json family owns error-shaped and
+ * empty results whatever the exit status; exit discipline owns the rest.
+ */
+const classifyTurn = (
+  context: SessionContext,
+  captured: {
+    result: Extract<ClaudeStreamLine, { kind: 'result' }> | null
+    initSeen: boolean
+    stderr: string
+    exitCode: number | null
+  },
+): TurnOutcome => {
+  const { result, initSeen, stderr, exitCode } = captured
+
+  if (result !== null && result.isError) {
+    throw claudeResultError('the result line signalled an error (is_error)')
+  }
+  if (result !== null && result.text.trim() === '') {
+    throw claudeResultError('the result line carried empty final text')
+  }
+  if (exitCode !== 0) {
+    throw claudeExitError(exitCode ?? -1, redactSecrets(stderr.slice(-STDERR_TAIL_CHARS), context.credentialValues))
+  }
+  if (result === null) {
+    throw claudeResultError('no decodable result line arrived before the stream ended')
+  }
+  if (!initSeen && context.state.cliSessionId === null) {
+    // Resolving under a synthetic id would either hand `--resume` an id the
+    // CLI refuses or silently fork the session's context mid-job.
+    throw claudeResultError('no session id exists — no init line this turn and none memoized from an earlier one')
+  }
+
+  return { text: result.text, sessionId: context.state.cliSessionId ?? result.sessionId }
+}
+
+/**
+ * Spawns one turn, collects it, classifies it. Failures reject with their own
+ * `PipelineError` so `runTurn`'s catch sees the family code.
+ */
+const runClaudeTurn = async (context: SessionContext): Promise<TurnOutcome> => {
+  const current = context.state.request
+  if (current === null) throw claudeResultError('no prompt was handed to the turn')
+
+  const invocation = buildClaudeArgv(
+    {
+      prompt: current.prompt,
+      ...(current.system === undefined ? {} : { system: current.system }),
+      ...(current.agent === undefined ? {} : { agent: current.agent }),
+      resumeSessionId: context.state.cliSessionId,
+    },
+    context.options.knobs,
+    context.options.log,
+  )
+  const child = spawnTurn(context, invocation)
+  const [stdout, stderr, exitCode] = await collectChild(child.process)
+
+  let result: Extract<ClaudeStreamLine, { kind: 'result' }> | null = null
+  let initSeen = false
+  for (const raw of parseNdjsonStream(stdout)) {
+    const line = decodeClaudeLine(raw)
+    if (line === null) continue
+    if (line.kind === 'init') initSeen = true
+    if (line.kind === 'result') result = line
+    foldLine(context, line, raw)
+  }
+
+  return classifyTurn(context, { result, initSeen, stderr, exitCode })
+}
+
+/** The `runTurn` slice of the session: the spawn-and-collect promise and the transport probe. */
+const claudeConnection = (context: SessionContext): TurnConnection => ({
+  sendPrompt: async (_sessionId: string, _body: unknown): Promise<unknown> => {
+    const outcome = await runClaudeTurn(context)
+    context.state.outcome = outcome
+    return outcome
+  },
+  // "The transport stopped answering" on this route means the spawn itself
+  // failed — every classified turn failure has its own code and never asks.
+  alive: (_sessionId: string): Promise<boolean> => Promise.resolve(!context.state.spawnFailed),
+})
+
+/** The abort-path kill seams, as the options injected them. */
+const killSeams = (options: ClaudeAgentOptions): GroupKillSeams => ({
+  ...(options.killSignal === undefined ? {} : { signal: options.killSignal }),
+  ...(options.killSleep === undefined ? {} : { sleep: options.killSleep }),
+})
+
+/** The teardown-path seams, as the options injected them. */
+const teardownSeamsOf = (options: ClaudeAgentOptions): TeardownSeams => ({
+  ...(options.teardownSignal === undefined ? {} : { signal: options.teardownSignal }),
+  ...(options.teardownSleep === undefined ? {} : { sleep: options.teardownSleep }),
+  ...(options.teardownRemove === undefined ? {} : { removeDir: options.teardownRemove }),
+})
+
+/** The session object the pipeline holds, over the connection `runTurn` drives. */
+const claudeSession = (context: SessionContext, connection: TurnConnection): OpenCodeAgent => {
+  // The claude shim ignores both arguments; the body exists to satisfy the
+  // interface `runTurn` knows.
+  const stubBody = { model: { providerID: 'claude', modelID: context.options.knobs.model }, parts: [] }
+  const { options, state } = context
+
+  return {
+    sessionId: context.bootSessionId,
+    prompt: (current: AgentPromptRequest): Promise<AgentPromptResult> => {
+      state.request = current
+      state.outcome = null
+      return runTurn(connection, context.bootSessionId, stubBody, options, context.tracker).then(() => {
+        const outcome = state.outcome
+        if (outcome === null) throw claudeResultError('the turn resolved without a captured outcome')
+        return { text: outcome.text, sessionId: outcome.sessionId }
+      })
+    },
+    tokensUsed: (): Promise<number> => {
+      if (!state.sawUsage) {
+        options.log.warn(
+          { sessionId: context.bootSessionId },
+          'No recognizable claude usage was seen; the token budget cannot see this run',
+        )
+        return Promise.resolve(0)
+      }
+      return Promise.resolve(state.tokensTotal)
+    },
+    abort: (): Promise<boolean> => {
+      if (state.active === null) return Promise.resolve(false)
+      return killGroup(state.active.process.pid, killSeams(options))
+    },
+    close: (): Promise<void> => {
+      if (state.active === null) return Promise.resolve()
+      return teardownClaude(state.active, teardownSeamsOf(options))
+    },
+  }
+}
+
+/**
+ * Boots the claude session: one job-scoped config dir, one synthetic job-local
+ * id until the first init line lands, and one process per turn.
+ */
+export const createClaudeAgent = (options: ClaudeAgentOptions): Promise<OpenCodeAgent> => {
+  const context: SessionContext = {
+    options,
+    configDir: createClaudeConfigDir(),
+    bootSessionId: `claude-job-${crypto.randomUUID()}`,
+    credentialValues: [options.credential.value],
+    tracker: claudeTracker(options.log),
+    state: {
+      cliSessionId: null,
+      tokensTotal: 0,
+      sawUsage: false,
+      active: null,
+      outcome: null,
+      spawnFailed: false,
+      request: null,
+    },
+  }
+  return Promise.resolve(claudeSession(context, claudeConnection(context)))
+}

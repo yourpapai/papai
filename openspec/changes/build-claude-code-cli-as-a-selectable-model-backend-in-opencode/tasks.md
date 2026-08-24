@@ -68,25 +68,25 @@ the only credentialed artifact and never runs in CI.
 
 ## 5. Adapter: session over the seam (design D1, D2, D7, D8, D10, D12 step 4)
 
-- [ ] 5.1 Tests first in `tests/opencode-agent/claude-adapter.test.ts` over an injected `options.spawn` seam: successful turn resolves with `result`-line text/usage and the init-line `sessionId`; exit 0 with missing/undecodable `result`, error-signalling `result` (`is_error` or recorded equivalent), or empty final text fails `CLAUDE_RESULT` regardless of exit code; exit 0 with decodable `result` but no session id anywhere fails `CLAUDE_RESULT`; non-zero exit fails `CLAUDE_EXIT` carrying the code and a redacted stderr tail; stderr/stdout tails never carry credential values.
+- [x] 5.1 Tests first in `tests/opencode-agent/claude-adapter.test.ts` over an injected `options.spawn` seam: successful turn resolves with `result`-line text/usage and the init-line `sessionId`; exit 0 with missing/undecodable `result`, error-signalling `result` (`is_error` or recorded equivalent), or empty final text fails `CLAUDE_RESULT` regardless of exit code; exit 0 with decodable `result` but no session id anywhere fails `CLAUDE_RESULT`; non-zero exit fails `CLAUDE_EXIT` carrying the code and a redacted stderr tail; stderr/stdout tails never carry credential values.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (red)
-- [ ] 5.2 Implement the turn-outcome half of `opencode-agent/src/claude-adapter.ts`: the `TurnConnection` shim (`sendPrompt` = spawn-and-collect promise, `alive` = spawn-transport probe; the `tools` field of `AgentPromptRequest` accepted and ignored) and the resolution/failure contract.
+- [x] 5.2 Implement the turn-outcome half of `opencode-agent/src/claude-adapter.ts`: the `TurnConnection` shim (`sendPrompt` = spawn-and-collect promise, `alive` = spawn-transport probe; the `tools` field of `AgentPromptRequest` accepted and ignored) and the resolution/failure contract.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (green)
-- [ ] 5.3 Tests first: session continuity — memoized init id chains into the next turn's `--resume` regardless of how the previous turn ended (including killed turns); a kill before any line arrived leaves nothing memoized, so the next turn spawns without `--resume` into a fresh session; boot-time `sessionId` is a synthetic job-local id until the first init lands, and `AgentPromptResult.sessionId` always returns the CLI's.
+- [x] 5.3 Tests first: session continuity — memoized init id chains into the next turn's `--resume` regardless of how the previous turn ended (including killed turns); a kill before any line arrived leaves nothing memoized, so the next turn spawns without `--resume` into a fresh session; boot-time `sessionId` is a synthetic job-local id until the first init lands, and `AgentPromptResult.sessionId` always returns the CLI's.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (red)
-- [ ] 5.4 Implement continuity (memoized id → the next turn's `--resume`).
+- [x] 5.4 Implement continuity (memoized id → the next turn's `--resume`).
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (green)
-- [ ] 5.5 Tests first: stop and teardown semantics — `abort()` kills the group and reports landed/not; `close()` is never a stop, reports nothing, and terminates a still-live group fire-and-forget before reaping.
+- [x] 5.5 Tests first: stop and teardown semantics — `abort()` kills the group and reports landed/not; `close()` is never a stop, reports nothing, and terminates a still-live group fire-and-forget before reaping.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (red)
-- [ ] 5.6 Implement stop/teardown over the connect layer's kill helper.
+- [x] 5.6 Implement stop/teardown over the connect layer's kill helper.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (green)
-- [ ] 5.7 Tests first: token accounting — totals captured from `result` lines as they arrive (sum or last per the recorded usage shape from task 1.2), read before any teardown; `tokensUsed()` degrades to `0` with a `warn` when no recognizable usage.
+- [x] 5.7 Tests first: token accounting — totals captured from `result` lines as they arrive (sum or last per the recorded usage shape from task 1.2), read before any teardown; `tokensUsed()` degrades to `0` with a `warn` when no recognizable usage.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (red)
-- [ ] 5.8 Implement token accounting.
+- [x] 5.8 Implement token accounting.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (green)
-- [ ] 5.9 Tests first: progress translation — public log rows carry line types, tool names, statuses, counts only (scalar-only schemas); content-bearing lines reach the encrypted `TranscriptSink` unabridged, redacted by credential value first.
+- [x] 5.9 Tests first: progress translation — public log rows carry line types, tool names, statuses, counts only (scalar-only schemas); content-bearing lines reach the encrypted `TranscriptSink` unabridged, redacted by credential value first.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (red)
-- [ ] 5.10 Implement progress translation.
+- [x] 5.10 Implement progress translation.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (green)
 
 ## 6. Turn-run integration (design D6)

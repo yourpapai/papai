@@ -8,7 +8,13 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { KILL_GRACE_MS, killGroup, spawnClaude, teardownClaude } from '../../opencode-agent/src/claude-connect.js'
+import {
+  createClaudeConfigDir,
+  KILL_GRACE_MS,
+  killGroup,
+  spawnClaude,
+  teardownClaude,
+} from '../../opencode-agent/src/claude-connect.js'
 import type {
   ClaudeChild,
   ClaudeChildProcess,
@@ -90,18 +96,22 @@ const configDirOf = (child: ClaudeChild): string => {
   return dir
 }
 
-const request = (env: Record<string, string | undefined> = {}): Parameters<typeof spawnClaude>[0] => ({
+const request = (
+  env: Record<string, string | undefined> = {},
+  configDir = createClaudeConfigDir(),
+): Parameters<typeof spawnClaude>[0] => ({
   argv: ['--bare', '-p'],
   stdinPrompt: 'do the work',
   credential: CREDENTIAL,
   workspace: '/runner/workspace',
+  configDir,
   env: { PATH: '/usr/bin', ...env },
 })
 
 describe('the spawn contract', () => {
   test('spawns the CLI detached, no shell, as an argv vector, in the workspace', () => {
     const recorded = blankRecording()
-    spawnClaude(request(), { spawn: recordingSpawn(recorded, 4242), tmpRoot: tmpdir() })
+    spawnClaude(request(), { spawn: recordingSpawn(recorded, 4242) })
 
     expect(recorded.argv).toEqual(['claude', '--bare', '-p'])
     expect(recorded.options.detached).toBe(true)
@@ -114,7 +124,6 @@ describe('the spawn contract', () => {
     const child = fakeChild(1)
     spawnClaude(request(), {
       spawn: (): ClaudeChildProcess => child,
-      tmpRoot: tmpdir(),
     })
 
     expect(child.stdin.written).toBe('do the work')
@@ -128,7 +137,7 @@ describe('the spawn contract', () => {
         AGENT_MCP_SERVERS: '{"index":{"headers":{"authorization":"Bearer mcp"}}}',
         CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token-not-the-chosen-one',
       }),
-      { spawn: recordingSpawn(recorded, 4242), tmpRoot: tmpdir() },
+      { spawn: recordingSpawn(recorded, 4242) },
     )
 
     expect(recorded.options.env['PATH']).toBe('/usr/bin')
@@ -144,17 +153,19 @@ describe('the spawn contract', () => {
     expect(child.env).toEqual(recorded.options.env)
   })
 
-  test('CLAUDE_CONFIG_DIR points at a fresh job-scoped dir under the tmp root, outside the workspace', () => {
+  test('CLAUDE_CONFIG_DIR is the job-scoped dir the adapter created, under the tmp root and outside the workspace', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'claude-connect-test-'))
     try {
-      const first = spawnClaude(request(), { spawn: recordingSpawn(blankRecording(), 1), tmpRoot: root })
-      const second = spawnClaude(request(), { spawn: recordingSpawn(blankRecording(), 2), tmpRoot: root })
+      // One dir per job, created up front by the adapter — the --resume
+      // session files of one job's turns live side by side in it, so a
+      // per-spawn dir would break continuity by construction.
+      const configDir = createClaudeConfigDir(root)
+      const child = spawnClaude(request({}, configDir), { spawn: recordingSpawn(blankRecording(), 1) })
 
-      expect(configDirOf(first)).toStartWith(`${root}${path.sep}`)
-      expect(configDirOf(second)).toStartWith(`${root}${path.sep}`)
-      expect(configDirOf(first)).not.toBe(configDirOf(second))
-      expect(existsSync(configDirOf(first))).toBe(true)
-      expect(configDirOf(first)).not.toContain('/runner/workspace')
+      expect(configDirOf(child)).toBe(configDir)
+      expect(configDir).toStartWith(`${root}${path.sep}`)
+      expect(existsSync(configDir)).toBe(true)
+      expect(configDir).not.toContain('/runner/workspace')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -162,7 +173,7 @@ describe('the spawn contract', () => {
 
   test('the determinism knobs are constants, not env-tunable', () => {
     const recorded = blankRecording()
-    spawnClaude(request({ DISABLE_AUTOUPDATER: '0' }), { spawn: recordingSpawn(recorded, 4242), tmpRoot: tmpdir() })
+    spawnClaude(request({ DISABLE_AUTOUPDATER: '0' }), { spawn: recordingSpawn(recorded, 4242) })
 
     // An operator (or an injected environment) saying 0 does not un-pin the
     // version: two runners must run the same binary the workflow installed.
@@ -255,7 +266,9 @@ describe('teardownClaude', () => {
     const removed: string[] = []
     const root = mkdtempSync(path.join(tmpdir(), 'claude-teardown-test-'))
     try {
-      const spawned = spawnClaude(request(), { spawn: recordingSpawn(blankRecording(), 4242), tmpRoot: root })
+      const spawned = spawnClaude(request({}, createClaudeConfigDir(root)), {
+        spawn: recordingSpawn(blankRecording(), 4242),
+      })
       expect(existsSync(spawned.configDir)).toBe(true)
 
       await teardownClaude(spawned, {

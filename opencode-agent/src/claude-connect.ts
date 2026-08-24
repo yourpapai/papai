@@ -51,6 +51,11 @@ export interface ClaudeSpawnRequest {
   credential: { readonly name: 'ANTHROPIC_API_KEY' | 'CLAUDE_CODE_OAUTH_TOKEN'; readonly value: string }
   /** The checkout the CLI works in. */
   workspace: string
+  /**
+   * The job-scoped config dir — one per adapter, not per spawn, because the
+   * `--resume` session files of one job's turns live side by side in it.
+   */
+  configDir: string
   /** The post-scrub `process.env` of this process. */
   env: Record<string, string | undefined>
 }
@@ -58,8 +63,6 @@ export interface ClaudeSpawnRequest {
 export interface ClaudeSpawnOptions {
   /** Injection seam for tests; defaults to the real detached `node:child_process` spawn. */
   spawn?: SpawnClaude
-  /** Where the job-scoped config dir lives; defaults to `os.tmpdir()`, never the workspace. */
-  tmpRoot?: string
 }
 
 /** The spawn this layer performs — recorded by tests, real in production. */
@@ -77,6 +80,15 @@ export interface ClaudeChild {
 }
 
 /**
+ * The job-scoped CLI config dir, under the OS tmp root and never the checkout
+ * workspace — where a job's `--resume` session files live and die, so no
+ * `~/.claude` state crosses jobs and `git add --all` in the implement phase
+ * can never stage it.
+ */
+export const createClaudeConfigDir = (tmpRoot: string = tmpdir()): string =>
+  mkdtempSync(path.join(tmpRoot, 'opencode-agent-claude-'))
+
+/**
  * Builds the child environment: the post-scrub environment plus exactly the
  * injected values, name-stripped of everything this route must not carry.
  *
@@ -87,7 +99,7 @@ export interface ClaudeChild {
  * as exactly the chosen one so the not-chosen spelling can never ride along
  * under a second name.
  */
-const childEnv = (request: ClaudeSpawnRequest, configDir: string): Record<string, string> => {
+const childEnv = (request: ClaudeSpawnRequest): Record<string, string> => {
   const env: Record<string, string> = {}
   for (const [name, value] of Object.entries(request.env)) {
     if (value !== undefined) env[name] = value
@@ -96,7 +108,7 @@ const childEnv = (request: ClaudeSpawnRequest, configDir: string): Record<string
 
   env[request.credential.name] = request.credential.value
   env['DISABLE_AUTOUPDATER'] = '1'
-  env['CLAUDE_CONFIG_DIR'] = configDir
+  env['CLAUDE_CONFIG_DIR'] = request.configDir
   return env
 }
 
@@ -141,13 +153,10 @@ const realSpawn: SpawnClaude = (binary, argv, options): ClaudeChildProcess => {
  * Spawns one `claude` turn: detached, so the CLI leads its own process group
  * and a group kill reaches the `Bash` tool's children; `shell: false` and an
  * argv vector, per this workspace's untrusted-input rule; the prompt on stdin;
- * `CLAUDE_CONFIG_DIR` at a fresh job-scoped temp dir outside the checkout
- * workspace, where the `--resume` session files live and die — never a path
- * `git add --all` in the implement phase could stage.
+ * `CLAUDE_CONFIG_DIR` at the job-scoped config dir the request names.
  */
 export const spawnClaude = (request: ClaudeSpawnRequest, options: ClaudeSpawnOptions = {}): ClaudeChild => {
-  const configDir = mkdtempSync(path.join(options.tmpRoot ?? tmpdir(), 'opencode-agent-claude-'))
-  const env = childEnv(request, configDir)
+  const env = childEnv(request)
   const spawner = options.spawn ?? realSpawn
   const child = spawner(CLAUDE_BINARY, request.argv, {
     detached: true,
@@ -160,8 +169,25 @@ export const spawnClaude = (request: ClaudeSpawnRequest, options: ClaudeSpawnOpt
   child.stdin.write(request.stdinPrompt)
   child.stdin.end()
 
-  return { process: child, configDir, env }
+  return { process: child, configDir: request.configDir, env }
 }
+
+/** Reads one output stream to a string. */
+const readStream = async (stream: AsyncIterable<Uint8Array>): Promise<string> => {
+  const decoder = new TextDecoder()
+  let text = ''
+  for await (const chunk of stream) text += decoder.decode(chunk, { stream: true })
+  return text
+}
+
+/**
+ * Collects a child's streams and exit status concurrently — the read half of
+ * the spawn this layer owns.
+ */
+export const collectChild = (
+  child: ClaudeChildProcess,
+): Promise<[stdout: string, stderr: string, exitCode: number | null]> =>
+  Promise.all([readStream(child.stdout), readStream(child.stderr), child.exited])
 
 export interface GroupKillSeams {
   /**
