@@ -5,8 +5,92 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import type { PolicyDecision } from '../../sdd-runner/src/auto-policy.js'
+import { evaluateFinalGate, evaluatePlanGate } from '../../sdd-runner/src/auto-policy.js'
+import type { PolicyDecision, PolicySignals } from '../../sdd-runner/src/auto-policy.js'
+import type { AutonomyConfig } from '../../sdd-runner/src/config.js'
 import { renderPreviewBlock } from '../../sdd-runner/src/gate-prelude.js'
+import type { DigestRecord } from '../../sdd-runner/src/replay.js'
+import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
+
+const CHANGE_DIR = 'openspec/changes/thing'
+
+function planSignals(overrides: Partial<PolicySignals> = {}): PolicySignals {
+  const reviewResult: ReviewLoopResult = {
+    outcome: 'converged',
+    rounds: 2,
+    openBlockers: [],
+    openMaterial: [],
+    openNitpicks: [],
+  }
+  const trajectory: DigestRecord[] = [
+    { round: 1, counts: { blocker: 0, material: 3, nitpick: 0 }, resolved: 0, dismissed: 0, verdict: 'open' },
+    { round: 2, counts: { blocker: 0, material: 1, nitpick: 0 }, resolved: 0, dismissed: 0, verdict: 'open' },
+  ]
+  const config: AutonomyConfig = { level: 'assist', costCeilingUsd: 5 }
+  return {
+    reviewResult,
+    trajectory,
+    assumptions: [],
+    spentUsd: 3.4,
+    costKnown: true,
+    autoExtendsUsed: 0,
+    deadlineExpired: false,
+    config,
+    childCount: 3,
+    ...overrides,
+  }
+}
+
+describe('evaluatePlanGate (D5: R4 only)', () => {
+  it('fires R4 when spent + childCount × DEFAULT_ROUND_COST_USD crosses the ceiling', () => {
+    const decision = evaluatePlanGate(planSignals({ childCount: 4 }))
+    expect(decision).toMatchObject({ rule: 'R4', action: 'gate' })
+    expect(decision.evidenceDigest.length).toBeGreaterThan(0)
+  })
+
+  it('stays under the ceiling with one fewer child: the projection is per-child, not a flat constant', () => {
+    const decision = evaluatePlanGate(planSignals({ childCount: 3 }))
+    expect(decision).toMatchObject({ rule: 'none', action: 'gate' })
+  })
+
+  it('uses the child-count projection, never the rounds-based one, at plan mode', () => {
+    // rounds-based would project spent + spent/rounds = 3.4 + 1.7 = 5.1 ≥ 5 (R4);
+    // the child projection 3.4 + 3 × 0.5 = 4.9 < 5 must win.
+    const decision = evaluatePlanGate(planSignals({ childCount: 3 }))
+    expect(decision.rule).toBe('none')
+  })
+
+  it('fails closed on unknown cost', () => {
+    expect(evaluatePlanGate(planSignals({ costKnown: false, childCount: 1 }))).toMatchObject({
+      rule: 'R4',
+      action: 'gate',
+    })
+  })
+
+  it('no rule can approve, extend, or accept-items at plan mode — R1/R2/R3-satisfying signals still gate', () => {
+    const lowBlastAll = [
+      { id: 'A1', text: 't', blastRadius: 'b', blast: 'low' as const, files: [`${CHANGE_DIR}/proposal.md`] },
+    ]
+    const r1WouldApprove = evaluateFinalGate(planSignals({ assumptions: lowBlastAll, spentUsd: 0.5, childCount: 1 }))
+    expect(r1WouldApprove.action).toBe('approve')
+    const planDecision = evaluatePlanGate(planSignals({ assumptions: lowBlastAll, spentUsd: 0.5, childCount: 1 }))
+    expect(planDecision.action).toBe('gate')
+    expect(planDecision.rule).toBe('none')
+
+    const capHitSignals = planSignals({
+      reviewResult: {
+        outcome: 'cap-hit',
+        rounds: 3,
+        openBlockers: [],
+        openMaterial: [{ id: 'F1', class: 'MATERIAL', resolution: 'assumed', outcome: 'kept' }],
+        openNitpicks: [],
+      },
+    })
+    const planCapHit = evaluatePlanGate(capHitSignals)
+    expect(planCapHit.action).toBe('gate')
+    expect(planCapHit.rule).toBe('none')
+  })
+})
 
 describe('renderPreviewBlock', () => {
   it('renders every content line as a > -prefixed blockquote under the preview header', () => {

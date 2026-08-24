@@ -48,6 +48,8 @@ export interface PolicySignals {
   readonly autoExtendsUsed: number
   readonly deadlineExpired: boolean
   readonly config: AutonomyConfig
+  /** Plan mode (D5): switches the R4 projection to `spent + childCount × DEFAULT_ROUND_COST_USD`. */
+  readonly childCount?: number
 }
 
 export type PolicyRule = 'R1' | 'R2' | 'R3' | 'R4' | 'R5'
@@ -136,9 +138,12 @@ function strictlyDecreasingLastK(trajectory: readonly DigestRecord[], k: number)
 /**
  * Projected spend after one more round: current spend plus the median cost of
  * a completed round (spend spread evenly over recorded rounds; a conservative
- * constant when none are recorded).
+ * constant when none are recorded). At plan mode (childCount set) the
+ * projection is `spent + childCount × DEFAULT_ROUND_COST_USD` — one round's
+ * conservative constant per planned child.
  */
 function projectedSpend(signals: PolicySignals): number {
+  if (signals.childCount !== undefined) return signals.spentUsd + signals.childCount * DEFAULT_ROUND_COST_USD
   const rounds = signals.reviewResult.rounds
   if (rounds <= 0) return signals.spentUsd + DEFAULT_ROUND_COST_USD
   return signals.spentUsd + signals.spentUsd / rounds
@@ -261,4 +266,13 @@ export function evaluateCapHit(signals: PolicySignals): PolicyDecision {
   const r2 = r2Decision(signals)
   if (r2 !== null) return r2
   return gateDecision('none', signals, 'cap-hit-undecidable')
+}
+
+/**
+ * Plan-gate prelude (D5): the R4 budget guard only, then the human gate. No
+ * rule can approve, extend, or accept-items at plan mode in part 2 — the
+ * ladder's other rungs are structurally unreachable here.
+ */
+export function evaluatePlanGate(signals: PolicySignals): PolicyDecision {
+  return r4FailsClosed(signals) ?? gateDecision('none', signals, 'plan-undecidable')
 }
