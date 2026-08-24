@@ -116,8 +116,8 @@ export default {
     'plugins/context-vault/runtime.ts!',
     'plugins/task-provider-kaneo/auto-provision.ts!',
     // github-provider-comments-labels change (in flight): comment/label
-    // schemas are test-only until the change's mappers/operations tasks land.
-    'plugins/task-provider-github/schemas/{comment,label}.ts!',
+    // schemas and comment operations are test-only until provider.ts lands.
+    'plugins/task-provider-github/{schemas/{comment,label},operations/comments}.ts!',
     // Test-seam shims: re-export test-only symbols so tests have an explicit
     // import site; see the *.testing.ts ignoreIssues glob below.
     'src/**/*.testing.ts!',
@@ -172,9 +172,9 @@ export default {
     // Task-provider plugin clients are reached only via those same dynamic
     // bridges. Scoped to task-provider-* so other plugins' clients stay checked.
     'plugins/task-provider-*/client.ts': ['exports'],
-    // github-provider-comments-labels seam — schemas are test-only and the new
-    // mapper exports await the change's operations/provider tasks; remove then.
-    'plugins/task-provider-github/{schemas/{comment,label},mappers}.ts': ['exports', 'types'],
+    // github-provider-comments-labels seam — schemas, mappers, and comment
+    // operations await the change's provider wiring; remove with the entry.
+    'plugins/task-provider-github/{schemas/{comment,label},mappers,operations/comments}.ts': ['exports', 'types'],
     // acp bridge modules are consumed by plugins/acp/index.ts through
     // import.meta.require() (entry-graph containment for their src/analytics
     // imports, same pattern as the kaneo bridges above); knip cannot trace
