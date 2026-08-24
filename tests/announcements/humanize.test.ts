@@ -354,6 +354,23 @@ describe('humanizeChangelog', () => {
     expect(ruSystem).toContain('"🛠 Исправления"')
   })
 
+  test('passes the exact write system prompt to the ru announcement pass', async () => {
+    let capturedSystem = ''
+    await humanizeChangelog(
+      'raw',
+      deps({
+        locales: ['ru'],
+        generate: (opts) => {
+          capturedSystem = opts.system
+          return Promise.resolve({ text: 'ok' })
+        },
+      }),
+    )
+    expect(capturedSystem).toBe(
+      'You turn a filtered list of changelog entries (a JSON array of {kind, text}) into a short, friendly release announcement for end users of a chat bot.\nWrite the announcement in Russian.\nRules:\n- Write for non-technical users. Plain, warm, concise.\n- No jargon, config keys, module names, commit hashes, or scopes in parentheses.\n- Each item is one short line framed as a benefit: what the user can now do, or what annoyance is gone.\n- Group into sections with these exact headers when content exists: "✨ Новое", "⚡ Улучшения", "🛠 Исправления". Omit a section entirely if it has no items.\n- Output only the announcement body. No preamble, no "here is", no version number.\nExample input:\n[{"kind":"new","text":"feat(telegram): pick up edited messages and update the task"},{"kind":"improvement","text":"perf: task list loads faster for large projects"},{"kind":"fix","text":"fix(memory): recall search returns stale results after compaction"}]\nExample output:\n✨ Новое\n- Передумали? Отредактируйте сообщение — и бот обновит задачу.\n\n⚡ Улучшения\n- Списки задач открываются быстрее, даже в больших проектах.\n\n🛠 Исправления\n- Поиск по памяти бота снова всегда показывает свежие результаты.',
+    )
+  })
+
   test('logs the not-configured warning with the child scope, exact metadata, and message', async () => {
     const result = await humanizeChangelog(
       'raw',
