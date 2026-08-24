@@ -334,6 +334,15 @@ jobs:
       group: opencode-agent-${{ needs.resolve.outputs.branch }}
       cancel-in-progress: false
 
+    # The model-backend selector, declared once here so the install step's
+    # `if:` and the pipeline step's forwarding gates read one value, not two
+    # kept in step. A repository variable like every other knob; unset forwards
+    # as the empty string, which the pipeline's config reads as the `opencode`
+    # default — so the default route installs nothing and is otherwise
+    # identical to the pre-backend workflow.
+    env:
+      AGENT_BACKEND: ${{ vars.AGENT_BACKEND }}
+
     steps:
       # First, before anything that takes time, because what it records is when
       # *this job* started — which is when `timeout-minutes` above starts counting
@@ -438,6 +447,18 @@ jobs:
       - name: Install the OpenSpec CLI
         run: bun add --global @fission-ai/openspec@1.8.0
 
+      # The claude backend spawns the official `claude` binary per model turn,
+      # so it has to be on PATH — installed at one pinned exact version (no
+      # floating tag, no `latest`) so any two runners execute the same binary
+      # the recorded fixture corpus was shaped by. Gated on the job-level
+      # AGENT_BACKEND: the default route installs nothing. The version here,
+      # the recorder's fixture stamp and the README's copy move together.
+      - name: Install the claude CLI the claude backend spawns
+        if: env.AGENT_BACKEND == 'claude'
+        run: |
+          bun add --global @anthropic-ai/claude-code@2.1.239
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
       # `id:` is load-bearing, not decoration: the pipeline writes
       # `reported=true` to $GITHUB_OUTPUT for every path that has already put a
       # comment on the issue, and the fallback step below is gated on
@@ -455,9 +476,24 @@ jobs:
           # The only model credentials. One OpenAI-compatible endpoint covers
           # OpenAI, Azure-style gateways, OpenRouter and self-hosted servers, so
           # there are no provider-specific keys to keep in step.
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          #
+          # Route-gated (design D11): GitHub injects no repository secret
+          # implicitly, so without the forwarding lines below the claude route's
+          # startup guard would always see neither-set; and the inverse gates on
+          # the two gateway variables keep each route's environment clean of the
+          # other route's credential — the default route's `opencode serve` and
+          # its model-readable `bash` children must never see an Anthropic key,
+          # and the claude route refuses a set `LLM_API_KEY` outright (its
+          # review-loop children would leak it). The model knobs below stay
+          # forwarded on both routes: they name the model either backend runs.
+          LLM_API_KEY: ${{ env.AGENT_BACKEND != 'claude' && secrets.LLM_API_KEY || '' }}
+          LLM_BASE_URL: ${{ env.AGENT_BACKEND != 'claude' && vars.LLM_BASE_URL || '' }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          # The claude route's credentials, forwarded only when selected. The
+          # pipeline demands exactly one of the two; unset secrets forward as
+          # the empty string, which the guard reads as absence.
+          ANTHROPIC_API_KEY: ${{ env.AGENT_BACKEND == 'claude' && secrets.ANTHROPIC_API_KEY || '' }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ env.AGENT_BACKEND == 'claude' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           # The models.dev provider id LLM_MODEL is looked up under, not a second
           # endpoint: the transport stays openai-compatible whatever this says.
           # Unset means `openai`, which is what the pipeline hardcoded before the
