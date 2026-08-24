@@ -15,5 +15,5 @@ export const GITHUB_PROMPT_ADDENDUM = [
   '- Labels are issue labels. Descriptions map to the issue body.',
   '- Search passes your query to GitHub search: use GitHub search qualifiers (label:, assignee:,',
   '  milestone:, state:, is:issue is already pinned for you along with the repository scope).',
-  '- Comments, attachments, and deletion are not supported for GitHub task instances this session.',
+  '- Attachments and deletion are not supported for GitHub task instances this session.',
 ].join('\n')

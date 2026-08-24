@@ -169,6 +169,10 @@ export default {
     // Task-provider plugin clients are reached only via those same dynamic
     // bridges. Scoped to task-provider-* so other plugins' clients stay checked.
     'plugins/task-provider-*/client.ts': ['exports'],
+    // github-provider-comments-labels: setTaskLabels/clearTaskLabels operations
+    // exist but stay unwired — TaskProvider declares no such methods (design
+    // non-goal); a later session adds the consuming surface.
+    'plugins/task-provider-github/operations/labels.ts': ['exports', 'types'],
     // acp bridge modules are consumed by plugins/acp/index.ts through
     // import.meta.require() (entry-graph containment for their src/analytics
     // imports, same pattern as the kaneo bridges above); knip cannot trace

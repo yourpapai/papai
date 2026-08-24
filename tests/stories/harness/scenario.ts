@@ -67,6 +67,9 @@ import type { ScenarioRuntimeExtension } from './runtime-extension.js'
 import type { ModelDecision } from './scripted-llm.js'
 import {
   ADMIN_USER_ID,
+  REAL_GITHUB_BASE_URL,
+  REAL_GITHUB_REPO,
+  REAL_GITHUB_TOKEN,
   REAL_KANEO_BASE_URL,
   REAL_KANEO_CREDENTIAL,
   REAL_KANEO_WORKSPACE_ID,
@@ -617,7 +620,9 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
             ? { baseUrl: REAL_YOUTRACK_BASE_URL }
             : providerType === 'kaneo'
               ? { baseUrl: REAL_KANEO_BASE_URL }
-              : {},
+              : providerType === 'github'
+                ? { repo: REAL_GITHUB_REPO, baseUrl: REAL_GITHUB_BASE_URL }
+                : {},
       })
       return makeTaskInstanceHandle(id, providerType)
     },
@@ -652,6 +657,14 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
           pluginId: 'task-provider-kaneo',
           key: 'workspaceId',
           value: REAL_KANEO_WORKSPACE_ID,
+        })
+      }
+      if (taskInstance.providerType === 'github') {
+        world.fixtures.seedProviderContextConfig({
+          contextId: scopedConfigContextId(context),
+          pluginId: 'task-provider-github',
+          key: 'token',
+          value: REAL_GITHUB_TOKEN,
         })
       }
     },

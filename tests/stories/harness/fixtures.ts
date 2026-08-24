@@ -261,9 +261,10 @@ export type ScenarioFixturesOptions = Readonly<{
 const REAL_TASK_PROVIDER_PLUGIN_IDS: Readonly<Record<RealTaskProviderType, string>> = {
   youtrack: 'task-provider-youtrack',
   kaneo: 'task-provider-kaneo',
+  github: 'task-provider-github',
 }
 
-export type RealTaskProviderType = 'youtrack' | 'kaneo'
+export type RealTaskProviderType = 'youtrack' | 'kaneo' | 'github'
 
 export type ScenarioFixtures = Readonly<{
   taskProvider: TaskProvider
