@@ -14,6 +14,7 @@ import type { ChangeDigest } from '../../sdd-runner/src/gate-digest-extract.js'
 import { presentGateAt } from '../../sdd-runner/src/gate-digest.js'
 import {
   detectHandEdits,
+  latestSettledGateVersion,
   presentGate,
   resumeGate,
   runGateReopen,
@@ -671,6 +672,44 @@ describe('gate reopen (10.2)', () => {
     expect(fs.existsSync(path.join(state.runDir, 'gate-hashes-2.json'))).toBe(true)
   })
 
+  it('unchecks an indented box, drops a padded response heading, and trims the tail — exactly', async () => {
+    const { workDir, runId, deps } = await seedSettledGate()
+    fs.writeFileSync(
+      path.join(workDir, 'runs', runId, 'gate-1.md'),
+      [
+        '<!-- gate-1.md -->',
+        '',
+        '## Final gate — change add-thing',
+        '',
+        '  - [x] A1 indented assumption',
+        '',
+        '  ## Gate response  ',
+        '',
+        '- [x] A1 answered',
+        '',
+        '',
+      ].join('\n'),
+    )
+    await runGateReopen(deps, workDir, runId, 1)
+    const fresh = fs.readFileSync(path.join(workDir, 'runs', runId, 'gate-2.md'), 'utf8')
+    expect(fresh).toBe(
+      ['<!-- gate-1.md -->', '', '## Final gate — change add-thing', '', '  - [ ] A1 indented assumption', ''].join(
+        '\n',
+      ),
+    )
+  })
+
+  it('keeps every line of a digest that has no response section, tail-trimmed only', async () => {
+    const { workDir, runId, deps } = await seedSettledGate()
+    fs.writeFileSync(
+      path.join(workDir, 'runs', runId, 'gate-1.md'),
+      ['<!-- gate-1.md -->', '', '- [x] A1 assumption', '', ''].join('\n'),
+    )
+    await runGateReopen(deps, workDir, runId, 1)
+    const fresh = fs.readFileSync(path.join(workDir, 'runs', runId, 'gate-2.md'), 'utf8')
+    expect(fresh).toBe(['<!-- gate-1.md -->', '', '- [ ] A1 assumption', ''].join('\n'))
+  })
+
   it('refuses when a gate is already pending', async () => {
     const { workDir, runId, deps } = await seedSettledGate({ status: 'running' })
     const stateRaw = fs.readFileSync(path.join(workDir, 'runs', runId, 'state.json'), 'utf8')
@@ -801,5 +840,38 @@ describe('gate reopen (10.2)', () => {
     const logPath = path.join(workDir, 'runs', runId, 'events.ndjson')
     appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 3 })
     await expect(runGateReopen(deps, workDir, runId, 1)).resolves.toMatchObject({ gateVersion: 2 })
+  })
+})
+
+describe('latestSettledGateVersion', () => {
+  async function seedWithGateEvents(
+    events: readonly import('../../sdd-runner/src/events.js').EventInput[],
+  ): Promise<{ workDir: string; runId: string }> {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd-runner')
+    const state = await createRunState({ workDir, repoRoot: dir, changeName: 'add-thing' })
+    const logPath = path.join(state.runDir, 'events.ndjson')
+    for (const event of events) {
+      appendEvent(logPath, event)
+    }
+    return { workDir, runId: state.runId }
+  }
+
+  it('answers the version of the most recently answered gate', async () => {
+    const { workDir, runId } = await seedWithGateEvents([
+      { altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 1 },
+      { altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: 1 },
+      { altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 2 },
+      { altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: 2 },
+      { altitude: 'L2', type: 'stage_enter', stage: 'gate' },
+    ])
+    await expect(latestSettledGateVersion(workDir, runId)).resolves.toBe(2)
+  })
+
+  it('answers null when no gate has been answered — presented-only counts for nothing', async () => {
+    const { workDir, runId } = await seedWithGateEvents([
+      { altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 1 },
+    ])
+    await expect(latestSettledGateVersion(workDir, runId)).resolves.toBeNull()
   })
 })

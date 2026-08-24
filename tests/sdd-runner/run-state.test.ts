@@ -11,6 +11,8 @@ import path from 'node:path'
 import { appendEvent } from '../../sdd-runner/src/events.js'
 import { ROUND_CAPS } from '../../sdd-runner/src/review-model.js'
 import {
+  PersistedRunStateSchema,
+  allocateSessionId,
   createRunState,
   listPendingGates,
   loadRunState,
@@ -102,6 +104,74 @@ describe('session id allocation', () => {
     await saveRunState({ ...sibling, status: 'completed' })
     const state = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
     expect(state.runId).toBe('add-thing')
+  })
+
+  it('refuses an empty name outright rather than synthesizing an id', async () => {
+    const workDir = makeWorkDir()
+    const failure = await errorOf(allocateSessionId(workDir, ''))
+    expect(failure.message).toBe('cannot derive a session id from an empty change name')
+  })
+
+  it('walks past terminal holders of every terminal status before allocating the next suffix', async () => {
+    const workDir = makeWorkDir()
+    const first = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    await saveRunState({ ...first, status: 'completed' })
+    const second = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    expect(second.runId).toBe('add-thing-2')
+    await saveRunState({ ...second, status: 'aborted' })
+    const third = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    expect(third.runId).toBe('add-thing-3')
+
+    const failedHolder = await createRunState({ workDir, repoRoot: '/repo', changeName: 'flaky-fix' })
+    await saveRunState({ ...failedHolder, status: 'failed' })
+    const afterFailure = await createRunState({ workDir, repoRoot: '/repo', changeName: 'flaky-fix' })
+    expect(afterFailure.runId).toBe('flaky-fix-2')
+  })
+
+  it('refuses a suffix held live even when the bare name is terminally held, naming the holder', async () => {
+    const workDir = makeWorkDir()
+    const first = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    await saveRunState({ ...first, status: 'completed' })
+    await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing-2' })
+    const failure = await errorOf(allocateSessionId(workDir, 'add-thing'))
+    expect(failure.message).toContain('add-thing-2')
+    expect(failure.message).toMatch(/non-terminal/u)
+  })
+
+  it('falls back to a datetime id when the change name slugifies to nothing', async () => {
+    const workDir = makeWorkDir()
+    const state = await createRunState(
+      { workDir, repoRoot: '/repo', changeName: '###' },
+      new Date('2026-03-04T05:06:07.891Z'),
+    )
+    expect(state.runId).toMatch(/^2026-03-04T05-06-07-891Z-[0-9a-f]{8}$/u)
+  })
+
+  it('parses an old state.json without gateDeadlineReArmed as not re-armed', () => {
+    const parsed = PersistedRunStateSchema.parse({
+      runId: 'add-thing',
+      repoRoot: '/repo',
+      workDir: '/work',
+      changeName: 'add-thing',
+      stage: 'intake',
+      depth: null,
+      round: 0,
+      gate: null,
+      status: 'completed',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })
+    expect(parsed.gateDeadlineReArmed).toBe(false)
+    expect(parsed.autoExtendsUsed).toBe(0)
+  })
+
+  it('creates a fresh run with the deadline not re-armed, in memory and on reload', async () => {
+    const workDir = makeWorkDir()
+    const state = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    expect(state.gateDeadlineReArmed).toBe(false)
+    expect(state.gateDeadlineAt).toBeNull()
+    const loaded = await loadRunState(workDir, state.runId)
+    expect(loaded.gateDeadlineReArmed).toBe(false)
   })
 })
 
@@ -247,6 +317,15 @@ describe('listPendingGates', () => {
 
   it('returns an empty list when no runs exist', async () => {
     expect(await listPendingGates(makeWorkDir())).toEqual([])
+  })
+
+  it('skips a run whose state.json is corrupt rather than failing the listing', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'run-broken', { gate: { mode: 'early', version: 1 } })
+    fs.writeFileSync(path.join(workDir, 'runs', 'run-broken', 'state.json'), '{"runId": 42}')
+    await seedRun(workDir, 'run-live', { gate: { mode: 'final', version: 1 } })
+    const pending = await listPendingGates(workDir)
+    expect(pending.map((entry) => entry.runId)).toEqual(['run-live'])
   })
 })
 

@@ -42,6 +42,11 @@ afterEach(() => {
   }
 })
 
+function errorMessageOf(failure: unknown): string {
+  if (!(failure instanceof Error)) throw new Error('expected a rejection holding an Error')
+  return failure.message
+}
+
 interface Fixture {
   readonly deps: OrchestratorDeps
   readonly repoRoot: string
@@ -341,6 +346,24 @@ describe('runStart text source (inline session)', () => {
     const fixture = makeFixture()
     const failure = await runStart(fixture.deps, { depthOverride: 'S' }).catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(Error)
+    expect(errorMessageOf(failure)).toBe('runStart requires a task file or inline task text')
+  })
+
+  it('falls back to the generic task basename when inline text has no heading', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, {
+      taskText: 'no heading, just body\n',
+      depthOverride: 'S',
+    })
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(state.changeName).toBe('task')
+  })
+
+  it('never writes a run-dir task.md when the task came from a file', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(fs.existsSync(path.join(state.runDir, 'task.md'))).toBe(false)
   })
 })
 
