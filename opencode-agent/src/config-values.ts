@@ -7,9 +7,20 @@ import type { DiffLimits } from './diff-guard.js'
 
 /** Raised when the environment cannot produce a runnable configuration. */
 export class ConfigError extends Error {
-  constructor(message: string) {
+  /**
+   * Machine-readable tag for the startup failures an operator tells apart by
+   * cause, absent on the ones a message alone describes.
+   *
+   * The credential-exclusivity guard is why it exists: its failures must be
+   * distinguishable from other startup failures by code, because the remedy
+   * differs — unset one variable versus fix a workflow forwarding gate.
+   */
+  readonly code: string | undefined
+
+  constructor(message: string, code?: string) {
     super(message)
     this.name = 'ConfigError'
+    this.code = code
   }
 }
 
@@ -250,6 +261,19 @@ export const stallTimeoutMs = (env: Env, key: string, fallback: number, range: I
 }
 
 export { parseMcpServers } from './mcp-servers.js'
+
+// The backend-selection reads (AGENT_BACKEND and the claude route's credential
+// demands), split off for the same reason and reachable from here for the same
+// one: `config-clock-values.ts` holds the job-clock knobs, and this block is
+// about which backend a job runs on rather than how one scalar is read.
+export {
+  backendSelection,
+  claudeCredential,
+  CLAUDE_CREDENTIALS_CODE,
+  LLM_CREDENTIALS_CODE,
+  refuseGatewayKeyOnClaude,
+} from './config-backend-values.js'
+export type { BackendSelection, ClaudeCredential } from './config-backend-values.js'
 
 // The job-clock knobs, re-exported for the same reason and left out of reach for
 // none: they moved to `config-clock-values.ts` because their prose outgrew this

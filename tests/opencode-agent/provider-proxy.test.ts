@@ -373,6 +373,8 @@ describe('contain', () => {
     owner: 'acme',
     repo: 'widgets',
     githubToken: 'ghp_0123456789abcdefghij',
+    backend: 'opencode',
+    claudeCredential: null,
     selfLoginOverride: 'agent-bot',
     selfWorkflowName: 'OpenCode Issue Agent',
     openai: SETTINGS,
