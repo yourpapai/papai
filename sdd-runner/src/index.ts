@@ -16,7 +16,6 @@ import { discoverBranch, loadRunnerConfig } from './config.js'
 import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
 import type { EventInput } from './events.js'
-import { buildResolveCost } from './gate-digest.js'
 import type { OrchestratorDeps } from './gate-digest.js'
 import { runGateReopen, latestSettledGateVersion } from './gate.js'
 import type { LiveViewWiring } from './live-view.js'
@@ -38,6 +37,7 @@ import { requestCalmStop, stopRun } from './stop-controller.js'
 import { registerTerminalTitle, TERMINAL_TITLE_RESTORE } from './terminal-title.js'
 import { createRunScreenSession } from './tui-run-session.js'
 import { runSessionPicker } from './tui-session-picker.js'
+import { buildResolveCost } from './usage-aggregate.js'
 
 export const USAGE = [
   'sdd — autonomous SDD pipeline',

@@ -14,11 +14,11 @@ import { FindingsSidecarSchema, runStageAgent } from '../../sdd-runner/src/agent
 import type { AgentLayerDeps, Finding, RunStageAgentOptions } from '../../sdd-runner/src/agent-layer.js'
 import type { RunnerConfig } from '../../sdd-runner/src/config.js'
 import { appendEvent, readEvents, type EventInput } from '../../sdd-runner/src/events.js'
-import { costAndDuration } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { runPolicyLadder } from '../../sdd-runner/src/gate-prelude.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
+import { costAndDuration } from '../../sdd-runner/src/usage-aggregate.js'
 import { aggregateUsage } from '../../sdd-runner/src/usage-aggregate.js'
 
 const tmpDirs: string[] = []

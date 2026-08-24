@@ -4,6 +4,8 @@
 // See LICENSE in the project root for details.
 
 import type { AgentUsage, DoneEvent, SddEvent } from './events.js'
+import { loadDb } from './pricing.js'
+import { resolveCost } from './pricing.js'
 import type { ResolvedCost } from './pricing.js'
 
 const TOKEN_SCALE = 1_000_000
@@ -110,4 +112,24 @@ export function aggregateUsage(events: readonly SddEvent[], resolve: ResolveCost
     },
   )
   return { ...usage, costKnown }
+}
+
+export async function buildResolveCost(): Promise<ResolveCostFn> {
+  try {
+    const db = await loadDb()
+    return (modelId: string) => resolveCost(modelId, db)
+  } catch {
+    return () => null
+  }
+}
+
+export function costAndDuration(
+  events: readonly SddEvent[],
+  createdAt: string,
+  now: Date,
+  resolve: ResolveCostFn = () => null,
+): { costUsd: number; durationMs: number; costKnown: boolean } {
+  const usage = aggregateUsage(events, resolve)
+  const durationMs = Math.max(0, now.getTime() - new Date(createdAt).getTime())
+  return { costUsd: usage.costUsd, durationMs, costKnown: usage.costKnown }
 }
