@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { GitHubClassifiedError } from '../../../plugins/task-provider-github/classify-error.js'
@@ -11,11 +11,16 @@ import type { GitHubConfig } from '../../../plugins/task-provider-github/client.
 import { createTrackedLoggerMock } from '../../utils/logger-mock.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
-// The resolver binds `logger.child(...)` at module evaluation, so the logger
-// mock must be installed before the module loads: file-level tracked mock +
-// delayed top-level import (same pattern as client.test.ts).
+// The resolver creates its child logger inside the factory (see the module
+// comment there), so the tracked mock must be installed at factory time, not
+// module-eval time: combined runs load this module under another file's graph
+// before this file's mocks run. File-level install for the delayed import, plus
+// a suite-level re-install after the global mock-reset restore (tests/AGENTS.md).
 const tracked = createTrackedLoggerMock()
-void mock.module('../../../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
+const installTrackedLogger = (): void => {
+  void mock.module('../../../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
+}
+installTrackedLogger()
 
 const { createGitHubIdentityResolver } = await import('../../../plugins/task-provider-github/identity-resolver.js')
 
@@ -60,6 +65,9 @@ afterEach(() => {
 })
 
 describe('createGitHubIdentityResolver.searchUsers', () => {
+  beforeEach(() => {
+    installTrackedLogger()
+  })
   test('exact-login collaborator match ranks first and never touches /search/users', async () => {
     const calls: CapturedRequest[] = []
     setMockFetch(

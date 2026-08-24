@@ -173,8 +173,6 @@ export default {
     // exist but stay unwired — TaskProvider declares no such methods (design
     // non goal); a later session adds the consuming surface.
     'plugins/task-provider-github/operations/labels.ts': ['exports', 'types'],
-    // github-provider-identity-history-count: unused until task 6.3 wires the provider; shrink as each lands.
-    'plugins/task-provider-github/**/{event,user,identity-resolver,activities,count}.ts': ['files', 'exports', 'types'],
     // acp bridge modules are consumed by plugins/acp/index.ts through
     // import.meta.require() (entry-graph containment for their src/analytics
     // imports, same pattern as the kaneo bridges above); knip cannot trace

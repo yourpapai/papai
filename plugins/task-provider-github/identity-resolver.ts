@@ -13,12 +13,16 @@ import { githubFetch, githubPaginate } from './client.js'
 import { GitHubNamedUserSchema } from './schemas/user.js'
 import type { GitHubNamedUser } from './schemas/user.js'
 
-const log = logger.child({ scope: 'provider:github:identity' })
+const DEFAULT_IDENTITY_LIMIT = 10
+
+// The child logger is created inside the factory, not at module scope: a
+// module-scope child pins whatever logger was installed at first evaluation,
+// which breaks combined test runs where another file loads this module before
+// the logger mock is installed (see tests/mock-reset.ts for the same trap).
+const identityLog = (): ReturnType<typeof logger.child> => logger.child({ scope: 'provider:github:identity' })
 
 const collaboratorPageSchema = z.array(GitHubNamedUserSchema)
 const searchUsersPageSchema = z.object({ items: z.array(GitHubNamedUserSchema) })
-
-const DEFAULT_IDENTITY_LIMIT = 10
 
 const normalize = (value: string): string => value.trim().toLowerCase()
 
@@ -63,6 +67,7 @@ export function matchGitHubUsers(
  * Upstream failures are classified and rethrown — never an empty list.
  */
 export function createGitHubIdentityResolver(config: GitHubConfig): UserIdentityResolver {
+  const log = identityLog()
   log.debug({ repo: config.repo }, 'createGitHubIdentityResolver')
 
   return {
