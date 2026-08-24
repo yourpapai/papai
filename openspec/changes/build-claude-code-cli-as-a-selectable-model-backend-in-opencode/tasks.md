@@ -123,5 +123,5 @@ the only credentialed artifact and never runs in CI.
 
 - [ ] 10.1 Re-run the recorder end-to-end through the finished `claude-adapter.ts`: the recorder drives the adapter's own argv composition (a flag the pinned CLI no longer accepts fails at recording cost), a live turn running a long `Bash` child is `abort()`ed with no group member surviving, and a follow-up prompt `--resume`s the memoized session after a `SIGKILL`ed turn and answers.
   Verify: `bun run opencode-agent:test:claude-live` (credentialed)
-- [ ] 10.2 Full verification sweep green: full suite (workflow pins reading the on-branch workflow file), lint, typecheck, workflow lint, strict change validation.
+- [x] 10.2 Full verification sweep green: full suite (workflow pins reading the on-branch workflow file), lint, typecheck, workflow lint, strict change validation.
   Verify: `bun run test && bun run lint && bun run typecheck && bun workflows:lint && bunx openspec validate build-claude-code-cli-as-a-selectable-model-backend-in-opencode --strict`
