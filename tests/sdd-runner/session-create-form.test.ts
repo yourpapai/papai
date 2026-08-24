@@ -69,6 +69,15 @@ describe('reduceCreateForm (field focus and editing)', () => {
     expect(state.title).toBe('q')
     expect(reduceCreateForm(state, '', keys())).toEqual({ kind: 'none' })
   })
+
+  it('normalizes carriage returns in a pasted chunk into newlines', () => {
+    const titled = typing(initialCreateForm(), 'task')
+    const focused = stateOf(reduceCreateForm(titled, '\t', keys()))
+    const pasted = stateOf(reduceCreateForm(focused, '# Heading\r\rBody\rwrapped', keys()))
+    const crlf = stateOf(reduceCreateForm(pasted, 'a\r\nb', keys()))
+    expect(pasted.description).toBe('# Heading\n\nBody\nwrapped')
+    expect(crlf.description).toBe('# Heading\n\nBody\nwrappeda\nb')
+  })
 })
 
 describe('reduceCreateForm (outcomes)', () => {
@@ -121,5 +130,14 @@ describe('composeTaskText', () => {
   it('keeps the heading-led shape the pipeline consumes', () => {
     expect(composeTaskText('solo title', '')).toBe('# solo title\n')
     expect(composeTaskText('titled', 'with body')).toBe('# titled\n\nwith body\n')
+  })
+
+  it('returns an H1-led description verbatim instead of prepending the title', () => {
+    const pasted = '# Build: CLI backend\n\n## Context\n\nBody text.'
+    expect(composeTaskText('typed title', pasted)).toBe(`${pasted}\n`)
+  })
+
+  it('still prepends the title when the description opens with a non-H1 heading', () => {
+    expect(composeTaskText('titled', '## subheading first')).toBe('# titled\n\n## subheading first\n')
   })
 })

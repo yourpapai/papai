@@ -28,9 +28,21 @@ export function initialCreateForm(): CreateFormState {
   return { field: 'title', title: '', description: '', notice: null }
 }
 
-/** The task text a submitted form composes: heading-led, body optional. */
+/** Matches the H1 shape `deriveChangeName` names a session from. */
+const H1_LINE = /^#\s+\S/u
+
+/**
+ * The task text a submitted form composes: heading-led, body optional.
+ *
+ * A description that itself opens with an H1 — a pasted prompt document — is
+ * returned verbatim: prepending the typed title would give the task text two
+ * H1s, and its own heading already names the session.
+ */
 export function composeTaskText(title: string, description: string): string {
-  return description === '' ? `# ${title}\n` : `# ${title}\n\n${description}\n`
+  const body = description.trim()
+  if (body === '') return `# ${title}\n`
+  if (H1_LINE.test(body)) return `${body}\n`
+  return `# ${title}\n\n${body}\n`
 }
 
 function editBuffer(state: CreateFormState, text: string): CreateFormState {
@@ -40,6 +52,15 @@ function editBuffer(state: CreateFormState, text: string): CreateFormState {
     notice: null,
   }
 }
+
+/**
+ * A paste arrives as one chunk whose newlines the terminal has already turned
+ * into `\r` (or `\r\n`) — Ink passes the chunk through verbatim with no
+ * `key.return`, so the buffer would otherwise hold CRs that no downstream
+ * markdown consumer treats as line breaks. A typed Return never reaches the
+ * append branch; the submit branch consumes it first.
+ */
+const normalizeInput = (input: string): string => input.replace(/\r\n?/gu, '\n')
 
 export function reduceCreateForm(state: CreateFormState, input: string, key: KeyFlags): CreateFormAction {
   if (key.escape) return { kind: 'cancel' }
@@ -55,6 +76,6 @@ export function reduceCreateForm(state: CreateFormState, input: string, key: Key
   }
   const buffer = state.field === 'title' ? state.title : state.description
   if (key.backspace || key.delete) return { kind: 'state', state: editBuffer(state, buffer.slice(0, -1)) }
-  if (input.length > 0) return { kind: 'state', state: editBuffer(state, buffer + input) }
+  if (input.length > 0) return { kind: 'state', state: editBuffer(state, buffer + normalizeInput(input)) }
   return { kind: 'none' }
 }
