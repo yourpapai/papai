@@ -10,11 +10,12 @@ import { eq } from 'drizzle-orm'
 import packageJson from '../package.json' with { type: 'json' }
 import type { AnnouncementsDeps } from '../src/announcements.js'
 import { announceNewVersion } from '../src/announcements.js'
-import { upsertAnnouncementDraft, updateHumanizedBody } from '../src/announcements/store.js'
+import { getAnnouncementDraft, updateHumanizedBodies, upsertAnnouncementDraft } from '../src/announcements/store.js'
 import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { ChatProvider } from '../src/chat/types.js'
 import * as schema from '../src/db/schema.js'
 import { versionAnnouncements } from '../src/db/schema.js'
+import type { Locale } from '../src/i18n/index.js'
 import * as proactiveHistoryModule from '../src/proactive-history.js'
 import { extractChangelogSection } from './helpers/extract-changelog-section.js'
 import { createMockChat, getTestDb, mockLogger, seedTestPlatformInstance, setupTestDb } from './utils/test-helpers.js'
@@ -91,6 +92,68 @@ describe('extractChangelogSection', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Store: per-locale humanized bodies
+// ---------------------------------------------------------------------------
+
+describe('announcement store: per-locale humanized bodies', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('updateHumanizedBodies merges per locale: one locale write leaves the other untouched', () => {
+    updateHumanizedBodies('v9.9.9', { en: 'EN body' })
+    updateHumanizedBodies('v9.9.9', { ru: 'RU body' })
+    expect(getAnnouncementDraft('v9.9.9')?.humanizedBodies).toEqual({ en: 'EN body', ru: 'RU body' })
+
+    updateHumanizedBodies('v9.9.9', { en: 'EN body v2' })
+    expect(getAnnouncementDraft('v9.9.9')?.humanizedBodies).toEqual({ en: 'EN body v2', ru: 'RU body' })
+  })
+
+  test('every en write mirrors into legacy humanized_body; ru-only writes do not', () => {
+    updateHumanizedBodies('v9.9.8', { ru: 'RU only' })
+    expect(getAnnouncementDraft('v9.9.8')?.humanizedBody).toBeNull()
+
+    updateHumanizedBodies('v9.9.8', { en: 'EN body' })
+    expect(getAnnouncementDraft('v9.9.8')?.humanizedBody).toBe('EN body')
+
+    updateHumanizedBodies('v9.9.8', { en: 'EN body v2' })
+    expect(getAnnouncementDraft('v9.9.8')?.humanizedBody).toBe('EN body v2')
+  })
+
+  test('getAnnouncementDraft coalesces legacy humanized_body as the en body, applied once', () => {
+    upsertAnnouncementDraft({ version: 'v9.9.7', rawBody: 'raw', humanizedBody: 'legacy en' })
+    expect(getAnnouncementDraft('v9.9.7')?.humanizedBodies).toEqual({ en: 'legacy en' })
+
+    updateHumanizedBodies('v9.9.7', { ru: 'RU body' })
+    expect(getAnnouncementDraft('v9.9.7')?.humanizedBodies).toEqual({ en: 'legacy en', ru: 'RU body' })
+    const storedJson = getTestDb()
+      .select({ humanizedBodies: versionAnnouncements.humanizedBodies })
+      .from(versionAnnouncements)
+      .where(eq(versionAnnouncements.version, 'v9.9.7'))
+      .get()
+    expect(storedJson?.humanizedBodies).toBe(JSON.stringify({ ru: 'RU body' }))
+
+    updateHumanizedBodies('v9.9.7', { en: 'map en' })
+    getTestDb()
+      .update(versionAnnouncements)
+      .set({ humanizedBody: 'legacy stale' })
+      .where(eq(versionAnnouncements.version, 'v9.9.7'))
+      .run()
+    expect(getAnnouncementDraft('v9.9.7')?.humanizedBodies).toEqual({ en: 'map en', ru: 'RU body' })
+  })
+
+  test('unknown locales are stripped on write', () => {
+    updateHumanizedBodies('v9.9.6', {
+      en: 'EN body',
+      ru: 'RU body',
+      fr: 'sneaky',
+    } as Partial<Record<Locale, string>>)
+    expect(getAnnouncementDraft('v9.9.6')?.humanizedBodies).toEqual({ en: 'EN body', ru: 'RU body' })
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Integration-style tests for announceNewVersion
 // ---------------------------------------------------------------------------
 
@@ -126,9 +189,9 @@ describe('announceNewVersion', () => {
         }
         return changelogProvider()
       },
-      humanizeChangelog: (): Promise<string | null> => Promise.resolve(null),
+      humanizeChangelog: (): Promise<Partial<Record<Locale, string>>> => Promise.resolve({}),
       persistDraft: upsertAnnouncementDraft,
-      updateHumanizedBody: updateHumanizedBody,
+      updateHumanizedBodies: updateHumanizedBodies,
       isVersionAnnounced: (version): boolean => {
         const row = getTestDb()
           .select()
