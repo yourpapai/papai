@@ -9,6 +9,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import type { ClaudeCredential } from './config-values.js'
+
 /**
  * How the `claude` CLI is **started and addressed** — the `opencode-connect.ts`
  * seam carried to the second backend: a spawned detached process leading its
@@ -48,7 +50,7 @@ export interface ClaudeSpawnRequest {
   argv: readonly string[]
   /** Delivered on stdin — a single Linux argument is capped at 128 KiB. */
   stdinPrompt: string
-  credential: { readonly name: 'ANTHROPIC_API_KEY' | 'CLAUDE_CODE_OAUTH_TOKEN'; readonly value: string }
+  credential: ClaudeCredential
   /** The checkout the CLI works in. */
   workspace: string
   /**
