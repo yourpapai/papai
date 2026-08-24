@@ -172,8 +172,9 @@ export default {
     // Task-provider plugin clients are reached only via those same dynamic
     // bridges. Scoped to task-provider-* so other plugins' clients stay checked.
     'plugins/task-provider-*/client.ts': ['exports'],
-    // github-provider-comments-labels seam — remove with the entry above.
-    'plugins/task-provider-github/schemas/{comment,label}.ts': ['exports', 'types'],
+    // github-provider-comments-labels seam — schemas are test-only and the new
+    // mapper exports await the change's operations/provider tasks; remove then.
+    'plugins/task-provider-github/{schemas/{comment,label},mappers}.ts': ['exports', 'types'],
     // acp bridge modules are consumed by plugins/acp/index.ts through
     // import.meta.require() (entry-graph containment for their src/analytics
     // imports, same pattern as the kaneo bridges above); knip cannot trace

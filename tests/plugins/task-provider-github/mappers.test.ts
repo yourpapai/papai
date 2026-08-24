@@ -5,15 +5,20 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type { Task, TaskListItem, TaskSearchResult, Project } from 'papai/plugin-types'
+import type { Comment, Label, Task, TaskListItem, TaskSearchResult, Project } from 'papai/plugin-types'
 
 import {
+  mapCommentToComment,
+  mapIssueLabelToLabel,
   mapIssueToListItem,
   mapIssueToSearchResult,
   mapIssueToTask,
+  mapRepoLabelToLabel,
   mapRepoToProject,
 } from '../../../plugins/task-provider-github/mappers.js'
+import type { GitHubComment } from '../../../plugins/task-provider-github/schemas/comment.js'
 import type { GitHubIssue } from '../../../plugins/task-provider-github/schemas/issue.js'
+import type { GitHubRepoLabel } from '../../../plugins/task-provider-github/schemas/label.js'
 import type { GitHubRepo } from '../../../plugins/task-provider-github/schemas/repo.js'
 
 const user = {
@@ -190,5 +195,46 @@ describe('mapRepoToProject', () => {
   test('null description passes through as null', () => {
     const project = mapRepoToProject({ ...repo, description: null })
     expect(project.description).toBeNull()
+  })
+})
+
+describe('mapCommentToComment', () => {
+  const baseComment: GitHubComment = {
+    id: 1,
+    body: 'Me too',
+    user,
+    created_at: '2011-04-14T16:00:49Z',
+    updated_at: '2011-04-14T16:00:49Z',
+    html_url: 'https://github.com/octocat/Hello-World/issues/1347#issuecomment-1',
+    issue_url: 'https://api.github.com/repos/octocat/Hello-World/issues/1347',
+    author_association: 'NONE',
+  }
+
+  test('maps a GitHub comment to the normalized Comment', () => {
+    const comment: Comment = mapCommentToComment(baseComment)
+    expect(comment.id).toBe('1')
+    expect(comment.body).toBe('Me too')
+    expect(comment.author).toBe('octocat')
+    expect(comment.createdAt).toBe('2011-04-14T16:00:49Z')
+  })
+
+  test('author is undefined when GitHub reports no user (ghost commenter)', () => {
+    const comment = mapCommentToComment({ ...baseComment, user: null })
+    expect(comment.author).toBeUndefined()
+  })
+})
+
+describe('mapRepoLabelToLabel', () => {
+  test('maps a repo label to Label with stringified id', () => {
+    const repoLabel: GitHubRepoLabel = { id: 208045946, name: 'bug', color: 'f29513', description: null }
+    const label: Label = mapRepoLabelToLabel(repoLabel)
+    expect(label).toEqual({ id: '208045946', name: 'bug', color: 'f29513' })
+  })
+})
+
+describe('mapIssueLabelToLabel', () => {
+  test('string-form issue label maps id to the name', () => {
+    const label: Label = mapIssueLabelToLabel('help wanted')
+    expect(label).toEqual({ id: 'help wanted', name: 'help wanted' })
   })
 })
