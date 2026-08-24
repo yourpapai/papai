@@ -132,12 +132,13 @@ export interface GateResumeContext {
 
 function buildSessionView(
   state: RunState,
+  gateMode: 'early' | 'final',
   assumptions: readonly GateAssumption[],
   findings: { blockers: GateFinding[]; material: GateFinding[] },
   requiredAck: string | undefined,
 ): GateSessionView {
   return {
-    gateMode: narrowGateMode(state.gate?.mode ?? 'final'),
+    gateMode,
     items: [
       ...findings.material.map((finding) => ({
         kind: 'finding' as const,
@@ -204,6 +205,7 @@ async function collectGateDecision(
 
 function collectGateOutcome(
   ctx: GateResumeContext,
+  gateMode: 'early' | 'final',
   assumptions: readonly GateAssumption[],
   findings: { blockers: readonly GateFinding[]; material: readonly GateFinding[] },
   requiredAck: string | undefined,
@@ -220,7 +222,7 @@ function collectGateOutcome(
       version,
       assumptions,
       blockers: findings.blockers,
-      gateMode: narrowGateMode(state.gate?.mode ?? 'final'),
+      gateMode,
       ...(findings.material.length > 0 ? { findings: findings.material } : {}),
       ...(requiredAck === undefined ? {} : { requiredAck }),
     },
@@ -241,20 +243,17 @@ export async function runGateResume(
   const changeDir = path.join(deps.config.repoRoot, 'openspec', 'changes', state.changeName)
   const sidecarDir = path.join(state.runDir, 'sidecars')
   const gateMdPath = path.join(state.runDir, `gate-${version}.md`)
-  const { assumptions, reviewResult, requiredAck } = await prepareResumeInput(
-    sidecarDir,
-    state.round,
-    narrowGateMode(state.gate.mode),
-  )
+  const gateMode = narrowGateMode(state.gate.mode)
+  const { assumptions, reviewResult, requiredAck } = await prepareResumeInput(sidecarDir, state.round, gateMode)
   const findings = findingsOf(reviewResult)
-  const view = buildSessionView(state, assumptions, findings, requiredAck)
+  const view = buildSessionView(state, gateMode, assumptions, findings, requiredAck)
   const proceed = await collectGateDecision(deps, options, view, gateMdPath)
   if (!proceed) return { runId: state.runId, outcome: 'abandoned', version }
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
   try {
     const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
     const ctx: GateResumeContext = { deps, state, emit, version, changeDir, sidecarDir, agent }
-    const outcome = await collectGateOutcome(ctx, assumptions, findings, requiredAck)
+    const outcome = await collectGateOutcome(ctx, gateMode, assumptions, findings, requiredAck)
     if (outcome.kind === 'aborted') return await finalizeGate(deps, state, 'aborted', version)
     if (outcome.kind === 'approved') return await settleApprovedGate(ctx, reviewResult)
     if (outcome.kind === 'extend') return await runExtendRound(deps, state, emit, agent, version)

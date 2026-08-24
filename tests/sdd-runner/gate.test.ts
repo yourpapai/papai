@@ -602,7 +602,9 @@ function answeredEventIndex(events: readonly ReturnType<typeof readEvents>[numbe
 }
 
 describe('gate reopen (10.2)', () => {
-  async function seedSettledGate(opts: { status?: 'completed' | 'running' } = {}): Promise<{
+  async function seedSettledGate(
+    opts: { status?: 'completed' | 'running'; mode?: 'early' | 'final' | 'plan' } = {},
+  ): Promise<{
     workDir: string
     runId: string
     deps: import('../../sdd-runner/src/gate-digest.js').OrchestratorDeps
@@ -614,9 +616,10 @@ describe('gate reopen (10.2)', () => {
     fs.mkdirSync(path.join(dir, 'openspec', 'changes', 'add-thing'), { recursive: true })
     fs.writeFileSync(path.join(dir, 'openspec', 'changes', 'add-thing', 'proposal.md'), '## Why\nx\n')
     const logPath = path.join(state.runDir, 'events.ndjson')
+    const mode = opts.mode ?? 'final'
     appendEvent(logPath, { altitude: 'L2', type: 'stage_enter', stage: 'gate' })
-    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 1 })
-    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: 1 })
+    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'presented', mode, version: 1 })
+    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'answered', mode, version: 1 })
     const gateMd = [
       '<!-- gate-1.md -->',
       '',
@@ -669,6 +672,12 @@ describe('gate reopen (10.2)', () => {
     expect(fresh).toContain('- [ ] A1')
     expect(fresh).not.toContain('## Gate response')
     expect(fs.existsSync(path.join(state.runDir, 'gate-hashes-2.json'))).toBe(true)
+  })
+
+  it('refuses to reopen a settled plan-mode gate', async () => {
+    const { workDir, runId, deps } = await seedSettledGate({ mode: 'plan' })
+    await expect(runGateReopen(deps, workDir, runId, 1)).rejects.toThrow(/'plan' gate cannot be reopened/u)
+    expect(fs.existsSync(path.join(workDir, 'runs', runId, 'gate-2.md'))).toBe(false)
   })
 
   it('refuses when a gate is already pending', async () => {
