@@ -45,6 +45,9 @@ const api = (login: () => Promise<string>): GitHubApi => {
     addLabels: unused,
     removeLabel: unused,
     createLabel: unused,
+    listRunJobs: unused,
+    jobLog: unused,
+    listCheckRunsForRef: unused,
   }
 }
 

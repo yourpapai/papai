@@ -35,6 +35,7 @@ import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { loadRunState, narrowGateMode, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
 import type { RunState } from './run-state.js'
+import { removeHolder, writeHolder } from './stop-controller.js'
 import { runTuiGateSession } from './tui-gate-session.js'
 
 export interface RunGateResumeResult {
@@ -249,6 +250,7 @@ export async function runGateResume(
   const view = buildSessionView(state, gateMode, assumptions, findings, requiredAck)
   const proceed = await collectGateDecision(deps, options, view, gateMdPath)
   if (!proceed) return { runId: state.runId, outcome: 'abandoned', version }
+  writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
   try {
     const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
@@ -259,6 +261,7 @@ export async function runGateResume(
     if (outcome.kind === 'extend') return await runExtendRound(deps, state, emit, agent, version)
     return await settleVeto(ctx, reviewResult, vetoRedirects(outcome))
   } finally {
+    removeHolder(state.runDir)
     deps.unmountRunScreen?.()
   }
 }

@@ -106,8 +106,8 @@ findings: `ROADMAP.md`.
   where nothing did — with the **wall-clock** three in `src/time-notices.ts`,
   split off when a third of them would not fit beside the counter ceilings.
 - Config is read in two halves and discovered in a third. `src/config-values.ts`
-  reads and refuses one value out of the environment — every range-checked scalar, and
-  `AGENT_CHECKS`, its one non-scalar — `src/config.ts` says which values a run needs, and `src/config-discovery.ts` holds the two settings
+  reads and refuses one value out of the environment — every range-checked scalar —
+  and `src/config.ts` says which values a run needs, and `src/config-discovery.ts` holds the two settings
   that are **asked for** rather than read — the review command, from whether the
   checkout has a `review-loop/`, and the base branch, from the event payload and
   then `origin/HEAD`. Both take their probe as an argument, so both ladders are
@@ -511,7 +511,14 @@ findings: `ROADMAP.md`.
   reconcile would ever look at it again. `applyPullRequestCommand` does not narrow
   to `/review`: with the issue refusing commands, a narrowing there would leave
   `/retry`, `/cancel` and `/ask` nowhere at all to be typed, and which commands a
-  state accepts is `applyCommand`'s one answer for both doors. And the workflow's
+  state accepts is `applyCommand`'s one answer for both doors. `/fix` joined the
+  surface through that same answer — it injects `CI_FAILED` like the red-run
+  door (same transition, same `ciAttempts` increment site), is offered exactly
+  in the phases that admit that signal with a pull request named, and a spent
+  CI budget is refused before the move by `refuseFix` in `command-refusals.ts`:
+  the notice names `AGENT_MAX_CI_ATTEMPTS` and the fresh budget a new pull
+  request earns, and posts every time the command is typed — the once-per-PR
+  `ciBudgetReported` silence belongs to the automatic door alone. And the workflow's
   pull-request arm names **every** command in `SLASH_COMMANDS` (checked against it
   by `workflow.test.ts`) while the label cleanup step reaches both the issue and
   the pull request, since which of the two carries a stranded `agent:working`
@@ -769,6 +776,33 @@ findings: `ROADMAP.md`.
   there is no route from a written handoff back to `PLANNING`. It still covers a
   hand-edited block, and it is the invariant that keeps the note honest the day such
   a route exists.
+- **A CI-fix round diagnoses what its door named, never a memorized check list.**
+  The red-run door names a run, and `handleCiFix` reads it: `listRunJobs`/`jobLog`
+  (the `actions: read` token) distilled by `red-run.ts` into failed jobs, failed
+  steps and tail-clipped logs. A `/fix` command bought the round through the
+  same `CI_FAILED` transition but carries no run id, so the round reads the head
+  commit's failed check runs instead — `listCheckRunsForRef` on the branch the
+  handler already resolves, under `checks: read` (the Checks API is its own
+  permission class; `actions: read` does not cover it), keeping `failure` and
+  `timed_out` and dropping cancelled/skipped/stale/neutral/`action_required`,
+  mapped by `red-run.ts` into the same failed-job shape with the output summary
+  tail-clipped in the log's place and no step conclusions to name. Then one
+  `promptForJson` diagnosis turn (`ci-diagnosis.ts`) whose verdict picks the
+  branch. `fix` + `reproduction`
+  runs the derived argv locally — derived by the model from the repository's own
+  CI files, never from log text — and a failure enters `check-loop.ts` scoped to
+  that one command, each repair prompt carrying the local output **and** the CI
+  log. Green locally while CI was red is **not success** (the incident's rounds
+  were green exactly that way, against a check they never ran): the round falls
+  through to the log-based path and its report says the proof is the log.
+  `needs-human` repairs nothing and pushes nothing — the report renders the
+  verdict's job, reason and remedy, and consumes its `ciAttempts` entry like any
+  other round. `AGENT_CHECKS` and `DEFAULT_CHECKS` are gone: a configured list
+  is a second copy of CI that drifts, which is the whole incident. Logs and the
+  verdict ride the encrypted transcript (`PhaseDeps.transcript`); the public
+  Actions log keeps names and counts. A refused read of the run degrades to a
+  needs-human report naming the error — the fallback comment covers crashes, but
+  here a degraded sentence on the pull request is the more useful answer.
 - **A red run is acted on where the branch is live and no job is on it.**
   `CI_FAILED` names two rows in `TRANSITIONS`, `COMPLETE` and `PR_DELIVERY`, and
   the absences are the design. `PR_DELIVERY` is the genuine race: phase 3 pushes

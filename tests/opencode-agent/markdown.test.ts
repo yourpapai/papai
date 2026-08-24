@@ -11,6 +11,7 @@ import {
   renderAnswerOverBudget,
   renderCiExhausted,
   renderExhausted,
+  renderFixExhausted,
   renderOverBudget,
   renderReviewsExhausted,
 } from '../../opencode-agent/src/budget-notices.js'
@@ -465,6 +466,7 @@ describe('comment headings', () => {
     ['TIME_SPENT_BETWEEN_STEPS', renderStoppedBetweenSteps(BETWEEN_STEPS)],
     ['ANSWER_TIME_SPENT', renderAnswerOutOfTime(60_000, 180_000, 'DESIGN_SPEC')],
     ['CI_GAVE_UP', renderCiExhausted('spent', null)],
+    ['CI_SPENT', renderFixExhausted('spent', null)],
     ['REVIEWS_SPENT', renderReviewsExhausted('spent', null)],
     ['COMMAND_REFUSED', renderRefusedCommand('/approve', 'COMPLETE', [])],
   ]

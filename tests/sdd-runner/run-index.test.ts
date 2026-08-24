@@ -163,3 +163,14 @@ describe('resolveRunId', () => {
     expect(message).toContain('anything')
   })
 })
+
+describe('listPendingGates robustness', () => {
+  it('skips a run whose state.json is corrupt rather than failing the listing', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'run-broken', { gate: { mode: 'early', version: 1 } })
+    fs.writeFileSync(path.join(workDir, 'runs', 'run-broken', 'state.json'), '{"runId": 42}')
+    await seedRun(workDir, 'run-live', { gate: { mode: 'final', version: 1 } })
+    const pending = await listPendingGates(workDir)
+    expect(pending.map((entry) => entry.runId)).toEqual(['run-live'])
+  })
+})

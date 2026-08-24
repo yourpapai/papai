@@ -1,10 +1,7 @@
 {
   "repoRoot": ".",
   "workDir": ".sdd-runner",
-  "model": "kimi-for-coding/k3-256k",
-  "timeouts": {
-    "wallClockMs": 1800000,
-    "inactivityMs": 600000
-  },
-  "budgetUsd": 25
+  "model": "zai-coding-plan/glm-5.3",
+  "budget": 10,
+  "deadline": 90
 }

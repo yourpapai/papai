@@ -8,13 +8,13 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { findHandoff, HANDOFF_MARKER, renderArtifact } from '../../opencode-agent/src/artifacts.js'
 import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
-import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { StagedTotals } from '../../opencode-agent/src/diff-guard.js'
 import { diffGuardError, turnDeadlineError } from '../../opencode-agent/src/errors.js'
 import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import { GitError } from '../../opencode-agent/src/git.js'
 import type { Git, MergeOutcome, Salvage } from '../../opencode-agent/src/git.js'
+import type { RefCheckRun, RunJob } from '../../opencode-agent/src/github-actions.js'
 import type { PullRequestHead, PullRequestRef, PullRequestStatus } from '../../opencode-agent/src/github-pulls.js'
 import type { ReactionContent, ReactionRef, ReactionTarget } from '../../opencode-agent/src/github-reactions.js'
 import type { GitHubApi } from '../../opencode-agent/src/github.js'
@@ -105,7 +105,6 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   commitAuthorEmail: 'agent@example.com',
   checkCommand: 'bun test',
   reviewCommand: ['bun', 'run', 'review-loop/src/cli.ts'],
-  checks: DEFAULT_CHECKS,
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,
@@ -191,6 +190,7 @@ const ciEvent = (overrides: Partial<CiTriggerEvent> = {}): CiTriggerEvent => ({
   conclusion: 'failure',
   workflowName: 'CI',
   runUrl: 'https://example.test/run/1',
+  runId: 32652877782,
   fromThisRepository: true,
   defaultBranch: BASE_BRANCH,
   ...overrides,
@@ -246,6 +246,12 @@ interface PipelineIo {
   agentClosed: boolean
   gitCalls: string[]
   checkResults: Map<string, CommandResult>
+  /** Jobs the fake Actions API reports for the red run; empty means none. */
+  runJobs: RunJob[]
+  /** Log text the fake Actions API hands back, keyed by job id. */
+  jobLogs: Record<number, string>
+  /** Check runs the fake Checks API reports for a ref; empty means none. */
+  refCheckRuns: RefCheckRun[]
   /** Model replies, consumed in order by successive prompts. */
   replies: string[]
   /** Tokens the fake session reports as spent this job. */
@@ -423,6 +429,9 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     agentClosed: false,
     gitCalls: [],
     checkResults: new Map(),
+    runJobs: [],
+    jobLogs: {},
+    refCheckRuns: [],
     replies: [],
     tokensUsed: 0,
     reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0, failure: null },
@@ -613,6 +622,9 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       label(`create:${name}`, () => {
         io.labelsCreated.push({ name, color })
       }),
+    listRunJobs: (): Promise<readonly RunJob[]> => Promise.resolve([...io.runJobs]),
+    jobLog: (jobId): Promise<string> => Promise.resolve(io.jobLogs[jobId] ?? ''),
+    listCheckRunsForRef: (): Promise<readonly RefCheckRun[]> => Promise.resolve([...io.refCheckRuns]),
   }
 
   const git: Git = {
@@ -2369,11 +2381,35 @@ describe('delivery refused by the repository settings', () => {
 describe('CI fixing', () => {
   let harness: Harness
 
+  /** A red run with one failed job, named for the check it stands in for. */
+  const redJob = (name: string, id = 1): RunJob => ({
+    id,
+    name,
+    conclusion: 'failure',
+    steps: [{ name: `Run ${name}`, conclusion: 'failure' }],
+  })
+
+  /** The diagnosis reply that reproduces the job locally as `bun run <name>`. */
+  const reproduceVerdict = (name: string): string =>
+    JSON.stringify({
+      verdict: 'fix',
+      approach: `The ${name} failure reproduces locally; fixing the root cause.`,
+      reproduction: { argv: ['bun', 'run', name] },
+    })
+
+  /** Seeds a one-job red run and the replies a fix round consumes, in order. */
+  const seedRedRun = (h: Harness, name: string, repairs: readonly string[]): void => {
+    h.io.runJobs = [redJob(name)]
+    h.io.jobLogs = { 1: `${name} blew up` }
+    h.io.replies = [reproduceVerdict(name), ...repairs]
+  }
+
   beforeEach(async () => {
     harness = makeHarness()
     await toPlanReview(harness)
     harness.io.replies = ['Implemented.']
     await runPipeline({ event: comment('/approve'), deps: harness.deps })
+    seedRedRun(harness, 'lint', ['Fixed the lint error.'])
     harness.io.posted.length = 0
     harness.io.gitCalls.length = 0
   })
@@ -2388,7 +2424,6 @@ describe('CI fixing', () => {
 
   test('repairs failing checks and pushes the fix', async () => {
     harness.io.checkResults.set('lint', { command: 'lint', exitCode: 1, stdout: 'lint blew up', stderr: '' })
-    harness.io.replies = ['Fixed the lint error.']
 
     await runPipeline({ event: ciEvent(), deps: harness.deps })
 
@@ -2434,9 +2469,18 @@ describe('CI fixing', () => {
   })
 
   test('a green verdict on a round that pushed nothing is scoped to the job', async () => {
-    // "Local checks: ✅ green" beside "Pushed a fix: no" reads as "all fine".
+    // "Local reproduction: ✅" beside "Pushed a fix: no" reads as "all fine".
     // It was true of the runner the repair turn had just run `build:client` and
-    // `docker pull` on, and false of the branch, which nothing had touched.
+    // `docker pull` on, and false of the branch, which nothing had touched —
+    // so the pass is named as observed on this runner, after its repairs.
+    // Fails once, then passes: the shape of a repair that worked, without a
+    // conditional inside the test body.
+    const results: CommandResult[] = [
+      { command: 'lint', exitCode: 1, stdout: 'lint blew up', stderr: '' },
+      { command: 'lint', exitCode: 0, stdout: '', stderr: '' },
+      { command: 'lint', exitCode: 0, stdout: '', stderr: '' },
+    ]
+    harness.deps.runCheck = (): Promise<CommandResult> => Promise.resolve(results.shift()!)
     blockedCommit(['.github/workflows/agent-pipeline.yml'])
 
     await runPipeline({ event: ciEvent(), deps: harness.deps })
@@ -2476,6 +2520,7 @@ describe('CI fixing', () => {
     await runPipeline({ event: ciEvent(), deps: harness.deps })
     harness.deps.git.commitAll = (): Promise<CommitOutcome> =>
       Promise.resolve({ kind: 'committed', totals: { files: 1, lines: 4 }, dropped: [] })
+    seedRedRun(harness, 'lint', ['Fixed it again.'])
 
     await runPipeline({ event: ciEvent(), deps: harness.deps })
 
@@ -2517,7 +2562,7 @@ describe('CI fixing', () => {
    */
   test('a commit the repository refuses is repaired here too', async () => {
     harness.io.checkResults.set('lint', { command: 'lint', exitCode: 1, stdout: 'lint blew up', stderr: '' })
-    harness.io.replies = ['Fixed the lint error.', 'Fixed the formatting too.']
+    harness.io.replies = [reproduceVerdict('lint'), 'Fixed the lint error.', 'Fixed the formatting too.']
     refuseFirstCommits(harness, 1, 'format:check failed')
 
     const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
@@ -2528,8 +2573,8 @@ describe('CI fixing', () => {
   })
 
   test('reports the remaining failures when it cannot get green', async () => {
+    seedRedRun(harness, 'test', ['tried', 'tried again'])
     harness.io.checkResults.set('test', { command: 'test', exitCode: 1, stdout: 'still failing', stderr: '' })
-    harness.io.replies = ['tried', 'tried again']
 
     await runPipeline({ event: ciEvent(), deps: harness.deps })
 
@@ -2558,7 +2603,9 @@ describe('CI fixing', () => {
     // A red check arrives on its own schedule with nobody reading the Actions
     // log, so a silent give-up is indistinguishable from an agent still working.
     await runPipeline({ event: ciEvent(), deps: harness.deps })
+    seedRedRun(harness, 'lint', ['Tried again.'])
     await runPipeline({ event: ciEvent(), deps: harness.deps })
+    seedRedRun(harness, 'lint', ['Tried a third time.'])
     harness.io.posted.length = 0
 
     const result = await runPipeline({ event: ciEvent(), deps: harness.deps })
@@ -2573,7 +2620,9 @@ describe('CI fixing', () => {
   test('says it once, however many more red runs arrive', async () => {
     // CI fires on every push and re-run; repeating the notice would be spam.
     await runPipeline({ event: ciEvent(), deps: harness.deps })
+    seedRedRun(harness, 'lint', ['Again.'])
     await runPipeline({ event: ciEvent(), deps: harness.deps })
+    seedRedRun(harness, 'lint', ['A third time.'])
     await runPipeline({ event: ciEvent(), deps: harness.deps })
     harness.io.posted.length = 0
 

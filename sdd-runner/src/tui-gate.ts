@@ -28,6 +28,7 @@ export interface GateToggles {
 export interface GateScreenProps extends GateToggles {
   readonly view: GateSessionView
   readonly width: number
+  readonly cursor?: number
 }
 
 /** Approve is unavailable until the ack is affirmed and every blocker answered. */
@@ -66,46 +67,58 @@ export function gateAnswersFromToggles(view: GateSessionView, state: GateToggles
   return { items, blockerAnswers, acks, decision: anyDeclined ? 'veto' : 'approve' }
 }
 
+type GateLine = { readonly key: string; readonly text: string }
+
+function gateScreenLines(view: GateSessionView, state: GateToggles, cursor: number): GateLine[] {
+  let row = -1
+  const mark = (): string => {
+    row += 1
+    return row === cursor ? '❯ ' : '  '
+  }
+  const lines: GateLine[] = []
+  lines.push({ key: 'mode', text: `## Gate (${view.gateMode})` })
+  for (const item of view.items) {
+    const accepted = state.toggles[item.id] !== false
+    const readOnly = item.decidedBy !== undefined
+    const check = readOnly || accepted ? '[x]' : '[ ]'
+    const suffix = readOnly ? ` · decided-by: ${item.decidedBy} (read-only)` : ''
+    lines.push({ key: item.id, text: `${mark()}${check} ${item.id} ${item.text}${suffix}` })
+    if (!accepted && state.redirects[item.id] !== undefined) {
+      lines.push({ key: `${item.id}-r`, text: `→ ${state.redirects[item.id]}` })
+    }
+    if (!readOnly) {
+      lines.push({ key: `${item.id}-e`, text: `    evidence: ${item.evidence === '' ? '(none)' : item.evidence}` })
+    }
+  }
+  if (view.blockers.length > 0) {
+    lines.push({ key: 'blockers-h', text: '## Blockers' })
+    for (const blocker of view.blockers) {
+      lines.push({ key: blocker.id, text: `${mark()}${blocker.id} ${blocker.gap}` })
+      const answer = state.blockerAnswers[blocker.id]
+      lines.push({ key: `${blocker.id}-a`, text: answer === undefined ? '→ (unanswered)' : `→ ${answer}` })
+    }
+  }
+  if (view.requiredAck !== null) {
+    lines.push({
+      key: 'ack',
+      text: `${mark()}[${state.ackAffirmed ? 'x' : ' '}] ${view.requiredAck.id} ${view.requiredAck.text} (toggle to affirm)`,
+    })
+  }
+  const consequences = consequenceLines(view)
+  for (const line of consequences) {
+    if (line === 'Decision:') continue
+    if (line.startsWith('  approve')) lines.push({ key: 'c-a', text: line.replace('  approve —', '(a)pprove —') })
+    else if (line.startsWith('  extend')) lines.push({ key: 'c-e', text: line.replace('  extend —', '(e)xtend —') })
+    else if (line.startsWith('  abort')) lines.push({ key: 'c-x', text: line.replace('  abort —', '(x)abort —') })
+    else lines.push({ key: `c-${line}`, text: line })
+  }
+  return lines
+}
+
 export function createGateScreen(): (props: GateScreenProps) => ReturnType<typeof createElement> {
   return function GateScreen(props: GateScreenProps): ReturnType<typeof createElement> {
     const { view } = props
-    const lines: Array<{ readonly key: string; readonly text: string }> = []
-    lines.push({ key: 'mode', text: `## Gate (${view.gateMode})` })
-    for (const item of view.items) {
-      const accepted = props.toggles[item.id] !== false
-      const readOnly = item.decidedBy !== undefined
-      const check = readOnly || accepted ? '[x]' : '[ ]'
-      const suffix = readOnly ? ` · decided-by: ${item.decidedBy} (read-only)` : ''
-      lines.push({ key: item.id, text: `${check} ${item.id} ${item.text}${suffix}` })
-      if (!accepted && props.redirects[item.id] !== undefined) {
-        lines.push({ key: `${item.id}-r`, text: `→ ${props.redirects[item.id]}` })
-      }
-      if (!readOnly) {
-        lines.push({ key: `${item.id}-e`, text: `    evidence: ${item.evidence === '' ? '(none)' : item.evidence}` })
-      }
-    }
-    if (view.blockers.length > 0) {
-      lines.push({ key: 'blockers-h', text: '## Blockers' })
-      for (const blocker of view.blockers) {
-        lines.push({ key: blocker.id, text: `${blocker.id} ${blocker.gap}` })
-        const answer = props.blockerAnswers[blocker.id]
-        lines.push({ key: `${blocker.id}-a`, text: answer === undefined ? '→ (unanswered)' : `→ ${answer}` })
-      }
-    }
-    if (view.requiredAck !== null) {
-      lines.push({
-        key: 'ack',
-        text: `[${props.ackAffirmed ? 'x' : ' '}] ${view.requiredAck.id} ${view.requiredAck.text} (toggle to affirm)`,
-      })
-    }
-    const consequences = consequenceLines(view)
-    for (const line of consequences) {
-      if (line === 'Decision:') continue
-      if (line.startsWith('  approve')) lines.push({ key: 'c-a', text: line.replace('  approve —', '(a)pprove —') })
-      else if (line.startsWith('  extend')) lines.push({ key: 'c-e', text: line.replace('  extend —', '(e)xtend —') })
-      else if (line.startsWith('  abort')) lines.push({ key: 'c-x', text: line.replace('  abort —', '(x)abort —') })
-      else lines.push({ key: `c-${line}`, text: line })
-    }
+    const lines = gateScreenLines(view, props, props.cursor ?? 0)
     const blocked = approveBlockers(view, props)
     if (blocked !== null) lines.push({ key: 'blocked', text: blocked })
     return createElement(

@@ -25,6 +25,7 @@ import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
+import { readHolder } from '../../sdd-runner/src/stop-controller.js'
 
 const tmpDirs: string[] = []
 
@@ -40,6 +41,11 @@ afterEach(() => {
     if (dir !== undefined) fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+function errorMessageOf(failure: unknown): string {
+  if (!(failure instanceof Error)) throw new Error('expected a rejection holding an Error')
+  return failure.message
+}
 
 interface Fixture {
   readonly deps: OrchestratorDeps
@@ -126,7 +132,8 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
     const [bin, subcommand, ...rest] = args
     void bin
     if (subcommand === 'new' && rest[0] === 'change') {
-      fs.mkdirSync(path.join(changeDir, 'specs', 'thing'), { recursive: true })
+      const createdName = typeof rest[1] === 'string' ? rest[1] : changeName
+      fs.mkdirSync(path.join(repoRoot, 'openspec', 'changes', createdName, 'specs', 'thing'), { recursive: true })
       return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 })
     }
     if (subcommand === 'instructions') {
@@ -211,6 +218,41 @@ function glmFallbackResolver(
   return table[modelId] ?? null
 }
 
+describe('holder lifecycle (process ownership)', () => {
+  const runDirOf = (fixture: Fixture): string => path.join(fixture.deps.config.workDir, 'runs', 'add-thing')
+
+  it('runStart holds the run during stage work and releases it at the halt', async () => {
+    const fixture = makeFixture()
+    const inner = fixture.deps.spawn
+    const duringWork: boolean[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      spawn: (command, args, options) => {
+        duringWork.push(readHolder(runDirOf(fixture)) !== null)
+        return inner(command, args, options)
+      },
+    }
+    const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    expect(result.halted).toBe('gate')
+    expect(duringWork.length).toBeGreaterThan(0)
+    expect(duringWork.every(Boolean)).toBe(true)
+    expect(readHolder(runDirOf(fixture))).toBe(null)
+  })
+
+  it('a stage failure still releases the holder — only a hard process death leaves it behind', async () => {
+    const fixture = makeFixture()
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      spawn: () => Promise.reject(new Error('agent crashed')),
+    }
+    const failure = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' }).catch(
+      (error: unknown) => error,
+    )
+    expect(failure instanceof Error).toBe(true)
+    expect(readHolder(runDirOf(fixture))).toBe(null)
+  })
+})
+
 describe('runStart', () => {
   it('sequences intake→draft→review→decompose→gate at S, persists state, and drives bus + persister', async () => {
     const fixture = makeFixture()
@@ -270,6 +312,58 @@ describe('runStart', () => {
       verbosity: 'debug',
     })
     expect(result.halted).toBe('gate')
+  })
+})
+
+describe('runStart text source (inline session)', () => {
+  it('starts from typed text with no task file, naming the session and persisting task.md into the run dir', async () => {
+    const fixture = makeFixture()
+    const taskText = '# Inline thing\n\nstraight from the operator\n'
+    const result = await runStart(fixture.deps, { taskText, changeName: 'inline-thing', depthOverride: 'S' })
+    expect(result.halted).toBe('gate')
+
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(state.runId).toBe('inline-thing')
+    expect(state.changeName).toBe('inline-thing')
+    expect(state.depth).toBe('S')
+    const taskRecord = await fs.promises.readFile(path.join(state.runDir, 'task.md'), 'utf8')
+    expect(taskRecord).toBe(taskText)
+    expect(fs.existsSync(path.join(fixture.repoRoot, 'inline-thing.md'))).toBe(false)
+  })
+
+  it('derives the change name from the first heading when only text is given', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, {
+      taskText: '# Titled By Heading\n\nbody\n',
+      depthOverride: 'S',
+    })
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(state.changeName).toBe('titled-by-heading')
+    expect(result.halted).toBe('gate')
+  })
+
+  it('refuses to start without either source', async () => {
+    const fixture = makeFixture()
+    const failure = await runStart(fixture.deps, { depthOverride: 'S' }).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(Error)
+    expect(errorMessageOf(failure)).toBe('runStart requires a task file or inline task text')
+  })
+
+  it('falls back to the generic task basename when inline text has no heading', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, {
+      taskText: 'no heading, just body\n',
+      depthOverride: 'S',
+    })
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(state.changeName).toBe('task')
+  })
+
+  it('never writes a run-dir task.md when the task came from a file', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(fs.existsSync(path.join(state.runDir, 'task.md'))).toBe(false)
   })
 })
 
@@ -969,6 +1063,7 @@ describe('runContinue routing (task 4.7)', () => {
     const fixture = makeFixture()
     const first = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
     const fixture2 = makeFixture()
+    fs.writeFileSync(fixture2.taskFile, '# Add other thing\n\ndoes another thing\n')
     const second = await runStart(fixture2.deps, { taskFile: fixture2.taskFile, depthOverride: 'S' })
     fs.cpSync(
       path.join(fixture2.deps.config.workDir, 'runs', second.runId),

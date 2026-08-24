@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { applyCiTrigger } from './ci-trigger.js'
-import { refuseCommand, refuseExhausted, refuseReviews } from './command-refusals.js'
+import { refuseCommand, refuseExhausted, refuseFix, refuseReviews } from './command-refusals.js'
 import { commandApplies, COMMAND_SIGNALS } from './commands.js'
 import type { ParsedCommand } from './commands.js'
 import { applyClarifyIntent, applyIntent, applySteeringIntent, readAndSkip } from './comment-intent.js'
@@ -224,6 +224,14 @@ const applyCommand = async (input: PhaseInput, command: ParsedCommand): Promise<
     state.reviewAttempts >= deps.config.maxReviewAttempts
   ) {
     return refuseReviews(input)
+  }
+
+  // And against the CI-fix ceiling a typed /fix draws on — the budget both
+  // doors share, refused before the move for the reason the other two are.
+  // Does not consult `ciBudgetReported`: that silence belongs to the automatic
+  // door, and this answers a command somebody typed.
+  if (signal === 'CI_FAILED' && canTransition(state.phase, signal) && state.ciAttempts >= deps.config.maxCiAttempts) {
+    return refuseFix(input)
   }
 
   const outcome = moveOrSkip(state, signal, deps, command.command)

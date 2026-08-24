@@ -328,13 +328,16 @@ if [ "$STAGED_MODE" = true ]; then
     exit 1
   fi
 else
-  # Original behavior: run all checks
-  checks=("lint" "typecheck" "format:check" "license-headers" "knip" "test" "test:client" "duplicates" "review-loop:lint" "review-loop:typecheck" "review-loop:format:check" "review-loop:test")
+  # Original behavior: run all checks. Workspace code (review-loop/, mutation-improve/,
+  # sdd-runner/, opencode-agent/) is enforced by these root checks alone: root lint/
+  # typecheck/format:check walk the workspace dirs, and the default test sweep runs
+  # tests/<workspace>/. Per-workspace proxy scripts stay local-only conveniences.
+  checks=("lint" "typecheck" "format:check" "license-headers" "knip" "test" "test:client" "duplicates")
   if [ "$SKIP_TESTS" = true ]; then
     filtered_checks=()
     for check in "${checks[@]}"; do
       case "$check" in
-        test|test:client|review-loop:test)
+        test|test:client)
           continue
           ;;
       esac
@@ -419,8 +422,6 @@ else
         # waits on per-file accounting the report can stand behind.
       elif [ "$check" = "test:client" ]; then
         bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/ >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
-      elif [ "$check" = "review-loop:test" ]; then
-        bun test tests/review-loop --timeout 15000 >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       else
         bun run "$check" >"$CHECKS_REPORT_DIR/$fname.log" 2>&1 || exit_code=$?
       fi
@@ -458,7 +459,7 @@ else
       # Where to look, rather than what to run again. The output above is the
       # whole of it, but a terminal scroll-back is not a place you can query.
       case "$check" in
-        test|test:client|review-loop:test)
+        test|test:client)
           echo "→ bun run test:failures      (report already on disk; do not re-run to look)"
           ;;
         *)

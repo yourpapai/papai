@@ -179,6 +179,39 @@ describe('GateSessionTui scripted key feed', () => {
   })
 })
 
+describe('runTuiGateSession kind/id-mismatch regression', () => {
+  it('settles approve when a stale round carries a finding id inside an assumption item', async () => {
+    const poisonedView: GateSessionView = {
+      gateMode: 'final',
+      items: [
+        { kind: 'finding', id: 'F13', text: 'F13', evidence: 'edited — pinned the reading', blastRadius: '' },
+        { kind: 'finding', id: 'F14', text: 'F14', evidence: 'edited — abort fan-out', blastRadius: '' },
+        { kind: 'finding', id: 'F15', text: 'F15', evidence: 'edited — single driver', blastRadius: '' },
+        {
+          kind: 'assumption',
+          id: 'F4',
+          text: 'Plan-gate veto rounds are unbounded',
+          evidence: '',
+          blastRadius: '',
+        },
+      ],
+      blockers: [],
+      requiredAck: null,
+    }
+    const written: string[] = []
+    const result = await runTuiGateSession({
+      view: poisonedView,
+      writeGateMd: (md) => {
+        written.push(md)
+        return Promise.resolve()
+      },
+      keyScript: 'a',
+    })
+    expect(result).toMatchObject({ status: 'answered', decision: 'approve' })
+    expect(written[0]).toContain('- [x] F4 Plan-gate veto rounds are unbounded')
+  })
+})
+
 describe('runTuiGateSession', () => {
   it('settles through the write-then-parse self-check and writes the gate md', async () => {
     const written: string[] = []

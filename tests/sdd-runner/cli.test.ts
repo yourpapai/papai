@@ -78,7 +78,7 @@ function captureHarness(workDir: string): { harness: CliHarness; calls: string[]
     },
     requestCalmStop: (runId) => {
       calls.push(`stop:${runId}`)
-      return Promise.resolve()
+      return Promise.resolve({ kind: 'marker-requested', runId })
     },
     runGateReopen: (runId, version) => {
       calls.push(`reopen:${runId}:${version}`)
@@ -151,6 +151,31 @@ describe('main routing dispatch (6.2)', () => {
     const { harness, calls } = captureHarness(workDir)
     await main(['stop'], harness)
     expect(calls[0]).toBe('stop:only-active')
+    expect(calls[1]).toBe('out:calm stop requested for only-active — honored at the next boundary')
+  })
+
+  it('sdd stop prints the settle line for a dead run', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'zombie', (state) => {
+      state.status = 'running'
+    })
+    const calls: string[] = []
+    const harness: CliHarness = {
+      ...captureHarness(workDir).harness,
+      requestCalmStop: (runId) => {
+        calls.push(`stop:${runId}`)
+        return Promise.resolve({ kind: 'settled', runId, to: 'aborted' })
+      },
+      stdout: (line) => {
+        calls.push(`out:${line}`)
+      },
+    }
+    await main(['stop', 'zombie'], harness)
+    expect(calls[0]).toBe('stop:zombie')
+    expect(calls[1]).toBe(
+      'out:run zombie has no live process — settled as aborted · nothing to resume, start fresh: sdd <task-file>',
+    )
   })
 
   it('sdd <run> --reopen forwards to the gate reopen verb', async () => {
@@ -169,5 +194,47 @@ describe('main routing dispatch (6.2)', () => {
     const { harness } = captureHarness(path.join(dir, '.sdd'))
     await expect(main(['start', 'task.md'], harness)).rejects.toThrow(/sdd <task-file>/u)
     await expect(main(['gate', 'resume', 'run-1'], harness)).rejects.toThrow(/sdd <run-id>/u)
+  })
+})
+
+describe('main interactive dispatch (session loop)', () => {
+  function interactiveHarness(workDir: string): { harness: CliHarness; loops: string[] } {
+    const loops: string[] = []
+    const harness: CliHarness = {
+      ...captureHarness(workDir).harness,
+      interactive: (): boolean => true,
+      sessionLoop: (options): Promise<void> => {
+        loops.push(`${options.initial}:${options.depth ?? '-'}`)
+        return Promise.resolve()
+      },
+    }
+    return { harness, loops }
+  }
+
+  it('ambiguous runs on a terminal enter the looping screen once, on the list', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'run-a', (state) => {
+      state.status = 'completed'
+    })
+    seedRun(workDir, 'run-b', (state) => {
+      state.status = 'completed'
+    })
+    const { harness, loops } = interactiveHarness(workDir)
+    await main([], harness)
+    expect(loops).toEqual(['list:-'])
+  })
+
+  it('zero runs on a terminal enter the loop on the creation screen, depth carried', async () => {
+    const dir = makeDir()
+    const { harness, loops } = interactiveHarness(path.join(dir, '.sdd'))
+    await main(['--depth', 'L'], harness)
+    expect(loops).toEqual(['create:L'])
+  })
+
+  it('a missing loop seam on an interactive route fails loudly', async () => {
+    const dir = makeDir()
+    const harness: CliHarness = { ...captureHarness(path.join(dir, '.sdd')).harness, interactive: () => true }
+    await expect(main([], harness)).rejects.toThrow(/sessionLoop/u)
   })
 })

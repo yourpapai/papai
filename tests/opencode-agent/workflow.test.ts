@@ -812,11 +812,19 @@ describe('the working-label cleanup', () => {
 })
 
 describe('permissions', () => {
-  test('grants exactly what the pipeline writes, and nothing more', () => {
+  test('grants exactly what the pipeline writes and reads, and nothing more', () => {
     expect(workflow.permissions).toEqual({
       contents: 'write',
       issues: 'write',
       'pull-requests': 'write',
+      // Read-only, for the CI-fix round's failed jobs and logs. A write here
+      // would let a model-influenced commit re-run or cancel runs.
+      actions: 'read',
+      // Read-only, for a command-bought CI-fix round's head check runs — the
+      // Checks API's own permission class, which `actions: read` does not
+      // cover. Without it every /fix round 403s into the readError path and
+      // spends its attempt for nothing.
+      checks: 'read',
     })
   })
 })

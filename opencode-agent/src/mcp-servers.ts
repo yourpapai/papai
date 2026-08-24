@@ -9,14 +9,14 @@ import { z } from 'zod'
 import { ConfigError } from './config-values.js'
 
 /**
- * `AGENT_MCP_SERVERS`, the second non-scalar reading — a JSON document mapping
- * server names to declarations, parsed and refused at job start the way
- * `AGENT_CHECKS` is (see `check-spec.ts`): `safeJson` names the syntax error,
- * the schema names the shape error, because "AGENT_MCP_SERVERS is invalid"
- * sends an operator looking in the wrong half.
+ * `AGENT_MCP_SERVERS`, the one non-scalar reading — a JSON document mapping
+ * server names to declarations, parsed and refused at job start:
+ * `safeJson` names the syntax error, the schema names the shape error,
+ * because "AGENT_MCP_SERVERS is invalid" sends an operator looking in the
+ * wrong half.
  *
  * Its own module rather than a section of `config-values.ts`, which stays
- * scalar-only by its own stated seam — same reason `check-spec.ts` left.
+ * scalar-only by its own stated seam.
  *
  * The schema is deliberately minimal (design Non-goals): `command` /
  * `environment` for a local entry, `url` / `headers` for a remote one, unknown

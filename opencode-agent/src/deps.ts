@@ -214,6 +214,7 @@ export const assembleDeps = async (input: DepsInput): Promise<PhaseDeps> => {
     ),
     selfLogin: input.selfLogin,
     now: input.now,
+    transcript: input.transcript,
     groups: createCiGroups(),
     config: input.config,
     log: input.log,
