@@ -50,7 +50,13 @@ export interface ClaudeSpawnRequest {
   argv: readonly string[]
   /** Delivered on stdin — a single Linux argument is capped at 128 KiB. */
   stdinPrompt: string
-  credential: ClaudeCredential
+  /**
+   * The chosen Anthropic credential, when this spawn holds one. The API-key
+   * spelling rides the child env; the OAuth spelling rides the helper files
+   * `claude-credential.ts` materializes into the config dir, and no Anthropic
+   * value enters the env (design D3).
+   */
+  credential?: ClaudeCredential | null
   /** The checkout the CLI works in. */
   workspace: string
   /**
@@ -97,9 +103,11 @@ export const createClaudeConfigDir = (tmpRoot: string = tmpdir()): string =>
  * The scrub matched by *value* and already removed the credentials; the
  * name-strip exists for the carriers value-matching cannot see — `LLM_BASE_URL`
  * (a non-secret URL), `AGENT_MCP_SERVERS` (a JSON document with credentials
- * embedded *inside* it) — and for the two Anthropic spellings, re-added below
- * as exactly the chosen one so the not-chosen spelling can never ride along
- * under a second name.
+ * embedded *inside* it) — and for the two Anthropic spellings, so the one
+ * that rides env can be re-added alone. Only the API-key spelling is
+ * re-added: under `--bare` the pinned CLI never reads the env OAuth token,
+ * so that spelling's carrier is the helper files and no Anthropic value
+ * enters any spawned environment (design D3).
  */
 const childEnv = (request: ClaudeSpawnRequest): Record<string, string> => {
   const env: Record<string, string> = {}
@@ -108,7 +116,10 @@ const childEnv = (request: ClaudeSpawnRequest): Record<string, string> => {
   }
   for (const name of STRIPPED_NAMES) Reflect.deleteProperty(env, name)
 
-  env[request.credential.name] = request.credential.value
+  const credential = request.credential
+  if (credential !== null && credential !== undefined && credential.name === 'ANTHROPIC_API_KEY') {
+    env[credential.name] = credential.value
+  }
   env['DISABLE_AUTOUPDATER'] = '1'
   env['CLAUDE_CONFIG_DIR'] = request.configDir
   return env

@@ -23,11 +23,11 @@ through the update workflow to the removal outcome instead of continuing.
 
 ## 2. Spelling-dependent env injection (design D3)
 
-- [ ] 2.1 Tests first in `tests/opencode-agent/claude-connect.test.ts`: `childEnv` on the OAuth spelling carries neither Anthropic spelling; on the API-key spelling re-adds exactly it (today's shape); with no credential carries neither and fails nowhere.
+- [x] 2.1 Tests first in `tests/opencode-agent/claude-connect.test.ts`: `childEnv` on the OAuth spelling carries neither Anthropic spelling; on the API-key spelling re-adds exactly it (today's shape); with no credential carries neither and fails nowhere.
   Verify: `bun test tests/opencode-agent/claude-connect.test.ts` (red)
-- [ ] 2.2 Tests first in `tests/opencode-agent/claude-adapter.test.ts`: booting with the OAuth credential materializes the helper into the config dir once before any spawn (asserted against the injected spawn/files seam); booting with the API key or no credential materializes nothing; `ClaudeAgentOptions.credential` is optional and absent spawns carry no credential anywhere.
+- [x] 2.2 Tests first in `tests/opencode-agent/claude-adapter.test.ts`: booting with the OAuth credential materializes the helper into the config dir once before any spawn (asserted against the injected spawn/files seam); booting with the API key or no credential materializes nothing; `ClaudeAgentOptions.credential` is optional and absent spawns carry no credential anywhere.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (red)
-- [ ] 2.3 Implement: the env rule in `claude-connect.ts`, the optional credential plus boot-time materialization in `claude-adapter.ts` (design D1) — making 2.1 and 2.2 green.
+- [x] 2.3 Implement: the env rule in `claude-connect.ts`, the optional credential plus boot-time materialization in `claude-adapter.ts` (design D1) — making 2.1 and 2.2 green.
   Verify: `bun test tests/opencode-agent/claude-connect.test.ts tests/opencode-agent/claude-adapter.test.ts` (green)
 
 ## 3. Contract: init-line credential source (design D4)

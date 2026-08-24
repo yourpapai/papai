@@ -102,10 +102,11 @@ const configDirOf = (child: ClaudeChild): string => {
 const request = (
   env: Record<string, string | undefined> = {},
   configDir = createClaudeConfigDir(),
+  credential: Parameters<typeof spawnClaude>[0]['credential'] = CREDENTIAL,
 ): Parameters<typeof spawnClaude>[0] => ({
   argv: ['--bare', '-p'],
   stdinPrompt: 'do the work',
-  credential: CREDENTIAL,
+  credential,
   workspace: '/runner/workspace',
   configDir,
   env: { PATH: '/usr/bin', ...env },
@@ -181,6 +182,35 @@ describe('the spawn contract', () => {
     // An operator (or an injected environment) saying 0 does not un-pin the
     // version: two runners must run the same binary the workflow installed.
     expect(recorded.options.env['DISABLE_AUTOUPDATER']).toBe('1')
+  })
+
+  test('the OAuth spelling injects no Anthropic credential into the child env', () => {
+    const recorded = blankRecording()
+    spawnClaude(
+      request(
+        { ANTHROPIC_API_KEY: 'api-key-riding-along', CLAUDE_CODE_OAUTH_TOKEN: OAUTH_CREDENTIAL.value },
+        createClaudeConfigDir(),
+        OAUTH_CREDENTIAL,
+      ),
+      { spawn: recordingSpawn(recorded, 4242) },
+    )
+
+    // Under --bare the CLI never reads the env token, so the OAuth spelling's
+    // carrier is the helper files, not the environment: neither spelling
+    // reaches the child, whatever the scrubbed env carried in.
+    expect(recorded.options.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
+    expect(recorded.options.env['ANTHROPIC_API_KEY']).toBeUndefined()
+  })
+
+  test('no credential at all carries neither spelling and fails nowhere', () => {
+    const recorded = blankRecording()
+    const child = spawnClaude(request({ ANTHROPIC_API_KEY: 'left-behind' }, createClaudeConfigDir(), null), {
+      spawn: recordingSpawn(recorded, 4242),
+    })
+
+    expect(recorded.options.env['ANTHROPIC_API_KEY']).toBeUndefined()
+    expect(recorded.options.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
+    expect(child.env['PATH']).toBe('/usr/bin')
   })
 })
 

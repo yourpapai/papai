@@ -8,9 +8,12 @@ import { collectChild, createClaudeConfigDir, killGroup, spawnClaude, teardownCl
 import type { ClaudeChild, GroupKillSeams, SpawnClaude, TeardownSeams } from './claude-connect.js'
 import { buildClaudeArgv, decodeClaudeLine, parseNdjsonStream } from './claude-contract.js'
 import type { ClaudeModelKnobs, ClaudeStreamLine } from './claude-contract.js'
+import { writeClaudeCredentialFiles } from './claude-credential.js'
 import { claudeTracker } from './claude-progress.js'
+import { classifyTurn } from './claude-turn-classify.js'
+import type { TurnOutcome } from './claude-turn-classify.js'
 import type { ClaudeCredential } from './config-values.js'
-import { claudeExitError, claudeResultError } from './errors.js'
+import { claudeResultError } from './errors.js'
 import type { Logger } from './logger.js'
 import type { ProgressTracker, TranscriptSink } from './progress.js'
 import { redactSecrets } from './secrets.js'
@@ -31,7 +34,14 @@ export interface ClaudeAgentOptions extends TurnBounds {
   directory: string
   /** The model knobs as plain values — never the `OpenAiSettings` object (design D5). */
   knobs: ClaudeModelKnobs
-  credential: ClaudeCredential
+  /**
+   * The chosen Anthropic credential, when this session holds one. The API-key
+   * spelling is env-injected per spawn; the OAuth spelling is materialized as
+   * the CLI's `apiKeyHelper` files into the job-scoped config dir once, at
+   * boot, before any spawn (design D1/D3). Absent is legitimate only for the
+   * recorder's un-credentialed auth-error leg.
+   */
+  credential?: ClaudeCredential
   /** The post-scrub `process.env` the child inherits. */
   env: Record<string, string | undefined>
   log: Logger
@@ -46,15 +56,6 @@ export interface ClaudeAgentOptions extends TurnBounds {
   teardownSignal?: TeardownSeams['signal']
   teardownSleep?: TeardownSeams['sleep']
   teardownRemove?: TeardownSeams['removeDir']
-}
-
-/** How much of a stderr tail a `CLAUDE_EXIT` failure quotes, after redaction. */
-const STDERR_TAIL_CHARS = 2_000
-
-/** One turn's captured outcome. */
-interface TurnOutcome {
-  text: string
-  sessionId: string
 }
 
 /** Everything one claude session accumulates, mutated only by the functions below. */
@@ -134,42 +135,6 @@ const spawnTurn = (context: SessionContext, invocation: ReturnType<typeof buildC
 }
 
 /**
- * Classifies one finished turn. The stream-json family owns error-shaped and
- * empty results whatever the exit status; exit discipline owns the rest.
- */
-const classifyTurn = (
-  context: SessionContext,
-  captured: {
-    result: Extract<ClaudeStreamLine, { kind: 'result' }> | null
-    initSeen: boolean
-    stderr: string
-    exitCode: number | null
-  },
-): TurnOutcome => {
-  const { result, initSeen, stderr, exitCode } = captured
-
-  if (result !== null && result.isError) {
-    throw claudeResultError('the result line signalled an error (is_error)')
-  }
-  if (result !== null && result.text.trim() === '') {
-    throw claudeResultError('the result line carried empty final text')
-  }
-  if (exitCode !== 0) {
-    throw claudeExitError(exitCode ?? -1, redactSecrets(stderr.slice(-STDERR_TAIL_CHARS), context.credentialValues))
-  }
-  if (result === null) {
-    throw claudeResultError('no decodable result line arrived before the stream ended')
-  }
-  if (!initSeen && context.state.cliSessionId === null) {
-    // Resolving under a synthetic id would either hand `--resume` an id the
-    // CLI refuses or silently fork the session's context mid-job.
-    throw claudeResultError('no session id exists — no init line this turn and none memoized from an earlier one')
-  }
-
-  return { text: result.text, sessionId: context.state.cliSessionId ?? result.sessionId }
-}
-
-/**
  * Spawns one turn, collects it, classifies it. Failures reject with their own
  * `PipelineError` so `runTurn`'s catch sees the family code.
  */
@@ -200,7 +165,10 @@ const runClaudeTurn = async (context: SessionContext): Promise<TurnOutcome> => {
     foldLine(context, line, raw)
   }
 
-  return classifyTurn(context, { result, initSeen, stderr, exitCode })
+  return classifyTurn(
+    { result, initSeen, stderr, exitCode },
+    { cliSessionId: context.state.cliSessionId, credentialValues: context.credentialValues },
+  )
 }
 
 /** The `runTurn` slice of the session: the spawn-and-collect promise and the transport probe. */
@@ -268,15 +236,18 @@ const claudeSession = (context: SessionContext, connection: TurnConnection): Age
 }
 
 /**
- * Boots the claude session: one job-scoped config dir, one synthetic job-local
- * id until the first init line lands, and one process per turn.
+ * Boots the claude session: one job-scoped config dir, the OAuth spelling's
+ * helper files materialized into it before anything spawns, one synthetic
+ * job-local id until the first init line lands, and one process per turn.
  */
 export const createClaudeAgent = (options: ClaudeAgentOptions): Promise<AgentSession> => {
+  const configDir = createClaudeConfigDir()
+  writeClaudeCredentialFiles(configDir, options.credential)
   const context: SessionContext = {
     options,
-    configDir: createClaudeConfigDir(),
+    configDir,
     bootSessionId: `claude-job-${crypto.randomUUID()}`,
-    credentialValues: [options.credential.value],
+    credentialValues: options.credential === undefined ? [] : [options.credential.value],
     tracker: claudeTracker(options.log),
     state: {
       cliSessionId: null,

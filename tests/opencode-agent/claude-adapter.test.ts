@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
@@ -26,6 +26,8 @@ const fixture = (name: string): string => readFileSync(path.join(FIXTURES, name)
 
 const CREDENTIAL = { name: 'ANTHROPIC_API_KEY' as const, value: 'sk-ant-api03-the-chosen-credential' }
 
+const OAUTH_CREDENTIAL = { name: 'CLAUDE_CODE_OAUTH_TOKEN' as const, value: 'sk-ant-oat01-the-subscription-token' }
+
 /** One scripted turn: what the fake CLI printed and how it exited. */
 interface ScriptedTurn {
   stdout?: string
@@ -35,6 +37,8 @@ interface ScriptedTurn {
 
 interface RecordedCall {
   argv: readonly string[]
+  /** The child env the spawn was asked to run with — never logged, only asserted. */
+  env: Record<string, string>
 }
 
 /** A spawn seam that answers each turn from a script, recording every call. */
@@ -43,7 +47,7 @@ const scriptedSpawn = (turns: readonly ScriptedTurn[]): { spawn: SpawnClaude; ca
   let at = 0
   return {
     calls,
-    spawn: (binary, argv, _options) => {
+    spawn: (binary, argv, options) => {
       const turn = turns[Math.min(at, turns.length - 1)] ?? {}
       at += 1
       const stdin = {
@@ -53,7 +57,7 @@ const scriptedSpawn = (turns: readonly ScriptedTurn[]): { spawn: SpawnClaude; ca
         },
         end(): void {},
       }
-      calls.push({ argv: [binary, ...argv] })
+      calls.push({ argv: [binary, ...argv], env: options.env })
       const encoder = new TextEncoder()
       const stream = (text: string): AsyncIterable<Uint8Array> => {
         const chunks: Uint8Array[] = [encoder.encode(text)]
@@ -79,6 +83,10 @@ const scriptedSpawn = (turns: readonly ScriptedTurn[]): { spawn: SpawnClaude; ca
     },
   }
 }
+
+/** The config dir a recorded call spawned under, or '' when the call did not happen. */
+const configDirOfCall = (calls: readonly RecordedCall[], at: number): string =>
+  calls[at]?.env['CLAUDE_CONFIG_DIR'] ?? ''
 
 /** Records what the run said in public — the one channel the names-only rule governs. */
 interface PublicLog {
@@ -298,6 +306,96 @@ describe('session continuity', () => {
 
     const reply = await agent.prompt({ prompt: 'x' })
     expect(reply.sessionId).toBe('0d9f2a55-7b3a-4c1e-9f0a-2f7c8d11ab02')
+  })
+})
+
+describe('credential carrier by spelling', () => {
+  /** What the config dir held at the moment of the first spawn — boot-time materialization, not turn-time. */
+  interface FirstSpawnProbe {
+    dirKnown: boolean
+    helper: boolean
+    settings: boolean
+    helperMode: number
+    settingsMode: number
+  }
+
+  const probeAtFirstSpawn = (
+    turns: readonly ScriptedTurn[],
+  ): { spawn: SpawnClaude; probe: FirstSpawnProbe | null; calls: RecordedCall[] } => {
+    const inner = scriptedSpawn(turns)
+    let probe: FirstSpawnProbe | null = null
+    return {
+      calls: inner.calls,
+      get probe(): FirstSpawnProbe | null {
+        return probe
+      },
+      spawn: (binary, argv, options) => {
+        if (probe === null) {
+          const dir = options.env['CLAUDE_CONFIG_DIR'] ?? ''
+          const helper = path.join(dir, 'credential.sh')
+          const settings = path.join(dir, 'settings.json')
+          probe = {
+            dirKnown: dir.length > 0,
+            helper: existsSync(helper),
+            settings: existsSync(settings),
+            helperMode: existsSync(helper) ? statSync(helper).mode & 0o777 : 0,
+            settingsMode: existsSync(settings) ? statSync(settings).mode & 0o777 : 0,
+          }
+        }
+        return inner.spawn(binary, argv, options)
+      },
+    }
+  }
+
+  test('booting with the OAuth credential materializes the helper once, before any spawn, and no env carries the token', async () => {
+    const probed = probeAtFirstSpawn([{ stdout: fixture('success-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(probed.spawn, publicLog().log, { credential: OAUTH_CREDENTIAL }))
+
+    await agent.prompt({ prompt: 'x' })
+
+    // Materialized at boot: both files existed, with their modes, when the
+    // first CLI process started.
+    expect(probed.probe).not.toBeNull()
+    expect(probed.probe?.dirKnown).toBe(true)
+    expect(probed.probe?.helper).toBe(true)
+    expect(probed.probe?.helperMode).toBe(0o700)
+    expect(probed.probe?.settings).toBe(true)
+    expect(probed.probe?.settingsMode).toBe(0o600)
+    // The value lives in the file, never in any spawned env or argv.
+    expect(JSON.stringify(probed.calls)).not.toContain(OAUTH_CREDENTIAL.value)
+    for (const call of probed.calls) {
+      expect(call.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
+      expect(call.env['ANTHROPIC_API_KEY']).toBeUndefined()
+    }
+    // Exactly the two files — nothing else rode along.
+    const dir = configDirOfCall(probed.calls, 0)
+    expect(dir).not.toBe('')
+    expect(readdirSync(dir).sort()).toEqual(['credential.sh', 'settings.json'])
+  })
+
+  test('booting with the API key materializes nothing — env injection is that spelling’s mechanism', async () => {
+    const probed = probeAtFirstSpawn([{ stdout: fixture('success-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(probed.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'x' })
+
+    expect(probed.probe?.helper).toBe(false)
+    expect(probed.probe?.settings).toBe(false)
+    expect(probed.calls[0]?.env['ANTHROPIC_API_KEY']).toBe(CREDENTIAL.value)
+  })
+
+  test('the credential is optional: absent, a turn spawns with no credential anywhere', async () => {
+    const probed = probeAtFirstSpawn([{ stdout: fixture('success-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(probed.spawn, publicLog().log, { credential: undefined }))
+
+    await agent.prompt({ prompt: 'x' })
+
+    expect(probed.probe?.helper).toBe(false)
+    expect(probed.probe?.settings).toBe(false)
+    for (const call of probed.calls) {
+      expect(call.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
+      expect(call.env['ANTHROPIC_API_KEY']).toBeUndefined()
+    }
   })
 })
 
