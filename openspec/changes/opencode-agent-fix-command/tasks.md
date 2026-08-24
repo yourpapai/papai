@@ -46,8 +46,8 @@ Spec: `specs/agent-fix-command/spec.md`; how: design D1–D7.
 
 ## 6. Guardrail pin: the command rides the pull-request door (D6)
 
-- [ ] 6.1 Test in `tests/opencode-agent/pr-trigger.test.ts`: an open pull request from a foreign repository whose branch merely looks like `agent/issue-<n>` carrying a `/fix` comment keeps the existing `PR_FOREIGN_REPOSITORY` refusal — no model turn, no CI-fix attempt spent — and a `/fix` on the agent's own open pull request boots a job exactly as `/review` and `/sync` do (spec: "The command rides the pull-request door's existing guardrails"; no production change expected). Verify: `bun test tests/opencode-agent/pr-trigger.test.ts` green
-- [ ] 6.2 Section gate: `bun test tests/opencode-agent/pr-trigger.test.ts tests/opencode-agent/guardrails.test.ts`
+- [x] 6.1 Test in `tests/opencode-agent/pr-trigger.test.ts`: an open pull request from a foreign repository whose branch merely looks like `agent/issue-<n>` carrying a `/fix` comment keeps the existing `PR_FOREIGN_REPOSITORY` refusal — no model turn, no CI-fix attempt spent — and a `/fix` on the agent's own open pull request boots a job exactly as `/review` and `/sync` do (spec: "The command rides the pull-request door's existing guardrails"; no production change expected). Verify: `bun test tests/opencode-agent/pr-trigger.test.ts` green
+- [x] 6.2 Section gate: `bun test tests/opencode-agent/pr-trigger.test.ts tests/opencode-agent/guardrails.test.ts`
 
 ## 7. Documentation the change makes stale (D5)
 
