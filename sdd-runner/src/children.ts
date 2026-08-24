@@ -6,6 +6,7 @@
 import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import { propagateChildStop } from './child-stop.js'
 import { slugify } from './config.js'
 import { readEvents } from './events.js'
 import type { AgentUsage } from './events.js'
@@ -15,8 +16,10 @@ import { PLAN_REVIEW_SURROGATE } from './gate-prelude.js'
 import { materializeChildFiles, planDigest, topoSortChildren } from './plan.js'
 import { PlanSchema } from './plan.js'
 import type { PlanChild, PlanFsDeps } from './plan.js'
+import { settleStoppedResult } from './resume-flow.js'
 import { loadRunState, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
+import type { CalmStopController } from './stop-controller.js'
 import { aggregateUsage } from './usage-aggregate.js'
 import { buildResolveCost } from './usage-aggregate.js'
 
@@ -70,10 +73,26 @@ export type RunChildRun = (
   child: PlanChild,
   taskFile: string,
   spendBaselineUsd: number,
+  onRunDirReady?: (childRunDir: string) => void,
 ) => Promise<{ readonly runId: string }>
 
 export interface RunChildrenOptions {
   readonly runChildRun: RunChildRun
+  /** Parent calm-stop seam (D11): honored at child boundaries and propagated in flight. */
+  readonly stop?: CalmStopController
+}
+
+/** D11 calm settlement: consume the parent marker, record `stopped`, stay resumable. */
+function calmSettle(deps: OrchestratorDeps, state: RunState, stop: CalmStopController): Promise<RunChildrenResult> {
+  const pending: { readonly runId: string; readonly halted: 'stopped' } = {
+    runId: state.runId,
+    halted: 'stopped',
+  }
+  return settleStoppedResult(deps, state, stop, pending)
+}
+
+function assertStopPresent(stop: CalmStopController | undefined): asserts stop is CalmStopController {
+  if (stop === undefined) throw new Error('calm stop requested without a stop seam')
 }
 
 export interface TreeSpend {
@@ -102,6 +121,7 @@ export function treeSpend(state: RunState): TreeSpend {
 export type RunChildrenResult =
   | { readonly halted: 'gate-pending'; readonly childRunId: string }
   | { readonly halted: 'stopped'; readonly child: string; readonly childStatus: string }
+  | { readonly runId: string; readonly halted: 'stopped' }
   | { readonly halted: 'completed' }
 
 /** Load the current plan sidecar — the single source of full child records (D3). */
@@ -188,17 +208,48 @@ async function settleCompletedChild(
   await saveRunState(state, deps.now?.() ?? new Date())
 }
 
+/** Post-flight observation (D8/D9/D11): calm-stop wins; then done/gate/failure. */
+async function settleObservedChild(
+  deps: OrchestratorDeps,
+  state: RunState,
+  ctx: StageContext,
+  stop: CalmStopController | undefined,
+  childId: string,
+  handle: { readonly runId: string },
+  resolve: Parameters<typeof aggregateUsage>[1],
+  next: () => Promise<RunChildrenResult>,
+): Promise<RunChildrenResult> {
+  const childState = await loadRunState(deps.config.workDir, handle.runId).catch(() => null)
+  const completed = childState !== null && childState.status === 'completed'
+  if (stop?.stopRequested() === true) {
+    assertStopPresent(stop)
+    if (completed) await settleCompletedChild(deps, state, ctx, childId, childState.runDir, resolve)
+    return calmSettle(deps, state, stop)
+  }
+  if (childState === null) return stopAtFailedChild(deps, state, ctx, childId, 'unloadable')
+  if (completed) {
+    await settleCompletedChild(deps, state, ctx, childId, childState.runDir, resolve)
+    return next()
+  }
+  if (childState.gate !== null) {
+    state.children = { ...state.children, [childId]: { status: 'running' } }
+    await saveRunState(state, deps.now?.() ?? new Date())
+    deps.stdout?.(`child ${childId} awaits its gate (run ${handle.runId}) — settle it, then resume the parent`)
+    deps.stdout?.(`sdd ${handle.runId}`)
+    return { halted: 'gate-pending', childRunId: handle.runId }
+  }
+  return stopAtFailedChild(deps, state, ctx, childId, childState.status)
+}
+
 /**
  * Sequential topo execution loop (D8): walks `state.plan.childIds` in order,
  * one child in flight, skipping children already `done`. Before each spawn
- * the D10 budget guard fail-closes on unknown-or-exceeded tree spend. A
- * completed child emits `child_spawned { child, runId }` then `child_done
- * { child, outcome: 'done', usage }` with usage aggregated from the child's
- * own event log. A gate-pending child records `running`, prints its concrete
- * `sdd <runId>` line, and halts the parent `running` — resume continues at
- * the next not-done child. A child ending aborted/failed/stopped — or whose
- * state cannot be loaded (fail closed) — stops the loop (D9); the walk's end
- * marks the parent `completed` exactly when every child reads `done`.
+ * the D10 budget guard fail-closes on unknown-or-exceeded tree spend and the
+ * D11 calm-stop seam is honored. A completed child emits `child_spawned`
+ * then `child_done` with usage aggregated from the child's own event log; a
+ * gate-pending child surfaces its `sdd <runId>` line; a failed child stops
+ * the loop (D9). The walk's end marks the parent `completed` exactly when
+ * every child reads `done`.
  */
 export async function runChildren(
   deps: OrchestratorDeps,
@@ -217,6 +268,8 @@ export async function runChildren(
       return { halted: 'completed' }
     }
     if (state.children?.[childId]?.status === 'done') return runAt(index + 1)
+    const stop = options.stop
+    if (stop !== undefined && stop.stopRequested()) return calmSettle(deps, state, stop)
     const spend = treeSpend(state)
     if (!spend.costKnown || spend.spentUsd >= deps.config.budget) {
       return stopAtBudgetGuard(deps, state, childId, spend)
@@ -224,22 +277,12 @@ export async function runChildren(
     const child = children.find((entry) => entry.id === childId)
     if (child === undefined) throw new Error(`plan sidecar has no child ${childId}`)
     const taskFile = path.join(state.runDir, 'children', `${index + 1}-${slugify(childId)}.md`)
-    const handle = await options.runChildRun(child, taskFile, spend.spentUsd)
+    const handle =
+      stop === undefined
+        ? await options.runChildRun(child, taskFile, spend.spentUsd)
+        : await propagateChildStop({ runChildRun: options.runChildRun, stop }, child, taskFile, spend.spentUsd)
     ctx.emit({ altitude: 'L2', type: 'child_spawned', child: childId, runId: handle.runId })
-    const childState = await loadRunState(deps.config.workDir, handle.runId).catch(() => null)
-    if (childState === null) return stopAtFailedChild(deps, state, ctx, childId, 'unloadable')
-    if (childState.status === 'completed') {
-      await settleCompletedChild(deps, state, ctx, childId, childState.runDir, resolve)
-      return runAt(index + 1)
-    }
-    if (childState.gate !== null) {
-      state.children = { ...state.children, [childId]: { status: 'running' } }
-      await saveRunState(state, deps.now?.() ?? new Date())
-      deps.stdout?.(`child ${childId} awaits its gate (run ${handle.runId}) — settle it, then resume the parent`)
-      deps.stdout?.(`sdd ${handle.runId}`)
-      return { halted: 'gate-pending', childRunId: handle.runId }
-    }
-    return stopAtFailedChild(deps, state, ctx, childId, childState.status)
+    return settleObservedChild(deps, state, ctx, stop, childId, handle, resolve, () => runAt(index + 1))
   }
   return runAt(0)
 }

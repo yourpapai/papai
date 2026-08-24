@@ -19,6 +19,7 @@ import { planDigest } from '../../sdd-runner/src/plan.js'
 import type { PlanChild, PlanFsDeps } from '../../sdd-runner/src/plan.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
+import { createStopMarkerSeam, requestCalmStop, stopMarkerPath } from '../../sdd-runner/src/stop-controller.js'
 
 const tmpDirs: string[] = []
 
@@ -201,6 +202,8 @@ interface ChildShape {
   readonly gate?: { readonly mode: 'early' | 'final' | 'plan'; readonly version: number }
   readonly withUsage?: boolean
   readonly unloadable?: boolean
+  /** The fake waits for the child's own stop marker and honors it (D11). */
+  readonly honorChildMarker?: boolean
 }
 
 interface RunnerTracker {
@@ -210,6 +213,8 @@ interface RunnerTracker {
   readonly runIds: Map<string, string>
   readonly maxInFlight: { value: number }
   readonly baselines: number[]
+  readonly markersSeen: Map<string, boolean>
+  readonly armInFlightGate: () => Promise<void>
 }
 
 async function seedParent(
@@ -230,9 +235,12 @@ function makeRunner(fixture: ChildrenFixture, shapes: Record<string, ChildShape>
   const runIds = new Map<string, string>()
   const maxInFlight = { value: 0 }
   const baselines: number[] = []
+  const markersSeen = new Map<string, boolean>()
   let inFlight = 0
+  let inFlightRelease: (() => void) | null = null
+  let inFlightGate: Promise<void> | null = null
   const defaultShape: ChildShape = { status: 'completed', withUsage: true }
-  const runChildRun: RunChildRun = async (child, taskFile, spendBaselineUsd) => {
+  const runChildRun: RunChildRun = async (child, taskFile, spendBaselineUsd, onRunDirReady) => {
     inFlight += 1
     maxInFlight.value = Math.max(maxInFlight.value, inFlight)
     spawned.push(child.id)
@@ -256,11 +264,49 @@ function makeRunner(fixture: ChildrenFixture, shapes: Record<string, ChildShape>
         usage: CHILD_DONE_USAGE,
       })
     }
+    onRunDirReady?.(childState.runDir)
+    if (shape.honorChildMarker === true) {
+      if (inFlightRelease !== null) inFlightRelease()
+      const marker = stopMarkerPath(childState.runDir)
+      const seen = await waitFor(() => fs.existsSync(marker))
+      markersSeen.set(child.id, seen)
+      if (seen) {
+        childState.status = 'stopped'
+        await saveRunState(childState, new Date('2026-08-12T08:00:00.000Z'))
+      }
+    }
     runIds.set(child.id, childState.runId)
     inFlight -= 1
     return { runId: childState.runId }
   }
-  return { runChildRun, spawned, taskFiles, runIds, maxInFlight, baselines }
+  return {
+    runChildRun,
+    spawned,
+    taskFiles,
+    runIds,
+    maxInFlight,
+    baselines,
+    markersSeen,
+    armInFlightGate: (): Promise<void> => {
+      let resolve: () => void = () => undefined
+      inFlightGate = new Promise((res) => {
+        resolve = res
+      })
+      inFlightRelease = resolve
+      return inFlightGate
+    },
+  }
+}
+
+async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (condition()) return true
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10)
+    })
+  }
+  return condition()
 }
 
 function eventsOf(fixture: ChildrenFixture, type: 'child_spawned' | 'child_done'): SddEvent[] {
@@ -520,5 +566,81 @@ describe('aggregate budget ledger (D10)', () => {
 
     expect(result.halted).toBe('completed')
     expect(tracker.baselines).toEqual([0, 0.25])
+  })
+})
+
+describe('parent calm-stop is subtree-scoped (D11)', () => {
+  it('a stop already requested before a spawn settles calmly: no child runs, completed children untouched', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], { 'auth-db': 'done' })
+    const tracker = makeRunner(fixture, {})
+    requestCalmStop(fixture.state.runDir)
+    const stop = createStopMarkerSeam(fixture.state.runDir)
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runChildren(deps, fixture.state, fixture.ctx, {
+      runChildRun: tracker.runChildRun,
+      stop,
+    })
+
+    expect(result).toEqual({ runId: fixture.state.runId, halted: 'stopped' })
+    expect(tracker.spawned).toEqual([])
+    const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
+    expect(persisted.status).toBe('stopped')
+    expect(persisted.children?.['auth-db']).toEqual({ status: 'done' })
+    expect(persisted.children?.['auth-api']).toEqual({ status: 'pending' })
+    expect(fs.existsSync(stopMarkerPath(fixture.state.runDir))).toBe(false)
+    expect(stdoutLines.some((line) => line.includes('stopped calmly'))).toBe(true)
+  })
+
+  it('a stop requested while a child is in flight writes the child marker, the child honors it, and the parent settles stopped', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {
+      'auth-db': { status: 'completed', withUsage: true },
+      'auth-api': { honorChildMarker: true },
+    })
+    const inFlightGate = tracker.armInFlightGate()
+    const stop = createStopMarkerSeam(fixture.state.runDir)
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const started = runChildren(deps, fixture.state, fixture.ctx, {
+      runChildRun: tracker.runChildRun,
+      stop,
+    })
+    await inFlightGate
+    requestCalmStop(fixture.state.runDir)
+    const result = await started
+
+    expect(result).toEqual({ runId: fixture.state.runId, halted: 'stopped' })
+    expect(tracker.spawned).toEqual(['auth-db', 'auth-api'])
+    expect(tracker.markersSeen.get('auth-api')).toBe(true)
+
+    const childRunId = tracker.runIds.get('auth-api')
+    assert(childRunId !== undefined)
+    const childState = await loadRunState(deps.config.workDir, childRunId)
+    expect(childState.status).toBe('stopped')
+
+    const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
+    expect(persisted.status).toBe('stopped')
+    expect(persisted.children?.['auth-db']).toEqual({ status: 'done' })
+    expect(persisted.children?.['auth-api']).toEqual({ status: 'pending' })
+    expect(fs.existsSync(stopMarkerPath(fixture.state.runDir))).toBe(false)
+    const done = eventsOf(fixture, 'child_done')
+    expect(done).toHaveLength(1)
+    expect(done[0]).toMatchObject({ child: 'auth-db', outcome: 'done' })
+    expect(stdoutLines.some((line) => line.includes('stopped calmly'))).toBe(true)
   })
 })
