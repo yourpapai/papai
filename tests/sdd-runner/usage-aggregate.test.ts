@@ -369,4 +369,28 @@ describe('treeSpend (D10 aggregate ledger)', () => {
     ]
     expect(treeSpend(withUnpriced)).toEqual({ spentUsd: 0.65, costKnown: false })
   })
+
+  it('reprices the parent own zero-cost done events through resolve (D10 aggregateUsage shape)', () => {
+    const resolve = resolverFrom({ 'paid/m': { input: 5, output: 15, source: 'primary' } })
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 }), 1, 'paid/m'),
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'auth-db',
+        outcome: 'done',
+        usage: makeUsage({ costUsd: 0.25 }),
+        seq: 2,
+        ts: '2026-01-01T00:00:00.000Z',
+      },
+    ]
+    expect(treeSpend(events, resolve)).toEqual({ spentUsd: 5.25, costKnown: true })
+  })
+
+  it('reads unknown when the parent own done events cannot be priced (fail closed)', () => {
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 }), 1, 'weird/none'),
+    ]
+    expect(treeSpend(events)).toEqual({ spentUsd: 0, costKnown: false })
+  })
 })

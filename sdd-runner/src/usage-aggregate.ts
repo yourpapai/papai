@@ -126,10 +126,15 @@ export async function buildResolveCost(): Promise<ResolveCostFn> {
   }
 }
 
-/** A child run's aggregated usage from its own event log; undefined when unreadable. */
+/**
+ * A child run's aggregated usage from its own event log; undefined when
+ * unreadable or the cost cannot be priced — absent usage makes the D10
+ * ledger read unknown (fail closed), never $0 headroom.
+ */
 export function childUsageOf(childRunDir: string, resolve: ResolveCostFn = () => null): AgentUsage | undefined {
   try {
     const aggregated = aggregateUsage(readEvents(path.join(childRunDir, 'events.ndjson')), resolve)
+    if (!aggregated.costKnown) return undefined
     return {
       inputTokens: aggregated.inputTokens,
       outputTokens: aggregated.outputTokens,
@@ -161,14 +166,15 @@ export interface TreeSpend {
 }
 
 /**
- * D10 aggregate ledger: parent done-events plus every `child_done.usage`.
- * Any `child_done` without usage makes the spend unknown — fail closed.
+ * D10 aggregate ledger: `aggregateUsage(done events)` repriced through
+ * `resolve`, plus every `child_done.usage`. Any `child_done` without usage —
+ * or an unpriceable parent done event — makes the spend unknown — fail closed.
  */
-export function treeSpend(events: readonly SddEvent[]): TreeSpend {
-  let spentUsd = 0
-  let costKnown = true
+export function treeSpend(events: readonly SddEvent[], resolve: ResolveCostFn = () => null): TreeSpend {
+  const own = aggregateUsage(events, resolve)
+  let spentUsd = own.costUsd
+  let costKnown = own.costKnown
   for (const event of events) {
-    if (event.type === 'done') spentUsd += event.usage.costUsd
     if (event.type === 'child_done') {
       if (event.usage === undefined) costKnown = false
       else spentUsd += event.usage.costUsd

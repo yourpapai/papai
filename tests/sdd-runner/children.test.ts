@@ -201,6 +201,8 @@ interface ChildShape {
   readonly status?: RunState['status']
   readonly gate?: { readonly mode: 'early' | 'final' | 'plan'; readonly version: number }
   readonly withUsage?: boolean
+  /** The child log carries a zero-cost, token-bearing done event the resolver cannot price. */
+  readonly unpricedUsage?: boolean
   readonly unloadable?: boolean
   /** The fake waits for the child's own stop marker and honors it (D11). */
   readonly honorChildMarker?: boolean
@@ -262,6 +264,14 @@ function makeRunner(fixture: ChildrenFixture, shapes: Record<string, ChildShape>
         type: 'done',
         agent: 'estimator',
         usage: CHILD_DONE_USAGE,
+      })
+    }
+    if (shape.unpricedUsage === true) {
+      appendEvent(path.join(childState.runDir, 'events.ndjson'), {
+        altitude: 'L1',
+        type: 'done',
+        agent: 'estimator',
+        usage: { ...CHILD_DONE_USAGE, costUsd: 0 },
       })
     }
     onRunDirReady?.(childState.runDir)
@@ -601,6 +611,34 @@ describe('aggregate budget ledger (D10)', () => {
     expect(tracker.spawned).toEqual([])
     const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
     expect(persisted.status).toBe('stopped')
+    expect(stdoutLines.some((line) => /budget guard.*unknown/u.test(line))).toBe(true)
+  })
+
+  it('halts before the next child_spawned when a completed child usage cannot be priced (fail closed)', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {
+      'auth-db': { status: 'completed', unpricedUsage: true },
+      'auth-api': { status: 'completed', withUsage: true },
+    })
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runChildren(deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result).toEqual({ halted: 'stopped', child: 'auth-api', childStatus: 'budget-guard' })
+    expect(tracker.spawned).toEqual(['auth-db'])
+    const done = eventsOf(fixture, 'child_done')
+    expect(done[0]).toMatchObject({ child: 'auth-db', outcome: 'done' })
+    expect(done[0]).not.toHaveProperty('usage')
+    const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
+    expect(persisted.status).toBe('stopped')
+    expect(persisted.children?.['auth-api']).toEqual({ status: 'pending' })
     expect(stdoutLines.some((line) => /budget guard.*unknown/u.test(line))).toBe(true)
   })
 

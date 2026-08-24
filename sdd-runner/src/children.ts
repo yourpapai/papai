@@ -271,7 +271,7 @@ export async function runChildren(
       }
     }
     if (stop !== undefined && stop.stopRequested()) return calmSettle(deps, state, stop)
-    const spend = treeSpend(readEvents(logPathFor(state)))
+    const spend = treeSpend(readEvents(logPathFor(state)), resolve)
     if (!spend.costKnown || spend.spentUsd >= deps.config.budget) {
       return stopAtBudgetGuard(deps, state, childId, spend)
     }
