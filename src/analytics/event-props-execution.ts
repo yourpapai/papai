@@ -128,7 +128,7 @@ const ConfirmationResolvedPropsSchema = z
 
 const ProviderRequestCompletedPropsSchema = z
   .object({
-    provider: z.enum(['kaneo', 'youtrack', 'magi', 'mcp', 'llm', 'other']),
+    provider: z.enum(['kaneo', 'youtrack', 'magi', 'mcp', 'llm', 'github', 'other']),
     operation: z.enum(['read', 'search', 'create', 'update', 'delete', 'connect', 'stream', 'other']),
     duration_ms: NonNegativeInt,
     outcome: z.enum(['success', 'failure']),
