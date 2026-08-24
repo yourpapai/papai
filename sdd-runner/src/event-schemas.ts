@@ -175,6 +175,7 @@ const ChildSpawnedEvent = z.object({
   altitude: z.literal('L2'),
   type: z.literal('child_spawned'),
   child: z.string().min(1),
+  runId: z.string().min(1).optional(),
 })
 
 const ChildDoneEvent = z.object({
@@ -182,6 +183,7 @@ const ChildDoneEvent = z.object({
   type: z.literal('child_done'),
   child: z.string().min(1),
   outcome: z.enum(['done', 'failed']),
+  usage: AgentUsageSchema.optional(),
 })
 
 const HumanEditsEvent = z.object({

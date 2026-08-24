@@ -5,7 +5,7 @@ Implements the runtime path the proposal names (its tasks 2.3, 4.1–4.3, 5.1–
 ## 1. Additive schema fields (design D1, D8)
 
 - [x] 1.1 Optional `oversize` verdict on the depth surface. Red-first in `tests/sdd-runner/agent-layer.test.ts` + `tests/sdd-runner/events.test.ts`: `DepthClassificationSchema` validates sidecars with and without `oversize: boolean` (undefined reads false); a `depth` event with optional `oversize` stamps via `stampEvent` and round-trips through `appendEvent`/`readEvents`; pre-change lines and sidecars parse unchanged; estimator prompt teaches the field. Then add the optional field to `agent-layer.ts` and the `depth` variant in `event-schemas.ts`. Verify: `bun run test tests/sdd-runner/agent-layer.test.ts tests/sdd-runner/events.test.ts`
-- [ ] 1.2 Optional `runId`/`usage` on the child events. Red-first in `tests/sdd-runner/events.test.ts`: `child_spawned` with optional `runId: string` and `child_done` with optional `usage: AgentUsageSchema` stamp and round-trip with and without the new fields; old lines parse unchanged. Then extend both variants in `event-schemas.ts`. Verify: `bun run test tests/sdd-runner/events.test.ts`
+- [x] 1.2 Optional `runId`/`usage` on the child events. Red-first in `tests/sdd-runner/events.test.ts`: `child_spawned` with optional `runId: string` and `child_done` with optional `usage: AgentUsageSchema` stamp and round-trip with and without the new fields; old lines parse unchanged. Then extend both variants in `event-schemas.ts`. Verify: `bun run test tests/sdd-runner/events.test.ts`
 
 ## 2. Intake plan branch (design D1–D3)
 

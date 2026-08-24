@@ -333,6 +333,72 @@ describe('decomposition events (part 1 data layer)', () => {
   })
 })
 
+describe('child event runId and usage fields', () => {
+  it('stamps a child_spawned event with runId and round-trips it through the log', () => {
+    const input = { altitude: 'L2', type: 'child_spawned', child: 'auth-module', runId: 'runs/42' } as const
+    const stamped = stampEvent(input, 5, '2026-08-10T10:00:00.000Z')
+    expect(stamped).toMatchObject({ seq: 5, type: 'child_spawned', child: 'auth-module', runId: 'runs/42' })
+    expect(EventInputSchema.parse(input)).toMatchObject({ type: 'child_spawned', runId: 'runs/42' })
+    const log = makeLog()
+    appendEvent(log, input, at('00'))
+    expect(readEvents(log)[0]).toMatchObject({ seq: 1, type: 'child_spawned', runId: 'runs/42' })
+  })
+
+  it('stamps a child_done event with usage and round-trips it through the log', () => {
+    const usage = {
+      inputTokens: 1200,
+      outputTokens: 340,
+      reasoningTokens: 0,
+      costUsd: 0.42,
+      wallMs: 90_000,
+    }
+    const input = {
+      altitude: 'L2',
+      type: 'child_done',
+      child: 'auth-module',
+      outcome: 'done',
+      usage,
+    } as const
+    const stamped = stampEvent(input, 6, '2026-08-10T10:00:00.000Z')
+    expect(stamped).toMatchObject({ seq: 6, type: 'child_done', usage: { costUsd: 0.42 } })
+    expect(EventInputSchema.parse(input)).toMatchObject({ type: 'child_done', usage })
+    const log = makeLog()
+    appendEvent(log, input, at('00'))
+    expect(readEvents(log)[0]).toMatchObject({ seq: 1, type: 'child_done', outcome: 'done', usage })
+  })
+
+  it('parses pre-change child lines without runId/usage, reading the fields as absent', () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'auth-module' }, at('00'))
+    appendEvent(log, { altitude: 'L2', type: 'child_done', child: 'auth-module', outcome: 'done' }, at('01'))
+    const events = readEvents(log)
+    expect(events).toHaveLength(2)
+    const spawned = events.find((e): e is Extract<SddEvent, { type: 'child_spawned' }> => e.type === 'child_spawned')
+    assert(spawned !== undefined)
+    expect(spawned.runId).toBeUndefined()
+    const done = events.find((e): e is Extract<SddEvent, { type: 'child_done' }> => e.type === 'child_done')
+    assert(done !== undefined)
+    expect(done.usage).toBeUndefined()
+  })
+
+  it('rejects a child_spawned with a non-string runId and a child_done with malformed usage', () => {
+    const log = makeLog()
+    expect(() =>
+      appendEvent(log, JSON.parse('{"altitude":"L2","type":"child_spawned","child":"x","runId":7}'), at('00')),
+    ).toThrow()
+    expect(() =>
+      appendEvent(
+        log,
+        JSON.parse(
+          '{"altitude":"L2","type":"child_done","child":"x","outcome":"done","usage":{"inputTokens":-1,"outputTokens":2,"reasoningTokens":0,"costUsd":0,"wallMs":1}}',
+        ),
+        at('01'),
+      ),
+    ).toThrow()
+    expect(fs.existsSync(log)).toBe(false)
+  })
+})
+
 describe('done event model field', () => {
   const baseUsage = { inputTokens: 1, outputTokens: 2, reasoningTokens: 0, costUsd: 0, wallMs: 10 }
 
