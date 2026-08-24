@@ -41,4 +41,4 @@ pins. Reference: `specs/github-comments-labels/spec.md` (what), `design.md` (how
 
 ## 8. Full verification
 
-- [ ] 8.1 Run the full gate: `bun test` (full suite), `bun run typecheck`, `bun run lint`, and `bun security` — all green before the change is done — verify with `bun test && bun run typecheck && bun run lint && bun security`
+- [x] 8.1 Run the full gate: `bun test` (full suite), `bun run typecheck`, `bun run lint`, and `bun security` — all green before the change is done — verify with `bun test && bun run typecheck && bun run lint && bun security`
