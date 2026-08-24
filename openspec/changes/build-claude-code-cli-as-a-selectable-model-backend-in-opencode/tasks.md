@@ -25,34 +25,34 @@ the only credentialed artifact and never runs in CI.
 
 ## 2. Contract: decoders and argv builder (design D2, D3, D12 step 2)
 
-- [ ] 2.1 Tests first in `tests/opencode-agent/claude-contract.test.ts`: Zod line decoders against the recorded fixtures — `system`/`assistant`/`user`/`result`/`stream_event` shapes recorded from the live CLI; unrecognized non-result lines skip via safeParse without failing; `result` facts (final text, token usage, `is_error`, `total_cost_usd` decoded but never read as a budget); init-line session id.
+- [x] 2.1 Tests first in `tests/opencode-agent/claude-contract.test.ts`: Zod line decoders against the recorded fixtures — `system`/`assistant`/`user`/`result`/`stream_event` shapes recorded from the live CLI; unrecognized non-result lines skip via safeParse without failing; `result` facts (final text, token usage, `is_error`, `total_cost_usd` decoded but never read as a budget); init-line session id.
   Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (red)
-- [ ] 2.2 Implement the line-decoder half of `opencode-agent/src/claude-contract.ts` (the line schemas).
+- [x] 2.2 Implement the line-decoder half of `opencode-agent/src/claude-contract.ts` (the line schemas).
   Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (green)
-- [ ] 2.3 Tests first: argv builder — `--bare`, `-p`, `--output-format stream-json --verbose`, prompt on stdin (never argv), `--append-system-prompt`, profile → `--allowedTools` (`plan`→`Read,Glob,Grep`; `propose`→`Read,Edit,Write,Glob,Grep`; `build`→`Read,Edit,Write,Bash,Glob,Grep`; unknown/absent → `plan` allowlist + `warn`), `--permission-mode default`, `--model` (profile model, `parseModelRef` strips any `provider/` prefix), `--effort` (`AGENT_EFFORT_PLAN`/`AGENT_EFFORT_BUILD` when set; omitted when unset; `propose` gets none), `--resume <id>` only when an id is memoized, and never `--dangerously-skip-permissions`.
+- [x] 2.3 Tests first: argv builder — `--bare`, `-p`, `--output-format stream-json --verbose`, prompt on stdin (never argv), `--append-system-prompt`, profile → `--allowedTools` (`plan`→`Read,Glob,Grep`; `propose`→`Read,Edit,Write,Glob,Grep`; `build`→`Read,Edit,Write,Bash,Glob,Grep`; unknown/absent → `plan` allowlist + `warn`), `--permission-mode default`, `--model` (profile model, `parseModelRef` strips any `provider/` prefix), `--effort` (`AGENT_EFFORT_PLAN`/`AGENT_EFFORT_BUILD` when set; omitted when unset; `propose` gets none), `--resume <id>` only when an id is memoized, and never `--dangerously-skip-permissions`.
   Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (red)
-- [ ] 2.4 Tests first: the builder refuses a composed `--append-system-prompt` exceeding MAX_ARG_STRLEN (131,072 bytes) with its own named adapter-level error carrying the composed size, the cap, and the remedy (shrink the inlined skill set).
+- [x] 2.4 Tests first: the builder refuses a composed `--append-system-prompt` exceeding MAX_ARG_STRLEN (131,072 bytes) with its own named adapter-level error carrying the composed size, the cap, and the remedy (shrink the inlined skill set).
   Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (red)
-- [ ] 2.5 Implement the argv-builder half of `claude-contract.ts` — composition plus the oversize refusal, one function's contract — making 2.3 and 2.4 green.
+- [x] 2.5 Implement the argv-builder half of `claude-contract.ts` — composition plus the oversize refusal, one function's contract — making 2.3 and 2.4 green.
   Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (green)
 
 ## 3. Backend knob, route-scoped config, credential guard (design D4, D5, D12 step 3)
 
-- [ ] 3.1 Tests first in `tests/opencode-agent/config-values.test.ts` / `tests/opencode-agent/config.test.ts`: `AGENT_BACKEND` enum read — `opencode|claude`, default `opencode`, unset-or-empty keeps the default, any other non-empty value fails with a `ConfigError` naming `AGENT_BACKEND`; read before the gateway block.
+- [x] 3.1 Tests first in `tests/opencode-agent/config-values.test.ts` / `tests/opencode-agent/config.test.ts`: `AGENT_BACKEND` enum read — `opencode|claude`, default `opencode`, unset-or-empty keeps the default, any other non-empty value fails with a `ConfigError` naming `AGENT_BACKEND`; read before the gateway block.
   Verify: `bun test tests/opencode-agent/config-values.test.ts tests/opencode-agent/config.test.ts` (red)
-- [ ] 3.2 Implement the enum read in `config-values.ts` / `config.ts`, the opencode route byte-identical (except the D6 wording delta).
+- [x] 3.2 Implement the enum read in `config-values.ts` / `config.ts`, the opencode route byte-identical (except the D6 wording delta).
   Verify: `bun test tests/opencode-agent/config-values.test.ts tests/opencode-agent/config.test.ts` (green)
-- [ ] 3.3 Tests first: credential exclusivity guard fires in `loadConfig` on the claude route — both-set fails naming both variables and the API-key-wins-billing consequence, neither-set fails naming both accepted spellings, failure code `CLAUDE_CREDENTIALS`; set `LLM_API_KEY` on the claude route fails with code `LLM_CREDENTIALS`; guard never fires on the opencode route; messages name variables, never values.
+- [x] 3.3 Tests first: credential exclusivity guard fires in `loadConfig` on the claude route — both-set fails naming both variables and the API-key-wins-billing consequence, neither-set fails naming both accepted spellings, failure code `CLAUDE_CREDENTIALS`; set `LLM_API_KEY` on the claude route fails with code `LLM_CREDENTIALS`; guard never fires on the opencode route; messages name variables, never values.
   Verify: `bun test tests/opencode-agent/config.test.ts` (red)
-- [ ] 3.4 Implement the guard in `loadConfig`.
+- [x] 3.4 Implement the guard in `loadConfig`.
   Verify: `bun test tests/opencode-agent/config.test.ts` (green)
-- [ ] 3.5 Tests first: claude-route gateway reads become optional-empty — `config.openai` keeps its type with empty `apiKey`/`baseUrl`, `pipelineSecrets`/`mcpSecrets` skip empty values, `AGENT_MCP_SERVERS` still parsed for the secrets list on this route, and the model/profile knobs cross to the claude adapter as plain values on its options (model id + per-profile effort tiers), never the `OpenAiSettings` object.
+- [x] 3.5 Tests first: claude-route gateway reads become optional-empty — `config.openai` keeps its type with empty `apiKey`/`baseUrl`, `pipelineSecrets`/`mcpSecrets` skip empty values, `AGENT_MCP_SERVERS` still parsed for the secrets list on this route, and the model/profile knobs cross to the claude adapter as plain values on its options (model id + per-profile effort tiers), never the `OpenAiSettings` object.
   Verify: `bun test tests/opencode-agent/config.test.ts` (red)
-- [ ] 3.6 Implement the route-scoped reads and the knob crossing.
+- [x] 3.6 Implement the route-scoped reads and the knob crossing.
   Verify: `bun test tests/opencode-agent/config.test.ts` (green)
-- [ ] 3.7 Tests first: the chosen Anthropic credential joins `pipelineSecrets` in `secrets.ts` (scrub/redaction/diff-guard see it by value).
+- [x] 3.7 Tests first: the chosen Anthropic credential joins `pipelineSecrets` in `secrets.ts` (scrub/redaction/diff-guard see it by value).
   Verify: `bun test tests/opencode-agent/config.test.ts` (red)
-- [ ] 3.8 Implement the `secrets.ts` join.
+- [x] 3.8 Implement the `secrets.ts` join.
   Verify: `bun test tests/opencode-agent/config.test.ts` (green)
 
 ## 4. Turn errors and connect layer (design D6, D8, D9)
