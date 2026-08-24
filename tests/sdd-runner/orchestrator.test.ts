@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, it } from 'bun:test'
+import assert from 'node:assert'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -21,6 +22,8 @@ import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { runContinue, runGateResume, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
 import type { RunGateResumeResult } from '../../sdd-runner/src/orchestrator.js'
+import { materializeChildFiles } from '../../sdd-runner/src/plan.js'
+import { deriveResumeDecision } from '../../sdd-runner/src/resume-flow.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState } from '../../sdd-runner/src/run-state.js'
@@ -252,7 +255,7 @@ describe('holder lifecycle (process ownership)', () => {
     expect(readHolder(runDirOf(fixture))).toBe(null)
   })
 
-  it('fails loudly when intake rules the task oversize — the plan branch is not wired yet', async () => {
+  it('an oversize intake routes into the plan branch: no draft/review stages, no parent change folder', async () => {
     const fixture = makeFixture({
       'depth.json': JSON.stringify({
         implicated_files: ['src/a.ts'],
@@ -266,10 +269,45 @@ describe('holder lifecycle (process ownership)', () => {
         rationale: 'declared scope too large for one change',
         oversize: true,
       }),
-      'plan.json': JSON.stringify({ children: [{ id: 'c1', instruction: 'do thing one', deps: [] }] }),
+      'plan.json': JSON.stringify({
+        children: [
+          { id: 'auth-db', instruction: 'Add the auth database schema.', deps: [] },
+          { id: 'auth-api', instruction: 'Add the auth API endpoints.', deps: ['auth-db'] },
+        ],
+      }),
     })
-    const failure = await runStart(fixture.deps, { taskFile: fixture.taskFile }).catch((error: unknown) => error)
-    expect(errorMessageOf(failure)).toMatch(/oversize/u)
+    const result = await runStart(fixture.deps, { taskFile: fixture.taskFile })
+
+    expect(result.halted).toBe('gate')
+    expect(result.version).toBe(1)
+    expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('## Plan gate')
+    expect(fs.existsSync(fixture.changeDir)).toBe(false)
+    expect(fixture.spawnOrder).toEqual(['depth.json', 'plan.json'])
+
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    const plan = state.plan
+    assert(plan !== undefined)
+    expect(plan.childIds).toEqual(['auth-db', 'auth-api'])
+    expect(plan.digest).toMatch(/^[0-9a-f]{16}$/u)
+    expect(state.children).toEqual({
+      'auth-db': { status: 'pending' },
+      'auth-api': { status: 'pending' },
+    })
+    expect(state.gate).toEqual({ mode: 'plan', version: 1 })
+    const events = readEvents(path.join(state.runDir, 'events.ndjson'))
+    const stages = events
+      .filter(
+        (e): e is Extract<ReturnType<typeof readEvents>[number], { type: 'stage_enter' }> => e.type === 'stage_enter',
+      )
+      .map((e) => e.stage)
+    expect(stages).toEqual(['intake'])
+    const planEvents = events.filter(
+      (e): e is Extract<ReturnType<typeof readEvents>[number], { type: 'plan' }> => e.type === 'plan',
+    )
+    expect(planEvents).toHaveLength(1)
+    expect(planEvents[0]).toMatchObject({ childCount: 2 })
+    expect(fs.existsSync(path.join(state.runDir, 'children', '1-auth-db.md'))).toBe(true)
+    expect(fs.existsSync(path.join(state.runDir, 'children', '2-auth-api.md'))).toBe(true)
   })
 })
 
@@ -2709,3 +2747,112 @@ describe('live-view mounts (tui wiring)', () => {
     expect(fixture.rendered.some((e) => e.type === 'stage_enter')).toBe(true)
   })
 })
+
+describe('plan-parent resume interception (D9)', () => {
+  const PLAN = {
+    children: [
+      { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+      { id: 'db-api', instruction: 'Rename the API route helpers.', deps: ['db-schema'] },
+    ],
+  }
+
+  async function seedPlanParent(fixture: ReturnType<typeof makeFixture>): Promise<string> {
+    const runId = 'composite-parent'
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'sidecars', 'plan.json'), JSON.stringify(PLAN))
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), '')
+    await materializeChildFiles(PLAN, runDir)
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir: fixture.deps.config.workDir,
+          changeName: 'composite',
+          stage: 'intake',
+          depth: null,
+          round: 0,
+          gate: null,
+          status: 'running',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          plan: { childIds: ['db-schema', 'db-api'], digest: 'd'.repeat(16) },
+          children: { 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    return runId
+  }
+
+  it('runResume intercepts a plan parent before resumeFromPoint and drives runChildren through nested runStart', async () => {
+    const fixture = makeFixture({
+      'depth.json': JSON.stringify({
+        implicated_files: ['drizzle/x.sql'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'single-module child change',
+      }),
+      'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
+    })
+    const runId = await seedPlanParent(fixture)
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runResume(deps, runId)
+
+    expect(result).toEqual({ runId, halted: 'gate-pending' })
+    const parent = await loadRunState(deps.config.workDir, runId)
+    expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
+    expect(parent.children?.['db-api']).toEqual({ status: 'pending' })
+    const child = await loadRunState(deps.config.workDir, 'db-schema')
+    expect(child.gate).not.toBe(null)
+    expect(stdoutLines.some((line) => line === 'sdd db-schema')).toBe(true)
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    const spawn = events.filter(
+      (e): e is Extract<ReturnType<typeof readEvents>[number], { type: 'child_spawned' }> => e.type === 'child_spawned',
+    )
+    expect(spawn).toHaveLength(1)
+    expect(spawn[0]).toMatchObject({ child: 'db-schema', runId: 'db-schema' })
+  })
+})
+
+describe('deriveResumeDecision tolerates an absent change folder', () => {
+  it('a driver.status rejection resolves to a decision instead of throwing', async () => {
+    const fixture = makeFixture()
+    const state = await createRunState({
+      workDir: fixture.deps.config.workDir,
+      repoRoot: fixture.repoRoot,
+      changeName: 'folderless-parent',
+    })
+    fs.writeFileSync(path.join(state.runDir, 'events.ndjson'), '')
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      driver: createOpenSpecDriver({ exec: rejectingStatusExec, cwd: fixture.repoRoot }),
+    }
+
+    const decision = await deriveResumeDecision(deps, state)
+
+    expect(typeof decision.stage).toBe('string')
+    expect(typeof decision.reason).toBe('string')
+  })
+})
+
+/** Driver exec double (D9): `openspec status` fails like an absent change folder; the rest succeed. */
+function rejectingStatusExec(args: readonly string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  if (args[1] === 'status') return Promise.reject(new Error('change not found'))
+  return Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 })
+}
