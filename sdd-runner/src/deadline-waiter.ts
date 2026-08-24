@@ -57,10 +57,11 @@ export function isStableEdit(digests: readonly string[]): boolean {
 
 /**
  * Whether a polled gate file parses as human-answered: at least one box
- * checked or an answer section present.
+ * checked (assumption/finding/ack rows at early/final gates, `C<n>` child
+ * rows at plan gates) or an answer section present.
  */
 export function looksAnswered(md: string): boolean {
-  return /-\s\[x\]\s*[AFT]\d+/u.test(md) || md.includes('## Gate response')
+  return /-\s\[x\]\s*[AFTC]\d+/u.test(md) || md.includes('## Gate response')
 }
 
 export interface SteerLanding {
@@ -71,10 +72,10 @@ export interface SteerLanding {
 
 export function translateSteer(
   directive: SteerLanding,
-  gateMode: 'early' | 'final',
+  gateMode: 'early' | 'final' | 'plan',
 ): { readonly outcome: SteerLanding; readonly warn: string | null } {
-  if (directive.kind === 'extend' && gateMode === 'final') {
-    return { outcome: directive, warn: 'steer: extend is not valid at a final gate — skipped' }
+  if (directive.kind === 'extend' && gateMode !== 'early') {
+    return { outcome: directive, warn: `steer: extend is not valid at a ${gateMode} gate — skipped` }
   }
   return { outcome: directive, warn: null }
 }
@@ -201,7 +202,11 @@ async function maybeResume(
 ): Promise<RunGateResumeResult | null> {
   if (state.gate === null) return { runId, outcome: 'approved', version: 0 }
   const steer = peekSteer(state.runDir)
-  if (steer !== null) return resume(deps, runId, steerOptionsFor(steer, state, deps))
+  if (steer !== null) {
+    const options = steerOptionsFor(steer, state, deps)
+    if (options !== null) return resume(deps, runId, options)
+    return null
+  }
   const gateMd = await readGateMd(state.runDir, state.gate.version)
   if (gateMd === null || !looksAnswered(gateMd)) return null
   const digest = digestOf(gateMd)
@@ -238,8 +243,14 @@ function tickDelay(): Promise<void> {
   })
 }
 
-function steerOptionsFor(steer: SteerLanding, state: RunState, deps: OrchestratorDeps): GateResumeOptions {
-  const translated = translateSteer(steer, narrowGateMode(state.gate?.mode ?? 'final'))
+/**
+ * Translate a landing steer directive to its flag equivalent, consuming the
+ * steer file. Returns null when the directive is not valid at this gate mode
+ * (extend is cap-hit-only) — the steer is consumed with a warning and the
+ * waiter keeps polling instead of resuming into a parser rejection.
+ */
+function steerOptionsFor(steer: SteerLanding, state: RunState, deps: OrchestratorDeps): GateResumeOptions | null {
+  const translated = translateSteer(steer, state.gate?.mode ?? 'final')
   if (translated.warn !== null) deps.stdout?.(translated.warn)
   const consume = consumeSteerFile(state.runDir)
   for (const warning of consume.warnings) deps.stdout?.(`steer: ${warning}`)
@@ -250,14 +261,17 @@ function steerOptionsFor(steer: SteerLanding, state: RunState, deps: Orchestrato
       vetoes: [{ id: steer.id ?? '', ...(steer.redirect === undefined ? {} : { redirect: steer.redirect }) }],
     }
   }
-  return { extend: true }
+  return translated.warn === null ? { extend: true } : null
 }
 
 /**
  * Expiry re-runs the ladder with `deadlineExpired` semantics permitting only
- * conservative branches (R1 approve, else R2 extend, else stay pending).
+ * conservative branches (R1 approve, else R2 extend, else stay pending). A
+ * plan gate has no conservative branch (the plan prelude can only gate — no
+ * rule settles or extends at plan mode), so it stays pending.
  */
 function conservativeBranchApplies(deps: OrchestratorDeps, claimed: RunState): Promise<boolean> {
+  if (claimed.gate?.mode === 'plan') return Promise.resolve(false)
   const decision = runPolicyLadder(
     { ...deps, autonomy: { ...(deps.autonomy ?? AUTONOMY_DEFAULTS) } },
     claimed,
