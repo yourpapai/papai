@@ -114,9 +114,9 @@ the only credentialed artifact and never runs in CI.
 
 ## 9. Documentation
 
-- [ ] 9.1 `opencode-agent/README.md`: `AGENT_BACKEND` environment-table row (plus the claude credentials rows), the pinned CLI version, backend-selection notes naming the route's trade-offs — no retry layer (transient waves fail turns), `AGENT_STALL_TIMEOUT_MS` inert, killed-turn token under-count, review-loop `/review` residual, chosen credential readable by the CLI's own `Bash` children (prefer the revocable Console API key on threat-model-sensitive repos), OAuth rotation = regeneration, unrecognized `LLM_MODEL` values fail the first turn loudly.
+- [x] 9.1 `opencode-agent/README.md`: `AGENT_BACKEND` environment-table row (plus the claude credentials rows), the pinned CLI version, backend-selection notes naming the route's trade-offs — no retry layer (transient waves fail turns), `AGENT_STALL_TIMEOUT_MS` inert, killed-turn token under-count, review-loop `/review` residual, chosen credential readable by the CLI's own `Bash` children (prefer the revocable Console API key on threat-model-sensitive repos), OAuth rotation = regeneration, unrecognized `LLM_MODEL` values fail the first turn loudly.
   Verify: `bun test tests/opencode-agent/workflow.test.ts && bun run format:check` (the knob harvest resolves the new README row)
-- [ ] 9.2 `opencode-agent/CLAUDE.md`: backend selection, the `claude-contract.ts`/`claude-connect.ts`/`claude-adapter.ts`/`agent-session.ts` module map, route rules for contributors.
+- [x] 9.2 `opencode-agent/CLAUDE.md`: backend selection, the `claude-contract.ts`/`claude-connect.ts`/`claude-adapter.ts`/`agent-session.ts` module map, route rules for contributors.
   Verify: `bun run format:check`
 
 ## 10. Pre-merge verification (design D12 step 7)

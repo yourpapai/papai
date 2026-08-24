@@ -114,20 +114,47 @@ findings: `ROADMAP.md`.
   testable without a filesystem or a remote, and neither has a literal fallback:
   a baked-in review path reported every run outside this repository as
   permanently red, and a `main` default killed every run inside it.
-- The OpenCode boundary is three files, split by what changes them.
-  `src/sdk-contract.ts` is what the SDK **says** — the shapes, recorded;
-  `src/opencode-connect.ts` is how it is **started and addressed** — a spawned
-  process, a port, a base URL; `src/opencode-adapter.ts` is the **session** the
-  pipeline holds — an id, a lifetime, a teardown. `src/turn-run.ts` is the fourth
-  and the newest: one **turn**, which is the thing with a clock, a heartbeat and
-  four ways to end (answered, deadlined, stalled, dead server). It owns the
-  bounds, the heartbeat and the failure
-  classification, and it never imports back from the adapter — `TurnBounds` and
-  `TurnConnection` are narrow slices that `OpenCodeAgentOptions` and
-  `OpenCodeConnection` extend, so each states what running a turn actually needs
-  rather than restating what an agent is.
+- The model-backend boundary splits the same way on both routes. **OpenCode:** three
+  files, split by what changes them. `src/sdk-contract.ts` is what the SDK
+  **says** — the shapes, recorded; `src/opencode-connect.ts` is how it is
+  **started and addressed** — a spawned process, a port, a base URL;
+  `src/opencode-adapter.ts` is the **session** the pipeline holds — an id, a
+  lifetime, a teardown. `src/turn-run.ts` is the fourth and the newest: one
+  **turn**, which is the thing with a clock, a heartbeat and four ways to end
+  (answered, deadlined, stalled, dead server). It owns the bounds, the heartbeat
+  and the failure classification, and it never imports back from the adapter —
+  `TurnBounds` and `TurnConnection` are narrow slices that
+  `OpenCodeAgentOptions` and `OpenCodeConnection` extend, so each states what
+  running a turn actually needs rather than restating what an agent is.
+  **Claude (`AGENT_BACKEND=claude`):** the same decomposition one route over —
+  `src/claude-contract.ts` (what the CLI says: the NDJSON line schemas recorded
+  in `tests/opencode-agent/fixtures/claude-cli/`, plus the argv builder with the
+  MAX_ARG_STRLEN refusal), `src/claude-connect.ts` (how it is started and
+  addressed: detached group spawn, the one-credential child env, the job-scoped
+  config dir, the SIGTERM→grace→SIGKILL group kill), `src/claude-adapter.ts`
+  (the session: `--resume` continuity, result-line resolution, tokens read
+  before teardown), and `src/claude-progress.ts` (names-only progress with the
+  stall watcher wired but no-op). The seam itself is `src/agent-session.ts`'s
+  `AgentSession` — extracted when the second backend arrived, with
+  `opencode-adapter.ts` re-exporting `OpenCodeAgent` as its alias so no existing
+  import changed.
+- **Backend selection is one job-wide knob, and the routes do not mix.**
+  `AGENT_BACKEND=opencode|claude` (default `opencode`, unset/empty is the
+  default) is read before the gateway block; the claude route demands exactly
+  one Anthropic credential (`CLAUDE_CREDENTIALS` failure code), refuses a set
+  `LLM_API_KEY` outright (`LLM_CREDENTIALS`), makes the gateway reads
+  optional-empty, and crosses the model knobs to `claude-adapter.ts` as plain
+  values — never the `OpenAiSettings` object. `contain()` starts no provider
+  proxy on the claude route (`Contained.proxy` is nullable; `index.ts` gates
+  the one teardown call site), and `runCli` skips the models.dev catalogue read
+  there. Nothing above the seam — phases, budgets, guardrails, the state
+  machine, feedback — knows which backend is running. The route's trade-offs
+  (no retry layer, inert stall knob, killed-turn under-count, the `/review`
+  residual, the credential-in-child-env asymmetry) are operator-facing and
+  documented in `README.md`'s _Backend selection_ section, not re-derived here.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
-  `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
+  `CheckRunner`, `RunReview`, `AgentSession` (aliased `OpenCodeAgent`),
+  `ReadSkillFile`).
 
 ## Local rules
 
