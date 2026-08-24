@@ -41,6 +41,13 @@ describe('en dictionary', () => {
     expect(en.commands.start.welcome).toContain('Welcome to papai!')
   })
 
+  test('pins announcements.emptyReleaseNote byte-identical to the pre-i18n EMPTY_RELEASE_NOTE constant', () => {
+    const announcements = subtreeOf(en, 'announcements')
+    expect(announcements['emptyReleaseNote']).toBe(
+      'This release is all behind-the-scenes improvements — nothing new to learn.',
+    )
+  })
+
   test('pins the liveStatus seed texts byte-identical to the pre-i18n constants', () => {
     const liveStatus = subtreeOf(en, 'liveStatus')
     expect(liveStatus['thinking']).toBe('💭 Thinking…')

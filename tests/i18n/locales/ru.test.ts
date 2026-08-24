@@ -57,6 +57,14 @@ describe('ru dictionary', () => {
     expect(ru.systemPrompt.providerlessDeferred).not.toContain('handled by schedule')
   })
 
+  test('renders the announcements empty release note in Russian', () => {
+    const announcements = subtreeOf(ru, 'announcements')
+    const note = textOf(announcements['emptyReleaseNote'])
+    expect(note.length).toBeGreaterThan(0)
+    expect(note).toMatch(/[\u0400-\u04FF]/u)
+    expect(note).not.toBe(textOf(subtreeOf(en, 'announcements')['emptyReleaseNote']))
+  })
+
   test('translates the liveStatus seed texts', () => {
     const liveStatus = subtreeOf(ru, 'liveStatus')
     expect(liveStatus['thinking']).toBe('💭 Думаю…')
