@@ -125,7 +125,7 @@ moves the phase and the handler runs behind it in the same job, exactly as
 | `/retry [note]`             | `FAILED`                                                     | Resume the exact phase that failed; the note rides the prompt                                                                             |
 | `/continue [note]`          | `INCOMPLETE`                                                 | Pick up the phase the job ran out of time for; note as above                                                                              |
 | `/cancel`                   | anything but `COMPLETE`                                      | Stop for good — a cancelled issue cannot be restarted                                                                                     |
-| `/sync`                     | any state with a pull request                                | Merge the base branch into `agent/issue-<n>` and push                                                                                     |
+| `/sync`                     | any state whose agent branch exists                          | Merge the base branch into `agent/issue-<n>` and push                                                                                     |
 | `/fix`                      | a delivered `COMPLETE` or `PR_DELIVERY`, with a pull request | Run a CI-fix round on the pull request's own red checks — the same repair run the red-run door buys, reading the head's failed check runs |
 
 A `/retry` or `/continue` **note** is maintainer guidance, not a re-plan: it is
@@ -136,11 +136,16 @@ An argument-less `/retry` or `/continue` behaves exactly as before.
 
 ### `/sync`
 
-A delivered pull request that falls behind its base shows GitHub's conflict
-banner and, before this command, had no machine remedy — the only fix was a
-human with a local checkout. `/sync` runs `git merge origin/<base>` into the
-agent branch from the pull request, in any state whose pull-request number is
-set:
+A branch that falls behind its base shows GitHub's conflict banner and, before
+this command, had no machine remedy — the only fix was a human with a local
+checkout. `/sync` runs `git merge origin/<base>` into the agent branch, in any
+state whose agent branch exists: on the pull request once one is open, and on
+the issue before that (from capture on — the one branch-less state still naming
+a change, a cancelled issue, refuses it, so it cannot resurrect the branch
+`/cancel` deleted). That pre-pull-request reach is issue #323's lesson: the
+dependency-drift refusal parks an issue `FAILED` naming `/sync` as the remedy,
+and a `/sync` gated behind a pull request that would never open was a remedy
+the state it was prescribed for could not take.
 
 - **Clean merge** — the merge commit is pushed and reported; no model turn is
   spent. An up-to-date branch is reported and nothing is pushed.

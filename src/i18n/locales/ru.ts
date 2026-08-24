@@ -158,6 +158,7 @@ export const ru: Dictionary = {
   announcements: {
     adminNotice:
       '🆕 papai v{version} готова к объявлению!\n\n{body}\n\n_Проверьте и разошлите подписчикам в Настройки → Release notes._',
+    emptyReleaseNote: 'В этом релизе только улучшения под капотом — ничего нового изучать не нужно.',
   },
   progress: {
     toolStarted: 'Инструмент `{toolName}` запущен',

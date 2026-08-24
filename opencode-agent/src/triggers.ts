@@ -158,11 +158,13 @@ const commandBelongsOnPr = async (input: PhaseInput, command: ParsedCommand): Pr
  * `/sync` is that shape's sibling — no `COMMAND_SIGNALS` entry, so the
  * transition table is never consulted and no phase, park or resume question
  * exists to answer. `COMPLETE`, `FAILED` and `INCOMPLETE` all take it, which
- * is the point: a pull request that fell behind its base is repaired from
- * wherever it was left. The predicate is the one `acceptedCommands` reads, so
- * the gate and the offer cannot drift; without a pull request there is no
- * branch-with-a-PR to merge base into, and the refusal is the ordinary
- * wrong-command one listing what does apply.
+ * is the point: a branch that fell behind its base is repaired from wherever
+ * it was left, with or without a pull request — issue #323 is why the "with"
+ * half matters, a drift park before any pull request existed whose only
+ * machine remedy this gate used to refuse. The predicate is the one
+ * `acceptedCommands` reads, so the gate and the offer cannot drift; before
+ * capture there is no branch to merge base into, and the refusal is the
+ * ordinary wrong-command one listing what does apply.
  */
 const sideOperation = (input: PhaseInput, command: ParsedCommand): TriggerOutcome | null => {
   const { state } = input
@@ -176,9 +178,9 @@ const sideOperation = (input: PhaseInput, command: ParsedCommand): TriggerOutcom
 
 /**
  * A command with no signal that reached the signal lookup — either an unknown
- * spell, or `/sync` without a pull request, the one signal-less command that
- * can be refused. Both go through the wrong-command door, which lists what
- * does apply here.
+ * spell, or `/sync` before capture, the one signal-less command that can be
+ * refused. Both go through the wrong-command door, which lists what does
+ * apply here.
  */
 const refuseUnknown = (input: PhaseInput, command: ParsedCommand): Promise<TriggerOutcome> => {
   const reason =

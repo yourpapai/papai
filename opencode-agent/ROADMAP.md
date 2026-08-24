@@ -2357,6 +2357,47 @@ uncommittable experimentation and put its only artefact in the last step but one
 which is a plan the pipeline cannot make durable no matter how well the walk
 works. Both want their own finding.
 
+### S5-15 — a remedy the state it was prescribed for could not take
+
+Issue #323, 2026-08-21. The run refused on drifted manifests — master's
+`56c598a89` removed three `sdd-runner:*` scripts from `package.json` after the
+branch's last sync, so the branch had touched no manifest and still differed
+from base. Three defects stacked on that one refusal, and each is fixed:
+
+- **The footer contradicted the body it rode under.** `renderFailure` appended
+  "Reply `/retry` to resume" to every failure, including one whose message
+  opens "This is not something `/retry` can change" — violating the contract
+  `dependencyDriftError`'s own doc states. A skimming maintainer follows the
+  footer. Now `renderFailure` takes the failure's retry-futility
+  (`isRetryFutile` in `errors.ts`: drift and the settings-gated pull-request
+  refusal, the two whose messages name out-of-band remedies) and answers it
+  with "the way out is named above".
+- **The remedy was gated behind a pull request that would never open.** The
+  drift message prescribed `/sync`, whose predicate was `prNumber !== null`,
+  and a drift park is by construction pre-delivery. The maintainer typed
+  `/sync`, got "does not apply right now", and was pointed back at `/retry`.
+  The predicate is now "the agent branch exists" — `changeName !== null`, with
+  the one branch-less state that still names a change (a **cancelled** issue,
+  the `presentationKey` split) refused so `/sync` cannot resurrect the branch
+  `/cancel` deleted.
+- **Blind retries spent the budget.** The guard fires at the branch switch,
+  before any work, yet each refusal spent an attempt — two spare, on a
+  condition no retry could change. `failRun` now carries `attempts` for a
+  drift refusal, the over-budget stop's doctrine.
+
+**Deliberately not fixed: the pull request opens too late for a fast-moving
+base.** The deeper shape is that everything a maintainer can do to a branch —
+`/sync`, the checks, review — lives on the pull request, and the pull request
+only exists after `PR_DELIVERY`, at the far end of an implementation that can
+run for hours across many jobs while master moves under it. Issue #323 drifted
+mid-implementation twice in one afternoon. Opening a draft pull request at the
+first push of the agent branch would put `/sync` and the red/green signal on
+the page a maintainer already watches, but it moves the `feedback-target`
+split, `FRESH_PR_BUDGETS`, the CI-fix door and the archive door with it, and
+"COMPLETE means delivered" is the invariant the whole presentation layer reads.
+That is a design change, not a finding-sized fix; it wants an OpenSpec proposal
+of its own before anything implements it.
+
 ## Suggested sequencing
 
 **Milestone 0 — before this is pointed at any live repository.**

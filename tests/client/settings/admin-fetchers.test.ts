@@ -149,7 +149,7 @@ describe('admin-fetchers', () => {
 
   const releaseNotesPayload = {
     version: '1.2.3',
-    body: 'Changes here',
+    bodies: { en: 'Changes here', ru: 'Изменения здесь' },
     broadcastAt: null,
     counts: { dm: 5, group: 2 },
   }
@@ -167,10 +167,11 @@ describe('admin-fetchers', () => {
     expect(seenUrl).toBe('/settings/api/admin/release-notes')
     expect(seenMethod).toBe('GET')
     expect(result.version).toBe('1.2.3')
+    expect(result.bodies.ru).toBe('Изменения здесь')
     expect(result.counts.dm).toBe(5)
   })
 
-  test('saveReleaseNotes POSTs action:save with body and CSRF header', async () => {
+  test('saveReleaseNotes POSTs action:save with locale, body, and CSRF header', async () => {
     const { saveReleaseNotes } = await import('../../../client/settings/admin-fetchers.js')
     setCsrfToken('csrf-srn')
     let seenUrl = ''
@@ -184,11 +185,11 @@ describe('admin-fetchers', () => {
       seenBody = parseBody(init.body)
       return Promise.resolve(json(releaseNotesPayload))
     })
-    const result = await saveReleaseNotes('New release notes text')
+    const result = await saveReleaseNotes('New release notes text', 'en')
     expect(seenUrl).toBe('/settings/api/admin/release-notes')
     expect(seenCsrf).toBe('csrf-srn')
     expect(seenMethod).toBe('POST')
-    expect(seenBody).toEqual({ action: 'save', body: 'New release notes text' })
+    expect(seenBody).toEqual({ action: 'save', locale: 'en', body: 'New release notes text' })
     expect(result.version).toBe('1.2.3')
   })
 
@@ -228,11 +229,11 @@ describe('admin-fetchers', () => {
       seenBody = parseBody(init.body)
       return Promise.resolve(json(releaseNotesPayload))
     })
-    const result = await regenerateReleaseNotes()
+    const result = await regenerateReleaseNotes('ru')
     expect(seenUrl).toBe('/settings/api/admin/release-notes')
     expect(seenCsrf).toBe('csrf-rrn')
     expect(seenMethod).toBe('POST')
-    expect(seenBody).toEqual({ action: 'regenerate' })
+    expect(seenBody).toEqual({ action: 'regenerate', locale: 'ru' })
     expect(result.version).toBe('1.2.3')
     expect(result.counts.dm).toBe(5)
     expect('broadcast' in result).toBe(false)

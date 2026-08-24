@@ -131,7 +131,14 @@ export const stopPartWayThrough = async (context: PartWayInput): Promise<PhaseOu
   return parkedOutcome(context, salvage, handoff)
 }
 
-/** Says which of the two stops this is, with what the turn had managed. */
+/**
+ * Says which of the two stops this is, with what the turn had managed.
+ *
+ * The stall line does not say "the provider stalled": the same misattribution
+ * the error message carried, gone for the same reason — the retries this fires
+ * on are evidence that the call kept failing, not that the remote refused it.
+ * `turnStallError` says which, as far as the record supports.
+ */
 const logStopping = (context: PartWayInput, stalled: boolean): void => {
   const { deps, state } = context.input
   deps.log.warn(
@@ -145,7 +152,7 @@ const logStopping = (context: PartWayInput, stalled: boolean): void => {
       ...context.stopped.progress,
     },
     stalled
-      ? 'The provider stalled the turn part-way through; aborting it and keeping what it wrote'
+      ? 'The turn stalled part-way through; aborting it and keeping what it wrote'
       : 'Out of time part-way through the turn; stopping it and keeping what it wrote',
   )
 }

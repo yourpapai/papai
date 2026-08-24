@@ -193,12 +193,15 @@ describe('applyArchiveTrigger · the merged-PR door (D7)', () => {
 describe('applyTrigger · /sync dispatch (the /ask shape)', () => {
   const syncCommand = { command: '/sync' as const, argument: '' }
 
-  it('refuses /sync without a pull request through the wrong-command refusal', async () => {
-    // No PR, no merge target: the refusal is the wrong-command one, offering
-    // the commands that do apply — the same door every misplaced command takes.
+  it('refuses /sync before capture through the wrong-command refusal', async () => {
+    // No change captured, no branch cut: the refusal is the wrong-command one,
+    // offering the commands that do apply — the same door every misplaced
+    // command takes. The state is deliberately the pre-capture shape
+    // (`changeName: null`); the drift-park shape one test down is the one
+    // /sync now exists to reach.
     const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
     const input: PhaseInput = {
-      state: baseState({ phase: 'FAILED', resumeFrom: 'REVIEW_AND_MUTATE' }),
+      state: baseState({ phase: 'FAILED', resumeFrom: 'INIT_OR_CLARIFY' }),
       issue: { number: 42, title: 't', body: 'b' },
       trigger: commentTrigger('/sync', 'OWNER'),
       command: syncCommand,
@@ -214,8 +217,38 @@ describe('applyTrigger · /sync dispatch (the /ask shape)', () => {
     expect(outcome.halt?.reason).toContain('/sync does not apply to this issue')
     // The persisted state is untouched — a refusal moves nothing.
     expect(outcome.state.phase).toBe('FAILED')
-    expect(outcome.state.resumeFrom).toBe('REVIEW_AND_MUTATE')
+    expect(outcome.state.resumeFrom).toBe('INIT_OR_CLARIFY')
     expect(outcome.sync).toBeFalsy()
+  })
+
+  it('dispatches /sync on the drift-parked issue — FAILED, no pull request, work on the branch', async () => {
+    // Issue #323's shape exactly: the run refused on drifted manifests and
+    // parked in FAILED before any pull request existed, and a /sync gated on
+    // `prNumber` was a remedy the state it was prescribed for could not take.
+    // The command arrives as an ordinary issue comment; the state has a
+    // captured change and therefore a branch to merge base into.
+    const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
+    const input: PhaseInput = {
+      state: baseState({
+        phase: 'FAILED',
+        resumeFrom: 'REVIEW_AND_MUTATE',
+        changeName: 'localized-release-announcements',
+      }),
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: commentTrigger('/sync', 'OWNER'),
+      command: syncCommand,
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+
+    const outcome = await applyTrigger(input)
+
+    expect(outcome.halt).toBeNull()
+    expect(outcome.answer).toBe(false)
+    // The side-operation flag: the machine runs the sync handler, no phase.
+    expect(outcome.sync).toBe(true)
+    // The state the cascade is handed is the state the command arrived on.
+    expect(outcome.state).toEqual(input.state)
   })
 
   it('dispatches /sync as a side operation whenever a pull request exists, without consulting the transition table', async () => {

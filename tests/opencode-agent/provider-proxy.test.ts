@@ -16,11 +16,18 @@ import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
 import type { OpenCodeAgentOptions } from '../../opencode-agent/src/opencode-adapter.js'
 import {
   backoffFor,
+  defaultServe,
   PLACEHOLDER_API_KEY,
   proxiedSettings,
   startProviderProxy,
 } from '../../opencode-agent/src/provider-proxy.js'
-import type { ProviderProxy, Serve, UpstreamFetch } from '../../opencode-agent/src/provider-proxy.js'
+import type {
+  BunServe,
+  BunServeOptions,
+  ProviderProxy,
+  Serve,
+  UpstreamFetch,
+} from '../../opencode-agent/src/provider-proxy.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 
 const KEY = 'sk-live-SUPERSECRET-0123456789'
@@ -614,5 +621,65 @@ describe('contain', () => {
 
     expect(JSON.stringify(run.deps.config)).not.toContain(KEY)
     await run.proxy.close()
+  })
+})
+
+describe('defaultServe', () => {
+  /** Records the options the listener hands the runtime, and answers plausibly. */
+  const spy = (): { seen: BunServeOptions[]; bunServe: BunServe; stopped: boolean[] } => {
+    const seen: BunServeOptions[] = []
+    const stopped: boolean[] = []
+    return {
+      seen,
+      stopped,
+      bunServe: (options) => {
+        seen.push(options)
+        return { port: 45_123, stop: (closeActiveConnections): void => void stopped.push(closeActiveConnections) }
+      },
+    }
+  }
+
+  test('disables the idle bound, so a quiet stretch mid-completion is not a closed socket', () => {
+    // The regression this pins: Bun's default is 10 seconds, and it counts a
+    // *streamed* response as idle whenever the model pauses between chunks. A
+    // reasoning turn goes quiet for longer than that routinely, and the socket
+    // Bun closed reads downstream as a provider failure — OpenCode retries, hits
+    // the same pause, and the turn stalls out having made no progress.
+    const { seen, bunServe } = spy()
+
+    defaultServe({ fetch: (): Promise<Response> => Promise.resolve(new Response('ok')) }, bunServe)
+
+    expect(seen[0]?.idleTimeout).toBe(0)
+  })
+
+  test('binds loopback on an ephemeral port', () => {
+    // Loopback is the containment the proxy exists for: the credential it holds
+    // must not be reachable from off the machine.
+    const { seen, bunServe } = spy()
+
+    defaultServe({ fetch: (): Promise<Response> => Promise.resolve(new Response('ok')) }, bunServe)
+
+    expect(seen[0]?.hostname).toBe('127.0.0.1')
+    expect(seen[0]?.port).toBe(0)
+  })
+
+  test('hands the runtime the handler it was given, and reports the bound port', () => {
+    const { seen, bunServe } = spy()
+    const fetch = (): Promise<Response> => Promise.resolve(new Response('ok'))
+
+    const listener = defaultServe({ fetch }, bunServe)
+
+    expect(seen[0]?.fetch).toBe(fetch)
+    expect(listener.port).toBe(45_123)
+  })
+
+  test('closes connections still open when it stops', () => {
+    // `stop(true)`, not `stop()`: a half-streamed completion holds the socket,
+    // and a listener that waits for it to drain outlives the job.
+    const { stopped, bunServe } = spy()
+
+    defaultServe({ fetch: (): Promise<Response> => Promise.resolve(new Response('ok')) }, bunServe).stop()
+
+    expect(stopped).toEqual([true])
   })
 })

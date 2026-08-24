@@ -124,7 +124,9 @@ describe('fence', () => {
 describe('renderFailure', () => {
   const failed = transition(initialState(1), 'FAILED', { lastError: 'x' })
 
-  const render = (message: string): string => renderFailure('INIT_OR_CLARIFY', message, failed, 3, null)
+  const render = (message: string): string => renderFailure('INIT_OR_CLARIFY', message, failed, 3, null, false)
+
+  const renderFutile = (message: string): string => renderFailure('INIT_OR_CLARIFY', message, failed, 3, null, true)
 
   test('keeps the recovery instruction readable when the error carries a fence', () => {
     // This is the line the maintainer has to act on; a broken fence buries it
@@ -150,6 +152,27 @@ describe('renderFailure', () => {
 
   test('leaves no unclosed fence', () => {
     expect(spans(render(modelResponseError('no JSON', FENCED_REPLY).message)).unclosed).toBe(false)
+  })
+
+  test('a failure /retry cannot fix invites no bare /retry — issue #323', () => {
+    // The drift footer once said "Reply /retry to resume" under a message whose
+    // first remedy line said /retry could not change the condition, and the
+    // blind retries spent the budget the remedies needed.
+    const rendered = renderFutile('a condition no retry can change')
+
+    expect(rendered).toContain('A plain `/retry` will reproduce this failure')
+    expect(rendered).not.toContain('Reply **`/retry`** to resume')
+    // The count is deliberately absent rather than carried: a drift refusal
+    // spends no attempt, so there is no honest count to show.
+    expect(rendered).not.toContain('Attempt ')
+    expect(rendered).toContain('`/cancel`')
+  })
+
+  test('a futile failure keeps the whole error inside the block', () => {
+    const rendered = renderFutile(modelResponseError('no JSON object', FENCED_REPLY).message)
+
+    expect(code(rendered)).toContain('Hope that helps.')
+    expect(spans(rendered).unclosed).toBe(false)
   })
 })
 
@@ -433,7 +456,7 @@ describe('comment headings', () => {
 
   /** One entry per renderer that speaks about an outcome, with its key. */
   const OUTCOME_COMMENTS: readonly (readonly [OutcomeKey, string])[] = [
-    ['RUN_FAILED', renderFailure('PLANNING', 'boom', failed, 3, null)],
+    ['RUN_FAILED', renderFailure('PLANNING', 'boom', failed, 3, null, false)],
     ['ANSWER_FAILED', renderAnswerFailure('DESIGN_SPEC', 'boom')],
     ['RETRIES_SPENT', renderExhausted('Retry budget exhausted')],
     ['TOKENS_SPENT', renderOverBudget(1, 2, 'PLANNING')],

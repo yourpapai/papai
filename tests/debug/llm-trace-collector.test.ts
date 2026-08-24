@@ -9,7 +9,11 @@ import type { Scope } from '../../src/debug/event-bus.js'
 import {
   handleLlmTraceEvent,
   pendingTraces,
+  pushTrace,
+  recentLlm,
+  resetLlmBuffers,
   shapeLlmTrace,
+  LLM_TRACE_CAPACITY,
   type LlmTrace,
 } from '../../src/debug/llm-trace-collector.js'
 
@@ -29,7 +33,7 @@ describe('handleLlmTraceEvent', () => {
   beforeEach(() => {
     pushed = []
     stats = { totalLlmCalls: 0, totalToolCalls: 0 }
-    pendingTraces.clear()
+    resetLlmBuffers()
   })
 
   test('accumulates tool calls and userId from scope across start/tool_result/end', () => {
@@ -80,6 +84,42 @@ describe('handleLlmTraceEvent', () => {
     expect(stats.totalToolCalls).toBe(1)
   })
 
+  test('llm:end chatUserId payload overrides the storage-context scope key as trace userId', () => {
+    const storageContextId = 'pi:cGk:ctx:Y2hhdA'
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 1, scope: userScope(storageContextId), data: { model: 'm' } },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      {
+        type: 'llm:end',
+        timestamp: 2,
+        scope: userScope(storageContextId),
+        data: { chatUserId: '4242', model: 'm', steps: 1, tokenUsage: { inputTokens: 1, outputTokens: 1 } },
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+    handleLlmTraceEvent(
+      {
+        type: 'llm:error',
+        timestamp: 3,
+        scope: userScope(storageContextId),
+        data: { chatUserId: '4242', model: 'm', error: 'boom' },
+      },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(pushed).toHaveLength(2)
+    expect(pushed[0]!.userId).toBe('4242')
+    expect(pushed[1]!.userId).toBe('4242')
+  })
+
   test('concurrent contexts keep separate pending traces', () => {
     handleLlmTraceEvent(
       { type: 'llm:start', timestamp: 1, scope: userScope('a'), data: {} },
@@ -114,6 +154,47 @@ describe('handleLlmTraceEvent', () => {
     expect(pushed).toHaveLength(1)
     expect(pushed[0]!.userId).toBe('b')
     expect(pushed[0]!.toolCalls).toHaveLength(0)
+  })
+
+  test('resetLlmBuffers clears both captured traces and pending traces after capture', () => {
+    pushTrace({
+      timestamp: 1,
+      userId: 'u',
+      chatUserId: undefined,
+      model: 'm',
+      steps: 1,
+      totalTokens: { inputTokens: 1, outputTokens: 1 },
+      duration: 2,
+      toolCalls: [],
+      error: undefined,
+      responseId: undefined,
+      actualModel: undefined,
+      finishReason: undefined,
+      messageCount: undefined,
+      toolCount: undefined,
+      exposedToolCount: undefined,
+      fullToolCount: undefined,
+      toolSchemaBytes: undefined,
+      routingIntent: undefined,
+      routingConfidence: undefined,
+      routingReason: undefined,
+      generatedText: undefined,
+      stepsDetail: undefined,
+    })
+    handleLlmTraceEvent(
+      { type: 'llm:start', timestamp: 5, scope: userScope('pending-user'), data: { model: 'm' } },
+      callbacks(pushed),
+      stats,
+      () => {},
+    )
+
+    expect(recentLlm).toHaveLength(1)
+    expect(pendingTraces.size).toBe(1)
+
+    resetLlmBuffers()
+
+    expect(recentLlm).toHaveLength(0)
+    expect(pendingTraces.size).toBe(0)
   })
 })
 
@@ -336,5 +417,11 @@ describe('shapeLlmTrace', () => {
     const shapedTwice = shapeLlmTrace(shapedOnce, 'chat-2')
 
     expect(shapedTwice).toEqual(shapedOnce)
+  })
+})
+
+describe('buffer capacity exports', () => {
+  test('LLM_TRACE_CAPACITY equals the recentLlm ring buffer capacity', () => {
+    expect(LLM_TRACE_CAPACITY).toBe(65535)
   })
 })
