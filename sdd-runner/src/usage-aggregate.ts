@@ -133,3 +133,25 @@ export function costAndDuration(
   const durationMs = Math.max(0, now.getTime() - new Date(createdAt).getTime())
   return { costUsd: usage.costUsd, durationMs, costKnown: usage.costKnown }
 }
+
+export interface TreeSpend {
+  readonly spentUsd: number
+  readonly costKnown: boolean
+}
+
+/**
+ * D10 aggregate ledger: parent done-events plus every `child_done.usage`.
+ * Any `child_done` without usage makes the spend unknown — fail closed.
+ */
+export function treeSpend(events: readonly SddEvent[]): TreeSpend {
+  let spentUsd = 0
+  let costKnown = true
+  for (const event of events) {
+    if (event.type === 'done') spentUsd += event.usage.costUsd
+    if (event.type === 'child_done') {
+      if (event.usage === undefined) costKnown = false
+      else spentUsd += event.usage.costUsd
+    }
+  }
+  return { spentUsd, costKnown }
+}

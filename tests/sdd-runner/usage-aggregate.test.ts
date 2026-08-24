@@ -10,6 +10,7 @@ import type { ResolvedCost } from '../../sdd-runner/src/pricing.js'
 import { aggregateUsage } from '../../sdd-runner/src/usage-aggregate.js'
 import { repriceEvent } from '../../sdd-runner/src/usage-aggregate.js'
 import { repriceEvents } from '../../sdd-runner/src/usage-aggregate.js'
+import { treeSpend } from '../../sdd-runner/src/usage-aggregate.js'
 
 function makeUsage(overrides: Partial<AgentUsage> = {}): AgentUsage {
   return {
@@ -336,5 +337,36 @@ describe('aggregateUsage reprice integration', () => {
     const usage = aggregateUsage(events)
     expect(usage.costUsd).toBe(0)
     expect(usage.costKnown).toBe(false)
+  })
+})
+
+describe('treeSpend (D10 aggregate ledger)', () => {
+  it('sums parent done-events plus child_done usage and reads unknown when any usage is absent', () => {
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ costUsd: 0.4 }), 1),
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'auth-db',
+        outcome: 'done',
+        usage: makeUsage({ costUsd: 0.25 }),
+        seq: 2,
+        ts: '2026-01-01T00:00:00.000Z',
+      },
+    ]
+    expect(treeSpend(events)).toEqual({ spentUsd: 0.65, costKnown: true })
+
+    const withUnpriced: SddEvent[] = [
+      ...events,
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'auth-api',
+        outcome: 'done',
+        seq: 3,
+        ts: '2026-01-01T00:00:00.000Z',
+      },
+    ]
+    expect(treeSpend(withUnpriced)).toEqual({ spentUsd: 0.65, costKnown: false })
   })
 })

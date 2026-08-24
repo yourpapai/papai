@@ -9,7 +9,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { runChildren, runPlanBranch, treeSpend } from '../../sdd-runner/src/children.js'
+import { runChildren, runPlanBranch } from '../../sdd-runner/src/children.js'
 import type { RunChildRun } from '../../sdd-runner/src/children.js'
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import type { SddEvent } from '../../sdd-runner/src/events.js'
@@ -396,6 +396,77 @@ describe('runChildren (D8)', () => {
     expect(eventsOf(fixture, 'child_done')).toHaveLength(0)
     expect(stdoutLines.some((line) => line === `sdd ${childRunId}`)).toBe(true)
   })
+
+  it('resume re-observes a gate-settled running child instead of re-spawning it', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const first = makeRunner(fixture, { 'auth-db': { status: 'running', gate: { mode: 'final', version: 1 } } })
+
+    const halted = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: first.runChildRun })
+
+    expect(halted.halted).toBe('gate-pending')
+    const childRunId = first.runIds.get('auth-db')
+    assert(childRunId !== undefined)
+    const child = await loadRunState(fixture.deps.config.workDir, childRunId)
+    child.gate = null
+    child.status = 'completed'
+    await saveRunState(child, new Date('2026-08-12T08:00:00.000Z'))
+    appendEvent(path.join(child.runDir, 'events.ndjson'), {
+      altitude: 'L1',
+      type: 'done',
+      agent: 'estimator',
+      usage: CHILD_DONE_USAGE,
+    })
+
+    const resumed = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    const second = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, resumed, fixture.ctx, { runChildRun: second.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    expect(second.spawned).toEqual(['auth-api'])
+    expect(resumed.children?.['auth-db']).toEqual({ status: 'done' })
+    const done = eventsOf(fixture, 'child_done')
+    expect(done[0]).toMatchObject({ child: 'auth-db', outcome: 'done', usage: { costUsd: 0.25 } })
+    expect(done[1]).toMatchObject({ child: 'auth-api', outcome: 'done' })
+  })
+
+  it('resume surfaces a still-gate-pending running child again without re-spawning it', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const first = makeRunner(fixture, { 'auth-db': { status: 'running', gate: { mode: 'final', version: 1 } } })
+    await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: first.runChildRun })
+    const childRunId = first.runIds.get('auth-db')
+    assert(childRunId !== undefined)
+
+    const resumed = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    const second = makeRunner(fixture, {})
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runChildren(deps, resumed, fixture.ctx, { runChildRun: second.runChildRun })
+
+    expect(result).toEqual({ halted: 'gate-pending', childRunId })
+    expect(second.spawned).toEqual([])
+    expect(resumed.children?.['auth-db']).toEqual({ status: 'running' })
+    expect(stdoutLines.some((line) => line === `sdd ${childRunId}`)).toBe(true)
+  })
+
+  it('a running child whose spawned runId was never recorded falls back to a fresh spawn', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], { 'auth-db': 'running' })
+    const tracker = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    expect(tracker.spawned).toEqual(['auth-db', 'auth-api'])
+  })
 })
 
 describe('runChildren failure and completion semantics (D9)', () => {
@@ -476,30 +547,6 @@ describe('runChildren failure and completion semantics (D9)', () => {
 })
 
 describe('aggregate budget ledger (D10)', () => {
-  it('treeSpend sums parent done-events plus child_done usage and reads unknown when any usage is absent', async () => {
-    const fixture = await makeFixture()
-    const logPath = path.join(fixture.state.runDir, 'events.ndjson')
-    appendEvent(logPath, {
-      altitude: 'L1',
-      type: 'done',
-      agent: 'estimator',
-      usage: { ...CHILD_DONE_USAGE, costUsd: 0.4 },
-    })
-    appendEvent(logPath, {
-      altitude: 'L2',
-      type: 'child_done',
-      child: 'auth-db',
-      outcome: 'done',
-      usage: CHILD_DONE_USAGE,
-    })
-    const known = treeSpend(fixture.state)
-    expect(known).toEqual({ spentUsd: 0.65, costKnown: true })
-
-    appendEvent(logPath, { altitude: 'L2', type: 'child_done', child: 'auth-api', outcome: 'done' })
-    const unknown = treeSpend(fixture.state)
-    expect(unknown).toEqual({ spentUsd: 0.65, costKnown: false })
-  })
-
   it('halts before the next child_spawned when recorded spend meets the budget, with a loud budget-guard line', async () => {
     const fixture = await makeFixture()
     await seedParent(fixture, ['auth-db', 'auth-api'], { 'auth-db': 'done' })

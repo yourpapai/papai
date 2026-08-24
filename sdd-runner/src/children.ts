@@ -22,6 +22,8 @@ import type { RunState } from './run-state.js'
 import type { CalmStopController } from './stop-controller.js'
 import { aggregateUsage } from './usage-aggregate.js'
 import { buildResolveCost } from './usage-aggregate.js'
+import { treeSpend } from './usage-aggregate.js'
+import type { TreeSpend } from './usage-aggregate.js'
 
 export interface PlanBranchOptions {
   /** Injected fs seam (D7): hermetic materialization under test. */
@@ -99,29 +101,6 @@ function calmSettle(deps: OrchestratorDeps, state: RunState, stop: CalmStopContr
 
 function assertStopPresent(stop: CalmStopController | undefined): asserts stop is CalmStopController {
   if (stop === undefined) throw new Error('calm stop requested without a stop seam')
-}
-
-export interface TreeSpend {
-  readonly spentUsd: number
-  readonly costKnown: boolean
-}
-
-/**
- * D10 aggregate ledger: parent done-events plus every `child_done.usage`,
- * read from the parent's append-only log. Any `child_done` without usage
- * makes the spend unknown — fail closed.
- */
-export function treeSpend(state: RunState): TreeSpend {
-  let spentUsd = 0
-  let costKnown = true
-  for (const event of readEvents(logPathFor(state))) {
-    if (event.type === 'done') spentUsd += event.usage.costUsd
-    if (event.type === 'child_done') {
-      if (event.usage === undefined) costKnown = false
-      else spentUsd += event.usage.costUsd
-    }
-  }
-  return { spentUsd, costKnown }
 }
 
 export type RunChildrenResult =
@@ -248,8 +227,25 @@ async function settleObservedChild(
 }
 
 /**
+ * D8 resume recovery: a `running` child halted at its own gate in an earlier
+ * parent pass; its runId is the last recorded `child_spawned` line for that
+ * child. Legacy lines without a runId yield null and the caller falls back
+ * to a fresh spawn.
+ */
+function lastSpawnedHandleOf(state: RunState, childId: string): { readonly runId: string } | null {
+  for (const event of readEvents(logPathFor(state)).reverse()) {
+    if (event.type === 'child_spawned' && event.child === childId && event.runId !== undefined) {
+      return { runId: event.runId }
+    }
+  }
+  return null
+}
+
+/**
  * Sequential topo execution loop (D8): walks `state.plan.childIds` in order,
- * one child in flight, skipping children already `done`. Before each spawn
+ * one child in flight, skipping children already `done` and re-observing a
+ * `running` child (recovered from its last `child_spawned` runId) instead of
+ * re-spawning it. Before each spawn
  * the D10 budget guard fail-closes on unknown-or-exceeded tree spend and the
  * D11 calm-stop seam is honored. A completed child emits `child_spawned`
  * then `child_done` with usage aggregated from the child's own event log; a
@@ -275,8 +271,14 @@ export async function runChildren(
     }
     if (state.children?.[childId]?.status === 'done') return runAt(index + 1)
     const stop = options.stop
+    if (state.children?.[childId]?.status === 'running') {
+      const observed = lastSpawnedHandleOf(state, childId)
+      if (observed !== null) {
+        return settleObservedChild(deps, state, ctx, stop, childId, observed, resolve, () => runAt(index + 1))
+      }
+    }
     if (stop !== undefined && stop.stopRequested()) return calmSettle(deps, state, stop)
-    const spend = treeSpend(state)
+    const spend = treeSpend(readEvents(logPathFor(state)))
     if (!spend.costKnown || spend.spentUsd >= deps.config.budget) {
       return stopAtBudgetGuard(deps, state, childId, spend)
     }
