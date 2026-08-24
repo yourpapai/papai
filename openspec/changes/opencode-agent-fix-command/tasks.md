@@ -51,8 +51,8 @@ Spec: `specs/agent-fix-command/spec.md`; how: design D1–D7.
 
 ## 7. Documentation the change makes stale (D5)
 
-- [ ] 7.1 Update `opencode-agent/CLAUDE.md`: the command-surface doctrine gains `/fix`, and the CI-fix doctrine bullet ("`handleCiFix` reads the run it was asked to repair: `listRunJobs`/`jobLog`") learns the command-bought half — head check runs via `listCheckRunsForRef` under `checks: read`. Verify: `grep -n "listCheckRunsForRef" opencode-agent/CLAUDE.md && grep -n "'/fix'" opencode-agent/CLAUDE.md && bun run format:check`
-- [ ] 7.2 Update `opencode-agent/README.md`: the command table gains the `/fix` row with its valid-in states, the phases table's `CI_FIX` trigger names the second door, and the budget section's once-per-PR silence passage learns the repeating typed refusal beside it. Verify: `grep -n "'/fix'" opencode-agent/README.md && bun run format:check`
+- [x] 7.1 Update `opencode-agent/CLAUDE.md`: the command-surface doctrine gains `/fix`, and the CI-fix doctrine bullet ("`handleCiFix` reads the run it was asked to repair: `listRunJobs`/`jobLog`") learns the command-bought half — head check runs via `listCheckRunsForRef` under `checks: read`. Verify: `grep -n "listCheckRunsForRef" opencode-agent/CLAUDE.md && grep -n "'/fix'" opencode-agent/CLAUDE.md && bun run format:check`
+- [x] 7.2 Update `opencode-agent/README.md`: the command table gains the `/fix` row with its valid-in states, the phases table's `CI_FIX` trigger names the second door, and the budget section's once-per-PR silence passage learns the repeating typed refusal beside it. Verify: `grep -n "'/fix'" opencode-agent/README.md && bun run format:check`
 
 ## 8. Full verification
 

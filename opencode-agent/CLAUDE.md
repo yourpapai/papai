@@ -492,7 +492,14 @@ findings: `ROADMAP.md`.
   reconcile would ever look at it again. `applyPullRequestCommand` does not narrow
   to `/review`: with the issue refusing commands, a narrowing there would leave
   `/retry`, `/cancel` and `/ask` nowhere at all to be typed, and which commands a
-  state accepts is `applyCommand`'s one answer for both doors. And the workflow's
+  state accepts is `applyCommand`'s one answer for both doors. `/fix` joined the
+  surface through that same answer — it injects `CI_FAILED` like the red-run
+  door (same transition, same `ciAttempts` increment site), is offered exactly
+  in the phases that admit that signal with a pull request named, and a spent
+  CI budget is refused before the move by `refuseFix` in `command-refusals.ts`:
+  the notice names `AGENT_MAX_CI_ATTEMPTS` and the fresh budget a new pull
+  request earns, and posts every time the command is typed — the once-per-PR
+  `ciBudgetReported` silence belongs to the automatic door alone. And the workflow's
   pull-request arm names **every** command in `SLASH_COMMANDS` (checked against it
   by `workflow.test.ts`) while the label cleanup step reaches both the issue and
   the pull request, since which of the two carries a stranded `agent:working`
@@ -733,11 +740,19 @@ findings: `ROADMAP.md`.
   there is no route from a written handoff back to `PLANNING`. It still covers a
   hand-edited block, and it is the invariant that keeps the note honest the day such
   a route exists.
-- **A CI-fix round diagnoses the red run itself, never a memorized check list.**
-  `handleCiFix` reads the run it was asked to repair: `listRunJobs`/`jobLog`
+- **A CI-fix round diagnoses what its door named, never a memorized check list.**
+  The red-run door names a run, and `handleCiFix` reads it: `listRunJobs`/`jobLog`
   (the `actions: read` token) distilled by `red-run.ts` into failed jobs, failed
-  steps and tail-clipped logs, then one `promptForJson` diagnosis turn
-  (`ci-diagnosis.ts`) whose verdict picks the branch. `fix` + `reproduction`
+  steps and tail-clipped logs. A `/fix` command bought the round through the
+  same `CI_FAILED` transition but carries no run id, so the round reads the head
+  commit's failed check runs instead — `listCheckRunsForRef` on the branch the
+  handler already resolves, under `checks: read` (the Checks API is its own
+  permission class; `actions: read` does not cover it), keeping `failure` and
+  `timed_out` and dropping cancelled/skipped/stale/neutral/`action_required`,
+  mapped by `red-run.ts` into the same failed-job shape with the output summary
+  tail-clipped in the log's place and no step conclusions to name. Then one
+  `promptForJson` diagnosis turn (`ci-diagnosis.ts`) whose verdict picks the
+  branch. `fix` + `reproduction`
   runs the derived argv locally — derived by the model from the repository's own
   CI files, never from log text — and a failure enters `check-loop.ts` scoped to
   that one command, each repair prompt carrying the local output **and** the CI

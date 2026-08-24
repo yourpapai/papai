@@ -84,19 +84,19 @@ value to point elsewhere.
 
 ## Phases
 
-| Phase               | Trigger                                   | What happens                                                     | Ends at                                   |
-| ------------------- | ----------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------- |
-| `INIT_OR_CLARIFY`   | issue opened, or a reply while clarifying | Reads the issue and thread, explores the repo                    | Questions (stays here) or a design spec   |
-| `DESIGN_SPEC`       | —                                         | Waiting. The spec is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
-| `PLANNING`          | spec approved                             | Planning skills produce a step breakdown; cuts `agent/issue-<n>` | Plan posted                               |
-| `PLAN_REVIEW`       | —                                         | Waiting. The plan is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
-| `REVIEW_AND_MUTATE` | plan approved                             | One turn per plan step, each committed **and pushed**            | Changes pushed                            |
-| `PR_DELIVERY`       | automatic                                 | Opens or refreshes the PR with `Closes #<n>`                     | PR opened                                 |
-| `CODE_REVIEW`       | `/review`, on the issue or its PR         | Runs the `review-loop/` workspace over the pushed branch         | Findings pushed, review reported          |
-| `CI_FIX`            | a red check run on `agent/issue-<n>`      | Reproduces CI locally, repairs, pushes                           | Fix pushed                                |
-| `COMPLETE`          | —                                         | Terminal, but re-enterable from `CI_FIX` and `CODE_REVIEW`       | —                                         |
-| `FAILED`            | any _phase_ handler throwing              | Failure comment posted, `resumeFrom` recorded                    | `/retry` or `/cancel`                     |
-| `INCOMPLETE`        | the job running out of wall clock         | Time notice posted, `resumeFrom` recorded, no attempt spent      | `/continue` or `/cancel`                  |
+| Phase               | Trigger                                                   | What happens                                                     | Ends at                                   |
+| ------------------- | --------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------- |
+| `INIT_OR_CLARIFY`   | issue opened, or a reply while clarifying                 | Reads the issue and thread, explores the repo                    | Questions (stays here) or a design spec   |
+| `DESIGN_SPEC`       | —                                                         | Waiting. The spec is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
+| `PLANNING`          | spec approved                                             | Planning skills produce a step breakdown; cuts `agent/issue-<n>` | Plan posted                               |
+| `PLAN_REVIEW`       | —                                                         | Waiting. The plan is under review                                | `/approve`, `/changes`, `/ask`, `/cancel` |
+| `REVIEW_AND_MUTATE` | plan approved                                             | One turn per plan step, each committed **and pushed**            | Changes pushed                            |
+| `PR_DELIVERY`       | automatic                                                 | Opens or refreshes the PR with `Closes #<n>`                     | PR opened                                 |
+| `CODE_REVIEW`       | `/review`, on the issue or its PR                         | Runs the `review-loop/` workspace over the pushed branch         | Findings pushed, review reported          |
+| `CI_FIX`            | a red check run on `agent/issue-<n>`, or `/fix` on its PR | Reproduces CI locally, repairs, pushes                           | Fix pushed                                |
+| `COMPLETE`          | —                                                         | Terminal, but re-enterable from `CI_FIX` and `CODE_REVIEW`       | —                                         |
+| `FAILED`            | any _phase_ handler throwing                              | Failure comment posted, `resumeFrom` recorded                    | `/retry` or `/cancel`                     |
+| `INCOMPLETE`        | the job running out of wall clock                         | Time notice posted, `resumeFrom` recorded, no attempt spent      | `/continue` or `/cancel`                  |
 
 There are two review gates, not one. The spec and the plan are each parked in
 front of a human before anything downstream is spent.
@@ -116,16 +116,17 @@ moves the phase and the handler runs behind it in the same job, exactly as
 
 ## Talking to the agent
 
-| Command                     | Valid in                      | Effect                                                         |
-| --------------------------- | ----------------------------- | -------------------------------------------------------------- |
-| `/approve`                  | `DESIGN_SPEC`, `PLAN_REVIEW`  | Proceed to the next phase                                      |
-| `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW`  | Rewrite the spec or plan, with your feedback in the prompt     |
-| `/ask <question>`           | anywhere                      | Answer, grounded in the repo, without moving the state machine |
-| `/review`                   | a **delivered** `COMPLETE`    | Run the review loop over the branch and push what it finds     |
-| `/retry [note]`             | `FAILED`                      | Resume the exact phase that failed; the note rides the prompt  |
-| `/continue [note]`          | `INCOMPLETE`                  | Pick up the phase the job ran out of time for; note as above   |
-| `/cancel`                   | anything but `COMPLETE`       | Stop for good — a cancelled issue cannot be restarted          |
-| `/sync`                     | any state with a pull request | Merge the base branch into `agent/issue-<n>` and push          |
+| Command                     | Valid in                                                     | Effect                                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `/approve`                  | `DESIGN_SPEC`, `PLAN_REVIEW`                                 | Proceed to the next phase                                                                                                                 |
+| `/changes <what to change>` | `DESIGN_SPEC`, `PLAN_REVIEW`                                 | Rewrite the spec or plan, with your feedback in the prompt                                                                                |
+| `/ask <question>`           | anywhere                                                     | Answer, grounded in the repo, without moving the state machine                                                                            |
+| `/review`                   | a **delivered** `COMPLETE`                                   | Run the review loop over the branch and push what it finds                                                                                |
+| `/retry [note]`             | `FAILED`                                                     | Resume the exact phase that failed; the note rides the prompt                                                                             |
+| `/continue [note]`          | `INCOMPLETE`                                                 | Pick up the phase the job ran out of time for; note as above                                                                              |
+| `/cancel`                   | anything but `COMPLETE`                                      | Stop for good — a cancelled issue cannot be restarted                                                                                     |
+| `/sync`                     | any state with a pull request                                | Merge the base branch into `agent/issue-<n>` and push                                                                                     |
+| `/fix`                      | a delivered `COMPLETE` or `PR_DELIVERY`, with a pull request | Run a CI-fix round on the pull request's own red checks — the same repair run the red-run door buys, reading the head's failed check runs |
 
 A `/retry` or `/continue` **note** is maintainer guidance, not a re-plan: it is
 enveloped into the resumed handler's prompt under a fixed framing (the plan and
@@ -412,6 +413,11 @@ agent's own workflow is excluded, so its failures never feed itself.
 When that lifetime budget runs out the agent says so on the issue, once, naming
 the pull request — it does not simply stop. Later red runs are then ignored
 silently, because CI fires on every push and repeating the notice would be spam.
+A `/fix` typed past the same ceiling is answered instead of ignored: it is a
+command somebody asked, so the refusal (`CI-fix budget exhausted`, naming
+`AGENT_MAX_CI_ATTEMPTS` and the fresh budget a new pull request earns) posts
+every time it is typed — and it leaves the state untouched, so raising the
+ceiling and replying `/fix` again works immediately.
 
 That budget is **per pull request**, not per issue: opening a _new_ pull request
 resets both the spent rounds and the "I have stopped trying" flag, so the second
