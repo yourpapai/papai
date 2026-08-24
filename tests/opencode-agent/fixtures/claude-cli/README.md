@@ -21,6 +21,11 @@ State of this directory:
   shapes — with `is_error: true`, `terminal_reason: "api_error"` and exit code
   0, which is itself a load-bearing recorded fact: the error-to-non-zero-exit
   correlation is relied on for nothing.
+- `oauth-helper-init.ndjson` — written by the recorder's OAuth leg
+  (`CLAUDE_CODE_OAUTH_TOKEN` as the held credential): the init line of a raw
+  turn whose only credential carrier was the `apiKeyHelper` pair the adapter
+  materialized, the env spellings deleted. Its `apiKeySource` is the recorded
+  proof of whether `--bare` consults the helper on the pinned CLI.
 - `success-turn.ndjson`, `adversarial-plan-bash-refused.ndjson`,
   `resume-turn.ndjson` — **provisional, documented shapes**. The credentialed
   recorder run (change task 1.2,

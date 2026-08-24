@@ -39,7 +39,7 @@ through the update workflow to the removal outcome instead of continuing.
 
 ## 4. Recorder OAuth leg (design D4)
 
-- [ ] 4.1 Extend `tests/opencode-agent/claude-live.integration.ts` for the OAuth spelling as the held credential: the recording spawn seam asserts every spawned env carries no Anthropic spelling and the config dir held both files (modes included) before the first spawn; one raw leg reuses the materialized config dir, parses the init line's `apiKeySource`, and records it plus the helper stdout shape into `facts.json`; the corpus gains the OAuth init-line fixture. The un-credentialed auth-error leg boots the adapter with no credential (design D3) so no helper exists to consult.
+- [x] 4.1 Extend `tests/opencode-agent/claude-live.integration.ts` for the OAuth spelling as the held credential: the recording spawn seam asserts every spawned env carries no Anthropic spelling and the config dir held both files (modes included) before the first spawn; one raw leg reuses the materialized config dir, parses the init line's `apiKeySource`, and records it plus the helper stdout shape into `facts.json`; the corpus gains the OAuth init-line fixture. The un-credentialed auth-error leg boots the adapter with no credential (design D3) so no helper exists to consult.
   Verify: `bun run typecheck && bun run opencode-agent:test:claude-live` fails only on credentials (structure compiles; legs are credentialed)
 
 ## 5. Credentialed recording — the ship gate (design D5)

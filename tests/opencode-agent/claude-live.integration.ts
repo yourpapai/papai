@@ -37,6 +37,17 @@
  *     and a follow-up prompt `--resume`s the memoized session after the killed
  *     turn and answers.
  *
+ * The OAuth spelling (`CLAUDE_CODE_OAUTH_TOKEN`) runs the same corpus through
+ * its own carrier: the adapter materializes the CLI's `apiKeyHelper` files
+ * into the job-scoped config dir at boot, the recording seam asserts no
+ * spawned env ever carries an Anthropic credential and that each credentialed
+ * boot's config dir held the two files (0700/0600) before its first spawn,
+ * and one raw leg re-runs the CLI against that materialized dir with the env
+ * credential deleted — the init line's `apiKeySource` is the recorded proof
+ * the helper authenticates under `--bare`, stamped into `facts.json` and the
+ * corpus as `oauth-helper-init.ndjson`. The auth-error leg boots with no
+ * credential at all, so nothing it spawns carries one anywhere.
+ *
  * The recorded CLI's exact version is stamped into `VERSION` beside the
  * fixtures; `workflow.test.ts` asserts it equals the workflow's install pin,
  * so fixture and binary cannot silently skew. The `.ndjson` corpus beside it
@@ -46,7 +57,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -55,6 +66,7 @@ import { createClaudeAgent } from '../../opencode-agent/src/claude-adapter.js'
 import type { ClaudeAgentOptions } from '../../opencode-agent/src/claude-adapter.js'
 import { createClaudeConfigDir, liveSpawn } from '../../opencode-agent/src/claude-connect.js'
 import type { SpawnClaude } from '../../opencode-agent/src/claude-connect.js'
+import { decodeClaudeLine, parseNdjsonStream } from '../../opencode-agent/src/claude-contract.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'claude-cli')
@@ -91,8 +103,38 @@ const silentLog = {
 
 /** Every argv the adapter composed, captured by wrapping the real spawn. */
 const argvCalls: Array<readonly string[]> = []
+
+/** Every child env the adapter spawned with — read back for the OAuth carrier checks, never printed. */
+const envCalls: Array<Record<string, string>> = []
+
+/** What one config dir held at its first spawn — boot-time materialization, not turn-time. */
+interface ConfigDirProbe {
+  configDir: string
+  helper: boolean
+  settings: boolean
+  helperMode: number
+  settingsMode: number
+}
+
+const configDirProbes: ConfigDirProbe[] = []
+const probedDirs = new Set<string>()
+
 const recordingSpawn: SpawnClaude = (binary, argv, options) => {
   argvCalls.push([binary, ...argv])
+  envCalls.push(options.env)
+  const dir = options.env['CLAUDE_CONFIG_DIR'] ?? ''
+  if (!probedDirs.has(dir)) {
+    probedDirs.add(dir)
+    const helper = path.join(dir, 'credential.sh')
+    const settings = path.join(dir, 'settings.json')
+    configDirProbes.push({
+      configDir: dir,
+      helper: existsSync(helper),
+      settings: existsSync(settings),
+      helperMode: existsSync(helper) ? statSync(helper).mode & 0o777 : 0,
+      settingsMode: existsSync(settings) ? statSync(settings).mode & 0o777 : 0,
+    })
+  }
   return liveSpawn(binary, argv, options)
 }
 
@@ -100,8 +142,12 @@ const recordingSpawn: SpawnClaude = (binary, argv, options) => {
 const cliVersion = (): string => spawnSync('claude', ['--version'], { encoding: 'utf8' }).stdout.trim()
 
 /** Runs one raw CLI invocation and hands back exit code and both streams. */
-const rawRun = (argv: readonly string[], env: NodeJS.ProcessEnv): { code: number; stdout: string; stderr: string } => {
-  const child = spawnSync('claude', [...argv], { encoding: 'utf8', env, input: '' })
+const rawRun = (
+  argv: readonly string[],
+  env: NodeJS.ProcessEnv,
+  input = '',
+): { code: number; stdout: string; stderr: string } => {
+  const child = spawnSync('claude', [...argv], { encoding: 'utf8', env, input })
   return { code: child.status ?? -1, stdout: child.stdout ?? '', stderr: child.stderr ?? '' }
 }
 
@@ -111,15 +157,15 @@ interface AgentEnv {
   readonly agent: OpenCodeAgent
 }
 
-/** Boots one adapter over the given environment, capturing every argv. */
+/** Boots one adapter over the given environment, capturing every argv. A null credential is the un-credentialed leg. */
 const agentFor = async (
-  credential: { name: 'ANTHROPIC_API_KEY' | 'CLAUDE_CODE_OAUTH_TOKEN'; value: string },
+  credential: { name: 'ANTHROPIC_API_KEY' | 'CLAUDE_CODE_OAUTH_TOKEN'; value: string } | null,
   env: NodeJS.ProcessEnv,
 ): Promise<AgentEnv> => {
   const options: ClaudeAgentOptions = {
     directory: process.cwd(),
     knobs: { model: process.env['LLM_MODEL'] ?? 'sonnet', lightModel: null, planEffort: null, buildEffort: null },
-    credential,
+    ...(credential === null ? {} : { credential }),
     env,
     log: silentLog,
     spawn: recordingSpawn,
@@ -236,10 +282,12 @@ const run = async (): Promise<number> => {
 
   // The error-signalling result: a deliberately un-credentialed turn — the
   // real auth-failure shape, exit 0 with `is_error: true`, costing nothing.
+  // The adapter boots with **no** credential: on the OAuth spelling no helper
+  // exists for the CLI to consult, so the failure is the genuine shape.
   const noCredential = { ...env }
   Reflect.deleteProperty(noCredential, credential.name)
   Reflect.deleteProperty(noCredential, 'CLAUDE_CONFIG_DIR')
-  const unauth = await agentFor(credential, noCredential)
+  const unauth = await agentFor(null, noCredential)
   const authFailure = await unauth.agent.prompt({ prompt: 'say ready', agent: 'plan' }).then(
     () => null,
     (error: unknown) => error,
@@ -251,6 +299,53 @@ const run = async (): Promise<number> => {
       `got ${String(authFailure).slice(0, 120)}`,
     ),
   )
+
+  // ---- The OAuth carrier's proof leg (design D4/D5) --------------------------
+  //
+  // Only on the OAuth spelling: one raw CLI turn against the config dir the
+  // scoped adapter materialized, with the env credential deleted — the helper
+  // is then the only carrier that exists, and the init line's `apiKeySource`
+  // is the recorded answer to whether `--bare` consults it at all.
+
+  if (credential.name === 'CLAUDE_CODE_OAUTH_TOKEN') {
+    const helperDir = configDirProbes[0]?.configDir ?? ''
+    const helperEnv: NodeJS.ProcessEnv = { ...env, CLAUDE_CONFIG_DIR: helperDir }
+    Reflect.deleteProperty(helperEnv, credential.name)
+    const helperRun = rawRun(
+      [
+        '--bare',
+        '-p',
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        '--permission-mode',
+        'default',
+        '--allowedTools',
+        'Read,Glob,Grep',
+        '--model',
+        process.env['LLM_MODEL'] ?? 'sonnet',
+      ],
+      helperEnv,
+      'Reply with the single word ready.',
+    )
+    const parsed = parseNdjsonStream(helperRun.stdout)
+    const initAt = parsed.findIndex((raw) => decodeClaudeLine(raw)?.kind === 'init')
+    const initLine = initAt === -1 ? null : decodeClaudeLine(parsed[initAt])
+    const apiKeySource = initLine !== null && initLine.kind === 'init' ? initLine.apiKeySource : null
+    facts['oauthApiKeySource'] = apiKeySource ?? 'no-init-line'
+    facts['oauthHelperStdout'] = "printf '%s' single-quoted, no trailing newline"
+    results.push(
+      check(
+        'the helper authenticates under --bare — the raw leg ran with no env credential and the init line reports a non-none source',
+        apiKeySource !== null && apiKeySource !== 'none',
+        `apiKeySource: ${String(apiKeySource)}, exit ${helperRun.code}`,
+      ),
+    )
+    if (initAt !== -1) {
+      writeFileSync(path.join(FIXTURES, 'oauth-helper-init.ndjson'), `${JSON.stringify(parsed[initAt])}\n`)
+      process.stdout.write('  stamped the OAuth init-line fixture\n')
+    }
+  }
 
   const badFlag = rawRun(['-p', '--definitely-not-a-flag'], env)
   facts['nonZeroExit'] = String(badFlag.code)
@@ -317,6 +412,43 @@ const run = async (): Promise<number> => {
     ),
   )
 
+  // ---- The OAuth carrier's aggregate seam checks ------------------------------
+  //
+  // Every spawn the run made, judged together: on the OAuth spelling no env
+  // ever carries an Anthropic credential, each credentialed boot's config dir
+  // held the helper pair (0700/0600) before its first spawn, and the one
+  // un-credentialed boot held none.
+
+  if (credential.name === 'CLAUDE_CODE_OAUTH_TOKEN') {
+    const spellingsLeaked = envCalls.filter(
+      (spawnEnv) => spawnEnv['ANTHROPIC_API_KEY'] !== undefined || spawnEnv['CLAUDE_CODE_OAUTH_TOKEN'] !== undefined,
+    )
+    results.push(
+      check(
+        'no spawned env carries any Anthropic credential — the helper files are the only carrier',
+        spellingsLeaked.length === 0,
+        `${spellingsLeaked.length} of ${envCalls.length} spawns carried a spelling`,
+      ),
+    )
+    const materialized = configDirProbes.filter(
+      (probe) => probe.helper && probe.settings && probe.helperMode === 0o700 && probe.settingsMode === 0o600,
+    )
+    results.push(
+      check(
+        'each credentialed adapter boot materialized the helper pair before its first spawn',
+        materialized.length === 2,
+        `${materialized.length} of ${configDirProbes.length} config dirs held the files`,
+      ),
+    )
+    results.push(
+      check(
+        'the un-credentialed boot materialized no helper',
+        configDirProbes.length === 3 && materialized.length === 2,
+        `${configDirProbes.length - materialized.length} bare config dirs (expected 1)`,
+      ),
+    )
+  }
+
   // ---- Stamp and optional fixture refresh -----------------------------------
 
   writeFileSync(path.join(FIXTURES, 'VERSION'), `${version}\n`)
@@ -328,6 +460,7 @@ const run = async (): Promise<number> => {
     rmSync(path.join(FIXTURES, 'resume-turn.ndjson'), { force: true })
     rmSync(path.join(FIXTURES, 'adversarial-plan-bash-refused.ndjson'), { force: true })
     rmSync(path.join(FIXTURES, 'auth-error-turn.ndjson'), { force: true })
+    rmSync(path.join(FIXTURES, 'oauth-helper-init.ndjson'), { force: true })
     process.stdout.write(
       '  NOTE: fixture refresh rewrites the .ndjson corpus from the recorded streams by hand of the\n' +
         'operator next; see the fixture README for what each file must carry.\n',
