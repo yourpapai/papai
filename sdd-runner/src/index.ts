@@ -17,22 +17,27 @@ import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
 import type { EventInput } from './events.js'
 import { buildResolveCost } from './gate-digest.js'
-import { runGateReopen } from './gate.js'
+import type { OrchestratorDeps } from './gate-digest.js'
+import { runGateReopen, latestSettledGateVersion } from './gate.js'
 import type { LiveViewWiring } from './live-view.js'
 import { wireLiveView } from './live-view.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { runContinue, runGateResume, runResume, runStart } from './orchestrator.js'
 import { stdinIsInteractive } from './prompter.js'
+import { removeRun } from './remove-run.js'
 import { createRenderer } from './renderer.js'
 import type { Verbosity } from './renderer.js'
 import { buildReport } from './report.js'
 import type { ChangeDirSummary, ReportInput } from './report.js'
 import { resolveRunId } from './run-index.js'
 import { loadRunState } from './run-state.js'
-import { requestCalmStop } from './stop-controller.js'
+import { executeSessionTarget } from './session-flow.js'
+import type { SessionFlowDeps } from './session-flow.js'
+import { requestCalmStop, stopRun } from './stop-controller.js'
 import { registerTerminalTitle, TERMINAL_TITLE_RESTORE } from './terminal-title.js'
 import { createRunScreenSession } from './tui-run-session.js'
+import { runSessionPicker } from './tui-session-picker.js'
 
 export const USAGE = [
   'sdd — autonomous SDD pipeline',
@@ -42,8 +47,11 @@ export const USAGE = [
   '  sdd stop [<run-id>]',
   '',
   'A task file starts a run; a run id routes by its state (gate decision, resume, report).',
-  'No target routes to the sole candidate or lists candidates.',
-  'Gate decisions: the TUI on a terminal; otherwise hand-edit the gate file.',
+  'No target opens the session screen on a terminal — a loop, not a launcher: pick a run',
+  '(Enter/s/r/d — d deletes a dead row behind a named confirmation), start one from a typed',
+  'description (n), and every finished action returns to the refreshed list; only an explicit',
+  'quit (q) exits. Non-terminals keep the list-and-exit contract. Gate decisions: the TUI on',
+  'a terminal; else hand-edit the gate file.',
 ].join('\n')
 
 export async function readChangeSummary(repoRoot: string, changeName: string): Promise<ChangeDirSummary> {
@@ -133,7 +141,7 @@ async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: st
   const renderer = createRenderer(process.stdout, verbosity, { resolveCost })
   const live = harnessLiveView(renderer.renderEvent)
   registerTitleIfTty(process.stdout)
-  const orchestratorDeps = {
+  const orchestratorDeps: OrchestratorDeps = {
     config,
     spawn: realSpawn,
     execGit,
@@ -145,12 +153,18 @@ async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: st
           unmountRunScreen: live.unmountRunScreen,
         }
       : { render: live.render }),
-    stdout: (line: string): void => {
-      process.stdout.write(`${line}\n`)
-    },
+    stdout: harnessStdout,
     interactive: (): boolean => stdinIsInteractive(),
   }
-  return {
+  return harnessMembers(config, orchestratorDeps, execGit)
+}
+
+function harnessMembers(
+  config: { readonly workDir: string; readonly repoRoot: string },
+  orchestratorDeps: OrchestratorDeps,
+  execGit: ExecGitFn,
+): CliHarness {
+  const members: CliHarness = {
     workDir: config.workDir,
     runStart: (options) => runStart(orchestratorDeps, options),
     runResume: (runId, autonomy) => runResume(orchestratorDeps, runId, autonomy),
@@ -159,17 +173,62 @@ async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: st
       return runGateResume(orchestratorDeps, resolved, {})
     },
     runContinue: (runId, autonomy) => runContinue(orchestratorDeps, runId, autonomy),
-    requestCalmStop: async (runId) => {
-      const state = await loadRunState(config.workDir, runId)
-      requestCalmStop(state.runDir)
-    },
+    requestCalmStop: (runId) => stopRun(config.workDir, runId),
     runGateReopen: (runId, gateVersion) =>
       resolveAndCall(config.workDir, runId, (r) => runGateReopen(orchestratorDeps, config.workDir, r, gateVersion)),
     buildReport: (runId, pr) => buildRunReport(config, runId, pr, execGit),
-    stdout: (line) => {
-      process.stdout.write(`${line}\n`)
-    },
+    stdout: harnessStdout,
+    interactive: (): boolean => stdinIsInteractive(),
+    latestSettledGateVersion: (runId) =>
+      resolveAndCall(config.workDir, runId, (r) => latestSettledGateVersion(config.workDir, r)),
   }
+  return { ...members, sessionLoop: sessionLoopOf(config, orchestratorDeps, members, execGit) }
+}
+
+type DepthOverride = Parameters<typeof runStart>[1] extends { depthOverride?: infer D } ? D : never
+
+function sessionFlowDepsOf(members: CliHarness): SessionFlowDeps {
+  return {
+    runGateResume: (runId) => members.runGateResume(runId),
+    runResume: (runId) => members.runResume(runId),
+    buildReport: (runId) => members.buildReport(runId, false),
+    requestCalmStop: (runId) => members.requestCalmStop(runId),
+    reopenGate: async (runId) => {
+      const version = await members.latestSettledGateVersion?.(runId)
+      if (version === undefined || version === null) throw new Error(`run ${runId} has no settled gate to reopen`)
+      await members.runGateReopen(runId, version)
+    },
+    removeRun: (runId) => removeRun(members.workDir, runId),
+    stdout: members.stdout,
+  }
+}
+
+function sessionLoopOf(
+  config: { readonly workDir: string; readonly repoRoot: string },
+  orchestratorDeps: OrchestratorDeps,
+  members: CliHarness,
+  execGit: ExecGitFn,
+): (options: { readonly initial: 'list' | 'create'; readonly depth?: DepthOverride }) => Promise<void> {
+  return async (options): Promise<void> => {
+    await runSessionPicker({
+      workDir: config.workDir,
+      ...(options.initial === 'list' ? {} : { initial: options.initial }),
+      execute: (action) => executeSessionTarget(action, sessionFlowDepsOf(members)),
+      buildReport: (runId) => buildRunReport(config, runId, false, execGit),
+      createRun: async (taskText): Promise<void> => {
+        const started = await runStart(orchestratorDeps, {
+          taskText,
+          ...(options.depth === undefined ? {} : { depthOverride: options.depth }),
+        })
+        members.stdout(`started ${started.runId}`)
+      },
+      removeRun: (runId) => removeRun(config.workDir, runId),
+    })
+  }
+}
+
+function harnessStdout(line: string): void {
+  process.stdout.write(`${line}\n`)
 }
 
 async function buildRunReport(

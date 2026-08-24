@@ -9,10 +9,9 @@ import { ConfigError } from '../../opencode-agent/src/config-values.js'
 import { parseMcpServers } from '../../opencode-agent/src/mcp-servers.js'
 
 /**
- * `AGENT_MCP_SERVERS` — the second non-scalar knob, parsed the way
- * `AGENT_CHECKS` is: JSON syntax refused separately from document shape, every
- * refusal naming the variable, and the whole thing validated at job start so a
- * bad value costs no model turn.
+ * `AGENT_MCP_SERVERS` — the one non-scalar knob: JSON syntax refused
+ * separately from document shape, every refusal naming the variable, and the
+ * whole thing validated at job start so a bad value costs no model turn.
  *
  * The refusals that name a **rule** rather than a schema path are the two this
  * suite exists to pin: an `oauth` object can only ever express an intent an

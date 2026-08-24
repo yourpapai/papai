@@ -380,7 +380,6 @@ describe('contain', () => {
     commitAuthorEmail: 'agent@example.com',
     checkCommand: 'bun test',
     reviewCommand: null,
-    checks: [],
     reviewMaxRounds: 2,
     reviewPoolSize: 1,
     agentTimeoutMs: 1000,

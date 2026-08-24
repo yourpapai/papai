@@ -24,6 +24,7 @@ export const SLASH_COMMANDS = [
   '/review',
   '/continue',
   '/sync',
+  '/fix',
 ] as const
 
 export type SlashCommand = (typeof SLASH_COMMANDS)[number]
@@ -116,12 +117,16 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
   '/cancel': 'CANCELLED',
   '/review': 'REVIEW_REQUESTED',
   '/continue': 'CONTINUE',
+  // The `/review` shape, not the `/sync` one: `/fix` moves the machine, through
+  // the same `CI_FAILED` transition the red-run door applies — one signal, one
+  // `ciAttempts` increment site, one budget shared by both doors.
+  '/fix': 'CI_FAILED',
 }
 
 /**
  * Commands whose availability the transition table cannot decide alone.
  *
- * There are two. `/sync` is the `/ask` shape — no signal, so the table is never
+ * There are three. `/sync` is the `/ask` shape — no signal, so the table is never
  * asked — and applies wherever the **agent branch exists**: `changeName !== null`
  * is that fact by the workspace's own doctrine (a `changeName === null` state
  * has no folder to read and no branch to switch to), with `prNumber` named
@@ -139,7 +144,9 @@ export const COMMAND_SIGNALS: Partial<Record<SlashCommand, TransitionSignal>> = 
  * apart: `presentationKey` already splits them on the pull request, because a
  * delivered issue and an abandoned one are not the same outcome. `/review`
  * needs the same split — on a cancelled issue it would name a branch nobody
- * asked for and report against a pull request that does not exist.
+ * asked for and report against a pull request that does not exist. `/fix`
+ * keeps the `prNumber` predicate: its round repairs the checks of a pull
+ * request, and a state naming none has nothing for it to read.
  *
  * One predicate table with two readers rather than two spellings of one rule:
  * {@link acceptedCommands} shows a maintainer the list, `triggers.ts` enforces
@@ -149,6 +156,7 @@ const COMMAND_APPLIES: Partial<Record<SlashCommand, (state: AgentState) => boole
   '/review': (state) => state.prNumber !== null,
   '/sync': (state) =>
     state.prNumber !== null || (state.changeName !== null && !(state.phase === 'COMPLETE' && state.prUrl === null)),
+  '/fix': (state) => state.prNumber !== null,
 }
 
 /** Whether `command` applies to this state, over and above what the phase takes. */

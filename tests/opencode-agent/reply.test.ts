@@ -7,7 +7,6 @@ import { describe, expect, test } from 'bun:test'
 
 import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
-import { DEFAULT_CHECKS } from '../../opencode-agent/src/config.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { PostedComment } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
@@ -52,7 +51,6 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   commitAuthorEmail: 'agent@example.com',
   checkCommand: 'bun test',
   reviewCommand: null,
-  checks: DEFAULT_CHECKS,
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,

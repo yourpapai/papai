@@ -5,7 +5,11 @@
 
 import { describe, expect, it } from 'bun:test'
 
+import type { PullRequestHead } from '../../opencode-agent/src/github-pulls.js'
 import { evaluateGuardrails } from '../../opencode-agent/src/guardrails.js'
+import type { Logger, LogLevel } from '../../opencode-agent/src/logger.js'
+import { resolvePullRequestTrigger } from '../../opencode-agent/src/pr-trigger.js'
+import type { PendingPullRequestEvent } from '../../opencode-agent/src/pr-trigger.js'
 import { parseTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import type { PrMergedTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 
@@ -31,6 +35,78 @@ const merged = (over: Record<string, unknown> = {}): unknown => ({
   repository: { full_name: 'acme/widgets', default_branch: 'main' },
   sender: { login: 'maintainer', type: 'User' },
   ...over,
+})
+
+describe('the /fix comment rides the pull-request door’s existing guardrails (D6)', () => {
+  /** A `/fix` typed on a pull request, parsed as far as a payload allows. */
+  const pendingFix = (): PendingPullRequestEvent => ({
+    kind: 'pending-pull-request',
+    eventName: 'issue_comment',
+    action: 'created',
+    senderLogin: 'maintainer',
+    senderType: 'User',
+    authorAssociation: 'OWNER',
+    prNumber: 7,
+    commentBody: '/fix',
+    commentId: 99,
+    defaultBranch: 'main',
+    repositoryFullName: 'acme/widgets',
+  })
+
+  const head = (overrides: Partial<PullRequestHead> = {}): PullRequestHead => ({
+    ref: 'agent/issue-42',
+    repoFullName: 'acme/widgets',
+    state: 'open',
+    ...overrides,
+  })
+
+  /** A logger that records the guardrail refusals' fields, so the code is provable. */
+  const recordingLogger = (): { warnFields: Array<Record<string, unknown>>; log: Logger } => {
+    const warnFields: Array<Record<string, unknown>> = []
+    const at =
+      (level: LogLevel) =>
+      (fields: Record<string, unknown>, _message: string): void => {
+        if (level === 'warn') warnFields.push({ ...fields })
+      }
+    return { warnFields, log: { debug: at('debug'), info: at('info'), warn: at('warn'), error: at('error') } }
+  }
+
+  /** The resolver's answer, with the null branch already refused by the assert beside it. */
+  const mustResolve = (
+    resolved: Awaited<ReturnType<typeof resolvePullRequestTrigger>>,
+  ): NonNullable<typeof resolved> => {
+    if (resolved === null) throw new Error('the agent’s own open pull request must resolve')
+    return resolved
+  }
+
+  it('keeps the PR_FOREIGN_REPOSITORY refusal for a fork whose branch merely looks like the agent’s', async () => {
+    // The same attack the door exists for: `head.ref` is attacker-controlled,
+    // so a fork's `agent/issue-42` looks like the agent's own to every other
+    // field. /fix must not widen the guardrail — the refusal lands before any
+    // command logic runs, so no model turn and no CI-fix attempt is spent.
+    const { warnFields, log } = recordingLogger()
+    const github = {
+      getPullRequestHead: (): Promise<PullRequestHead> => Promise.resolve(head({ repoFullName: 'attacker/widgets' })),
+    }
+
+    const resolved = await resolvePullRequestTrigger(pendingFix(), github, log)
+
+    expect(resolved).toBeNull()
+    expect(warnFields.map((fields) => fields['code'])).toContain('PR_FOREIGN_REPOSITORY')
+  })
+
+  it('boots a job on the agent’s own open pull request exactly as /review and /sync do', async () => {
+    const { log } = recordingLogger()
+    const github = { getPullRequestHead: (): Promise<PullRequestHead> => Promise.resolve(head()) }
+
+    const resolved = mustResolve(await resolvePullRequestTrigger(pendingFix(), github, log))
+
+    expect(resolved).toMatchObject({ kind: 'pull-request', issueNumber: 42, commentBody: '/fix' })
+    // The guardrail layer admits it like any maintainer command.
+    expect(
+      evaluateGuardrails(resolved, { selfLogin: 'agent-bot', selfWorkflowName: 'OpenCode Issue Agent' }).allowed,
+    ).toBe(true)
+  })
 })
 
 describe('parseTriggerEvent · pull_request.closed(merged) (D7)', () => {

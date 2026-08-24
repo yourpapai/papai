@@ -5,8 +5,14 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { acceptedCommands, COMMAND_SIGNALS, SLASH_COMMANDS } from '../../opencode-agent/src/commands.js'
+import {
+  acceptedCommands,
+  COMMAND_SIGNALS,
+  parseSlashCommand,
+  SLASH_COMMANDS,
+} from '../../opencode-agent/src/commands.js'
 import { renderRefusedCommand } from '../../opencode-agent/src/run-report.js'
+import { PHASES } from '../../opencode-agent/src/types.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 /**
@@ -52,6 +58,61 @@ const state = (phase: Phase, over: Partial<AgentState> = {}): AgentState => ({
 const PR_PHASES = ['COMPLETE', 'FAILED', 'INCOMPLETE', 'CODE_REVIEW', 'CI_FIX'] as const
 
 const withPr = (phase: Phase): AgentState => state(phase, { prNumber: 7, prUrl: 'https://example.test/pull/7' })
+
+describe('the /fix vocabulary entry', () => {
+  test('joins SLASH_COMMANDS carrying the CI-failed signal — the move the red-run door makes', () => {
+    expect(SLASH_COMMANDS).toContain('/fix')
+    // The shared-budget guarantee starts here: /fix injects the one signal
+    // whose transition increments ciAttempts, so both doors spend the same
+    // counter through the same move.
+    expect(COMMAND_SIGNALS['/fix']).toBe('CI_FAILED')
+  })
+
+  test('parses from a line start, with and without an argument', () => {
+    expect(parseSlashCommand('/fix')).toEqual({ command: '/fix', argument: '' })
+    expect(parseSlashCommand('/fix the mutation gate went red again')).toEqual({
+      command: '/fix',
+      argument: 'the mutation gate went red again',
+    })
+  })
+
+  test('is ignored inside a fenced block, like every command', () => {
+    expect(parseSlashCommand('Example:\n```\n/fix\n```\n')).toBeNull()
+  })
+
+  test.each([['/fixed'], ['/fixture'], ['/fix-it'], ['/fixup']])(
+    'never matches %p — no command is a prefix of another',
+    (body) => {
+      expect(parseSlashCommand(body)).toBeNull()
+    },
+  )
+})
+
+/** The two phases whose `CI_FAILED` rows the transition table carries. */
+const CI_DOOR_PHASES: ReadonlySet<string> = new Set(['COMPLETE', 'PR_DELIVERY'])
+
+describe('acceptedCommands offers /fix exactly where the red-run door is admitted', () => {
+  test.each(['COMPLETE', 'PR_DELIVERY'])('%s with a pull request offers it', (phase: Phase) => {
+    expect(acceptedCommands(withPr(phase))).toContain('/fix')
+  })
+
+  test.each(['COMPLETE', 'PR_DELIVERY'])('%s without a pull request does not', (phase: Phase) => {
+    // The gate reads persisted state only (D2): with nothing pushed there is
+    // nothing to repair, and the offer must not disagree with the gate.
+    expect(acceptedCommands(state(phase))).not.toContain('/fix')
+  })
+
+  test.each([...PHASES.filter((phase) => !CI_DOOR_PHASES.has(phase))])(
+    '%s never offers it, with or without a pull request',
+    (phase: Phase) => {
+      // Phase admission stays in the transition table via `accepts`, so every
+      // phase without a CI_FAILED row excludes the command even when a pull
+      // request is named — the offer and the gate are one predicate table.
+      expect(acceptedCommands(withPr(phase))).not.toContain('/fix')
+      expect(acceptedCommands(state(phase))).not.toContain('/fix')
+    },
+  )
+})
 
 describe('the /sync vocabulary entry', () => {
   test('joins SLASH_COMMANDS and injects no signal — the transition table is never consulted', () => {

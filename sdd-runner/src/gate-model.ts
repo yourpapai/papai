@@ -81,6 +81,7 @@ const DECIDED_BY_SUFFIX_RE = /\s*·\s*decided-by:\s*.+$/u
 const DECIDED_BY_LINE_RE = /^\s*decided-by:\s*\S.*$/u
 const PREVIEW_HEADER_RE = /^\s*###\s*Auto-decision preview\s*$/u
 const HEADER_RE = /^\s*(?:##|###)\s+/u
+const VETO_BOX_RE = /^\s*-\s*\[([^\]]+)\]\s*([AF]\d+)\b/u
 
 /**
  * Strip the `### Auto-decision preview` section (from its header to the next
@@ -111,21 +112,16 @@ interface ParseState {
   extend: boolean
 }
 
-function processVetoBox(
-  state: ParseState,
-  rawLine: string,
-  lineNo: number,
-  regex: RegExp,
-  ids: Set<string>,
-  label: string,
-): boolean {
+function processVetoBox(state: ParseState, rawLine: string, lineNo: number, ids: Set<string>): boolean {
   const line = rawLine.replace(DECIDED_BY_SUFFIX_RE, '')
-  const match = line.match(regex)
+  const match = line.match(VETO_BOX_RE)
   if (match === null) return false
   const checked = classifyBox(`[${match[1] ?? ''}]`)
   if (checked === null) throw new Error(`gate response line ${lineNo}: ambiguous checkbox mark`)
   const id = match[2] ?? ''
-  if (!ids.has(id)) throw new Error(`gate response line ${lineNo}: unknown ${label} ${id}`)
+  if (!ids.has(id)) {
+    throw new Error(`gate response line ${lineNo}: unknown ${id.startsWith('A') ? 'assumption' : 'finding'} ${id}`)
+  }
   if (checked) state.checked.add(id)
   else state.vetoes.push({ id })
   state.pendingRedirectFor = checked ? null : id
@@ -174,14 +170,15 @@ function processLine(
   line: string,
   lineNo: number,
   prevLine: string,
-  assumptionIds: Set<string>,
+  itemIds: Set<string>,
   blockerIds: Set<string>,
-  findingIds: Set<string>,
   gateMode: 'early' | 'final' | undefined,
 ): void {
   if (DECIDED_BY_LINE_RE.test(line)) return
-  if (processVetoBox(state, line, lineNo, /^\s*-\s*\[([^\]]+)\]\s*(A\d+)\b/u, assumptionIds, 'assumption')) return
-  if (processVetoBox(state, line, lineNo, /^\s*-\s*\[([^\]]+)\]\s*(F\d+)\b/u, findingIds, 'finding')) return
+  // Membership routing: a box belongs to this gate when its id was declared in
+  // the expected content — never by id prefix, which a kind/id-mismatched item
+  // (e.g. an F-prefixed id carried in the assumptions list) would misroute.
+  if (processVetoBox(state, line, lineNo, itemIds)) return
   const ackMatch = line.match(/^\s*-\s*\[([^\]]+)\]\s*(T\d+)\b/u)
   if (ackMatch !== null) {
     const checked = classifyBox(`[${ackMatch[1] ?? ''}]`)
@@ -232,9 +229,8 @@ export function parseGateResponse(markdown: string, expected: ExpectedGateConten
     return { approved: false, abort: true, override: false, extend: false, vetoes: [], answers: [] }
   }
   const lines = stripped.split('\n')
-  const assumptionIds = new Set(expected.assumptions.map((a) => a.id))
+  const itemIds = new Set([...expected.assumptions.map((a) => a.id), ...(expected.findings ?? []).map((f) => f.id)])
   const blockerIds = new Set(expected.blockers.map((b) => b.id))
-  const findingIds = new Set((expected.findings ?? []).map((f) => f.id))
   const state: ParseState = {
     vetoes: [],
     answers: [],
@@ -244,16 +240,7 @@ export function parseGateResponse(markdown: string, expected: ExpectedGateConten
     extend: false,
   }
   lines.forEach((line, index) => {
-    processLine(
-      state,
-      line,
-      index + 1,
-      lines[index - 1] ?? '',
-      assumptionIds,
-      blockerIds,
-      findingIds,
-      expected.gateMode,
-    )
+    processLine(state, line, index + 1, lines[index - 1] ?? '', itemIds, blockerIds, expected.gateMode)
   })
   return finalizeResponse(state, expected)
 }

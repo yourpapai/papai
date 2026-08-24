@@ -3,15 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { CheckRunner, CheckSpec } from '../../opencode-agent/src/check-loop.js'
 import type { CiGroups } from '../../opencode-agent/src/ci-groups.js'
-import { DEFAULT_CHECKS } from '../../opencode-agent/src/config-values.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { CommitOutcome } from '../../opencode-agent/src/git-commit.js'
 import type { Salvage } from '../../opencode-agent/src/git-commit.js'
 import type { Git, PushOptions } from '../../opencode-agent/src/git.js'
 import type { MergeOutcome } from '../../opencode-agent/src/git.js'
+import type { RefCheckRun, RunJob } from '../../opencode-agent/src/github-actions.js'
 import type { LabelApi } from '../../opencode-agent/src/github-labels.js'
 import type {
   PullRequestApi,
@@ -86,7 +87,6 @@ export const stubConfig = (repoRoot = '/repo'): PipelineConfig => ({
   commitAuthorEmail: 'agent@example.com',
   checkCommand: 'bun test',
   reviewCommand: ['bun', 'run', 'review-loop/src/cli.ts'],
-  checks: DEFAULT_CHECKS,
   reviewMaxRounds: 2,
   reviewPoolSize: 1,
   agentTimeoutMs: 1000,
@@ -142,6 +142,22 @@ export interface StubIo {
    * `openspec/changes/`. A test seeds it to drive capture down the adopt path.
    */
   existingChanges: string[]
+  /**
+   * Jobs the fake `listRunJobs` answers with. A test seeds them to drive a
+   * CI-fix round at a particular red run; the default empty list is the
+   * needs-human "no failed job could be found" shape.
+   */
+  runJobs: RunJob[]
+  /** Log text the fake `jobLog` returns, keyed by job id; absent ids answer ''. */
+  jobLogs: Record<number, string>
+  /**
+   * Check runs the fake `listCheckRunsForRef` answers with, and the refs it was
+   * asked for, in order — a command-bought CI-fix round reads these.
+   */
+  refCheckRuns: RefCheckRun[]
+  refReads: string[]
+  /** Rows written to the fake encrypted transcript, in order. */
+  transcriptRows: TranscriptRow[]
 }
 
 export interface StubPhaseDepsOptions {
@@ -159,6 +175,10 @@ export interface StubPhaseDepsOptions {
   selfLogin?: string
   /** The repoRoot the fake config reports. */
   repoRoot?: string
+  /** Pre-seeded `listRunJobs` answer (default: no jobs). */
+  runJobs?: readonly RunJob[]
+  /** Pre-seeded `jobLog` answers, keyed by job id. */
+  jobLogs?: Record<number, string>
 }
 
 const emptyInstructions = (): InstructionsResult => ({
@@ -197,6 +217,11 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     reads: [],
     readContents: {},
     existingChanges: [],
+    runJobs: [...(options.runJobs ?? [])],
+    jobLogs: { ...(options.jobLogs ?? {}) },
+    refCheckRuns: [],
+    refReads: [],
+    transcriptRows: [],
   }
   const replies = options.replies ?? []
   const login = options.selfLogin ?? 'agent-bot'
@@ -291,6 +316,12 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     getAuthenticatedLogin: (): Promise<string> => Promise.resolve(login),
     getUser: (loginArg: string): Promise<{ login: string; id: number }> =>
       Promise.resolve({ login: loginArg, id: 123 }),
+    listRunJobs: (_runId: number): Promise<readonly RunJob[]> => Promise.resolve([...io.runJobs]),
+    jobLog: (jobId: number): Promise<string> => Promise.resolve(io.jobLogs[jobId] ?? ''),
+    listCheckRunsForRef: (ref: string): Promise<readonly RefCheckRun[]> => {
+      io.refReads.push(ref)
+      return Promise.resolve([...io.refCheckRuns])
+    },
     ...reactionApi,
     ...labelApi,
     ...pullRequestApi,
@@ -367,6 +398,11 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
 
   const deps: PhaseDeps = {
     github,
+    transcript: {
+      write: (row): void => {
+        io.transcriptRows.push(row)
+      },
+    },
     git,
     runCheck,
     runReview,

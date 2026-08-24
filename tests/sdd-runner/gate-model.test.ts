@@ -264,6 +264,41 @@ describe('parseGateResponse', () => {
   })
 })
 
+describe('parseGateResponse routes boxes by expected-content membership', () => {
+  // Real-world poisoning: a stale resolver sidecar carried finding F4 inside
+  // the assumptions array, so the view rendered an assumption item with an
+  // F-prefixed id and the approve self-check crashed on "unknown finding F4".
+  const mismatched = {
+    assumptions: [{ id: 'F4', text: 'Plan-gate veto rounds are unbounded', blast_radius: '' }],
+    blockers: [],
+    findings: [finding({ id: 'F13' }), finding({ id: 'F14' }), finding({ id: 'F15' })],
+    gateMode: 'final',
+  } as const
+
+  it('approves when every declared box is checked regardless of id-prefix/kind mismatch', () => {
+    const md =
+      '## Gate response\n\n- [x] F13 F13\n- [x] F14 F14\n- [x] F15 F15\n- [x] F4 Plan-gate veto rounds are unbounded\n'
+    expect(parseGateResponse(md, mismatched)).toMatchObject({ approved: true, vetoes: [], answers: [] })
+  })
+
+  it('records a veto with redirect for an unchecked mismatched box', () => {
+    const md =
+      '## Gate response\n\n- [x] F13 F13\n- [x] F14 F14\n- [x] F15 F15\n- [ ] F4 Plan-gate veto rounds are unbounded\n→ cap veto rounds at three\n'
+    const response = parseGateResponse(md, mismatched)
+    expect(response.approved).toBe(false)
+    expect(response.vetoes).toEqual([{ id: 'F4', redirect: 'cap veto rounds at three' }])
+  })
+
+  it('still rejects ids declared nowhere, labeled by their prefix', () => {
+    expect(() =>
+      parseGateResponse('## Gate response\n\n- [x] A9 never declared\n', { assumptions: [], blockers: [] }),
+    ).toThrow(/unknown assumption A9/u)
+    expect(() =>
+      parseGateResponse('## Gate response\n\n- [x] F99 never declared\n', { assumptions: [], blockers: [] }),
+    ).toThrow(/unknown finding F99/u)
+  })
+})
+
 describe('parseGateResponse → RUN 1 MORE (extend directive)', () => {
   it('produces extend: true at an early gate when → RUN 1 MORE appears on its own line', () => {
     const md = '## Early gate\n\n→ RUN 1 MORE\n'

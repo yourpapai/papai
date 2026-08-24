@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { renderExhausted, renderReviewsExhausted } from './budget-notices.js'
+import { renderExhausted, renderFixExhausted, renderReviewsExhausted } from './budget-notices.js'
 import { acceptedCommands } from './commands.js'
 import { react } from './feedback.js'
 import type { PhaseInput } from './phase-context.js'
@@ -17,7 +17,7 @@ import type { TriggerOutcome } from './trigger-outcome.js'
  *
  * Split from `triggers.ts` when the `/sync` dispatch pushed that file past
  * `max-lines`, along the seam its own doc comments had already drawn: the
- * three refusals are one family — each posts one comment and skips or fails —
+ * refusals are one family — each posts one comment and skips or fails —
  * and none of them decides anything about *which* command runs, which is the
  * question `triggers.ts` exists to answer.
  */
@@ -97,6 +97,33 @@ export const refuseReviews = async (input: PhaseInput): Promise<TriggerOutcome> 
   deps.log.warn({ issue: state.issueId, reviewAttempts: state.reviewAttempts, pr: state.prNumber }, 'Reviews spent')
 
   await postAndAppend(thread, input, renderReviewsExhausted(reason, state.prUrl), state)
+
+  return { state, halt: { status: 'failed', reason, state, reported: true }, answer: false }
+}
+
+/**
+ * The third command ceiling, and the `/fix` refusal against it: the CI-fix
+ * budget both doors share, refused before the `CI_FAILED` signal is applied.
+ *
+ * The same "before the move" reason as {@link refuseExhausted} and
+ * {@link refuseReviews}, with its own consequence: applying `CI_FAILED` and
+ * then regretting it moves `COMPLETE → CI_FIX`, increments `ciAttempts` past
+ * the ceiling and parks the issue in a handler phase under a notice inviting
+ * the very command the ceiling just refused — while the honest remedy, raising
+ * `AGENT_MAX_CI_ATTEMPTS` and replying `/fix` again, requires the state to be
+ * exactly what it was.
+ *
+ * Deliberately does not consult `ciBudgetReported`: that flag is the automatic
+ * red-run door's once-per-pull-request silence, and this refusal answers a
+ * command somebody typed — it posts exactly as often as the maintainer asks,
+ * which is the acknowledgement, not spam.
+ */
+export const refuseFix = async (input: PhaseInput): Promise<TriggerOutcome> => {
+  const { state, thread, deps } = input
+  const reason = `CI-fix budget exhausted (${state.ciAttempts} of ${deps.config.maxCiAttempts} attempts)`
+  deps.log.warn({ issue: state.issueId, ciAttempts: state.ciAttempts, pr: state.prNumber }, 'CI-fix budget spent')
+
+  await postAndAppend(thread, input, renderFixExhausted(reason, state.prUrl), state)
 
   return { state, halt: { status: 'failed', reason, state, reported: true }, answer: false }
 }

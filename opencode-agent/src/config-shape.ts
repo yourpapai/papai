@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { CheckSpec } from './check-loop.js'
 import type { DiffLimits } from './diff-guard.js'
 import type { OpenAiSettings } from './openai-config.js'
 
@@ -50,8 +49,6 @@ export interface PipelineConfig {
   checkCommand: string
   /** Argv that runs the review loop, or `null` when this repo has none. */
   reviewCommand: readonly string[] | null
-  /** Commands the CI-fix phase runs locally to reproduce a red pull request. */
-  checks: readonly CheckSpec[]
   reviewMaxRounds: number
   reviewPoolSize: number
   agentTimeoutMs: number

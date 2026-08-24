@@ -96,6 +96,34 @@ export const renderReviewsExhausted = (reason: string, prUrl: string | null): st
       'yourself from here.',
   ].join('\n')
 
+/**
+ * The `/fix` refusal against the CI-fix ceiling, and the reason it is neither
+ * of its siblings.
+ *
+ * Not {@link renderCiExhausted}: that one announces the *give-up* of the
+ * automatic red-run door, once per pull request, and offers no remedy — a
+ * maintainer typed this command, so this notice repeats with the question and
+ * names what actually works. Not {@link renderExhausted} either: nothing is
+ * parked, so `/retry` cannot help — the state is exactly what it was, which is
+ * what makes raising the ceiling and replying `/fix` a real remedy. The fresh
+ * budget a new pull request earns is the second remedy, and it works without
+ * touching the workflow at all.
+ *
+ * Not repeat-guarded, like {@link renderReviewsExhausted} and for its reason:
+ * it answers a command somebody typed.
+ */
+export const renderFixExhausted = (reason: string, prUrl: string | null): string =>
+  [
+    outcomeHeading('CI_SPENT', 'I have stopped fixing CI on this pull request'),
+    '',
+    reason,
+    '',
+    prUrl === null ? 'The pull request is still open.' : `The pull request is still open: ${prUrl}`,
+    'Raise `AGENT_MAX_CI_ATTEMPTS` in the workflow and reply `/fix` again — the pull request and its checks are ' +
+      'exactly where they were, so the same command works once the ceiling is higher. Or open a new pull request: ' +
+      'a fresh one earns a fresh CI-fix budget.',
+  ].join('\n')
+
 /** Both token-budget notices open on the same fact, so they state it identically. */
 const tokenLine = (spent: number, limit: number): string =>
   `This issue has used ${spent.toLocaleString('en-US')} model tokens of the ${limit.toLocaleString('en-US')} it is allowed.`

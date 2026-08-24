@@ -291,6 +291,197 @@ describe('applyTrigger · /sync dispatch (the /ask shape)', () => {
   })
 })
 
+describe('applyTrigger · /fix (the red-run door, bought by a command)', () => {
+  /** A `/fix` typed on the agent's pull request — the only surface that accepts it. */
+  const fixOnPullRequest = (phase: 'COMPLETE' | 'PR_DELIVERY'): PhaseInput => {
+    const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
+    return {
+      state: baseState({
+        phase,
+        prNumber: 7,
+        prUrl: 'https://example.test/pull/7',
+        ciAttempts: 1,
+      }),
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: {
+        kind: 'pull-request',
+        eventName: 'issue_comment',
+        action: 'created',
+        senderLogin: 'maintainer',
+        senderType: 'User',
+        authorAssociation: 'OWNER',
+        prNumber: 7,
+        commentBody: '/fix',
+        commentId: 99,
+        defaultBranch: 'main',
+        issueNumber: 42,
+      },
+      command: { command: '/fix', argument: '' },
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+  }
+
+  it.each(['COMPLETE', 'PR_DELIVERY'] as const)(
+    '%s → CI_FIX with ciAttempts spent — the same move the red-run door makes',
+    async (phase) => {
+      // D4: one transition, one increment site. The command injects CI_FAILED
+      // through applyCommand → moveOrSkip, and forwardTransition is the only
+      // place ciAttempts moves — so a command-bought round spends the same
+      // budget a red-run round would, by construction rather than by a second
+      // counter kept in step.
+      const outcome = await applyTrigger(fixOnPullRequest(phase))
+
+      expect(outcome.halt).toBeNull()
+      expect(outcome.state.phase).toBe('CI_FIX')
+      expect(outcome.state.ciAttempts).toBe(2)
+    },
+  )
+})
+
+describe('applyTrigger · /fix past the CI-fix ceiling (D3)', () => {
+  /** A stub whose reply buffer records the refusal notices a run buffers. */
+  const withRecordingReply = (): { sections: string[]; recording: ReturnType<typeof stubPhaseDeps> } => {
+    const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
+    const sections: string[] = []
+    recording.deps.reply = {
+      begin: (): void => {},
+      section: (_state, section): void => {
+        sections.push(section.body)
+      },
+      flush: (): Promise<null> => Promise.resolve(null),
+    }
+    return { sections, recording }
+  }
+
+  /** `/fix` typed on the pull request of the given state. */
+  const fixInput = (state: AgentState, sections: string[], recording: ReturnType<typeof stubPhaseDeps>): PhaseInput => {
+    void sections
+    return {
+      state,
+      issue: { number: 42, title: 't', body: 'b' },
+      trigger: prTrigger('/fix'),
+      command: { command: '/fix', argument: '' },
+      thread: recording.io.thread,
+      deps: recording.deps,
+    }
+  }
+
+  const prTrigger = (body: string): TriggerEvent => ({
+    kind: 'pull-request',
+    eventName: 'issue_comment',
+    action: 'created',
+    senderLogin: 'maintainer',
+    senderType: 'User',
+    authorAssociation: 'OWNER',
+    prNumber: 7,
+    commentBody: body,
+    commentId: 99,
+    defaultBranch: 'main',
+    issueNumber: 42,
+  })
+
+  // stubConfig pins maxCiAttempts at 2: this state has spent it.
+  const spent = (): AgentState =>
+    baseState({
+      phase: 'COMPLETE',
+      prNumber: 7,
+      prUrl: 'https://example.test/pull/7',
+      ciAttempts: 2,
+      ciBudgetReported: false,
+    })
+
+  it('refuses before the signal is applied, with the persisted state byte-identical', async () => {
+    const { sections, recording } = withRecordingReply()
+    const before = spent()
+
+    const outcome = await applyTrigger(fixInput(before, sections, recording))
+
+    expect(outcome.halt?.status).toBe('failed')
+    expect(outcome.halt?.reported).toBe(true)
+    // Refused, not applied-then-regretted: applying CI_FAILED here would move
+    // COMPLETE → CI_FIX and increment ciAttempts past the ceiling, parking the
+    // issue where raising the ceiling and replying /fix could no longer reach
+    // the state the maintainer is looking at.
+    expect(outcome.state).toEqual(before)
+    expect(outcome.state.phase).toBe('COMPLETE')
+    expect(outcome.state.ciAttempts).toBe(2)
+    expect(outcome.state.prNumber).toBe(7)
+    expect(outcome.state.ciBudgetReported).toBe(false)
+  })
+
+  it('names the ceiling and the remedies that actually hold', async () => {
+    const { sections, recording } = withRecordingReply()
+
+    await applyTrigger(fixInput(spent(), sections, recording))
+
+    const notice = sections.join()
+    expect(notice).toContain('AGENT_MAX_CI_ATTEMPTS')
+    expect(notice).toContain('2 of 2')
+    // The fresh CI budget a new pull request earns — the second remedy, which
+    // works without touching the workflow.
+    expect(notice).toContain('new pull request')
+  })
+
+  it('posts the notice again every time the command is typed — no once-per-PR guard', async () => {
+    // The automatic door's ciBudgetReported silence belongs to an event nobody
+    // typed; this refusal answers a command somebody asked, so it repeats with
+    // the question.
+    const { sections, recording } = withRecordingReply()
+
+    await applyTrigger(fixInput(spent(), sections, recording))
+    await applyTrigger(fixInput(spent(), sections, recording))
+
+    expect(sections.filter((body) => body.includes('AGENT_MAX_CI_ATTEMPTS'))).toHaveLength(2)
+  })
+
+  it('raising the ceiling makes the very same /fix work', async () => {
+    // The spec's remedy scenario: because the refusal left the state
+    // byte-identical, a bigger AGENT_MAX_CI_ATTEMPTS and the same command is
+    // the whole recovery — no re-arming, no new pull request required.
+    const { sections, recording } = withRecordingReply()
+
+    const refused = await applyTrigger(fixInput(spent(), sections, recording))
+    expect(refused.halt?.status).toBe('failed')
+
+    recording.deps.config.maxCiAttempts = 5
+    const accepted = await applyTrigger(fixInput(spent(), sections, recording))
+
+    expect(accepted.halt).toBeNull()
+    expect(accepted.state.phase).toBe('CI_FIX')
+    expect(accepted.state.ciAttempts).toBe(3)
+  })
+
+  it('a /fix with no pull request is a wrong-command refusal, never a spent one', async () => {
+    const { sections, recording } = withRecordingReply()
+    const noPr = baseState({ phase: 'COMPLETE', ciAttempts: 2 })
+
+    const outcome = await applyTrigger(fixInput(noPr, sections, recording))
+
+    expect(outcome.halt?.status).toBe('skipped')
+    expect(outcome.halt?.reason).toContain('/fix does not apply to this issue')
+  })
+
+  it('a /fix in a phase that refuses CI_FAILED is a wrong-command refusal, never a spent one', async () => {
+    // The exact REVIEW_REQUESTED ordering: the ceiling is asked of the
+    // transition table first, so a command the phase would refuse anyway is
+    // answered with what does apply — not with a budget it never reached.
+    const { sections, recording } = withRecordingReply()
+    const failed = baseState({
+      phase: 'FAILED',
+      resumeFrom: 'REVIEW_AND_MUTATE',
+      prNumber: 7,
+      prUrl: 'https://example.test/pull/7',
+      ciAttempts: 2,
+    })
+
+    const outcome = await applyTrigger(fixInput(failed, sections, recording))
+
+    expect(outcome.halt?.status).toBe('skipped')
+    expect(outcome.halt?.reason).toContain('/fix')
+  })
+})
+
 describe('applyTrigger · /cancel cleanup (D9)', () => {
   it('deletes the remote agent branch when /cancel succeeds', async () => {
     const recording = stubPhaseDeps({ selfLogin: AGENT_LOGIN })
