@@ -115,6 +115,9 @@ export default {
     'plugins/audio-transcribe/runtime.ts!',
     'plugins/context-vault/runtime.ts!',
     'plugins/task-provider-kaneo/auto-provision.ts!',
+    // github-provider-comments-labels change (in flight): comment/label
+    // schemas are test-only until the change's mappers/operations tasks land.
+    'plugins/task-provider-github/schemas/{comment,label}.ts!',
     // Test-seam shims: re-export test-only symbols so tests have an explicit
     // import site; see the *.testing.ts ignoreIssues glob below.
     'src/**/*.testing.ts!',
@@ -169,6 +172,8 @@ export default {
     // Task-provider plugin clients are reached only via those same dynamic
     // bridges. Scoped to task-provider-* so other plugins' clients stay checked.
     'plugins/task-provider-*/client.ts': ['exports'],
+    // github-provider-comments-labels seam — remove with the entry above.
+    'plugins/task-provider-github/schemas/{comment,label}.ts': ['exports', 'types'],
     // acp bridge modules are consumed by plugins/acp/index.ts through
     // import.meta.require() (entry-graph containment for their src/analytics
     // imports, same pattern as the kaneo bridges above); knip cannot trace
