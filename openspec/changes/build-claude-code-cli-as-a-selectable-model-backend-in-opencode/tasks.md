@@ -57,13 +57,13 @@ the only credentialed artifact and never runs in CI.
 
 ## 4. Turn errors and connect layer (design D6, D8, D9)
 
-- [ ] 4.1 Tests first in `tests/opencode-agent/errors.test.ts`, then implement: `turn-errors.ts` gains the `CLAUDE_EXIT` and `CLAUDE_RESULT` turn-family codes (`errors.ts` re-exports), distinguishable from deadline/stall/dead-server codes.
+- [x] 4.1 Tests first in `tests/opencode-agent/errors.test.ts`, then implement: `turn-errors.ts` gains the `CLAUDE_EXIT` and `CLAUDE_RESULT` turn-family codes (`errors.ts` re-exports), distinguishable from deadline/stall/dead-server codes.
   Verify: `bun test tests/opencode-agent/errors.test.ts` (green)
-- [ ] 4.2 Tests first in `tests/opencode-agent/claude-connect.test.ts` (injected spawn seam, no `mock.module`): the spawn contract — detached `node:child_process` spawn (own process group, `shell: false`, argv vector); child env = post-scrub `process.env` + exactly the chosen credential + `DISABLE_AUTOUPDATER=1`, name-stripped of `LLM_BASE_URL` and `AGENT_MCP_SERVERS`; `CLAUDE_CONFIG_DIR` at a fresh job-scoped temp dir under `os.tmpdir()` outside the checkout workspace; determinism knobs are constants, not env-tunable.
+- [x] 4.2 Tests first in `tests/opencode-agent/claude-connect.test.ts` (injected spawn seam, no `mock.module`): the spawn contract — detached `node:child_process` spawn (own process group, `shell: false`, argv vector); child env = post-scrub `process.env` + exactly the chosen credential + `DISABLE_AUTOUPDATER=1`, name-stripped of `LLM_BASE_URL` and `AGENT_MCP_SERVERS`; `CLAUDE_CONFIG_DIR` at a fresh job-scoped temp dir under `os.tmpdir()` outside the checkout workspace; determinism knobs are constants, not env-tunable.
   Verify: `bun test tests/opencode-agent/claude-connect.test.ts` (red)
-- [ ] 4.3 Tests first: kill reporting — no live group (gone or refused) reports `false`; close-path escalation is fire-and-forget (grace timer never blocks teardown), then reaps and best-effort removes the config dir.
+- [x] 4.3 Tests first: kill reporting — no live group (gone or refused) reports `false`; close-path escalation is fire-and-forget (grace timer never blocks teardown), then reaps and best-effort removes the config dir.
   Verify: `bun test tests/opencode-agent/claude-connect.test.ts` (red)
-- [ ] 4.4 Implement `opencode-agent/src/claude-connect.ts` — spawn, env, config dir, constants, and the SIGTERM → named grace → SIGKILL group-kill helper reporting whether it landed, reused by abort and teardown — making 4.2 and 4.3 green.
+- [x] 4.4 Implement `opencode-agent/src/claude-connect.ts` — spawn, env, config dir, constants, and the SIGTERM → named grace → SIGKILL group-kill helper reporting whether it landed, reused by abort and teardown — making 4.2 and 4.3 green.
   Verify: `bun test tests/opencode-agent/claude-connect.test.ts` (green)
 
 ## 5. Adapter: session over the seam (design D1, D2, D7, D8, D10, D12 step 4)

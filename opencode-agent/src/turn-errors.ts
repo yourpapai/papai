@@ -176,6 +176,62 @@ const plural = (count: number, noun: string): string => `${count} ${noun}${count
 export const isTurnStall = (error: unknown): error is PipelineError =>
   error instanceof PipelineError && error.code === TURN_STALL
 
+/** The claude family, first member: the CLI process exited non-zero. */
+const CLAUDE_EXIT = 'CLAUDE_EXIT'
+
+/**
+ * A `claude` turn whose process exited non-zero, with the code it carried.
+ *
+ * Exit discipline is the whole contract: a non-zero exit is a verdict — a
+ * rejected credential, a usage limit, an internal error — never reinterpreted,
+ * never retried away, never swallowed into an empty success. The pipeline
+ * cannot see the HTTP status behind an exit code, so unlike the provider-proxy
+ * layer it has nothing to retry on.
+ *
+ * The stderr tail is carried **redacted by the caller** — this factory never
+ * sees a credential, and the adapter redacts before it quotes.
+ *
+ * Distinguishable from deadline, stall and dead-server codes because it joins
+ * `runTurn`'s bypass list: the process has already exited, so the alive-probe
+ * would relabel a verdict as a crash.
+ */
+export const claudeExitError = (exitCode: number, stderrTail: string): PipelineError =>
+  new PipelineError(
+    CLAUDE_EXIT,
+    `The \`claude\` process exited with code ${exitCode} — a verdict, not a transient: no retry layer exists on this ` +
+      `route, so the attempt is spent. stderr tail: ${stderrTail}`,
+  )
+
+/** Whether a rejection is that verdict. */
+export const isClaudeExit = (error: unknown): error is PipelineError =>
+  error instanceof PipelineError && error.code === CLAUDE_EXIT
+
+/**
+ * The claude family, second member: the stream's answer was not a usable
+ * reply.
+ *
+ * One error family owns every shape of it, regardless of exit code: a missing
+ * or undecodable `result` line on an exit-0 run (the empty-success shape this
+ * pipeline already refuses, issue #239), a result line that itself signals an
+ * error (`is_error` true or the recorded equivalent), empty final text, or no
+ * session id anywhere — resolving under a synthetic id would silently fork the
+ * session's context mid-job. The CLI's documented error-to-non-zero-exit
+ * correlation is relied on for nothing; the recorded auth-failure fixture is
+ * exit 0 with `is_error: true`.
+ */
+const CLAUDE_RESULT = 'CLAUDE_RESULT'
+
+export const claudeResultError = (whatWentWrong: string): PipelineError =>
+  new PipelineError(
+    CLAUDE_RESULT,
+    `The \`claude\` turn did not produce a usable reply: ${whatWentWrong}. ` +
+      'This is the empty-success shape, not a reply — the turn fails rather than resolving as if the model answered.',
+  )
+
+/** Whether a rejection is that failure. */
+export const isClaudeResult = (error: unknown): error is PipelineError =>
+  error instanceof PipelineError && error.code === CLAUDE_RESULT
+
 /**
  * A turn the model never answered, because the provider was still refusing it.
  *

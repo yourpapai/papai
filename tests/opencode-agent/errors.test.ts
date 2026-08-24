@@ -6,7 +6,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  claudeExitError,
+  claudeResultError,
   dependencyDriftError,
+  isClaudeExit,
+  isClaudeResult,
   isDependencyDrift,
   isRetryFutile,
   isTurnDeadline,
@@ -15,6 +19,7 @@ import {
   openCodeError,
   providerStalledError,
   pullRequestForbiddenError,
+  serverGoneError,
   turnDeadlineError,
   turnStallError,
 } from '../../opencode-agent/src/errors.js'
@@ -195,5 +200,46 @@ describe('the retry-futile predicates', () => {
     expect(isRetryFutile(broke)).toBe(false)
     expect(isDependencyDrift(new Error('an ordinary crash'))).toBe(false)
     expect(isRetryFutile(new Error('an ordinary crash'))).toBe(false)
+  })
+})
+
+/**
+ * The claude turn family — two codes beside the deadline and the stall, for
+ * failures classified *after* the CLI process has already exited (where the
+ * alive-probe would mislabel them) or before it ever started meaningfully.
+ * Distinguishable from every other turn code, because `runTurn`'s bypass list
+ * and the phase's salvage decisions branch on exactly that.
+ */
+describe('the claude turn-family codes', () => {
+  test('CLAUDE_EXIT carries the exit code and a stderr tail', () => {
+    const error = claudeExitError(2, 'usage: claude ... unknown flag --nope')
+
+    expect(error.code).toBe('CLAUDE_EXIT')
+    expect(error.message).toContain('2')
+    expect(error.message).toContain('unknown flag')
+  })
+
+  test('CLAUDE_RESULT carries what the result line got wrong', () => {
+    const error = claudeResultError('the result line signalled an error')
+
+    expect(error.code).toBe('CLAUDE_RESULT')
+    expect(error.message).toContain('result line')
+  })
+
+  test('each predicate matches its own code and no other turn-family shape', () => {
+    const exit = claudeExitError(1, 'boom')
+    const result = claudeResultError('no result line arrived')
+
+    expect(isClaudeExit(exit)).toBe(true)
+    expect(isClaudeResult(result)).toBe(true)
+    expect(isClaudeExit(result)).toBe(false)
+    expect(isClaudeResult(exit)).toBe(false)
+    expect(isClaudeExit(turnDeadlineError(1_800_000, PROGRESS))).toBe(false)
+    expect(isClaudeResult(turnStallError(300_000, STALL, PROGRESS))).toBe(false)
+    expect(isClaudeExit(serverGoneError('socket closed'))).toBe(false)
+    expect(isClaudeResult(providerStalledError(STALL))).toBe(false)
+    expect(isClaudeExit(openCodeError('rate limited'))).toBe(false)
+    expect(isClaudeExit(new Error('rate limited'))).toBe(false)
+    expect(isClaudeExit(null)).toBe(false)
   })
 })
