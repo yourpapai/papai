@@ -12,7 +12,7 @@ import { classifyGitHubError, GitHubClassifiedError } from '../classify-error.js
 import type { GitHubConfig } from '../client.js'
 import { githubFetch, githubPaginate } from '../client.js'
 import { mapIssueLabelToLabel, mapRepoLabelToLabel } from '../mappers.js'
-import { GitHubLabelSchema } from '../schemas/issue.js'
+import { GitHubLabelSchema, type GitHubLabel } from '../schemas/issue.js'
 import type { GitHubRepoLabel } from '../schemas/label.js'
 import { GitHubRepoLabelSchema, labelColorRegex } from '../schemas/label.js'
 
@@ -122,8 +122,11 @@ export async function githubDeleteLabel(config: GitHubConfig, name: string): Pro
 export async function githubGetTaskLabels(config: GitHubConfig, taskId: string): Promise<Label[]> {
   log.debug({ taskId }, 'getTaskLabels')
   try {
-    const raw = await githubFetch(config, 'GET', `/repos/${config.repo}/issues/${taskId}/labels`)
-    const labels = issueLabelPageSchema.parse(raw).map(mapIssueLabelToLabel)
+    const labels = (
+      await githubPaginate(config, `/repos/${config.repo}/issues/${taskId}/labels`, {
+        extractPage: (data: unknown): GitHubLabel[] => issueLabelPageSchema.parse(data),
+      })
+    ).map(mapIssueLabelToLabel)
     log.info({ taskId, count: labels.length }, 'Task labels retrieved')
     return labels
   } catch (error) {

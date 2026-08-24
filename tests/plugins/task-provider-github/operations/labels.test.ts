@@ -82,6 +82,9 @@ const repoLabelResponse = (overrides: Record<string, unknown> = {}): Record<stri
 const repoLabelPage = (count: number, offset = 0): Record<string, unknown>[] =>
   Array.from({ length: count }, (_, i) => repoLabelResponse({ id: offset + i + 1, name: `label-${offset + i + 1}` }))
 
+const issueLabelNames = (count: number, offset = 0): string[] =>
+  Array.from({ length: count }, (_, i) => `label-${offset + i + 1}`)
+
 afterEach(() => {
   restoreFetch()
 })
@@ -235,6 +238,22 @@ describe('githubGetTaskLabels', () => {
       { id: 'bug', name: 'bug' },
       { id: 'help wanted', name: 'help wanted' },
     ])
+  })
+
+  test('paginates GET /repos/{o}/{r}/issues/{n}/labels to exhaustion with per_page=100', async () => {
+    mockLogger()
+    const calls: CapturedRequest[] = []
+    setMockFetch(
+      captureRequests(calls, sequenceResponder([{ data: issueLabelNames(100) }, { data: issueLabelNames(2, 100) }]))
+        .handler,
+    )
+    const labels = await githubGetTaskLabels(config, '1347')
+    expect(calls).toHaveLength(2)
+    expect(calls[0]?.url.searchParams.get('page')).toBe('1')
+    expect(calls[0]?.url.searchParams.get('per_page')).toBe('100')
+    expect(calls[1]?.url.searchParams.get('page')).toBe('2')
+    expect(labels).toHaveLength(102)
+    expect(labels[101]).toEqual({ id: 'label-102', name: 'label-102' })
   })
 
   test('object-form labels map with stringified id and color', async () => {
