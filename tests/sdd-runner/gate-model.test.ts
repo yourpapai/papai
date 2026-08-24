@@ -527,6 +527,77 @@ describe('parseGateResponse shape and anchor hardening', () => {
   })
 })
 
+describe('parseGateResponse plan-mode child rows (D4)', () => {
+  const planExpected = {
+    assumptions: [],
+    blockers: [],
+    children: [
+      { id: 'C1', text: 'auth-db — Add the auth database schema.' },
+      { id: 'C2', text: 'auth-api — Add the auth API endpoints.' },
+    ],
+    gateMode: 'plan',
+  } as const
+
+  it('approves when every C-box is checked', () => {
+    const md =
+      '## Plan gate\n\n- [x] C1 auth-db — Add the auth database schema.\n- [x] C2 auth-api — Add the auth API endpoints.\n'
+    const response = parseGateResponse(md, planExpected)
+    expect(response).toMatchObject({ approved: true, abort: false, vetoes: [], answers: [] })
+  })
+
+  it('an unchecked C-box vetoes that child with an optional → redirect beneath', () => {
+    const md = [
+      '## Plan gate',
+      '',
+      '- [x] C1 auth-db — Add the auth database schema.',
+      '- [ ] C2 auth-api — Add the auth API endpoints.',
+      '→ split the API child into auth + sessions',
+      '',
+    ].join('\n')
+    const response = parseGateResponse(md, planExpected)
+    expect(response.approved).toBe(false)
+    expect(response.vetoes).toEqual([{ id: 'C2', redirect: 'split the API child into auth + sessions' }])
+  })
+
+  it('an unchecked C-box without a redirect records a bare veto', () => {
+    const md = '## Plan gate\n\n- [ ] C1 auth-db\n- [x] C2 auth-api\n'
+    const response = parseGateResponse(md, planExpected)
+    expect(response.vetoes).toEqual([{ id: 'C1' }])
+    expect(response.approved).toBe(false)
+  })
+
+  it('ABORT aborts at plan mode', () => {
+    const response = parseGateResponse('## Plan gate\n\nABORT\n', planExpected)
+    expect(response.abort).toBe(true)
+  })
+
+  it('rejects → RUN 1 MORE at plan mode with the cap-hit-only message', () => {
+    expect(() => parseGateResponse('## Plan gate\n\n→ RUN 1 MORE\n', planExpected)).toThrow(
+      /RUN 1 MORE.*plan gate.*cap-hit/u,
+    )
+  })
+
+  it('routes by declared-id membership: an undeclared C-id is rejected as an unknown child', () => {
+    const md = '## Plan gate\n\n- [x] C1 auth-db\n- [x] C2 auth-api\n- [x] C3 never declared\n'
+    expect(() => parseGateResponse(md, planExpected)).toThrow(/unknown child C3/u)
+  })
+
+  it('prefix alone never routes: a C-row against single-run expected content is an unknown child', () => {
+    expect(() => parseGateResponse('## Gate\n\n- [x] C1 some child\n', { assumptions: [], blockers: [] })).toThrow(
+      /unknown child C1/u,
+    )
+  })
+
+  it('single-run gates parse byte-identically with children absent', () => {
+    const md = '## Gate\n\n- [x] A1\n- [x] A2\n'
+    const response = parseGateResponse(md, {
+      assumptions: [assumption(), assumption({ id: 'A2' })],
+      blockers: [],
+    })
+    expect(response.approved).toBe(true)
+  })
+})
+
 describe('Auto-decision preview strip — anchor hardening', () => {
   it('a preview-like string inside a longer heading is not a preview boundary', () => {
     const md = ['### Not a preview: Auto-decision preview extra', '', '- [ ] A1', ''].join('\n')
