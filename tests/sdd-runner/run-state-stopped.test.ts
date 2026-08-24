@@ -24,6 +24,7 @@ const emptyReplay: ReplayState = {
   lastVerdict: null,
   gate: null,
   autoDecisions: [],
+  children: {},
 }
 
 function rawState(overrides: Record<string, unknown>): Record<string, unknown> {

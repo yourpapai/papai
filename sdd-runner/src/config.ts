@@ -16,6 +16,7 @@ export const AgentRoleSchema = z.enum([
   'estimator',
   'decomposer',
   'atomicity',
+  'planner',
 ])
 export type AgentRole = z.infer<typeof AgentRoleSchema>
 
@@ -33,6 +34,9 @@ export interface AutonomyConfig {
 /** Compiled timeout constants (the removed `timeouts` block's replacements). */
 export const WALL_CLOCK_TIMEOUT_MS = 1_800_000
 export const INACTIVITY_TIMEOUT_MS = 600_000
+
+/** Structural plan-replan passes the planner agent gets before failing the run (D6). */
+export const PLAN_REPLAN_PASSES = 1
 
 const REMOVED_KEY_POINTERS: Readonly<Record<string, string>> = {
   autonomy: "replace with the top-level 'budget' and 'deadline' keys",
@@ -120,15 +124,20 @@ export function modelFor(config: RunnerConfig, _role: AgentRole): string {
   return config.model
 }
 
-export function deriveChangeName(taskFileName: string, taskFileContent: string): string {
-  const heading = taskFileContent.match(/^#\s+(.+)$/mu)?.[1]
-  const base = heading ?? path.basename(taskFileName).replace(/\.[^.]*$/u, '')
-  const slug = base
+/** Kebab-case slug transform shared by change names and child task files. */
+export function slugify(input: string): string {
+  return input
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, '-')
     .replace(/^-+|-+$/gu, '')
     .slice(0, 64)
     .replace(/-+$/u, '')
+}
+
+export function deriveChangeName(taskFileName: string, taskFileContent: string): string {
+  const heading = taskFileContent.match(/^#\s+(.+)$/mu)?.[1]
+  const base = heading ?? path.basename(taskFileName).replace(/\.[^.]*$/u, '')
+  const slug = slugify(base)
   if (slug.length === 0) {
     throw new Error(`cannot derive a change name from task file ${taskFileName}`)
   }

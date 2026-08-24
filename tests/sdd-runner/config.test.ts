@@ -9,11 +9,15 @@ import os from 'node:os'
 import path from 'node:path'
 
 import {
+  AgentRoleSchema,
   autonomyOf,
   deriveChangeName,
   discoverBranch,
   loadRunnerConfig,
   modelFor,
+  PLAN_REPLAN_PASSES,
+  RunnerConfigSchema,
+  slugify,
 } from '../../sdd-runner/src/config.js'
 
 const tmpDirs: string[] = []
@@ -118,6 +122,60 @@ describe('deriveChangeName', () => {
 
   it('rejects input that yields no usable name', () => {
     expect(() => deriveChangeName('.md', '!!!')).toThrow(/change name/u)
+  })
+})
+
+describe('slugify', () => {
+  it('is the identical transform deriveChangeName applies to its slug', () => {
+    const headingSlug = (title: string): string => deriveChangeName('task.md', `# ${title}`)
+    expect(slugify('Add Dark Mode Toggle')).toBe(headingSlug('Add Dark Mode Toggle'))
+    expect(slugify('My Task: refine (draft)')).toBe(headingSlug('My Task: refine (draft)'))
+    expect(slugify('--dashes and PUNCTUATION!!')).toBe(headingSlug('--dashes and PUNCTUATION!!'))
+    expect(slugify('b'.repeat(63) + '!!')).toBe(headingSlug('b'.repeat(63) + '!!'))
+  })
+
+  it('kebab-cases, trims separator runs, and caps length at 64', () => {
+    expect(slugify('Add Dark Mode Toggle')).toBe('add-dark-mode-toggle')
+    expect(slugify('--lead and trail--')).toBe('lead-and-trail')
+    expect(slugify('a'.repeat(80))).toHaveLength(64)
+  })
+})
+
+describe('AgentRoleSchema', () => {
+  it("parses 'planner' alongside the existing roles", () => {
+    expect(AgentRoleSchema.parse('planner')).toBe('planner')
+    const existingRoles = [
+      'drafter',
+      'reviewer',
+      'skeptic',
+      'resolver',
+      'estimator',
+      'decomposer',
+      'atomicity',
+    ] as const
+    for (const role of existingRoles) {
+      expect(AgentRoleSchema.parse(role)).toBe(role)
+    }
+  })
+
+  it('rejects an unknown role', () => {
+    expect(AgentRoleSchema.safeParse('vibes').success).toBe(false)
+  })
+})
+
+describe('PLAN_REPLAN_PASSES', () => {
+  it('is exported with value 1 as a compiled constant', () => {
+    expect(PLAN_REPLAN_PASSES).toBe(1)
+  })
+})
+
+describe('RunnerConfigSchema (strict five keys)', () => {
+  it('still rejects every key beyond the five', () => {
+    const fiveKeys = { repoRoot: '/repo', workDir: '.sdd-runner', model: 'm', budget: 5, deadline: 30 }
+    expect(RunnerConfigSchema.safeParse(fiveKeys).success).toBe(true)
+    expect(RunnerConfigSchema.safeParse({ ...fiveKeys, maxChildren: 8 }).success).toBe(false)
+    expect(RunnerConfigSchema.safeParse({ ...fiveKeys, planReplanPasses: 1 }).success).toBe(false)
+    expect(RunnerConfigSchema.safeParse({ ...fiveKeys, planner: 'm' }).success).toBe(false)
   })
 })
 

@@ -7,7 +7,8 @@ import { runGateResume } from './extend-round.js'
 import type { OrchestratorDeps } from './gate-digest.js'
 import { runResume } from './orchestrator.js'
 import type { AutonomyOverrides, RunContinueResult } from './orchestrator.js'
-import { listPendingGates, loadRunState, resolveRunId } from './run-state.js'
+import { listPendingGates, resolveRunId } from './run-index.js'
+import { loadRunState } from './run-state.js'
 
 /**
  * `continue` is a pure router (Decision 4): gate-pending → the gate flow

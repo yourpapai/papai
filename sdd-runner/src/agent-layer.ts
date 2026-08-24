@@ -69,6 +69,7 @@ export const DepthClassificationSchema = z.object({
   implicated_files: z.array(z.string().min(1)),
   signals: DepthSignalsSchema,
   rationale: z.string().min(1),
+  capabilities: z.array(z.string().min(1)).optional(),
 })
 export type DepthClassification = z.infer<typeof DepthClassificationSchema>
 
