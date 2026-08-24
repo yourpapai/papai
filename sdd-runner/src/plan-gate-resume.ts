@@ -51,28 +51,6 @@ export async function planGateRows(sidecarDir: string, state: RunState): Promise
   return ordered.map((child, index) => ({ id: `C${index + 1}`, text: gateRowText(child) }))
 }
 
-/**
- * D12 decision collection: decision flags desugar through the D4
- * render-then-parse functions onto the gate file; otherwise the hand-edited
- * file is parsed as-is (no TUI session at plan mode in part 2).
- */
-async function collectPlanDecision(
-  options: GateResumeOptions,
-  rows: readonly { readonly id: string; readonly text: string }[],
-  gateMdPath: string,
-): Promise<boolean> {
-  const hasDecisionFlags =
-    options.abort === true ||
-    options.confirmAll === true ||
-    options.extend === true ||
-    (options.vetoes?.length ?? 0) > 0
-  if (hasDecisionFlags) {
-    await desugarFlags(options, planSessionView(rows), (md) => writeFile(gateMdPath, md))
-    return true
-  }
-  return true
-}
-
 export interface PlanGateResumeDeps {
   /** Nested-run starter: the orchestrator's `runStart` by default. */
   readonly startChildRun: RunChildRun
@@ -80,7 +58,10 @@ export interface PlanGateResumeDeps {
 
 /**
  * D12 plan-gate resume: expected content from `sidecars/plan.json` +
- * `state.plan`; approve → `runChildren`; abort → `finalizeGate('aborted')`
+ * `state.plan`; decision flags desugar through the D4 render-then-parse
+ * functions onto the gate file, otherwise the hand-edited file is parsed
+ * as-is (no TUI session at plan mode in part 2, so nothing can abandon the
+ * collection); approve → `runChildren`; abort → `finalizeGate('abandoned')`
  * before any child exists; extend is unreachable (the parser rejects `→ RUN
  * 1 MORE` at plan mode first); veto rounds land with `settlePlanVeto` (6.3).
  */
@@ -95,8 +76,14 @@ export async function runPlanGateResume(
   const sidecarDir = path.join(state.runDir, 'sidecars')
   const gateMdPath = path.join(state.runDir, `gate-${version}.md`)
   const rows = await planGateRows(sidecarDir, state)
-  const proceed = await collectPlanDecision(options, rows, gateMdPath)
-  if (!proceed) return { runId: state.runId, outcome: 'abandoned', version }
+  if (
+    options.abort === true ||
+    options.confirmAll === true ||
+    options.extend === true ||
+    (options.vetoes?.length ?? 0) > 0
+  ) {
+    await desugarFlags(options, planSessionView(rows), (md) => writeFile(gateMdPath, md))
+  }
   writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
   try {
