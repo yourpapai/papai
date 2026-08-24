@@ -9,7 +9,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { runChildren, runPlanBranch } from '../../sdd-runner/src/children.js'
+import { runChildren, runPlanBranch, treeSpend } from '../../sdd-runner/src/children.js'
 import type { RunChildRun } from '../../sdd-runner/src/children.js'
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import type { SddEvent } from '../../sdd-runner/src/events.js'
@@ -209,6 +209,7 @@ interface RunnerTracker {
   readonly taskFiles: string[]
   readonly runIds: Map<string, string>
   readonly maxInFlight: { value: number }
+  readonly baselines: number[]
 }
 
 async function seedParent(
@@ -228,13 +229,15 @@ function makeRunner(fixture: ChildrenFixture, shapes: Record<string, ChildShape>
   const taskFiles: string[] = []
   const runIds = new Map<string, string>()
   const maxInFlight = { value: 0 }
+  const baselines: number[] = []
   let inFlight = 0
   const defaultShape: ChildShape = { status: 'completed', withUsage: true }
-  const runChildRun: RunChildRun = async (child, taskFile) => {
+  const runChildRun: RunChildRun = async (child, taskFile, spendBaselineUsd) => {
     inFlight += 1
     maxInFlight.value = Math.max(maxInFlight.value, inFlight)
     spawned.push(child.id)
     taskFiles.push(taskFile)
+    baselines.push(spendBaselineUsd)
     const shape = shapes[child.id] ?? defaultShape
     const childState = await createRunState({
       workDir: fixture.deps.config.workDir,
@@ -257,7 +260,7 @@ function makeRunner(fixture: ChildrenFixture, shapes: Record<string, ChildShape>
     inFlight -= 1
     return { runId: childState.runId }
   }
-  return { runChildRun, spawned, taskFiles, runIds, maxInFlight }
+  return { runChildRun, spawned, taskFiles, runIds, maxInFlight, baselines }
 }
 
 function eventsOf(fixture: ChildrenFixture, type: 'child_spawned' | 'child_done'): SddEvent[] {
@@ -423,5 +426,99 @@ describe('runChildren failure and completion semantics (D9)', () => {
     const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
     expect(persisted.status).toBe('stopped')
     expect(stdoutLines.some((line) => line.includes(`child auth-db ended 'unloadable'`))).toBe(true)
+  })
+})
+
+describe('aggregate budget ledger (D10)', () => {
+  it('treeSpend sums parent done-events plus child_done usage and reads unknown when any usage is absent', async () => {
+    const fixture = await makeFixture()
+    const logPath = path.join(fixture.state.runDir, 'events.ndjson')
+    appendEvent(logPath, {
+      altitude: 'L1',
+      type: 'done',
+      agent: 'estimator',
+      usage: { ...CHILD_DONE_USAGE, costUsd: 0.4 },
+    })
+    appendEvent(logPath, {
+      altitude: 'L2',
+      type: 'child_done',
+      child: 'auth-db',
+      outcome: 'done',
+      usage: CHILD_DONE_USAGE,
+    })
+    const known = treeSpend(fixture.state)
+    expect(known).toEqual({ spentUsd: 0.65, costKnown: true })
+
+    appendEvent(logPath, { altitude: 'L2', type: 'child_done', child: 'auth-api', outcome: 'done' })
+    const unknown = treeSpend(fixture.state)
+    expect(unknown).toEqual({ spentUsd: 0.65, costKnown: false })
+  })
+
+  it('halts before the next child_spawned when recorded spend meets the budget, with a loud budget-guard line', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], { 'auth-db': 'done' })
+    appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), {
+      altitude: 'L2',
+      type: 'child_done',
+      child: 'auth-db',
+      outcome: 'done',
+      usage: { ...CHILD_DONE_USAGE, costUsd: 5 },
+    })
+    const tracker = makeRunner(fixture, {})
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runChildren(deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result).toEqual({ halted: 'stopped', child: 'auth-api', childStatus: 'budget-guard' })
+    expect(tracker.spawned).toEqual([])
+    expect(eventsOf(fixture, 'child_spawned')).toHaveLength(0)
+    const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
+    expect(persisted.status).toBe('stopped')
+    expect(persisted.children?.['auth-api']).toEqual({ status: 'pending' })
+    expect(stdoutLines.some((line) => line.includes('budget guard'))).toBe(true)
+  })
+
+  it('halts before the next child_spawned on unknown spend (a child_done without usage)', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], { 'auth-db': 'done' })
+    appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), {
+      altitude: 'L2',
+      type: 'child_done',
+      child: 'auth-db',
+      outcome: 'done',
+    })
+    const tracker = makeRunner(fixture, {})
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runChildren(deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result).toEqual({ halted: 'stopped', child: 'auth-api', childStatus: 'budget-guard' })
+    expect(tracker.spawned).toEqual([])
+    const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
+    expect(persisted.status).toBe('stopped')
+    expect(stdoutLines.some((line) => /budget guard.*unknown/u.test(line))).toBe(true)
+  })
+
+  it('passes the running tree spend as spendBaselineUsd into each nested run', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    expect(tracker.baselines).toEqual([0, 0.25])
   })
 })

@@ -50,6 +50,8 @@ export interface PolicySignals {
   readonly config: AutonomyConfig
   /** Plan mode (D5): switches the R4 projection to `spent + childCount × DEFAULT_ROUND_COST_USD`. */
   readonly childCount?: number
+  /** Tree budget baseline (D10): ancestor spend added before the single-ceiling compare; 0 when unset. */
+  readonly spendBaselineUsd?: number
 }
 
 export type PolicyRule = 'R1' | 'R2' | 'R3' | 'R4' | 'R5'
@@ -140,13 +142,17 @@ function strictlyDecreasingLastK(trajectory: readonly DigestRecord[], k: number)
  * a completed round (spend spread evenly over recorded rounds; a conservative
  * constant when none are recorded). At plan mode (childCount set) the
  * projection is `spent + childCount × DEFAULT_ROUND_COST_USD` — one round's
- * conservative constant per planned child.
+ * conservative constant per planned child. A nested run's baseline (D10) is
+ * added first, so every level compares against the single ceiling.
  */
 function projectedSpend(signals: PolicySignals): number {
-  if (signals.childCount !== undefined) return signals.spentUsd + signals.childCount * DEFAULT_ROUND_COST_USD
+  const baseline = signals.spendBaselineUsd ?? 0
+  if (signals.childCount !== undefined) {
+    return baseline + signals.spentUsd + signals.childCount * DEFAULT_ROUND_COST_USD
+  }
   const rounds = signals.reviewResult.rounds
-  if (rounds <= 0) return signals.spentUsd + DEFAULT_ROUND_COST_USD
-  return signals.spentUsd + signals.spentUsd / rounds
+  if (rounds <= 0) return baseline + signals.spentUsd + DEFAULT_ROUND_COST_USD
+  return baseline + signals.spentUsd + signals.spentUsd / rounds
 }
 
 function gateDecision(rule: PolicyDecision['rule'], signals: PolicySignals, note: string): PolicyDecision {

@@ -10,7 +10,7 @@ import { slugify } from './config.js'
 import { readEvents } from './events.js'
 import type { AgentUsage } from './events.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
-import { presentGateAt } from './gate-digest.js'
+import { logPathFor, presentGateAt } from './gate-digest.js'
 import { PLAN_REVIEW_SURROGATE } from './gate-prelude.js'
 import { materializeChildFiles, planDigest, topoSortChildren } from './plan.js'
 import { PlanSchema } from './plan.js'
@@ -66,10 +66,37 @@ export async function runPlanBranch(
 }
 
 /** Injected nested-run seam (D7): the orchestrator supplies the real runStart. */
-export type RunChildRun = (child: PlanChild, taskFile: string) => Promise<{ readonly runId: string }>
+export type RunChildRun = (
+  child: PlanChild,
+  taskFile: string,
+  spendBaselineUsd: number,
+) => Promise<{ readonly runId: string }>
 
 export interface RunChildrenOptions {
   readonly runChildRun: RunChildRun
+}
+
+export interface TreeSpend {
+  readonly spentUsd: number
+  readonly costKnown: boolean
+}
+
+/**
+ * D10 aggregate ledger: parent done-events plus every `child_done.usage`,
+ * read from the parent's append-only log. Any `child_done` without usage
+ * makes the spend unknown — fail closed.
+ */
+export function treeSpend(state: RunState): TreeSpend {
+  let spentUsd = 0
+  let costKnown = true
+  for (const event of readEvents(logPathFor(state))) {
+    if (event.type === 'done') spentUsd += event.usage.costUsd
+    if (event.type === 'child_done') {
+      if (event.usage === undefined) costKnown = false
+      else spentUsd += event.usage.costUsd
+    }
+  }
+  return { spentUsd, costKnown }
 }
 
 export type RunChildrenResult =
@@ -121,15 +148,57 @@ async function stopAtFailedChild(
 }
 
 /**
+ * D10 budget guard: halt before the next `child_spawned` when the aggregate
+ * tree spend is unknown or already meets the single budget. The parent
+ * persists `stopped` (resumable once the ledger is known/under budget).
+ */
+async function stopAtBudgetGuard(
+  deps: OrchestratorDeps,
+  state: RunState,
+  childId: string,
+  spend: TreeSpend,
+): Promise<RunChildrenResult> {
+  state.status = 'stopped'
+  await saveRunState(state, deps.now?.() ?? new Date())
+  const shape = spend.costKnown ? `$${spend.spentUsd.toFixed(2)}` : 'unknown'
+  deps.stdout?.(
+    `budget guard: tree spend ${shape} vs budget $${deps.config.budget.toFixed(2)} — parent stopped before child ${childId} (resumable)`,
+  )
+  return { halted: 'stopped', child: childId, childStatus: 'budget-guard' }
+}
+
+/** D8 completion bookkeeping: child_done with aggregated usage, child marked done, parent persisted. */
+async function settleCompletedChild(
+  deps: OrchestratorDeps,
+  state: RunState,
+  ctx: StageContext,
+  childId: string,
+  childRunDir: string,
+  resolve: Parameters<typeof aggregateUsage>[1],
+): Promise<void> {
+  const usage = childUsageOf(childRunDir, resolve)
+  ctx.emit({
+    altitude: 'L2',
+    type: 'child_done',
+    child: childId,
+    outcome: 'done',
+    ...(usage === undefined ? {} : { usage }),
+  })
+  state.children = { ...state.children, [childId]: { status: 'done' } }
+  await saveRunState(state, deps.now?.() ?? new Date())
+}
+
+/**
  * Sequential topo execution loop (D8): walks `state.plan.childIds` in order,
- * one child in flight, skipping children already `done`. A completed child
- * emits `child_spawned { child, runId }` then `child_done { child, outcome:
- * 'done', usage }` with usage aggregated from the child's own event log. A
- * gate-pending child records `running`, prints its concrete `sdd <runId>`
- * line, and halts the parent `running` — resume continues at the next
- * not-done child. A child ending aborted/failed/stopped — or whose state
- * cannot be loaded (fail closed) — stops the loop (D9); the walk's end marks
- * the parent `completed` exactly when every child reads `done`.
+ * one child in flight, skipping children already `done`. Before each spawn
+ * the D10 budget guard fail-closes on unknown-or-exceeded tree spend. A
+ * completed child emits `child_spawned { child, runId }` then `child_done
+ * { child, outcome: 'done', usage }` with usage aggregated from the child's
+ * own event log. A gate-pending child records `running`, prints its concrete
+ * `sdd <runId>` line, and halts the parent `running` — resume continues at
+ * the next not-done child. A child ending aborted/failed/stopped — or whose
+ * state cannot be loaded (fail closed) — stops the loop (D9); the walk's end
+ * marks the parent `completed` exactly when every child reads `done`.
  */
 export async function runChildren(
   deps: OrchestratorDeps,
@@ -148,24 +217,19 @@ export async function runChildren(
       return { halted: 'completed' }
     }
     if (state.children?.[childId]?.status === 'done') return runAt(index + 1)
+    const spend = treeSpend(state)
+    if (!spend.costKnown || spend.spentUsd >= deps.config.budget) {
+      return stopAtBudgetGuard(deps, state, childId, spend)
+    }
     const child = children.find((entry) => entry.id === childId)
     if (child === undefined) throw new Error(`plan sidecar has no child ${childId}`)
     const taskFile = path.join(state.runDir, 'children', `${index + 1}-${slugify(childId)}.md`)
-    const handle = await options.runChildRun(child, taskFile)
+    const handle = await options.runChildRun(child, taskFile, spend.spentUsd)
     ctx.emit({ altitude: 'L2', type: 'child_spawned', child: childId, runId: handle.runId })
     const childState = await loadRunState(deps.config.workDir, handle.runId).catch(() => null)
     if (childState === null) return stopAtFailedChild(deps, state, ctx, childId, 'unloadable')
     if (childState.status === 'completed') {
-      const usage = childUsageOf(childState.runDir, resolve)
-      ctx.emit({
-        altitude: 'L2',
-        type: 'child_done',
-        child: childId,
-        outcome: 'done',
-        ...(usage === undefined ? {} : { usage }),
-      })
-      state.children = { ...state.children, [childId]: { status: 'done' } }
-      await saveRunState(state, deps.now?.() ?? new Date())
+      await settleCompletedChild(deps, state, ctx, childId, childState.runDir, resolve)
       return runAt(index + 1)
     }
     if (childState.gate !== null) {

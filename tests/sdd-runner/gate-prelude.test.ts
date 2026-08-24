@@ -67,6 +67,21 @@ describe('evaluatePlanGate (D5: R4 only)', () => {
     })
   })
 
+  it('the spend baseline is added before the ceiling compare: same signals, baseline flips none→R4 (D10)', () => {
+    expect(evaluatePlanGate(planSignals({ childCount: 3 }))).toMatchObject({ rule: 'none' })
+    expect(evaluatePlanGate(planSignals({ childCount: 3, spendBaselineUsd: 3 }))).toMatchObject({
+      rule: 'R4',
+      action: 'gate',
+    })
+  })
+
+  it('an undefined baseline reads 0 — top-level runs keep today\u2019s arithmetic', () => {
+    const withoutBaseline = evaluateFinalGate(planSignals({ spentUsd: 0.5 }))
+    expect(withoutBaseline.action).toBe('approve')
+    const withBaseline = evaluateFinalGate(planSignals({ spentUsd: 0.5, spendBaselineUsd: 4.6 }))
+    expect(withBaseline).toMatchObject({ rule: 'R4', action: 'gate' })
+  })
+
   it('no rule can approve, extend, or accept-items at plan mode — R1/R2/R3-satisfying signals still gate', () => {
     const lowBlastAll = [
       { id: 'A1', text: 't', blastRadius: 'b', blast: 'low' as const, files: [`${CHANGE_DIR}/proposal.md`] },
