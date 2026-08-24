@@ -31,6 +31,7 @@ function seedRun(
     gate: { mode: 'final' | 'early'; version: number } | null
     status: string
     stage?: 'intake' | 'draft' | 'review' | 'decompose' | 'atomicity' | 'gate'
+    updatedAt?: string
   }) => void,
 ): string {
   const runDir = path.join(workDir, 'runs', runId)
@@ -151,6 +152,10 @@ describe('sdd [<target>] routing table (6.1/6.2)', () => {
     const workDir = path.join(dir, '.sdd')
     seedRun(workDir, 'sole-done', (state) => {
       state.status = 'completed'
+      // Newest-first is the listing contract; a distinct stamp makes the order
+      // assertion deterministic instead of riding readdir order (creation
+      // order on macOS, hash order on the CI runner's ext4).
+      state.updatedAt = '2026-01-02T00:00:00.000Z'
     })
     seedRun(workDir, 'dead-husk', (state) => {
       state.status = 'aborted'
