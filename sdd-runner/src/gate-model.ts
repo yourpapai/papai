@@ -26,13 +26,15 @@ export type GateFinding = GateBlocker
 
 export interface GateDigestInput {
   readonly version: number
-  readonly mode: 'early' | 'final'
+  readonly mode: 'early' | 'final' | 'plan'
   readonly changeName: string
   readonly runId: string
   readonly assumptions: readonly GateAssumption[]
   readonly blockers: readonly GateBlocker[]
   readonly openMaterial: readonly GateFinding[]
   readonly openNitpicks: readonly GateFinding[]
+  /** Plan-mode child rows (D4): one checkbox per planned child. */
+  readonly children?: readonly GateChild[]
   readonly trajectory: readonly DigestRecord[]
   readonly capHitFired: boolean
   readonly summary: string

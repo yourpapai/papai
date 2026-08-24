@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ChangeDigest } from './gate-digest-extract.js'
-import type { GateAssumption, GateBlocker, GateDigestInput, GateFinding } from './gate-model.js'
+import type { GateAssumption, GateBlocker, GateChild, GateDigestInput, GateFinding } from './gate-model.js'
 import { formatTrajectoryBlock } from './renderer.js'
 import type { DigestRecord } from './replay.js'
 
@@ -67,25 +67,42 @@ export function writeGateDigest(input: GateDigestInput): string {
   const lines: string[] = [
     `<!-- gate-${input.version}.md -->`,
     '',
-    input.mode === 'early'
-      ? `## Early gate (cap hit) — change ${input.changeName}`
-      : `## Final gate — change ${input.changeName}`,
+    gateHeader(input),
     '',
-    'Check every assumption box to approve. Leave a box unchecked to veto (optional `→ <redirect>` beneath).',
-    'Answer a cap-hit blocker with `→ <answer>` beneath it, or `→ OVERRIDE` to override.',
-    'Write `ABORT` on its own line to abort.',
+    ...gateInstructions(input.mode),
     '',
     ...renderDecisions(input.mode),
     '',
     '### Summary',
     input.summary,
     '',
-    ...renderChangeDigest(input.changeDigest, input.mode, input.assumptions.length > 0),
-    '',
+    ...(input.mode === 'plan'
+      ? []
+      : [...renderChangeDigest(input.changeDigest, input.mode, input.assumptions.length > 0), '']),
     `### Cost / duration · $${input.costUsd.toFixed(2)} · ${Math.round(input.durationMs / 1000)}s · ${costMarker(input)}`,
   ]
   appendGateSections(lines, input, ranked)
   return lines.join('\n')
+}
+
+function gateHeader(input: GateDigestInput): string {
+  if (input.mode === 'early') return `## Early gate (cap hit) — change ${input.changeName}`
+  if (input.mode === 'plan') return `## Plan gate — change ${input.changeName}`
+  return `## Final gate — change ${input.changeName}`
+}
+
+function gateInstructions(mode: GateDigestInput['mode']): string[] {
+  if (mode === 'plan') {
+    return [
+      'Check every child box to approve the plan. Leave a child box unchecked to veto that child (optional `→ <redirect>` beneath).',
+      'Write `ABORT` on its own line to abort.',
+    ]
+  }
+  return [
+    'Check every assumption box to approve. Leave a box unchecked to veto (optional `→ <redirect>` beneath).',
+    'Answer a cap-hit blocker with `→ <answer>` beneath it, or `→ OVERRIDE` to override.',
+    'Write `ABORT` on its own line to abort.',
+  ]
 }
 
 export interface DecisionConsequences {
@@ -100,7 +117,15 @@ export interface DecisionConsequences {
  * the gate-file `### Decisions` block and the interactive session's decision
  * menu — the two front-ends cannot drift apart (Decision 6).
  */
-export function decisionConsequences(mode: 'early' | 'final'): DecisionConsequences {
+export function decisionConsequences(mode: 'early' | 'final' | 'plan'): DecisionConsequences {
+  if (mode === 'plan') {
+    return {
+      approve: 'executes the children sequentially as nested runs in plan order',
+      veto: 'revises the plan once with the redirects, then re-gates',
+      extend: null,
+      abort: 'aborts the parent before any child runs',
+    }
+  }
   const approve =
     mode === 'early'
       ? 'continues to task decomposition, atomicity checking, and a final gate'
@@ -117,25 +142,37 @@ export function decisionConsequences(mode: 'early' | 'final'): DecisionConsequen
  * Render the `### Decisions` block: every decision line names its downstream
  * effect, so no approval is consequence-blind. At an early (cap-hit) gate
  * approval continues the pipeline into decomposition, atomicity checking, and
- * a final gate; at the final gate approval completes the run.
+ * a final gate; at the final gate approval completes the run; at the plan gate
+ * approval executes the planned children.
  */
-export function renderDecisions(mode: 'early' | 'final'): string[] {
+export function renderDecisions(mode: 'early' | 'final' | 'plan'): string[] {
   const c = decisionConsequences(mode)
+  const abortSuffix = mode === 'plan' ? '' : '; the only early exit that spends nothing further'
   return [
     '### Decisions',
     '',
     `- **approve** — ${c.approve}`,
-    '- **veto** (leave a box unchecked) — runs one resolver pass on the redirects, then re-gates',
+    `- **veto** (leave a box unchecked) — ${c.veto}`,
     ...(c.extend === null ? [] : [`- **extend** (\`→ RUN 1 MORE\`) — ${c.extend} (early-gate only)`]),
-    '- **abort** (`ABORT` on its own line) — ends the run without completing; the only early exit that spends nothing further',
+    `- **abort** (\`ABORT\` on its own line) — ${c.abort}${abortSuffix}`,
   ]
 }
 
 function appendGateSections(lines: string[], input: GateDigestInput, ranked: readonly GateAssumption[]): void {
+  if (input.mode === 'plan') {
+    appendChildren(lines, input.children ?? [])
+    lines.push('', '### Resume', `sdd ${input.runId}`)
+    return
+  }
   appendBlockers(lines, input.blockers)
   if (input.mode === 'early') appendEarlyCapHitSections(lines, input)
   appendNitpicks(lines, input.openNitpicks)
   appendAssumptions(lines, ranked, input.runId)
+}
+
+function appendChildren(lines: string[], children: readonly GateChild[]): void {
+  lines.push('', '### Children (topo order)')
+  for (const child of children) lines.push(`- [ ] ${child.id} ${child.text}`)
 }
 
 function appendBlockers(lines: string[], blockers: readonly GateBlocker[]): void {
