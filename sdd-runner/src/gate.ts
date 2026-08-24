@@ -196,6 +196,9 @@ export async function runGateReopen(
     throw new Error(`gate-${gateVersion}.md does not exist for run ${runId}`)
   }
   const freshVersion = settledGate.version + 1
+  if (settledGate.mode === 'plan') {
+    throw new Error(`run ${runId}: a 'plan' gate cannot be reopened (unreachable before part 3 wiring)`)
+  }
   const reopenedMd = renderUnansweredDigest(await readFile(sourceMdPath, 'utf8'))
   const gateMdPath = path.join(state.runDir, `gate-${freshVersion}.md`)
   await writeFile(gateMdPath, `${reopenedMd}\n`)
@@ -214,9 +217,13 @@ export async function runGateReopen(
 }
 
 function latestSettledGate(
-  gateEvents: readonly { readonly action: string; readonly mode: 'early' | 'final'; readonly version: number }[],
-): { readonly mode: 'early' | 'final'; readonly version: number } | null {
-  let latest: { mode: 'early' | 'final'; version: number } | null = null
+  gateEvents: readonly {
+    readonly action: string
+    readonly mode: 'early' | 'final' | 'plan'
+    readonly version: number
+  }[],
+): { readonly mode: 'early' | 'final' | 'plan'; readonly version: number } | null {
+  let latest: { mode: 'early' | 'final' | 'plan'; version: number } | null = null
   for (const event of gateEvents) {
     if (event.action === 'answered') latest = { mode: event.mode, version: event.version }
   }

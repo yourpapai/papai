@@ -27,12 +27,13 @@ export { settleApprovedGate } from './gate-resume-tail.js'
 import { desugarFlags } from './gate-session.js'
 import type { GateSessionView } from './gate-session.js'
 import { resumeGate, vetoRedirects } from './gate.js'
+import type { GateOutcome } from './gate.js'
 import { createMaterializer } from './materialize.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
 import type { Verbosity } from './renderer.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
-import { loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
+import { loadRunState, narrowGateMode, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { removeHolder, writeHolder } from './stop-controller.js'
 import { runTuiGateSession } from './tui-gate-session.js'
@@ -132,12 +133,13 @@ export interface GateResumeContext {
 
 function buildSessionView(
   state: RunState,
+  gateMode: 'early' | 'final',
   assumptions: readonly GateAssumption[],
   findings: { blockers: GateFinding[]; material: GateFinding[] },
   requiredAck: string | undefined,
 ): GateSessionView {
   return {
-    gateMode: state.gate?.mode ?? 'final',
+    gateMode,
     items: [
       ...findings.material.map((finding) => ({
         kind: 'finding' as const,
@@ -202,6 +204,32 @@ async function collectGateDecision(
   return true
 }
 
+function collectGateOutcome(
+  ctx: GateResumeContext,
+  gateMode: 'early' | 'final',
+  assumptions: readonly GateAssumption[],
+  findings: { blockers: readonly GateFinding[]; material: readonly GateFinding[] },
+  requiredAck: string | undefined,
+): Promise<GateOutcome> {
+  const { deps, state, emit, version, changeDir, sidecarDir, agent } = ctx
+  return resumeGate(
+    {
+      emit,
+      runDir: state.runDir,
+      changeDir,
+      driftCheck: buildDriftCheck(agent, state, changeDir, sidecarDir, deps.config.repoRoot),
+    },
+    {
+      version,
+      assumptions,
+      blockers: findings.blockers,
+      gateMode,
+      ...(findings.material.length > 0 ? { findings: findings.material } : {}),
+      ...(requiredAck === undefined ? {} : { requiredAck }),
+    },
+  )
+}
+
 export async function runGateResume(
   deps: OrchestratorDeps,
   runId: string,
@@ -216,9 +244,10 @@ export async function runGateResume(
   const changeDir = path.join(deps.config.repoRoot, 'openspec', 'changes', state.changeName)
   const sidecarDir = path.join(state.runDir, 'sidecars')
   const gateMdPath = path.join(state.runDir, `gate-${version}.md`)
-  const { assumptions, reviewResult, requiredAck } = await prepareResumeInput(sidecarDir, state.round, state.gate.mode)
+  const gateMode = narrowGateMode(state.gate.mode)
+  const { assumptions, reviewResult, requiredAck } = await prepareResumeInput(sidecarDir, state.round, gateMode)
   const findings = findingsOf(reviewResult)
-  const view = buildSessionView(state, assumptions, findings, requiredAck)
+  const view = buildSessionView(state, gateMode, assumptions, findings, requiredAck)
   const proceed = await collectGateDecision(deps, options, view, gateMdPath)
   if (!proceed) return { runId: state.runId, outcome: 'abandoned', version }
   writeHolder(state.runDir)
@@ -226,22 +255,7 @@ export async function runGateResume(
   try {
     const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
     const ctx: GateResumeContext = { deps, state, emit, version, changeDir, sidecarDir, agent }
-    const outcome = await resumeGate(
-      {
-        emit,
-        runDir: state.runDir,
-        changeDir,
-        driftCheck: buildDriftCheck(agent, state, changeDir, sidecarDir, deps.config.repoRoot),
-      },
-      {
-        version,
-        assumptions,
-        blockers: findings.blockers,
-        gateMode: state.gate.mode,
-        ...(findings.material.length > 0 ? { findings: findings.material } : {}),
-        ...(requiredAck === undefined ? {} : { requiredAck }),
-      },
-    )
+    const outcome = await collectGateOutcome(ctx, gateMode, assumptions, findings, requiredAck)
     if (outcome.kind === 'aborted') return await finalizeGate(deps, state, 'aborted', version)
     if (outcome.kind === 'approved') return await settleApprovedGate(ctx, reviewResult)
     if (outcome.kind === 'extend') return await runExtendRound(deps, state, emit, agent, version)

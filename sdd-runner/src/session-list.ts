@@ -20,7 +20,7 @@ import { aggregateUsage } from './usage-aggregate.js'
 
 export interface PendingDecision {
   readonly kind: 'gate'
-  readonly mode: 'early' | 'final'
+  readonly mode: 'early' | 'final' | 'plan'
   readonly version: number
 }
 
@@ -66,7 +66,7 @@ function tailEvents(logPath: string): SddEvent[] {
 }
 
 function pendingDecisionOf(state: {
-  gate: { mode: 'early' | 'final'; version: number } | null
+  gate: { mode: 'early' | 'final' | 'plan'; version: number } | null
   status: string
 }): SessionRow['pendingDecision'] {
   if (state.status === 'stopped') return { kind: 'stop' }

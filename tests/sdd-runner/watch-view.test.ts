@@ -43,6 +43,7 @@ function replay(overrides: Partial<ReplayState> = {}): ReplayState {
     lastVerdict: null,
     gate: null,
     autoDecisions: [],
+    children: {},
     ...overrides,
   }
 }

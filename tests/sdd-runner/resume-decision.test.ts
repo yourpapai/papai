@@ -53,6 +53,7 @@ const emptyReplay: ReplayState = {
   lastVerdict: null,
   gate: null,
   autoDecisions: [],
+  children: {},
 }
 
 function stateOf(overrides: Record<string, unknown> = {}): PersistedRunState {

@@ -30,8 +30,13 @@ export interface ReplayState {
   readonly round: { readonly current: number; readonly cap: number } | null
   readonly perRound: readonly DigestRecord[]
   readonly lastVerdict: DigestRecord | null
-  readonly gate: { readonly mode: 'early' | 'final'; readonly version: number; readonly answered: boolean } | null
+  readonly gate: {
+    readonly mode: 'early' | 'final' | 'plan'
+    readonly version: number
+    readonly answered: boolean
+  } | null
   readonly autoDecisions: readonly AutoDecisionRecord[]
+  readonly children: Readonly<Record<string, { readonly status: 'pending' | 'running' | 'done' | 'failed' }>>
 }
 
 interface RoundDigest {
@@ -59,7 +64,29 @@ export function initialReplayState(): ReplayState {
     lastVerdict: null,
     gate: null,
     autoDecisions: [],
+    children: {},
   }
+}
+
+function foldGateEvent(state: ReplayState, event: EventInput): ReplayState | null {
+  if (event.type !== 'gate') return null
+  if (event.action === 'presented')
+    return { ...state, gate: { mode: event.mode, version: event.version, answered: false } }
+  return state.gate === null ? state : { ...state, gate: { ...state.gate, answered: true } }
+}
+
+// The plan event carries childCount + digest (no ids): a fresh plan resets
+// the fold — every child pending again, stale statuses of a superseded plan
+// dropped; ids materialize on first child_spawned/child_done mention.
+function foldChildEvent(state: ReplayState, event: EventInput): ReplayState | null {
+  if (event.type === 'plan') return { ...state, children: {} }
+  if (event.type === 'child_spawned') {
+    return { ...state, children: { ...state.children, [event.child]: { status: 'running' } } }
+  }
+  if (event.type === 'child_done') {
+    return { ...state, children: { ...state.children, [event.child]: { status: event.outcome } } }
+  }
+  return null
 }
 
 function foldEvent(state: ReplayState, event: EventInput, pending: Map<number, RoundDigest>): ReplayState {
@@ -105,11 +132,10 @@ function foldEvent(state: ReplayState, event: EventInput, pending: Map<number, R
     }
     return { ...state, autoDecisions: [...state.autoDecisions, record] }
   }
-  if (event.type === 'gate') {
-    if (event.action === 'presented')
-      return { ...state, gate: { mode: event.mode, version: event.version, answered: false } }
-    return state.gate === null ? state : { ...state, gate: { ...state.gate, answered: true } }
-  }
+  const gate = foldGateEvent(state, event)
+  if (gate !== null) return gate
+  const child = foldChildEvent(state, event)
+  if (child !== null) return child
   return state
 }
 

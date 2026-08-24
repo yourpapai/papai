@@ -16,7 +16,7 @@ import type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
 import { nowOf } from './gate-digest.js'
 import { runPolicyLadder } from './gate-prelude.js'
 import { consumeSteerFile } from './review-loop.js'
-import { loadRunState, saveRunState } from './run-state.js'
+import { loadRunState, narrowGateMode, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 
 /**
@@ -239,7 +239,7 @@ function tickDelay(): Promise<void> {
 }
 
 function steerOptionsFor(steer: SteerLanding, state: RunState, deps: OrchestratorDeps): GateResumeOptions {
-  const translated = translateSteer(steer, state.gate?.mode ?? 'final')
+  const translated = translateSteer(steer, narrowGateMode(state.gate?.mode ?? 'final'))
   if (translated.warn !== null) deps.stdout?.(translated.warn)
   const consume = consumeSteerFile(state.runDir)
   for (const warning of consume.warnings) deps.stdout?.(`steer: ${warning}`)
@@ -269,7 +269,7 @@ function conservativeBranchApplies(deps: OrchestratorDeps, claimed: RunState): P
     },
     { outcome: 'converged', rounds: claimed.round, openBlockers: [], openMaterial: [], openNitpicks: [] },
     {
-      mode: claimed.gate?.mode ?? 'final',
+      mode: narrowGateMode(claimed.gate?.mode ?? 'final'),
       version: claimed.gate?.version ?? 1,
       events: [],
       costUsd: 0,

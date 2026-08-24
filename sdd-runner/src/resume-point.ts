@@ -37,12 +37,37 @@ function reviewSettled(replay: ReplayState): boolean {
   return replay.stages.decompose !== 'pending'
 }
 
+interface PendingChild {
+  readonly id: string
+  readonly position: number
+  readonly total: number
+}
+
+/** Next child in topo order whose status is not done; a missing map counts as all-pending (D10). */
+function nextPendingChild(state: PersistedRunState): PendingChild | null {
+  if (state.plan === undefined) return null
+  const childIds = state.plan.childIds
+  const children = state.children ?? {}
+  for (const [index, id] of childIds.entries()) {
+    if (children[id]?.status !== 'done') return { id, position: index + 1, total: childIds.length }
+  }
+  return null
+}
+
 export function deriveResumePoint(
   state: PersistedRunState,
   artifacts: Record<string, string>,
   replay: ReplayState,
 ): ResumePoint {
   if (state.gate !== null) return { stage: 'gate', round: state.round, reason: 'gate-pending' }
+  const pendingChild = nextPendingChild(state)
+  if (pendingChild !== null) {
+    return {
+      stage: 'decompose',
+      round: state.round,
+      reason: `children pending: next ${pendingChild.id} (${pendingChild.position} of ${pendingChild.total})`,
+    }
+  }
   if (state.depth === null) return { stage: 'intake', round: 0, reason: 'depth not classified' }
   if (!draftComplete(state, artifacts)) return { stage: 'draft', round: 0, reason: 'draft artifacts incomplete' }
   if (!reviewSettled(replay)) {

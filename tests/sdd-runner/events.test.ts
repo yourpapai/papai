@@ -8,8 +8,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { AgentUsageSchema, appendEvent, readEvents } from '../../sdd-runner/src/events.js'
-import { EventInputSchema } from '../../sdd-runner/src/events.js'
+import { AgentUsageSchema, appendEvent, readEvents, stampEvent } from '../../sdd-runner/src/events.js'
+import { EventInputSchema, SddEventSchema } from '../../sdd-runner/src/events.js'
 
 const tmpDirs: string[] = []
 
@@ -214,6 +214,79 @@ describe('L2 semantic events', () => {
     const log = makeLog()
     appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1 }, at('00'))
     expect(readEvents(log)[0]).toMatchObject({ type: 'gate', mode: 'early', version: 1 })
+  })
+})
+
+describe('decomposition events (part 1 data layer)', () => {
+  it('stamps a plan event with childCount and digest through both unions', () => {
+    const input = { altitude: 'L2', type: 'plan', childCount: 3, digest: 'a'.repeat(16) } as const
+    const stamped = stampEvent(input, 7, '2026-08-10T10:00:00.000Z')
+    expect(stamped).toMatchObject({
+      seq: 7,
+      ts: '2026-08-10T10:00:00.000Z',
+      type: 'plan',
+      childCount: 3,
+      digest: 'a'.repeat(16),
+    })
+    expect(EventInputSchema.parse(input)).toMatchObject({ type: 'plan', childCount: 3 })
+    const log = makeLog()
+    appendEvent(log, input, at('00'))
+    expect(readEvents(log)[0]).toMatchObject({ seq: 1, type: 'plan', childCount: 3, digest: 'a'.repeat(16) })
+  })
+
+  it('stamps child_spawned and child_done events through both unions', () => {
+    const spawned = stampEvent(
+      { altitude: 'L2', type: 'child_spawned', child: 'auth-module' },
+      1,
+      '2026-08-10T10:00:00.000Z',
+    )
+    expect(spawned).toMatchObject({ type: 'child_spawned', child: 'auth-module' })
+    const done = stampEvent(
+      { altitude: 'L2', type: 'child_done', child: 'auth-module', outcome: 'done' },
+      2,
+      '2026-08-10T10:00:01.000Z',
+    )
+    expect(done).toMatchObject({ type: 'child_done', child: 'auth-module', outcome: 'done' })
+    expect(
+      SddEventSchema.parse({ altitude: 'L2', type: 'child_done', child: 'x', outcome: 'failed', seq: 3, ts: 't' }),
+    ).toMatchObject({ outcome: 'failed' })
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'auth-module' }, at('00'))
+    appendEvent(log, { altitude: 'L2', type: 'child_done', child: 'auth-module', outcome: 'failed' }, at('01'))
+    const events = readEvents(log)
+    expect(events.map((e) => e.type)).toEqual(['child_spawned', 'child_done'])
+    expect(events[1]).toMatchObject({ child: 'auth-module', outcome: 'failed' })
+  })
+
+  it('rejects malformed decomposition events', () => {
+    const log = makeLog()
+    expect(() => appendEvent(log, { altitude: 'L2', type: 'plan', childCount: 0, digest: 'd' }, at('00'))).toThrow()
+    expect(() => appendEvent(log, { altitude: 'L2', type: 'plan', childCount: 2 }, at('00'))).toThrow()
+    expect(() => appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: '' }, at('00'))).toThrow()
+    expect(() =>
+      appendEvent(log, { altitude: 'L2', type: 'child_done', child: 'x', outcome: 'skipped' }, at('00')),
+    ).toThrow()
+    expect(fs.existsSync(log)).toBe(false)
+  })
+
+  it('parses a gate event with mode plan', () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 1 }, at('00'))
+    expect(readEvents(log)[0]).toMatchObject({ type: 'gate', mode: 'plan', version: 1 })
+    expect(
+      EventInputSchema.parse({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'plan', version: 1 }),
+    ).toMatchObject({ mode: 'plan' })
+  })
+
+  it('old event lines still parse unchanged alongside the new variants', () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'stage_enter', stage: 'intake' }, at('00'))
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: 1 }, at('01'))
+    appendEvent(log, { altitude: 'L2', type: 'plan', childCount: 2, digest: 'feedface' }, at('02'))
+    const events = readEvents(log)
+    expect(events).toHaveLength(3)
+    expect(events[1]).toMatchObject({ type: 'gate', mode: 'final' })
+    expect(events[2]).toMatchObject({ type: 'plan', childCount: 2 })
   })
 })
 

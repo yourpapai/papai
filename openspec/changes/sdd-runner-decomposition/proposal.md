@@ -1,60 +1,61 @@
-# Proposal: sdd-runner-decomposition
-
-## Why
-
-`sdd-runner` pushes every admitted task through exactly one OpenSpec change, so an oversized request still yields a single best-effort artifact set that arrives under-explored, thin on scenarios, and too rough for production grade. The pipeline needs to recognize "bigger than one change" and recurse: split the work into independently shippable child changes and run the full pipeline per child.
-
-## What Changes
-
-- Intake gains an oversize verdict: alongside the S/M/L depth profile it classifies whether a task exceeds single-change capacity and, when it does, produces a decomposition plan instead of scaffolding one change.
-- A planning step drafts child change definitions (name, scope, acceptance signals) and validates them: each child must be independently admissible, the children plus recorded declined scope must jointly account for the whole parent intent with nothing dropped or duplicated, and child count/depth must fit enforced operational bounds held as compiled constants, not config keys (recursion allowed but bounded).
-- The validated plan is presented at a human gate (or settled by the autonomy ladder under its never-cut invariants) before any child starts.
-- Each approved child executes as a full nested `sdd-runner` run — same stages, gates, budget, event log — and a child may itself be decomposed.
-- Run state, reports, cost aggregation, and live views gain a parent/child tree: a parent completes only when every child completes; abort/veto propagate downward; every node stays individually resumable.
-- Runs receiving a negative oversize verdict behave exactly as today.
+# sdd-runner-decomposition (part 1 of 3): plan module, schemas, events/state/replay foundations
 
 ## Capabilities
 
-### New Capabilities
+None — skip_specs proposed because this part is a pure data layer (new modules plus optional/additive schema fields) with no downstream-observable contract change; capability deltas land with parts 2–3 when decomposition behavior is wired.
 
-- `sdd-runner-decomposition`: oversize detection at intake, decomposition planning and validation, gated plan approval, nested per-child pipeline execution with a recursion bound, and parent/child run-tree state, reporting, and resume semantics.
+## Maintainer revisions applied (this rewrite)
 
-  Without it, large requests keep collapsing into single shallow changes, and multi-change efforts must be shepherded manually outside the runner, losing gates, event logs, and cost roll-up.
+1. **No max children.** The `MAX_CHILDREN = 5` constant and the `1..MAX_CHILDREN` plan-level constraint are removed from the design entirely. `PlanSchema` enforces only structural validity: at least one child (`.min(1)` — a plan with zero children is not a plan; that is a structural floor, not a size cap). A regression test pins that a plan with 8+ children validates and materializes, so a cap cannot be silently reintroduced. This matches the repo's own doctrine (`docs/architecture/sdd-pipeline.md`, "Admission vs division"): splitting is this repository's settled answer to size, and a minimality bound must never argue with a checker built to split — a 5-child ceiling would be exactly such a bound.
+2. **`PLAN_REPLAN_PASSES` explained** (see next section) — kept, with its semantics pinned, because tasks.md 2.1 defines it and part 2 consumes it; if the explanation does not convince, it is a one-line deletion before part 2 lands.
 
-  Existing coverage: `decompose.ts` and the atomicity stage already split *tasks within one change*; neither creates additional changes nor spawns nested runs. The pipeline is the right seam to extend; these spec-level behaviors are new, hence a separate capability.
+## What `PLAN_REPLAN_PASSES` is about
 
-### Modified Capabilities
+Every stage spawn already retries schema-validation failures once: `runStageAgent` appends `Previous attempt failed validation: <zod error>` to the prompt and respawns, bounded by `MAX_VALIDATION_ATTEMPTS = 2` (`sdd-runner/src/agent-layer.ts:119`). That mechanism only sees **JSON-shape** failures, because the sidecar is parsed against the spawn's `outputSchema`.
 
-- `sdd-runner-pipeline` (MODIFIED: completion invariant): "No completion path skips the task list"
-  quantifies over *any* run reaching `completed` and names abort as the only other exit, but a
-  composite parent completes with no change directory or `tasks.md` of its own — its quality control
-  is the plan gate plus each child's full pipeline (design D5), so the invariant as written would be
-  falsified. The delta scopes the tasks.md invariant to single-change runs and states the
-  composite-parent completion criterion instead; the early-gate approval path itself is untouched
-  (composite parents never enter it).
-- `sdd-runner-output` (MODIFIED: frozen byte contract): non-TTY output is byte-frozen with exactly
-  one permitted addition (the done-line model id), but composite runs necessarily emit more bytes —
-  at minimum `[plan]`/`[execute]` stage lines through the same LineRenderer contract. The delta
-  keeps single-change runs byte-identical (matching this change's zero-observable-change goal for
-  non-oversized runs) and declares the decomposition stage/tree lines a permitted addition on
-  composite runs only.
+A plan can pass that shape check and still be **structurally invalid** in ways only `validatePlan`/`topoSortChildren` detect: duplicate child ids, dependencies naming unknown ids, dependency cycles (Kahn failure). Those checks run *after* the spawn returns, outside the generic retry. `PLAN_REPLAN_PASSES` bounds how many times the planner agent may be re-invoked with the structural errors appended to its prompt before the run **fails loudly** with those errors:
 
-Unmodified capabilities, for the record:
+```
+planner spawn → PlanSidecarSchema ✓ (generic retry already handled shape)
+            → validatePlan ✗ (dup id / unknown dep / cycle)
+            → replan pass 1..PLAN_REPLAN_PASSES: respawn planner with structural errors in prompt
+            → still invalid ⇒ throw, naming the structural errors — never an unbounded planner loop
+```
 
-- **`sdd-runner-autonomy`**: inside any node of a run tree, the ladder's spend input becomes committed-plus-projected *subtree* spend instead of the node's own spend. Every autonomy SHALL survives unchanged — R4's "exceedance causes a human gate" fires in strictly more cases and never fewer, the never-cut invariants hold, and no rule gains an auto-decision the current text forbids. Single (tree-less) runs evaluate identically because their subtree equals themselves; only the ladder's view tightens, which is normative in this change's "Tree-wide cost accounting and tree visibility" requirement.
-- **`sdd-runner-cli`**: the routing verb's contract — resolve id/prefix, route to the pending point, fail loudly on ambiguity — is unchanged; routing *into* a child is new destination selection specified by the delta spec's "Per-node resume and tree-aware routing" requirement.
+With `PLAN_REPLAN_PASSES = 1`: one replan attempt, then fail — the same "one decision binds one round of spend" shape as the extend directive and the veto resolver pass, and the plan-stage analogue of `MAX_VALIDATION_ATTEMPTS`. It is a compiled constant beside `WALL_CLOCK_TIMEOUT_MS`/`INACTIVITY_TIMEOUT_MS` (no config key; the five-key strict schema is untouched). **This session only defines it; its sole consumer is part 2's planner wiring** — nothing in part 1 reads it.
 
-## Impact
+## Goal
 
-- Code (`sdd-runner/src/`): `intake.ts` (oversize verdict), `orchestrator.ts`/`stage-machine.ts`/`run-state.ts` (plan stage + tree state), `report.ts`/`replay.ts`/live views (tree rendering), `auto-policy.ts` (tree-wide budget), `cli-routing.ts`/`continue.ts` (child-aware routing); reuses the `opencode run` driver and decompose/atomicity seams.
-- Artifacts: decomposition plan sidecar + child-run links in the parent run dir; children use the standard run-dir layout.
-- Docs/specs: `docs/architecture/sdd-pipeline.md` gains a decomposition section; new `specs/sdd-runner-decomposition/spec.md` carries ADDED requirements plus MODIFIED deltas for `sdd-runner-pipeline` and `sdd-runner-output`; `sdd-runner-autonomy` and `sdd-runner-cli` specs untouched.
-- Dependencies: none added.
-- Scope: runner-only operator tooling — no platform/task instances, no storage or config-context scopes affected.
+Lay the parent/child run-decomposition data layer in `sdd-runner/` — a validated plan document, a planner role with the replan bound, and plan/child events with state/replay support — with zero change to existing runtime behavior. Implements tasks 1.1, 1.2, 2.1, 2.2, 3.1, 3.2, 3.3 only; intake (2.3), orchestrator, and gate wiring are parts 2–3.
 
-## Non-goals
+## Files to touch
 
-- Parallel child execution — children run sequentially at first.
-- Re-decomposing after intake; mid-run steering stays veto/extend only.
-- Merging child outputs back into a parent change folder — links and roll-ups only.
-- Chat-side surfaces (`/sdd:auto` UX) beyond passing the task file through unchanged.
+- **new `sdd-runner/src/plan.ts`** (1.1–1.2)
+  - `PlanSchema` (Zod v4): each child has `id` (`z.string().min(1)`), `instruction` (`z.string().min(1)`), `deps: z.array(z.string().min(1)).default([])` (other child ids), optional `capabilities: z.array(z.string().min(1))`. `children: z.array(ChildSchema).min(1)` — **no upper bound**.
+  - `validatePlan(input: unknown): Plan` — parse plus structural checks: unique child ids, every dep resolves to a known child id, no self-dependency; descriptive errors naming the offending ids.
+  - `topoSortChildren(plan)` — deterministic Kahn topological sort over dep edges (ties broken by declaration order so output is stable); throws naming the cycle members or unresolvable refs.
+  - Child task-file materialization: one markdown file per child at `runs/<parent-runId>/children/<n>-<name>.md` (n = 1-based topo index, name = slugified child id, reusing the slug shape of `deriveChangeName` in `config.ts`), each carrying a `GENERATED by sdd-runner` marker header (the `materialize.ts` convention) plus the child's instruction, deps, and capabilities. Written through an **injectable fs seam** (a deps parameter with `mkdir`/`writeFile` defaulting to `node:fs/promises`) so tests stay hermetic — repo is DI-first.
+- **`sdd-runner/src/config.ts`** (2.1): add `'planner'` to `AgentRoleSchema`; add `export const PLAN_REPLAN_PASSES = 1` beside the compiled timeout constants. **No `MAX_CHILDREN`. No new config keys** — the five-key strict `RunnerConfigSchema` is untouched.
+- **`sdd-runner/src/agent-layer.ts`** (2.2): `DepthClassificationSchema` gains `capabilities: z.array(z.string().min(1)).optional()` so every existing estimator sidecar still validates.
+- **`sdd-runner/src/events.ts`** (3.1): `GateEvent.mode` enum extended to `['early', 'final', 'plan']`; three new L2 variants added to **both** `EventInputSchema` and `SddEventSchema` unions following existing variant conventions: `plan` (plan materialized: child count + digest), `child_spawned` (child id), `child_done` (child id + outcome). `stampEvent`/`appendEvent`/`readEvents` unchanged.
+- **`sdd-runner/src/run-state.ts`** (3.2): `PersistedRunStateSchema` gains optional `plan` (materialized plan record: child ids in topo order + digest) and `children` (per-child status records keyed by id); the inline gate-object mode enum aligns with events so a `'plan'` gate can persist. **Old state files must still parse** — all additions optional/defaulted, matching the `gateDeadlineAt` precedent. `deriveResumePoint` gains a parent branch: when the state carries a plan with children, the resume point reflects child progress (next pending child) ahead of the existing fallthrough, expressed in the existing `StageId` vocabulary and reason string (`StageIdSchema` is untouched). Non-parent states keep byte-identical decisions.
+- **`sdd-runner/src/replay.ts`** (3.3): `ReplayState` gains a `children` fold — the `plan` event seeds the child list, `child_spawned`/`child_done` transition per-child status; `initialReplayState()` initializes it empty; `foldEvent` handles the three new types; logs without them replay to a state equal to today's plus the empty `children` field.
+- **No `index.ts` change.** `index.ts` is the CLI entry (`runEntry` wiring), not a barrel — every `sdd-runner` module is imported directly by path and nothing imports through it. The new modules are importable as `./plan.js` etc.; that is the whole downstream surface for this part.
+- **Tests, red-first per task**: new `tests/sdd-runner/plan.test.ts` (hermetic via the injected fs fake; one default-seam smoke test against a tmpdir); extend `tests/sdd-runner/{config,agent-layer,events,run-state,replay}.test.ts` following the local DI patterns (no `mock.module()` where DI works, no lint-disable/type-ignore, no comments unless asked).
+- **`openspec/changes/sdd-runner-decomposition/tasks.md`**: tick 1.1–3.3 as each lands.
+
+## Intended behavior change
+
+None observable. No emitter or consumer of the new events/fields is added; `intake.ts`, `orchestrator.ts`, and every gate file are untouched, as is `.github/workflows/`. Additive-only schemas keep old `state.json`, `events.ndjson`, and depth-classification sidecars parsing identically (pinned by tests).
+
+## Out of scope
+
+Task 2.3 (intake behavior), orchestrator/gate wiring, child-run spawning/scheduling, any consumer of `PLAN_REPLAN_PASSES` — parts 2–3.
+
+## Verification
+
+- Red-first: each task's failing tests land before its implementation; green before moving on.
+- Edit loop `bun run test:affected`; before finishing one full `bun run test` plus `bun run typecheck` and `bun run lint` (never two full suites concurrently).
+- Backward-compat pins: pre-change `state.json` parses via `PersistedRunStateSchema`; pre-change `events.ndjson` replays to unchanged state (plus empty `children`); `DepthClassification` without `capabilities` validates; a `gate` with `mode: 'plan'` persists and reloads.
+- Plan validity pins: **8-child plan validates and materializes 8 files (no cap)**; duplicate ids, unknown deps, self-deps rejected by `validatePlan`; cycles throw in `topoSortChildren`; topo order deterministic under ties; materialization writes only through the injected seam.
+- Finish: commit everything (code, tests, ticked 1.1–3.3 checkboxes) as `sdd-runner-decomposition(1/3): plan module, schemas, events/state/replay foundations`.

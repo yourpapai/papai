@@ -77,6 +77,7 @@ const emptyReplay: ReplayState = {
   lastVerdict: null,
   gate: null,
   autoDecisions: [],
+  children: {},
 }
 
 describe('deriveResumePoint', () => {
@@ -355,5 +356,74 @@ describe('reviewSettled via deriveResumePoint', () => {
     const base = { ...settledBase(), round: 0 }
     const point = deriveResumePoint(base, doneArtifacts, { ...emptyReplay, round: { current: 3, cap: 3 } })
     expect(point).toMatchObject({ stage: 'review', round: 3 })
+  })
+})
+
+describe('deriveResumePoint parent branch (3.2)', () => {
+  const plan3 = { childIds: ['foundation', 'data-layer', 'ui'], digest: '0123456789abcdef' }
+
+  it('returns the first pending child in topo order when no children map exists', () => {
+    const state = { ...createSeeded('/w'), plan: plan3 }
+    const point = deriveResumePoint(state, artifacts(), emptyReplay)
+    expect(point).toMatchObject({ stage: 'decompose', round: 0 })
+    expect(point.reason).toBe('children pending: next foundation (1 of 3)')
+  })
+
+  it('skips done children to the next pending child in topo order', () => {
+    const state = {
+      ...createSeeded('/w'),
+      round: 4,
+      stage: 'decompose' as const,
+      plan: plan3,
+      children: { foundation: { status: 'done' as const }, 'data-layer': { status: 'running' as const } },
+    }
+    const point = deriveResumePoint(state, artifacts(), emptyReplay)
+    expect(point).toMatchObject({ stage: 'decompose', round: 4 })
+    expect(point.reason).toBe('children pending: next data-layer (2 of 3)')
+  })
+
+  it('treats a failed child as still pending', () => {
+    const state = {
+      ...createSeeded('/w'),
+      plan: plan3,
+      children: {
+        foundation: { status: 'done' as const },
+        'data-layer': { status: 'failed' as const },
+        ui: { status: 'done' as const },
+      },
+    }
+    const point = deriveResumePoint(state, artifacts(), emptyReplay)
+    expect(point.reason).toBe('children pending: next data-layer (2 of 3)')
+  })
+
+  it('a pending gate still wins over the parent branch', () => {
+    const state = {
+      ...createSeeded('/w'),
+      round: 2,
+      stage: 'gate' as const,
+      gate: { mode: 'plan' as const, version: 1 },
+      plan: plan3,
+    }
+    expect(deriveResumePoint(state, artifacts(), emptyReplay)).toMatchObject({
+      stage: 'gate',
+      round: 2,
+      reason: 'gate-pending',
+    })
+  })
+
+  it('an all-done plan falls through to the cascade, deciding identically to a non-parent state', () => {
+    const base = createSeeded('/w')
+    const parent = {
+      ...base,
+      plan: plan3,
+      children: {
+        foundation: { status: 'done' as const },
+        'data-layer': { status: 'done' as const },
+        ui: { status: 'done' as const },
+      },
+    }
+    expect(deriveResumePoint(parent, artifacts(), emptyReplay)).toEqual(
+      deriveResumePoint(base, artifacts(), emptyReplay),
+    )
   })
 })

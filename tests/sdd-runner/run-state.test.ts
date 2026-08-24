@@ -10,17 +10,17 @@ import path from 'node:path'
 
 import { appendEvent } from '../../sdd-runner/src/events.js'
 import { ROUND_CAPS } from '../../sdd-runner/src/review-model.js'
+import { listPendingGates } from '../../sdd-runner/src/run-index.js'
 import {
   PersistedRunStateSchema,
   allocateSessionId,
   createRunState,
-  listPendingGates,
   loadRunState,
-  readAllRunStates,
+  narrowGateMode,
   resolveRoundCap,
-  resolveRunId,
   saveRunState,
 } from '../../sdd-runner/src/run-state.js'
+import type { PersistedRunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
 
@@ -189,42 +189,6 @@ describe('saveRunState', () => {
   })
 })
 
-describe('readAllRunStates', () => {
-  it('returns every readable run, most recently updated first', async () => {
-    const workDir = makeWorkDir()
-    const older = await createRunState({ workDir, repoRoot: '/repo', changeName: 'older-change' })
-    await saveRunState({ ...older, status: 'stopped' }, new Date('2026-01-01T00:00:01Z'))
-    const newer = await createRunState({ workDir, repoRoot: '/repo', changeName: 'newer-change' })
-    await saveRunState(
-      { ...newer, stage: 'gate', gate: { mode: 'early', version: 1 } },
-      new Date('2026-01-01T00:00:02Z'),
-    )
-
-    const states = await readAllRunStates(workDir)
-
-    expect(states.map((s) => s.runId)).toEqual([newer.runId, older.runId])
-    expect(states[0]).toMatchObject({ runId: newer.runId, status: 'running', gate: { mode: 'early', version: 1 } })
-    expect(states[1]).toMatchObject({ runId: older.runId, status: 'stopped', gate: null })
-  })
-
-  it('skips runs whose state.json is missing or malformed', async () => {
-    const workDir = makeWorkDir()
-    const good = await createRunState({ workDir, repoRoot: '/repo', changeName: 'good-change' })
-    await saveRunState(good)
-    fs.mkdirSync(path.join(workDir, 'runs', 'broken-run'), { recursive: true })
-    fs.writeFileSync(path.join(workDir, 'runs', 'broken-run', 'state.json'), '{ not json')
-    fs.mkdirSync(path.join(workDir, 'runs', 'empty-run'), { recursive: true })
-
-    const states = await readAllRunStates(workDir)
-
-    expect(states.map((s) => s.runId)).toEqual([good.runId])
-  })
-
-  it('returns an empty list when the workDir has no runs directory', async () => {
-    expect(await readAllRunStates(makeWorkDir())).toEqual([])
-  })
-})
-
 describe('roundCap', () => {
   it('loadRunState populates roundCap from ROUND_CAPS[depth] when the field is missing', async () => {
     const workDir = makeWorkDir()
@@ -261,6 +225,25 @@ describe('roundCap', () => {
   })
 })
 
+function createSeeded(workDir: string): PersistedRunState {
+  return {
+    runId: 'seeded-run',
+    repoRoot: '/repo',
+    workDir,
+    changeName: 'add-thing',
+    stage: 'review' as const,
+    depth: null,
+    round: 0,
+    gate: null,
+    status: 'running' as const,
+    autoExtendsUsed: 0,
+    gateDeadlineAt: null,
+    gateDeadlineReArmed: false,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }
+}
+
 describe('event replay integration', () => {
   it('rebuilds renderer state from the run dir events log after a simulated kill', async () => {
     const workDir = makeWorkDir()
@@ -275,107 +258,6 @@ describe('event replay integration', () => {
     expect(replay.stages.intake).toBe('done')
     expect(replay.stages.draft).toBe('active')
     expect(replay.depth).toBe('S')
-  })
-})
-
-async function seedRun(
-  workDir: string,
-  runId: string,
-  opts: { gate?: { mode: 'early' | 'final'; version: number } | null; changeName?: string; updatedAt?: string },
-): Promise<void> {
-  const created = await createRunState({
-    workDir,
-    repoRoot: '/repo',
-    changeName: opts.changeName ?? 'add-thing',
-    runId,
-  })
-  const gate = opts.gate === undefined ? { mode: 'early' as const, version: 1 } : opts.gate
-  const stamp = opts.updatedAt ?? created.updatedAt
-  await saveRunState({ ...created, gate, updatedAt: stamp }, new Date(stamp))
-}
-
-describe('listPendingGates', () => {
-  it('scans runs/*/state.json, keeps only gate-pending runs, and returns change name, gate version, and wait time sorted by recency', async () => {
-    const workDir = makeWorkDir()
-    await seedRun(workDir, 'run-old', {
-      gate: { mode: 'early', version: 1 },
-      changeName: 'old-change',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    })
-    await seedRun(workDir, 'run-new', {
-      gate: { mode: 'final', version: 3 },
-      changeName: 'new-change',
-      updatedAt: '2026-02-01T00:00:00.000Z',
-    })
-    await seedRun(workDir, 'run-done', { gate: null, updatedAt: '2026-03-01T00:00:00.000Z' })
-
-    const pending = await listPendingGates(workDir)
-    expect(pending.map((entry) => entry.runId)).toEqual(['run-new', 'run-old'])
-    expect(pending[0]).toMatchObject({ runId: 'run-new', changeName: 'new-change', gateVersion: 3 })
-    expect(pending[1]).toMatchObject({ runId: 'run-old', changeName: 'old-change', gateVersion: 1 })
-  })
-
-  it('returns an empty list when no runs exist', async () => {
-    expect(await listPendingGates(makeWorkDir())).toEqual([])
-  })
-
-  it('skips a run whose state.json is corrupt rather than failing the listing', async () => {
-    const workDir = makeWorkDir()
-    await seedRun(workDir, 'run-broken', { gate: { mode: 'early', version: 1 } })
-    fs.writeFileSync(path.join(workDir, 'runs', 'run-broken', 'state.json'), '{"runId": 42}')
-    await seedRun(workDir, 'run-live', { gate: { mode: 'final', version: 1 } })
-    const pending = await listPendingGates(workDir)
-    expect(pending.map((entry) => entry.runId)).toEqual(['run-live'])
-  })
-})
-
-describe('resolveRunId', () => {
-  it('accepts an exact id', async () => {
-    const workDir = makeWorkDir()
-    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
-    expect(await resolveRunId(workDir, '2026-01-01T00-00-00-000Z-abcd1234')).toBe('2026-01-01T00-00-00-000Z-abcd1234')
-  })
-
-  it('accepts an unambiguous prefix among known runs (gate-pending or not)', async () => {
-    const workDir = makeWorkDir()
-    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
-    await seedRun(workDir, '2026-02-01T00-00-00-000Z-ffff0000', { gate: null })
-    expect(await resolveRunId(workDir, '2026-01-01T00')).toBe('2026-01-01T00-00-00-000Z-abcd1234')
-    expect(await resolveRunId(workDir, '2026-02')).toBe('2026-02-01T00-00-00-000Z-ffff0000')
-  })
-
-  it('accepts an exact id even when it is also a prefix of another run id', async () => {
-    const workDir = makeWorkDir()
-    await seedRun(workDir, 'run-1', { gate: { mode: 'early', version: 1 } })
-    await seedRun(workDir, 'run-1-extended', { gate: { mode: 'final', version: 1 } })
-    expect(await resolveRunId(workDir, 'run-1')).toBe('run-1')
-  })
-
-  it('fails on an unknown id naming the input', async () => {
-    const workDir = makeWorkDir()
-    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
-    const resolution = resolveRunId(workDir, 'nope')
-    await expect(resolution).rejects.toThrow(/unknown run id/iu)
-    await expect(resolution).rejects.toThrow(/nope/u)
-  })
-
-  it('fails on an ambiguous prefix listing every matching candidate id', async () => {
-    const workDir = makeWorkDir()
-    await seedRun(workDir, '2026-01-01T00-00-00-000Z-abcd1234', { gate: { mode: 'early', version: 1 } })
-    await seedRun(workDir, '2026-01-01T00-00-00-000Z-ffff0000', { gate: { mode: 'final', version: 1 } })
-    const message = (await errorOf(resolveRunId(workDir, '2026-01-01'))).message
-    expect(message).toMatch(/ambiguous/iu)
-    expect(message).toContain('abcd1234')
-    expect(message).toContain('ffff0000')
-    // one candidate per line, order-free: both candidate lines start with the shared timestamp prefix
-    expect(message.match(/\n {2}2026-01-01/gu)).toHaveLength(2)
-  })
-
-  it('names the runs directory when no runs exist at all', async () => {
-    const workDir = makeWorkDir()
-    const message = (await errorOf(resolveRunId(workDir, 'anything'))).message
-    expect(message).toContain(path.join(workDir, 'runs'))
-    expect(message).toContain('anything')
   })
 })
 
@@ -397,5 +279,79 @@ describe('autoExtendsUsed persistence (8.1)', () => {
     fs.writeFileSync(state.statePath, stateJson.replace(/,\s*"autoExtendsUsed":\s*\d+/u, ''))
     const loaded = await loadRunState(workDir, state.runId)
     expect(loaded.autoExtendsUsed).toBe(0)
+  })
+})
+
+describe('plan/children state fields (3.2)', () => {
+  const plan = { childIds: ['foundation', 'data-layer', 'ui'], digest: '0123456789abcdef' }
+
+  it('parses a pre-change state.json fixture without plan/children unchanged', async () => {
+    const workDir = makeWorkDir()
+    const runId = 'legacy-run'
+    fs.mkdirSync(path.join(workDir, 'runs', runId), { recursive: true })
+    const legacy = {
+      runId,
+      repoRoot: '/repo',
+      workDir,
+      changeName: 'legacy-change',
+      stage: 'review',
+      depth: 'M',
+      round: 2,
+      roundCap: 3,
+      gate: null,
+      status: 'running',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      autoExtendsUsed: 1,
+      gateDeadlineAt: null,
+      gateDeadlineReArmed: false,
+    }
+    fs.writeFileSync(path.join(workDir, 'runs', runId, 'state.json'), JSON.stringify(legacy, null, 2))
+    const parsed = PersistedRunStateSchema.parse(legacy)
+    expect(parsed.plan).toBeUndefined()
+    expect(parsed.children).toBeUndefined()
+    const loaded = await loadRunState(workDir, runId)
+    expect(loaded.changeName).toBe('legacy-change')
+    expect(loaded.plan).toBeUndefined()
+    expect(loaded.children).toBeUndefined()
+  })
+
+  it('round-trips plan and children through save/load', async () => {
+    const workDir = makeWorkDir()
+    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'parent-run' })
+    const children = {
+      foundation: { status: 'done' as const },
+      'data-layer': { status: 'running' as const },
+      ui: { status: 'failed' as const },
+    }
+    await saveRunState({ ...created, plan, children })
+    const loaded = await loadRunState(workDir, created.runId)
+    expect(loaded.plan).toEqual(plan)
+    expect(loaded.children).toEqual(children)
+  })
+
+  it("reloads a persisted gate with mode 'plan' and lists it pending", async () => {
+    const workDir = makeWorkDir()
+    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'parent-run' })
+    await saveRunState({ ...created, gate: { mode: 'plan', version: 1 } })
+    const loaded = await loadRunState(workDir, created.runId)
+    expect(loaded.gate).toEqual({ mode: 'plan', version: 1 })
+    const pending = await listPendingGates(workDir)
+    expect(pending[0]).toMatchObject({ runId: created.runId, gateMode: 'plan', gateVersion: 1 })
+  })
+
+  it('rejects a plan with empty childIds and a child status outside the enum', () => {
+    const base: Record<string, unknown> = { ...createSeeded('/w') }
+    expect(PersistedRunStateSchema.safeParse({ ...base, plan: { childIds: [], digest: 'd' } }).success).toBe(false)
+    expect(PersistedRunStateSchema.safeParse({ ...base, plan: { childIds: ['a'], digest: '' } }).success).toBe(false)
+    expect(PersistedRunStateSchema.safeParse({ ...base, children: { x: { status: 'skipped' } } }).success).toBe(false)
+  })
+})
+
+describe('narrowGateMode (part-1 scaffolding)', () => {
+  it('narrows the pre-part-3 modes and refuses plan with the wiring note', () => {
+    expect(narrowGateMode('early')).toBe('early')
+    expect(narrowGateMode('final')).toBe('final')
+    expect(() => narrowGateMode('plan')).toThrow("gate mode 'plan' has no resume path before part 3 wiring")
   })
 })

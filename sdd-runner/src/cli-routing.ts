@@ -6,8 +6,7 @@
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 
-import { listPendingGates, resolveRunId } from './run-state.js'
-import { readAllRunStates } from './run-state.js'
+import { listPendingGates, readAllRunStates, resolveRunId } from './run-index.js'
 
 /**
  * The single routing verb's target resolution (cli spec): an existing

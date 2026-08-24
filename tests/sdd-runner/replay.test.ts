@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { appendEvent } from '../../sdd-runner/src/events.js'
-import { createReplayFolder, replayEvents } from '../../sdd-runner/src/replay.js'
+import { createReplayFolder, initialReplayState, replayEvents } from '../../sdd-runner/src/replay.js'
 
 const tmpDirs: string[] = []
 
@@ -203,6 +203,61 @@ describe('auto_decision fold', () => {
     })
     expect(folder.state.autoDecisions).toHaveLength(1)
     expect(folder.state.autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate', gateVersion: 3 })
+  })
+})
+
+describe('children fold (3.3)', () => {
+  it('pre-change logs fold to today\u2019s state plus an empty children field', () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'stage_enter', stage: 'intake' }, at('00'))
+    appendEvent(log, { altitude: 'L2', type: 'depth', profile: 'S', rationale: 'typo', source: 'override' }, at('01'))
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 1 }, at('02'))
+    const state = replayEvents(log)
+    expect(state.children).toEqual({})
+    expect(initialReplayState().children).toEqual({})
+    expect(createReplayFolder().state.children).toEqual({})
+  })
+
+  it('the plan event seeds the fresh child list — a replan resets every child to pending', () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'plan', childCount: 2, digest: 'aaaa' }, at('00'))
+    appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'alpha' }, at('01'))
+    appendEvent(log, { altitude: 'L2', type: 'child_done', child: 'alpha', outcome: 'done' }, at('02'))
+    expect(replayEvents(log).children).toEqual({ alpha: { status: 'done' } })
+    appendEvent(log, { altitude: 'L2', type: 'plan', childCount: 2, digest: 'bbbb' }, at('03'))
+    expect(replayEvents(log).children).toEqual({})
+  })
+
+  it('child_spawned and child_done transition per-child status', () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'plan', childCount: 3, digest: 'aaaa' }, at('00'))
+    appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'alpha' }, at('01'))
+    const seeded = replayEvents(log)
+    expect(seeded.children).toEqual({ alpha: { status: 'running' } })
+    appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'beta' }, at('02'))
+    appendEvent(log, { altitude: 'L2', type: 'child_done', child: 'alpha', outcome: 'done' }, at('03'))
+    appendEvent(log, { altitude: 'L2', type: 'child_done', child: 'beta', outcome: 'failed' }, at('04'))
+    expect(replayEvents(log).children).toEqual({
+      alpha: { status: 'done' },
+      beta: { status: 'failed' },
+    })
+  })
+
+  it('a first mention of an unseeded child id creates its entry rather than erroring', () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'gamma' }, at('00'))
+    appendEvent(log, { altitude: 'L2', type: 'child_done', child: 'delta', outcome: 'failed' }, at('01'))
+    expect(replayEvents(log).children).toEqual({ gamma: { status: 'running' }, delta: { status: 'failed' } })
+  })
+
+  it('folds the child events incrementally through createReplayFolder', () => {
+    const folder = createReplayFolder()
+    folder.fold({ altitude: 'L2', type: 'plan', childCount: 1, digest: 'aaaa' })
+    expect(folder.state.children).toEqual({})
+    folder.fold({ altitude: 'L2', type: 'child_spawned', child: 'alpha' })
+    expect(folder.state.children).toEqual({ alpha: { status: 'running' } })
+    folder.fold({ altitude: 'L2', type: 'child_done', child: 'alpha', outcome: 'done' })
+    expect(folder.state.children).toEqual({ alpha: { status: 'done' } })
   })
 })
 
