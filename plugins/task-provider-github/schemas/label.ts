@@ -5,12 +5,14 @@
 
 import { z } from 'zod'
 
+/** GitHub label colors are six lowercase hex digits without the leading '#'. */
+export const labelColorRegex = /^[0-9a-f]{6}$/u
+
 /** GitHub REST repository-label shape (repo-level label endpoints). */
 export const GitHubRepoLabelSchema = z.object({
   id: z.number().int(),
   name: z.string(),
-  // GitHub sends six lowercase hex digits without the leading '#'.
-  color: z.string().regex(/^[0-9a-f]{6}$/u),
+  color: z.string().regex(labelColorRegex),
   // GitHub sends `null` (never omits) when the description is unset.
   description: z.string().nullable(),
 })

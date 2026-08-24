@@ -4,16 +4,17 @@
 // See LICENSE in the project root for details.
 
 import type { Label } from 'papai/plugin-types'
+import { providerError } from 'papai/plugin-types'
 import { z } from 'zod'
 
 import { logger } from '../../../src/logger.js'
-import { classifyGitHubError } from '../classify-error.js'
+import { classifyGitHubError, GitHubClassifiedError } from '../classify-error.js'
 import type { GitHubConfig } from '../client.js'
 import { githubFetch, githubPaginate } from '../client.js'
 import { mapIssueLabelToLabel, mapRepoLabelToLabel } from '../mappers.js'
 import { GitHubLabelSchema } from '../schemas/issue.js'
 import type { GitHubRepoLabel } from '../schemas/label.js'
-import { GitHubRepoLabelSchema } from '../schemas/label.js'
+import { GitHubRepoLabelSchema, labelColorRegex } from '../schemas/label.js'
 
 const log = logger.child({ scope: 'provider:github:labels' })
 
@@ -33,6 +34,18 @@ export interface GitHubUpdateLabelParams {
   color?: string
 }
 
+/**
+ * Reject colors GitHub might normalize (uppercase hex) or only reject after a
+ * round-trip ('#'-prefixed), so invalid colors fail deterministically with a
+ * validation-failure classification before any request is sent.
+ */
+const assertValidLabelColor = (color: string): void => {
+  if (labelColorRegex.test(color)) return
+  const message = `Invalid label color "${color}": must be six lowercase hex digits without a leading '#'.`
+  log.warn({ color }, 'Label color rejected')
+  throw new GitHubClassifiedError(message, providerError.validationFailed('color', message))
+}
+
 export async function githubListLabels(config: GitHubConfig): Promise<Label[]> {
   log.debug({ repo: config.repo }, 'listLabels')
   try {
@@ -50,6 +63,7 @@ export async function githubListLabels(config: GitHubConfig): Promise<Label[]> {
 
 export async function githubCreateLabel(config: GitHubConfig, params: GitHubCreateLabelParams): Promise<Label> {
   log.debug({ repo: config.repo, name: params.name }, 'createLabel')
+  if (params.color !== undefined) assertValidLabelColor(params.color)
   const body: Record<string, unknown> = { name: params.name }
   if (params.color !== undefined) body['color'] = params.color
   if (params.description !== undefined) body['description'] = params.description
@@ -73,6 +87,7 @@ export async function githubUpdateLabel(
   params: GitHubUpdateLabelParams,
 ): Promise<Label> {
   log.debug({ repo: config.repo, name }, 'updateLabel')
+  if (params.color !== undefined) assertValidLabelColor(params.color)
   const body: Record<string, unknown> = {}
   // Update-a-label takes `new_name` in the body; `name` would be ignored and
   // the rename would silently no-op.

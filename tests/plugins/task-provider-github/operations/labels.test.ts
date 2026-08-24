@@ -149,6 +149,20 @@ describe('githubCreateLabel', () => {
     assert.ok(caught instanceof GitHubClassifiedError)
     expect(caught.appError).toHaveProperty('code', 'validation-failed')
   })
+
+  test.each(['#ff0000', 'F29513', 'f29'])(
+    'invalid color %s fails with a validation-failure classification before any request',
+    async (color) => {
+      mockLogger()
+      const { fetches, handler } = captureRequests([], () => ({ data: repoLabelResponse(), status: 201 }))
+      setMockFetch(handler)
+      const caught = await githubCreateLabel(config, { name: 'critical', color }).catch((error: unknown) => error)
+      expect(fetches()).toBe(0)
+      assert.ok(caught instanceof GitHubClassifiedError)
+      expect(caught.appError).toHaveProperty('code', 'validation-failed')
+      expect(caught.appError).toHaveProperty('field', 'color')
+    },
+  )
 })
 
 describe('githubUpdateLabel', () => {
@@ -172,6 +186,20 @@ describe('githubUpdateLabel', () => {
     assert.ok(caught instanceof GitHubClassifiedError)
     expect(caught.appError).toHaveProperty('code', 'auth-failed')
   })
+
+  test.each(['#ff0000', 'F29513', 'f29'])(
+    'invalid color %s fails with a validation-failure classification before any request',
+    async (color) => {
+      mockLogger()
+      const { fetches, handler } = captureRequests([], () => ({ data: repoLabelResponse() }))
+      setMockFetch(handler)
+      const caught = await githubUpdateLabel(config, 'bug', { color }).catch((error: unknown) => error)
+      expect(fetches()).toBe(0)
+      assert.ok(caught instanceof GitHubClassifiedError)
+      expect(caught.appError).toHaveProperty('code', 'validation-failed')
+      expect(caught.appError).toHaveProperty('field', 'color')
+    },
+  )
 })
 
 describe('githubDeleteLabel', () => {
