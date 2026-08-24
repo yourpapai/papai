@@ -132,9 +132,10 @@ export async function deriveResumeDecision(
   deps: OrchestratorDeps,
   state: RunState,
 ): Promise<ReturnType<typeof resolveResumeDecision>> {
-  // A parent run owns no change folder — an absent/unreadable folder reads as
-  // "no artifacts" instead of failing the resume (D9).
-  const status = await deps.driver.status(state.changeName).catch(() => null)
+  // A plan parent owns no change folder and its decision never consults
+  // artifacts (pending children route before any artifact check) — the status
+  // call is skipped for parents; every other run's status failure stays loud.
+  const status = state.plan === undefined ? await deps.driver.status(state.changeName) : null
   const artifacts = status === null ? {} : status.artifacts
   return resolveResumeDecision(state, artifacts, replayEvents(logPathFor(state)), readSessionLedger(state.runDir))
 }

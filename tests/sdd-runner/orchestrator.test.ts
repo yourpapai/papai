@@ -23,7 +23,6 @@ import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { runContinue, runGateResume, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
 import type { RunGateResumeResult } from '../../sdd-runner/src/orchestrator.js'
 import { materializeChildFiles } from '../../sdd-runner/src/plan.js'
-import { deriveResumeDecision } from '../../sdd-runner/src/resume-flow.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState } from '../../sdd-runner/src/run-state.js'
@@ -2898,33 +2897,6 @@ describe('plan-parent resume interception (D9)', () => {
     expect(spawn[0]).toMatchObject({ child: 'db-schema', runId: 'db-schema' })
   })
 })
-
-describe('deriveResumeDecision tolerates an absent change folder', () => {
-  it('a driver.status rejection resolves to a decision instead of throwing', async () => {
-    const fixture = makeFixture()
-    const state = await createRunState({
-      workDir: fixture.deps.config.workDir,
-      repoRoot: fixture.repoRoot,
-      changeName: 'folderless-parent',
-    })
-    fs.writeFileSync(path.join(state.runDir, 'events.ndjson'), '')
-    const deps: OrchestratorDeps = {
-      ...fixture.deps,
-      driver: createOpenSpecDriver({ exec: rejectingStatusExec, cwd: fixture.repoRoot }),
-    }
-
-    const decision = await deriveResumeDecision(deps, state)
-
-    expect(typeof decision.stage).toBe('string')
-    expect(typeof decision.reason).toBe('string')
-  })
-})
-
-/** Driver exec double (D9): `openspec status` fails like an absent change folder; the rest succeed. */
-function rejectingStatusExec(args: readonly string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  if (args[1] === 'status') return Promise.reject(new Error('change not found'))
-  return Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 })
-}
 
 describe('runGateResume plan mode (D12)', () => {
   const PLAN = {
