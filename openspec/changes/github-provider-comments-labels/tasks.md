@@ -32,7 +32,7 @@ pins. Reference: `specs/github-comments-labels/spec.md` (what), `design.md` (how
 
 ## 6. Provider wiring
 
-- [ ] 6.1 Update `tests/plugins/task-provider-github/provider.test.ts`: capability set at the existing set-assertion (lines ~103–104); drop now-implemented comment/label methods from the forbidden-unimplemented list (lines ~161–175); add an endpoint-wiring test covering `getComments`, `addComment`, `updateComment`, `removeComment`, `listLabels`, `listTaskLabels`, `getLabelByName` (exact-name filter), `createLabel`, `updateLabel`, `removeLabel`, `addTaskLabel`, `removeTaskLabel` — including numeric-ref lookup (≤1 list call) and direct-name paths; keep `getComment` and reactions in the forbidden list — verify with `bun test tests/plugins/task-provider-github/provider.test.ts`
+- [x] 6.1 Update `tests/plugins/task-provider-github/provider.test.ts`: capability set at the existing set-assertion (lines ~103–104); drop now-implemented comment/label methods from the forbidden-unimplemented list (lines ~161–175); add an endpoint-wiring test covering `getComments`, `addComment`, `updateComment`, `removeComment`, `listLabels`, `listTaskLabels`, `getLabelByName` (exact-name filter), `createLabel`, `updateLabel`, `removeLabel`, `addTaskLabel`, `removeTaskLabel` — including numeric-ref lookup (≤1 list call) and direct-name paths; keep `getComment` and reactions in the forbidden list — verify with `bun test tests/plugins/task-provider-github/provider.test.ts`
 - [ ] 6.2 Implement the methods on `plugins/task-provider-github/provider.ts`, delegating to the operations modules with the resolver from 4.2, until the suite passes — verify with `bun test tests/plugins/task-provider-github/provider.test.ts`
 
 ## 7. Docs
