@@ -42,7 +42,7 @@ Spec: `specs/agent-fix-command/spec.md`; how: design D1–D7.
 
 ## 5. Workflow: pull-request arm and `checks: read` grant (D5)
 
-- [ ] 5.1 Edit `.github/workflows/agent-pipeline.yml` as one landing — the arm, its permission grant, and the comment that documents the grant verify only together. Red-first: run `bun test tests/opencode-agent/workflow.test.ts` and confirm it fails on the arm-vs-`SLASH_COMMANDS` lockstep check (the vocabulary entry from 1.3 made the hand-maintained `contains` list stale). Then add `contains(github.event.comment.body, '/fix')` to the third arm's command group, add `checks: read` beside `actions: read` in the workflow-level `permissions:` block, and widen that block's "What a CI-fix round reads" comment to name the head's failed check runs (the Checks-API read the grant pays for). Verify green: `bun test tests/opencode-agent/workflow.test.ts && bun workflows:lint`
+- [x] 5.1 Edit `.github/workflows/agent-pipeline.yml` as one landing — the arm, its permission grant, and the comment that documents the grant verify only together. Red-first: run `bun test tests/opencode-agent/workflow.test.ts` and confirm it fails on the arm-vs-`SLASH_COMMANDS` lockstep check (the vocabulary entry from 1.3 made the hand-maintained `contains` list stale). Then add `contains(github.event.comment.body, '/fix')` to the third arm's command group, add `checks: read` beside `actions: read` in the workflow-level `permissions:` block, and widen that block's "What a CI-fix round reads" comment to name the head's failed check runs (the Checks-API read the grant pays for). Verify green: `bun test tests/opencode-agent/workflow.test.ts && bun workflows:lint`
 
 ## 6. Guardrail pin: the command rides the pull-request door (D6)
 

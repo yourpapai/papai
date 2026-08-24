@@ -40,9 +40,13 @@ permissions:
   issues: write
   pull-requests: write
   # What a CI-fix round reads: the failed jobs and their logs of the run that
-  # went red. Without it the round degrades to a needs-human report naming the
-  # 403, which is the honest answer but not the useful one.
+  # went red, and — when a maintainer bought the round with /fix — the head's
+  # failed check runs. Without the grants the round degrades to a needs-human
+  # report naming the 403, which is the honest answer but not the useful one.
+  # `checks: read` is its own permission class: `actions: read` covers workflow
+  # runs and their jobs, not check runs.
   actions: read
+  checks: read
 
 # No workflow-level `concurrency`. The group has to name the branch, and on a
 # pull-request comment the branch is only knowable after an API call — see the
@@ -146,14 +150,15 @@ jobs:
        (github.event_name == 'issue_comment' &&
         github.event.action == 'created' &&
         github.event.issue.pull_request != null &&
-         (contains(github.event.comment.body, '/approve') ||
-          contains(github.event.comment.body, '/changes') ||
-          contains(github.event.comment.body, '/ask') ||
-          contains(github.event.comment.body, '/retry') ||
-          contains(github.event.comment.body, '/cancel') ||
-          contains(github.event.comment.body, '/review') ||
-          contains(github.event.comment.body, '/continue') ||
-          contains(github.event.comment.body, '/sync')) &&
+          (contains(github.event.comment.body, '/approve') ||
+           contains(github.event.comment.body, '/changes') ||
+           contains(github.event.comment.body, '/ask') ||
+           contains(github.event.comment.body, '/retry') ||
+           contains(github.event.comment.body, '/cancel') ||
+           contains(github.event.comment.body, '/review') ||
+           contains(github.event.comment.body, '/continue') ||
+           contains(github.event.comment.body, '/sync') ||
+           contains(github.event.comment.body, '/fix')) &&
         github.event.sender.type != 'Bot' &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
        ||
