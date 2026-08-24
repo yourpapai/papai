@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, it } from 'bun:test'
+import assert from 'node:assert'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -169,7 +170,10 @@ describe('sidecar schemas', () => {
     }
     expect(ResolutionsSidecarSchema.safeParse(dismissed).success).toBe(true)
     const unjustified = { resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'dismissed' }] }
-    expect(ResolutionsSidecarSchema.safeParse(unjustified).success).toBe(false)
+    const parsed = ResolutionsSidecarSchema.safeParse(unjustified)
+    expect(parsed.success).toBe(false)
+    assert(!parsed.success)
+    expect(parsed.error.issues[0]?.message).toBe('dismissed resolutions require a justification')
   })
 
   it('validates assumption records with basis and status enums', () => {
@@ -251,6 +255,11 @@ describe('sidecar schemas', () => {
       rationale: 'touches the chat router and adds a migration',
     }
     expect(DepthClassificationSchema.safeParse(classification).success).toBe(true)
+    const newSubsystem = DepthClassificationSchema.safeParse({
+      ...classification,
+      signals: { ...classification.signals, novelty: 'new-subsystem' },
+    })
+    expect(newSubsystem.success).toBe(true)
     const bad = { implicated_files: [], signals: { cross_module: 'yes' }, rationale: 'x' }
     expect(DepthClassificationSchema.safeParse(bad).success).toBe(false)
   })
@@ -410,7 +419,7 @@ describe('runStageAgent', () => {
 
   it('still flags a path the agent newly dirties outside the change folder', async () => {
     const dir = makeDir()
-    const execGit = sequencedExecGit(['', ' M src/chat/router.ts\n'])
+    const execGit = sequencedExecGit(['', ' M src/chat/router.ts\n?? task.md\n'])
     const fake = makeFakeSpawn('findings-1.json', [{ write: VALID_FINDINGS }])
     const emitted: EventInput[] = []
     const agent: AgentLayerDeps = {
@@ -422,7 +431,24 @@ describe('runStageAgent', () => {
       },
     }
     const run = runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
-    await expect(run).rejects.toThrow(/src\/chat\/router\.ts/u)
+    await expect(run).rejects.toThrow('agent edited files outside the change folder: src/chat/router.ts, task.md')
+  })
+
+  it('falls back to a fresh prompt-rebuild spawn when the continuation fails', async () => {
+    const dir = makeDir()
+    const fake = makeFakeSpawn('findings-1.json', [{ result: { exitCode: 1 } }, { write: VALID_FINDINGS }])
+    const { agent, emitted } = makeAgent(dir, fake)
+    const options: RunStageAgentOptions<{ findings: Finding[] }> = {
+      ...makeOptions(dir, 'findings-1.json'),
+      continueSessionId: 'sess-1',
+    }
+    const info = await runStageAgent(agent, options)
+    expect(info.attempts).toBe(1)
+    expect(fake.prompts[0]).toContain('Continue the interrupted task in this session.')
+    expect(fake.prompts[0]).toContain(`Write your JSON result to ${agentWritePath(dir, 'findings-1.json')}`)
+    expect(fake.prompts[0]).toContain('now.')
+    expect(fake.prompts[1]).toBe('Review the artifacts.')
+    expect(retryings(emitted)).toEqual([{ reason: 'validation', attempt: 2 }])
   })
 
   it('forwards an L0 tool_use event to the bus when the spawned agent emits an opencode tool_use line', async () => {
