@@ -24,7 +24,7 @@
 ## 5. Task counting
 
 - [x] 5.1 Write failing `tests/plugins/task-provider-github/operations/count.test.ts`: `total_count` extracted from a single `GET /search/issues` with `per_page=1` and the built `q` asserted (shares the builder: repo pinned, `is:issue`, `in:title,body` on non-empty query); `projectId` equal to the configured repo succeeds; `projectId` mismatch → project-not-found classified error and no request captured; auth/rate-limit shapes classify per sessions 1–2. Verify: `bun test tests/plugins/task-provider-github/operations/count.test.ts` (red)
-- [ ] 5.2 Implement `plugins/task-provider-github/operations/count.ts` (`githubCountTasks`: one-repo guard before any request, `z.object({ total_count: z.number() })`, errors classified with `{ projectId: config.repo }`). Verify: `bun test tests/plugins/task-provider-github/operations/count.test.ts` (green)
+- [x] 5.2 Implement `plugins/task-provider-github/operations/count.ts` (`githubCountTasks`: one-repo guard before any request, `z.object({ total_count: z.number() })`, errors classified with `{ projectId: config.repo }`). Verify: `bun test tests/plugins/task-provider-github/operations/count.test.ts` (green)
 
 ## 6. Capabilities and provider wiring
 
