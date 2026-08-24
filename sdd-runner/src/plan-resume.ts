@@ -17,7 +17,11 @@ import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controll
 /** The orchestrator-supplied nested-run starter (D7): `runStart` by default. */
 export type StartChildRun = (
   deps: OrchestratorDeps,
-  options: { readonly taskFile: string; readonly spendBaselineUsd: number },
+  options: {
+    readonly taskFile: string
+    readonly spendBaselineUsd: number
+    readonly onRunDirReady?: (childRunDir: string) => void
+  },
 ) => Promise<{ readonly runId: string }>
 
 export interface PlanResumeResult {
@@ -55,8 +59,8 @@ export async function resumePlanParent(
       sidecarDir: path.join(state.runDir, 'sidecars'),
       emit,
     }
-    const runChildRun: RunChildRun = (_child, taskFile, spendBaselineUsd) =>
-      startChildRun(resolved, { taskFile, spendBaselineUsd })
+    const runChildRun: RunChildRun = (_child, taskFile, spendBaselineUsd, onRunDirReady) =>
+      startChildRun(resolved, { taskFile, spendBaselineUsd, onRunDirReady })
     const result = await runChildren(resolved, state, ctx, { runChildRun, stop })
     return { runId: state.runId, halted: result.halted }
   } finally {

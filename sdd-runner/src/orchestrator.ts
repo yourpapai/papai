@@ -56,6 +56,8 @@ export interface StartOptions {
   readonly autonomy?: AutonomyOverrides
   /** Tree spend baseline (D10) a nested run adds before its single-ceiling compare. */
   readonly spendBaselineUsd?: number
+  /** Reports the fresh run dir (D11) before stage work so a parent can propagate calm-stop. */
+  readonly onRunDirReady?: (runDir: string) => void
 }
 
 export interface RunResumeResult {
@@ -99,6 +101,7 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
     },
     nowOf(deps),
   )
+  options.onRunDirReady?.(state.runDir)
   if (options.taskText !== undefined) {
     await writeFile(path.join(state.runDir, 'task.md'), taskText, 'utf8')
   }

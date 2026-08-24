@@ -16,6 +16,7 @@ import type { StartChildRun } from '../../sdd-runner/src/plan-resume.js'
 import type { PlanChild } from '../../sdd-runner/src/plan.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
+import { requestCalmStop, stopMarkerPath } from '../../sdd-runner/src/stop-controller.js'
 
 const tmpDirs: string[] = []
 
@@ -23,6 +24,18 @@ function makeDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-planresume-'))
   tmpDirs.push(dir)
   return dir
+}
+
+/** Poll with jitter tolerance (D11 propagation runs on a 25 ms watcher). */
+async function pollFor(condition: () => boolean, timeoutMs = 2000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (condition()) return true
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10)
+    })
+  }
+  return condition()
 }
 
 afterEach(() => {
@@ -177,5 +190,34 @@ describe('resumePlanParent (D9 interception)', () => {
     expect(result.halted).toBe('gate-pending')
     const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
     expect(persisted.children?.['db-schema']).toEqual({ status: 'running' })
+  })
+
+  it('forwards onRunDirReady so a parent calm-stop mid-flight reaches the child run dir (D11)', async () => {
+    const fixture = await makeFixture()
+    let markerArrived = false
+    const startChildRun: StartChildRun = async (_deps, options) => {
+      const child = await createRunState({
+        workDir: fixture.deps.config.workDir,
+        repoRoot: fixture.repoRoot,
+        changeName: 'db-schema',
+      })
+      options.onRunDirReady?.(child.runDir)
+      requestCalmStop(fixture.state.runDir)
+      markerArrived = await pollFor(() => fs.existsSync(stopMarkerPath(child.runDir)))
+      child.status = 'stopped'
+      await saveRunState(child, new Date('2026-08-12T08:00:00.000Z'))
+      return { runId: child.runId }
+    }
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      () => undefined,
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(result.halted).toBe('stopped')
+    expect(markerArrived).toBe(true)
   })
 })

@@ -28,7 +28,7 @@ import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
-import { readHolder } from '../../sdd-runner/src/stop-controller.js'
+import { readHolder, requestCalmStop, stopMarkerPath } from '../../sdd-runner/src/stop-controller.js'
 
 const tmpDirs: string[] = []
 
@@ -48,6 +48,41 @@ afterEach(() => {
 function errorMessageOf(failure: unknown): string {
   if (!(failure instanceof Error)) throw new Error('expected a rejection holding an Error')
   return failure.message
+}
+
+/** Poll with jitter tolerance (D11 propagation runs on a 25 ms watcher). */
+async function pollFor(condition: () => boolean, timeoutMs = 2000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (condition()) return true
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10)
+    })
+  }
+  return condition()
+}
+
+/**
+ * D11 wrapper: on the first spawn (the child's own intake — the plan-gate
+ * parent spawns nothing) it requests the parent's calm stop, then holds the
+ * child in flight until the propagated child marker appears.
+ */
+function stopRequestingSpawn(
+  base: SpawnFn,
+  parentRunDir: string,
+  childMarker: string,
+): { readonly spawn: SpawnFn; readonly markerArrived: () => boolean } {
+  let stopRequested = false
+  let markerArrived = false
+  const spawn: SpawnFn = async (command, args, options) => {
+    if (!stopRequested) {
+      stopRequested = true
+      requestCalmStop(parentRunDir)
+      markerArrived = await pollFor(() => fs.existsSync(childMarker))
+    }
+    return base(command, args, options)
+  }
+  return { spawn, markerArrived: (): boolean => markerArrived }
 }
 
 interface Fixture {
@@ -385,6 +420,25 @@ describe('runStart', () => {
     })
     const state = await loadRunState(fixture.deps.config.workDir, result.runId)
     expect(state.spendBaselineUsd).toBe(2.5)
+  })
+
+  it('reports the fresh run dir through onRunDirReady before any stage work (D11)', async () => {
+    const fixture = makeFixture()
+    const reported: string[] = []
+    let spawnCountAtReport = -1
+
+    const result = await runStart(fixture.deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+      onRunDirReady: (runDir: string): void => {
+        reported.push(runDir)
+        spawnCountAtReport = fixture.spawnOrder.length
+      },
+    })
+
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(reported).toEqual([state.runDir])
+    expect(spawnCountAtReport).toBe(0)
   })
 })
 
@@ -2966,6 +3020,37 @@ describe('runGateResume plan mode (D12)', () => {
     expect(spawn).toHaveLength(1)
     expect(spawn[0]).toMatchObject({ child: 'db-schema', runId: 'db-schema' })
     expect(fs.existsSync(fixture.changeDir.replace(fixture.changeName, 'composite'))).toBe(false)
+  })
+
+  it('a parent calm-stop requested while the child is in flight writes the child stop marker (D11)', async () => {
+    const fixture = makeFixture({
+      'depth.json': JSON.stringify({
+        implicated_files: ['drizzle/x.sql'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'single-module child change',
+      }),
+      'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
+    })
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const wrapper = stopRequestingSpawn(
+      fixture.deps.spawn,
+      path.join(fixture.deps.config.workDir, 'runs', runId),
+      stopMarkerPath(path.join(fixture.deps.config.workDir, 'runs', 'db-schema')),
+    )
+    const deps: OrchestratorDeps = { ...fixture.deps, spawn: wrapper.spawn }
+
+    const result = await runGateResume(deps, runId, {})
+
+    expect(result.outcome).toBe('approved')
+    expect(wrapper.markerArrived()).toBe(true)
+    const parent = await loadRunState(deps.config.workDir, runId)
+    expect(parent.status).toBe('stopped')
   })
 
   it('an abort flag finalizes the gate aborted before any child exists', async () => {
