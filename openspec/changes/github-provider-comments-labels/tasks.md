@@ -28,7 +28,7 @@ pins. Reference: `specs/github-comments-labels/spec.md` (what), `design.md` (how
 ## 5. Capability declarations
 
 - [x] 5.1 Update `tests/plugins/task-provider-github/manifest.test.ts` to pin the exact 11-capability list (no extras/omissions) and `constants.test.ts` to assert set equality between `GITHUB_CAPABILITIES` and the manifest declarations — verify with `bun test tests/plugins/task-provider-github/manifest.test.ts tests/plugins/task-provider-github/constants.test.ts`
-- [ ] 5.2 Grow `GITHUB_CAPABILITIES` (`plugins/task-provider-github/constants.ts`) and `providerCapabilities` (`plugin.json`) by exactly `comments.read`, `comments.create`, `comments.update`, `comments.delete`, `labels.list`, `labels.create`, `labels.update`, `labels.delete`, `labels.assign` until both suites pass — verify with `bun test tests/plugins/task-provider-github/manifest.test.ts tests/plugins/task-provider-github/constants.test.ts`
+- [x] 5.2 Grow `GITHUB_CAPABILITIES` (`plugins/task-provider-github/constants.ts`) and `providerCapabilities` (`plugin.json`) by exactly `comments.read`, `comments.create`, `comments.update`, `comments.delete`, `labels.list`, `labels.create`, `labels.update`, `labels.delete`, `labels.assign` until both suites pass — verify with `bun test tests/plugins/task-provider-github/manifest.test.ts tests/plugins/task-provider-github/constants.test.ts`
 
 ## 6. Provider wiring
 
