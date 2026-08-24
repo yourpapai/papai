@@ -6,7 +6,7 @@ pins. Reference: `specs/github-comments-labels/spec.md` (what), `design.md` (how
 
 ## 1. Schemas
 
-- [ ] 1.1 Write failing `tests/plugins/task-provider-github/schemas/comment.test.ts` pinning `GitHubCommentSchema`: accepts a full comment payload (`id` int, `body` string, `user` nullable, `created_at`/`updated_at` strings, `html_url`, `issue_url`, `author_association`); rejects wrong types and a non-nullable-shaped `user` — verify with `bun test tests/plugins/task-provider-github/schemas/comment.test.ts`
+- [x] 1.1 Write failing `tests/plugins/task-provider-github/schemas/comment.test.ts` pinning `GitHubCommentSchema`: accepts a full comment payload (`id` int, `body` string, `user` nullable, `created_at`/`updated_at` strings, `html_url`, `issue_url`, `author_association`); rejects wrong types and a non-nullable-shaped `user` — verify with `bun test tests/plugins/task-provider-github/schemas/comment.test.ts`
 - [ ] 1.2 Write failing `tests/plugins/task-provider-github/schemas/label.test.ts` pinning `GitHubRepoLabelSchema`: accepts canonical repo-label payload; rejects bad `color` (not `/^[0-9a-f]{6}$/`), non-int `id`, missing-nullable `description` handling — verify with `bun test tests/plugins/task-provider-github/schemas/label.test.ts`
 - [ ] 1.3 Implement `plugins/task-provider-github/schemas/comment.ts` (`GitHubCommentSchema` + inferred type) and `schemas/label.ts` (`GitHubRepoLabelSchema` + inferred type, reusing `GitHubLabelSchema` from `schemas/issue.ts` for issue-level payloads) until both suites pass — verify with `bun test tests/plugins/task-provider-github/schemas/`
 
