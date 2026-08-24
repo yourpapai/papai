@@ -161,7 +161,7 @@ describe('githubUpdateLabel', () => {
     const label = await githubUpdateLabel(config, 'bug/fix?', { name: 'crash', color: '000000' })
     expect(calls[0]?.method).toBe('PATCH')
     expect(calls[0]?.url.pathname).toBe('/repos/octocat/Hello-World/labels/bug%2Ffix%3F')
-    expect(calls[0]?.body).toEqual({ name: 'crash', color: '000000' })
+    expect(calls[0]?.body).toEqual({ new_name: 'crash', color: '000000' })
     expect(label).toEqual({ id: '208045946', name: 'crash', color: '000000' })
   })
 

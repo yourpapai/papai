@@ -74,7 +74,9 @@ export async function githubUpdateLabel(
 ): Promise<Label> {
   log.debug({ repo: config.repo, name }, 'updateLabel')
   const body: Record<string, unknown> = {}
-  if (params.name !== undefined) body['name'] = params.name
+  // Update-a-label takes `new_name` in the body; `name` would be ignored and
+  // the rename would silently no-op.
+  if (params.name !== undefined) body['new_name'] = params.name
   if (params.color !== undefined) body['color'] = params.color
   try {
     const raw = await githubFetch(config, 'PATCH', `/repos/${config.repo}/labels/${encodeURIComponent(name)}`, {
