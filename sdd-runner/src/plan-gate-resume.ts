@@ -7,7 +7,7 @@ import { writeFile } from 'node:fs/promises'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { gateRowText, runChildren } from './children.js'
+import { rowsOf, runChildren } from './children.js'
 import type { RunChildRun } from './children.js'
 import type { EventInput } from './events.js'
 import type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
@@ -48,7 +48,7 @@ export async function planGateRows(sidecarDir: string, state: RunState): Promise
     if (child === undefined) throw new Error(`plan sidecar has no child ${id}`)
     ordered.push(child)
   }
-  return ordered.map((child, index) => ({ id: `C${index + 1}`, text: gateRowText(child) }))
+  return rowsOf(ordered)
 }
 
 export interface PlanGateResumeDeps {
