@@ -8,7 +8,7 @@
 
 ## 2. Search-qualifier builder (pure)
 
-- [ ] 2.1 Add failing pure-function cases to `tests/plugins/task-provider-github/operations/tasks.test.ts` for `buildGitHubIssueSearchQuery`: `repo:{owner}/{repo} is:issue` always present; `assigneeId` → `assignee:{login}`; `status 'open'` → `is:open` and status starting `closed` → `is:closed`, other status adds nothing; non-empty query → free-text terms + `in:title,body`; empty/absent query → no `in:` clause and no trailing space. Verify: `bun test tests/plugins/task-provider-github/operations/tasks.test.ts` (red)
+- [x] 2.1 Add failing pure-function cases to `tests/plugins/task-provider-github/operations/tasks.test.ts` for `buildGitHubIssueSearchQuery`: `repo:{owner}/{repo} is:issue` always present; `assigneeId` → `assignee:{login}`; `status 'open'` → `is:open` and status starting `closed` → `is:closed`, other status adds nothing; non-empty query → free-text terms + `in:title,body`; empty/absent query → no `in:` clause and no trailing space. Verify: `bun test tests/plugins/task-provider-github/operations/tasks.test.ts` (red)
 - [ ] 2.2 Implement `buildGitHubIssueSearchQuery` in `plugins/task-provider-github/operations/tasks.ts` and refactor `githubSearchTasks` to call it; update existing search tests for the added `in:title,body` (assert the built `q` on captured requests). Verify: `bun test tests/plugins/task-provider-github/operations/tasks.test.ts` (green)
 
 ## 3. Identity resolver
