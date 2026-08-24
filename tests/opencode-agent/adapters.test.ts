@@ -739,7 +739,10 @@ describe('createOpenCodeAgent', () => {
     const rejection = await agent.prompt({ prompt: 'go' }).catch((error: unknown) => error)
 
     expect(isServerGone(rejection)).toBe(true)
-    expect(errorMessage(rejection)).toContain('OpenCode server')
+    // Backend-neutral since the claude route shares this failure path: the
+    // dead process is named as the model backend this job spawned, with the
+    // route's own spelling as the example rather than the claim.
+    expect(errorMessage(rejection)).toContain('model backend process this job spawned')
     // The transport's own words are kept: they are the only evidence of *how* it went.
     expect(errorMessage(rejection)).toContain('The socket connection was closed unexpectedly')
   })

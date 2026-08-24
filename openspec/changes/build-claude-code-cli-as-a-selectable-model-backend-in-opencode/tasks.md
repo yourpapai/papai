@@ -91,9 +91,9 @@ the only credentialed artifact and never runs in CI.
 
 ## 6. Turn-run integration (design D6)
 
-- [ ] 6.1 Tests first in `tests/opencode-agent/turn-run.test.ts`, then implement: the bypass list gains `CLAUDE_EXIT`/`CLAUDE_RESULT` beside `isTurnDeadline`/`isTurnStall`; the stall watcher stays wired but no-op on this route (whole-turn `AGENT_TIMEOUT_MS` deadline stays the bound; no synthesized retry evidence).
+- [x] 6.1 Tests first in `tests/opencode-agent/turn-run.test.ts`, then implement: the bypass list gains `CLAUDE_EXIT`/`CLAUDE_RESULT` beside `isTurnDeadline`/`isTurnStall`; the stall watcher stays wired but no-op on this route (whole-turn `AGENT_TIMEOUT_MS` deadline stays the bound; no synthesized retry evidence).
   Verify: `bun test tests/opencode-agent/turn-run.test.ts` (green)
-- [ ] 6.2 Tests first, then implement: backend-neutral `serverGoneError` rewording — thrown message and the adjacent `bounds.log.error` line say "the model backend process this job spawned / stopped answering", keep the post-mortem step pointer (still true on both routes), pinned by a test on both routes' dead-server/ENOENT shape.
+- [x] 6.2 Tests first, then implement: backend-neutral `serverGoneError` rewording — thrown message and the adjacent `bounds.log.error` line say "the model backend process this job spawned / stopped answering", keep the post-mortem step pointer (still true on both routes), pinned by a test on both routes' dead-server/ENOENT shape.
   Verify: `bun test tests/opencode-agent/turn-run.test.ts tests/opencode-agent/adapters.test.ts` (green)
 
 ## 7. Seam extraction and wiring (design D2, D4, D12 step 5)

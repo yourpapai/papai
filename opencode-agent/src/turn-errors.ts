@@ -93,10 +93,10 @@ const SERVER_GONE = 'OPENCODE_SERVER_GONE'
 export const serverGoneError = (transport: string): PipelineError =>
   new PipelineError(
     SERVER_GONE,
-    'The local OpenCode server stopped answering mid-turn, so this turn ended with nothing to show for it. ' +
-      `The transport reported: ${transport}. That is the \`opencode serve\` this job spawned on loopback — ` +
-      'not the model provider — so look at the run’s post-mortem step for an out-of-memory kill or for a ' +
-      'second `opencode` process the model started from `bash`.',
+    'The model backend process this job spawned stopped answering mid-turn, so this turn ended with nothing to show ' +
+      `for it. The transport reported: ${transport}. That is the backend process itself — ` +
+      'an `opencode serve` on loopback or the spawned `claude` CLI, not the model provider — so look at the run’s ' +
+      'post-mortem step for an out-of-memory kill or for a second `opencode` process the model started from `bash`.',
   )
 
 /** Whether a rejection is that death. */
