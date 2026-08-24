@@ -99,4 +99,40 @@ describe('propagateChildStop (D11)', () => {
     )
     expect(fs.existsSync(stopMarkerPath(childDir))).toBe(false)
   })
+
+  it('does not rewrite the child marker after the child consumes it mid-flight', async () => {
+    const parentDir = makeDir()
+    const childDir = makeDir()
+    const stop = createStopMarkerSeam(parentDir)
+    await propagateChildStop(
+      {
+        runChildRun: async (_child, _taskFile, _baseline, ready) => {
+          ready?.(childDir)
+          requestCalmStop(parentDir)
+          expect(await waitFor(() => fs.existsSync(stopMarkerPath(childDir)))).toBe(true)
+          fs.rmSync(stopMarkerPath(childDir))
+          await new Promise((resolve) => {
+            setTimeout(resolve, 120)
+          })
+          return { runId: 'child-run' }
+        },
+        stop,
+      },
+      CHILD,
+      'task.md',
+      0,
+    )
+    expect(fs.existsSync(stopMarkerPath(childDir))).toBe(false)
+  })
 })
+
+async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (condition()) return true
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10)
+    })
+  }
+  return condition()
+}

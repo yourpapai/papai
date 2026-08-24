@@ -108,6 +108,8 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
   const emit = buildBus(deps, logPathFor(state))
   writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
+  // Fresh-run calm-stop seam (D6/D11): honors the marker at the next round boundary, settles stopped (resumable).
+  const stop = createStopMarkerSeam(state.runDir)
   try {
     const env = buildPipelineEnv(deps, state, emit, {
       taskText,
@@ -115,11 +117,13 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
       depthOverride: options.depthOverride,
       autonomy: resolveAutonomy(deps, options.autonomy),
     })
-    const planned = await runPlanningStages(env)
+    const planned = await runPlanningStages(env, stop)
     if (planned.kind === 'plan') {
       return await runPlanBranch(env.deps, env.state, env.ctx, planned.children)
     }
-    return await runPostReviewToGate(tailInputOf(env, planned.depth, planned.reviewResult))
+    const tail = await runPostReviewToGate(tailInputOf(env, planned.depth, planned.reviewResult))
+    await settleStoppedResult(deps, state, stop, tail)
+    return tail
   } finally {
     removeHolder(state.runDir)
     deps.unmountRunScreen?.()

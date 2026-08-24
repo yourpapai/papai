@@ -3023,6 +3023,31 @@ describe('runGateResume plan mode (D12)', () => {
     expect(wrapper.markerArrived()).toBe(true)
     const parent = await loadRunState(deps.config.workDir, runId)
     expect(parent.status).toBe('stopped')
+    expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
+    const child = await loadRunState(deps.config.workDir, 'db-schema')
+    expect(child.status).toBe('stopped')
+    expect(child.gate).not.toBe(null)
+    expect(fs.existsSync(stopMarkerPath(path.join(fixture.deps.config.workDir, 'runs', 'db-schema')))).toBe(false)
+  })
+
+  it('a fresh run with a calm-stop marker mid-flight settles through the stopped tail (D6/D11)', async () => {
+    const fixture = makeFixture()
+    let runDir = ''
+    const result = await runStart(fixture.deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+      onRunDirReady: (dir: string) => {
+        runDir = dir
+        requestCalmStop(dir)
+      },
+    })
+
+    expect(result.runId).toBe('add-thing')
+    const persisted = await loadRunState(fixture.deps.config.workDir, 'add-thing')
+    expect(persisted.status).toBe('stopped')
+    expect(persisted.gate).not.toBe(null)
+    expect(fs.existsSync(stopMarkerPath(runDir))).toBe(false)
+    expect(fixture.stdoutLines.some((line) => line.includes('stopped calmly'))).toBe(true)
   })
 
   it('an abort flag finalizes the gate aborted before any child exists', async () => {

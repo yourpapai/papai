@@ -3,6 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import path from 'node:path'
+
+import { readEvents } from './events.js'
 import type { AgentUsage, DoneEvent, SddEvent } from './events.js'
 import { loadDb } from './pricing.js'
 import { resolveCost } from './pricing.js'
@@ -120,6 +123,24 @@ export async function buildResolveCost(): Promise<ResolveCostFn> {
     return (modelId: string) => resolveCost(modelId, db)
   } catch {
     return () => null
+  }
+}
+
+/** A child run's aggregated usage from its own event log; undefined when unreadable. */
+export function childUsageOf(childRunDir: string, resolve: ResolveCostFn = () => null): AgentUsage | undefined {
+  try {
+    const aggregated = aggregateUsage(readEvents(path.join(childRunDir, 'events.ndjson')), resolve)
+    return {
+      inputTokens: aggregated.inputTokens,
+      outputTokens: aggregated.outputTokens,
+      reasoningTokens: aggregated.reasoningTokens,
+      cachedReadTokens: aggregated.cachedReadTokens,
+      cachedWriteTokens: aggregated.cachedWriteTokens,
+      costUsd: aggregated.costUsd,
+      wallMs: aggregated.wallMs,
+    }
+  } catch {
+    return undefined
   }
 }
 

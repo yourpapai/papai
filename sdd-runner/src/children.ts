@@ -9,7 +9,6 @@ import path from 'node:path'
 import { propagateChildStop } from './child-stop.js'
 import { slugify } from './config.js'
 import { readEvents } from './events.js'
-import type { AgentUsage } from './events.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
 import { logPathFor, presentGateAt } from './gate-digest.js'
 import { PLAN_REVIEW_SURROGATE } from './gate-prelude.js'
@@ -22,6 +21,7 @@ import type { RunState } from './run-state.js'
 import type { CalmStopController } from './stop-controller.js'
 import { aggregateUsage } from './usage-aggregate.js'
 import { buildResolveCost } from './usage-aggregate.js'
+import { childUsageOf } from './usage-aggregate.js'
 import { treeSpend } from './usage-aggregate.js'
 import type { TreeSpend } from './usage-aggregate.js'
 
@@ -115,23 +115,6 @@ async function planChildrenOf(ctx: StageContext): Promise<readonly PlanChild[]> 
   return PlanSchema.parse(JSON.parse(raw)).children
 }
 
-function childUsageOf(childRunDir: string, resolve: Parameters<typeof aggregateUsage>[1]): AgentUsage | undefined {
-  try {
-    const aggregated = aggregateUsage(readEvents(path.join(childRunDir, 'events.ndjson')), resolve)
-    return {
-      inputTokens: aggregated.inputTokens,
-      outputTokens: aggregated.outputTokens,
-      reasoningTokens: aggregated.reasoningTokens,
-      cachedReadTokens: aggregated.cachedReadTokens,
-      cachedWriteTokens: aggregated.cachedWriteTokens,
-      costUsd: aggregated.costUsd,
-      wallMs: aggregated.wallMs,
-    }
-  } catch {
-    return undefined
-  }
-}
-
 /**
  * D9 failure stop: a child ending non-completed halts the loop immediately.
  * The child books `failed`, the parent persists `stopped` (resumable at this
@@ -193,7 +176,12 @@ async function settleCompletedChild(
   await saveRunState(state, deps.now?.() ?? new Date())
 }
 
-/** Post-flight observation (D8/D9/D11): calm-stop wins; then done/gate/failure. */
+/**
+ * Post-flight observation (D8/D9/D11): calm-stop wins — a not-completed
+ * child is recorded `running` (like the gate-pending branch) so a parent
+ * resume re-observes its spawned runId instead of re-spawning a duplicate
+ * over the same change folder; then done/gate/failure.
+ */
 async function settleObservedChild(
   deps: OrchestratorDeps,
   state: RunState,
@@ -208,7 +196,12 @@ async function settleObservedChild(
   const completed = childState !== null && childState.status === 'completed'
   if (stop?.stopRequested() === true) {
     assertStopPresent(stop)
-    if (completed) await settleCompletedChild(deps, state, ctx, childId, childState.runDir, resolve)
+    if (completed) {
+      await settleCompletedChild(deps, state, ctx, childId, childState.runDir, resolve)
+    } else {
+      state.children = { ...state.children, [childId]: { status: 'running' } }
+      await saveRunState(state, deps.now?.() ?? new Date())
+    }
     return calmSettle(deps, state, stop)
   }
   if (childState === null) return stopAtFailedChild(deps, state, ctx, childId, 'unloadable')

@@ -683,11 +683,48 @@ describe('parent calm-stop is subtree-scoped (D11)', () => {
     const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
     expect(persisted.status).toBe('stopped')
     expect(persisted.children?.['auth-db']).toEqual({ status: 'done' })
-    expect(persisted.children?.['auth-api']).toEqual({ status: 'pending' })
+    expect(persisted.children?.['auth-api']).toEqual({ status: 'running' })
     expect(fs.existsSync(stopMarkerPath(fixture.state.runDir))).toBe(false)
     const done = eventsOf(fixture, 'child_done')
     expect(done).toHaveLength(1)
     expect(done[0]).toMatchObject({ child: 'auth-db', outcome: 'done' })
     expect(stdoutLines.some((line) => line.includes('stopped calmly'))).toBe(true)
+  })
+
+  it('a parent resume after the calm stop re-observes the child instead of spawning a duplicate run', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {
+      'auth-db': { status: 'completed', withUsage: true },
+      'auth-api': { honorChildMarker: true },
+    })
+    const inFlightGate = tracker.armInFlightGate()
+    const stop = createStopMarkerSeam(fixture.state.runDir)
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const started = runChildren(deps, fixture.state, fixture.ctx, {
+      runChildRun: tracker.runChildRun,
+      stop,
+    })
+    await inFlightGate
+    requestCalmStop(fixture.state.runDir)
+    await started
+
+    const resumed = await runChildren(deps, fixture.state, fixture.ctx, {
+      runChildRun: tracker.runChildRun,
+      stop: createStopMarkerSeam(fixture.state.runDir),
+    })
+
+    expect(tracker.spawned).toEqual(['auth-db', 'auth-api'])
+    expect(resumed).toEqual({ halted: 'stopped', child: 'auth-api', childStatus: 'stopped' })
+    expect(stdoutLines.some((line) => line.includes("child auth-api ended 'stopped'"))).toBe(true)
+    const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
+    expect(persisted.children?.['auth-api']).toEqual({ status: 'failed' })
   })
 })

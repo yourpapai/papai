@@ -25,7 +25,10 @@ const CHILD_STOP_WATCH_MS = 25
  * D11 subtree-scoped calm-stop: while the child is in flight, watch the
  * parent's marker; once the child's run dir is known and a stop is
  * requested, write the child's stop marker so its own seam honors it at its
- * next stage/round boundary. The watcher is torn down when the flight ends.
+ * next stage/round boundary. The marker is written once per flight — the
+ * child's terminal settle consumes it, and a later watcher tick must not
+ * resurrect it into a stale marker. The watcher is torn down when the
+ * flight ends.
  */
 export async function propagateChildStop(
   seams: ChildFlightSeams,
@@ -34,8 +37,12 @@ export async function propagateChildStop(
   spendBaselineUsd: number,
 ): Promise<{ readonly runId: string }> {
   let childRunDir: string | null = null
+  let markerWritten = false
   const propagate = (): void => {
-    if (childRunDir !== null && seams.stop.stopRequested()) requestCalmStop(childRunDir)
+    if (!markerWritten && childRunDir !== null && seams.stop.stopRequested()) {
+      requestCalmStop(childRunDir)
+      markerWritten = true
+    }
   }
   const watcher = setInterval(propagate, CHILD_STOP_WATCH_MS)
   const onRunDirReady = (runDir: string): void => {
