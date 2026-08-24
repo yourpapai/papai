@@ -34,5 +34,5 @@
 
 ## 7. Docs and full verification
 
-- [ ] 7.1 Update `plugins/task-provider-github/README.md`: capabilities paragraph now states task history, task counting, and identity resolution are offered; issue deletion and attachments remain absent. Review `docs/architecture/*.md` for provider-surface listings that need the two new capabilities (none expected — no `src/` change). Verify: `bun run lint`
+- [x] 7.1 Update `plugins/task-provider-github/README.md`: capabilities paragraph now states task history, task counting, and identity resolution are offered; issue deletion and attachments remain absent. Review `docs/architecture/*.md` for provider-surface listings that need the two new capabilities (none expected — no `src/` change). Verify: `bun run lint`
 - [ ] 7.2 Full gate: `bun run test`, then `bun run typecheck`, `bun run lint`, `bun check:full`. If the new plugin file mass trips the coverage floors (`scripts/coverage/floor.json`, `scripts/story/coverage-floor.json`), raise them from a green full run via `bun coverage:ratchet --update` / `bun coverage:ratchet:stories` and note it here (session-1 task 9.1 precedent)
