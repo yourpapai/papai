@@ -46,12 +46,12 @@ running the tooling itself.
   `scripts/mutation/baseline.json` back to the branch. Marked `if: github.event_name ==
   'workflow_dispatch'` so it never runs on ordinary pushes. Verify: job YAML passes
   `bun workflows:lint`.
-- [ ] 4.2 Kick the reseed on this branch; review the `baseline.json` diff — expect
+- [x] 4.2 Kick the reseed on this branch; review the `baseline.json` diff — expect
   near-total churn across the 625 entries, some floors down (new mutator), none up
   beyond noise. Spot-check three files' new floors against their task-2.1-style paired
   scores. If the run exceeds timeouts, fall back to the path-batched
   `test:mutate:file` + `test:mutate:seed` merge path from design.md Risks.
-- [ ] 4.3 Remove the `mutation-reseed` dispatch job after the reseeded baseline is
+- [x] 4.3 Remove the `mutation-reseed` dispatch job after the reseeded baseline is
   committed (it is one-shot by design; keeping it invites accidental full reseed).
   Verify: `bun workflows:lint` passes; `ci.yml` diff no longer contains the job.
 
