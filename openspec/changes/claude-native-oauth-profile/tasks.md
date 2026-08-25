@@ -52,7 +52,7 @@ refuses, and its guard-wording task (2.5) edits text that revision owns.
 
 ## 5. Credentialed recording (design D5, spec proof requirement)
 
-- [ ] 5.1 Run `CLAUDE_CODE_OAUTH_TOKEN=<token> bun run opencode-agent:test:claude-live`: census ✓, dummy-401 ✓, proof turn with `five_hour` ✓, WebFetch refusal ✓, corpus turns through the adapter, `VERSION`/`facts.json` stamped.
+- [x] 5.1 Run `CLAUDE_CODE_OAUTH_TOKEN=<token> bun run opencode-agent:test:claude-live`: census ✓, dummy-401 ✓, proof turn with `five_hour` ✓, WebFetch refusal ✓, corpus turns through the adapter, `VERSION`/`facts.json` stamped.
   Verify: the run itself (credentialed; never in CI)
 - [ ] 5.2 Re-run `ANTHROPIC_API_KEY=<key> bun run opencode-agent:test:claude-live`: the bare route's legs record green, proving byte-identity survived the split.
   Verify: same command, credentialed

@@ -1,7 +1,7 @@
 {
   "cliVersion": "2.1.239 (Claude Code)",
   "oauthApiKeySource": "apiKeyHelper",
-  "oauthHelperOutcome": "api-refused after 183467ms",
+  "oauthHelperOutcome": "api-refused after 187432ms",
   "oauthHelperStdout": "printf '%s' single-quoted, no trailing newline",
   "nativeCensusMcpServers": "[]",
   "nativeCensusSkillCount": "15",
@@ -9,9 +9,9 @@
   "nativeCensusSkillTokens": "1469",
   "nativeDummyApiErrorStatus": "401",
   "nativeDummyTerminalReason": "\"api_error\"",
-  "nativeDummyElapsedMs": "6252",
-  "nativeProofWindows": "none",
-  "nativeProofReplyChars": "69",
+  "nativeDummyElapsedMs": "6213",
+  "nativeProofWindows": "five_hour",
+  "nativeProofReplyChars": "175",
   "nativeAdapterSpawns": "2",
-  "nativeWebFetchRefused": "false"
+  "nativeWebFetchRefused": "true"
 }

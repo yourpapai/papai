@@ -175,6 +175,14 @@ const recordingSpawn: SpawnClaude = (binary, argv, options) => {
 const cliVersion = (): string => spawnSync('claude', ['--version'], { encoding: 'utf8' }).stdout.trim()
 
 /**
+ * The bare semver the workflow's install pin spells — `claude --version`
+ * answers `2.1.239 (Claude Code)`, and `workflow.test.ts` compares the stamp
+ * against `@anthropic-ai/claude-code@2.1.239`, so the suffix is dropped here
+ * and nowhere else (facts.json keeps the full string).
+ */
+const pinnedSemver = (version: string): string => /^\d+\.\d+\.\d+/u.exec(version)?.[0] ?? version
+
+/**
  * Runs one raw CLI invocation and hands back exit code and both streams. The
  * optional timeout bounds the negative leg: a refused token makes the CLI
  * retry ten times with exponential backoff (a recorded fact — minutes), and
@@ -665,8 +673,8 @@ const run = async (): Promise<number> => {
     // VERSION rides on the proof landing: a dummy token runs the free legs
     // green and must not stamp a corpus it never recorded.
     if (proof.landed) {
-      writeFileSync(path.join(FIXTURES, 'VERSION'), `${version}\n`)
-      process.stdout.write(`  stamped ${path.join(FIXTURES, 'VERSION')} = ${version}\n`)
+      writeFileSync(path.join(FIXTURES, 'VERSION'), `${pinnedSemver(version)}\n`)
+      process.stdout.write(`  stamped ${path.join(FIXTURES, 'VERSION')} = ${pinnedSemver(version)}\n`)
     } else {
       process.stdout.write(
         '  the credentialed proof did not land; VERSION left unstamped — re-run with a valid token.\n',
@@ -890,9 +898,9 @@ const run = async (): Promise<number> => {
 
   // ---- Stamp and optional fixture refresh -----------------------------------
 
-  writeFileSync(path.join(FIXTURES, 'VERSION'), `${version}\n`)
+  writeFileSync(path.join(FIXTURES, 'VERSION'), `${pinnedSemver(version)}\n`)
   writeFileSync(path.join(FIXTURES, 'facts.json'), `${JSON.stringify(facts, null, 2)}\n`)
-  process.stdout.write(`  stamped ${path.join(FIXTURES, 'VERSION')} = ${version}\n`)
+  process.stdout.write(`  stamped ${path.join(FIXTURES, 'VERSION')} = ${pinnedSemver(version)}\n`)
 
   if (REFRESH_FIXTURES) {
     rmSync(path.join(FIXTURES, 'success-turn.ndjson'), { force: true })
