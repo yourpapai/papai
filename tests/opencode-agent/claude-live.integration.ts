@@ -146,13 +146,25 @@ const recordingSpawn: SpawnClaude = (binary, argv, options) => {
 /** The CLI's version, as the recorder stamps it into the fixture directory. */
 const cliVersion = (): string => spawnSync('claude', ['--version'], { encoding: 'utf8' }).stdout.trim()
 
-/** Runs one raw CLI invocation and hands back exit code and both streams. */
+/**
+ * Runs one raw CLI invocation and hands back exit code and both streams. The
+ * optional timeout bounds the helper legs specifically: a rejected token
+ * makes the CLI retry ten times with exponential backoff (a recorded fact —
+ * minutes), and the init line the proof legs read arrives long before the
+ * retries settle, so a bounded kill still lands the facts.
+ */
 const rawRun = (
   argv: readonly string[],
   env: NodeJS.ProcessEnv,
   input = '',
+  timeoutMs?: number,
 ): { code: number; stdout: string; stderr: string } => {
-  const child = spawnSync('claude', [...argv], { encoding: 'utf8', env, input })
+  const child = spawnSync('claude', [...argv], {
+    encoding: 'utf8',
+    env,
+    input,
+    ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
+  })
   return { code: child.status ?? -1, stdout: child.stdout ?? '', stderr: child.stderr ?? '' }
 }
 
@@ -224,7 +236,7 @@ const run = async (): Promise<number> => {
 
   // ---- Determinism facts ---------------------------------------------------
 
-  const bare = rawRun(['-p', '--output-format', 'stream-json'], env)
+  const bare = rawRun(['-p', '--output-format', 'stream-json'], env, 'x')
   results.push(
     check(
       'stream-json requires --verbose with -p on this CLI',
@@ -239,17 +251,20 @@ const run = async (): Promise<number> => {
   //
   // Before any corpus turn: these are the ship decision's facts, and they must
   // land in facts.json whatever the corpus does (the first 5.1 run crashed at
-  // the opening turn and recorded nothing). One raw CLI turn against the
-  // config dir the scoped adapter just materialized — helper pair present,
-  // both env spellings deleted, `--settings` naming the file the way the
-  // adapter's argv now does — so the helper is the only carrier that exists,
-  // and the init line's `apiKeySource` is the recorded answer to whether
-  // `--bare` consults it. A second, non-bare leg runs only if the first
-  // fails, separating "--bare refuses the helper" from "the helper or token
-  // is refused outright".
+  // the opening turn and recorded nothing). The materialized dir is the scoped
+  // adapter's own `CLAUDE_CONFIG_DIR` — it exists from boot, before any spawn
+  // (the config-dir probes populate only on spawn, so they are empty here).
+  // One raw CLI turn against that dir — helper pair present, both env
+  // spellings deleted, `--settings` naming the file the way the adapter's
+  // argv does — so the helper is the only carrier that exists, and the init
+  // line's `apiKeySource` is the recorded answer to whether `--bare`
+  // consults it. The stderr tail rides the ✗ detail so a refused helper or
+  // token names its layer instead of exiting 1 in silence. A second, non-bare
+  // leg runs only if the first fails, separating "--bare refuses the helper"
+  // from "the helper or token is refused outright".
 
   if (credential.name === 'CLAUDE_CODE_OAUTH_TOKEN') {
-    const helperDir = configDirProbes[0]?.configDir ?? ''
+    const helperDir = scoped.env['CLAUDE_CONFIG_DIR'] ?? ''
     const helperEnv: NodeJS.ProcessEnv = { ...env, CLAUDE_CONFIG_DIR: helperDir }
     Reflect.deleteProperty(helperEnv, credential.name)
     const helperArgv = (withBare: boolean): readonly string[] => [
@@ -270,7 +285,8 @@ const run = async (): Promise<number> => {
     const factsOf = (outcome: {
       code: number
       stdout: string
-    }): { source: string | null; text: string; initRaw: unknown } => {
+      stderr: string
+    }): { source: string | null; text: string; initRaw: unknown; tail: string } => {
       const parsed = parseNdjsonStream(outcome.stdout)
       const initAt = parsed.findIndex((raw) => decodeClaudeLine(raw)?.kind === 'init')
       const resultAt = parsed.findIndex((raw) => decodeClaudeLine(raw)?.kind === 'result')
@@ -280,9 +296,10 @@ const run = async (): Promise<number> => {
         source: initLine !== null && initLine.kind === 'init' ? initLine.apiKeySource : null,
         text: resultLine !== null && resultLine.kind === 'result' ? resultLine.text : '',
         initRaw: initAt === -1 ? null : (parsed[initAt] ?? null),
+        tail: outcome.stderr.trim().slice(0, 160),
       }
     }
-    const bareRun = rawRun(helperArgv(true), helperEnv, 'Reply with the single word ready.')
+    const bareRun = rawRun(helperArgv(true), helperEnv, 'Reply with the single word ready.', 120_000)
     const bareFacts = factsOf(bareRun)
     facts['oauthApiKeySource'] = bareFacts.source ?? 'no-init-line'
     facts['oauthHelperStdout'] = "printf '%s' single-quoted, no trailing newline"
@@ -290,7 +307,8 @@ const run = async (): Promise<number> => {
       check(
         'the helper authenticates under --bare --settings — raw leg, no env credential, non-none apiKeySource',
         bareFacts.source !== null && bareFacts.source !== 'none',
-        `apiKeySource: ${String(bareFacts.source)}, exit ${bareRun.code}, result: ${bareFacts.text.slice(0, 120)}`,
+        `apiKeySource: ${String(bareFacts.source)}, exit ${bareRun.code}, ` +
+          `result: ${bareFacts.text.slice(0, 80)}, stderr: ${bareFacts.tail}`,
       ),
     )
     if (bareFacts.initRaw !== null) {
@@ -298,11 +316,12 @@ const run = async (): Promise<number> => {
       process.stdout.write('  stamped the OAuth init-line fixture\n')
     }
     if (bareFacts.source === null || bareFacts.source === 'none') {
-      const noBareFacts = factsOf(rawRun(helperArgv(false), helperEnv, 'Reply with the single word ready.'))
+      const noBareRun = rawRun(helperArgv(false), helperEnv, 'Reply with the single word ready.', 120_000)
+      const noBareFacts = factsOf(noBareRun)
       facts['oauthHelperNoBareApiKeySource'] = noBareFacts.source ?? 'no-init-line'
       process.stdout.write(
         `  diagnostic: the same helper dir without --bare reports apiKeySource ${String(noBareFacts.source)} ` +
-          `(result: ${noBareFacts.text.slice(0, 80)})\n`,
+          `(exit ${noBareRun.code}, stderr: ${noBareFacts.tail})\n`,
       )
     }
   }
