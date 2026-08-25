@@ -45,9 +45,9 @@ revision's tasks are merged (its gate names this change).
 
 ## 4. Documentation
 
-- [ ] 4.1 `opencode-agent/README.md`: resolve the parent's "caveat pending the credentialed recording" to the recorded outcome — OAuth has no carrier on `--bare` (env never read; helper loads but the API refuses OAuth), the guard refuses the spelling at startup, and the API key is the accepted credential; keep the fixture-provenance pointer.
+- [x] 4.1 `opencode-agent/README.md`: resolve the parent's "caveat pending the credentialed recording" to the recorded outcome — OAuth has no carrier on `--bare` (env never read; helper loads but the API refuses OAuth), the guard refuses the spelling at startup, and the API key is the accepted credential; keep the fixture-provenance pointer.
   Verify: `bun test tests/opencode-agent/workflow.test.ts && bun run format:check`
-- [ ] 4.2 `opencode-agent/CLAUDE.md`: one route-rule line — the OAuth spelling is refused with the recorded reason; no credential files are ever materialized; the recorder's dummy-helper leg is the standing pin.
+- [x] 4.2 `opencode-agent/CLAUDE.md`: one route-rule line — the OAuth spelling is refused with the recorded reason; no credential files are ever materialized; the recorder's dummy-helper leg is the standing pin.
   Verify: `bun run format:check`
 
 ## 5. Pre-merge verification
