@@ -326,6 +326,13 @@ function eventsOf(fixture: ChildrenFixture, type: 'child_spawned' | 'child_done'
   )
 }
 
+function childDoneOf(fixture: ChildrenFixture, childId: string): Extract<SddEvent, { type: 'child_done' }>[] {
+  return readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
+    (event): event is Extract<SddEvent, { type: 'child_done' }> =>
+      event.type === 'child_done' && event.child === childId,
+  )
+}
+
 describe('runChildren (D8)', () => {
   it('walks childIds in order with at most one child in flight, emitting spawned/done with usage per child', async () => {
     const fixture = await makeFixture()
@@ -832,5 +839,99 @@ describe('parent calm-stop is subtree-scoped (D11)', () => {
     expect(stdoutLines.some((line) => line.includes("child auth-api ended 'stopped'"))).toBe(true)
     const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
     expect(persisted.children?.['auth-api']).toEqual({ status: 'failed' })
+  })
+})
+
+describe('crash-window idempotency at the event-log/state boundary (D8)', () => {
+  async function seedChildRun(
+    fixture: ChildrenFixture,
+    childId: string,
+    status: RunState['status'],
+  ): Promise<RunState> {
+    const childState = await createRunState({
+      workDir: fixture.deps.config.workDir,
+      repoRoot: fixture.repoRoot,
+      changeName: childId,
+    })
+    childState.status = status
+    await saveRunState(childState, new Date('2026-08-12T08:00:00.000Z'))
+    appendEvent(path.join(childState.runDir, 'events.ndjson'), {
+      altitude: 'L1',
+      type: 'done',
+      agent: 'estimator',
+      usage: CHILD_DONE_USAGE,
+    })
+    return childState
+  }
+
+  it('a crash after the child_done append but before the done-status save emits no second child_done on resume', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], { 'auth-db': 'running' })
+    const childState = await seedChildRun(fixture, 'auth-db', 'completed')
+    const log = path.join(fixture.state.runDir, 'events.ndjson')
+    appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: childState.runId })
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'child_done',
+      child: 'auth-db',
+      outcome: 'done',
+      usage: CHILD_DONE_USAGE,
+    })
+    const tracker = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    expect(tracker.spawned).toEqual(['auth-api'])
+    expect(childDoneOf(fixture, 'auth-db')).toHaveLength(1)
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.children?.['auth-db']).toEqual({ status: 'done' })
+  })
+
+  it('a crash after the child_spawned append but before the running-status save re-observes the recorded runId instead of re-spawning', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const childState = await seedChildRun(fixture, 'auth-db', 'completed')
+    appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), {
+      altitude: 'L2',
+      type: 'child_spawned',
+      child: 'auth-db',
+      runId: childState.runId,
+    })
+    const tracker = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    expect(tracker.spawned).toEqual(['auth-api'])
+    const done = childDoneOf(fixture, 'auth-db')
+    expect(done).toHaveLength(1)
+    expect(done[0]).toMatchObject({ outcome: 'done', usage: { costUsd: 0.25 } })
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.children?.['auth-db']).toEqual({ status: 'done' })
+  })
+
+  it('a crash after a failed child_done append emits no second failed settlement on resume', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db'], { 'auth-db': 'running' })
+    const childState = await seedChildRun(fixture, 'auth-db', 'failed')
+    const log = path.join(fixture.state.runDir, 'events.ndjson')
+    appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: childState.runId })
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'child_done',
+      child: 'auth-db',
+      outcome: 'failed',
+      usage: CHILD_DONE_USAGE,
+    })
+    const tracker = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result).toEqual({ halted: 'stopped', child: 'auth-db', childStatus: 'failed' })
+    expect(tracker.spawned).toEqual([])
+    expect(childDoneOf(fixture, 'auth-db')).toHaveLength(1)
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.children?.['auth-db']).toEqual({ status: 'failed' })
   })
 })

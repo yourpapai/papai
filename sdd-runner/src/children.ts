@@ -6,7 +6,7 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { lastSpawnedHandleOf, spawnRecorderOf } from './child-spawn.js'
+import { emitChildDoneOnce, resumeHandleOf, spawnRecorderOf } from './child-spawn.js'
 import { propagateChildStop } from './child-stop.js'
 import { slugify } from './config.js'
 import { readEvents } from './events.js'
@@ -131,13 +131,7 @@ async function stopAtFailedChild(
   resolve: Parameters<typeof aggregateUsage>[1],
 ): Promise<RunChildrenResult> {
   const usage = childRunDir === undefined ? undefined : childUsageOf(childRunDir, resolve)
-  ctx.emit({
-    altitude: 'L2',
-    type: 'child_done',
-    child: childId,
-    outcome: 'failed',
-    ...(usage === undefined ? {} : { usage }),
-  })
+  emitChildDoneOnce(ctx, state, childId, 'failed', usage)
   state.children = { ...state.children, [childId]: { status: 'failed' } }
   state.status = 'stopped'
   await saveRunState(state, deps.now?.() ?? new Date())
@@ -165,7 +159,7 @@ async function stopAtBudgetGuard(
   return { halted: 'stopped', child: childId, childStatus: 'budget-guard' }
 }
 
-/** D8 completion bookkeeping: child_done with aggregated usage, child marked done, parent persisted. */
+/** D8 completion bookkeeping: a once-per-flight child_done with aggregated usage, child marked done, parent persisted. */
 async function settleCompletedChild(
   deps: OrchestratorDeps,
   state: RunState,
@@ -175,13 +169,7 @@ async function settleCompletedChild(
   resolve: Parameters<typeof aggregateUsage>[1],
 ): Promise<void> {
   const usage = childUsageOf(childRunDir, resolve)
-  ctx.emit({
-    altitude: 'L2',
-    type: 'child_done',
-    child: childId,
-    outcome: 'done',
-    ...(usage === undefined ? {} : { usage }),
-  })
+  emitChildDoneOnce(ctx, state, childId, 'done', usage)
   state.children = { ...state.children, [childId]: { status: 'done' } }
   await saveRunState(state, deps.now?.() ?? new Date())
 }
@@ -231,9 +219,9 @@ async function settleObservedChild(
 
 /**
  * Sequential topo execution loop (D8): walks `state.plan.childIds` in order,
- * one child in flight, skipping children already `done` and re-observing a
- * `running` child (recovered from its last `child_spawned` runId) instead of
- * re-spawning it. Before each spawn
+ * one child in flight, skipping children already `done` and re-observing —
+ * instead of re-spawning — any child whose log records a live flight (see
+ * `resumeHandleOf`). Before each spawn
  * the D10 budget guard fail-closes on unknown-or-exceeded tree spend and the
  * D11 calm-stop seam is honored. Each spawn is recorded durably — the
  * `child_spawned { child, runId }` line plus a persisted `running` child
@@ -264,11 +252,9 @@ export async function runChildren(
     }
     if (state.children?.[childId]?.status === 'done') return runAt(index + 1)
     const stop = options.stop
-    if (state.children?.[childId]?.status === 'running') {
-      const observed = lastSpawnedHandleOf(state, childId)
-      if (observed !== null) {
-        return settleObservedChild(deps, state, ctx, stop, childId, observed, resolve, () => runAt(index + 1))
-      }
+    const resumed = resumeHandleOf(state, childId)
+    if (resumed !== null) {
+      return settleObservedChild(deps, state, ctx, stop, childId, resumed, resolve, () => runAt(index + 1))
     }
     if (stop !== undefined && stop.stopRequested()) return calmSettle(deps, state, stop)
     const spend = treeSpend(readEvents(logPathFor(state)), resolve)

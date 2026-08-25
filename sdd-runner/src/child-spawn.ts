@@ -6,12 +6,13 @@
 import path from 'node:path'
 
 import { readEvents } from './events.js'
+import type { AgentUsage } from './events.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import { logPathFor } from './gate-digest.js'
 import { saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 
-/** D8 spawn bookkeeping: record a spawn durably, recover its runId on resume. */
+/** D8 spawn bookkeeping: record spawns and settlements durably, recover flight state on resume. */
 export interface SpawnRecorder {
   /** Seam callback: fire-and-persist once when the nested run dir is known. */
   readonly onRunDirReady: (runDir: string) => void
@@ -63,4 +64,80 @@ export function lastSpawnedHandleOf(state: RunState, childId: string): { readonl
     }
   }
   return null
+}
+
+/**
+ * D8 crash-window recovery: the `child_spawned` append is synchronous while
+ * its `running`-status save is not, so a spawn line can outlive the save. The
+ * child's open flight — the last post-plan `child_spawned` for it, not yet
+ * closed by its own `child_done` — is the durable record that a nested run
+ * already exists; resume re-observes it instead of re-spawning a duplicate.
+ * A `plan` event resets the fold, so stale flights of a superseded plan never
+ * win; legacy spawn lines without a runId cannot be re-observed.
+ */
+export function openFlightHandleOf(state: RunState, childId: string): { readonly runId: string } | null {
+  let open: { readonly runId: string } | null = null
+  for (const event of readEvents(logPathFor(state))) {
+    if (event.type === 'plan') open = null
+    if (event.type === 'child_spawned' && event.child === childId && event.runId !== undefined) {
+      open = { runId: event.runId }
+    }
+    if (event.type === 'child_done' && event.child === childId) open = null
+  }
+  return open
+}
+
+/**
+ * D8 settlement idempotency: whether the child's current flight already
+ * carries its `child_done` — the append can land before a crash loses the
+ * matching status save, and a second line would double-count the flight's
+ * usage in the D10 ledger. A new `child_spawned` re-arms it (a retried child
+ * settles — and spends — again).
+ */
+export function flightSettledFor(state: RunState, childId: string): boolean {
+  let settled = false
+  for (const event of readEvents(logPathFor(state))) {
+    if (event.type === 'child_spawned' && event.child === childId) settled = false
+    if (event.type === 'child_done' && event.child === childId) settled = true
+  }
+  return settled
+}
+
+/**
+ * D8 resume decision: the handle a not-yet-done child re-observes instead of
+ * re-spawning — the last recorded spawn while its status reads `running`
+ * (gate-pending or a crash mid-flight, settlement replayed idempotently),
+ * else its open post-plan flight (a spawn whose `running`-status save was
+ * lost to a crash in the append/save window). Null means a fresh spawn.
+ */
+export function resumeHandleOf(state: RunState, childId: string): { readonly runId: string } | null {
+  if (state.children?.[childId]?.status === 'running') {
+    const observed = lastSpawnedHandleOf(state, childId)
+    if (observed !== null) return observed
+  }
+  return openFlightHandleOf(state, childId)
+}
+
+/**
+ * D8 settlement recording: appends the flight's `child_done` (with usage when
+ * priced) at most once — the append is synchronous while the status save is
+ * not, so a crash in that window leaves a line the resume's settlement
+ * replay must not duplicate, or the flight's usage would double-count in the
+ * D10 ledger.
+ */
+export function emitChildDoneOnce(
+  ctx: StageContext,
+  state: RunState,
+  childId: string,
+  outcome: 'done' | 'failed',
+  usage: AgentUsage | undefined,
+): void {
+  if (flightSettledFor(state, childId)) return
+  ctx.emit({
+    altitude: 'L2',
+    type: 'child_done',
+    child: childId,
+    outcome,
+    ...(usage === undefined ? {} : { usage }),
+  })
 }
