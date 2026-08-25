@@ -30,7 +30,7 @@ running the tooling itself.
 
 ## 3. CI Node 22 pin
 
-- [ ] 3.1 Add `actions/setup-node@<sha> # v22` (SHA-pinned per workflow convention,
+- [x] 3.1 Add `actions/setup-node@<sha> # v22` (SHA-pinned per workflow convention,
   node-version: 22) to the `mutation-testing` and `mutation-baseline` jobs in
   `.github/workflows/ci.yml`, after `setup-bun`, before the run steps. Verify:
   `bun workflows:lint` passes and the YAML diff shows exactly the two jobs touched.
@@ -40,7 +40,7 @@ running the tooling itself.
 
 ## 4. Baseline reseed under v10
 
-- [ ] 4.1 Add a one-shot `workflow_dispatch` job (`mutation-reseed`) to
+- [x] 4.1 Add a one-shot `workflow_dispatch` job (`mutation-reseed`) to
   `.github/workflows/ci.yml` that runs `bun test:mutate --update-baseline`
   (`--no-score-cache` implied) with an extended timeout, and commits the regenerated
   `scripts/mutation/baseline.json` back to the branch. Marked `if: github.event_name ==
