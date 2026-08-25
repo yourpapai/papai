@@ -81,6 +81,26 @@ const CHECKED_GATE = [
   '',
 ].join('\n')
 
+/** Presented-digest shape: every C-box unchecked, `→`/`ABORT` mentioned in prose only. */
+const UNCHECKED_GATE = [
+  '## Plan gate — change composite',
+  '',
+  'Check every child box to approve the plan. Leave a child box unchecked to veto that child (optional `→ <redirect>` beneath).',
+  'Write `ABORT` on its own line to abort.',
+  '',
+  '### Decisions',
+  '',
+  '- **approve** — executes the children sequentially as nested runs in plan order',
+  '- **veto** (leave a box unchecked) — revises the plan once with the redirects, then re-gates',
+  '- **abort** (`ABORT` on its own line) — aborts the parent before any child runs',
+  '',
+  '### Children (topo order)',
+  '',
+  '- [ ] C1 db-schema — Rename the schema columns.',
+  '- [ ] C2 db-api — Rename the API route helpers. · deps: db-schema',
+  '',
+].join('\n')
+
 /** Starter double for paths that must never spawn a child (aborts, rejections). */
 const neverStartChild: PlanGateResumeDeps['startChildRun'] = () => {
   throw new Error('startChildRun must not be called on this path')
@@ -116,6 +136,69 @@ describe('runPlanGateResume (D12)', () => {
     expect(answered).toHaveLength(1)
     expect(answered[0]).toMatchObject({ mode: 'plan', version: 1 })
     expect(events.filter((e) => e.type === 'child_spawned')).toHaveLength(1)
+  })
+
+  it('a flagless resume of an untouched plan gate abandons instead of parsing an all-children veto', async () => {
+    const { deps, state } = await seedParent(UNCHECKED_GATE)
+    const stdoutLines: string[] = []
+    const spawnCalls: string[] = []
+    const tracking: OrchestratorDeps = {
+      ...deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+      spawn: (command: string) => {
+        spawnCalls.push(command)
+        return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+      },
+    }
+
+    const logPath = path.join(state.runDir, 'events.ndjson')
+    fs.writeFileSync(logPath, '')
+    const result = await runPlanGateResume(tracking, state, {}, makeEmit(state), { startChildRun: neverStartChild })
+
+    expect(result).toMatchObject({ runId: state.runId, outcome: 'abandoned', version: 1 })
+    expect(spawnCalls).toEqual([])
+    const persisted = await loadRunState(deps.config.workDir, state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+    expect(gateAnsweredOf(readEvents(logPath))).toHaveLength(0)
+    expect(stdoutLines.some((line) => line.includes('no decision yet'))).toBe(true)
+  })
+
+  it('a hand-written ABORT line settles through the flagless parse (not blocked by the unanswered guard)', async () => {
+    const { deps, state } = await seedParent(`${UNCHECKED_GATE}\nABORT\n`)
+
+    const result = await runPlanGateResume(deps, state, {}, makeEmit(state), { startChildRun: neverStartChild })
+
+    expect(result).toMatchObject({ outcome: 'aborted', version: 1 })
+    const persisted = await loadRunState(deps.config.workDir, state.runId)
+    expect(persisted.status).toBe('aborted')
+  })
+
+  it('a hand-edited redirect under an unchecked child still parses into the replan (veto protocol intact)', async () => {
+    const { deps, state } = await seedParent(
+      [
+        '- [ ] C1 db-schema — Rename the schema columns.',
+        '→ split the schema child',
+        '- [ ] C2 db-api — Rename the API route helpers. · deps: db-schema',
+        '',
+      ].join('\n'),
+    )
+    const plannerPrompts: string[] = []
+    const tracking: OrchestratorDeps = {
+      ...deps,
+      spawn: (_command: string, args: readonly string[]) => {
+        plannerPrompts.push(String(args[args.length - 1]))
+        return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+      },
+    }
+
+    const failure = await runPlanGateResume(tracking, state, {}, makeEmit(state), {
+      startChildRun: neverStartChild,
+    }).catch((error: unknown) => error)
+
+    assert(failure instanceof Error)
+    expect(plannerPrompts.some((prompt) => prompt.includes('split the schema child'))).toBe(true)
   })
 
   it('an abort flag finalizes the gate aborted before any child exists', async () => {
