@@ -85,7 +85,7 @@ const CHECKED_GATE = [
 const UNCHECKED_GATE = [
   '## Plan gate — change composite',
   '',
-  'Check every child box to approve the plan. Leave a child box unchecked to veto that child (optional `→ <redirect>` beneath).',
+  'Check every child box to approve the plan. Leave a child box unchecked to veto that child (`→ <redirect>` beneath steers the replan; vetoing every child needs at least one `→` line or `ABORT` — an all-unchecked file reads as no decision).',
   'Write `ABORT` on its own line to abort.',
   '',
   '### Decisions',

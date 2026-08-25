@@ -188,6 +188,19 @@ describe('plan mode (D4)', () => {
     expect(md).not.toContain('→ RUN 1 MORE')
   })
 
+  it('plan instructions match the unanswered guard: a redirect-less veto of every child is not a decision', () => {
+    const md = writeGateDigest({
+      ...decisionBase,
+      mode: 'plan',
+      capHitFired: false,
+      children: [
+        { id: 'C1', text: 'auth-db — Add the auth database schema. · deps: (none) · signals: drizzle schema' },
+      ],
+    })
+    expect(md).not.toContain('optional `→ <redirect>`')
+    expect(md).toMatch(/all-unchecked file reads as no decision/u)
+  })
+
   it('early and final gate bytes stay pinned unchanged', () => {
     const early = writeGateDigest({ ...decisionBase, mode: 'early', capHitFired: true })
     expect(early).toContain('## Early gate (cap hit) — change add-thing')
