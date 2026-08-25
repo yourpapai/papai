@@ -3,16 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
+import { toScopedContextId } from '../../../../src/chat/scoped-context.js'
 import * as schema from '../../../../src/db/schema.js'
 import type { InstanceApiDeps } from '../../../../src/debug/instance-route-support.js'
 import { handleAdminInstancesRoutes } from '../../../../src/debug/settings/admin/instances-routes.js'
+import * as alertsModule from '../../../../src/deferred-prompts/alerts.js'
+import type { AlertCondition, DeferredPromptDeliveryInput } from '../../../../src/deferred-prompts/types.js'
 import { addAdmin } from '../../../../src/instances/admin-store.js'
 import { getPlatformInstance } from '../../../../src/instances/platform-store.js'
+import * as taskStoreModule from '../../../../src/instances/task-store.js'
 import { getTaskInstance, insertTaskInstance } from '../../../../src/instances/task-store.js'
 import {
   registerContributedTaskProviderType,
@@ -358,6 +362,93 @@ describe('settings admin instances routes', () => {
     )
 
     expect(res.status).toBe(200)
+  })
+
+  test('admin DELETE task-instance cancels its pinned alerts across all delivery contexts before removal', async () => {
+    const groupA = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'grp-a' })
+    const groupB = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'grp-b' })
+    insertTaskInstance({ id: 'ti-other', type: 'kaneo', config: {}, status: 'active' })
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const deliveryFor = (storageContextId: string): DeferredPromptDeliveryInput => ({
+      contextId: storageContextId,
+      storageContextId,
+      contextType: 'group',
+      threadId: null,
+      audience: 'shared',
+      mentionUserIds: [],
+      createdByUserId: 'admin-1',
+      createdByUsername: null,
+    })
+    const pinnedA = alertsModule.createAlertPrompt(
+      'admin-1',
+      'pinned A',
+      condition,
+      60,
+      undefined,
+      deliveryFor(groupA),
+      'ti-1',
+    )
+    const pinnedB = alertsModule.createAlertPrompt(
+      'admin-1',
+      'pinned B',
+      condition,
+      60,
+      undefined,
+      deliveryFor(groupB),
+      'ti-1',
+    )
+    const pinnedOther = alertsModule.createAlertPrompt(
+      'admin-1',
+      'pinned other',
+      condition,
+      60,
+      undefined,
+      deliveryFor(groupA),
+      'ti-other',
+    )
+
+    // The FK cascade deletes the alert rows along with the instance, so the
+    // explicit cancel is observable only through call order: it must run (with
+    // no context filter) before the instance row is removed.
+    const callOrder: string[] = []
+    const cancelCalls: Array<[string, string | undefined]> = []
+    const realCancel = alertsModule.cancelActiveAlertsPinnedToInstance
+    const cancelSpy = spyOn(alertsModule, 'cancelActiveAlertsPinnedToInstance').mockImplementation(
+      (taskInstanceId: string, configContextId?: string): void => {
+        callOrder.push('cancel')
+        cancelCalls.push([taskInstanceId, configContextId])
+        realCancel(taskInstanceId, configContextId)
+      },
+    )
+    const realDelete = taskStoreModule.deleteTaskInstance
+    const deleteSpy = spyOn(taskStoreModule, 'deleteTaskInstance').mockImplementation((id: string): void => {
+      callOrder.push('delete')
+      realDelete(id)
+    })
+
+    let res: Response
+    try {
+      const url = new URL('https://x/settings/api/admin/task-instances/ti-1')
+      res = await handleAdminInstancesRoutes(
+        new Request(url, {
+          method: 'DELETE',
+          headers: authHeaders(adminSession, true),
+        }),
+        url,
+        '/settings/api/admin/task-instances/ti-1',
+      )
+    } finally {
+      cancelSpy.mockRestore()
+      deleteSpy.mockRestore()
+    }
+
+    expect(res.status).toBe(200)
+    expect(getTaskInstance('ti-1')).toBeNull()
+    expect(cancelCalls).toEqual([['ti-1', undefined]])
+    expect(callOrder.indexOf('cancel')).toBeLessThan(callOrder.indexOf('delete'))
+    expect(alertsModule.getAlertPrompt(pinnedA.id, 'admin-1')).toBeNull()
+    expect(alertsModule.getAlertPrompt(pinnedB.id, 'admin-1')).toBeNull()
+    expect(alertsModule.getAlertPrompt(pinnedOther.id, 'admin-1')?.status).toBe('active')
   })
 
   test('admin PATCH platform-instances returns 404 for missing instance', async () => {
