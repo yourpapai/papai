@@ -150,6 +150,33 @@ export class TaskProviderResolver {
       return null
     }
 
+    const provider = await this.resolveDescriptorAndBuild(contextId, instance)
+    return provider
+  }
+
+  /** Resolves the explicitly given task instance for a context, ignoring the
+   * context's current assignment (used by pinned-instance alert polling).
+   * Context-scoped config fields still come from `contextId`. */
+  async resolveForInstance(contextId: string, taskInstanceId: string): Promise<TaskProvider | null> {
+    log.debug({ contextId, taskInstanceId }, 'resolveForInstance called')
+    const instance = this.deps.getTaskInstance(taskInstanceId)
+    if (instance === null) {
+      log.warn({ contextId, taskInstanceId }, 'Cannot resolve task provider: instance missing')
+      return null
+    }
+    if (instance.status !== 'active') {
+      log.warn(
+        { contextId, taskInstanceId: instance.id, status: instance.status },
+        'Cannot resolve task provider: instance is not active',
+      )
+      return null
+    }
+
+    const provider = await this.resolveDescriptorAndBuild(contextId, instance)
+    return provider
+  }
+
+  private async resolveDescriptorAndBuild(contextId: string, instance: TaskInstance): Promise<TaskProvider | null> {
     const descriptor = this.deps.getTaskProviderDescriptor(instance.type)
     if (descriptor === undefined) {
       log.warn(
