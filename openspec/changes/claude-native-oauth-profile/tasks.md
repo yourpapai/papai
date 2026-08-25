@@ -66,5 +66,5 @@ refuses, and its guard-wording task (2.5) edits text that revision owns.
 
 ## 7. Pre-merge verification
 
-- [ ] 7.1 Full sweep green: full suite, lint, typecheck, workflow lint, strict change validation.
+- [x] 7.1 Full sweep green: full suite, lint, typecheck, workflow lint, strict change validation.
   Verify: `bun run test && bun run lint && bun run typecheck && bun workflows:lint && bunx openspec validate claude-native-oauth-profile --strict`
