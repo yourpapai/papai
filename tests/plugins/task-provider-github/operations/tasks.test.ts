@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { GitHubClassifiedError } from '../../../../plugins/task-provider-github/classify-error.js'
 import type { GitHubConfig } from '../../../../plugins/task-provider-github/client.js'
 import {
+  buildGitHubIssueSearchQuery,
   githubCreateTask,
   githubGetTask,
   githubListTasks,
@@ -271,7 +272,9 @@ describe('githubSearchTasks', () => {
       offset: 1,
     })
     expect(calls[0]?.url.pathname).toBe('/search/issues')
-    expect(calls[0]?.url.searchParams.get('q')).toBe('repo:octocat/Hello-World is:issue label:bug crashed')
+    expect(calls[0]?.url.searchParams.get('q')).toBe(
+      'repo:octocat/Hello-World is:issue label:bug crashed in:title,body',
+    )
     expect(results).toHaveLength(2)
     expect(results[0]?.id).toBe('2')
     expect(results[1]?.id).toBe('3')
@@ -283,7 +286,7 @@ describe('githubSearchTasks', () => {
     const items = Array.from({ length: 3 }, (_, i) => issueResponse({ number: i + 1, id: i + 1 }))
     setMockFetch(captureRequests(calls, () => ({ data: { total_count: 3, items } })).handler)
     const results = await githubSearchTasks(config, { query: 'everything' })
-    expect(calls[0]?.url.searchParams.get('q')).toBe('repo:octocat/Hello-World is:issue everything')
+    expect(calls[0]?.url.searchParams.get('q')).toBe('repo:octocat/Hello-World is:issue everything in:title,body')
     expect(results).toHaveLength(3)
   })
 
@@ -292,7 +295,9 @@ describe('githubSearchTasks', () => {
     const calls: CapturedRequest[] = []
     setMockFetch(captureRequests(calls, () => ({ data: { total_count: 0, items: [] } })).handler)
     await githubSearchTasks(config, { query: 'crashed', assigneeId: 'hubot' })
-    expect(calls[0]?.url.searchParams.get('q')).toBe('repo:octocat/Hello-World is:issue assignee:hubot crashed')
+    expect(calls[0]?.url.searchParams.get('q')).toBe(
+      'repo:octocat/Hello-World is:issue assignee:hubot crashed in:title,body',
+    )
   })
 
   test('stops fetching once the requested window is covered', async () => {
@@ -357,5 +362,64 @@ describe('githubSearchTasks', () => {
     const results = await githubSearchTasks(config, { query: 'everything', offset: 1000 })
     expect(calls).toHaveLength(0)
     expect(results).toEqual([])
+  })
+})
+
+describe('buildGitHubIssueSearchQuery', () => {
+  test('always scopes to the repo and pins is:issue, with no trailing space', () => {
+    expect(buildGitHubIssueSearchQuery({ repo: 'octocat/Hello-World' })).toBe('repo:octocat/Hello-World is:issue')
+  })
+
+  test('assigneeId adds the assignee qualifier', () => {
+    expect(buildGitHubIssueSearchQuery({ repo: 'octocat/Hello-World', assigneeId: 'hubot' })).toBe(
+      'repo:octocat/Hello-World is:issue assignee:hubot',
+    )
+  })
+
+  test("status 'open' adds is:open", () => {
+    expect(buildGitHubIssueSearchQuery({ repo: 'octocat/Hello-World', status: 'open' })).toBe(
+      'repo:octocat/Hello-World is:issue is:open',
+    )
+  })
+
+  test("status 'closed' adds is:closed", () => {
+    expect(buildGitHubIssueSearchQuery({ repo: 'octocat/Hello-World', status: 'closed' })).toBe(
+      'repo:octocat/Hello-World is:issue is:closed',
+    )
+  })
+
+  test("canonical status 'closed (not_planned)' adds is:closed once", () => {
+    expect(buildGitHubIssueSearchQuery({ repo: 'octocat/Hello-World', status: 'closed (not_planned)' })).toBe(
+      'repo:octocat/Hello-World is:issue is:closed',
+    )
+  })
+
+  test('other status text adds no state qualifier', () => {
+    expect(buildGitHubIssueSearchQuery({ repo: 'octocat/Hello-World', status: 'in progress' })).toBe(
+      'repo:octocat/Hello-World is:issue',
+    )
+  })
+
+  test('non-empty query appends the free-text terms and in:title,body', () => {
+    expect(buildGitHubIssueSearchQuery({ repo: 'octocat/Hello-World', query: 'crashed' })).toBe(
+      'repo:octocat/Hello-World is:issue crashed in:title,body',
+    )
+  })
+
+  test('whitespace-only query emits no in: clause and no trailing space', () => {
+    expect(buildGitHubIssueSearchQuery({ repo: 'octocat/Hello-World', query: '   ' })).toBe(
+      'repo:octocat/Hello-World is:issue',
+    )
+  })
+
+  test('combines repo, state, assignee, and free-text qualifiers in order', () => {
+    expect(
+      buildGitHubIssueSearchQuery({
+        repo: 'octocat/Hello-World',
+        status: 'closed',
+        assigneeId: 'hubot',
+        query: 'label:bug crashed',
+      }),
+    ).toBe('repo:octocat/Hello-World is:issue is:closed assignee:hubot label:bug crashed in:title,body')
   })
 })

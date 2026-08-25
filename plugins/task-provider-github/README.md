@@ -24,11 +24,13 @@ access token.
 
 Projects `list`/`read` (the configured repository is the only project), the
 core task operations (create/read/update/list/search), full issue-comment
-management (`comments.read`/`create`/`update`/`delete`), and label management
+management (`comments.read`/`create`/`update`/`delete`), label management
 (`labels.list`/`create`/`update`/`delete`/`assign`, at both repository and
-issue level). Single-comment fetch and comment reactions are not offered, and
-attachments, deletion, and history are not offered: GitHub's REST API cannot
-delete issues, and the remaining surfaces arrive in later sessions.
+issue level), task history (`activities.read`, from issue events), task
+counting (`tasks.count`, via the search API's `total_count`), and identity
+resolution (collaborator-first user search with a `/search/users` fallback).
+Single-comment fetch and comment reactions are not offered, and attachments
+and issue deletion remain absent: GitHub's REST API cannot delete issues.
 
 ## Configuration
 

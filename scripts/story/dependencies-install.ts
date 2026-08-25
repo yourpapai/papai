@@ -20,14 +20,19 @@ export function dependencySnapshotKey(
   lockBytes: Uint8Array,
   bunVersion: string,
   workspaceManifests: ReadonlyArray<Readonly<{ path: string; bytes: Uint8Array }>> = [],
+  patchFiles: ReadonlyArray<Readonly<{ path: string; bytes: Uint8Array }>> = [],
   platform: StoryDependencyPlatform = { os: process.platform, cpu: process.arch },
 ): string {
   const hash = createHash('sha256')
-  hash.update('papai-story-dependency-key-v4\0')
+  hash.update('papai-story-dependency-key-v5\0')
   for (const value of [packageBytes, lockBytes, Buffer.from(bunVersion)]) hash.update(frame(value))
   for (const workspace of workspaceManifests) {
     hash.update(frame(Buffer.from(workspace.path)))
     hash.update(frame(workspace.bytes))
+  }
+  for (const patch of patchFiles) {
+    hash.update(frame(Buffer.from(patch.path)))
+    hash.update(frame(patch.bytes))
   }
   hash.update(frame(Buffer.from(platform.os)))
   hash.update(frame(Buffer.from(platform.cpu)))
@@ -121,6 +126,67 @@ export function loadStoryWorkspaceManifests(
   )
 }
 
+export type StagedPatchFile = Readonly<{ path: string; bytes: Uint8Array }>
+
+/**
+ * Patch files referenced by package.json `patchedDependencies`. Bun resolves
+ * those paths relative to package.json and refuses `bun install
+ * --frozen-lockfile` when one is missing, so a staged install must carry the
+ * same bytes the real checkout has — and the cache key must hash them, because
+ * patch content changes the installed tree even when package.json does not.
+ */
+function patchedDependencyPaths(packageBytes: Uint8Array): readonly string[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(packageBytes))
+  } catch (error) {
+    throw new Error('Story dependency package.json is not valid JSON', { cause: error })
+  }
+  const packageJson = record(parsed)
+  if (packageJson === undefined) return []
+  const patches = packageJson['patchedDependencies']
+  const values = record(patches)
+  if (values === undefined) return []
+  const paths = Object.values(values)
+  if (!paths.every((value): value is string => typeof value === 'string')) {
+    throw new Error('Story dependency patchedDependencies must map package ids to patch paths')
+  }
+  return [...new Set(paths)].sort(compareText)
+}
+
+function patchFilePath(patch: string): string {
+  const normalized = path.posix.normalize(patch)
+  if (
+    patch.includes('\\') ||
+    patch.includes('*') ||
+    normalized === '.' ||
+    normalized === '..' ||
+    normalized.startsWith('../') ||
+    path.isAbsolute(patch) ||
+    path.win32.isAbsolute(patch)
+  ) {
+    throw new Error(`Unsafe story dependency patch path: ${patch}`)
+  }
+  return normalized
+}
+
+export function loadPatchedDependencyFiles(
+  projectRoot: string,
+  packageBytes: Uint8Array,
+  fs: WorkspaceManifestFileSystem,
+): Promise<readonly StagedPatchFile[]> {
+  const paths = patchedDependencyPaths(packageBytes).map(patchFilePath)
+  return Promise.all(
+    paths.map(async (patchPath) => {
+      await assertWorkspaceDirectories(projectRoot, patchPath, fs)
+      return {
+        path: patchPath,
+        bytes: await safeReadDependencyFile(path.join(projectRoot, patchPath), patchPath, fs),
+      }
+    }),
+  )
+}
+
 export type StoryDependencyInstallerOptions = Readonly<{
   args: readonly string[]
   cwd: string
@@ -151,6 +217,7 @@ export async function installStagedDependencies(
   packageBytes: Uint8Array,
   lockBytes: Uint8Array,
   workspaceManifests: readonly StoryWorkspaceManifest[],
+  patchFiles: readonly StagedPatchFile[],
   deps: StagingInstallerDependencies,
   platform: StoryDependencyPlatform,
 ): Promise<void> {
@@ -163,9 +230,9 @@ export async function installStagedDependencies(
   await deps.writeFile(path.join(staging, 'package.json'), packageBytes)
   await deps.writeFile(path.join(staging, 'bun.lock'), lockBytes)
   await Promise.all(
-    workspaceManifests.map(async (workspace) => {
-      await deps.mkdir(path.dirname(path.join(staging, workspace.path)), { recursive: true, mode: 0o700 })
-      await deps.writeFile(path.join(staging, workspace.path), workspace.bytes)
+    [...workspaceManifests, ...patchFiles].map(async (file) => {
+      await deps.mkdir(path.dirname(path.join(staging, file.path)), { recursive: true, mode: 0o700 })
+      await deps.writeFile(path.join(staging, file.path), file.bytes)
     }),
   )
   await deps.install({
@@ -182,15 +249,15 @@ export async function installStagedDependencies(
       .map((directory) => deps.rm(directory, { recursive: true, force: true })),
     deps.rm(path.join(staging, 'package.json'), { recursive: true, force: true }),
     deps.rm(path.join(staging, 'bun.lock'), { recursive: true, force: true }),
-    ...workspaceManifests.map((workspace) =>
-      deps.rm(path.join(staging, workspace.path), { recursive: true, force: true }),
+    ...[...workspaceManifests, ...patchFiles].map((file) =>
+      deps.rm(path.join(staging, file.path), { recursive: true, force: true }),
     ),
   ])
-  const workspaceDirectories = [
-    ...new Set(workspaceManifests.map((workspace) => path.dirname(path.join(staging, workspace.path)))),
+  const stagedDirectories = [
+    ...new Set([...workspaceManifests, ...patchFiles].map((file) => path.dirname(path.join(staging, file.path)))),
   ]
-  workspaceDirectories.sort((left, right) => right.length - left.length)
-  await workspaceDirectories.reduce(
+  stagedDirectories.sort((left, right) => right.length - left.length)
+  await stagedDirectories.reduce(
     (serial, directory) => serial.then(() => deps.rm(directory, { recursive: true, force: true })),
     Promise.resolve(),
   )

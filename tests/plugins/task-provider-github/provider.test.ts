@@ -102,6 +102,21 @@ const endpointResponder = (url: string, init: RequestInit): { data: unknown; sta
   const parsed = new URL(url)
   const method = init.method ?? 'GET'
   if (parsed.pathname === '/search/issues') return { data: { total_count: 0, items: [] } }
+  if (parsed.pathname === '/repos/octocat/Hello-World/issues/1347/events') return { data: [] }
+  if (parsed.pathname === '/repos/octocat/Hello-World/collaborators') {
+    return {
+      data: [
+        {
+          login: 'octocat',
+          id: 583231,
+          avatar_url: 'https://avatars.githubusercontent.com/u/583231?v=4',
+          html_url: 'https://github.com/octocat',
+          type: 'User',
+          name: 'The Octocat',
+        },
+      ],
+    }
+  }
   if (parsed.pathname === '/repos/octocat/Hello-World') return { data: repoPayload() }
   if (parsed.pathname === '/repos/octocat/Hello-World/issues') {
     const isList = method === 'GET'
@@ -156,6 +171,8 @@ describe('GitHubProvider', () => {
         'labels.update',
         'labels.delete',
         'labels.assign',
+        'activities.read',
+        'tasks.count',
       ]),
     )
     expect(provider.traits).toEqual(GITHUB_TRAITS)
@@ -244,16 +261,35 @@ describe('GitHubProvider', () => {
       'createSprint',
       'updateSprint',
       'assignTaskToSprint',
-      'getTaskHistory',
       'listSavedQueries',
       'runSavedQuery',
-      'countTasks',
     ]
     for (const method of forbidden) {
       expect(provider[method], method).toBeUndefined()
     }
     expect(typeof provider.getProject).toBe('function')
     expect(typeof provider.listProjects).toBe('function')
+  })
+
+  test('task history, count, and identity resolver are wired to the GitHub operations', async () => {
+    mockLogger()
+    const provider = makeProvider()
+    const calls: CapturedRequest[] = []
+    setMockFetch(captureRequests(calls).handler)
+
+    const history = await provider.getTaskHistory?.('1347')
+    const count = await provider.countTasks?.({ query: 'everything' })
+    const identity = await provider.identityResolver?.searchUsers('octocat')
+
+    expect(calls.map((call) => `${call.method} ${call.url.pathname}`)).toEqual([
+      'GET /repos/octocat/Hello-World/issues/1347/events',
+      'GET /search/issues',
+      'GET /repos/octocat/Hello-World/collaborators',
+    ])
+    expect(history).toEqual([])
+    expect(count).toBe(0)
+    expect(typeof provider.identityResolver?.searchUsers).toBe('function')
+    expect(identity).toEqual([{ id: '583231', login: 'octocat', name: 'The Octocat' }])
   })
 
   test('closing is a status update through updateTask (PATCH with completed reason)', async () => {

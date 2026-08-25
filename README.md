@@ -640,6 +640,10 @@ scope, `seedMerge` preserves existing entries — not a full run) on push to
 master (`test:mutate:seed`), so a master update landing mid-run cannot lose the
 seed. See `scripts/mutation/README.md` for flags (`--no-ratchet`), the
 override/companion resolution, and the one-time migration catch-up note.
+Toolchain: Stryker 10 — the CLI host is Node (≥ 22; only test children run on
+Bun), and `@hughescr/stryker-bun-runner` installs via a Bun patch until
+upstream accepts core 10 (details and deletion condition in
+`scripts/mutation/README.md`).
 
 ---
 
