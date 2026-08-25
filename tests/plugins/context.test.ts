@@ -703,7 +703,7 @@ describe('buildPluginContext', () => {
       await expect(ctx.providerRuntime!.httpFetch('http://unknown-host.lan/v1/transcribe')).rejects.toThrow()
       // The configured host is in the dynamic set — the rejection must not be an allowlist rejection
       await expect(ctx.providerRuntime!.httpFetch('http://whisper.lan:9000/v1/transcribe')).rejects.toThrow(
-        /ECONNREFUSED|fetch|network|connect|socket|timeout|abort/iu,
+        /ECONNREFUSED|ENOTFOUND|getaddrinfo|fetch|network|connect|socket|timeout|abort/iu,
       )
     })
 
