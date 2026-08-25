@@ -174,6 +174,31 @@ const isSearchResultsExhausted = (error: unknown): boolean =>
   error.statusCode === 422 &&
   errorBodyMessage(error.body).includes('first 1000 search results')
 
+export interface GitHubIssueSearchQueryInput {
+  repo: string
+  query?: string
+  assigneeId?: string
+  status?: string
+}
+
+/**
+ * Builds the `q` qualifier string shared by search and count: repo scope and
+ * `is:issue` always, state/assignee qualifiers when present, then the trimmed
+ * free-text terms with `in:title,body` (empty text emits no `in:` clause).
+ */
+export function buildGitHubIssueSearchQuery(input: GitHubIssueSearchQueryInput): string {
+  const parts = [`repo:${input.repo}`, 'is:issue']
+  if (input.status === 'open') parts.push('is:open')
+  else if (input.status !== undefined && input.status.startsWith('closed')) parts.push('is:closed')
+  if (input.assigneeId !== undefined) parts.push(`assignee:${input.assigneeId}`)
+  const text = input.query?.trim()
+  if (text !== undefined && text !== '') {
+    parts.push(text)
+    parts.push('in:title,body')
+  }
+  return parts.join(' ')
+}
+
 export async function githubSearchTasks(
   config: GitHubConfig,
   params: GitHubSearchTasksParams,
@@ -189,9 +214,10 @@ export async function githubSearchTasks(
     return []
   }
   try {
-    const assigneeQualifier = params.assigneeId === undefined ? '' : `assignee:${params.assigneeId} `
     const issues = await githubPaginate(config, '/search/issues', {
-      query: { q: `repo:${config.repo} is:issue ${assigneeQualifier}${params.query}` },
+      query: {
+        q: buildGitHubIssueSearchQuery({ repo: config.repo, query: params.query, assigneeId: params.assigneeId }),
+      },
       extractPage: (data: unknown): GitHubIssue[] => searchPageSchema.parse(data).items,
       maxItems: needed,
       isEndOfResults: isSearchResultsExhausted,

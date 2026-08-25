@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { GitHubUserSchema } from '../../../../plugins/task-provider-github/schemas/user.js'
+import { GitHubNamedUserSchema, GitHubUserSchema } from '../../../../plugins/task-provider-github/schemas/user.js'
 
 describe('GitHubUserSchema', () => {
   const validUser = {
@@ -75,5 +75,57 @@ describe('GitHubUserSchema', () => {
     const result = GitHubUserSchema.parse(validUser)
     expect('site_admin' in result).toBe(false)
     expect('node_id' in result).toBe(false)
+  })
+
+  test('name stripped by base schema (unchanged by the extension)', () => {
+    const result = GitHubUserSchema.parse({ ...validUser, name: 'The Octocat' })
+    expect('name' in result).toBe(false)
+  })
+})
+
+describe('GitHubNamedUserSchema', () => {
+  const validNamedUser = {
+    login: 'octocat',
+    id: 583231,
+    avatar_url: 'https://avatars.githubusercontent.com/u/583231?v=4',
+    html_url: 'https://github.com/octocat',
+    type: 'User',
+    name: 'The Octocat',
+    site_admin: false,
+    node_id: 'MDQ6VXNlcjU4MzIzMQ==',
+  }
+
+  test('accepts a payload with a display name and keeps it', () => {
+    const result = GitHubNamedUserSchema.parse(validNamedUser)
+    expect(result.login).toBe('octocat')
+    expect(result.name).toBe('The Octocat')
+  })
+
+  test('absent name accepts', () => {
+    const { name: _, ...withoutName } = validNamedUser
+    const result = GitHubNamedUserSchema.parse(withoutName)
+    expect(result.login).toBe('octocat')
+    expect(result.name).toBeUndefined()
+  })
+
+  test('name as null accepts (GitHub nulls it for nameless users)', () => {
+    const result = GitHubNamedUserSchema.parse({ ...validNamedUser, name: null })
+    expect(result.login).toBe('octocat')
+    expect(result.name).toBeNull()
+  })
+
+  test('name as number rejects', () => {
+    expect(() => GitHubNamedUserSchema.parse({ ...validNamedUser, name: 42 })).toThrow()
+  })
+
+  test('extra fields stripped', () => {
+    const result = GitHubNamedUserSchema.parse(validNamedUser)
+    expect('site_admin' in result).toBe(false)
+    expect('node_id' in result).toBe(false)
+  })
+
+  test('rejects when base fields are malformed', () => {
+    expect(() => GitHubNamedUserSchema.parse({ ...validNamedUser, id: '583231' })).toThrow()
+    expect(() => GitHubNamedUserSchema.parse({ ...validNamedUser, login: 42 })).toThrow()
   })
 })
