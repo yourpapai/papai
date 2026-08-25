@@ -72,6 +72,7 @@ import type { ClaudeAgentOptions } from '../../opencode-agent/src/claude-adapter
 import { createClaudeConfigDir, liveSpawn } from '../../opencode-agent/src/claude-connect.js'
 import type { SpawnClaude } from '../../opencode-agent/src/claude-connect.js'
 import { decodeClaudeLine, parseNdjsonStream } from '../../opencode-agent/src/claude-contract.js'
+import { writeClaudeCredentialFiles } from '../../opencode-agent/src/claude-credential.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'claude-cli')
@@ -251,20 +252,22 @@ const run = async (): Promise<number> => {
   //
   // Before any corpus turn: these are the ship decision's facts, and they must
   // land in facts.json whatever the corpus does (the first 5.1 run crashed at
-  // the opening turn and recorded nothing). The materialized dir is the scoped
-  // adapter's own `CLAUDE_CONFIG_DIR` — it exists from boot, before any spawn
-  // (the config-dir probes populate only on spawn, so they are empty here).
-  // One raw CLI turn against that dir — helper pair present, both env
-  // spellings deleted, `--settings` naming the file the way the adapter's
-  // argv does — so the helper is the only carrier that exists, and the init
-  // line's `apiKeySource` is the recorded answer to whether `--bare`
-  // consults it. The stderr tail rides the ✗ detail so a refused helper or
-  // token names its layer instead of exiting 1 in silence. A second, non-bare
-  // leg runs only if the first fails, separating "--bare refuses the helper"
-  // from "the helper or token is refused outright".
+  // the opening turn and recorded nothing). The helper dir is materialized
+  // through the same writer the adapter boots with (`writeClaudeCredentialFiles`
+  // over a fresh job-scoped dir) — the adapter's own dir is internal to it and
+  // only observable at spawn, which these legs deliberately precede. One raw
+  // CLI turn against that dir — helper pair present, both env spellings
+  // deleted, `--settings` naming the file the way the adapter's argv does — so
+  // the helper is the only carrier that exists, and the init line's
+  // `apiKeySource` is the recorded answer to whether `--bare` consults it.
+  // The stderr tail rides the ✗ detail so a refused helper or token names its
+  // layer instead of exiting 1 in silence. A second, non-bare leg runs only if
+  // the first fails, separating "--bare refuses the helper" from "the helper
+  // or token is refused outright".
 
   if (credential.name === 'CLAUDE_CODE_OAUTH_TOKEN') {
-    const helperDir = scoped.env['CLAUDE_CONFIG_DIR'] ?? ''
+    const helperDir = createClaudeConfigDir(tmpdir())
+    writeClaudeCredentialFiles(helperDir, credential)
     const helperEnv: NodeJS.ProcessEnv = { ...env, CLAUDE_CONFIG_DIR: helperDir }
     Reflect.deleteProperty(helperEnv, credential.name)
     const helperArgv = (withBare: boolean): readonly string[] => [
