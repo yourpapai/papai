@@ -58,5 +58,6 @@
     "!.opencode/plugins/**",
     ".worktrees"
   ],
-  "cleanTempDir": true
+  "cleanTempDir": true,
+  "tsconfigFile": "tsconfig.stryker-rewrite-disabled.json"
 }

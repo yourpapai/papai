@@ -40,7 +40,7 @@ describe('story sandbox image single source', () => {
   })
 
   test('the pinned reference carries a sha256 digest and the required Bun tag', () => {
-    expect(STORY_SANDBOX_LINUX_IMAGE).toMatch(/^docker\.io\/oven\/bun:1\.3\.13@sha256:[a-f0-9]{64}$/u)
+    expect(STORY_SANDBOX_LINUX_IMAGE).toMatch(/^docker\.io\/oven\/bun:1\.4\.0@sha256:[a-f0-9]{64}$/u)
   })
 
   test('sandbox.ts does not hardcode a digest', () => {

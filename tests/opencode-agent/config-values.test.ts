@@ -5,7 +5,12 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { DEFAULT_STALL_TIMEOUT_MS, stallTimeoutMs, STALL_RANGE } from '../../opencode-agent/src/config-values.js'
+import {
+  backendSelection,
+  DEFAULT_STALL_TIMEOUT_MS,
+  stallTimeoutMs,
+  STALL_RANGE,
+} from '../../opencode-agent/src/config-values.js'
 import { ConfigError, loadConfig } from '../../opencode-agent/src/config.js'
 
 /**
@@ -94,4 +99,34 @@ describe('AGENT_STALL_TIMEOUT_MS', () => {
     expect(() => loadConfig({ ...ENV, AGENT_STALL_TIMEOUT_MS: 'banana' }, '/repo')).toThrow(ConfigError)
     expect(() => loadConfig({ ...ENV, AGENT_STALL_TIMEOUT_MS: 'banana' }, '/repo')).toThrow('AGENT_STALL_TIMEOUT_MS')
   })
+})
+
+/**
+ * `AGENT_BACKEND` — the one job-wide knob that selects the model backend.
+ *
+ * An enum, not a free string: the whole route forks on this value (which
+ * adapter is created, which credentials are demanded, whether a proxy starts),
+ * and a typo falling back to the default would silently bill the wrong account
+ * rather than failing the job. Unset and empty both keep `opencode`, because
+ * the workflow forwards an unset repository variable as the empty string.
+ */
+describe('AGENT_BACKEND', () => {
+  test('defaults to opencode, and an unset or empty value is that default', () => {
+    expect(backendSelection({}, 'AGENT_BACKEND')).toBe('opencode')
+    expect(backendSelection({ AGENT_BACKEND: '' }, 'AGENT_BACKEND')).toBe('opencode')
+    expect(backendSelection({ AGENT_BACKEND: '   ' }, 'AGENT_BACKEND')).toBe('opencode')
+  })
+
+  test('accepts exactly the two backends, trimmed', () => {
+    expect(backendSelection({ AGENT_BACKEND: 'opencode' }, 'AGENT_BACKEND')).toBe('opencode')
+    expect(backendSelection({ AGENT_BACKEND: ' claude ' }, 'AGENT_BACKEND')).toBe('claude')
+  })
+
+  test.each([['claude-code'], ['CLAUDE'], ['anthropic'], ['0']])(
+    'refuses any other non-empty value (%s), naming the variable',
+    (value) => {
+      expect(() => backendSelection({ AGENT_BACKEND: value }, 'AGENT_BACKEND')).toThrow(ConfigError)
+      expect(() => backendSelection({ AGENT_BACKEND: value }, 'AGENT_BACKEND')).toThrow('AGENT_BACKEND')
+    },
+  )
 })

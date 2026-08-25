@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { collectImports } from '../../src/plugins/discovery-import-scan.js'
 import { readPluginSourceGraph } from '../../src/plugins/discovery-imports.js'
 import { createSourceParser, type SourceParser } from '../../src/ts-ast/source-parser.js'
+import { expectRejection } from '../utils/test-helpers.js'
 
 let parser: SourceParser
 
@@ -130,7 +131,8 @@ describe('readPluginSourceGraph', () => {
     const files = new Map<string, string>([['/plugin/index.ts', `import 'zod'`]])
     const { deps, readFileSync } = buildDeps(files)
 
-    await expect(readPluginSourceGraph(parser, '/plugin/index.ts', '/plugin', deps, readFileSync)).rejects.toThrow(
+    await expectRejection(
+      readPluginSourceGraph(parser, '/plugin/index.ts', '/plugin', deps, readFileSync),
       /Bare-module imports are not allowed/u,
     )
   })

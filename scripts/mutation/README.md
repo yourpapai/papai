@@ -258,3 +258,28 @@ every recently-changed unbaselined file at once — expect a large one-time
 baseline entries (measured against the companion test set alone, often an
 undercount) ratchet upward as their files are re-measured on later master runs
 with coverage-derived test sets.
+
+### `tsconfigFile` points at a file that does not exist — on purpose
+
+`stryker.config.json` sets `tsconfigFile` to `tsconfig.stryker-rewrite-disabled.json`,
+which is not a real file. That is the switch that turns off Stryker's sandbox
+tsconfig rewrite: the preprocessor looks the path up in the sandbox file set,
+finds nothing, and skips.
+
+The rewrite has to be skipped because it calls `ts.parseConfigFileTextToJson` —
+the TypeScript 6 compiler API. Since the repo moved to TypeScript 7, whose entry
+point exports only the version, that call throws `is not a function` and aborts
+the whole run before a single mutant is tested. Stryker 10 added a TypeScript 7
+_checker_; this sandbox path was not part of that.
+
+Skipping is safe here, and only here, because the rewrite is a no-op for this
+repo's `tsconfig.json`: it declares no `extends` and no `references`, and its
+`exclude` entries and the `papai/plugin-types` path alias are all repo-relative,
+so they resolve unchanged inside the sandbox. `tsconfig.json` itself is still
+copied into the sandbox untouched — plugin sources under `plugins/` import
+through that alias and would not resolve without it (`test:mutate:file
+plugins/task-provider-kaneo/mappers.ts` is the check that proves it).
+
+Revisit if `tsconfig.json` ever gains `extends`, `references`, or a path that
+points outside the repository — then the rewrite stops being a no-op and Stryker
+needs a real classic-API TypeScript again.

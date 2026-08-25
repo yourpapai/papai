@@ -136,14 +136,25 @@ async function withSnapshot<T>(
   read: (snapshot: Snapshot) => Promise<T>,
 ): Promise<T> {
   const api = await connectedApi(state)
-  const snapshot = await api.updateSnapshot({
-    openFiles: [...openFiles],
-    fileChanges: { invalidateAll: true },
-  })
+  // Opens are ref-counted and outlive their snapshot, so each call must release
+  // its own. Leaving them open makes every later snapshot carry every source
+  // ever parsed — quadratic work that turns a parser reused across a test file
+  // into a multi-minute stall.
+  //
+  // Each call releases exactly what it opened, and only once it is done reading.
+  // Deferring the release to the *next* call would be one round trip cheaper and
+  // is wrong: parses run concurrently, so the next call would close files a
+  // still-running one is reading, and its sources vanish mid-parse.
+  //
+  // No invalidation is requested: a virtual name is used once and its text never
+  // changes, so nothing the server already holds can go stale. The snapshot is
+  // likewise not disposed — `close()` tears the whole API down.
+  const snapshot = await api.updateSnapshot({ openFiles: [...openFiles] })
   try {
     return await read(snapshot)
   } finally {
-    await snapshot.dispose()
+    for (const name of openFiles) state.store.delete(name)
+    await api.updateSnapshot({ closeFiles: [...openFiles] })
   }
 }
 

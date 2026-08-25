@@ -84,7 +84,8 @@ interface LifecycleInput {
   event: TriggerEvent
   deps: PhaseDeps
   agent: AgentHandle
-  proxy: ProviderProxy
+  /** Null on the claude route, where no proxy was started. */
+  proxy: ProviderProxy | null
   transcript: DebugTranscript | null
   options: MainOptions
   log: Logger
@@ -117,9 +118,10 @@ const runPipelineLifecycle = async (input: LifecycleInput): Promise<RunResult> =
     return result
   } finally {
     // Both hold listening sockets; without this the process stays alive after
-    // the work is done and the job dies on its timeout.
+    // the work is done and the job dies on its timeout. The proxy is nullable
+    // on the claude route, where nothing ever listened.
     await agent.close()
-    await proxy.close()
+    await proxy?.close()
     await transcript?.close()
   }
 }
@@ -180,6 +182,16 @@ const resolveEventOrDoor = async (args: CliArgs, github: GitHubApi, log: Logger)
  * from a test; `main` below maps the status onto a process exit code.
  */
 /**
+ * The config, with whatever this run can learn about its own model filled in —
+ * except on the claude route, which skips the catalogue read entirely: it
+ * exists to feed `buildOpencodeConfig`, which that route never builds, and a
+ * claude run must not pay a network read the OpenCode router would refuse to
+ * make for a dropped payload. The CLI is the claude route's own model oracle.
+ */
+const withModelFacts = (config: PipelineConfig, options: MainOptions, log: Logger): Promise<PipelineConfig> =>
+  config.backend === 'claude' ? Promise.resolve(config) : describeModel(config, options, log)
+
+/**
  * The config, with whatever this run can learn about its own model filled in.
  *
  * Called after the guardrail door, and that ordering is the point: this is a
@@ -193,6 +205,17 @@ const describeModel = async (config: PipelineConfig, options: MainOptions, log: 
   return { ...config, openai: { ...config.openai, facts } }
 }
 
+/**
+ * Removes the loaded credentials from the runner environment, before anything
+ * can spawn a child. The OpenCode server inherits this process's environment
+ * wholesale, so a credential left here is one the model can read with `bash`;
+ * the claude child gets its one credential re-added by its own connect layer.
+ */
+const scrubEnvironment = (env: MainOptions['env'], secrets: readonly string[], log: Logger): void => {
+  const scrubbed = scrubSecrets(env, secrets)
+  if (scrubbed.length > 0) log.debug({ variables: scrubbed }, 'Removed credentials from the environment')
+}
+
 export const runCli = async (options: MainOptions): Promise<RunResult> => {
   const args = parseArgs(options.argv, options.env)
   // Config first, so the logger is built knowing which values must never be
@@ -201,12 +224,7 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
   const config = loadConfig(options.env, args.repoRoot)
   const log = options.logger ?? createPipelineLogger(args.logLevel, config)
   const secrets = pipelineSecrets(config)
-
-  // Before anything can spawn a child. The OpenCode server inherits this
-  // process's environment wholesale, so a credential left here is one the model
-  // can read with `bash`.
-  const scrubbed = scrubSecrets(options.env, secrets)
-  if (scrubbed.length > 0) log.debug({ variables: scrubbed }, 'Removed credentials from the environment')
+  scrubEnvironment(options.env, secrets, log)
 
   // Before the event is even known, because resolving a pull-request comment to
   // its issue is an API call — see {@link ContainInput.github}.
@@ -220,7 +238,11 @@ export const runCli = async (options: MainOptions): Promise<RunResult> => {
   // never going to act.
   const transcript = createRunTranscript(config, secrets, log)
 
-  const described = await describeModel(config, options, log)
+  // The claude route skips the catalogue read: it exists to feed
+  // `buildOpencodeConfig`, which this route never builds — and a claude run
+  // must not pay a network read the OpenCode router would refuse to make for
+  // a dropped payload. The CLI is this route's own model oracle.
+  const described = await withModelFacts(config, options, log)
 
   const contained = await contain({
     config: described,

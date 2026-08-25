@@ -25,6 +25,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { createStoryRunnerSession } from '../../scripts/story/session.js'
+import { expectRejection } from '../utils/test-helpers.js'
 import { writeFrozenSupportInputs } from './story-frozen-inputs.helpers.js'
 
 const roots: string[] = []
@@ -504,7 +505,7 @@ describe('story runner session', () => {
   ] as const)('rejects a %s reporter path', async (_name, reporterArguments) => {
     const { root, dependencyRoot } = fixture()
 
-    await expect(
+    await expectRejection(
       createStoryRunnerSession(
         { root, seed: 41021, reporterArguments },
         {
@@ -512,6 +513,7 @@ describe('story runner session', () => {
             Promise.resolve({ key: 'a'.repeat(64), root: dependencyRoot, treeHash: dependencyTreeHash() }),
         },
       ),
-    ).rejects.toThrow('reporter outfile')
+      'reporter outfile',
+    )
   })
 })

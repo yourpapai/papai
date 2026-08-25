@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { Database } from 'bun:sqlite'
-import { mock } from 'bun:test'
+import { expect, mock } from 'bun:test'
 
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 
@@ -1206,4 +1206,25 @@ export async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promi
       setTimeout(resolve, 5)
     })
   }
+}
+
+/**
+ * Assert that `work` rejects with a message matching `expected`.
+ *
+ * Prefer this over `expect(promise).rejects.toThrow()` for anything that drives
+ * the TypeScript source parser. Bun 1.4 makes `.rejects` pathologically slow
+ * when the rejecting chain touched a live child process: measured on the plugin
+ * entry-graph walk, the same rejection takes ~100ms caught directly and ~33s
+ * through `.rejects` (~1s on Bun 1.3.11, so this is a 1.4 regression, not a
+ * cost of the parser). The assertion is the same; only the waiting is gone.
+ */
+export async function expectRejection(work: Promise<unknown>, expected: string | RegExp): Promise<void> {
+  let message: string | undefined
+  try {
+    await work
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error)
+  }
+  if (message === undefined) throw new Error(`Expected a rejection matching ${String(expected)}, but none was thrown`)
+  expect(message).toMatch(expected)
 }
