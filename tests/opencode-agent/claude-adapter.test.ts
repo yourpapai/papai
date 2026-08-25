@@ -367,6 +367,11 @@ describe('credential carrier by spelling', () => {
       expect(call.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
       expect(call.env['ANTHROPIC_API_KEY']).toBeUndefined()
     }
+    // The settings file is named on the argv: --bare loads apiKeyHelper
+    // only through --settings, so the pair alone authenticates nothing.
+    const settingsAt = argvOf(probed.calls, 0).indexOf('--settings')
+    expect(settingsAt).toBeGreaterThan(-1)
+    expect(argvOf(probed.calls, 0)[settingsAt + 1]).toBe(configDirOfCall(probed.calls, 0) + '/settings.json')
     // Exactly the two files — nothing else rode along.
     const dir = configDirOfCall(probed.calls, 0)
     expect(dir).not.toBe('')
@@ -382,6 +387,8 @@ describe('credential carrier by spelling', () => {
     expect(probed.probe?.helper).toBe(false)
     expect(probed.probe?.settings).toBe(false)
     expect(probed.calls[0]?.env['ANTHROPIC_API_KEY']).toBe(CREDENTIAL.value)
+    // No settings file to name: that spelling's mechanism is env injection.
+    expect(argvOf(probed.calls, 0).includes('--settings')).toBe(false)
   })
 
   test('the credential is optional: absent, a turn spawns with no credential anywhere', async () => {

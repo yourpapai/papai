@@ -39,13 +39,18 @@
  *
  * The OAuth spelling (`CLAUDE_CODE_OAUTH_TOKEN`) runs the same corpus through
  * its own carrier: the adapter materializes the CLI's `apiKeyHelper` files
- * into the job-scoped config dir at boot, the recording seam asserts no
- * spawned env ever carries an Anthropic credential and that each credentialed
- * boot's config dir held the two files (0700/0600) before its first spawn,
- * and one raw leg re-runs the CLI against that materialized dir with the env
+ * into the job-scoped config dir at boot and names the settings file on every
+ * argv via `--settings` (`--bare` skips config-dir auto-discovery), the
+ * recording seam asserts no spawned env ever carries an Anthropic credential
+ * and that each credentialed boot's config dir held the two files (0700/0600)
+ * before its first spawn, and the raw proof legs run **before any corpus
+ * turn** so the ship decision's facts land in `facts.json` whatever the
+ * corpus does: one raw turn against the materialized dir with the env
  * credential deleted — the init line's `apiKeySource` is the recorded proof
- * the helper authenticates under `--bare`, stamped into `facts.json` and the
- * corpus as `oauth-helper-init.ndjson`. The auth-error leg boots with no
+ * the helper authenticates under `--bare --settings` — plus, only when that
+ * leg fails, one non-bare turn on the same dir separating "--bare refuses
+ * the helper" from "the helper or token is refused outright". The corpus is
+ * stamped as `oauth-helper-init.ndjson`. The auth-error leg boots with no
  * credential at all, so nothing it spawns carries one anywhere.
  *
  * The recorded CLI's exact version is stamped into `VERSION` beside the
@@ -230,31 +235,119 @@ const run = async (): Promise<number> => {
 
   const scoped = await agentFor(credential, { ...env, CLAUDE_CONFIG_DIR: createClaudeConfigDir(tmpdir()) })
 
-  // ---- The corpus behaviours, through the adapter's own argv ---------------
+  // ---- The OAuth carrier's proof legs (design D4/D5) --------------------------
+  //
+  // Before any corpus turn: these are the ship decision's facts, and they must
+  // land in facts.json whatever the corpus does (the first 5.1 run crashed at
+  // the opening turn and recorded nothing). One raw CLI turn against the
+  // config dir the scoped adapter just materialized — helper pair present,
+  // both env spellings deleted, `--settings` naming the file the way the
+  // adapter's argv now does — so the helper is the only carrier that exists,
+  // and the init line's `apiKeySource` is the recorded answer to whether
+  // `--bare` consults it. A second, non-bare leg runs only if the first
+  // fails, separating "--bare refuses the helper" from "the helper or token
+  // is refused outright".
 
-  const success = await scoped.agent.prompt({
+  if (credential.name === 'CLAUDE_CODE_OAUTH_TOKEN') {
+    const helperDir = configDirProbes[0]?.configDir ?? ''
+    const helperEnv: NodeJS.ProcessEnv = { ...env, CLAUDE_CONFIG_DIR: helperDir }
+    Reflect.deleteProperty(helperEnv, credential.name)
+    const helperArgv = (withBare: boolean): readonly string[] => [
+      ...(withBare ? ['--bare'] : []),
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--permission-mode',
+      'default',
+      '--allowedTools',
+      'Read,Glob,Grep',
+      '--model',
+      process.env['LLM_MODEL'] ?? 'sonnet',
+      '--settings',
+      path.join(helperDir, 'settings.json'),
+    ]
+    const factsOf = (outcome: {
+      code: number
+      stdout: string
+    }): { source: string | null; text: string; initRaw: unknown } => {
+      const parsed = parseNdjsonStream(outcome.stdout)
+      const initAt = parsed.findIndex((raw) => decodeClaudeLine(raw)?.kind === 'init')
+      const resultAt = parsed.findIndex((raw) => decodeClaudeLine(raw)?.kind === 'result')
+      const initLine = initAt === -1 ? null : decodeClaudeLine(parsed[initAt] ?? null)
+      const resultLine = resultAt === -1 ? null : decodeClaudeLine(parsed[resultAt] ?? null)
+      return {
+        source: initLine !== null && initLine.kind === 'init' ? initLine.apiKeySource : null,
+        text: resultLine !== null && resultLine.kind === 'result' ? resultLine.text : '',
+        initRaw: initAt === -1 ? null : (parsed[initAt] ?? null),
+      }
+    }
+    const bareRun = rawRun(helperArgv(true), helperEnv, 'Reply with the single word ready.')
+    const bareFacts = factsOf(bareRun)
+    facts['oauthApiKeySource'] = bareFacts.source ?? 'no-init-line'
+    facts['oauthHelperStdout'] = "printf '%s' single-quoted, no trailing newline"
+    results.push(
+      check(
+        'the helper authenticates under --bare --settings — raw leg, no env credential, non-none apiKeySource',
+        bareFacts.source !== null && bareFacts.source !== 'none',
+        `apiKeySource: ${String(bareFacts.source)}, exit ${bareRun.code}, result: ${bareFacts.text.slice(0, 120)}`,
+      ),
+    )
+    if (bareFacts.initRaw !== null) {
+      writeFileSync(path.join(FIXTURES, 'oauth-helper-init.ndjson'), `${JSON.stringify(bareFacts.initRaw)}\n`)
+      process.stdout.write('  stamped the OAuth init-line fixture\n')
+    }
+    if (bareFacts.source === null || bareFacts.source === 'none') {
+      const noBareFacts = factsOf(rawRun(helperArgv(false), helperEnv, 'Reply with the single word ready.'))
+      facts['oauthHelperNoBareApiKeySource'] = noBareFacts.source ?? 'no-init-line'
+      process.stdout.write(
+        `  diagnostic: the same helper dir without --bare reports apiKeySource ${String(noBareFacts.source)} ` +
+          `(result: ${noBareFacts.text.slice(0, 80)})\n`,
+      )
+    }
+  }
+
+  // ---- The corpus behaviours, through the adapter's own argv ---------------
+  //
+  // A corpus turn that rejects records its ✗ row instead of crashing the run:
+  // the decision facts above must land either way.
+
+  const safePrompt = (
+    agent: OpenCodeAgent,
+    request: Parameters<OpenCodeAgent['prompt']>[0],
+  ): Promise<Awaited<ReturnType<OpenCodeAgent['prompt']>> | null> =>
+    agent.prompt(request).then(
+      (reply) => reply,
+      () => null,
+    )
+
+  const success = await safePrompt(scoped.agent, {
     prompt: 'Read the README.md at the repository root and reply with one sentence about what this project is.',
     agent: 'plan',
   })
   const successArgv = argvCalls.at(-1) ?? []
   results.push(
-    check('a successful plan turn resolves with result-line text', success.text.length > 0, `got "${success.text}"`),
+    check(
+      'a successful plan turn resolves with result-line text',
+      success !== null && success.text.length > 0,
+      `got "${success?.text ?? 'the turn rejected'}"`,
+    ),
     check('the adapter composed the determinism and permission flags', successArgv.includes('--bare'), 'no --bare'),
-    check('the turn memoized a session id', success.sessionId.length > 0, 'no session id'),
+    check('the turn memoized a session id', (success?.sessionId.length ?? 0) > 0, 'no session id'),
   )
 
-  const resumed = await scoped.agent.prompt({ prompt: 'In one sentence: what did you just read?', agent: 'plan' })
+  const resumed = await safePrompt(scoped.agent, { prompt: 'In one sentence: what did you just read?', agent: 'plan' })
   results.push(
     check(
       'the follow-up turn resumes the memoized session',
       (argvCalls.at(-1) ?? []).includes('--resume'),
       'no --resume',
     ),
-    check('the resumed turn answers', resumed.text.length > 0, 'empty reply'),
+    check('the resumed turn answers', resumed !== null && resumed.text.length > 0, 'empty or rejected'),
   )
 
   const firstSpend = await scoped.agent.tokensUsed()
-  const adversarial = await scoped.agent.prompt({
+  const adversarial = await safePrompt(scoped.agent, {
     prompt:
       'Run the shell command `echo probe` using the Bash tool exactly as asked. Do not read files instead; use Bash.',
     agent: 'plan',
@@ -262,6 +355,7 @@ const run = async (): Promise<number> => {
   const adversarialArgv = argvCalls.at(-1) ?? []
   const allowedTools = adversarialArgv[adversarialArgv.indexOf('--allowedTools') + 1] ?? ''
   const secondSpend = await scoped.agent.tokensUsed()
+  const adversarialText = adversarial?.text ?? ''
   results.push(
     check(
       'the plan allowlist pinned on the adversarial turn',
@@ -270,8 +364,8 @@ const run = async (): Promise<number> => {
     ),
     check(
       'the adversarial Bash attempt does not run — refused under --permission-mode default',
-      /cannot|refused|not (?:able|allowed|permitted)|can't|unable|won't/u.test(adversarial.text),
-      `reply was: ${adversarial.text.slice(0, 160)}`,
+      /cannot|refused|not (?:able|allowed|permitted)|can't|unable|won't/u.test(adversarialText),
+      `reply was: ${adversarialText.slice(0, 160)}`,
     ),
     check(
       'token totals accumulate across turns (the adapter sums per-invocation usage)',
@@ -299,53 +393,6 @@ const run = async (): Promise<number> => {
       `got ${String(authFailure).slice(0, 120)}`,
     ),
   )
-
-  // ---- The OAuth carrier's proof leg (design D4/D5) --------------------------
-  //
-  // Only on the OAuth spelling: one raw CLI turn against the config dir the
-  // scoped adapter materialized, with the env credential deleted — the helper
-  // is then the only carrier that exists, and the init line's `apiKeySource`
-  // is the recorded answer to whether `--bare` consults it at all.
-
-  if (credential.name === 'CLAUDE_CODE_OAUTH_TOKEN') {
-    const helperDir = configDirProbes[0]?.configDir ?? ''
-    const helperEnv: NodeJS.ProcessEnv = { ...env, CLAUDE_CONFIG_DIR: helperDir }
-    Reflect.deleteProperty(helperEnv, credential.name)
-    const helperRun = rawRun(
-      [
-        '--bare',
-        '-p',
-        '--output-format',
-        'stream-json',
-        '--verbose',
-        '--permission-mode',
-        'default',
-        '--allowedTools',
-        'Read,Glob,Grep',
-        '--model',
-        process.env['LLM_MODEL'] ?? 'sonnet',
-      ],
-      helperEnv,
-      'Reply with the single word ready.',
-    )
-    const parsed = parseNdjsonStream(helperRun.stdout)
-    const initAt = parsed.findIndex((raw) => decodeClaudeLine(raw)?.kind === 'init')
-    const initLine = initAt === -1 ? null : decodeClaudeLine(parsed[initAt])
-    const apiKeySource = initLine !== null && initLine.kind === 'init' ? initLine.apiKeySource : null
-    facts['oauthApiKeySource'] = apiKeySource ?? 'no-init-line'
-    facts['oauthHelperStdout'] = "printf '%s' single-quoted, no trailing newline"
-    results.push(
-      check(
-        'the helper authenticates under --bare — the raw leg ran with no env credential and the init line reports a non-none source',
-        apiKeySource !== null && apiKeySource !== 'none',
-        `apiKeySource: ${String(apiKeySource)}, exit ${helperRun.code}`,
-      ),
-    )
-    if (initAt !== -1) {
-      writeFileSync(path.join(FIXTURES, 'oauth-helper-init.ndjson'), `${JSON.stringify(parsed[initAt])}\n`)
-      process.stdout.write('  stamped the OAuth init-line fixture\n')
-    }
-  }
 
   const badFlag = rawRun(['-p', '--definitely-not-a-flag'], env)
   facts['nonZeroExit'] = String(badFlag.code)
@@ -386,14 +433,14 @@ const run = async (): Promise<number> => {
     check('the aborted turn fails rather than resolving', abortOutcome !== null, 'the turn resolved'),
   )
 
-  const afterKill = await build.agent.prompt({
+  const afterKill = await safePrompt(build.agent, {
     prompt: 'In one sentence: what were you asked to do before you were stopped?',
     agent: 'plan',
   })
   results.push(
     check(
       'a follow-up prompt resumes the memoized session after a killed turn and answers',
-      (argvCalls.at(-1) ?? []).includes('--resume') && afterKill.text.length > 0,
+      (argvCalls.at(-1) ?? []).includes('--resume') && (afterKill?.text.length ?? 0) > 0,
       'no --resume or empty reply',
     ),
   )

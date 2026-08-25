@@ -3,12 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import path from 'node:path'
+
 import type { AgentPromptRequest, AgentPromptResult, AgentSession } from './agent-session.js'
+import { buildClaudeArgv } from './claude-argv.js'
+import type { ClaudeModelKnobs } from './claude-argv.js'
 import { collectChild, createClaudeConfigDir, killGroup, spawnClaude, teardownClaude } from './claude-connect.js'
 import type { ClaudeChild, GroupKillSeams, SpawnClaude, TeardownSeams } from './claude-connect.js'
-import { buildClaudeArgv, decodeClaudeLine, parseNdjsonStream } from './claude-contract.js'
-import type { ClaudeModelKnobs, ClaudeStreamLine } from './claude-contract.js'
-import { writeClaudeCredentialFiles } from './claude-credential.js'
+import { decodeClaudeLine, parseNdjsonStream } from './claude-contract.js'
+import type { ClaudeStreamLine } from './claude-contract.js'
+import { writeClaudeCredentialFiles, CLAUDE_SETTINGS_FILENAME } from './claude-credential.js'
 import { claudeTracker } from './claude-progress.js'
 import { classifyTurn } from './claude-turn-classify.js'
 import type { TurnOutcome } from './claude-turn-classify.js'
@@ -79,6 +83,12 @@ interface SessionState {
 interface SessionContext {
   readonly options: ClaudeAgentOptions
   readonly configDir: string
+  /**
+   * The OAuth spelling's materialized settings file, named on every
+   * invocation via `--settings` — `--bare` never auto-discovers it. `null` on
+   * the API-key spelling and the credentialless recorder leg.
+   */
+  readonly credentialSettingsFile: string | null
   readonly bootSessionId: string
   readonly credentialValues: readonly string[]
   readonly tracker: ProgressTracker
@@ -148,6 +158,7 @@ const runClaudeTurn = async (context: SessionContext): Promise<TurnOutcome> => {
       ...(current.system === undefined ? {} : { system: current.system }),
       ...(current.agent === undefined ? {} : { agent: current.agent }),
       resumeSessionId: context.state.cliSessionId,
+      ...(context.credentialSettingsFile === null ? {} : { credentialSettingsFile: context.credentialSettingsFile }),
     },
     context.options.knobs,
     context.options.log,
@@ -246,6 +257,8 @@ export const createClaudeAgent = (options: ClaudeAgentOptions): Promise<AgentSes
   const context: SessionContext = {
     options,
     configDir,
+    credentialSettingsFile:
+      options.credential?.name === 'CLAUDE_CODE_OAUTH_TOKEN' ? path.join(configDir, CLAUDE_SETTINGS_FILENAME) : null,
     bootSessionId: `claude-job-${crypto.randomUUID()}`,
     credentialValues: options.credential === undefined ? [] : [options.credential.value],
     tracker: claudeTracker(options.log),

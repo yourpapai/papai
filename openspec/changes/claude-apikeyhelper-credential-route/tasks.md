@@ -29,6 +29,7 @@ through the update workflow to the removal outcome instead of continuing.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (red)
 - [x] 2.3 Implement: the env rule in `claude-connect.ts`, the optional credential plus boot-time materialization in `claude-adapter.ts` (design D1) — making 2.1 and 2.2 green.
   Verify: `bun test tests/opencode-agent/claude-connect.test.ts tests/opencode-agent/claude-adapter.test.ts` (green)
+- [x] 2.4 Tests first, then implement: the OAuth spelling's settings file rides every invocation as `--settings <file>` — the pinned CLI's own `--bare` help reads "Anthropic auth is strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings", so the materialized pair alone (config-dir auto-discovery) authenticates nothing under `--bare`. Found by the first 5.1 run: `CLAUDE_RESULT` on the opening turn with the pair present but unnamed; the recorder also learns to run its proof legs ahead of the corpus so the decision facts land even when a corpus turn rejects.
 
 ## 3. Contract: init-line credential source (design D4)
 

@@ -65,12 +65,17 @@ credential value in it. The helper script embeds the token literally:
 printf '%s' 'sk-ant-oat01-…'
 ```
 
-mode `0700` (it must execute), settings mode `0600`. `printf` over `echo` so
-no trailing newline rides along until the recording says one is wanted — the
-exact accepted shape (newline tolerance, per-turn invocation) is a recorded
-fact, not a guess. The writer refuses a token value containing a single quote
-or newline at write time with a loud named error rather than emitting a broken
-script.
+mode `0700` (it must execute), settings mode `0600`. The settings file is
+**named on every invocation's argv** as `--settings <path>` — the pinned
+CLI's own `--bare` help reads "Anthropic auth is strictly
+`ANTHROPIC_API_KEY` or apiKeyHelper via `--settings`", so under `--bare` the
+config-dir placement alone is never auto-discovered (the first 5.1 run paid
+for that lesson: the pair present but unnamed is the un-credentialed
+`CLAUDE_RESULT` shape). `printf` over `echo` so no trailing newline rides
+along until the recording says one is wanted — the exact accepted shape
+(newline tolerance, per-turn invocation) is a recorded fact, not a guess.
+The writer refuses a token value containing a single quote or newline at
+write time with a loud named error rather than emitting a broken script.
 *Alternative*: helper reads a second token file — two secret files, same
 exposure, no gain.
 

@@ -7,13 +7,10 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import {
-  buildClaudeArgv,
-  decodeClaudeLine,
-  MAX_ARG_STRLEN,
-  parseNdjsonStream,
-} from '../../opencode-agent/src/claude-contract.js'
-import type { ClaudeModelKnobs, ClaudeStreamLine } from '../../opencode-agent/src/claude-contract.js'
+import { buildClaudeArgv, MAX_ARG_STRLEN } from '../../opencode-agent/src/claude-argv.js'
+import type { ClaudeModelKnobs } from '../../opencode-agent/src/claude-argv.js'
+import { decodeClaudeLine, parseNdjsonStream } from '../../opencode-agent/src/claude-contract.js'
+import type { ClaudeStreamLine } from '../../opencode-agent/src/claude-contract.js'
 import { PipelineError } from '../../opencode-agent/src/errors.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 
@@ -223,6 +220,39 @@ describe('buildClaudeArgv', () => {
       '--model',
       'claude-sonnet-5',
     ])
+  })
+
+  test('the OAuth spelling’s settings file rides as --settings — --bare loads apiKeyHelper only through that flag', () => {
+    // The pinned CLI’s own --bare help: "Anthropic auth is strictly
+    // ANTHROPIC_API_KEY or apiKeyHelper via --settings" — config-dir
+    // auto-discovery does not happen under --bare, so the materialized
+    // settings file must be named on the argv to authenticate anything.
+    const withSettings = buildClaudeArgv(
+      { prompt: 'x', credentialSettingsFile: '/tmp/opencode-agent-claude-x/settings.json' },
+      KNOBS,
+      silent,
+    )
+
+    expect(flagValue(withSettings.argv, '--settings')).toBe('/tmp/opencode-agent-claude-x/settings.json')
+    expect(withSettings.argv).toEqual([
+      '--bare',
+      '--settings',
+      '/tmp/opencode-agent-claude-x/settings.json',
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--permission-mode',
+      'default',
+      '--allowedTools',
+      'Read,Glob,Grep',
+      '--model',
+      'claude-sonnet-5',
+    ])
+
+    // Absent field, absent flag: the API-key spelling and the credentialless
+    // recorder leg never name a settings file.
+    expect(buildClaudeArgv({ prompt: 'x' }, KNOBS, silent).argv.includes('--settings')).toBe(false)
   })
 
   test('the prompt rides stdin, never argv', () => {
