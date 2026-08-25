@@ -6,6 +6,7 @@
 import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import { lastSpawnedHandleOf, spawnRecorderOf } from './child-spawn.js'
 import { propagateChildStop } from './child-stop.js'
 import { slugify } from './config.js'
 import { readEvents } from './events.js'
@@ -231,28 +232,18 @@ async function settleObservedChild(
 }
 
 /**
- * D8 resume recovery: a `running` child halted at its own gate in an earlier
- * parent pass; its runId is the last recorded `child_spawned` line for that
- * child. Legacy lines without a runId yield null and the caller falls back
- * to a fresh spawn.
- */
-function lastSpawnedHandleOf(state: RunState, childId: string): { readonly runId: string } | null {
-  for (const event of readEvents(logPathFor(state)).reverse()) {
-    if (event.type === 'child_spawned' && event.child === childId && event.runId !== undefined) {
-      return { runId: event.runId }
-    }
-  }
-  return null
-}
-
-/**
  * Sequential topo execution loop (D8): walks `state.plan.childIds` in order,
  * one child in flight, skipping children already `done` and re-observing a
  * `running` child (recovered from its last `child_spawned` runId) instead of
  * re-spawning it. Before each spawn
  * the D10 budget guard fail-closes on unknown-or-exceeded tree spend and the
- * D11 calm-stop seam is honored. A completed child emits `child_spawned`
- * then `child_done` with usage aggregated from the child's own event log; a
+ * D11 calm-stop seam is honored. Each spawn is recorded durably — the
+ * `child_spawned { child, runId }` line plus a persisted `running` child
+ * status — the moment the nested run dir is known (before the flight), so a
+ * parent crash mid-child resumes by re-observing that runId instead of
+ * re-spawning a duplicate; a seam that never reports a run dir falls back to
+ * recording it after the flight. A completed child then emits `child_done`
+ * with usage aggregated from the child's own event log; a
  * gate-pending child surfaces its `sdd <runId>` line; a failed child stops
  * the loop (D9). The walk's end marks the parent `completed` exactly when
  * every child reads `done`.
@@ -289,11 +280,20 @@ export async function runChildren(
     const child = children.find((entry) => entry.id === childId)
     if (child === undefined) throw new Error(`plan sidecar has no child ${childId}`)
     const taskFile = path.join(state.runDir, 'children', `${index + 1}-${slugify(childId)}.md`)
+    const spawn = spawnRecorderOf(deps, state, ctx, childId)
     const handle =
       stop === undefined
-        ? await options.runChildRun(child, taskFile, spend.spentUsd)
-        : await propagateChildStop({ runChildRun: options.runChildRun, stop }, child, taskFile, spend.spentUsd)
-    ctx.emit({ altitude: 'L2', type: 'child_spawned', child: childId, runId: handle.runId })
+        ? await options.runChildRun(child, taskFile, spend.spentUsd, spawn.onRunDirReady)
+        : await propagateChildStop(
+            { runChildRun: options.runChildRun, stop, onChildRunDir: spawn.onRunDirReady },
+            child,
+            taskFile,
+            spend.spentUsd,
+          )
+    await spawn.persisted()
+    if (!spawn.recorded()) {
+      ctx.emit({ altitude: 'L2', type: 'child_spawned', child: childId, runId: handle.runId })
+    }
     return settleObservedChild(deps, state, ctx, stop, childId, handle, resolve, () => runAt(index + 1))
   }
   return runAt(0)

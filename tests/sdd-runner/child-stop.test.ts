@@ -81,6 +81,29 @@ describe('propagateChildStop (D11)', () => {
     expect(fs.existsSync(stopMarkerPath(childDir))).toBe(true)
   })
 
+  it('notifies onChildRunDir when the child run dir becomes known', async () => {
+    const parentDir = makeDir()
+    const childDir = makeDir()
+    const stop = createStopMarkerSeam(parentDir)
+    const seen: string[] = []
+    await propagateChildStop(
+      {
+        runChildRun: (_child, _taskFile, _baseline, ready) => {
+          ready?.(childDir)
+          return Promise.resolve({ runId: 'child-run' })
+        },
+        stop,
+        onChildRunDir: (runDir) => {
+          seen.push(runDir)
+        },
+      },
+      CHILD,
+      'task.md',
+      0,
+    )
+    expect(seen).toEqual([childDir])
+  })
+
   it('never writes a child marker when no parent stop is requested during the flight', async () => {
     const parentDir = makeDir()
     const childDir = makeDir()

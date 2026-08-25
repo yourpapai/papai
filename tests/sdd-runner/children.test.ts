@@ -308,15 +308,16 @@ function makeRunner(fixture: ChildrenFixture, shapes: Record<string, ChildShape>
   }
 }
 
-async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<boolean> {
+async function waitFor(condition: () => boolean | Promise<boolean>, timeoutMs = 5000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (condition()) return true
+    if (await condition()) return true
     await new Promise((resolve) => {
       setTimeout(resolve, 10)
     })
   }
-  return condition()
+  const final = await condition()
+  return final
 }
 
 function eventsOf(fixture: ChildrenFixture, type: 'child_spawned' | 'child_done'): SddEvent[] {
@@ -465,6 +466,50 @@ describe('runChildren (D8)', () => {
     expect(second.spawned).toEqual([])
     expect(resumed.children?.['auth-db']).toEqual({ status: 'running' })
     expect(stdoutLines.some((line) => line === `sdd ${childRunId}`)).toBe(true)
+  })
+
+  it('records child_spawned and a running child before the nested run resolves (mid-flight crash keeps the runId)', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db'], {})
+    let midFlight:
+      | {
+          readonly spawnedEvents: ReturnType<typeof eventsOf>
+          readonly persistedRunning: boolean
+          readonly childRunId: string
+        }
+      | undefined
+    const runChildRun: RunChildRun = async (_child, _taskFile, _baseline, onRunDirReady) => {
+      const childState = await createRunState({
+        workDir: fixture.deps.config.workDir,
+        repoRoot: fixture.repoRoot,
+        changeName: 'auth-db',
+      })
+      onRunDirReady?.(childState.runDir)
+      const spawnedEvents = eventsOf(fixture, 'child_spawned')
+      const persistedRunning = await waitFor(async () => {
+        const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+        return persisted.children?.['auth-db']?.status === 'running'
+      }, 1000)
+      midFlight = { spawnedEvents, persistedRunning, childRunId: childState.runId }
+      childState.status = 'completed'
+      await saveRunState(childState, new Date('2026-08-12T08:00:00.000Z'))
+      appendEvent(path.join(childState.runDir, 'events.ndjson'), {
+        altitude: 'L1',
+        type: 'done',
+        agent: 'estimator',
+        usage: CHILD_DONE_USAGE,
+      })
+      return { runId: childState.runId }
+    }
+
+    const result = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun })
+
+    expect(result.halted).toBe('completed')
+    assert(midFlight !== undefined)
+    expect(midFlight.persistedRunning).toBe(true)
+    expect(midFlight.spawnedEvents).toHaveLength(1)
+    expect(midFlight.spawnedEvents[0]).toMatchObject({ child: 'auth-db', runId: midFlight.childRunId })
+    expect(eventsOf(fixture, 'child_spawned')).toHaveLength(1)
   })
 
   it('a running child whose spawned runId was never recorded falls back to a fresh spawn', async () => {

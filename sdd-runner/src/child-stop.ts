@@ -16,6 +16,8 @@ export interface ChildFlightSeams {
     onRunDirReady?: (childRunDir: string) => void,
   ) => Promise<{ readonly runId: string }>
   readonly stop: CalmStopController
+  /** D8 spawn bookkeeping: notified once the child's run dir is known, before flight work continues. */
+  readonly onChildRunDir?: (childRunDir: string) => void
 }
 
 /** Poll cadence for the in-flight marker propagation. */
@@ -47,6 +49,7 @@ export async function propagateChildStop(
   const watcher = setInterval(propagate, CHILD_STOP_WATCH_MS)
   const onRunDirReady = (runDir: string): void => {
     childRunDir = runDir
+    seams.onChildRunDir?.(runDir)
     propagate()
   }
   try {
