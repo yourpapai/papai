@@ -12,13 +12,13 @@ import {
   awaitGateDeadline,
   digestOf,
   isStableEdit,
-  looksAnswered,
   processExpiry,
   shouldEnterWaiter,
   translateSteer,
 } from '../../sdd-runner/src/deadline-waiter.js'
 import { appendEvent } from '../../sdd-runner/src/events.js'
 import type { RunGateResumeResult } from '../../sdd-runner/src/extend-round.js'
+import { looksAnswered } from '../../sdd-runner/src/gate-answered.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
@@ -255,4 +255,53 @@ describe('plan-mode gates under the waiter', () => {
     const persisted = await loadRunState(deps.config.workDir, state.runId)
     expect(persisted.gateDeadlineReArmed).toBe(true)
   }, 20_000)
+
+  it('a hand-edited full veto (→ redirect under an unchecked child) settles the deadline-waited plan gate', async () => {
+    const { deps, state } = await seedPlanGate('2999-01-01T00:00:00.000Z')
+    const handEdit = setTimeout(() => {
+      fs.writeFileSync(
+        path.join(state.runDir, 'gate-1.md'),
+        [
+          '## Plan gate — change composite',
+          '',
+          '- [ ] C1 db-schema — Rename the schema columns.',
+          '→ split the schema child',
+          '',
+        ].join('\n'),
+      )
+    }, 1_500)
+    const calls: GateResumeOptionsRecord[] = []
+    try {
+      const result = await awaitGateDeadline(deps, state.runId, recordingResume(calls))
+      expect(result.outcome).toBe('approved')
+    } finally {
+      clearTimeout(handEdit)
+    }
+    expect(calls).toEqual([{ noWait: true }])
+  }, 15_000)
+
+  it('a hand-written lone ABORT settles the deadline-waited plan gate', async () => {
+    const { deps, state } = await seedPlanGate('2999-01-01T00:00:00.000Z')
+    const handEdit = setTimeout(() => {
+      fs.writeFileSync(
+        path.join(state.runDir, 'gate-1.md'),
+        [
+          '## Plan gate — change composite',
+          '',
+          '- [ ] C1 db-schema — Rename the schema columns.',
+          '',
+          'ABORT',
+          '',
+        ].join('\n'),
+      )
+    }, 1_500)
+    const calls: GateResumeOptionsRecord[] = []
+    try {
+      const result = await awaitGateDeadline(deps, state.runId, recordingResume(calls))
+      expect(result.outcome).toBe('approved')
+    } finally {
+      clearTimeout(handEdit)
+    }
+    expect(calls).toEqual([{ noWait: true }])
+  }, 15_000)
 })

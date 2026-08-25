@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { AUTONOMY_DEFAULTS } from './config.js'
+import { carriesDecision } from './gate-answered.js'
 import type { OrchestratorDeps } from './gate-digest.js'
 
 type ResumeGate = (deps: OrchestratorDeps, runId: string, options: GateResumeOptions) => Promise<RunGateResumeResult>
@@ -53,15 +54,6 @@ export function isStableEdit(digests: readonly string[]): boolean {
   if (digests.length < 3) return false
   const last = digests.slice(-3)
   return last.every((digest) => digest === last[0])
-}
-
-/**
- * Whether a polled gate file parses as human-answered: at least one box
- * checked (assumption/finding/ack rows at early/final gates, `C<n>` child
- * rows at plan gates) or an answer section present.
- */
-export function looksAnswered(md: string): boolean {
-  return /-\s\[x\]\s*[AFTC]\d+/u.test(md) || md.includes('## Gate response')
 }
 
 export interface SteerLanding {
@@ -208,7 +200,7 @@ async function maybeResume(
     return null
   }
   const gateMd = await readGateMd(state.runDir, state.gate.version)
-  if (gateMd === null || !looksAnswered(gateMd)) return null
+  if (gateMd === null || !carriesDecision(gateMd, state.gate.mode)) return null
   const digest = digestOf(gateMd)
   if (isStableEdit([...digests, digest])) return resume(deps, runId, { noWait: true })
   return null
@@ -233,7 +225,7 @@ async function handleExpiry(
 async function nextDigestsOf(state: RunState, digests: readonly string[]): Promise<string[]> {
   if (state.gate === null) return []
   const gateMd = await readGateMd(state.runDir, state.gate.version)
-  if (gateMd === null || !looksAnswered(gateMd)) return []
+  if (gateMd === null || !carriesDecision(gateMd, state.gate.mode)) return []
   return [...digests, digestOf(gateMd)]
 }
 

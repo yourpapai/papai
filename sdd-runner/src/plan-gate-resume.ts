@@ -9,9 +9,9 @@ import path from 'node:path'
 
 import { rowsOf, runChildren } from './children.js'
 import type { RunChildRun } from './children.js'
-import { looksAnswered } from './deadline-waiter.js'
 import type { EventInput } from './events.js'
 import type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
+import { planGateCarriesDecision } from './gate-answered.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import { finalizeGate, logPathFor, nowOf } from './gate-digest.js'
 import type { GateChild } from './gate-model.js'
@@ -33,21 +33,6 @@ function planSessionView(rows: readonly { readonly id: string; readonly text: st
     blockers: [],
     requiredAck: null,
   }
-}
-
-const ABORT_LINE_RE = /^\s*ABORT\s*$/mu
-const DIRECTIVE_LINE_RE = /^\s*→/mu
-
-/**
- * Whether the gate file carries a human decision at all: a checked box or a
- * response section (`looksAnswered`), an `ABORT` line, or a `→` directive.
- * A freshly presented digest has none of these — every C-box unchecked — and
- * parsing it as-is would veto every child and spend a replan, so a flagless
- * resume of such a file must abandon instead (mirroring the deadline
- * waiter's answered check and the early/final TUI's write-nothing abandon).
- */
-function planGateCarriesDecision(md: string): boolean {
-  return looksAnswered(md) || ABORT_LINE_RE.test(md) || DIRECTIVE_LINE_RE.test(md)
 }
 
 /**
