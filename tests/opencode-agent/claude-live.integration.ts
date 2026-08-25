@@ -7,62 +7,71 @@
  * The contract check the unit tests cannot make: drive the real pinned `claude`
  * CLI, through the finished adapter, and record the fixture corpus.
  *
- * Not named `*.test.ts` on purpose — it needs credentials and the `claude`
- * binary, costs real model spend, and never runs in CI. Run it with:
+ * Not named `*.test.ts` on purpose — the credentialed mode needs an API key
+ * and the `claude` binary, costs real model spend, and never runs in CI. Run
+ * it with:
  *
  *   bun run opencode-agent:test:claude-live
  *
- * It requires **exactly one** of `ANTHROPIC_API_KEY` or
- * `CLAUDE_CODE_OAUTH_TOKEN` in the environment — the same exclusivity the
- * config guard enforces — and refuses to run otherwise.
+ * Two modes, chosen by which Anthropic spelling the environment carries
+ * (both set is refused, exactly as the config guard refuses it):
  *
- * What one invocation produces and asserts, whole (the scenarios share the run
- * and cannot be recorded or verified apart — design D12 step 1):
+ * - `ANTHROPIC_API_KEY` — the credentialed recording. The full corpus
+ *   behaviours run through the adapter's own argv composition, so a flag the
+ *   pinned CLI no longer accepts fails here at recording cost.
+ * - `CLAUDE_CODE_OAUTH_TOKEN` — the zero-spend negative mode. That spelling
+ *   is refused at startup in production (the recorded no-carrier finding),
+ *   so it boots nothing here: the value is a mode switch only — a dummy,
+ *   never handed to any child — and only the standing negative leg runs.
+ *
+ * The standing negative leg (both modes, design D3 of
+ * `claude-apikeyhelper-credential-route`) is self-contained and zero-spend by
+ * construction: it materializes its own deliberately invalid dummy token
+ * behind the CLI's `apiKeyHelper` shape in a throwaway config dir, deletes
+ * both env spellings, and drives one `--bare --settings` invocation. It
+ * asserts the two observations the 2026-08-25 recording settled on CLI
+ * 2.1.239 — the init line reports the helper as the credential source
+ * (`apiKeySource: "apiKeyHelper"`: the CLI loads it), and the turn ends in
+ * the recorded API-refusal shape (`is_error: true`, the 401
+ * `authentication_failed` refusal over the retry ladder, a synthetic
+ * assistant message, usage zero). A CLI pin move that breaks either half —
+ * the helper stops loading, or OAuth over the helper starts succeeding —
+ * fails the leg loudly, naming the change: the successor change's
+ * green-path precondition arriving as a signal rather than a surprise. The
+ * leg's init line is stamped as `oauth-helper-init.ndjson`; the wall time is
+ * the retry ladder's (~3 min recorded), not spend.
+ *
+ * What one credentialed invocation additionally produces and asserts, whole
+ * (the scenarios share the run and cannot be recorded or verified apart):
  *
  *  1. the determinism facts: `--output-format stream-json` requires
  *     `--verbose` with `-p`, `CLAUDE_CONFIG_DIR` is honored,
  *     `DISABLE_AUTOUPDATER=1` keeps `--version` unchanged after the run, a
  *     non-zero exit produces a stderr tail, and the token total accumulates
  *     across turns the way the adapter's sum fold expects;
- *  2. the corpus behaviours, driven through the adapter's own argv composition
- *     so a flag the pinned CLI no longer accepts fails here at recording cost
- *     (design D12 step 7): the successful turn, the resume flow, the
+ *  2. the corpus behaviours: the successful turn, the resume flow, the
  *     adversarial plan-profile turn whose prompt attempts a `Bash` call and
  *     must come back refused under `--permission-mode default` — the
  *     permission-effect pin, not assumed from docs — and the error-signalling
  *     result line, taken from a deliberately un-credentialed turn (the real
- *     auth-failure shape, costing nothing);
+ *     auth-failure shape, costing nothing); every adapter boot's config dir
+ *     stays credential-file-free (the helper carrier is retired), and no
+ *     spawned env ever carries the OAuth spelling;
  *  3. the stop semantics a fixture cannot state: a live turn running a long
  *     `Bash` child is `abort()`ed and no member of its process group survives,
  *     and a follow-up prompt `--resume`s the memoized session after the killed
  *     turn and answers.
  *
- * The OAuth spelling (`CLAUDE_CODE_OAUTH_TOKEN`) runs the same corpus through
- * its own carrier: the adapter materializes the CLI's `apiKeyHelper` files
- * into the job-scoped config dir at boot and names the settings file on every
- * argv via `--settings` (`--bare` skips config-dir auto-discovery), the
- * recording seam asserts no spawned env ever carries an Anthropic credential
- * and that each credentialed boot's config dir held the two files (0700/0600)
- * before its first spawn, and the raw proof legs run **before any corpus
- * turn** so the ship decision's facts land in `facts.json` whatever the
- * corpus does: one raw turn against the materialized dir with the env
- * credential deleted — the init line's `apiKeySource` is the recorded proof
- * the helper authenticates under `--bare --settings` — plus, only when that
- * leg fails, one non-bare turn on the same dir separating "--bare refuses
- * the helper" from "the helper or token is refused outright". The corpus is
- * stamped as `oauth-helper-init.ndjson`. The auth-error leg boots with no
- * credential at all, so nothing it spawns carries one anywhere.
- *
  * The recorded CLI's exact version is stamped into `VERSION` beside the
- * fixtures; `workflow.test.ts` asserts it equals the workflow's install pin,
- * so fixture and binary cannot silently skew. The `.ndjson` corpus beside it
- * is refreshed by the same run: after this recorder goes green, re-run it with
- * `CLAUDE_LIVE_REFRESH_FIXTURES=1` to overwrite the provisional fixture files
- * with the recorded streams.
+ * fixtures by the credentialed mode; `workflow.test.ts` asserts it equals the
+ * workflow's install pin, so fixture and binary cannot silently skew. The
+ * `.ndjson` corpus beside it is refreshed by the same run: after this recorder
+ * goes green, re-run it with `CLAUDE_LIVE_REFRESH_FIXTURES=1` to overwrite the
+ * provisional fixture files with the recorded streams.
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -72,30 +81,43 @@ import type { ClaudeAgentOptions } from '../../opencode-agent/src/claude-adapter
 import { createClaudeConfigDir, liveSpawn } from '../../opencode-agent/src/claude-connect.js'
 import type { SpawnClaude } from '../../opencode-agent/src/claude-connect.js'
 import { decodeClaudeLine, parseNdjsonStream } from '../../opencode-agent/src/claude-contract.js'
-import { writeClaudeCredentialFiles } from '../../opencode-agent/src/claude-credential.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'claude-cli')
 const REFRESH_FIXTURES = process.env['CLAUDE_LIVE_REFRESH_FIXTURES'] === '1'
+
+/**
+ * The dummy the negative leg materializes: deliberately invalid, so the API's
+ * refusal costs nothing. The only string the env's `CLAUDE_CODE_OAUTH_TOKEN`
+ * mode switch ever relates to — the value itself never reaches a child.
+ */
+const DUMMY_OAUTH_TOKEN = 'sk-ant-oat01-invalid-dummy-zero-spend'
+
+/** Bounds the negative leg: the recorded retry ladder settles in ~3 min; the init line lands long before. */
+const NEGATIVE_LEG_TIMEOUT_MS = 300_000
 
 const check = (label: string, condition: boolean, detail: string): boolean => {
   process.stdout.write(`${condition ? '✓' : '✗'} ${label}${condition ? '' : ` — ${detail}`}\n`)
   return condition
 }
 
-/** The one credential this run holds, read under the guard's own exclusivity rule. */
-const readCredential = (): { name: 'ANTHROPIC_API_KEY' | 'CLAUDE_CODE_OAUTH_TOKEN'; value: string } | null => {
+/**
+ * Which mode this run takes, read under the guard's own exclusivity rule: the
+ * API key runs the credentialed corpus; the OAuth spelling — refused at
+ * startup in production — is the zero-spend negative mode's switch, a dummy.
+ */
+const readMode = (): { mode: 'api-key'; value: string } | { mode: 'oauth-dummy' } | null => {
   const apiKey = process.env['ANTHROPIC_API_KEY']?.trim()
   const oauth = process.env['CLAUDE_CODE_OAUTH_TOKEN']?.trim()
   if (apiKey !== undefined && apiKey.length > 0 && oauth !== undefined && oauth.length > 0) {
     process.stdout.write('✗ Both ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN are set; exactly one may be.\n')
     return null
   }
-  if (apiKey !== undefined && apiKey.length > 0) return { name: 'ANTHROPIC_API_KEY', value: apiKey }
-  if (oauth !== undefined && oauth.length > 0) return { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: oauth }
+  if (apiKey !== undefined && apiKey.length > 0) return { mode: 'api-key', value: apiKey }
+  if (oauth !== undefined && oauth.length > 0) return { mode: 'oauth-dummy' }
   process.stdout.write(
-    '✗ No credential: set exactly one of ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN. ' +
-      'This recorder spends real model budget and never runs in CI.\n',
+    '✗ No credential: set ANTHROPIC_API_KEY for the credentialed corpus (real model spend, never in CI), or ' +
+      'CLAUDE_CODE_OAUTH_TOKEN=<dummy> for the zero-spend negative legs alone.\n',
   )
   return null
 }
@@ -110,16 +132,14 @@ const silentLog = {
 /** Every argv the adapter composed, captured by wrapping the real spawn. */
 const argvCalls: Array<readonly string[]> = []
 
-/** Every child env the adapter spawned with — read back for the OAuth carrier checks, never printed. */
+/** Every child env the adapter spawned with — read back for the carrier checks, never printed. */
 const envCalls: Array<Record<string, string>> = []
 
-/** What one config dir held at its first spawn — boot-time materialization, not turn-time. */
+/** What one config dir held at its first spawn — the retirement says: no credential file, ever. */
 interface ConfigDirProbe {
   configDir: string
   helper: boolean
   settings: boolean
-  helperMode: number
-  settingsMode: number
 }
 
 const configDirProbes: ConfigDirProbe[] = []
@@ -131,14 +151,10 @@ const recordingSpawn: SpawnClaude = (binary, argv, options) => {
   const dir = options.env['CLAUDE_CONFIG_DIR'] ?? ''
   if (!probedDirs.has(dir)) {
     probedDirs.add(dir)
-    const helper = path.join(dir, 'credential.sh')
-    const settings = path.join(dir, 'settings.json')
     configDirProbes.push({
       configDir: dir,
-      helper: existsSync(helper),
-      settings: existsSync(settings),
-      helperMode: existsSync(helper) ? statSync(helper).mode & 0o777 : 0,
-      settingsMode: existsSync(settings) ? statSync(settings).mode & 0o777 : 0,
+      helper: existsSync(path.join(dir, 'credential.sh')),
+      settings: existsSync(path.join(dir, 'settings.json')),
     })
   }
   return liveSpawn(binary, argv, options)
@@ -149,10 +165,10 @@ const cliVersion = (): string => spawnSync('claude', ['--version'], { encoding: 
 
 /**
  * Runs one raw CLI invocation and hands back exit code and both streams. The
- * optional timeout bounds the helper legs specifically: a rejected token
- * makes the CLI retry ten times with exponential backoff (a recorded fact —
- * minutes), and the init line the proof legs read arrives long before the
- * retries settle, so a bounded kill still lands the facts.
+ * optional timeout bounds the negative leg: a refused token makes the CLI
+ * retry ten times with exponential backoff (a recorded fact — minutes), and
+ * the init line the leg reads arrives long before the retries settle, so a
+ * bounded kill still lands the facts.
  */
 const rawRun = (
   argv: readonly string[],
@@ -166,7 +182,11 @@ const rawRun = (
     input,
     ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
   })
-  return { code: child.status ?? -1, stdout: child.stdout ?? '', stderr: child.stderr ?? '' }
+  return {
+    code: child.status ?? -1,
+    stdout: child.stdout ?? '',
+    stderr: child.stderr ?? '',
+  }
 }
 
 interface AgentEnv {
@@ -177,12 +197,17 @@ interface AgentEnv {
 
 /** Boots one adapter over the given environment, capturing every argv. A null credential is the un-credentialed leg. */
 const agentFor = async (
-  credential: { name: 'ANTHROPIC_API_KEY' | 'CLAUDE_CODE_OAUTH_TOKEN'; value: string } | null,
+  credential: { name: 'ANTHROPIC_API_KEY'; value: string } | null,
   env: NodeJS.ProcessEnv,
 ): Promise<AgentEnv> => {
   const options: ClaudeAgentOptions = {
     directory: process.cwd(),
-    knobs: { model: process.env['LLM_MODEL'] ?? 'sonnet', lightModel: null, planEffort: null, buildEffort: null },
+    knobs: {
+      model: process.env['LLM_MODEL'] ?? 'sonnet',
+      lightModel: null,
+      planEffort: null,
+      buildEffort: null,
+    },
     ...(credential === null ? {} : { credential }),
     env,
     log: silentLog,
@@ -206,7 +231,10 @@ const claudeProcesses = (): ProcEntry[] =>
     .filter((line) => /claude .*--bare/u.test(line) && !/claude-live/u.test(line))
     .map((line) => {
       const [pid, pgid] = line.trim().split(/\s+/u)
-      return { pid: Number.parseInt(pid ?? '0', 10), pgid: Number.parseInt(pgid ?? '0', 10) }
+      return {
+        pid: Number.parseInt(pid ?? '0', 10),
+        pgid: Number.parseInt(pgid ?? '0', 10),
+      }
     })
     .filter((entry) => entry.pid > 0)
 
@@ -217,61 +245,40 @@ const groupMembers = (pgid: number): number[] =>
     .map((line) => Number.parseInt(line.trim(), 10))
     .filter((pid) => Number.isSafeInteger(pid) && pid > 0)
 
-const run = async (): Promise<number> => {
-  const credential = readCredential()
-  if (credential === null) return 1
+/**
+ * The standing zero-spend negative leg (design D3): the dead end re-recorded.
+ *
+ * Self-contained by construction — the writer the production route retired
+ * never existed for this leg, which owns its throwaway dir: a dummy token
+ * behind the CLI's own `apiKeyHelper` shape, named via `--settings` on a
+ * `--bare` invocation, both env spellings deleted. Returns the leg's checks
+ * and stamps its init-line fixture plus its facts; the two observations it
+ * asserts are exactly the recording the startup refusal cites.
+ */
+const negativeHelperLeg = (facts: Record<string, string>): boolean[] => {
+  const helperDir = createClaudeConfigDir(tmpdir())
+  const helperScript = path.join(helperDir, 'credential.sh')
+  const settingsFile = path.join(helperDir, 'settings.json')
+  writeFileSync(helperScript, `#!/bin/sh\nprintf '%s' '${DUMMY_OAUTH_TOKEN}'`, {
+    mode: 0o700,
+  })
+  writeFileSync(settingsFile, JSON.stringify({ apiKeyHelper: helperScript }), {
+    mode: 0o600,
+  })
 
-  const version = cliVersion()
-  const results: boolean[] = [check('the claude CLI is installed', version.length > 0, 'no version string')]
-  process.stdout.write(`  version: ${version}\n`)
+  const legEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    CLAUDE_CONFIG_DIR: helperDir,
+  }
+  Reflect.deleteProperty(legEnv, 'ANTHROPIC_API_KEY')
+  Reflect.deleteProperty(legEnv, 'CLAUDE_CODE_OAUTH_TOKEN')
 
-  // A scoped env carrying only this run's credential: the recorder is a
-  // credentialed artifact, but it still drives the CLI the way the pipeline
-  // does — a post-scrub environment plus exactly the chosen credential.
-  const notChosen = credential.name === 'ANTHROPIC_API_KEY' ? 'CLAUDE_CODE_OAUTH_TOKEN' : 'ANTHROPIC_API_KEY'
-  const env: NodeJS.ProcessEnv = { ...process.env, [credential.name]: credential.value }
-  Reflect.deleteProperty(env, notChosen)
-
-  const facts: Record<string, string> = { cliVersion: version }
-  mkdirSync(FIXTURES, { recursive: true })
-
-  // ---- Determinism facts ---------------------------------------------------
-
-  const bare = rawRun(['-p', '--output-format', 'stream-json'], env, 'x')
-  results.push(
-    check(
-      'stream-json requires --verbose with -p on this CLI',
-      /verbose/u.test(bare.stderr),
-      `stderr said: ${bare.stderr.trim().slice(0, 120)}`,
-    ),
-  )
-
-  const scoped = await agentFor(credential, { ...env, CLAUDE_CONFIG_DIR: createClaudeConfigDir(tmpdir()) })
-
-  // ---- The OAuth carrier's proof legs (design D4/D5) --------------------------
-  //
-  // Before any corpus turn: these are the ship decision's facts, and they must
-  // land in facts.json whatever the corpus does (the first 5.1 run crashed at
-  // the opening turn and recorded nothing). The helper dir is materialized
-  // through the same writer the adapter boots with (`writeClaudeCredentialFiles`
-  // over a fresh job-scoped dir) — the adapter's own dir is internal to it and
-  // only observable at spawn, which these legs deliberately precede. One raw
-  // CLI turn against that dir — helper pair present, both env spellings
-  // deleted, `--settings` naming the file the way the adapter's argv does — so
-  // the helper is the only carrier that exists, and the init line's
-  // `apiKeySource` is the recorded answer to whether `--bare` consults it.
-  // The stderr tail rides the ✗ detail so a refused helper or token names its
-  // layer instead of exiting 1 in silence. A second, non-bare leg runs only if
-  // the first fails, separating "--bare refuses the helper" from "the helper
-  // or token is refused outright".
-
-  if (credential.name === 'CLAUDE_CODE_OAUTH_TOKEN') {
-    const helperDir = createClaudeConfigDir(tmpdir())
-    writeClaudeCredentialFiles(helperDir, credential)
-    const helperEnv: NodeJS.ProcessEnv = { ...env, CLAUDE_CONFIG_DIR: helperDir }
-    Reflect.deleteProperty(helperEnv, credential.name)
-    const helperArgv = (withBare: boolean): readonly string[] => [
-      ...(withBare ? ['--bare'] : []),
+  const startedAt = Date.now()
+  const outcome = rawRun(
+    [
+      '--bare',
+      '--settings',
+      settingsFile,
       '-p',
       '--output-format',
       'stream-json',
@@ -282,57 +289,106 @@ const run = async (): Promise<number> => {
       'Read,Glob,Grep',
       '--model',
       process.env['LLM_MODEL'] ?? 'sonnet',
-      '--settings',
-      path.join(helperDir, 'settings.json'),
-    ]
-    const factsOf = (outcome: {
-      code: number
-      stdout: string
-      stderr: string
-    }): { source: string | null; text: string; initRaw: unknown; tail: string } => {
-      const parsed = parseNdjsonStream(outcome.stdout)
-      const initAt = parsed.findIndex((raw) => decodeClaudeLine(raw)?.kind === 'init')
-      const resultAt = parsed.findIndex((raw) => decodeClaudeLine(raw)?.kind === 'result')
-      const initLine = initAt === -1 ? null : decodeClaudeLine(parsed[initAt] ?? null)
-      const resultLine = resultAt === -1 ? null : decodeClaudeLine(parsed[resultAt] ?? null)
-      return {
-        source: initLine !== null && initLine.kind === 'init' ? initLine.apiKeySource : null,
-        text: resultLine !== null && resultLine.kind === 'result' ? resultLine.text : '',
-        initRaw: initAt === -1 ? null : (parsed[initAt] ?? null),
-        tail: outcome.stderr.trim().slice(0, 160),
-      }
-    }
-    const bareRun = rawRun(helperArgv(true), helperEnv, 'Reply with the single word ready.', 120_000)
-    const bareFacts = factsOf(bareRun)
-    facts['oauthApiKeySource'] = bareFacts.source ?? 'no-init-line'
-    facts['oauthHelperStdout'] = "printf '%s' single-quoted, no trailing newline"
-    results.push(
-      check(
-        'the helper authenticates under --bare --settings — raw leg, no env credential, non-none apiKeySource',
-        bareFacts.source !== null && bareFacts.source !== 'none',
-        `apiKeySource: ${String(bareFacts.source)}, exit ${bareRun.code}, ` +
-          `result: ${bareFacts.text.slice(0, 80)}, stderr: ${bareFacts.tail}`,
-      ),
-    )
-    if (bareFacts.initRaw !== null) {
-      writeFileSync(path.join(FIXTURES, 'oauth-helper-init.ndjson'), `${JSON.stringify(bareFacts.initRaw)}\n`)
-      process.stdout.write('  stamped the OAuth init-line fixture\n')
-    }
-    if (bareFacts.source === null || bareFacts.source === 'none') {
-      const noBareRun = rawRun(helperArgv(false), helperEnv, 'Reply with the single word ready.', 120_000)
-      const noBareFacts = factsOf(noBareRun)
-      facts['oauthHelperNoBareApiKeySource'] = noBareFacts.source ?? 'no-init-line'
-      process.stdout.write(
-        `  diagnostic: the same helper dir without --bare reports apiKeySource ${String(noBareFacts.source)} ` +
-          `(exit ${noBareRun.code}, stderr: ${noBareFacts.tail})\n`,
-      )
-    }
+    ],
+    legEnv,
+    'Reply with the single word ready.',
+    NEGATIVE_LEG_TIMEOUT_MS,
+  )
+  const elapsedMs = Date.now() - startedAt
+
+  const parsed = parseNdjsonStream(outcome.stdout)
+  const initAt = parsed.findIndex((raw) => decodeClaudeLine(raw)?.kind === 'init')
+  const resultAt = parsed.findIndex((raw) => decodeClaudeLine(raw)?.kind === 'result')
+  const initLine = initAt === -1 ? null : decodeClaudeLine(parsed[initAt] ?? null)
+  const resultLine = resultAt === -1 ? null : decodeClaudeLine(parsed[resultAt] ?? null)
+  const source = initLine !== null && initLine.kind === 'init' ? initLine.apiKeySource : null
+  const refusal =
+    resultLine !== null && resultLine.kind === 'result' ? { isError: resultLine.isError, text: resultLine.text } : null
+
+  facts['oauthApiKeySource'] = source ?? 'no-init-line'
+  facts['oauthHelperOutcome'] =
+    refusal === null ? 'no-result-line' : `${refusal.isError ? 'api-refused' : 'answered'} after ${elapsedMs}ms`
+  facts['oauthHelperStdout'] = "printf '%s' single-quoted, no trailing newline"
+
+  if (initAt !== -1) {
+    writeFileSync(path.join(FIXTURES, 'oauth-helper-init.ndjson'), `${JSON.stringify(parsed[initAt])}\n`)
+    process.stdout.write('  stamped the OAuth init-line fixture\n')
   }
 
-  // ---- The corpus behaviours, through the adapter's own argv ---------------
+  const refusedShape = refusal !== null && refusal.isError && /401|authenticat|invalid/iu.test(refusal.text)
+  return [
+    check(
+      'the helper loads under --bare --settings — the init line names apiKeyHelper as the credential source',
+      source === 'apiKeyHelper',
+      `apiKeySource: ${String(source)}, exit ${outcome.code}, stderr: ${outcome.stderr.trim().slice(0, 120)}`,
+    ),
+    check(
+      'the API refuses the OAuth token the helper carried — the recorded 401 api_error refusal, zero usage',
+      refusedShape,
+      refusal === null
+        ? `no result line (exit ${outcome.code}), stderr: ${outcome.stderr.trim().slice(0, 120)}`
+        : `is_error ${String(refusal.isError)}, result: ${refusal.text.slice(0, 120)}`,
+    ),
+  ]
+}
+
+const run = async (): Promise<number> => {
+  const mode = readMode()
+  if (mode === null) return 1
+
+  const version = cliVersion()
+  const results: boolean[] = [check('the claude CLI is installed', version.length > 0, 'no version string')]
+  process.stdout.write(`  version: ${version}\n`)
+
+  const facts: Record<string, string> = { cliVersion: version }
+  mkdirSync(FIXTURES, { recursive: true })
+
+  // ---- The standing negative leg (both modes, zero spend) -------------------
   //
+  // Before any corpus turn: these are the refusal's own facts, and they must
+  // land in facts.json whatever the corpus does.
+
+  results.push(...negativeHelperLeg(facts))
+
+  if (mode.mode !== 'api-key') {
+    process.stdout.write(
+      '  negative mode: the credentialed corpus legs are skipped — the OAuth spelling no longer boots from config.\n' +
+        '  for the full recording, re-run with ANTHROPIC_API_KEY (real model spend).\n',
+    )
+    writeFileSync(path.join(FIXTURES, 'facts.json'), `${JSON.stringify(facts, null, 2)}\n`)
+    return results.every(Boolean) ? 0 : 1
+  }
+
+  // ---- The credentialed corpus (API-key mode) -------------------------------
+
+  // A scoped env carrying only this run's credential: the recorder is a
+  // credentialed artifact, but it still drives the CLI the way the pipeline
+  // does — a post-scrub environment plus exactly the chosen credential.
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ANTHROPIC_API_KEY: mode.value,
+  }
+  Reflect.deleteProperty(env, 'CLAUDE_CODE_OAUTH_TOKEN')
+
+  const bare = rawRun(['-p', '--output-format', 'stream-json'], env, 'x')
+  results.push(
+    check(
+      'stream-json requires --verbose with -p on this CLI',
+      /verbose/u.test(bare.stderr),
+      `stderr said: ${bare.stderr.trim().slice(0, 120)}`,
+    ),
+  )
+
+  const scoped = await agentFor(
+    { name: 'ANTHROPIC_API_KEY', value: mode.value },
+    {
+      ...env,
+      CLAUDE_CONFIG_DIR: createClaudeConfigDir(tmpdir()),
+    },
+  )
+
   // A corpus turn that rejects records its ✗ row instead of crashing the run:
-  // the decision facts above must land either way.
+  // the negative leg's facts above must land either way.
 
   /** One corpus turn's outcome: the reply when it answered, the message when it rejected. */
   interface SafeTurn {
@@ -343,7 +399,10 @@ const run = async (): Promise<number> => {
   const safePrompt = (agent: OpenCodeAgent, request: Parameters<OpenCodeAgent['prompt']>[0]): Promise<SafeTurn> =>
     agent.prompt(request).then(
       (reply): SafeTurn => ({ reply, error: '' }),
-      (error: unknown): SafeTurn => ({ reply: null, error: error instanceof Error ? error.message : String(error) }),
+      (error: unknown): SafeTurn => ({
+        reply: null,
+        error: error instanceof Error ? error.message : String(error),
+      }),
     )
 
   /** The why a safePrompt turn rejected — '' when it answered; first 200 chars, never a value. */
@@ -369,7 +428,10 @@ const run = async (): Promise<number> => {
     ),
   )
 
-  const resumed = await safePrompt(scoped.agent, { prompt: 'In one sentence: what did you just read?', agent: 'plan' })
+  const resumed = await safePrompt(scoped.agent, {
+    prompt: 'In one sentence: what did you just read?',
+    agent: 'plan',
+  })
   results.push(
     check(
       'the follow-up turn resumes the memoized session',
@@ -413,10 +475,10 @@ const run = async (): Promise<number> => {
 
   // The error-signalling result: a deliberately un-credentialed turn — the
   // real auth-failure shape, exit 0 with `is_error: true`, costing nothing.
-  // The adapter boots with **no** credential: on the OAuth spelling no helper
-  // exists for the CLI to consult, so the failure is the genuine shape.
+  // The adapter boots with **no** credential, so nothing it spawns carries
+  // one anywhere.
   const noCredential = { ...env }
-  Reflect.deleteProperty(noCredential, credential.name)
+  Reflect.deleteProperty(noCredential, 'ANTHROPIC_API_KEY')
   Reflect.deleteProperty(noCredential, 'CLAUDE_CONFIG_DIR')
   const unauth = await agentFor(null, noCredential)
   const authFailure = await unauth.agent.prompt({ prompt: 'say ready', agent: 'plan' }).then(
@@ -443,9 +505,18 @@ const run = async (): Promise<number> => {
 
   // ---- The stop and the killed-turn resume ----------------------------------
 
-  const build = await agentFor(credential, { ...env, CLAUDE_CONFIG_DIR: createClaudeConfigDir(tmpdir()) })
+  const build = await agentFor(
+    { name: 'ANTHROPIC_API_KEY', value: mode.value },
+    {
+      ...env,
+      CLAUDE_CONFIG_DIR: createClaudeConfigDir(tmpdir()),
+    },
+  )
   const longTurn = build.agent
-    .prompt({ prompt: 'Use the Bash tool to run `sleep 300`. Do not do anything else.', agent: 'build' })
+    .prompt({
+      prompt: 'Use the Bash tool to run `sleep 300`. Do not do anything else.',
+      agent: 'build',
+    })
     .then(
       () => null,
       (error: unknown) => error,
@@ -496,42 +567,28 @@ const run = async (): Promise<number> => {
     ),
   )
 
-  // ---- The OAuth carrier's aggregate seam checks ------------------------------
+  // ---- The retirement's aggregate seam checks --------------------------------
   //
-  // Every spawn the run made, judged together: on the OAuth spelling no env
-  // ever carries an Anthropic credential, each credentialed boot's config dir
-  // held the helper pair (0700/0600) before its first spawn, and the one
-  // un-credentialed boot held none.
+  // Every spawn the run made, judged together: no spawned env carries the
+  // OAuth spelling (the API key rides env by design — the accepted spelling's
+  // mechanism), and no boot's config dir ever held a credential file.
 
-  if (credential.name === 'CLAUDE_CODE_OAUTH_TOKEN') {
-    const spellingsLeaked = envCalls.filter(
-      (spawnEnv) => spawnEnv['ANTHROPIC_API_KEY'] !== undefined || spawnEnv['CLAUDE_CODE_OAUTH_TOKEN'] !== undefined,
-    )
-    results.push(
-      check(
-        'no spawned env carries any Anthropic credential — the helper files are the only carrier',
-        spellingsLeaked.length === 0,
-        `${spellingsLeaked.length} of ${envCalls.length} spawns carried a spelling`,
-      ),
-    )
-    const materialized = configDirProbes.filter(
-      (probe) => probe.helper && probe.settings && probe.helperMode === 0o700 && probe.settingsMode === 0o600,
-    )
-    results.push(
-      check(
-        'each credentialed adapter boot materialized the helper pair before its first spawn',
-        materialized.length === 2,
-        `${materialized.length} of ${configDirProbes.length} config dirs held the files`,
-      ),
-    )
-    results.push(
-      check(
-        'the un-credentialed boot materialized no helper',
-        configDirProbes.length === 3 && materialized.length === 2,
-        `${configDirProbes.length - materialized.length} bare config dirs (expected 1)`,
-      ),
-    )
-  }
+  const oauthLeaked = envCalls.filter((spawnEnv) => spawnEnv['CLAUDE_CODE_OAUTH_TOKEN'] !== undefined)
+  results.push(
+    check(
+      'no spawned env carries the OAuth spelling — the API key is the route’s only credential carrier',
+      oauthLeaked.length === 0,
+      `${oauthLeaked.length} of ${envCalls.length} spawns carried it`,
+    ),
+  )
+  const credFiles = configDirProbes.filter((probe) => probe.helper || probe.settings)
+  results.push(
+    check(
+      'every adapter boot’s config dir stayed credential-file-free — the helper carrier is retired',
+      credFiles.length === 0,
+      `${credFiles.length} of ${configDirProbes.length} config dirs held credential files`,
+    ),
+  )
 
   // ---- Stamp and optional fixture refresh -----------------------------------
 
@@ -542,9 +599,10 @@ const run = async (): Promise<number> => {
   if (REFRESH_FIXTURES) {
     rmSync(path.join(FIXTURES, 'success-turn.ndjson'), { force: true })
     rmSync(path.join(FIXTURES, 'resume-turn.ndjson'), { force: true })
-    rmSync(path.join(FIXTURES, 'adversarial-plan-bash-refused.ndjson'), { force: true })
+    rmSync(path.join(FIXTURES, 'adversarial-plan-bash-refused.ndjson'), {
+      force: true,
+    })
     rmSync(path.join(FIXTURES, 'auth-error-turn.ndjson'), { force: true })
-    rmSync(path.join(FIXTURES, 'oauth-helper-init.ndjson'), { force: true })
     process.stdout.write(
       '  NOTE: fixture refresh rewrites the .ndjson corpus from the recorded streams by hand of the\n' +
         'operator next; see the fixture README for what each file must carry.\n',

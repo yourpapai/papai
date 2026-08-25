@@ -21,19 +21,27 @@ State of this directory:
   shapes — with `is_error: true`, `terminal_reason: "api_error"` and exit code
   0, which is itself a load-bearing recorded fact: the error-to-non-zero-exit
   correlation is relied on for nothing.
-- `oauth-helper-init.ndjson` — written by the recorder's OAuth leg
-  (`CLAUDE_CODE_OAUTH_TOKEN` as the held credential): the init line of a raw
-  turn whose only credential carrier was the `apiKeyHelper` pair the adapter
-  materialized, the env spellings deleted. Its `apiKeySource` is the recorded
-  proof of whether `--bare` consults the helper on the pinned CLI.
+- `oauth-helper-init.ndjson` — written by the recorder's standing zero-spend
+  negative leg (`CLAUDE_CODE_OAUTH_TOKEN=<dummy>` mode, or any credentialed
+  run): the init line of a raw `--bare --settings` invocation whose only
+  credential was a deliberately invalid dummy token behind the CLI's own
+  `apiKeyHelper` shape in a throwaway config dir, both env spellings deleted.
+  Recorded on `claude_code_version` 2.1.239 (the line carries its own version
+  stamp): the CLI **loads** the helper — `apiKeySource: "apiKeyHelper"` — and
+  the API **refuses** the OAuth token it echoes (401
+  `authentication_failed` over the retry ladder, synthetic assistant message,
+  `api_error` result, usage zero). The config guard's startup refusal cites
+  exactly this recording, and the leg re-asserts both halves at every CLI pin
+  move: a helper that stops loading, or an OAuth-over-helper call that starts
+  succeeding, fails the recorder loudly.
 - `success-turn.ndjson`, `adversarial-plan-bash-refused.ndjson`,
   `resume-turn.ndjson` — **provisional, documented shapes**. The credentialed
-  recorder run (change task 1.2,
-  `bun run opencode-agent:test:claude-live`) replaces the whole corpus with
+  recorder run (`ANTHROPIC_API_KEY=<key> bun run
+opencode-agent:test:claude-live`) replaces the whole corpus with
   recordings from the live pinned CLI and stamps the exact CLI version into
   `VERSION` beside this file; `tests/opencode-agent/workflow.test.ts` then
-  asserts that stamp equals the workflow's install pin. Until `VERSION` exists,
-  these three files are shape-documentation, not observation.
+  asserts that stamp equals the workflow's install pin. Until `VERSION`
+  exists, these three files are shape-documentation, not observation.
 
 The recorder is the only writer of this directory; nothing here is edited by
 hand once recorded. One credentialed run (`bun run
