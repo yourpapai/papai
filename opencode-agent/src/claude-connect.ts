@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { rmSync } from 'node:fs'
 
+import type { ClaudeInvocationProfile } from './claude-argv.js'
 import type { ClaudeCredential } from './config-values.js'
 
 /**
@@ -33,6 +34,17 @@ export const KILL_GRACE_MS = 5_000
 /** The environment names the child must never carry, whatever scrubbing missed. */
 const STRIPPED_NAMES = ['LLM_BASE_URL', 'AGENT_MCP_SERVERS', 'ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'] as const
 
+/**
+ * The credential spelling each profile re-adds — one rule, spelled twice
+ * (design D3): bare carries the API key, native the OAuth token. A
+ * credential whose spelling does not match the profile injects nothing at
+ * all, so a mismatched pair can never smuggle the other spelling through.
+ */
+const PROFILE_CREDENTIAL: Readonly<Record<ClaudeInvocationProfile, 'ANTHROPIC_API_KEY' | 'CLAUDE_CODE_OAUTH_TOKEN'>> = {
+  bare: 'ANTHROPIC_API_KEY',
+  native: 'CLAUDE_CODE_OAUTH_TOKEN',
+}
+
 /** The CLI child as this layer sees it: a pid, a stdin, two streams, an exit. */
 export interface ClaudeChildProcess {
   readonly pid: number
@@ -49,13 +61,19 @@ export interface ClaudeSpawnRequest {
   /** Delivered on stdin — a single Linux argument is capped at 128 KiB. */
   stdinPrompt: string
   /**
-   * The chosen Anthropic credential, when this spawn holds one. The API-key
-   * spelling rides the child env; the OAuth spelling — refused at config,
-   * reachable here only through direct adapter-level tests — injects nothing:
-   * under `--bare` the CLI never reads it, and the route materializes no
-   * credential file (design D3, as recorded).
+   * The chosen Anthropic credential, when this spawn holds one. Only the
+   * spelling the profile re-adds rides the child env (design D3): the API
+   * key on bare, the OAuth token on native — never both, and a mismatched
+   * spelling injects nothing. The route materializes no credential file,
+   * ever.
    */
   credential?: ClaudeCredential | null
+  /**
+   * The invocation profile this spawn runs — it rides the request, not the
+   * env scrub, so the spawn layer never re-derives what config already
+   * decided. Absent is `bare`, the pre-split default.
+   */
+  profile?: ClaudeInvocationProfile
   /** The checkout the CLI works in. */
   workspace: string
   /**
@@ -102,10 +120,8 @@ export interface ClaudeChild {
  * name-strip exists for the carriers value-matching cannot see — `LLM_BASE_URL`
  * (a non-secret URL), `AGENT_MCP_SERVERS` (a JSON document with credentials
  * embedded *inside* it) — and for the two Anthropic spellings, so the one
- * that rides env can be re-added alone. Only the API-key spelling is
- * re-added: under `--bare` the pinned CLI never reads the env OAuth token,
- * and the route carries no credential file for it either — the guard refuses
- * that spelling at startup (design D3, as recorded).
+ * the profile claims can be re-added alone (design D3): the API key on bare,
+ * the OAuth token on native.
  */
 const childEnv = (request: ClaudeSpawnRequest): Record<string, string> => {
   const env: Record<string, string> = {}
@@ -115,7 +131,11 @@ const childEnv = (request: ClaudeSpawnRequest): Record<string, string> => {
   for (const name of STRIPPED_NAMES) Reflect.deleteProperty(env, name)
 
   const credential = request.credential
-  if (credential !== null && credential !== undefined && credential.name === 'ANTHROPIC_API_KEY') {
+  if (
+    credential !== null &&
+    credential !== undefined &&
+    credential.name === PROFILE_CREDENTIAL[request.profile ?? 'bare']
+  ) {
     env[credential.name] = credential.value
   }
   env['DISABLE_AUTOUPDATER'] = '1'

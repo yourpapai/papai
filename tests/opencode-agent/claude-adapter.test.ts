@@ -309,11 +309,14 @@ describe('session continuity', () => {
   })
 })
 
-describe('credential carrier by spelling', () => {
-  /** What the config dir held at the moment of the first spawn — nothing, per the retirement. */
+describe('credential carrier by spelling — the profile derivation', () => {
+  /** What the config dir held at the moment of the first spawn. */
   interface FirstSpawnProbe {
     helper: boolean
     settings: boolean
+    emptyMcp: boolean
+    /** The `--mcp-config` value the first spawn's argv named, or ''. */
+    mcpConfigArgv: string
   }
 
   const probeAtFirstSpawn = (
@@ -329,9 +332,12 @@ describe('credential carrier by spelling', () => {
       spawn: (binary, argv, options) => {
         if (probe === null) {
           const dir = options.env['CLAUDE_CONFIG_DIR'] ?? ''
+          const at = argv.indexOf('--mcp-config')
           probe = {
             helper: existsSync(path.join(dir, 'credential.sh')),
             settings: existsSync(path.join(dir, 'settings.json')),
+            emptyMcp: existsSync(path.join(dir, 'empty-mcp.json')),
+            mcpConfigArgv: at === -1 ? '' : (argv[at + 1] ?? ''),
           }
         }
         return inner.spawn(binary, argv, options)
@@ -339,55 +345,67 @@ describe('credential carrier by spelling', () => {
     }
   }
 
-  test('an OAuth-credential direct boot is test-only reachability: it materializes nothing and injects neither spelling', async () => {
-    // The guard refuses the spelling at config, so no production path hands
-    // the adapter an OAuth credential anymore; this direct boot pins the
-    // spawn layer's recorded env behaviour — under --bare the env token is
-    // never read, and with the writer retired no credential file exists
-    // either. The spelling is unreachable, not silently dropped.
+  /** The `--mcp-config` value the first spawn's argv named, or '' when it named none. */
+  const probedMcpPath = (probe: FirstSpawnProbe | null): string => probe?.mcpConfigArgv ?? ''
+
+  test('the OAuth spelling derives the native profile: no --bare, neutralization flags, the empty-MCP doc written before the first spawn, env carrying the token', async () => {
     const probed = probeAtFirstSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(probed.spawn, publicLog().log, { credential: OAUTH_CREDENTIAL }))
 
     await agent.prompt({ prompt: 'x' })
 
+    const argv = argvOf(probed.calls, 0)
+    expect(argv.includes('--bare')).toBe(false)
+    expect(argv.includes('--setting-sources')).toBe(true)
+    expect(argv.includes('--strict-mcp-config')).toBe(true)
+    // The document existed before the first spawn, and the argv names it.
+    const named = probedMcpPath(probed.probe)
+    expect(named).not.toBe('')
+    expect(existsSync(named)).toBe(true)
+    // No credential file either: env injection is this spelling's mechanism.
     expect(probed.probe?.helper).toBe(false)
     expect(probed.probe?.settings).toBe(false)
     for (const call of probed.calls) {
-      expect(call.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
+      expect(call.env['CLAUDE_CODE_OAUTH_TOKEN']).toBe(OAUTH_CREDENTIAL.value)
       expect(call.env['ANTHROPIC_API_KEY']).toBeUndefined()
     }
-    // No settings file exists to name, and none is named.
-    expect(argvOf(probed.calls, 0).includes('--settings')).toBe(false)
-    // The config dir stays credential-file-free — the carrier is retired.
+    // The one file the boot wrote is the inert document.
     const dir = configDirOfCall(probed.calls, 0)
     expect(dir).not.toBe('')
-    expect(readdirSync(dir)).toEqual([])
+    expect(readdirSync(dir)).toEqual(['empty-mcp.json'])
   })
 
-  test('booting with the API key materializes nothing — env injection is that spelling’s mechanism', async () => {
+  test('the API-key spelling derives bare: byte-identical to the pre-split route, nothing materialized', async () => {
     const probed = probeAtFirstSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(probed.spawn, publicLog().log))
 
     await agent.prompt({ prompt: 'x' })
 
+    const argv = argvOf(probed.calls, 0)
+    expect(argv[1]).toBe('--bare')
+    expect(argv.includes('--setting-sources')).toBe(false)
+    expect(argv.includes('--strict-mcp-config')).toBe(false)
+    expect(argv.includes('--mcp-config')).toBe(false)
     expect(probed.probe?.helper).toBe(false)
     expect(probed.probe?.settings).toBe(false)
+    expect(probed.probe?.emptyMcp).toBe(false)
     expect(probed.calls[0]?.env['ANTHROPIC_API_KEY']).toBe(CREDENTIAL.value)
-    // No settings file to name: that spelling's mechanism is env injection.
-    expect(argvOf(probed.calls, 0).includes('--settings')).toBe(false)
+    expect(probed.calls[0]?.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
     const dir = configDirOfCall(probed.calls, 0)
     expect(dir).not.toBe('')
     expect(readdirSync(dir)).toEqual([])
   })
 
-  test('the credential is optional: absent, a turn spawns with no credential anywhere', async () => {
+  test('an absent credential derives bare too, with neither spelling in env — the recorder’s census and negative legs', async () => {
     const probed = probeAtFirstSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(probed.spawn, publicLog().log, { credential: undefined }))
 
     await agent.prompt({ prompt: 'x' })
 
-    expect(probed.probe?.helper).toBe(false)
-    expect(probed.probe?.settings).toBe(false)
+    // Bare composition: the weaker default, materializing nothing, injecting
+    // nothing — what the un-credentialed census legs compose from.
+    expect(argvOf(probed.calls, 0)[1]).toBe('--bare')
+    expect(probed.probe?.emptyMcp).toBe(false)
     for (const call of probed.calls) {
       expect(call.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
       expect(call.env['ANTHROPIC_API_KEY']).toBeUndefined()

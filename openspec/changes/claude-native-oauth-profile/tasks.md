@@ -27,15 +27,15 @@ refuses, and its guard-wording task (2.5) edits text that revision owns.
 
 ## 2. Env injection and adapter crossing (design D1, D3)
 
-- [ ] 2.1 Tests first in `tests/opencode-agent/claude-connect.test.ts`: `childEnv` on the native profile re-adds exactly `CLAUDE_CODE_OAUTH_TOKEN` (never the API key, never both); on bare keeps today's API-key shape; the profile rides the spawn request, not the env scrub.
+- [x] 2.1 Tests first in `tests/opencode-agent/claude-connect.test.ts`: `childEnv` on the native profile re-adds exactly `CLAUDE_CODE_OAUTH_TOKEN` (never the API key, never both); on bare keeps today's API-key shape; the profile rides the spawn request, not the env scrub.
   Verify: `bun test tests/opencode-agent/claude-connect.test.ts` (red)
-- [ ] 2.2 Tests first in `tests/opencode-agent/claude-adapter.test.ts`: the adapter derives the profile from the credential spelling (OAuth → native: no `--bare`, neutralization flags present, empty-MCP file written before first spawn, env carries the token; API key → bare: byte-identical to today, nothing materialized; absent credential → bare composition with neither spelling in env, for the recorder's census/negative legs).
+- [x] 2.2 Tests first in `tests/opencode-agent/claude-adapter.test.ts`: the adapter derives the profile from the credential spelling (OAuth → native: no `--bare`, neutralization flags present, empty-MCP file written before first spawn, env carries the token; API key → bare: byte-identical to today, nothing materialized; absent credential → bare composition with neither spelling in env, for the recorder's census/negative legs).
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (red)
-- [ ] 2.3 Implement: the profile rule in `claude-connect.ts`, the derivation plus boot-time MCP-doc write in `claude-adapter.ts` — making 2.1 and 2.2 green.
+- [x] 2.3 Implement: the profile rule in `claude-connect.ts`, the derivation plus boot-time MCP-doc write in `claude-adapter.ts` — making 2.1 and 2.2 green.
   Verify: `bun test tests/opencode-agent/claude-connect.test.ts tests/opencode-agent/claude-adapter.test.ts` (green)
-- [ ] 2.4 Tests first in `tests/opencode-agent/config.test.ts`: the guard's single-spelling messages name the native profile for `CLAUDE_CODE_OAUTH_TOKEN`; both-set and neither-set behavior byte-identical to the removal revision's guard.
+- [x] 2.4 Tests first in `tests/opencode-agent/config.test.ts`: the guard's single-spelling messages name the native profile for `CLAUDE_CODE_OAUTH_TOKEN`; both-set and neither-set behavior byte-identical to the removal revision's guard.
   Verify: `bun test tests/opencode-agent/config.test.ts` (red)
-- [ ] 2.5 Implement the wording in `config-backend-values.ts` (behavior unchanged).
+- [x] 2.5 Implement the wording in `config-backend-values.ts` (behavior unchanged).
   Verify: `bun test tests/opencode-agent/config.test.ts` (green)
 
 ## 3. Contract: the rate-limit signature (design D4)

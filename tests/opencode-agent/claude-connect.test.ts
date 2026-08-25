@@ -101,10 +101,12 @@ const request = (
   env: Record<string, string | undefined> = {},
   configDir = createClaudeConfigDir(),
   credential: Parameters<typeof spawnClaude>[0]['credential'] = CREDENTIAL,
+  profile?: NonNullable<Parameters<typeof spawnClaude>[0]['profile']>,
 ): Parameters<typeof spawnClaude>[0] => ({
-  argv: ['--bare', '-p'],
+  argv: profile === 'native' ? ['--setting-sources', '', '-p'] : ['--bare', '-p'],
   stdinPrompt: 'do the work',
   credential,
+  ...(profile === undefined ? {} : { profile }),
   workspace: '/runner/workspace',
   configDir,
   env: { PATH: '/usr/bin', ...env },
@@ -182,22 +184,51 @@ describe('the spawn contract', () => {
     expect(recorded.options.env['DISABLE_AUTOUPDATER']).toBe('1')
   })
 
-  test('the OAuth spelling injects no Anthropic credential into the child env — a test-only reachability', () => {
+  test('the native profile re-adds exactly the OAuth token — the symmetric mirror of the API-key rule', () => {
     const recorded = blankRecording()
     spawnClaude(
       request(
-        { ANTHROPIC_API_KEY: 'api-key-riding-along', CLAUDE_CODE_OAUTH_TOKEN: OAUTH_CREDENTIAL.value },
+        { ANTHROPIC_API_KEY: 'api-key-riding-along', CLAUDE_CODE_OAUTH_TOKEN: 'not-the-chosen-one-either' },
         createClaudeConfigDir(),
         OAUTH_CREDENTIAL,
+        'native',
       ),
       { spawn: recordingSpawn(recorded, 4242) },
     )
 
-    // The guard refuses the spelling at config, so no production path reaches
-    // this spawn with an OAuth credential; the behaviour is pinned anyway:
-    // under --bare the CLI never reads the env token, and the route
-    // materializes no credential file — neither spelling reaches the child,
-    // whatever the scrubbed env carried in.
+    // One rule, spelled twice (design D3): strip both spellings, re-add
+    // exactly the profile's credential. On native that is the OAuth token —
+    // the CLI's native path reads the env spelling — and never the API key,
+    // never both, whatever the scrubbed env carried in.
+    expect(recorded.options.env['CLAUDE_CODE_OAUTH_TOKEN']).toBe(OAUTH_CREDENTIAL.value)
+    expect(recorded.options.env['ANTHROPIC_API_KEY']).toBeUndefined()
+  })
+
+  test('a mismatched pair injects nothing: bare with the OAuth spelling, native with the API key', () => {
+    // The guard refuses both-set, and the adapter derives the profile from
+    // the spelling, so no production path builds either shape; the rule is
+    // pinned anyway so the mismatch can never smuggle a credential through.
+    const bareWithOAuth = blankRecording()
+    spawnClaude(request({}, createClaudeConfigDir(), OAUTH_CREDENTIAL, 'bare'), {
+      spawn: recordingSpawn(bareWithOAuth, 4242),
+    })
+    expect(bareWithOAuth.options.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
+    expect(bareWithOAuth.options.env['ANTHROPIC_API_KEY']).toBeUndefined()
+
+    const nativeWithApiKey = blankRecording()
+    spawnClaude(request({ ANTHROPIC_API_KEY: 'stray' }, createClaudeConfigDir(), CREDENTIAL, 'native'), {
+      spawn: recordingSpawn(nativeWithApiKey, 4242),
+    })
+    expect(nativeWithApiKey.options.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
+    expect(nativeWithApiKey.options.env['ANTHROPIC_API_KEY']).toBeUndefined()
+  })
+
+  test('the native profile with no credential carries neither spelling, for the census and negative legs', () => {
+    const recorded = blankRecording()
+    spawnClaude(request({ ANTHROPIC_API_KEY: 'left-behind' }, createClaudeConfigDir(), null, 'native'), {
+      spawn: recordingSpawn(recorded, 4242),
+    })
+
     expect(recorded.options.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
     expect(recorded.options.env['ANTHROPIC_API_KEY']).toBeUndefined()
   })

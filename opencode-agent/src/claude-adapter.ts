@@ -5,8 +5,8 @@
 
 import type { AgentPromptRequest, AgentPromptResult, AgentSession } from './agent-session.js'
 import { buildClaudeArgv } from './claude-argv.js'
-import type { ClaudeModelKnobs } from './claude-argv.js'
-import { createClaudeConfigDir } from './claude-config-dir.js'
+import type { ClaudeInvocationProfile, ClaudeModelKnobs } from './claude-argv.js'
+import { createClaudeConfigDir, writeClaudeEmptyMcpConfig } from './claude-config-dir.js'
 import { collectChild, killGroup, spawnClaude, teardownClaude } from './claude-connect.js'
 import type { ClaudeChild, GroupKillSeams, SpawnClaude, TeardownSeams } from './claude-connect.js'
 import { decodeClaudeLine, parseNdjsonStream } from './claude-contract.js'
@@ -37,11 +37,12 @@ export interface ClaudeAgentOptions extends TurnBounds {
   /** The model knobs as plain values — never the `OpenAiSettings` object (design D5). */
   knobs: ClaudeModelKnobs
   /**
-   * The chosen Anthropic credential, when this session holds one. The API-key
-   * spelling — the only one config can produce, the guard refusing the OAuth
-   * spelling — is env-injected per spawn; an absent credential is the
-   * recorder's un-credentialed auth-error leg. The route materializes no
-   * credential file, ever (design D2).
+   * The chosen Anthropic credential, when this session holds one. Its
+   * spelling selects the invocation profile (design D1): the API key runs
+   * `bare` — env-injected per spawn, byte-identical to the pre-split route —
+   * and the OAuth token runs `native`, with the token env-injected and the
+   * empty-MCP document written at boot. An absent credential derives bare
+   * and injects nothing — the recorder's census and negative legs.
    */
   credential?: ClaudeCredential
   /** The post-scrub `process.env` the child inherits. */
@@ -81,6 +82,14 @@ interface SessionState {
 interface SessionContext {
   readonly options: ClaudeAgentOptions
   readonly configDir: string
+  /**
+   * The invocation profile, derived once at boot from the credential
+   * spelling (design D1) — `native` for the OAuth token, `bare` for anything
+   * else, so an absent credential keeps the weaker composition.
+   */
+  readonly profile: ClaudeInvocationProfile
+  /** The empty-MCP document's path, written at boot on the native profile; `null` on bare. */
+  readonly mcpConfigPath: string | null
   readonly bootSessionId: string
   readonly credentialValues: readonly string[]
   readonly tracker: ProgressTracker
@@ -120,6 +129,7 @@ const spawnTurn = (context: SessionContext, invocation: ReturnType<typeof buildC
         argv: invocation.argv,
         stdinPrompt: invocation.stdinPrompt,
         credential: context.options.credential,
+        ...(context.profile === 'bare' ? {} : { profile: context.profile }),
         workspace: context.options.directory,
         configDir: context.configDir,
         env: context.options.env,
@@ -149,6 +159,8 @@ const runClaudeTurn = async (context: SessionContext): Promise<TurnOutcome> => {
       prompt: current.prompt,
       ...(current.system === undefined ? {} : { system: current.system }),
       ...(current.agent === undefined ? {} : { agent: current.agent }),
+      ...(context.profile === 'bare' ? {} : { profile: context.profile }),
+      ...(context.mcpConfigPath === null ? {} : { mcpConfigPath: context.mcpConfigPath }),
       resumeSessionId: context.state.cliSessionId,
     },
     context.options.knobs,
@@ -241,13 +253,17 @@ const claudeSession = (context: SessionContext, connection: TurnConnection): Age
  * Boots the claude session: one job-scoped config dir that stays
  * credential-file-free (the helper carrier is retired — design D2), one
  * synthetic job-local id until the first init line lands, and one process per
- * turn.
+ * turn. The credential's spelling picks the profile here (design D1), and a
+ * native boot writes the empty-MCP document before any spawn can name it.
  */
 export const createClaudeAgent = (options: ClaudeAgentOptions): Promise<AgentSession> => {
   const configDir = createClaudeConfigDir()
+  const profile: ClaudeInvocationProfile = options.credential?.name === 'CLAUDE_CODE_OAUTH_TOKEN' ? 'native' : 'bare'
   const context: SessionContext = {
     options,
     configDir,
+    profile,
+    mcpConfigPath: profile === 'native' ? writeClaudeEmptyMcpConfig(configDir) : null,
     bootSessionId: `claude-job-${crypto.randomUUID()}`,
     credentialValues: options.credential === undefined ? [] : [options.credential.value],
     tracker: claudeTracker(options.log),
