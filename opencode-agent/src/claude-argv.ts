@@ -30,6 +30,16 @@ const ALLOWLISTS = {
   build: 'Read,Edit,Write,Bash,Glob,Grep',
 } as const
 
+/**
+ * Which CLI invocation shape a turn runs — selected by the credential
+ * spelling, not a knob (design D1 of the native-OAuth change): the API key
+ * keeps `bare` (today's route, byte-identical), the OAuth token runs
+ * `native` (no `--bare`, plus the neutralization flags). The builder takes
+ * it as a parameter so it stays about composition and testable without a
+ * credential value.
+ */
+export type ClaudeInvocationProfile = 'bare' | 'native'
+
 export interface ClaudeTurnRequest {
   prompt: string
   system?: string
@@ -37,6 +47,14 @@ export interface ClaudeTurnRequest {
   agent?: string
   /** The memoized CLI session id; `null` or absent spawns a fresh session. */
   resumeSessionId?: string | null
+  /** The invocation profile; absent is `bare`, the pre-split default. */
+  profile?: ClaudeInvocationProfile
+  /**
+   * The empty-MCP JSON document's path — the `native` profile's
+   * `--mcp-config` value, written beside the session files at boot. Required
+   * on `native`; ignored on `bare`.
+   */
+  mcpConfigPath?: string
 }
 
 /**
@@ -71,6 +89,20 @@ export const claudeArgLimitError = (bytes: number, cap: number): PipelineError =
   )
 
 /**
+ * A native invocation with no MCP document to name — a composition bug, not an
+ * operator condition: the adapter writes the empty document at boot, so the
+ * only way here is a caller that forgot it. Refused before anything spawns,
+ * the same doctrine as the MAX_ARG_STRLEN refusal.
+ */
+export const claudeProfileError = (): PipelineError =>
+  new PipelineError(
+    'CLAUDE_PROFILE',
+    'The native claude invocation profile needs the empty-MCP document path for --mcp-config, and none was ' +
+      'given. That document is written into the job-scoped config dir at boot; a missing one is a composition bug ' +
+      'in the caller, not a condition an operator can set.',
+  )
+
+/**
  * Only the model id crosses: one `LLM_MODEL` knob serves either backend, and a
  * value spelled `provider/model` (the OpenCode form) keeps its model id here.
  */
@@ -93,6 +125,22 @@ const profileSelection = (
   const named = agent ?? '(no profile named)'
   log.warn({ agent: named }, `Agent profile "${named}" is not one this backend pins; the plan allowlist applies`)
   return { allowlist: ALLOWLISTS.plan, model: knobs.lightModel ?? knobs.model, effort: knobs.planEffort }
+}
+
+/**
+ * The argv block that carries the invocation profile: `--bare` on the bare
+ * profile; the three neutralization flags on the native one (design D2) —
+ * `--setting-sources ''` kills repo-skill discovery and settings-file loads,
+ * and `--strict-mcp-config --mcp-config <empty>` kills `.mcp.json`
+ * auto-connect. Belt and braces because either flag alone leaves one surface
+ * open (recorded census: strict alone still loaded repo skills).
+ */
+const profileBlock = (profile: ClaudeInvocationProfile, mcpConfigPath: string | null): readonly string[] => {
+  if (profile === 'native') {
+    if (mcpConfigPath === null) throw claudeProfileError()
+    return ['--setting-sources', '', '--strict-mcp-config', '--mcp-config', mcpConfigPath]
+  }
+  return ['--bare']
 }
 
 /**
@@ -120,7 +168,7 @@ export const buildClaudeArgv = (request: ClaudeTurnRequest, knobs: ClaudeModelKn
 
   return {
     argv: [
-      '--bare',
+      ...profileBlock(request.profile ?? 'bare', request.mcpConfigPath ?? null),
       '-p',
       '--output-format',
       'stream-json',

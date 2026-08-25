@@ -308,6 +308,123 @@ describe('buildClaudeArgv', () => {
     expect(flagValue(propose, '--effort')).toBeNull()
     expect(flagValue(buildClaudeArgv({ prompt: 'x', agent: 'plan' }, KNOBS, silent).argv, '--effort')).toBeNull()
   })
+})
+
+describe('buildClaudeArgv (invocation profiles)', () => {
+  // The credential spelling selects the profile (design D1): the API key
+  // keeps the bare route byte-identical, the OAuth token runs the
+  // neutralized native one. What differs is exactly the profile block at
+  // the head of the argv — everything after it is shared, flag for flag.
+
+  const MCP_PATH = '/tmp/job/empty-mcp.json'
+  const NATIVE_BLOCK = ['--setting-sources', '', '--strict-mcp-config', '--mcp-config', MCP_PATH]
+
+  test('the bare profile keeps today’s argv byte-identical, including --bare and no neutralization', () => {
+    const defaulted = buildClaudeArgv({ prompt: 'x' }, KNOBS, silent).argv
+    const explicit = buildClaudeArgv({ prompt: 'x', profile: 'bare' }, KNOBS, silent).argv
+
+    expect(explicit).toEqual(defaulted)
+    expect(explicit).toEqual([
+      '--bare',
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--permission-mode',
+      'default',
+      '--allowedTools',
+      'Read,Glob,Grep',
+      '--model',
+      'claude-sonnet-5',
+    ])
+    for (const flag of ['--setting-sources', '--strict-mcp-config', '--mcp-config']) {
+      expect(explicit.includes(flag)).toBe(false)
+    }
+  })
+
+  test('the native profile omits --bare and carries the three neutralization flags', () => {
+    const { argv } = buildClaudeArgv({ prompt: 'x', profile: 'native', mcpConfigPath: MCP_PATH }, KNOBS, silent)
+
+    expect(argv).toEqual([
+      ...NATIVE_BLOCK,
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--permission-mode',
+      'default',
+      '--allowedTools',
+      'Read,Glob,Grep',
+      '--model',
+      'claude-sonnet-5',
+    ])
+    expect(argv.includes('--bare')).toBe(false)
+    // `--setting-sources ''` — the empty string is the argv element itself.
+    expect(flagValue(argv, '--setting-sources')).toBe('')
+    // A valueless flag: what follows it is the next flag, never its value.
+    expect(argv.includes('--strict-mcp-config')).toBe(true)
+    expect(flagValue(argv, '--mcp-config')).toBe(MCP_PATH)
+  })
+
+  test('every shared flag is identical on both profiles — the tail after the profile block', () => {
+    const knobs: ClaudeModelKnobs = { ...KNOBS, lightModel: 'claude-haiku-5', planEffort: 'low' }
+    const request = {
+      prompt: 'do the work',
+      system: 'You are the papai agent.',
+      agent: 'plan',
+      resumeSessionId: 'abc-123',
+    } as const
+
+    const bare = buildClaudeArgv({ ...request, profile: 'bare' }, knobs, silent)
+    const native = buildClaudeArgv({ ...request, profile: 'native', mcpConfigPath: MCP_PATH }, knobs, silent)
+
+    // One block of five replaces one block of one; everything after is shared.
+    expect(native.argv.slice(NATIVE_BLOCK.length)).toEqual(bare.argv.slice(1))
+    expect(native.stdinPrompt).toBe(bare.stdinPrompt)
+    for (const flag of ['-p', '--verbose', '--resume']) {
+      expect(native.argv.includes(flag)).toBe(true)
+    }
+    expect(flagValue(native.argv, '--output-format')).toBe('stream-json')
+    expect(flagValue(native.argv, '--permission-mode')).toBe('default')
+    expect(flagValue(native.argv, '--allowedTools')).toBe('Read,Glob,Grep')
+    expect(flagValue(native.argv, '--model')).toBe('claude-haiku-5')
+    expect(flagValue(native.argv, '--effort')).toBe('low')
+    expect(flagValue(native.argv, '--resume')).toBe('abc-123')
+    expect(flagValue(native.argv, '--append-system-prompt')).toBe('You are the papai agent.')
+  })
+
+  test('the native profile without an MCP document path refuses before anything spawns', () => {
+    let raised: unknown
+    try {
+      buildClaudeArgv({ prompt: 'x', profile: 'native' }, KNOBS, silent)
+    } catch (error) {
+      raised = error
+    }
+
+    const error = asPipelineError(raised)
+    expect(error.code).toBe('CLAUDE_PROFILE')
+    expect(error.message).toContain('--mcp-config')
+  })
+
+  test('no argv on either profile ever carries a credential value or name', () => {
+    const values = ['sk-ant-api03-a-real-shaped-key', 'sk-ant-oat01-a-real-shaped-token']
+
+    for (const profile of ['bare', 'native'] as const) {
+      const { argv, stdinPrompt } = buildClaudeArgv(
+        { prompt: 'ENVELOPE(nonce) do the work ENVELOPE(nonce)', profile, mcpConfigPath: MCP_PATH },
+        KNOBS,
+        silent,
+      )
+      const joined = argv.join(' ')
+
+      for (const value of values) {
+        expect(joined.includes(value)).toBe(false)
+        expect(stdinPrompt.includes(value)).toBe(false)
+      }
+      expect(joined.includes('ANTHROPIC_API_KEY')).toBe(false)
+      expect(joined.includes('CLAUDE_CODE_OAUTH_TOKEN')).toBe(false)
+    }
+  })
 
   test('chains the memoized session id as --resume, and spawns fresh when none is memoized', () => {
     const resumed = buildClaudeArgv({ prompt: 'x', resumeSessionId: 'abc-123' }, KNOBS, silent).argv

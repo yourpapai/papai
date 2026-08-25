@@ -5,9 +5,7 @@
 
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import path from 'node:path'
+import { rmSync } from 'node:fs'
 
 import type { ClaudeCredential } from './config-values.js'
 
@@ -92,10 +90,9 @@ export interface ClaudeChild {
  * The job-scoped CLI config dir, under the OS tmp root and never the checkout
  * workspace — where a job's `--resume` session files live and die, so no
  * `~/.claude` state crosses jobs and `git add --all` in the implement phase
- * can never stage it.
+ * can never stage it. Created by `createClaudeConfigDir` in
+ * `claude-config-dir.ts`, the module owning the route's durable scratch.
  */
-export const createClaudeConfigDir = (tmpRoot: string = tmpdir()): string =>
-  mkdtempSync(path.join(tmpRoot, 'opencode-agent-claude-'))
 
 /**
  * Builds the child environment: the post-scrub environment plus exactly the

@@ -4,17 +4,16 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import {
   createClaudeConfigDir,
-  KILL_GRACE_MS,
-  killGroup,
-  spawnClaude,
-  teardownClaude,
-} from '../../opencode-agent/src/claude-connect.js'
+  EMPTY_MCP_CONFIG_NAME,
+  writeClaudeEmptyMcpConfig,
+} from '../../opencode-agent/src/claude-config-dir.js'
+import { KILL_GRACE_MS, killGroup, spawnClaude, teardownClaude } from '../../opencode-agent/src/claude-connect.js'
 import type {
   ClaudeChild,
   ClaudeChildProcess,
@@ -248,6 +247,57 @@ const settledSleep =
     sleeps.push(ms)
     return Promise.resolve()
   }
+
+describe('the empty-MCP document writer', () => {
+  // The native profile's neutralization needs one JSON file naming zero
+  // servers, written into the job-scoped config dir at boot (design D2) —
+  // inert content beside the session files, with the dir's own lifetime.
+
+  test('writes one JSON file naming zero servers into the config dir, returning its path', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'claude-empty-mcp-test-'))
+    try {
+      const configDir = createClaudeConfigDir(root)
+      expect(readdirSync(configDir)).toEqual([])
+
+      const target = writeClaudeEmptyMcpConfig(configDir)
+
+      expect(target).toBe(path.join(configDir, EMPTY_MCP_CONFIG_NAME))
+      expect(existsSync(target)).toBe(true)
+      const written = readdirSync(configDir)
+      expect(written).toEqual([EMPTY_MCP_CONFIG_NAME])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('the content is inert: one object whose mcpServers map is empty', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'claude-empty-mcp-test-'))
+    try {
+      const target = writeClaudeEmptyMcpConfig(createClaudeConfigDir(root))
+      const parsed = JSON.parse(readFileSync(target, 'utf8')) as unknown
+
+      // Exactly one key, naming zero servers: nothing here can connect,
+      // wherever the CLI is run from.
+      expect(parsed).toEqual({ mcpServers: {} })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('overwriting is idempotent — the same doc twice writes the same bytes', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'claude-empty-mcp-test-'))
+    try {
+      const configDir = createClaudeConfigDir(root)
+      const first = readFileSync(writeClaudeEmptyMcpConfig(configDir), 'utf8')
+      const second = readFileSync(writeClaudeEmptyMcpConfig(configDir), 'utf8')
+
+      expect(second).toBe(first)
+      expect(readdirSync(configDir)).toEqual([EMPTY_MCP_CONFIG_NAME])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('killGroup', () => {
   test('a first signal that finds no live group reports false and escalates nothing', async () => {

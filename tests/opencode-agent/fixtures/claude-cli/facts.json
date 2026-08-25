@@ -1,0 +1,6 @@
+{
+  "cliVersion": "2.1.239 (Claude Code)",
+  "oauthApiKeySource": "apiKeyHelper",
+  "oauthHelperOutcome": "api-refused after 188330ms",
+  "oauthHelperStdout": "printf '%s' single-quoted, no trailing newline"
+}
