@@ -29,6 +29,7 @@ import {
   type GeneratedArm,
   type HookClassSpec,
 } from './benchmark.js'
+import { projectCli } from './project-cli.js'
 
 /** Every world touch the orchestration needs, injected so tests never spawn. */
 export interface RunDeps {
@@ -165,6 +166,10 @@ const printReport = (report: BenchmarkReport): void => {
 }
 
 const main = async (): Promise<void> => {
+  if (process.argv.includes('--project')) {
+    projectCli()
+    return
+  }
   const repeats = parsePositiveIntFlag(process.argv, 'repeats', 5)
   const inputsPerArm = parsePositiveIntFlag(process.argv, 'inputs', 100)
   fs.mkdirSync(BENCH_GENERATED_ROOT, { recursive: true })

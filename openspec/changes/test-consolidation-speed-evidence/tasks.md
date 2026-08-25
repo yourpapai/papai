@@ -13,8 +13,8 @@ the producing runs complete. `reports/` is gitignored — numbers are copied in 
 ## 2. CLIs and projection (design D1/D2)
 
 - [x] 2.1 Implement the benchmark CLI wiring (real fs, `Bun.spawn` running `bun test --reporter-outfile` serially per arm, repeats flag) and add `"test:benchmark"` to `package.json`. Verify: `bun run test:benchmark` exits 0, writes `reports/test-audit/benchmark.json` (per-class median ± IQR, bun version, repeats, class fixture sources), modifies no test file / runner config / gate, and a full-suite case count is unchanged.
-- [ ] 2.2 Write failing tests for the projection: joins persisted benchmark + audit artifacts into per-class candidate counts (hook-signature detection over the audit scan set), upper bound (all single-or-zero-assert cases in hook files) and lower bound (0) plus the stated midpoint heuristic (tests-consolidation D4 static eligibility rule), savings seconds vs serial in-test time, and "requires per-file eligibility review" lines for un-assessable populations. Verify: red before implementation.
-- [ ] 2.3 Implement `scripts/test-audit/project.ts` (reads `benchmark.json` + `fragmentation.json`, prints + writes the projection). Verify: `bun run test:benchmark -- --project` (or the wired equivalent) reproduces the projection from the persisted artifacts.
+- [x] 2.2 Write failing tests for the projection: joins persisted benchmark + audit artifacts into per-class candidate counts (hook-signature detection over the audit scan set), upper bound (all single-or-zero-assert cases in hook files) and lower bound (0) plus the stated midpoint heuristic (tests-consolidation D4 static eligibility rule), savings seconds vs serial in-test time, and "requires per-file eligibility review" lines for un-assessable populations. Verify: red before implementation.
+- [x] 2.3 Implement `scripts/test-audit/project.ts` (reads `benchmark.json` + `fragmentation.json`, prints + writes the projection). Verify: `bun run test:benchmark -- --project` (or the wired equivalent) reproduces the projection from the persisted artifacts.
 
 ## 3. Evidence and wrap-up (design D4 / Migration steps 3–4)
 
