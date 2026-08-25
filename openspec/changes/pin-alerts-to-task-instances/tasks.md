@@ -4,7 +4,7 @@ Order follows design.md's TDD order of work; every task is test-first (failing t
 
 ## 1. DB layer: column, migration, registration
 
-- [ ] 1.1 Write failing migration test `tests/db/migrations/081_alert_task_instance_pin.test.ts` (template: the 069 test) covering: column added, idempotent re-run, FK present via `PRAGMA foreign_key_list(alert_prompts)`, legacy rows stay NULL. Verify: `bun run test tests/db/migrations/081_alert_task_instance_pin.test.ts`
+- [x] 1.1 Write failing migration test `tests/db/migrations/081_alert_task_instance_pin.test.ts` (template: the 069 test) covering: column added, idempotent re-run, FK present via `PRAGMA foreign_key_list(alert_prompts)`, legacy rows stay NULL. Verify: `bun run test tests/db/migrations/081_alert_task_instance_pin.test.ts`
 - [ ] 1.2 Extend `tests/db/migration-registration.test.ts` (081 is now last) and `tests/db/deferred-schema.test.ts` (new column) with failing assertions. Verify: `bun run test tests/db/migration-registration.test.ts tests/db/deferred-schema.test.ts`
 - [ ] 1.3 Add nullable `taskInstanceId` column (FK → `taskInstances.id`, `onDelete: 'cascade'`) to `alertPrompts` in `src/db/deferred-schema.ts`. Verify: `bun run test tests/db/deferred-schema.test.ts`
 - [ ] 1.4 Create `src/db/migrations/081_alert_task_instance_pin.ts` (`columnExists` guard + `ALTER TABLE alert_prompts ADD COLUMN task_instance_id TEXT REFERENCES task_instances(id) ON DELETE CASCADE`) and register it last in `MIGRATIONS` in `src/db/index.ts`. Verify: `bun run test tests/db`
