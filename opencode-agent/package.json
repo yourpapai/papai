@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "@octokit/rest": "^22.0.0",
-    "@opencode-ai/sdk": "^1.18.16",
+    "@opencode-ai/sdk": "^1.18.18",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "typescript": "^7.0.2"
   },
