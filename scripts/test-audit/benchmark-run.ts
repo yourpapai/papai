@@ -9,9 +9,15 @@
  * spawn, so the pure core in `benchmark.ts` stays exercisable against in-memory fakes.
  */
 
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
 import pLimit from 'p-limit'
 
 import {
+  BENCH_GENERATED_ROOT,
+  BENCH_REPORT_PATH,
   HOOK_CLASSES,
   buildBenchmarkReport,
   generateArm,
@@ -105,4 +111,72 @@ export async function runBenchmark(deps: RunDeps, options: RunOptions, ctx: RunC
     cores: ctx.cores,
     classRuns,
   })
+}
+
+// --- CLI wiring: the only world-touching path ---------------------------------------------
+
+const runArmOnce = async (relPath: string): Promise<string> => {
+  const junitPath = `${relPath}.junit.xml`
+  // Bun writes the outfile only when a file loads; a stale one would describe the
+  // previous run (the same known behavior the test wrapper works around).
+  fs.rmSync(junitPath, { force: true })
+  const proc = Bun.spawn(['bun', 'test', `./${relPath}`, '--reporter=junit', `--reporter-outfile=${junitPath}`], {
+    cwd: process.cwd(),
+    stdout: 'ignore',
+    stderr: 'pipe',
+  })
+  const stderr = await new Response(proc.stderr).text()
+  const exitCode = await proc.exited
+  if (exitCode !== 0) {
+    throw new Error(`bun test exited ${exitCode} for ${relPath}:\n${stderr}`)
+  }
+  return fs.readFileSync(junitPath, 'utf8')
+}
+
+const realDeps: RunDeps = {
+  write: async (relPath, source) => {
+    await Promise.resolve()
+    fs.mkdirSync(path.dirname(relPath), { recursive: true })
+    fs.writeFileSync(relPath, source)
+  },
+  runArm: runArmOnce,
+}
+
+const parsePositiveIntFlag = (args: readonly string[], name: string, fallback: number): number => {
+  const match = args.find((arg) => arg.startsWith(`--${name}=`))
+  if (match === undefined) return fallback
+  const value = Number.parseInt(match.slice(name.length + 3), 10)
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+const printReport = (report: BenchmarkReport): void => {
+  const load = report.hostLoad.map((value) => value.toFixed(2)).join('/')
+  console.log(
+    `consolidation benchmark (class manifest v${report.classManifestVersion}): bun ${report.bunVersion}, ` +
+      `${report.repeats} repeats, ${report.inputsPerArm} inputs/arm, load ${load}, ${report.cores} cores`,
+  )
+  for (const row of report.classes) {
+    console.log(
+      `  ${row.id.padEnd(18)} ${row.marginal.median.toFixed(3)} ms/case median ` +
+        `(IQR ${row.marginal.iqr.toFixed(3)})  fixture: ${row.fixtureSource}`,
+    )
+  }
+  console.log(`-> ${BENCH_REPORT_PATH}`)
+}
+
+const main = async (): Promise<void> => {
+  const repeats = parsePositiveIntFlag(process.argv, 'repeats', 5)
+  const inputsPerArm = parsePositiveIntFlag(process.argv, 'inputs', 100)
+  fs.mkdirSync(BENCH_GENERATED_ROOT, { recursive: true })
+  const report = await runBenchmark(
+    realDeps,
+    { repeats, inputsPerArm },
+    { bunVersion: Bun.version, hostLoad: os.loadavg(), cores: os.cpus().length },
+  )
+  fs.writeFileSync(BENCH_REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`)
+  printReport(report)
+}
+
+if (import.meta.main) {
+  await main()
 }
