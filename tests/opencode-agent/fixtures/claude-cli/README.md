@@ -46,11 +46,14 @@ opencode-agent:test:claude-live`): the whole stream of a neutralized native
   operator's own credentials.
 - `native-success-turn.ndjson` — written only by the native mode's
   credentialed proof turn (`CLAUDE_CODE_OAUTH_TOKEN=<token>`), and only when
-  the turn answered: the stream of one native plan turn, carrying the
-  `rate_limit_event` line whose `rateLimitType` is the subscription window —
-  the five-hour signature that is the native path's proof of authentication
-  (`apiKeySource` reads `none` there and cannot serve). Until a valid token
-  records it, this file is absent, and the native profile is not supported.
+  the turn answered. **Recorded 2026-08-25 on 2.1.239**: one answered native
+  plan turn whose stream carries the top-level `rate_limit_event` line with
+  the window nested at `rate_limit_info.rateLimitType` — `"five_hour"`, the
+  subscription signature that is the native path's proof of authentication
+  (`apiKeySource` reads `none` on that path and cannot serve). The line
+  arrives even with `status: "allowed"` — every credentialed subscription
+  turn carries it. A re-run that answers without it fails the recorder
+  loudly.
 - `success-turn.ndjson`, `adversarial-plan-bash-refused.ndjson`,
   `resume-turn.ndjson` — **provisional, documented shapes**. The credentialed
   recorder run (`ANTHROPIC_API_KEY=<key> bun run

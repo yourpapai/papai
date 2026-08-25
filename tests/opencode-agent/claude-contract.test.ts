@@ -209,22 +209,40 @@ describe('the rate-limit signature (design D4 of the native-OAuth change)', () =
   // decoder names it; the adapter ignores it — recorder evidence, never a
   // budget input (the total_cost_usd doctrine).
 
-  test('a rate_limit_event line decodes to the subscription fact: the event type and its window', () => {
-    // The line envelope is the recorded `system`-family shape (its recorded
-    // sibling: `api_retry`); the credentialed recorder run stamps the real
-    // one into native-success-turn.ndjson.
-    const line = decodeClaudeLine({
-      type: 'system',
-      subtype: 'rate_limit_event',
+  /** The recorded line, quoted from native-success-turn.ndjson (2.1.239). */
+  const RATE_LIMIT_LINE = {
+    type: 'rate_limit_event',
+    rate_limit_info: {
+      status: 'allowed',
+      resetsAt: 1_787_644_800,
       rateLimitType: 'five_hour',
-      session_id: 'c85d41c3-8312-4e96-b944-e30113b73759',
-    })
+      overageStatus: 'allowed',
+      overageResetsAt: 1_788_220_800,
+      isUsingOverage: false,
+    },
+    session_id: '02f52ec0-3fb5-4f3f-a702-66661e2a502c',
+  }
 
-    expect(line).toEqual({ kind: 'rate-limit-event', window: 'five_hour' })
+  test('a rate_limit_event line decodes to the subscription fact: the window inside rate_limit_info', () => {
+    // The recorded shape is a TOP-LEVEL `rate_limit_event` line — not a
+    // system/subtype envelope — with the window nested in `rate_limit_info`.
+    expect(decodeClaudeLine(RATE_LIMIT_LINE)).toEqual({ kind: 'rate-limit-event', window: 'five_hour' })
+  })
+
+  test('the recorded native success turn carries the five-hour signature — the corpus pin', () => {
+    // The genuine credentialed recording: an answered native turn whose
+    // stream carries the subscription fact the recorder's proof leg reads.
+    expect(decoded('native-success-turn.ndjson')).toContainEqual({ kind: 'rate-limit-event', window: 'five_hour' })
+    const result = resultOf('native-success-turn.ndjson')
+    expect(result.isError).toBe(false)
+    expect(result.text.length).toBeGreaterThan(0)
   })
 
   test('the window passes through as a string, never enumerated — other plans carry other windows', () => {
-    const weekly = decodeClaudeLine({ type: 'system', subtype: 'rate_limit_event', rateLimitType: 'weekly' })
+    const weekly = decodeClaudeLine({
+      type: 'rate_limit_event',
+      rate_limit_info: { status: 'allowed', rateLimitType: 'weekly' },
+    })
 
     expect(weekly).toEqual({ kind: 'rate-limit-event', window: 'weekly' })
   })
@@ -234,12 +252,13 @@ describe('the rate-limit signature (design D4 of the native-OAuth change)', () =
     expect(decoded('auth-error-turn.ndjson').some((line) => line?.kind === 'rate-limit-event')).toBe(false)
   })
 
-  test('neighbouring system subtypes the decoder does not name still skip', () => {
-    // The CLI's own system family is wider than this contract: `api_retry`
-    // and `rate_limit_info` are real subtypes the pipeline reads no facts
-    // from, so they skip like every unrecognized shape.
+  test('neighbouring shapes the decoder does not name still skip', () => {
+    // The CLI's own system family is wider than this contract (`api_retry`),
+    // a system-subtype spelling of the info name is not the line, and a
+    // rate_limit_event whose info object is absent carries no fact to read.
     expect(decodeClaudeLine({ type: 'system', subtype: 'api_retry', attempt: 1, error_status: 401 })).toBeNull()
     expect(decodeClaudeLine({ type: 'system', subtype: 'rate_limit_info' })).toBeNull()
+    expect(decodeClaudeLine({ type: 'rate_limit_event' })).toBeNull()
   })
 
   test('the <synthetic> model id in assistant lines lands nowhere — the names-only rule holds', () => {

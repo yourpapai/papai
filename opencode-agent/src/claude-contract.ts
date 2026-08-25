@@ -69,16 +69,18 @@ const initLineSchema = z.object({
  * The subscription rate-limit fact — the native profile's proof of
  * authentication (design D4): `apiKeySource` reads `none` on that path even
  * when the env token authenticates, so the recorder's evidence is this line
- * instead. The window is a pass-through string, never enumerated — the
- * recorded value is `five_hour`, and other plans carry other windows the
- * decoder has no business refusing. Optional by construction: a stream
- * without one decodes fine, and the adapter ignores the fact where present —
- * it is recorder evidence, never a budget input.
+ * instead. Recorded shape (2.1.239, `native-success-turn.ndjson`): a
+ * top-level `rate_limit_event` line — not a system/subtype envelope — whose
+ * nested `rate_limit_info` carries the window. The window is a pass-through
+ * string, never enumerated — the recorded value is `five_hour`, and other
+ * plans carry other windows the decoder has no business refusing. Optional
+ * by construction: a stream without one decodes fine, and the adapter
+ * ignores the fact where present — it is recorder evidence, never a budget
+ * input.
  */
 const rateLimitLineSchema = z.object({
-  type: z.literal('system'),
-  subtype: z.literal('rate_limit_event'),
-  rateLimitType: z.string().min(1),
+  type: z.literal('rate_limit_event'),
+  rate_limit_info: z.object({ rateLimitType: z.string().min(1) }),
 })
 
 /** A content block reduced to its shape and, for tool calls, its name. */
@@ -132,7 +134,7 @@ export const decodeClaudeLine = (raw: unknown): ClaudeStreamLine | null => {
     return { kind: 'init', sessionId: init.data.session_id, apiKeySource: init.data.apiKeySource ?? null }
 
   const rateLimit = rateLimitLineSchema.safeParse(raw)
-  if (rateLimit.success) return { kind: 'rate-limit-event', window: rateLimit.data.rateLimitType }
+  if (rateLimit.success) return { kind: 'rate-limit-event', window: rateLimit.data.rate_limit_info.rateLimitType }
 
   const assistant = assistantLineSchema.safeParse(raw)
   if (assistant.success) {
