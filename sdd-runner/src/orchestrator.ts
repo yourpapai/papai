@@ -117,12 +117,12 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
       autonomy: resolveAutonomy(deps, options.autonomy),
     })
     const planned = await runPlanningStages(env, stop)
-    if (planned.kind === 'plan') {
-      return await runPlanBranch(env.deps, env.state, env.ctx, planned.children)
-    }
-    const tail = await runPostReviewToGate(tailInputOf(env, planned.depth, planned.reviewResult))
-    await settleStoppedResult(deps, state, stop, tail)
-    return tail
+    const halted =
+      planned.kind === 'plan'
+        ? await runPlanBranch(env.deps, env.state, env.ctx, planned.children)
+        : await runPostReviewToGate(tailInputOf(env, planned.depth, planned.reviewResult))
+    await settleStoppedResult(deps, state, stop, halted)
+    return halted
   } finally {
     removeHolder(state.runDir)
     deps.unmountRunScreen?.()

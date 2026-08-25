@@ -85,6 +85,27 @@ function stopRequestingSpawn(
   return { spawn, markerArrived: (): boolean => markerArrived }
 }
 
+/**
+ * D6 plan-branch helper: the first `depth.json` spawn (the parent intake)
+ * classifies oversize and routes into the plan branch; every later one (child
+ * intakes) falls through to the fixture spawn's single-change sidecar.
+ */
+function oversizeFirstDepthSpawn(base: SpawnFn, oversizeDepth: string, spawnOrder: string[]): SpawnFn {
+  let servedOversize = false
+  return (command, args, options) => {
+    const prompt = String(args[args.length - 1])
+    const match = prompt.match(/\.review-loop\/([\w-]+\.json)/u)
+    const basename = match?.[1] ?? 'unknown.json'
+    if (basename !== 'depth.json' || servedOversize) return base(command, args, options)
+    servedOversize = true
+    spawnOrder.push(basename)
+    const target = agentWritePath(options.cwd, basename)
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, oversizeDepth)
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+  }
+}
+
 interface Fixture {
   readonly deps: OrchestratorDeps
   readonly repoRoot: string
@@ -3049,6 +3070,69 @@ describe('runGateResume plan mode (D12)', () => {
     expect(persisted.gate).not.toBe(null)
     expect(fs.existsSync(stopMarkerPath(runDir))).toBe(false)
     expect(fixture.stdoutLines.some((line) => line.includes('stopped calmly'))).toBe(true)
+  })
+
+  it('a calm stop during the planner flight is consumed at the plan gate, so approval runs children (D6)', async () => {
+    const fixture = makeFixture({
+      'depth.json': JSON.stringify({
+        implicated_files: ['drizzle/x.sql'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'single-module child change',
+      }),
+      'plan.json': JSON.stringify(PLAN),
+      'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
+    })
+    const oversizeDepth = JSON.stringify({
+      implicated_files: ['src/a.ts'],
+      signals: {
+        cross_module: false,
+        db_migration: false,
+        provider_surface: false,
+        credentials: false,
+        novelty: 'existing-modules',
+      },
+      rationale: 'declared scope too large for one change',
+      oversize: true,
+    })
+    const stdoutLines: string[] = []
+    let runDir = ''
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+      spawn: oversizeFirstDepthSpawn(fixture.deps.spawn, oversizeDepth, fixture.spawnOrder),
+    }
+
+    const result = await runStart(deps, {
+      taskFile: fixture.taskFile,
+      onRunDirReady: (dir: string) => {
+        runDir = dir
+        requestCalmStop(dir)
+      },
+    })
+
+    expect(result.halted).toBe('gate')
+    const persisted = await loadRunState(deps.config.workDir, 'add-thing')
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+    expect(persisted.status).toBe('stopped')
+    expect(fs.existsSync(stopMarkerPath(runDir))).toBe(false)
+    expect(stdoutLines.some((line: string) => line.includes('stopped calmly'))).toBe(true)
+
+    const gateMd = fs.readFileSync(result.gateMdPath, 'utf8')
+    fs.writeFileSync(result.gateMdPath, gateMd.replaceAll('- [ ] ', '- [x] '))
+    const approved = await runGateResume(deps, 'add-thing', {})
+    expect(approved.outcome).toBe('approved')
+    const parent = await loadRunState(deps.config.workDir, 'add-thing')
+    expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
+    const child = await loadRunState(deps.config.workDir, 'db-schema')
+    expect(child.gate).not.toBe(null)
   })
 
   it('an abort flag finalizes the gate aborted before any child exists', async () => {
