@@ -25,7 +25,7 @@ Order follows design.md's TDD order of work; every task is test-first (failing t
 - [x] 4.2 Add `resolveForInstance(contextId, taskInstanceId)` to `TaskProviderResolver` in `src/providers/resolver.ts`: same descriptor/config/validation path as `resolve`, context-scoped fields still from `contextId`; missing/inactive instance ⇒ `null`. Verify: `bun run test tests/providers`
 - [x] 4.3 Widen `BuildProviderFn` in `src/deferred-prompts/proactive-llm-helpers.ts` to `(contextId: string, taskInstanceId?: string | null)`. Verify: `bun run typecheck`
 - [x] 4.4 In `src/deferred-prompts/poller-alerts.ts` group `pollAlertsOnce` by effective instance (`alert.taskInstanceId ?? getContextSettings(configContextId)?.taskInstanceId ?? null`); `executeAlertsForInstance` calls `buildProviderFn(configContextId, pinnedTaskInstanceId)` and auto-cancels alerts whose non-null pin no longer resolves (info log, skip evaluation). Verify: `bun run test tests/deferred-prompts/poller-alerts.test.ts`
-- [ ] 4.5 Wire `startPollers`' `buildProviderFn` in `src/runtime/production-background.ts` to pass the pin through to `resolveForInstance`. Verify: `bun run test tests/deferred-prompts/poller-alerts.test.ts && bun run typecheck`
+- [x] 4.5 Wire `startPollers`' `buildProviderFn` in `src/runtime/production-background.ts` to pass the pin through to `resolveForInstance`. Verify: `bun run test tests/deferred-prompts/poller-alerts.test.ts && bun run typecheck`
 
 ## 5. Cancel paths on instance switch and delete
 
