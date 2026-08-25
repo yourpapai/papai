@@ -65,6 +65,7 @@ Mandatory; pino with structured metadata-first calls. `debug` — function entry
 
 - Runtime **Bun**; validation **Zod v4**; LLM via **Vercel AI SDK**; chat via **Grammy** / Mattermost REST+WebSocket / **discord.js**.
 - Strict TypeScript; **use `.js` extension in import paths**.
+- Two TypeScript packages, on purpose: `typescript` (7.x, the native compiler) is a **devDependency** and provides `tsc` for `bun run typecheck`; `@typescript/typescript6` is a **runtime dependency** and is the only one that can be imported. TS 7 ships no standalone parser — its API reaches source files only through a project served by the tsgo process — so the three in-memory AST scanners (`src/plugins/discovery-imports.ts`, `scripts/story/scenarios.ts`, `tests/smoke/harness/story-markers.ts`) import `ts` from `@typescript/typescript6`. Never `import ... from 'typescript'`.
 - Error extraction: `error instanceof Error ? error.message : String(error)`.
 - Use `p-limit` for bounded concurrency over remote ops, not unbounded `Promise.all`.
 - **Never add lint-disable or type-ignore comments** — hook policy blocks them; fix the underlying issue.
