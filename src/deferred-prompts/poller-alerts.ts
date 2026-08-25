@@ -9,7 +9,6 @@ import { runWithProviderRequestScope } from '../analytics/provider-request-scope
 import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { resolveProactiveProviderRequestScope } from '../analytics/provider-scope-factory.js'
 import type { ProactiveScopeInput } from '../analytics/provider-scope-factory.js'
-import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { ChatProvider } from '../chat/types.js'
 import { emitGlobal, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
@@ -25,9 +24,14 @@ import {
 } from './alerts.js'
 import { hasTaskChanges, LIGHTWEIGHT_SNAPSHOT_FIELDS, RICH_SNAPSHOT_FIELDS } from './change-gate.js'
 import { alertsNeedFullTasks, enrichTasks, fetchAllTasks } from './fetch-tasks.js'
+import {
+  groupAlertsByInstance,
+  handleUnresolvableProvider,
+  routableContextGroups,
+  type InstanceAlertGroup,
+} from './poller-alerts-grouping.js'
 import { mergeExecutionMetadata } from './poller-scheduled.js'
 import { resolveProactivePlatformInstanceId, sendProactiveMessage } from './proactive-delivery.js'
-import { getStorageContextId } from './proactive-llm-helpers.js'
 import { dispatchExecution, type BuildProviderFn, type DeferredExecutionContext } from './proactive-llm.js'
 import { getSnapshotsForUser, updateSnapshots } from './snapshots.js'
 import type { AlertPrompt } from './types.js'
@@ -53,11 +57,6 @@ const alertToExecCtx = (alert: AlertPrompt): DeferredExecutionContext => ({
   createdByUserId: alert.createdByUserId,
   deliveryTarget: alert.deliveryTarget,
 })
-
-const alertDeliveryContextKey = (alert: AlertPrompt): string => getStorageContextId(alert.deliveryTarget)
-
-const configContextIdForDelivery = (deliveryTarget: DeferredExecutionContext['deliveryTarget']): string =>
-  getConfigContextIdFromStorageContextId(getStorageContextId(deliveryTarget))
 
 const formatTaskStatus = (status: string | undefined): string => {
   const wrapped = wrapUntrusted(status, 'task-status')
@@ -195,20 +194,18 @@ const fetchAlertTasks = async (
   }
 }
 
+/** One poll unit: every alert sharing a config context and an effective task
+ * instance. `pinnedTaskInstanceId` is null when the instance comes from the
+ * context's current settings rather than an alert pin. */
 async function executeAlertsForInstance(
-  configContextId: string,
-  contextGroups: Map<string, AlertPrompt[]>,
+  group: InstanceAlertGroup,
   chat: ChatProvider,
   buildProviderFn: BuildProviderFn,
   evalNow: Date,
   resolveScope: (input: ProactiveScopeInput) => ProviderRequestScope,
 ): Promise<void> {
-  const routable = new Map<string, AlertPrompt[]>()
-  for (const [storageContextId, alerts] of contextGroups) {
-    if (resolveProactivePlatformInstanceId(chat, alerts[0]!.deliveryTarget) !== null) {
-      routable.set(storageContextId, alerts)
-    }
-  }
+  const { configContextId, pinnedTaskInstanceId, contextGroups } = group
+  const routable = routableContextGroups(contextGroups, chat)
   if (routable.size === 0) return
 
   // One independent proactive scope per instance poll, built from the first
@@ -219,9 +216,11 @@ async function executeAlertsForInstance(
     createdByUserId: firstAlert.createdByUserId,
     deliveryTarget: firstAlert.deliveryTarget,
   })
-  const provider = await runWithProviderRequestScope(scope, () => buildProviderFn(configContextId))
+  const provider = await runWithProviderRequestScope(scope, () =>
+    buildProviderFn(configContextId, pinnedTaskInstanceId),
+  )
   if (provider === null) {
-    log.warn({ configContextId }, 'Could not build task provider for alert polling')
+    handleUnresolvableProvider(configContextId, pinnedTaskInstanceId)
     return
   }
 
@@ -255,24 +254,12 @@ export async function pollAlertsOnce(
   emitGlobal('poller:alerts', { eligibleCount: eligibleAlerts.length })
   if (eligibleAlerts.length === 0) return
   const now = new Date()
-  const byInstance = new Map<string, Map<string, AlertPrompt[]>>()
-  for (const alert of eligibleAlerts) {
-    const storageContextId = alertDeliveryContextKey(alert)
-    const configContextId = configContextIdForDelivery(alert.deliveryTarget)
-    let contextGroups = byInstance.get(configContextId)
-    if (contextGroups === undefined) {
-      contextGroups = new Map()
-      byInstance.set(configContextId, contextGroups)
-    }
-    const group = contextGroups.get(storageContextId)
-    if (group === undefined) contextGroups.set(storageContextId, [alert])
-    else group.push(alert)
-  }
+  const byInstance = groupAlertsByInstance(eligibleAlerts)
   const userLimit = pLimit(MAX_CONCURRENT_USERS)
   const results = await Promise.allSettled(
-    [...byInstance.entries()].map(([configContextId, contextGroups]) =>
+    [...byInstance.values()].map((instanceGroup) =>
       userLimit((): Promise<void> =>
-        executeAlertsForInstance(configContextId, contextGroups, chat, buildProviderFn, now, deps.resolveScope),
+        executeAlertsForInstance(instanceGroup, chat, buildProviderFn, now, deps.resolveScope),
       ),
     ),
   )
