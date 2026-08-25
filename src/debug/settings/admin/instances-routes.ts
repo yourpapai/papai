@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { listPlatformProviderTypes } from '../../../chat/registry.js'
 import { getDrizzleDb } from '../../../db/drizzle.js'
 import { platformInstances, taskInstances } from '../../../db/schema.js'
+import { cancelActiveAlertsPinnedToInstance } from '../../../deferred-prompts/alerts.js'
 import { decryptInstanceConfig, maskConfig } from '../../../instances/encryption.js'
 import {
   deletePlatformInstance,
@@ -151,6 +152,11 @@ function handleTaskInstanceDelete(req: Request, id: string, authed: Authenticate
   const csrf = requireCsrf(req, authed)
   if (csrf !== null) return csrf
   if (lookupTaskInstance(id) === null) return settingsJson(404, { error: 'not found' })
+  // The FK cascade would delete pinned alert rows outright; cancel them first
+  // (all delivery contexts) so each gets a cancelled status and an audit log
+  // line before the instance disappears.
+  cancelActiveAlertsPinnedToInstance(id)
+  log.info({ taskInstanceId: id }, 'Cancelled alerts pinned to deleted task instance')
   deleteTaskInstance(id)
   return settingsJson(200, { ok: true, id })
 }

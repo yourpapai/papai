@@ -32,7 +32,7 @@ Order follows design.md's TDD order of work; every task is test-first (failing t
 - [x] 5.1 Extend `tests/debug/settings/context-task-instance-routes.test.ts` with failing tests: switching a context's task instance (old ≠ new) cancels active alerts pinned to the old instance whose delivery target resolves into that config context, while NULL-pinned and other-instance-pinned alerts stay active. Verify: `bun run test tests/debug/settings/context-task-instance-routes.test.ts`
 - [x] 5.2 In `src/debug/settings/context-task-instance-routes.ts` `handlePatch`, when `existing?.taskInstanceId` differs from the new value, call `cancelActiveAlertsPinnedToInstance(oldInstanceId, scope.scope.contextId)` with an info log. Verify: `bun run test tests/debug/settings/context-task-instance-routes.test.ts`
 - [x] 5.3 Add failing delete-path test: deleting a task instance cancels all its pinned active alerts (across all delivery contexts, info log) before the instance row is removed. Verify: `bun run test tests/debug/settings/admin/instances-routes.test.ts`
-- [ ] 5.4 In `src/debug/settings/admin/instances-routes.ts` `handleTaskInstanceDelete`, call `cancelActiveAlertsPinnedToInstance(id)` (no context filter) before `deleteTaskInstance(id)`. Verify: `bun run test tests/debug/settings/admin/instances-routes.test.ts`
+- [x] 5.4 In `src/debug/settings/admin/instances-routes.ts` `handleTaskInstanceDelete`, call `cancelActiveAlertsPinnedToInstance(id)` (no context filter) before `deleteTaskInstance(id)`. Verify: `bun run test tests/debug/settings/admin/instances-routes.test.ts`
 
 ## 6. Full verification and docs
 
