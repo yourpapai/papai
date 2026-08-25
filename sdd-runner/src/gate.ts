@@ -203,7 +203,9 @@ export async function runGateReopen(
   }
   const freshVersion = settledGate.version + 1
   if (settledGate.mode === 'plan') {
-    throw new Error(`run ${runId}: a 'plan' gate cannot be reopened (unreachable before part 3 wiring)`)
+    throw new Error(
+      `run ${runId}: a 'plan' gate cannot be reopened (plan gates re-present through a veto round, not reopen)`,
+    )
   }
   const reopenedMd = renderUnansweredDigest(await readFile(sourceMdPath, 'utf8'))
   const gateMdPath = path.join(state.runDir, `gate-${freshVersion}.md`)

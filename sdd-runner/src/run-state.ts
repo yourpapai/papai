@@ -178,11 +178,14 @@ export async function saveRunState(state: RunState, now: Date = new Date()): Pro
 }
 
 /**
- * Pre-part-3 consumers branch on 'early' vs 'final' only; a 'plan' gate has
- * no resume path until part 3 wires it, so narrowing past it throws. No 'plan'
- * value is produced in part 1, so the guard is compile-time scaffolding.
+ * Narrow a gate mode for early/final consumers. Plan gates are produced and
+ * resumed since the plan-gate wiring: `gate-resume-entry.ts` dispatches them
+ * to `runPlanGateResume` ahead of every call site here, so a 'plan' value
+ * reaching this function means that dispatch invariant broke — throw rather
+ * than mis-drive an early/final path.
  */
 export function narrowGateMode(mode: 'early' | 'final' | 'plan'): 'early' | 'final' {
-  if (mode === 'plan') throw new Error("gate mode 'plan' has no resume path before part 3 wiring")
+  if (mode === 'plan')
+    throw new Error("gate mode 'plan' must not reach early/final narrowing — plan gates resume via runPlanGateResume")
   return mode
 }
