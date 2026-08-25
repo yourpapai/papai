@@ -640,6 +640,29 @@ describe('runChildren failure and completion semantics (D9)', () => {
     expect(persisted.status).toBe('stopped')
     expect(stdoutLines.some((line) => line.includes(`child auth-db ended 'unloadable'`))).toBe(true)
   })
+
+  it('a parent resume after an unloadable child state prices the failed settlement from the spawned run dir and re-runs the child', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const first = makeRunner(fixture, { 'auth-db': { unloadable: true, withUsage: true } })
+
+    const halted = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: first.runChildRun })
+
+    expect(halted).toEqual({ halted: 'stopped', child: 'auth-db', childStatus: 'unloadable' })
+    expect(eventsOf(fixture, 'child_done')[0]).toMatchObject({
+      child: 'auth-db',
+      outcome: 'failed',
+      usage: { costUsd: 0.25 },
+    })
+
+    const resumed = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    const second = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, resumed, fixture.ctx, { runChildRun: second.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    expect(second.spawned).toEqual(['auth-db', 'auth-api'])
+  })
 })
 
 describe('aggregate budget ledger (D10)', () => {

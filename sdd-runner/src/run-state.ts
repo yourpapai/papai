@@ -158,8 +158,13 @@ function toRunState(persisted: PersistedRunState, runDir: string): RunState {
   return { ...persisted, roundCap, runDir, statePath: path.join(runDir, 'state.json') }
 }
 
+/** Layout rule (D8): a run's directory under `workDir` — derivable from its runId alone. */
+export function runDirOf(workDir: string, runId: string): string {
+  return path.join(workDir, 'runs', runId)
+}
+
 export async function loadRunState(workDir: string, runId: string): Promise<RunState> {
-  const runDir = path.join(workDir, 'runs', runId)
+  const runDir = runDirOf(workDir, runId)
   const statePath = path.join(runDir, 'state.json')
   try {
     const raw = await readFile(statePath, 'utf8')

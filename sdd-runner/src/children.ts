@@ -17,7 +17,7 @@ import { materializeChildFiles, planDigest, topoSortChildren } from './plan.js'
 import { PlanSchema } from './plan.js'
 import type { PlanChild, PlanFsDeps } from './plan.js'
 import { settleStoppedResult } from './resume-flow.js'
-import { loadRunState, saveRunState } from './run-state.js'
+import { loadRunState, runDirOf, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import type { CalmStopController } from './stop-controller.js'
 import { aggregateUsage } from './usage-aggregate.js'
@@ -118,8 +118,9 @@ async function planChildrenOf(ctx: StageContext): Promise<readonly PlanChild[]> 
  * The child books `failed`, the parent persists `stopped` (resumable at this
  * child), and the operator line names the blocking child and its status. A
  * readable child log prices the failed `child_done` so the D10 ledger stays
- * known across resumes; an unreadable child (no run dir) stays usage-less
- * and fails closed.
+ * known across resumes — the spawn record's runId recovers the run dir even
+ * when the child state is unloadable; an unreadable child log (no run dir)
+ * stays usage-less and fails closed.
  */
 async function stopAtFailedChild(
   deps: OrchestratorDeps,
@@ -202,7 +203,17 @@ async function settleObservedChild(
     }
     return calmSettle(deps, state, stop)
   }
-  if (childState === null) return stopAtFailedChild(deps, state, ctx, childId, 'unloadable', undefined, resolve)
+  if (childState === null) {
+    return stopAtFailedChild(
+      deps,
+      state,
+      ctx,
+      childId,
+      'unloadable',
+      runDirOf(deps.config.workDir, handle.runId),
+      resolve,
+    )
+  }
   if (completed) {
     await settleCompletedChild(deps, state, ctx, childId, childState.runDir, resolve)
     return next()
