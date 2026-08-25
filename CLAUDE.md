@@ -89,6 +89,7 @@ read against that artifact, so a second question costs milliseconds instead of a
 | what the last run was, and if it's stale | `bun run test:status`                |
 | where the wall time went                 | `bun run test:slowest`               |
 | just the tests a change can reach        | `bun run test:affected [--base=REF]` |
+| per-file case/assertion fragmentation    | `bun run test:audit`                 |
 
 `test:affected` is a static-import heuristic — it cannot see `mock.module()` targets, computed dynamic
 imports, or behaviour reached through DI seams, and it says so on every run. Use it in the loop; run the full

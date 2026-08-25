@@ -70,6 +70,7 @@
     "test:log": "bun scripts/test/query-cli.ts log",
     "test:slowest": "bun scripts/test/query-cli.ts slowest",
     "test:affected": "bun scripts/test/affected-cli.ts",
+    "test:audit": "bun scripts/test-audit/cli.ts",
     "analytics:privacy-contract": "bun scripts/analytics/privacy-contract-gate.ts",
     "test:client": "bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/",
     "test:watch": "bun test --watch",
