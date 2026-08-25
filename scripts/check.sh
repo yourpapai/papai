@@ -386,8 +386,8 @@ else
         # destabilized by worker-per-file --parallel: the VM is OOM-killed and
         # the runner shuts down mid-job. Run the suite serially there.
         # --timeout 15000 re-applies the per-test ceiling documented in
-        # bunfig.toml: bun 1.3.x silently ignores [test] timeout, so without
-        # this flag every test falls back to the 5000ms default and git-heavy
+        # bunfig.toml: bun (verified through 1.4.0) silently ignores [test]
+        # timeout, so without this flag every test falls back to the 5000ms default and git-heavy
         # integration tests (e.g. review-loop worktree tests) time out under
         # --parallel worker contention.
         if [ "${CI:-}" = "true" ]; then

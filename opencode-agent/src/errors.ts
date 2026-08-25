@@ -228,6 +228,10 @@ export const missingSkillError = (phase: string, names: readonly string[]): Pipe
 // reason `check-spec.ts`'s knobs are: callers name this module for the
 // vocabulary, and a moved export would be a rename dressed up as a file split.
 export {
+  claudeExitError,
+  claudeResultError,
+  isClaudeExit,
+  isClaudeResult,
   isServerGone,
   isTurnDeadline,
   isTurnStall,

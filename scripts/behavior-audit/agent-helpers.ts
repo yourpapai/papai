@@ -10,7 +10,9 @@ import { VERBOSE } from './config.js'
 
 declare global {
   interface RequestInit {
-    timeout?: number | false
+    // Mirrors BunFetchRequestInit.timeout as typed by bun-types 1.4 (see
+    // src/utils/fetch.ts for the full note).
+    timeout?: number | boolean
   }
 }
 

@@ -380,6 +380,59 @@ describe('runCli', () => {
     expect(live.PATH).toBe('/usr/bin')
   })
 
+  test('the claude route runs end to end: no catalogue read, no proxy crash, one comment', async () => {
+    // Design D4/D11 in one drive: a claude-route job must not pay the
+    // models.dev lookup (it exists to feed `buildOpencodeConfig`, which this
+    // route never builds), must start no provider proxy (so teardown gates on
+    // a null one), and still posts its one comment.
+    const prior = [
+      {
+        id: 1,
+        user: { login: 'agent-bot' },
+        body: `stopped\n\n<!-- AGENT_STATE: ${JSON.stringify({
+          v: 3,
+          phase: 'FAILED',
+          issueId: 42,
+          resumeFrom: 'PLANNING',
+          lastError: 'the previous turn broke',
+        })} -->`,
+      },
+    ]
+    const eventPath = await writeEvent('claude-route', {
+      action: 'created',
+      sender: { login: 'maintainer', type: 'User' },
+      issue: { number: 42, title: 't', body: 'b', author_association: 'OWNER' },
+      comment: { id: 2, body: '/cancel', author_association: 'OWNER' },
+      repository: { owner: { login: 'acme' }, name: 'widgets', default_branch: 'master' },
+    })
+
+    const catalogueCalls: string[] = []
+    const github = recordPosts(prior)
+    const result = await runCli({
+      modelCatalogue: (): Promise<Record<string, { models: Record<string, never> }>> => {
+        catalogueCalls.push('read')
+        return Promise.resolve({})
+      },
+      argv: ['--event-path', eventPath, '--event-name', 'issue_comment'],
+      env: {
+        ...env,
+        // The claude route refuses a set gateway credential outright; a real
+        // claude-route job forwards neither gateway variable.
+        LLM_API_KEY: undefined,
+        LLM_BASE_URL: undefined,
+        AGENT_BACKEND: 'claude',
+        ANTHROPIC_API_KEY: 'sk-ant-api03-a-route-credential',
+        LLM_MODEL: 'claude-sonnet-5',
+      },
+      logger: silentLogger,
+      octokit: { fetch: github.fetch },
+    })
+
+    expect(result.status).toBe('completed')
+    expect(catalogueCalls).toEqual([])
+    expect(github.posted).toHaveLength(1)
+  })
+
   test('a body posted by a real run carries no credential', async () => {
     // End to end through the real GitHub adapter: proves the pipeline actually
     // wires its secrets in, which a redaction test on the adapter alone cannot.

@@ -1,0 +1,27 @@
+# Widens @hughescr/stryker-bun-runner@1.3.8 metadata to accept Stryker 10,
+# applying exactly the package.json edits of upstream PR
+# hughescr/stryker-bun-runner#1 ("Support Stryker 10 alongside Stryker 9").
+# DELETE THIS PATCH when any runner release accepting core 10 ships
+# (watch PR #1), then remove the patchedDependencies entry in package.json.
+diff --git a/package.json b/package.json
+index 68d20b2ab21f8ffcbb911641f8e092ad78e7c852..d8ac3328c3bf77f7d9da35bf079a8ea6072f63aa 100644
+--- a/package.json
++++ b/package.json
+@@ -42,7 +42,7 @@
+     "postversion": "git commit -m \"Bump package version to $npm_package_version\" package.json; git flow release start $npm_package_version; git flow release finish -m $npm_package_version $npm_package_version; git checkout develop; git merge main"
+   },
+   "dependencies": {
+-    "@stryker-mutator/api": "9.6.1",
++    "@stryker-mutator/api": "^9.0.0 || ^10.0.0",
+     "smol-toml": "1.7.0",
+     "tinyglobby": "0.2.17",
+     "ws": "8.21.0"
+@@ -61,7 +61,7 @@
+     "typescript": "<7.0.0"
+   },
+   "peerDependencies": {
+-    "@stryker-mutator/core": "^9.0.0"
++    "@stryker-mutator/core": "^9.0.0 || ^10.0.0"
+   },
+   "engines": {
+     "bun": ">=1.3.7"

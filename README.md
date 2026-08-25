@@ -10,7 +10,7 @@
   <a href="https://github.com/yourpapai/papai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CI&style=flat-square" alt="CI Status"></a>
   <a href="https://github.com/yourpapai/papai/security"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CodeQL&style=flat-square&logo=github" alt="CodeQL"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL%201.1-0f766e?style=flat-square" alt="License: BSL 1.1"></a>
-  <a href="https://bun.sh"><img src="https://img.shields.io/badge/bun-1.3%2B-black?style=flat-square&logo=bun" alt="Bun Runtime"></a>
+  <a href="https://bun.sh"><img src="https://img.shields.io/badge/bun-1.4%2B-black?style=flat-square&logo=bun" alt="Bun Runtime"></a>
 </p>
 
 <p align="center">
@@ -93,7 +93,7 @@ YouTrack task creation can require workflow-specific custom fields. Papai expose
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) 1.3+
+- [Bun](https://bun.sh) 1.4+
 - One supported chat platform: Telegram, Mattermost, Discord, or Kontur Talk
 - One supported task provider: Kaneo or YouTrack
 - OpenAI-compatible API credentials for your chosen model provider
@@ -594,7 +594,7 @@ bun test:stories
 ```
 
 Runs deterministic full-stack user stories against the real in-process runtime with fake
-transports. Every run executes inside the pinned `oven/bun:1.3.13` Docker image (digest
+transports. Every run executes inside the pinned `oven/bun:1.4.0` Docker image (digest
 single-sourced in `scripts/story/sandbox-image.txt`) — on Linux,
 and on macOS via Docker Desktop — with no network, a read-only app snapshot, and a read-only
 bind-mounted dependency cache, so a working Docker daemon is required. Windows hosts are not
@@ -640,6 +640,10 @@ scope, `seedMerge` preserves existing entries — not a full run) on push to
 master (`test:mutate:seed`), so a master update landing mid-run cannot lose the
 seed. See `scripts/mutation/README.md` for flags (`--no-ratchet`), the
 override/companion resolution, and the one-time migration catch-up note.
+Toolchain: Stryker 10 — the CLI host is Node (≥ 22; only test children run on
+Bun), and `@hughescr/stryker-bun-runner` installs via a Bun patch until
+upstream accepts core 10 (details and deletion condition in
+`scripts/mutation/README.md`).
 
 ---
 
@@ -704,7 +708,7 @@ bun start:debug
 
 ## Tech Stack
 
-- **Runtime:** [Bun](https://bun.sh) 1.3+
+- **Runtime:** [Bun](https://bun.sh) 1.4+
 - **Language:** TypeScript (strict mode)
 - **Validation:** [Zod](https://zod.dev) v4
 - **LLM Integration:** [Vercel AI SDK](https://sdk.vercel.ai)

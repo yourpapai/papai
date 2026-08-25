@@ -4,7 +4,15 @@
 // See LICENSE in the project root for details.
 
 import { withDeadline } from './deadline.js'
-import { isTurnDeadline, isTurnStall, serverGoneError, turnDeadlineError, turnStallError } from './errors.js'
+import {
+  isClaudeExit,
+  isClaudeResult,
+  isTurnDeadline,
+  isTurnStall,
+  serverGoneError,
+  turnDeadlineError,
+  turnStallError,
+} from './errors.js'
 import { withHeartbeat } from './heartbeat.js'
 import type { Logger } from './logger.js'
 import type { ProgressTracker } from './progress.js'
@@ -252,10 +260,18 @@ export const runTurn = async (
     if (isTurnDeadline(error)) throw error
     if (isTurnStall(error)) throw error
 
+    // The claude turn codes join the bypass list beside them: every claude
+    // turn failure is classified *after* its process has exited, where the
+    // probe would relabel a verdict as a crash. `CLAUDE_EXIT` carries the
+    // code the CLI exited with and `CLAUDE_RESULT` owns the stream's own
+    // error shapes — neither is a dead transport.
+    if (isClaudeExit(error)) throw error
+    if (isClaudeResult(error)) throw error
+
     const alive = await connection.alive(sessionId).catch(() => false)
     if (alive) throw error
 
-    bounds.log.error({ sessionId }, 'The OpenCode server stopped answering; the turn died with it')
+    bounds.log.error({ sessionId }, 'The model backend process stopped answering; the turn died with it')
     throw serverGoneError(errorMessage(error))
   }
 }

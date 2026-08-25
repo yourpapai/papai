@@ -5,7 +5,10 @@
 
 declare global {
   interface RequestInit {
-    timeout?: number | false
+    // Mirrors BunFetchRequestInit.timeout as typed by bun-types 1.4: a number
+    // sets the socket idle deadline in ms, false (or 0) disables the idle
+    // timer, true uses the default.
+    timeout?: number | boolean
   }
 }
 
