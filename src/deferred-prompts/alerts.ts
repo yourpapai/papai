@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, like, or } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { alertPrompts, type AlertPromptRow } from '../db/schema.js'
@@ -75,6 +75,7 @@ export const createAlertPrompt = (
       lastTriggeredAt: null,
       cooldownMinutes: cooldownMinutes ?? 60,
       executionMetadata: JSON.stringify(executionMetadata ?? DEFAULT_EXECUTION_METADATA),
+      taskInstanceId: taskInstanceId ?? null,
     })
     .run()
 
@@ -227,6 +228,33 @@ export const getEligibleAlertPrompts = (): AlertPrompt[] => {
 
 export const cancelActiveAlertsPinnedToInstance = (taskInstanceId: string, configContextId?: string): void => {
   log.debug({ taskInstanceId, configContextId }, 'cancelActiveAlertsPinnedToInstance called')
+  const db = getDrizzleDb()
+  const conditions = [eq(alertPrompts.taskInstanceId, taskInstanceId), eq(alertPrompts.status, 'active')]
+  if (configContextId !== undefined) {
+    const inConfigContext = or(
+      eq(alertPrompts.deliveryContextId, configContextId),
+      like(alertPrompts.deliveryContextId, `${configContextId}:thread:%`),
+    )
+    if (inConfigContext !== undefined) conditions.push(inConfigContext)
+  }
+
+  const rows = db
+    .select()
+    .from(alertPrompts)
+    .where(and(...conditions))
+    .all()
+  if (rows.length === 0) {
+    log.debug({ taskInstanceId, configContextId }, 'No active alerts pinned to task instance')
+    return
+  }
+
+  db.update(alertPrompts)
+    .set({ status: 'cancelled' })
+    .where(and(...conditions))
+    .run()
+  for (const row of rows) {
+    log.info({ alertId: row.id, taskInstanceId, configContextId }, 'Alert cancelled: pinned task instance gone')
+  }
 }
 
 export { evaluateCondition, describeCondition } from './condition-eval.js'

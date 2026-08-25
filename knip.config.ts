@@ -277,6 +277,8 @@ export default {
     'src/debug/state-collector.ts': ['exports', 'types'],
     // pollAlertsOnce is consumed by frozen tests/stories/harness/scenario.ts.
     'src/deferred-prompts/poller.ts': ['exports'],
+    // cancelActiveAlertsPinnedToInstance: test-only importers (production scope skips tests); callers are tasks 5.2/5.4 of pin-alerts-to-task-instances.
+    'src/deferred-prompts/alerts.ts': ['exports'],
     // public-types.ts is published as the `papai/plugin-types` package export
     // (package.json `exports`) and consumed by external plugin authors knip
     // cannot trace, plus tests/providers/public-types.test.ts.
