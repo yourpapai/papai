@@ -269,8 +269,9 @@ export async function runChildren(
     }
     if (stop !== undefined && stop.stopRequested()) return calmSettle(deps, state, stop)
     const spend = treeSpend(readEvents(logPathFor(state)), resolve)
-    if (!spend.costKnown || spend.spentUsd >= deps.config.budget) {
-      return stopAtBudgetGuard(deps, state, childId, spend)
+    const committed = (state.spendBaselineUsd ?? 0) + spend.spentUsd
+    if (!spend.costKnown || committed >= deps.config.budget) {
+      return stopAtBudgetGuard(deps, state, childId, { ...spend, spentUsd: committed })
     }
     const child = children.find((entry) => entry.id === childId)
     if (child === undefined) throw new Error(`plan sidecar has no child ${childId}`)
@@ -278,12 +279,12 @@ export async function runChildren(
     const spawn = spawnRecorderOf(deps, state, ctx, childId)
     const handle =
       stop === undefined
-        ? await options.runChildRun(child, taskFile, spend.spentUsd, spawn.onRunDirReady)
+        ? await options.runChildRun(child, taskFile, committed, spawn.onRunDirReady)
         : await propagateChildStop(
             { runChildRun: options.runChildRun, stop, onChildRunDir: spawn.onRunDirReady },
             child,
             taskFile,
-            spend.spentUsd,
+            committed,
           )
     await spawn.persisted()
     if (!spawn.recorded()) {

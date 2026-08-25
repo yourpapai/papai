@@ -788,6 +788,38 @@ describe('aggregate budget ledger (D10)', () => {
     expect(result.halted).toBe('completed')
     expect(tracker.baselines).toEqual([0, 0.25])
   })
+
+  it('a nested parent counts its ancestor baseline against the budget, halting the next spawn', async () => {
+    const fixture = await makeFixture()
+    fixture.state.spendBaselineUsd = 4.9
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {})
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runChildren(deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result).toEqual({ halted: 'stopped', child: 'auth-api', childStatus: 'budget-guard' })
+    expect(tracker.spawned).toEqual(['auth-db'])
+    expect(stdoutLines.some((line) => line.includes('tree spend $5.15'))).toBe(true)
+  })
+
+  it('a nested parent seeds its children with ancestor spend plus its own committed spend', async () => {
+    const fixture = await makeFixture()
+    fixture.state.spendBaselineUsd = 2
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    expect(tracker.baselines).toEqual([2, 2.25])
+  })
 })
 
 describe('parent calm-stop is subtree-scoped (D11)', () => {
