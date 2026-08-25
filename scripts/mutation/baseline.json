@@ -294,5 +294,6 @@
   "src/tools/web-fetch.ts": 0.475,
   "src/tools/workspace-files.ts": 0.6382978723404256,
   "src/tools/wrap-tool-execution.ts": 0.6216216216216216,
-  "src/users.ts": 0.6764705882352942
+  "src/users.ts": 0.6764705882352942,
+  "src/utils/fetch.ts": 0
 }
