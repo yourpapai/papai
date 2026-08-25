@@ -203,6 +203,8 @@ interface ChildShape {
   readonly withUsage?: boolean
   /** The child log carries a zero-cost, token-bearing done event the resolver cannot price. */
   readonly unpricedUsage?: boolean
+  /** The child is itself a plan parent: its log also carries a child_done with this cost. */
+  readonly grandchildCostUsd?: number
   readonly unloadable?: boolean
   /** The fake waits for the child's own stop marker and honors it (D11). */
   readonly honorChildMarker?: boolean
@@ -272,6 +274,15 @@ function makeRunner(fixture: ChildrenFixture, shapes: Record<string, ChildShape>
         type: 'done',
         agent: 'estimator',
         usage: { ...CHILD_DONE_USAGE, costUsd: 0 },
+      })
+    }
+    if (shape.grandchildCostUsd !== undefined) {
+      appendEvent(path.join(childState.runDir, 'events.ndjson'), {
+        altitude: 'L2',
+        type: 'child_done',
+        child: `${child.id}-grandchild`,
+        outcome: 'done',
+        usage: { ...CHILD_DONE_USAGE, costUsd: shape.grandchildCostUsd },
       })
     }
     onRunDirReady?.(childState.runDir)
@@ -660,6 +671,33 @@ describe('aggregate budget ledger (D10)', () => {
     expect(persisted.status).toBe('stopped')
     expect(persisted.children?.['auth-api']).toEqual({ status: 'pending' })
     expect(stdoutLines.some((line) => line.includes('budget guard'))).toBe(true)
+  })
+
+  it('counts a composite child subtree (grandchild) spend against the budget, halting the next spawn', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {
+      'auth-db': { status: 'completed', withUsage: true, grandchildCostUsd: 4.9 },
+      'auth-api': { status: 'completed', withUsage: true },
+    })
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runChildren(deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result).toEqual({ halted: 'stopped', child: 'auth-api', childStatus: 'budget-guard' })
+    expect(tracker.spawned).toEqual(['auth-db'])
+    expect(eventsOf(fixture, 'child_done')[0]).toMatchObject({
+      child: 'auth-db',
+      outcome: 'done',
+      usage: { costUsd: 0.25 + 4.9 },
+    })
+    expect(stdoutLines.some((line) => line.includes('tree spend $5.15'))).toBe(true)
   })
 
   it('halts before the next child_spawned on unknown spend (a child_done without usage)', async () => {

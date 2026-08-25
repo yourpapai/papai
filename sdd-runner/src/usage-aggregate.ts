@@ -126,24 +126,47 @@ export async function buildResolveCost(): Promise<ResolveCostFn> {
   }
 }
 
+function plusUsage(acc: AgentUsage, add: AgentUsage): AgentUsage {
+  return {
+    inputTokens: acc.inputTokens + add.inputTokens,
+    outputTokens: acc.outputTokens + add.outputTokens,
+    reasoningTokens: acc.reasoningTokens + add.reasoningTokens,
+    cachedReadTokens: acc.cachedReadTokens + add.cachedReadTokens,
+    cachedWriteTokens: acc.cachedWriteTokens + add.cachedWriteTokens,
+    costUsd: acc.costUsd + add.costUsd,
+    wallMs: acc.wallMs + add.wallMs,
+  }
+}
+
 /**
- * A child run's aggregated usage from its own event log; undefined when
- * unreadable or the cost cannot be priced — absent usage makes the D10
+ * A child run's subtree usage (D10 tree shape): the child's own repriced
+ * `done` events plus its own `child_done.usage` — each of those already
+ * subtree-shaped by this same rule — so a composite child carries its
+ * grandchildren's spend up into the parent's ledger; undefined when
+ * unreadable or any component is unpriced — absent usage makes the D10
  * ledger read unknown (fail closed), never $0 headroom.
  */
 export function childUsageOf(childRunDir: string, resolve: ResolveCostFn = () => null): AgentUsage | undefined {
   try {
-    const aggregated = aggregateUsage(readEvents(path.join(childRunDir, 'events.ndjson')), resolve)
-    if (!aggregated.costKnown) return undefined
-    return {
-      inputTokens: aggregated.inputTokens,
-      outputTokens: aggregated.outputTokens,
-      reasoningTokens: aggregated.reasoningTokens,
-      cachedReadTokens: aggregated.cachedReadTokens,
-      cachedWriteTokens: aggregated.cachedWriteTokens,
-      costUsd: aggregated.costUsd,
-      wallMs: aggregated.wallMs,
+    const { events, costKnown } = repriceEvents(readEvents(path.join(childRunDir, 'events.ndjson')), resolve)
+    if (!costKnown) return undefined
+    let usage: AgentUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
+      costUsd: 0,
+      wallMs: 0,
     }
+    for (const event of events) {
+      if (event.type === 'done') usage = plusUsage(usage, event.usage)
+      else if (event.type === 'child_done') {
+        if (event.usage === undefined) return undefined
+        usage = plusUsage(usage, event.usage)
+      }
+    }
+    return usage
   } catch {
     return undefined
   }

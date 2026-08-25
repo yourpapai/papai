@@ -3,14 +3,28 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
+import { appendEvent } from '../../sdd-runner/src/events.js'
 import type { AgentUsage, DoneEvent, SddEvent } from '../../sdd-runner/src/events.js'
 import type { ResolvedCost } from '../../sdd-runner/src/pricing.js'
 import { aggregateUsage } from '../../sdd-runner/src/usage-aggregate.js'
+import { childUsageOf } from '../../sdd-runner/src/usage-aggregate.js'
 import { repriceEvent } from '../../sdd-runner/src/usage-aggregate.js'
 import { repriceEvents } from '../../sdd-runner/src/usage-aggregate.js'
 import { treeSpend } from '../../sdd-runner/src/usage-aggregate.js'
+
+const tmpDirs: string[] = []
+
+afterEach(() => {
+  while (tmpDirs.length > 0) {
+    const dir = tmpDirs.pop()
+    if (dir !== undefined) fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 function makeUsage(overrides: Partial<AgentUsage> = {}): AgentUsage {
   return {
@@ -392,5 +406,56 @@ describe('treeSpend (D10 aggregate ledger)', () => {
       doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 }), 1, 'weird/none'),
     ]
     expect(treeSpend(events)).toEqual({ spentUsd: 0, costKnown: false })
+  })
+})
+
+describe('childUsageOf (D10 subtree shape)', () => {
+  function makeChildRunDir(events: readonly unknown[]): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-child-usage-'))
+    tmpDirs.push(dir)
+    const logPath = path.join(dir, 'events.ndjson')
+    for (const event of events) appendEvent(logPath, event)
+    return dir
+  }
+
+  it('folds the child own child_done usage (grandchildren spend) into the subtree total', () => {
+    const dir = makeChildRunDir([
+      doneEvent(makeUsage({ inputTokens: 100, outputTokens: 50, costUsd: 0.25, wallMs: 1000 }), 1),
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'grandchild-a',
+        outcome: 'done',
+        usage: makeUsage({ inputTokens: 40, outputTokens: 10, costUsd: 4.8, wallMs: 500 }),
+      },
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'grandchild-b',
+        outcome: 'failed',
+        usage: makeUsage({ inputTokens: 10, outputTokens: 0, costUsd: 0.1, wallMs: 50 }),
+      },
+    ])
+    expect(childUsageOf(dir)).toMatchObject({
+      inputTokens: 150,
+      outputTokens: 60,
+      reasoningTokens: 0,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
+      wallMs: 1550,
+    })
+    expect(childUsageOf(dir)?.costUsd).toBeCloseTo(5.15, 10)
+  })
+
+  it('is undefined when the child own child_done lacks usage (fail closed)', () => {
+    const dir = makeChildRunDir([
+      doneEvent(makeUsage({ costUsd: 0.25 }), 1),
+      { altitude: 'L2', type: 'child_done', child: 'grandchild-a', outcome: 'done' },
+    ])
+    expect(childUsageOf(dir)).toBeUndefined()
+  })
+
+  it('is undefined for an unreadable run dir', () => {
+    expect(childUsageOf(path.join(os.tmpdir(), 'sdd-no-such-run'))).toBeUndefined()
   })
 })
