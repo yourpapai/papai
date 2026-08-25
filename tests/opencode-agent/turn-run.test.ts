@@ -5,7 +5,13 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { isTurnStall, turnStallError } from '../../opencode-agent/src/errors.js'
+import {
+  claudeExitError,
+  claudeResultError,
+  isServerGone,
+  isTurnStall,
+  turnStallError,
+} from '../../opencode-agent/src/errors.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import type { ProgressSnapshot, ProgressTracker } from '../../opencode-agent/src/progress.js'
 import type { SdkPromptBody } from '../../opencode-agent/src/sdk-contract.js'
@@ -38,6 +44,9 @@ const SESSION = 'ses_02414f224ffejPyZrczmjjX3YF'
 const STALL_MS = 300_000
 
 const PROGRESS: ProgressSnapshot = { lastAction: 'read (running)', toolCalls: 44, tokens: 531_000, cost: 12.4 }
+
+/** A raised rejection's message, whatever shape it landed as. */
+const messageOf = (raised: unknown): string => (raised instanceof Error ? raised.message : String(raised))
 
 const silentLogger = (): Logger => ({
   debug: (): void => {},
@@ -243,6 +252,80 @@ describe('the mid-turn stall watcher', () => {
       'rate limited',
     )
     expect(probe.calls).toBe(1)
+  })
+
+  test('a CLAUDE_EXIT failure leaves before the alive() probe, whatever the probe would say', async () => {
+    // The claude turn codes join the bypass list (design D6): the CLI process
+    // has already exited by the time the failure is classified, so a probe
+    // would relabel a verdict as a crash.
+    const probe = { calls: 0 }
+    const connection: TurnConnection = {
+      sendPrompt: (): Promise<unknown> => Promise.reject(claudeExitError(2, 'usage error')),
+      alive: (): Promise<boolean> => {
+        probe.calls += 1
+        return Promise.resolve(false)
+      },
+    }
+
+    await expect(runTurn(connection, SESSION, BODY, bounds(), fakeTracker({ current: null }))).rejects.toThrow(
+      'exited with code 2',
+    )
+    expect(probe.calls).toBe(0)
+  })
+
+  test('a CLAUDE_RESULT failure leaves before the alive() probe too', async () => {
+    const probe = { calls: 0 }
+    const connection: TurnConnection = {
+      sendPrompt: (): Promise<unknown> => Promise.reject(claudeResultError('no result line arrived')),
+      alive: (): Promise<boolean> => {
+        probe.calls += 1
+        return Promise.resolve(false)
+      },
+    }
+
+    await expect(runTurn(connection, SESSION, BODY, bounds(), fakeTracker({ current: null }))).rejects.toThrow(
+      'no result line',
+    )
+    expect(probe.calls).toBe(0)
+  })
+
+  test('names the dead backend backend-neutrally, keeping the post-mortem pointer', async () => {
+    // The wording is shared by both routes (design D6): on the opencode route
+    // the dead process is `opencode serve`, on the claude route it is the
+    // spawned CLI — and a message naming only the first is a lie about the
+    // second. The log line beside the throw carries the same neutrality.
+    const said: string[] = []
+    const log: Logger = {
+      debug: (): void => {},
+      info: (): void => {},
+      warn: (): void => {},
+      error: (_fields, message): void => void said.push(message),
+    }
+    const connection: TurnConnection = {
+      sendPrompt: (): Promise<unknown> => Promise.reject(new Error('The socket connection was closed unexpectedly')),
+      alive: (): Promise<boolean> => Promise.resolve(false),
+    }
+
+    const rejection = await runTurn(
+      connection,
+      SESSION,
+      BODY,
+      { ...bounds(), log },
+      fakeTracker({ current: null }),
+    ).then(
+      () => null,
+      (error: unknown) => error,
+    )
+
+    expect(isServerGone(rejection)).toBe(true)
+    const message = messageOf(rejection)
+    expect(message).toContain('model backend process this job spawned')
+    expect(message).toContain('post-mortem')
+    expect(message).toContain('The socket connection was closed unexpectedly')
+    // Both routes' spellings ride along as examples, but the sentence no
+    // longer *asserts* the opencode one — the claude route has no server.
+    expect(message).not.toContain('local OpenCode server')
+    expect(said[0]).toBe('The model backend process stopped answering; the turn died with it')
   })
 
   test('a healthy turn resolves and the watcher never says a word', async () => {

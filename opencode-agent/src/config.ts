@@ -8,10 +8,12 @@ import { existsSync } from 'node:fs'
 import { resolveReviewCommand } from './config-discovery.js'
 import type { PipelineConfig } from './config-shape.js'
 import {
+  backendSelection,
   boundedInt,
   boundedIntOrNull,
   boolOrNull,
   buildDiffLimits,
+  claudeCredential,
   CONTEXT_RANGE,
   DEFAULT_REVIEW_POOL_SIZE,
   DEFAULT_STALL_TIMEOUT_MS,
@@ -28,6 +30,7 @@ import {
   parseMcpServers,
   POOL_RANGE,
   providerId,
+  refuseGatewayKeyOnClaude,
   required,
   RESERVE_RANGE,
   ROUND_RANGE,
@@ -37,7 +40,7 @@ import {
   TOKEN_RANGE,
   WRAP_UP_RANGE,
 } from './config-values.js'
-import type { Env } from './config-values.js'
+import type { BackendSelection, ClaudeCredential, Env } from './config-values.js'
 import { DEFAULT_PROVIDER_ID } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import { parseRepository } from './repository.js'
@@ -68,10 +71,16 @@ export const DEFAULT_LABEL_PREFIX = 'agent:'
  * value look like a deliberate choice instead of a misconfiguration, and this
  * pipeline is built around one arbitrary configured endpoint, not OpenAI
  * specifically.
+ *
+ * On the claude route the two gateway reads become optional-empty instead:
+ * the endpoint and its credential are unused there and must not be
+ * load-bearing, while `config.openai` keeps its type (its `profiles` half
+ * carries the model knobs both routes read, and the review runner still
+ * consumes it).
  */
-export const loadOpenAiSettings = (env: Env): OpenAiSettings => ({
-  apiKey: required(env, 'LLM_API_KEY'),
-  baseUrl: required(env, 'LLM_BASE_URL'),
+export const loadOpenAiSettings = (env: Env, backend: BackendSelection = 'opencode'): OpenAiSettings => ({
+  apiKey: backend === 'claude' ? '' : required(env, 'LLM_API_KEY'),
+  baseUrl: backend === 'claude' ? '' : required(env, 'LLM_BASE_URL'),
   model: required(env, 'LLM_MODEL'),
   // Optional and defaulted, unlike the three above, because the default is
   // exactly today's behaviour: `openai` is the id the pipeline hardcoded before
@@ -151,8 +160,29 @@ const buildJobDeadline = (env: Env): number | null => {
   return startedMs + timeoutMinutes * 60_000
 }
 
+/**
+ * The backend reads that precede everything else (design D4/D5).
+ *
+ * Its own function so `loadConfig` stays inside `max-lines-per-function`, and
+ * because the ordering is the contract: the claude route's startup guards fire
+ * before the gateway block, so an unusable claude configuration fails with its
+ * own story rather than a missing-gateway complaint that route cannot have.
+ * That is also what keeps "before any model spend" true by construction —
+ * config loads ahead of the logger, the scrub, every GitHub call and every
+ * spawn.
+ */
+const loadBackend = (env: Env): { backend: BackendSelection; claudeCredential: ClaudeCredential | null } => {
+  const backend = backendSelection(env, 'AGENT_BACKEND')
+  if (backend !== 'claude') return { backend, claudeCredential: null }
+
+  return { backend, claudeCredential: claudeCredential(env) }
+}
+
 /** Builds the pipeline config from the runner environment. */
 export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
+  const backend = loadBackend(env)
+  if (backend.backend === 'claude') refuseGatewayKeyOnClaude(env)
+
   const { owner, repo } = parseRepository(required(env, 'GITHUB_REPOSITORY'))
   const gitRemoteBase = optional(env, 'GITHUB_SERVER_URL', 'https://github.com').replace(/\/*$/u, '/')
 
@@ -161,9 +191,11 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     owner,
     repo,
     githubToken: required(env, 'GITHUB_TOKEN'),
+    backend: backend.backend,
+    claudeCredential: backend.claudeCredential,
     selfLoginOverride: optionalOrNull(env, 'AGENT_SELF_LOGIN'),
     selfWorkflowName: optional(env, 'AGENT_WORKFLOW_NAME', 'OpenCode Issue Agent'),
-    openai: loadOpenAiSettings(env),
+    openai: loadOpenAiSettings(env, backend.backend),
     gitRemoteBase,
     runUrl: buildRunUrl(env, gitRemoteBase, owner, repo),
     labelPrefix: labelPrefix(env, 'AGENT_LABEL_PREFIX', DEFAULT_LABEL_PREFIX),

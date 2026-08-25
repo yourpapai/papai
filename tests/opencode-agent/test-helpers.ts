@@ -80,6 +80,8 @@ export const stubConfig = (repoRoot = '/repo'): PipelineConfig => ({
   owner: 'acme',
   repo: 'widgets',
   githubToken: 'token',
+  backend: 'opencode',
+  claudeCredential: null,
   selfLoginOverride: 'agent-bot',
   selfWorkflowName: 'OpenCode Issue Agent',
   openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5', provider: 'openai' },

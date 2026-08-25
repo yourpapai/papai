@@ -59,6 +59,10 @@ const resolveJobSchema = z.object({
 const agentJobSchema = z.object({
   needs: z.string(),
   if: z.string(),
+  // Present since the backend selector landed: `AGENT_BACKEND` is declared
+  // once at job level so the install step's `if:` and the pipeline step's
+  // forwarding gates read one value.
+  env: z.record(z.string(), z.string()).default({}),
   // A string, not a number: the ceiling is a repository variable read by this
   // field *and* forwarded to the pipeline, which is what makes it one value rather
   // than two kept in step by hand. `vars` is available here and workflow `env` is
@@ -432,6 +436,11 @@ const DELIBERATELY_ABSENT: ReadonlySet<string> = new Set([
   // Read from the payload's `repository.default_branch`; forwarding it would
   // mask that resolution path and let it rot untested. See S2-5.
   'AGENT_BASE_BRANCH',
+  // Declared once at the job level rather than forwarded step-by-step (the
+  // install step's `if:` and the pipeline step's forwarding gates read the one
+  // value), so it never appears in the pipeline step's own env keys. Documented
+  // as a README table row like every other knob; the row resolves through here.
+  'AGENT_BACKEND',
 ])
 
 /** Documented knobs the workflow neither forwards nor excuses. The filtering
@@ -523,14 +532,53 @@ describe('steps', () => {
     expect(step('opencode cli').run).toContain('opencode-ai')
   })
 
-  test('passes only the single LLM endpoint credentials to the pipeline', () => {
+  test('forwards each route only its own credentials, through per-line gates', () => {
+    // The superseded shape of this pin asserted no `ANTHROPIC*` reached the
+    // pipeline step at all; the claude route made that false by design. What
+    // must hold instead is the gate: the Anthropic lines forward only when
+    // AGENT_BACKEND is claude, the gateway pair only when it is not, and the
+    // model knobs name the model either backend runs, ungated.
     const env = step('agent pipeline').env
 
-    expect(Object.keys(env)).toContain('LLM_API_KEY')
-    expect(Object.keys(env)).toContain('LLM_BASE_URL')
-    expect(Object.keys(env)).toContain('LLM_MODEL')
-    expect(Object.keys(env).join(' ')).not.toContain('ANTHROPIC')
+    expect(env['ANTHROPIC_API_KEY']).toBe("${{ env.AGENT_BACKEND == 'claude' && secrets.ANTHROPIC_API_KEY || '' }}")
+    expect(env['CLAUDE_CODE_OAUTH_TOKEN']).toBe(
+      "${{ env.AGENT_BACKEND == 'claude' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}",
+    )
+    expect(env['LLM_API_KEY']).toBe("${{ env.AGENT_BACKEND != 'claude' && secrets.LLM_API_KEY || '' }}")
+    expect(env['LLM_BASE_URL']).toBe("${{ env.AGENT_BACKEND != 'claude' && vars.LLM_BASE_URL || '' }}")
+
+    // The model knobs ride both routes: they name the model, not a credential.
+    expect(env['LLM_MODEL']).toBe('${{ vars.LLM_MODEL }}')
+    expect(env['LLM_MODEL_LIGHT']).toBe('${{ vars.LLM_MODEL_LIGHT }}')
+    expect(env['AGENT_EFFORT_PLAN']).toBe('${{ vars.AGENT_EFFORT_PLAN }}')
+    expect(env['AGENT_EFFORT_BUILD']).toBe('${{ vars.AGENT_EFFORT_BUILD }}')
+    // And no other credential spelling rides along ungated.
     expect(Object.keys(env).join(' ')).not.toContain('OPENCODE_API_KEY')
+  })
+
+  test('declares AGENT_BACKEND once, at job level, from the repository variables', () => {
+    // One value, two readers (the install step's `if:` and the forwarding
+    // gates above); declared at job level because a step-level copy would be a
+    // second spelling the two could drift on. Unset forwards as '', which the
+    // pipeline's config reads as the `opencode` default.
+    expect(agentJob.env['AGENT_BACKEND']).toBe('${{ vars.AGENT_BACKEND }}')
+  })
+
+  test('installs the claude CLI only when the claude backend is selected, pinned exactly', () => {
+    const install = step('claude cli')
+
+    expect(install.if).toBe("env.AGENT_BACKEND == 'claude'")
+    // Pinned exact — no floating tag and no `latest` — so any two runners
+    // execute the same binary the recorded fixture corpus was shaped by.
+    expect(pinnedVersion(install.run)).toMatch(/^\d+\.\d+\.\d+$/u)
+    expect(install.run).not.toContain('claude-code@latest')
+    expect(install.run).toContain('GITHUB_PATH')
+
+    const names = steps.map((candidate) => candidate.name.toLowerCase())
+    expect(names.findIndex((name) => name.includes('claude cli'))).toBeGreaterThan(-1)
+    expect(names.findIndex((name) => name.includes('claude cli'))).toBeLessThan(
+      names.findIndex((name) => name.includes('agent pipeline')),
+    )
   })
 
   test('tells the pipeline its own workflow name, for the CI recursion guard', () => {
@@ -957,6 +1005,39 @@ describe('the infrastructure-failure notice', () => {
     expect(transcriptComment.env['VIEWER_URL']).toContain('github.repository_owner')
     expect(transcriptComment.env['VIEWER_URL']).toContain('github.event.repository.name')
   })
+})
+
+/**
+ * The claude fixture corpus's version stamp: written by the credentialed
+ * recorder run (`bun run opencode-agent:test:claude-live`), absent until that
+ * run happens. When it exists it must equal the workflow's install pin, so
+ * fixture and binary cannot silently skew; while the recording is pending the
+ * provisional corpus's README is the honest record of its own provenance.
+ */
+const CLAUDE_STAMP_PATH = path.join(import.meta.dir, 'fixtures', 'claude-cli', 'VERSION')
+
+/** The exact version the claude install step pins, read off its run body. */
+const pinnedVersion = (run: string): string => /@anthropic-ai\/claude-code@([\d.]+)$/mu.exec(run)?.[1] ?? ''
+
+describe('the claude fixture corpus and the workflow pin', () => {
+  // `.if` rather than a body-side branch: the equality claim only exists once
+  // the credentialed recorder run has stamped a version, and the pending-state
+  // claim only while it has not.
+  test.if(existsSync(CLAUDE_STAMP_PATH))('the recorded stamp equals the workflow install pin', () => {
+    expect(pinnedVersion(step('claude cli').run)).toMatch(/^\d+\.\d+\.\d+$/u)
+    const stamped = readFileSync(CLAUDE_STAMP_PATH, 'utf8').trim()
+
+    expect(stamped).toBe(pinnedVersion(step('claude cli').run))
+  })
+
+  test.if(!existsSync(CLAUDE_STAMP_PATH))(
+    'documents its pending state while the credentialed recording is outstanding',
+    () => {
+      // Nothing to assert while the stamp is absent — the block exists so the
+      // state is visible in the suite's output rather than silent.
+      expect(existsSync(path.join(import.meta.dir, 'fixtures', 'claude-cli', 'README.md'))).toBe(true)
+    },
+  )
 })
 
 const PAGES_PATH = path.join(import.meta.dir, '..', '..', '.github', 'workflows', 'transcript-viewer-pages.yml')

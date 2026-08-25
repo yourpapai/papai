@@ -5,6 +5,9 @@
 
 import { memoizeAgent } from './agent-handle.js'
 import type { AgentHandle } from './agent-handle.js'
+import type { AgentSession } from './agent-session.js'
+import { createClaudeAgent as defaultClaudeAgent } from './claude-adapter.js'
+import type { ClaudeAgentOptions } from './claude-adapter.js'
 import type { MainOptions } from './cli-args.js'
 import type { PipelineConfig } from './config.js'
 import { assembleDeps, memoize } from './deps.js'
@@ -65,6 +68,12 @@ export interface ContainInput {
    */
   createAgent?: (options: OpenCodeAgentOptions) => Promise<OpenCodeAgent>
   /**
+   * The claude-route seam, the `createAgent` doctrine on the second backend:
+   * selected only when `AGENT_BACKEND=claude`, tested through this injection
+   * point and defaulting to the real adapter.
+   */
+  createClaudeAgent?: (options: ClaudeAgentOptions) => Promise<AgentSession>
+  /**
    * The run's clock, defaulting to the real one. A seam because three things read
    * it — the status comment's start time, the cascade's job-deadline check and the
    * per-turn bound — and a bound reading `Date.now()` is one no test can stand on
@@ -74,7 +83,11 @@ export interface ContainInput {
 }
 
 export interface Contained {
-  proxy: ProviderProxy
+  /**
+   * The loopback credential proxy, or `null` on the claude route — nothing
+   * there speaks to a gateway, so the one teardown call site gates on it.
+   */
+  proxy: ProviderProxy | null
   agent: AgentHandle
   deps: PhaseDeps
 }
@@ -123,22 +136,64 @@ const sessionOptions = ({
   transcript: input.transcript,
 })
 
+/** The claude session's options — plain values crossing the seam (design D5). */
+const claudeSessionOptions = ({
+  input,
+  contained,
+  clock,
+}: {
+  input: ContainInput
+  contained: PipelineConfig
+  clock: () => number
+}): ClaudeAgentOptions => {
+  const credential = contained.claudeCredential
+  if (credential === null) throw new Error('The claude route carries no credential — loadConfig guarantees one')
+
+  const profiles = contained.openai.profiles
+  return {
+    directory: contained.repoRoot,
+    knobs: {
+      model: contained.openai.model,
+      lightModel: profiles?.light ?? null,
+      planEffort: profiles?.planEffort ?? null,
+      buildEffort: profiles?.buildEffort ?? null,
+    },
+    credential,
+    env: input.options.env,
+    log: input.log,
+    transcript: input.transcript,
+    // The same bounds the OpenCode session gets: the per-turn bound shrunk to
+    // what is left of the job, re-read per turn, and the (no-op here) stall
+    // window beside it — wired for parity, inert by design D6.
+    timeoutMs: (): number => turnTimeoutMs(contained, clock()),
+    stallTimeoutMs: contained.stallTimeoutMs,
+    now: clock,
+  }
+}
+
 /**
  * Assembles the run with the provider credential held back.
  *
- * Everything downstream — the in-process session and the review loop's
- * `opencode run` subprocesses — is configured with the proxy and a placeholder
- * key, because the SDK puts the config into the spawned server's environment
- * where the model's `bash` can read it. `secrets` is taken from the **real**
- * config, so scrubbing, redaction and the diff guard still know the value they
- * are protecting.
+ * On the opencode route everything downstream — the in-process session and the
+ * review loop's `opencode run` subprocesses — is configured with the proxy and
+ * a placeholder key, because the SDK puts the config into the spawned server's
+ * environment where the model's `bash` can read it. `secrets` is taken from the
+ * **real** config, so scrubbing, redaction and the diff guard still know the
+ * value they are protecting. On the claude route no proxy starts at all: the
+ * credential goes to the spawned CLI's environment alone, and the model knobs
+ * cross as plain values rather than the `OpenAiSettings` object.
  */
 export const contain = async (input: ContainInput): Promise<Contained> => {
   const { config, event, log, run, options, github, createAgent, now } = input
   const secrets = pipelineSecrets(config)
-  const proxy = startProviderProxy(config.openai, log)
-  const contained: PipelineConfig = { ...config, openai: proxiedSettings(config.openai, proxy) }
+  let proxy: ProviderProxy | null = null
+  let contained: PipelineConfig = config
+  if (config.backend !== 'claude') {
+    proxy = startProviderProxy(config.openai, log)
+    contained = { ...config, openai: proxiedSettings(config.openai, proxy) }
+  }
   const create = createAgent ?? createOpenCodeAgent
+  const createClaude = input.createClaudeAgent ?? defaultClaudeAgent
   const clock = now ?? ((): number => Date.now())
 
   // The reply buffer is built before the session because `assembleDeps` hands it
@@ -152,7 +207,11 @@ export const contain = async (input: ContainInput): Promise<Contained> => {
   const selfLogin = memoize(() => resolveSelfLogin({ override: contained.selfLoginOverride, api: github, log }))
   const reply = createReplyBuffer({ github, log, config: contained, selfLogin }, clock())
 
-  const agent = memoizeAgent(() => create(sessionOptions({ input, contained, clock })))
+  const agent = memoizeAgent(() =>
+    contained.backend === 'claude'
+      ? createClaude(claudeSessionOptions({ input, contained, clock }))
+      : create(sessionOptions({ input, contained, clock })),
+  )
 
   const env = options.env
   const deps = await assembleDeps({

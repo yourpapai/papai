@@ -11,6 +11,7 @@
     "format:check": "cd .. && oxfmt --check opencode-agent/src tests/opencode-agent --ignore-path=.oxfmtignore",
     "test:live": "cd .. && bun run tests/opencode-agent/live-sdk.integration.ts",
     "test:survival": "cd .. && bun run tests/opencode-agent/server-survival.integration.ts",
+    "test:claude-live": "cd .. && bun run tests/opencode-agent/claude-live.integration.ts",
     "verify-skills": "cd .. && bun run opencode-agent/scripts/verify-skills.ts"
   },
   "dependencies": {
