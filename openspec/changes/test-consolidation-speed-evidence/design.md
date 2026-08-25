@@ -54,9 +54,13 @@ time without a wall-clock stopwatch around the process (which would include spaw
 
 ### D1 — Benchmark shape: generated paired files, measured via the runner's JUnit durations
 
-`scripts/test-audit/benchmark.ts` (CLI) generates, per hook class, a matched pair of `.test.ts` files
-into an ignored directory (`reports/test-audit/bench/` — inside `reports/`, so gitignored and outside
-`bun test`'s default `tests/` root; the audit's scan pattern `tests/**/*.test.ts` never sees it):
+`scripts/test-audit/benchmark.ts` (CLI) generates, per hook class, a matched pair of arm
+files into an ignored directory (`reports/test-audit/bench/` — inside `reports/`, so
+gitignored and outside the audit's `tests/**` scan pattern). The arms carry a `.bench.ts`
+suffix, not `.test.ts`: bun's discovery is cwd-wide (it picks up e.g.
+`docs/research/**/sql-models.test.ts`), so a `.test.ts` under `reports/` **would** be
+discovered (verified empirically) — `.bench.ts` runs only via the explicit `./`-prefixed
+paths the CLI passes to `bun test`, the same mechanism `test:operational` uses:
 
 - **spread arm**: N per-value `test()` cases, each wrapped in the class's hook (`beforeEach` with cheap
   work / `setupTestDb()` / mock-heavy setup mirroring `auth.test.ts`'s shape);
@@ -99,7 +103,9 @@ candidates = Σ caseCount over audit files whose source matches the class's hook
               exclusion set as the audit)
 eligible   = candidates × eligibility fraction
 savings    = eligible × per-case marginal cost (benchmark median)
-projected  = Σ savings vs the serial suite's total in-test time (from reports/test/last-run.json)
+projected  = Σ savings vs the serial suite's total in-test time (sum of <testcase> durations
+             in reports/test/last-run.junit.xml — last-run.json itself carries no per-test
+             timing; the JUnit root/testcase times do)
 ```
 
 The eligibility fraction is **not** invented per class: the tool reports two bounds —
