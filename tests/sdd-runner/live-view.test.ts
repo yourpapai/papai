@@ -63,7 +63,6 @@ describe('wireLiveView', () => {
     expect(tui).not.toBeNull()
     expect(created).toEqual([])
     tui?.mountRunScreen({ runDir: '/runs/r1', logPath: '/runs/r1/events.ndjson' })
-    tui?.mountRunScreen({ runDir: '/runs/r1', logPath: '/runs/r1/events.ndjson' })
     expect(created).toEqual([{ runDir: '/runs/r1', logPath: '/runs/r1/events.ndjson' }])
     const e = event(1)
     tui?.liveEvents(e)
@@ -74,6 +73,38 @@ describe('wireLiveView', () => {
     expect(sessions[0]?.events).toHaveLength(1)
     tui?.mountRunScreen({ runDir: '/runs/r2', logPath: '/runs/r2/events.ndjson' })
     expect(created).toHaveLength(2)
+  })
+
+  it('keeps the outermost session mounted across a nested mount/unmount pair', () => {
+    const created: RunScreenContext[] = []
+    const sessions: ReturnType<typeof fakeSession>[] = []
+    const wiring = wireLiveView(
+      TTY,
+      {},
+      () => undefined,
+      (ctx) => {
+        created.push(ctx)
+        const session = fakeSession()
+        sessions.push(session)
+        return session
+      },
+    )
+    const tui = asTui(wiring)
+    const parent = { runDir: '/runs/parent', logPath: '/runs/parent/events.ndjson' }
+    const child = { runDir: '/runs/child', logPath: '/runs/child/events.ndjson' }
+    tui?.mountRunScreen(parent)
+    tui?.mountRunScreen(child)
+    expect(created).toEqual([parent])
+    tui?.unmountRunScreen()
+    expect(sessions[0]?.unmounted()).toBe(false)
+    const e = event(1)
+    tui?.liveEvents(e)
+    expect(sessions[0]?.events).toEqual([e])
+    tui?.unmountRunScreen()
+    expect(sessions[0]?.unmounted()).toBe(true)
+    tui?.liveEvents(event(2))
+    expect(sessions[0]?.events).toHaveLength(1)
+    expect(() => tui?.unmountRunScreen()).not.toThrow()
   })
 
   it('keeps the line renderer on a pipe with no session surface', () => {

@@ -42,15 +42,19 @@ export function wireLiveView(
   const mode = renderModeFor(streams, env)
   if (mode !== 'tui') return { mode, render: lineRender }
   let session: RunScreenSessionLike | null = null
+  let mounts = 0
   return {
     mode,
     liveEvents: (event) => {
       session?.onEvent(event)
     },
     mountRunScreen: (ctx) => {
+      mounts += 1
       session ??= createSession(ctx)
     },
     unmountRunScreen: () => {
+      mounts = Math.max(0, mounts - 1)
+      if (mounts > 0) return
       session?.unmount()
       session = null
     },
