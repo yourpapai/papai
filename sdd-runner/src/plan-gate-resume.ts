@@ -15,11 +15,11 @@ import type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import { finalizeGate, logPathFor, nowOf } from './gate-digest.js'
 import type { GateChild } from './gate-model.js'
-import { settlePlanVeto } from './gate-resume-tail.js'
+import { presentReplannedGate, settlePlanVeto } from './gate-resume-tail.js'
 import { desugarFlags } from './gate-session.js'
 import type { GateSessionView } from './gate-session.js'
 import { resumeGate, vetoRedirects } from './gate.js'
-import { PlanSchema } from './plan.js'
+import { PlanSchema, topoSortChildren } from './plan.js'
 import type { PlanChild } from './plan.js'
 import { saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
@@ -67,6 +67,33 @@ export async function planGateRows(sidecarDir: string, state: RunState): Promise
   return rowsOf(ordered)
 }
 
+/**
+ * Interrupted-replan recovery: a crash between a veto round's planner sidecar
+ * overwrite and the `state.plan` persist leaves the pending gate's childIds
+ * out of step with the sidecar (the pair `planGateRows` throws on). The
+ * sidecar is the single source of the current plan (D3), so the resume
+ * finishes the interrupted settle — adopt the sidecar plan, re-materialize,
+ * and re-present at the next gate version. Returns null when the pair is
+ * still consistent.
+ */
+async function recoverInterruptedReplan(
+  deps: OrchestratorDeps,
+  state: RunState,
+  emit: (event: EventInput) => void,
+  version: number,
+): Promise<RunGateResumeResult | null> {
+  const pendingIds = state.plan?.childIds ?? []
+  if (pendingIds.length === 0) return null
+  const sidecarDir = path.join(state.runDir, 'sidecars')
+  const plan = PlanSchema.parse(JSON.parse(await readFile(path.join(sidecarDir, 'plan.json'), 'utf8')))
+  const sidecarIds = new Set(plan.children.map((child) => child.id))
+  if (pendingIds.every((id) => sidecarIds.has(id)) && sidecarIds.size === pendingIds.length) return null
+  deps.stdout?.(
+    'plan gate: the sidecar plan moved past the pending gate (interrupted replan) — adopting the sidecar plan and re-presenting',
+  )
+  return presentReplannedGate(deps, state, stageCtxOf(deps, state, emit), topoSortChildren(plan), version)
+}
+
 export interface PlanGateResumeDeps {
   /** Nested-run starter: the orchestrator's `runStart` by default. */
   readonly startChildRun: RunChildRun
@@ -81,7 +108,8 @@ export interface PlanGateResumeDeps {
  * hand-edit is parsed as-is; approve → `runChildren`; abort →
  * `finalizeGate('abandoned')` before any child exists; extend is unreachable
  * (the parser rejects `→ RUN 1 MORE` at plan mode first); veto rounds land
- * with `settlePlanVeto` (6.3).
+ * with `settlePlanVeto` (6.3); a sidecar moved past the pending gate by an
+ * interrupted replan is recovered through `presentReplannedGate` first.
  */
 export async function runPlanGateResume(
   deps: OrchestratorDeps,
@@ -93,24 +121,11 @@ export async function runPlanGateResume(
   const version = state.gate?.version ?? 1
   const sidecarDir = path.join(state.runDir, 'sidecars')
   const gateMdPath = path.join(state.runDir, `gate-${version}.md`)
+  const recovered = await recoverInterruptedReplan(deps, state, emit, version)
+  if (recovered !== null) return recovered
   const rows = await planGateRows(sidecarDir, state)
-  if (
-    options.abort === true ||
-    options.confirmAll === true ||
-    options.extend === true ||
-    (options.vetoes?.length ?? 0) > 0
-  ) {
-    await desugarFlags(options, planSessionView(rows), (md) => writeFile(gateMdPath, md))
-  }
-  if (!planGateCarriesDecision(await readFile(gateMdPath, 'utf8'))) {
-    deps.stdout?.(
-      `${path.relative(deps.config.repoRoot, gateMdPath)} has no decision yet — no checked child, no → redirect, no ABORT`,
-    )
-    deps.stdout?.(
-      'plan gate: hand-edit the file (check C-boxes to approve, → <redirect> beneath a vetoed child, or ABORT on its own line), then rerun — an unanswered gate is never parsed as a veto',
-    )
-    return { runId: state.runId, outcome: 'abandoned', version }
-  }
+  const abandoned = await desugarOrAbandon(deps, state, options, rows, gateMdPath, version)
+  if (abandoned !== null) return abandoned
   writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
   try {
@@ -131,6 +146,39 @@ export async function runPlanGateResume(
     removeHolder(state.runDir)
     deps.unmountRunScreen?.()
   }
+}
+
+/**
+ * Desugar the decision flags onto the gate file (D4 render-then-parse), then
+ * apply the unanswered-gate guard: a flagless resume of a file carrying no
+ * human decision abandons rather than parsing an all-children veto.
+ */
+async function desugarOrAbandon(
+  deps: OrchestratorDeps,
+  state: RunState,
+  options: GateResumeOptions,
+  rows: readonly GateChild[],
+  gateMdPath: string,
+  version: number,
+): Promise<RunGateResumeResult | null> {
+  if (
+    options.abort === true ||
+    options.confirmAll === true ||
+    options.extend === true ||
+    (options.vetoes?.length ?? 0) > 0
+  ) {
+    await desugarFlags(options, planSessionView(rows), (md) => writeFile(gateMdPath, md))
+  }
+  if (!planGateCarriesDecision(await readFile(gateMdPath, 'utf8'))) {
+    deps.stdout?.(
+      `${path.relative(deps.config.repoRoot, gateMdPath)} has no decision yet — no checked child, no → redirect, no ABORT`,
+    )
+    deps.stdout?.(
+      'plan gate: hand-edit the file (check C-boxes to approve, → <redirect> beneath a vetoed child, or ABORT on its own line), then rerun — an unanswered gate is never parsed as a veto',
+    )
+    return { runId: state.runId, outcome: 'abandoned', version }
+  }
+  return null
 }
 
 /** Approve settles the plan gate (gate cleared, run continues) and drives the children. */

@@ -259,6 +259,49 @@ describe('runPlanGateResume (D12)', () => {
     expect(failure.message).toMatch(/RUN 1 MORE.*plan gate.*cap-hit/u)
   })
 
+  it('an interrupted replan (sidecar moved past the pending gate plan) is recovered by re-presenting, not stranded', async () => {
+    const { deps, state } = await seedParent(CHECKED_GATE)
+    // Crash aftermath of a settlePlanVeto: the planner spawn already overwrote
+    // the sidecar with the revised plan (db-api replaced by db-migrations), but
+    // the process died before state.plan was persisted — gate-1 still pending.
+    fs.writeFileSync(
+      path.join(state.runDir, 'sidecars', 'plan.json'),
+      JSON.stringify({
+        children: [
+          { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+          { id: 'db-migrations', instruction: 'Add the migration files.', deps: ['db-schema'] },
+        ],
+      }),
+    )
+    const stdoutLines: string[] = []
+    const tracking: OrchestratorDeps = {
+      ...deps,
+      stdout: (line) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runPlanGateResume(tracking, state, {}, makeEmit(state), { startChildRun: neverStartChild })
+
+    expect(result).toMatchObject({ runId: state.runId, outcome: 'veto', version: 2 })
+    const persisted = await loadRunState(deps.config.workDir, state.runId)
+    expect(persisted.plan?.childIds).toEqual(['db-schema', 'db-migrations'])
+    expect(persisted.children).toEqual({
+      'db-schema': { status: 'pending' },
+      'db-migrations': { status: 'pending' },
+    })
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 2 })
+    const gate2 = fs.readFileSync(path.join(state.runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    expect(gate2).toContain('- [ ] C2 db-migrations — Add the migration files.')
+    expect(fs.existsSync(path.join(state.runDir, 'children', '2-db-migrations.md'))).toBe(true)
+    expect(fs.existsSync(path.join(state.runDir, 'children', '2-db-api.md'))).toBe(false)
+    const planEvents = readEvents(path.join(state.runDir, 'events.ndjson')).filter((e) => e.type === 'plan')
+    expect(planEvents).toHaveLength(1)
+    expect(planEvents[0]).toMatchObject({ childCount: 2 })
+    expect(stdoutLines.some((line) => line.includes('interrupted replan'))).toBe(true)
+  })
+
   it('an unknown veto id fails before anything is written', async () => {
     const { deps, state } = await seedParent(CHECKED_GATE)
     const before = fs.readFileSync(path.join(state.runDir, 'gate-1.md'), 'utf8')

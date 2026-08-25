@@ -84,12 +84,40 @@ function taskTextOf(children: readonly PlanChild[]): string {
 }
 
 /**
+ * D6 replan tail, shared with the interrupted-settle recovery: adopt
+ * `ordered` — re-materialize wholesale, emit a fresh `plan` event (the replay
+ * fold resets `children` on it), update `state.plan`/`state.children`, and
+ * re-present at `gate-<version+1>.md` with `skipPolicy: true` — the settled
+ * round never re-runs the ladder.
+ */
+export async function presentReplannedGate(
+  deps: OrchestratorDeps,
+  state: RunState,
+  ctx: StageContext,
+  ordered: readonly PlanChild[],
+  version: number,
+): Promise<RunGateResumeResult> {
+  await materializeChildFiles({ children: ordered }, state.runDir)
+  const digest = planDigest(ordered)
+  ctx.emit({ altitude: 'L2', type: 'plan', childCount: ordered.length, digest })
+  state.plan = { childIds: ordered.map((child) => child.id), digest }
+  const seeded: Record<string, { status: 'pending' }> = {}
+  for (const child of ordered) seeded[child.id] = { status: 'pending' }
+  state.children = seeded
+  await saveRunState(state, nowOf(deps))
+  const next = version + 1
+  await presentGateAt(deps, state, ctx, PLAN_REVIEW_SURROGATE, next, 'plan', {
+    children: rowsOf(ordered),
+    skipPolicy: true,
+  })
+  return { runId: state.runId, outcome: 'veto', version: next }
+}
+
+/**
  * D6 plan-gate veto settle — one re-plan per veto round, unbounded rounds:
- * re-run `runPlanner` with the round's redirects (replan bound inside),
- * re-materialize wholesale, emit a fresh `plan` event (the replay fold resets
- * `children` on it), update `state.plan`, and re-present at `gate-<n+1>.md`
- * with `skipPolicy: true` — the settled round never re-runs the ladder.
- * Approve and ABORT are the only terminals.
+ * re-run `runPlanner` with the round's redirects (replan bound inside), then
+ * adopt the result through `presentReplannedGate`. Approve and ABORT are the
+ * only terminals.
  */
 export async function settlePlanVeto(
   deps: OrchestratorDeps,
@@ -109,18 +137,5 @@ export async function settlePlanVeto(
       redirects,
     },
   )
-  await materializeChildFiles({ children: ordered }, state.runDir)
-  const digest = planDigest(ordered)
-  ctx.emit({ altitude: 'L2', type: 'plan', childCount: ordered.length, digest })
-  state.plan = { childIds: ordered.map((child) => child.id), digest }
-  const seeded: Record<string, { status: 'pending' }> = {}
-  for (const child of ordered) seeded[child.id] = { status: 'pending' }
-  state.children = seeded
-  await saveRunState(state, nowOf(deps))
-  const next = version + 1
-  await presentGateAt(deps, state, ctx, PLAN_REVIEW_SURROGATE, next, 'plan', {
-    children: rowsOf(ordered),
-    skipPolicy: true,
-  })
-  return { runId: state.runId, outcome: 'veto', version: next }
+  return presentReplannedGate(deps, state, ctx, ordered, version)
 }
