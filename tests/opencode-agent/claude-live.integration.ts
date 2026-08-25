@@ -16,15 +16,21 @@
  * Two modes, chosen by which Anthropic spelling the environment carries
  * (both set is refused, exactly as the config guard refuses it):
  *
- * - `ANTHROPIC_API_KEY` — the credentialed recording. The full corpus
- *   behaviours run through the adapter's own argv composition, so a flag the
- *   pinned CLI no longer accepts fails here at recording cost.
- * - `CLAUDE_CODE_OAUTH_TOKEN` — the zero-spend negative mode. That spelling
- *   is refused at startup in production (the recorded no-carrier finding),
- *   so it boots nothing here: the value is a mode switch only — a dummy,
- *   never handed to any child — and only the standing negative leg runs.
+ * - `ANTHROPIC_API_KEY` — the credentialed recording of the **bare**
+ *   profile. The full corpus behaviours run through the adapter's own argv
+ *   composition, so a flag the pinned CLI no longer accepts fails here at
+ *   recording cost.
+ * - `CLAUDE_CODE_OAUTH_TOKEN` — the **native** profile's recording (design
+ *   D5 of `claude-native-oauth-profile`), cheapest legs first: the free
+ *   un-credentialed census (init line `mcp_servers: []`, built-ins-only
+ *   skills, a `/context` census with no memory-file row), the dummy-token
+ *   instant-401 negative, then the credentialed proof turn — reply text plus
+ *   the `rate_limit_event` five-hour subscription signature — and the
+ *   adapter-corpus turns including the WebFetch adversarial refusal. A dummy
+ *   token runs the free legs green and fails the credentialed legs loudly:
+ *   the recorder is a credentialed artifact.
  *
- * The standing negative leg (both modes, design D3 of
+ * The standing negative helper leg (both modes, design D3 of
  * `claude-apikeyhelper-credential-route`) is self-contained and zero-spend by
  * construction: it materializes its own deliberately invalid dummy token
  * behind the CLI's `apiKeyHelper` shape in a throwaway config dir, deletes
@@ -36,10 +42,9 @@
  * `authentication_failed` refusal over the retry ladder, a synthetic
  * assistant message, usage zero). A CLI pin move that breaks either half —
  * the helper stops loading, or OAuth over the helper starts succeeding —
- * fails the leg loudly, naming the change: the successor change's
- * green-path precondition arriving as a signal rather than a surprise. The
- * leg's init line is stamped as `oauth-helper-init.ndjson`; the wall time is
- * the retry ladder's (~3 min recorded), not spend.
+ * fails the leg loudly, naming the change. The leg's init line is stamped as
+ * `oauth-helper-init.ndjson`; the wall time is the retry ladder's (~3 min
+ * recorded), not spend.
  *
  * What one credentialed invocation additionally produces and asserts, whole
  * (the scenarios share the run and cannot be recorded or verified apart):
@@ -63,7 +68,7 @@
  *     turn and answers.
  *
  * The recorded CLI's exact version is stamped into `VERSION` beside the
- * fixtures by the credentialed mode; `workflow.test.ts` asserts it equals the
+ * fixtures by the credentialed modes; `workflow.test.ts` asserts it equals the
  * workflow's install pin, so fixture and binary cannot silently skew. The
  * `.ndjson` corpus beside it is refreshed by the same run: after this recorder
  * goes green, re-run it with `CLAUDE_LIVE_REFRESH_FIXTURES=1` to overwrite the
@@ -78,10 +83,13 @@ import process from 'node:process'
 
 import { createClaudeAgent } from '../../opencode-agent/src/claude-adapter.js'
 import type { ClaudeAgentOptions } from '../../opencode-agent/src/claude-adapter.js'
-import { createClaudeConfigDir } from '../../opencode-agent/src/claude-config-dir.js'
+import { buildClaudeArgv } from '../../opencode-agent/src/claude-argv.js'
+import type { ClaudeModelKnobs } from '../../opencode-agent/src/claude-argv.js'
+import { createClaudeConfigDir, writeClaudeEmptyMcpConfig } from '../../opencode-agent/src/claude-config-dir.js'
 import { liveSpawn } from '../../opencode-agent/src/claude-connect.js'
 import type { SpawnClaude } from '../../opencode-agent/src/claude-connect.js'
 import { decodeClaudeLine, parseNdjsonStream } from '../../opencode-agent/src/claude-contract.js'
+import type { ClaudeCredential } from '../../opencode-agent/src/config-values.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'claude-cli')
@@ -104,10 +112,12 @@ const check = (label: string, condition: boolean, detail: string): boolean => {
 
 /**
  * Which mode this run takes, read under the guard's own exclusivity rule: the
- * API key runs the credentialed corpus; the OAuth spelling — refused at
- * startup in production — is the zero-spend negative mode's switch, a dummy.
+ * API key records the bare profile's credentialed corpus; the OAuth spelling
+ * records the native profile — its free census and negative legs at zero
+ * spend, its proof legs against whatever token is held (a dummy fails them
+ * loudly).
  */
-const readMode = (): { mode: 'api-key'; value: string } | { mode: 'oauth-dummy' } | null => {
+const readMode = (): { mode: 'api-key'; value: string } | { mode: 'oauth'; value: string } | null => {
   const apiKey = process.env['ANTHROPIC_API_KEY']?.trim()
   const oauth = process.env['CLAUDE_CODE_OAUTH_TOKEN']?.trim()
   if (apiKey !== undefined && apiKey.length > 0 && oauth !== undefined && oauth.length > 0) {
@@ -115,10 +125,10 @@ const readMode = (): { mode: 'api-key'; value: string } | { mode: 'oauth-dummy' 
     return null
   }
   if (apiKey !== undefined && apiKey.length > 0) return { mode: 'api-key', value: apiKey }
-  if (oauth !== undefined && oauth.length > 0) return { mode: 'oauth-dummy' }
+  if (oauth !== undefined && oauth.length > 0) return { mode: 'oauth', value: oauth }
   process.stdout.write(
-    '✗ No credential: set ANTHROPIC_API_KEY for the credentialed corpus (real model spend, never in CI), or ' +
-      'CLAUDE_CODE_OAUTH_TOKEN=<dummy> for the zero-spend negative legs alone.\n',
+    '✗ No credential: set ANTHROPIC_API_KEY for the bare corpus or CLAUDE_CODE_OAUTH_TOKEN for the native one ' +
+      '(real model spend, never in CI) — or any dummy value for the free legs alone.\n',
   )
   return null
 }
@@ -197,18 +207,10 @@ interface AgentEnv {
 }
 
 /** Boots one adapter over the given environment, capturing every argv. A null credential is the un-credentialed leg. */
-const agentFor = async (
-  credential: { name: 'ANTHROPIC_API_KEY'; value: string } | null,
-  env: NodeJS.ProcessEnv,
-): Promise<AgentEnv> => {
+const agentFor = async (credential: ClaudeCredential | null, env: NodeJS.ProcessEnv): Promise<AgentEnv> => {
   const options: ClaudeAgentOptions = {
     directory: process.cwd(),
-    knobs: {
-      model: process.env['LLM_MODEL'] ?? 'sonnet',
-      lightModel: null,
-      planEffort: null,
-      buildEffort: null,
-    },
+    knobs: recorderKnobs(),
     ...(credential === null ? {} : { credential }),
     env,
     log: silentLog,
@@ -218,6 +220,33 @@ const agentFor = async (
   }
   return { env, agent: await createClaudeAgent(options) }
 }
+
+/** The knobs the recorder composes with — the same plain values the pipeline crosses. */
+const recorderKnobs = (): ClaudeModelKnobs => ({
+  model: process.env['LLM_MODEL'] ?? 'sonnet',
+  lightModel: null,
+  planEffort: null,
+  buildEffort: null,
+})
+
+/** One corpus turn's outcome: the reply when it answered, the message when it rejected. */
+interface SafeTurn {
+  reply: Awaited<ReturnType<OpenCodeAgent['prompt']>> | null
+  error: string
+}
+
+const safePrompt = (agent: OpenCodeAgent, request: Parameters<OpenCodeAgent['prompt']>[0]): Promise<SafeTurn> =>
+  agent.prompt(request).then(
+    (reply): SafeTurn => ({ reply, error: '' }),
+    (error: unknown): SafeTurn => ({
+      reply: null,
+      error: error instanceof Error ? error.message : String(error),
+    }),
+  )
+
+/** The why a safePrompt turn rejected — '' when it answered; first 200 chars, never a value. */
+const why = (turn: SafeTurn | null): string =>
+  turn === null ? 'no turn ran' : turn.error === '' ? 'answered' : turn.error.slice(0, 200)
 
 /** One live `claude` process this run spawned, by pid and process group. */
 interface ProcEntry {
@@ -333,6 +362,270 @@ const negativeHelperLeg = (facts: Record<string, string>): boolean[] => {
   ]
 }
 
+/**
+ * The native profile's env for a raw leg: the census legs carry no Anthropic
+ * credential at all; the credentialed legs carry exactly the held token.
+ */
+const nativeLegEnv = (token: string | null): NodeJS.ProcessEnv => {
+  const env: NodeJS.ProcessEnv = { ...process.env, DISABLE_AUTOUPDATER: '1' }
+  Reflect.deleteProperty(env, 'ANTHROPIC_API_KEY')
+  Reflect.deleteProperty(env, 'CLAUDE_CODE_OAUTH_TOKEN')
+  if (token !== null) env['CLAUDE_CODE_OAUTH_TOKEN'] = token
+  return env
+}
+
+/** One raw native invocation composed through the adapter's own builder (design D5's recording-cost doctrine). */
+const nativeArgv = (prompt: string, mcpConfigPath: string): readonly string[] =>
+  buildClaudeArgv({ prompt, agent: 'plan', profile: 'native', mcpConfigPath }, recorderKnobs(), silentLog).argv
+
+/**
+ * Drives one raw native turn: the adapter-composed argv, the prompt on stdin
+ * (an empty stdin is *no* input to this CLI — it refuses to run), the given
+ * env, and an optional bound.
+ */
+const nativeRawRun = (
+  prompt: string,
+  mcpConfigPath: string,
+  env: NodeJS.ProcessEnv,
+  timeoutMs?: number,
+): { code: number; stdout: string; stderr: string } => rawRun(nativeArgv(prompt, mcpConfigPath), env, prompt, timeoutMs)
+
+/** An unknown value as a read-only array of unknowns — [] when it is not an array. */
+const arrayOf = (value: unknown): readonly unknown[] =>
+  Array.isArray(value) ? value.map((entry) => entry as unknown) : []
+
+/** An object-shaped unknown, the only carrier a raw line's fields can be read from. */
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+
+/** A field read off a raw parsed line — undefined when the carrier is not an object. */
+const rawField = (raw: unknown, field: string): unknown => (isRecord(raw) ? raw[field] : undefined)
+
+/** The first parsed line whose decoded kind matches, or null. */
+const lineOfKind = (parsed: readonly unknown[], kind: string): unknown =>
+  parsed.find((raw) => decodeClaudeLine(raw)?.kind === kind) ?? null
+
+/**
+ * The free census leg (design D5a): an un-credentialed native invocation,
+ * zero spend by construction — the auth failure arrives after the init line
+ * and costs nothing — asserting the neutralization the three flags claim:
+ * `mcp_servers: []` (no `.mcp.json` auto-connect), built-ins-only skills
+ * (no repository skill discovery), and a `/context` census whose memory-file
+ * row is absent (the config-dir default promoted to a pinned fact).
+ */
+const nativeCensusLeg = (facts: Record<string, string>): boolean[] => {
+  const censusDir = createClaudeConfigDir(tmpdir())
+  const mcpConfigPath = writeClaudeEmptyMcpConfig(censusDir)
+  const env = nativeLegEnv(null)
+  env['CLAUDE_CONFIG_DIR'] = censusDir
+
+  const outcome = nativeRawRun('Reply with the single word ready.', mcpConfigPath, env, 120_000)
+  const parsed = parseNdjsonStream(outcome.stdout)
+  const initRaw = lineOfKind(parsed, 'init')
+  const mcpServers = rawField(initRaw, 'mcp_servers')
+  const skills = rawField(initRaw, 'skills')
+
+  facts['nativeCensusMcpServers'] = JSON.stringify(mcpServers)
+  facts['nativeCensusSkillCount'] = Array.isArray(skills) ? String(skills.length) : 'absent'
+
+  const contextOutcome = nativeRawRun('/context', mcpConfigPath, env, 120_000)
+  const contextParsed = parseNdjsonStream(contextOutcome.stdout)
+  const contextUsage =
+    contextParsed
+      .map((raw) => rawField(raw, 'context_usage'))
+      .find((usage): usage is Record<string, unknown> => typeof usage === 'object' && usage !== null) ?? null
+  const memoryFiles = contextUsage === null ? null : contextUsage['memory_files']
+  const contextSkills = arrayOf(contextUsage === null ? null : contextUsage['skills'])
+  const nonBuiltIn = contextSkills.filter((skill) => rawField(skill, 'source') !== 'built-in')
+  const skillTokens = contextSkills.reduce<number>((total, skill) => total + Number(rawField(skill, 'tokens') ?? 0), 0)
+  facts['nativeCensusMemoryFiles'] = JSON.stringify(memoryFiles)
+  facts['nativeCensusSkillTokens'] = String(skillTokens)
+
+  return [
+    check(
+      'the native init line names zero MCP servers — no .mcp.json auto-connect',
+      Array.isArray(mcpServers) && mcpServers.length === 0,
+      `mcp_servers: ${JSON.stringify(mcpServers)} (exit ${outcome.code})`,
+    ),
+    check(
+      'the native init line carries a skills list — the census baseline for built-ins-only',
+      Array.isArray(skills),
+      `skills: ${JSON.stringify(skills)?.slice(0, 120)}`,
+    ),
+    check(
+      'the /context census loads no memory files — the repository CLAUDE.md is not in context',
+      Array.isArray(memoryFiles) && memoryFiles.length === 0,
+      `memory_files: ${JSON.stringify(memoryFiles)}`,
+    ),
+    check(
+      'every loaded skill is CLI built-in — no repository skill discovery',
+      contextSkills.length > 0 && nonBuiltIn.length === 0,
+      `${nonBuiltIn.length} of ${contextSkills.length} context skills are not built-in`,
+    ),
+  ]
+}
+
+/**
+ * The dummy-token negative leg (design D5b): a deliberately invalid token on
+ * the native env, asserting the recorded instant-401 shape — the env token is
+ * authoritative over any local keychain, so a local recording cannot silently
+ * authenticate through the operator's own credentials. Zero spend by
+ * construction; stamps `native-auth-error.ndjson`.
+ */
+const nativeDummyLeg = (facts: Record<string, string>): boolean[] => {
+  const dir = createClaudeConfigDir(tmpdir())
+  const mcpConfigPath = writeClaudeEmptyMcpConfig(dir)
+  const env = nativeLegEnv(DUMMY_OAUTH_TOKEN)
+  env['CLAUDE_CONFIG_DIR'] = dir
+
+  const startedAt = Date.now()
+  const outcome = nativeRawRun('Reply with the single word ready.', mcpConfigPath, env, 120_000)
+  const elapsedMs = Date.now() - startedAt
+  const parsed = parseNdjsonStream(outcome.stdout)
+  const resultRaw = lineOfKind(parsed, 'result')
+
+  facts['nativeDummyApiErrorStatus'] = JSON.stringify(rawField(resultRaw, 'api_error_status'))
+  facts['nativeDummyTerminalReason'] = JSON.stringify(rawField(resultRaw, 'terminal_reason'))
+  facts['nativeDummyElapsedMs'] = String(elapsedMs)
+  if (outcome.stdout.length > 0) {
+    writeFileSync(path.join(FIXTURES, 'native-auth-error.ndjson'), outcome.stdout)
+    process.stdout.write('  stamped the native auth-error fixture\n')
+  }
+
+  const isError = rawField(resultRaw, 'is_error') === true
+  const status = rawField(resultRaw, 'api_error_status')
+  const reason = rawField(resultRaw, 'terminal_reason')
+  return [
+    check(
+      'an invalid native token fails fast — the recorded api_error result shape, 401',
+      isError && status === 401 && reason === 'api_error',
+      `is_error ${String(isError)}, api_error_status ${JSON.stringify(status)}, terminal_reason ${JSON.stringify(reason)}`,
+    ),
+    check(
+      'the refusal is prompt, not a retry ladder — env token authoritative over the keychain',
+      elapsedMs < 60_000,
+      `the leg took ${elapsedMs}ms`,
+    ),
+  ]
+}
+
+/**
+ * The credentialed proof turn (design D5d): reply text plus the
+ * `rate_limit_event` five-hour signature — the subscription-shaped fact that
+ * is the native path's proof of authentication (`apiKeySource` reads `none`
+ * there and cannot serve). Stamps `native-success-turn.ndjson` and records
+ * both facts. Returns whether the proof landed: `VERSION` rides on it.
+ */
+const nativeProofLeg = (token: string, facts: Record<string, string>): { checks: boolean[]; landed: boolean } => {
+  const dir = createClaudeConfigDir(tmpdir())
+  const mcpConfigPath = writeClaudeEmptyMcpConfig(dir)
+  const env = nativeLegEnv(token)
+  env['CLAUDE_CONFIG_DIR'] = dir
+
+  const outcome = nativeRawRun(
+    'Read the README.md at the repository root and reply with one sentence about what this project is.',
+    mcpConfigPath,
+    env,
+    300_000,
+  )
+  const parsed = parseNdjsonStream(outcome.stdout)
+  const result = decodeClaudeLine(lineOfKind(parsed, 'result'))
+  const windows = parsed
+    .map((raw) => decodeClaudeLine(raw))
+    .flatMap((line) => (line !== null && line.kind === 'rate-limit-event' ? [line.window] : []))
+  const text = result !== null && result.kind === 'result' ? result.text : ''
+  // An answered turn, not merely a wordy failure: the recorded 401 shape
+  // carries non-empty result text too, and must not pass for a reply.
+  const answered = result !== null && result.kind === 'result' && !result.isError && text.length > 0
+
+  facts['nativeProofWindows'] = windows.length === 0 ? 'none' : windows.join(',')
+  facts['nativeProofReplyChars'] = String(text.length)
+  // The success fixture rides on a turn that answered: a failed proof (a
+  // dummy token's 401 stream) stamps nothing it did not prove.
+  if (answered && outcome.stdout.length > 0) {
+    writeFileSync(path.join(FIXTURES, 'native-success-turn.ndjson'), outcome.stdout)
+    process.stdout.write('  stamped the native success-turn fixture\n')
+  }
+
+  return {
+    landed: answered && windows.includes('five_hour'),
+    checks: [
+      check(
+        'the credentialed native turn answers with reply text',
+        answered,
+        `reply was "${text.slice(0, 120)}" (exit ${outcome.code})`,
+      ),
+      check(
+        'the stream carries the subscription signature — rate_limit_event with the five-hour window',
+        windows.includes('five_hour'),
+        `windows: ${windows.length === 0 ? 'none' : windows.join(',')}`,
+      ),
+    ],
+  }
+}
+
+/**
+ * The adapter-corpus legs of the native mode (design D5): every spawn the
+ * adapter composes runs the neutralized native argv with the token on env
+ * and never the API key; a plan turn answers; the WebFetch adversarial
+ * prompt under the `plan` allowlist comes back refused — the native
+ * confinement-parity pin (spec: the allowlist bounds the larger built-in
+ * toolset).
+ */
+const nativeAdapterLegs = async (token: string, facts: Record<string, string>): Promise<boolean[]> => {
+  const env = nativeLegEnv(token)
+  env['CLAUDE_CONFIG_DIR'] = createClaudeConfigDir(tmpdir())
+  const scoped = await agentFor({ name: 'CLAUDE_CODE_OAUTH_TOKEN', value: token }, env)
+
+  const success = await safePrompt(scoped.agent, {
+    prompt: 'Read the README.md at the repository root and reply with one sentence about what this project is.',
+    agent: 'plan',
+  })
+
+  const adversarial = await safePrompt(scoped.agent, {
+    prompt:
+      'Fetch the URL https://example.com using the WebFetch tool exactly as asked. Do not read files instead; use WebFetch.',
+    agent: 'plan',
+  })
+  // Aggregates read after both turns: the seam checks judge every spawn the
+  // run composed, not the ones that had happened by an earlier line.
+  const nativeArgvSeen = argvCalls.filter((argv) => argv.includes('--setting-sources'))
+  const bareLeaked = argvCalls.filter((argv) => argv.includes('--bare'))
+  const apiKeyLeaked = envCalls.filter((spawnEnv) => spawnEnv['ANTHROPIC_API_KEY'] !== undefined)
+  const tokenMissing = envCalls.filter((spawnEnv) => spawnEnv['CLAUDE_CODE_OAUTH_TOKEN'] === undefined)
+  facts['nativeAdapterSpawns'] = String(argvCalls.length)
+
+  const adversarialArgv = argvCalls.at(-1) ?? []
+  const allowedTools = adversarialArgv[adversarialArgv.indexOf('--allowedTools') + 1] ?? ''
+  const adversarialText = adversarial?.reply?.text ?? ''
+  facts['nativeWebFetchRefused'] = String(
+    /cannot|refused|not (?:able|allowed|permitted)|can't|unable|won't/u.test(adversarialText),
+  )
+
+  return [
+    check(
+      'a native plan turn through the adapter resolves with result-line text',
+      success !== null && success.reply !== null && success.reply.text.length > 0,
+      `got "${success?.reply?.text ?? `the turn rejected: ${why(success)}`}"`,
+    ),
+    check(
+      'every adapter-composed argv is native — neutralization present, --bare absent',
+      nativeArgvSeen.length === argvCalls.length && bareLeaked.length === 0,
+      `${bareLeaked.length} of ${argvCalls.length} spawns carried --bare`,
+    ),
+    check(
+      'every adapter-composed env carries the OAuth token and never the API key',
+      tokenMissing.length === 0 && apiKeyLeaked.length === 0,
+      `${tokenMissing.length} spawns without the token, ${apiKeyLeaked.length} with the API key`,
+    ),
+    check(
+      'the WebFetch attempt does not fetch — refused under the plan allowlist on the native toolset',
+      allowedTools === 'Read,Glob,Grep' &&
+        /cannot|refused|not (?:able|allowed|permitted)|can't|unable|won't/u.test(adversarialText),
+      `allowlist "${allowedTools}", reply was: ${adversarialText.slice(0, 160)} (${why(adversarial)})`,
+    ),
+  ]
+}
+
 const run = async (): Promise<number> => {
   const mode = readMode()
   if (mode === null) return 1
@@ -351,11 +644,28 @@ const run = async (): Promise<number> => {
 
   results.push(...negativeHelperLeg(facts))
 
-  if (mode.mode !== 'api-key') {
-    process.stdout.write(
-      '  negative mode: the credentialed corpus legs are skipped — the OAuth spelling no longer boots from config.\n' +
-        '  for the full recording, re-run with ANTHROPIC_API_KEY (real model spend).\n',
+  if (mode.mode === 'oauth') {
+    // ---- The native profile's recording (design D5, cheapest first) -------
+
+    results.push(...nativeCensusLeg(facts))
+    results.push(...nativeDummyLeg(facts))
+    const proof = nativeProofLeg(mode.value, facts)
+    results.push(...proof.checks)
+    results.push(...(await nativeAdapterLegs(mode.value, facts)))
+    results.push(
+      check('the version is unchanged after the run (no self-update)', cliVersion() === version, `now ${cliVersion()}`),
     )
+
+    // VERSION rides on the proof landing: a dummy token runs the free legs
+    // green and must not stamp a corpus it never recorded.
+    if (proof.landed) {
+      writeFileSync(path.join(FIXTURES, 'VERSION'), `${version}\n`)
+      process.stdout.write(`  stamped ${path.join(FIXTURES, 'VERSION')} = ${version}\n`)
+    } else {
+      process.stdout.write(
+        '  the credentialed proof did not land; VERSION left unstamped — re-run with a valid token.\n',
+      )
+    }
     writeFileSync(path.join(FIXTURES, 'facts.json'), `${JSON.stringify(facts, null, 2)}\n`)
     return results.every(Boolean) ? 0 : 1
   }
@@ -390,25 +700,6 @@ const run = async (): Promise<number> => {
 
   // A corpus turn that rejects records its ✗ row instead of crashing the run:
   // the negative leg's facts above must land either way.
-
-  /** One corpus turn's outcome: the reply when it answered, the message when it rejected. */
-  interface SafeTurn {
-    reply: Awaited<ReturnType<OpenCodeAgent['prompt']>> | null
-    error: string
-  }
-
-  const safePrompt = (agent: OpenCodeAgent, request: Parameters<OpenCodeAgent['prompt']>[0]): Promise<SafeTurn> =>
-    agent.prompt(request).then(
-      (reply): SafeTurn => ({ reply, error: '' }),
-      (error: unknown): SafeTurn => ({
-        reply: null,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    )
-
-  /** The why a safePrompt turn rejected — '' when it answered; first 200 chars, never a value. */
-  const why = (turn: SafeTurn | null): string =>
-    turn === null ? 'no turn ran' : turn.error === '' ? 'answered' : turn.error.slice(0, 200)
 
   const success = await safePrompt(scoped.agent, {
     prompt: 'Read the README.md at the repository root and reply with one sentence about what this project is.',
@@ -604,6 +895,8 @@ const run = async (): Promise<number> => {
       force: true,
     })
     rmSync(path.join(FIXTURES, 'auth-error-turn.ndjson'), { force: true })
+    rmSync(path.join(FIXTURES, 'native-success-turn.ndjson'), { force: true })
+    rmSync(path.join(FIXTURES, 'native-auth-error.ndjson'), { force: true })
     process.stdout.write(
       '  NOTE: fixture refresh rewrites the .ndjson corpus from the recorded streams by hand of the\n' +
         'operator next; see the fixture README for what each file must carry.\n',

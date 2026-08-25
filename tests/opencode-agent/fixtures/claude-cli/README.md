@@ -34,6 +34,23 @@ State of this directory:
   exactly this recording, and the leg re-asserts both halves at every CLI pin
   move: a helper that stops loading, or an OAuth-over-helper call that starts
   succeeding, fails the recorder loudly.
+- `native-auth-error.ndjson` — written by the native mode's dummy-token
+  negative leg (`CLAUDE_CODE_OAUTH_TOKEN=<dummy> bun run
+opencode-agent:test:claude-live`): the whole stream of a neutralized native
+  invocation (`--setting-sources '' --strict-mcp-config --mcp-config` over the
+  empty document) whose env carried only a deliberately invalid OAuth token.
+  Recorded on 2.1.239: the refusal is **prompt** (~2s, two `api_retry` lines
+  then the result), `api_error_status: 401`, `terminal_reason: "api_error"`,
+  exit 1 — the pin that the env token is authoritative over any local
+  keychain, so a local recording cannot silently authenticate through the
+  operator's own credentials.
+- `native-success-turn.ndjson` — written only by the native mode's
+  credentialed proof turn (`CLAUDE_CODE_OAUTH_TOKEN=<token>`), and only when
+  the turn answered: the stream of one native plan turn, carrying the
+  `rate_limit_event` line whose `rateLimitType` is the subscription window —
+  the five-hour signature that is the native path's proof of authentication
+  (`apiKeySource` reads `none` there and cannot serve). Until a valid token
+  records it, this file is absent, and the native profile is not supported.
 - `success-turn.ndjson`, `adversarial-plan-bash-refused.ndjson`,
   `resume-turn.ndjson` — **provisional, documented shapes**. The credentialed
   recorder run (`ANTHROPIC_API_KEY=<key> bun run
