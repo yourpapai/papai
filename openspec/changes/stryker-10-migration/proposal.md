@@ -58,6 +58,10 @@ convention for tooling-only changes.
 - **Code**: `package.json` (+ `patchedDependencies` and `patches/` file),
   `.github/workflows/ci.yml` (two jobs), `scripts/mutation/baseline.json` (regenerated),
   `scripts/mutation/README.md` and `docs/architecture/commands.md` (docs).
+- **Patch-reach consequences** (surfaces that stage `package.json`+`bun.lock` for a
+  frozen install and therefore must carry `patches/` too, discovered during apply):
+  `Dockerfile` install stages, and the story dependency cache
+  (`scripts/story/dependencies*.ts` — staging, cache key v5, path-safety tests).
 - **Dependencies**: `@stryker-mutator/core` 9→10 major; transitive Babel 7→8.
 - **Existing coverage**: `scripts/mutation/` paired-runner infra (2,628 LOC) needs no
   changes — `execFileSync` spawn path (`scripts/mutation/paired-run.ts:90`) inherits the
