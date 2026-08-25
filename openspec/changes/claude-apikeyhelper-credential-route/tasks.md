@@ -52,5 +52,5 @@ revision's tasks are merged (its gate names this change).
 
 ## 5. Pre-merge verification
 
-- [ ] 5.1 Full sweep green: full suite, lint, typecheck, workflow lint, strict change validation.
+- [x] 5.1 Full sweep green: full suite, lint, typecheck, workflow lint, strict change validation.
   Verify: `bun run test && bun run lint && bun run typecheck && bun workflows:lint && bunx openspec validate claude-apikeyhelper-credential-route --strict`
