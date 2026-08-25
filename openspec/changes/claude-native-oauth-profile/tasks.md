@@ -56,6 +56,7 @@ refuses, and its guard-wording task (2.5) edits text that revision owns.
   Verify: the run itself (credentialed; never in CI)
 - [ ] 5.2 Re-run `ANTHROPIC_API_KEY=<key> bun run opencode-agent:test:claude-live`: the bare route's legs record green, proving byte-identity survived the split.
   Verify: same command, credentialed
+  *(Deferred by operator choice, 2026-08-25: the OAuth recording suffices for now. Bare byte-identity stays pinned by the unit suites — argv byte-equality, adapter composition and env shape — so nothing unsupported ships; the live re-record stays open for the next API-key credentialed run, and also closes `claude-apikeyhelper-credential-route` 3.2.)*
 
 ## 6. Documentation
 

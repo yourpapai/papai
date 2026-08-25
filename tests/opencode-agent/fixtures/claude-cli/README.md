@@ -55,13 +55,16 @@ opencode-agent:test:claude-live`): the whole stream of a neutralized native
   turn carries it. A re-run that answers without it fails the recorder
   loudly.
 - `success-turn.ndjson`, `adversarial-plan-bash-refused.ndjson`,
-  `resume-turn.ndjson` — **provisional, documented shapes**. The credentialed
-  recorder run (`ANTHROPIC_API_KEY=<key> bun run
-opencode-agent:test:claude-live`) replaces the whole corpus with
-  recordings from the live pinned CLI and stamps the exact CLI version into
-  `VERSION` beside this file; `tests/opencode-agent/workflow.test.ts` then
-  asserts that stamp equals the workflow's install pin. Until `VERSION`
-  exists, these three files are shape-documentation, not observation.
+  `resume-turn.ndjson` — **provisional, documented shapes**. An API-key-mode
+  credentialed recorder run (`ANTHROPIC_API_KEY=<key> bun run
+opencode-agent:test:claude-live`) replaces the bare corpus with
+  recordings from the live pinned CLI. These three files stay
+  shape-documentation until such a run re-records them — the native mode
+  stamps `VERSION` and its own fixtures without touching them (that
+  re-record is task 5.2 of `claude-native-oauth-profile`, deferred
+  2026-08-25), so a `VERSION` stamp alone is not proof the bare corpus is
+  genuine. `tests/opencode-agent/workflow.test.ts` asserts that stamp equals
+  the workflow's install pin whenever it exists.
 
 The recorder is the only writer of this directory; nothing here is edited by
 hand once recorded. One credentialed run (`bun run
