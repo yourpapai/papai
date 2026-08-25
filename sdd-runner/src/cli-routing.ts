@@ -42,7 +42,7 @@ function candidateList(candidates: readonly { runId: string; hint: string }[]): 
 }
 
 function isInterrupted(status: string): boolean {
-  return status === 'stopped' || (status === 'running' && false)
+  return status === 'stopped'
 }
 
 export async function resolveTarget(input: ResolveTargetInput): Promise<RouteAction> {
