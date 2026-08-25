@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { lastSpawnedHandleOf, spawnRecorderOf } from './child-spawn.js'
@@ -31,8 +31,6 @@ export interface PlanBranchOptions {
   readonly fs?: PlanFsDeps
 }
 
-const DEFAULT_FS: PlanFsDeps = { mkdir, writeFile, readdir, unlink }
-
 /** D4 row text: `<child-id> — <instruction first line>` plus deps/capabilities. */
 export function gateRowText(child: PlanChild): string {
   const firstLine = child.instruction.split('\n')[0] ?? child.instruction
@@ -58,7 +56,7 @@ export async function runPlanBranch(
   options: PlanBranchOptions = {},
 ): Promise<RunStartResult> {
   const ordered = topoSortChildren({ children: [...children] })
-  await materializeChildFiles({ children: ordered }, state.runDir, options.fs ?? DEFAULT_FS)
+  await materializeChildFiles({ children: ordered }, state.runDir, options.fs)
   const digest = planDigest(ordered)
   ctx.emit({ altitude: 'L2', type: 'plan', childCount: ordered.length, digest })
   state.plan = { childIds: ordered.map((child) => child.id), digest }
