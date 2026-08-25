@@ -52,9 +52,10 @@ export interface ClaudeSpawnRequest {
   stdinPrompt: string
   /**
    * The chosen Anthropic credential, when this spawn holds one. The API-key
-   * spelling rides the child env; the OAuth spelling rides the helper files
-   * `claude-credential.ts` materializes into the config dir, and no Anthropic
-   * value enters the env (design D3).
+   * spelling rides the child env; the OAuth spelling — refused at config,
+   * reachable here only through direct adapter-level tests — injects nothing:
+   * under `--bare` the CLI never reads it, and the route materializes no
+   * credential file (design D3, as recorded).
    */
   credential?: ClaudeCredential | null
   /** The checkout the CLI works in. */
@@ -106,8 +107,8 @@ export const createClaudeConfigDir = (tmpRoot: string = tmpdir()): string =>
  * embedded *inside* it) — and for the two Anthropic spellings, so the one
  * that rides env can be re-added alone. Only the API-key spelling is
  * re-added: under `--bare` the pinned CLI never reads the env OAuth token,
- * so that spelling's carrier is the helper files and no Anthropic value
- * enters any spawned environment (design D3).
+ * and the route carries no credential file for it either — the guard refuses
+ * that spelling at startup (design D3, as recorded).
  */
 const childEnv = (request: ClaudeSpawnRequest): Record<string, string> => {
   const env: Record<string, string> = {}

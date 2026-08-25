@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -21,7 +21,6 @@ import type {
   GroupKillSeams,
   SpawnClaude,
 } from '../../opencode-agent/src/claude-connect.js'
-import { writeClaudeCredentialFiles } from '../../opencode-agent/src/claude-credential.js'
 
 /**
  * How the CLI is started and addressed: the spawn contract, the child
@@ -184,7 +183,7 @@ describe('the spawn contract', () => {
     expect(recorded.options.env['DISABLE_AUTOUPDATER']).toBe('1')
   })
 
-  test('the OAuth spelling injects no Anthropic credential into the child env', () => {
+  test('the OAuth spelling injects no Anthropic credential into the child env — a test-only reachability', () => {
     const recorded = blankRecording()
     spawnClaude(
       request(
@@ -195,9 +194,11 @@ describe('the spawn contract', () => {
       { spawn: recordingSpawn(recorded, 4242) },
     )
 
-    // Under --bare the CLI never reads the env token, so the OAuth spelling's
-    // carrier is the helper files, not the environment: neither spelling
-    // reaches the child, whatever the scrubbed env carried in.
+    // The guard refuses the spelling at config, so no production path reaches
+    // this spawn with an OAuth credential; the behaviour is pinned anyway:
+    // under --bare the CLI never reads the env token, and the route
+    // materializes no credential file — neither spelling reaches the child,
+    // whatever the scrubbed env carried in.
     expect(recorded.options.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
     expect(recorded.options.env['ANTHROPIC_API_KEY']).toBeUndefined()
   })
@@ -211,90 +212,6 @@ describe('the spawn contract', () => {
     expect(recorded.options.env['ANTHROPIC_API_KEY']).toBeUndefined()
     expect(recorded.options.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
     expect(child.env['PATH']).toBe('/usr/bin')
-  })
-})
-
-describe('writeClaudeCredentialFiles', () => {
-  const modeOf = (file: string): number => statSync(file).mode & 0o777
-  const freshDir = (): string => mkdtempSync(path.join(tmpdir(), 'claude-credential-files-'))
-
-  test('the OAuth spelling materializes the helper script and the settings file naming it, nothing else', () => {
-    const dir = freshDir()
-    try {
-      writeClaudeCredentialFiles(dir, OAUTH_CREDENTIAL)
-
-      const helper = path.join(dir, 'credential.sh')
-      expect(readFileSync(helper, 'utf8')).toBe(`#!/bin/sh\nprintf '%s' '${OAUTH_CREDENTIAL.value}'`)
-      expect(modeOf(helper)).toBe(0o700)
-      // The settings file carries a path only — the value lives in the script.
-      expect(JSON.parse(readFileSync(path.join(dir, 'settings.json'), 'utf8'))).toEqual({
-        apiKeyHelper: helper,
-      })
-      expect(modeOf(path.join(dir, 'settings.json'))).toBe(0o600)
-      expect(readdirSync(dir).sort()).toEqual(['credential.sh', 'settings.json'])
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  test('the API-key spelling writes nothing — env injection is that spelling’s mechanism', () => {
-    const dir = freshDir()
-    try {
-      writeClaudeCredentialFiles(dir, CREDENTIAL)
-
-      expect(readdirSync(dir)).toEqual([])
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  test('an absent credential writes nothing', () => {
-    const dir = freshDir()
-    try {
-      writeClaudeCredentialFiles(dir, null)
-
-      expect(readdirSync(dir)).toEqual([])
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  /** Runs a call that must refuse, handing back the error's message (or '' when it did not refuse). */
-  const caughtMessage = (call: () => unknown): string => {
-    try {
-      call()
-      return ''
-    } catch (error) {
-      return error instanceof Error ? error.message : String(error)
-    }
-  }
-
-  test('a token carrying a single quote is refused naming the variable, never the value', () => {
-    const dir = freshDir()
-    try {
-      const message = caughtMessage((): unknown =>
-        writeClaudeCredentialFiles(dir, { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: "sk-ant-oat01-quo'ted" }),
-      )
-
-      expect(message).toContain('CLAUDE_CODE_OAUTH_TOKEN')
-      expect(message).not.toContain("quo'ted")
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  test('a token carrying a newline is refused naming the variable, never the value', () => {
-    const dir = freshDir()
-    try {
-      const message = caughtMessage((): unknown =>
-        writeClaudeCredentialFiles(dir, { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'sk-ant-oat01-line\nbroken' }),
-      )
-
-      expect(message).toContain('CLAUDE_CODE_OAUTH_TOKEN')
-      expect(message).not.toContain('line\nbroken')
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
   })
 })
 

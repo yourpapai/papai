@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
@@ -310,13 +310,10 @@ describe('session continuity', () => {
 })
 
 describe('credential carrier by spelling', () => {
-  /** What the config dir held at the moment of the first spawn — boot-time materialization, not turn-time. */
+  /** What the config dir held at the moment of the first spawn — nothing, per the retirement. */
   interface FirstSpawnProbe {
-    dirKnown: boolean
     helper: boolean
     settings: boolean
-    helperMode: number
-    settingsMode: number
   }
 
   const probeAtFirstSpawn = (
@@ -332,14 +329,9 @@ describe('credential carrier by spelling', () => {
       spawn: (binary, argv, options) => {
         if (probe === null) {
           const dir = options.env['CLAUDE_CONFIG_DIR'] ?? ''
-          const helper = path.join(dir, 'credential.sh')
-          const settings = path.join(dir, 'settings.json')
           probe = {
-            dirKnown: dir.length > 0,
-            helper: existsSync(helper),
-            settings: existsSync(settings),
-            helperMode: existsSync(helper) ? statSync(helper).mode & 0o777 : 0,
-            settingsMode: existsSync(settings) ? statSync(settings).mode & 0o777 : 0,
+            helper: existsSync(path.join(dir, 'credential.sh')),
+            settings: existsSync(path.join(dir, 'settings.json')),
           }
         }
         return inner.spawn(binary, argv, options)
@@ -347,35 +339,29 @@ describe('credential carrier by spelling', () => {
     }
   }
 
-  test('booting with the OAuth credential materializes the helper once, before any spawn, and no env carries the token', async () => {
+  test('an OAuth-credential direct boot is test-only reachability: it materializes nothing and injects neither spelling', async () => {
+    // The guard refuses the spelling at config, so no production path hands
+    // the adapter an OAuth credential anymore; this direct boot pins the
+    // spawn layer's recorded env behaviour — under --bare the env token is
+    // never read, and with the writer retired no credential file exists
+    // either. The spelling is unreachable, not silently dropped.
     const probed = probeAtFirstSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(probed.spawn, publicLog().log, { credential: OAUTH_CREDENTIAL }))
 
     await agent.prompt({ prompt: 'x' })
 
-    // Materialized at boot: both files existed, with their modes, when the
-    // first CLI process started.
-    expect(probed.probe).not.toBeNull()
-    expect(probed.probe?.dirKnown).toBe(true)
-    expect(probed.probe?.helper).toBe(true)
-    expect(probed.probe?.helperMode).toBe(0o700)
-    expect(probed.probe?.settings).toBe(true)
-    expect(probed.probe?.settingsMode).toBe(0o600)
-    // The value lives in the file, never in any spawned env or argv.
-    expect(JSON.stringify(probed.calls)).not.toContain(OAUTH_CREDENTIAL.value)
+    expect(probed.probe?.helper).toBe(false)
+    expect(probed.probe?.settings).toBe(false)
     for (const call of probed.calls) {
       expect(call.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
       expect(call.env['ANTHROPIC_API_KEY']).toBeUndefined()
     }
-    // The settings file is named on the argv: --bare loads apiKeyHelper
-    // only through --settings, so the pair alone authenticates nothing.
-    const settingsAt = argvOf(probed.calls, 0).indexOf('--settings')
-    expect(settingsAt).toBeGreaterThan(-1)
-    expect(argvOf(probed.calls, 0)[settingsAt + 1]).toBe(configDirOfCall(probed.calls, 0) + '/settings.json')
-    // Exactly the two files — nothing else rode along.
+    // No settings file exists to name, and none is named.
+    expect(argvOf(probed.calls, 0).includes('--settings')).toBe(false)
+    // The config dir stays credential-file-free — the carrier is retired.
     const dir = configDirOfCall(probed.calls, 0)
     expect(dir).not.toBe('')
-    expect(readdirSync(dir).sort()).toEqual(['credential.sh', 'settings.json'])
+    expect(readdirSync(dir)).toEqual([])
   })
 
   test('booting with the API key materializes nothing — env injection is that spelling’s mechanism', async () => {
@@ -389,6 +375,9 @@ describe('credential carrier by spelling', () => {
     expect(probed.calls[0]?.env['ANTHROPIC_API_KEY']).toBe(CREDENTIAL.value)
     // No settings file to name: that spelling's mechanism is env injection.
     expect(argvOf(probed.calls, 0).includes('--settings')).toBe(false)
+    const dir = configDirOfCall(probed.calls, 0)
+    expect(dir).not.toBe('')
+    expect(readdirSync(dir)).toEqual([])
   })
 
   test('the credential is optional: absent, a turn spawns with no credential anywhere', async () => {
@@ -403,6 +392,9 @@ describe('credential carrier by spelling', () => {
       expect(call.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
       expect(call.env['ANTHROPIC_API_KEY']).toBeUndefined()
     }
+    const dir = configDirOfCall(probed.calls, 0)
+    expect(dir).not.toBe('')
+    expect(readdirSync(dir)).toEqual([])
   })
 })
 

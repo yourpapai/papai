@@ -3,8 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import path from 'node:path'
-
 import type { AgentPromptRequest, AgentPromptResult, AgentSession } from './agent-session.js'
 import { buildClaudeArgv } from './claude-argv.js'
 import type { ClaudeModelKnobs } from './claude-argv.js'
@@ -12,7 +10,6 @@ import { collectChild, createClaudeConfigDir, killGroup, spawnClaude, teardownCl
 import type { ClaudeChild, GroupKillSeams, SpawnClaude, TeardownSeams } from './claude-connect.js'
 import { decodeClaudeLine, parseNdjsonStream } from './claude-contract.js'
 import type { ClaudeStreamLine } from './claude-contract.js'
-import { writeClaudeCredentialFiles, CLAUDE_SETTINGS_FILENAME } from './claude-credential.js'
 import { claudeTracker } from './claude-progress.js'
 import { classifyTurn } from './claude-turn-classify.js'
 import type { TurnOutcome } from './claude-turn-classify.js'
@@ -40,10 +37,10 @@ export interface ClaudeAgentOptions extends TurnBounds {
   knobs: ClaudeModelKnobs
   /**
    * The chosen Anthropic credential, when this session holds one. The API-key
-   * spelling is env-injected per spawn; the OAuth spelling is materialized as
-   * the CLI's `apiKeyHelper` files into the job-scoped config dir once, at
-   * boot, before any spawn (design D1/D3). Absent is legitimate only for the
-   * recorder's un-credentialed auth-error leg.
+   * spelling — the only one config can produce, the guard refusing the OAuth
+   * spelling — is env-injected per spawn; an absent credential is the
+   * recorder's un-credentialed auth-error leg. The route materializes no
+   * credential file, ever (design D2).
    */
   credential?: ClaudeCredential
   /** The post-scrub `process.env` the child inherits. */
@@ -83,12 +80,6 @@ interface SessionState {
 interface SessionContext {
   readonly options: ClaudeAgentOptions
   readonly configDir: string
-  /**
-   * The OAuth spelling's materialized settings file, named on every
-   * invocation via `--settings` — `--bare` never auto-discovers it. `null` on
-   * the API-key spelling and the credentialless recorder leg.
-   */
-  readonly credentialSettingsFile: string | null
   readonly bootSessionId: string
   readonly credentialValues: readonly string[]
   readonly tracker: ProgressTracker
@@ -158,7 +149,6 @@ const runClaudeTurn = async (context: SessionContext): Promise<TurnOutcome> => {
       ...(current.system === undefined ? {} : { system: current.system }),
       ...(current.agent === undefined ? {} : { agent: current.agent }),
       resumeSessionId: context.state.cliSessionId,
-      ...(context.credentialSettingsFile === null ? {} : { credentialSettingsFile: context.credentialSettingsFile }),
     },
     context.options.knobs,
     context.options.log,
@@ -247,18 +237,16 @@ const claudeSession = (context: SessionContext, connection: TurnConnection): Age
 }
 
 /**
- * Boots the claude session: one job-scoped config dir, the OAuth spelling's
- * helper files materialized into it before anything spawns, one synthetic
- * job-local id until the first init line lands, and one process per turn.
+ * Boots the claude session: one job-scoped config dir that stays
+ * credential-file-free (the helper carrier is retired — design D2), one
+ * synthetic job-local id until the first init line lands, and one process per
+ * turn.
  */
 export const createClaudeAgent = (options: ClaudeAgentOptions): Promise<AgentSession> => {
   const configDir = createClaudeConfigDir()
-  writeClaudeCredentialFiles(configDir, options.credential)
   const context: SessionContext = {
     options,
     configDir,
-    credentialSettingsFile:
-      options.credential?.name === 'CLAUDE_CODE_OAUTH_TOKEN' ? path.join(configDir, CLAUDE_SETTINGS_FILENAME) : null,
     bootSessionId: `claude-job-${crypto.randomUUID()}`,
     credentialValues: options.credential === undefined ? [] : [options.credential.value],
     tracker: claudeTracker(options.log),

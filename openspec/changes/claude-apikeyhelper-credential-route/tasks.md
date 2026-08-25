@@ -29,11 +29,11 @@ revision's tasks are merged (its gate names this change).
 
 ## 2. Helper retirement, seams kept (design D2)
 
-- [ ] 2.1 Tests first: no invocation composes `--settings` — the `credentialSettingsFile` request field and its argv slot are gone from `claude-argv.ts`, bare argv byte-identical to the parent change's shape; `claude-credential.ts` is deleted and no module imports a credential-file writer.
+- [x] 2.1 Tests first: no invocation composes `--settings` — the `credentialSettingsFile` request field and its argv slot are gone from `claude-argv.ts`, bare argv byte-identical to the parent change's shape; `claude-credential.ts` is deleted and no module imports a credential-file writer.
   Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (red — the retirement assertions), then green with 2.2
-- [ ] 2.2 Implement the retirement: delete `opencode-agent/src/claude-credential.ts`, drop the `--settings` composition from `claude-argv.ts`, drop the boot-time materialization from `claude-adapter.ts`; the optional `credential` and the credentialless boot stay (assert: OAuth-credential boots are now unreachable from config — the guard refuses the spelling — while direct adapter tests may still pass either spelling to pin env behavior).
+- [x] 2.2 Implement the retirement: delete `opencode-agent/src/claude-credential.ts`, drop the `--settings` composition from `claude-argv.ts`, drop the boot-time materialization from `claude-adapter.ts`; the optional `credential` and the credentialless boot stay (assert: OAuth-credential boots are now unreachable from config — the guard refuses the spelling — while direct adapter tests may still pass either spelling to pin env behavior).
   Verify: `bun test tests/opencode-agent/claude-contract.test.ts tests/opencode-agent/claude-adapter.test.ts tests/opencode-agent/claude-connect.test.ts` (green)
-- [ ] 2.3 Rework the OAuth-carrier adapter/connect tests to the retired truth: the API-key spelling env-injects exactly the key; an OAuth-credential direct boot (test-only reachability) injects neither spelling and materializes nothing; the config-dir-at-first-spawn assertions now verify the dir stays credential-file-free.
+- [x] 2.3 Rework the OAuth-carrier adapter/connect tests to the retired truth: the API-key spelling env-injects exactly the key; an OAuth-credential direct boot (test-only reachability) injects neither spelling and materializes nothing; the config-dir-at-first-spawn assertions now verify the dir stays credential-file-free.
   Verify: `bun test tests/opencode-agent/claude-adapter.test.ts tests/opencode-agent/claude-connect.test.ts` (green)
 
 ## 3. Recorder negative pins (design D3)

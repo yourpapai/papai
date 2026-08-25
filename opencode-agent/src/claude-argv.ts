@@ -37,13 +37,6 @@ export interface ClaudeTurnRequest {
   agent?: string
   /** The memoized CLI session id; `null` or absent spawns a fresh session. */
   resumeSessionId?: string | null
-  /**
-   * The OAuth spelling's materialized settings file, named explicitly: the
-   * pinned CLI's `--bare` loads `apiKeyHelper` only through `--settings`
-   * ("Anthropic auth is strictly ANTHROPIC_API_KEY or apiKeyHelper via
-   * --settings"), never from config-dir auto-discovery.
-   */
-  credentialSettingsFile?: string
 }
 
 /**
@@ -128,7 +121,6 @@ export const buildClaudeArgv = (request: ClaudeTurnRequest, knobs: ClaudeModelKn
   return {
     argv: [
       '--bare',
-      ...(request.credentialSettingsFile === undefined ? [] : ['--settings', request.credentialSettingsFile]),
       '-p',
       '--output-format',
       'stream-json',

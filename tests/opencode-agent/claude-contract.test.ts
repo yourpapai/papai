@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { buildClaudeArgv, MAX_ARG_STRLEN } from '../../opencode-agent/src/claude-argv.js'
@@ -222,36 +222,17 @@ describe('buildClaudeArgv', () => {
     ])
   })
 
-  test('the OAuth spelling’s settings file rides as --settings — --bare loads apiKeyHelper only through that flag', () => {
-    // The pinned CLI’s own --bare help: "Anthropic auth is strictly
-    // ANTHROPIC_API_KEY or apiKeyHelper via --settings" — config-dir
-    // auto-discovery does not happen under --bare, so the materialized
-    // settings file must be named on the argv to authenticate anything.
-    const withSettings = buildClaudeArgv(
-      { prompt: 'x', credentialSettingsFile: '/tmp/opencode-agent-claude-x/settings.json' },
-      KNOBS,
-      silent,
-    )
+  test('no invocation composes --settings — the credential-file carrier is retired', () => {
+    // The retirement's own pin: the request field and its argv slot are gone,
+    // so a merge mishap that reintroduces the composition fails here. A caller
+    // smuggling the retired field past the type (the runtime cannot see it)
+    // is ignored, not honoured — and bare argv stays byte-identical to the
+    // shape above, the parent change's.
+    const smuggled = { prompt: 'x', credentialSettingsFile: '/tmp/gone/settings.json' } as Parameters<
+      typeof buildClaudeArgv
+    >[0]
 
-    expect(flagValue(withSettings.argv, '--settings')).toBe('/tmp/opencode-agent-claude-x/settings.json')
-    expect(withSettings.argv).toEqual([
-      '--bare',
-      '--settings',
-      '/tmp/opencode-agent-claude-x/settings.json',
-      '-p',
-      '--output-format',
-      'stream-json',
-      '--verbose',
-      '--permission-mode',
-      'default',
-      '--allowedTools',
-      'Read,Glob,Grep',
-      '--model',
-      'claude-sonnet-5',
-    ])
-
-    // Absent field, absent flag: the API-key spelling and the credentialless
-    // recorder leg never name a settings file.
+    expect(buildClaudeArgv(smuggled, KNOBS, silent).argv.includes('--settings')).toBe(false)
     expect(buildClaudeArgv({ prompt: 'x' }, KNOBS, silent).argv.includes('--settings')).toBe(false)
   })
 
@@ -351,6 +332,25 @@ describe('buildClaudeArgv', () => {
       const { argv } = buildClaudeArgv({ prompt: 'x', agent }, KNOBS, silent)
 
       expect(argv).not.toContain('--dangerously-skip-permissions')
+    }
+  })
+})
+
+describe('the retired credential-file writer', () => {
+  test('claude-credential.ts is deleted and no src module names it', () => {
+    // The writer was the helper route's file-side mechanism, and that route
+    // does not ship (design D2): the module is gone outright, and no src
+    // module — comment included — may name it back into existence. The
+    // recorder's dummy-helper leg writes its own files; production never
+    // materializes a credential file.
+    const src = path.join(import.meta.dir, '..', '..', 'opencode-agent', 'src')
+
+    expect(existsSync(path.join(src, 'claude-credential.ts'))).toBe(false)
+    const modules = readdirSync(src, { recursive: true })
+      .map((entry) => String(entry))
+      .filter((name) => name.endsWith('.ts'))
+    for (const file of modules) {
+      expect(readFileSync(path.join(src, file), 'utf8')).not.toContain('claude-credential')
     }
   })
 })
