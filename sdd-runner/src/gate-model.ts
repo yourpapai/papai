@@ -222,6 +222,9 @@ function finalizeResponse(state: ParseState, expected: ExpectedGateContent): Gat
     )
   }
   const checkedAll = expected.assumptions.every((a) => state.checked.has(a.id))
+  // Children fail closed like assumptions: an expected C-row missing from the
+  // file (e.g. a truncated write) is an unchecked child, never a silent approve.
+  const childrenChecked = (expected.children ?? []).every((c) => state.checked.has(c.id))
   const answered = new Set(state.answers.map((a) => a.id))
   const unanswered = expected.blockers.filter((b) => !answered.has(b.id) && !state.override)
   if (checkedAll && unanswered.length > 0) {
@@ -229,7 +232,7 @@ function finalizeResponse(state: ParseState, expected: ExpectedGateContent): Gat
       `gate response: approved with open blockers ${unanswered.map((b) => b.id).join(', ')} — answer each with → <answer> or → OVERRIDE`,
     )
   }
-  const approved = checkedAll && unanswered.length === 0 && state.vetoes.length === 0
+  const approved = checkedAll && childrenChecked && unanswered.length === 0 && state.vetoes.length === 0
   return {
     approved,
     abort: false,

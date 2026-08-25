@@ -566,6 +566,19 @@ describe('parseGateResponse plan-mode child rows (D4)', () => {
     expect(response.approved).toBe(false)
   })
 
+  it('absent C-rows never approve: a gate file with the Children section deleted fails closed', () => {
+    const md = '## Plan gate\n\n(no checkbox rows survive a truncated write)\n'
+    const response = parseGateResponse(md, planExpected)
+    expect(response.approved).toBe(false)
+    expect(response.vetoes).toEqual([])
+  })
+
+  it('a partially deleted Children section (one row missing) does not approve', () => {
+    const md = '## Plan gate\n\n- [x] C1 auth-db — Add the auth database schema.\n'
+    const response = parseGateResponse(md, planExpected)
+    expect(response.approved).toBe(false)
+  })
+
   it('ABORT aborts at plan mode', () => {
     const response = parseGateResponse('## Plan gate\n\nABORT\n', planExpected)
     expect(response.abort).toBe(true)
