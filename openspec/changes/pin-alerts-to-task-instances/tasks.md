@@ -37,5 +37,5 @@ Order follows design.md's TDD order of work; every task is test-first (failing t
 ## 6. Full verification and docs
 
 - [x] 6.1 Run the full suite: `bun run test` (then `bun run test:failures` if anything fails). Verify: `bun run test`
-- [ ] 6.2 Run `bun run typecheck && bun run lint` (no lint-disable/type-ignore; split files if max-lines trips). Verify: `bun run typecheck && bun run lint`
+- [x] 6.2 Run `bun run typecheck && bun run lint` (no lint-disable/type-ignore; split files if max-lines trips). Verify: `bun run typecheck && bun run lint`
 - [ ] 6.3 Update affected docs (`docs/architecture/behaviors.md` alert/task-instance sections, `docs/architecture/tools.md` if alert tool behavior is described) to document pinning, NULL-pin semantics, and the cancel paths. Verify: docs render and match shipped behavior
