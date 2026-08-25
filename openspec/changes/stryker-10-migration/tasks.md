@@ -34,7 +34,7 @@ running the tooling itself.
   node-version: 22) to the `mutation-testing` and `mutation-baseline` jobs in
   `.github/workflows/ci.yml`, after `setup-bun`, before the run steps. Verify:
   `bun workflows:lint` passes and the YAML diff shows exactly the two jobs touched.
-- [ ] 3.2 Confirm the CLI host resolution: run `node --version` and
+- [x] 3.2 Confirm the CLI host resolution: run `node --version` and
   `bun test:mutate:file <same file as 2.1>` inside the pinned-Node job on the branch
   push (CI run), verifying the gate job is green under Node 22 with the v10 CLI.
 
@@ -65,6 +65,6 @@ running the tooling itself.
   (watch upstream PR #1): delete `patches/` and the `patchedDependencies` entry,
   `bun install`, re-run `bun test:mutate:file <canary>`. If no release exists at merge
   time, leave the patch and this unchecked task rides as a reminder on the branch.
-- [ ] 5.3 Final: full `bun test`, `bun run typecheck`, `bun run lint`,
+- [x] 5.3 Final: full `bun test`, `bun run typecheck`, `bun run lint`,
   `bun workflows:lint`, and confirm the branch's CI `mutation-testing` job is green
   against the reseeded baseline.
