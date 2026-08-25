@@ -17,7 +17,7 @@ Order follows design.md's TDD order of work; every task is test-first (failing t
 ## 3. Creation-time pin capture
 
 - [x] 3.1 Add failing test coverage for alert creation pinning: alert created in a context with instance A configured is pinned to A; context with NULL instance stays NULL (derive config context from the built delivery target). Verify: `bun run test tests/deferred-prompts/tool-handlers.test.ts`
-- [ ] 3.2 In `src/deferred-prompts/tool-handlers.ts` (`createAlert`/`executeCreate`) resolve the delivery target's config context (`getConfigContextIdFromStorageContextId`), read `getContextSettings(configContextId)?.taskInstanceId ?? null`, and pass it to `createAlertPrompt`. Verify: `bun run test tests/deferred-prompts/tool-handlers.test.ts`
+- [x] 3.2 In `src/deferred-prompts/tool-handlers.ts` (`createAlert`/`executeCreate`) resolve the delivery target's config context (`getConfigContextIdFromStorageContextId`), read `getContextSettings(configContextId)?.taskInstanceId ?? null`, and pass it to `createAlertPrompt`. Verify: `bun run test tests/deferred-prompts/tool-handlers.test.ts`
 
 ## 4. Pinned-instance evaluation in the poller
 
