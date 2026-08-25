@@ -18,13 +18,13 @@ running the tooling itself.
 
 ## 2. Smoke the gate under v10
 
-- [ ] 2.1 Run a paired measurement on a small stable target (e.g.
+- [x] 2.1 Run a paired measurement on a small stable target (e.g.
   `bun test:mutate:file src/tools/update-status.ts` — pick one already in
   `baseline.json`) and confirm: dry run completes, mutants run, a report lands in
   `reports/paired/`, and the score is comparable to the v9 baseline entry (within a few
   points; the empty-expression mutator may shift it). Record any `errored` outcome and
   diagnose before proceeding — Babel 8 instrumentation problems surface here first.
-- [ ] 2.2 If task 2.1 errored: fix or scope the failing file shapes out via
+- [x] 2.2 If task 2.1 errored: fix or scope the failing file shapes out via
   `stryker.config.json` `mutate` globs, and re-run until a clean paired run completes.
   (Skip if 2.1 was clean.)
 
