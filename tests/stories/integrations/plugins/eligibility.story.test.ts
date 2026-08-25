@@ -30,8 +30,8 @@ function createMockProvider(getTask: TaskProvider['getTask']): TaskProvider {
   return provider
 }
 
-function discovered(pluginId: string): DiscoveredPlugin {
-  const plugin = discoverPlugins('plugins').plugins.find(({ manifest }) => manifest.id === pluginId)
+async function discovered(pluginId: string): Promise<DiscoveredPlugin> {
+  const plugin = (await discoverPlugins('plugins')).plugins.find(({ manifest }) => manifest.id === pluginId)
   if (plugin === undefined) throw new Error(`Expected discovered plugin ${pluginId}`)
   return plugin
 }
@@ -63,7 +63,7 @@ test('real plugin lifecycle evaluates context state and leaves no contribution l
   await executeScenario('plugin context eligibility', async ({ given, world }) => {
     const alice = given.user('alice')
     const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
-    const synthetic = discovered(BASE_PLUGIN_ID)
+    const synthetic = await discovered(BASE_PLUGIN_ID)
     const constrained = capabilityConstrainedClone(synthetic)
     given.plugin(synthetic)
     given.plugin(constrained)
@@ -108,7 +108,7 @@ test('SCN-plugin-deny-gating: unavailable plugin capabilities are removed before
     async ({ given, world }) => {
       const alice = given.user('alice')
       const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
-      const constrained = capabilityConstrainedClone(discovered(BASE_PLUGIN_ID))
+      const constrained = capabilityConstrainedClone(await discovered(BASE_PLUGIN_ID))
       given.plugin(constrained)
       setPluginAdminConfig(CONSTRAINED_PLUGIN_ID, 'api_key', 'synthetic-private-key', 'scenario-admin')
       setPluginEnabledForContext(CONSTRAINED_PLUGIN_ID, contextId, true)

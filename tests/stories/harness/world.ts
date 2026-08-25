@@ -540,7 +540,7 @@ export async function createScenarioWorld(name: string, options: ScenarioWorldOp
     }
     if (realProviderType !== undefined) {
       const setup = REAL_TASK_PROVIDER_SETUP[realProviderType]
-      fixtures.approveRealTaskProviderPlugin(realProviderType)
+      await fixtures.approveRealTaskProviderPlugin(realProviderType)
       http.serveHost(setup.host, setup.responder())
       if (realProviderType === 'kaneo') {
         fixtures.seedTaskInstance({ type: 'kaneo', config: setup.instanceConfig })

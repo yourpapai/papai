@@ -65,7 +65,7 @@ Mandatory; pino with structured metadata-first calls. `debug` — function entry
 
 - Runtime **Bun**; validation **Zod v4**; LLM via **Vercel AI SDK**; chat via **Grammy** / Mattermost REST+WebSocket / **discord.js**.
 - Strict TypeScript; **use `.js` extension in import paths**.
-- Two TypeScript packages, on purpose: `typescript` (7.x, the native compiler) is a **devDependency** and provides `tsc` for `bun run typecheck`; `@typescript/typescript6` is a **runtime dependency** and is the only one that can be imported. TS 7 ships no standalone parser — its API reaches source files only through a project served by the tsgo process — so the three in-memory AST scanners (`src/plugins/discovery-imports.ts`, `scripts/story/scenarios.ts`, `tests/smoke/harness/story-markers.ts`) import `ts` from `@typescript/typescript6`. Never `import ... from 'typescript'`.
+- One TypeScript, 7.x: `typescript` is a **runtime dependency** — `tsc` typechecks, and `typescript/unstable/*` is the compiler API. TS 7 ships no standalone parser (its AST reaches you only through a project served by a `tsgo` child process), and its **sync** API cannot run under Bun at all — it reads Node-internal `stdout._handle.fd`. So every AST scanner goes through `src/ts-ast/source-parser.ts`, which rebuilds `createSourceFile` on the async project API and is therefore **async**. Import predicates and node types from `typescript/unstable/ast`; never construct an `API` outside the parser module.
 - Error extraction: `error instanceof Error ? error.message : String(error)`.
 - Use `p-limit` for bounded concurrency over remote ops, not unbounded `Promise.all`.
 - **Never add lint-disable or type-ignore comments** — hook policy blocks them; fix the underlying issue.

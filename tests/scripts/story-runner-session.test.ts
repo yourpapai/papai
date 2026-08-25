@@ -25,7 +25,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { createStoryRunnerSession } from '../../scripts/story/session.js'
-import { writeFrozenCoverageSupport } from './story-frozen-inputs.helpers.js'
+import { writeFrozenSupportInputs } from './story-frozen-inputs.helpers.js'
 
 const roots: string[] = []
 
@@ -137,7 +137,7 @@ function fixture(): Readonly<{ root: string; dependencyRoot: string }> {
   writeFileSync(path.join(root, 'tests/mock-reset.ts'), 'reset')
   writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), 'helpers')
   writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), 'logger')
-  writeFrozenCoverageSupport(root)
+  writeFrozenSupportInputs(root)
   writeFileSync(path.join(root, 'scripts/story/test-stories.ts'), 'runner')
   writeFileSync(path.join(root, 'src/runtime.ts'), 'runtime v1')
   writeFileSync(path.join(root, 'context-vault-indexer/lock.ts'), 'lock v1')

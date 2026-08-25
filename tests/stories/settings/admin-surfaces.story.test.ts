@@ -105,14 +105,14 @@ scenario(
       nativeContextId: alice.id,
     })
     const bobContextId = toScopedContextId({ platformInstanceId: bob.platformInstanceId, nativeContextId: bob.id })
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
       magiToken: MAGI_TOKEN,
       updatedBy: alice.id,
     })
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: bobDm,
       magiBaseUrl: MAGI_URL,

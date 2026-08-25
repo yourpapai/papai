@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { withSourceParser } from '../../../src/ts-ast/source-parser.js'
 import { censusTier, type StoryCensus } from '../../stories/catalog/census.js'
 import type { StoryTier } from '../../stories/catalog/coverage.js'
 import { repoRoot } from './docker.js'
@@ -27,15 +28,17 @@ export async function censusMarkedLane(
   const unregistered: string[] = []
   const violations: string[] = []
 
-  for await (const file of new Bun.Glob(input.glob).scan({ cwd: repoRoot() })) {
-    const scan = scanStoryMarkers(file, await Bun.file(`${repoRoot()}${file}`).text())
-    violations.push(...scan.violations)
-    for (const key of scan.keys) {
-      const storyId = input.registry[key]
-      if (storyId === undefined) unregistered.push(`${file}#${key}`)
-      else observed.push(storyId)
+  await withSourceParser(async (parser) => {
+    for await (const file of new Bun.Glob(input.glob).scan({ cwd: repoRoot() })) {
+      const scan = await scanStoryMarkers(parser, file, await Bun.file(`${repoRoot()}${file}`).text())
+      violations.push(...scan.violations)
+      for (const key of scan.keys) {
+        const storyId = input.registry[key]
+        if (storyId === undefined) unregistered.push(`${file}#${key}`)
+        else observed.push(storyId)
+      }
     }
-  }
+  })
 
   return Object.freeze({ census: censusTier(input.tier, observed), unregistered, violations })
 }
