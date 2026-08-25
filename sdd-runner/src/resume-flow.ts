@@ -132,10 +132,12 @@ export async function deriveResumeDecision(
   deps: OrchestratorDeps,
   state: RunState,
 ): Promise<ReturnType<typeof resolveResumeDecision>> {
-  // A plan parent owns no change folder and its decision never consults
-  // artifacts (pending children route before any artifact check) — the status
-  // call is skipped for parents; every other run's status failure stays loud.
-  const status = state.plan === undefined ? await deps.driver.status(state.changeName) : null
+  // A depth-null run's decision never consults artifacts — a plan parent
+  // routes on pending children, an unclassified single on 'depth not
+  // classified' — and it may own no change folder (estimator or planner
+  // failed before newChange), so the status call is skipped; every
+  // depth-classified run owns a change folder and its status failure stays loud.
+  const status = state.depth === null ? null : await deps.driver.status(state.changeName)
   const artifacts = status === null ? {} : status.artifacts
   return resolveResumeDecision(state, artifacts, replayEvents(logPathFor(state)), readSessionLedger(state.runDir))
 }

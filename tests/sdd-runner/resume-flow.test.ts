@@ -196,9 +196,21 @@ describe('deriveResumeDecision', () => {
     expect(decision.reason).toContain('children pending')
   })
 
+  it('resolves the intake re-run point for a folder-less intake run whose estimator or planner failed before newChange (2.1)', async () => {
+    const dir = makeDir()
+    const state = await createRunState({ workDir: dir, repoRoot: dir, changeName: 'never-scaffolded' })
+    fs.writeFileSync(path.join(state.runDir, 'events.ndjson'), '')
+
+    const decision = await deriveResumeDecision(rejectingStatusDeps(dir), state)
+
+    expect(decision.stage).toBe('intake')
+    expect(decision.reason).toBe('depth not classified')
+  })
+
   it("rejects loudly when a single run's driver.status fails instead of routing on empty artifacts", async () => {
     const dir = makeDir()
     const state = await createRunState({ workDir: dir, repoRoot: dir, changeName: 'add-thing' })
+    state.depth = 'S'
     fs.writeFileSync(path.join(state.runDir, 'events.ndjson'), '')
 
     await expect(deriveResumeDecision(rejectingStatusDeps(dir), state)).rejects.toThrow(/openspec status failed/u)
