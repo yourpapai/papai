@@ -44,6 +44,7 @@ export type ClaudeStreamLine =
       readonly usage: ClaudeUsage
       readonly costUsd: number
     }
+  | { readonly kind: 'rate-limit-event'; readonly window: string }
 
 /**
  * The init line: the stream's first line, and the only session-id source.
@@ -62,6 +63,22 @@ const initLineSchema = z.object({
   subtype: z.literal('init'),
   session_id: z.string().min(1),
   apiKeySource: z.string().optional(),
+})
+
+/**
+ * The subscription rate-limit fact — the native profile's proof of
+ * authentication (design D4): `apiKeySource` reads `none` on that path even
+ * when the env token authenticates, so the recorder's evidence is this line
+ * instead. The window is a pass-through string, never enumerated — the
+ * recorded value is `five_hour`, and other plans carry other windows the
+ * decoder has no business refusing. Optional by construction: a stream
+ * without one decodes fine, and the adapter ignores the fact where present —
+ * it is recorder evidence, never a budget input.
+ */
+const rateLimitLineSchema = z.object({
+  type: z.literal('system'),
+  subtype: z.literal('rate_limit_event'),
+  rateLimitType: z.string().min(1),
 })
 
 /** A content block reduced to its shape and, for tool calls, its name. */
@@ -113,6 +130,9 @@ export const decodeClaudeLine = (raw: unknown): ClaudeStreamLine | null => {
   const init = initLineSchema.safeParse(raw)
   if (init.success)
     return { kind: 'init', sessionId: init.data.session_id, apiKeySource: init.data.apiKeySource ?? null }
+
+  const rateLimit = rateLimitLineSchema.safeParse(raw)
+  if (rateLimit.success) return { kind: 'rate-limit-event', window: rateLimit.data.rateLimitType }
 
   const assistant = assistantLineSchema.safeParse(raw)
   if (assistant.success) {

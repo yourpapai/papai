@@ -203,6 +203,59 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
   })
 })
 
+describe('the rate-limit signature (design D4 of the native-OAuth change)', () => {
+  // The native profile's proof of authentication is the subscription-shaped
+  // rate-limit fact, because `apiKeySource` reads `none` on that path. The
+  // decoder names it; the adapter ignores it — recorder evidence, never a
+  // budget input (the total_cost_usd doctrine).
+
+  test('a rate_limit_event line decodes to the subscription fact: the event type and its window', () => {
+    // The line envelope is the recorded `system`-family shape (its recorded
+    // sibling: `api_retry`); the credentialed recorder run stamps the real
+    // one into native-success-turn.ndjson.
+    const line = decodeClaudeLine({
+      type: 'system',
+      subtype: 'rate_limit_event',
+      rateLimitType: 'five_hour',
+      session_id: 'c85d41c3-8312-4e96-b944-e30113b73759',
+    })
+
+    expect(line).toEqual({ kind: 'rate-limit-event', window: 'five_hour' })
+  })
+
+  test('the window passes through as a string, never enumerated — other plans carry other windows', () => {
+    const weekly = decodeClaudeLine({ type: 'system', subtype: 'rate_limit_event', rateLimitType: 'weekly' })
+
+    expect(weekly).toEqual({ kind: 'rate-limit-event', window: 'weekly' })
+  })
+
+  test('a stream without one stays valid — the fact is optional evidence, never a gate', () => {
+    expect(decoded('success-turn.ndjson').some((line) => line?.kind === 'rate-limit-event')).toBe(false)
+    expect(decoded('auth-error-turn.ndjson').some((line) => line?.kind === 'rate-limit-event')).toBe(false)
+  })
+
+  test('neighbouring system subtypes the decoder does not name still skip', () => {
+    // The CLI's own system family is wider than this contract: `api_retry`
+    // and `rate_limit_info` are real subtypes the pipeline reads no facts
+    // from, so they skip like every unrecognized shape.
+    expect(decodeClaudeLine({ type: 'system', subtype: 'api_retry', attempt: 1, error_status: 401 })).toBeNull()
+    expect(decodeClaudeLine({ type: 'system', subtype: 'rate_limit_info' })).toBeNull()
+  })
+
+  test('the <synthetic> model id in assistant lines lands nowhere — the names-only rule holds', () => {
+    // Recorded on the native path: an auth-failure turn's assistant line
+    // carries `model: "<synthetic>"` beside its text content. The assistant
+    // schema has nowhere for a model id to land, so nothing of it survives.
+    const line = decodeClaudeLine({
+      type: 'assistant',
+      message: { model: '<synthetic>', content: [{ type: 'text', text: 'Not logged in · Please run /login' }] },
+    })
+
+    expect(line).toEqual({ kind: 'assistant', tools: [] })
+    expect(JSON.stringify(line)).not.toContain('<synthetic>')
+  })
+})
+
 describe('buildClaudeArgv', () => {
   test('every invocation carries the determinism, output and permission flags', () => {
     const { argv } = buildClaudeArgv({ prompt: 'do the work' }, KNOBS, silent)

@@ -40,9 +40,9 @@ refuses, and its guard-wording task (2.5) edits text that revision owns.
 
 ## 3. Contract: the rate-limit signature (design D4)
 
-- [ ] 3.1 Tests first in `tests/opencode-agent/claude-contract.test.ts`: a `rate_limit_event` line decodes to an optional fact (type + window string), absent stays valid, unrecognized subtypes skip; the `<synthetic>` model id in assistant lines lands nowhere (names-only rule holds).
+- [x] 3.1 Tests first in `tests/opencode-agent/claude-contract.test.ts`: a `rate_limit_event` line decodes to an optional fact (type + window string), absent stays valid, unrecognized subtypes skip; the `<synthetic>` model id in assistant lines lands nowhere (names-only rule holds).
   Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (red)
-- [ ] 3.2 Implement the optional schema in `claude-contract.ts`.
+- [x] 3.2 Implement the optional schema in `claude-contract.ts`.
   Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (green)
 
 ## 4. Recorder native legs (design D5)

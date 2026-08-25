@@ -55,6 +55,10 @@ export const claudeTracker = (log: Logger): ProgressTracker => {
         state.lastAction = `claude: ${line.tool ?? 'streaming'}`
         return
       }
+      // The subscription rate-limit fact is recorder evidence, never a
+      // progress or budget input (design D4) — decoded so the corpus can pin
+      // it, ignored everywhere the pipeline acts.
+      if (line.kind === 'rate-limit-event') return
       state.lastAction = 'claude: turn result'
       log.info({ tokens: line.usage.total }, 'claude: turn result')
     },
