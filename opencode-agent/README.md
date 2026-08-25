@@ -2038,6 +2038,37 @@ Nothing to configure for `GITHUB_TOKEN` or `GITHUB_REPOSITORY` — see
 
 The workflow lives at `.github/workflows/agent-pipeline.yml`.
 
+### Switching the model backend to the claude CLI
+
+No workflow edit — the workflow on this branch reads the variable and does the
+rest: installs the pinned `@anthropic-ai/claude-code` CLI only when the backend
+is selected, and forwards the gateway credentials to the job only when it is
+not. To switch (Settings → Secrets and variables → Actions):
+
+1. **Variables** — set `AGENT_BACKEND` to `claude`. Unset or empty is the
+   default `opencode` route; clearing the variable switches back with the
+   gateway secrets untouched.
+2. **Secrets** — set exactly one Anthropic credential. The spelling selects the
+   invocation profile; there is no separate profile knob. `ANTHROPIC_API_KEY`
+   runs the **bare** profile (per-token Console billing);
+   `CLAUDE_CODE_OAUTH_TOKEN` runs the **native** profile (Pro/Max/Team/
+   Enterprise subscription billing, five-hour windows). Both set fails job
+   startup with `CLAUDE_CREDENTIALS`; neither set fails naming both.
+3. `LLM_MODEL` must name a model the CLI recognizes — `claude-sonnet-5`, say
+   (a `provider/` prefix is stripped). An unrecognized name fails the first
+   turn loudly (`CLAUDE_EXIT`), not config load.
+4. `LLM_API_KEY` and `LLM_BASE_URL` can stay exactly as they are: the workflow
+   forwards both empty on the claude route, and the route's guard never sees
+   them.
+5. `LLM_PROVIDER` and the `AGENT_MODEL_*` overrides are unused here — the
+   claude route skips the models.dev catalogue read. `LLM_MODEL_LIGHT` and
+   `AGENT_EFFORT_PLAN` / `AGENT_EFFORT_BUILD` still apply, per profile.
+
+Read [Backend selection](#backend-selection-the-claude-cli-route) before
+pointing a credential at it — the route's trade-offs (no retry layer, the
+`/review` residual, the credential readable by the CLI's own `Bash` children)
+are operator-facing decisions, not footnotes.
+
 ### The fallback comment for a job that never spoke
 
 The workflow posts an "Agent job did not finish" comment saying the issue state
