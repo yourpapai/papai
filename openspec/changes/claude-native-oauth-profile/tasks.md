@@ -59,9 +59,9 @@ refuses, and its guard-wording task (2.5) edits text that revision owns.
 
 ## 6. Documentation
 
-- [ ] 6.1 `opencode-agent/README.md`: the backend-selection section names the two profiles and their selection rule (the spelling, not a knob), the billing trade-offs (Console per-token vs subscription five-hour windows; quota exhaustion is a turn failure with time-based recovery), the built-in-skills residual (~1.5k tokens, CLI-shipped), and the keychain non-interference fact.
+- [x] 6.1 `opencode-agent/README.md`: the backend-selection section names the two profiles and their selection rule (the spelling, not a knob), the billing trade-offs (Console per-token vs subscription five-hour windows; quota exhaustion is a turn failure with time-based recovery), the built-in-skills residual (~1.5k tokens, CLI-shipped), and the keychain non-interference fact.
   Verify: `bun test tests/opencode-agent/workflow.test.ts && bun run format:check`
-- [ ] 6.2 `opencode-agent/CLAUDE.md`: one route-rule line — OAuth spelling = native profile, neutralization flags mandatory, census pins are load-bearing, `apiKeySource` is not the native proof.
+- [x] 6.2 `opencode-agent/CLAUDE.md`: one route-rule line — OAuth spelling = native profile, neutralization flags mandatory, census pins are load-bearing, `apiKeySource` is not the native proof.
   Verify: `bun run format:check`
 
 ## 7. Pre-merge verification

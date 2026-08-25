@@ -128,10 +128,13 @@ findings: `ROADMAP.md`.
   running a turn actually needs rather than restating what an agent is.
   **Claude (`AGENT_BACKEND=claude`):** the same decomposition one route over —
   `src/claude-contract.ts` (what the CLI says: the NDJSON line schemas recorded
-  in `tests/opencode-agent/fixtures/claude-cli/`, plus the argv builder with the
-  MAX_ARG_STRLEN refusal), `src/claude-connect.ts` (how it is started and
-  addressed: detached group spawn, the one-credential child env, the job-scoped
-  config dir, the SIGTERM→grace→SIGKILL group kill), `src/claude-adapter.ts`
+  in `tests/opencode-agent/fixtures/claude-cli/`) and `src/claude-argv.ts`
+  (what it is asked: the argv builder with the invocation profile and the
+  MAX_ARG_STRLEN refusal), `src/claude-config-dir.ts` (the job-scoped
+  filesystem: the config dir and the native profile's empty-MCP document),
+  `src/claude-connect.ts` (how it is started and addressed: detached group
+  spawn, the one-credential child env, the SIGTERM→grace→SIGKILL group kill),
+  `src/claude-adapter.ts`
   (the session: `--resume` continuity, result-line resolution, tokens read
   before teardown), and `src/claude-progress.ts` (names-only progress with the
   stall watcher wired but no-op). The seam itself is `src/agent-session.ts`'s
@@ -140,23 +143,30 @@ findings: `ROADMAP.md`.
   import changed.
 - **Backend selection is one job-wide knob, and the routes do not mix.**
   `AGENT_BACKEND=opencode|claude` (default `opencode`, unset/empty is the
-  default) is read before the gateway block; the claude route demands the
-  `ANTHROPIC_API_KEY` credential and refuses the OAuth spelling outright
-  (`CLAUDE_CREDENTIALS` failure code, citing the recording: `--bare` has no
-  carrier for it — the env spelling is never read, and the `apiKeyHelper`
-  mechanism that loads it cannot authenticate OAuth to the API; no credential
-  file is ever materialized, and the recorder's dummy-helper leg is the
-  standing pin), refuses a set `LLM_API_KEY` outright (`LLM_CREDENTIALS`),
-  makes the gateway reads optional-empty, and crosses the model knobs to
-  `claude-adapter.ts` as plain values — never the `OpenAiSettings` object.
-  `contain()` starts no provider proxy on the claude route (`Contained.proxy`
-  is nullable; `index.ts` gates the one teardown call site), and `runCli`
-  skips the models.dev catalogue read there. Nothing above the seam — phases,
-  budgets, guardrails, the state machine, feedback — knows which backend is
-  running. The route's trade-offs (no retry layer, inert stall knob,
-  killed-turn under-count, the `/review` residual, the credential-in-child-env
-  asymmetry) are operator-facing and documented in `README.md`'s _Backend
-  selection_ section, not re-derived here.
+  default) is read before the gateway block; the claude route demands exactly
+  one Anthropic credential and the **spelling selects the invocation profile**
+  (`CLAUDE_CREDENTIALS` failure code on both-set and neither-set):
+  `ANTHROPIC_API_KEY` runs the bare profile (`--bare`, API key on the child
+  env, byte-identical to the original route), `CLAUDE_CODE_OAUTH_TOKEN` runs
+  the native profile — no `--bare`, `--setting-sources ''` plus
+  `--strict-mcp-config --mcp-config <empty>` **mandatory on every
+  invocation**, the token on the child env. Route rule: the census pins
+  (`mcp_servers: []`, built-ins-only skills, no memory-file row) are
+  load-bearing — a CLI pin move must re-answer them at zero spend before any
+  credentialed turn — and `apiKeySource` is **not** the native proof (it
+  reads `none` on that path); the proof is the `rate_limit_event`
+  five-hour signature. The route refuses a set `LLM_API_KEY` outright
+  (`LLM_CREDENTIALS`), makes the gateway reads optional-empty, and crosses
+  the model knobs to `claude-adapter.ts` as plain values — never the
+  `OpenAiSettings` object. `contain()` starts no provider proxy on the
+  claude route (`Contained.proxy` is nullable; `index.ts` gates the one
+  teardown call site), and `runCli` skips the models.dev catalogue read
+  there. Nothing above the seam — phases, budgets, guardrails, the state
+  machine, feedback — knows which backend is running. The route's trade-offs
+  (no retry layer, inert stall knob, killed-turn under-count, the `/review`
+  residual, the credential-in-child-env asymmetry) are operator-facing and
+  documented in `README.md`'s _Backend selection_ section, not re-derived
+  here.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
   `CheckRunner`, `RunReview`, `AgentSession` (aliased `OpenCodeAgent`),
   `ReadSkillFile`).

@@ -1587,8 +1587,8 @@ cannot drift.
 | `LLM_API_KEY`                              | claude route: refused; otherwise yes | —                                                                               | Model credentials for the OpenAI-compatible gateway                                                                                                                                                                                                                                       |
 | `LLM_MODEL`                                | yes                                  | —                                                                               | Model name, e.g. `gpt-5` on the gateway route, `claude-sonnet-5` on the claude route (a `provider/` prefix is stripped)                                                                                                                                                                   |
 | `LLM_BASE_URL`                             | claude route: unused; otherwise yes  | —                                                                               | Any OpenAI-compatible endpoint; never reaches the claude CLI's environment                                                                                                                                                                                                                |
-| `ANTHROPIC_API_KEY`                        | claude route: required               | —                                                                               | Secret. Anthropic Console API key — the route's sole accepted credential (Commercial Terms, predictable per-token billing)                                                                                                                                                                |
-| `CLAUDE_CODE_OAUTH_TOKEN`                  | claude route: refused                | —                                                                               | Secret. Subscription OAuth token — refused at startup with the recorded reason: `--bare` has no carrier for it; see [Backend selection](#backend-selection-the-claude-cli-route)                                                                                                          |
+| `ANTHROPIC_API_KEY`                        | claude route: one of two             | —                                                                               | Secret. Anthropic Console API key — selects the **bare** profile (Commercial Terms, predictable per-token billing)                                                                                                                                                                        |
+| `CLAUDE_CODE_OAUTH_TOKEN`                  | claude route: one of two             | —                                                                               | Secret. Subscription OAuth token — selects the **native** profile (Pro/Max/Team/Enterprise subscription billing, five-hour windows); see [Backend selection](#backend-selection-the-claude-cli-route)                                                                                     |
 | `LLM_PROVIDER`                             | no                                   | `openai`                                                                        | models.dev id `LLM_MODEL` resolves under; see below                                                                                                                                                                                                                                       |
 | `GITHUB_TOKEN`                             | no                                   | the job's own `secrets.GITHUB_TOKEN`                                            | Comments, branches, pull requests; see below                                                                                                                                                                                                                                              |
 | `GITHUB_REPOSITORY`                        | no                                   | the job's own `owner/repo`                                                      | `owner/repo`; see below                                                                                                                                                                                                                                                                   |
@@ -1630,17 +1630,34 @@ cannot drift.
 
 `AGENT_BACKEND=claude` points every model turn of the job at the official
 `claude` CLI instead of the headless OpenCode server: one `claude -p` process
-per turn, `--bare`, pinned per-profile `--allowedTools` allowlists under
+per turn, pinned per-profile `--allowedTools` allowlists under
 `--permission-mode default`, the prompt on stdin, and the session chained
 through `--resume`. The workflow installs the CLI at one pinned exact version —
 **`@anthropic-ai/claude-code@2.1.239`** — only when the backend is selected;
-the default route is byte-identical to the pre-knob pipeline. The route's
-credential is `ANTHROPIC_API_KEY` alone: a set `CLAUDE_CODE_OAUTH_TOKEN` fails
-job startup loudly with the recorded reason (the last trade-off below), and
-neither set fails naming the API key as the accepted spelling. A set
-`LLM_API_KEY` is refused outright on this route — with no provider proxy in
-front of the review loop's `opencode run` children, a present gateway key
-would reach a subprocess whose children the model controls.
+the default route is byte-identical to the pre-knob pipeline.
+
+The route runs **one of two invocation profiles, selected by which credential
+secret is set — the spelling, not a knob** (there is no `AGENT_CLAUDE_PROFILE`;
+two switches for one fork would admit nonsense states the guard would then
+have to refuse):
+
+- **`ANTHROPIC_API_KEY` → the bare profile.** Every invocation carries
+  `--bare`, the API key rides the child environment, and the shape is
+  byte-identical to the route's original form. Per-token Console billing.
+- **`CLAUDE_CODE_OAUTH_TOKEN` → the native profile.** No `--bare`; every
+  invocation carries `--setting-sources ''` plus `--strict-mcp-config
+--mcp-config <an empty JSON document>` — the neutralization pair that keeps
+  repository state (`.mcp.json` auto-connect, repository skill discovery,
+  settings files) out of the job — and the OAuth token rides the child
+  environment as the CLI's native path expects. Subscription billing, and
+  **supported only as far as the recorder has proven it**: until a
+  credentialed run has landed the `rate_limit_event` five-hour signature on
+  the pinned CLI version, treat the profile as unproven.
+
+Exactly one spelling may be set — both set fails at startup, neither set fails
+naming both — and a set `LLM_API_KEY` is refused outright on this route: with
+no provider proxy in front of the review loop's `opencode run` children, a
+present gateway key would reach a subprocess whose children the model controls.
 
 The route's trade-offs, so an operator sees them before choosing:
 
@@ -1648,6 +1665,14 @@ The route's trade-offs, so an operator sees them before choosing:
   code, so it treats every exit as a verdict: a transient provider wave fails
   the turn (`CLAUDE_EXIT`), the phase parks `FAILED`, and a human `/retry`
   resumes it. Whatever the CLI absorbs internally is all there is.
+- **Billing follows the spelling — Console per-token, or subscription
+  five-hour windows.** The API key bills predictably per token under the
+  Commercial Terms; the OAuth token bills against the subscription's rate
+  limits, which arrive in five-hour windows. A quota exhausted mid-job is a
+  **turn failure** under the same families (`CLAUDE_RESULT`/`CLAUDE_EXIT`),
+  not a pipeline state — there is deliberately no retry or queueing around
+  the window, and the failure comment's `/retry` advice is time-based
+  recovery: wait out the window, then retry.
 - **`AGENT_STALL_TIMEOUT_MS` is inert.** The mid-turn stall watcher's second
   condition — retry evidence accumulated since the last progress — is an
   OpenCode event-stream fact with no analog in a CLI child, and synthesizing
@@ -1666,26 +1691,31 @@ The route's trade-offs, so an operator sees them before choosing:
   CLI cannot authenticate without the credential in its environment, and every
   `Bash` tool child inherits that environment — so a prompt-injected build turn
   can exfiltrate it with one `env | curl`. Unavoidable under first-party-CLI
-  exclusivity, and part of why the route's credential is the revocable,
-  spend-capped Console API key rather than a subscription token.
+  exclusivity, unchanged by the profile split (the OAuth token has exactly the
+  same residual), and part of why the bare profile's credential is the
+  revocable, spend-capped Console API key — a subscription token spent here
+  draws on the operator's own plan.
 - **The CLI is this route's model oracle.** An `LLM_MODEL` value the CLI does
   not recognize fails the first turn loudly (`CLAUDE_EXIT` with a redacted
   stderr tail) rather than at config load.
-- **OAuth has no carrier on `--bare` — recorded, and refused at startup.** The
-  pinned CLI's own `--bare` help states that under `--bare`, "Anthropic auth is
-  strictly `ANTHROPIC_API_KEY` or apiKeyHelper … (OAuth and keychain are never
-  read)", and the credentialed recording on 2026-08-25 (CLI 2.1.239, a token
-  proven valid on the CLI's native path) settled both halves: the environment
-  spelling is never read (`apiKeySource: "none"` with
-  `CLAUDE_CODE_OAUTH_TOKEN` set), and while the CLI's `apiKeyHelper` mechanism
-  does load the token (`apiKeySource: "apiKeyHelper"`), the API refuses the
-  call with 401 `authentication_failed` — the helper is API-key-shaped. The
-  guard therefore refuses the spelling at startup with exactly that reason
-  instead of letting a first turn spend model budget relearning it, and no
-  credential file is ever materialized. The recorder's dummy-helper leg is the
-  standing pin: it re-asserts both halves at every CLI pin move, and its
-  fixture provenance (`oauth-helper-init.ndjson` and the corpus README,
-  version-stamped) lives under `tests/opencode-agent/fixtures/claude-cli/`.
+- **The native profile keeps the CLI's built-in skills in context (~1.5k
+  tokens, recorded).** `--setting-sources ''` removes repository skill
+  discovery but not the CLI's own shipped skills; the census pins them at
+  ~1.5k tokens (1,469 recorded on 2.1.239). They are CLI-shipped, not
+  repository-controlled — a documented residual, not neutralized.
+- **The env token is authoritative over the local keychain.** The CLI's native
+  path reads `CLAUDE_CODE_OAUTH_TOKEN` from the environment before any local
+  keychain, pinned by the recorder's dummy-token leg: a deliberately invalid
+  token fails fast with the recorded 401 `api_error` shape rather than
+  succeeding through whatever login the machine happens to hold — a local
+  recording cannot silently authenticate through the operator's own
+  credentials.
+- **The OAuth-over-helper dead end is recorded, not live.** The pinned CLI's
+  `--bare` never reads the env token, and its `apiKeyHelper` mechanism loads
+  the token but the API refuses the call (401 `authentication_failed`,
+  recorded on 2.1.239 and kept as the `oauth-helper-init.ndjson` provenance).
+  No credential file is ever materialized on either profile; the recorder's
+  dummy-helper leg re-asserts the dead end at every CLI pin move.
 
 The claude fixtures and their provenance live under
 `tests/opencode-agent/fixtures/claude-cli/`; the recorder is the only writer.
