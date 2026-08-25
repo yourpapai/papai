@@ -16,6 +16,7 @@
     "!plugins/task-provider-*/**/index.ts",
     "!plugins/task-provider-*/**/constants.ts",
     "!plugins/task-provider-*/**/client.ts",
+    "!plugins/task-provider-kaneo/auto-provision.ts",
     "src/errors.ts",
     "src/config.ts",
     "src/memory.ts",

@@ -12,12 +12,12 @@ import { isBaselineMap } from '../../../scripts/mutation/baseline.js'
 import type { PerFileScore } from '../../../scripts/mutation/baseline.js'
 import {
   changedFilesRun,
-  isGeneratedSourceFile,
   parseChangedFilesCliArgs,
   selectChangedMutationTargets,
   type ChangedFilesDeps,
   type ChangedFilesRunDeps,
 } from '../../../scripts/mutation/changed-files.js'
+import { isGeneratedSourceFile, isInstrumentationIncompatibleFile } from '../../../scripts/mutation/exclusions.js'
 import { resolveChangedFilesGates, resolveErroredGate } from '../../../scripts/mutation/gates.js'
 import type { GateInput } from '../../../scripts/mutation/gates.js'
 import type { IncrementalDeps, IncrementalPlan } from '../../../scripts/mutation/incremental-run.js'
@@ -109,6 +109,21 @@ describe('selectChangedMutationTargets', () => {
     expect(result).toEqual(['src/analytics/tool-slug-generation.ts'])
   })
 
+  test('drops the kaneo auto-provision wrapper whose instrumented source fails the static settlement guard', () => {
+    const deps = makeDeps(
+      ['plugins/task-provider-kaneo/auto-provision.ts', 'plugins/task-provider-kaneo/provision.ts'].join('\n'),
+      () => true,
+    )
+
+    const result = selectChangedMutationTargets({
+      baseRef: 'origin/master',
+      projectRoot: '/repo',
+      deps,
+    })
+
+    expect(result).toEqual(['plugins/task-provider-kaneo/provision.ts'])
+  })
+
   test('returns empty list for empty git output', () => {
     const deps = makeDeps('', () => true)
 
@@ -181,6 +196,14 @@ describe('isGeneratedSourceFile', () => {
     expect(isGeneratedSourceFile('src/analytics/generated.ts')).toBe(false)
     expect(isGeneratedSourceFile('src/generated-slugs/index.ts')).toBe(false)
     expect(isGeneratedSourceFile('src/regenerated/index.ts')).toBe(false)
+  })
+})
+
+describe('isInstrumentationIncompatibleFile', () => {
+  test('matches exactly the kaneo auto-provision wrapper, not its neighbors', () => {
+    expect(isInstrumentationIncompatibleFile('plugins/task-provider-kaneo/auto-provision.ts')).toBe(true)
+    expect(isInstrumentationIncompatibleFile('plugins/task-provider-kaneo/provision.ts')).toBe(false)
+    expect(isInstrumentationIncompatibleFile('src/providers/auto-provision.ts')).toBe(false)
   })
 })
 

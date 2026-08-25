@@ -18,6 +18,26 @@ is built per batch from a coverage map (see `scripts/mutation/coverage-map.ts`)
 and falls back to the companion when no covering test is found. Because the
 test set stays small, the accurate mode is cheap.
 
+## Toolchain: Stryker 10 and the runner patch
+
+The gate runs on `@stryker-mutator/core` 10 (Babel 8 instrumentation, an
+empty-expression mutator, Node ≥ 22 for the CLI host — only test children run
+on Bun, so the machine driving `node_modules/.bin/stryker` needs Node 22+; the
+two mutation jobs in `.github/workflows/ci.yml` pin it via `setup-node`).
+Installed next to it is `@hughescr/stryker-bun-runner@1.3.8`, whose published
+metadata only accepts core 9: a Bun patch
+(`patches/@hughescr%2Fstryker-bun-runner@1.3.8.patch`, registered under
+`patchedDependencies` in `package.json`) widens its peer/dependency ranges to
+`^9.0.0 || ^10.0.0`, applying exactly upstream PR
+hughescr/stryker-bun-runner#1. **Delete the patch** (and the
+`patchedDependencies` entry) when any runner release accepting core 10 ships;
+`patchedDependencies` pins the exact version, so drifting breaks loudly at
+install time. Because the score fingerprint hashes `bun.lock` and
+`package.json`, the bump alone invalidated every carried-over score, and
+`baseline.json` was reseeded from a fresh full v10 run (delete the file, then
+`bun test:mutate --update-baseline`) — floors may sit lower than their v9
+values where the new instrumenter counts more mutants.
+
 ## Commands
 
 ```bash
@@ -134,6 +154,16 @@ the paired test set of _any_ `src/analytics/*` target, landing those targets in 
 never typechecks at test runtime, so the pragma bought nothing here; keeping it off is what makes
 the sandbox byte-faithful for non-target files. `tests/scripts/mutation/stryker-config.test.ts`
 pins the flag so a config regression fails a test instead of the gate.
+
+One target remains scoped out for an instrumentation-shape reason even with that flag off:
+`plugins/task-provider-kaneo/auto-provision.ts` (via a `!` glob here and
+`isInstrumentationIncompatibleFile` in the changed-files gate). Its killing test
+`tests/analytics/provider-request-scope-setup-paths.test.ts` reads the impl's source text and
+regex-checks that every `runWithProviderRequestScope` call site settles; the file's two call sites
+are bare arrow-tail delegations, and Stryker 10's Babel 8 instrumenter reprints them so the
+**unmutated** instrumented copy already fails the guard — every paired run lands in `errored`
+instead of producing a score. The guard is worth more than a mutation score on a 14-line
+delegation wrapper whose callees (`provision.ts`) stay in scope.
 
 ## Incremental measurement (carried-over scores)
 

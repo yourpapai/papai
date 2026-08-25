@@ -25,7 +25,9 @@ import { ensurePrivateDependencyCacheRoot, pruneDependencyCacheEntries } from '.
 import {
   dependencySnapshotKey,
   installStagedDependencies,
+  loadPatchedDependencyFiles,
   loadStoryWorkspaceManifests,
+  type StagedPatchFile,
   type StoryDependencyInstallerOptions,
   type StoryDependencyPlatform,
   type StoryWorkspaceManifest,
@@ -191,11 +193,12 @@ async function createStagingEntry(
   packageBytes: Uint8Array,
   lockBytes: Uint8Array,
   workspaceManifests: readonly StoryWorkspaceManifest[],
+  patchFiles: readonly StagedPatchFile[],
   expected: Readonly<{ key: string; bunVersion: string }>,
   deps: Dependencies,
   platform: StoryDependencyPlatform,
 ): Promise<void> {
-  await installStagedDependencies(staging, packageBytes, lockBytes, workspaceManifests, deps, platform)
+  await installStagedDependencies(staging, packageBytes, lockBytes, workspaceManifests, patchFiles, deps, platform)
   const nodeModules = path.join(staging, 'node_modules')
   const treeHash = await hashDependencyTree(nodeModules, deps)
   const manifest: EntryManifest = { version: 2, ...expected, treeHash }
@@ -210,11 +213,19 @@ async function acquireSnapshotEntry(options: SnapshotOptions, deps: Dependencies
   )
   const lockBytes = await safeReadDependencyFile(path.join(options.projectRoot, 'bun.lock'), 'bun.lock', deps)
   const workspaceManifests = await loadStoryWorkspaceManifests(options.projectRoot, packageBytes, deps)
+  const patchFiles = await loadPatchedDependencyFiles(options.projectRoot, packageBytes, deps)
   const platform = options.platform ?? {
     os: process.platform === 'win32' ? 'windows' : process.platform,
     cpu: process.arch,
   }
-  const key = dependencySnapshotKey(packageBytes, lockBytes, options.bunVersion, workspaceManifests, platform)
+  const key = dependencySnapshotKey(
+    packageBytes,
+    lockBytes,
+    options.bunVersion,
+    workspaceManifests,
+    patchFiles,
+    platform,
+  )
   const expected = { key, bunVersion: options.bunVersion }
   const entryRoot = path.join(options.cacheRoot, key)
   await ensurePrivateDependencyCacheRoot(options.cacheRoot, deps)
@@ -227,7 +238,7 @@ async function acquireSnapshotEntry(options: SnapshotOptions, deps: Dependencies
   await deps.mkdir(staging, { recursive: true, mode: 0o700 })
   let published = false
   try {
-    await createStagingEntry(staging, packageBytes, lockBytes, workspaceManifests, expected, deps, platform)
+    await createStagingEntry(staging, packageBytes, lockBytes, workspaceManifests, patchFiles, expected, deps, platform)
     await sealDependencyCacheTree(staging, deps)
     await verifyEntry(staging, expected, deps, { fingerprint: true })
     try {
