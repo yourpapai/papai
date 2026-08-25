@@ -529,6 +529,8 @@ bun run test:show 3    # one failure's full diagnostic
 bun run test:log expect  # filter the last run's log
 bun run test:affected  # only the tests a change can reach
 bun run test:audit  # read-only test-fragmentation report -> reports/test-audit/fragmentation.json
+bun run test:benchmark  # paired-arm consolidation speed benchmark -> reports/test-audit/benchmark.json
+bun run test:benchmark -- --project  # join benchmark + audit into a savings projection
 bun run test:raw   # unwrapped `bun test --parallel`, writes no report
 bun test:serial    # serial run, for debugging isolation-sensitive failures
 bun test:client
