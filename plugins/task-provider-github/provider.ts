@@ -5,6 +5,7 @@
 
 import type { AppError } from 'papai/plugin-types'
 import type {
+  Activity,
   Comment,
   Label,
   ListTasksParams,
@@ -22,12 +23,15 @@ import { classifyGitHubError, GitHubClassifiedError } from './classify-error.js'
 import type { GitHubConfig } from './client.js'
 import { GITHUB_CAPABILITIES, GITHUB_TRAITS } from './constants.js'
 import { normalizeGitHubDueDateInput, normalizeGitHubListTaskParams } from './due-date.js'
+import { createGitHubIdentityResolver } from './identity-resolver.js'
+import { githubListTaskEvents } from './operations/activities.js'
 import {
   githubCreateTaskComment,
   githubDeleteTaskComment,
   githubListTaskComments,
   githubUpdateTaskComment,
 } from './operations/comments.js'
+import { githubCountTasks } from './operations/count.js'
 import {
   githubAddTaskLabels,
   githubCreateLabel,
@@ -57,9 +61,11 @@ export class GitHubProvider implements TaskProvider {
   readonly capabilities = GITHUB_CAPABILITIES
   readonly traits = GITHUB_TRAITS
   readonly preferredUserIdentifier = 'login' as const
+  readonly identityResolver
 
   constructor(private readonly config: GitHubConfig) {
     log.debug({ repo: config.repo }, 'GitHubProvider created')
+    this.identityResolver = createGitHubIdentityResolver(this.config)
   }
 
   createTask(params: {
@@ -120,6 +126,25 @@ export class GitHubProvider implements TaskProvider {
     offset?: number
   }): Promise<TaskSearchResult[]> {
     return githubSearchTasks(this.config, params)
+  }
+
+  getTaskHistory(
+    taskId: string,
+    params?: {
+      categories?: string[]
+      limit?: number
+      offset?: number
+      reverse?: boolean
+      start?: string
+      end?: string
+      author?: string
+    },
+  ): Promise<Activity[]> {
+    return githubListTaskEvents(this.config, taskId, params)
+  }
+
+  countTasks(params: { query: string; projectId?: string }): Promise<number> {
+    return githubCountTasks(this.config, params)
   }
 
   getProject(projectId: string): Promise<Project> {

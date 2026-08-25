@@ -29,7 +29,7 @@ describe('task-provider-github manifest', () => {
     expect(manifest.permissions).toEqual(['provider.task', 'identity'])
     expect(manifest.contributes.taskProviderTypes).toEqual(['github'])
   })
-  test('declares exactly the eleven session-1 + comment/label capabilities', () => {
+  test('declares exactly the thirteen session-1+2 + activities/count capabilities', () => {
     const manifest = pluginManifestSchema.parse(raw)
     expect(manifest.providerCapabilities).toEqual([
       'projects.list',
@@ -43,6 +43,8 @@ describe('task-provider-github manifest', () => {
       'labels.update',
       'labels.delete',
       'labels.assign',
+      'activities.read',
+      'tasks.count',
     ])
   })
   test('declares instance-scoped repo (required) and baseUrl (optional)', () => {

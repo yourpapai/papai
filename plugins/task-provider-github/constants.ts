@@ -20,6 +20,8 @@ export const GITHUB_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCapa
   'labels.update',
   'labels.delete',
   'labels.assign',
+  'activities.read',
+  'tasks.count',
 ])
 
 /** GitHub Issues carry no provider-specific behavioral traits in session 1. */
