@@ -7,141 +7,55 @@ See LICENSE in the project root for details.
 
 ## Context
 
-The parent change `build-claude-code-cli-as-a-selectable-model-backend-in-opencode`
-landed the claude route: guard, decoders, argv builder, connect layer, adapter,
-workflow pins. Its credential model injects the chosen spelling into the child
-env. The live probe on pinned CLI 2.1.239 recorded that under `--bare` the env
-OAuth token is never read (`apiKeySource: "none"`) — an OAuth-credentialed turn
-fails `CLAUDE_RESULT`. The parent's README documents this as "one caveat
-pending the credentialed recording". This change resolves the caveat by giving
-the OAuth spelling the CLI's other sanctioned `--bare` carrier: `apiKeyHelper`.
-See proposal.md — Why. The specs' requirements own the behavior contract.
+This change originally proposed delivering the OAuth spelling through the CLI's `apiKeyHelper` mechanism. The apply executed sections 1–4 of that plan (writer, spelling-dependent env, `--settings` argv, recorder proof legs — commits `a8c66…` through `3d3e2fdc8`), and the credentialed recording then settled the question the spec's inversion clause anticipated, with a sharper verdict than anticipated: on the pinned CLI 2.1.239, with a token proven valid on the CLI's native path, the helper **was** consulted (`apiKeySource: "apiKeyHelper"` on the init line) — and the API refused the call (401, `authentication_failed`). The helper is not ignored; it is API-key-shaped. `--bare` reads neither the env token nor OAuth by any path. The original spec's inversion clause (design D5) therefore fires with the recorded amendment: the helper route does not ship, the spelling is refused, and the successor change `claude-native-oauth-profile` re-admits it through the neutralized native profile these same recordings proved. See proposal.md — Why.
 
-Sequencing: this change's apply presupposes the parent change's claude route
-(merged on this branch); its archive presupposes the parent's archive, since
-the spec delta layers over the parent's capability the way
-`opencode-agent-fix-command` layered over `agent-ci-repair`.
+Sequencing unchanged: apply presupposes the parent claude-route change merged on this branch; archive presupposes the parent's archive; the successor applies only after this revision is merged.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- Make `CLAUDE_CODE_OAUTH_TOKEN` able to authenticate a `--bare` turn on the
-  pinned CLI, by mechanism the CLI itself sanctions, proven by a credentialed
-  recording.
-- Keep the API-key spelling byte-identical to today.
-- Keep secret handling (scrub/redaction/teardown) covering the token across
-  the new file carrier.
+- Make a set OAuth spelling fail at startup, citing the recorded reason, instead of buying a first-turn `CLAUDE_RESULT` at model spend.
+- Retire the helper machinery from production while keeping the recordings' load-bearing seams: the optional credential (credentialless boots), the `apiKeySource` decoder fact, the fixture provenance.
+- Leave a standing zero-spend recorder leg that re-answers "can the helper carry OAuth on this CLI?" at every pin move.
 
 **Non-Goals:**
 
-- Moving the API-key spelling onto the helper (no gain; touches a proven path).
-- Claiming a security-boundary change: same-user `Bash` children can read the
-  helper as easily as an env var — the recorded residual stands.
-- Touching the guard, the workflow, phases, budgets, or any papai runtime
-  surface (proposal Non-goals).
+- Any part of the native OAuth profile — that is the successor change, sequenced after this one (proposal Non-goals).
+- Touching the API-key spelling, the argv shape it runs, or the workflow file.
+- Weakening secret handling: the OAuth value stays in the scrub/redaction set while the guard's messages name the variable.
 
 ## Decisions
 
-### D1. The helper is config-dir state, materialized once at adapter boot
+### D1. The guard refuses the spelling outright, with the recorded reason as the message
 
-`claude-connect.ts` owns everything a CLI process sees (env composition, the
-job-scoped `CLAUDE_CONFIG_DIR`). The helper belongs to that surface: a single
-materialization at `createClaudeAgent` boot — when the credential's name is
-`CLAUDE_CODE_OAUTH_TOKEN` — writes into the config dir the CLI's settings file
-naming the helper, before any spawn. No per-turn work; the CLI re-runs the
-helper itself per turn.
-*Alternative*: materialize lazily at first spawn inside `childEnv` — rejected:
-env composition is per-spawn and must stay pure; file state deserves a
-single, testable boot-time step with one failure point named in the error.
+`claudeCredential(env)` becomes: both-set fails, neither-set fails (message now naming the API key as the accepted spelling), and **oauth-set fails** — same `CLAUDE_CREDENTIALS` failure code family, message stating that the token is not necessarily invalid but that this route's `--bare` invocations have no carrier for it, pointing operators with a subscription at the API key (and, once the successor ships, at its native profile). The refusal fires where the guard already fires: ahead of the logger, the scrub, every GitHub call and every spawn. A separate failure code for the oauth-set case is not warranted — one code already distinguishes this guard family from every other startup failure, and the three messages name their trigger.
+*Alternative*: keep admitting the spelling and fail the first turn — the recorded status quo; spends model budget to relearn a settled fact.
 
-### D2. One file carries the token; the settings file carries only a path
+### D2. Retirement keeps the seams the recordings made load-bearing
 
-`settings.json` holds `{"apiKeyHelper": "<configdir>/credential.sh"}` — no
-credential value in it. The helper script embeds the token literally:
+Removed: `claude-credential.ts` (the writer and its refusal), the `--settings` composition in `claude-argv.ts`, the boot-time materialization in `claude-adapter.ts`, and their tests. Kept, each with its recorded reason: the **optional `credential`** (the recorder's auth-error leg boots credentialless — the probe that first exposed this whole finding), the **`apiKeySource` decoder fact** (the init-line shape that pinned "helper loads, `none` for env OAuth"), and the **fixture + README provenance** (`oauth-helper-init.ndjson`). The successor change builds its profile parameter exactly on these seams; removing them would only force it to re-add them.
+*Alternative*: full revert to the parent's shapes — rejected as recorded-fact vandalism: the optional credential and the decoder fact are observations, not helper machinery.
 
-```sh
-#!/bin/sh
-printf '%s' 'sk-ant-oat01-…'
-```
+### D3. The standing negative leg materializes its own dummy helper
 
-mode `0700` (it must execute), settings mode `0600`. The settings file is
-**named on every invocation's argv** as `--settings <path>` — the pinned
-CLI's own `--bare` help reads "Anthropic auth is strictly
-`ANTHROPIC_API_KEY` or apiKeyHelper via `--settings`", so under `--bare` the
-config-dir placement alone is never auto-discovered (the first 5.1 run paid
-for that lesson: the pair present but unnamed is the un-credentialed
-`CLAUDE_RESULT` shape). `printf` over `echo` so no trailing newline rides
-along until the recording says one is wanted — the exact accepted shape
-(newline tolerance, per-turn invocation) is a recorded fact, not a guess.
-The writer refuses a token value containing a single quote or newline at
-write time with a loud named error rather than emitting a broken script.
-*Alternative*: helper reads a second token file — two secret files, same
-exposure, no gain.
+The recorder's OAuth legs stop driving the adapter's (now nonexistent) helper path and become self-contained: the leg writes its own dummy token behind an `apiKeyHelper` shape into a throwaway config dir, names it via `--settings` on a `--bare` invocation, and asserts the recorded two-part outcome — init line reporting the helper as source, turn ending in the API-refusal shape. Invalid token ⇒ zero model spend (the recorded fast-fail: ~4 s, synthetic assistant message, `api_error` result). This pins the **CLI's** behavior, not ours, which is the point: a pin move that either breaks the helper load or makes OAuth-over-helper succeed fails the leg and names the change — the successor's green-path precondition arriving as a loud signal rather than a surprise.
 
-### D3. Env injection becomes spelling-dependent; credential becomes optional
+### D4. Workflow and secrets untouched
 
-`childEnv` keeps name-stripping both Anthropic spellings, then re-adds exactly
-the chosen one **only when it is the API key**. On the OAuth spelling no
-Anthropic value enters any env. Booting with no credential at all stays
-representable (it is the recorder's un-credentialed auth-error leg): the
-adapter's `credential` option becomes optional, absent → no injection, no
-helper. The guard's startup rules are untouched — this is the spawn layer
-only.
+The workflow's `CLAUDE_CODE_OAUTH_TOKEN` forwarding line stays: a set secret now produces a loud startup refusal naming it — the correct operator signal — and workflow edits are maintainer-only by the parent's protected-path rule. The value stays in `pipelineSecrets` so the refusal's own diagnostics and any echoed token remain scrubbed and redacted by value.
 
-### D4. The recorder proves the mechanism; a raw leg captures the init line
+### D5. The successor inherits the recordings, not the machinery
 
-The adapter never surfaces the init line's `apiKeySource`, and should not grow
-a surface just for proof. The recorder, driven with the OAuth token, does two
-things: (a) its existing adapter-driven turns now exercise the helper
-end-to-end (success, resume, adversarial, token accounting), with the
-recording spawn seam asserting the child env holds no Anthropic spelling and
-the config dir holds the two files before the first spawn; (b) one raw
-`rawRun` leg against the same materialized config dir parses the init line
-straight from the stream and records `apiKeySource` into `facts.json`,
-stamping the corpus. The init-line schema in `claude-contract.ts` gains
-`apiKeySource` as an optional decoded fact so the recorded shape is pinned by
-the decoder tests, not just by the fixture's presence.
-
-### D5. Recorded-failure contingency inverts the change
-
-If the credentialed recording shows the helper is not consulted under `--bare`
-on the pinned CLI, the helper route does not ship: the change is revised via
-the update workflow to remove the OAuth spelling from the guard's accepted
-spellings (making `ANTHROPIC_API_KEY` the only claude-route credential), and
-the README caveat resolves to that recorded outcome. The spec already states
-this either-way obligation; tasks keep the recorder run as the gate.
-
-### D6. Workflow untouched
-
-The workflow already forwards `CLAUDE_CODE_OAUTH_TOKEN` on the claude route;
-the pipeline moves it from step env into the helper behind its own scrub. No
-workflow edit, no new pins — the existing forwarding pin covers the spelling.
+`claude-native-oauth-profile` cites this change's recorded facts (native-path success, helper dead end, dummy-token fast-fail) and re-admits the spelling via its native profile. This change must not pre-build profile selection, native argv, or native env rules — the refusal is the honest floor, and each successor decision stays citable to a recording rather than to half-built code left lying in the tree.
 
 ## Risks / Trade-offs
 
-- [Helper ignored under `--bare` on the pinned CLI] → D5 contingency: record
-  first (task 1.x before implementation lands on the route), ship only a
-  proven mechanism; the fallback removal is the recorded outcome, not a
-  failure of the change.
-- [CLI version bump changes helper semantics] → the corpus `VERSION` stamp
-  equals the workflow's install pin by existing test; a pin move forces the
-  recorder re-run that re-proves the helper.
-- [Token embedded in a world-visible tmpdir path] → dir is `mkdtemp` 0700
-  job-scoped, files 0600/0700, teardown removes the dir with the rest of the
-  job's CLI state; same-user readability by the CLI's own children is the
-  already-recorded residual, restated in docs.
-- [Helper stdout shape (trailing newline, quoting) rejected by the CLI] → the
-  writer's strict-value refusal plus the recorded corpus pin the accepted
-  shape; a mismatch surfaces at recording cost, never as a silent auth
-  failure mid-job.
-- [Auth-error recorder leg now authenticates by accident] → the un-credentialed
-  leg boots the adapter with no credential (D3), so no helper exists to
-  consult; the leg keeps producing the real un-credentialed failure shape.
+- [An operator with only a subscription token is locked out until the successor ships] → the refusal message names the recorded reason and the API-key alternative; the successor is scaffolded on the same branch with every credentialed question already answered — the gap is one apply cycle, not a redesign.
+- [Reverting landed code regresses a tested surface] → the retirement tasks are test-first in both directions: the removal suites assert the absent surfaces (no writer import, no `--settings`, no materialization) so a merge mishap fails loudly.
+- [The dummy-helper leg drifts from the CLI's real behavior] → the leg asserts the two recorded observations (helper-source init line, API-refusal result), so drift in either direction — helper stops loading, or OAuth starts succeeding — is the failure the leg exists to raise.
+- [Guard wording rot as the successor lands] → the successor's guard task owns the wording flip; this change's message is written to be superseded, naming the mechanism (no carrier on `--bare`) rather than denying the token's existence.
 
 ## Migration Plan
 
-Nothing to migrate: the OAuth spelling never authenticated a turn, so no
-working setup depends on any prior behavior. Rollback is revert; the API-key
-route and default route are untouched by construction (spelling-gated writes,
-guard unchanged).
+No working setup can regress: the OAuth spelling never completed a turn on this route (the helper attempt is unshipped; the parent's env spelling failed `CLAUDE_RESULT`). Rollback is revert; the API-key route is untouched by construction after the retirement tasks.

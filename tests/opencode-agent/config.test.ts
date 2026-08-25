@@ -340,7 +340,31 @@ describe('AGENT_BACKEND (loadConfig)', () => {
 })
 
 describe('the claude credential guard', () => {
-  test('both credentials set fails, naming both variables and the billing consequence', () => {
+  test('the OAuth spelling alone fails at startup, naming the variable and the recorded no-carrier reason', () => {
+    // The recording on the pinned CLI settled this: --bare never reads the
+    // env token, and the apiKeyHelper mechanism that does load it cannot
+    // authenticate an OAuth token to the API. The guard says at startup what
+    // that recording proved, instead of letting a first turn pay to relearn it.
+    let raised: unknown
+    try {
+      loadConfig({ ...CLAUDE_ENV, CLAUDE_CODE_OAUTH_TOKEN: OAUTH_TOKEN }, '/repo')
+    } catch (error) {
+      raised = error
+    }
+
+    const error = asConfigError(raised)
+    expect(error.code).toBe('CLAUDE_CREDENTIALS')
+    const message = error.message
+    expect(message).toContain('CLAUDE_CODE_OAUTH_TOKEN')
+    // The recorded reason, naming the mechanism — never the token's validity.
+    expect(message).toContain('--bare')
+    expect(message).toContain('not necessarily invalid')
+    expect(message).toContain('apiKeyHelper')
+    // Names, never values.
+    expect(message).not.toContain(OAUTH_TOKEN)
+  })
+
+  test('both credentials set still fails, the message led by the OAuth refusal', () => {
     let raised: unknown
     try {
       loadConfig({ ...CLAUDE_ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY, CLAUDE_CODE_OAUTH_TOKEN: OAUTH_TOKEN }, '/repo')
@@ -353,13 +377,15 @@ describe('the claude credential guard', () => {
     const message = error.message
     expect(message).toContain('ANTHROPIC_API_KEY')
     expect(message).toContain('CLAUDE_CODE_OAUTH_TOKEN')
-    expect(message).toContain('billing')
-    // Names, never values.
+    // The refusal leads: the no-carrier reason is the story, not the billing
+    // consequence that used to (the spelling never boots a turn now).
+    expect(message).toContain('--bare')
+    expect(message).not.toContain('billing')
     expect(message).not.toContain(ANTHROPIC_KEY)
     expect(message).not.toContain(OAUTH_TOKEN)
   })
 
-  test('neither credential set fails, naming both accepted spellings', () => {
+  test('neither credential set fails, naming the API key as the accepted spelling', () => {
     let raised: unknown
     try {
       loadConfig(CLAUDE_ENV, '/repo')
@@ -371,14 +397,20 @@ describe('the claude credential guard', () => {
     expect(error.code).toBe('CLAUDE_CREDENTIALS')
     const message = error.message
     expect(message).toContain('ANTHROPIC_API_KEY')
-    expect(message).toContain('CLAUDE_CODE_OAUTH_TOKEN')
   })
 
   test('the guard fires before the gateway required reads can complain', () => {
     // No `LLM_BASE_URL`, no `LLM_API_KEY`, no Anthropic credential: the
     // failure must be the credential guard's, not a missing-gateway error —
     // on this route the gateway is optional, so its absence is not the story.
-    expect(() => loadConfig(CLAUDE_ENV, '/repo')).toThrow('CLAUDE')
+    let raised: unknown
+    try {
+      loadConfig(CLAUDE_ENV, '/repo')
+    } catch (error) {
+      raised = error
+    }
+
+    expect(asConfigError(raised).code).toBe('CLAUDE_CREDENTIALS')
     expect(() => loadConfig(CLAUDE_ENV, '/repo')).not.toThrow('LLM_BASE_URL')
   })
 
@@ -398,16 +430,10 @@ describe('the claude credential guard', () => {
 })
 
 describe('the claude route config shape', () => {
-  test('the API key spelling loads and carries the chosen credential', () => {
+  test('the API key spelling loads and carries the chosen credential — the sole accepted state', () => {
     const config = loadConfig({ ...CLAUDE_ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY }, '/repo')
 
     expect(config.claudeCredential).toEqual({ name: 'ANTHROPIC_API_KEY', value: ANTHROPIC_KEY })
-  })
-
-  test('the OAuth spelling loads and carries the chosen credential', () => {
-    const config = loadConfig({ ...CLAUDE_ENV, CLAUDE_CODE_OAUTH_TOKEN: OAUTH_TOKEN }, '/repo')
-
-    expect(config.claudeCredential).toEqual({ name: 'CLAUDE_CODE_OAUTH_TOKEN', value: OAUTH_TOKEN })
   })
 
   test('gateway reads are optional-empty: openai keeps its type with empty apiKey and baseUrl', () => {

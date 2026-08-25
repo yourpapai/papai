@@ -7,85 +7,87 @@ See LICENSE in the project root for details.
 
 ## Purpose
 
-Lets the claude backend's OAuth spelling actually authenticate: the subscription
-token is delivered to the pinned CLI through its sanctioned `apiKeyHelper`
-mechanism in the job-scoped config dir, proven by recording, never assumed from
-documentation.
+Owns the claude route's OAuth credential rules as a recorded fact rather than
+an admitted-but-broken spelling: the startup refusal, the no-carrier invariant
+the recordings established, and the standing negative pins that re-assert both
+whenever the pinned CLI moves.
 
 ## ADDED Requirements
 
-### Requirement: The OAuth spelling is delivered through a job-scoped apiKeyHelper
+### Requirement: The OAuth spelling is refused at startup, with the recorded reason
 
-When the claude backend's chosen credential is `CLAUDE_CODE_OAUTH_TOKEN`, the
-pipeline SHALL deliver it to the CLI exclusively through the CLI's
-`apiKeyHelper` mechanism: a helper script that emits the token, plus the
-settings file naming it, both materialized inside the job-scoped config dir
-before the first CLI spawn of the job. The settings file SHALL be mode 0600 and
-the helper script mode 0700 (it must execute), both inside the already
-job-scoped config dir, readable by the job's own user only. The token SHALL NOT appear in any spawned
-process's environment or in any CLI argument on this spelling; the environment
-of a CLI spawn on this spelling SHALL carry no Anthropic credential at all. The
-`ANTHROPIC_API_KEY` spelling is unchanged: it keeps direct environment
-injection and no helper is materialized for it.
+When the claude backend is selected, a set `CLAUDE_CODE_OAUTH_TOKEN` SHALL
+fail job startup loudly — alone or beside a set `ANTHROPIC_API_KEY` — with a
+failure distinguishable by its error code from other startup failures, before
+any CLI process is spawned and before any model spend. The failure message
+SHALL name the variable and state the recorded reason: the token is not
+necessarily invalid — this route's `--bare` invocations have no carrier for
+it (the environment spelling is never read, and the CLI's `apiKeyHelper`
+mechanism, which does load it, cannot authenticate an OAuth token to the
+API). `ANTHROPIC_API_KEY` alone SHALL remain the route's sole accepted
+credential state; the neither-set failure SHALL keep naming the API key as
+the accepted spelling. The guard SHALL NOT fire on the `opencode` route, and
+the gateway-credential refusal (`LLM_API_KEY`) is unchanged.
 
-#### Scenario: OAuth turn spawns with no credential in the environment
+#### Scenario: The OAuth spelling alone fails at startup
 
-- **WHEN** the chosen credential is `CLAUDE_CODE_OAUTH_TOKEN` and a turn spawns the CLI
-- **THEN** the CLI's environment carries neither Anthropic credential spelling, and the argv carries no credential, while the job-scoped config dir holds the helper script (mode 0700) and the settings file naming it (mode 0600)
+- **WHEN** `AGENT_BACKEND=claude` and only `CLAUDE_CODE_OAUTH_TOKEN` is set
+- **THEN** job startup fails naming the variable and the recorded no-carrier reason, under the credential failure code, and no `claude` process is spawned
 
-#### Scenario: API-key turns materialize nothing
+#### Scenario: Both spellings set still fails at startup
 
-- **WHEN** the chosen credential is `ANTHROPIC_API_KEY` and turns spawn the CLI
-- **THEN** the config dir holds no helper script or credential-naming settings, and the environment carries exactly the API key as before
+- **WHEN** `AGENT_BACKEND=claude` and both credentials are set
+- **THEN** job startup fails naming both variables before any spawn — the OAuth spelling is refused on this route whatever accompanies it
 
-#### Scenario: No helper state survives a job
+#### Scenario: The API-key state and the opencode route are unaffected
 
-- **WHEN** a job that materialized the helper ends and a later job starts on the same issue
-- **THEN** the later job's config dir contains no helper or settings from the earlier job, exactly as the route's clean-state rule already requires
+- **WHEN** the claude backend runs with only `ANTHROPIC_API_KEY`, or any job runs with `AGENT_BACKEND` unset or `opencode`
+- **THEN** startup proceeds exactly as the parent change's guard prescribes, and the OAuth refusal neither fires nor rewrites the environment
 
-### Requirement: The helper mechanism is proven by recording on the pinned CLI
+### Requirement: The route ships no credential-file carrier
 
-The claim that `apiKeyHelper` authenticates under `--bare` on the pinned CLI
-version SHALL be established by a credentialed recording, not assumed from
-documentation: the recorder, driven with the OAuth token as its chosen
-credential, SHALL record a successful turn whose init line reports a
-non-`none` credential source, and the recorded corpus SHALL pin the init-line
-shape that carries it. Until that recording exists, no job on the OAuth
-spelling may be considered supported. If the recording demonstrates the helper
-is not consulted under `--bare` on the pinned version, the change SHALL NOT
-ship the helper route; the recorded outcome then removes the OAuth spelling
-from the guard's accepted spellings instead, and this change's artifacts are
-revised through the update workflow to say so.
+The claude route SHALL NOT materialize credential-bearing files into the
+job-scoped config dir: no helper script, no settings file naming one, and no
+invocation SHALL carry `--settings` naming such a file. The route's only
+credential carrier is the spawned CLI's environment carrying exactly the
+API key on the accepted spelling. The session's credential option SHALL
+remain optional, so the recorder can boot a deliberately un-credentialed
+adapter for its auth-error leg — an absent credential spawns carrying no
+Anthropic value anywhere. The init line's credential-source fact SHALL
+remain a decoded, recorded shape (it pinned the finding), read by the
+recorder, ignored by the turn pipeline.
 
-#### Scenario: The recorder pins the helper authenticates
+#### Scenario: No credential files ride a job
 
-- **WHEN** the credentialed recorder runs with `CLAUDE_CODE_OAUTH_TOKEN` as its credential on the pinned CLI
-- **THEN** a turn resolves with real reply text, its init line's credential source is recorded as active (not `none`), and the corpus fixture carries that init-line shape stamped with the CLI version
+- **WHEN** a job runs the claude backend with the accepted API-key spelling, from boot through teardown
+- **THEN** the job-scoped config dir never contains a credential script or a settings file naming one, and no invocation's arguments carry `--settings`
 
-#### Scenario: Documentation reflects the recorded outcome
+#### Scenario: The credentialless boot stays representable
 
-- **WHEN** the recording completes either way
-- **THEN** the operator documentation describes the OAuth spelling by its recorded mechanism — helper-carried and proven, or removed — with no caveat left pending
+- **WHEN** the recorder boots the adapter with no credential
+- **THEN** the boot and its spawns carry no Anthropic credential in any environment, argument, or file, and the un-credentialed turn fails with the recorded auth-error shape
 
-### Requirement: Secret-handling rules hold for the file-borne token
+### Requirement: The recorded negative stays pinned across CLI pin moves
 
-The OAuth token value SHALL remain covered by the pipeline's secret handling
-end to end: it joins the scrub set by value, is redacted from any log, state
-block, or transcript entry by value, and never appears in an error message.
-The helper file is an additional carrier of the value inside the job only: it
-SHALL live solely in the job-scoped config dir, which teardown removes with
-the rest of the job's CLI state. Error and log messages about the helper route
-SHALL name variables and file roles, never values. The recorded residual that
-same-user children of the CLI's own `Bash` tool can read the credential is
-acknowledged and unchanged by the carrier move: it is a mechanism change, not
-a security boundary, and the documentation SHALL keep stating it.
+The recorder SHALL carry a standing, un-credentialed negative leg that
+re-asserts the recorded finding at zero model spend: with a deliberately
+invalid token materialized through the CLI's own `apiKeyHelper` shape and
+named via `--settings` on a `--bare` invocation, the leg SHALL observe the
+init line reporting the helper as the credential source and the turn ending
+in the recorded API-refusal shape — helper loaded, OAuth refused. The
+recorded corpus SHALL keep the helper-leg init-line fixture and its
+provenance note stating what was attempted, what loaded, and what the API
+refused, so the dead end is documented by observation rather than folklore.
+A CLI pin move that changes either half (helper no longer loads, or OAuth
+over the helper starts succeeding) SHALL surface as a recorder failure that
+names the change.
 
-#### Scenario: Redaction covers the helper-carried token
+#### Scenario: The dummy-token helper leg re-records the dead end
 
-- **WHEN** stream content or a failure diagnostic on the OAuth spelling would carry the token value
-- **THEN** the transcript and any public log receive a redaction placeholder instead, exactly as for the env-borne spellings
+- **WHEN** the recorder's un-credentialed OAuth leg runs a `--bare` invocation whose only credential is a dummy token behind an `apiKeyHelper` named via `--settings`
+- **THEN** the init line reports the helper as the credential source and the turn fails with the recorded API-refusal shape, and any deviation fails the recorder loudly
 
-#### Scenario: Teardown removes the credential file with the job
+#### Scenario: The provenance fixture stays truthful
 
-- **WHEN** a job on the OAuth spelling tears down
-- **THEN** the config dir that held the helper is removed by the existing teardown path, and no credential file outlives the job
+- **WHEN** the fixture corpus is read
+- **THEN** the helper-leg init-line fixture and its README entry state the recorded outcome — loaded by the CLI, refused by the API — stamped with the CLI version that produced it

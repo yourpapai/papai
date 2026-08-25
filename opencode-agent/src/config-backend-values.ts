@@ -40,44 +40,68 @@ export const backendSelection = (env: Env, key: string): BackendSelection => {
 
 /** The claude route's chosen Anthropic credential, as config carries it. */
 export interface ClaudeCredential {
-  /** The variable the value arrived under — the only name ever logged. */
+  /**
+   * The variable the value arrived under — the only name ever logged. Config
+   * answers `ANTHROPIC_API_KEY` alone (the guard refuses the OAuth
+   * spelling); the OAuth member stays so direct adapter-level tests can pin
+   * the spawn layer's recorded env behaviour for it.
+   */
   readonly name: 'ANTHROPIC_API_KEY' | 'CLAUDE_CODE_OAUTH_TOKEN'
   readonly value: string
 }
 
-/** The failure code of the credential-exclusivity guard (design D5). */
+/** The failure code of the credential guard (design D5; refusal wording per the recording). */
 export const CLAUDE_CREDENTIALS_CODE = 'CLAUDE_CREDENTIALS'
 
 /** The failure code of the claude route's gateway-credential refusal (design D4). */
 export const LLM_CREDENTIALS_CODE = 'LLM_CREDENTIALS'
 
 /**
- * Reads exactly one Anthropic credential on the claude route, or fails loudly.
+ * The recorded no-carrier reason the OAuth refusal states (design D1): the
+ * finding the 2026-08-25 recording settled on the pinned CLI — `--bare` never
+ * reads the environment spelling, and the `apiKeyHelper` mechanism that does
+ * load it cannot authenticate an OAuth token to the API. Shared by the
+ * alone-set and both-set messages so the two cannot drift apart.
+ */
+const OAUTH_NO_CARRIER =
+  'this route has no carrier for it: the token is not necessarily invalid, but --bare invocations never read the ' +
+  "environment spelling, and the CLI's apiKeyHelper mechanism, which does load it, cannot authenticate an OAuth " +
+  'token to the API (recorded on the pinned CLI: the helper loads, the API answers 401)'
+
+/**
+ * Reads the claude route's one accepted credential, or fails loudly.
  *
- * Both set fails because the API key silently wins and switches billing to
- * per-token Console charges; neither set fails because no credential remains.
- * Fired in `loadConfig` ahead of the logger, the scrub, every GitHub call and
- * every spawn — before any model spend by construction — and never on the
- * `opencode` route. Names variables, never values.
+ * The OAuth spelling is refused outright — alone or beside the API key —
+ * saying the recorded reason instead of letting a first turn spend model
+ * budget relearning it; the API key alone is the sole accepted state, and
+ * neither set fails naming it as the accepted spelling. Fired in `loadConfig`
+ * ahead of the logger, the scrub, every GitHub call and every spawn — before
+ * any model spend by construction — and never on the `opencode` route. Names
+ * variables, never values.
  */
 export const claudeCredential = (env: Env): ClaudeCredential => {
   const apiKey = optionalOrNull(env, 'ANTHROPIC_API_KEY')
   const oauth = optionalOrNull(env, 'CLAUDE_CODE_OAUTH_TOKEN')
 
-  if (apiKey !== null && oauth !== null) {
+  if (oauth !== null && apiKey !== null) {
     throw new ConfigError(
-      'Both ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN are set. Exactly one may be: when both are present the ' +
-        'API key silently wins and switches billing to per-token Console charges. Unset one and re-run.',
+      'Both ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN are set, and the OAuth spelling is refused on this route ' +
+        `whatever accompanies it: ${OAUTH_NO_CARRIER}. Unset CLAUDE_CODE_OAUTH_TOKEN and re-run on the API key.`,
+      CLAUDE_CREDENTIALS_CODE,
+    )
+  }
+  if (oauth !== null) {
+    throw new ConfigError(
+      `CLAUDE_CODE_OAUTH_TOKEN is set on AGENT_BACKEND=claude, and ${OAUTH_NO_CARRIER}. ANTHROPIC_API_KEY is this ` +
+        "route's accepted credential; unset the token or set the API key.",
       CLAUDE_CREDENTIALS_CODE,
     )
   }
   if (apiKey !== null) return { name: 'ANTHROPIC_API_KEY', value: apiKey }
-  if (oauth !== null) return { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: oauth }
 
   throw new ConfigError(
-    'AGENT_BACKEND=claude needs exactly one Anthropic credential — ANTHROPIC_API_KEY (the documented default, ' +
-      'per-token Console billing) or CLAUDE_CODE_OAUTH_TOKEN (a Pro/Max/Team/Enterprise subscription) — and neither ' +
-      'is set. No model turn can run.',
+    'AGENT_BACKEND=claude needs the Anthropic credential ANTHROPIC_API_KEY — the accepted spelling on this route, ' +
+      'per-token Console billing — and it is not set. No model turn can run.',
     CLAUDE_CREDENTIALS_CODE,
   )
 }
