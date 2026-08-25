@@ -6,12 +6,12 @@ running the tooling itself.
 
 ## 1. Runner compat patch
 
-- [ ] 1.1 Generate the Bun patch for `@hughescr/stryker-bun-runner@1.3.8` applying
+- [x] 1.1 Generate the Bun patch for `@hughescr/stryker-bun-runner@1.3.8` applying
   upstream PR hughescr/stryker-bun-runner#1's `package.json` edits only (peer
   `@stryker-mutator/core` → `^9.0.0 || ^10.0.0`; dependency `@stryker-mutator/api` →
   `^9.0.0 || ^10.0.0`), with a header comment naming the upstream PR and the deletion
   condition. Verify: `bun install` succeeds with no peer warnings for the runner.
-- [ ] 1.2 Bump `@stryker-mutator/core` to `^10.0.0` in `package.json` devDependencies,
+- [x] 1.2 Bump `@stryker-mutator/core` to `^10.0.0` in `package.json` devDependencies,
   add the `patchedDependencies` entry (exact version `@hughescr/stryker-bun-runner@1.3.8`),
   run `bun install`. Verify: `bun pm ls @stryker-mutator/core` resolves 10.0.0 and
   `bun install` emits no unmet-peer warnings.
