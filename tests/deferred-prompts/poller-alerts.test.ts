@@ -33,6 +33,7 @@ const makeAlert = (): AlertPrompt => ({
   cooldownMinutes: 0,
   executionMetadata: { delivery_brief: '', context_snapshot: null },
   matchedTaskIds: [],
+  taskInstanceId: null,
 })
 
 type AlertEvaluation = Parameters<typeof buildAlertSummary>[0][number]

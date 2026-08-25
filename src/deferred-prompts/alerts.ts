@@ -38,6 +38,7 @@ const toAlertPrompt = (row: AlertPromptRow): AlertPrompt => ({
   cooldownMinutes: row.cooldownMinutes,
   executionMetadata: parseExecutionMetadata(row.executionMetadata),
   matchedTaskIds: parseMatchedTaskIds(row.matchedTaskIds),
+  taskInstanceId: row.taskInstanceId,
 })
 
 // --- CRUD ---
@@ -49,8 +50,9 @@ export const createAlertPrompt = (
   cooldownMinutes?: number,
   executionMetadata?: ExecutionMetadata,
   delivery?: DeferredPromptDeliveryInput,
+  taskInstanceId?: string | null,
 ): AlertPrompt => {
-  log.debug({ userId, cooldownMinutes }, 'createAlertPrompt called')
+  log.debug({ userId, cooldownMinutes, taskInstanceId }, 'createAlertPrompt called')
   const id = crypto.randomUUID()
   const db = getDrizzleDb()
 
@@ -221,6 +223,10 @@ export const getEligibleAlertPrompts = (): AlertPrompt[] => {
     log.debug({ total: rows.length }, 'No eligible alert prompts')
   }
   return eligible.map(toAlertPrompt)
+}
+
+export const cancelActiveAlertsPinnedToInstance = (taskInstanceId: string, configContextId?: string): void => {
+  log.debug({ taskInstanceId, configContextId }, 'cancelActiveAlertsPinnedToInstance called')
 }
 
 export { evaluateCondition, describeCondition } from './condition-eval.js'

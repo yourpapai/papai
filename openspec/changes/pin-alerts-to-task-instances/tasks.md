@@ -11,7 +11,7 @@ Order follows design.md's TDD order of work; every task is test-first (failing t
 
 ## 2. Domain type and persistence helpers
 
-- [ ] 2.1 Extend `tests/deferred-prompts/alerts.test.ts` with failing tests: `createAlertPrompt` persists the pinned id; `toAlertPrompt` round-trips it (both non-null and NULL); `cancelActiveAlertsPinnedToInstance` sets `status='cancelled'` and honors the optional config-context filter. Verify: `bun run test tests/deferred-prompts/alerts.test.ts`
+- [x] 2.1 Extend `tests/deferred-prompts/alerts.test.ts` with failing tests: `createAlertPrompt` persists the pinned id; `toAlertPrompt` round-trips it (both non-null and NULL); `cancelActiveAlertsPinnedToInstance` sets `status='cancelled'` and honors the optional config-context filter. Verify: `bun run test tests/deferred-prompts/alerts.test.ts`
 - [ ] 2.2 In `src/deferred-prompts/types.ts` add `taskInstanceId: string | null` to `AlertPrompt`; in `src/deferred-prompts/alerts.ts` map it in `toAlertPrompt`, add the `taskInstanceId?: string | null` parameter to `createAlertPrompt`, and add `cancelActiveAlertsPinnedToInstance(taskInstanceId, configContextId?)` (info log per cancelled alert). Verify: `bun run test tests/deferred-prompts/alerts.test.ts`
 
 ## 3. Creation-time pin capture
