@@ -117,7 +117,10 @@ async function planChildrenOf(ctx: StageContext): Promise<readonly PlanChild[]> 
 /**
  * D9 failure stop: a child ending non-completed halts the loop immediately.
  * The child books `failed`, the parent persists `stopped` (resumable at this
- * child), and the operator line names the blocking child and its status.
+ * child), and the operator line names the blocking child and its status. A
+ * readable child log prices the failed `child_done` so the D10 ledger stays
+ * known across resumes; an unreadable child (no run dir) stays usage-less
+ * and fails closed.
  */
 async function stopAtFailedChild(
   deps: OrchestratorDeps,
@@ -125,8 +128,17 @@ async function stopAtFailedChild(
   ctx: StageContext,
   childId: string,
   childStatus: string,
+  childRunDir: string | undefined,
+  resolve: Parameters<typeof aggregateUsage>[1],
 ): Promise<RunChildrenResult> {
-  ctx.emit({ altitude: 'L2', type: 'child_done', child: childId, outcome: 'failed' })
+  const usage = childRunDir === undefined ? undefined : childUsageOf(childRunDir, resolve)
+  ctx.emit({
+    altitude: 'L2',
+    type: 'child_done',
+    child: childId,
+    outcome: 'failed',
+    ...(usage === undefined ? {} : { usage }),
+  })
   state.children = { ...state.children, [childId]: { status: 'failed' } }
   state.status = 'stopped'
   await saveRunState(state, deps.now?.() ?? new Date())
@@ -203,7 +215,7 @@ async function settleObservedChild(
     }
     return calmSettle(deps, state, stop)
   }
-  if (childState === null) return stopAtFailedChild(deps, state, ctx, childId, 'unloadable')
+  if (childState === null) return stopAtFailedChild(deps, state, ctx, childId, 'unloadable', undefined, resolve)
   if (completed) {
     await settleCompletedChild(deps, state, ctx, childId, childState.runDir, resolve)
     return next()
@@ -215,7 +227,7 @@ async function settleObservedChild(
     deps.stdout?.(`sdd ${handle.runId}`)
     return { halted: 'gate-pending', childRunId: handle.runId }
   }
-  return stopAtFailedChild(deps, state, ctx, childId, childState.status)
+  return stopAtFailedChild(deps, state, ctx, childId, childState.status, childState.runDir, resolve)
 }
 
 /**

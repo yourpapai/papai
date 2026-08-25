@@ -530,6 +530,29 @@ describe('runChildren failure and completion semantics (D9)', () => {
     expect(fs.existsSync(path.join(fixture.repoRoot, 'openspec', 'changes', fixture.state.changeName))).toBe(false)
   })
 
+  it('a parent resume after a child failure passes the budget guard and re-runs the failed child (D9x D10)', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const first = makeRunner(fixture, { 'auth-db': { status: 'failed', withUsage: true } })
+
+    const halted = await runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: first.runChildRun })
+
+    expect(halted).toEqual({ halted: 'stopped', child: 'auth-db', childStatus: 'failed' })
+    expect(eventsOf(fixture, 'child_done')[0]).toMatchObject({
+      child: 'auth-db',
+      outcome: 'failed',
+      usage: { costUsd: 0.25 },
+    })
+
+    const resumed = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    const second = makeRunner(fixture, {})
+
+    const result = await runChildren(fixture.deps, resumed, fixture.ctx, { runChildRun: second.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    expect(second.spawned).toEqual(['auth-db', 'auth-api'])
+  })
+
   it('an unloadable child state counts as not-done and fails closed', async () => {
     const fixture = await makeFixture()
     await seedParent(fixture, ['auth-db', 'auth-api'], {})
