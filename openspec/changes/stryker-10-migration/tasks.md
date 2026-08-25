@@ -57,7 +57,7 @@ running the tooling itself.
 
 ## 5. Docs and cleanup
 
-- [ ] 5.1 Update `scripts/mutation/README.md`: note the Stryker 10 toolchain, the
+- [x] 5.1 Update `scripts/mutation/README.md`: note the Stryker 10 toolchain, the
   runner patch (existence, upstream PR #1, deletion condition), and the Node 22 host
   requirement. Update `docs/architecture/commands.md` mutation mentions if they name
   versions. Verify: docs read current; no stale v9 references.
