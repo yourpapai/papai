@@ -155,6 +155,16 @@ never typechecks at test runtime, so the pragma bought nothing here; keeping it 
 the sandbox byte-faithful for non-target files. `tests/scripts/mutation/stryker-config.test.ts`
 pins the flag so a config regression fails a test instead of the gate.
 
+One target remains scoped out for an instrumentation-shape reason even with that flag off:
+`plugins/task-provider-kaneo/auto-provision.ts` (via a `!` glob here and
+`isInstrumentationIncompatibleFile` in the changed-files gate). Its killing test
+`tests/analytics/provider-request-scope-setup-paths.test.ts` reads the impl's source text and
+regex-checks that every `runWithProviderRequestScope` call site settles; the file's two call sites
+are bare arrow-tail delegations, and Stryker 10's Babel 8 instrumenter reprints them so the
+**unmutated** instrumented copy already fails the guard — every paired run lands in `errored`
+instead of producing a score. The guard is worth more than a mutation score on a 14-line
+delegation wrapper whose callees (`provision.ts`) stay in scope.
+
 ## Incremental measurement (carried-over scores)
 
 A run measures only the files whose content changed since the previous run on the same branch —
