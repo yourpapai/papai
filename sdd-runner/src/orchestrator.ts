@@ -17,7 +17,7 @@ import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-dige
 import { runIntake, resolveTaskSource } from './intake.js'
 import type { IntakeResult } from './intake.js'
 import { createMaterializer } from './materialize.js'
-import { isPlanParentResume, resumePlanParent } from './plan-resume.js'
+import { isInterruptedPlanBranchResume, isPlanParentResume, resumePlanParent } from './plan-resume.js'
 import type { PlanChild } from './plan.js'
 import { runPostReviewToGate } from './post-review-tail.js'
 import type { Verbosity } from './renderer.js'
@@ -142,7 +142,7 @@ export async function runResume(
     return { runId, halted: 'gate-pending' }
   }
   const emit = buildBus(deps, logPathFor(state))
-  if (isPlanParentResume(state)) {
+  if (isPlanParentResume(state) || isInterruptedPlanBranchResume(state)) {
     const resumed = await resumePlanParent(deps, state, emit, autonomy, runStart)
     return resumed
   }

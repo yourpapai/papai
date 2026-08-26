@@ -12,8 +12,13 @@ import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import type { EventInput, SddEvent } from '../../sdd-runner/src/events.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
-import { isPlanParentResume, resumePlanParent } from '../../sdd-runner/src/plan-resume.js'
+import {
+  isInterruptedPlanBranchResume,
+  isPlanParentResume,
+  resumePlanParent,
+} from '../../sdd-runner/src/plan-resume.js'
 import type { StartChildRun } from '../../sdd-runner/src/plan-resume.js'
+import { planDigest } from '../../sdd-runner/src/plan.js'
 import type { PlanChild } from '../../sdd-runner/src/plan.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
@@ -115,6 +120,100 @@ describe('isPlanParentResume', () => {
       changeName: 'plain-run',
     })
     expect(isPlanParentResume(single)).toBe(false)
+  })
+})
+
+/**
+ * The earlier crash window: the planner promoted `sidecars/plan.json` and the
+ * `depth oversize` verdict is durable, but the crash landed anywhere before
+ * `runPlanBranch`'s first `saveRunState` — so `state.plan` was never persisted.
+ */
+async function makeCrashedFixture(
+  options: { readonly oversize?: boolean; readonly withSidecar?: boolean; readonly withPlanEvent?: boolean } = {},
+): Promise<{ repoRoot: string; deps: OrchestratorDeps; state: RunState }> {
+  const { oversize = true, withSidecar = true, withPlanEvent = true } = options
+  const repoRoot = makeDir()
+  const workDir = path.join(repoRoot, '.sdd-runner')
+  const state = await createRunState({ workDir, repoRoot, changeName: 'composite' })
+  if (withSidecar) {
+    fs.mkdirSync(path.join(state.runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(state.runDir, 'sidecars', 'plan.json'), JSON.stringify({ children: CHILDREN }))
+  }
+  const logPath = path.join(state.runDir, 'events.ndjson')
+  appendEvent(logPath, {
+    altitude: 'L2',
+    type: 'depth',
+    profile: 'L',
+    rationale: 'declares multi-change scope',
+    source: 'estimator',
+    ...(oversize ? { oversize: true } : {}),
+  })
+  if (withPlanEvent) {
+    appendEvent(logPath, { altitude: 'L2', type: 'plan', childCount: CHILDREN.length, digest: planDigest(CHILDREN) })
+  }
+  await saveRunState(state, new Date('2026-08-12T08:00:00.000Z'))
+  const deps: OrchestratorDeps = {
+    config: { repoRoot, workDir, model: 'test-model', budget: 5 },
+    spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+    execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+    driver: createOpenSpecDriver({
+      exec: () => Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 }),
+      cwd: repoRoot,
+    }),
+    resolveCost: () => null,
+    now: () => new Date('2026-08-12T08:00:00.000Z'),
+  }
+  return { repoRoot, deps, state }
+}
+
+describe('isInterruptedPlanBranchResume (crash before the state.plan persist)', () => {
+  it('accepts the crashed plan-branch shape and rejects every lookalike', async () => {
+    const crashed = await makeCrashedFixture()
+    expect(isInterruptedPlanBranchResume(crashed.state)).toBe(true)
+    crashed.state.status = 'stopped'
+    expect(isInterruptedPlanBranchResume(crashed.state)).toBe(true)
+    crashed.state.status = 'completed'
+    expect(isInterruptedPlanBranchResume(crashed.state)).toBe(false)
+    const notOversize = await makeCrashedFixture({ oversize: false })
+    expect(isInterruptedPlanBranchResume(notOversize.state)).toBe(false)
+    const withoutSidecar = await makeCrashedFixture({ withSidecar: false })
+    expect(isInterruptedPlanBranchResume(withoutSidecar.state)).toBe(false)
+    const noPlanEvent = await makeCrashedFixture({ withPlanEvent: false })
+    expect(isInterruptedPlanBranchResume(noPlanEvent.state)).toBe(true)
+    const settled = await makeFixture()
+    expect(isInterruptedPlanBranchResume(settled.state)).toBe(false)
+  })
+})
+
+describe('resumePlanParent interrupted plan-branch recovery', () => {
+  it('finishes the interrupted settle from the sidecar and presents the plan gate (recovered, not stranded)', async () => {
+    const fixture = await makeCrashedFixture()
+    const spawned: string[] = []
+    const startChildRun: StartChildRun = () => {
+      spawned.push('ran')
+      return Promise.resolve({ runId: 'must-not-run' })
+    }
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      (event) => {
+        appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), event)
+      },
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(spawned).toEqual([])
+    expect(result).toEqual({ runId: fixture.state.runId, halted: 'gate-pending' })
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.plan).toEqual({ childIds: CHILDREN.map((child) => child.id), digest: planDigest(CHILDREN) })
+    expect(persisted.children).toEqual({ 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } })
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+    const md = fs.readFileSync(path.join(fixture.state.runDir, 'gate-1.md'), 'utf8')
+    expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    expect(md).toContain('- [ ] C2 db-api — Rename the API route helpers. · deps: db-schema')
+    expect(fs.existsSync(path.join(fixture.state.runDir, 'children', '1-db-schema.md'))).toBe(true)
   })
 })
 

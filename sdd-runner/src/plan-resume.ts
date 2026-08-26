@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 
-import { runChildren } from './children.js'
+import { runChildren, runPlanBranch, planChildrenOf } from './children.js'
 import type { RunChildRun } from './children.js'
 import type { AutonomyConfig } from './config.js'
 import type { EventInput } from './events.js'
@@ -36,6 +36,20 @@ export interface PlanResumeResult {
 /** A plan parent (D9): `state.plan` present, resumable while running or stopped. */
 export function isPlanParentResume(state: RunState): boolean {
   return state.plan !== undefined && (state.status === 'running' || state.status === 'stopped')
+}
+
+/**
+ * The earlier crash window (D9): a crash between the planner's sidecar
+ * promotion (`sidecars/plan.json`) and `runPlanBranch`'s first
+ * `saveRunState` leaves no persisted `state.plan`, so the plain
+ * interception above misses it — yet the durable `depth oversize` verdict
+ * plus the promoted sidecar carry everything the interrupted settle needs.
+ */
+export function isInterruptedPlanBranchResume(state: RunState): boolean {
+  if (state.plan !== undefined || (state.status !== 'running' && state.status !== 'stopped')) return false
+  if (!existsSync(path.join(state.runDir, 'sidecars', 'plan.json'))) return false
+  const logPath = logPathFor(state)
+  return existsSync(logPath) && readEvents(logPath).some((event) => event.type === 'depth' && event.oversize === true)
 }
 
 /**
@@ -94,6 +108,14 @@ export async function resumePlanParent(
       changeDir: path.join(resolved.config.repoRoot, 'openspec', 'changes', state.changeName),
       sidecarDir: path.join(state.runDir, 'sidecars'),
       emit,
+    }
+    if (state.plan === undefined) {
+      // Finish the interrupted `runPlanBranch` settle from the sidecar (D3):
+      // topo-sort, re-materialize, digest, persist `state.plan`/children —
+      // then present the plan gate. No gate answer can predate a plan
+      // persist, so the presentation starts the gate fresh at version 1.
+      await runPlanBranch(resolved, state, ctx, await planChildrenOf(ctx))
+      return { runId: state.runId, halted: 'gate-pending' }
     }
     const approval = planGateApprovalOf(state)
     if (!approval.answered) {

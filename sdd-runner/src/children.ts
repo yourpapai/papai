@@ -80,7 +80,7 @@ export function rowsOf(ordered: readonly PlanChild[]): { readonly id: string; re
 }
 
 /** Load the current plan sidecar — the single source of full child records (D3). */
-async function planChildrenOf(ctx: StageContext): Promise<readonly PlanChild[]> {
+export async function planChildrenOf(ctx: StageContext): Promise<readonly PlanChild[]> {
   const raw = await readFile(path.join(ctx.sidecarDir, 'plan.json'), 'utf8')
   return PlanSchema.parse(JSON.parse(raw)).children
 }

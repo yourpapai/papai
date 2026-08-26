@@ -2923,6 +2923,68 @@ describe('plan-parent resume interception (D9)', () => {
     expect(spawn).toHaveLength(1)
     expect(spawn[0]).toMatchObject({ child: 'db-schema', runId: 'db-schema' })
   })
+
+  /** The crash window between the plan sidecar promotion and `runPlanBranch`'s first persist. */
+  async function seedCrashedPlanBranch(fixture: ReturnType<typeof makeFixture>): Promise<string> {
+    const runId = 'crashed-plan-parent'
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'sidecars', 'plan.json'), JSON.stringify(PLAN))
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), '')
+    const logPath = path.join(runDir, 'events.ndjson')
+    appendEvent(logPath, {
+      altitude: 'L2',
+      type: 'depth',
+      profile: 'L',
+      rationale: 'declares multi-change scope',
+      source: 'estimator',
+      oversize: true,
+    })
+    appendEvent(logPath, {
+      altitude: 'L2',
+      type: 'plan',
+      childCount: PLAN.children.length,
+      digest: planDigest(PLAN.children),
+    })
+    await materializeChildFiles(PLAN, runDir)
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir: fixture.deps.config.workDir,
+          changeName: 'composite',
+          stage: 'intake',
+          depth: null,
+          round: 0,
+          gate: null,
+          status: 'running',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    return runId
+  }
+
+  it('runResume recovers a crash between the plan sidecar promotion and the state.plan persist (recovered, not stranded)', async () => {
+    const fixture = makeFixture()
+    const runId = await seedCrashedPlanBranch(fixture)
+
+    const result = await runResume(fixture.deps, runId)
+
+    expect(result).toEqual({ runId, halted: 'gate-pending' })
+    const parent = await loadRunState(fixture.deps.config.workDir, runId)
+    expect(parent.plan).toEqual({ childIds: ['db-schema', 'db-api'], digest: planDigest(PLAN.children) })
+    expect(parent.children).toEqual({ 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } })
+    expect(parent.gate).toEqual({ mode: 'plan', version: 1 })
+    const md = fs.readFileSync(path.join(parent.runDir, 'gate-1.md'), 'utf8')
+    expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    expect(fixture.spawnOrder).toEqual([])
+  })
 })
 
 describe('runGateResume plan mode (D12)', () => {
