@@ -147,7 +147,8 @@ export async function runChildren(
   options: RunChildrenOptions,
 ): Promise<RunChildrenResult> {
   const children = await planChildrenOf(ctx)
-  const childIds = state.plan?.childIds ?? []
+  if (state.plan === undefined) throw new Error('runChildren requires a recorded plan')
+  const childIds = state.plan.childIds
   const resolve = deps.resolveCost ?? (await buildResolveCost())
   const runAt = async (index: number): Promise<RunChildrenResult> => {
     const childId = childIds[index]
