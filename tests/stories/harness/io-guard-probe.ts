@@ -70,6 +70,19 @@ scenario('rejects Bun.spawnSync', ({ world }) => {
   Bun.spawnSync(['true'])
 })
 
+// The `tsgo` allowance is shaped, not blanket: a matching path outside the
+// execution root is still a violation, so the hole cannot be widened by planting
+// a lookalike anywhere else on the filesystem.
+scenario('rejects a tsgo-shaped executable outside the execution root', ({ world }) => {
+  phase(world)
+  Bun.spawn(['/tmp/@typescript/typescript-linux-x64/lib/tsc'])
+})
+
+scenario('rejects a tsgo-shaped child_process spawn outside the execution root', ({ world }) => {
+  phase(world)
+  spawn('/tmp/@typescript/typescript-linux-x64/lib/tsc')
+})
+
 scenario('rejects child_process execFile', ({ world }) => {
   phase(world)
   execFile('true')

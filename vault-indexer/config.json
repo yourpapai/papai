@@ -1,0 +1,14 @@
+{
+  "pushUrl": "https://papai.test/api/context-vault/push",
+  "intervalMs": 30000,
+  "repos": [
+    {
+      "repo": "papai",
+      "specDir": "papai/openspec/changes"
+    },
+    {
+      "repo": "other",
+      "specDir": "other/openspec/changes"
+    }
+  ]
+}

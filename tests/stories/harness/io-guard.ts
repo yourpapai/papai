@@ -208,6 +208,56 @@ function restoreEnvironment(snapshot: Readonly<Record<string, string>>): readonl
   return mutations
 }
 
+/**
+ * The single process the guard lets through: the `tsgo` binary that TypeScript 7
+ * spawns to serve a syntax tree.
+ *
+ * TypeScript 7 has no in-process parser — a `SourceFile` is only reachable
+ * through a project served by that child process — and plugin entry-graph
+ * discovery (`src/plugins/discovery-imports.ts`) is production code that runs
+ * inside scenarios. Denying it turns every plugin into a discovery error, so a
+ * story lane that forbids it cannot exercise plugins at all.
+ *
+ * The hole is deliberately the narrowest shape that admits that one binary: the
+ * executable of a `@typescript/typescript-<os>-<cpu>` platform package, resolved
+ * inside the scenario's own execution root. A path outside the sandbox tree, any
+ * other executable, and every other spawn entry point (`exec`, `execFile`,
+ * `fork`, `spawnSync`, `Bun.spawn`) all stay denied. `tsgo` reads files in its
+ * own process, where this guard cannot see it, so the containment check is what
+ * keeps the allowance honest: it can only ever be the compiler shipped in the
+ * dependency tree under test.
+ */
+const TSGO_EXECUTABLE = /[/\\]@typescript[/\\]typescript-[a-z0-9]+-[a-z0-9]+[/\\]lib[/\\]tsc(\.exe)?$/u
+
+/**
+ * Accepts every shape the executable arrives in: `child_process.spawn(file, …)`,
+ * `Bun.spawn([file, …], …)` — Bun's `child_process` delegates there, so both
+ * entry points have to agree — and `Bun.spawn({ cmd: [file, …] })`.
+ */
+function spawnExecutable(command: unknown): string | undefined {
+  if (typeof command === 'string') return command
+  if (Array.isArray(command)) return typeof command[0] === 'string' ? command[0] : undefined
+  if (typeof command === 'object' && command !== null && 'cmd' in command) {
+    const cmd = Reflect.get(command, 'cmd')
+    return Array.isArray(cmd) && typeof cmd[0] === 'string' ? cmd[0] : undefined
+  }
+  return undefined
+}
+
+function isAllowedTsgoSpawn(command: unknown): boolean {
+  const executable = spawnExecutable(command)
+  if (executable === undefined) return false
+  const boundary = storage.getStore()
+  if (boundary === undefined) return false
+  const resolved = path.resolve(executable)
+  return TSGO_EXECUTABLE.test(resolved) && isWithinRoot(boundary.executionRoot, resolved)
+}
+
+function isWithinRoot(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate)
+  return relative !== '' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+}
+
 function installProcessAndNetworkMocks(): void {
   const deniedChildProcess = {
     exec: (): never => deny('child_process.exec'),
@@ -215,7 +265,8 @@ function installProcessAndNetworkMocks(): void {
     execFileSync: (): never => deny('child_process.execFileSync'),
     execSync: (): never => deny('child_process.execSync'),
     fork: (): never => deny('child_process.fork'),
-    spawn: (): never => deny('child_process.spawn'),
+    spawn: (...args: readonly unknown[]): unknown =>
+      isAllowedTsgoSpawn(args[0]) ? invoke(originalChildProcess.spawn, args) : deny('child_process.spawn'),
     spawnSync: (): never => deny('child_process.spawnSync'),
   }
   void mock.module('node:child_process', () => ({
@@ -335,7 +386,9 @@ export function installIoGuard(): void {
     if (boundary.bindings === undefined) throw diagnostic(boundary, 'fetch')
     return boundary.bindings.http.fetch(input, init)
   })
-  Reflect.set(Bun, 'spawn', () => deny('Bun.spawn'))
+  Reflect.set(Bun, 'spawn', (...args: readonly unknown[]): unknown =>
+    isAllowedTsgoSpawn(args[0]) ? invoke(originals.bunSpawn, args) : deny('Bun.spawn'),
+  )
   Reflect.set(Bun, 'spawnSync', () => deny('Bun.spawnSync'))
   Reflect.set(Bun, 'serve', () => deny('Bun.serve'))
   Reflect.set(Bun, 'listen', () => deny('Bun.listen'))
