@@ -145,13 +145,15 @@ async function executeAlertsForContext(
   const snapshots = getSnapshotsForUser(storageContextId)
   const firing: AlertEvaluation[] = []
   let tasks: Task[]
+  let fields: readonly string[]
   if (pureWatch) {
     tasks = lightTasks
-    firing.push(...collectPureWatchFiring(alerts, tasks, snapshots, evalNow))
+    fields = RICH_SNAPSHOT_FIELDS
+    firing.push(...collectPureWatchFiring(alerts, tasks, snapshots, evalNow, fields))
   } else {
     const needsRich = alertsNeedFullTasks(alerts)
     tasks = needsRich && enrichedTasks !== null ? enrichedTasks : lightTasks
-    const fields = needsRich ? RICH_SNAPSHOT_FIELDS : LIGHTWEIGHT_SNAPSHOT_FIELDS
+    fields = needsRich ? RICH_SNAPSHOT_FIELDS : LIGHTWEIGHT_SNAPSHOT_FIELDS
     if (!hasTaskChanges(tasks, snapshots, fields)) {
       log.debug({ storageContextId }, 'No task changes detected; skipping alert evaluation')
       return
@@ -173,7 +175,7 @@ async function executeAlertsForContext(
   }
 
   const delivered = firing.length === 0 ? true : await fireAlertBatch(storageContextId, firing, chat, buildProviderFn)
-  if (delivered) updateSnapshots(storageContextId, tasks)
+  if (delivered) updateSnapshots(storageContextId, tasks, fields)
 }
 
 const fetchAlertTasks = async (

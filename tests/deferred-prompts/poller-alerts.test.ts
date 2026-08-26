@@ -400,8 +400,11 @@ describe('pollAlertsOnce — alert task watch', () => {
   const watchBuildProviderFn = (state: WatchProviderState): BuildProviderFn =>
     recordingBuildProviderFn([], state.provider, new Set())
 
-  const createWatchAlert = (condition: AlertCondition, prompt = 'Notify on change'): AlertPrompt =>
-    createAlertPrompt(WATCH_USER, prompt, condition, 60, undefined, undefined, 'ti-watch')
+  const createWatchAlert = (
+    condition: AlertCondition,
+    prompt = 'Notify on change',
+    cooldownMinutes = 60,
+  ): AlertPrompt => createAlertPrompt(WATCH_USER, prompt, condition, cooldownMinutes, undefined, undefined, 'ti-watch')
 
   test('pure-watch instance poll targets getTask for the deduped union and never lists', async () => {
     const watch = makeWatchProvider()
@@ -471,6 +474,24 @@ describe('pollAlertsOnce — alert task watch', () => {
     await pollAlertsOnce(chat, buildProviderFn)
     expect(sentMessages).toHaveLength(0)
     watch.setTask(watchTask('task-1', { assignee: 'bob' }))
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(alert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
+  })
+
+  test('pure watch fires once when a rich field becomes null and not again on unchanged cycles', async () => {
+    const watch = makeWatchProvider()
+    watch.setTask(watchTask('task-1', { assignee: 'alice' }))
+    const alert = createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Notify on change', 0)
+    const buildProviderFn = watchBuildProviderFn(watch)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(0)
+    watch.setTask(watchTask('task-1', { assignee: null }))
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(1)
+    await pollAlertsOnce(chat, buildProviderFn)
     await pollAlertsOnce(chat, buildProviderFn)
 
     expect(sentMessages).toHaveLength(1)

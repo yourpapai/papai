@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { LIGHTWEIGHT_SNAPSHOT_FIELDS } from '../../src/deferred-prompts/change-gate.js'
 import { getSnapshotsForUser, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
 import type { Task } from '../../src/providers/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -113,6 +114,25 @@ describe('snapshots', () => {
     updateSnapshots('user-1', [])
 
     expect(getSnapshotsForUser('user-1').size).toBe(0)
+  })
+
+  test('deletes the stored row when a tracked field becomes null', () => {
+    updateSnapshots('user-1', [makeTask({ id: 'task-1', status: 'todo', assignee: 'alice' })])
+    expect(getSnapshotsForUser('user-1').get('task-1:assignee')).toBe('alice')
+
+    updateSnapshots('user-1', [makeTask({ id: 'task-1', status: 'todo', assignee: null })])
+
+    const snapshots = getSnapshotsForUser('user-1')
+    expect(snapshots.has('task-1:assignee')).toBe(false)
+    expect(snapshots.get('task-1:status')).toBe('todo')
+  })
+
+  test('keeps stored rows for fields outside the tracked set', () => {
+    updateSnapshots('user-1', [makeTask({ id: 'task-1', status: 'todo', assignee: 'alice' })])
+
+    updateSnapshots('user-1', [makeTask({ id: 'task-1', status: 'todo' })], LIGHTWEIGHT_SNAPSHOT_FIELDS)
+
+    expect(getSnapshotsForUser('user-1').get('task-1:assignee')).toBe('alice')
   })
 
   test('captures labels as sorted comma-joined names', () => {

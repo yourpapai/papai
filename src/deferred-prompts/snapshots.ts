@@ -41,8 +41,40 @@ export function getSnapshotsForUser(userId: string): Map<string, string> {
   return result
 }
 
-/** Capture snapshots for multiple tasks and prune stale entries in a single transaction. */
-export function updateSnapshots(userId: string, tasks: Task[]): void {
+type DrizzleDb = ReturnType<typeof getDrizzleDb>
+
+function writeSnapshotField(
+  db: DrizzleDb,
+  userId: string,
+  task: Task,
+  field: string,
+  value: string | null,
+  now: string,
+): void {
+  if (value === null) {
+    db.delete(taskSnapshots)
+      .where(and(eq(taskSnapshots.userId, userId), eq(taskSnapshots.taskId, task.id), eq(taskSnapshots.field, field)))
+      .run()
+    return
+  }
+  db.insert(taskSnapshots)
+    .values({ userId, taskId: task.id, field, value })
+    .onConflictDoUpdate({
+      target: [taskSnapshots.userId, taskSnapshots.taskId, taskSnapshots.field],
+      set: { value, capturedAt: now },
+    })
+    .run()
+}
+
+/** Capture snapshots for multiple tasks and prune stale entries in a single
+ * transaction. A tracked field whose current value is null has its stored row
+ * deleted, so a value→null transition does not leave a stale baseline that
+ * keeps reporting as changed on later unchanged cycles. */
+export function updateSnapshots(
+  userId: string,
+  tasks: Task[],
+  fields: readonly string[] = SNAPSHOT_FIELDS.map(({ field }) => field),
+): void {
   log.debug({ userId, taskCount: tasks.length }, 'Updating snapshots')
   const db = getDrizzleDb()
   const now = new Date().toISOString()
@@ -53,16 +85,8 @@ export function updateSnapshots(userId: string, tasks: Task[]): void {
   try {
     for (const task of tasks) {
       for (const { field, extract } of SNAPSHOT_FIELDS) {
-        const value = extract(task)
-        if (value !== null) {
-          db.insert(taskSnapshots)
-            .values({ userId, taskId: task.id, field, value })
-            .onConflictDoUpdate({
-              target: [taskSnapshots.userId, taskSnapshots.taskId, taskSnapshots.field],
-              set: { value, capturedAt: now },
-            })
-            .run()
-        }
+        if (!fields.includes(field)) continue
+        writeSnapshotField(db, userId, task, field, extract(task), now)
       }
     }
 
