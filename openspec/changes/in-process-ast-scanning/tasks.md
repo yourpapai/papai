@@ -46,3 +46,25 @@ See LICENSE in the project root for details.
   - check:full 8/8; contracts 458/458; manifest preflight green (259-cenario catalog); storybook builds; 4/4 workspace typechecks; discovery 7 plugins in 0.10s wall (was ~0.44-0.52s with the spawn). `bun test:stories` needs Docker — CI's Hermetic Full-Stack Stories job is the container truth, same caveat as PR #359.
 - [x] 6.3 Docs: update the CLAUDE.md TS-7 paragraph (no more child-process parser caveat), `tests/CLAUDE.md`, and note the retired `expectRejection` shim where its call sites no longer involve a child process; file/link the upstream TypeScript standalone-parse API issue and Stryker sandbox issue
   - CLAUDE.md/tests CLAUDE.md/mutation README updated. expectRejection KEPT with a corrected docblock (original trigger gone; retiring it would churn frozen test files for cosmetics). Upstream issues (TS standalone parse API, Stryker sandbox rewrite) remain to be filed by a human — recorded in the change README note.
+
+## Merge-day runbook (baseline handoff)
+
+Verified on the merged `claude/typescript-7-upgrade-iau4py` head (7989c1914):
+
+- `BASE_REF=origin/master bun test:stories:compat --manifest-only` reports
+  exactly the intended frozen delta — 33 changed files plus
+  `src/ts-ast/source-parser.ts` added. Nothing outside the intended set.
+- `plugin-core-separation` shares no merge base with this branch (old root);
+  its qualification plan already handles that via
+  `git rebase --onto $BASELINE_SHA $OLD_BASE`.
+
+When this PR merges to master:
+
+1. The merge commit becomes the new qualification `BASELINE_SHA`.
+2. Rebase `plugin-core-separation` (and any in-flight qualification branch)
+   onto it per `hermetic-e2e-core-separation-proof` task 1.1:
+   `git diff --exit-code $BASELINE_SHA -- tests/stories` must hold after the
+   rebase; fixes confined to `src/` composition only.
+3. Re-run `bun test:stories:compat --manifest-only` against the new
+   `BASELINE_SHA` from the rebased branch — it must be green (the frozen tree
+   is identical again).
