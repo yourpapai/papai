@@ -128,7 +128,7 @@ export interface PlanGateResumeDeps {
  * abandons without settling (no TUI session at plan mode in part 2, and an
  * unchecked C-row must not spend a veto replan by default); an answered
  * hand-edit is parsed as-is; approve → `runChildren`; abort →
- * `finalizeGate('abandoned')` before any child exists; extend is unreachable
+ * `finalizeGate('aborted')` before any child exists; extend is unreachable
  * (the parser rejects `→ RUN 1 MORE` at plan mode first); veto rounds land
  * with `settlePlanVeto` (6.3); a sidecar moved past the pending gate by an
  * interrupted replan is recovered through `presentReplannedGate` first.
