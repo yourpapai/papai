@@ -24,7 +24,7 @@ import path from 'node:path'
 
 import type { StoryDependencySnapshot } from '../../scripts/story/dependencies.js'
 import { createCandidateStorySnapshotSource, StorySnapshotInterruptedError } from '../../scripts/story/snapshot.js'
-import { writeFrozenCoverageSupport } from './story-frozen-inputs.helpers.js'
+import { writeFrozenSupportInputs } from './story-frozen-inputs.helpers.js'
 
 const roots: string[] = []
 const TEST_DEPENDENCY_SNAPSHOT: StoryDependencySnapshot = {
@@ -107,7 +107,7 @@ function fixture(): string {
   writeFileSync(path.join(root, 'tests/mock-reset.ts'), 'reset')
   writeFileSync(path.join(root, 'tests/utils/test-helpers.ts'), 'helper')
   writeFileSync(path.join(root, 'tests/utils/logger-mock.ts'), 'logger')
-  writeFrozenCoverageSupport(root)
+  writeFrozenSupportInputs(root)
   writeFileSync(path.join(root, 'scripts/story/test-stories.ts'), 'captured runner')
   writeFileSync(path.join(root, 'src/live.ts'), 'production v1')
   symlinkSync('live.ts', path.join(root, 'src/alias.ts'))
@@ -187,17 +187,18 @@ describe('candidate story snapshot', () => {
     }
   })
 
+  // `src` carries the frozen parser subtree, so the empty-runtime-directory case
+  // uses `context-vault-indexer` — a required runtime root with no frozen content.
   test('rejects a removed empty captured runtime directory before execution', async () => {
     const root = fixture()
-    rmSync(path.join(root, 'src', 'alias.ts'))
-    rmSync(path.join(root, 'src', 'live.ts'))
+    rmSync(path.join(root, 'context-vault-indexer', 'lock.ts'))
     const snapshot = await createSnapshot({ root, seed: 41021 })
     try {
       chmodSync(snapshot.root, 0o700)
-      rmSync(path.join(snapshot.root, 'src'), { recursive: true })
+      rmSync(path.join(snapshot.root, 'context-vault-indexer'), { recursive: true })
 
       await expect(snapshot.verifyIntegrity()).rejects.toThrow(
-        'Snapshot integrity check failed: src is not a directory',
+        'Snapshot integrity check failed: context-vault-indexer is not a directory',
       )
     } finally {
       await snapshot.cleanup()

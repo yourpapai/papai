@@ -173,7 +173,7 @@ type ScenarioGiven = Readonly<{
       magiToken: string
       updatedBy: string
     }>,
-  ): CodingSessionHandle
+  ): Promise<CodingSessionHandle>
   codingCredentials(
     config: Readonly<{
       context: ContextHandle
@@ -694,10 +694,10 @@ function createGiven(world: ScenarioWorld): ScenarioGiven {
       const approved = world.fixtures.approvePlugin(plugin)
       return makePluginHandle(approved)
     },
-    codingSession(config): CodingSessionHandle {
+    async codingSession(config): Promise<CodingSessionHandle> {
       prerequisite('given.codingSession')
       const configContextId = scopedConfigContextId(config.context)
-      configureCodingSessionCapability({
+      await configureCodingSessionCapability({
         pluginDirectory: config.pluginDirectory,
         contextId: configContextId,
         magiBaseUrl: config.magiBaseUrl,

@@ -96,3 +96,7 @@ opencode.json
 
 # pinned actionlint binary, fetched and checksum-verified by scripts/run-actionlint.ts
 .actionlint/
+
+# Written by the context-vault-indexer story scenario when it runs outside the
+# hermetic sandbox (the sandbox confines it to the session temp mount).
+vault-indexer/

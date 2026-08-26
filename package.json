@@ -20,6 +20,7 @@
   "scripts": {
     "benchmark:tool-surface": "bun scripts/tool-surface-benchmark.ts",
     "build:client": "bun scripts/build-client.ts",
+    "dev:client": "vite",
     "storybook:prepare": "mkdir -p public && msw init public/ --no-save && cat client/shared/base.css client/shared/tokens.css > public/storybook-shared.css && cat client/shared/base.css client/shared/tokens.css client/settings/settings.css > public/storybook-settings.css && cat client/shared/base.css client/shared/tokens.css client/admin/admin.css > public/storybook-admin.css && cat client/shared/base.css client/shared/tokens.css client/debug/debug.css > public/storybook-debug.css && cat client/shared/base.css client/shared/tokens.css client/transcript/transcript.css > public/storybook-transcript.css",
     "storybook": "bun storybook:prepare && storybook dev -p 6006 --no-open",
     "build:storybook": "bun storybook:prepare && storybook build -o storybook-static",
@@ -60,7 +61,7 @@
     "opencode-agent:start": "bun run --filter opencode-agent start",
     "context-vault-indexer:start": "bun run context-vault-indexer/main.ts",
     "knip": "knip-bun --strict --no-gitignore",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "lint": "oxlint --config .oxlintrc.json --ignore-path .oxlintignore .",
     "lint:fix": "oxlint --config .oxlintrc.json --fix --ignore-path .oxlintignore .",
     "format": "oxfmt --write . --ignore-path=.oxfmtignore",
@@ -125,7 +126,6 @@
     "@ai-sdk/provider": "^4.0.7",
     "@gramio/format": "^0.10.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@typescript/typescript6": "^6.0.2",
     "ai": "^7.0.79",
     "ai-tokenizer": "^1.0.6",
     "date-fns-tz": "^3.2.0",
@@ -136,11 +136,11 @@
     "ipaddr.js": "^2.5.0",
     "linkedom": "^0.18.13",
     "marked": "^18.0.9",
+    "oxc-parser": "0.143.0",
     "p-limit": "^7.3.1",
     "pino": "^10.3.1",
     "rrule-temporal": "^2.2.0",
     "svelte": "^5.56.10",
-    "typescript": "^7.0.2",
     "unpdf": "^1.8.1",
     "zod": "^4.4.3"
   },
@@ -161,7 +161,6 @@
     "@sveltejs/vite-plugin-svelte": "^7",
     "@types/bun": "1.4.0",
     "@types/react": "^19.2.18",
-    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "dependency-cruiser": "^18.2.0",
     "drizzle-kit": "^0.31.10",
     "happy-dom": "^20.11.2",
@@ -176,10 +175,8 @@
     "oxlint-tsgolint": "^0.22.1",
     "react": "^19.2.8",
     "storybook": "^10.5.10",
+    "typescript": "^7.0.2",
     "vite": "^8.2.1"
-  },
-  "overrides": {
-    "typescript": "$@typescript/typescript6"
   },
   "msw": {
     "workerDirectory": [
