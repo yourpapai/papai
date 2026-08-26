@@ -13,6 +13,16 @@ import type { ResolvedCost } from './pricing.js'
 
 const TOKEN_SCALE = 1_000_000
 
+const EMPTY_USAGE: AgentUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  reasoningTokens: 0,
+  cachedReadTokens: 0,
+  cachedWriteTokens: 0,
+  costUsd: 0,
+  wallMs: 0,
+}
+
 export type ResolveCostFn = (modelId: string) => ResolvedCost | null
 
 export interface AggregateUsage extends AgentUsage {
@@ -91,29 +101,10 @@ export function repriceEvents(
 
 export function aggregateUsage(events: readonly SddEvent[], resolve: ResolveCostFn = () => null): AggregateUsage {
   const { events: repriced, costKnown } = repriceEvents(events, resolve)
-  const usage = repriced.reduce<AgentUsage>(
-    (acc, event) => {
-      if (event.type !== 'done') return acc
-      return {
-        inputTokens: acc.inputTokens + event.usage.inputTokens,
-        outputTokens: acc.outputTokens + event.usage.outputTokens,
-        reasoningTokens: acc.reasoningTokens + event.usage.reasoningTokens,
-        cachedReadTokens: acc.cachedReadTokens + event.usage.cachedReadTokens,
-        cachedWriteTokens: acc.cachedWriteTokens + event.usage.cachedWriteTokens,
-        costUsd: acc.costUsd + event.usage.costUsd,
-        wallMs: acc.wallMs + event.usage.wallMs,
-      }
-    },
-    {
-      inputTokens: 0,
-      outputTokens: 0,
-      reasoningTokens: 0,
-      cachedReadTokens: 0,
-      cachedWriteTokens: 0,
-      costUsd: 0,
-      wallMs: 0,
-    },
-  )
+  const usage = repriced.reduce<AgentUsage>((acc, event) => {
+    if (event.type !== 'done') return acc
+    return plusUsage(acc, event.usage)
+  }, EMPTY_USAGE)
   return { ...usage, costKnown }
 }
 
@@ -150,15 +141,7 @@ export function childUsageOf(childRunDir: string, resolve: ResolveCostFn = () =>
   try {
     const { events, costKnown } = repriceEvents(readEvents(path.join(childRunDir, 'events.ndjson')), resolve)
     if (!costKnown) return undefined
-    let usage: AgentUsage = {
-      inputTokens: 0,
-      outputTokens: 0,
-      reasoningTokens: 0,
-      cachedReadTokens: 0,
-      cachedWriteTokens: 0,
-      costUsd: 0,
-      wallMs: 0,
-    }
+    let usage: AgentUsage = EMPTY_USAGE
     for (const event of events) {
       if (event.type === 'done') usage = plusUsage(usage, event.usage)
       else if (event.type === 'child_done') {
