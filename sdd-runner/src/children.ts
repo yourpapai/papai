@@ -32,7 +32,7 @@ export interface PlanBranchOptions {
 }
 
 /** D4 row text: `<child-id> — <instruction first line>` plus deps/capabilities. */
-export function gateRowText(child: PlanChild): string {
+function gateRowText(child: PlanChild): string {
   const firstLine = child.instruction.split('\n')[0] ?? child.instruction
   const deps = child.deps.length > 0 ? ` · deps: ${child.deps.join(', ')}` : ''
   const capabilities =

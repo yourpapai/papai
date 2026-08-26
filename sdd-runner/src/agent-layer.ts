@@ -108,7 +108,7 @@ export interface AgentRunInfo<T> {
   readonly attempts: number
 }
 
-export const MAX_VALIDATION_ATTEMPTS = 2
+const MAX_VALIDATION_ATTEMPTS = 2
 
 interface ContinuationSpawn {
   readonly sessionId: string
