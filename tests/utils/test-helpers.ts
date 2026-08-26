@@ -1211,12 +1211,13 @@ export async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promi
 /**
  * Assert that `work` rejects with a message matching `expected`.
  *
- * Prefer this over `expect(promise).rejects.toThrow()` for anything that drives
- * the TypeScript source parser. Bun 1.4 makes `.rejects` pathologically slow
- * when the rejecting chain touched a live child process: measured on the plugin
- * entry-graph walk, the same rejection takes ~100ms caught directly and ~33s
- * through `.rejects` (~1s on Bun 1.3.11, so this is a 1.4 regression, not a
- * cost of the parser). The assertion is the same; only the waiting is gone.
+ * History: Bun 1.4 made `expect(promise).rejects` pathologically slow when the
+ * rejecting chain touched a live child process (~33s vs ~100ms caught directly,
+ * ~1s on Bun 1.3.11) — measured on the plugin entry-graph walk while the AST
+ * parser still spawned `tsgo`. Parsing is in-process now, so that trigger is
+ * gone, but the helper stays the repo-standard rejection assertion: it names
+ * the Bun defect, and `.rejects` regressions of this shape have happened
+ * before. The assertion semantics are identical either way.
  */
 export async function expectRejection(work: Promise<unknown>, expected: string | RegExp): Promise<void> {
   let message: string | undefined
