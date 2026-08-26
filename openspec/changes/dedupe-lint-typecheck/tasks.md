@@ -13,7 +13,7 @@ Order is fixed by design.md D4: measure first, branch on evidence, test-first ed
 - [x] 2.1 Create a scratch `git worktree add` checkout so planted errors never touch the main tree's hook pipeline. Verify: `git worktree list` shows it; main tree `git status` clean.
 - [x] 2.2 Plant the six probes (design.md D2 table) one class at a time in a scratch `src/` file and record which of (a) lint-as-configured, (b) lint with type-check off, (c) `tsgo` reports each. Verify: all six matrix rows filled in design.md `Measured results`; worktree removed afterwards (`git worktree list` shows only the main tree).
 - [x] 2.3 Enumerate `.oxlintignore` vs `tsconfig.json` include/exclude and record any file class one pass checks and the other does not (non-subsumed scope). Verify: finding recorded in design.md `Measured results` (or `no scope differences` noted).
-- [ ] 2.4 Decide the branch against design.md D1 bars (R1 / R2 / N) and write `Branch taken` plus rationale into design.md. Verify: `Branch taken` line in design.md names exactly one of R1/R2/N and matches the matrix.
+- [x] 2.4 Decide the branch against design.md D1 bars (R1 / R2 / N) and write `Branch taken` plus rationale into design.md. Verify: `Branch taken` line in design.md names exactly one of R1/R2/N and matches the matrix.
 
 ## 3. Branch R1 — drop redundant `typecheck` from full mode and `check:verbose` (only if 2.4 = R1)
 

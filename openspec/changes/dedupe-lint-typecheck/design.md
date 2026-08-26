@@ -134,4 +134,10 @@ Drill caveat recorded: the worktree initially failed both tools on `opencode-age
 
 Tool versions: `oxlint@1.78.0`, `oxlint-tsgolint@0.22.1` (via `bun pm ls`), `tsgo` `7.0.0-dev.20260707.2` (`bunx tsgo --version`), Bun `1.4.0`. Machine shape: 4 vCPU.
 
-**Branch taken: _pending_ (R1 / R2 / N)** — decided by the matrix against D1's bars.
+**Branch taken: R1** — decided by the matrix against D1's bars. Rationale:
+
+- **R1's diagnostic bar is met**: every probe class `tsgo` reported (probes 1, 2, 3, 4, 6) was also reported by lint-as-configured with the identical TS codes (TS2322, TS6133, TS4111, TS18048), and probe 5 shows lint is strictly ⊇ tsgo on classes (`await-thenable` is lint-only). Beyond the probes, the (accidental) worktree drill corroborated 1:1 mirroring on real diagnostics — lint reproduced `tsgo`'s TS2307 module-resolution and TS7006 implicit-any errors on `opencode-agent/src` exactly.
+- **R1's scope bar is met**: 2.3 found no non-subsumed file class; `tsgo`'s effective checked scope is a subset of lint's.
+- **R2 is dead twice over**: probe 5 fires only with the checker on (a type-aware-dependent rule enabled via the `correctness` category for non-test files), and `tsgo` does not report everything lint's checker pass reports.
+- **D3 is respected**: `tsgo --noEmit` stays authoritative where it is not redundant — staged mode (`scripts/check.sh:209`) and the standalone `bun run typecheck` script are untouched; only the full-mode duplicate is removed. Compiler-option diagnostics, the concern D3 flagged as undocumented for the lint path, were precisely what the probes established (TS6133/TS4111/TS18048/TS2322 all surface through lint).
+- Residual risk, accepted: the probes plus corroborating classes cover eight diagnostic families, not `tsgo`'s entire surface. Mitigations already in the design: rollback is a single `git revert` (Migration Plan), and the version-drift clause (Risks) requires re-running the drill on major oxlint/oxlint-tsgolint/tsgo bumps before trusting the dedup.
