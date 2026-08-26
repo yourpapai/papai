@@ -71,10 +71,13 @@ export function routableContextGroups(
   return routable
 }
 
-/** A non-null pin that no longer resolves (instance stopped, plugin gone,
- * config invalid) can never come back by re-editing the context; cancel its
- * alerts instead of re-evaluating them every cycle. A null pin keeps today's
- * warn-and-retry behavior. */
+/** A non-null pin that no longer resolves (instance stopped or deleted,
+ * plugin inactive, missing/invalid config) gets its alerts cancelled rather
+ * than re-evaluated every cycle — it must never be re-pointed at the
+ * context's current instance (design D3). Destructive by design and an
+ * accepted trade-off: recoverable causes (re-activated instance, re-enabled
+ * plugin, re-added context token) do not restore the cancelled alerts. A
+ * null pin keeps today's warn-and-retry behavior. */
 export function handleUnresolvableProvider(configContextId: string, pinnedTaskInstanceId: string | null): void {
   if (pinnedTaskInstanceId === null) {
     log.warn({ configContextId }, 'Could not build task provider for alert polling')
