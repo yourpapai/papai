@@ -12,7 +12,6 @@ import type { AutonomyConfig } from '../../sdd-runner/src/config.js'
 import type { SddEvent } from '../../sdd-runner/src/events.js'
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import {
-  applyConfirmAll,
   blockersOf,
   buildBus,
   findingsOf,
@@ -112,19 +111,6 @@ describe('costAndDuration', () => {
     )
     expect(costUsd).toBe(0.25)
     expect(durationMs).toBe(1000)
-  })
-})
-
-describe('applyConfirmAll', () => {
-  it('checks every assumption, finding, and ack box in the gate file', async () => {
-    const dir = makeDir()
-    const file = path.join(dir, 'gate-1.md')
-    fs.writeFileSync(file, '- [ ] A1 first\n- [ ] F1 gap\n- [ ] T1 ack\n')
-    await applyConfirmAll(file)
-    const md = fs.readFileSync(file, 'utf8')
-    expect(md).toContain('- [x] A1 first')
-    expect(md).toContain('- [x] F1 gap')
-    expect(md).toContain('- [x] T1 ack')
   })
 })
 

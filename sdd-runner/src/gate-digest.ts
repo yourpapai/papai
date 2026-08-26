@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
@@ -259,11 +259,6 @@ export async function readReviewResultFromSidecars(
   } catch {
     return { outcome, rounds: round, openBlockers: [], openMaterial: [], openNitpicks: [] }
   }
-}
-
-export async function applyConfirmAll(gateMdPath: string): Promise<void> {
-  const md = await readFile(gateMdPath, 'utf8')
-  await writeFile(gateMdPath, md.replace(/- \[ \] ([AFT]\d+)/gu, '- [x] $1'))
 }
 
 export async function finalizeGate(
