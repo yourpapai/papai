@@ -23,7 +23,7 @@ Order is fixed by design.md D4: measure first, branch on evidence, test-first ed
 ## 4. Branch R2 — disable lint's type-check pass (only if 2.4 = R2)
 
 - [x] 4.1 Test-first: add/extend a `tests/scripts/check.test.ts` (or nearest existing lint-config test) assertion pinning `.oxlintrc.json` `options.typeCheck: false` expectation. Verify: `bun test tests/scripts/check.test.ts` fails red before the config edit.
-- [ ] 4.2 Set `options.typeCheck` (and `typeAware`) to `false` in `.oxlintrc.json`; no composition change anywhere. Verify: `bun test tests/scripts/check.test.ts` passes green; `bun run lint` exits 0.
+- [x] 4.2 Set `options.typeCheck` (and `typeAware`) to `false` in `.oxlintrc.json`; no composition change anywhere. Verify: `bun test tests/scripts/check.test.ts` passes green; `bun run lint` exits 0.
 
 ## 5. Branch N — findings-only (only if 2.4 = N)
 
