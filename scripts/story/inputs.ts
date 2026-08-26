@@ -38,10 +38,9 @@ export function isFrozenCoverageSupportPath(filePath: string): boolean {
   return FROZEN_COVERAGE_SUPPORT_PATHS.has(filePath)
 }
 
-// TypeScript 7 reaches a syntax tree only through a project served by `tsgo`, so
-// the scenario extractor drives that API through this module rather than parsing
-// in-process. The snapshot must carry it or the runner cannot load. It imports
-// nothing from the repository, so freezing it pulls in no further graph.
+// The scenario extractor parses through this module. The snapshot must carry
+// it or the runner cannot load. It imports nothing from the repository beyond
+// the parser package, so freezing it pulls in no further graph.
 const PARSER_SUPPORT_PREFIX = 'src/ts-ast'
 
 export const FROZEN_PARSER_SUPPORT: readonly string[] = [`${PARSER_SUPPORT_PREFIX}/source-parser.ts`]

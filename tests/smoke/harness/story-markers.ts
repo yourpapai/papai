@@ -3,10 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { isCallExpression, isIdentifier, isPropertyAccessExpression, isStringLiteral } from 'typescript/unstable/ast'
-import type { CallExpression, Expression, Node, SourceFile } from 'typescript/unstable/ast'
+import type { Node } from 'oxc-parser'
 
-import type { SourceParser } from '../../../src/ts-ast/source-parser.js'
+import {
+  childNodes,
+  stringLiteralValue,
+  type ParsedProgram,
+  type SourceParser,
+} from '../../../src/ts-ast/source-parser.js'
 
 /**
  * Tier 2/3 scenario files name their tests through a local `title()` helper that
@@ -22,18 +26,19 @@ export type StoryMarkerScan = Readonly<{ keys: readonly string[]; violations: re
  * an unrecognized declarator is a *silent* miss — neither a key nor a violation —
  * which is the exact blind spot this scanner exists to remove.
  */
-function isTestCall(expression: Expression): boolean {
-  if (isIdentifier(expression)) return expression.text === 'test' || expression.text === 'it'
-  if (isPropertyAccessExpression(expression)) return isTestCall(expression.expression)
-  if (isCallExpression(expression)) return isTestCall(expression.expression)
+function isTestCall(expression: Node): boolean {
+  if (expression.type === 'Identifier') return expression.name === 'test' || expression.name === 'it'
+  if (expression.type === 'MemberExpression') return isTestCall(expression.object)
+  if (expression.type === 'CallExpression') return isTestCall(expression.callee)
   return false
 }
 
-function markerKey(argument: Expression | undefined): string | undefined {
-  if (argument === undefined || !isCallExpression(argument)) return undefined
-  if (!isIdentifier(argument.expression) || argument.expression.text !== 'title') return undefined
+function markerKey(argument: Node | undefined): string | undefined {
+  if (argument === undefined || argument.type !== 'CallExpression') return undefined
+  if (argument.callee.type !== 'Identifier' || argument.callee.name !== 'title') return undefined
   const [key] = argument.arguments
-  return key !== undefined && isStringLiteral(key) ? key.text : undefined
+  if (key === undefined) return undefined
+  return stringLiteralValue(key)
 }
 
 export async function scanStoryMarkers(
@@ -41,28 +46,31 @@ export async function scanStoryMarkers(
   filePath: string,
   source: string,
 ): Promise<StoryMarkerScan> {
-  const sourceFile = await parser.parse(filePath, source)
-  return readMarkers(sourceFile, filePath)
+  const program = await parser.parse(filePath, source)
+  return readMarkers(program, filePath, source)
 }
 
-function readMarkers(sourceFile: SourceFile, filePath: string): StoryMarkerScan {
+function readMarkers(program: ParsedProgram, filePath: string, source: string): StoryMarkerScan {
   const keys: string[] = []
   const violations: string[] = []
 
-  const visit = (node: Node, calleeOf: CallExpression | undefined): void => {
-    if (isCallExpression(node) && node !== calleeOf && isTestCall(node.expression)) {
+  const visit = (node: Node, calleeOf: Node | undefined): void => {
+    if (node.type === 'CallExpression' && node !== calleeOf && isTestCall(node.callee)) {
       const [first] = node.arguments
       const key = markerKey(first)
       if (key === undefined) {
-        violations.push(`${filePath}: ${first === undefined ? '<no title argument>' : first.getText(sourceFile)}`)
+        violations.push(
+          `${filePath}: ${first === undefined ? '<no title argument>' : source.slice(first.start, first.end)}`,
+        )
       } else {
         keys.push(key)
       }
     }
-    const innerCallee = isCallExpression(node) && isCallExpression(node.expression) ? node.expression : undefined
-    node.forEachChild((child) => visit(child, innerCallee))
+    const innerCallee =
+      node.type === 'CallExpression' && node.callee.type === 'CallExpression' ? node.callee : undefined
+    for (const child of childNodes(node)) visit(child, innerCallee)
   }
 
-  visit(sourceFile, undefined)
+  visit(program, undefined)
   return Object.freeze({ keys, violations })
 }

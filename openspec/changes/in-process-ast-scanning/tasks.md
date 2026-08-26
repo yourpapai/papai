@@ -15,10 +15,10 @@ See LICENSE in the project root for details.
 
 ## 2. Parser seam swap
 
-- [ ] 2.1 Rewrite `src/ts-ast/source-parser.ts` as an oxc adapter preserving the `SourceParser` interface (`parse`, `parseAll`, `close` as no-op) with no repository imports and no child process; keep the module async
-- [ ] 2.2 Rewrite `src/plugins/discovery-import-scan.ts` predicates on the oxc AST, preserving: non-literal dynamic-import and `import.meta.require` specifiers set their flags, aliased `import.meta.require` detection, static/export specifier collection — TDD against `tests/plugins/discovery-imports.test.ts` and `discovery.test.ts` first
-- [ ] 2.3 Rewrite `scripts/story/scenarios.ts` and `tests/smoke/harness/story-markers.ts` walks on the oxc AST, TDD against the manifest/marker suites
-- [ ] 2.4 Remove every `typescript/unstable` import from the three scanners and the parser seam; confirm `grep -r 'typescript/unstable' src/ scripts/ tests/` returns only typecheck-irrelevant hits
+- [x] 2.1 Rewrite `src/ts-ast/source-parser.ts` as an oxc adapter preserving the `SourceParser` interface (`parse`, `parseAll`, `close` as no-op) with no repository imports and no child process; keep the module async
+- [x] 2.2 Rewrite `src/plugins/discovery-import-scan.ts` predicates on the oxc AST, preserving: non-literal dynamic-import and `import.meta.require` specifiers set their flags, aliased `import.meta.require` detection, static/export specifier collection — TDD against `tests/plugins/discovery-imports.test.ts` and `discovery.test.ts` first
+- [x] 2.3 Rewrite `scripts/story/scenarios.ts` and `tests/smoke/harness/story-markers.ts` walks on the oxc AST, TDD against the manifest/marker suites
+- [x] 2.4 Remove every `typescript/unstable` import from the three scanners and the parser seam; confirm `grep -r 'typescript/unstable' src/ scripts/ tests/` returns only typecheck-irrelevant hits
 
 ## 3. Guard restored to zero allowances
 

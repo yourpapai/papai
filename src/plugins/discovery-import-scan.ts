@@ -3,26 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import {
-  isCallExpression,
-  isExportDeclaration,
-  isIdentifier,
-  isImportDeclaration,
-  isMetaProperty,
-  isNoSubstitutionTemplateLiteral,
-  isPropertyAccessExpression,
-  isStringLiteral,
-  isVariableDeclaration,
-  SyntaxKind,
-} from 'typescript/unstable/ast'
-import type {
-  CallExpression,
-  ExportDeclaration,
-  ImportDeclaration,
-  Node,
-  SourceFile,
-  VariableDeclaration,
-} from 'typescript/unstable/ast'
+import type { Node } from 'oxc-parser'
+
+import { plainTemplateValue, stringLiteralValue, walkNodes, type ParsedProgram } from '../ts-ast/source-parser.js'
 
 /**
  * Reads what a single plugin source imports: static specifiers, literal dynamic
@@ -41,130 +24,94 @@ export type ImportScanResult = {
   hasNonDeterministicImportMetaRequire: boolean
 }
 
-type RequireAliasSet = Set<string>
-
-function readDynamicImportSpecifier(node: CallExpression): string | null {
-  const [argument] = node.arguments
-  if (argument === undefined) return null
-  if (isStringLiteral(argument)) return argument.text
-  if (isNoSubstitutionTemplateLiteral(argument)) return argument.text
-  return null
+type ScanSink = {
+  staticSpecifiers: string[]
+  dynamicSpecifiers: string[]
+  importMetaRequireSpecifiers: string[]
+  requireAliases: Set<string>
+  hasNonDeterministicDynamicImport: boolean
+  hasNonDeterministicImportMetaRequire: boolean
 }
 
-function readImportDeclarationSpecifier(node: ImportDeclaration): string | null {
-  return isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : null
+/** `import.meta` as oxc shapes it: a MetaProperty with meta/property names. */
+function isImportMeta(node: Node): boolean {
+  return node.type === 'MetaProperty' && node.meta.name === 'import' && node.property.name === 'meta'
 }
 
-function readExportDeclarationSpecifier(node: ExportDeclaration): string | null {
-  return node.moduleSpecifier !== undefined && isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : null
+/** `import.meta.require` as a static member access. */
+function isRequireMemberExpression(node: Node): boolean {
+  if (node.type !== 'MemberExpression') return false
+  if (node.computed || node.property.type !== 'Identifier') return false
+  return node.property.name === 'require' && isImportMeta(node.object)
 }
 
-function isImportMetaRequireCall(node: Node): node is CallExpression {
-  return (
-    isCallExpression(node) &&
-    isPropertyAccessExpression(node.expression) &&
-    node.expression.name.text === 'require' &&
-    isMetaProperty(node.expression.expression) &&
-    node.expression.expression.keywordToken === SyntaxKind.ImportKeyword &&
-    node.expression.expression.name.text === 'meta'
-  )
+/** Literal or substitution-free-template specifier, else undefined. */
+function literalSpecifier(node: Node): string | undefined {
+  return stringLiteralValue(node) ?? plainTemplateValue(node)
 }
 
-function isRequireAliasDeclaration(node: Node): node is VariableDeclaration {
-  return (
-    isVariableDeclaration(node) &&
-    isIdentifier(node.name) &&
-    node.initializer !== undefined &&
-    isPropertyAccessExpression(node.initializer) &&
-    node.initializer.name.text === 'require' &&
-    isMetaProperty(node.initializer.expression) &&
-    node.initializer.expression.keywordToken === SyntaxKind.ImportKeyword &&
-    node.initializer.expression.name.text === 'meta'
-  )
+function scanVariableDeclarator(node: Node, sink: ScanSink): void {
+  if (node.type !== 'VariableDeclarator') return
+  if (node.id.type !== 'Identifier' || node.init === null) return
+  if (isRequireMemberExpression(node.init)) sink.requireAliases.add(node.id.name)
 }
 
-function readRequireAlias(node: Node): string | null {
-  if (!isRequireAliasDeclaration(node)) return null
-  return isIdentifier(node.name) ? node.name.text : null
+function scanModuleDeclaration(node: Node, sink: ScanSink): void {
+  if (
+    node.type !== 'ImportDeclaration' &&
+    node.type !== 'ExportNamedDeclaration' &&
+    node.type !== 'ExportAllDeclaration'
+  ) {
+    return
+  }
+  if (node.source === null) return
+  const specifier = stringLiteralValue(node.source)
+  if (specifier !== undefined) sink.staticSpecifiers.push(specifier)
 }
 
-function isAliasedImportMetaRequireCall(node: Node, aliases: ReadonlySet<string>): node is CallExpression {
-  return isCallExpression(node) && isIdentifier(node.expression) && aliases.has(node.expression.text)
+function scanImportExpression(node: Node, sink: ScanSink): void {
+  if (node.type !== 'ImportExpression') return
+  const specifier = literalSpecifier(node.source)
+  if (specifier === undefined) sink.hasNonDeterministicDynamicImport = true
+  else sink.dynamicSpecifiers.push(specifier)
 }
 
-function collectImportSpecifiers(
-  node: Node,
-  aliases: ReadonlySet<string>,
-  specifiers: {
-    staticSpecifiers: string[]
-    dynamicSpecifiers: string[]
-    importMetaRequireSpecifiers: string[]
-  },
-): { hasNonDeterministicDynamicImport: boolean; hasNonDeterministicImportMetaRequire: boolean } {
-  let hasNonDeterministicDynamicImport = false
-  let hasNonDeterministicImportMetaRequire = false
+function scanRequireCall(node: Node, sink: ScanSink): void {
+  if (node.type !== 'CallExpression') return
+  const isAliasCall = node.callee.type === 'Identifier' && sink.requireAliases.has(node.callee.name)
+  if (!isRequireMemberExpression(node.callee) && !isAliasCall) return
+  const argument = node.arguments[0]
+  if (argument === undefined) {
+    sink.hasNonDeterministicImportMetaRequire = true
+    return
+  }
+  const specifier = literalSpecifier(argument)
+  if (specifier === undefined) sink.hasNonDeterministicImportMetaRequire = true
+  else sink.importMetaRequireSpecifiers.push(specifier)
+}
 
-  if (isImportDeclaration(node)) {
-    const specifier = readImportDeclarationSpecifier(node)
-    if (specifier !== null) specifiers.staticSpecifiers.push(specifier)
+export function collectImports(program: ParsedProgram): ImportScanResult {
+  const sink: ScanSink = {
+    staticSpecifiers: [],
+    dynamicSpecifiers: [],
+    importMetaRequireSpecifiers: [],
+    requireAliases: new Set<string>(),
+    hasNonDeterministicDynamicImport: false,
+    hasNonDeterministicImportMetaRequire: false,
   }
 
-  if (isExportDeclaration(node)) {
-    const specifier = readExportDeclarationSpecifier(node)
-    if (specifier !== null) specifiers.staticSpecifiers.push(specifier)
-  }
-
-  if (isCallExpression(node) && node.expression.kind === SyntaxKind.ImportKeyword) {
-    const specifier = readDynamicImportSpecifier(node)
-    if (specifier === null) hasNonDeterministicDynamicImport = true
-    else specifiers.dynamicSpecifiers.push(specifier)
-  }
-
-  if (isImportMetaRequireCall(node) || isAliasedImportMetaRequireCall(node, aliases)) {
-    const specifier = readDynamicImportSpecifier(node)
-    if (specifier === null) hasNonDeterministicImportMetaRequire = true
-    else specifiers.importMetaRequireSpecifiers.push(specifier)
-  }
-
-  return { hasNonDeterministicDynamicImport, hasNonDeterministicImportMetaRequire }
-}
-
-export function collectImports(sourceFile: SourceFile): ImportScanResult {
-  const staticSpecifiers: string[] = []
-  const dynamicSpecifiers: string[] = []
-  const importMetaRequireSpecifiers: string[] = []
-  const requireAliases: RequireAliasSet = new Set()
-  let hasNonDeterministicDynamicImport = false
-  let hasNonDeterministicImportMetaRequire = false
-
-  function visit(node: Node): void {
-    const requireAlias = readRequireAlias(node)
-    if (requireAlias !== null) {
-      requireAliases.add(requireAlias)
-    }
-
-    const result = collectImportSpecifiers(node, requireAliases, {
-      staticSpecifiers,
-      dynamicSpecifiers,
-      importMetaRequireSpecifiers,
-    })
-    if (result.hasNonDeterministicDynamicImport) {
-      hasNonDeterministicDynamicImport = true
-    }
-    if (result.hasNonDeterministicImportMetaRequire) {
-      hasNonDeterministicImportMetaRequire = true
-    }
-
-    node.forEachChild(visit)
-  }
-
-  visit(sourceFile)
+  walkNodes(program, (node) => {
+    scanVariableDeclarator(node, sink)
+    scanModuleDeclaration(node, sink)
+    scanImportExpression(node, sink)
+    scanRequireCall(node, sink)
+  })
 
   return {
-    staticSpecifiers,
-    dynamicSpecifiers,
-    importMetaRequireSpecifiers,
-    hasNonDeterministicDynamicImport,
-    hasNonDeterministicImportMetaRequire,
+    staticSpecifiers: sink.staticSpecifiers,
+    dynamicSpecifiers: sink.dynamicSpecifiers,
+    importMetaRequireSpecifiers: sink.importMetaRequireSpecifiers,
+    hasNonDeterministicDynamicImport: sink.hasNonDeterministicDynamicImport,
+    hasNonDeterministicImportMetaRequire: sink.hasNonDeterministicImportMetaRequire,
   }
 }

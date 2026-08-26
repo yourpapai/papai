@@ -168,14 +168,10 @@ async function discoverOne(
 }
 
 export function discoverPlugins(pluginsDir: string): Promise<DiscoveryResult> {
-  return withSourceParser((parser) => discoverWithParser(parser, pluginsDir), {
-    onCloseError: (error) => {
-      log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Failed to close source parser')
-    },
-  })
+  return withSourceParser((parser) => discoverWithParser(parser, pluginsDir))
 }
 
-/** Plugin source graphs are parsed by one shared `tsgo` process, so bound the fan-out. */
+/** Plugin source graphs are parsed through one shared parser, so bound the fan-out. */
 const DISCOVERY_CONCURRENCY = 4
 
 async function discoverWithParser(parser: SourceParser, pluginsDir: string): Promise<DiscoveryResult> {
