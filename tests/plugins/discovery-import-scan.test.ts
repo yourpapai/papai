@@ -92,4 +92,26 @@ describe('scan: import.meta.require', () => {
       true,
     )
   })
+
+  test('ignores computed member requires and non-import metas', async () => {
+    const source = `
+      const a = import.meta['require']('./computed.js')
+      const b = something.require('./member.js')
+      function f() { return new.target }
+    `
+    const scan = collectImports(await parser.parse('plugin-source.ts', source))
+    expect(scan.importMetaRequireSpecifiers).toEqual([])
+    expect(scan.hasNonDeterministicImportMetaRequire).toBe(false)
+    expect(scan.dynamicSpecifiers).toEqual([])
+    expect(scan.hasNonDeterministicDynamicImport).toBe(false)
+  })
+
+  test('ignores a require alias rebound to another identifier', async () => {
+    const source = `
+      const req = import.meta.require
+      const other = req
+      const m = other('./rebound.js')
+    `
+    expect(collectImports(await parser.parse('plugin-source.ts', source)).importMetaRequireSpecifiers).toEqual([])
+  })
 })

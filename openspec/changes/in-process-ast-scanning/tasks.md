@@ -33,9 +33,10 @@ See LICENSE in the project root for details.
 
 ## 5. Stryker pin and canary
 
-- [ ] 5.1 Add the sentinel pin test to `tests/scripts/mutation/stryker-config.test.ts`: assert `tsconfigFile` equals the sentinel, the file does not exist, and the failure message points at the `scripts/mutation/README.md` section
-- [ ] 5.2 Add the TypeScript canary job to `.github/workflows/nightly.yml`: install `typescript@latest`, run `bun run typecheck` and a discovery smoke; non-gating; document cadence choice in the workflow
-- [ ] 5.3 Run a mutation spot-check (`bun test:mutate:file src/plugins/discovery-import-scan.ts`) and ratchet the baseline if scores move
+- [x] 5.1 Add the sentinel pin test to `tests/scripts/mutation/stryker-config.test.ts`: assert `tsconfigFile` equals the sentinel, the file does not exist, and the failure message points at the `scripts/mutation/README.md` section
+- [x] 5.2 Add the TypeScript canary job to `.github/workflows/nightly.yml`: install `typescript@latest`, run `bun run typecheck` and a discovery smoke; non-gating; document cadence choice in the workflow
+- [x] 5.3 Run a mutation spot-check (`bun test:mutate:file src/plugins/discovery-import-scan.ts`) and ratchet the baseline if scores move
+  - 84.7% first run; three negative pins added (computed require, non-import metas, rebound alias) lift it to 90.3%. No prior baseline entry exists for this new file, so the floor is seeded by CI's changed-files flow on merge.
 
 ## 6. Re-baseline, verification, docs
 
