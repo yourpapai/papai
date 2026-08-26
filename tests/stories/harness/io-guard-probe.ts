@@ -70,17 +70,21 @@ scenario('rejects Bun.spawnSync', ({ world }) => {
   Bun.spawnSync(['true'])
 })
 
-// The `tsgo` allowance is shaped, not blanket: a matching path outside the
-// execution root is still a violation, so the hole cannot be widened by planting
-// a lookalike anywhere else on the filesystem.
-scenario('rejects a tsgo-shaped executable outside the execution root', ({ world }) => {
+// Parsing is fully in-process: no executable is admitted, not even a
+// compiler-binary lookalike planted inside the execution root where a spawn
+// allowance could plausibly be scoped.
+scenario('rejects a tsgo-shaped executable inside the execution root', ({ world }) => {
   phase(world)
-  Bun.spawn(['/tmp/@typescript/typescript-linux-x64/lib/tsc'])
+  const executionRoot = process.env['PAPAI_STORY_EXECUTION_ROOT']
+  if (executionRoot === undefined) throw new Error('story execution root is unavailable')
+  Bun.spawn([`${executionRoot}/node_modules/@typescript/typescript-linux-x64/lib/tsc`])
 })
 
-scenario('rejects a tsgo-shaped child_process spawn outside the execution root', ({ world }) => {
+scenario('rejects a tsgo-shaped child_process spawn inside the execution root', ({ world }) => {
   phase(world)
-  spawn('/tmp/@typescript/typescript-linux-x64/lib/tsc')
+  const executionRoot = process.env['PAPAI_STORY_EXECUTION_ROOT']
+  if (executionRoot === undefined) throw new Error('story execution root is unavailable')
+  spawn(`${executionRoot}/node_modules/@typescript/typescript-linux-x64/lib/tsc`)
 })
 
 scenario('rejects child_process execFile', ({ world }) => {

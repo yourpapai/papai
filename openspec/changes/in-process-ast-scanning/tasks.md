@@ -22,8 +22,8 @@ See LICENSE in the project root for details.
 
 ## 3. Guard restored to zero allowances
 
-- [ ] 3.1 Delete the tsgo spawn allowance from `tests/stories/harness/io-guard.ts` (`TSGO_EXECUTABLE`, `spawnExecutable`, `isAllowedTsgoSpawn`, both spawn carve-outs) and the two outside-the-root probe scenarios from `io-guard-probe.ts`; keep all denial probes
-- [ ] 3.2 Update the guard prose in `tests/CLAUDE.md` back to "no child process, ever"; io-guard suite green (including a probe that a tsgo-shaped path inside the root is now denied)
+- [x] 3.1 Delete the tsgo spawn allowance from `tests/stories/harness/io-guard.ts` (`TSGO_EXECUTABLE`, `spawnExecutable`, `isAllowedTsgoSpawn`, both spawn carve-outs) and the two outside-the-root probe scenarios from `io-guard-probe.ts`; keep all denial probes
+- [x] 3.2 Update the guard prose in `tests/CLAUDE.md` back to "no child process, ever"; io-guard suite green (including a probe that a tsgo-shaped path inside the root is now denied)
 
 ## 4. Dependencies and image
 
