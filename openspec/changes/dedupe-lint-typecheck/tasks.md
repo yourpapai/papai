@@ -4,7 +4,7 @@ Order is fixed by design.md D4: measure first, branch on evidence, test-first ed
 
 ## 1. Environment and baseline
 
-- [ ] 1.1 Run `bun install` (container starts without `node_modules`). Verify: `bun run typecheck` exits 0 on the clean tree.
+- [x] 1.1 Run `bun install` (container starts without `node_modules`). Verify: `bun run typecheck` exits 0 on the clean tree.
 - [ ] 1.2 Record tool versions and machine shape (vCPU count) into design.md `Measured results`. Verify: `bun pm ls | grep -E 'oxlint|tsgolint'` plus `bunx tsgo --version`; values present in design.md.
 - [ ] 1.3 Time the three configurations (median of 3 runs each): `bun run lint` as configured, `bun run lint` with a scratch config having `typeAware`/`typeCheck` off, `bun run typecheck`. Record into design.md `Measured results`. Verify: all three table cells filled.
 
