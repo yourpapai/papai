@@ -112,6 +112,23 @@ describe('collectPureWatchFiring', () => {
     expect(firing[0]!.newMatchedTasks.map((t) => t.id)).toEqual(['t1'])
   })
 
+  test('lists only the changed watched tasks when a multi-id watch fires', () => {
+    const alert = createAlertPrompt(USER, 'Notify on change', {
+      or: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        { field: 'task.id', op: 'eq', value: 't2' },
+      ],
+    })
+    const snapshots = snapshotsFrom({ 't1:status': 'todo', 't2:status': 'todo' })
+    const tasks = [makeTask('t1', { status: 'todo' }), makeTask('t2', { status: 'done' })]
+
+    const firing = collectPureWatchFiring([alert], tasks, snapshots, new Date())
+
+    expect(firing).toHaveLength(1)
+    expect(firing[0]!.newMatchedTasks.map((t) => t.id)).toEqual(['t2'])
+    expect(firing[0]!.matchedNow).toEqual(['t1', 't2'])
+  })
+
   test('keeps matched-set bookkeeping and does not fire on a baseline sighting', () => {
     const alert = makeWatchAlert()
     const snapshots = snapshotsFrom({})

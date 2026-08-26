@@ -62,8 +62,9 @@ export function collectPureWatchFiring(
   for (const alert of alerts) {
     const matchedTasks = tasks.filter((task) => evaluateCondition(alert.condition, task, snapshots, evalNow))
     const matchedNow = matchedTasks.map((t) => t.id)
-    if (matchedTasks.some((task) => watchTaskChanged(task, snapshots, fields))) {
-      firing.push({ alert, matchedNow, newMatchedTasks: matchedTasks })
+    const changedTasks = matchedTasks.filter((task) => watchTaskChanged(task, snapshots, fields))
+    if (changedTasks.length > 0) {
+      firing.push({ alert, matchedNow, newMatchedTasks: changedTasks })
     } else {
       updateAlertMatchedTaskIds(alert.id, alert.createdByUserId, matchedNow)
     }
