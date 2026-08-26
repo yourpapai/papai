@@ -126,32 +126,18 @@ export class TaskProviderResolver {
     this.deps = { ...defaultDeps, ...deps }
   }
 
-  async resolve(contextId: string): Promise<TaskProvider | null> {
+  resolve(contextId: string): Promise<TaskProvider | null> {
     const settings = this.deps.getContextSettings(contextId)
     if (settings === null) {
       log.warn({ contextId }, 'Cannot resolve task provider: context has no task assignment')
-      return null
+      return Promise.resolve(null)
     }
     if (settings.taskInstanceId === null) {
       log.warn({ contextId }, 'Cannot resolve task provider: context has no task assignment')
-      return null
+      return Promise.resolve(null)
     }
 
-    const instance = this.deps.getTaskInstance(settings.taskInstanceId)
-    if (instance === null) {
-      log.warn({ contextId, taskInstanceId: settings.taskInstanceId }, 'Cannot resolve task provider: instance missing')
-      return null
-    }
-    if (instance.status !== 'active') {
-      log.warn(
-        { contextId, taskInstanceId: instance.id, status: instance.status },
-        'Cannot resolve task provider: instance is not active',
-      )
-      return null
-    }
-
-    const provider = await this.resolveDescriptorAndBuild(contextId, instance)
-    return provider
+    return this.resolveForInstance(contextId, settings.taskInstanceId)
   }
 
   /** Resolves the explicitly given task instance for a context, ignoring the
