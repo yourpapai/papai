@@ -11,10 +11,6 @@ import { compile, compileModule, preprocess } from 'svelte/compiler'
 // (client lane + Stryker paired-run path). Production client builds compile
 // through Vite; nothing outside tests imports this.
 
-export interface SveltePluginOptions {
-  dev?: boolean
-}
-
 function stripTs(source: string, filename: string): string {
   const transpiler = new Bun.Transpiler({
     loader: 'ts',
@@ -41,9 +37,7 @@ const tsScriptPreprocessor = {
 const SVELTE_FILE = /\.svelte$/u
 const SVELTE_MODULE_FILE = /\.svelte\.(?:ts|js)$/u
 
-export function sveltePlugin(options: SveltePluginOptions = {}): BunPlugin {
-  const { dev = false } = options
-
+export function sveltePlugin(): BunPlugin {
   return {
     name: 'svelte-loader',
     setup(build): void {
@@ -55,7 +49,7 @@ export function sveltePlugin(options: SveltePluginOptions = {}): BunPlugin {
         const result = compile(processed.code, {
           filename: args.path,
           generate: 'client',
-          dev,
+          dev: true,
           css: 'external',
         })
 
@@ -68,7 +62,7 @@ export function sveltePlugin(options: SveltePluginOptions = {}): BunPlugin {
         const result = compileModule(source, {
           filename: args.path,
           generate: 'client',
-          dev,
+          dev: true,
         })
 
         return { contents: result.js.code, loader: 'js' }

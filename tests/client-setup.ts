@@ -9,7 +9,7 @@ import { plugin } from 'bun'
 import { sveltePlugin } from './utils/svelte-plugin.js'
 
 GlobalRegistrator.register({ url: 'http://localhost' })
-void plugin(sveltePlugin({ dev: true }))
+void plugin(sveltePlugin())
 
 // happy-dom doesn't ship EventSource; stub it so dashboard code that opens
 // an SSE connection during mount doesn't blow up in unit tests.

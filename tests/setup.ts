@@ -45,5 +45,5 @@ export { originalConsole }
 if (process.env['PAPAI_SVELTE_TEST_PLUGIN'] === '1') {
   const { plugin } = await import('bun')
   const { sveltePlugin } = await import('./utils/svelte-plugin.js')
-  void plugin(sveltePlugin({ dev: true }))
+  void plugin(sveltePlugin())
 }
