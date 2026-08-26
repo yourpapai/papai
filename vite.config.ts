@@ -22,8 +22,11 @@ function resolveOutDir(): string {
 // <link href="/x.css"> tags aimed at the public/ build artifacts. In the dev
 // server those point at the source instead — a module script at the app entry
 // (full Vite transform + HMR) and the three source stylesheets in the same
-// tokens -> base -> app-local order the build assembles them. The transcript
-// page uses the /t.* artifact aliases its production server serves under.
+// tokens -> base -> app-local order the build assembles them. The CSP meta is
+// relaxed with `style-src 'unsafe-inline'` because Vite's dev pipeline applies
+// component CSS via injected inline <style> elements, which the production
+// `default-src 'self'` policy blocks. The transcript page uses the /t.*
+// artifact aliases its production server serves under.
 interface DevPage {
   artifact: string
   entry: string
@@ -42,7 +45,10 @@ function escapeRegExp(value: string): string {
 }
 
 function rewriteDevHtml(html: string): string {
-  let rewritten = html
+  let rewritten = html.replace(
+    /<meta(?=[^>]*http-equiv="Content-Security-Policy")[^>]*>/u,
+    "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'; style-src 'self' 'unsafe-inline'\" />",
+  )
   for (const page of DEV_PAGES) {
     rewritten = rewritten.replace(
       new RegExp(`<script[^>]*src="/${escapeRegExp(page.artifact)}\\.js"[^>]*>\\s*</script>`, 'u'),

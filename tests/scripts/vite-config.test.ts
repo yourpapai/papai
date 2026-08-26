@@ -188,5 +188,10 @@ describe('vite.config', () => {
     expect(base).toBeGreaterThan(tokens)
     expect(local).toBeGreaterThan(base)
     expect(rewritten).not.toContain(`href="/${artifact}.css"`)
+    // Vite's dev pipeline applies component CSS by injecting inline <style>
+    // elements, which the production `default-src 'self'` policy blocks, so
+    // the served page must carry the relaxed dev CSP instead.
+    expect(rewritten).not.toContain(`content="default-src 'self'"`)
+    expect(rewritten).toContain(`content="default-src 'self'; style-src 'self' 'unsafe-inline'"`)
   })
 })
