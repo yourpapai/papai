@@ -12,7 +12,7 @@
 ## 3. Diagnostics and docs
 
 - [x] 3.1 Extend `dependencyDriftError` in `opencode-agent/src/errors.ts` to report drifted fields per file in the opening line, keeping the remedies text and the no-bare-`/retry` rule verbatim; update the `errors.test.ts` expectations that pin the message
-- [ ] 3.2 Update the `ensureBranch` drift rule paragraph in `opencode-agent/CLAUDE.md` (content-aware condition, field constant, fail-closed defaults, issue #360 as the false-positive incident) and the operator notes in `opencode-agent/README.md`
+- [x] 3.2 Update the `ensureBranch` drift rule paragraph in `opencode-agent/CLAUDE.md` (content-aware condition, field constant, fail-closed defaults, issue #360 as the false-positive incident) and the operator notes in `opencode-agent/README.md`
 
 ## 4. Verification
 
