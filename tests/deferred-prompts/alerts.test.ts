@@ -5,7 +5,11 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { alertPrompts, taskInstances } from '../../src/db/schema.js'
 import {
+  cancelActiveAlertsPinnedToInstance,
   cancelAlertPrompt,
   createAlertPrompt,
   describeCondition,
@@ -315,6 +319,118 @@ describe('alerts delivery target', () => {
     expect(alert.deliveryTarget.contextType).toBe('dm')
     expect(alert.deliveryTarget.contextId).toBe('user1')
     expect(alert.deliveryTarget.audience).toBe('personal')
+  })
+})
+
+// --- Task instance pinning tests ---
+
+describe('alert task instance pinning', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  const seedTaskInstance = (id: string): void => {
+    getDrizzleDb().insert(taskInstances).values({ id, type: 'kaneo', config: '{}', status: 'active' }).run()
+  }
+
+  const insertPinnedAlert = (
+    id: string,
+    userId: string,
+    taskInstanceId: string | null,
+    storageContextId?: string,
+  ): void => {
+    getDrizzleDb()
+      .insert(alertPrompts)
+      .values({
+        id,
+        createdByUserId: userId,
+        prompt: `prompt ${id}`,
+        condition: '{"field":"task.status","op":"eq","value":"done"}',
+        taskInstanceId,
+        ...(storageContextId === undefined
+          ? {}
+          : { deliveryContextId: storageContextId, deliveryContextType: 'group', audience: 'shared' }),
+      })
+      .run()
+  }
+
+  test('createAlertPrompt persists the pinned task instance id', () => {
+    seedTaskInstance('ti-a')
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+
+    const alert = createAlertPrompt('user1', 'Pinned alert', condition, 60, undefined, undefined, 'ti-a')
+
+    expect(alert.taskInstanceId).toBe('ti-a')
+    expect(getAlertPrompt(alert.id, 'user1')!.taskInstanceId).toBe('ti-a')
+  })
+
+  test('createAlertPrompt leaves the pin null when none is provided', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+
+    const alert = createAlertPrompt('user1', 'Unpinned alert', condition)
+
+    expect(alert.taskInstanceId).toBeNull()
+    expect(getAlertPrompt(alert.id, 'user1')!.taskInstanceId).toBeNull()
+  })
+
+  test('toAlertPrompt round-trips a stored task instance pin', () => {
+    seedTaskInstance('ti-a')
+    insertPinnedAlert('ap-pinned', 'user1', 'ti-a')
+
+    expect(getAlertPrompt('ap-pinned', 'user1')!.taskInstanceId).toBe('ti-a')
+  })
+
+  test('cancelActiveAlertsPinnedToInstance cancels active alerts pinned to the instance', () => {
+    seedTaskInstance('ti-a')
+    seedTaskInstance('ti-b')
+    insertPinnedAlert('ap-a', 'user1', 'ti-a')
+    insertPinnedAlert('ap-b', 'user1', 'ti-b')
+    insertPinnedAlert('ap-null', 'user1', null)
+
+    cancelActiveAlertsPinnedToInstance('ti-a')
+
+    expect(getAlertPrompt('ap-a', 'user1')!.status).toBe('cancelled')
+    expect(getAlertPrompt('ap-b', 'user1')!.status).toBe('active')
+    expect(getAlertPrompt('ap-null', 'user1')!.status).toBe('active')
+  })
+
+  test('cancelActiveAlertsPinnedToInstance scopes cancellation to the config context when provided', () => {
+    seedTaskInstance('ti-a')
+    const chanA = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'chan-a' })
+    const chanAThread = toScopedThreadContextId({
+      platformInstanceId: 'pi-1',
+      nativeContextId: 'chan-a',
+      threadId: 't1',
+    })
+    const chanB = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'chan-b' })
+    insertPinnedAlert('ap-a-main', 'user1', 'ti-a', chanA)
+    insertPinnedAlert('ap-a-thread', 'user2', 'ti-a', chanAThread)
+    insertPinnedAlert('ap-b', 'user1', 'ti-a', chanB)
+
+    cancelActiveAlertsPinnedToInstance('ti-a', chanA)
+
+    expect(getAlertPrompt('ap-a-main', 'user1')!.status).toBe('cancelled')
+    expect(getAlertPrompt('ap-a-thread', 'user2')!.status).toBe('cancelled')
+    expect(getAlertPrompt('ap-b', 'user1')!.status).toBe('active')
+  })
+
+  test('cancelActiveAlertsPinnedToInstance does not cross-match a context id differing only by case', () => {
+    seedTaskInstance('ti-a')
+    const chanA = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'chan-a' })
+    const chanAThread = toScopedThreadContextId({
+      platformInstanceId: 'pi-1',
+      nativeContextId: 'chan-a',
+      threadId: 't1',
+    })
+    const firstLower = chanA.match(/[a-z]/u)!
+    const caseSibling = chanA.replace(firstLower[0], firstLower[0].toUpperCase())
+    insertPinnedAlert('ap-a-thread', 'user1', 'ti-a', chanAThread)
+    insertPinnedAlert('ap-sibling-thread', 'user2', 'ti-a', `${caseSibling}:thread:dEAw`)
+
+    cancelActiveAlertsPinnedToInstance('ti-a', chanA)
+
+    expect(getAlertPrompt('ap-a-thread', 'user1')!.status).toBe('cancelled')
+    expect(getAlertPrompt('ap-sibling-thread', 'user2')!.status).toBe('active')
   })
 })
 

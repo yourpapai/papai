@@ -8,8 +8,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
-import { toScopedContextId } from '../../../src/chat/scoped-context.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 import { handleContextTaskInstanceRoutes } from '../../../src/debug/settings/context-task-instance-routes.js'
+import { createAlertPrompt, getAlertPrompt } from '../../../src/deferred-prompts/alerts.js'
+import type { AlertCondition, DeferredPromptDeliveryInput } from '../../../src/deferred-prompts/types.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
 import { getContextSettings, setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
@@ -211,6 +213,90 @@ describe('settings context task-instance routes', () => {
     )
     expect(res.status).toBe(200)
     expect(getContextSettings(groupContextId)?.taskInstanceId).toBe('yt-default')
+  })
+
+  describe('switching instances cancels alerts pinned to the old instance', () => {
+    const groupDelivery = (groupContextId: string, threadId: string | null): DeferredPromptDeliveryInput => ({
+      contextId: 'grp-1',
+      storageContextId:
+        threadId === null
+          ? groupContextId
+          : toScopedThreadContextId({ platformInstanceId: 'pi-1', nativeContextId: 'grp-1', threadId }),
+      contextType: 'group' as const,
+      threadId,
+      audience: 'shared' as const,
+      mentionUserIds: [],
+      createdByUserId: 'u-1',
+      createdByUsername: null,
+    })
+
+    test('cancels old-instance-pinned alerts delivered into the context, others stay active', async () => {
+      const groupContextId = seedManageableGroup()
+      const otherGroupContextId = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'grp-2' })
+      insertTaskInstance({ id: 'ti-old', type: 'youtrack', config: {}, status: 'active' })
+      insertTaskInstance({ id: 'ti-new', type: 'youtrack', config: {}, status: 'active' })
+      insertTaskInstance({ id: 'ti-other', type: 'youtrack', config: {}, status: 'active' })
+      setContextSettings({ contextId: groupContextId, taskInstanceId: 'ti-old', platformInstanceId: 'pi-1' })
+
+      const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+      const pinnedOldMain = createAlertPrompt(
+        'u-1',
+        'pinned old main',
+        condition,
+        60,
+        undefined,
+        groupDelivery(groupContextId, null),
+        'ti-old',
+      )
+      const pinnedOldThread = createAlertPrompt(
+        'u-1',
+        'pinned old thread',
+        condition,
+        60,
+        undefined,
+        groupDelivery(groupContextId, '42'),
+        'ti-old',
+      )
+      const pinnedOther = createAlertPrompt(
+        'u-1',
+        'pinned other',
+        condition,
+        60,
+        undefined,
+        groupDelivery(groupContextId, null),
+        'ti-other',
+      )
+      const pinnedNull = createAlertPrompt(
+        'u-1',
+        'pinned null',
+        condition,
+        60,
+        undefined,
+        groupDelivery(groupContextId, null),
+      )
+      const pinnedOldElsewhere = createAlertPrompt(
+        'u-1',
+        'pinned old elsewhere',
+        condition,
+        60,
+        undefined,
+        groupDelivery(otherGroupContextId, null),
+        'ti-old',
+      )
+
+      const res = await handleContextTaskInstanceRoutes(
+        patchReq(session, { taskInstanceId: 'ti-new', contextId: groupContextId }),
+        new URL(ENDPOINT),
+      )
+
+      expect(res.status).toBe(200)
+      expect(getContextSettings(groupContextId)?.taskInstanceId).toBe('ti-new')
+      expect(getAlertPrompt(pinnedOldMain.id, 'u-1')?.status).toBe('cancelled')
+      expect(getAlertPrompt(pinnedOldThread.id, 'u-1')?.status).toBe('cancelled')
+      expect(getAlertPrompt(pinnedOther.id, 'u-1')?.status).toBe('active')
+      expect(getAlertPrompt(pinnedNull.id, 'u-1')?.status).toBe('active')
+      expect(getAlertPrompt(pinnedOldElsewhere.id, 'u-1')?.status).toBe('active')
+    })
   })
 
   test('surfaces config.baseUrl as the option name, falling back to type and id', async () => {

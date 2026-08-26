@@ -6,6 +6,7 @@
 import { z } from 'zod'
 
 import { buildSettingsActorRequestContext } from '../../analytics/provider-scope-factory.js'
+import { cancelActiveAlertsPinnedToInstance } from '../../deferred-prompts/alerts.js'
 import { getContextSettings, setContextSettings } from '../../instances/context-store.js'
 import { getTaskInstance, listTaskInstancesSafe } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
@@ -49,6 +50,21 @@ function handleGet(req: Request, url: URL): Response {
   })
 }
 
+/** When a context's task instance changes, alerts pinned to the old instance
+ * would keep evaluating against a tracker this context no longer uses — cancel
+ * the active ones whose delivery resolves into this config context. Shared by
+ * every settings route that rewrites a context's task instance assignment. */
+export function cancelAlertsPinnedToReplacedInstance(
+  contextId: string,
+  oldTaskInstanceId: string | null | undefined,
+  newTaskInstanceId: string,
+): void {
+  if (oldTaskInstanceId === null || oldTaskInstanceId === undefined) return
+  if (oldTaskInstanceId === newTaskInstanceId) return
+  cancelActiveAlertsPinnedToInstance(oldTaskInstanceId, contextId)
+  log.info({ contextId, oldTaskInstanceId, newTaskInstanceId }, 'Cancelled alerts pinned to the replaced task instance')
+}
+
 async function handlePatch(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
   const csrf = requireCsrf(req, authed)
   if (csrf !== null) return csrf
@@ -74,6 +90,7 @@ async function handlePatch(req: Request, authed: AuthenticatedSettingsRequest): 
   }
 
   const existing = getContextSettings(scope.scope.contextId)
+  cancelAlertsPinnedToReplacedInstance(scope.scope.contextId, existing?.taskInstanceId, body.data.taskInstanceId)
   setContextSettings(
     {
       contextId: scope.scope.contextId,

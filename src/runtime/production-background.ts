@@ -7,6 +7,7 @@ import type { ChatRouter } from '../chat/router.js'
 import { startSweeper } from '../dashboard-auth/sweeper.js'
 import { startPollers, stopPollers } from '../deferred-prompts/poller.js'
 import { defaultTaskProviderResolver } from '../providers/resolver.js'
+import type { TaskProvider } from '../providers/types.js'
 import {
   registerAnalyticsSchedulerJobs,
   registerDefaultSchedulerTasks,
@@ -15,6 +16,19 @@ import {
   unregisterDefaultSchedulerTasks,
 } from '../scheduler-instance.js'
 import { startScheduler, stopScheduler } from '../scheduler.js'
+
+/** Production `buildProviderFn`: an alert's pinned task instance routes to
+ * `resolveForInstance` so the pin wins over the context's current assignment;
+ * unpinned polls keep `resolve`. */
+export const resolveProductionTaskProvider = (
+  contextId: string,
+  taskInstanceId?: string | null,
+): Promise<TaskProvider | null> => {
+  if (taskInstanceId !== null && taskInstanceId !== undefined) {
+    return defaultTaskProviderResolver.resolveForInstance(contextId, taskInstanceId)
+  }
+  return defaultTaskProviderResolver.resolve(contextId)
+}
 
 export type ProductionBackgroundDeps = {
   registerDefaultTasks(): void
@@ -40,7 +54,7 @@ const defaultDeps: ProductionBackgroundDeps = {
   registerAnalyticsJobs: registerAnalyticsSchedulerJobs,
   startRecurring: startScheduler,
   startPollers: (router) => {
-    startPollers(router, (contextId) => defaultTaskProviderResolver.resolve(contextId))
+    startPollers(router, resolveProductionTaskProvider)
   },
   startTasks: scheduler.startAll,
   startSweeper,

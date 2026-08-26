@@ -6,6 +6,8 @@
 import { sql } from 'drizzle-orm'
 import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
+import { taskInstances } from './instance-schema.js'
+
 export const scheduledPrompts = sqliteTable(
   'scheduled_prompts',
   {
@@ -56,6 +58,9 @@ export const alertPrompts = sqliteTable(
     cooldownMinutes: integer('cooldown_minutes').notNull().default(60),
     executionMetadata: text('execution_metadata').notNull().default('{}'),
     matchedTaskIds: text('matched_task_ids').notNull().default('[]'),
+    taskInstanceId: text('task_instance_id').references(() => taskInstances.id, {
+      onDelete: 'cascade',
+    }),
   },
   (table) => [
     index('idx_alert_prompts_creator').on(table.createdByUserId),

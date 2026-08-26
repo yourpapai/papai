@@ -5,6 +5,7 @@
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { emitUser } from '../debug/event-bus.js'
+import { getContextSettings } from '../instances/context-store.js'
 import { logger } from '../logger.js'
 import type { CompiledRecurrence } from '../recurrence.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
@@ -13,6 +14,7 @@ import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
 import { cancelAlertPrompt, createAlertPrompt, getAlertPrompt, listAlertPrompts, updateAlertPrompt } from './alerts.js'
 import { buildDeliveryInput, type CreateDeliveryContext, type DeliveryPolicy } from './delivery-input.js'
+import { defaultDeliveryTarget, storageContextIdForTarget } from './delivery-target.js'
 import { buildScheduleUpdates, parseExecution, type ScheduleFieldUpdates } from './schedule-update-helpers.js'
 import {
   cancelScheduledPrompt,
@@ -141,8 +143,21 @@ function createAlert(
   const parseResult = alertConditionSchema.safeParse(condition)
   if (!parseResult.success) return { error: `Invalid condition: ${parseResult.error.message}` }
 
-  const result = createAlertPrompt(userId, prompt, parseResult.data, cooldownMinutes, executionMetadata, delivery)
-  log.info({ id: result.id, userId, type: 'alert' }, 'Deferred prompt created')
+  const configContextId = getConfigContextIdFromStorageContextId(
+    storageContextIdForTarget(delivery ?? defaultDeliveryTarget(userId)),
+  )
+  const taskInstanceId = getContextSettings(configContextId)?.taskInstanceId ?? null
+
+  const result = createAlertPrompt(
+    userId,
+    prompt,
+    parseResult.data,
+    cooldownMinutes,
+    executionMetadata,
+    delivery,
+    taskInstanceId,
+  )
+  log.info({ id: result.id, userId, type: 'alert', taskInstanceId }, 'Deferred prompt created')
   return { status: 'created', type: 'alert', id: result.id, cooldownMinutes: result.cooldownMinutes }
 }
 

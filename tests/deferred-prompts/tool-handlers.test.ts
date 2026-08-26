@@ -9,6 +9,8 @@ import assert from 'node:assert'
 import { setCachedConfig } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfig } from '../../src/config.testing.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { contextSettings, platformInstances, taskInstances } from '../../src/db/schema.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
 import { getAlertPrompt, listAlertPrompts } from '../../src/deferred-prompts/alerts.js'
 import { getScheduledPrompt, listScheduledPrompts } from '../../src/deferred-prompts/scheduled.js'
@@ -19,7 +21,7 @@ import {
   executeList,
   executeUpdate,
 } from '../../src/deferred-prompts/tool-handlers.js'
-import type { CreateResult } from '../../src/deferred-prompts/types.js'
+import type { AlertCondition, CreateResult } from '../../src/deferred-prompts/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 function collectEvents(type: string): { events: DebugEvent[]; cleanup: () => void } {
@@ -161,6 +163,64 @@ describe('executeCreate — group thread ownership', () => {
     const persisted = getAlertPrompt(createdId, parentContextId)
     expect(persisted).toBeDefined()
     expect(persisted!.deliveryTarget.storageContextId).toBe(threadContextId)
+  })
+})
+
+describe('executeCreate — alert task instance pinning', () => {
+  const parentContextId = toScopedContextId({
+    platformInstanceId: 'telegram-default',
+    nativeContextId: 'group-pin',
+  })
+  const threadContextId = toScopedThreadContextId({
+    platformInstanceId: 'telegram-default',
+    nativeContextId: 'group-pin',
+    threadId: '7',
+  })
+  const deliveryContext = {
+    userId: 'chat-user-pin',
+    storageContextId: threadContextId,
+    contextType: 'group' as const,
+    username: 'pat',
+  }
+  const condition: AlertCondition = { field: 'task.status', op: 'changed_to', value: 'done' }
+
+  const seedContextSettings = (taskInstanceId: string | null): void => {
+    const db = getDrizzleDb()
+    db.insert(platformInstances).values({ id: 'telegram-default', type: 'telegram', config: '{}' }).run()
+    db.insert(taskInstances).values({ id: 'ti-a', type: 'kaneo', config: '{}', status: 'active' }).run()
+    db.insert(contextSettings)
+      .values({ contextId: parentContextId, taskInstanceId, platformInstanceId: 'telegram-default' })
+      .run()
+  }
+
+  test('alert created in a context with a configured task instance is pinned to it', () => {
+    seedContextSettings('ti-a')
+
+    const result = executeCreate(
+      parentContextId,
+      { prompt: 'watch pinned instance', condition, execution: { delivery_brief: 'status changed' } },
+      deliveryContext,
+    )
+
+    expect(result).toMatchObject({ status: 'created', type: 'alert' })
+    const persisted = getAlertPrompt(expectCreatedPromptId(result), parentContextId)
+    expect(persisted).toBeDefined()
+    expect(persisted!.taskInstanceId).toBe('ti-a')
+  })
+
+  test('alert created in a context with no task instance stays unpinned', () => {
+    seedContextSettings(null)
+
+    const result = executeCreate(
+      parentContextId,
+      { prompt: 'watch unpinned instance', condition, execution: { delivery_brief: 'status changed' } },
+      deliveryContext,
+    )
+
+    expect(result).toMatchObject({ status: 'created', type: 'alert' })
+    const persisted = getAlertPrompt(expectCreatedPromptId(result), parentContextId)
+    expect(persisted).toBeDefined()
+    expect(persisted!.taskInstanceId).toBeNull()
   })
 })
 
