@@ -26,4 +26,4 @@
 ## 6. Docs and full gates
 
 - [x] 6.1 Update `docs/architecture/commands.md` (`build:client` internals now Vite-driven, new `dev:client`, loader relocation); update `docs/architecture/storybook-screenshots.md` only if task 5.1 changed `.storybook/main.ts`. Verify: read-back of the edited pages
-- [ ] 6.2 Run the full gates: `bun run test` (full suite, not `test:affected`), `bun run typecheck`, `bun run lint`, `bun run knip`, `bun run format:check`; fix any fallout. Verify: all green in `reports/checks/` and `reports/test/`
+- [x] 6.2 Run the full gates: `bun run test` (full suite, not `test:affected`), `bun run typecheck`, `bun run lint`, `bun run knip`, `bun run format:check`; fix any fallout. Verify: all green in `reports/checks/` and `reports/test/`
