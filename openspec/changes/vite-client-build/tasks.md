@@ -21,7 +21,7 @@
 
 ## 5. Storybook interaction (conditional)
 
-- [ ] 5.1 With the root config present, test dropping the `svelte()` splice/dynamic-import workaround from `.storybook/main.ts` (keep alias/`fs.allow` merge); if the plugin double-registers or the build breaks, fall back to filtering the incoming svelte plugins and leave a comment. Verify: `bun run build:storybook`
+- [x] 5.1 With the root config present, test dropping the `svelte()` splice/dynamic-import workaround from `.storybook/main.ts` (keep alias/`fs.allow` merge); if the plugin double-registers or the build breaks, fall back to filtering the incoming svelte plugins and leave a comment. Verify: `bun run build:storybook`
 
 ## 6. Docs and full gates
 
