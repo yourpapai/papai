@@ -27,6 +27,13 @@ export const SNAPSHOT_FIELDS: Array<{ field: string; extract: (task: Task) => st
   },
 ]
 
+/** Synthetic row recording which snapshot fields the last write for a task
+ * tracked. Null values are stored as absent rows, so without this marker a
+ * later compare cannot tell "field was null at the last write" (tracked, row
+ * absent) from "field was outside the last write's field set" (lightweight-era
+ * write, no baseline to differ from). */
+export const TRACKED_FIELDS_ROW = '__trackedFields'
+
 /** Get all snapshots for a user as a Map<string, string>. Key format: "${taskId}:${fieldName}". */
 export function getSnapshotsForUser(userId: string): Map<string, string> {
   log.debug({ userId }, 'Getting snapshots for user')
@@ -80,6 +87,9 @@ export function updateSnapshots(
   const now = new Date().toISOString()
   const sqlite = db.$client
   const currentTaskIds = tasks.map((t) => t.id)
+  const trackedFields = SNAPSHOT_FIELDS.filter(({ field }) => fields.includes(field))
+    .map(({ field }) => field)
+    .join(',')
 
   sqlite.run('BEGIN')
   try {
@@ -88,6 +98,7 @@ export function updateSnapshots(
         if (!fields.includes(field)) continue
         writeSnapshotField(db, userId, task, field, extract(task), now)
       }
+      writeSnapshotField(db, userId, task, TRACKED_FIELDS_ROW, trackedFields, now)
     }
 
     if (currentTaskIds.length > 0) {

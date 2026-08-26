@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { LIGHTWEIGHT_SNAPSHOT_FIELDS } from '../../src/deferred-prompts/change-gate.js'
-import { getSnapshotsForUser, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
+import { getSnapshotsForUser, TRACKED_FIELDS_ROW, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
 import type { Task } from '../../src/providers/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -133,6 +133,18 @@ describe('snapshots', () => {
     updateSnapshots('user-1', [makeTask({ id: 'task-1', status: 'todo' })], LIGHTWEIGHT_SNAPSHOT_FIELDS)
 
     expect(getSnapshotsForUser('user-1').get('task-1:assignee')).toBe('alice')
+  })
+
+  test('records the tracked field set per task', () => {
+    updateSnapshots(
+      'user-1',
+      [makeTask({ id: 'task-1', status: 'todo', assignee: 'alice' })],
+      LIGHTWEIGHT_SNAPSHOT_FIELDS,
+    )
+
+    expect(getSnapshotsForUser('user-1').get(`task-1:${TRACKED_FIELDS_ROW}`)).toBe(
+      LIGHTWEIGHT_SNAPSHOT_FIELDS.join(','),
+    )
   })
 
   test('captures labels as sorted comma-joined names', () => {

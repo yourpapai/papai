@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
 import { LIGHTWEIGHT_SNAPSHOT_FIELDS, RICH_SNAPSHOT_FIELDS } from '../../src/deferred-prompts/change-gate.js'
 import { collectPureWatchFiring, watchTaskChanged } from '../../src/deferred-prompts/poller-alerts-watch.js'
+import { TRACKED_FIELDS_ROW } from '../../src/deferred-prompts/snapshots.js'
 import type { Task } from '../../src/providers/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -55,6 +56,36 @@ describe('watchTaskChanged', () => {
     const unenrichedTask = makeTask('t1', { status: 'todo' })
     expect(watchTaskChanged(unenrichedTask, snapshots, LIGHTWEIGHT_SNAPSHOT_FIELDS)).toBe(false)
     expect(watchTaskChanged(unenrichedTask, snapshots, RICH_SNAPSHOT_FIELDS)).toBe(true)
+  })
+
+  test('treats a rich field outside the last write tracked set as no baseline, not a change', () => {
+    const snapshots = snapshotsFrom({
+      't1:status': 'todo',
+      [`t1:${TRACKED_FIELDS_ROW}`]: LIGHTWEIGHT_SNAPSHOT_FIELDS.join(','),
+    })
+    const task = makeTask('t1', { status: 'todo', assignee: 'alice', labels: [{ id: 'l1', name: 'bug' }] })
+    expect(watchTaskChanged(task, snapshots, RICH_SNAPSHOT_FIELDS)).toBe(false)
+  })
+
+  test('reports changed when a tracked field gains a value from null (row absent)', () => {
+    const snapshots = snapshotsFrom({
+      't1:status': 'todo',
+      [`t1:${TRACKED_FIELDS_ROW}`]: RICH_SNAPSHOT_FIELDS.join(','),
+    })
+    expect(watchTaskChanged(makeTask('t1', { status: 'todo', assignee: 'alice' }), snapshots)).toBe(true)
+  })
+
+  test('treats a tracked null field with no stored row as unchanged', () => {
+    const snapshots = snapshotsFrom({
+      't1:status': 'todo',
+      [`t1:${TRACKED_FIELDS_ROW}`]: RICH_SNAPSHOT_FIELDS.join(','),
+    })
+    expect(watchTaskChanged(makeTask('t1', { status: 'todo', labels: [] }), snapshots)).toBe(false)
+  })
+
+  test('a task whose only stored row is the tracked-fields marker is a baseline sighting', () => {
+    const snapshots = snapshotsFrom({ [`t1:${TRACKED_FIELDS_ROW}`]: RICH_SNAPSHOT_FIELDS.join(',') })
+    expect(watchTaskChanged(makeTask('t1', { status: 'todo', assignee: 'alice' }), snapshots)).toBe(false)
   })
 })
 

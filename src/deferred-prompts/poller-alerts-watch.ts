@@ -6,7 +6,7 @@
 import type { Task } from '../providers/types.js'
 import { evaluateCondition, updateAlertMatchedTaskIds } from './alerts.js'
 import { RICH_SNAPSHOT_FIELDS } from './change-gate.js'
-import { SNAPSHOT_FIELDS } from './snapshots.js'
+import { SNAPSHOT_FIELDS, TRACKED_FIELDS_ROW } from './snapshots.js'
 import type { AlertPrompt } from './types.js'
 
 export type AlertEvaluation = {
@@ -18,11 +18,17 @@ export type AlertEvaluation = {
 const fieldsToCompare = (fields: readonly string[]): Array<{ field: string; extract: (task: Task) => string | null }> =>
   SNAPSHOT_FIELDS.filter(({ field }) => fields.includes(field))
 
+const trackedAtLastWrite = (snapshots: Map<string, string>, taskId: string, field: string): boolean =>
+  (snapshots.get(`${taskId}:${TRACKED_FIELDS_ROW}`) ?? '').split(',').includes(field)
+
 /** Pure-watch change test: a task with no stored snapshot is a baseline
  * sighting (reports unchanged so the first cycle only records state); after
  * that, any difference on the given snapshot field names reports changed.
  * Restricting the field set keeps unenriched tasks from comparing
- * assignee/labels against rich stored snapshots. */
+ * assignee/labels against rich stored snapshots. A field with no stored row
+ * counts as a difference only when the last write tracked it (absence is how
+ * null is stored); a field outside the last write's set — e.g. assignee after
+ * a lightweight-era write — has no baseline and cannot differ. */
 export const watchTaskChanged = (
   task: Task,
   snapshots: Map<string, string>,
@@ -33,7 +39,10 @@ export const watchTaskChanged = (
   for (const { field, extract } of compare) {
     const current = extract(task)
     const previous = snapshots.get(`${task.id}:${field}`)
-    if (current === null && previous === undefined) continue
+    if (previous === undefined) {
+      if (!trackedAtLastWrite(snapshots, task.id, field) || current === null) continue
+      return true
+    }
     if (current !== previous) return true
   }
   return false

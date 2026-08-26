@@ -10,7 +10,7 @@ import type { ModelMessage } from 'ai'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { setConfig } from '../../src/config.testing.js'
-import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
+import { cancelAlertPrompt, createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
 import * as alertsModule from '../../src/deferred-prompts/alerts.js'
 import { buildAlertSummary, pollAlertsOnce } from '../../src/deferred-prompts/poller-alerts.js'
 import type { BuildProviderFn } from '../../src/deferred-prompts/proactive-llm.js'
@@ -645,6 +645,37 @@ describe('pollAlertsOnce — alert task watch', () => {
     watch.setTask(watchTask('task-1', { status: 'done' }))
     await pollAlertsOnce(chat, buildProviderFn)
 
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
+  })
+
+  test('pure watch does not fire on rich fields never baselined during a lightweight-era mixed cycle', async () => {
+    const watch = makeWatchProvider()
+    // projectId matches what the list fetch derives, so the only rich fields
+    // the pure cycle newly observes are the never-baselined assignee/labels.
+    const eraTask = (overrides: Partial<Task> = {}): Task => watchTask('task-1', { projectId: 'proj-1', ...overrides })
+    watch.setTask(eraTask({ assignee: 'alice', labels: [{ id: 'l1', name: 'bug' }] }))
+    const pureAlert = createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Watch specific task')
+    const statusAlert = createWatchAlert({ field: 'task.status', op: 'eq', value: 'archived' }, 'Notify when archived')
+    const buildProviderFn = watchBuildProviderFn(watch)
+
+    // Mixed era without rich-field alerts: the snapshot write is lightweight,
+    // so assignee/labels never get a stored baseline row.
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).toBeNull()
+
+    cancelAlertPrompt(statusAlert.id, WATCH_USER)
+
+    // Instance is now pure: the first targeted cycle must not misread the
+    // never-tracked assignee/labels as changes, but must baseline them.
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).toBeNull()
+
+    // Real changes to those fields keep firing after the re-baseline.
+    watch.setTask(eraTask({ assignee: 'bob', labels: [{ id: 'l1', name: 'bug' }] }))
+    await pollAlertsOnce(chat, buildProviderFn)
     expect(sentMessages).toHaveLength(1)
     expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
   })
