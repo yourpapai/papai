@@ -6,7 +6,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { sveltePlugin } from './svelte-plugin.js'
+import { build } from 'vite'
+import type { InlineConfig } from 'vite'
 
 const ROOT = path.resolve(import.meta.dir, '..')
 
@@ -74,37 +75,76 @@ const BUNDLES: BundleConfig[] = [
   },
 ]
 
-async function bundleJS(config: BundleConfig, collectedCss: string[]): Promise<void> {
-  const result = await Bun.build({
-    entrypoints: [path.join(ROOT, config.entry)],
-    outdir: PUBLIC_DIR,
-    format: 'iife',
-    naming: config.jsName,
-    plugins: [
-      sveltePlugin({
-        collectCss: (_filename, css) => {
-          if (css.length > 0) collectedCss.push(css)
+// The root vite.config.ts supplies the svelte plugin and the @client/@src
+// aliases; everything here is the per-bundle inline override. `format: 'iife'`
+// already forces single-file output with dynamic imports inlined (rolldown's
+// `codeSplitting: false`; setting `inlineDynamicImports` too is ignored with a
+// warning). `exports: 'none'` drops the entries' source-level API exports
+// (consumed from source by tests, never from the artifact): the IIFE is loaded
+// as a plain script tag, so no `var name = (...)` wrapper may lead the output.
+function viteInlineConfig(config: BundleConfig): InlineConfig {
+  return {
+    root: ROOT,
+    logLevel: 'warn',
+    build: {
+      outDir: PUBLIC_DIR,
+      minify: false,
+      emptyOutDir: false,
+      write: false,
+      cssCodeSplit: false,
+      rollupOptions: {
+        input: path.join(ROOT, config.entry),
+        output: {
+          format: 'iife',
+          entryFileNames: config.jsName,
+          exports: 'none',
         },
-      }),
-    ],
-  })
-
-  if (!result.success) {
-    for (const log of result.logs) {
-      console.error(log)
-    }
-    process.exit(1)
-  }
-
-  const jsOutput = path.join(PUBLIC_DIR, config.jsName)
-  const stat = fs.statSync(jsOutput)
-  if (stat.size === 0) {
-    console.error(`Build produced empty ${config.jsName}`)
-    process.exit(1)
+      },
+    },
   }
 }
 
-function bundleCSS(config: BundleConfig, collectedCss: string[]): void {
+interface ViteOutput {
+  js: string
+  componentCss: string
+}
+
+function collectViteOutput(result: Awaited<ReturnType<typeof build>>): ViteOutput {
+  const resultBundles = Array.isArray(result) ? result : [result]
+
+  let js = ''
+  let componentCss = ''
+  for (const bundle of resultBundles) {
+    // build() without watch never yields a watcher; the guard only narrows
+    // the watcher variant out of the result union's type.
+    if (!('output' in bundle)) continue
+    for (const file of bundle.output) {
+      if (file.type === 'chunk' && file.isEntry) {
+        js = file.code
+      } else if (file.type === 'asset' && file.fileName.endsWith('.css')) {
+        componentCss = file.source.toString()
+      }
+    }
+  }
+
+  return { js, componentCss }
+}
+
+async function bundleJS(config: BundleConfig): Promise<string> {
+  const result = await build(viteInlineConfig(config))
+  const { js, componentCss } = collectViteOutput(result)
+
+  if (js.length === 0) {
+    console.error(`Build produced empty ${config.jsName}`)
+    process.exit(1)
+  }
+
+  fs.writeFileSync(path.join(PUBLIC_DIR, config.jsName), js)
+
+  return componentCss
+}
+
+function bundleCSS(config: BundleConfig, componentCss: string): void {
   let baseCss = ''
   if (fs.existsSync(path.join(ROOT, config.baseCssPath))) {
     baseCss = fs.readFileSync(path.join(ROOT, config.baseCssPath), 'utf8')
@@ -114,8 +154,6 @@ function bundleCSS(config: BundleConfig, collectedCss: string[]): void {
   if (fs.existsSync(path.join(ROOT, config.localCssPath))) {
     localCss = fs.readFileSync(path.join(ROOT, config.localCssPath), 'utf8')
   }
-
-  const componentCss = collectedCss.join('\n')
 
   const tokensCss = fs.readFileSync(path.join(ROOT, 'client/shared/tokens.css'), 'utf8')
   const cssParts = [tokensCss]
@@ -130,13 +168,11 @@ function bundleCSS(config: BundleConfig, collectedCss: string[]): void {
 }
 
 export async function buildBundle(config: BundleConfig): Promise<void> {
-  const collectedCss: string[] = []
-
-  await bundleJS(config, collectedCss)
+  const componentCss = await bundleJS(config)
 
   fs.copyFileSync(path.join(ROOT, config.htmlSrc), path.join(PUBLIC_DIR, config.htmlName))
 
-  bundleCSS(config, collectedCss)
+  bundleCSS(config, componentCss)
 
   console.log(`Bundle complete: ${config.jsName} -> ${PUBLIC_DIR}`)
 }
