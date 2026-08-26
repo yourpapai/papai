@@ -9,9 +9,9 @@ See LICENSE in the project root for details.
 
 ## 1. Parity oracle (gate — no production edits before this passes)
 
-- [ ] 1.1 Build a throwaway comparison script that runs story scenario extraction over the full `tests/stories/**` corpus with both the current tsgo parser and an oxc-based parse, diffing scenario ids and checkpoint chains; record evidence in this change's directory
-- [ ] 1.2 Extend the comparison to plugin discovery: run entry-graph discovery over the real `plugins/` with both parsers and diff plugin sets, ordered source graphs, and manifest hashes
-- [ ] 1.3 Investigate and resolve any diff (scanner predicate fix or explicit recorded divergence) before proceeding; a contract-level divergence stops the change and reopens the design
+- [x] 1.1 Build a throwaway comparison script that runs story scenario extraction over the full `tests/stories/**` corpus with both the current tsgo parser and an oxc-based parse, diffing scenario ids and checkpoint chains; record evidence in this change's directory
+- [x] 1.2 Extend the comparison to plugin discovery: run entry-graph discovery over the real `plugins/` with both parsers and diff plugin sets, ordered source graphs, and manifest hashes
+- [x] 1.3 Investigate and resolve any diff (scanner predicate fix or explicit recorded divergence) before proceeding; a contract-level divergence stops the change and reopens the design
 
 ## 2. Parser seam swap
 
