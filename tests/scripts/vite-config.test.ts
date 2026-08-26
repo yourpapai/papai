@@ -82,6 +82,18 @@ describe('vite.config', () => {
     expect(names.some((name) => name.startsWith('vite-plugin-svelte'))).toBe(true)
   })
 
+  // scripts/build-client.ts gets the svelte plugin and the @client/@src
+  // aliases from vite's auto-loaded root config, not from its inline override.
+  // The image's build stage runs that script, so it must COPY the config in —
+  // without it rolldown parses .svelte sources as JSX and the layer fails.
+  test('Dockerfile build stage ships vite.config.ts to the client build', () => {
+    const dockerfile = fs.readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8')
+
+    expect(dockerfile).toMatch(
+      /FROM base AS build[\s\S]*COPY[^\n]*vite\.config\.ts[^\n]*\n[\s\S]*RUN bun scripts\/build-client\.ts/u,
+    )
+  })
+
   test('aliases @client and @src at the repo roots, mirroring .storybook/main.ts', async () => {
     const config = await loadBuildConfig()
 

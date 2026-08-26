@@ -25,7 +25,7 @@ COPY client ./client
 COPY plugins ./plugins
 COPY scripts ./scripts
 COPY src ./src
-COPY package.json tsconfig.json ./
+COPY package.json tsconfig.json vite.config.ts ./
 RUN bun scripts/build-client.ts
 
 FROM base AS final
