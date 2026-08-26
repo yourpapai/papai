@@ -17,7 +17,7 @@
 ## 4. Dev server
 
 - [x] 4.1 Add the dev-only HTML-rewrite middleware (`apply: 'serve'`) to `vite.config.ts` — rewrite the script tag to a module script pointing at `/client/<app>/index.ts` and the css link to the three source stylesheets for the four pages. Verify: start `bun dev:client`, load each page, confirm HMR on a component edit (manual check; tear down after)
-- [ ] 4.2 Add the `dev:client` script (`vite`) to `package.json`. Verify: `bun run dev:client` boots and serves the four pages
+- [x] 4.2 Add the `dev:client` script (`vite`) to `package.json`. Verify: `bun run dev:client` boots and serves the four pages
 
 ## 5. Storybook interaction (conditional)
 

@@ -19,6 +19,7 @@
   "scripts": {
     "benchmark:tool-surface": "bun scripts/tool-surface-benchmark.ts",
     "build:client": "bun scripts/build-client.ts",
+    "dev:client": "vite",
     "storybook:prepare": "mkdir -p public && msw init public/ --no-save && cat client/shared/base.css client/shared/tokens.css > public/storybook-shared.css && cat client/shared/base.css client/shared/tokens.css client/settings/settings.css > public/storybook-settings.css && cat client/shared/base.css client/shared/tokens.css client/admin/admin.css > public/storybook-admin.css && cat client/shared/base.css client/shared/tokens.css client/debug/debug.css > public/storybook-debug.css && cat client/shared/base.css client/shared/tokens.css client/transcript/transcript.css > public/storybook-transcript.css",
     "storybook": "bun storybook:prepare && storybook dev -p 6006 --no-open",
     "build:storybook": "bun storybook:prepare && storybook build -o storybook-static",
