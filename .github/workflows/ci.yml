@@ -110,10 +110,12 @@ jobs:
     name: Checks
     needs: build
     runs-on: ubuntu-latest
-    # Observed 3m03s; CLAUDE.md budgets the serial suite at ~3-4 min plus ~65s of
-    # lint/typecheck/knip/format. Loose enough that a single pathologically slow
-    # test file is a slow build rather than a red one — the perf budgets this job
-    # enables (PAPAI_PERF_BUDGETS) are what fail on real timing regressions.
+    # Observed 3m03s; CLAUDE.md budgets the serial suite at ~3-4 min plus ~30s of
+    # lint/knip/format — there is no separate typecheck leg here; lint's tsgolint
+    # pass covers it (openspec/changes/dedupe-lint-typecheck). Loose enough that a
+    # single pathologically slow test file is a slow build rather than a red one —
+    # the perf budgets this job enables (PAPAI_PERF_BUDGETS) are what fail on real
+    # timing regressions.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
