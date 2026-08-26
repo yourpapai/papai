@@ -1,0 +1,7 @@
+{"altitude":"L2","type":"plan","childCount":3,"digest":"aaaa","seq":1,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"child_spawned","child":"alpha","seq":2,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"child_spawned","child":"beta","seq":3,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"child_done","child":"alpha","outcome":"done","seq":4,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"child_done","child":"beta","outcome":"failed","seq":5,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"plan","childCount":2,"digest":"bbbb","seq":6,"ts":"2026-01-01T00:00:01.000Z"}
+{"altitude":"L2","type":"child_spawned","child":"gamma","seq":7,"ts":"2026-01-01T00:00:01.000Z"}

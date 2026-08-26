@@ -1,0 +1,8 @@
+{"altitude":"L2","type":"stage_enter","stage":"intake","seq":1,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"depth","profile":"S","rationale":"override","source":"override","seq":2,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"intake","seq":3,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"draft","seq":4,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"draft","seq":5,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"review","seq":6,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"round_open","round":1,"cap":3,"seq":7,"ts":"2026-01-01T00:00:00.000Z"}
+{"altitude":"L2","type":"resume","path":"session-continuation","stage":"review","session":"ses_x","seq":8,"ts":"2026-01-01T00:00:01.000Z"}

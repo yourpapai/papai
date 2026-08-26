@@ -1,0 +1,20 @@
+{
+  "name": "afk-runner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "cd .. && bun test tests/afk-runner",
+    "typecheck": "tsgo --project tsconfig.json --noEmit",
+    "lint": "cd .. && oxlint --config .oxlintrc.json afk-runner/src tests/afk-runner",
+    "format": "cd .. && oxfmt --write afk-runner/src tests/afk-runner --ignore-path=.oxfmtignore",
+    "format:check": "cd .. && oxfmt --check afk-runner/src tests/afk-runner --ignore-path=.oxfmtignore",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "typescript": "^7.0.2"
+  }
+}

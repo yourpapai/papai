@@ -100,6 +100,18 @@ describe('test-resolver', () => {
     test('returns false for review-loop/src/cli.test.ts', () => {
       expect(isGateableImplFile('review-loop/src/cli.test.ts', projectRoot)).toBe(false)
     })
+
+    test('returns true for afk-runner/src/kernel/machine.ts', () => {
+      expect(isGateableImplFile('afk-runner/src/kernel/machine.ts', projectRoot)).toBe(true)
+    })
+
+    test('returns false for afk-runner/src/kernel/machine.test.ts', () => {
+      expect(isGateableImplFile('afk-runner/src/kernel/machine.test.ts', projectRoot)).toBe(false)
+    })
+
+    test('returns false for afk-runner/config.json (non-code)', () => {
+      expect(isGateableImplFile('afk-runner/config.json', projectRoot)).toBe(false)
+    })
   })
 
   describe('suggestTestPath', () => {
@@ -125,6 +137,16 @@ describe('test-resolver', () => {
 
     test('review-loop/src/cli.ts -> tests/review-loop/cli.test.ts', () => {
       expect(suggestTestPath('review-loop/src/cli.ts')).toBe('tests/review-loop/cli.test.ts')
+    })
+
+    test('afk-runner/src/legacy-fold.ts -> tests/afk-runner/legacy-fold.test.ts', () => {
+      expect(suggestTestPath('afk-runner/src/legacy-fold.ts')).toBe('tests/afk-runner/legacy-fold.test.ts')
+    })
+
+    test('afk-runner/src/kernel/machine.ts -> tests/afk-runner/kernel/machine.test.ts (nested)', () => {
+      expect(suggestTestPath('afk-runner/src/kernel/machine.ts')).toBe(
+        path.join('tests', 'afk-runner', 'kernel', 'machine.test.ts'),
+      )
     })
   })
 
@@ -228,6 +250,18 @@ describe('test-resolver', () => {
 
       expect(result).toBe(testFile)
     })
+
+    test('finds parallel test for afk-runner/src/legacy-fold.ts at tests/afk-runner/legacy-fold.test.ts', () => {
+      const testsDir = path.join(tmpDir, 'tests', 'afk-runner')
+      fs.mkdirSync(testsDir, { recursive: true })
+      const testFile = path.join(testsDir, 'legacy-fold.test.ts')
+      fs.writeFileSync(testFile, '')
+
+      const implFile = path.join(tmpDir, 'afk-runner', 'src', 'legacy-fold.ts')
+      const result = findTestFile(implFile, tmpDir)
+
+      expect(result).toBe(testFile)
+    })
   })
 
   describe('resolveImplPath', () => {
@@ -253,6 +287,18 @@ describe('test-resolver', () => {
 
     test('tests/review-loop/cli.test.ts -> review-loop/src/cli.ts', () => {
       expect(resolveImplPath('tests/review-loop/cli.test.ts')).toBe(path.join('review-loop', 'src', 'cli.ts'))
+    })
+
+    test('tests/afk-runner/legacy-fold.test.ts -> afk-runner/src/legacy-fold.ts', () => {
+      expect(resolveImplPath('tests/afk-runner/legacy-fold.test.ts')).toBe(
+        path.join('afk-runner', 'src', 'legacy-fold.ts'),
+      )
+    })
+
+    test('tests/afk-runner/kernel/machine.test.ts -> afk-runner/src/kernel/machine.ts (nested)', () => {
+      expect(resolveImplPath('tests/afk-runner/kernel/machine.test.ts')).toBe(
+        path.join('afk-runner', 'src', 'kernel', 'machine.ts'),
+      )
     })
   })
 })

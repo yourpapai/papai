@@ -1,0 +1,13 @@
+# afk-runner scenario fixtures
+
+Scenario logs covering event shapes the real-run hoard (`../real/`) lacks. Extracted
+from the inline event sequences crafted in `tests/sdd-runner/` test files — values are
+taken from those sequences, not invented. Fold all of them with `legacy-fold` (asserted
+by `inventory.test.ts` in this directory).
+
+| fixture                            | covers                                                                                                                                                                                                        | extracted from                                                                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `s-depth-calm-stop-resume.ndjson`  | S depth profile (no real S run exists); calm-stop boundary (a calm stop leaves no event — the log simply ends at a round boundary); `resume` `session-continuation` at review                                 | `tests/sdd-runner/stop-controller.test.ts` (`makeReviewFixture` events), `tests/sdd-runner/resume-decision.test.ts` (session ledger line `ses_x`)    |
+| `resume-artifact-skip-gate.ndjson` | `resume` `artifact-skip` path (real logs only carry `stage-rebuild` / `session-continuation`); early gate pending at the resume point                                                                         | `tests/sdd-runner/resume-decision.test.ts` (artifact-skip decisions), gate events per `tests/sdd-runner/replay.test.ts`                              |
+| `steer-extend-round.ndjson`        | steer `extend` consumption: cap-hit convergence, `auto_decision` `R2`/`extend`, then a raised-cap round (steer directives are file-based — the log only records their effect)                                 | `sdd-runner/src/gate-settle.ts` `autoExtendRound` emit shape, `sdd-runner/src/review-loop.ts` `round_open` with `applySteerAtBoundary` effective cap |
+| `children-plan-synthetic.ndjson`   | **synthetic** — `plan` / `child_spawned` / `child_done` have no runtime producer today (schema + fold only; see `sdd-runner/src/event-schemas.ts` and the children fold in `tests/sdd-runner/replay.test.ts`) | `tests/sdd-runner/replay.test.ts` (children fold 3.3 sequences, digests `aaaa`/`bbbb`)                                                               |
