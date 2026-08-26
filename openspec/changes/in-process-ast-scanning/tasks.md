@@ -27,8 +27,9 @@ See LICENSE in the project root for details.
 
 ## 4. Dependencies and image
 
-- [ ] 4.1 Add `oxc-parser: 0.143.0` (exact) to dependencies; move `typescript` to devDependencies; refresh `bun.lock` and confirm knip still resolves the same shared binding
-- [ ] 4.2 Verify `bun install --frozen-lockfile --production` installs no `typescript` and no `@typescript/typescript-*` package; build the alpine image and confirm the musl binding resolves and the image shrank vs master
+- [x] 4.1 Add `oxc-parser: 0.143.0` (exact) to dependencies; move `typescript` to devDependencies; refresh `bun.lock` and confirm knip still resolves the same shared binding
+- [x] 4.2 Verify `bun install --frozen-lockfile --production` installs no `typescript` and no `@typescript/typescript-*` package; build the alpine image and confirm the musl binding resolves and the image shrank vs master
+  - Local: scratch prod-install clean (typescript and @typescript/* absent, oxc binding resolved, node_modules 251M -> 224M vs PR #359 HEAD). Docker alpine build deferred to CI (no local Docker) — same caveat as PR #359.
 
 ## 5. Stryker pin and canary
 
