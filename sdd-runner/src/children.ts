@@ -6,7 +6,7 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { emitChildDoneOnce, resumeHandleOf, spawnRecorderOf } from './child-spawn.js'
+import { emitChildDoneOnce, resumeHandleOf, spawnRecorderOf, stopAtLiveChildHolder } from './child-spawn.js'
 import { propagateChildStop } from './child-stop.js'
 import { slugify } from './config.js'
 import { readEvents } from './events.js'
@@ -232,9 +232,10 @@ async function settleObservedChild(
  * Sequential topo execution loop (D8): walks `state.plan.childIds` in order,
  * one child in flight, skipping children already `done` and re-observing —
  * instead of re-spawning — any child whose log records a live flight (see
- * `resumeHandleOf`). Before each spawn
- * the D10 budget guard fail-closes on unknown-or-exceeded tree spend and the
- * D11 calm-stop seam is honored. Each spawn is recorded durably — the
+ * `resumeHandleOf`). Before each spawn the D10 budget guard fail-closes on
+ * unknown-or-exceeded tree spend, the D11 calm-stop seam is honored, and a
+ * still-non-terminal child run surfaces its `sdd <runId>` line instead of a
+ * re-spawn over the session id it holds. Each spawn is recorded durably — the
  * `child_spawned { child, runId }` line plus a persisted `running` child
  * status — the moment the nested run dir is known (before the flight), so a
  * parent crash mid-child resumes by re-observing that runId instead of
@@ -264,15 +265,16 @@ export async function runChildren(
     if (state.children?.[childId]?.status === 'done') return runAt(index + 1)
     const stop = options.stop
     const resumed = resumeHandleOf(state, childId)
-    if (resumed !== null) {
+    if (resumed !== null)
       return settleObservedChild(deps, state, ctx, stop, childId, resumed, resolve, () => runAt(index + 1))
-    }
     if (stop !== undefined && stop.stopRequested()) return calmSettle(deps, state, stop)
     const spend = treeSpend(readEvents(logPathFor(state)), resolve)
     const committed = (state.spendBaselineUsd ?? 0) + spend.spentUsd
     if (!spend.costKnown || committed >= deps.config.budget) {
       return stopAtBudgetGuard(deps, state, childId, { ...spend, spentUsd: committed })
     }
+    const holder = await stopAtLiveChildHolder(deps, state, childId)
+    if (holder !== null) return { halted: 'stopped', child: childId, childStatus: holder.status }
     const child = children.find((entry) => entry.id === childId)
     if (child === undefined) throw new Error(`plan sidecar has no child ${childId}`)
     const taskFile = path.join(state.runDir, 'children', `${index + 1}-${slugify(childId)}.md`)

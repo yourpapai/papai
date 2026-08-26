@@ -9,7 +9,7 @@ import { readEvents } from './events.js'
 import type { AgentUsage } from './events.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import { logPathFor } from './gate-digest.js'
-import { saveRunState } from './run-state.js'
+import { loadRunState, saveRunState, TERMINAL_STATUSES } from './run-state.js'
 import type { RunState } from './run-state.js'
 
 /** D8 spawn bookkeeping: record spawns and settlements durably, recover flight state on resume. */
@@ -116,6 +116,32 @@ export function resumeHandleOf(state: RunState, childId: string): { readonly run
     if (observed !== null) return observed
   }
   return openFlightHandleOf(state, childId)
+}
+
+/**
+ * Spawn-blocking holder (D9/D11): the last recorded spawn for a not-done
+ * child still names a non-terminal run — calmly stopped or still running —
+ * which holds the child's session id, so a fresh spawn over the same task
+ * file would collide in session allocation. The parent settles stopped
+ * (resumable) with the child run surfaced for the operator to resume or
+ * settle; null means the spawn may proceed.
+ */
+export async function stopAtLiveChildHolder(
+  deps: OrchestratorDeps,
+  state: RunState,
+  childId: string,
+): Promise<{ readonly runId: string; readonly status: RunState['status'] } | null> {
+  const handle = lastSpawnedHandleOf(state, childId)
+  if (handle === null) return null
+  const childState = await loadRunState(deps.config.workDir, handle.runId).catch(() => null)
+  if (childState === null || TERMINAL_STATUSES.has(childState.status)) return null
+  state.status = 'stopped'
+  await saveRunState(state, deps.now?.() ?? new Date())
+  deps.stdout?.(
+    `child ${childId} is still ${childState.status} (run ${handle.runId}) — resume or settle it, then resume the parent`,
+  )
+  deps.stdout?.(`sdd ${handle.runId}`)
+  return { runId: handle.runId, status: childState.status }
 }
 
 /**

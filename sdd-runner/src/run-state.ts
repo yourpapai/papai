@@ -85,7 +85,8 @@ function makeRunId(now: Date): string {
   return `${now.toISOString().replace(/[:.]/gu, '-')}-${randomUUID().slice(0, 8)}`
 }
 
-const TERMINAL_STATUSES = new Set(['completed', 'aborted', 'failed'])
+/** Statuses a run never leaves; `running` and `stopped` stay resumable. */
+export const TERMINAL_STATUSES = new Set(['completed', 'aborted', 'failed'])
 const MAX_SUFFIX = 1000
 
 /**
