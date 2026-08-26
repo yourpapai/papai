@@ -114,6 +114,6 @@ Single PR, ordered as D4: measurements → tests (red) → composition/config ed
 | ----- | -------- | --------------------- | ------------- |
 | 1–6   | _pending_ | _pending_             | _pending_     |
 
-Tool versions: _pending_. Machine shape: _pending_.
+Tool versions: `oxlint@1.78.0`, `oxlint-tsgolint@0.22.1` (via `bun pm ls`), `tsgo` `7.0.0-dev.20260707.2` (`bunx tsgo --version`), Bun `1.4.0`. Machine shape: 4 vCPU.
 
 **Branch taken: _pending_ (R1 / R2 / N)** — decided by the matrix against D1's bars.
