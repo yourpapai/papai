@@ -106,9 +106,11 @@ Single PR, ordered as D4: measurements → tests (red) → composition/config ed
 
 | Configuration                          | Wall time (median of 3) |
 | -------------------------------------- | ----------------------- |
-| `bun run lint` (as configured)         | _pending_               |
-| `bun run lint` (`typeAware`/`typeCheck` off) | _pending_         |
-| `bun run typecheck`                    | _pending_               |
+| `bun run lint` (as configured)         | 19.1 s (runs: 20.4 / 18.5 / 19.1) |
+| `bun run lint` (`typeAware`/`typeCheck` off) | 0.44 s (runs: 0.45 / 0.42 / 0.44) |
+| `bun run typecheck`                    | 10.6 s (runs: 11.0 / 10.6 / 10.6) |
+
+Timing notes: the no-`typeCheck` leg was timed with `./node_modules/.bin/oxlint` using the exact `lint` script args plus a repo-root scratch config identical to `.oxlintrc.json` except the two flags (`bun run lint` cannot take an out-of-tree config); the `bun run` wrapper overhead is negligible against these magnitudes. oxlint resolves `ignorePatterns`/`overrides` relative to the config file's location, so the scratch config had to live in the repo root. The type-check pass inside lint costs ~18.7 s of its 19.1 s — more than the whole dedicated `tsgo` pass (10.6 s).
 
 | Probe | lint (a) | lint no-typeCheck (b) | typecheck (c) |
 | ----- | -------- | --------------------- | ------------- |
