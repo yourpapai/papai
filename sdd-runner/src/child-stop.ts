@@ -3,18 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { RunChildRun } from './child-settle.js'
 import type { PlanChild } from './plan.js'
 import { requestCalmStop } from './stop-controller.js'
 import type { CalmStopController } from './stop-controller.js'
 
 /** Nested-run seam shape `propagateChildStop` wraps (D11). */
 export interface ChildFlightSeams {
-  readonly runChildRun: (
-    child: PlanChild,
-    taskFile: string,
-    spendBaselineUsd: number,
-    onRunDirReady?: (childRunDir: string) => void,
-  ) => Promise<{ readonly runId: string }>
+  readonly runChildRun: RunChildRun
   readonly stop: CalmStopController
   /** D8 spawn bookkeeping: notified once the child's run dir is known, before flight work continues. */
   readonly onChildRunDir?: (childRunDir: string) => void
