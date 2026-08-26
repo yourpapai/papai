@@ -705,6 +705,58 @@ describe('pollAlertsOnce — alert task watch', () => {
     expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).toBeNull()
   })
 
+  test('non-watch alert in a non-routable context does not force the whole-list path', async () => {
+    const watch = makeWatchProvider()
+    watch.setTask(watchTask('task-1'))
+    seedTestPlatformInstance({ id: 'mock-stopped', status: 'stopped' })
+    const scopedGroup = toScopedContextId({ platformInstanceId: 'mock-default', nativeContextId: 'watch-group' })
+    const threadStorage = (threadId: string): string =>
+      toScopedThreadContextId({ platformInstanceId: 'mock-default', nativeContextId: 'watch-group', threadId })
+    const threadDelivery = (threadId: string): Parameters<typeof createAlertPrompt>[5] => ({
+      contextId: scopedGroup,
+      storageContextId: threadStorage(threadId),
+      contextType: 'group',
+      threadId,
+      audience: 'personal',
+      mentionUserIds: [WATCH_USER],
+      createdByUserId: WATCH_USER,
+      createdByUsername: null,
+    })
+    // No settings row for the scoped group itself: each thread resolves its
+    // platform instance on its own, so the ghost thread can point at the
+    // stopped instance while the watch thread stays routable.
+    setContextSettings({
+      contextId: threadStorage('t-ghost'),
+      taskInstanceId: null,
+      platformInstanceId: 'mock-stopped',
+    })
+    createAlertPrompt(
+      WATCH_USER,
+      'Watch task-1',
+      { field: 'task.id', op: 'eq', value: 'task-1' },
+      60,
+      undefined,
+      threadDelivery('t-watch'),
+      'ti-watch',
+    )
+    createAlertPrompt(
+      WATCH_USER,
+      'Notify when done',
+      { field: 'task.status', op: 'eq', value: 'done' },
+      60,
+      undefined,
+      threadDelivery('t-ghost'),
+      'ti-watch',
+    )
+    const routingChat = { ...chat, isInstanceActive: (id: string): boolean => id !== 'mock-stopped' }
+
+    await pollAlertsOnce(routingChat, watchBuildProviderFn(watch))
+
+    expect(watch.listCalls).toEqual([])
+    expect(watch.getTaskCalls).toEqual(['task-1'])
+    expect(sentMessages).toHaveLength(0)
+  })
+
   test('composed task.id + field condition keeps match-edge firing and the no-change early return', async () => {
     const watch = makeWatchProvider()
     watch.setTask(watchTask('task-1', { status: 'done' }))

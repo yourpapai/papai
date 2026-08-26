@@ -182,8 +182,13 @@ async function executeAlertsForContext(
   if (delivered) updateSnapshots(storageContextId, tasks, fields)
 }
 
-const allAlertsArePureWatches = (group: InstanceAlertGroup): boolean =>
-  [...group.contextGroups.values()].flat().every((alert) => isPureWatchCondition(alert.condition))
+/** Partition domain is the routable context groups only (spec:
+ * task-watch-alerts): alerts in non-routable groups are never evaluated, so
+ * they must not keep the instance on the whole-list path. */
+const allAlertsArePureWatches = (group: InstanceAlertGroup, chat: ChatProvider): boolean =>
+  [...routableContextGroups(group.contextGroups, chat).values()]
+    .flat()
+    .every((alert) => isPureWatchCondition(alert.condition))
 
 /** One poll unit: every alert sharing a config context and an effective task
  * instance. `pinnedTaskInstanceId` is null when the instance comes from the
@@ -266,7 +271,7 @@ export async function pollAlertsOnce(
       userLimit((): Promise<void> =>
         executeAlertsForInstance(
           instanceGroup,
-          allAlertsArePureWatches(activeByInstance.get(instanceKey) ?? instanceGroup),
+          allAlertsArePureWatches(activeByInstance.get(instanceKey) ?? instanceGroup, chat),
           chat,
           buildProviderFn,
           now,

@@ -134,9 +134,10 @@ export function fetchWatchedTasks(provider: TaskProvider, ids: string[], scope: 
 }
 
 /** Fetch the tasks one instance poll evaluates: a pure-watch instance (every
- * active alert on the instance is a pure watch) targets the deduped watched-id
- * union via getTask; any other instance fetches the whole list, enriched via
- * getTask when some alert condition needs rich fields. */
+ * active alert in the instance's routable contexts is a pure watch) targets
+ * the deduped watched-id union via getTask; any other instance fetches the
+ * whole list, enriched via getTask when some alert condition needs rich
+ * fields. */
 export async function fetchAlertTasks(
   configContextId: string,
   routable: Map<string, AlertPrompt[]>,
