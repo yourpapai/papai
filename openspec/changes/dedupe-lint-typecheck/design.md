@@ -114,7 +114,14 @@ Timing notes: the no-`typeCheck` leg was timed with `./node_modules/.bin/oxlint`
 
 | Probe | lint (a) | lint no-typeCheck (b) | typecheck (c) |
 | ----- | -------- | --------------------- | ------------- |
-| 1–6   | _pending_ | _pending_             | _pending_     |
+| 1 — compile-time type error (`const n: number = "probe"`) | yes — `typescript(TS2322)` via tsgolint | no | yes — `TS2322` |
+| 2 — unused local binding | yes — `eslint(no-unused-vars)` **and** `typescript(TS6133)` | yes — `eslint(no-unused-vars)` | yes — `TS6133` |
+| 3 — unused function parameter | yes — `eslint(no-unused-vars)` **and** `typescript(TS6133)` | yes — `eslint(no-unused-vars)` | yes — `TS6133` |
+| 4 — index-signature property access | yes — `typescript(TS4111)` (+ `TS2322` from `noUncheckedIndexedAccess`) | no | yes — `TS4111` (+ `TS2322`) |
+| 5 — `await` on non-thenable | yes — `typescript(await-thenable)` rule | no | no (tsgo allows `await` on non-thenable) |
+| 6 — unguarded optional-property access | yes — `typescript(TS18048)` via tsgolint | no | yes — `TS18048` |
+
+Probe-matrix reading: lint as configured (a) reported every diagnostic class that `tsgo` (c) reported — same TS codes, served by tsgolint — plus one class `tsgo` does not report (probe 5, `await-thenable`). The no-typeCheck leg (b) caught only the syntax-level `no-unused-vars` class; every compiler-dependent class (1, 4, 5, 6) vanished, so disabling `typeCheck` would orphan probe 5 entirely — R2's bar ("no type-aware-dependent rule fires") is failed by probe 5 alone. R1 additionally requires file-scope subsumption (2.3) before it can be taken.
 
 Tool versions: `oxlint@1.78.0`, `oxlint-tsgolint@0.22.1` (via `bun pm ls`), `tsgo` `7.0.0-dev.20260707.2` (`bunx tsgo --version`), Bun `1.4.0`. Machine shape: 4 vCPU.
 
