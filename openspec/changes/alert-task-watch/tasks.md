@@ -10,7 +10,7 @@ Assumption from design.md's open question: the `fetchWatchedTasks` concurrency c
 ## 2. Predicate + watch classification (tests first)
 
 - [x] 2.1 Add failing tests to `tests/deferred-prompts/alerts.test.ts` `evaluateCondition` block: `task.id eq X` matches exactly the task with `id === X` and no other; `extractWatchedTaskIds` over nested `and`/`or` trees (dedupe, empty for non-watch trees); `isPureWatchCondition` true for any all-`task.id`-eq tree, false when any other leaf/op appears. Verify they fail: `bun test tests/deferred-prompts/alerts.test.ts`
-- [ ] 2.2 Implement in `src/deferred-prompts/condition-eval.ts`: `getFieldValue` case `'task.id'` → `task.id`; export `extractWatchedTaskIds(condition): string[]` and `isPureWatchCondition(condition): boolean` (walk and/or tree per design D2). Verify: `bun test tests/deferred-prompts/alerts.test.ts`
+- [x] 2.2 Implement in `src/deferred-prompts/condition-eval.ts`: `getFieldValue` case `'task.id'` → `task.id`; export `extractWatchedTaskIds(condition): string[]` and `isPureWatchCondition(condition): boolean` (walk and/or tree per design D2). Verify: `bun test tests/deferred-prompts/alerts.test.ts`
 
 ## 3. Targeted fetch (tests first)
 
