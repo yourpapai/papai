@@ -5,7 +5,7 @@ Assumption from design.md's open question: the `fetchWatchedTasks` concurrency c
 ## 1. Schema: `task.id` condition field (tests first)
 
 - [x] 1.1 Add failing tests to `tests/deferred-prompts/types.test.ts`: `task.id` accepted with `eq` (string and number value); rejected with any other operator (message names field, invalid operator, `eq` as only valid); rejected without a value; composes under nested `and`/`or` with other fields. Verify they fail: `bun test tests/deferred-prompts/types.test.ts`
-- [ ] 1.2 Implement in `src/deferred-prompts/types.ts`: add `'task.id'` to `CONDITION_FIELDS`, `FIELD_OPERATORS['task.id'] = ['eq']`; refine condition/cooldown `.describe()` texts so per-task watch is discoverable. Verify: `bun test tests/deferred-prompts/types.test.ts`
+- [x] 1.2 Implement in `src/deferred-prompts/types.ts`: add `'task.id'` to `CONDITION_FIELDS`, `FIELD_OPERATORS['task.id'] = ['eq']`; refine condition/cooldown `.describe()` texts so per-task watch is discoverable. Verify: `bun test tests/deferred-prompts/types.test.ts`
 
 ## 2. Predicate + watch classification (tests first)
 
