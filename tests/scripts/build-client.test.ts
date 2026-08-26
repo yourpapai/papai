@@ -45,6 +45,29 @@ describe('build-client', () => {
     expect(fs.existsSync(outDir)).toBe(true)
   })
 
+  // Pins the no-stray-assets contract of the Vite-driven build: the output
+  // dir holds exactly the 12 artifacts (4 apps x js/html/css) and nothing
+  // Vite-named (no hashed chunks, no default style.css). The real public/
+  // additionally carries pre-existing gitignored msw/storybook files that
+  // this temp-dir build never touches.
+  test('emits only the 12 contract artifacts, with no stray Vite-named assets', () => {
+    const expected = [
+      'admin.css',
+      'admin.html',
+      'admin.js',
+      'debug.css',
+      'debug.html',
+      'debug.js',
+      'settings.css',
+      'settings.html',
+      'settings.js',
+      'transcript.css',
+      'transcript.html',
+      'transcript.js',
+    ].sort()
+    expect(fs.readdirSync(outDir).sort()).toEqual(expected)
+  })
+
   test.each([['debug.js'], ['admin.js']])('outputs %s as IIFE', (jsName) => {
     const jsPath = path.join(outDir, jsName)
     expect(fs.existsSync(jsPath)).toBe(true)
