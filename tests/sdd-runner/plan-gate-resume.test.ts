@@ -9,6 +9,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import type { EventInput, SddEvent } from '../../sdd-runner/src/events.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
@@ -259,6 +260,48 @@ describe('runPlanGateResume (D12)', () => {
     expect(failure.message).toMatch(/RUN 1 MORE.*plan gate.*cap-hit/u)
   })
 
+  it('a veto round whose replan exhausted the structural bound leaves the gate decidable, not wedged', async () => {
+    const { deps, state } = await seedParent(CHECKED_GATE)
+    // Every planner pass returns a draft that never passes structural
+    // validation: a dependency cycle plus a child the pending gate never saw.
+    const cyclicDraft = JSON.stringify({
+      children: [
+        { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+        { id: 'db-migrations', instruction: 'Add the migration files.', deps: ['db-api'] },
+        { id: 'db-api', instruction: 'Rename the API route helpers.', deps: ['db-migrations'] },
+      ],
+    })
+    const tracking: OrchestratorDeps = {
+      ...deps,
+      spawn: (_command, args, options) => {
+        const target = promptScratchOf(args, options.cwd)
+        fs.mkdirSync(path.dirname(target), { recursive: true })
+        fs.writeFileSync(target, cyclicDraft)
+        return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+      },
+    }
+
+    const failure = await runPlanGateResume(
+      tracking,
+      state,
+      { confirmAll: true, vetoes: [{ id: 'C1', redirect: 'split the schema child' }] },
+      makeEmit(state),
+      { startChildRun: neverStartChild },
+    ).catch((error: unknown) => error)
+
+    assert(failure instanceof Error)
+    expect(failure.message).toMatch(/dependency cycle/u)
+
+    // Operator recovery: the pending gate is still decidable — hand-edit it to
+    // ABORT and rerun; the resume must reach the gate, not throw on the sidecar.
+    fs.writeFileSync(path.join(state.runDir, 'gate-1.md'), `${UNCHECKED_GATE}\nABORT\n`)
+    const result = await runPlanGateResume(deps, state, {}, makeEmit(state), { startChildRun: neverStartChild })
+
+    expect(result).toMatchObject({ outcome: 'aborted', version: 1 })
+    const persisted = await loadRunState(deps.config.workDir, state.runId)
+    expect(persisted.status).toBe('aborted')
+  })
+
   it('an interrupted replan (sidecar moved past the pending gate plan) is recovered by re-presenting, not stranded', async () => {
     const { deps, state } = await seedParent(CHECKED_GATE)
     // Crash aftermath of a settlePlanVeto: the planner spawn already overwrote
@@ -420,4 +463,10 @@ describe('runPlanGateResume (D12)', () => {
 
 function gateAnsweredOf(events: readonly SddEvent[]): Extract<SddEvent, { type: 'gate' }>[] {
   return events.filter((e): e is Extract<SddEvent, { type: 'gate' }> => e.type === 'gate' && e.action === 'answered')
+}
+
+/** Scratch path the spawn prompt's `.review-loop/<name>.json` target resolves to. */
+function promptScratchOf(args: readonly string[], cwd: string): string {
+  const match = String(args[args.length - 1]).match(/\.review-loop\/([\w-]+\.json)/u)
+  return agentWritePath(cwd, match?.[1] ?? 'plan.json')
 }

@@ -330,7 +330,7 @@ describe('holder lifecycle (process ownership)', () => {
         rationale: 'declared scope too large for one change',
         oversize: true,
       }),
-      'plan.json': JSON.stringify({
+      'plan-draft.json': JSON.stringify({
         children: [
           { id: 'auth-db', instruction: 'Add the auth database schema.', deps: [] },
           { id: 'auth-api', instruction: 'Add the auth API endpoints.', deps: ['auth-db'] },
@@ -343,7 +343,7 @@ describe('holder lifecycle (process ownership)', () => {
     expect(result.version).toBe(1)
     expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('## Plan gate')
     expect(fs.existsSync(fixture.changeDir)).toBe(false)
-    expect(fixture.spawnOrder).toEqual(['depth.json', 'plan.json'])
+    expect(fixture.spawnOrder).toEqual(['depth.json', 'plan-draft.json'])
 
     const state = await loadRunState(fixture.deps.config.workDir, result.runId)
     const plan = state.plan
@@ -3090,7 +3090,7 @@ describe('runGateResume plan mode (D12)', () => {
         },
         rationale: 'single-module child change',
       }),
-      'plan.json': JSON.stringify(PLAN),
+      'plan-draft.json': JSON.stringify(PLAN),
       'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
     })
     const oversizeDepth = JSON.stringify({
@@ -3165,11 +3165,11 @@ describe('runGateResume plan mode (D12)', () => {
       confirmAll: true,
       vetoes: [{ id: 'C1', redirect: 'split the schema child' }],
     }).catch((error: unknown) => error)
-    // No plan.json sidecar override in this fixture: the routed replan planner
+    // No planner draft override in this fixture: the routed replan planner
     // fails schema validation on the fake '{}' output — proving the veto
     // reached runPlanner after the desugar wrote the gate file.
     expect(errorMessageOf(failure)).toMatch(/planner failed validation/u)
-    expect(fixture.spawnOrder.filter((name) => name === 'plan.json').length).toBeGreaterThan(0)
+    expect(fixture.spawnOrder.filter((name) => name === 'plan-draft.json').length).toBeGreaterThan(0)
     const md = fs.readFileSync(path.join(fixture.deps.config.workDir, 'runs', runId, 'gate-1.md'), 'utf8')
     expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
     expect(md).toContain('→ split the schema child')
@@ -3265,7 +3265,7 @@ describe('settlePlanVeto — one re-plan per veto round, unbounded rounds (D6)',
 
   function makeVetoFixture(): ReturnType<typeof makeFixture> {
     return makeFixture({
-      'plan.json': JSON.stringify(REVISED_PLAN),
+      'plan-draft.json': JSON.stringify(REVISED_PLAN),
       'depth.json': JSON.stringify({
         implicated_files: ['drizzle/x.sql'],
         signals: {
@@ -3298,7 +3298,7 @@ describe('settlePlanVeto — one re-plan per veto round, unbounded rounds (D6)',
     })
 
     expect(result).toEqual({ runId, outcome: 'veto', version: 2 })
-    expect(fixture.spawnOrder).toEqual(['plan.json'])
+    expect(fixture.spawnOrder).toEqual(['plan-draft.json'])
 
     const plannerPrompt = fixture.prompts[0]
     assert(plannerPrompt !== undefined)

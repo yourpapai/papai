@@ -257,7 +257,7 @@ describe('runIntake', () => {
 
   it('returns a plan outcome with topo-ordered children and never scaffolds a change folder', async () => {
     const dir = makeDir()
-    const fixture = makeFixture(dir, { 'depth.json': OVERSIZE_ESTIMATION, 'plan.json': PLAN })
+    const fixture = makeFixture(dir, { 'depth.json': OVERSIZE_ESTIMATION, 'plan-draft.json': PLAN })
     const result = await runIntake(fixture.deps, { changeName: 'composite', taskText: 'build the whole platform' })
     expect(result).toEqual({
       kind: 'plan',
@@ -267,15 +267,15 @@ describe('runIntake', () => {
       ],
     })
     expect(fixture.spawned.count).toBe(2)
-    expect(fixture.timeline).toEqual(['spawn:depth.json', 'spawn:plan.json'])
+    expect(fixture.timeline).toEqual(['spawn:depth.json', 'spawn:plan-draft.json'])
     expect(fixture.emitted[0]).toMatchObject({ type: 'depth', source: 'estimator', oversize: true })
   })
 })
 
 describe('runPlanner', () => {
-  it('spawns the planner with role planner targeting plan.json and returns topo-ordered children', async () => {
+  it('spawns the planner with role planner targeting plan-draft.json and returns topo-ordered children', async () => {
     const dir = makeDir()
-    const fixture = makeFixture(dir, { 'plan.json': PLAN })
+    const fixture = makeFixture(dir, { 'plan-draft.json': PLAN })
     const children = await runPlanner(fixture.deps, { changeName: 'composite', taskText: 'build the platform' })
     expect(children).toEqual([
       { id: 'auth-db', instruction: 'Add the auth database schema.', deps: [] },
@@ -285,14 +285,14 @@ describe('runPlanner', () => {
       .filter((e): e is Extract<EventInput, { type: 'spawned' }> => e.type === 'spawned')
       .map((e) => e.role)
     expect(roles).toEqual(['planner'])
-    expect(fixture.prompts[0]).toContain(agentWritePath(dir, 'plan.json'))
+    expect(fixture.prompts[0]).toContain(agentWritePath(dir, 'plan-draft.json'))
     const persisted: unknown = JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'plan.json'), 'utf8'))
     expect(persisted).toEqual(JSON.parse(PLAN))
   })
 
   it('replans exactly once with the structural error appended when the draft has duplicate ids', async () => {
     const dir = makeDir()
-    const fixture = makeFixture(dir, { 'plan.json': [DUPLICATE_IDS_PLAN, PLAN] })
+    const fixture = makeFixture(dir, { 'plan-draft.json': [DUPLICATE_IDS_PLAN, PLAN] })
     const children = await runPlanner(fixture.deps, { changeName: 'composite', taskText: 'build the platform' })
     expect(children.map((child) => child.id)).toEqual(['auth-db', 'auth-api'])
     expect(fixture.spawned.count).toBe(2)
@@ -304,7 +304,7 @@ describe('runPlanner', () => {
 
   it('fails loudly naming the structural errors when the replan bound is exhausted', async () => {
     const dir = makeDir()
-    const fixture = makeFixture(dir, { 'plan.json': CYCLIC_PLAN })
+    const fixture = makeFixture(dir, { 'plan-draft.json': CYCLIC_PLAN })
     const failure = await runPlanner(fixture.deps, {
       changeName: 'composite',
       taskText: 'build the platform',
@@ -314,5 +314,24 @@ describe('runPlanner', () => {
     expect(failure.message).toMatch(/dependency cycle/u)
     expect(failure.message).toMatch(/replan/u)
     expect(fixture.spawned.count).toBe(2)
+  })
+
+  it('stages drafts at plan-draft.json, never overwriting plan.json with a structurally invalid draft', async () => {
+    const dir = makeDir()
+    fs.mkdirSync(path.join(dir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'sidecars', 'plan.json'), PLAN)
+    const fixture = makeFixture(dir, { 'plan-draft.json': CYCLIC_PLAN })
+
+    const failure = await runPlanner(fixture.deps, {
+      changeName: 'composite',
+      taskText: 'build the platform',
+    }).catch((error: unknown) => error)
+
+    assert(failure instanceof Error)
+    expect(failure.message).toMatch(/dependency cycle/u)
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'plan.json'), 'utf8'))).toEqual(JSON.parse(PLAN))
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'plan-draft.json'), 'utf8'))).toEqual(
+      JSON.parse(CYCLIC_PLAN),
+    )
   })
 })

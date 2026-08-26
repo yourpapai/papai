@@ -3,7 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFile } from 'node:fs/promises'
+import { readFile, rename } from 'node:fs/promises'
+import path from 'node:path'
 
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { DepthClassificationSchema, runStageAgent } from './agent-layer.js'
@@ -37,6 +38,9 @@ export async function resolveTaskSource(options: {
 }
 
 const PROFILE_RANK: Record<DepthProfile, number> = { S: 0, M: 1, L: 2 }
+
+/** Planner draft sidecar: promoted onto `plan.json` only after structural validation passes. */
+const PLAN_DRAFT = 'plan-draft.json'
 
 export function mapSignalsToProfile(signals: DepthSignals): DepthProfile {
   if (signals.db_migration || signals.credentials || signals.provider_surface || signals.novelty === 'new-subsystem') {
@@ -118,7 +122,7 @@ function buildPlannerPrompt(
   validationError: string | null = null,
   redirects: readonly string[] = [],
 ): string {
-  const target = agentWritePath(cwd, 'plan.json')
+  const target = agentWritePath(cwd, PLAN_DRAFT)
   const lines = [
     'You are a read-only task planner for a spec-driven development pipeline.',
     'Decompose the task into child runs that each fit one change. Do not edit anything.',
@@ -159,7 +163,10 @@ export interface PlannerOptions {
  * Structural replan loop (D3): JSON-shape failures retry inside `runStageAgent`;
  * structural failures from `validatePlan`/`topoSortChildren` run after the spawn,
  * so each pass appends the validation error and respawns, bounded by
- * `PLAN_REPLAN_PASSES`, then fails loudly naming the structural errors.
+ * `PLAN_REPLAN_PASSES`, then fails loudly naming the structural errors. Drafts
+ * stage at `sidecars/plan-draft.json` and are promoted onto `plan.json` only
+ * after `topoSortChildren` succeeds, so a bound-exhausted failure never leaves
+ * an invalid sidecar past a still-pending plan gate.
  */
 export function runPlanner(deps: IntakeDeps, options: PlannerOptions): Promise<PlanChild[]> {
   return attemptPlanner(deps, options, null, 0)
@@ -176,15 +183,16 @@ async function attemptPlanner(
     changeName: options.changeName,
     cwd: deps.cwd,
     prompt: buildPlannerPrompt(options.taskText, deps.cwd, validationError, options.redirects ?? []),
-    outputPath: 'plan.json',
+    outputPath: PLAN_DRAFT,
     outputSchema: PlanSchema,
     label: 'planner',
     runDir: deps.runDir,
     round: 0,
     sidecarDir: deps.sidecarDir,
   })
+  let ordered: PlanChild[]
   try {
-    return topoSortChildren(plan.value)
+    ordered = topoSortChildren(plan.value)
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     if (pass >= PLAN_REPLAN_PASSES) {
@@ -194,6 +202,8 @@ async function attemptPlanner(
     }
     return attemptPlanner(deps, options, detail, pass + 1)
   }
+  await rename(path.join(deps.sidecarDir, PLAN_DRAFT), path.join(deps.sidecarDir, 'plan.json'))
+  return ordered
 }
 
 export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promise<IntakeResult> {
