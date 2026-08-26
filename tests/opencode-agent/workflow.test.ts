@@ -622,7 +622,17 @@ describe('steps', () => {
     // hand — and a live run died 30 minutes into a healthy turn with 59 minutes of
     // runner it was never allowed to use. Byte-for-byte the same expression, so a
     // change to one is a change to both.
-    expect(agentJob['timeout-minutes']).toBe('${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 300 }}')
+    //
+    // `fromJSON` is load-bearing, not decoration: `vars.*` is typed string, and a
+    // **set** `AGENT_JOB_TIMEOUT_MINUTES` makes `|| 300` yield that string —
+    // `'350'` — which GitHub rejects at job planning with "Error when evaluating
+    // 'timeout-minutes' … Unexpected value '350'". The `agent` job is then never
+    // created: no pipeline, no feedback step, the trigger silently swallowed. Runs
+    // 32964525166, 32955595991 and 32987078259 all died this way between 2026-08-26
+    // 09:53 and the fix, while the workflow file itself never changed. Unset, the
+    // expression still yields the numeric fallback '300' → 300, which is why the
+    // earlier "GitHub coerces" belief looked true until somebody set the variable.
+    expect(agentJob['timeout-minutes']).toBe("${{ fromJSON(vars.AGENT_JOB_TIMEOUT_MINUTES || '300') }}")
     expect(step('agent pipeline').env['AGENT_JOB_TIMEOUT_MINUTES']).toBe(agentJob['timeout-minutes'])
   })
 
@@ -634,7 +644,7 @@ describe('steps', () => {
     // built from a step that runs a few seconds after the job did, so at 360 the
     // pipeline's own clock would sit *behind* the runner's and the stop would be
     // cut off doing the one thing it exists to do.
-    const fallback = Number(/\|\|\s*(\d+)\s*\}\}/u.exec(agentJob['timeout-minutes'])?.[1])
+    const fallback = Number(/\|\|\s*'(\d+)'\s*\)\s*\}\}/u.exec(agentJob['timeout-minutes'])?.[1])
 
     expect(fallback).toBeGreaterThan(0)
     expect(fallback).toBeLessThanOrEqual(330)

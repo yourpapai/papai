@@ -299,7 +299,18 @@ jobs:
     # GitHub enforces — the start is recorded by the step below, a few seconds into
     # the job — so the stop would be killed mid-post, which is the silence the
     # derived deadline exists to prevent. 300 keeps a full hour of real slack.
-    timeout-minutes: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 300 }}
+    #
+    # `fromJSON` is required, not cosmetic. `vars.*` is typed string, so the moment
+    # anybody sets `AGENT_JOB_TIMEOUT_MINUTES` the `||` yields that string — `'350'`
+    # — and GitHub rejects the whole `agent` job at planning with "Unexpected value
+    # '350'", before any step exists to report it: no pipeline, no feedback step,
+    # the trigger silently swallowed. Runs 32964525166, 32955595991 and 32987078259
+    # (2026-08-26) all died this way. Unset, `'' || '300'` falls back through
+    # `fromJSON` to the number 300 — the case every earlier "GitHub coerces"
+    # observation had actually tested. workflow.test.ts pins that the expression
+    # here is byte-for-byte the one forwarded as AGENT_JOB_TIMEOUT_MINUTES below,
+    # which is what keeps the ceiling one value with two readers.
+    timeout-minutes: ${{ fromJSON(vars.AGENT_JOB_TIMEOUT_MINUTES || '300') }}
 
     # The only gate left here, and it is deliberate rather than a leftover: the
     # filter ran on the door above, and what this adds is that a run whose issue
@@ -567,7 +578,7 @@ jobs:
           # With either unset there is no job deadline and the pipeline behaves
           # exactly as it did before, bounded by `AGENT_TIMEOUT_MS` alone.
           AGENT_JOB_STARTED_MS: ${{ steps.started.outputs.epoch }}
-          AGENT_JOB_TIMEOUT_MINUTES: ${{ vars.AGENT_JOB_TIMEOUT_MINUTES || 300 }}
+          AGENT_JOB_TIMEOUT_MINUTES: ${{ fromJSON(vars.AGENT_JOB_TIMEOUT_MINUTES || '300') }}
           AGENT_TEARDOWN_RESERVE_MS: ${{ vars.AGENT_TEARDOWN_RESERVE_MS }}
           # The middle slice of that clock: what a turn stopped part-way through gets
           # to finish the file it is in and say where it stopped. Held back from the
