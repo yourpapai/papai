@@ -218,7 +218,9 @@ describe('ensureBranch refuses drifted dependency manifests', () => {
   // onto the agent branch afterwards, and the pre-commit typecheck died on an
   // import the base lockfile no longer carried — after the drafter turn was
   // already paid for. These pin the refusal at the branch switch instead, and
-  // the one caller allowed past it.
+  // the one caller allowed past it. The refusal is content-aware: only
+  // install-relevant manifest fields count (issue #360's scripts-only edit
+  // must not park a finished branch), and every unknown shape fails closed.
 
   /** Narrows a caught refusal, failing the test on anything else. */
   const asPipelineError = (error: unknown): PipelineError => {
@@ -244,9 +246,15 @@ describe('ensureBranch refuses drifted dependency manifests', () => {
     expect(refusal.message).toContain('/sync')
   })
 
-  it('refuses a drifted workspace package.json too — the glob reaches it', async () => {
+  it('refuses a workspace package.json whose dependencies differ — the glob reaches it', async () => {
     const fixture = await makeFixture()
-    await commitOn(fixture, 'agent/issue-42', 'sdd-runner/package.json', '{ "name": "sdd-runner" }\n', 'agent adds dep')
+    await commitOn(
+      fixture,
+      'agent/issue-42',
+      'sdd-runner/package.json',
+      '{ "name": "sdd-runner", "dependencies": { "zod": "^4.0.0" } }\n',
+      'agent adds dep',
+    )
     await fixture.run(['checkout', 'agent/issue-42'])
 
     const refusal = asPipelineError(
@@ -255,6 +263,42 @@ describe('ensureBranch refuses drifted dependency manifests', () => {
 
     expect(refusal.code).toBe('DEPENDENCY_DRIFT')
     expect(refusal.message).toContain('sdd-runner/package.json')
+    expect(refusal.message).toContain('dependencies')
+  })
+
+  it('lets a workspace manifest the base never had through when it carries no install fields', async () => {
+    const fixture = await makeFixture()
+    await commitOn(
+      fixture,
+      'agent/issue-42',
+      'sdd-runner/package.json',
+      '{ "name": "sdd-runner" }\n',
+      'agent adds workspace',
+    )
+    await fixture.run(['checkout', 'agent/issue-42'])
+
+    await fixture.git.ensureBranch('agent/issue-42', 'main')
+  })
+
+  it('lets a scripts-only root manifest edit through — the issue #360 shape', async () => {
+    const fixture = await makeFixture()
+    await commitOn(
+      fixture,
+      'main',
+      'package.json',
+      '{ "name": "papai", "scripts": { "check:verbose": "bun run check" } }\n',
+      'base manifest',
+    )
+    await commitOn(
+      fixture,
+      'agent/issue-42',
+      'package.json',
+      '{ "name": "papai", "scripts": { "check:verbose": "bun run check --verbose" } }\n',
+      'agent edits a script',
+    )
+    await fixture.run(['checkout', 'agent/issue-42'])
+
+    await fixture.git.ensureBranch('agent/issue-42', 'main')
   })
 
   it('allows a branch that differs from base only outside the manifests', async () => {
