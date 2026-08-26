@@ -23,7 +23,7 @@ import { listTaskInstancesSafe } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import { requireScope } from '../../settings/scope-guard.js'
-import { isBoundInstanceProvisionable } from './context-task-instance-routes.js'
+import { cancelAlertsPinnedToReplacedInstance, isBoundInstanceProvisionable } from './context-task-instance-routes.js'
 import { enrichMembers } from './member-enrichment.js'
 import { resolveSettingsUserId } from './resolve-user-id.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from './respond.js'
@@ -227,6 +227,7 @@ async function handleTaskInstancePatch(req: Request, authed: AuthenticatedSettin
     return settingsJson(422, { error: 'inactive task instance' })
   }
   const existing = getContextSettings(outcome.group.contextId)
+  cancelAlertsPinnedToReplacedInstance(outcome.group.contextId, existing?.taskInstanceId, body.data.taskInstanceId)
   setContextSettings(
     {
       contextId: outcome.group.contextId,

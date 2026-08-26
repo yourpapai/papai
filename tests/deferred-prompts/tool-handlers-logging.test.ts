@@ -72,7 +72,10 @@ describe('tool-handlers logging', () => {
       { userId: USER_ID, hasSchedule: false, hasCondition: true },
       'create_reminder/create_alert called',
     ])
-    expect(infoArgs()).toContainEqual([{ id: result.id, userId: USER_ID, type: 'alert' }, 'Deferred prompt created'])
+    expect(infoArgs()).toContainEqual([
+      { id: result.id, userId: USER_ID, type: 'alert', taskInstanceId: null },
+      'Deferred prompt created',
+    ])
   })
 
   test('list logs debug entry and info count', async () => {
