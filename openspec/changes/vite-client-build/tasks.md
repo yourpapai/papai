@@ -6,7 +6,7 @@
 
 ## 2. Build script rewrite (test-first)
 
-- [ ] 2.1 Extend `tests/scripts/build-client.test.ts` first with CSS-layering assertions (tokens before base before local css before component-scoped block) alongside the existing IIFE/artifact/override assertions — red against the current build or green-by-contract before the rewrite. Verify: `bun test tests/scripts/build-client.test.ts`
+- [x] 2.1 Extend `tests/scripts/build-client.test.ts` first with CSS-layering assertions (tokens before base before local css before component-scoped block) alongside the existing IIFE/artifact/override assertions — red against the current build or green-by-contract before the rewrite. Verify: `bun test tests/scripts/build-client.test.ts`
 - [ ] 2.2 Rewrite `scripts/build-client.ts` to drive Vite's programmatic `build()` once per `BUNDLES` row (inline overrides: single input, IIFE output, `entryFileNames`, `inlineDynamicImports: true`, `cssCodeSplit: false`, `minify: false`, `write: false`); write the JS from the in-memory chunk with the non-empty guard; keep HTML copies and the CSS assembly (component CSS from the Vite CSS chunk); drop the `sveltePlugin` import. Verify: `bun build:client && bun run check:bundle-isolation && bun test tests/scripts/build-client.test.ts`
 - [ ] 2.3 Confirm `public/` retains no stray Vite-named assets (only the 12 contract artifacts plus pre-existing msw/storybook files). Verify: `git status --porcelain public` after a clean `bun build:client`
 

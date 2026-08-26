@@ -78,4 +78,28 @@ describe('build-client', () => {
     const content = fs.readFileSync(cssPath, 'utf8')
     expect(content).toContain('{')
   })
+
+  // Pins the CSS assembly contract ahead of the Vite rewrite: tokens first,
+  // then base, then the app-local stylesheet, then compiled component CSS.
+  // Markers are unique to their layer: --bg: exists only in tokens.css,
+  // body { only in base.css (first occurrence), the local selector only in
+  // the app stylesheet, and the comment only in the assembled component block.
+  test.each([
+    ['debug.css', '#log-explorer'],
+    ['admin.css', '.eyebrow'],
+    ['settings.css', '.settings-shell'],
+    ['transcript.css', '.tx-wrap'],
+  ])('layers %s as tokens before base before local before component styles', (cssName, localMarker) => {
+    const cssPath = path.join(outDir, cssName)
+    expect(fs.existsSync(cssPath)).toBe(true)
+    const content = fs.readFileSync(cssPath, 'utf8')
+    const tokens = content.indexOf('--bg:')
+    const base = content.indexOf('body {')
+    const local = content.indexOf(localMarker)
+    const component = content.indexOf('/* component-scoped styles */')
+    expect(tokens).toBeGreaterThanOrEqual(0)
+    expect(base).toBeGreaterThan(tokens)
+    expect(local).toBeGreaterThan(base)
+    expect(component).toBeGreaterThan(local)
+  })
 })
