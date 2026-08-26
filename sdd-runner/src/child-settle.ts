@@ -98,7 +98,7 @@ export async function stopAtBudgetGuard(
   return { halted: 'stopped', child: childId, childStatus: 'budget-guard' }
 }
 
-/** D8 completion bookkeeping: a once-per-flight child_done with aggregated usage, child marked done, parent persisted. */
+/** D8 completion bookkeeping: the flight's `child_done` (superseding any stale `failed` line) with aggregated usage, child marked done, parent persisted. */
 async function settleCompletedChild(
   deps: OrchestratorDeps,
   state: RunState,

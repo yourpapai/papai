@@ -66,6 +66,27 @@ function spawnedEvent(agent: string, model: string, seq: number): SddEvent {
   return { altitude: 'L1', type: 'spawned', agent, role: 'reviewer', model, seq, ts: '2026-01-01T00:00:00.000Z' }
 }
 
+function childSpawnedEvent(child: string, runId: string, seq: number): SddEvent {
+  return { altitude: 'L2', type: 'child_spawned', child, runId, seq, ts: '2026-01-01T00:00:00.000Z' }
+}
+
+function childDoneEvent(
+  child: string,
+  outcome: 'done' | 'failed',
+  usage: AgentUsage | undefined,
+  seq: number,
+): SddEvent {
+  return {
+    altitude: 'L2',
+    type: 'child_done',
+    child,
+    outcome,
+    ...(usage === undefined ? {} : { usage }),
+    seq,
+    ts: '2026-01-01T00:00:00.000Z',
+  }
+}
+
 describe('aggregateUsage', () => {
   it('sums usage across done events', () => {
     const events: readonly SddEvent[] = [
@@ -407,6 +428,35 @@ describe('treeSpend (D10 aggregate ledger)', () => {
     ]
     expect(treeSpend(events)).toEqual({ spentUsd: 0, costKnown: false })
   })
+
+  it('counts an outcome flip once — the superseding child_done of the flight wins', () => {
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ costUsd: 0.4 }), 1),
+      childSpawnedEvent('auth-db', 'run-1', 2),
+      childDoneEvent('auth-db', 'failed', makeUsage({ costUsd: 0.1 }), 3),
+      childDoneEvent('auth-db', 'done', makeUsage({ costUsd: 0.25 }), 4),
+    ]
+    expect(treeSpend(events)).toEqual({ spentUsd: 0.65, costKnown: true })
+  })
+
+  it('reads known when a superseded usage-less failed line is followed by a priced done flip', () => {
+    const events: SddEvent[] = [
+      childSpawnedEvent('auth-db', 'run-1', 1),
+      childDoneEvent('auth-db', 'failed', undefined, 2),
+      childDoneEvent('auth-db', 'done', makeUsage({ costUsd: 0.25 }), 3),
+    ]
+    expect(treeSpend(events)).toEqual({ spentUsd: 0.25, costKnown: true })
+  })
+
+  it('counts a retried child again — a new child_spawned opens a fresh flight', () => {
+    const events: SddEvent[] = [
+      childSpawnedEvent('auth-db', 'run-1', 1),
+      childDoneEvent('auth-db', 'failed', makeUsage({ costUsd: 0.1 }), 2),
+      childSpawnedEvent('auth-db', 'run-2', 3),
+      childDoneEvent('auth-db', 'done', makeUsage({ costUsd: 0.25 }), 4),
+    ]
+    expect(treeSpend(events)).toEqual({ spentUsd: 0.35, costKnown: true })
+  })
 })
 
 describe('childUsageOf (D10 subtree shape)', () => {
@@ -453,6 +503,22 @@ describe('childUsageOf (D10 subtree shape)', () => {
       { altitude: 'L2', type: 'child_done', child: 'grandchild-a', outcome: 'done' },
     ])
     expect(childUsageOf(dir)).toBeUndefined()
+  })
+
+  it('keeps a superseded usage-less failed grandchild line from failing the subtree closed', () => {
+    const dir = makeChildRunDir([
+      doneEvent(makeUsage({ costUsd: 0.25 }), 1),
+      { altitude: 'L2', type: 'child_spawned', child: 'grandchild-a', runId: 'run-1' },
+      { altitude: 'L2', type: 'child_done', child: 'grandchild-a', outcome: 'failed' },
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'grandchild-a',
+        outcome: 'done',
+        usage: makeUsage({ costUsd: 4.8 }),
+      },
+    ])
+    expect(childUsageOf(dir)?.costUsd).toBeCloseTo(5.05, 10)
   })
 
   it('is undefined for an unreadable run dir', () => {

@@ -20,6 +20,7 @@ import type { PlanChild, PlanFsDeps } from '../../sdd-runner/src/plan.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
 import { createStopMarkerSeam, requestCalmStop, stopMarkerPath } from '../../sdd-runner/src/stop-controller.js'
+import { treeSpend } from '../../sdd-runner/src/usage-aggregate.js'
 
 const tmpDirs: string[] = []
 
@@ -1061,8 +1062,11 @@ describe('parent calm-stop is subtree-scoped (D11)', () => {
     expect(third).toEqual({ halted: 'completed' })
     expect(tracker.spawned).toEqual(['auth-db', 'auth-api'])
     const done = childDoneOf(fixture, 'auth-api')
-    expect(done).toHaveLength(1)
-    expect(done[0]).toMatchObject({ outcome: 'failed' })
+    expect(done).toHaveLength(2)
+    expect(done[0]).toMatchObject({ outcome: 'failed', usage: { costUsd: 0.25 } })
+    expect(done[1]).toMatchObject({ outcome: 'done', usage: { costUsd: 0.25 } })
+    const spend = treeSpend(readEvents(path.join(fixture.state.runDir, 'events.ndjson')))
+    expect(spend).toEqual({ spentUsd: 0.5, costKnown: true })
     const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
     expect(persisted.status).toBe('completed')
     expect(persisted.children?.['auth-api']).toEqual({ status: 'done' })

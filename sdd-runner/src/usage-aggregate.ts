@@ -129,11 +129,43 @@ function plusUsage(acc: AgentUsage, add: AgentUsage): AgentUsage {
   }
 }
 
+interface ChildFlightUsage {
+  settled: boolean
+  usage: AgentUsage | undefined
+}
+
+/**
+ * D10 per-flight `child_done` fold: every spawn-to-spawn flight contributes
+ * its LAST `child_done` — an outcome flip (a `failed` child the operator
+ * later completed and the parent adopted as `done`) supersedes the stale
+ * failure-time line instead of double-counting the flight, and a re-spawn
+ * (a retried child) opens a fresh flight that spends again. A `child_done`
+ * with no preceding `child_spawned` is its own flight; an unsettled spawn
+ * contributes nothing yet.
+ */
+function childDoneFlightsOf(events: readonly SddEvent[]): ChildFlightUsage[] {
+  const open = new Map<string, ChildFlightUsage>()
+  const closed: ChildFlightUsage[] = []
+  for (const event of events) {
+    if (event.type === 'child_spawned') {
+      const flight = open.get(event.child)
+      if (flight !== undefined) closed.push(flight)
+      open.set(event.child, { settled: false, usage: undefined })
+    } else if (event.type === 'child_done') {
+      const flight = open.get(event.child) ?? { settled: false, usage: undefined }
+      flight.settled = true
+      flight.usage = event.usage
+      open.set(event.child, flight)
+    }
+  }
+  return [...closed, ...open.values()]
+}
+
 /**
  * A child run's subtree usage (D10 tree shape): the child's own repriced
- * `done` events plus its own `child_done.usage` — each of those already
- * subtree-shaped by this same rule — so a composite child carries its
- * grandchildren's spend up into the parent's ledger; undefined when
+ * `done` events plus its own per-flight `child_done.usage` — each of those
+ * already subtree-shaped by this same rule — so a composite child carries
+ * its grandchildren's spend up into the parent's ledger; undefined when
  * unreadable or any component is unpriced — absent usage makes the D10
  * ledger read unknown (fail closed), never $0 headroom.
  */
@@ -144,10 +176,11 @@ export function childUsageOf(childRunDir: string, resolve: ResolveCostFn = () =>
     let usage: AgentUsage = EMPTY_USAGE
     for (const event of events) {
       if (event.type === 'done') usage = plusUsage(usage, event.usage)
-      else if (event.type === 'child_done') {
-        if (event.usage === undefined) return undefined
-        usage = plusUsage(usage, event.usage)
-      }
+    }
+    for (const flight of childDoneFlightsOf(events)) {
+      if (!flight.settled) continue
+      if (flight.usage === undefined) return undefined
+      usage = plusUsage(usage, flight.usage)
     }
     return usage
   } catch {
@@ -173,18 +206,19 @@ export interface TreeSpend {
 
 /**
  * D10 aggregate ledger: `aggregateUsage(done events)` repriced through
- * `resolve`, plus every `child_done.usage`. Any `child_done` without usage —
- * or an unpriceable parent done event — makes the spend unknown — fail closed.
+ * `resolve`, plus each flight's last `child_done.usage` (see
+ * `childDoneFlightsOf` — a superseding outcome flip counts once). Any
+ * settled `child_done` without usage — or an unpriceable parent done event —
+ * makes the spend unknown — fail closed.
  */
 export function treeSpend(events: readonly SddEvent[], resolve: ResolveCostFn = () => null): TreeSpend {
   const own = aggregateUsage(events, resolve)
   let spentUsd = own.costUsd
   let costKnown = own.costKnown
-  for (const event of events) {
-    if (event.type === 'child_done') {
-      if (event.usage === undefined) costKnown = false
-      else spentUsd += event.usage.costUsd
-    }
+  for (const flight of childDoneFlightsOf(events)) {
+    if (!flight.settled) continue
+    if (flight.usage === undefined) costKnown = false
+    else spentUsd += flight.usage.costUsd
   }
   return { spentUsd, costKnown }
 }

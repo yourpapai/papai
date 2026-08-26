@@ -9,7 +9,8 @@ import os from 'node:os'
 import path from 'node:path'
 
 import {
-  flightSettledFor,
+  emitChildDoneOnce,
+  flightOutcomeFor,
   lastSpawnedHandleOf,
   openFlightHandleOf,
   spawnRecorderOf,
@@ -170,18 +171,18 @@ describe('openFlightHandleOf (D8 crash-window recovery)', () => {
   })
 })
 
-describe('flightSettledFor (D8 settlement idempotency)', () => {
-  it('is false until the current flight carries its child_done and re-arms on a new spawn', async () => {
+describe('flightOutcomeFor (D8 settlement idempotency)', () => {
+  it('is undefined until the current flight carries its child_done and re-arms on a new spawn', async () => {
     const { state } = await makeFixture()
     const log = path.join(state.runDir, 'events.ndjson')
     appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: 'run-1' })
-    expect(flightSettledFor(state, 'auth-db')).toBe(false)
+    expect(flightOutcomeFor(state, 'auth-db')).toBeUndefined()
 
     appendEvent(log, { altitude: 'L2', type: 'child_done', child: 'auth-db', outcome: 'done' })
-    expect(flightSettledFor(state, 'auth-db')).toBe(true)
+    expect(flightOutcomeFor(state, 'auth-db')).toBe('done')
 
     appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: 'run-2' })
-    expect(flightSettledFor(state, 'auth-db')).toBe(false)
+    expect(flightOutcomeFor(state, 'auth-db')).toBeUndefined()
   })
 
   it('keys on the child — another child settlement never settles this flight', async () => {
@@ -190,9 +191,27 @@ describe('flightSettledFor (D8 settlement idempotency)', () => {
     appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: 'run-1' })
     appendEvent(log, { altitude: 'L2', type: 'child_done', child: 'other', outcome: 'done' })
 
-    expect(flightSettledFor(state, 'auth-db')).toBe(false)
+    expect(flightOutcomeFor(state, 'auth-db')).toBeUndefined()
 
     appendEvent(log, { altitude: 'L2', type: 'child_done', child: 'auth-db', outcome: 'failed' })
-    expect(flightSettledFor(state, 'auth-db')).toBe(true)
+    expect(flightOutcomeFor(state, 'auth-db')).toBe('failed')
+  })
+})
+
+describe('emitChildDoneOnce (D8 settlement recording)', () => {
+  it('suppresses only a same-outcome replay — an outcome flip supersedes the stale line', async () => {
+    const { state, ctx } = await makeFixture()
+    const log = path.join(state.runDir, 'events.ndjson')
+    appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: 'run-1' })
+
+    emitChildDoneOnce(ctx, state, 'auth-db', 'failed', undefined)
+    emitChildDoneOnce(ctx, state, 'auth-db', 'failed', undefined)
+    let lines = readEvents(log).filter((event) => event.type === 'child_done')
+    expect(lines).toHaveLength(1)
+
+    emitChildDoneOnce(ctx, state, 'auth-db', 'done', undefined)
+    lines = readEvents(log).filter((event) => event.type === 'child_done')
+    expect(lines).toHaveLength(2)
+    expect(lines[1]).toMatchObject({ type: 'child_done', child: 'auth-db', outcome: 'done' })
   })
 })

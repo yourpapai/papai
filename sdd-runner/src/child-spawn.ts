@@ -88,19 +88,18 @@ export function openFlightHandleOf(state: RunState, childId: string): { readonly
 }
 
 /**
- * D8 settlement idempotency: whether the child's current flight already
- * carries its `child_done` — the append can land before a crash loses the
- * matching status save, and a second line would double-count the flight's
- * usage in the D10 ledger. A new `child_spawned` re-arms it (a retried child
- * settles — and spends — again).
+ * D8 settlement state: the outcome the child's current flight last settled
+ * with — `undefined` while the flight carries no `child_done`. A new
+ * `child_spawned` re-arms it (a retried child settles — and spends —
+ * again).
  */
-export function flightSettledFor(state: RunState, childId: string): boolean {
-  let settled = false
+export function flightOutcomeFor(state: RunState, childId: string): 'done' | 'failed' | undefined {
+  let outcome: 'done' | 'failed' | undefined = undefined
   for (const event of readEvents(logPathFor(state))) {
-    if (event.type === 'child_spawned' && event.child === childId) settled = false
-    if (event.type === 'child_done' && event.child === childId) settled = true
+    if (event.type === 'child_spawned' && event.child === childId) outcome = undefined
+    if (event.type === 'child_done' && event.child === childId) outcome = event.outcome
   }
-  return settled
+  return outcome
 }
 
 /**
@@ -146,10 +145,13 @@ export async function stopAtLiveChildHolder(
 
 /**
  * D8 settlement recording: appends the flight's `child_done` (with usage when
- * priced) at most once — the append is synchronous while the status save is
- * not, so a crash in that window leaves a line the resume's settlement
- * replay must not duplicate, or the flight's usage would double-count in the
- * D10 ledger.
+ * priced) at most once per outcome — the append is synchronous while the
+ * status save is not, so a crash in that window leaves a line the resume's
+ * settlement replay must not duplicate, or the flight's usage would
+ * double-count in the D10 ledger. An outcome flip is not a duplicate: a
+ * `failed` flight the operator later completed and the parent adopted as
+ * `done` supersedes the stale failure-time line, so the fresh full usage
+ * lands (the D10 ledger folds child_done last-wins per flight).
  */
 export function emitChildDoneOnce(
   ctx: StageContext,
@@ -158,7 +160,7 @@ export function emitChildDoneOnce(
   outcome: 'done' | 'failed',
   usage: AgentUsage | undefined,
 ): void {
-  if (flightSettledFor(state, childId)) return
+  if (flightOutcomeFor(state, childId) === outcome) return
   ctx.emit({
     altitude: 'L2',
     type: 'child_done',
