@@ -23,7 +23,7 @@ import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { runContinue, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
 import type { RunGateResumeResult } from '../../sdd-runner/src/orchestrator.js'
-import { materializeChildFiles } from '../../sdd-runner/src/plan.js'
+import { materializeChildFiles, planDigest } from '../../sdd-runner/src/plan.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState } from '../../sdd-runner/src/run-state.js'
@@ -2952,7 +2952,7 @@ describe('runGateResume plan mode (D12)', () => {
           status: 'running',
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z',
-          plan: { childIds: ['db-schema', 'db-api'], digest: 'd'.repeat(16) },
+          plan: { childIds: ['db-schema', 'db-api'], digest: planDigest(PLAN.children) },
           children: { 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } },
         },
         null,
@@ -3242,7 +3242,7 @@ describe('settlePlanVeto — one re-plan per veto round, unbounded rounds (D6)',
           status: 'running',
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z',
-          plan: { childIds: ['db-schema', 'db-api'], digest: 'd'.repeat(16) },
+          plan: { childIds: ['db-schema', 'db-api'], digest: planDigest(INITIAL_PLAN.children) },
           children: { 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } },
         },
         null,

@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -10,6 +11,7 @@ import path from 'node:path'
 import { rowsOf, runChildren } from './children.js'
 import type { RunChildRun } from './children.js'
 import type { EventInput } from './events.js'
+import { readEvents } from './events.js'
 import type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
 import { planGateCarriesDecision } from './gate-answered.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
@@ -19,7 +21,7 @@ import { presentReplannedGate, settlePlanVeto } from './gate-resume-tail.js'
 import { desugarFlags } from './gate-session.js'
 import type { GateSessionView } from './gate-session.js'
 import { resumeGate, vetoRedirects } from './gate.js'
-import { PlanSchema, topoSortChildren } from './plan.js'
+import { PlanSchema, planDigest, topoSortChildren } from './plan.js'
 import type { PlanChild } from './plan.js'
 import { saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
@@ -53,13 +55,15 @@ export async function planGateRows(sidecarDir: string, state: RunState): Promise
 }
 
 /**
- * Interrupted-replan recovery: a crash between a veto round's planner sidecar
- * overwrite and the `state.plan` persist leaves the pending gate's childIds
- * out of step with the sidecar (the pair `planGateRows` throws on). The
- * sidecar is the single source of the current plan (D3), so the resume
- * finishes the interrupted settle — adopt the sidecar plan, re-materialize,
- * and re-present at the next gate version. Returns null when the pair is
- * still consistent.
+ * Interrupted-replan recovery: a crash anywhere between a veto round's
+ * planner sidecar overwrite and the re-presented gate's `state.gate` persist
+ * leaves the pending gate describing a superseded plan — child ids the
+ * sidecar no longer carries, a digest it no longer matches (instructions
+ * hashed in), or an event log whose fresh `plan` event was never followed by
+ * the presentation the persisted `state.gate` still points at. The sidecar
+ * is the single source of the current plan (D3), so the resume finishes the
+ * interrupted settle — adopt the sidecar plan, re-materialize, and re-present
+ * at the next gate version. Returns null when the pair is still consistent.
  */
 async function recoverInterruptedReplan(
   deps: OrchestratorDeps,
@@ -67,16 +71,49 @@ async function recoverInterruptedReplan(
   emit: (event: EventInput) => void,
   version: number,
 ): Promise<RunGateResumeResult | null> {
-  const pendingIds = state.plan?.childIds ?? []
-  if (pendingIds.length === 0) return null
+  const pending = state.plan
+  if (pending === undefined || pending.childIds.length === 0) return null
   const sidecarDir = path.join(state.runDir, 'sidecars')
   const plan = PlanSchema.parse(JSON.parse(await readFile(path.join(sidecarDir, 'plan.json'), 'utf8')))
-  const sidecarIds = new Set(plan.children.map((child) => child.id))
-  if (pendingIds.every((id) => sidecarIds.has(id)) && sidecarIds.size === pendingIds.length) return null
+  const byId = new Map(plan.children.map((child) => [child.id, child]))
+  const walked = pending.childIds.flatMap((id) => {
+    const child = byId.get(id)
+    return child === undefined ? [] : [child]
+  })
+  const consistent =
+    walked.length === pending.childIds.length &&
+    walked.length === plan.children.length &&
+    planDigest(walked) === pending.digest &&
+    !replanSettledPastGate(state, version)
+  if (consistent) return null
   deps.stdout?.(
     'plan gate: the sidecar plan moved past the pending gate (interrupted replan) — adopting the sidecar plan and re-presenting',
   )
   return presentReplannedGate(deps, state, stageCtxOf(deps, state, emit), topoSortChildren(plan), version)
+}
+
+/**
+ * The event log records a replan the pending gate never caught up with: a
+ * fresh `plan` event newer than the last plan-gate presentation (crash after
+ * the `state.plan` persist, before `presentGateAt`), or a plan-gate
+ * presentation newer than the persisted gate version (crash after the
+ * `gate presented` append, before the `state.gate` persist). Both appends
+ * precede the persists they describe, so the ordering is durable.
+ */
+function replanSettledPastGate(state: RunState, version: number): boolean {
+  const logPath = logPathFor(state)
+  if (!existsSync(logPath)) return false
+  let lastPlan = -1
+  let lastPresented = -1
+  let presentedVersion = version
+  readEvents(logPath).forEach((event, index) => {
+    if (event.type === 'plan') lastPlan = index
+    if (event.type === 'gate' && event.action === 'presented' && event.mode === 'plan') {
+      lastPresented = index
+      presentedVersion = event.version
+    }
+  })
+  return lastPlan > lastPresented || presentedVersion > version
 }
 
 export interface PlanGateResumeDeps {

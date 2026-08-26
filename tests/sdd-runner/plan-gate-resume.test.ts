@@ -15,7 +15,7 @@ import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { runPlanGateResume } from '../../sdd-runner/src/plan-gate-resume.js'
 import type { PlanGateResumeDeps } from '../../sdd-runner/src/plan-gate-resume.js'
-import { materializeChildFiles } from '../../sdd-runner/src/plan.js'
+import { materializeChildFiles, planDigest } from '../../sdd-runner/src/plan.js'
 import type { PlanChild } from '../../sdd-runner/src/plan.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
@@ -48,7 +48,7 @@ async function seedParent(gateMd: string): Promise<{ repoRoot: string; deps: Orc
   fs.writeFileSync(path.join(state.runDir, 'sidecars', 'plan.json'), JSON.stringify({ children: PLAN }))
   await materializeChildFiles({ children: PLAN }, state.runDir)
   state.gate = { mode: 'plan', version: 1 }
-  state.plan = { childIds: ['db-schema', 'db-api'], digest: 'd'.repeat(16) }
+  state.plan = { childIds: ['db-schema', 'db-api'], digest: planDigest([...PLAN]) }
   state.children = { 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } }
   await saveRunState(state, new Date('2026-08-12T08:00:00.000Z'))
   fs.writeFileSync(path.join(state.runDir, 'gate-1.md'), gateMd)
@@ -300,6 +300,104 @@ describe('runPlanGateResume (D12)', () => {
     expect(planEvents).toHaveLength(1)
     expect(planEvents[0]).toMatchObject({ childCount: 2 })
     expect(stdoutLines.some((line) => line.includes('interrupted replan'))).toBe(true)
+  })
+
+  it('a replan that persisted state.plan but crashed before the re-presentation is recovered, not parsed against stale veto marks', async () => {
+    const vetoedOldPlan = [
+      '- [x] C1 db-schema — Rename the schema columns.',
+      '- [ ] C2 db-api — Rename the API route helpers. · deps: db-schema',
+      '→ split the API child',
+      '',
+    ].join('\n')
+    const { deps, state } = await seedParent(vetoedOldPlan)
+    // Crash aftermath of a settlePlanVeto past its `saveRunState`: sidecar and
+    // state.plan both hold the revised plan (digest agrees), but the
+    // re-present never ran — state.gate still points at gate-1, whose veto
+    // mark was made about db-api, not db-migrations.
+    const revised: readonly PlanChild[] = [
+      { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+      { id: 'db-migrations', instruction: 'Add the migration files.', deps: ['db-schema'] },
+    ]
+    fs.writeFileSync(path.join(state.runDir, 'sidecars', 'plan.json'), JSON.stringify({ children: revised }))
+    state.plan = { childIds: revised.map((child) => child.id), digest: planDigest([...revised]) }
+    state.children = { 'db-schema': { status: 'pending' }, 'db-migrations': { status: 'pending' } }
+    await saveRunState(state, new Date('2026-08-12T08:00:00.000Z'))
+    const emit = makeEmit(state)
+    const log = path.join(state.runDir, 'events.ndjson')
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 1 })
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'answered', mode: 'plan', version: 1 })
+    appendEvent(log, { altitude: 'L2', type: 'plan', childCount: 2, digest: planDigest([...revised]) })
+    const spawnCalls: string[] = []
+    const tracking: OrchestratorDeps = {
+      ...deps,
+      spawn: (command: string) => {
+        spawnCalls.push(command)
+        return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+      },
+    }
+
+    const result = await runPlanGateResume(tracking, state, {}, emit, { startChildRun: neverStartChild })
+
+    expect(result).toMatchObject({ runId: state.runId, outcome: 'veto', version: 2 })
+    expect(spawnCalls).toEqual([])
+    const gate2 = fs.readFileSync(path.join(state.runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('- [ ] C2 db-migrations — Add the migration files.')
+    const persisted = await loadRunState(deps.config.workDir, state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 2 })
+  })
+
+  it('an instruction-only replan that crashed before the emit/persist is recovered by the digest check', async () => {
+    const { deps, state } = await seedParent(CHECKED_GATE)
+    // Crash aftermath between the planner's sidecar overwrite and
+    // presentReplannedGate's emit/persist: same child ids, a revised db-api
+    // instruction in the sidecar, while state.plan still describes the
+    // pre-replan plan — digest included.
+    const revised: readonly PlanChild[] = [
+      { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+      { id: 'db-api', instruction: 'Rename the API route helpers and add tests.', deps: ['db-schema'] },
+    ]
+    fs.writeFileSync(path.join(state.runDir, 'sidecars', 'plan.json'), JSON.stringify({ children: revised }))
+    const emit = makeEmit(state)
+    const log = path.join(state.runDir, 'events.ndjson')
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 1 })
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'answered', mode: 'plan', version: 1 })
+    const spawnCalls: string[] = []
+    const tracking: OrchestratorDeps = {
+      ...deps,
+      spawn: (command: string) => {
+        spawnCalls.push(command)
+        return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+      },
+    }
+
+    const result = await runPlanGateResume(tracking, state, {}, emit, { startChildRun: neverStartChild })
+
+    expect(result).toMatchObject({ runId: state.runId, outcome: 'veto', version: 2 })
+    expect(spawnCalls).toEqual([])
+    const gate2 = fs.readFileSync(path.join(state.runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('- [ ] C2 db-api — Rename the API route helpers and add tests.')
+  })
+
+  it('a plan-gate presentation newer than the persisted gate version (crash before the gate persist) is recovered', async () => {
+    const { deps, state } = await seedParent(UNCHECKED_GATE)
+    // Crash aftermath inside presentGateAt: gate-2 was presented (event
+    // appended) but state.gate never persisted the bump — the stale gate-1
+    // would otherwise abandon instead of adopting the presented revision.
+    const emit = makeEmit(state)
+    const log = path.join(state.runDir, 'events.ndjson')
+    appendEvent(log, { altitude: 'L2', type: 'plan', childCount: 2, digest: planDigest([...PLAN]) })
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 1 })
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'answered', mode: 'plan', version: 1 })
+    appendEvent(log, { altitude: 'L2', type: 'plan', childCount: 2, digest: planDigest([...PLAN]) })
+    appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 2 })
+
+    const result = await runPlanGateResume(deps, state, {}, emit, { startChildRun: neverStartChild })
+
+    expect(result).toMatchObject({ runId: state.runId, outcome: 'veto', version: 2 })
+    const gate2 = fs.readFileSync(path.join(state.runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    const persisted = await loadRunState(deps.config.workDir, state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 2 })
   })
 
   it('an unknown veto id fails before anything is written', async () => {
