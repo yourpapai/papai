@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq, like, or } from 'drizzle-orm'
+import { and, eq, gte, lt, or } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { alertPrompts, type AlertPromptRow } from '../db/schema.js'
@@ -231,9 +231,13 @@ export const cancelActiveAlertsPinnedToInstance = (taskInstanceId: string, confi
   const db = getDrizzleDb()
   const conditions = [eq(alertPrompts.taskInstanceId, taskInstanceId), eq(alertPrompts.status, 'active')]
   if (configContextId !== undefined) {
+    const threadPrefix = `${configContextId}:thread:`
     const inConfigContext = or(
       eq(alertPrompts.deliveryContextId, configContextId),
-      like(alertPrompts.deliveryContextId, `${configContextId}:thread:%`),
+      and(
+        gte(alertPrompts.deliveryContextId, threadPrefix),
+        lt(alertPrompts.deliveryContextId, `${configContextId}:thread;`),
+      ),
     )
     if (inConfigContext !== undefined) conditions.push(inConfigContext)
   }

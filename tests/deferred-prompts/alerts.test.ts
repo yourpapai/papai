@@ -413,6 +413,25 @@ describe('alert task instance pinning', () => {
     expect(getAlertPrompt('ap-a-thread', 'user2')!.status).toBe('cancelled')
     expect(getAlertPrompt('ap-b', 'user1')!.status).toBe('active')
   })
+
+  test('cancelActiveAlertsPinnedToInstance does not cross-match a context id differing only by case', () => {
+    seedTaskInstance('ti-a')
+    const chanA = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'chan-a' })
+    const chanAThread = toScopedThreadContextId({
+      platformInstanceId: 'pi-1',
+      nativeContextId: 'chan-a',
+      threadId: 't1',
+    })
+    const firstLower = chanA.match(/[a-z]/u)!
+    const caseSibling = chanA.replace(firstLower[0], firstLower[0].toUpperCase())
+    insertPinnedAlert('ap-a-thread', 'user1', 'ti-a', chanAThread)
+    insertPinnedAlert('ap-sibling-thread', 'user2', 'ti-a', `${caseSibling}:thread:dEAw`)
+
+    cancelActiveAlertsPinnedToInstance('ti-a', chanA)
+
+    expect(getAlertPrompt('ap-a-thread', 'user1')!.status).toBe('cancelled')
+    expect(getAlertPrompt('ap-sibling-thread', 'user2')!.status).toBe('active')
+  })
 })
 
 // --- Condition evaluation tests (pure functions, no DB needed) ---
