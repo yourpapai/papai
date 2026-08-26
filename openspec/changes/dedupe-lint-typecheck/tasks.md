@@ -31,6 +31,6 @@ Order is fixed by design.md D4: measure first, branch on evidence, test-first ed
 
 ## 6. Documentation and final verification (all branches)
 
-- [ ] 6.1 Update `AGENTS.md` (timing table `lint` 35 s / `typecheck` 24 s rows to measured values, and the check-surface description if composition changed) and `docs/architecture/commands.md` to state why the surviving pass(es) exist — so the dual-vs-single question is not re-derived. Verify: `grep -n 'typecheck' AGENTS.md docs/architecture/commands.md` shows entries consistent with the branch taken.
+- [x] 6.1 Update `AGENTS.md` (timing table `lint` 35 s / `typecheck` 24 s rows to measured values, and the check-surface description if composition changed) and `docs/architecture/commands.md` to state why the surviving pass(es) exist — so the dual-vs-single question is not re-derived. Verify: `grep -n 'typecheck' AGENTS.md docs/architecture/commands.md` shows entries consistent with the branch taken.
 - [ ] 6.2 End-to-end staged-path check on a clean tree. Verify: `./scripts/check.sh --skip-tests` exits 0.
 - [ ] 6.3 Full gates. Verify: `bun run test` exits 0, `bun run typecheck` exits 0, `bun run lint` exits 0 (all three run, whatever branch was taken).

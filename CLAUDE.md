@@ -95,10 +95,14 @@ imports, or behaviour reached through DI seams, and it says so on every run. Use
 suite before committing.
 
 `bun check:full` leaves the same kind of evidence: each check's output stays in `reports/checks/<name>.log`,
-and a failure tells you which file to open rather than which command to run again.
+and a failure tells you which file to open rather than which command to run again. Full mode runs no separate
+`typecheck` leg: lint's tsgolint type-check pass reports every `tsgo` diagnostic class over a superset file
+scope (probe matrix in `openspec/changes/dedupe-lint-typecheck`), so the standalone leg was redundant. Staged
+mode (`--staged`, the pre-commit path) keeps `typecheck` — oxlint sees staged files only there, so the
+project-wide typecheck is the only leg that catches an unstaged file broken by a staged edit.
 
 Approximate costs on a 4-vCPU container, so a run can be budgeted rather than guessed: full suite ~3–4 min,
-`lint` 35 s, `typecheck` 24 s, `knip` 4.6 s, `format:check` 2.9 s, `duplicates` 1.3 s. The query commands are
+`lint` 19 s, `typecheck` 11 s, `knip` 4.6 s, `format:check` 2.9 s, `duplicates` 1.3 s. The query commands are
 all sub-second. `bun run test:raw` is the unwrapped escape hatch and writes no report.
 
 **Shared-host rules.** The wrapper picks its own mode — explicit `--serial`/`--parallel` > truthy `CI` >
