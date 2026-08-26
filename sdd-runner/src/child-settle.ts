@@ -10,9 +10,8 @@ import { settleStoppedResult } from './resume-flow.js'
 import { loadRunState, runDirOf, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import type { CalmStopController } from './stop-controller.js'
-import { aggregateUsage } from './usage-aggregate.js'
 import { childUsageOf } from './usage-aggregate.js'
-import type { TreeSpend } from './usage-aggregate.js'
+import type { ResolveCostFn, TreeSpend } from './usage-aggregate.js'
 
 /** Injected nested-run seam (D7): the orchestrator supplies the real runStart. */
 export type RunChildRun = (
@@ -67,7 +66,7 @@ async function stopAtFailedChild(
   childId: string,
   childStatus: string,
   childRunDir: string | undefined,
-  resolve: Parameters<typeof aggregateUsage>[1],
+  resolve: ResolveCostFn,
 ): Promise<RunChildrenResult> {
   const usage = childRunDir === undefined ? undefined : childUsageOf(childRunDir, resolve)
   emitChildDoneOnce(ctx, state, childId, 'failed', usage)
@@ -105,7 +104,7 @@ async function settleCompletedChild(
   ctx: StageContext,
   childId: string,
   childRunDir: string,
-  resolve: Parameters<typeof aggregateUsage>[1],
+  resolve: ResolveCostFn,
 ): Promise<void> {
   const usage = childUsageOf(childRunDir, resolve)
   emitChildDoneOnce(ctx, state, childId, 'done', usage)
@@ -126,7 +125,7 @@ export async function settleObservedChild(
   stop: CalmStopController | undefined,
   childId: string,
   handle: { readonly runId: string },
-  resolve: Parameters<typeof aggregateUsage>[1],
+  resolve: ResolveCostFn,
   next: () => Promise<RunChildrenResult>,
 ): Promise<RunChildrenResult> {
   const childState = await loadRunState(deps.config.workDir, handle.runId).catch(() => null)
