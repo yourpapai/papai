@@ -211,6 +211,29 @@ describe('pollAlertsOnce — task instance pinning', () => {
     expect(sentMessages).toHaveLength(0)
   })
 
+  test('firing pinned alert dispatches its narration turn against the pinned instance provider', async () => {
+    createAlertPrompt(
+      PIN_USER,
+      'Notify on done',
+      { field: 'task.status', op: 'eq', value: 'done' },
+      60,
+      undefined,
+      undefined,
+      'ti-a',
+    )
+    const providerCalls: Array<[string, string | null]> = []
+    const buildProviderFn = recordingBuildProviderFn(providerCalls, tasksProvider('done'), new Set())
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.text).toBe('Alert triggered.')
+    expect(providerCalls).toEqual([
+      [PIN_USER, 'ti-a'],
+      [PIN_USER, 'ti-a'],
+    ])
+  })
+
   test('alert pinned to an unresolvable instance is auto-cancelled and not evaluated', async () => {
     const created = createAlertPrompt(
       PIN_USER,

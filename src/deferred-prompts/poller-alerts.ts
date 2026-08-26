@@ -216,9 +216,8 @@ async function executeAlertsForInstance(
     createdByUserId: firstAlert.createdByUserId,
     deliveryTarget: firstAlert.deliveryTarget,
   })
-  const provider = await runWithProviderRequestScope(scope, () =>
-    buildProviderFn(configContextId, pinnedTaskInstanceId),
-  )
+  const pinnedBuildProviderFn: BuildProviderFn = (contextId) => buildProviderFn(contextId, pinnedTaskInstanceId)
+  const provider = await runWithProviderRequestScope(scope, () => pinnedBuildProviderFn(configContextId))
   if (provider === null) {
     handleUnresolvableProvider(configContextId, pinnedTaskInstanceId)
     return
@@ -232,7 +231,15 @@ async function executeAlertsForInstance(
   await Promise.all(
     [...routable.entries()].map(([storageContextId, alerts]) =>
       contextLimit(() =>
-        executeAlertsForContext(storageContextId, alerts, lightTasks, enrichedTasks, chat, buildProviderFn, evalNow),
+        executeAlertsForContext(
+          storageContextId,
+          alerts,
+          lightTasks,
+          enrichedTasks,
+          chat,
+          pinnedBuildProviderFn,
+          evalNow,
+        ),
       ),
     ),
   )
