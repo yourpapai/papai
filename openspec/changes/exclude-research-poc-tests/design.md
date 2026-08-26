@@ -47,10 +47,12 @@ matches how every other non-default lane is excluded. The freeze cost is sequenc
 
 ### D2 — `test:research` script runs them explicitly
 
-`bun test` executes any filename when given an explicit `./`-prefixed path (the mechanism
-`test:operational` and the speed-evidence benchmark both already use). The script enumerates the poc
-directory explicitly (`bun test ./docs/research/analytics-metrics/poc/` with the directory argument,
-verified to pick up discovered-name files under it) so no per-file list is maintained.
+`bun test` executes any filename when given an explicit `./`-prefixed path — but on bun 1.4.0
+explicit positional paths are still filtered by `pathIgnorePatterns`, so the script must clear them
+first with `--path-ignore-patterns ''` (the established mechanism `test:client` and `test:e2e`
+already use). The script enumerates the poc directory explicitly
+(`bun test --path-ignore-patterns '' ./docs/research/analytics-metrics/poc/`, verified to pick up
+discovered-name files under it) so no per-file list is maintained.
 
 ### D3 — Evidence of the delta
 
