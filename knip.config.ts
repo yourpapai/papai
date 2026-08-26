@@ -277,8 +277,6 @@ export default {
     'src/debug/state-collector.ts': ['exports', 'types'],
     // pollAlertsOnce is consumed by frozen tests/stories/harness/scenario.ts.
     'src/deferred-prompts/poller.ts': ['exports'],
-    // alert-task-watch seams (openspec/changes/alert-task-watch); poller partition consumes them.
-    'src/deferred-prompts/{condition-eval,fetch-tasks}.ts': ['exports'],
     // public-types.ts is published as the `papai/plugin-types` package export
     // (package.json `exports`) and consumed by external plugin authors knip
     // cannot trace, plus tests/providers/public-types.test.ts.
