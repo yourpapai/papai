@@ -52,8 +52,9 @@ function handleGet(req: Request, url: URL): Response {
 
 /** When a context's task instance changes, alerts pinned to the old instance
  * would keep evaluating against a tracker this context no longer uses — cancel
- * the active ones whose delivery resolves into this config context. */
-function cancelAlertsPinnedToReplacedInstance(
+ * the active ones whose delivery resolves into this config context. Shared by
+ * every settings route that rewrites a context's task instance assignment. */
+export function cancelAlertsPinnedToReplacedInstance(
   contextId: string,
   oldTaskInstanceId: string | null | undefined,
   newTaskInstanceId: string,
