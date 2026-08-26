@@ -156,7 +156,10 @@ async function executeAlertsForContext(
       log.debug({ storageContextId }, 'No task changes detected; skipping alert evaluation')
       return
     }
+    const watchAlerts = alerts.filter((alert) => isPureWatchCondition(alert.condition))
+    firing.push(...collectPureWatchFiring(watchAlerts, tasks, snapshots, evalNow, fields))
     for (const alert of alerts) {
+      if (isPureWatchCondition(alert.condition)) continue
       const matchedTasks = tasks.filter((task) => evaluateCondition(alert.condition, task, snapshots, evalNow))
       const matchedNow = matchedTasks.map((t) => t.id)
       const previous = new Set(alert.matchedTaskIds)

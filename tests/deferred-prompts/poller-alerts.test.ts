@@ -538,20 +538,41 @@ describe('pollAlertsOnce — alert task watch', () => {
   test('mixed instance keeps the whole-list path with enrichment and pure watches still firing', async () => {
     const watch = makeWatchProvider()
     watch.setTask(watchTask('task-1'))
-    createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Watch specific task')
-    createWatchAlert({ field: 'task.labels', op: 'contains', value: 'bug' }, 'Notify on bug label')
+    const pureAlert = createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Watch specific task')
+    const labelAlert = createWatchAlert({ field: 'task.labels', op: 'contains', value: 'bug' }, 'Notify on bug label')
     const buildProviderFn = watchBuildProviderFn(watch)
 
     await pollAlertsOnce(chat, buildProviderFn)
 
     expect(watch.listCalls.length).toBeGreaterThan(0)
     expect(watch.getTaskCalls).toEqual(['task-1'])
-    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).toBeNull()
 
     watch.setTask(watchTask('task-1', { labels: [{ id: 'l1', name: 'bug' }] }))
     await pollAlertsOnce(chat, buildProviderFn)
 
-    expect(sentMessages).toHaveLength(2)
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
+    expect(getAlertPrompt(labelAlert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
+  })
+
+  test('mixed group without rich-field alerts fires its pure watch on a lightweight change', async () => {
+    const watch = makeWatchProvider()
+    watch.setTask(watchTask('task-1'))
+    const pureAlert = createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Watch specific task')
+    createWatchAlert({ field: 'task.status', op: 'eq', value: 'done' }, 'Notify when done')
+    const buildProviderFn = watchBuildProviderFn(watch)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).toBeNull()
+
+    watch.setTask(watchTask('task-1', { status: 'done' }))
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
   })
 
   test('composed task.id + field condition keeps match-edge firing and the no-change early return', async () => {

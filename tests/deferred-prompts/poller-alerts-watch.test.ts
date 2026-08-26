@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
+import { LIGHTWEIGHT_SNAPSHOT_FIELDS, RICH_SNAPSHOT_FIELDS } from '../../src/deferred-prompts/change-gate.js'
 import { collectPureWatchFiring, watchTaskChanged } from '../../src/deferred-prompts/poller-alerts-watch.js'
 import type { Task } from '../../src/providers/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -47,6 +48,13 @@ describe('watchTaskChanged', () => {
   test('reports changed when a rich field (assignee) differs', () => {
     const snapshots = snapshotsFrom({ 't1:status': 'todo', 't1:assignee': 'alice' })
     expect(watchTaskChanged(makeTask('t1', { status: 'todo', assignee: 'bob' }), snapshots)).toBe(true)
+  })
+
+  test('restricted to lightweight fields ignores rich-field drift against stored snapshots', () => {
+    const snapshots = snapshotsFrom({ 't1:status': 'todo', 't1:assignee': 'alice' })
+    const unenrichedTask = makeTask('t1', { status: 'todo' })
+    expect(watchTaskChanged(unenrichedTask, snapshots, LIGHTWEIGHT_SNAPSHOT_FIELDS)).toBe(false)
+    expect(watchTaskChanged(unenrichedTask, snapshots, RICH_SNAPSHOT_FIELDS)).toBe(true)
   })
 })
 

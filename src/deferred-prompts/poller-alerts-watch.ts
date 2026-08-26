@@ -5,6 +5,7 @@
 
 import type { Task } from '../providers/types.js'
 import { evaluateCondition, updateAlertMatchedTaskIds } from './alerts.js'
+import { RICH_SNAPSHOT_FIELDS } from './change-gate.js'
 import { SNAPSHOT_FIELDS } from './snapshots.js'
 import type { AlertPrompt } from './types.js'
 
@@ -14,15 +15,22 @@ export type AlertEvaluation = {
   newMatchedTasks: Task[]
 }
 
-const hasStoredSnapshot = (task: Task, snapshots: Map<string, string>): boolean =>
-  SNAPSHOT_FIELDS.some(({ field }) => snapshots.has(`${task.id}:${field}`))
+const fieldsToCompare = (fields: readonly string[]): Array<{ field: string; extract: (task: Task) => string | null }> =>
+  SNAPSHOT_FIELDS.filter(({ field }) => fields.includes(field))
 
 /** Pure-watch change test: a task with no stored snapshot is a baseline
  * sighting (reports unchanged so the first cycle only records state); after
- * that, any snapshot-visible field difference reports changed. */
-export const watchTaskChanged = (task: Task, snapshots: Map<string, string>): boolean => {
-  if (!hasStoredSnapshot(task, snapshots)) return false
-  for (const { field, extract } of SNAPSHOT_FIELDS) {
+ * that, any difference on the given snapshot field names reports changed.
+ * Restricting the field set keeps unenriched tasks from comparing
+ * assignee/labels against rich stored snapshots. */
+export const watchTaskChanged = (
+  task: Task,
+  snapshots: Map<string, string>,
+  fields: readonly string[] = RICH_SNAPSHOT_FIELDS,
+): boolean => {
+  const compare = fieldsToCompare(fields)
+  if (!compare.some(({ field }) => snapshots.has(`${task.id}:${field}`))) return false
+  for (const { field, extract } of compare) {
     const current = extract(task)
     const previous = snapshots.get(`${task.id}:${field}`)
     if (current === null && previous === undefined) continue
@@ -39,12 +47,13 @@ export function collectPureWatchFiring(
   tasks: Task[],
   snapshots: Map<string, string>,
   evalNow: Date,
+  fields: readonly string[] = RICH_SNAPSHOT_FIELDS,
 ): AlertEvaluation[] {
   const firing: AlertEvaluation[] = []
   for (const alert of alerts) {
     const matchedTasks = tasks.filter((task) => evaluateCondition(alert.condition, task, snapshots, evalNow))
     const matchedNow = matchedTasks.map((t) => t.id)
-    if (matchedTasks.some((task) => watchTaskChanged(task, snapshots))) {
+    if (matchedTasks.some((task) => watchTaskChanged(task, snapshots, fields))) {
       firing.push({ alert, matchedNow, newMatchedTasks: matchedTasks })
     } else {
       updateAlertMatchedTaskIds(alert.id, alert.createdByUserId, matchedNow)
