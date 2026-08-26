@@ -123,6 +123,15 @@ Timing notes: the no-`typeCheck` leg was timed with `./node_modules/.bin/oxlint`
 
 Probe-matrix reading: lint as configured (a) reported every diagnostic class that `tsgo` (c) reported — same TS codes, served by tsgolint — plus one class `tsgo` does not report (probe 5, `await-thenable`). The no-typeCheck leg (b) caught only the syntax-level `no-unused-vars` class; every compiler-dependent class (1, 4, 5, 6) vanished, so disabling `typeCheck` would orphan probe 5 entirely — R2's bar ("no type-aware-dependent rule fires") is failed by probe 5 alone. R1 additionally requires file-scope subsumption (2.3) before it can be taken.
 
+**Scope enumeration (2.3)** — no non-subsumed file class today; tsgo's effective checked scope ⊆ lint's. Evidence:
+
+- tsgo has no `include`, so its default `**/*` glob applies — but default include **skips dot-directories**: proven empirically (`tsgo --listFiles` contains zero `.hooks/tests/` files, and a planted type error in `.hooks/zz-probe.test.ts` was invisible to tsgo). Its world is non-dot-dir `.ts`/`.tsx` (`.js`/`.jsx` are in the program via `allowJs` but produce no diagnostics without `checkJs`), minus tsconfig `exclude` (`.pi`, `.opencode`, `docs/superpowers/extensions`, `public`, `storybook-static`).
+- lint ignores `.oxlintignore` (`docs/superpowers/extensions/`, `*.svelte`, `public/`, `client/assets/`) plus config `ignorePatterns` (`.hooks/**`, `docs/tdd-hooks/**`, `.opencode/**`, `.claude/hooks/**`, `.codex/hooks/**`).
+- Cross-check: every lint-ignore entry is either tsconfig-excluded (`public`, `.opencode`, `docs/superpowers/extensions`), a dot-dir tsgo never includes (`.hooks`, `.claude/hooks`, `.codex/hooks`), an unsupported tsgo extension (`*.svelte`), or contains no checkable files today (`docs/tdd-hooks/`, `client/assets/` — empty). Every tsconfig-only exclusion is empty today (`.pi`, `storybook-static` — absent from the tree). `.mjs` files (lint-checked for syntax rules, e.g. `.superpowers/tests/**` when present) enter tsgo's program only via import resolution and get no diagnostics without `checkJs` — lint ⊇ tsgo there too.
+- Latent (currently-empty) non-subsumed classes worth knowing: a `.ts` file added under `docs/tdd-hooks/` (lint-ignored, not a dot-dir, not tsconfig-excluded → tsgo-only) or `.js` under `client/assets/` (lint-ignored; tsgo would include it but report nothing without `checkJs`). Neither exists today; both were verified empty.
+
+Drill caveat recorded: the worktree initially failed both tools on `opencode-agent/src` module-resolution errors — `opencode-agent/node_modules` is untracked and absent from a fresh worktree; symlinking it restored a clean baseline. All probe verdicts above are from the fixed baseline.
+
 Tool versions: `oxlint@1.78.0`, `oxlint-tsgolint@0.22.1` (via `bun pm ls`), `tsgo` `7.0.0-dev.20260707.2` (`bunx tsgo --version`), Bun `1.4.0`. Machine shape: 4 vCPU.
 
 **Branch taken: _pending_ (R1 / R2 / N)** — decided by the matrix against D1's bars.
