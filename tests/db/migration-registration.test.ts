@@ -30,9 +30,14 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('070_message_metadata_history_search')
   })
 
-  test('080_release_announcement_bodies is the last migration', () => {
+  test('includes migration 081_alert_task_instance_pin', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('081_alert_task_instance_pin')
+  })
+
+  test('081_alert_task_instance_pin is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('080_release_announcement_bodies')
+    expect(lastMigration.id).toBe('081_alert_task_instance_pin')
   })
 
   test('077_context_vault_file_artifacts is registered immediately after 076_context_vault', () => {
