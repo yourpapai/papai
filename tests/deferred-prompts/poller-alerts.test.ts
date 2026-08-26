@@ -596,6 +596,31 @@ describe('pollAlertsOnce — alert task watch', () => {
     expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
   })
 
+  test('non-pure alert inside its cooldown keeps the whole-list path so the watch fires nothing', async () => {
+    const watch = makeWatchProvider()
+    watch.setTask(watchTask('task-1', { assignee: 'alice' }))
+    watch.setTask(watchTask('task-2'))
+    const pureAlert = createWatchAlert({ field: 'task.id', op: 'eq', value: 'task-1' }, 'Watch task-1')
+    createWatchAlert({ field: 'task.status', op: 'eq', value: 'done' }, 'Notify when done')
+    const buildProviderFn = watchBuildProviderFn(watch)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(0)
+
+    watch.setTask(watchTask('task-2', { status: 'done' }))
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(1)
+
+    watch.listCalls.length = 0
+    watch.getTaskCalls.length = 0
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(watch.listCalls.length).toBeGreaterThan(0)
+    expect(watch.getTaskCalls).toEqual([])
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).toBeNull()
+  })
+
   test('composed task.id + field condition keeps match-edge firing and the no-change early return', async () => {
     const watch = makeWatchProvider()
     watch.setTask(watchTask('task-1', { status: 'done' }))
