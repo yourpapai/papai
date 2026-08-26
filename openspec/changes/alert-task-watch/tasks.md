@@ -24,7 +24,7 @@ Assumption from design.md's open question: the `fetchWatchedTasks` concurrency c
 
 ## 5. Tool descriptions
 
-- [ ] 5.1 Update `src/tools/create-alert.ts` condition/tool descriptions to mention per-task watch; confirm no capability-gating or `tool_prefs` changes (design D6). Verify: `bun test tests/deferred-prompts && bun run typecheck`
+- [x] 5.1 Update `src/tools/create-alert.ts` condition/tool descriptions to mention per-task watch; confirm no capability-gating or `tool_prefs` changes (design D6). Verify: `bun test tests/deferred-prompts && bun run typecheck`
 
 ## 6. Full verification
 
