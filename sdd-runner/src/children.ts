@@ -29,6 +29,10 @@ export type { RunChildRun, RunChildrenOptions, RunChildrenResult } from './child
 export interface PlanBranchOptions {
   /** Injected fs seam (D7): hermetic materialization under test. */
   readonly fs?: PlanFsDeps
+  /** Gate version to present at — replan tails re-present at `version + 1`. */
+  readonly version?: number
+  /** Skip the plan policy — a settled replan round never re-runs the ladder. */
+  readonly skipPolicy?: boolean
 }
 
 /** D4 row text: `<child-id> — <instruction first line>` plus deps/capabilities. */
@@ -64,8 +68,9 @@ export async function runPlanBranch(
   for (const child of ordered) seeded[child.id] = { status: 'pending' }
   state.children = seeded
   await saveRunState(state, deps.now?.() ?? new Date())
-  return presentGateAt(deps, state, ctx, PLAN_REVIEW_SURROGATE, 1, 'plan', {
+  return presentGateAt(deps, state, ctx, PLAN_REVIEW_SURROGATE, options.version ?? 1, 'plan', {
     children: rowsOf(ordered),
+    skipPolicy: options.skipPolicy,
   })
 }
 

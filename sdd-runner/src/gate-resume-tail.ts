@@ -7,18 +7,16 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { AgentLayerDeps } from './agent-layer.js'
-import { rowsOf } from './children.js'
+import { runPlanBranch } from './children.js'
 import { buildDriftCheck } from './drift.js'
 import type { GateResumeContext, RunGateResumeResult } from './extend-round.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
-import { finalizeGate, nowOf, presentGateAt } from './gate-digest.js'
-import { PLAN_REVIEW_SURROGATE } from './gate-prelude.js'
+import { finalizeGate, presentGateAt } from './gate-digest.js'
 import { runPlanner } from './intake.js'
-import { materializeChildFiles, planDigest, PlanSchema } from './plan.js'
+import { PlanSchema } from './plan.js'
 import type { PlanChild } from './plan.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
 import type { ReviewLoopResult } from './review-loop.js'
-import { saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { narrowGateMode } from './run-state.js'
 import { runVetoUpdater, updateAssumptionsFromVetoes } from './veto-updater.js'
@@ -85,10 +83,11 @@ function taskTextOf(children: readonly PlanChild[]): string {
 
 /**
  * D6 replan tail, shared with the interrupted-settle recovery: adopt
- * `ordered` — re-materialize wholesale, emit a fresh `plan` event (the replay
- * fold resets `children` on it), update `state.plan`/`state.children`, and
- * re-present at `gate-<version+1>.md` with `skipPolicy: true` — the settled
- * round never re-runs the ladder.
+ * `ordered` through `runPlanBranch` (re-materialize wholesale, emit a fresh
+ * `plan` event — the replay fold resets `children` on it — update
+ * `state.plan`/`state.children`, persist) and re-present at
+ * `gate-<version+1>.md` with `skipPolicy: true` — the settled round never
+ * re-runs the ladder.
  */
 export async function presentReplannedGate(
   deps: OrchestratorDeps,
@@ -97,20 +96,8 @@ export async function presentReplannedGate(
   ordered: readonly PlanChild[],
   version: number,
 ): Promise<RunGateResumeResult> {
-  await materializeChildFiles({ children: ordered }, state.runDir)
-  const digest = planDigest(ordered)
-  ctx.emit({ altitude: 'L2', type: 'plan', childCount: ordered.length, digest })
-  state.plan = { childIds: ordered.map((child) => child.id), digest }
-  const seeded: Record<string, { status: 'pending' }> = {}
-  for (const child of ordered) seeded[child.id] = { status: 'pending' }
-  state.children = seeded
-  await saveRunState(state, nowOf(deps))
-  const next = version + 1
-  await presentGateAt(deps, state, ctx, PLAN_REVIEW_SURROGATE, next, 'plan', {
-    children: rowsOf(ordered),
-    skipPolicy: true,
-  })
-  return { runId: state.runId, outcome: 'veto', version: next }
+  await runPlanBranch(deps, state, ctx, ordered, { version: version + 1, skipPolicy: true })
+  return { runId: state.runId, outcome: 'veto', version: version + 1 }
 }
 
 /**

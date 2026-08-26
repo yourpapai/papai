@@ -185,6 +185,24 @@ describe('runPlanBranch (D7)', () => {
     expect(md).toContain('- [ ] C1 auth-db — Add the auth database schema.')
     expect(md).toContain('- [ ] C2 auth-api — Add the auth API endpoints. · deps: auth-db')
   })
+
+  it('presents at the requested version with the plan policy skipped (replan tail options)', async () => {
+    const fixture = await makeFixture()
+    const fake = makeFakeFs()
+
+    const result = await runPlanBranch(fixture.deps, fixture.state, fixture.ctx, CHILDREN, {
+      fs: fake.fs,
+      version: 4,
+      skipPolicy: true,
+    })
+
+    expect(result.version).toBe(4)
+    expect(result.gateMdPath).toBe(path.join(fixture.state.runDir, 'gate-4.md'))
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 4 })
+    expect(fs.existsSync(path.join(fixture.state.runDir, 'auto-policy.jsonl'))).toBe(false)
+    expect(fs.readFileSync(result.gateMdPath, 'utf8')).not.toContain('Auto-decision preview')
+  })
 })
 
 const CHILD_DONE_USAGE = {
