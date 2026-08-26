@@ -17,7 +17,8 @@ import {
   StoryManifestSchema,
   writeStoryManifest,
 } from '../../scripts/story/manifest.js'
-import { writeFrozenCoverageSupport } from './story-frozen-inputs.helpers.js'
+import { expectRejection } from '../utils/test-helpers.js'
+import { writeFrozenSupportInputs } from './story-frozen-inputs.helpers.js'
 
 const roots: string[] = []
 const PROJECT_ROOT = path.resolve(import.meta.dir, '../..')
@@ -74,7 +75,7 @@ function fixture(options: Readonly<{ includePublic?: boolean }> = {}): string {
     `scenario('alpha story', async ({ then }) => {\n  then.replyIn(context).equals('ok')\n  await then.task('A').exists()\n})\n` +
       `test('wrapped', async () => {\n  await executeScenario('nested story', async ({ then }) => {\n    then.responseStatus(response, 200)\n  })\n})\n`,
   )
-  writeFrozenCoverageSupport(root)
+  writeFrozenSupportInputs(root)
   writeFileSync(path.join(root, 'scripts/story/test-stories.ts'), 'runner enforcement')
   writeFileSync(path.join(root, 'scripts/story/dependencies-install.ts'), 'dependency installer enforcement')
   writeFileSync(path.join(root, 'scripts/story/dependencies-tree.ts'), 'dependency tree enforcement')
@@ -137,6 +138,7 @@ describe('story manifest', () => {
       'scripts/story/sandbox.ts',
       'scripts/story/test-stories.ts',
       'scripts/story/test-story-sandbox.ts',
+      'src/ts-ast/source-parser.ts',
       'tests/mock-reset.ts',
       'tests/setup.ts',
       'tests/stories/harness/helper.ts',
@@ -214,6 +216,7 @@ describe('story manifest', () => {
     rmSync(path.join(root, 'context-vault-indexer'), { recursive: true })
     rmSync(path.join(root, 'public'), { recursive: true })
     mkdirSync(path.join(root, 'src'))
+    writeFrozenSupportInputs(root)
     mkdirSync(path.join(root, 'plugins'))
     mkdirSync(path.join(root, 'context-vault-indexer'))
     mkdirSync(path.join(root, 'public'))
@@ -358,7 +361,8 @@ describe('story manifest', () => {
     git(root, 'rm', '--', 'package.json')
     git(root, 'commit', '-qm', 'remove runtime metadata')
 
-    await expect(buildBaselineStoryManifest({ root, ref: 'HEAD', seed: 41021 })).rejects.toThrow(
+    await expectRejection(
+      buildBaselineStoryManifest({ root, ref: 'HEAD', seed: 41021 }),
       'Baseline runtime inputs missing: package.json',
     )
   })
@@ -458,7 +462,8 @@ describe('story manifest', () => {
     const root = fixture()
     symlinkSync(path.join(root, 'tests/stories/harness/helper.ts'), path.join(root, 'tests/stories/link.ts'))
 
-    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+    await expectRejection(
+      buildCandidateStoryManifest({ root, seed: 41021 }),
       'Unsupported story manifest entry: tests/stories/link.ts (symbolic link)',
     )
   })
@@ -467,7 +472,8 @@ describe('story manifest', () => {
     const root = fixture()
     symlinkSync('../../external', path.join(root, 'src/escaped.ts'))
 
-    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+    await expectRejection(
+      buildCandidateStoryManifest({ root, seed: 41021 }),
       'Unsupported story runtime symlink: src/escaped.ts -> ../../external',
     )
   })
@@ -479,7 +485,8 @@ describe('story manifest', () => {
     const root = fixture()
     symlinkSync(target, path.join(root, 'src/escaped.ts'))
 
-    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+    await expectRejection(
+      buildCandidateStoryManifest({ root, seed: 41021 }),
       `Unsupported story runtime symlink: src/escaped.ts -> ${target}`,
     )
   })
@@ -492,7 +499,8 @@ describe('story manifest', () => {
     rmSync(path.join(root, 'tests/stories'), { recursive: true })
     symlinkSync(external, path.join(root, 'tests/stories'))
 
-    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+    await expectRejection(
+      buildCandidateStoryManifest({ root, seed: 41021 }),
       'Unsupported story manifest root: tests/stories (symbolic link)',
     )
   })
@@ -500,12 +508,14 @@ describe('story manifest', () => {
   test('reports a missing or non-directory tests/stories root actionably', async () => {
     const root = fixture()
     rmSync(path.join(root, 'tests/stories'), { recursive: true })
-    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+    await expectRejection(
+      buildCandidateStoryManifest({ root, seed: 41021 }),
       'Unsupported story manifest root: tests/stories (missing)',
     )
 
     writeFileSync(path.join(root, 'tests/stories'), 'not a directory')
-    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+    await expectRejection(
+      buildCandidateStoryManifest({ root, seed: 41021 }),
       'Unsupported story manifest root: tests/stories (not a directory)',
     )
   })
@@ -516,7 +526,8 @@ describe('story manifest', () => {
       path.join(root, 'tests/stories/nonliteral.story.test.ts'),
       `scenario(name, async ({ then }) => then.x())\n`,
     )
-    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+    await expectRejection(
+      buildCandidateStoryManifest({ root, seed: 41021 }),
       'Scenario name must be a string literal in tests/stories/nonliteral.story.test.ts',
     )
 
@@ -525,7 +536,8 @@ describe('story manifest', () => {
       path.join(root, 'tests/stories/duplicate.story.test.ts'),
       `scenario('same', async ({ then }) => then.x())\nscenario('same', async ({ then }) => then.y())\n`,
     )
-    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+    await expectRejection(
+      buildCandidateStoryManifest({ root, seed: 41021 }),
       'Duplicate scenario id: tests/stories/duplicate.story.test.ts#same',
     )
   })
@@ -536,7 +548,8 @@ describe('story manifest', () => {
       path.join(root, 'tests/stories/nonliteral-execute.story.test.ts'),
       `test('wrapped', () => executeScenario(name, async ({ then }) => then.x()))\n`,
     )
-    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+    await expectRejection(
+      buildCandidateStoryManifest({ root, seed: 41021 }),
       'Scenario name must be a string literal in tests/stories/nonliteral-execute.story.test.ts',
     )
 
@@ -545,7 +558,8 @@ describe('story manifest', () => {
       path.join(root, 'tests/stories/duplicate-execute.story.test.ts'),
       `scenario('same', async ({ then }) => then.x())\nexecuteScenario('same', async ({ then }) => then.y())\n`,
     )
-    await expect(buildCandidateStoryManifest({ root, seed: 41021 })).rejects.toThrow(
+    await expectRejection(
+      buildCandidateStoryManifest({ root, seed: 41021 }),
       'Duplicate scenario id: tests/stories/duplicate-execute.story.test.ts#same',
     )
   })

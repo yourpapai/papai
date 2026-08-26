@@ -4,7 +4,7 @@
 
 See proposal.md — Why. The redundancy was verified empirically, not assumed:
 
-- `tsgo --noEmit --listFilesOnly` includes all 258 files across the four workspaces' `src/` trees (workspace tsconfigs extend the root one and cover a subset of the same program).
+- `tsc --noEmit --listFilesOnly` includes all 258 files across the four workspaces' `src/` trees (workspace tsconfigs extend the root one and cover a subset of the same program).
 - `bunfig.toml` `pathIgnorePatterns` excludes only `tests/e2e|client|visual|stories`; every `tests/<workspace>/` file (195 across the four) runs in the default sweep. Each workspace's own `test` script is `cd .. && bun test tests/<w>` — the same sweep, re-scoped.
 - `.oxlintignore` and `.oxfmtignore` exclude no workspace directory, so root `lint`/`format:check` walk them.
 

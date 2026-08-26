@@ -38,6 +38,29 @@ export function isFrozenCoverageSupportPath(filePath: string): boolean {
   return FROZEN_COVERAGE_SUPPORT_PATHS.has(filePath)
 }
 
+// The scenario extractor parses through this module. The snapshot must carry
+// it or the runner cannot load. It imports nothing from the repository beyond
+// the parser package, so freezing it pulls in no further graph.
+const PARSER_SUPPORT_PREFIX = 'src/ts-ast'
+
+export const FROZEN_PARSER_SUPPORT: readonly string[] = [`${PARSER_SUPPORT_PREFIX}/source-parser.ts`]
+
+const FROZEN_PARSER_SUPPORT_PATHS = new Set(FROZEN_PARSER_SUPPORT)
+
+export function isFrozenParserSupportPath(filePath: string): boolean {
+  return FROZEN_PARSER_SUPPORT_PATHS.has(filePath)
+}
+
+/**
+ * The frozen parser lives under a runtime root but belongs to the frozen set:
+ * capturing it in both would materialize the same path twice. Its directory is
+ * excluded wholesale so the candidate walk and the baseline git-tree filter
+ * agree on the topology.
+ */
+export function isFrozenParserSupportRoot(filePath: string): boolean {
+  return filePath === PARSER_SUPPORT_PREFIX || filePath.startsWith(`${PARSER_SUPPORT_PREFIX}/`)
+}
+
 const STORIES_PREFIX = 'tests/stories'
 const ENFORCEMENT_PREFIX = 'scripts/story'
 const COVERAGE_SUPPORT_PREFIX = 'scripts/coverage'
@@ -47,7 +70,8 @@ export function isCapturedStoryInputPath(filePath: string): boolean {
     filePath.startsWith(`${STORIES_PREFIX}/`) ||
     isFrozenEnforcementPath(filePath) ||
     isFrozenTestSupportPath(filePath) ||
-    isFrozenCoverageSupportPath(filePath)
+    isFrozenCoverageSupportPath(filePath) ||
+    isFrozenParserSupportPath(filePath)
   )
 }
 
@@ -200,6 +224,7 @@ export async function loadCandidateStoryFiles(
     loadSelectedDirectoryFiles(root, '', isFrozenTestSupportPath, dependencies),
     loadSelectedDirectoryFiles(root, ENFORCEMENT_PREFIX, isFrozenEnforcementPath, dependencies),
     loadSelectedDirectoryFiles(root, COVERAGE_SUPPORT_PREFIX, isFrozenCoverageSupportPath, dependencies),
+    loadSelectedDirectoryFiles(root, PARSER_SUPPORT_PREFIX, isFrozenParserSupportPath, dependencies),
     loadSelectedDirectoryFiles(root, 'tests', isFrozenTestSupportPath, dependencies),
     loadSelectedDirectoryFiles(root, 'tests/utils', isFrozenTestSupportPath, dependencies),
   ])

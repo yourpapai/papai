@@ -14,6 +14,7 @@ import {
   directoryIdentity,
   type DirectoryIdentity,
   errorCode,
+  isFrozenParserSupportRoot,
   readCandidateFile,
   toPosix,
 } from './inputs.js'
@@ -32,6 +33,7 @@ export type LoadedRuntimeInput = LoadedRuntimeFile | LoadedRuntimeSymlink
 export type LoadedRuntimeInputTree = Readonly<{ directories: readonly string[]; files: readonly LoadedRuntimeInput[] }>
 
 export function isRuntimeInputPath(filePath: string): boolean {
+  if (isFrozenParserSupportRoot(filePath)) return false
   return (
     RUNTIME_FILE_ROOTS.has(filePath) ||
     [...REQUIRED_RUNTIME_DIRECTORY_ROOTS, ...OPTIONAL_RUNTIME_DIRECTORY_ROOTS].some((root) =>
@@ -91,6 +93,7 @@ async function visitRuntimeDirectory(
     capturedEntries.map(async ({ entry, stats }): Promise<void> => {
       const absolute = path.join(directory, entry.name)
       const relative = toPosix(path.relative(root, absolute))
+      if (isFrozenParserSupportRoot(relative)) return
       if (stats.isDirectory()) {
         await visitRuntimeDirectory(root, absolute, directoryIdentity(stats), directories, inputs, dependencies)
       } else inputs.push(await readRuntimeInput(root, relative))

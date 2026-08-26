@@ -39,7 +39,7 @@ scenario(
     const dm = given.dm(alice)
     const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
     const bobContextId = toScopedContextId({ platformInstanceId: bob.platformInstanceId, nativeContextId: bob.id })
-    const coding = given.codingSession({
+    const coding = await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
@@ -146,7 +146,7 @@ scenario(
     const alice = given.user('alice')
     const dm = given.dm(alice)
     const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
-    const coding = given.codingSession({
+    const coding = await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
@@ -259,7 +259,7 @@ scenario(
     const alice = given.user('alice')
     const dm = given.dm(alice)
     const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
-    const coding = given.codingSession({
+    const coding = await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,

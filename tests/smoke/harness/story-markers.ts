@@ -3,7 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import ts from '@typescript/typescript6'
+import type { Node } from 'oxc-parser'
+
+import {
+  childNodes,
+  stringLiteralValue,
+  type ParsedProgram,
+  type SourceParser,
+} from '../../../src/ts-ast/source-parser.js'
 
 /**
  * Tier 2/3 scenario files name their tests through a local `title()` helper that
@@ -19,39 +26,51 @@ export type StoryMarkerScan = Readonly<{ keys: readonly string[]; violations: re
  * an unrecognized declarator is a *silent* miss — neither a key nor a violation —
  * which is the exact blind spot this scanner exists to remove.
  */
-function isTestCall(expression: ts.Expression): boolean {
-  if (ts.isIdentifier(expression)) return expression.text === 'test' || expression.text === 'it'
-  if (ts.isPropertyAccessExpression(expression)) return isTestCall(expression.expression)
-  if (ts.isCallExpression(expression)) return isTestCall(expression.expression)
+function isTestCall(expression: Node): boolean {
+  if (expression.type === 'Identifier') return expression.name === 'test' || expression.name === 'it'
+  if (expression.type === 'MemberExpression') return isTestCall(expression.object)
+  if (expression.type === 'CallExpression') return isTestCall(expression.callee)
   return false
 }
 
-function markerKey(argument: ts.Expression | undefined): string | undefined {
-  if (argument === undefined || !ts.isCallExpression(argument)) return undefined
-  if (!ts.isIdentifier(argument.expression) || argument.expression.text !== 'title') return undefined
+function markerKey(argument: Node | undefined): string | undefined {
+  if (argument === undefined || argument.type !== 'CallExpression') return undefined
+  if (argument.callee.type !== 'Identifier' || argument.callee.name !== 'title') return undefined
   const [key] = argument.arguments
-  return key !== undefined && ts.isStringLiteral(key) ? key.text : undefined
+  if (key === undefined) return undefined
+  return stringLiteralValue(key)
 }
 
-export function scanStoryMarkers(filePath: string, source: string): StoryMarkerScan {
-  const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true)
+export async function scanStoryMarkers(
+  parser: SourceParser,
+  filePath: string,
+  source: string,
+): Promise<StoryMarkerScan> {
+  const program = await parser.parse(filePath, source)
+  return readMarkers(program, filePath, source)
+}
+
+function readMarkers(program: ParsedProgram, filePath: string, source: string): StoryMarkerScan {
   const keys: string[] = []
   const violations: string[] = []
 
-  const visit = (node: ts.Node, calleeOf: ts.CallExpression | undefined): void => {
-    if (ts.isCallExpression(node) && node !== calleeOf && isTestCall(node.expression)) {
+  const visit = (node: Node, calleeOf: Node | undefined): void => {
+    if (node.type === 'CallExpression' && node !== calleeOf && isTestCall(node.callee)) {
       const [first] = node.arguments
       const key = markerKey(first)
       if (key === undefined) {
-        violations.push(`${filePath}: ${first === undefined ? '<no title argument>' : first.getText(sourceFile)}`)
+        violations.push(
+          `${filePath}: ${first === undefined ? '<no title argument>' : source.slice(first.start, first.end)}`,
+        )
       } else {
         keys.push(key)
       }
     }
-    const innerCallee = ts.isCallExpression(node) && ts.isCallExpression(node.expression) ? node.expression : undefined
-    ts.forEachChild(node, (child) => visit(child, innerCallee))
+    const innerCallee =
+      node.type === 'CallExpression' && node.callee.type === 'CallExpression' ? node.callee : undefined
+    for (const child of childNodes(node)) visit(child, innerCallee)
   }
 
-  visit(sourceFile, undefined)
+  visit(program, undefined)
   return Object.freeze({ keys, violations })
 }

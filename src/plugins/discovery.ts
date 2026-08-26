@@ -7,16 +7,24 @@ import { createHash } from 'node:crypto'
 import * as fs from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
+import pLimit from 'p-limit'
+
 import { logger } from '../logger.js'
+import { type SourceParser, withSourceParser } from '../ts-ast/source-parser.js'
 import { readPluginSourceGraph } from './discovery-imports.js'
+import {
+  isPathInsideDirectory,
+  isRealDirectory,
+  isRelativePluginImport,
+  resolveEntryImport,
+  resolveRealPathInsidePlugin,
+} from './discovery-paths.js'
 import { pluginManifestSchema } from './types.js'
 import type { DiscoveredPlugin } from './types.js'
 
 const log = logger.child({ scope: 'plugins:discovery' })
 
-export const discoveryPathOps: { realpathSync: (path: fs.PathLike) => string } = {
-  realpathSync: (path) => fs.realpathSync(path),
-}
+const makeDiscoveryError = (directoryName: string, reason: string): DiscoveryError => ({ directoryName, reason })
 
 export type DiscoveryError = {
   directoryName: string
@@ -32,78 +40,6 @@ export type DiscoveryResult = {
    * Docker image was built without `COPY plugins ./plugins`).
    */
   directoryMissing: boolean
-}
-
-export function isPathInsideDirectory(
-  directoryPath: string,
-  candidatePath: string,
-  pathOps: {
-    isAbsolute(path: string): boolean
-    relative(from: string, to: string): string
-    resolve(...paths: string[]): string
-    sep: string
-  } = { isAbsolute: (path) => resolve(path) === path, relative, resolve, sep },
-): boolean {
-  const relativePath = pathOps.relative(pathOps.resolve(directoryPath), pathOps.resolve(candidatePath))
-  return (
-    relativePath === '' ||
-    (!relativePath.startsWith(`..${pathOps.sep}`) && relativePath !== '..' && !pathOps.isAbsolute(relativePath))
-  )
-}
-
-function isRealDirectory(path: string): boolean {
-  try {
-    const stat = fs.lstatSync(path)
-    if (stat.isSymbolicLink()) return false
-    return stat.isDirectory()
-  } catch {
-    return false
-  }
-}
-
-function resolveRealPathInsidePlugin(pluginDir: string, candidatePath: string, specifier: string): string {
-  const realPluginDir = discoveryPathOps.realpathSync(pluginDir)
-  const realCandidatePath = discoveryPathOps.realpathSync(candidatePath)
-  if (!isPathInsideDirectory(realPluginDir, realCandidatePath)) {
-    throw new Error(`Plugin import resolves outside plugin directory: ${specifier}`)
-  }
-  return realCandidatePath
-}
-
-const isRelativePluginImport = (specifier: string): boolean => specifier.startsWith('./') || specifier.startsWith('../')
-
-function wrapPluginImportVerificationError(specifier: string, error: unknown): Error {
-  const cause = error instanceof Error ? error : new Error(String(error))
-  return new Error(`Failed to verify plugin import path for ${specifier}: ${cause.message}`, { cause })
-}
-
-const makeDiscoveryError = (directoryName: string, reason: string): DiscoveryError => ({ directoryName, reason })
-
-function resolveEntryImport(fromFile: string, pluginDir: string, specifier: string): string {
-  const candidate = resolve(join(dirname(fromFile), specifier))
-  if (!isPathInsideDirectory(pluginDir, candidate)) {
-    throw new Error(`Plugin import resolves outside plugin directory: ${specifier}`)
-  }
-
-  const candidates = candidate.endsWith('.ts')
-    ? [candidate]
-    : candidate.endsWith('.js')
-      ? [candidate, `${candidate.slice(0, -3)}.ts`]
-      : [`${candidate}.ts`, `${candidate}.js`, join(candidate, 'index.ts'), join(candidate, 'index.js')]
-
-  const resolvedPath = candidates.find((path) => fs.existsSync(path))
-  if (resolvedPath === undefined) throw new Error(`Imported plugin file not found: ${specifier}`)
-
-  try {
-    resolveRealPathInsidePlugin(pluginDir, resolvedPath, specifier)
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Plugin import resolves outside plugin directory:')) {
-      throw error
-    }
-    throw wrapPluginImportVerificationError(specifier, error)
-  }
-
-  return resolvedPath
 }
 
 function computePluginManifestHash(manifestContent: string, sourceFiles: readonly string[]): string {
@@ -169,17 +105,19 @@ function parseAndValidateManifest(
   return { manifest: parseResult.data, manifestContent }
 }
 
-function resolveEntrypointForDiscovery(
+async function resolveEntrypointForDiscovery(
+  parser: SourceParser,
   pluginDir: string,
   main: string | undefined,
-): { entryPoint: string; sourceFiles: string[] } | DiscoveryError {
+): Promise<{ entryPoint: string; sourceFiles: string[] } | DiscoveryError> {
   if (main === undefined) return { entryPoint: '', sourceFiles: [] }
 
   const entryPoint = resolveEntryPoint(pluginDir, main)
   if (entryPoint === null) return makeDiscoveryError('', `Entry point "${main}" resolves outside the plugin directory`)
 
   try {
-    const sourceFiles = readPluginSourceGraph(
+    const sourceFiles = await readPluginSourceGraph(
+      parser,
       entryPoint,
       pluginDir,
       {
@@ -194,7 +132,11 @@ function resolveEntrypointForDiscovery(
   }
 }
 
-function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin | DiscoveryError {
+async function discoverOne(
+  parser: SourceParser,
+  pluginsRootDir: string,
+  dirName: string,
+): Promise<DiscoveredPlugin | DiscoveryError> {
   const pluginDir = join(pluginsRootDir, dirName)
 
   if (!isRealDirectory(pluginDir)) {
@@ -214,7 +156,7 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
 
   const { manifest, manifestContent } = parsed
 
-  const ep = resolveEntrypointForDiscovery(pluginDir, manifest.main)
+  const ep = await resolveEntrypointForDiscovery(parser, pluginDir, manifest.main)
   if ('reason' in ep) return { ...ep, directoryName: dirName }
 
   return {
@@ -225,7 +167,14 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
   }
 }
 
-export function discoverPlugins(pluginsDir: string): DiscoveryResult {
+export function discoverPlugins(pluginsDir: string): Promise<DiscoveryResult> {
+  return withSourceParser((parser) => discoverWithParser(parser, pluginsDir))
+}
+
+/** Plugin source graphs are parsed through one shared parser, so bound the fan-out. */
+const DISCOVERY_CONCURRENCY = 4
+
+async function discoverWithParser(parser: SourceParser, pluginsDir: string): Promise<DiscoveryResult> {
   log.debug({ pluginsDir }, 'Starting plugin discovery')
 
   if (!fs.existsSync(pluginsDir)) {
@@ -244,14 +193,31 @@ export function discoverPlugins(pluginsDir: string): DiscoveryResult {
     return { plugins: [], errors: [], directoryMissing: false }
   }
 
+  const candidates = entries.filter((entry) => entry !== '.gitkeep' && !entry.startsWith('.'))
+  const limit = pLimit(DISCOVERY_CONCURRENCY)
+  const discovered = await Promise.all(candidates.map((entry) => limit(() => discoverOne(parser, pluginsDir, entry))))
+
+  const { plugins, errors } = collectDiscovered(candidates, discovered)
+  log.info({ discovered: plugins.length, errors: errors.length }, 'Plugin discovery complete')
+  return { plugins, errors, directoryMissing: false }
+}
+
+/**
+ * Fold sequentially over the original directory order so duplicate-id
+ * resolution stays deterministic regardless of the order the parses, which run
+ * concurrently, happened to finish in.
+ */
+function collectDiscovered(
+  candidates: readonly string[],
+  discovered: readonly (DiscoveredPlugin | DiscoveryError | undefined)[],
+): { plugins: DiscoveredPlugin[]; errors: DiscoveryError[] } {
   const plugins: DiscoveredPlugin[] = []
   const errors: DiscoveryError[] = []
   const seenIds = new Set<string>()
 
-  for (const entry of entries) {
-    if (entry === '.gitkeep' || entry.startsWith('.')) continue
-
-    const result = discoverOne(pluginsDir, entry)
+  for (const [index, entry] of candidates.entries()) {
+    const result = discovered[index]
+    if (result === undefined) continue
     if ('reason' in result) {
       errors.push(result)
       log.warn({ dirName: entry, reason: result.reason }, 'Plugin discovery error')
@@ -269,6 +235,5 @@ export function discoverPlugins(pluginsDir: string): DiscoveryResult {
     log.info({ pluginId: result.manifest.id, version: result.manifest.version }, 'Plugin discovered')
   }
 
-  log.info({ discovered: plugins.length, errors: errors.length }, 'Plugin discovery complete')
-  return { plugins, errors, directoryMissing: false }
+  return { plugins, errors }
 }
