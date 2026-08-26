@@ -608,6 +608,19 @@ describe('runChildren failure and completion semantics (D9)', () => {
     expect(fixture.state.status).toBe('running')
   })
 
+  it('an absent state.plan fails closed even when the plan sidecar is also missing', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    fixture.state.plan = undefined
+    fs.rmSync(path.join(fixture.state.runDir, 'sidecars', 'plan.json'))
+    const tracker = makeRunner(fixture, {})
+
+    await expect(
+      runChildren(fixture.deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun }),
+    ).rejects.toThrow('runChildren requires a recorded plan')
+    expect(tracker.spawned).toEqual([])
+  })
+
   it('parent completed is persisted exactly when every child id reads done', async () => {
     const fixture = await makeFixture()
     await seedParent(fixture, ['auth-db', 'auth-api'], {})

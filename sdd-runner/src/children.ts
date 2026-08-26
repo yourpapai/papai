@@ -146,8 +146,8 @@ export async function runChildren(
   ctx: StageContext,
   options: RunChildrenOptions,
 ): Promise<RunChildrenResult> {
-  const children = await planChildrenOf(ctx)
   if (state.plan === undefined) throw new Error('runChildren requires a recorded plan')
+  const children = await planChildrenOf(ctx)
   const childIds = state.plan.childIds
   const resolve = deps.resolveCost ?? (await buildResolveCost())
   const runAt = async (index: number): Promise<RunChildrenResult> => {
