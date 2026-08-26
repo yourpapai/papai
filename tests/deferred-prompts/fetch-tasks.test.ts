@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import { KaneoClassifiedError } from '../../plugins/task-provider-kaneo/classify-error.js'
 import {
   createActorProviderRequestScope,
   NO_ANALYTICS_SCOPE,
@@ -43,8 +44,19 @@ const createClassifiedFailingGetTask =
       ? Promise.reject(new ProviderClassifiedError(`classified failure for ${taskId}`, failures[taskId]!))
       : Promise.resolve({ id: taskId, title: `Full ${taskId}`, url: `http://test/${taskId}` })
 
+/** getTask mock that rejects with a plugin-shaped classified error for
+ * configured ids — the real class production providers throw (an Error carrying
+ * an `appError` AppError payload), unlike src's ProviderClassifiedError.
+ * Module scope for the no-conditional-in-test reason. */
+const createPluginClassifiedFailingGetTask =
+  (failures: Record<string, ProviderError>) =>
+  (taskId: string): Promise<Task> =>
+    Object.hasOwn(failures, taskId)
+      ? Promise.reject(new KaneoClassifiedError(`classified failure for ${taskId}`, failures[taskId]!))
+      : Promise.resolve({ id: taskId, title: `Full ${taskId}`, url: `http://test/${taskId}` })
+
 /** getTask mock whose promises stay pending until released, tracking in-flight
- *  count — module scope for the same no-conditional-in-test reason. */
+ * count — module scope for the same no-conditional-in-test reason. */
 type ConcurrencyTracker = { inFlight: number; maxInFlight: number; release: Array<() => void> }
 const createGatedGetTask =
   (tracker: ConcurrencyTracker) =>
@@ -278,6 +290,22 @@ describe('fetchWatchedTasks', () => {
     expect(result.map((t) => t.id)).toEqual(['t-1'])
     const warnDump = JSON.stringify(tracked.getCallsByLevel('warn').map((c) => c.args))
     expect(warnDump).toContain('t-gone')
+  })
+
+  test('skips ids failing as not-found via plugin classified errors, keeps the rest', async () => {
+    const { fetchWatchedTasks } = resolveWatchedFetch(await importFetchTasksFresh())
+    const provider = createMockProvider({
+      getTask: mock(
+        createPluginClassifiedFailingGetTask({
+          't-gone': providerError.taskNotFound('t-gone'),
+          't-other': providerError.notFound('task', 't-other'),
+        }),
+      ),
+    })
+
+    const result = await fetchWatchedTasks(provider, ['t-1', 't-gone', 't-other', 't-4'], NO_ANALYTICS_SCOPE)
+
+    expect(result.map((t) => t.id)).toEqual(['t-1', 't-4'])
   })
 
   test('rejects on any other classified error', async () => {

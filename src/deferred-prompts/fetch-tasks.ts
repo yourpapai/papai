@@ -7,8 +7,8 @@ import pLimit from 'p-limit'
 
 import { runWithProviderRequestScope } from '../analytics/provider-request-scope.js'
 import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
+import { extractAppError } from '../errors.js'
 import { logger } from '../logger.js'
-import { ProviderClassifiedError } from '../providers/errors.js'
 import type { Task, TaskProvider } from '../providers/types.js'
 import { extractWatchedTaskIds } from './condition-eval.js'
 import type { AlertCondition, AlertPrompt } from './types.js'
@@ -117,8 +117,12 @@ export function fetchWatchedTasks(provider: TaskProvider, ids: string[], scope: 
       ids.map((id) =>
         watchedTaskLimit(() =>
           provider.getTask(id).catch((error: unknown) => {
-            if (error instanceof ProviderClassifiedError && isNotFoundCode(error.error.code)) {
-              log.warn({ taskId: id, code: error.error.code }, 'Watched task not found; skipping')
+            // Production providers throw their own *ClassifiedError classes
+            // (an Error carrying an `appError` payload), not
+            // ProviderClassifiedError — classify duck-typed, not by instanceof.
+            const appError = extractAppError(error)
+            if (appError !== null && appError.type === 'provider' && isNotFoundCode(appError.code)) {
+              log.warn({ taskId: id, code: appError.code }, 'Watched task not found; skipping')
               return null
             }
             throw error
