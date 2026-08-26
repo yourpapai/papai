@@ -3,14 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 
 import { runChildren } from './children.js'
 import type { RunChildRun } from './children.js'
 import type { AutonomyConfig } from './config.js'
 import type { EventInput } from './events.js'
+import { readEvents } from './events.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
-import { logPathFor } from './gate-digest.js'
+import { logPathFor, presentGateAt } from './gate-digest.js'
+import { PLAN_REVIEW_SURROGATE } from './gate-prelude.js'
+import { planGateRows } from './plan-gate-resume.js'
 import type { RunState } from './run-state.js'
 import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controller.js'
 
@@ -35,11 +39,43 @@ export function isPlanParentResume(state: RunState): boolean {
 }
 
 /**
+ * D5 fail-closed resume: children may run only after the event log records a
+ * plan-gate answer for the persisted plan. A crash between `runPlanBranch`'s
+ * `state.plan` persist and the `state.gate` persist inside `presentGateAt`
+ * leaves `{plan, pending children, running, gate: null}` — exactly the
+ * plan-parent resume shape — so the durable log, not the gate field, decides.
+ * `presentedVersion` carries an appended-but-unpersisted presentation so the
+ * re-present overwrites that same gate file instead of forking versions.
+ */
+function planGateApprovalOf(state: RunState): { answered: boolean; presentedVersion: number | null } {
+  const logPath = logPathFor(state)
+  if (!existsSync(logPath)) return { answered: false, presentedVersion: null }
+  let planAt = -1
+  let answered = false
+  let presentedVersion: number | null = null
+  readEvents(logPath).forEach((event, index) => {
+    if (event.type === 'plan' && event.digest === state.plan?.digest) {
+      planAt = index
+      answered = false
+      presentedVersion = null
+      return
+    }
+    if (planAt === -1 || event.type !== 'gate' || event.mode !== 'plan') return
+    if (event.action === 'presented') presentedVersion = event.version
+    if (event.action === 'answered') answered = true
+  })
+  return { answered, presentedVersion }
+}
+
+/**
  * Parent resume interception (D9): a plan parent never reaches
  * `resumeFromPoint` (which would misroute its children-pending decision into
  * the single-run tail) — it drives `runChildren` instead, with the default
  * nested-run seam: the supplied starter (the orchestrator's `runStart`) over
- * the materialized child task file.
+ * the materialized child task file. A plan whose gate was never answered
+ * (crash before the presentation settled) is re-presented instead — the plan
+ * gate is human-only (D5), so no resume may convert 'never approved' into
+ * 'approved'.
  */
 export async function resumePlanParent(
   deps: OrchestratorDeps,
@@ -58,6 +94,13 @@ export async function resumePlanParent(
       changeDir: path.join(resolved.config.repoRoot, 'openspec', 'changes', state.changeName),
       sidecarDir: path.join(state.runDir, 'sidecars'),
       emit,
+    }
+    const approval = planGateApprovalOf(state)
+    if (!approval.answered) {
+      await presentGateAt(resolved, state, ctx, PLAN_REVIEW_SURROGATE, approval.presentedVersion ?? 1, 'plan', {
+        children: await planGateRows(ctx.sidecarDir, state),
+      })
+      return { runId: state.runId, halted: 'gate-pending' }
     }
     const runChildRun: RunChildRun = (_child, taskFile, spendBaselineUsd, onRunDirReady) =>
       startChildRun(resolved, { taskFile, spendBaselineUsd, onRunDirReady })

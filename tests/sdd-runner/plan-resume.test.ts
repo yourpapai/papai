@@ -8,7 +8,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { appendEvent } from '../../sdd-runner/src/events.js'
+import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
+import type { EventInput, SddEvent } from '../../sdd-runner/src/events.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { isPlanParentResume, resumePlanParent } from '../../sdd-runner/src/plan-resume.js'
@@ -50,15 +51,41 @@ const CHILDREN: readonly PlanChild[] = [
   { id: 'db-api', instruction: 'Rename the API route helpers.', deps: ['db-schema'] },
 ]
 
-async function makeFixture(): Promise<{ repoRoot: string; deps: OrchestratorDeps; state: RunState }> {
+const DIGEST = 'd'.repeat(16)
+const REPLAN_DIGEST = 'e'.repeat(16)
+
+/**
+ * Durable plan-gate record shapes: `answered` is an approved plan parent
+ * (the only shape whose resume may drive children); the rest are crash
+ * windows between the `state.plan` persist and the `state.gate` persist.
+ */
+type GateLog = 'answered' | 'plan-only' | 'presented-unanswered' | 'replanned-unanswered'
+
+async function makeFixture(
+  gateLog: GateLog = 'answered',
+): Promise<{ repoRoot: string; deps: OrchestratorDeps; state: RunState }> {
   const repoRoot = makeDir()
   const workDir = path.join(repoRoot, '.sdd-runner')
   const state = await createRunState({ workDir, repoRoot, changeName: 'composite' })
   appendEvent(path.join(state.runDir, 'events.ndjson'), { altitude: 'L2', type: 'stage_enter', stage: 'intake' })
-  state.plan = { childIds: CHILDREN.map((child) => child.id), digest: 'd'.repeat(16) }
+  state.plan = {
+    childIds: CHILDREN.map((child) => child.id),
+    digest: gateLog === 'replanned-unanswered' ? REPLAN_DIGEST : DIGEST,
+  }
   state.children = Object.fromEntries(CHILDREN.map((child) => [child.id, { status: 'pending' }]))
   fs.mkdirSync(path.join(state.runDir, 'sidecars'), { recursive: true })
   fs.writeFileSync(path.join(state.runDir, 'sidecars', 'plan.json'), JSON.stringify({ children: CHILDREN }))
+  const logPath = path.join(state.runDir, 'events.ndjson')
+  appendEvent(logPath, { altitude: 'L2', type: 'plan', childCount: CHILDREN.length, digest: DIGEST })
+  if (gateLog !== 'plan-only') {
+    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 1 })
+  }
+  if (gateLog === 'answered' || gateLog === 'replanned-unanswered') {
+    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'answered', mode: 'plan', version: 1 })
+  }
+  if (gateLog === 'replanned-unanswered') {
+    appendEvent(logPath, { altitude: 'L2', type: 'plan', childCount: CHILDREN.length, digest: REPLAN_DIGEST })
+  }
   await saveRunState(state, new Date('2026-08-12T08:00:00.000Z'))
   const deps: OrchestratorDeps = {
     config: { repoRoot, workDir, model: 'test-model', budget: 5 },
@@ -219,5 +246,118 @@ describe('resumePlanParent (D9 interception)', () => {
 
     expect(result.halted).toBe('stopped')
     expect(markerArrived).toBe(true)
+  })
+})
+
+describe('resumePlanParent plan-gate guard (D5 fail-closed resume)', () => {
+  function appendingEmit(state: RunState): (event: EventInput) => void {
+    return (event) => {
+      appendEvent(path.join(state.runDir, 'events.ndjson'), event)
+    }
+  }
+
+  function makeNeverRunner(): { readonly startChildRun: StartChildRun; readonly spawned: () => string[] } {
+    const spawned: string[] = []
+    const startChildRun: StartChildRun = () => {
+      spawned.push('ran')
+      return Promise.resolve({ runId: 'must-not-run' })
+    }
+    return { startChildRun, spawned: () => spawned }
+  }
+
+  function presentedGateEvents(state: RunState): readonly { readonly mode: string; readonly version: number }[] {
+    return readEvents(path.join(state.runDir, 'events.ndjson'))
+      .filter((event): event is Extract<SddEvent, { type: 'gate' }> => event.type === 'gate')
+      .filter((event) => event.action === 'presented')
+  }
+
+  it('presents the plan gate instead of driving children when the crash landed before the gate presentation', async () => {
+    const fixture = await makeFixture('plan-only')
+    const { startChildRun, spawned } = makeNeverRunner()
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      appendingEmit(fixture.state),
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(spawned()).toEqual([])
+    expect(result).toEqual({ runId: fixture.state.runId, halted: 'gate-pending' })
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+    const md = fs.readFileSync(path.join(fixture.state.runDir, 'gate-1.md'), 'utf8')
+    expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    expect(md).toContain('- [ ] C2 db-api — Rename the API route helpers. · deps: db-schema')
+    const presented = presentedGateEvents(fixture.state)
+    expect(presented).toHaveLength(1)
+    expect(presented[0]).toMatchObject({ mode: 'plan', version: 1 })
+  })
+
+  it('re-presents the unanswered gate when the crash landed after the presented event but before the state.gate persist', async () => {
+    const fixture = await makeFixture('presented-unanswered')
+    const { startChildRun, spawned } = makeNeverRunner()
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      appendingEmit(fixture.state),
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(spawned()).toEqual([])
+    expect(result).toEqual({ runId: fixture.state.runId, halted: 'gate-pending' })
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+    const presented = presentedGateEvents(fixture.state)
+    expect(presented).toHaveLength(2)
+    expect(presented[1]).toMatchObject({ mode: 'plan', version: 1 })
+  })
+
+  it('presents again when the log answers an older plan but the current digest was never answered', async () => {
+    const fixture = await makeFixture('replanned-unanswered')
+    const { startChildRun, spawned } = makeNeverRunner()
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      appendingEmit(fixture.state),
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(spawned()).toEqual([])
+    expect(result).toEqual({ runId: fixture.state.runId, halted: 'gate-pending' })
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+  })
+
+  it('drives children once the log records the answered plan gate for the current digest', async () => {
+    const fixture = await makeFixture('answered')
+    const startedFiles: string[] = []
+    const startChildRun: StartChildRun = async (_deps, options) => {
+      startedFiles.push(options.taskFile)
+      const child = await createRunState({
+        workDir: fixture.deps.config.workDir,
+        repoRoot: fixture.repoRoot,
+        changeName: 'db-schema',
+      })
+      child.status = 'stopped'
+      await saveRunState(child, new Date('2026-08-12T08:00:00.000Z'))
+      return { runId: child.runId }
+    }
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      appendingEmit(fixture.state),
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(result.halted).toBe('stopped')
+    expect(startedFiles).toEqual([path.join(fixture.state.runDir, 'children', '1-db-schema.md')])
   })
 })

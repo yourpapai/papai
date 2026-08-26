@@ -15,6 +15,7 @@ import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { readEvents } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
+import { appendEvent } from '../../sdd-runner/src/events.js'
 import { presentGateAt } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import type { StageContext } from '../../sdd-runner/src/gate-digest.js'
@@ -2853,6 +2854,10 @@ describe('plan-parent resume interception (D9)', () => {
     fs.writeFileSync(path.join(runDir, 'sidecars', 'plan.json'), JSON.stringify(PLAN))
     fs.writeFileSync(path.join(runDir, 'events.ndjson'), '')
     await materializeChildFiles(PLAN, runDir)
+    const logPath = path.join(runDir, 'events.ndjson')
+    appendEvent(logPath, { altitude: 'L2', type: 'plan', childCount: PLAN.children.length, digest: 'd'.repeat(16) })
+    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 1 })
+    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'answered', mode: 'plan', version: 1 })
     fs.writeFileSync(
       path.join(runDir, 'state.json'),
       `${JSON.stringify(
