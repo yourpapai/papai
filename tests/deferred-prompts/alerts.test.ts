@@ -21,9 +21,28 @@ import {
   updateAlertMatchedTaskIds,
   updateAlertPrompt,
 } from '../../src/deferred-prompts/alerts.js'
+import * as conditionEvalModule from '../../src/deferred-prompts/condition-eval.js'
 import type { AlertCondition } from '../../src/deferred-prompts/types.js'
 import type { Task } from '../../src/providers/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+type WatchClassification = {
+  extractWatchedTaskIds: (condition: AlertCondition) => string[]
+  isPureWatchCondition: (condition: AlertCondition) => boolean
+}
+
+const getWatchClassification = (): WatchClassification => {
+  const candidate: { extractWatchedTaskIds?: unknown; isPureWatchCondition?: unknown } = {
+    extractWatchedTaskIds: Reflect.get(conditionEvalModule, 'extractWatchedTaskIds'),
+    isPureWatchCondition: Reflect.get(conditionEvalModule, 'isPureWatchCondition'),
+  }
+  const isWatchClassification = (value: typeof candidate): value is WatchClassification =>
+    typeof value.extractWatchedTaskIds === 'function' && typeof value.isPureWatchCondition === 'function'
+  if (!isWatchClassification(candidate)) {
+    throw new Error('watch classification exports missing (implemented in plan step 2.2)')
+  }
+  return candidate
+}
 
 // --- CRUD tests ---
 
@@ -634,6 +653,99 @@ describe('evaluateCondition', () => {
     const condition: AlertCondition = { field: 'task.labels', op: 'not_contains', value: 'bug' }
     const task = makeTask({ labels: [] })
     expect(evaluateCondition(condition, task, emptySnapshots)).toBe(true)
+  })
+
+  test('task.id eq matches exactly the task with the watched id and no other', () => {
+    const condition: AlertCondition = { field: 'task.id', op: 'eq', value: 'task-1' }
+    expect(evaluateCondition(condition, makeTask({ id: 'task-1' }), emptySnapshots)).toBe(true)
+    expect(evaluateCondition(condition, makeTask({ id: 'task-2' }), emptySnapshots)).toBe(false)
+  })
+})
+
+// --- Watch classification (task.id) tests ---
+
+describe('extractWatchedTaskIds', () => {
+  test('collects task.id eq values across nested and/or trees with dedupe', () => {
+    const { extractWatchedTaskIds } = getWatchClassification()
+    const condition: AlertCondition = {
+      and: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        {
+          or: [
+            { field: 'task.id', op: 'eq', value: 't2' },
+            { field: 'task.id', op: 'eq', value: 't1' },
+          ],
+        },
+      ],
+    }
+    expect(extractWatchedTaskIds(condition)).toEqual(['t1', 't2'])
+  })
+
+  test('returns empty for non-watch trees', () => {
+    const { extractWatchedTaskIds } = getWatchClassification()
+    const condition: AlertCondition = {
+      or: [
+        { field: 'task.status', op: 'eq', value: 'done' },
+        { field: 'task.dueDate', op: 'overdue' },
+      ],
+    }
+    expect(extractWatchedTaskIds(condition)).toEqual([])
+  })
+
+  test('collects only task.id leaves from a mixed tree', () => {
+    const { extractWatchedTaskIds } = getWatchClassification()
+    const condition: AlertCondition = {
+      and: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        { field: 'task.status', op: 'eq', value: 'done' },
+      ],
+    }
+    expect(extractWatchedTaskIds(condition)).toEqual(['t1'])
+  })
+})
+
+describe('isPureWatchCondition', () => {
+  test('true for a single task.id eq leaf', () => {
+    const { isPureWatchCondition } = getWatchClassification()
+    expect(isPureWatchCondition({ field: 'task.id', op: 'eq', value: 't1' })).toBe(true)
+  })
+
+  test('true for any all-task.id-eq tree', () => {
+    const { isPureWatchCondition } = getWatchClassification()
+    const condition: AlertCondition = {
+      or: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        {
+          and: [
+            { field: 'task.id', op: 'eq', value: 't2' },
+            { field: 'task.id', op: 'eq', value: 't3' },
+          ],
+        },
+      ],
+    }
+    expect(isPureWatchCondition(condition)).toBe(true)
+  })
+
+  test('false when a non-watch leaf appears', () => {
+    const { isPureWatchCondition } = getWatchClassification()
+    const condition: AlertCondition = {
+      and: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        { field: 'task.status', op: 'eq', value: 'done' },
+      ],
+    }
+    expect(isPureWatchCondition(condition)).toBe(false)
+  })
+
+  test('false for a tree without any task.id leaf', () => {
+    const { isPureWatchCondition } = getWatchClassification()
+    expect(isPureWatchCondition({ field: 'task.status', op: 'eq', value: 'done' })).toBe(false)
+  })
+
+  test('false when a task.id leaf uses a non-eq operator', () => {
+    const { isPureWatchCondition } = getWatchClassification()
+    const rogue = { field: 'task.id', op: 'neq', value: 't1' } as AlertCondition
+    expect(isPureWatchCondition(rogue)).toBe(false)
   })
 })
 
