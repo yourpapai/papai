@@ -58,6 +58,17 @@ const createGatedGetTask =
       })
     })
 
+/** Release gated getTask promises in waves: one tick, then release everything
+ *  currently pending, repeated `batches` times (8 ids at concurrency 4 = 2). */
+const releaseGatedInBatches = async (tracker: ConcurrencyTracker, batches: number): Promise<void> => {
+  for (let batch = 0; batch < batches; batch += 1) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+    for (const release of tracker.release.splice(0)) release()
+  }
+}
+
 const makeActorScope = (): ActorProviderRequestScope =>
   createActorProviderRequestScope({
     requestContext: {
@@ -235,7 +246,7 @@ describe('fetchWatchedTasks', () => {
     })
 
     expect(tracker.maxInFlight).toBe(4)
-    for (const release of tracker.release) release()
+    await releaseGatedInBatches(tracker, 2)
     const result = await pending
     expect(result.map((t) => t.id)).toEqual(watched)
   })
