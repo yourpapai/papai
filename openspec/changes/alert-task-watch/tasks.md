@@ -28,4 +28,4 @@ Assumption from design.md's open question: the `fetchWatchedTasks` concurrency c
 
 ## 6. Full verification
 
-- [ ] 6.1 Run the full suite and gates: `bun run test`, then `bun run typecheck && bun run lint`; fix fallout. Update `docs/architecture/*.md` pages only if they describe alert conditions/polling behavior in enough detail to be affected (check `docs/architecture/behaviors.md`, `docs/architecture/tools.md`).
+- [x] 6.1 Run the full suite and gates: `bun run test`, then `bun run typecheck && bun run lint`; fix fallout. Update `docs/architecture/*.md` pages only if they describe alert conditions/polling behavior in enough detail to be affected (check `docs/architecture/behaviors.md`, `docs/architecture/tools.md`).
