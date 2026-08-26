@@ -14,7 +14,7 @@ Assumption from design.md's open question: the `fetchWatchedTasks` concurrency c
 
 ## 3. Targeted fetch (tests first)
 
-- [ ] 3.1 Add failing tests to `tests/deferred-prompts/fetch-tasks.test.ts`: `fetchWatchedTasks` calls `provider.getTask` per id with bounded concurrency (p-limit 4, assert no more than 4 in flight); skips ids whose failure classifies as not-found (`task-not-found`/`not-found` provider error codes) with a warn; rejects on any other error. Verify they fail: `bun test tests/deferred-prompts/fetch-tasks.test.ts`
+- [x] 3.1 Add failing tests to `tests/deferred-prompts/fetch-tasks.test.ts`: `fetchWatchedTasks` calls `provider.getTask` per id with bounded concurrency (p-limit 4, assert no more than 4 in flight); skips ids whose failure classifies as not-found (`task-not-found`/`not-found` provider error codes) with a warn; rejects on any other error. Verify they fail: `bun test tests/deferred-prompts/fetch-tasks.test.ts`
 - [ ] 3.2 Implement `fetchWatchedTasks(provider, ids, scope)` in `src/deferred-prompts/fetch-tasks.ts` per design D5 (module-level p-limit constant 4, `runWithProviderRequestScope` wrapper, not-found skip / other-error reject). Verify: `bun test tests/deferred-prompts/fetch-tasks.test.ts`
 
 ## 4. Poller: partition + pure-watch firing (tests first)
