@@ -16,4 +16,4 @@
 
 ## 4. Verification
 
-- [ ] 4.1 `bun run test:affected` during the loop, then one full `bun run test` plus `bun check:full` before finishing; confirm no `max-lines` regression in `git-drift.ts` (split the comparison out if it trips)
+- [x] 4.1 `bun run test:affected` during the loop, then one full `bun run test` plus `bun check:full` before finishing; confirm no `max-lines` regression in `git-drift.ts` (split the comparison out if it trips)
