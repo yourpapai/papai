@@ -208,14 +208,28 @@ findings: `ROADMAP.md`.
   `ensureBranch` has been called, so a phase that reads too early fails the test
   the way it failed the run. The same call **refuses a dependency-drifted branch**
   (`git-drift.ts`): the workflow installs from the base checkout and no second
-  install follows the branch switch, so a branch whose `bun.lock` / `package.json`
-  manifests differ from base runs every check against a `node_modules` that cannot
-  serve it — run 32507905723 paid for a full PLANNING turn and then died in the
-  pre-commit hook on `TS2307` for an import base had stopped carrying. The refusal
-  (`dependencyDriftError`) names `/sync` and the hand-merge as the remedies and
-  never a bare `/retry`; `/sync` passes `allowDependencyDrift` because a drifted
-  branch is the condition it exists to repair, and the guard must not block its
-  own way out. Issue #323 is the incident that shaped the failure's bookkeeping:
+  install follows the branch switch, so a branch whose install state differs
+  from base runs every check against a `node_modules` that cannot serve it —
+  run 32507905723 paid for a full PLANNING turn and then died in the pre-commit
+  hook on `TS2307` for an import base had stopped carrying. The condition is
+  **content-aware**: `bun.lock` refuses on any byte, and a `package.json`
+  refuses only when an install-relevant top-level field moved — the
+  `INSTALL_FIELDS` constant beside the guard (the four dependency maps,
+  `resolutions`/`overrides`, `workspaces`, `trustedDependencies`,
+  `patchedDependencies`) — judged by parsing both sides (`git show` through the
+  same `GitFn` seam) and deep-equaling the fields, so a re-serialized identical
+  dependencies map passes and `scripts` / `packageManager` / metadata edits
+  pass; issue #360 is the false-positive incident that made it so (a one-line
+  `scripts` edit was the deliverable, and the path-based refusal parked the
+  finished branch with no command-level exit). Every unknown shape fails
+  closed: a manifest that will not parse on either side refuses, and a
+  one-sided (added or deleted) manifest is compared against `{}`, refusing when
+  the existing side carries install fields. The refusal (`dependencyDriftError`)
+  names the drifted fields per file, `/sync` and the hand-merge as the remedies
+  and never a bare `/retry`; `/sync` passes `allowDependencyDrift` because a
+  drifted branch is the condition it exists to repair, and the guard must not
+  block its own way out. Issue #323 is the incident that shaped the failure's
+  bookkeeping:
   a drift park is by construction pre-delivery, so the `/sync` the message
   prescribes must be reachable from the issue (see the `/sync` rule below), the
   refusal carries `attempts` rather than spending one (it fires before any

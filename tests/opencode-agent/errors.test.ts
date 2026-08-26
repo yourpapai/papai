@@ -155,17 +155,22 @@ describe('isTurnStall', () => {
 })
 
 describe('dependencyDriftError', () => {
-  test('names the drifted files and both ways back in step, never a bare /retry', () => {
+  test('names the drifted files and fields and both ways back in step, never a bare /retry', () => {
     // The message reaches the issue as `lastError` while the footer above it
     // used to invite a `/retry` by reflex — so it has to say up front that a
     // retry alone cannot change the condition, and name the two moves that
-    // can: `/sync`, on the issue or the pull request, and a hand merge.
-    const error = dependencyDriftError('agent/issue-323', 'master', ['bun.lock', 'sdd-runner/package.json'])
+    // can: `/sync`, on the issue or the pull request, and a hand merge. The
+    // field-per-file rendering is the maintainer's first question answered:
+    // which knob moved, in which manifest.
+    const error = dependencyDriftError('agent/issue-323', 'master', [
+      { file: 'bun.lock', fields: [] },
+      { file: 'sdd-runner/package.json', fields: ['devDependencies'] },
+    ])
 
     expect(error.code).toBe('DEPENDENCY_DRIFT')
     expect(error.progress).toBeNull()
     const message = error.message
-    expect(message).toContain('bun.lock, sdd-runner/package.json')
+    expect(message).toContain('bun.lock, sdd-runner/package.json (devDependencies)')
     expect(message).toContain('`agent/issue-323`')
     expect(message).toContain('`master`')
     expect(message).toContain('/sync')
@@ -176,11 +181,18 @@ describe('dependencyDriftError', () => {
     expect(message).toContain('not something `/retry` can change')
     expect(message).toContain('cannot install from the agent branch by design')
   })
+
+  test('renders a whole-file refusal — the lockfile — with no field list', () => {
+    const error = dependencyDriftError('agent/issue-323', 'master', [{ file: 'bun.lock', fields: [] }])
+
+    expect(error.message).toContain('(bun.lock)')
+    expect(error.message).not.toContain('bun.lock (')
+  })
 })
 
 describe('the retry-futile predicates', () => {
   test('a drift refusal is a drift and is retry-futile', () => {
-    const drift = dependencyDriftError('agent/issue-323', 'master', ['bun.lock'])
+    const drift = dependencyDriftError('agent/issue-323', 'master', [{ file: 'bun.lock', fields: [] }])
 
     expect(isDependencyDrift(drift)).toBe(true)
     expect(isRetryFutile(drift)).toBe(true)

@@ -261,6 +261,7 @@ export type AlertPrompt = {
   cooldownMinutes: number
   executionMetadata: ExecutionMetadata
   matchedTaskIds: string[]
+  taskInstanceId: string | null
 }
 
 // --- Tool result types ---

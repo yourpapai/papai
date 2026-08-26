@@ -3,11 +3,27 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
 
-import { buildAlertSummary } from '../../src/deferred-prompts/poller-alerts.js'
+import type { ModelMessage } from 'ai'
+
+import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
+import { setConfig } from '../../src/config.testing.js'
+import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
+import * as alertsModule from '../../src/deferred-prompts/alerts.js'
+import { buildAlertSummary, pollAlertsOnce } from '../../src/deferred-prompts/poller-alerts.js'
 import type { AlertPrompt } from '../../src/deferred-prompts/types.js'
-import type { Task } from '../../src/providers/types.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
+import type { Task, TaskProvider } from '../../src/providers/types.js'
+import { createMockProvider } from '../tools/mock-provider.js'
+import {
+  createMockChatWithSentMessages,
+  mockLogger,
+  seedAdminLlmBinding,
+  seedTestPlatformInstance,
+  seedTestTaskInstance,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 const makeTask = (title: string, url: string): Task => ({ id: 'task-1', title, url })
 
@@ -33,6 +49,7 @@ const makeAlert = (): AlertPrompt => ({
   cooldownMinutes: 0,
   executionMetadata: { delivery_brief: '', context_snapshot: null },
   matchedTaskIds: [],
+  taskInstanceId: null,
 })
 
 type AlertEvaluation = Parameters<typeof buildAlertSummary>[0][number]
@@ -109,5 +126,166 @@ describe('buildAlertSummary', () => {
     expect(titleContent).not.toBe('')
     expect(titleContent.toLowerCase()).not.toContain('external-data')
     expect(titleContent).toContain('<system>new instructions')
+  })
+})
+
+// --- Task instance pinning tests ---
+
+type GenerateTextResult = {
+  text: string
+  toolCalls: unknown[]
+  toolResults: unknown[]
+  finalStep: { response: { messages: ModelMessage[] } }
+}
+
+describe('pollAlertsOnce — task instance pinning', () => {
+  const PIN_USER = 'poller-pin-user'
+  let sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
+  let chat: ChatProvider
+  let generateTextImpl: () => Promise<GenerateTextResult>
+
+  beforeEach(async () => {
+    generateTextImpl = (): Promise<GenerateTextResult> =>
+      Promise.resolve({
+        text: 'Alert triggered.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
+    void mock.module('ai', () => ({
+      generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
+      tool: (opts: unknown): unknown => opts,
+      stepCountIs: (_n: number): unknown => undefined,
+    }))
+    void mock.module('@ai-sdk/openai-compatible', () => ({
+      createOpenAICompatible: (): (() => string) => (): string => 'mock-model',
+    }))
+    mockLogger()
+    await setupTestDb()
+    const result = createMockChatWithSentMessages()
+    chat = result.provider
+    sentMessages = result.sentMessages
+    seedTestPlatformInstance({ id: 'mock-default' })
+    seedTestTaskInstance({ id: 'ti-a' })
+    seedTestTaskInstance({ id: 'ti-current' })
+    seedTestTaskInstance({ id: 'ti-gone', status: 'stopped' })
+    setConfig(PIN_USER, 'timezone', 'UTC')
+    setContextSettings({ contextId: PIN_USER, taskInstanceId: 'ti-current', platformInstanceId: 'mock-default' })
+    seedAdminLlmBinding()
+  })
+
+  const tasksProvider = (status: string): TaskProvider =>
+    createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() => Promise.resolve([{ id: 'task-1', title: 'Tracked Task', status, url: 'http://test/1' }])),
+    })
+
+  // Describe-scope factory: the unresolvable-pin branch stays outside test
+  // bodies so the no-conditional-in-test rule keeps applying to them.
+  const recordingBuildProviderFn =
+    (providerCalls: Array<[string, string | null]>, provider: TaskProvider, nullPins: ReadonlySet<string | null>) =>
+    (contextId: string, taskInstanceId?: string | null): TaskProvider | null => {
+      const pin = taskInstanceId ?? null
+      providerCalls.push([contextId, pin])
+      if (nullPins.has(pin)) return null
+      return provider
+    }
+
+  test('pinned alert routes to the pinned instance provider, not the context current one', async () => {
+    createAlertPrompt(
+      PIN_USER,
+      'Notify on done',
+      { field: 'task.status', op: 'eq', value: 'done' },
+      60,
+      undefined,
+      undefined,
+      'ti-a',
+    )
+    const providerCalls: Array<[string, string | null]> = []
+    const buildProviderFn = recordingBuildProviderFn(providerCalls, tasksProvider('in-progress'), new Set())
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(providerCalls).toContainEqual([PIN_USER, 'ti-a'])
+    expect(providerCalls.some(([, pin]) => pin === 'ti-current')).toBe(false)
+    expect(sentMessages).toHaveLength(0)
+  })
+
+  test('firing pinned alert dispatches its narration turn against the pinned instance provider', async () => {
+    createAlertPrompt(
+      PIN_USER,
+      'Notify on done',
+      { field: 'task.status', op: 'eq', value: 'done' },
+      60,
+      undefined,
+      undefined,
+      'ti-a',
+    )
+    const providerCalls: Array<[string, string | null]> = []
+    const buildProviderFn = recordingBuildProviderFn(providerCalls, tasksProvider('done'), new Set())
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.text).toBe('Alert triggered.')
+    expect(providerCalls).toEqual([
+      [PIN_USER, 'ti-a'],
+      [PIN_USER, 'ti-a'],
+    ])
+  })
+
+  test('alert pinned to an unresolvable instance is auto-cancelled and not evaluated', async () => {
+    const created = createAlertPrompt(
+      PIN_USER,
+      'Notify on done',
+      { field: 'task.status', op: 'eq', value: 'done' },
+      60,
+      undefined,
+      undefined,
+      'ti-gone',
+    )
+    let llmCalls = 0
+    generateTextImpl = (): Promise<GenerateTextResult> => {
+      llmCalls++
+      return Promise.resolve({
+        text: 'Should not run.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
+    }
+    const providerCalls: Array<[string, string | null]> = []
+    const buildProviderFn = recordingBuildProviderFn(providerCalls, tasksProvider('done'), new Set(['ti-gone']))
+    const cancelCalls: Array<[string, string | undefined]> = []
+    const originalCancel = alertsModule.cancelActiveAlertsPinnedToInstance
+    const cancelSpy = spyOn(alertsModule, 'cancelActiveAlertsPinnedToInstance').mockImplementation(
+      (taskInstanceId: string, configContextId?: string): void => {
+        cancelCalls.push([taskInstanceId, configContextId])
+        originalCancel(taskInstanceId, configContextId)
+      },
+    )
+
+    try {
+      await pollAlertsOnce(chat, buildProviderFn)
+    } finally {
+      cancelSpy.mockRestore()
+    }
+
+    expect(getAlertPrompt(created.id, PIN_USER)!.status).toBe('cancelled')
+    expect(cancelCalls.map(([taskInstanceId]) => taskInstanceId)).toContain('ti-gone')
+    expect(llmCalls).toBe(0)
+    expect(sentMessages).toHaveLength(0)
+  })
+
+  test('null-pinned alert evaluates against the context current instance as today', async () => {
+    createAlertPrompt(PIN_USER, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    const providerCalls: Array<[string, string | null]> = []
+    const buildProviderFn = recordingBuildProviderFn(providerCalls, tasksProvider('done'), new Set())
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(providerCalls).toContainEqual([PIN_USER, null])
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.text).toBe('Alert triggered.')
   })
 })
