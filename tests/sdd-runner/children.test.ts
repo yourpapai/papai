@@ -979,6 +979,63 @@ describe('parent calm-stop is subtree-scoped (D11)', () => {
     expect(persisted.status).toBe('stopped')
     expect(persisted.children?.['auth-api']).toEqual({ status: 'failed' })
   })
+
+  it('a parent resume after the operator completes the surfaced child run adopts the flight as done instead of re-spawning a duplicate', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], {})
+    const tracker = makeRunner(fixture, {
+      'auth-db': { status: 'completed', withUsage: true },
+      'auth-api': { honorChildMarker: true, withUsage: true },
+    })
+    const inFlightGate = tracker.armInFlightGate()
+    const stop = createStopMarkerSeam(fixture.state.runDir)
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const started = runChildren(deps, fixture.state, fixture.ctx, {
+      runChildRun: tracker.runChildRun,
+      stop,
+    })
+    await inFlightGate
+    requestCalmStop(fixture.state.runDir)
+    await started
+    const first = await runChildren(deps, fixture.state, fixture.ctx, {
+      runChildRun: tracker.runChildRun,
+      stop: createStopMarkerSeam(fixture.state.runDir),
+    })
+    expect(first).toEqual({ halted: 'stopped', child: 'auth-api', childStatus: 'stopped' })
+    const second = await runChildren(deps, await loadRunState(deps.config.workDir, fixture.state.runId), fixture.ctx, {
+      runChildRun: tracker.runChildRun,
+      stop: createStopMarkerSeam(fixture.state.runDir),
+    })
+    expect(second).toEqual({ halted: 'stopped', child: 'auth-api', childStatus: 'stopped' })
+    const childRunId = tracker.runIds.get('auth-api')
+    assert(childRunId !== undefined)
+    expect(stdoutLines.some((line) => line.includes('resume or settle'))).toBe(true)
+
+    const childState = await loadRunState(deps.config.workDir, childRunId)
+    childState.status = 'completed'
+    await saveRunState(childState, new Date('2026-08-12T08:00:00.000Z'))
+
+    const third = await runChildren(deps, await loadRunState(deps.config.workDir, fixture.state.runId), fixture.ctx, {
+      runChildRun: tracker.runChildRun,
+      stop: createStopMarkerSeam(fixture.state.runDir),
+    })
+
+    expect(third).toEqual({ halted: 'completed' })
+    expect(tracker.spawned).toEqual(['auth-db', 'auth-api'])
+    const done = childDoneOf(fixture, 'auth-api')
+    expect(done).toHaveLength(1)
+    expect(done[0]).toMatchObject({ outcome: 'failed' })
+    const persisted = await loadRunState(deps.config.workDir, fixture.state.runId)
+    expect(persisted.status).toBe('completed')
+    expect(persisted.children?.['auth-api']).toEqual({ status: 'done' })
+  }, 20000)
 })
 
 describe('crash-window idempotency at the event-log/state boundary (D8)', () => {
