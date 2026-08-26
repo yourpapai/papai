@@ -44,6 +44,6 @@ export { originalConsole }
 // never set the flag, so neither `bun` nor `svelte/compiler` is imported.
 if (process.env['PAPAI_SVELTE_TEST_PLUGIN'] === '1') {
   const { plugin } = await import('bun')
-  const { sveltePlugin } = await import('../scripts/svelte-plugin.js')
+  const { sveltePlugin } = await import('./utils/svelte-plugin.js')
   void plugin(sveltePlugin({ dev: true }))
 }

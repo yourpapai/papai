@@ -7,8 +7,11 @@ import type { BunPlugin } from 'bun'
 import type { Processed } from 'svelte/compiler'
 import { compile, compileModule, preprocess } from 'svelte/compiler'
 
+// Bun test-runner loader for .svelte components and .svelte.ts modules
+// (client lane + Stryker paired-run path). Production client builds compile
+// through Vite; nothing outside tests imports this.
+
 export interface SveltePluginOptions {
-  collectCss?: (filename: string, css: string) => void
   dev?: boolean
 }
 
@@ -39,7 +42,7 @@ const SVELTE_FILE = /\.svelte$/u
 const SVELTE_MODULE_FILE = /\.svelte\.(?:ts|js)$/u
 
 export function sveltePlugin(options: SveltePluginOptions = {}): BunPlugin {
-  const { collectCss, dev = false } = options
+  const { dev = false } = options
 
   return {
     name: 'svelte-loader',
@@ -55,10 +58,6 @@ export function sveltePlugin(options: SveltePluginOptions = {}): BunPlugin {
           dev,
           css: 'external',
         })
-
-        if (result.css !== null && collectCss !== undefined) {
-          collectCss(args.path, result.css.code)
-        }
 
         return { contents: result.js.code, loader: 'js' }
       })

@@ -12,7 +12,7 @@
 
 ## 3. Loader rescope
 
-- [ ] 3.1 Relocate `scripts/svelte-plugin.ts` to `tests/utils/svelte-plugin.ts`, drop the now-unused `collectCss` option, and update imports in `tests/client-setup.ts` and `tests/setup.ts`. Verify: `bun run test:client && bun run knip`
+- [x] 3.1 Relocate `scripts/svelte-plugin.ts` to `tests/utils/svelte-plugin.ts`, drop the now-unused `collectCss` option, and update imports in `tests/client-setup.ts` and `tests/setup.ts`. Verify: `bun run test:client && bun run knip`
 
 ## 4. Dev server
 

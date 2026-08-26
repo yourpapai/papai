@@ -6,7 +6,7 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { plugin } from 'bun'
 
-import { sveltePlugin } from '../scripts/svelte-plugin.js'
+import { sveltePlugin } from './utils/svelte-plugin.js'
 
 GlobalRegistrator.register({ url: 'http://localhost' })
 void plugin(sveltePlugin({ dev: true }))
