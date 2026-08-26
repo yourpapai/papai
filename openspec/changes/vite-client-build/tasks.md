@@ -2,7 +2,7 @@
 
 ## 1. Vite config foundation
 
-- [ ] 1.1 Add root `vite.config.ts`: `svelte({ preprocess: vitePreprocess() })`, aliases `@client`/`@src` (mirror `.storybook/main.ts`), `build.minify: false`, `build.emptyOutDir: false`, `outDir` from `CLIENT_BUILD_OUTDIR` defaulting to `public/`. Verify: `bun run typecheck && bun run lint`
+- [x] 1.1 Add root `vite.config.ts`: `svelte({ preprocess: vitePreprocess() })`, aliases `@client`/`@src` (mirror `.storybook/main.ts`), `build.minify: false`, `build.emptyOutDir: false`, `outDir` from `CLIENT_BUILD_OUTDIR` defaulting to `public/`. Verify: `bun run typecheck && bun run lint`
 
 ## 2. Build script rewrite (test-first)
 
