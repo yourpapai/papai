@@ -37,7 +37,7 @@ Real-field gaps covered instead by scenario fixtures extracted from the 27 inlin
 
 ## Prototype relaxation policy
 
-The C1–C7 window is a proof-of-concept: quality gates are selectively relaxed for the ported/copied material and re-tightened at the C7 reflection, deliberately earlier than U9. Concretely: jscpd ignores `tests/afk-runner/fixtures/**` and ported test files (near-identical by design — they are the oracle); ported test expectations are never rewritten. Gates that are never relaxed: TDD write hooks on new `afk-runner/src/**` files, typecheck, lint. The relaxation and its re-tightening are recorded in tasks 1.6 and C7's scope.
+The C1–C7 window is a proof-of-concept: quality gates are selectively relaxed for the ported/copied material and re-tightened at the C7 reflection, deliberately earlier than U9. Concretely: jscpd ignores `tests/afk-runner/fixtures/**` and ported test files (near-identical by design — they are the oracle); ported test expectations are never rewritten. The `max-lines` / `max-lines-per-function` pair turns off for `afk-runner/**` for the same window — a safety valve against mid-spike forced splitting, not a license (current file estimates fit the defaults; the per-state module layout stays on merit). Gates that are never relaxed: TDD write hooks on new `afk-runner/src/**` files, typecheck, lint otherwise. The relaxations and their re-tightening are recorded in tasks 1.6, 2.0, and C7's scope.
 
 ## Decision: engine truth model (variant comparison)
 
@@ -71,6 +71,27 @@ ORCHESTRATOR LOOP — no long-lived XState actor; live edge and resume share one
 ```
 
 Action vocabulary stays closed (`emit` / `schedule`) so the interpreter is trivial; replay executes no actions (parity harness safety).
+
+## C2 kernel shape (corpus-grounded decisions)
+
+Folding all 14 C1 fixtures (10 real + 4 scenarios) before building pins the v0 graph empirically:
+
+- **Enters are the only position-movers.** Every fixture follows linear enter/exit pairs; exits and gate events never move position. The synthetic children fixture has zero stage events — the machine stays initial, map all-pending.
+- **Interstitial windows are real.** The early-gate window sits between `exit(review)` and `enter(decompose)` with no stage active; the final `gate.answered` can arrive *after* `exit(gate)`. A statechart value cannot say "nowhere active" — the map must.
+- **Gate is cross-cutting in the logs, not a nested substate.** `presented` arrives mid-review and interstitially; `answered` outside gate occupancy. C2 maps `answered` only for the `gate → completed` edge; gate-as-state is C4.
+- **The review self-loop is corpus-real** — a live run contains consecutive `enter(review)` events.
+- **No `killed` or vetoed-assumption events exist anywhere in the corpus.** `aborted` and the veto back-edge are declared shape-only in v0; inbound edges arrive with C4/C6 event sources.
+- **`round_close` is schema-valid yet legacy-unmapped** — fold tolerance must cover both unmapped types and mapped-type/no-edge no-ops.
+
+The v0 edge set — `init→intake→draft→review(self-loop)→decompose→atomicity→gate`, plus `gate→completed` guarded on answered+map-all-done, `aborted` shape-only — was simulation-verified over all 14 fixtures before implementation: exact stage-map parity with `legacy-fold`, zero missing edges, zero anomalous enters. Only ~0.5% of corpus events are graph-mapped; the rest are tolerated noise.
+
+xstate@5.25.0 pure-path facts (verified against the vendored dist): `transition(machine, snapshot, event)` and `initialTransition(machine)` return `[nextSnapshot, actions]` tuples; assigns land in `nextSnapshot.context` and never appear in the executable `actions` array — the closed vocabulary governs only that array, so replay discards it by not dispatching. Both tolerance layers are native: a no-edge event returns the snapshot unchanged with zero actions, and an out-of-union event type does not throw (the fold still pre-filters unmapped types for explicit accounting). The afk spike never exercised this path (its purity test scans source text; runtime used `createActor`) — C2 is the first consumer; pin `^5.25.0`.
+
+**Decision: the machine owns all derived state.** The stage map is machine context, assigned on transitions; parity compares the folded `context.stages` against `legacy-fold`. This makes the parity harness a conformance test of the graph — any guard stricter than the corpus rejects a real transition, misses its assign, and fails parity. Rejected alternative: the machine tracks position only, with the map projected by a side-channel fold — parity would then compare two disjoint folds, and C3's full derived-state parity would live outside the machine forever. Legacy fold logic migrates into assigns: C2 takes `stages`; C3 takes depth/rounds/gate/children.
+
+**Decision: exits are root-level global assigns, not per-state internal transitions.** Legacy exit handling is position-independent (marks the map done wherever position is). Binding `stage.exit.X` to state X makes an out-of-place exit a no-transition → missed assign → silent parity divergence. Root-level event handlers with assign-only actions kill that divergence class structurally; per-state modules own the enter edges — the topology. Verified against xstate@5.25.0: root-level handlers fire from any state *including finals*, so even a post-final exit lands in the map exactly as legacy folds it — no divergence case remains.
+
+**Decision: structured stage events with guard-checked edges.** Graph events are `{ type: 'stage.enter', stage }` (not per-stage literal types). Each state declares an ordered transition array on `stage.enter`, one entry per successor: `{ target, guard: { type: 'isStage', params: { stage } }, actions: ['closeThenActivate'] }`. One shared named assign — close-all-active-then-activate `event.stage` — serves every enter edge, including the review self-loop (verified: re-entry re-fires it idempotently; `gate.presented` rides as a root-level mapped no-op with `actions: []`, so C3's gate-context assign lands as an action edit, not a wiring change). Per-state modules use `setup(...).createStateConfig` — present and runtime-verified in 5.25.0 — typed data modules composing into `createMachine`. Parameterized guards evaluate on the pure `transition()` path; a rejected enter returns the snapshot unchanged with zero actions. Consequence, accepted deliberately: the machine is *stricter* than legacy on out-of-discipline logs — legacy folds any `stage_enter` wherever it appears, the machine no-ops an edge-less enter — the parity harness is the alarm if such a log ever appears; the corpus proves none exists.
 
 ## Porting strategy: grow, not restore
 
