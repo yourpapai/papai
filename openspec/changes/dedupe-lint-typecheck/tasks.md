@@ -27,7 +27,7 @@ Order is fixed by design.md D4: measure first, branch on evidence, test-first ed
 
 ## 5. Branch N — findings-only (only if 2.4 = N)
 
-- [ ] 5.1 Change no gate, no test, no config; confirm the matrix and rationale in design.md are complete. Verify: `git diff --stat` over the repo shows only `openspec/changes/dedupe-lint-typecheck/**` and docs files from task 6.1.
+- [x] 5.1 Change no gate, no test, no config; confirm the matrix and rationale in design.md are complete. Verify: `git diff --stat` over the repo shows only `openspec/changes/dedupe-lint-typecheck/**` and docs files from task 6.1.
 
 ## 6. Documentation and final verification (all branches)
 
