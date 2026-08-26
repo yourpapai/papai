@@ -18,7 +18,7 @@ Order is fixed by design.md D4: measure first, branch on evidence, test-first ed
 ## 3. Branch R1 — drop redundant `typecheck` from full mode and `check:verbose` (only if 2.4 = R1)
 
 - [x] 3.1 Test-first: update `tests/scripts/check.test.ts` — full-mode log assertions (~line 511) and composition assertions (~line 300) no longer expect `typecheck`, and a new assertion reads `package.json` scripts to pin `check:verbose` composition symmetric with check.sh full mode. Verify: `bun test tests/scripts/check.test.ts` fails red before any implementation edit.
-- [ ] 3.2 Remove `typecheck` from the checks array in `scripts/check.sh:335` and from `check:verbose` in `package.json:102`; staged-mode typecheck stays untouched. Verify: `bun test tests/scripts/check.test.ts` passes green.
+- [x] 3.2 Remove `typecheck` from the checks array in `scripts/check.sh:335` and from `check:verbose` in `package.json:102`; staged-mode typecheck stays untouched. Verify: `bun test tests/scripts/check.test.ts` passes green.
 
 ## 4. Branch R2 — disable lint's type-check pass (only if 2.4 = R2)
 
