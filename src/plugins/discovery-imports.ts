@@ -105,9 +105,9 @@ function admit(pending: readonly PendingPluginSource[], state: WalkState): Pendi
 
 /**
  * Breadth-first by depth level rather than file: every source at one depth is
- * parsed in a single round trip, so the walk costs one exchange with `tsgo` per
- * level instead of one per file. Recursion rather than a loop keeps the awaits
- * out of iteration.
+ * parsed in a single batch, so the walk stays cache-friendly and its outputs
+ * fold in arrival order. Recursion rather than a loop keeps the awaits out of
+ * iteration.
  */
 async function walkPluginSources(
   parser: SourceParser,

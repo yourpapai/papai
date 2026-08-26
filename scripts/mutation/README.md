@@ -283,3 +283,7 @@ plugins/task-provider-kaneo/mappers.ts` is the check that proves it).
 Revisit if `tsconfig.json` ever gains `extends`, `references`, or a path that
 points outside the repository — then the rewrite stops being a no-op and Stryker
 needs a real classic-API TypeScript again.
+
+`tests/scripts/mutation/stryker-config.test.ts` pins this sentinel: it asserts
+the `tsconfigFile` value and that the file does not exist, so the switch cannot
+be changed or "fixed" without a test naming this section.

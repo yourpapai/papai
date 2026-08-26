@@ -3,55 +3,50 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import {
-  isArrowFunction,
-  isCallExpression,
-  isFunctionExpression,
-  isIdentifier,
-  isObjectBindingPattern,
-  isPropertyAccessExpression,
-  isStringLiteral,
-} from 'typescript/unstable/ast'
-import type { Expression, Node, SourceFile } from 'typescript/unstable/ast'
+import type { Node } from 'oxc-parser'
 
-import type { SourceParser } from '../../src/ts-ast/source-parser.js'
+import { walkNodes, type ParsedProgram, type SourceParser } from '../../src/ts-ast/source-parser.js'
 
 export type ExtractedStoryScenario = Readonly<{ id: string; checkpoints: readonly string[] }>
 
-function checkpointChain(expression: Expression, thenName: string): readonly string[] | undefined {
-  if (isIdentifier(expression)) return expression.text === thenName ? ['then'] : undefined
-  if (isCallExpression(expression)) return checkpointChain(expression.expression, thenName)
-  if (!isPropertyAccessExpression(expression)) return undefined
-  const prefix = checkpointChain(expression.expression, thenName)
-  return prefix === undefined ? undefined : [...prefix, expression.name.text]
+function checkpointChain(expression: Node, thenName: string): readonly string[] | undefined {
+  if (expression.type === 'Identifier') {
+    return expression.name === thenName ? ['then'] : undefined
+  }
+  if (expression.type === 'CallExpression') {
+    return checkpointChain(expression.callee, thenName)
+  }
+  if (expression.type !== 'MemberExpression' || expression.computed) return undefined
+  if (expression.property.type !== 'Identifier') return undefined
+  const prefix = checkpointChain(expression.object, thenName)
+  if (prefix === undefined) return undefined
+  return [...prefix, expression.property.name]
 }
 
-function callbackThenName(callback: Expression): string | undefined {
-  if (!isArrowFunction(callback) && !isFunctionExpression(callback)) return undefined
-  const parameter = callback.parameters[0]
-  if (parameter === undefined || !isObjectBindingPattern(parameter.name)) return undefined
-  // TypeScript 7 types a binding element's `name` as optional, unlike 6.x.
-  const binding = parameter.name.elements.find((element) => {
-    const property = element.propertyName
-    if (property !== undefined) return isIdentifier(property) && property.text === 'then'
-    return element.name !== undefined && isIdentifier(element.name) && element.name.text === 'then'
+function callbackThenName(callback: Node): string | undefined {
+  if (callback.type !== 'ArrowFunctionExpression' && callback.type !== 'FunctionExpression') return undefined
+  const [parameter] = callback.params
+  if (parameter === undefined || parameter.type !== 'ObjectPattern') return undefined
+  const binding = parameter.properties.find((property): boolean => {
+    if (property.type !== 'Property' || property.key.type !== 'Identifier') return false
+    return property.key.name === 'then'
   })
-  const name = binding?.name
-  return name !== undefined && isIdentifier(name) ? name.text : undefined
+  if (binding === undefined) return undefined
+  const value = binding.value
+  if (value === null || value === undefined) return undefined
+  if (value.type !== 'Identifier') return undefined
+  return value.name
 }
 
-function scenarioCheckpoints(callback: Expression): readonly string[] {
+function scenarioCheckpoints(callback: Node): readonly string[] {
   const thenName = callbackThenName(callback)
   if (thenName === undefined) return []
   const found = new Set<string>()
-  const visit = (node: Node): void => {
-    if (isCallExpression(node)) {
-      const chain = checkpointChain(node.expression, thenName)
-      if (chain !== undefined && chain.length > 1) found.add(chain.join('.'))
-    }
-    node.forEachChild(visit)
-  }
-  visit(callback)
+  walkNodes(callback, (node) => {
+    if (node.type !== 'CallExpression') return
+    const chain = checkpointChain(node.callee, thenName)
+    if (chain !== undefined && chain.length > 1) found.add(chain.join('.'))
+  })
   const all = [...found]
   return all.filter((candidate) => !all.some((value) => value.startsWith(`${candidate}.`))).sort()
 }
@@ -59,8 +54,8 @@ function scenarioCheckpoints(callback: Expression): readonly string[] {
 export type StoryScenarioSource = Readonly<{ path: string; bytes: Uint8Array }>
 
 /**
- * Batch by design: every caller scans a whole file list, and one parse round
- * trip for the batch is markedly cheaper than one per file.
+ * Batch by design: every caller scans a whole file list, so one pass over the
+ * batch serves every file.
  */
 export async function extractStoryScenarios(
   parser: SourceParser,
@@ -72,29 +67,22 @@ export async function extractStoryScenarios(
   )
   if (sources.size === 0) return []
   const parsed = await parser.parseAll(sources)
-  return [...parsed].flatMap(([filePath, source]) => readScenarios(source, filePath))
+  return [...parsed].flatMap(([filePath, program]) => readScenarios(program, filePath))
 }
 
-function readScenarios(source: SourceFile, filePath: string): readonly ExtractedStoryScenario[] {
+function readScenarios(program: ParsedProgram, filePath: string): readonly ExtractedStoryScenario[] {
   const scenarios: ExtractedStoryScenario[] = []
-  const visit = (node: Node): void => {
-    const isScenarioCall =
-      isCallExpression(node) &&
-      isIdentifier(node.expression) &&
-      (node.expression.text === 'scenario' || node.expression.text === 'executeScenario')
-    if (isScenarioCall) {
-      const name = node.arguments[0]
-      if (name === undefined || !isStringLiteral(name)) {
-        throw new Error(`Scenario name must be a string literal in ${filePath}`)
-      }
-      const callback = node.arguments[1]
-      scenarios.push({
-        id: `${filePath}#${name.text}`,
-        checkpoints: callback === undefined ? [] : scenarioCheckpoints(callback),
-      })
+  walkNodes(program, (node) => {
+    if (node.type !== 'CallExpression' || node.callee.type !== 'Identifier') return
+    if (node.callee.name !== 'scenario' && node.callee.name !== 'executeScenario') return
+    const [name, callback] = node.arguments
+    if (name === undefined || name.type !== 'Literal' || typeof name.value !== 'string') {
+      throw new Error(`Scenario name must be a string literal in ${filePath}`)
     }
-    node.forEachChild(visit)
-  }
-  source.forEachChild(visit)
+    scenarios.push({
+      id: `${filePath}#${name.value}`,
+      checkpoints: callback === undefined ? [] : scenarioCheckpoints(callback),
+    })
+  })
   return scenarios
 }
