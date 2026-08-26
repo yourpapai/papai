@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { setConfig } from '../../src/config.testing.js'
 import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
@@ -576,6 +577,58 @@ describe('pollAlertsOnce — alert task watch', () => {
     expect(sentMessages).toHaveLength(1)
     expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
     expect(getAlertPrompt(labelAlert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
+  })
+
+  test('pure watch in another context of a mixed instance counts rich-field changes fetched for the instance', async () => {
+    const watch = makeWatchProvider()
+    watch.setTask(watchTask('task-1'))
+    const scopedGroup = toScopedContextId({ platformInstanceId: 'mock-default', nativeContextId: 'watch-group' })
+    const threadDelivery = (threadId: string): Parameters<typeof createAlertPrompt>[5] => ({
+      contextId: 'watch-group',
+      storageContextId: toScopedThreadContextId({
+        platformInstanceId: 'mock-default',
+        nativeContextId: 'watch-group',
+        threadId,
+      }),
+      contextType: 'group',
+      threadId,
+      audience: 'personal',
+      mentionUserIds: [WATCH_USER],
+      createdByUserId: WATCH_USER,
+      createdByUsername: null,
+    })
+    setContextSettings({ contextId: scopedGroup, taskInstanceId: 'ti-watch', platformInstanceId: 'mock-default' })
+    const pureAlert = createAlertPrompt(
+      WATCH_USER,
+      'Watch task-1',
+      { field: 'task.id', op: 'eq', value: 'task-1' },
+      60,
+      undefined,
+      threadDelivery('t-watch'),
+      'ti-watch',
+    )
+    createAlertPrompt(
+      WATCH_USER,
+      'Notify on bug label',
+      { field: 'task.labels', op: 'contains', value: 'bug' },
+      60,
+      undefined,
+      threadDelivery('t-labels'),
+      'ti-watch',
+    )
+    const buildProviderFn = watchBuildProviderFn(watch)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).toBeNull()
+
+    watch.setTask(watchTask('task-1', { labels: [{ id: 'l1', name: 'bug' }] }))
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(2)
+    expect(getAlertPrompt(pureAlert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(2)
   })
 
   test('mixed group without rich-field alerts fires its pure watch on a lightweight change', async () => {

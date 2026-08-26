@@ -25,7 +25,7 @@ import {
 } from './alerts.js'
 import { hasTaskChanges, LIGHTWEIGHT_SNAPSHOT_FIELDS, RICH_SNAPSHOT_FIELDS } from './change-gate.js'
 import { isPureWatchCondition } from './condition-eval.js'
-import { alertsNeedFullTasks, fetchAlertTasks } from './fetch-tasks.js'
+import { fetchAlertTasks } from './fetch-tasks.js'
 import {
   groupAlertsByInstance,
   handleUnresolvableProvider,
@@ -152,9 +152,12 @@ async function executeAlertsForContext(
     fields = RICH_SNAPSHOT_FIELDS
     firing.push(...collectPureWatchFiring(alerts, tasks, snapshots, evalNow, fields))
   } else {
-    const needsRich = alertsNeedFullTasks(alerts)
-    tasks = needsRich && enrichedTasks !== null ? enrichedTasks : lightTasks
-    fields = needsRich ? RICH_SNAPSHOT_FIELDS : LIGHTWEIGHT_SNAPSHOT_FIELDS
+    // Rich-vs-lightweight follows what the instance cycle actually fetched
+    // (enrichment is instance-level), not this context's own condition scan:
+    // a watch sharing the instance with a rich-field alert in another
+    // context must also count assignee/labels changes (spec: task-watch-alerts).
+    tasks = enrichedTasks ?? lightTasks
+    fields = enrichedTasks === null ? LIGHTWEIGHT_SNAPSHOT_FIELDS : RICH_SNAPSHOT_FIELDS
     if (!hasTaskChanges(tasks, snapshots, fields)) {
       log.debug({ storageContextId }, 'No task changes detected; skipping alert evaluation')
       return
