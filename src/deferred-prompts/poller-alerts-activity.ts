@@ -27,24 +27,31 @@ export const EXTERNAL_DATA_FRAMING =
 type HistoryRequest = {
   taskId: string
   categories: string[] | undefined
+  start?: string | undefined
 }
 
 /** One history fetch per distinct watched task for the whole instance poll.
  * Categories are the sorted union across every leaf watching that task; a
  * leaf without categories drops the filter for that task (watch-all wins,
- * per-leaf filtering happens client-side at evaluation). */
+ * per-leaf filtering happens client-side at evaluation). The cursor anchor
+ * is the oldest non-null alert cursor watching that task, so no alert's
+ * firing window (strictly newer than its own cursor) is pruned; tasks
+ * watched only by null-cursor alerts stay unanchored to preserve baselining
+ * to the true newest entry. */
 export const planHistoryRequests = (alerts: readonly AlertPrompt[]): HistoryRequest[] => {
   const categoriesByTask = new Map<string, Set<string> | undefined>()
-  const walk = (node: AlertCondition): void => {
+  const startByTask = new Map<string, { timestamp: string; ms: number }>()
+  const walk = (node: AlertCondition, watched: Set<string>): void => {
     if ('and' in node) {
-      for (const child of node.and) walk(child)
+      for (const child of node.and) walk(child, watched)
       return
     }
     if ('or' in node) {
-      for (const child of node.or) walk(child)
+      for (const child of node.or) walk(child, watched)
       return
     }
     if ('kind' in node && node.taskId !== undefined) {
+      watched.add(node.taskId)
       const existing = categoriesByTask.get(node.taskId)
       if (existing === undefined && !categoriesByTask.has(node.taskId)) {
         categoriesByTask.set(node.taskId, node.categories === undefined ? undefined : new Set(node.categories))
@@ -59,10 +66,24 @@ export const planHistoryRequests = (alerts: readonly AlertPrompt[]): HistoryRequ
       }
     }
   }
-  for (const alert of alerts) walk(alert.condition)
+  for (const alert of alerts) {
+    const watched = new Set<string>()
+    walk(alert.condition, watched)
+    const cursor = alert.lastActivityCursor
+    if (cursor === null) continue
+    // Unparseable cursors never gate firing in evaluation (ms > NaN is
+    // false), so they must not anchor the fetch either.
+    const cursorMs = Date.parse(cursor)
+    if (Number.isNaN(cursorMs)) continue
+    for (const taskId of watched) {
+      const existing = startByTask.get(taskId)
+      if (existing === undefined || cursorMs < existing.ms) startByTask.set(taskId, { timestamp: cursor, ms: cursorMs })
+    }
+  }
   return [...categoriesByTask.entries()].map(([taskId, categories]) => ({
     taskId,
     categories: categories === undefined ? undefined : [...categories].sort(),
+    start: startByTask.get(taskId)?.timestamp,
   }))
 }
 
@@ -97,7 +118,9 @@ export function fetchTaskHistories(
           provider
             .getTaskHistory?.(
               request.taskId,
-              request.categories === undefined ? undefined : { categories: request.categories },
+              request.categories === undefined && request.start === undefined
+                ? undefined
+                : { categories: request.categories, start: request.start },
             )
             ?.catch((error: unknown) => {
               // Production providers throw their own *ClassifiedError classes
