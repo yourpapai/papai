@@ -87,13 +87,17 @@ type OrCondition = { or: AlertCondition[] }
 
 export type AlertCondition = LeafCondition | ActivityLeafCondition | AndCondition | OrCondition
 
-export const alertConditionSchema: z.ZodType<AlertCondition> = z.union([
-  leafConditionSchema,
-  activityLeafSchema,
-  z.object({
-    and: z.lazy(() => z.array(alertConditionSchema).min(1)),
-  }),
-  z.object({
-    or: z.lazy(() => z.array(alertConditionSchema).min(1)),
-  }),
-])
+export const alertConditionSchema: z.ZodType<AlertCondition> = z
+  .union([
+    leafConditionSchema,
+    activityLeafSchema,
+    z.object({
+      and: z.lazy(() => z.array(alertConditionSchema).min(1)),
+    }),
+    z.object({
+      or: z.lazy(() => z.array(alertConditionSchema).min(1)),
+    }),
+  ])
+  .describe(
+    'Event-based trigger: watch task fields across tasks, or new activity entries on one task (kind: "activity" with a taskId).',
+  )

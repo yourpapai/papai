@@ -27,13 +27,14 @@ export function makeCreateAlertTool(
   contextType: ContextType,
   username?: string | null,
   actorUserIdArg?: string,
+  activityAlertsEnabled = false,
 ): Tool {
   const actorUserId = actorUserIdArg ?? userId
   const inputSchema = z
     .object({
       prompt: z.string().describe('What to do/say when the alert fires - not the condition'),
       condition: alertConditionSchema.describe(
-        'Event-based trigger: watch a specific task (task.id eq <id>) or watch for task changes across all tasks',
+        'Event-based trigger: watch a specific task (task.id eq <id>), any task by field (e.g. status changes), or new activity on one task (kind: "activity" with taskId)',
       ),
       cooldown_minutes: cooldownSchema,
       execution: executionInputSchema,
@@ -42,11 +43,17 @@ export function makeCreateAlertTool(
     .strict()
   return tool({
     description:
-      'Set up an alert that fires when a task matches a condition — watch a specific task (condition field task.id, op eq) or any task (e.g. status changes, becomes overdue). Use for "tell me when…" / "let me know if…".',
+      'Set up an alert that fires when a task matches a condition — watch a specific task (condition field task.id, op eq), any task (e.g. status changes, becomes overdue), or new activity on one task (condition kind "activity"). Use for "tell me when…" / "let me know if…".',
     inputSchema,
     execute: (input: CreateInput) => {
       try {
-        const result = executeCreate(userId, input, { userId: actorUserId, storageContextId, contextType, username })
+        const result = executeCreate(userId, input, {
+          userId: actorUserId,
+          storageContextId,
+          contextType,
+          username,
+          activityAlertsEnabled,
+        })
         observeActiveFeatureUsed({ feature: 'deferred', operation: 'create', outcome: 'success' })
         return result
       } catch (error) {
