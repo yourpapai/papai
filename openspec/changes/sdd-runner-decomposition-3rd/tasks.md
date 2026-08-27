@@ -20,7 +20,7 @@ Implements the proposal's tasks 6.1–6.2, 7.1, 8.1–8.3, 9.1 only: operator su
 
 ## 4. Live tree lines (design D7–D8; proposal 8.1)
 
-- [ ] 4.1 Renderer tree-event lines. Red-first in `tests/sdd-runner/renderer.test.ts`: `formatEvent` renders the `plan` (child count + digest), `child_spawned` (child + run id), and `child_done` (child + outcome) L2 lines — the only permitted non-TTY additions on composite runs; single-run event streams render byte-identically (pinned). Then implement in `renderer.ts` (design D7). Verify: `bun run test tests/sdd-runner/renderer.test.ts`
+- [x] 4.1 Renderer tree-event lines. Red-first in `tests/sdd-runner/renderer.test.ts`: `formatEvent` renders the `plan` (child count + digest), `child_spawned` (child + run id), and `child_done` (child + outcome) L2 lines — the only permitted non-TTY additions on composite runs; single-run event streams render byte-identically (pinned). Then implement in `renderer.ts` (design D7). Verify: `bun run test tests/sdd-runner/renderer.test.ts`
 - [ ] 4.2 Run-view children block. Red-first in `tests/sdd-runner/run-view.test.ts`: the running screen renders a `## Children` section from `ReplayState.children` — one `<child-id> <status>` line per entry, the active node marked — omitted entirely when the fold is empty (single-run screens unchanged). Then implement in `run-view.ts` (design D8). Verify: `bun run test tests/sdd-runner/run-view.test.ts`
 
 ## 5. Report children section (design D9; proposal 8.2)
