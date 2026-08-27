@@ -200,6 +200,27 @@ describe('sdd [<target>] routing table (6.1/6.2)', () => {
     expect(action).toEqual({ kind: 'create' })
   })
 
+  it('off-terminal, a sole interrupted run with no pending gate resumes it', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'sole-halt', (state) => {
+      state.status = 'stopped'
+    })
+    expect(await resolveTarget({ workDir, target: undefined })).toEqual({ kind: 'resume', runId: 'sole-halt' })
+  })
+
+  it('on a terminal, a sole interrupted run with no pending gate resumes it too', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'tty-halt', (state) => {
+      state.status = 'stopped'
+    })
+    expect(await resolveTarget({ workDir, target: undefined, tty: true })).toEqual({
+      kind: 'resume',
+      runId: 'tty-halt',
+    })
+  })
+
   it('on a terminal, ambiguous no-target opens the session screen with every candidate', async () => {
     const dir = makeDir()
     const workDir = path.join(dir, '.sdd')

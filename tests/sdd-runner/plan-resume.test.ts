@@ -63,8 +63,19 @@ const REPLAN_DIGEST = 'e'.repeat(16)
  * Durable plan-gate record shapes: `answered` is an approved plan parent
  * (the only shape whose resume may drive children); the rest are crash
  * windows between the `state.plan` persist and the `state.gate` persist.
+ * The `*-noise`/`*-trailing`/`wrong-digest` shapes pin the fail-closed scan:
+ * only a digest-matching plan event opens a gate window, only plan-mode
+ * gate events inside it count, and only a new plan event resets the window.
  */
-type GateLog = 'answered' | 'plan-only' | 'presented-unanswered' | 'replanned-unanswered'
+type GateLog =
+  | 'answered'
+  | 'plan-only'
+  | 'presented-unanswered'
+  | 'replanned-unanswered'
+  | 'answered-trailing-event'
+  | 'wrong-digest-plan-answered'
+  | 'final-gate-noise'
+  | 'presented-v2-unanswered'
 
 async function makeFixture(
   gateLog: GateLog = 'answered',
@@ -81,12 +92,38 @@ async function makeFixture(
   fs.mkdirSync(path.join(state.runDir, 'sidecars'), { recursive: true })
   fs.writeFileSync(path.join(state.runDir, 'sidecars', 'plan.json'), JSON.stringify({ children: CHILDREN }))
   const logPath = path.join(state.runDir, 'events.ndjson')
-  appendEvent(logPath, { altitude: 'L2', type: 'plan', childCount: CHILDREN.length, digest: DIGEST })
+  appendEvent(logPath, {
+    altitude: 'L2',
+    type: 'plan',
+    childCount: CHILDREN.length,
+    digest: gateLog === 'wrong-digest-plan-answered' ? REPLAN_DIGEST : DIGEST,
+  })
   if (gateLog !== 'plan-only') {
-    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 1 })
+    appendEvent(logPath, {
+      altitude: 'L2',
+      type: 'gate',
+      action: 'presented',
+      mode: 'plan',
+      version: gateLog === 'presented-v2-unanswered' ? 2 : 1,
+    })
   }
-  if (gateLog === 'answered' || gateLog === 'replanned-unanswered') {
-    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'answered', mode: 'plan', version: 1 })
+  const answeredLog =
+    gateLog === 'answered' ||
+    gateLog === 'replanned-unanswered' ||
+    gateLog === 'answered-trailing-event' ||
+    gateLog === 'wrong-digest-plan-answered' ||
+    gateLog === 'final-gate-noise'
+  if (answeredLog) {
+    appendEvent(logPath, {
+      altitude: 'L2',
+      type: 'gate',
+      action: 'answered',
+      mode: gateLog === 'final-gate-noise' ? 'final' : 'plan',
+      version: 1,
+    })
+  }
+  if (gateLog === 'answered-trailing-event') {
+    appendEvent(logPath, { altitude: 'L2', type: 'stage_exit', stage: 'intake' })
   }
   if (gateLog === 'replanned-unanswered') {
     appendEvent(logPath, { altitude: 'L2', type: 'plan', childCount: CHILDREN.length, digest: REPLAN_DIGEST })
@@ -583,5 +620,91 @@ describe('resumePlanParent plan-gate guard (D5 fail-closed resume)', () => {
 
     expect(result.halted).toBe('stopped')
     expect(startedFiles).toEqual([path.join(fixture.state.runDir, 'children', '1-db-schema.md')])
+  })
+
+  it('still drives children when quiet events follow the answered plan gate — only a plan event resets the window', async () => {
+    const fixture = await makeFixture('answered-trailing-event')
+    const startedFiles: string[] = []
+    const startChildRun: StartChildRun = async () => {
+      startedFiles.push('started')
+      const child = await createRunState({
+        workDir: fixture.deps.config.workDir,
+        repoRoot: fixture.repoRoot,
+        changeName: 'db-schema',
+      })
+      child.status = 'stopped'
+      await saveRunState(child, new Date('2026-08-12T08:00:00.000Z'))
+      return { runId: child.runId }
+    }
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      appendingEmit(fixture.state),
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(result.halted).toBe('stopped')
+    expect(startedFiles).toEqual(['started'])
+  })
+
+  it('ignores an answered plan gate logged against a different digest — fail closed, re-present', async () => {
+    const fixture = await makeFixture('wrong-digest-plan-answered')
+    const { startChildRun, spawned } = makeNeverRunner()
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      appendingEmit(fixture.state),
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(spawned()).toEqual([])
+    expect(result).toEqual({ runId: fixture.state.runId, halted: 'gate-pending' })
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+  })
+
+  it('ignores final-mode gate answers after the plan event — only plan-mode events settle the plan gate', async () => {
+    const fixture = await makeFixture('final-gate-noise')
+    const { startChildRun, spawned } = makeNeverRunner()
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      appendingEmit(fixture.state),
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(spawned()).toEqual([])
+    expect(result).toEqual({ runId: fixture.state.runId, halted: 'gate-pending' })
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+  })
+
+  it('re-presents an unanswered presentation at its recorded version — overwrites gate-2.md, never forks back to gate-1', async () => {
+    const fixture = await makeFixture('presented-v2-unanswered')
+    const { startChildRun, spawned } = makeNeverRunner()
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      appendingEmit(fixture.state),
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(spawned()).toEqual([])
+    expect(result).toEqual({ runId: fixture.state.runId, halted: 'gate-pending' })
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 2 })
+    expect(fs.existsSync(path.join(fixture.state.runDir, 'gate-2.md'))).toBe(true)
+    expect(fs.existsSync(path.join(fixture.state.runDir, 'gate-1.md'))).toBe(false)
+    const presented = presentedGateEvents(fixture.state)
+    expect(presented).toHaveLength(2)
+    expect(presented[1]).toMatchObject({ mode: 'plan', version: 2 })
   })
 })

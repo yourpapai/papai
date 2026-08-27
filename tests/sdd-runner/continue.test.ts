@@ -153,6 +153,15 @@ describe('runContinue tree-aware descent (D2)', () => {
     expect(child.gate).toBe(null)
   })
 
+  it('the child-descent prints survive a deps without stdout — routing is not conditional on the printer', async () => {
+    const repoRoot = makeDir()
+    const { workDir } = await seedPlanParent(repoRoot, { childGateFile: 'ABORT\n' })
+
+    const result = await runContinue(makeDeps(repoRoot, workDir), 'parent-run')
+
+    expect(result).toEqual({ runId: 'child-run-1', routed: 'gate' })
+  })
+
   it('with no gate-pending descendant, resumes the parent through the unchanged runChildren skip-forward', async () => {
     const repoRoot = makeDir()
     const { workDir } = await seedPlanParent(repoRoot, { allDone: true, childRunning: false })

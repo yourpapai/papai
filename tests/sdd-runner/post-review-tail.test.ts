@@ -14,7 +14,11 @@ import { readReviewResultFromSidecars } from '../../sdd-runner/src/gate-digest.j
 import type { OrchestratorDeps, StageContext } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { PlanSchema } from '../../sdd-runner/src/plan.js'
-import { buildSplitReentryTaskText, runPostConvergenceTail } from '../../sdd-runner/src/post-review-tail.js'
+import {
+  buildSplitReentryTaskText,
+  isSeverityConverged,
+  runPostConvergenceTail,
+} from '../../sdd-runner/src/post-review-tail.js'
 import { createRunState, loadRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
 
@@ -41,7 +45,13 @@ const REVIEW_RESULT = {
   openNitpicks: [],
 }
 
-async function setup(setupOptions: { readonly decomposeSidecar?: string; readonly planDraft?: unknown } = {}): Promise<{
+async function setup(
+  setupOptions: {
+    readonly decomposeSidecar?: string
+    readonly planDraft?: unknown
+    readonly noDecomposeArtifact?: boolean
+  } = {},
+): Promise<{
   deps: OrchestratorDeps
   state: RunState
   spawnOrder: string[]
@@ -54,9 +64,8 @@ async function setup(setupOptions: { readonly decomposeSidecar?: string; readonl
   const changeDir = path.join(repoRoot, 'openspec', 'changes', changeName)
   const spawnOrder: string[] = []
   const prompts: string[] = []
-  const artifacts: Record<string, string> = {
-    'decompose-tasks.json': path.join(changeDir, 'tasks.md'),
-  }
+  const artifacts: Record<string, string> =
+    setupOptions.noDecomposeArtifact === true ? {} : { 'decompose-tasks.json': path.join(changeDir, 'tasks.md') }
   const sidecars: Record<string, string> = {
     'decompose-tasks.json':
       setupOptions.decomposeSidecar ?? JSON.stringify({ tasks_file: 'openspec/changes/add-thing/tasks.md' }),
@@ -249,11 +258,19 @@ describe('runPostConvergenceTail needs_split diversion (D5)', () => {
 
     expect(spawnOrder).toEqual(['decompose-tasks.json', 'plan-draft.json'])
     expect(prompts).toHaveLength(2)
+    expect(prompts[0]).toContain('openspec/changes/add-thing/tasks.md')
     expect(prompts[1]).toContain('The original task body.')
     expect(prompts[1]).toContain('add-thing')
     expect(prompts[1]).toContain('The rename must land safely.')
     expect(prompts[1]).toContain('drizzle schema')
     expect(prompts[1]).toContain('<!-- content for decompose-tasks.json -->')
+    // The digest bullets ride the composed task text verbatim — prefix-scoped
+    // so they cannot be satisfied by the proposal body re-embedded elsewhere.
+    expect(prompts[1]).toContain('Drafted artifacts:')
+    expect(prompts[1]).toContain('- what: The rename must land safely.')
+    expect(prompts[1]).toContain('- why: The rename must land safely.')
+    expect(prompts[1]).toContain('- touches: drizzle schema')
+    expect(prompts[1]).toContain('- touches: api routes')
     const stages = readEvents(logPath)
       .filter((e) => e.type === 'stage_enter')
       .map((e) => (e as { stage: string }).stage)
@@ -277,7 +294,7 @@ describe('runPostConvergenceTail needs_split diversion (D5)', () => {
   })
 
   it("a false needs_split runs today's tail — atomicity spawns and the final gate presents at the given version", async () => {
-    const { deps, state, spawnOrder, logPath, spawn } = await setup({
+    const { deps, state, spawnOrder, prompts, logPath, spawn } = await setup({
       decomposeSidecar: JSON.stringify({ tasks_file: 'openspec/changes/add-thing/tasks.md', needs_split: false }),
     })
     const ctx = makeCtx(deps, state, logPath)
@@ -293,9 +310,42 @@ describe('runPostConvergenceTail needs_split diversion (D5)', () => {
     })
 
     expect(spawnOrder.indexOf('decompose-tasks.json')).toBeLessThan(spawnOrder.indexOf('atomicity.json'))
+    expect(prompts[0]).toContain('openspec/changes/add-thing/tasks.md')
     expect(result.version).toBe(2)
     expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('Final gate')
     expect((await loadRunState(deps.config.workDir, state.runId)).plan).toBeUndefined()
+  })
+
+  it('diverts with nothing on disk — no task.md, no tasks.md, no digest: absent sections stay absent, nothing leaks undefined', async () => {
+    const { deps, state, spawnOrder, prompts, logPath, spawn } = await setup({
+      decomposeSidecar: JSON.stringify({ tasks_file: 'openspec/changes/add-thing/tasks.md', needs_split: true }),
+      planDraft: { children: [{ id: 'auth-db', instruction: 'Ship the drafted slice.', deps: [] }] },
+      noDecomposeArtifact: true,
+    })
+    const ctx = makeCtx(deps, state, logPath)
+
+    const result = await runPostConvergenceTail({
+      deps,
+      state,
+      ctx,
+      agent: { spawn, config: deps.config, execGit: deps.execGit, emit: ctx.emit },
+      depth: 'M',
+      reviewResult: REVIEW_RESULT,
+      version: 1,
+    })
+
+    expect(result.halted).toBe('gate')
+    expect(spawnOrder).toEqual(['decompose-tasks.json', 'plan-draft.json'])
+    const reentry = prompts[1]
+    expect(reentry).toContain('Re-scoped tasks.md (child #1 slice only):')
+    expect(reentry).toContain('Existing change: add-thing — child #1 of the split')
+    expect(reentry).not.toContain('Original task:')
+    expect(reentry).not.toContain('Drafted artifacts:')
+    expect(reentry).not.toContain('- what:')
+    expect(reentry).not.toContain('- why:')
+    expect(reentry).not.toContain('- touches:')
+    expect(reentry).not.toContain('undefined')
+    expect(reentry).not.toContain('Stryker was here!')
   })
 })
 
@@ -320,5 +370,78 @@ describe('buildSplitReentryTaskText (D5)', () => {
     expect(bare).not.toContain('Original task:')
     expect(bare).not.toContain('Drafted artifacts:')
     expect(bare).toContain('add-thing')
+  })
+
+  // Pinned byte-for-byte: the composed text is the planner's entire input, so
+  // every section marker is behavior. Loose containment above lets string
+  // mutants survive; this pins each header, separator, and payload exactly.
+  it('composes the exact split-re-entry text for a fully-populated input', () => {
+    const composed = buildSplitReentryTaskText({
+      originalTask: '# Add thing\n\nThe original task body.',
+      changeName: 'add-thing',
+      artifactSummary: ['what: ship the slice', 'why: land it safely'],
+      tasksMd: '## 1. Slice\n\n- [ ] step',
+    })
+    expect(composed).toBe(
+      [
+        'A decompose verdict marked this change needs_split: it cannot land as one atomic-shippable change.',
+        'Plan the child-run family that ships it: child #1 is the existing change itself (its slice is',
+        'already drafted and reviewed); the siblings partition the remainder of the work.',
+        '',
+        'Original task:',
+        '# Add thing\n\nThe original task body.',
+        '',
+        'Existing change: add-thing — child #1 of the split',
+        '',
+        'Drafted artifacts:',
+        '- what: ship the slice',
+        '- why: land it safely',
+        '',
+        'Re-scoped tasks.md (child #1 slice only):',
+        '## 1. Slice\n\n- [ ] step',
+      ].join('\n'),
+    )
+  })
+
+  it('composes the exact split-re-entry text with every optional section absent', () => {
+    const composed = buildSplitReentryTaskText({
+      originalTask: null,
+      changeName: 'add-thing',
+      artifactSummary: [],
+      tasksMd: '',
+    })
+    expect(composed).toBe(
+      [
+        'A decompose verdict marked this change needs_split: it cannot land as one atomic-shippable change.',
+        'Plan the child-run family that ships it: child #1 is the existing change itself (its slice is',
+        'already drafted and reviewed); the siblings partition the remainder of the work.',
+        '',
+        'Existing change: add-thing — child #1 of the split',
+        '',
+        'Re-scoped tasks.md (child #1 slice only):',
+        '',
+      ].join('\n'),
+    )
+  })
+})
+
+describe('isSeverityConverged', () => {
+  it('requires the cap-hit outcome — a converged round with nothing open is not severity-converged', () => {
+    const rounds = 1
+    const blocker = { id: 'F1', class: 'BLOCKER', resolution: 'dismissed' } as const
+    const material = { id: 'F2', class: 'MATERIAL', resolution: 'dismissed' } as const
+    const nitpick = { id: 'F3', class: 'NITPICK', resolution: 'dismissed' } as const
+    expect(
+      isSeverityConverged({ outcome: 'converged', rounds, openBlockers: [], openMaterial: [], openNitpicks: [] }),
+    ).toBe(false)
+    expect(
+      isSeverityConverged({ outcome: 'cap-hit', rounds, openBlockers: [], openMaterial: [], openNitpicks: [nitpick] }),
+    ).toBe(true)
+    expect(
+      isSeverityConverged({ outcome: 'cap-hit', rounds, openBlockers: [blocker], openMaterial: [], openNitpicks: [] }),
+    ).toBe(false)
+    expect(
+      isSeverityConverged({ outcome: 'cap-hit', rounds, openBlockers: [], openMaterial: [material], openNitpicks: [] }),
+    ).toBe(false)
   })
 })
