@@ -518,11 +518,11 @@ describe('runStart text source (inline session)', () => {
     expect(state.changeName).toBe('task')
   })
 
-  it('never writes a run-dir task.md when the task came from a file', async () => {
+  it('persists the resolved task text into the run dir when the task came from a file (D5 split re-entry)', async () => {
     const fixture = makeFixture()
     const result = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
     const state = await loadRunState(fixture.deps.config.workDir, result.runId)
-    expect(fs.existsSync(path.join(state.runDir, 'task.md'))).toBe(false)
+    expect(fs.readFileSync(path.join(state.runDir, 'task.md'), 'utf8')).toBe('# Add thing\n\ndoes a thing\n')
   })
 })
 

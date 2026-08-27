@@ -101,9 +101,7 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
     nowOf(deps),
   )
   options.onRunDirReady?.(state.runDir)
-  if (options.taskText !== undefined) {
-    await writeFile(path.join(state.runDir, 'task.md'), taskText, 'utf8')
-  }
+  await writeFile(path.join(state.runDir, 'task.md'), taskText, 'utf8')
   const emit = buildBus(deps, logPathFor(state))
   writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
