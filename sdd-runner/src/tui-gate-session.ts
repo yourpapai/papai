@@ -61,6 +61,9 @@ export interface GateSessionTuiProps {
   readonly keys?: KeyFeed
 }
 
+/** Instantiated once per module, not per render — the gate tree must keep a stable component identity so `Static` regions never re-emit (fancy-ui D6). */
+const GateScreen = createGateScreen()
+
 export function GateSessionTui(props: GateSessionTuiProps): ReturnType<typeof createElement> {
   const { view, onSettle, onAbandoned, keys } = props
   const [state, setState] = useState<SessionState>({
@@ -100,7 +103,6 @@ export function GateSessionTui(props: GateSessionTuiProps): ReturnType<typeof cr
     if (keys === undefined) return undefined
     return keys.onKey(handle)
   }, [keys, handle])
-  const GateScreen = createGateScreen()
   const screen = createElement(GateScreen, { view, ...state, width: 100 })
   if (state.input === null) return screen
   const label = state.input.kind === 'redirect' ? `redirect for ${state.input.id}` : `answer for ${state.input.id}`

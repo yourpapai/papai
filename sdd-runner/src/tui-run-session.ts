@@ -43,6 +43,9 @@ const PLAIN_KEY = {
   delete: false,
 }
 
+/** Instantiated once per module, not per render — the run tree must keep a stable component identity so `Static` regions never re-emit (fancy-ui D6). */
+const RunView = createRunView()
+
 export function RunScreenTui(props: RunScreenTuiProps): ReturnType<typeof createElement> {
   const { bag, width, startedAt, now, onRequestCalmStop, onHardExit, keys } = props
   const stopState = useRef<StopKeyState>({ interruptions: 0 })
@@ -60,7 +63,6 @@ export function RunScreenTui(props: RunScreenTuiProps): ReturnType<typeof create
     if (keys === undefined) return undefined
     return keys.onKey(handle)
   }, [keys, handle])
-  const RunView = createRunView()
   return createElement(RunView, {
     state: bag.state,
     slots: bag.slots,

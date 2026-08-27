@@ -230,4 +230,11 @@ describe('runSessionPicker loop (scripted keys)', () => {
     await created.result
     expect(created.events).toEqual(['list', 'create:"# from scratch\\n"', 'list'])
   })
+
+  it('a long in-mount interaction keeps every buffer — a per-frame remount would reset the form (1.3 pin)', async () => {
+    const TAB = '\t'
+    const run = picker({ keyScript: `nfix auth${TAB}stops flaky login${CR}q` })
+    await run.result
+    expect(run.events).toEqual(['list', 'create:"# fix auth\\n\\nstops flaky login\\n"', 'list'])
+  })
 })

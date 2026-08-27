@@ -8,15 +8,19 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { Box, Static, Text } from 'ink'
 import { render } from 'ink-testing-library'
 import { createElement } from 'react'
+import type { ReactElement } from 'react'
 
 import type { EventInput } from '../../sdd-runner/src/events.js'
 import { appendEvent, stampEvent } from '../../sdd-runner/src/events.js'
 import { emptyRunFold, foldRunView } from '../../sdd-runner/src/run-view.js'
+import type { RunFold } from '../../sdd-runner/src/run-view.js'
 import { RunScreenTui } from '../../sdd-runner/src/tui-run-session.js'
 import { createRunScreenSession } from '../../sdd-runner/src/tui-run-session.js'
 import type { RunScreenSessionDeps } from '../../sdd-runner/src/tui-run-session.js'
+import { countOccurrences, mountToStream, waitFor } from './stream-harness.js'
 
 const tmpDirs: string[] = []
 
@@ -180,5 +184,52 @@ describe('run-screen stop keys (4.6)', () => {
     session.unmount()
     expect(spy.calmStops).toBe(0)
     expect(spy.exitCodes).toEqual([])
+  })
+})
+
+describe('factory-identity pin (1.4: rerenders never remount the mounted tree)', () => {
+  const ROWS = ['h-row-1', 'h-row-2', 'h-row-3'] as const
+  const START = Date.parse('2026-01-01T00:00:00.000Z')
+  const NOW = Date.parse('2026-01-01T00:01:00.000Z')
+
+  function streamHarness(rows: readonly string[], bag: RunFold): ReactElement {
+    return createElement(
+      Box,
+      { flexDirection: 'column' },
+      createElement(Static, {
+        items: [...rows],
+        children: (row: unknown): ReactElement => createElement(Text, { key: String(row) }, String(row)),
+      }),
+      createElement(RunScreenTui, {
+        bag,
+        width: 100,
+        startedAt: START,
+        now: NOW,
+        onRequestCalmStop: () => undefined,
+        onHardExit: () => undefined,
+      }),
+    )
+  }
+
+  it('a toy Static sibling emits each row exactly once while the live region keeps updating', async () => {
+    let bag = emptyRunFold()
+    bag = foldRunView(bag, e(1, { altitude: 'L2', type: 'stage_enter', stage: 'review' }))
+    const mount = mountToStream(streamHarness([ROWS[0]], bag))
+    await waitFor(() => mount.streamText().includes(ROWS[0]))
+    bag = foldRunView(bag, spawnEvent(2, 'reviewer-r1'))
+    mount.rerender(streamHarness([ROWS[0], ROWS[1]], bag))
+    await waitFor(() => mount.streamText().includes(ROWS[1]))
+    bag = foldRunView(bag, spawnEvent(3, 'fixer-r1'))
+    mount.rerender(streamHarness([...ROWS], bag))
+    await waitFor(() => mount.streamText().includes(ROWS[2]))
+    mount.rerender(streamHarness([...ROWS], bag))
+    await mount.waitUntilRenderFlush()
+    const text = mount.streamText()
+    mount.unmount()
+    for (const row of ROWS) {
+      expect(countOccurrences(text, row)).toBe(1)
+    }
+    expect(text).toContain('reviewer-r1')
+    expect(text).toContain('fixer-r1')
   })
 })
