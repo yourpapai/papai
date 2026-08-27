@@ -29,4 +29,4 @@
 ## 6. Full gate and docs
 
 - [x] 6.1 Update affected `docs/architecture/` pages: `tools.md` (activity condition kind on `create_alert`, capability gating + guidance), `behaviors.md` (activity alert polling semantics: baseline cursor, edge-triggered firing, cooldown catch-up, activity-only contexts skip whole-list fetch). Verify: `bun run test docs 2>/dev/null || true` — visual review of rendered markdown
-- [ ] 6.2 Run the full gate: `bun run test`, `bun run typecheck`, `bun run lint`; fix any fallout before finishing. Verify: all three commands exit clean
+- [x] 6.2 Run the full gate: `bun run test`, `bun run typecheck`, `bun run lint`; fix any fallout before finishing. Verify: all three commands exit clean
