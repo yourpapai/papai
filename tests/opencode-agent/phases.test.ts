@@ -1159,6 +1159,52 @@ describe('handleReview · pushes what the loop merged', () => {
     expect(built.pushes()).toHaveLength(2)
   })
 
+  it('pushes a fix that lands while an earlier push is still in flight', async () => {
+    // The loop's child merges each accepted fix into this checkout as it
+    // lands (review-loop/src/publish-fix.ts), and nothing serializes the next
+    // merge against this phase's push: a push carries the ref as git read it
+    // when it started, so a fix merged mid-push is not on the remote when the
+    // push returns. Recording the head read *after* the push named that
+    // unpushed fix — the next comparison and the final one both saw
+    // `last === head` and skipped the push, and the fix died with the runner
+    // while the report said the findings were pushed. The record must be read
+    // before the push, where it can only fall short of what was carried and
+    // the worst case is a redundant push.
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
+    // The child's first merge lands before its marker; the second lands while
+    // the first push is in flight, modeled by the push itself moving the head
+    // before it resolves.
+    let head = 'before'
+    let mergeInFlight: (() => void) | null = null
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(head)
+    built.input.deps.git.push = (branch: string): Promise<void> => {
+      built.io.gitCalls.push(`push:${branch}`)
+      mergeInFlight?.()
+      mergeInFlight = null
+      return Promise.resolve()
+    }
+    built.input.deps.runReview = async (_plan: string, onFixMerged?: () => void): Promise<ReviewRunResult> => {
+      head = 'fix-1'
+      onFixMerged?.()
+      // The second merge lands while the first push is in flight, and its
+      // marker is read while the loop is still running — resolved here by the
+      // push itself, so the child never exits before the marker arrived.
+      await new Promise<void>((resolve) => {
+        mergeInFlight = (): void => {
+          head = 'fix-2'
+          onFixMerged?.()
+          resolve()
+        }
+      })
+      return { outcome: 'passed', summary: '', exitCode: 0, failure: null }
+    }
+
+    await handleReview(built.input)
+
+    expect(built.pushes()).toEqual(['push:agent/issue-42', 'push:agent/issue-42'])
+  })
+
   it('reports a loop that stopped at its budget as stopped, not as a failure', async () => {
     const built = reviewInput(true)
     built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })

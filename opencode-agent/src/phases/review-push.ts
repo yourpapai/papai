@@ -125,13 +125,17 @@ export const createPush = (input: PhaseInput, branch: string): DurablePush => {
     if (!committed && last !== null && head !== null && last === head) return advanced
 
     if (last !== null) await guardBeforePush(input, branch, last, blocked)
+    // The head this push is about to carry, read after the guard and before
+    // the ref moves. Not `head` above, which predates the guard's revert
+    // (run 32992114904); not after the push either — the loop's child merges
+    // each fix into this checkout unsynchronized with this push, so a fix
+    // landing mid-push is not carried, and a post-push read records a head
+    // the remote never accepted, skipping that fix's next push. Read here,
+    // the record can only fall short of what was carried — a redundant push,
+    // never a lost fix — and only a successful push advances it: refusals retry.
+    const carried = readHead(input)
     await deps.git.push(branch)
-    // The head the remote accepted, read fresh: `head` above was captured
-    // before reconcile and revert ran, so it names a commit that was never
-    // pushed — recording it made the guard's own revert look like a
-    // protected-path change for the next pass to "restore" (run 32992114904).
-    // `readHead` fails open, so this can never skip a later push.
-    pushedAt = readHead(input)
+    pushedAt = carried
     advanced = true
     return advanced
   }
