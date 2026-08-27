@@ -31,9 +31,11 @@ Two Bun behaviours the wrapper works around, both pinned by tests:
 - Bun writes the `--reporter-outfile` **only** when at least one file loads, so the wrapper deletes the
   previous JUnit before spawning. Without that, a catastrophic run would be silently described by the
   previous run's index.
-- Bun does **not** propagate later `process.env` mutations to child processes the way Node does. Anything a
-  test's subprocesses must see (the pinned `GIT_CONFIG_GLOBAL`, for instance) has to be on the child's
-  startup environment — `tests/setup.ts` cannot deliver it.
+- Bun ≤ 1.3.13 does **not** propagate later `process.env` mutations to child processes the way Node does
+  (1.4.0 fixed it — dev machines on 1.4.0 and CI on the 1.3.13 pin straddle the behaviours; the canary in
+  `tests/git-init-hint.test.ts` records which side it observes). Anything a test's subprocesses must see
+  (the pinned `GIT_CONFIG_GLOBAL`, for instance) has to be on the child's startup environment — correct
+  under both behaviours, so that rule stands regardless of the bun version.
 
 **Known Bun defect — JUnit `file` collides on basename.** Two test files with the same basename in different
 directories collapse to one `file=` attribute in the JUnit report; on a full run 53 of 1306 files end up with
