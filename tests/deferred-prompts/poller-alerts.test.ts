@@ -853,6 +853,26 @@ describe('pollAlertsOnce — alert task activity', () => {
     expect(after.lastTriggeredAt).toBe(afterFiring.lastTriggeredAt)
   })
 
+  test('a shrunken history window keeps the cursor so already-delivered entries never refire', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2), activity('e3', T3)])
+    const alert = createActivityAlert({ kind: 'activity', taskId: 'task-1' })
+    const buildProviderFn = activityBuildProviderFn(state)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(getAlertPrompt(alert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T3)
+
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2)])
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(getAlertPrompt(alert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T3)
+
+    state.setHistory('task-1', [activity('e1', T1), activity('e25', '2026-08-27T09:45:00.000Z')])
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(alert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T3)
+  })
+
   test('cursor and lastTriggeredAt advance only after successful delivery', async () => {
     const state = makeActivityProvider()
     state.setHistory('task-1', [activity('e1', T1), activity('e2', T2)])

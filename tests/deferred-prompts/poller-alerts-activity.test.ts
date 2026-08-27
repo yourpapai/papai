@@ -323,6 +323,16 @@ describe('evaluateActivityAlert', () => {
     expect(evaluation.nextCursor).toBe(T3)
   })
 
+  test('a window whose newest entry is at or older than the cursor keeps the cursor', () => {
+    const alert = makeAlert({ kind: 'activity', taskId: 'task-1' }, T3)
+    const history = new Map([['task-1', [activity('e1', T1), activity('e2', T2)]]])
+
+    const evaluation = evaluateActivityAlert(alert, history)
+
+    expect(evaluation.firingEntries).toEqual([])
+    expect(evaluation.nextCursor).toBe(T3)
+  })
+
   test('an empty history keeps the existing cursor', () => {
     const alert = makeAlert({ kind: 'activity', taskId: 'task-1' }, T2)
 

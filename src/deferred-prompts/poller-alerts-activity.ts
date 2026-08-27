@@ -156,6 +156,8 @@ const collectRelevantEntries = (
 /** Edge-triggered activity evaluation: a null cursor baselines to the newest
  * relevant entry without firing; a set cursor fires on entries strictly
  * newer. Entries with unparseable timestamps are skipped with a warn. The
+ * cursor never regresses: when the window's newest entry is at or older than
+ * the cursor (history pruned or a bounded window), the cursor is kept. The
  * returned nextCursor is only a candidate — the caller commits it via
  * updateAlertActivityState after successful delivery. */
 export const evaluateActivityAlert = (
@@ -179,7 +181,7 @@ export const evaluateActivityAlert = (
   }
   const cursorMs = Date.parse(cursor)
   const firingEntries = withMs.filter(({ ms }) => ms > cursorMs).map(({ entry }) => entry)
-  return { alert, firingEntries, nextCursor: newest?.entry.timestamp ?? cursor }
+  return { alert, firingEntries, nextCursor: newest !== null && newest.ms > cursorMs ? newest.entry.timestamp : cursor }
 }
 
 const formatActivityEntry = (entry: Activity): string => {
