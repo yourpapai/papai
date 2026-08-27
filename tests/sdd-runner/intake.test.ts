@@ -156,9 +156,11 @@ interface IntakeFixture {
   readonly spawned: { count: number }
   readonly timeline: string[]
   readonly prompts: string[]
+  readonly warnings: string[]
 }
 
 function makeFixture(dir: string, outputs: Record<string, string | string[]> = {}): IntakeFixture {
+  const warnings: string[] = []
   const emitted: EventInput[] = []
   const agentEmitted: EventInput[] = []
   const spawned = { count: 0 }
@@ -209,8 +211,11 @@ function makeFixture(dir: string, outputs: Record<string, string | string[]> = {
     sidecarDir: path.join(dir, 'sidecars'),
     runDir: dir,
     cwd: dir,
+    stdout: (line) => {
+      warnings.push(line)
+    },
   }
-  return { deps, emitted, agentEmitted, spawned, timeline, prompts }
+  return { deps, emitted, agentEmitted, spawned, timeline, prompts, warnings }
 }
 
 describe('runIntake', () => {
@@ -253,6 +258,49 @@ describe('runIntake', () => {
     expect(result).toEqual({ kind: 'single', changeName: 'fix-typo', depth: 'L', disagreement: true })
     const events = fixture.emitted
     expect(events[0]).toMatchObject({ type: 'depth', disagreement: true })
+  })
+
+  it('warns on a two-level disagreement instead of only recording it in the event', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    await runIntake(fixture.deps, { changeName: 'fix-typo', taskText: 'fix typo in README' })
+    const warning = fixture.warnings.find((line) => line.includes('disagree'))
+    expect(warning).toBeDefined()
+    // Names both readings and the one that was taken, so the operator can
+    // judge the escalation without opening the event log.
+    expect(warning).toContain('S')
+    expect(warning).toContain('L')
+  })
+
+  it('stays quiet when the estimator and the prescreen agree within one level', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    await runIntake(fixture.deps, { changeName: 'add-sessions', taskText: 'add session storage' })
+    expect(fixture.warnings.filter((line) => line.includes('disagree'))).toEqual([])
+  })
+
+  it('warns that a depth override skips oversize detection', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    await runIntake(fixture.deps, {
+      changeName: 'fix-typo',
+      taskText: 'fix typo in README',
+      depthOverride: 'S',
+    })
+    // The estimator is the only source of the oversize verdict, so an override
+    // silently rules out decomposition — say so rather than letting an oversize
+    // task draft one outsized change.
+    const warning = fixture.warnings.find((line) => line.includes('oversize'))
+    expect(warning).toBeDefined()
+    expect(warning).toContain('--depth')
+    expect(fixture.spawned.count).toBe(0)
+  })
+
+  it('does not warn about oversize detection when the estimator runs', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    await runIntake(fixture.deps, { changeName: 'add-sessions', taskText: 'add session storage' })
+    expect(fixture.warnings.filter((line) => line.includes('oversize'))).toEqual([])
   })
 
   it('returns a plan outcome with topo-ordered children and never scaffolds a change folder', async () => {

@@ -75,6 +75,8 @@ export interface IntakeDeps {
   readonly sidecarDir: string
   readonly runDir: string
   readonly cwd: string
+  /** Operator warn sink for classification caveats; omitted → silent (tests, embedders). */
+  readonly stdout?: (line: string) => void
 }
 
 export interface IntakeOptions {
@@ -206,6 +208,25 @@ async function attemptPlanner(
   return ordered
 }
 
+/**
+ * The estimator is the only source of the `oversize` verdict, so a `--depth`
+ * override — which skips the estimator spawn entirely — also rules out
+ * decomposition. Silence there lets a genuinely oversized task draft one
+ * outsized change; the override stays, the cost is named.
+ */
+function warnOverrideSkipsOversize(deps: IntakeDeps, depth: DepthProfile): void {
+  deps.stdout?.(
+    `--depth ${depth} skips scope estimation, so no oversize verdict is computed — this run will not be decomposed into child runs`,
+  )
+}
+
+/** A two-level split between the readings is worth an operator's attention, not just an event field. */
+function warnDepthDisagreement(deps: IntakeDeps, estimator: DepthProfile, prescreen: DepthProfile): void {
+  deps.stdout?.(
+    `depth readings disagree by two levels (estimator ${estimator}, prescreen ${prescreen}) — taking the higher`,
+  )
+}
+
 export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promise<IntakeResult> {
   if (options.depthOverride !== undefined) {
     deps.emit({
@@ -215,6 +236,7 @@ export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promi
       rationale: 'override via --depth',
       source: 'override',
     })
+    warnOverrideSkipsOversize(deps, options.depthOverride)
     await deps.driver.newChange(options.changeName, 'auto-sdd')
     return { kind: 'single', changeName: options.changeName, depth: options.depthOverride, disagreement: false }
   }
@@ -233,6 +255,7 @@ export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promi
   })
   const estimated = mapSignalsToProfile(estimation.value.signals)
   const { profile, disagreement } = resolveDepth(estimated, prescreen)
+  if (disagreement) warnDepthDisagreement(deps, estimated, prescreen)
   const oversize = estimation.value.oversize === true
   deps.emit({
     altitude: 'L2',

@@ -1,6 +1,9 @@
 {
   "name": "sdd-runner",
   "private": true,
+  "bin": {
+    "sdd": "./src/index.ts"
+  },
   "type": "module",
   "scripts": {
     "test": "cd .. && bun test tests/sdd-runner",

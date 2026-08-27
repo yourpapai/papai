@@ -187,7 +187,7 @@ async function attemptStageAgent<T>(
       continuation,
       attempt,
     })
-    await guardWorkingTree(deps.execGit, options.cwd, before)
+    await guardWorkingTree(deps.execGit, options.cwd, before, options.changeName)
     const parsed = options.outputSchema.safeParse(result.value)
     if (parsed.success) {
       deps.emit({ altitude: 'L1', type: 'done', agent: options.label, model, usage: result.usage })

@@ -15,7 +15,7 @@ The `sdd-runner/` workspace automates the outer loop of spec-driven development:
 INTAKE → DRAFT → REVIEW LOOP → DECOMPOSE → ATOMICITY → GATE → (exit)
 ```
 
-- **Intake**: depth classification (S/M/L), change scaffolding via `openspec new change`.
+- **Intake**: depth classification (S/M/L), change scaffolding via `openspec new change`. Two classification caveats are surfaced as `intake:` warn lines rather than left in the event log: a `--depth` override skips the estimator, which is the only source of the `oversize` verdict, so such a run is never decomposed into child runs; and a two-level split between the estimator and the keyword prescreen names both readings and the higher one taken.
 - **Draft**: proposal, specs, design per the `auto-sdd` schema DAG.
 - **Review loop**: fresh-spawned reviewer agents per round, resolver pass, convergence predicate (0 BLOCKER, 0 MATERIAL, ≤3 NITPICK over post-resolution JSON). A nitpick-only cap-hit is treated as converged (see "Severity-based convergence" under Gate protocol).
 - **Decompose**: tasks.md generation.
@@ -106,7 +106,7 @@ Every presentation carries a `### Decisions` block naming each decision's downst
 
 ### Pending-gate discovery and run-id ergonomics
 
-Multiple runs may be gate-pending concurrently, so every halt prints a next-step line with the full command and the concrete run id (`Next: sdd-runner gate resume <runId>`), copy-pasteable without editing. `sdd-runner gate` with no id lists all gate-pending runs (`listPendingGates` scans `runs/*/state.json` for a non-null `gate`, sorted by recency) with id, change name, gate version, and wait time; one pending run opens directly via `continue`. Run-id arguments accept exact ids and unambiguous prefixes (`resolveRunId`); an ambiguous prefix fails loudly listing every candidate. Prefixes are an interactive convenience — scripts should use full ids.
+Multiple runs may be gate-pending concurrently, so every halt prints a next-step line with the concrete run id (`Next: sdd <runId>`). That line is copy-pasteable only where `sdd` resolves: the `sdd-runner` package declares it as a `bin`, so `bun link` inside `sdd-runner/` installs it — without the link the equivalent is `bun run sdd-runner:start -- <runId>`. Bare `sdd` lists or opens the pending runs (`listPendingGates` scans `runs/*/state.json` for a non-null `gate`, sorted by recency, with id, change name, gate version, and wait time; a sole pending run routes directly). Run-id arguments accept exact ids and unambiguous prefixes (`resolveRunId`); an ambiguous prefix fails loudly listing every candidate. Prefixes are an interactive convenience — scripts should use full ids.
 
 ### Approve-continues semantics (**BREAKING**)
 
@@ -208,7 +208,13 @@ When the loop converges with surviving nitpicks (≤3 NITPICK findings), the fin
 ```bash
 bun run sdd-runner:start -- [<task-file> | <run-id>] [--depth S|M|L] [--pr] [--reopen [<n>]] [--config <path>]
 bun run sdd-runner:start -- stop [<run-id>]
+
+# after `bun link` inside sdd-runner/ — the form the runner's own hints print
+sdd [<task-file> | <run-id>] [flags]
+sdd stop [<run-id>]
 ```
+
+The `sdd` name comes from the package's `bin` entry (`sdd-runner/package.json` → `src/index.ts`, which carries the `#!/usr/bin/env bun` shebang the link needs). The `/sdd:auto` command wrapper documents the same flag inventory, pinned against `parseSddArgs` by a test so the prose cannot drift from the parser again.
 
 One routing verb: an existing task-file path starts a run; an exact run id or unambiguous prefix routes by the run's state (gate-pending → decision flow, interrupted/stopped → resume, completed → report). With no target on a terminal, a sole pending gate or sole interrupted run routes directly (the obvious next step), while a sole completed run opens the **session screen** — its report is passive output, one Enter away, and creation stays reachable instead of being stranded behind a dump; any other ambiguity also opens the **session screen** (`tui-session-picker.ts` — every run as one selectable row: name, stage `r<round>/<cap>`, token/cost totals, last activity, pending decision; Enter routes by state, `s` stops an active row through the liveness-aware stop seam (live → calm-stop marker, dead → immediate settle), `r` re-opens the hovered settled gate then enters its session, `n` opens the inline creation form, `q` quits writing nothing) and zero runs goes straight to the creation form. **Deletion** (`remove-run.ts`): `d` on a deletable row (persisted terminal or stopped) enters a confirmation naming the session — change name and run id, what is lost, `y` deletes permanently, any other key cancels back to the list with the cursor preserved; `d` on a running row is an immediate refusal notice instead. The guard never trusts the rendered row: at delete time (after `y`) it re-reads `state.json` and refuses anything whose persisted status is running (gate-pending and stop-requested included) or whose run dir has a live owner (`holder.json` + `kill(pid, 0)`), both pointing at calm-stop first; otherwise the run directory and nothing else is hard-deleted. The screen is a **loop, not a launcher**: every completed action — a settled gate, a finished run, a displayed report, a requested stop, a finished or cancelled creation, a settled deletion or its refusal — re-presents the screen with rows re-read from storage, and a run that took over the terminal returns to it when its surface finishes; an action that fails surfaces a notice (any key returns) instead of exiting, and only an explicit quit ends the process. Reports render inside the shell as a static block (no pager — terminals scroll) followed by the any-key return. Without a terminal the sole routable run (pending gate first, then interrupted, then completed) routes directly and ambiguity keeps the loud contract — every candidate listed with the concrete `sdd <run-id>` command that selects it, exit without side effects. Screen decisions execute through the same orchestrator entries as explicit ids (`session-flow.ts`); no new pipeline verbs exist behind it.
 
@@ -243,6 +249,10 @@ The config `deadline` key (minutes) arms `gateDeadlineAt` at presentation (bell/
 `sdd <run-id> --reopen [<n>]` re-presents a settled auto-decided gate at a fresh version as an unanswered digest (boxes unchecked, answered section cleared, fresh hashes sidecar), reverts a terminal `completed` status to the pre-settle stage state, clears deadline fields, and sets `state.gate` pending so the existing veto/abort resume mechanics apply. It refuses when a gate is already pending, the version is missing/never settled, or not the latest settled gate.
 
 Queued steering: `runs/<id>/steer.md` accepts `extend`, `veto <id>=<redirect>`, `abort`, consumed at round boundaries (staged set persisted to `steer.staged.json` before the append-only rename to `steer.consumed.<n>.md`); unknown directives warn and skip; a steered `extend` re-reads the persisted round cap at the next boundary and never consumes `autoExtendsUsed`; staged aborts/vetoes take precedence over pending auto-settles.
+
+## Write guard
+
+Every stage spawn is bracketed by a `git status --porcelain` snapshot: any path newly dirtied outside the run's **own** change folder (`openspec/changes/<changeName>/`) fails the attempt with `DiffGuardViolationError` naming each violation (`working-tree-guard.ts`). The scope is the run's folder, not the whole `openspec/changes/` tree, so an agent cannot rewrite a *sibling* change's artifacts and have it read as in-bounds; a caller with no change name in hand falls back to the tree-wide prefix. Sidecars live under the gitignored `workDir`, so they never register as dirty.
 
 ## Durability artifacts
 

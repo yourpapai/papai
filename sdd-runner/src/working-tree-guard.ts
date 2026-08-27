@@ -16,7 +16,18 @@ export class DiffGuardViolationError extends Error {
   }
 }
 
-const ALLOWED_PREFIX = 'openspec/changes/'
+const CHANGES_ROOT = 'openspec/changes/'
+
+/**
+ * The write set an agent of this run may dirty: its own change folder when the
+ * run names one, else the whole changes tree. Scoping to the run's own folder
+ * is what stops an agent rewriting a *different* change's artifacts — the
+ * broad fallback exists only for callers with no change in hand.
+ */
+function allowedPrefix(changeName: string | undefined): string {
+  if (changeName === undefined || changeName === '') return CHANGES_ROOT
+  return `${CHANGES_ROOT}${changeName}/`
+}
 
 function parseDirty(stdout: string): string[] {
   return stdout
@@ -31,8 +42,14 @@ export async function snapshotWorkingTree(execGit: ExecGitFn, cwd: string): Prom
   return new Set(parseDirty(stdout))
 }
 
-export async function guardWorkingTree(execGit: ExecGitFn, cwd: string, before: Set<string>): Promise<void> {
+export async function guardWorkingTree(
+  execGit: ExecGitFn,
+  cwd: string,
+  before: Set<string>,
+  changeName?: string,
+): Promise<void> {
   const after = await snapshotWorkingTree(execGit, cwd)
-  const violations = [...after].filter((entry) => !before.has(entry) && !entry.startsWith(ALLOWED_PREFIX))
+  const prefix = allowedPrefix(changeName)
+  const violations = [...after].filter((entry) => !before.has(entry) && !entry.startsWith(prefix))
   if (violations.length > 0) throw new DiffGuardViolationError(violations)
 }
