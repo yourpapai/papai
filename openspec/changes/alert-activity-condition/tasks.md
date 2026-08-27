@@ -1,0 +1,32 @@
+## 1. Migration: `last_activity_cursor` column
+
+- [ ] 1.1 Write failing migration test `tests/db/migrations/082_alert_activity_cursor.test.ts` (069 template: `setupTestDb` + `mockLogger`) asserting migration id `082_alert_activity_cursor`, that `alert_prompts.last_activity_cursor` is added and nullable, and idempotent double-run. Verify: `bun run test tests/db/migrations/082_alert_activity_cursor.test.ts`
+- [ ] 1.2 Create `src/db/migrations/082_alert_activity_cursor.ts` (idempotent `ALTER TABLE` behind the `PRAGMA table_info` columnExists guard), register `migration082AlertActivityCursor` after `migration081AlertTaskInstancePin` in `src/db/index.ts`, and add `lastActivityCursor: text('last_activity_cursor')` to `alertPrompts` in `src/db/deferred-schema.ts`. Verify: `bun run test tests/db/migrations/082_alert_activity_cursor.test.ts && bun run typecheck`
+
+## 2. Condition schema and walkers
+
+- [ ] 2.1 Write failing tests in `tests/deferred-prompts/types.test.ts`: activity leaf accepted with and without `categories`; missing `taskId` rejected; activity leaves nest under `and`/`or`; `describeCondition` renders the activity leaf (task id, categories when present). Verify: `bun run test tests/deferred-prompts/types.test.ts`
+- [ ] 2.2 Implement `activityLeafSchema` (`kind: 'activity'`, required `taskId`, optional `categories`) as a member of the `alertConditionSchema` union, add `ActivityLeafCondition` to `AlertCondition`, and add `lastActivityCursor: string | null` to the `AlertPrompt` domain type in `src/deferred-prompts/types.ts`. Verify: `bun run test tests/deferred-prompts/types.test.ts`
+- [ ] 2.3 Write failing walker tests (condition-eval suite): `extractActivityTaskIds` and `isPureActivityCondition` mirror the pure-watch helpers; `evaluateCondition` returns false for activity leaves; `extractFields` skips activity leaves. Verify: `bun run test tests/deferred-prompts`
+- [ ] 2.4 Implement the walkers: `extractActivityTaskIds`/`isPureActivityCondition` and the `'kind' in node` false-branch in `evaluateCondition` in `src/deferred-prompts/condition-eval.ts`; activity-leaf skip in `extractFields` in `src/deferred-prompts/fetch-tasks.ts`. Verify: `bun run test tests/deferred-prompts && bun run typecheck`
+
+## 3. Cursor persistence
+
+- [ ] 3.1 Write failing tests in `tests/deferred-prompts/alerts.test.ts`: `lastActivityCursor` round-trips through `createAlertPrompt` (null at creation) and `toAlertPrompt`; `updateAlertActivityState(id, userId, lastTriggeredAt, lastActivityCursor)` writes cursor + `lastTriggeredAt`; a condition update through `updateAlertPrompt` resets the cursor to null. Verify: `bun run test tests/deferred-prompts/alerts.test.ts`
+- [ ] 3.2 Implement the round-trip, the `updateAlertActivityState` helper (sibling of `updateAlertMatchState`), and the cursor reset alongside the existing `matched_task_ids` reset in `src/deferred-prompts/alerts.ts`. Verify: `bun run test tests/deferred-prompts/alerts.test.ts && bun run typecheck`
+
+## 4. Activity polling path
+
+- [ ] 4.1 Write failing poller tests in `tests/deferred-prompts/poller-alerts.test.ts`: first poll baselines cursor without firing; later polls fire on entries newer than the cursor and advance cursor + `lastTriggeredAt` only after successful delivery; entries at/below the cursor never refire; cooldown suppresses refire; `categories` passed through to `getTaskHistory`; capability loss at poll time skips that alert with a warn (cursor unchanged, cycle continues); an activity-only instance performs no `listProjects`/`listTasks`/`searchTasks`; a mixed instance still lists tasks for field alerts. Verify: `bun run test tests/deferred-prompts/poller-alerts.test.ts`
+- [ ] 4.2 Create `src/deferred-prompts/poller-alerts-activity.ts`: instance-level deduped union of watched taskIds fetched via `provider.getTaskHistory(taskId, { categories })` under p-limit inside `runWithProviderRequestScope`; poll-time capability re-check (`getTaskHistory === undefined` or missing `activities.read`) → skip + warn; client-side sort on `Date.parse` with skip-and-warn on unparseable entries and strict newer-than-cursor filtering; firing-summary builder sharing `EXTERNAL_DATA_FRAMING` + `wrapUntrusted` over author/category/field/added/removed. Verify: `bun run test tests/deferred-prompts/poller-alerts.test.ts`
+- [ ] 4.3 Wire the path into `src/deferred-prompts/poller-alerts.ts`: extend the instance partition (`allAlertsArePureWatches` → targeted = pure-watch ∪ pure-activity, still computed on the full active set), route activity alerts through the history path per routable context, and let activity firings join the existing per-context `fireAlertBatch` with `updateAlertActivityState` on delivery. Verify: `bun run test tests/deferred-prompts && bun run typecheck`
+
+## 5. `create_alert` gating and guidance
+
+- [ ] 5.1 Write failing tool tests in `tests/deferred-prompts/tools.test.ts` (or `tool-handlers.test.ts`): activity condition refused with the standard `{ error }` guidance shape when the capability flag is false or the delivery context's task instance is null; accepted when both hold; a mixed activity+field tree refused at create and at condition update; tool/condition descriptions mention the activity kind. Verify: `bun run test tests/deferred-prompts`
+- [ ] 5.2 Plumb the assembly-time boolean flag (`provider.capabilities.has('activities.read') && provider.getTaskHistory !== undefined`, computed in `buildTools`) through `addProviderIndependentTools` → `addDeferredPromptTools` → `makeCreateAlertTool` → `executeCreate` — never building a provider inside the tool — and apply the shared pure-tree validator in `createAlert` and `updateAlertFields` in `src/deferred-prompts/tool-handlers.ts`; update the condition `.describe()` and `create_alert` description. Verify: `bun run test tests/deferred-prompts && bun run typecheck`
+
+## 6. Full gate and docs
+
+- [ ] 6.1 Update affected `docs/architecture/` pages: `tools.md` (activity condition kind on `create_alert`, capability gating + guidance), `behaviors.md` (activity alert polling semantics: baseline cursor, edge-triggered firing, cooldown catch-up, activity-only contexts skip whole-list fetch). Verify: `bun run test docs 2>/dev/null || true` — visual review of rendered markdown
+- [ ] 6.2 Run the full gate: `bun run test`, `bun run typecheck`, `bun run lint`; fix any fallout before finishing. Verify: all three commands exit clean
