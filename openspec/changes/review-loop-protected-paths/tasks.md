@@ -18,11 +18,11 @@
 
 ## 2. The push guard records the head it actually pushed
 
-- [ ] 2.1 In `tests/opencode-agent/phases.test.ts`, add a failing case after a guarded push
+- [x] 2.1 In `tests/opencode-agent/phases.test.ts`, add a failing case after a guarded push
       (one that reverted a protected path): a second push's `dropUnpushable` pass must see no
       protected change since the recorded push point — i.e. `changedSince` is called with the
       post-revert head, and `revertPaths` is never asked to restore the guard's own revert.
-- [ ] 2.2 In `opencode-agent/src/phases/review-push.ts`, set `pushedAt` from a fresh
+- [x] 2.2 In `opencode-agent/src/phases/review-push.ts`, set `pushedAt` from a fresh
       `readHead(input)` after `deps.git.push(branch)` instead of the head captured before
       reconcile/revert (design D3). Suite green.
 

@@ -93,6 +93,22 @@ const dropUnpushable = async (input: PhaseInput, since: string, blocked: string[
   }
 }
 
+/**
+ * Everything that belongs between deciding to push and the push itself.
+ *
+ * Reconcile before the protected-path revert, not after it: a reconciling
+ * merge can bring the human line's own commits in, and only once it has
+ * landed can `dropUnpushable` see — and take back out — a path a push cannot
+ * carry. The other order lets a workflow file ride the merge into a push
+ * GitHub refuses whole (the issue #240 failure class). `push` reconciles
+ * again internally, idempotently — the ancestor check answers "already
+ * merged".
+ */
+const guardBeforePush = async (input: PhaseInput, branch: string, since: string, blocked: string[]): Promise<void> => {
+  await input.deps.git.reconcile(branch)
+  await dropUnpushable(input, since, blocked)
+}
+
 export const createPush = (input: PhaseInput, branch: string): DurablePush => {
   const { deps, state } = input
   // Accumulated across every push this loop makes, because the marker fires per
@@ -108,16 +124,14 @@ export const createPush = (input: PhaseInput, branch: string): DurablePush => {
     const [last, head] = await Promise.all([pushedAt, readHead(input)])
     if (!committed && last !== null && head !== null && last === head) return advanced
 
-    // Before the protected-path revert, not after it: a reconciling merge can
-    // bring the human line's own commits in, and only once it has landed can
-    // `dropUnpushable` see — and take back out — a path a push cannot carry.
-    // The other order lets a workflow file ride the merge into a push GitHub
-    // refuses whole (the issue #240 failure class). `push` reconciles again
-    // internally, idempotently — the ancestor check answers "already merged".
-    if (last !== null) await deps.git.reconcile(branch)
-    if (last !== null) await dropUnpushable(input, last, blocked)
+    if (last !== null) await guardBeforePush(input, branch, last, blocked)
     await deps.git.push(branch)
-    pushedAt = Promise.resolve(head)
+    // The head the remote accepted, read fresh: `head` above was captured
+    // before reconcile and revert ran, so it names a commit that was never
+    // pushed — recording it made the guard's own revert look like a
+    // protected-path change for the next pass to "restore" (run 32992114904).
+    // `readHead` fails open, so this can never skip a later push.
+    pushedAt = readHead(input)
     advanced = true
     return advanced
   }
