@@ -28,6 +28,13 @@ import type { PhaseMs, RoundMetric, UsageTotals } from './trace-log.js'
 
 const GROUP_CAP = 20
 
+// A needs-human record's manual-change content — suggested fix plus fixer
+// reasoning — is what a maintainer applies by hand, often with no other record
+// surviving the run (on CI the ledger dies with the runner). One bound for the
+// combined block, not per field, so two long fields cannot double the width.
+const MANUAL_FIX_BOUND = 800
+const MANUAL_FIX_INDENT = '      '
+
 const RUN_ARTIFACTS = ['summary.txt', 'metrics.json', 'ledger.json', 'trace.jsonl', 'agent-output.log', 'state.json']
 
 export interface MetricsJson {
@@ -148,6 +155,23 @@ function buildStatsLine(stats: StatsSnapshot | undefined): string | null {
   return `Stats: ${parts.join(' · ')}`
 }
 
+function manualFixLines(record: LedgerIssueRecord): string[] {
+  const parts: string[] = []
+  const suggested = record.issue.suggestedFix.trim()
+  const reasoning = record.verifierDecision?.reasoning.trim() ?? ''
+  if (suggested !== '') parts.push(`apply by hand: ${suggested}`)
+  if (reasoning !== '') parts.push(`fixer note: ${reasoning}`)
+  if (parts.length === 0) {
+    return [`${MANUAL_FIX_INDENT}(no manual-change content recorded — see ledger.json)`]
+  }
+  const combined = parts.join('\n')
+  const text =
+    combined.length > MANUAL_FIX_BOUND
+      ? `${combined.slice(0, MANUAL_FIX_BOUND)}… (truncated; full text in ledger.json)`
+      : combined
+  return text.split('\n').map((line) => `${MANUAL_FIX_INDENT}${line}`)
+}
+
 function issuesBlock(ledger: IssueLedgerSnapshot): string[] {
   const records = Object.values(ledger.issues)
   if (records.length === 0) return []
@@ -173,6 +197,7 @@ function issuesBlock(ledger: IssueLedgerSnapshot): string[] {
           title: record.issue.title,
         })}`,
       )
+      if (group === 'needsHuman') lines.push(...manualFixLines(record))
     }
     if (groupRecords.length > GROUP_CAP) {
       lines.push(`    …and ${groupRecords.length - GROUP_CAP} more (see ledger.json)`)
