@@ -14,7 +14,8 @@ import {
   type ActorProviderRequestScope,
   type ProviderRequestScope,
 } from '../../src/analytics/provider-request-scope.js'
-import { enrichTasks, fetchAllTasks } from '../../src/deferred-prompts/fetch-tasks.js'
+import { alertConditionSchema } from '../../src/deferred-prompts/condition-schema.js'
+import { alertsNeedFullTasks, enrichTasks, fetchAllTasks } from '../../src/deferred-prompts/fetch-tasks.js'
 import { ProviderClassifiedError, providerError, type ProviderError } from '../../src/providers/errors.js'
 import type { Task, TaskProvider } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -25,6 +26,23 @@ const lightTasks: Task[] = [
   { id: 'task-1', title: 'One', url: 'http://test/1' },
   { id: 'task-2', title: 'Two', url: 'http://test/2' },
 ]
+
+describe('alertsNeedFullTasks', () => {
+  test('activity leaves do not require full task enrichment', () => {
+    const condition = alertConditionSchema.parse({ kind: 'activity', taskId: 'task-1' })
+    expect(alertsNeedFullTasks([{ condition }])).toBe(false)
+  })
+
+  test('activity leaves alongside an assignee filter still require full tasks', () => {
+    const condition = alertConditionSchema.parse({
+      and: [
+        { kind: 'activity', taskId: 'task-1' },
+        { field: 'task.assignee', op: 'eq', value: 'me' },
+      ],
+    })
+    expect(alertsNeedFullTasks([{ condition }])).toBe(true)
+  })
+})
 
 /** getTask mock that rejects for a specific task id — kept at module scope so the
  *  linter's no-conditional-in-test rule doesn't flag the branch. */

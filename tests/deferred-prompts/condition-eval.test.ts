@@ -7,7 +7,9 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   evaluateCondition,
+  extractActivityTaskIds,
   extractWatchedTaskIds,
+  isPureActivityCondition,
   isPureWatchCondition,
 } from '../../src/deferred-prompts/condition-eval.js'
 import { alertConditionSchema } from '../../src/deferred-prompts/types.js'
@@ -48,5 +50,54 @@ describe('condition-eval: activity leaves', () => {
       and: [{ field: 'task.id', op: 'eq', value: 'task-1' }, activityLeaf],
     })
     expect(isPureWatchCondition(tree)).toBe(false)
+  })
+})
+
+describe('extractActivityTaskIds', () => {
+  test('collects the deduped union of activity leaf task ids across the tree', () => {
+    const tree = alertConditionSchema.parse({
+      and: [
+        { kind: 'activity', taskId: 'task-1' },
+        {
+          or: [
+            { kind: 'activity', taskId: 'task-2' },
+            { kind: 'activity', taskId: 'task-1' },
+          ],
+        },
+      ],
+    })
+    expect(extractActivityTaskIds(tree)).toEqual(['task-1', 'task-2'])
+  })
+
+  test('ignores field leaves and watch leaves', () => {
+    const tree = alertConditionSchema.parse({
+      and: [
+        { kind: 'activity', taskId: 'task-1' },
+        { field: 'task.id', op: 'eq', value: 'task-9' },
+        { field: 'task.status', op: 'eq', value: 'done' },
+      ],
+    })
+    expect(extractActivityTaskIds(tree)).toEqual(['task-1'])
+    const fieldOnly = alertConditionSchema.parse({ field: 'task.status', op: 'eq', value: 'done' })
+    expect(extractActivityTaskIds(fieldOnly)).toEqual([])
+  })
+})
+
+describe('isPureActivityCondition', () => {
+  test('true for a bare activity leaf and for and/or trees of activity leaves', () => {
+    expect(isPureActivityCondition(activityLeaf)).toBe(true)
+    const tree = alertConditionSchema.parse({
+      or: [activityLeaf, { kind: 'activity', taskId: 'task-2' }],
+    })
+    expect(isPureActivityCondition(tree)).toBe(true)
+  })
+
+  test('false when any field leaf is present', () => {
+    const fieldOnly = alertConditionSchema.parse({ field: 'task.status', op: 'eq', value: 'done' })
+    expect(isPureActivityCondition(fieldOnly)).toBe(false)
+    const tree = alertConditionSchema.parse({
+      and: [activityLeaf, { field: 'task.id', op: 'eq', value: 'task-1' }],
+    })
+    expect(isPureActivityCondition(tree)).toBe(false)
   })
 })

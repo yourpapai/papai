@@ -106,6 +106,29 @@ export const isPureWatchCondition = (condition: AlertCondition): boolean => {
   return isWatchLeaf(condition)
 }
 
+export const extractActivityTaskIds = (condition: AlertCondition): string[] => {
+  const ids = new Set<string>()
+  const walk = (node: AlertCondition): void => {
+    if ('and' in node) {
+      for (const child of node.and) walk(child)
+      return
+    }
+    if ('or' in node) {
+      for (const child of node.or) walk(child)
+      return
+    }
+    if ('kind' in node && node.taskId !== undefined) ids.add(node.taskId)
+  }
+  walk(condition)
+  return [...ids]
+}
+
+export const isPureActivityCondition = (condition: AlertCondition): boolean => {
+  if ('and' in condition) return condition.and.every(isPureActivityCondition)
+  if ('or' in condition) return condition.or.every(isPureActivityCondition)
+  return 'kind' in condition
+}
+
 const sanitizeValue = (value: string | number): string => {
   const str = String(value)
   const clean = str.replaceAll(/[\n\r]/gu, ' ').slice(0, 200)
