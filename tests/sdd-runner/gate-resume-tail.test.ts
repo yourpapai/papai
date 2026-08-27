@@ -94,7 +94,13 @@ describe('gate-resume-tail settle flows', () => {
     const result = await settleApprovedGate(makeCtx(state, deps), { ...CONVERGED })
     expect(result.outcome).toBe('approved')
     expect(result.version).toBe(1)
-    expect((await import('../../sdd-runner/src/run-state.js')).loadRunState(dir, state.runId)).toBeDefined()
+    // Awaited via .resolves on purpose: a bare expect(promise).toBeDefined() is
+    // vacuously true and leaves the read racing this test's afterEach rmSync —
+    // under threadpool load the read lost that race, and the floating ENOENT
+    // rejection was attributed to the *next* test (the recurring settleVeto flake).
+    await expect(
+      (await import('../../sdd-runner/src/run-state.js')).loadRunState(dir, state.runId),
+    ).resolves.toBeDefined()
   })
 
   it('settleVeto re-presents the next gate version after applying vetoes', async () => {
