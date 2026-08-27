@@ -87,6 +87,15 @@ function stopRequestingSpawn(
   return { spawn, markerArrived: (): boolean => markerArrived }
 }
 
+/** Crash-double: rejects the atomicity spawn, standing in for a hard crash mid-flight. */
+function crashOnAtomicitySpawn(base: SpawnFn): SpawnFn {
+  return (command, args, options) => {
+    const prompt = String(args[args.length - 1])
+    if (prompt.includes('atomicity.json')) return Promise.reject(new Error('hard crash mid-flight'))
+    return base(command, args, options)
+  }
+}
+
 /**
  * D6 plan-branch helper: the first `depth.json` spawn (the parent intake)
  * classifies oversize and routes into the plan branch; every later one (child
@@ -3100,6 +3109,29 @@ describe('continuation start for a changeName-carrying child (D6)', () => {
       .filter((e) => e.type === 'stage_enter')
       .map((e) => (e as { stage: string }).stage)
     expect(stages).toEqual(['gate'])
+  })
+
+  it('persists the inherited depth before the atomicity flight, so a crash mid-tail resumes instead of stranding (D8)', async () => {
+    const fixture = makeFixture()
+    const { taskFile } = await seedSplitParent(fixture, 'M')
+    // The adopted change reads drafted-and-reviewed, as it does in production.
+    const settled = createSettledDriver(fixture)
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      driver: settled,
+      spawn: crashOnAtomicitySpawn(fixture.deps.spawn),
+    }
+
+    await runStart(deps, { child: SPLIT_CHILDREN[0], taskFile }).catch(() => undefined)
+
+    const crashed = await loadRunState(fixture.deps.config.workDir, 'add-thing-2')
+    expect(crashed.depth).toBe('M')
+    expect(crashed.stage).toBe('atomicity')
+    expect(crashed.gate).toBe(null)
+
+    const result = await runResume({ ...fixture.deps, driver: settled }, 'add-thing-2')
+
+    expect(result.halted).toBe('gate')
   })
 })
 

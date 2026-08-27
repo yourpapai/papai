@@ -21,7 +21,7 @@ import type { PlanChild } from './plan.js'
 import { runTailFromAtomicity } from './post-review-tail.js'
 import { settleStoppedResult } from './resume-flow.js'
 import { readAllRunStates } from './run-index.js'
-import { createRunState, loadRunState, resolveRoundCap } from './run-state.js'
+import { createRunState, loadRunState, resolveRoundCap, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { slugifySessionId } from './session-id.js'
 import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controller.js'
@@ -81,6 +81,35 @@ async function continuationDepthOf(deps: OrchestratorDeps, options: Continuation
 }
 
 /**
+ * D6 continuation state: the adopted change's run state — allocated, depth
+ * classified, and persisted before the tail's first flight (D8
+ * crash-durability: a crash mid-atomicity resumes on the inherited depth
+ * instead of stranding as an unclassifiable 'intake' run).
+ */
+async function continuationStateOf(
+  deps: OrchestratorDeps,
+  options: ContinuationStartOptions,
+  changeName: string,
+): Promise<{ readonly state: RunState; readonly depth: DepthProfile }> {
+  const depth = await continuationDepthOf(deps, options)
+  const state = await createRunState(
+    {
+      workDir: deps.config.workDir,
+      repoRoot: deps.config.repoRoot,
+      changeName,
+      runId: await nextContinuationSessionId(deps.config.workDir, slugifySessionId(changeName)),
+      spendBaselineUsd: options.spendBaselineUsd,
+    },
+    nowOf(deps),
+  )
+  state.depth = depth
+  state.roundCap = resolveRoundCap({ depth, roundCap: undefined })
+  state.stage = depth === 'S' ? 'gate' : 'atomicity'
+  await saveRunState(state, nowOf(deps))
+  return { state, depth }
+}
+
+/**
  * D6 continuation start: the child that carries `changeName` adopts the
  * existing change folder — intake/draft/review are skipped (the artifacts are
  * already drafted and review-settled in the parent; re-running would
@@ -96,20 +125,8 @@ export async function runContinuationStart(
   options: ContinuationStartOptions,
   changeName: string,
 ): Promise<RunStartResult> {
-  const depth = await continuationDepthOf(deps, options)
-  const state = await createRunState(
-    {
-      workDir: deps.config.workDir,
-      repoRoot: deps.config.repoRoot,
-      changeName,
-      runId: await nextContinuationSessionId(deps.config.workDir, slugifySessionId(changeName)),
-      spendBaselineUsd: options.spendBaselineUsd,
-    },
-    nowOf(deps),
-  )
+  const { state, depth } = await continuationStateOf(deps, options, changeName)
   options.onRunDirReady?.(state.runDir)
-  state.depth = depth
-  state.roundCap = resolveRoundCap({ depth, roundCap: undefined })
   const emit = buildBus(deps, logPathFor(state))
   writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
