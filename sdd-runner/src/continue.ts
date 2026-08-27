@@ -65,7 +65,8 @@ export async function runContinue(
 
 /**
  * Discovery for a bare `continue`: exactly one gate-pending run routes to it;
- * several print the per-run gate commands and route nowhere (the operator
+ * several print the per-run gate commands — mode beside version, matching
+ * `routeBySoleCandidate`'s hint (D3) — and route nowhere (the operator
  * picks); none is an error (there is nothing obvious to continue).
  */
 async function pickContinueRun(deps: OrchestratorDeps): Promise<string | null> {
@@ -74,7 +75,7 @@ async function pickContinueRun(deps: OrchestratorDeps): Promise<string | null> {
   if (pending.length > 1) {
     deps.stdout?.('several runs await gate decisions:')
     for (const entry of pending) {
-      deps.stdout?.(`  sdd ${entry.runId}  (${entry.changeName}, gate v${entry.gateVersion})`)
+      deps.stdout?.(`  sdd ${entry.runId}  (${entry.changeName}, gate ${entry.gateMode} v${entry.gateVersion})`)
     }
     return null
   }

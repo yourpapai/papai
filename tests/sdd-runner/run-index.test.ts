@@ -296,4 +296,21 @@ describe('descendantGateOf (D1 tree discovery)', () => {
 
     expect(await descendantGateOf(workDir, await loadRunState(workDir, 'parent-run'))).toBe(null)
   })
+
+  it('tree-member prefix ambiguity keeps failing loudly listing every candidate (D3 pin)', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'tree-run-sub', { gate: { mode: 'final', version: 1 }, changeName: 'auth-db' })
+    await seedRun(workDir, 'tree-run', {
+      gate: null,
+      children: { 'auth-db': { status: 'running' } },
+      spawns: [{ child: 'auth-db', runId: 'tree-run-sub' }],
+    })
+
+    const message = (await errorOf(resolveRunId(workDir, 'tree-ru'))).message
+    expect(message).toMatch(/ambiguous/iu)
+    expect(message).toContain('tree-run')
+    expect(message).toContain('tree-run-sub')
+    // one candidate per line: both tree members are listed
+    expect(message.match(/\n {2}tree-run/gu)).toHaveLength(2)
+  })
 })

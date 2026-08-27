@@ -10,6 +10,7 @@ import path from 'node:path'
 
 import { resolveTarget } from '../../sdd-runner/src/cli-routing.js'
 import type { RouteAction } from '../../sdd-runner/src/cli-routing.js'
+import { appendEvent } from '../../sdd-runner/src/events.js'
 
 const dirs: string[] = []
 function makeDir(): string {
@@ -32,7 +33,9 @@ function seedRun(
     status: string
     stage?: 'intake' | 'draft' | 'review' | 'decompose' | 'atomicity' | 'gate'
     updatedAt?: string
+    children?: Record<string, { status: 'pending' | 'running' | 'done' | 'failed' }>
   }) => void,
+  spawns: { child: string; runId: string }[] = [],
 ): string {
   const runDir = path.join(workDir, 'runs', runId)
 
@@ -52,10 +55,19 @@ function seedRun(
     autoExtendsUsed: 0,
     gateDeadlineAt: null,
     gateDeadlineReArmed: false,
+    children: undefined as Record<string, { status: 'pending' | 'running' | 'done' | 'failed' }> | undefined,
   }
   mutate(state)
   mkdirSync(runDir, { recursive: true })
   writeFileSync(path.join(runDir, 'state.json'), JSON.stringify(state, null, 2))
+  for (const spawn of spawns) {
+    appendEvent(path.join(runDir, 'events.ndjson'), {
+      altitude: 'L2',
+      type: 'child_spawned',
+      child: spawn.child,
+      runId: spawn.runId,
+    })
+  }
   return runId
 }
 
@@ -231,6 +243,89 @@ describe('sdd [<target>] routing table (6.1/6.2)', () => {
   it('an unknown non-file target resolves as a run id and fails loudly', async () => {
     const dir = makeDir()
     await expect(resolveTarget({ workDir: path.join(dir, '.sdd'), target: 'nope-42' })).rejects.toThrow(/nope-42/u)
+  })
+})
+
+describe('sdd <parent-id> tree-aware routing (D3)', () => {
+  it("a gate-null parent with a gate-pending child routes to the child's gate, not a blind resume", async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'child-run-1', (state) => {
+      state.gate = { mode: 'early', version: 2 }
+    })
+    seedRun(
+      workDir,
+      'parent-run',
+      (state) => {
+        state.status = 'stopped'
+        state.children = { 'auth-db': { status: 'running' } }
+      },
+      [{ child: 'auth-db', runId: 'child-run-1' }],
+    )
+    expect(await resolveTarget({ workDir, target: 'parent-run' })).toEqual({ kind: 'gate', runId: 'child-run-1' })
+  })
+
+  it('a running parent descends the same way — the child gate wins over the resume branch', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'child-run-1', (state) => {
+      state.gate = { mode: 'early', version: 1 }
+    })
+    seedRun(
+      workDir,
+      'parent-run',
+      (state) => {
+        state.children = { 'auth-db': { status: 'running' } }
+      },
+      [{ child: 'auth-db', runId: 'child-run-1' }],
+    )
+    expect(await resolveTarget({ workDir, target: 'parent-run' })).toEqual({ kind: 'gate', runId: 'child-run-1' })
+  })
+
+  it('a parent whose in-flight child is mid-stage (no pending gate) still routes to the plain resume', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'child-run-1', (state) => {
+      state.gate = null
+    })
+    seedRun(
+      workDir,
+      'parent-run',
+      (state) => {
+        state.children = { 'auth-db': { status: 'running' } }
+      },
+      [{ child: 'auth-db', runId: 'child-run-1' }],
+    )
+    expect(await resolveTarget({ workDir, target: 'parent-run' })).toEqual({ kind: 'resume', runId: 'parent-run' })
+  })
+
+  it('non-parent routing stays unchanged — a stopped single run routes to resume', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'single-halt', (state) => {
+      state.status = 'stopped'
+    })
+    expect(await resolveTarget({ workDir, target: 'single-halt' })).toEqual({ kind: 'resume', runId: 'single-halt' })
+  })
+
+  it('tree-member prefix ambiguity keeps failing loudly listing every candidate', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'tree-run-sub', (state) => {
+      state.gate = { mode: 'final', version: 1 }
+    })
+    seedRun(
+      workDir,
+      'tree-run',
+      (state) => {
+        state.children = { 'auth-db': { status: 'running' } }
+      },
+      [{ child: 'auth-db', runId: 'tree-run-sub' }],
+    )
+    const listing = await failureMessageOf(resolveTarget({ workDir, target: 'tree-ru' }))
+    expect(listing).toMatch(/ambiguous/u)
+    expect(listing).toContain('tree-run')
+    expect(listing).toContain('tree-run-sub')
   })
 })
 
