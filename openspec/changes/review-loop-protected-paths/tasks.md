@@ -37,6 +37,6 @@
 
 ## 4. Verification
 
-- [ ] 4.1 `bun run test:affected` over the touched paths in the loop; one full
+- [x] 4.1 `bun run test:affected` over the touched paths in the loop; one full
       `bun run test` plus `bun check:full` before finishing; `openspec validate
       review-loop-protected-paths --strict` passes.
