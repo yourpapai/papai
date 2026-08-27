@@ -5,6 +5,7 @@
 
 import { logger } from '../logger.js'
 import type { Task } from '../providers/types.js'
+import { sanitizeExternalData } from '../security/prompt-boundary.js'
 import type { AlertCondition, LeafCondition } from './types.js'
 
 const log = logger.child({ scope: 'deferred:condition-eval' })
@@ -130,8 +131,7 @@ export const isPureActivityCondition = (condition: AlertCondition): boolean => {
 }
 
 const sanitizeValue = (value: string | number): string => {
-  const str = String(value)
-  const clean = str.replaceAll(/[\n\r]/gu, ' ').slice(0, 200)
+  const clean = sanitizeExternalData(String(value)).slice(0, 200)
   return `"${clean}"`
 }
 
@@ -139,7 +139,10 @@ export const describeCondition = (condition: AlertCondition): string => {
   if ('and' in condition) return `(${condition.and.map(describeCondition).join(' AND ')})`
   if ('or' in condition) return `(${condition.or.map(describeCondition).join(' OR ')})`
   if ('kind' in condition) {
-    const categories = condition.categories === undefined ? '' : ` (categories: ${condition.categories.join(', ')})`
+    const categories =
+      condition.categories === undefined
+        ? ''
+        : ` (categories: ${condition.categories.map((c) => sanitizeExternalData(c)).join(', ')})`
     return `activity on task ${sanitizeValue(condition.taskId)}${categories}`
   }
   const { field, op, value } = condition
