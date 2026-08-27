@@ -69,10 +69,16 @@ discards the whole commit — and lands the "say what a maintainer should apply 
 the fixer's result schema: a fix that genuinely requires such an edit is verdict `needs_human`
 with the exact change described in `reasoning`, editing nothing. All three fix prompts carry it,
 retries included, for the same reason the ladder is. The reviewer prompt carries the reporting
-half: a workflow-fix finding describes the change in `suggestedFix` for manual application — the
-defect is real, it just does not route to an edit that can never be pushed. Run 32992114904
-(issue #360) is the cost of the gap: the fixer edited `.github/workflows/ci.yml`, the push guard
-reverted it, and the run died on a push GitHub refused whole.
+half: a workflow-fix finding describes the change in `suggestedFix` for manual application —
+self-contained, the exact replacement text or a copy-pasteable patch, because it may be the
+only record of the change that survives the run. The defect is real, it just does not route to
+an edit that can never be pushed. Run 32992114904 (issue #360) is the cost of the gap: the
+fixer edited `.github/workflows/ci.yml`, the push guard reverted it, and the run died on a push
+GitHub refused whole. And PR #362's `#35d7c517` is the cost of the _reporting_ gap the loop
+has since closed: a needs-human finding reached the maintainer as a title line while the exact
+change sat in a `ledger.json` that dies with the runner — so the run summary now renders the
+suggested fix and the fixer's reasoning under each needs-human line, bounded, with a ledger
+pointer when neither exists.
 
 Like the ladder, that constant is **duplicated across the workspace boundary and pinned**:
 `opencode-agent`'s `protected-paths.ts` owns the text, this workspace's copy carries it verbatim
