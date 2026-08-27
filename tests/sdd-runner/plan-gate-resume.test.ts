@@ -166,6 +166,78 @@ describe('runPlanGateResume (D12)', () => {
     expect(stdoutLines.some((line) => line.includes('no decision yet'))).toBe(true)
   })
 
+  it('a flagless TTY resume drives the plan session TUI and settles its approve', async () => {
+    const { repoRoot, deps, state } = await seedParent(UNCHECKED_GATE)
+    const interactive: OrchestratorDeps = { ...deps, interactive: () => true, gateKeyScript: 'a' }
+    const planDeps: PlanGateResumeDeps = {
+      startChildRun: async (child) => {
+        const childState = await createRunState({
+          workDir: deps.config.workDir,
+          repoRoot,
+          changeName: child.id,
+        })
+        childState.gate = { mode: 'final', version: 1 }
+        await saveRunState(childState, new Date('2026-08-12T08:00:00.000Z'))
+        return { runId: childState.runId }
+      },
+    }
+
+    const result = await runPlanGateResume(interactive, state, {}, makeEmit(state), planDeps)
+
+    expect(result).toMatchObject({ runId: state.runId, outcome: 'approved', version: 1 })
+    const md = fs.readFileSync(path.join(state.runDir, 'gate-1.md'), 'utf8')
+    expect(md).toContain('- [x] C1 db-schema — Rename the schema columns.')
+    expect(md).toContain('- [x] C2 db-api — Rename the API route helpers. · deps: db-schema')
+  })
+
+  it('an abandoned plan TUI session writes nothing and leaves the gate pending', async () => {
+    const { deps, state } = await seedParent(UNCHECKED_GATE)
+    const before = fs.readFileSync(path.join(state.runDir, 'gate-1.md'), 'utf8')
+    const stdoutLines: string[] = []
+    const interactive: OrchestratorDeps = {
+      ...deps,
+      interactive: () => true,
+      gateKeyScript: 'q',
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runPlanGateResume(interactive, state, {}, makeEmit(state), { startChildRun: neverStartChild })
+
+    expect(result).toMatchObject({ runId: state.runId, outcome: 'abandoned', version: 1 })
+    expect(fs.readFileSync(path.join(state.runDir, 'gate-1.md'), 'utf8')).toBe(before)
+    expect(stdoutLines.some((line) => line.includes('plan gate session abandoned'))).toBe(true)
+    const persisted = await loadRunState(deps.config.workDir, state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+  })
+
+  it('a TUI veto carrying a redirect routes into the replan planner like a hand edit', async () => {
+    const { deps, state } = await seedParent(UNCHECKED_GATE)
+    const plannerPrompts: string[] = []
+    const interactive: OrchestratorDeps = {
+      ...deps,
+      interactive: () => true,
+      gateKeyScript: ' \rsplit the schema child\ra',
+      spawn: (_command: string, args: readonly string[]) => {
+        plannerPrompts.push(String(args[args.length - 1]))
+        return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+      },
+    }
+
+    const failure = await runPlanGateResume(interactive, state, {}, makeEmit(state), {
+      startChildRun: neverStartChild,
+    }).catch((error: unknown) => error)
+
+    // The fake spawn writes no sidecar, so the routed replan fails loudly —
+    // but only after the TUI-collected redirect reached the planner prompt.
+    assert(failure instanceof Error)
+    expect(plannerPrompts.some((prompt) => prompt.includes('split the schema child'))).toBe(true)
+    const md = fs.readFileSync(path.join(state.runDir, 'gate-1.md'), 'utf8')
+    expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    expect(md).toContain('→ split the schema child')
+  })
+
   it('a hand-written ABORT line settles through the flagless parse (not blocked by the unanswered guard)', async () => {
     const { deps, state } = await seedParent(`${UNCHECKED_GATE}\nABORT\n`)
 
