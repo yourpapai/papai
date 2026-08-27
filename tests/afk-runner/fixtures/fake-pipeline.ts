@@ -27,6 +27,8 @@ export interface FakePipeline {
 export interface FakePipelineOptions {
   /** Sidecar JSON bodies by basename, overriding the defaults (fake agents write these). */
   readonly sidecarOverrides?: Record<string, string>
+  /** When given, a spawn whose output basename matches crashes (rejected spawn) — kill drill. */
+  readonly crashOn?: (basename: string) => boolean
 }
 
 export const TASK_TEXT = '# Add thing\n\nfixes a typo in the readme\n'
@@ -54,6 +56,27 @@ const BLOCKER_ROUND = {
     ],
     assumptions: [],
   }),
+}
+
+/** Depth-M multi-round shape: cross-module estimator signal, blocker round 1, clean round 2. */
+const M_MULTI_ROUND = {
+  'depth.json': JSON.stringify({
+    implicated_files: ['src/a.ts', 'src/b.ts'],
+    signals: {
+      cross_module: true,
+      db_migration: false,
+      provider_surface: false,
+      credentials: false,
+      novelty: 'existing-modules',
+    },
+    rationale: 'two modules',
+  }),
+  'draft-design.json': JSON.stringify({
+    files_written: ['openspec/changes/add-thing/design.md'],
+  }),
+  ...BLOCKER_ROUND,
+  'findings-2.json': JSON.stringify({ findings: [] }),
+  'resolutions-2.json': JSON.stringify({ resolutions: [], assumptions: [] }),
 }
 
 /**
@@ -95,6 +118,7 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
   const artifacts: Record<string, string> = {
     'draft-proposal.json': path.join(changeDir, 'proposal.md'),
     'draft-specs.json': path.join(changeDir, 'specs', 'thing', 'spec.md'),
+    'draft-design.json': path.join(changeDir, 'design.md'),
   }
 
   const spawn: SpawnFn = (_command, args, spawnOptions) => {
@@ -102,6 +126,9 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
     const match = prompt.match(/\.review-loop\/([\w-]+\.json)/u)
     const basename = match?.[1] ?? 'unknown.json'
     spawnOrder.push(basename)
+    if (options.crashOn?.(basename) === true) {
+      return Promise.reject(new Error(`simulated kill before ${basename}`))
+    }
     const artifact = artifacts[basename]
     if (artifact !== undefined) {
       fs.mkdirSync(path.dirname(artifact), { recursive: true })
@@ -159,4 +186,4 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
   }
 }
 
-export { BLOCKER_ROUND }
+export { BLOCKER_ROUND, M_MULTI_ROUND }

@@ -265,6 +265,24 @@ describe('resume decision — pure function of folded context + session ledger (
     expect(settled).toEqual({ startRound: 3, cap: 5 })
   })
 
+  it('a round with a recorded verdict completed: the resume enters the next round fresh', () => {
+    const context = pipelineContextOf([
+      resumeStamp({ altitude: 'L2', type: 'round_open', round: 1, cap: 3 }, 1),
+      resumeStamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'open',
+          counts: { blocker: 1, material: 0, nitpick: 0 },
+        },
+        2,
+      ),
+    ])
+    const next = reviewResumeEntry(context, [ledgerLine({ round: 1, status: 'spawned' })], 'M')
+    expect(next).toEqual({ startRound: 2, cap: 3 })
+  })
+
   it('parked reporting is data: converged reports awaiting-tail, presented gate reports gate-pending', () => {
     const converged = pipelineContextOf([
       resumeStamp({ altitude: 'L2', type: 'stage_enter', stage: 'review' }, 1),

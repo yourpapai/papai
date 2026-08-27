@@ -33,9 +33,11 @@ function latestInFlight(ledger: readonly SessionLedgerLine[], round: number): Se
 
 /**
  * The review re-entry point as a pure function of folded context plus the
- * session ledger (design D6): round and cap from the last `round_open`, the
- * continuation session from the ledger's latest in-flight line for that round.
- * A run with no opened round starts fresh at round 1.
+ * session ledger (design D6): round and cap from the last `round_open`; a
+ * round whose verdict is already recorded completed, so the resume enters the
+ * next round fresh — an unrecorded round was interrupted mid-flight and re-runs
+ * from the ledger's latest in-flight session. A run with no opened round
+ * starts fresh at round 1.
  */
 export function reviewResumeEntry(
   context: KernelContext,
@@ -44,6 +46,8 @@ export function reviewResumeEntry(
 ): ReviewEntry {
   const round = context.round
   if (round === null) return { startRound: 1, cap: ROUND_CAPS[depth ?? 'S'] }
+  const recorded = context.perRound.some((record) => record.round === round.current)
+  if (recorded) return { startRound: round.current + 1, cap: round.cap }
   const inFlight = latestInFlight(ledger, round.current)
   return {
     startRound: round.current,

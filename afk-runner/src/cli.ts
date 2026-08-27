@@ -6,8 +6,16 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 
+import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
+import { realSpawn } from '../../review-loop/src/spawn.js'
+import type { ExecGitFn, RunnerConfig } from './config.js'
+import type { DepthProfile } from './events.js'
 import { pipelineMachine } from './graph/pipeline.js'
 import { foldLog } from './kernel/fold.js'
+import { createOpenSpecDriver } from './openspec-driver.js'
+import type { ExecFn } from './openspec-driver.js'
+import { resumeRun, startRun, statusRun } from './run.js'
+import type { RunDeps, RunStatus } from './run.js'
 
 export function runCli(argv: readonly string[]): string {
   const runDir = argv[0]
@@ -30,7 +38,126 @@ export function runCli(argv: readonly string[]): string {
   return summary
 }
 
+/** The folded full-state summary the status command prints. */
+export function fullStateSummary(status: RunStatus): string {
+  const context = status.context
+  const lines: string[] = [
+    `value: ${status.position}`,
+    ...Object.entries(context.stages).map(([stage, stageStatus]) => `${stage}: ${stageStatus}`),
+    `depth: ${context.depth ?? 'unclassified'}`,
+    `round: ${context.round === null ? 'none' : `${context.round.current}/${context.round.cap}`}`,
+    `rounds recorded: ${context.perRound.length}`,
+    `last verdict: ${context.lastVerdict === null ? 'none' : `${context.lastVerdict.verdict} (${context.lastVerdict.counts.blocker}b ${context.lastVerdict.counts.material}m ${context.lastVerdict.counts.nitpick}n)`}`,
+    `gate: ${context.gate === null ? 'none' : `${context.gate.mode} v${context.gate.version}${context.gate.answered ? ' answered' : ' awaiting'}`}`,
+    `halted: ${status.parked}`,
+  ]
+  return lines.join('\n')
+}
+
+const EXEC_GIT: ExecGitFn = (cwd, args) => {
+  const proc = Bun.spawnSync(['git', '-C', cwd, ...args], { stdout: 'pipe', stderr: 'pipe' })
+  return Promise.resolve({
+    stdout: new TextDecoder().decode(proc.stdout),
+    stderr: new TextDecoder().decode(proc.stderr),
+  })
+}
+
+const EXEC_OPENSPEC: ExecFn = (args, options) => {
+  const proc = Bun.spawnSync([...args], { cwd: options.cwd, stdout: 'pipe', stderr: 'pipe' })
+  return Promise.resolve({
+    stdout: new TextDecoder().decode(proc.stdout),
+    stderr: new TextDecoder().decode(proc.stderr),
+    exitCode: proc.exitCode ?? 1,
+  })
+}
+
+export interface CliDeps extends RunDeps {
+  readonly spawn: SpawnFn
+}
+
+/** Prototype CLI config: repo root is the cwd, the work dir sits beside it, model from the environment. */
+export function defaultCliDeps(cwd: string = process.cwd()): CliDeps {
+  const config: RunnerConfig = {
+    repoRoot: cwd,
+    workDir: path.join(cwd, '.afk-runner'),
+    model: process.env['AFK_RUNNER_MODEL'] ?? 'opencode',
+    budget: 5,
+  }
+  return {
+    config,
+    spawn: realSpawn,
+    execGit: EXEC_GIT,
+    driver: createOpenSpecDriver({ exec: EXEC_OPENSPEC, cwd: config.repoRoot }),
+  }
+}
+
+function parseDepth(raw: string | undefined): DepthProfile | undefined {
+  if (raw === undefined) return undefined
+  if (raw === 'S' || raw === 'M' || raw === 'L') return raw
+  throw new Error(`invalid --depth '${raw}' (expected S, M, or L)`)
+}
+
+export async function runStartCommand(deps: RunDeps, args: readonly string[]): Promise<string> {
+  const taskFile = args[0]
+  if (taskFile === undefined || taskFile.length === 0) {
+    throw new Error('usage: afk-runner start <taskFile> [--depth S|M|L]')
+  }
+  const depthFlag = args.indexOf('--depth')
+  const depthOverride = parseDepth(depthFlag === -1 ? undefined : args[depthFlag + 1])
+  const result = await startRun(deps, { taskFile, depthOverride })
+  const lines = [`run: ${result.runId}`, `halted: ${result.halted}`, `position: ${result.position}`]
+  const summary = lines.join('\n')
+  console.log(summary)
+  return summary
+}
+
+export async function runStatusCommand(deps: RunDeps, runId: string): Promise<string> {
+  const status = await statusRun(deps, runId)
+  const summary = [`run: ${runId}`, fullStateSummary(status)].join('\n')
+  console.log(summary)
+  return summary
+}
+
+export async function runResumeCommand(deps: RunDeps, runId: string): Promise<string> {
+  const result = await resumeRun(deps, runId)
+  const lines = [
+    `run: ${result.runId}`,
+    `halted: ${result.halted}`,
+    `position: ${result.position}`,
+    `resumed: ${result.drove ? 're-entered work' : 'already parked'}`,
+  ]
+  const summary = lines.join('\n')
+  console.log(summary)
+  return summary
+}
+
+function printUsage(): void {
+  console.log(
+    [
+      'usage:',
+      '  afk-runner start <taskFile> [--depth S|M|L]   drive a fresh think-half run to park',
+      '  afk-runner status <runId>                     print the folded full-state summary',
+      '  afk-runner resume <runId>                     re-enter an interrupted or parked run',
+      '  afk-runner <runDir>                           print the fold summary of a run dir',
+    ].join('\n'),
+  )
+}
+
+export function cliMain(argv: readonly string[]): Promise<string | undefined> {
+  const [command, ...rest] = argv
+  if (command === 'start' || command === 'status' || command === 'resume') {
+    const deps = defaultCliDeps()
+    if (command === 'start') return runStartCommand(deps, rest)
+    const runId = rest[0]
+    if (runId === undefined || runId.length === 0) throw new Error(`usage: afk-runner ${command} <runId>`)
+    return command === 'status' ? runStatusCommand(deps, runId) : runResumeCommand(deps, runId)
+  }
+  if (argv.length === 1 && argv[0] !== 'help') return Promise.resolve(runCli(argv))
+  printUsage()
+  return Promise.resolve(undefined)
+}
+
 const argv = process.argv.slice(2)
 if (argv.length > 0 && import.meta.main) {
-  runCli(argv)
+  void cliMain(argv)
 }
