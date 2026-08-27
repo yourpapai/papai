@@ -11,8 +11,10 @@ import { readEvents } from '../../../afk-runner/src/events.js'
 import type { SddEvent } from '../../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
 import { toKernelEvent, foldEvents } from '../../../afk-runner/src/kernel/fold.js'
+import type { KernelContext } from '../../../afk-runner/src/kernel/machine.js'
 import { initialStep, step } from '../../../afk-runner/src/kernel/machine.js'
 import { createReplayFolder, replayEvents } from '../../../afk-runner/src/legacy-fold.js'
+import type { ReplayState } from '../../../afk-runner/src/legacy-fold.js'
 
 const REAL_ROOT = path.join(import.meta.dir, '..', 'fixtures', 'real')
 const SCENARIOS_ROOT = path.join(import.meta.dir, '..', 'fixtures', 'scenarios')
@@ -58,31 +60,74 @@ const FINAL_VALUES: Readonly<Record<string, string>> = {
   'steer-extend-round.ndjson': 'review',
 }
 
-function firstDivergentIndex(events: readonly SddEvent[]): { index: number; seq: number } | null {
+const REPLAY_FIELDS = [
+  'stages',
+  'depth',
+  'round',
+  'perRound',
+  'lastVerdict',
+  'gate',
+  'autoDecisions',
+  'children',
+] as const satisfies readonly (keyof ReplayState)[]
+
+/** Project machine context onto the legacy ReplayState fields; the scratch tally is deliberately excluded (residue is not a parity field). */
+function projectedFields(context: KernelContext): Record<(typeof REPLAY_FIELDS)[number], unknown> {
+  return {
+    stages: context.stages,
+    depth: context.depth,
+    round: context.round,
+    perRound: context.perRound,
+    lastVerdict: context.lastVerdict,
+    gate: context.gate,
+    autoDecisions: context.autoDecisions,
+    children: context.children,
+  }
+}
+
+/** Key-order-insensitive deep serialization: object key order never distinguishes states, array order always does. */
+function stable(value: unknown): string {
+  if (value === undefined) return 'undefined'
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1))
+    return `{${entries.map(([key, inner]) => `${JSON.stringify(key)}:${stable(inner)}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
+function divergentField(kernel: KernelContext, legacy: ReplayState): string | null {
+  const projected = projectedFields(kernel)
+  for (const field of REPLAY_FIELDS) {
+    if (stable(projected[field]) !== stable(legacy[field])) return field
+  }
+  return null
+}
+
+function firstDivergentIndex(events: readonly SddEvent[]): { index: number; seq: number; field: string } | null {
   const legacy = createReplayFolder()
   let kernel = initialStep(pipelineMachine)[0]
   for (const [index, event] of events.entries()) {
     legacy.fold(event)
     const kernelEvent = toKernelEvent(event)
     if (kernelEvent !== null) kernel = step(pipelineMachine, kernel, kernelEvent)[0]
-    if (JSON.stringify(kernel.context.stages) !== JSON.stringify(legacy.state.stages)) {
-      return { index, seq: event.seq }
-    }
+    const field = divergentField(kernel.context, legacy.state)
+    if (field !== null) return { index, seq: event.seq, field }
   }
   return null
 }
 
 describe('golden-replay parity: graph v0 vs legacy fold', () => {
   for (const fixture of collectFixtures()) {
-    it(`${fixture.name}: kernel stage map equals legacy fold`, () => {
+    it(`${fixture.name}: kernel full derived state equals legacy fold`, () => {
       const events = readEvents(fixture.logPath)
       const kernel = foldEvents(pipelineMachine, events)
       const legacy = replayEvents(fixture.logPath)
       expect({
         finalValue: kernel.snapshot.value,
-        stagesEqual: JSON.stringify(kernel.snapshot.context.stages) === JSON.stringify(legacy.stages),
+        stateEqual: divergentField(kernel.snapshot.context, legacy) === null,
         firstDivergence: firstDivergentIndex(events),
-      }).toEqual({ finalValue: fixture.finalValue, stagesEqual: true, firstDivergence: null })
+      }).toEqual({ finalValue: fixture.finalValue, stateEqual: true, firstDivergence: null })
     })
   }
 

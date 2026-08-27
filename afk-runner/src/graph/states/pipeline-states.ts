@@ -74,7 +74,7 @@ export const atomicity = kernelSetup.createStateConfig({
 
 export const gate = kernelSetup.createStateConfig({
   on: {
-    'gate.answered': { target: 'completed', guard: 'allStagesDone' },
+    'gate.answered': { target: 'completed', guard: 'allStagesDone', actions: ['answerGate'] },
   },
 })
 

@@ -22,8 +22,31 @@ export interface FoldResult {
 export function toKernelEvent(event: SddEvent): KernelEvent | null {
   if (event.type === 'stage_enter') return { type: 'stage.enter', stage: event.stage }
   if (event.type === 'stage_exit') return { type: 'stage.exit', stage: event.stage }
-  if (event.type === 'gate' && event.action === 'presented') return { type: 'gate.presented' }
+  if (event.type === 'depth') return { type: 'depth', profile: event.profile }
+  if (event.type === 'round_open') return { type: 'round.open', round: event.round, cap: event.cap }
+  if (event.type === 'round_close') return { type: 'round.close', round: event.round, cap: event.cap }
+  if (event.type === 'finding') return { type: 'finding', action: event.action, round: event.round }
+  if (event.type === 'convergence') {
+    return { type: 'convergence', round: event.round, verdict: event.verdict, counts: event.counts }
+  }
+  if (event.type === 'gate' && event.action === 'presented') {
+    return { type: 'gate.presented', mode: event.mode, version: event.version }
+  }
   if (event.type === 'gate' && event.action === 'answered') return { type: 'gate.answered' }
+  if (event.type === 'auto_decision') {
+    return {
+      type: 'auto.decision',
+      rule: event.rule,
+      decision: event.decision,
+      evidenceDigest: event.evidenceDigest,
+      gateVersion: event.gateVersion,
+      seq: event.seq,
+      ts: event.ts,
+    }
+  }
+  if (event.type === 'plan') return { type: 'plan' }
+  if (event.type === 'child_spawned') return { type: 'child.spawned', child: event.child }
+  if (event.type === 'child_done') return { type: 'child.done', child: event.child, outcome: event.outcome }
   return null
 }
 

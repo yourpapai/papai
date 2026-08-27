@@ -16,7 +16,7 @@ describe('afk-runner cli', () => {
     expect(summary).toContain('value: completed')
     expect(summary).toContain('intake: done')
     expect(summary).toContain('gate: done')
-    expect(summary).toContain('events: 886 (mapped 20, tolerated 866)')
+    expect(summary).toContain('events: 886 (mapped 68, tolerated 818)')
   })
 
   it('exits with a usage error when no run dir is given', () => {

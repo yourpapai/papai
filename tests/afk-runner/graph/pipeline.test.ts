@@ -5,8 +5,8 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { pipelineMachine, pipelineStates } from '../../../afk-runner/src/graph/pipeline.js'
-import { initialStep, step } from '../../../afk-runner/src/kernel/machine.js'
+import { pipelineMachine, pipelineRootHandlers, pipelineStates } from '../../../afk-runner/src/graph/pipeline.js'
+import { initialKernelContext, initialStep, step } from '../../../afk-runner/src/kernel/machine.js'
 
 describe('pipeline graph v0 shape', () => {
   it('declares the legacy stage map states plus finals', () => {
@@ -15,22 +15,43 @@ describe('pipeline graph v0 shape', () => {
     )
   })
 
+  it('pins the root handler inventory: everything except enters is root-level bookkeeping', () => {
+    expect(Object.keys(pipelineRootHandlers).sort()).toEqual(
+      [
+        'stage.exit',
+        'depth',
+        'round.open',
+        'round.close',
+        'finding',
+        'convergence',
+        'gate.presented',
+        'gate.answered',
+        'auto.decision',
+        'plan',
+        'child.spawned',
+        'child.done',
+      ].sort(),
+    )
+  })
+
   it('start and the six stages carry guarded enter edges onward only', () => {
     expect(pipelineStates['start']).toBeDefined()
     expect(pipelineStates['review']).toBeDefined()
   })
 
-  it('initial state derives all six stages pending at start', () => {
+  it('initial state derives all six stages pending with an empty full derived state', () => {
     const [snapshot] = initialStep(pipelineMachine)
     expect(snapshot.value).toBe('start')
-    expect(snapshot.context.stages).toEqual({
-      intake: 'pending',
-      draft: 'pending',
-      review: 'pending',
-      decompose: 'pending',
-      atomicity: 'pending',
-      gate: 'pending',
-    })
+    expect(snapshot.context).toEqual(
+      initialKernelContext({
+        intake: 'pending',
+        draft: 'pending',
+        review: 'pending',
+        decompose: 'pending',
+        atomicity: 'pending',
+        gate: 'pending',
+      }),
+    )
   })
 })
 
@@ -92,7 +113,7 @@ describe('pipeline graph v0 behavior', () => {
   it('gate.presented is a mapped no-op that never moves position', () => {
     let snapshot = initialStep(pipelineMachine)[0]
     snapshot = step(pipelineMachine, snapshot, { type: 'stage.enter', stage: 'intake' })[0]
-    snapshot = step(pipelineMachine, snapshot, { type: 'gate.presented' })[0]
+    snapshot = step(pipelineMachine, snapshot, { type: 'gate.presented', mode: 'early', version: 1 })[0]
     expect(snapshot.value).toBe('intake')
   })
 

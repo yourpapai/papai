@@ -6,17 +6,93 @@
 import { assign, initialTransition, setup, transition } from 'xstate'
 import type { ExecutableActionsFrom, SnapshotFrom } from 'xstate'
 
+import type { AutoDecisionKind, AutoDecisionRule, DepthProfile, FindingCounts } from '../events.js'
+import type { AutoDecisionRecord, DigestRecord } from '../legacy-fold.js'
+
 export type StageStatus = 'pending' | 'active' | 'done'
+
+export interface RoundStatus {
+  readonly current: number
+  readonly cap: number
+}
+
+export interface GateRecord {
+  readonly mode: 'early' | 'final' | 'plan'
+  readonly version: number
+  readonly answered: boolean
+}
+
+export type ChildStatus = 'pending' | 'running' | 'done' | 'failed'
+
+export interface ChildRecord {
+  readonly status: ChildStatus
+}
+
+/** Scratch tally accumulator: findings counted per round until the round's convergence flushes them. */
+export interface TallyCounts {
+  readonly resolved: number
+  readonly dismissed: number
+}
+
+export type RoundTally = Readonly<Record<number, TallyCounts>>
 
 export interface KernelContext {
   readonly stages: Readonly<Record<string, StageStatus>>
+  readonly depth: DepthProfile | null
+  readonly round: RoundStatus | null
+  readonly perRound: readonly DigestRecord[]
+  readonly lastVerdict: DigestRecord | null
+  readonly gate: GateRecord | null
+  readonly autoDecisions: readonly AutoDecisionRecord[]
+  readonly children: Readonly<Record<string, ChildRecord>>
+  readonly tally: RoundTally
+}
+
+export function initialKernelContext(stages: Readonly<Record<string, StageStatus>>): KernelContext {
+  return {
+    stages,
+    depth: null,
+    round: null,
+    perRound: [],
+    lastVerdict: null,
+    gate: null,
+    autoDecisions: [],
+    children: {},
+    tally: {},
+  }
 }
 
 export type KernelEvent =
   | { readonly type: 'stage.enter'; readonly stage: string }
   | { readonly type: 'stage.exit'; readonly stage: string }
-  | { readonly type: 'gate.presented' }
+  | { readonly type: 'depth'; readonly profile: DepthProfile }
+  | { readonly type: 'round.open'; readonly round: number; readonly cap: number }
+  | { readonly type: 'round.close'; readonly round: number; readonly cap: number }
+  | {
+      readonly type: 'finding'
+      readonly action: 'filed' | 'classified' | 'resolved' | 'dismissed'
+      readonly round: number
+    }
+  | {
+      readonly type: 'convergence'
+      readonly round: number
+      readonly verdict: 'converged' | 'open'
+      readonly counts: FindingCounts
+    }
+  | { readonly type: 'gate.presented'; readonly mode: GateRecord['mode']; readonly version: number }
   | { readonly type: 'gate.answered' }
+  | {
+      readonly type: 'auto.decision'
+      readonly rule: AutoDecisionRule
+      readonly decision: AutoDecisionKind
+      readonly evidenceDigest: string
+      readonly gateVersion: number
+      readonly seq: number
+      readonly ts: string
+    }
+  | { readonly type: 'plan' }
+  | { readonly type: 'child.spawned'; readonly child: string }
+  | { readonly type: 'child.done'; readonly child: string; readonly outcome: 'done' | 'failed' }
 export const kernelSetup = setup({
   types: {
     context: {} as KernelContext,
@@ -37,6 +113,69 @@ export const kernelSetup = setup({
     markStageDone: assign(({ context, event }) => {
       if (event.type !== 'stage.exit') return {}
       return { stages: { ...context.stages, [event.stage]: 'done' } }
+    }),
+    setDepth: assign(({ event }) => {
+      if (event.type !== 'depth') return {}
+      return { depth: event.profile }
+    }),
+    openRound: assign(({ event }) => {
+      if (event.type !== 'round.open') return {}
+      return { round: { current: event.round, cap: event.cap } }
+    }),
+    tallyFinding: assign(({ context, event }) => {
+      if (event.type !== 'finding') return {}
+      if (event.action !== 'resolved' && event.action !== 'dismissed') return {}
+      const current = context.tally[event.round] ?? { resolved: 0, dismissed: 0 }
+      const next: TallyCounts =
+        event.action === 'resolved'
+          ? { resolved: current.resolved + 1, dismissed: current.dismissed }
+          : { resolved: current.resolved, dismissed: current.dismissed + 1 }
+      return { tally: { ...context.tally, [event.round]: next } }
+    }),
+    flushConvergence: assign(({ context, event }) => {
+      if (event.type !== 'convergence') return {}
+      const counts = context.tally[event.round] ?? { resolved: 0, dismissed: 0 }
+      const rest: RoundTally = Object.fromEntries(
+        Object.entries(context.tally).filter(([round]) => Number(round) !== event.round),
+      )
+      const record: DigestRecord = {
+        round: event.round,
+        counts: event.counts,
+        resolved: counts.resolved,
+        dismissed: counts.dismissed,
+        verdict: event.verdict,
+      }
+      return { tally: rest, perRound: [...context.perRound, record], lastVerdict: record }
+    }),
+    presentGate: assign(({ event }) => {
+      if (event.type !== 'gate.presented') return {}
+      return { gate: { mode: event.mode, version: event.version, answered: false } }
+    }),
+    answerGate: assign(({ context, event }) => {
+      if (event.type !== 'gate.answered') return {}
+      if (context.gate === null) return {}
+      return { gate: { ...context.gate, answered: true } }
+    }),
+    recordAutoDecision: assign(({ context, event }) => {
+      if (event.type !== 'auto.decision') return {}
+      const record: AutoDecisionRecord = {
+        rule: event.rule,
+        decision: event.decision,
+        evidenceDigest: event.evidenceDigest,
+        gateVersion: event.gateVersion,
+        seq: event.seq,
+        ts: event.ts,
+      }
+      return { autoDecisions: [...context.autoDecisions, record] }
+    }),
+    resetChildren: assign(() => ({ children: {} })),
+    spawnChild: assign(({ context, event }) => {
+      if (event.type !== 'child.spawned') return {}
+      return { children: { ...context.children, [event.child]: { status: 'running' } } }
+    }),
+    finishChild: assign(({ context, event }) => {
+      if (event.type !== 'child.done') return {}
+      return { children: { ...context.children, [event.child]: { status: event.outcome } } }
     }),
     emit: (_args, _params: { event: KernelEvent }): undefined => undefined,
     schedule: (_args, _params: { work: { kind: string } }): undefined => undefined,

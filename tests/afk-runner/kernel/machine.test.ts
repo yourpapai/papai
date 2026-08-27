@@ -5,7 +5,13 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { initialStep, kernelSetup, createKernelMachine, step } from '../../../afk-runner/src/kernel/machine.js'
+import {
+  initialStep,
+  kernelSetup,
+  createKernelMachine,
+  initialKernelContext,
+  step,
+} from '../../../afk-runner/src/kernel/machine.js'
 
 const alpha = kernelSetup.createStateConfig({
   on: {
@@ -38,7 +44,7 @@ function fixtureMachine(): ReturnType<typeof createKernelMachine> {
   return createKernelMachine({
     id: 'fixture',
     initial: 'start',
-    context: { stages: { alpha: 'pending', beta: 'pending' } },
+    context: initialKernelContext({ alpha: 'pending', beta: 'pending' }),
     on: {
       'stage.exit': { actions: ['markStageDone'] },
     },

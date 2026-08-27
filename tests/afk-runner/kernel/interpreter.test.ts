@@ -7,7 +7,13 @@ import { describe, expect, it } from 'bun:test'
 
 import { executeActions } from '../../../afk-runner/src/kernel/interpreter.js'
 import type { ActionSinks, UnknownAction } from '../../../afk-runner/src/kernel/interpreter.js'
-import { createKernelMachine, initialStep, kernelSetup, step } from '../../../afk-runner/src/kernel/machine.js'
+import {
+  createKernelMachine,
+  initialStep,
+  initialKernelContext,
+  kernelSetup,
+  step,
+} from '../../../afk-runner/src/kernel/machine.js'
 import type { KernelActions, KernelEvent } from '../../../afk-runner/src/kernel/machine.js'
 
 const enterBeta = kernelSetup.createStateConfig({
@@ -24,7 +30,7 @@ function commandMachine(): ReturnType<typeof createKernelMachine> {
   return createKernelMachine({
     id: 'commands',
     initial: 'start',
-    context: { stages: { alpha: 'pending', beta: 'pending' } },
+    context: initialKernelContext({ alpha: 'pending', beta: 'pending' }),
     states: {
       start: {
         on: {
