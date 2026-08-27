@@ -6,9 +6,11 @@
 import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
+import { lastSpawnedHandleOf } from './child-spawn.js'
 import { readLiteRecord } from './run-lite.js'
 import type { PersistedLite } from './run-lite.js'
-import { PersistedRunStateSchema } from './run-state.js'
+import { loadRunState, PersistedRunStateSchema } from './run-state.js'
+import type { RunState } from './run-state.js'
 
 export interface PendingGateEntry {
   readonly runId: string
@@ -99,4 +101,37 @@ export async function resolveRunId(workDir: string, arg: string): Promise<string
     throw new Error(`ambiguous run id: ${arg} — candidates:\n${prefixed.map((id) => `  ${id}`).join('\n')}`)
   }
   throw new Error(`unknown run id: ${arg}`)
+}
+
+/**
+ * D1 tree discovery: the deepest gate-pending descendant runId of a run —
+ * for each `running` child record its concrete runId is the parent log's
+ * last `child_spawned` line (`lastSpawnedHandleOf`), the child's own
+ * `state.json` is re-read, and grandchildren recurse before the child's own
+ * gate, so the deepest pending gate wins. An unloadable child state counts
+ * as no pending gate (the parent falls back to plain resume); a visited-set
+ * guards malformed cyclic state. A non-parent or no-descendant state yields
+ * null.
+ */
+export function descendantGateOf(workDir: string, state: RunState): Promise<string | null> {
+  return scanDescendantGate(workDir, state, new Set())
+}
+
+function scanDescendantGate(workDir: string, state: RunState, visited: Set<string>): Promise<string | null> {
+  if (visited.has(state.runId)) return Promise.resolve(null)
+  visited.add(state.runId)
+  const running = Object.entries(state.children ?? {}).filter(([, record]) => record.status === 'running')
+  const scanAt = async (index: number): Promise<string | null> => {
+    const [childId] = running[index] ?? []
+    if (childId === undefined) return null
+    const handle = lastSpawnedHandleOf(state, childId)
+    if (handle === null || visited.has(handle.runId)) return scanAt(index + 1)
+    const childState = await loadRunState(workDir, handle.runId).catch(() => null)
+    if (childState === null) return scanAt(index + 1)
+    const deeper = await scanDescendantGate(workDir, childState, visited)
+    if (deeper !== null) return deeper
+    if (childState.gate !== null) return handle.runId
+    return scanAt(index + 1)
+  }
+  return scanAt(0)
 }
