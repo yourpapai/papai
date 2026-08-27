@@ -4,6 +4,15 @@ Implements the plan data layer only (proposal: tasks 1.1–3.3); intake behavior
 
 Reconciliation (design A8): part 2 — `sdd-runner-decomposition-2nd` — landed the runtime path that consumes this data layer: the oversize intake verdict and planner (its §2 ≈ proposal 2.3), the plan-gate grammar/prelude (§3–4 ≈ 4.1–4.3), and the child-execution/orchestrator wiring (§5–6 ≈ 5.1–5.4). This folder's checkboxes are complete as ticked above — no renumbering needed.
 
+**Archive blocked (2026-08-27).** Every other shipped `sdd-runner-*` change was archived into `openspec/specs/` on this date; this one and part 2 were held back deliberately. The capability delta in `specs/sdd-runner-decomposition/spec.md` still declares part-3 behavior that no code implements, so merging it into the main specs would make the spec surface claim shipped behavior that does not exist:
+
+- **Decomposition bounds and recursion limit** — no max-children bound (deliberately removed; see the proposal's maintainer revisions) and no nesting-depth limit exist; a nested oversize child recurses without a ceiling.
+- **Decomposition plan content** / **Plan validation before approval** — `PlanChild` carries `id`/`instruction`/`deps`/`capabilities`; there is no scope statement, no acceptance signals, no declined-entry list, and `validatePlan`/`topoSortChildren` check only duplicate ids, unknown deps, and cycles — not intent coverage or partition.
+- **Tree-wide cost accounting and tree visibility** — the tree budget ledger exists (`treeSpend`), but no live view renders the parent/child structure.
+- **Per-node resume and tree-aware routing** — `holder.json` records the driver, but a concurrent drive attempt on a claimed run dir is not refused loudly.
+
+Either land part 3, or move the unimplemented requirements into a follow-up change and archive what shipped. Until one of those happens, archiving this change would be the same drift Wave 1 set out to remove, pointing the other way.
+
 ## 1. Plan module (`sdd-runner/src/plan.ts`)
 
 - [x] 1.1 Plan schema, structural validation, deterministic topo sort. Red-first in new `tests/sdd-runner/plan.test.ts`: `PlanSchema` shape (child `id`/`instruction` non-empty, `deps` defaults `[]`, optional `capabilities`, `children.min(1)` with **no upper bound** — an 8-child plan validates and cannot be capped); `validatePlan` rejects duplicate ids, unknown deps, and self-deps, each as a single error naming every offending id; `topoSortChildren` is deterministic under declaration-order ties and throws naming the leftover set on a cycle. Then implement `PlanSchema`, `validatePlan`, `topoSortChildren` in new `sdd-runner/src/plan.ts` (design D2–D4). Verify: `bun run test tests/sdd-runner/plan.test.ts`
