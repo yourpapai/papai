@@ -13,8 +13,9 @@ import type { EventInput } from '../../sdd-runner/src/events.js'
 import { readReviewResultFromSidecars } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps, StageContext } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
-import { runPostConvergenceTail } from '../../sdd-runner/src/post-review-tail.js'
-import { createRunState } from '../../sdd-runner/src/run-state.js'
+import { PlanSchema } from '../../sdd-runner/src/plan.js'
+import { buildSplitReentryTaskText, runPostConvergenceTail } from '../../sdd-runner/src/post-review-tail.js'
+import { createRunState, loadRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
@@ -40,10 +41,11 @@ const REVIEW_RESULT = {
   openNitpicks: [],
 }
 
-async function setup(): Promise<{
+async function setup(setupOptions: { readonly decomposeSidecar?: string; readonly planDraft?: unknown } = {}): Promise<{
   deps: OrchestratorDeps
   state: RunState
   spawnOrder: string[]
+  prompts: string[]
   logPath: string
   spawn: Parameters<OrchestratorDeps['spawn']>[0] extends never ? never : OrchestratorDeps['spawn']
 }> {
@@ -51,14 +53,15 @@ async function setup(): Promise<{
   const changeName = 'add-thing'
   const changeDir = path.join(repoRoot, 'openspec', 'changes', changeName)
   const spawnOrder: string[] = []
+  const prompts: string[] = []
   const artifacts: Record<string, string> = {
     'decompose-tasks.json': path.join(changeDir, 'tasks.md'),
   }
   const sidecars: Record<string, string> = {
-    'decompose-tasks.json': JSON.stringify({
-      tasks_file: 'openspec/changes/add-thing/tasks.md',
-    }),
+    'decompose-tasks.json':
+      setupOptions.decomposeSidecar ?? JSON.stringify({ tasks_file: 'openspec/changes/add-thing/tasks.md' }),
     'atomicity.json': JSON.stringify({ split: 0, merged: 0 }),
+    ...(setupOptions.planDraft === undefined ? {} : { 'plan-draft.json': JSON.stringify(setupOptions.planDraft) }),
   }
   const spawn = (
     _command: unknown,
@@ -69,6 +72,7 @@ async function setup(): Promise<{
     const match = prompt.match(/\.review-loop\/([\w-]+\.json)/u)
     const basename = match?.[1] ?? 'unknown.json'
     spawnOrder.push(basename)
+    prompts.push(prompt)
     if (artifacts[basename] !== undefined) {
       fs.mkdirSync(path.dirname(artifacts[basename]), { recursive: true })
       fs.writeFileSync(artifacts[basename], `<!-- content for ${basename} -->\n`)
@@ -116,7 +120,7 @@ async function setup(): Promise<{
   fs.mkdirSync(path.join(state.runDir, 'sidecars'), { recursive: true })
   const logPath = path.join(state.runDir, 'events.ndjson')
   fs.writeFileSync(logPath, '')
-  return { deps, state, spawnOrder, logPath, spawn }
+  return { deps, state, spawnOrder, prompts, logPath, spawn }
 }
 
 function makeCtx(deps: OrchestratorDeps, state: RunState, logPath: string): StageContext {
@@ -210,5 +214,110 @@ describe('policy prelude at the final-gate seam', () => {
     const autoDecisions = readEvents(logPath).filter((e) => e.type === 'auto_decision')
     expect(autoDecisions).toHaveLength(1)
     expect(autoDecisions[0]).toMatchObject({ decision: 'gate', gateVersion: 1 })
+  })
+})
+
+describe('runPostConvergenceTail needs_split diversion (D5)', () => {
+  it('diverts between decompose and atomicity — no atomicity spawn, no final gate, planner re-entry, plan-gate conversion', async () => {
+    const { deps, state, spawnOrder, prompts, logPath, spawn } = await setup({
+      decomposeSidecar: JSON.stringify({ tasks_file: 'openspec/changes/add-thing/tasks.md', needs_split: true }),
+      planDraft: {
+        children: [
+          { id: 'auth-db', instruction: 'Ship the drafted slice.', deps: [] },
+          { id: 'auth-api', instruction: 'Partition the remainder.', deps: ['auth-db'] },
+        ],
+      },
+    })
+    fs.writeFileSync(path.join(state.runDir, 'task.md'), '# Add thing\n\nThe original task body.\n')
+    const changeDir = path.join(deps.config.repoRoot, 'openspec', 'changes', 'add-thing')
+    fs.mkdirSync(changeDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(changeDir, 'proposal.md'),
+      '## Why\n\nThe rename must land safely.\n\n## Impact\n\n- drizzle schema\n- api routes\n',
+    )
+    const ctx = makeCtx(deps, state, logPath)
+
+    const result = await runPostConvergenceTail({
+      deps,
+      state,
+      ctx,
+      agent: { spawn, config: deps.config, execGit: deps.execGit, emit: ctx.emit },
+      depth: 'M',
+      reviewResult: REVIEW_RESULT,
+      version: 3,
+    })
+
+    expect(spawnOrder).toEqual(['decompose-tasks.json', 'plan-draft.json'])
+    expect(fs.existsSync(path.join(state.runDir, 'gate-3.md'))).toBe(false)
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]).toContain('The original task body.')
+    expect(prompts[1]).toContain('add-thing')
+    expect(prompts[1]).toContain('The rename must land safely.')
+    expect(prompts[1]).toContain('drizzle schema')
+    expect(prompts[1]).toContain('<!-- content for decompose-tasks.json -->')
+    const stages = readEvents(logPath)
+      .filter((e) => e.type === 'stage_enter')
+      .map((e) => (e as { stage: string }).stage)
+    expect(stages).toEqual(['decompose'])
+    const persisted = await loadRunState(deps.config.workDir, state.runId)
+    expect(persisted.plan).toMatchObject({ childIds: ['auth-db', 'auth-api'] })
+    expect(persisted.children).toEqual({ 'auth-db': { status: 'pending' }, 'auth-api': { status: 'pending' } })
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+    expect(readEvents(logPath).some((e) => e.type === 'plan')).toBe(true)
+    expect(result.halted).toBe('gate')
+    expect(result.version).toBe(1)
+    expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('Plan gate')
+    const sidecar = PlanSchema.parse(
+      JSON.parse(fs.readFileSync(path.join(state.runDir, 'sidecars', 'plan.json'), 'utf8')),
+    )
+    expect(sidecar.children[0]).toMatchObject({ id: 'auth-db', changeName: 'add-thing' })
+    expect(sidecar.children[1]?.changeName).toBeUndefined()
+    expect(fs.existsSync(path.join(state.runDir, 'children', '1-auth-db.md'))).toBe(true)
+  })
+
+  it("a false needs_split runs today's tail — atomicity spawns and the final gate presents at the given version", async () => {
+    const { deps, state, spawnOrder, logPath, spawn } = await setup({
+      decomposeSidecar: JSON.stringify({ tasks_file: 'openspec/changes/add-thing/tasks.md', needs_split: false }),
+    })
+    const ctx = makeCtx(deps, state, logPath)
+
+    const result = await runPostConvergenceTail({
+      deps,
+      state,
+      ctx,
+      agent: { spawn, config: deps.config, execGit: deps.execGit, emit: ctx.emit },
+      depth: 'M',
+      reviewResult: REVIEW_RESULT,
+      version: 2,
+    })
+
+    expect(spawnOrder.indexOf('decompose-tasks.json')).toBeLessThan(spawnOrder.indexOf('atomicity.json'))
+    expect(result.version).toBe(2)
+    expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('Final gate')
+    expect((await loadRunState(deps.config.workDir, state.runId)).plan).toBeUndefined()
+  })
+})
+
+describe('buildSplitReentryTaskText (D5)', () => {
+  it('composes the original task, change name, artifact summary, and re-scoped tasks.md; omits absent sections', () => {
+    const composed = buildSplitReentryTaskText({
+      originalTask: '# Add thing',
+      changeName: 'add-thing',
+      artifactSummary: ['what: ship the slice'],
+      tasksMd: '## 1. Slice',
+    })
+    expect(composed).toContain('# Add thing')
+    expect(composed).toContain('add-thing')
+    expect(composed).toContain('- what: ship the slice')
+    expect(composed).toContain('## 1. Slice')
+    const bare = buildSplitReentryTaskText({
+      originalTask: null,
+      changeName: 'add-thing',
+      artifactSummary: [],
+      tasksMd: '',
+    })
+    expect(bare).not.toContain('Original task:')
+    expect(bare).not.toContain('Drafted artifacts:')
+    expect(bare).toContain('add-thing')
   })
 })
