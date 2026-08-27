@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
@@ -11,25 +11,29 @@ import type { AutonomyConfig, ExecGitFn, RunnerConfig } from './config.js'
 import { deadlineStampFor } from './deadline-waiter.js'
 import { createEventBus } from './event-bus.js'
 import { appendEvent } from './events.js'
-import type { EventInput, SddEvent } from './events.js'
+import type { EventInput } from './events.js'
 import { readChangeDigest } from './gate-digest-extract.js'
 import { gatherAssumptions } from './gate-digest-extract.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
-import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
-import { planForGate, runPolicyLadder, writePresentedRecord } from './gate-prelude.js'
+import type { GateAssumption, GateBlocker, GateChild, GateFinding } from './gate-model.js'
+import {
+  PLAN_REVIEW_SURROGATE,
+  planForGate,
+  runPlanPolicy,
+  runPolicyLadder,
+  writePresentedRecord,
+} from './gate-prelude.js'
+import type { PolicyGateInput } from './gate-prelude.js'
 import { autoExtendRound, autoSettleFinalGate } from './gate-settle.js'
 import { gatherGateSignals } from './gate-signals.js'
 import type { PresentGateInput } from './gate.js'
 import { presentGate } from './gate.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
-import { loadDb } from './pricing.js'
-import { resolveCost } from './pricing.js'
 import { replayEvents } from './replay.js'
 import { ResolverOutputSchema } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
-import { aggregateUsage } from './usage-aggregate.js'
 import type { ResolveCostFn } from './usage-aggregate.js'
 
 export interface OrchestratorDeps {
@@ -96,36 +100,23 @@ export async function presentGateAt(
   ctx: StageContext,
   reviewResult: ReviewLoopResult,
   version: number,
-  mode: 'early' | 'final',
-  options: { readonly skipPolicy?: boolean } = {},
+  mode: 'early' | 'final' | 'plan',
+  options: { readonly skipPolicy?: boolean; readonly children?: readonly GateChild[] } = {},
 ): Promise<RunStartResult> {
-  const signals = await gatherGateSignals(deps, state, ctx, reviewResult)
+  const effectiveReview = mode === 'plan' ? PLAN_REVIEW_SURROGATE : reviewResult
+  const signals = await gatherGateSignals(deps, state, ctx, effectiveReview)
   const policyInput = { mode, version, ...signals }
-  const evaluation = options.skipPolicy === true ? null : runPolicyLadder(deps, state, ctx, reviewResult, policyInput)
-  const plan = planForGate(state, evaluation)
-  if (plan !== null && plan.action === 'settle' && mode === 'final') {
-    return autoSettleFinalGate(deps, state, ctx, plan.decision, policyInput)
-  }
-  if (plan !== null && plan.action === 'extend' && mode === 'early') {
-    return autoExtendRound(deps, state, ctx, plan.decision, version)
-  }
-  const findings = findingsOf(reviewResult)
-  const changeDigest = await readChangeDigest(ctx.changeDir)
+  const evaluation =
+    options.skipPolicy === true
+      ? null
+      : mode === 'plan'
+        ? runPlanPolicy(deps, state, signals, (options.children ?? []).length)
+        : runPolicyLadder(deps, state, ctx, effectiveReview, policyInput)
+  const routed = await routeAutoDecision(deps, state, ctx, planForGate(state, evaluation), mode, version, policyInput)
+  if (routed !== null) return routed
   const result = await presentGate(
     { emit: ctx.emit, runDir: state.runDir, changeDir: ctx.changeDir, driftCheck: () => Promise.resolve() },
-    gateDigestInput(state, reviewResult, {
-      version,
-      mode,
-      assumptions: signals.assumptions,
-      blockers: findings.blockers,
-      material: findings.material,
-      nitpicks: findings.nitpicks,
-      trajectory: signals.trajectory,
-      costUsd: signals.costUsd,
-      costKnown: signals.costKnown,
-      durationMs: signals.durationMs,
-      changeDigest,
-    }),
+    gateDigestInput(state, effectiveReview, await digestParts(version, mode, signals, effectiveReview, options, ctx)),
   )
   state.gate = { mode, version }
   state.status = 'running'
@@ -140,13 +131,56 @@ export async function presentGateAt(
   return { runId: state.runId, halted: 'gate', gateMdPath: result.gateMdPath, version }
 }
 
+/** Settle/extend auto-routing: only ever reachable at final/early modes. */
+function routeAutoDecision(
+  deps: OrchestratorDeps,
+  state: RunState,
+  ctx: StageContext,
+  plan: ReturnType<typeof planForGate>,
+  mode: 'early' | 'final' | 'plan',
+  version: number,
+  policyInput: PolicyGateInput,
+): Promise<RunStartResult | null> {
+  if (plan === null) return Promise.resolve(null)
+  if (plan.action === 'settle' && mode === 'final') {
+    return autoSettleFinalGate(deps, state, ctx, plan.decision, policyInput)
+  }
+  if (plan.action === 'extend' && mode === 'early') return autoExtendRound(deps, state, ctx, plan.decision, version)
+  return Promise.resolve(null)
+}
+
+async function digestParts(
+  version: number,
+  mode: 'early' | 'final' | 'plan',
+  signals: Awaited<ReturnType<typeof gatherGateSignals>>,
+  reviewResult: ReviewLoopResult,
+  options: { readonly children?: readonly GateChild[] },
+  ctx: StageContext,
+): Promise<GateDigestParts> {
+  const findings = findingsOf(reviewResult)
+  return {
+    version,
+    mode,
+    assumptions: signals.assumptions,
+    blockers: findings.blockers,
+    material: findings.material,
+    nitpicks: findings.nitpicks,
+    trajectory: signals.trajectory,
+    costUsd: signals.costUsd,
+    costKnown: signals.costKnown,
+    durationMs: signals.durationMs,
+    changeDigest: await readChangeDigest(ctx.changeDir),
+    children: options.children,
+  }
+}
+
 function announceDeadline(deps: OrchestratorDeps, notify: string | null): void {
   if (notify !== null) deps.stdout?.(notify)
 }
 
 interface GateDigestParts {
   readonly version: number
-  readonly mode: 'early' | 'final'
+  readonly mode: 'early' | 'final' | 'plan'
   readonly assumptions: readonly GateAssumption[]
   readonly blockers: readonly GateBlocker[]
   readonly material: readonly GateFinding[]
@@ -156,6 +190,7 @@ interface GateDigestParts {
   readonly costKnown: boolean
   readonly durationMs: number
   readonly changeDigest: ChangeDigest
+  readonly children?: readonly GateChild[]
 }
 
 function gateDigestInput(state: RunState, reviewResult: ReviewLoopResult, parts: GateDigestParts): PresentGateInput {
@@ -175,6 +210,7 @@ function gateDigestInput(state: RunState, reviewResult: ReviewLoopResult, parts:
     costKnown: parts.costKnown,
     durationMs: parts.durationMs,
     changeDigest: parts.changeDigest,
+    ...(parts.children === undefined ? {} : { children: parts.children }),
   }
 }
 
@@ -223,31 +259,6 @@ export async function readReviewResultFromSidecars(
   } catch {
     return { outcome, rounds: round, openBlockers: [], openMaterial: [], openNitpicks: [] }
   }
-}
-
-export async function buildResolveCost(): Promise<ResolveCostFn> {
-  try {
-    const db = await loadDb()
-    return (modelId: string) => resolveCost(modelId, db)
-  } catch {
-    return () => null
-  }
-}
-
-export function costAndDuration(
-  events: readonly SddEvent[],
-  createdAt: string,
-  now: Date,
-  resolve: ResolveCostFn = () => null,
-): { costUsd: number; durationMs: number; costKnown: boolean } {
-  const usage = aggregateUsage(events, resolve)
-  const durationMs = Math.max(0, now.getTime() - new Date(createdAt).getTime())
-  return { costUsd: usage.costUsd, durationMs, costKnown: usage.costKnown }
-}
-
-export async function applyConfirmAll(gateMdPath: string): Promise<void> {
-  const md = await readFile(gateMdPath, 'utf8')
-  await writeFile(gateMdPath, md.replace(/- \[ \] ([AFT]\d+)/gu, '- [x] $1'))
 }
 
 export async function finalizeGate(

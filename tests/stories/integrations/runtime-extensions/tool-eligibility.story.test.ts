@@ -29,8 +29,8 @@ scenario(
     const magi = createFakeMagi({ http: world.http, events: world.events, baseUrl: MAGI_URL, token: MAGI_TOKEN })
     magi.expectAgents([{ id: 'claude', name: 'Claude' }])
     given.runtimeExtension({
-      start({ record }): void {
-        configureCodingSessionCapability({
+      async start({ record }): Promise<void> {
+        await configureCodingSessionCapability({
           pluginDirectory: 'plugins',
           contextId: aliceContextId,
           magiBaseUrl: MAGI_URL,

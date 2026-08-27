@@ -32,7 +32,9 @@ export function makeCreateAlertTool(
   const inputSchema = z
     .object({
       prompt: z.string().describe('What to do/say when the alert fires - not the condition'),
-      condition: alertConditionSchema.describe('Event-based trigger: watch for task changes'),
+      condition: alertConditionSchema.describe(
+        'Event-based trigger: watch a specific task (task.id eq <id>) or watch for task changes across all tasks',
+      ),
       cooldown_minutes: cooldownSchema,
       execution: executionInputSchema,
       delivery: deliveryPolicySchema,
@@ -40,7 +42,7 @@ export function makeCreateAlertTool(
     .strict()
   return tool({
     description:
-      'Set up an alert that fires when a task matches a condition (e.g. status changes, becomes overdue). Use for "tell me when…" / "let me know if…".',
+      'Set up an alert that fires when a task matches a condition — watch a specific task (condition field task.id, op eq) or any task (e.g. status changes, becomes overdue). Use for "tell me when…" / "let me know if…".',
     inputSchema,
     execute: (input: CreateInput) => {
       try {

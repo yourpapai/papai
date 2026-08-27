@@ -8,6 +8,7 @@ import nodePath from 'node:path'
 
 import { loadCandidateStoryFiles } from '../../../scripts/story/inputs.js'
 import { extractStoryScenarios } from '../../../scripts/story/scenarios.js'
+import { withSourceParser } from '../../../src/ts-ast/source-parser.js'
 import {
   AUDIT_RECORDS,
   CATALOG_SCENARIO_IDS,
@@ -351,7 +352,7 @@ describe('scenario catalog coverage', () => {
   test('keeps pending reasons and executable references accountable to local literal stories', async () => {
     const candidateFiles = await loadCandidateStoryFiles(resolveStoryContractRoot(import.meta.dir))
     const extractedStoryIds = new Set(
-      candidateFiles.flatMap(({ path, bytes }) => extractStoryScenarios(path, bytes).map(({ id }) => id)),
+      (await withSourceParser((parser) => extractStoryScenarios(parser, candidateFiles))).map(({ id }) => id),
     )
     // `loadCandidateStoryFiles` only walks the frozen `tests/stories/` tree (Tier 0's suite
     // root), so this literal-story check is scoped to Tier 0 executable records; other live

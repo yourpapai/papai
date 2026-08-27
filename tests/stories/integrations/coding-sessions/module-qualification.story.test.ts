@@ -61,7 +61,7 @@ scenario(
     const alice = given.user('alice')
     const dm = given.dm(alice)
     const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
@@ -95,7 +95,7 @@ scenario(
     const alice = given.user('alice')
     const dm = given.dm(alice)
     const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
@@ -128,7 +128,7 @@ scenario(
     const group = given.group('engineering')
     given.member(group, member)
     given.guestMode(group, true)
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: group,
       magiBaseUrl: MAGI_URL,
@@ -168,7 +168,7 @@ scenario(
       forceSharedKey: false,
       maxMcpServers: 3,
     })
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
@@ -200,7 +200,7 @@ scenario(
     const alice = given.user('alice')
     const dm = given.dm(alice)
     const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,

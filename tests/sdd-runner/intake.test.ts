@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, it } from 'bun:test'
+import assert from 'node:assert'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -14,7 +15,13 @@ import type { DepthSignals } from '../../sdd-runner/src/agent-layer.js'
 import type { RunnerConfig } from '../../sdd-runner/src/config.js'
 import { EventInputSchema } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
-import { mapSignalsToProfile, prescreenProfile, resolveDepth, runIntake } from '../../sdd-runner/src/intake.js'
+import {
+  mapSignalsToProfile,
+  prescreenProfile,
+  resolveDepth,
+  runIntake,
+  runPlanner,
+} from '../../sdd-runner/src/intake.js'
 import type { IntakeDeps } from '../../sdd-runner/src/intake.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { ExecFn } from '../../sdd-runner/src/openspec-driver.js'
@@ -108,33 +115,94 @@ const ESTIMATION = JSON.stringify({
   rationale: 'router plus providers plus a migration',
 })
 
+const OVERSIZE_ESTIMATION = JSON.stringify({
+  implicated_files: ['src/chat/router.ts'],
+  signals: {
+    cross_module: true,
+    db_migration: false,
+    provider_surface: false,
+    credentials: false,
+    novelty: 'existing-modules',
+  },
+  rationale: 'declared scope too large for one change',
+  oversize: true,
+})
+
+const PLAN = JSON.stringify({
+  children: [
+    { id: 'auth-api', instruction: 'Add the auth API endpoints.', deps: ['auth-db'] },
+    { id: 'auth-db', instruction: 'Add the auth database schema.', deps: [] },
+  ],
+})
+
+const DUPLICATE_IDS_PLAN = JSON.stringify({
+  children: [
+    { id: 'auth-db', instruction: 'Add the auth database schema.', deps: [] },
+    { id: 'auth-db', instruction: 'Add the schema again.', deps: [] },
+  ],
+})
+
+const CYCLIC_PLAN = JSON.stringify({
+  children: [
+    { id: 'auth-api', instruction: 'Add the auth API endpoints.', deps: ['auth-db'] },
+    { id: 'auth-db', instruction: 'Add the auth database schema.', deps: ['auth-api'] },
+  ],
+})
+
 interface IntakeFixture {
   readonly deps: IntakeDeps
   readonly emitted: EventInput[]
+  readonly agentEmitted: EventInput[]
   readonly spawned: { count: number }
+  readonly timeline: string[]
+  readonly prompts: string[]
 }
 
-function makeFixture(dir: string, estimatorOutput?: string): IntakeFixture {
+function makeFixture(dir: string, outputs: Record<string, string | string[]> = {}): IntakeFixture {
   const emitted: EventInput[] = []
+  const agentEmitted: EventInput[] = []
   const spawned = { count: 0 }
-  const exec: ExecFn = () => Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 })
+  const timeline: string[] = []
+  const prompts: string[] = []
+  const sequences = new Map<string, string[]>(
+    Object.entries(outputs).map(([name, value]) => [name, Array.isArray(value) ? [...value] : [value]]),
+  )
+  const exec: ExecFn = (args) => {
+    timeline.push(`exec:${args.slice(1, 3).join(' ')}`)
+    return Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 })
+  }
   const config: RunnerConfig = {
     repoRoot: dir,
     workDir: path.join(dir, '.sdd-runner'),
     model: 'test-model',
     budget: 5,
   }
-  const spawn: SpawnFn = (_command, _args, options) => {
+  const spawn: SpawnFn = (_command, args, options) => {
+    const prompt = String(args[args.length - 1])
+    prompts.push(prompt)
+    const match = prompt.match(/\.review-loop\/([\w-]+\.json)/u)
+    const basename = match?.[1] ?? 'depth.json'
     spawned.count += 1
-    const target = agentWritePath(options.cwd, 'depth.json')
+    timeline.push(`spawn:${basename}`)
+    const sequence = sequences.get(basename)
+    const next = sequence === undefined ? undefined : sequence.length > 1 ? sequence.shift() : sequence[0]
+    const content = next ?? ESTIMATION
+    const target = agentWritePath(options.cwd, basename)
     fs.mkdirSync(path.dirname(target), { recursive: true })
-    fs.writeFileSync(target, estimatorOutput ?? ESTIMATION)
+    fs.writeFileSync(target, content)
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
   }
   const execGit = (): Promise<{ stdout: string; stderr: string }> => Promise.resolve({ stdout: '', stderr: '' })
   const deps: IntakeDeps = {
     driver: createOpenSpecDriver({ exec, cwd: dir }),
-    agent: { spawn, config, execGit, emit: () => undefined },
+    agent: {
+      spawn,
+      config,
+      execGit,
+      emit: (event) => {
+        agentEmitted.push(EventInputSchema.parse(event))
+      },
+    },
     emit: (event) => {
       emitted.push(EventInputSchema.parse(event))
     },
@@ -142,7 +210,7 @@ function makeFixture(dir: string, estimatorOutput?: string): IntakeFixture {
     runDir: dir,
     cwd: dir,
   }
-  return { deps, emitted, spawned }
+  return { deps, emitted, agentEmitted, spawned, timeline, prompts }
 }
 
 describe('runIntake', () => {
@@ -154,8 +222,9 @@ describe('runIntake', () => {
       taskText: 'fix typo in README',
       depthOverride: 'S',
     })
-    expect(result).toEqual({ changeName: 'fix-typo', depth: 'S', disagreement: false })
+    expect(result).toEqual({ kind: 'single', changeName: 'fix-typo', depth: 'S', disagreement: false })
     expect(fixture.spawned.count).toBe(0)
+    expect(fixture.timeline).toEqual(['exec:new change'])
     const events = fixture.emitted
     expect(events[0]).toMatchObject({ type: 'depth', profile: 'S', source: 'override' })
   })
@@ -164,14 +233,15 @@ describe('runIntake', () => {
     const dir = makeDir()
     const fixture = makeFixture(dir)
     const result = await runIntake(fixture.deps, { changeName: 'add-sessions', taskText: 'add session storage' })
-    expect(result.depth).toBe('L')
-    expect(result.disagreement).toBe(false)
+    expect(result).toEqual({ kind: 'single', changeName: 'add-sessions', depth: 'L', disagreement: false })
     expect(fixture.spawned.count).toBe(1)
+    expect(fixture.timeline).toEqual(['spawn:depth.json', 'exec:new change'])
     const events = fixture.emitted
     expect(events[0]).toMatchObject({
       type: 'depth',
       profile: 'L',
       source: 'estimator',
+      oversize: false,
       rationale: 'router plus providers plus a migration',
     })
   })
@@ -180,9 +250,88 @@ describe('runIntake', () => {
     const dir = makeDir()
     const fixture = makeFixture(dir)
     const result = await runIntake(fixture.deps, { changeName: 'fix-typo', taskText: 'fix typo in README' })
-    expect(result.depth).toBe('L')
-    expect(result.disagreement).toBe(true)
+    expect(result).toEqual({ kind: 'single', changeName: 'fix-typo', depth: 'L', disagreement: true })
     const events = fixture.emitted
     expect(events[0]).toMatchObject({ type: 'depth', disagreement: true })
+  })
+
+  it('returns a plan outcome with topo-ordered children and never scaffolds a change folder', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir, { 'depth.json': OVERSIZE_ESTIMATION, 'plan-draft.json': PLAN })
+    const result = await runIntake(fixture.deps, { changeName: 'composite', taskText: 'build the whole platform' })
+    expect(result).toEqual({
+      kind: 'plan',
+      children: [
+        { id: 'auth-db', instruction: 'Add the auth database schema.', deps: [] },
+        { id: 'auth-api', instruction: 'Add the auth API endpoints.', deps: ['auth-db'] },
+      ],
+    })
+    expect(fixture.spawned.count).toBe(2)
+    expect(fixture.timeline).toEqual(['spawn:depth.json', 'spawn:plan-draft.json'])
+    expect(fixture.emitted[0]).toMatchObject({ type: 'depth', source: 'estimator', oversize: true })
+  })
+})
+
+describe('runPlanner', () => {
+  it('spawns the planner with role planner targeting plan-draft.json and returns topo-ordered children', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir, { 'plan-draft.json': PLAN })
+    const children = await runPlanner(fixture.deps, { changeName: 'composite', taskText: 'build the platform' })
+    expect(children).toEqual([
+      { id: 'auth-db', instruction: 'Add the auth database schema.', deps: [] },
+      { id: 'auth-api', instruction: 'Add the auth API endpoints.', deps: ['auth-db'] },
+    ])
+    const roles = fixture.agentEmitted
+      .filter((e): e is Extract<EventInput, { type: 'spawned' }> => e.type === 'spawned')
+      .map((e) => e.role)
+    expect(roles).toEqual(['planner'])
+    expect(fixture.prompts[0]).toContain(agentWritePath(dir, 'plan-draft.json'))
+    const persisted: unknown = JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'plan.json'), 'utf8'))
+    expect(persisted).toEqual(JSON.parse(PLAN))
+  })
+
+  it('replans exactly once with the structural error appended when the draft has duplicate ids', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir, { 'plan-draft.json': [DUPLICATE_IDS_PLAN, PLAN] })
+    const children = await runPlanner(fixture.deps, { changeName: 'composite', taskText: 'build the platform' })
+    expect(children.map((child) => child.id)).toEqual(['auth-db', 'auth-api'])
+    expect(fixture.spawned.count).toBe(2)
+    expect(fixture.prompts[0]).not.toContain('duplicate child ids')
+    expect(fixture.prompts[1]).toContain('duplicate child ids')
+    const persisted: unknown = JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'plan.json'), 'utf8'))
+    expect(persisted).toEqual(JSON.parse(PLAN))
+  })
+
+  it('fails loudly naming the structural errors when the replan bound is exhausted', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir, { 'plan-draft.json': CYCLIC_PLAN })
+    const failure = await runPlanner(fixture.deps, {
+      changeName: 'composite',
+      taskText: 'build the platform',
+    }).catch((error: unknown) => error)
+    expect(failure instanceof Error).toBe(true)
+    assert(failure instanceof Error)
+    expect(failure.message).toMatch(/dependency cycle/u)
+    expect(failure.message).toMatch(/replan/u)
+    expect(fixture.spawned.count).toBe(2)
+  })
+
+  it('stages drafts at plan-draft.json, never overwriting plan.json with a structurally invalid draft', async () => {
+    const dir = makeDir()
+    fs.mkdirSync(path.join(dir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'sidecars', 'plan.json'), PLAN)
+    const fixture = makeFixture(dir, { 'plan-draft.json': CYCLIC_PLAN })
+
+    const failure = await runPlanner(fixture.deps, {
+      changeName: 'composite',
+      taskText: 'build the platform',
+    }).catch((error: unknown) => error)
+
+    assert(failure instanceof Error)
+    expect(failure.message).toMatch(/dependency cycle/u)
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'plan.json'), 'utf8'))).toEqual(JSON.parse(PLAN))
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'plan-draft.json'), 'utf8'))).toEqual(
+      JSON.parse(CYCLIC_PLAN),
+    )
   })
 })

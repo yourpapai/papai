@@ -21,7 +21,7 @@ scenario('starts a coding session through the real capability and tool loop', as
   const alice = given.user('alice')
   const dm = given.dm(alice)
   const contextId = toScopedContextId({ platformInstanceId: alice.platformInstanceId, nativeContextId: alice.id })
-  given.codingSession({
+  await given.codingSession({
     pluginDirectory: 'plugins',
     context: dm,
     magiBaseUrl: MAGI_URL,

@@ -102,6 +102,19 @@ describe('sdd [<target>] routing table (6.1/6.2)', () => {
     expect(await resolveTarget({ workDir, target: 'run-halt' })).toMatchObject({ kind: 'resume', runId: 'run-halt' })
   })
 
+  it('a calm-stopped run with a pending gate routes to the gate flow, not the resume dead-end', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'stopped-at-gate', (state) => {
+      state.gate = { mode: 'final', version: 1 }
+      state.status = 'stopped'
+    })
+    expect(await resolveTarget({ workDir, target: 'stopped-at-gate' })).toMatchObject({
+      kind: 'gate',
+      runId: 'stopped-at-gate',
+    })
+  })
+
   it('an unambiguous prefix routes; an ambiguous prefix lists candidates without side effects', async () => {
     const dir = makeDir()
     const workDir = path.join(dir, '.sdd')

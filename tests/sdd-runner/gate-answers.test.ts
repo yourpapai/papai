@@ -179,6 +179,103 @@ describe('renderGateAnswers → parseGateResponse round-trip', () => {
   })
 })
 
+describe('plan-mode child rows (D4)', () => {
+  const planExpected = {
+    assumptions: [],
+    blockers: [],
+    children: [
+      { id: 'C1', text: 'auth-db — Add the auth database schema.' },
+      { id: 'C2', text: 'auth-api — Add the auth API endpoints.' },
+    ],
+    gateMode: 'plan' as const,
+  }
+
+  it('renders accepted child rows that parse back through plan expected content as approved', () => {
+    const answers: GateAnswers = {
+      items: [
+        { kind: 'child', id: 'C1', text: 'auth-db — Add the auth database schema.', accepted: true },
+        { kind: 'child', id: 'C2', text: 'auth-api — Add the auth API endpoints.', accepted: true },
+      ],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'approve',
+    }
+    const md = renderGateAnswers(answers)
+    expect(md).toContain('- [x] C1 auth-db — Add the auth database schema.')
+    expect(md).toContain('- [x] C2 auth-api — Add the auth API endpoints.')
+    const response = parseGateResponse(md, planExpected)
+    expect(response.approved).toBe(true)
+    expect(response).toEqual(responseFromAnswers(answers))
+  })
+
+  it('renders a rejected child with a redirect that parses back as a veto for that child', () => {
+    const answers: GateAnswers = {
+      items: [
+        { kind: 'child', id: 'C1', text: 'auth-db — Add the auth database schema.', accepted: true },
+        {
+          kind: 'child',
+          id: 'C2',
+          text: 'auth-api — Add the auth API endpoints.',
+          accepted: false,
+          redirect: 'split the API child into auth + sessions',
+        },
+      ],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'veto',
+    }
+    const md = renderGateAnswers(answers)
+    expect(md).toContain('- [ ] C2 auth-api — Add the auth API endpoints.')
+    expect(md).toContain('→ split the API child into auth + sessions')
+    const response = parseGateResponse(md, planExpected)
+    expect(response.approved).toBe(false)
+    expect(response.vetoes).toEqual([{ id: 'C2', redirect: 'split the API child into auth + sessions' }])
+    expect(response).toEqual(responseFromAnswers(answers))
+  })
+
+  it('renders a rejected child without a redirect as a bare veto', () => {
+    const answers: GateAnswers = {
+      items: [{ kind: 'child', id: 'C1', text: 'auth-db — Add the auth database schema.', accepted: false }],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'veto',
+    }
+    const response = parseGateResponse(renderGateAnswers(answers), planExpected)
+    expect(response.vetoes).toEqual([{ id: 'C1' }])
+    expect(response).toEqual(responseFromAnswers(answers))
+  })
+
+  it('renders ABORT at plan mode that parses back as abort', () => {
+    const answers: GateAnswers = { items: [], blockerAnswers: [], acks: [], decision: 'abort' }
+    const response = parseGateResponse(renderGateAnswers(answers), planExpected)
+    expect(response.abort).toBe(true)
+    expect(response).toEqual(responseFromAnswers(answers))
+  })
+
+  it('renders a per-child decided-by suffix that the parser strips before comparison', () => {
+    const answers: GateAnswers = {
+      items: [
+        {
+          kind: 'child',
+          id: 'C1',
+          text: 'auth-db — Add the auth database schema.',
+          accepted: true,
+          decidedBy: 'policy R4',
+        },
+        { kind: 'child', id: 'C2', text: 'auth-api — Add the auth API endpoints.', accepted: true },
+      ],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'approve',
+    }
+    const md = renderGateAnswers(answers)
+    expect(md).toContain('- [x] C1 auth-db — Add the auth database schema. · decided-by: policy R4')
+    const response = parseGateResponse(md, planExpected)
+    expect(response.approved).toBe(true)
+    expect(response).toEqual(responseFromAnswers(answers))
+  })
+})
+
 describe('decided-by annotations (D4)', () => {
   it('renders an optional per-item decided-by suffix that parses back identically', () => {
     const answers: GateAnswers = {

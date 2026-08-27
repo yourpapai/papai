@@ -3,13 +3,28 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
+import { appendEvent } from '../../sdd-runner/src/events.js'
 import type { AgentUsage, DoneEvent, SddEvent } from '../../sdd-runner/src/events.js'
 import type { ResolvedCost } from '../../sdd-runner/src/pricing.js'
 import { aggregateUsage } from '../../sdd-runner/src/usage-aggregate.js'
+import { childUsageOf } from '../../sdd-runner/src/usage-aggregate.js'
 import { repriceEvent } from '../../sdd-runner/src/usage-aggregate.js'
 import { repriceEvents } from '../../sdd-runner/src/usage-aggregate.js'
+import { treeSpend } from '../../sdd-runner/src/usage-aggregate.js'
+
+const tmpDirs: string[] = []
+
+afterEach(() => {
+  while (tmpDirs.length > 0) {
+    const dir = tmpDirs.pop()
+    if (dir !== undefined) fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 function makeUsage(overrides: Partial<AgentUsage> = {}): AgentUsage {
   return {
@@ -49,6 +64,27 @@ function resolverFrom(table: Record<string, ResolvedCost>): (modelId: string) =>
 
 function spawnedEvent(agent: string, model: string, seq: number): SddEvent {
   return { altitude: 'L1', type: 'spawned', agent, role: 'reviewer', model, seq, ts: '2026-01-01T00:00:00.000Z' }
+}
+
+function childSpawnedEvent(child: string, runId: string, seq: number): SddEvent {
+  return { altitude: 'L2', type: 'child_spawned', child, runId, seq, ts: '2026-01-01T00:00:00.000Z' }
+}
+
+function childDoneEvent(
+  child: string,
+  outcome: 'done' | 'failed',
+  usage: AgentUsage | undefined,
+  seq: number,
+): SddEvent {
+  return {
+    altitude: 'L2',
+    type: 'child_done',
+    child,
+    outcome,
+    ...(usage === undefined ? {} : { usage }),
+    seq,
+    ts: '2026-01-01T00:00:00.000Z',
+  }
 }
 
 describe('aggregateUsage', () => {
@@ -336,5 +372,156 @@ describe('aggregateUsage reprice integration', () => {
     const usage = aggregateUsage(events)
     expect(usage.costUsd).toBe(0)
     expect(usage.costKnown).toBe(false)
+  })
+})
+
+describe('treeSpend (D10 aggregate ledger)', () => {
+  it('sums parent done-events plus child_done usage and reads unknown when any usage is absent', () => {
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ costUsd: 0.4 }), 1),
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'auth-db',
+        outcome: 'done',
+        usage: makeUsage({ costUsd: 0.25 }),
+        seq: 2,
+        ts: '2026-01-01T00:00:00.000Z',
+      },
+    ]
+    expect(treeSpend(events)).toEqual({ spentUsd: 0.65, costKnown: true })
+
+    const withUnpriced: SddEvent[] = [
+      ...events,
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'auth-api',
+        outcome: 'done',
+        seq: 3,
+        ts: '2026-01-01T00:00:00.000Z',
+      },
+    ]
+    expect(treeSpend(withUnpriced)).toEqual({ spentUsd: 0.65, costKnown: false })
+  })
+
+  it('reprices the parent own zero-cost done events through resolve (D10 aggregateUsage shape)', () => {
+    const resolve = resolverFrom({ 'paid/m': { input: 5, output: 15, source: 'primary' } })
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 }), 1, 'paid/m'),
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'auth-db',
+        outcome: 'done',
+        usage: makeUsage({ costUsd: 0.25 }),
+        seq: 2,
+        ts: '2026-01-01T00:00:00.000Z',
+      },
+    ]
+    expect(treeSpend(events, resolve)).toEqual({ spentUsd: 5.25, costKnown: true })
+  })
+
+  it('reads unknown when the parent own done events cannot be priced (fail closed)', () => {
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 }), 1, 'weird/none'),
+    ]
+    expect(treeSpend(events)).toEqual({ spentUsd: 0, costKnown: false })
+  })
+
+  it('counts an outcome flip once — the superseding child_done of the flight wins', () => {
+    const events: SddEvent[] = [
+      doneEvent(makeUsage({ costUsd: 0.4 }), 1),
+      childSpawnedEvent('auth-db', 'run-1', 2),
+      childDoneEvent('auth-db', 'failed', makeUsage({ costUsd: 0.1 }), 3),
+      childDoneEvent('auth-db', 'done', makeUsage({ costUsd: 0.25 }), 4),
+    ]
+    expect(treeSpend(events)).toEqual({ spentUsd: 0.65, costKnown: true })
+  })
+
+  it('reads known when a superseded usage-less failed line is followed by a priced done flip', () => {
+    const events: SddEvent[] = [
+      childSpawnedEvent('auth-db', 'run-1', 1),
+      childDoneEvent('auth-db', 'failed', undefined, 2),
+      childDoneEvent('auth-db', 'done', makeUsage({ costUsd: 0.25 }), 3),
+    ]
+    expect(treeSpend(events)).toEqual({ spentUsd: 0.25, costKnown: true })
+  })
+
+  it('counts a retried child again — a new child_spawned opens a fresh flight', () => {
+    const events: SddEvent[] = [
+      childSpawnedEvent('auth-db', 'run-1', 1),
+      childDoneEvent('auth-db', 'failed', makeUsage({ costUsd: 0.1 }), 2),
+      childSpawnedEvent('auth-db', 'run-2', 3),
+      childDoneEvent('auth-db', 'done', makeUsage({ costUsd: 0.25 }), 4),
+    ]
+    expect(treeSpend(events)).toEqual({ spentUsd: 0.35, costKnown: true })
+  })
+})
+
+describe('childUsageOf (D10 subtree shape)', () => {
+  function makeChildRunDir(events: readonly unknown[]): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-child-usage-'))
+    tmpDirs.push(dir)
+    const logPath = path.join(dir, 'events.ndjson')
+    for (const event of events) appendEvent(logPath, event)
+    return dir
+  }
+
+  it('folds the child own child_done usage (grandchildren spend) into the subtree total', () => {
+    const dir = makeChildRunDir([
+      doneEvent(makeUsage({ inputTokens: 100, outputTokens: 50, costUsd: 0.25, wallMs: 1000 }), 1),
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'grandchild-a',
+        outcome: 'done',
+        usage: makeUsage({ inputTokens: 40, outputTokens: 10, costUsd: 4.8, wallMs: 500 }),
+      },
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'grandchild-b',
+        outcome: 'failed',
+        usage: makeUsage({ inputTokens: 10, outputTokens: 0, costUsd: 0.1, wallMs: 50 }),
+      },
+    ])
+    expect(childUsageOf(dir)).toMatchObject({
+      inputTokens: 150,
+      outputTokens: 60,
+      reasoningTokens: 0,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
+      wallMs: 1550,
+    })
+    expect(childUsageOf(dir)?.costUsd).toBeCloseTo(5.15, 10)
+  })
+
+  it('is undefined when the child own child_done lacks usage (fail closed)', () => {
+    const dir = makeChildRunDir([
+      doneEvent(makeUsage({ costUsd: 0.25 }), 1),
+      { altitude: 'L2', type: 'child_done', child: 'grandchild-a', outcome: 'done' },
+    ])
+    expect(childUsageOf(dir)).toBeUndefined()
+  })
+
+  it('keeps a superseded usage-less failed grandchild line from failing the subtree closed', () => {
+    const dir = makeChildRunDir([
+      doneEvent(makeUsage({ costUsd: 0.25 }), 1),
+      { altitude: 'L2', type: 'child_spawned', child: 'grandchild-a', runId: 'run-1' },
+      { altitude: 'L2', type: 'child_done', child: 'grandchild-a', outcome: 'failed' },
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'grandchild-a',
+        outcome: 'done',
+        usage: makeUsage({ costUsd: 4.8 }),
+      },
+    ])
+    expect(childUsageOf(dir)?.costUsd).toBeCloseTo(5.05, 10)
+  })
+
+  it('is undefined for an unreadable run dir', () => {
+    expect(childUsageOf(path.join(os.tmpdir(), 'sdd-no-such-run'))).toBeUndefined()
   })
 })

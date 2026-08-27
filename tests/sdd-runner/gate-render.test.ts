@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
+  decisionConsequences,
   formatTrajectorySparkline,
   renderChangeDigest,
   renderDecisions,
@@ -142,6 +143,76 @@ describe('decisionConsequences and renderDecisions (13.4)', () => {
     )
     expect(final).toContain(
       '- **abort** (`ABORT` on its own line) — ends the run without completing; the only early exit that spends nothing further',
+    )
+  })
+})
+
+describe('plan mode (D4)', () => {
+  it('decisionConsequences(plan) pins approve/veto/extend/abort', () => {
+    const c = decisionConsequences('plan')
+    expect(c.approve).toBe('executes the children sequentially as nested runs in plan order')
+    expect(c.veto).toBe('revises the plan once with the redirects, then re-gates')
+    expect(c.extend).toBeNull()
+    expect(c.abort).toBe('aborts the parent before any child runs')
+  })
+
+  it('renderDecisions(plan) renders the shared Decisions block with no extend line', () => {
+    const lines = renderDecisions('plan')
+    expect(lines[0]).toBe('### Decisions')
+    expect(lines).toContain('- **approve** — executes the children sequentially as nested runs in plan order')
+    expect(lines).toContain(
+      '- **veto** (leave a box unchecked) — revises the plan once with the redirects, then re-gates',
+    )
+    expect(lines).toContain('- **abort** (`ABORT` on its own line) — aborts the parent before any child runs')
+    expect(lines.join('\n')).not.toContain('**extend**')
+  })
+
+  it('writeGateDigest plan mode renders one checkbox row per child plus the shared Decisions block', () => {
+    const md = writeGateDigest({
+      ...decisionBase,
+      mode: 'plan',
+      capHitFired: false,
+      children: [
+        { id: 'C1', text: 'auth-db — Add the auth database schema. · deps: (none) · signals: drizzle schema' },
+        { id: 'C2', text: 'auth-api — Add the auth API endpoints. · deps: auth-db · signals: routes' },
+      ],
+    })
+    expect(md).toContain('<!-- gate-1.md -->')
+    expect(md).toContain('## Plan gate')
+    expect(md).toContain('- [ ] C1 auth-db — Add the auth database schema. · deps: (none) · signals: drizzle schema')
+    expect(md).toContain('- [ ] C2 auth-api — Add the auth API endpoints. · deps: auth-db · signals: routes')
+    expect(md).toContain('### Decisions')
+    expect(md).toContain('sdd run-1')
+    expect(md).not.toContain('### Assumptions')
+    expect(md).not.toContain('### Change digest')
+    expect(md).not.toContain('→ RUN 1 MORE')
+  })
+
+  it('plan instructions match the unanswered guard: a redirect-less veto of every child is not a decision', () => {
+    const md = writeGateDigest({
+      ...decisionBase,
+      mode: 'plan',
+      capHitFired: false,
+      children: [
+        { id: 'C1', text: 'auth-db — Add the auth database schema. · deps: (none) · signals: drizzle schema' },
+      ],
+    })
+    expect(md).not.toContain('optional `→ <redirect>`')
+    expect(md).toMatch(/all-unchecked file reads as no decision/u)
+  })
+
+  it('early and final gate bytes stay pinned unchanged', () => {
+    const early = writeGateDigest({ ...decisionBase, mode: 'early', capHitFired: true })
+    expect(early).toContain('## Early gate (cap hit) — change add-thing')
+    expect(early).toContain('### Assumptions (blast-ranked)')
+    expect(early).toContain('### Change digest')
+    const final = writeGateDigest({ ...decisionBase, mode: 'final', capHitFired: false })
+    expect(final).toContain('## Final gate — change add-thing')
+    expect(final).toContain(
+      '- **abort** (`ABORT` on its own line) — ends the run without completing; the only early exit that spends nothing further',
+    )
+    expect(final).toContain(
+      '- **veto** (leave a box unchecked) — runs one resolver pass on the redirects, then re-gates',
     )
   })
 })

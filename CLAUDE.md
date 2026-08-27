@@ -65,6 +65,7 @@ Mandatory; pino with structured metadata-first calls. `debug` — function entry
 
 - Runtime **Bun**; validation **Zod v4**; LLM via **Vercel AI SDK**; chat via **Grammy** / Mattermost REST+WebSocket / **discord.js**.
 - Strict TypeScript; **use `.js` extension in import paths**.
+- One TypeScript, 7.x: `typescript` is a **dev dependency** — `tsc` typechecks. TS 7 ships no standalone parser (its AST reaches you only through a project served by a `tsgo` child process), so no scanner uses it: every AST scanner goes through `src/ts-ast/source-parser.ts`, an **async** in-process seam over `oxc-parser` (the parser family Bun's own transpiler uses). Parse results are error-tolerant — a corrupted file yields a partial tree and surfaces through tree-hash comparison, not a parse crash. Import node types from `oxc-parser` (it re-exports `@oxc-project/types`) and traverse with the seam's `walkNodes`/`childNodes` (built on oxc's `visitorKeys`). The parser never spawns, so the hermetic story lane's I/O guard denies every child process (`tests/CLAUDE.md`); a nightly canary typechecks against `typescript@latest` to catch caret-range drift.
 - Error extraction: `error instanceof Error ? error.message : String(error)`.
 - Use `p-limit` for bounded concurrency over remote ops, not unbounded `Promise.all`.
 - **Never add lint-disable or type-ignore comments** — hook policy blocks them; fix the underlying issue.

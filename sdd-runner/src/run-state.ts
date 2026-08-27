@@ -30,6 +30,8 @@ export const PersistedRunStateSchema = z.object({
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
   autoExtendsUsed: z.number().int().nonnegative().default(0),
+  /** Tree budget baseline (D10): ancestor spend a nested run adds before its single-ceiling compare. */
+  spendBaselineUsd: z.number().nonnegative().optional(),
   gateDeadlineAt: z.string().min(1).nullable().default(null),
   gateDeadlineReArmed: z.boolean().default(false),
   plan: z.object({ childIds: z.array(z.string().min(1)).min(1), digest: z.string().min(1) }).optional(),
@@ -76,13 +78,15 @@ export interface CreateRunStateInput {
   readonly repoRoot: string
   readonly changeName: string
   readonly runId?: string
+  readonly spendBaselineUsd?: number
 }
 
 function makeRunId(now: Date): string {
   return `${now.toISOString().replace(/[:.]/gu, '-')}-${randomUUID().slice(0, 8)}`
 }
 
-const TERMINAL_STATUSES = new Set(['completed', 'aborted', 'failed'])
+/** Statuses a run never leaves; `running` and `stopped` stay resumable. */
+export const TERMINAL_STATUSES = new Set(['completed', 'aborted', 'failed'])
 const MAX_SUFFIX = 1000
 
 /**
@@ -140,6 +144,7 @@ export async function createRunState(input: CreateRunStateInput, now: Date = new
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
     autoExtendsUsed: 0,
+    ...(input.spendBaselineUsd === undefined ? {} : { spendBaselineUsd: input.spendBaselineUsd }),
     gateDeadlineAt: null,
     gateDeadlineReArmed: false,
     runDir,
@@ -154,8 +159,13 @@ function toRunState(persisted: PersistedRunState, runDir: string): RunState {
   return { ...persisted, roundCap, runDir, statePath: path.join(runDir, 'state.json') }
 }
 
+/** Layout rule (D8): a run's directory under `workDir` — derivable from its runId alone. */
+export function runDirOf(workDir: string, runId: string): string {
+  return path.join(workDir, 'runs', runId)
+}
+
 export async function loadRunState(workDir: string, runId: string): Promise<RunState> {
-  const runDir = path.join(workDir, 'runs', runId)
+  const runDir = runDirOf(workDir, runId)
   const statePath = path.join(runDir, 'state.json')
   try {
     const raw = await readFile(statePath, 'utf8')
@@ -174,11 +184,14 @@ export async function saveRunState(state: RunState, now: Date = new Date()): Pro
 }
 
 /**
- * Pre-part-3 consumers branch on 'early' vs 'final' only; a 'plan' gate has
- * no resume path until part 3 wires it, so narrowing past it throws. No 'plan'
- * value is produced in part 1, so the guard is compile-time scaffolding.
+ * Narrow a gate mode for early/final consumers. Plan gates are produced and
+ * resumed since the plan-gate wiring: `gate-resume-entry.ts` dispatches them
+ * to `runPlanGateResume` ahead of every call site here, so a 'plan' value
+ * reaching this function means that dispatch invariant broke — throw rather
+ * than mis-drive an early/final path.
  */
 export function narrowGateMode(mode: 'early' | 'final' | 'plan'): 'early' | 'final' {
-  if (mode === 'plan') throw new Error("gate mode 'plan' has no resume path before part 3 wiring")
+  if (mode === 'plan')
+    throw new Error("gate mode 'plan' must not reach early/final narrowing — plan gates resume via runPlanGateResume")
   return mode
 }

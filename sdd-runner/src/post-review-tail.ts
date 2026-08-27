@@ -24,6 +24,33 @@ export interface PostConvergenceTailInput {
 }
 
 /**
+ * Post-review routing: severity-converged and plain-converged outcomes run
+ * the shared post-convergence tail; an open cap-hit presents the early gate.
+ */
+export function runPostReviewToGate(input: PostConvergenceTailInput): Promise<RunStartResult> {
+  const reviewResult = input.reviewResult
+  if (isSeverityConverged(reviewResult)) return runPostConvergenceTail(input)
+  if (reviewResult.outcome === 'cap-hit') {
+    return presentGateAt(input.deps, input.state, input.ctx, reviewResult, input.version, 'early')
+  }
+  return runPostConvergenceTail(input)
+}
+
+/**
+ * Severity-based convergence (orchestrator-level verdict): a cap-hit round
+ * with zero open BLOCKERs and zero open MATERIALs — nitpicks only, each
+ * resolved or dismissed — is treated as converged and flows into decompose
+ * without an early gate. Blockers/materials still force the early gate.
+ */
+export function isSeverityConverged(reviewResult: ReviewLoopResult): boolean {
+  return (
+    reviewResult.outcome === 'cap-hit' &&
+    reviewResult.openBlockers.length === 0 &&
+    reviewResult.openMaterial.length === 0
+  )
+}
+
+/**
  * Shared post-convergence tail: decompose → atomicity (depth ≠ S) → final
  * gate at `version`. Serves the fresh pipeline's converged path, the extend
  * round's converged continuation, and the early-gate approval continuation,

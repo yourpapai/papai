@@ -8,19 +8,24 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import type { AutonomyConfig } from '../../sdd-runner/src/config.js'
 import type { SddEvent } from '../../sdd-runner/src/events.js'
+import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import {
-  applyConfirmAll,
   blockersOf,
   buildBus,
-  costAndDuration,
   findingsOf,
+  presentGateAt,
   readReviewResultFromSidecars,
 } from '../../sdd-runner/src/gate-digest.js'
-import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
+import type { OrchestratorDeps, StageContext } from '../../sdd-runner/src/gate-digest.js'
+import type { GateChild } from '../../sdd-runner/src/gate-model.js'
 import { writeGateDigest } from '../../sdd-runner/src/gate-model.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
+import { createRunState } from '../../sdd-runner/src/run-state.js'
+import type { RunState } from '../../sdd-runner/src/run-state.js'
+import { costAndDuration } from '../../sdd-runner/src/usage-aggregate.js'
 
 const tmpDirs: string[] = []
 
@@ -106,19 +111,6 @@ describe('costAndDuration', () => {
     )
     expect(costUsd).toBe(0.25)
     expect(durationMs).toBe(1000)
-  })
-})
-
-describe('applyConfirmAll', () => {
-  it('checks every assumption, finding, and ack box in the gate file', async () => {
-    const dir = makeDir()
-    const file = path.join(dir, 'gate-1.md')
-    fs.writeFileSync(file, '- [ ] A1 first\n- [ ] F1 gap\n- [ ] T1 ack\n')
-    await applyConfirmAll(file)
-    const md = fs.readFileSync(file, 'utf8')
-    expect(md).toContain('- [x] A1 first')
-    expect(md).toContain('- [x] F1 gap')
-    expect(md).toContain('- [x] T1 ack')
   })
 })
 
@@ -346,6 +338,116 @@ describe('readReviewResultFromSidecars', () => {
       openMaterial: [],
       openNitpicks: [],
     })
+  })
+})
+
+describe('presentGateAt plan mode (D5)', () => {
+  const PLAN_CHILDREN: readonly GateChild[] = [
+    { id: 'C1', text: 'auth-db — Add the auth database schema.' },
+    { id: 'C2', text: 'auth-api — Add the auth API endpoints.' },
+  ]
+  const CONVERGED: ReviewLoopResult = {
+    outcome: 'converged',
+    rounds: 0,
+    openBlockers: [],
+    openMaterial: [],
+    openNitpicks: [],
+  }
+
+  interface PlanFixture {
+    readonly repoRoot: string
+    readonly state: RunState
+    readonly deps: OrchestratorDeps
+    readonly ctx: StageContext
+  }
+
+  async function makePlanFixture(autonomy?: AutonomyConfig): Promise<PlanFixture> {
+    const repoRoot = makeDir()
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    const state = await createRunState({ workDir, repoRoot, changeName: 'composite' })
+    const logPath = path.join(state.runDir, 'events.ndjson')
+    appendEvent(logPath, { altitude: 'L2', type: 'stage_enter', stage: 'intake' })
+    const deps: OrchestratorDeps = {
+      config: { repoRoot, workDir, model: 'test-model', budget: 5 },
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      driver: createOpenSpecDriver({
+        exec: () => Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 }),
+        cwd: repoRoot,
+      }),
+      resolveCost: () => null,
+      now: () => new Date('2026-08-12T08:00:00.000Z'),
+      ...(autonomy === undefined ? {} : { autonomy }),
+    }
+    const ctx: StageContext = {
+      cwd: repoRoot,
+      changeDir: path.join(repoRoot, 'openspec', 'changes', 'composite'),
+      sidecarDir: path.join(state.runDir, 'sidecars'),
+      emit: (event) => {
+        appendEvent(logPath, event)
+      },
+    }
+    return { repoRoot, state, deps, ctx }
+  }
+
+  it('presents the gate file with children rows, hashes sidecar, and a plan-mode presented event; never settles or extends', async () => {
+    const fixture = await makePlanFixture()
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, CONVERGED, 1, 'plan', {
+      children: PLAN_CHILDREN,
+    })
+    expect(result.halted).toBe('gate')
+    expect(result.gateMdPath).toBe(path.join(fixture.state.runDir, 'gate-1.md'))
+
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(md).toContain('## Plan gate')
+    expect(md).toContain('- [ ] C1 auth-db — Add the auth database schema.')
+    expect(md).toContain('- [ ] C2 auth-api — Add the auth API endpoints.')
+
+    expect(fs.existsSync(path.join(fixture.state.runDir, 'gate-hashes-1.json'))).toBe(true)
+
+    const gateEvents = readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
+      (e): e is Extract<SddEvent, { type: 'gate' }> => e.type === 'gate',
+    )
+    expect(gateEvents).toHaveLength(1)
+    expect(gateEvents[0]).toMatchObject({ action: 'presented', mode: 'plan', version: 1 })
+
+    expect(fixture.state.status).toBe('running')
+    expect(fixture.state.gate).toEqual({ mode: 'plan', version: 1 })
+    expect(fixture.state.autoExtendsUsed).toBe(0)
+  })
+
+  it('a fired R4 writes the preview block, auto-policy.jsonl line, and auto_decision event with attribution', async () => {
+    const fixture = await makePlanFixture({ level: 'assist', costCeilingUsd: 1 })
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, CONVERGED, 1, 'plan', {
+      children: PLAN_CHILDREN,
+    })
+    expect(result.halted).toBe('gate')
+
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(md).toContain('### Auto-decision preview')
+    expect(md).toContain('> rule: R4')
+
+    const sidecarLine = fs.readFileSync(path.join(fixture.state.runDir, 'auto-policy.jsonl'), 'utf8').trim()
+    expect(sidecarLine.includes('\n')).toBe(false)
+    expect(JSON.parse(sidecarLine)).toMatchObject({ gateVersion: 1, rule: 'R4', decision: 'gate' })
+
+    const autoDecisions = readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
+      (e) => e.type === 'auto_decision',
+    )
+    expect(autoDecisions).toHaveLength(1)
+    expect(autoDecisions[0]).toMatchObject({ rule: 'R4', decision: 'gate', gateVersion: 1 })
+  })
+
+  it('under-ceiling plan spend records rule none and still presents to the human', async () => {
+    const fixture = await makePlanFixture()
+    await presentGateAt(fixture.deps, fixture.state, fixture.ctx, CONVERGED, 1, 'plan', {
+      children: PLAN_CHILDREN,
+    })
+    const autoDecisions = readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
+      (e) => e.type === 'auto_decision',
+    )
+    expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate' })
+    expect(fixture.state.status).toBe('running')
   })
 })
 
