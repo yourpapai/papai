@@ -127,7 +127,7 @@ async function runWorkBracket(
  * registry — the re-entry append is the graph's own self-loop edge. Continuation
  * form: each step either parks (returns) or recurses into the next position.
  */
-export async function drive(deps: DriveDeps, workFor: WorkFor): Promise<DriveResult> {
+export function drive(deps: DriveDeps, workFor: WorkFor): Promise<DriveResult> {
   const boundary: AppendBoundary = createAppendBoundary(deps.machine, deps.logPath, { now: deps.now })
   return driveStep(deps, workFor, boundary, { entered: false })
 }
