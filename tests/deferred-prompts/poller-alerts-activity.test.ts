@@ -13,6 +13,7 @@ import {
 import { alertConditionSchema } from '../../src/deferred-prompts/condition-schema.js'
 import {
   buildActivitySummary,
+  classifyNotFound,
   evaluateActivityAlert,
   EXTERNAL_DATA_FRAMING,
   fetchTaskHistories,
@@ -170,6 +171,30 @@ describe('hasActivityCapability', () => {
 
   test('false when the activities.read capability is missing', () => {
     expect(hasActivityCapability(createMockProvider({ capabilities: new Set() }))).toBe(false)
+  })
+})
+
+describe('classifyNotFound', () => {
+  test('returns the AppError for a duck-typed provider not-found failure under both codes', () => {
+    expect(classifyNotFound(new ProviderClassifiedError('gone', providerError.taskNotFound('t-1')))).toEqual(
+      providerError.taskNotFound('t-1'),
+    )
+    expect(classifyNotFound(new ProviderClassifiedError('gone', providerError.notFound('task', 't-1')))).toEqual(
+      providerError.notFound('task', 't-1'),
+    )
+  })
+
+  test('returns the AppError carried by a plain wrapper object', () => {
+    expect(classifyNotFound({ appError: providerError.taskNotFound('t-1') })).toEqual(providerError.taskNotFound('t-1'))
+  })
+
+  test('returns null for provider errors that are not not-found', () => {
+    expect(classifyNotFound(new ProviderClassifiedError('denied', providerError.accessDenied('task')))).toBeNull()
+  })
+
+  test('returns null for non-provider AppErrors and unclassified errors', () => {
+    expect(classifyNotFound({ type: 'system', code: 'network-error', message: 'boom' })).toBeNull()
+    expect(classifyNotFound(new Error('boom'))).toBeNull()
   })
 })
 

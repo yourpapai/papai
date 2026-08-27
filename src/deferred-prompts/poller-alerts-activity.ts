@@ -9,6 +9,7 @@ import { runWithProviderRequestScope } from '../analytics/provider-request-scope
 import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { emitUser } from '../debug/event-bus.js'
 import { extractAppError } from '../errors.js'
+import type { AppError } from '../errors.js'
 import { logger } from '../logger.js'
 import type { Activity, TaskProvider } from '../providers/types.js'
 import { wrapUntrusted } from '../security/prompt-boundary.js'
@@ -78,6 +79,17 @@ export const hasActivityCapability = (provider: TaskProvider): boolean =>
  * with the pure-watch fetch path so both classify task deletion alike. */
 export const isNotFoundCode = (code: string): boolean => code === 'task-not-found' || code === 'not-found'
 
+/** Classify a fetch failure as "watched task no longer exists": a
+ * provider-type AppError with a not-found code. Production providers throw
+ * their own *ClassifiedError classes (an Error carrying an `appError`
+ * payload), not ProviderClassifiedError — classify duck-typed, not by
+ * instanceof. Returns the extracted AppError (for logging), or null when
+ * the failure is anything else. */
+export const classifyNotFound = (error: unknown): AppError | null => {
+  const appError = extractAppError(error)
+  return appError !== null && appError.type === 'provider' && isNotFoundCode(appError.code) ? appError : null
+}
+
 /** Fetch task history for the planned requests with bounded concurrency
  * inside the instance poll's scope lease. An incapable provider yields an
  * empty map (skip with a warn naming the config context); requests failing
@@ -104,12 +116,9 @@ export function fetchTaskHistories(
               request.categories === undefined ? undefined : { categories: request.categories },
             )
             ?.catch((error: unknown) => {
-              // Production providers throw their own *ClassifiedError classes
-              // (an Error carrying an `appError` payload), not
-              // ProviderClassifiedError — classify duck-typed, not by instanceof.
-              const appError = extractAppError(error)
-              if (appError !== null && appError.type === 'provider' && isNotFoundCode(appError.code)) {
-                log.warn({ taskId: request.taskId, code: appError.code }, 'Task history not found; skipping')
+              const notFound = classifyNotFound(error)
+              if (notFound !== null) {
+                log.warn({ taskId: request.taskId, code: notFound.code }, 'Task history not found; skipping')
                 return null
               }
               throw error
