@@ -142,7 +142,7 @@ describe('planHistoryRequests', () => {
     expect(requests).toEqual([{ taskId: 'task-1', categories: undefined }])
   })
 
-  test('anchors a task to the oldest cursor across alerts watching it; null cursors stay unanchored', () => {
+  test('committed cursors do not anchor the fetch: requests stay categories-only', () => {
     const alerts = [
       makeAlert({ kind: 'activity', taskId: 'task-1' }, '2026-08-27T10:00:00.000Z'),
       makeAlert({ kind: 'activity', taskId: 'task-1' }, '2026-08-27T09:00:00.000Z'),
@@ -152,17 +152,9 @@ describe('planHistoryRequests', () => {
     const requests = planHistoryRequests(alerts)
 
     expect(requests).toEqual([
-      { taskId: 'task-1', categories: undefined, start: '2026-08-27T09:00:00.000Z' },
+      { taskId: 'task-1', categories: undefined },
       { taskId: 'task-2', categories: undefined },
     ])
-  })
-
-  test('an unparseable cursor does not anchor the task', () => {
-    const alerts = [makeAlert({ kind: 'activity', taskId: 'task-1' }, 'not-a-date')]
-
-    const requests = planHistoryRequests(alerts)
-
-    expect(requests).toEqual([{ taskId: 'task-1', categories: undefined }])
   })
 })
 
@@ -204,29 +196,6 @@ describe('fetchTaskHistories', () => {
     expect(seen).toHaveLength(2)
     for (const active of seen) expect(active).toBe(scope)
     expect(getTaskHistory).toHaveBeenCalledWith('task-1', { categories: ['comment'] })
-    expect(getTaskHistory).toHaveBeenCalledWith('task-2', undefined)
-  })
-
-  test('passes the cursor start bound alongside categories to the provider', async () => {
-    const getTaskHistory = mock(
-      (_taskId: string, _params?: { categories?: string[]; start?: string }): Promise<Activity[]> =>
-        Promise.resolve([]),
-    )
-    const provider = createMockProvider({ getTaskHistory })
-
-    await fetchTaskHistories(
-      provider,
-      [
-        { taskId: 'task-1', categories: ['comment'], start: '2026-08-27T09:00:00.000Z' },
-        { taskId: 'task-2', categories: undefined, start: undefined },
-      ],
-      makeActorScope(),
-    )
-
-    expect(getTaskHistory).toHaveBeenCalledWith('task-1', {
-      categories: ['comment'],
-      start: '2026-08-27T09:00:00.000Z',
-    })
     expect(getTaskHistory).toHaveBeenCalledWith('task-2', undefined)
   })
 
