@@ -248,7 +248,6 @@ describe('runPostConvergenceTail needs_split diversion (D5)', () => {
     })
 
     expect(spawnOrder).toEqual(['decompose-tasks.json', 'plan-draft.json'])
-    expect(fs.existsSync(path.join(state.runDir, 'gate-3.md'))).toBe(false)
     expect(prompts).toHaveLength(2)
     expect(prompts[1]).toContain('The original task body.')
     expect(prompts[1]).toContain('add-thing')
@@ -262,11 +261,13 @@ describe('runPostConvergenceTail needs_split diversion (D5)', () => {
     const persisted = await loadRunState(deps.config.workDir, state.runId)
     expect(persisted.plan).toMatchObject({ childIds: ['auth-db', 'auth-api'] })
     expect(persisted.children).toEqual({ 'auth-db': { status: 'pending' }, 'auth-api': { status: 'pending' } })
-    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 3 })
     expect(readEvents(logPath).some((e) => e.type === 'plan')).toBe(true)
     expect(result.halted).toBe('gate')
-    expect(result.version).toBe(1)
+    expect(result.version).toBe(3)
+    expect(path.basename(result.gateMdPath)).toBe('gate-3.md')
     expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('Plan gate')
+    expect(fs.existsSync(path.join(state.runDir, 'gate-1.md'))).toBe(false)
     const sidecar = PlanSchema.parse(
       JSON.parse(fs.readFileSync(path.join(state.runDir, 'sidecars', 'plan.json'), 'utf8')),
     )

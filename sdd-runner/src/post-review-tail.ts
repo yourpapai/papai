@@ -117,7 +117,7 @@ async function divertToSplitPlan(input: PostConvergenceTailInput): Promise<RunSt
     index === 0 ? { ...child, changeName: state.changeName } : child,
   )
   await writeFile(path.join(ctx.sidecarDir, 'plan.json'), `${JSON.stringify({ children: pinned }, null, 2)}\n`)
-  return runPlanBranch(deps, state, ctx, pinned)
+  return runPlanBranch(deps, state, ctx, pinned, { version: input.version })
 }
 
 /**
