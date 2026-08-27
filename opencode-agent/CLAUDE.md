@@ -447,6 +447,15 @@ findings: `ROADMAP.md`.
   path that arrived via the human line is reverted before the push instead of
   riding the merge into a GitHub refusal of the whole push (the issue #240
   class); `push()`'s own internal reconcile is then an idempotent no-op.
+  **The push point `pushIfMoved` records is the head the remote accepted, read
+  after the push — never the head captured at the top of the call.** Run
+  32992114904 (issue #360): the guard reverted the loop's workflow edit and
+  pushed, but `pushedAt` still named the pre-revert head, so the next guard
+  pass saw the guard's **own revert** as a protected change since that base and
+  `revertPaths`'d it — restoring the very content it had removed — and GitHub
+  refused the whole push. The fresh `readHead` fails open exactly like the
+  comparison read, so a checkout that cannot answer degrades to pushing, never
+  to a skipped push.
   It also pushes **as each fix lands**, on the `[review-loop] published` marker
   the loop prints: `mergeEachFix` in the generated config makes the loop merge per
   fix instead of once at the end behind its build gate, and the push stays on this

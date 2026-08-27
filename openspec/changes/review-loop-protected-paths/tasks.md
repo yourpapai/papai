@@ -28,10 +28,10 @@
 
 ## 3. Documentation
 
-- [ ] 3.1 `review-loop/AGENTS.md`: the fix instruction contract gains the protected-paths rule
+- [x] 3.1 `review-loop/AGENTS.md`: the fix instruction contract gains the protected-paths rule
       as a carried instruction (fourth rule, beside minimality/check-behind/no-prose), noting
       the duplication pin.
-- [ ] 3.2 `opencode-agent/CLAUDE.md`: the review-push doctrine records the push-point rule —
+- [x] 3.2 `opencode-agent/CLAUDE.md`: the review-push doctrine records the push-point rule —
       the recorded head is the one the remote accepted, post-revert — with run 32992114904 as
       the incident.
 
