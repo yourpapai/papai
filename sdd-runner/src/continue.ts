@@ -6,10 +6,17 @@
 import type { OrchestratorDeps } from './gate-digest.js'
 import { runGateResume } from './gate-resume-entry.js'
 import { runResume } from './orchestrator.js'
-import type { AutonomyOverrides, RunContinueResult } from './orchestrator.js'
+import type { AutonomyOverrides } from './orchestrator.js'
 import { pendingDescendantGateOf } from './resume-flow.js'
 import { listPendingGates, resolveRunId } from './run-index.js'
 import { loadRunState } from './run-state.js'
+
+export interface RunContinueResult {
+  readonly runId: string | null
+  readonly routed: 'gate' | 'resume' | 'report' | 'list'
+  readonly gateMdPath?: string
+  readonly version?: number
+}
 
 /**
  * `continue` is a pure router (Decision 4): gate-pending → the gate flow

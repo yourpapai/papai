@@ -17,7 +17,12 @@ import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-dige
 import { runIntake, resolveTaskSource } from './intake.js'
 import type { IntakeResult } from './intake.js'
 import { createMaterializer } from './materialize.js'
-import { isInterruptedPlanBranchResume, isPlanParentResume, resumePlanParent } from './plan-resume.js'
+import {
+  isInterruptedPlanBranchResume,
+  isPlanParentResume,
+  resumePlanParent,
+  runContinuationStart,
+} from './plan-resume.js'
 import type { PlanChild } from './plan.js'
 import { runPostReviewToGate } from './post-review-tail.js'
 import type { Verbosity } from './renderer.js'
@@ -35,6 +40,7 @@ import type { CalmStopController } from './stop-controller.js'
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 export type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
 export { runContinue } from './continue.js'
+export type { RunContinueResult } from './continue.js'
 
 export interface AutonomyOverrides {
   readonly deadlineMinutes?: number
@@ -65,13 +71,6 @@ export interface RunResumeResult {
   readonly childRunId?: string
 }
 
-export interface RunContinueResult {
-  readonly runId: string | null
-  readonly routed: 'gate' | 'resume' | 'report' | 'list'
-  readonly gateMdPath?: string
-  readonly version?: number
-}
-
 interface FreshInput {
   readonly taskText: string
   readonly changeName: string
@@ -89,6 +88,8 @@ interface PipelineEnv {
 }
 
 export async function runStart(deps: OrchestratorDeps, options: StartOptions): Promise<RunStartResult> {
+  const adoptedChangeName = options.child?.changeName
+  if (adoptedChangeName !== undefined) return runContinuationStart(deps, options, adoptedChangeName)
   const { taskText, changeName } = await resolveTaskSource(options)
   const state = await createRunState(
     {

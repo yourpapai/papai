@@ -25,9 +25,10 @@ import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { runContinue, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
 import type { RunGateResumeResult } from '../../sdd-runner/src/orchestrator.js'
 import { materializeChildFiles, planDigest } from '../../sdd-runner/src/plan.js'
+import type { PlanChild } from '../../sdd-runner/src/plan.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
-import { loadRunState } from '../../sdd-runner/src/run-state.js'
+import { loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
 import { readHolder, requestCalmStop, stopMarkerPath } from '../../sdd-runner/src/stop-controller.js'
 
@@ -2984,6 +2985,121 @@ describe('plan-parent resume interception (D9)', () => {
     const md = fs.readFileSync(path.join(parent.runDir, 'gate-1.md'), 'utf8')
     expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
     expect(fixture.spawnOrder).toEqual([])
+  })
+})
+
+describe('continuation start for a changeName-carrying child (D6)', () => {
+  const SPLIT_CHILDREN: PlanChild[] = [
+    { id: 'auth-db', instruction: 'Ship the drafted slice.', deps: [], changeName: 'add-thing' },
+    { id: 'auth-api', instruction: 'Partition the remainder.', deps: ['auth-db'] },
+  ]
+
+  /**
+   * A single-turned-plan parent (the decompose-split conversion): runId is the
+   * bare slug, live, depth classified; the change folder exists with reviewed
+   * artifacts and the re-scoped first-slice-only tasks.md.
+   */
+  async function seedSplitParent(
+    fixture: ReturnType<typeof makeFixture>,
+    depth: 'S' | 'M' | 'L',
+  ): Promise<{ readonly parentRunDir: string; readonly taskFile: string }> {
+    const parent = await createRunState({
+      workDir: fixture.deps.config.workDir,
+      repoRoot: fixture.repoRoot,
+      changeName: 'add-thing',
+      runId: 'add-thing',
+    })
+    parent.depth = depth
+    parent.stage = 'review'
+    parent.plan = { childIds: SPLIT_CHILDREN.map((child) => child.id), digest: planDigest(SPLIT_CHILDREN) }
+    parent.children = { 'auth-db': { status: 'pending' }, 'auth-api': { status: 'pending' } }
+    await saveRunState(parent)
+    fs.mkdirSync(path.join(parent.runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(parent.runDir, 'sidecars', 'plan.json'), JSON.stringify({ children: SPLIT_CHILDREN }))
+    await materializeChildFiles({ children: SPLIT_CHILDREN }, parent.runDir)
+    appendEvent(path.join(parent.runDir, 'events.ndjson'), {
+      altitude: 'L2',
+      type: 'stage_enter',
+      stage: 'review',
+    })
+    fs.mkdirSync(fixture.changeDir, { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\n\nship the slice safely\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'tasks.md'), '## 1. Slice\n\n- [ ] 1.1 a\n- [ ] 1.2 b\n')
+    return {
+      parentRunDir: parent.runDir,
+      taskFile: path.join(parent.runDir, 'children', '1-auth-db.md'),
+    }
+  }
+
+  it('skips intake/draft/review/decompose, inherits the parent depth, enters the tail at atomicity, gates over the surrogate', async () => {
+    const fixture = makeFixture()
+    const { parentRunDir, taskFile } = await seedSplitParent(fixture, 'M')
+    const parentLog = path.join(parentRunDir, 'events.ndjson')
+    const parentEventsBefore = readEvents(parentLog).length
+    const newChangeCalls: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      driver: {
+        ...fixture.deps.driver,
+        newChange: (name, schema) => {
+          newChangeCalls.push(name)
+          return fixture.deps.driver.newChange(name, schema)
+        },
+      },
+    }
+
+    const result = await runStart(deps, {
+      child: SPLIT_CHILDREN[0],
+      taskFile,
+      spendBaselineUsd: 1.25,
+    })
+
+    expect(result.halted).toBe('gate')
+    expect(result.version).toBe(1)
+    expect(result.runId).toBe('add-thing-2')
+    expect(fixture.spawnOrder).toEqual(['atomicity.json'])
+    expect(newChangeCalls).toEqual([])
+    const state = await loadRunState(deps.config.workDir, 'add-thing-2')
+    expect(state.changeName).toBe('add-thing')
+    expect(state.depth).toBe('M')
+    expect(state.spendBaselineUsd).toBe(1.25)
+    expect(state.gate).toEqual({ mode: 'final', version: 1 })
+    expect(state.stage).toBe('gate')
+    assert(result.gateMdPath !== undefined)
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(md).toContain('Final gate')
+    expect(md).toContain('tasks: 0/2')
+    const events = readEvents(path.join(state.runDir, 'events.ndjson'))
+    const stages = events.filter((e) => e.type === 'stage_enter').map((e) => (e as { stage: string }).stage)
+    expect(stages).toEqual(['atomicity', 'gate'])
+    expect(events.filter((e) => e.type === 'done').map((e) => (e as { agent: string }).agent)).toEqual(['atomicity'])
+    expect(readEvents(parentLog)).toHaveLength(parentEventsBefore)
+  })
+
+  it('the allocator yields the next free <slug>-<n> past an occupied suffix, and S gates without any spawn', async () => {
+    const fixture = makeFixture()
+    const { taskFile } = await seedSplitParent(fixture, 'S')
+    const taken = await createRunState({
+      workDir: fixture.deps.config.workDir,
+      repoRoot: fixture.repoRoot,
+      changeName: 'add-thing',
+      runId: 'add-thing-2',
+    })
+    taken.status = 'completed'
+    await saveRunState(taken)
+
+    const result = await runStart(fixture.deps, { child: SPLIT_CHILDREN[0], taskFile })
+
+    expect(result.runId).toBe('add-thing-3')
+    expect(fixture.spawnOrder).toEqual([])
+    const state = await loadRunState(fixture.deps.config.workDir, 'add-thing-3')
+    expect(state.changeName).toBe('add-thing')
+    expect(state.depth).toBe('S')
+    expect(state.gate).toEqual({ mode: 'final', version: 1 })
+    const stages = readEvents(path.join(state.runDir, 'events.ndjson'))
+      .filter((e) => e.type === 'stage_enter')
+      .map((e) => (e as { stage: string }).stage)
+    expect(stages).toEqual(['gate'])
   })
 })
 

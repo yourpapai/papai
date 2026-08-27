@@ -6,17 +6,24 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 
+import type { AgentLayerDeps } from './agent-layer.js'
 import { runChildren, runPlanBranch, planChildrenOf } from './children.js'
 import type { RunChildRun } from './children.js'
+import { autonomyOf } from './config.js'
 import type { AutonomyConfig } from './config.js'
-import type { EventInput } from './events.js'
+import type { DepthProfile, EventInput } from './events.js'
 import { readEvents } from './events.js'
-import type { OrchestratorDeps, StageContext } from './gate-digest.js'
-import { logPathFor, presentGateAt } from './gate-digest.js'
+import { buildBus, logPathFor, nowOf, presentGateAt } from './gate-digest.js'
+import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
 import { PLAN_REVIEW_SURROGATE } from './gate-prelude.js'
 import { planGateRows } from './plan-gate-resume.js'
 import type { PlanChild } from './plan.js'
+import { runTailFromAtomicity } from './post-review-tail.js'
+import { settleStoppedResult } from './resume-flow.js'
+import { readAllRunStates } from './run-index.js'
+import { createRunState, loadRunState, resolveRoundCap } from './run-state.js'
 import type { RunState } from './run-state.js'
+import { slugifySessionId } from './session-id.js'
 import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controller.js'
 
 /** The orchestrator-supplied nested-run starter (D7): `runStart` by default. */
@@ -29,6 +36,107 @@ export type StartChildRun = (
     readonly onRunDirReady?: (childRunDir: string) => void
   },
 ) => Promise<{ readonly runId: string }>
+
+/** The `runStart` options a continuation start consumes (D6, structural — no orchestrator import). */
+export interface ContinuationStartOptions {
+  readonly taskFile?: string
+  readonly depthOverride?: DepthProfile
+  readonly autonomy?: { readonly deadlineMinutes?: number }
+  readonly spendBaselineUsd?: number
+  readonly onRunDirReady?: (runDir: string) => void
+}
+
+const CONTINUATION_MAX_SUFFIX = 1000
+
+/**
+ * D6 continuation session id: the next free `<slug>-<n>` — the parent holds
+ * the bare slug while non-terminal, so the child walks past it (and past any
+ * existing suffix, terminal or not, mirroring `allocateSessionId`'s
+ * first-absent-candidate rule).
+ */
+async function nextContinuationSessionId(workDir: string, slug: string): Promise<string> {
+  if (slug === '') throw new Error('cannot derive a continuation session id from an empty change name')
+  const states = await readAllRunStates(workDir)
+  const taken = new Set(states.map((state) => state.runId))
+  for (let i = 2; i < CONTINUATION_MAX_SUFFIX; i += 1) {
+    const candidate = `${slug}-${String(i)}`
+    if (!taken.has(candidate)) return candidate
+  }
+  throw new Error(
+    `no free continuation session id derived from '${slug}' (${String(CONTINUATION_MAX_SUFFIX)} suffixes exhausted)`,
+  )
+}
+
+/** D6 inherited depth: the parent run behind the child task file (`<parentRunDir>/children/<n>-<slug>.md`). */
+async function continuationDepthOf(deps: OrchestratorDeps, options: ContinuationStartOptions): Promise<DepthProfile> {
+  const parentRunId = path.basename(path.dirname(path.dirname(options.taskFile ?? '')))
+  if (parentRunId === '') return options.depthOverride ?? 'S'
+  const parent = await loadRunState(deps.config.workDir, parentRunId).catch(() => null)
+  if (parent === null) {
+    throw new Error(
+      `continuation start cannot find the parent run behind ${options.taskFile ?? '(no task file)'} — the change folder cannot be adopted`,
+    )
+  }
+  return options.depthOverride ?? parent.depth ?? 'S'
+}
+
+/**
+ * D6 continuation start: the child that carries `changeName` adopts the
+ * existing change folder — intake/draft/review are skipped (the artifacts are
+ * already drafted and review-settled in the parent; re-running would
+ * `newChange`-collide and re-draft reviewed files), the depth is inherited
+ * from the parent (derived from the child task file's parent run dir), and
+ * the run enters the shared post-convergence tail at atomicity, presenting
+ * its final gate over the adopted-review surrogate — the review evidence
+ * legitimately lives in the parent's log, so the ledger books the draft and
+ * review spend there only; this child's log carries its own tail spend.
+ */
+export async function runContinuationStart(
+  deps: OrchestratorDeps,
+  options: ContinuationStartOptions,
+  changeName: string,
+): Promise<RunStartResult> {
+  const depth = await continuationDepthOf(deps, options)
+  const state = await createRunState(
+    {
+      workDir: deps.config.workDir,
+      repoRoot: deps.config.repoRoot,
+      changeName,
+      runId: await nextContinuationSessionId(deps.config.workDir, slugifySessionId(changeName)),
+      spendBaselineUsd: options.spendBaselineUsd,
+    },
+    nowOf(deps),
+  )
+  options.onRunDirReady?.(state.runDir)
+  state.depth = depth
+  state.roundCap = resolveRoundCap({ depth, roundCap: undefined })
+  const emit = buildBus(deps, logPathFor(state))
+  writeHolder(state.runDir)
+  deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
+  const stop = createStopMarkerSeam(state.runDir)
+  try {
+    const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
+    const halted = await runTailFromAtomicity({
+      deps: { ...deps, autonomy: autonomyOf(deps.config, options.autonomy?.deadlineMinutes) },
+      state,
+      ctx: {
+        cwd: deps.config.repoRoot,
+        changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', changeName),
+        sidecarDir: path.join(state.runDir, 'sidecars'),
+        emit,
+      },
+      agent,
+      depth,
+      reviewResult: PLAN_REVIEW_SURROGATE,
+      version: 1,
+    })
+    await settleStoppedResult(deps, state, stop, halted)
+    return halted
+  } finally {
+    removeHolder(state.runDir)
+    deps.unmountRunScreen?.()
+  }
+}
 
 export interface PlanResumeResult {
   readonly runId: string

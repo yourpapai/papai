@@ -130,7 +130,7 @@ async function divertToSplitPlan(input: PostConvergenceTailInput): Promise<RunSt
  * settles.
  */
 export async function runPostConvergenceTail(input: PostConvergenceTailInput): Promise<RunStartResult> {
-  const { deps, state, ctx, agent, depth, reviewResult, version } = input
+  const { deps, state, ctx, agent } = input
   const machine = createStageMachine({ emit: ctx.emit })
   const decompose: { report: DecomposeReport | null } = { report: null }
   await machine.runStage('decompose', async () => {
@@ -142,6 +142,17 @@ export async function runPostConvergenceTail(input: PostConvergenceTailInput): P
   state.stage = 'decompose'
   await saveRunState(state, nowOf(deps))
   if (decompose.report !== null && decompose.report.needs_split === true) return divertToSplitPlan(input)
+  return runTailFromAtomicity(input)
+}
+
+/**
+ * The tail's back half — atomicity (depth ≠ S) → final gate at `version` —
+ * shared with the D6 continuation start, which re-enters here because its
+ * slice is already decomposed (the split re-scoped tasks.md to child #1).
+ */
+export async function runTailFromAtomicity(input: PostConvergenceTailInput): Promise<RunStartResult> {
+  const { deps, state, ctx, agent, depth, reviewResult, version } = input
+  const machine = createStageMachine({ emit: ctx.emit })
   if (depth !== 'S') {
     await machine.runStage('atomicity', async () => {
       await runAtomicity(
