@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { existsSync } from 'node:fs'
+
 import { readEvents } from '../events.js'
 import type { SddEvent } from '../events.js'
 import { initialStep, step } from './machine.js'
@@ -68,4 +70,10 @@ export function foldEvents(machine: KernelMachine, events: readonly SddEvent[]):
 
 export function foldLog(machine: KernelMachine, logPath: string): FoldResult {
   return foldEvents(machine, readEvents(logPath))
+}
+
+/** Fold the log at path, treating a not-yet-created log as empty (fresh-run boot, append probes). */
+export function foldLogOrInitial(machine: KernelMachine, logPath: string): FoldResult {
+  if (!existsSync(logPath)) return foldEvents(machine, [])
+  return foldLog(machine, logPath)
 }

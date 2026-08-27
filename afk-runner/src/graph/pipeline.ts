@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { STAGE_ORDER } from '../events.js'
-import { createKernelMachine, initialKernelContext } from '../kernel/machine.js'
+import { createKernelMachine, initialKernelContext, kernelRootHandlers } from '../kernel/machine.js'
 import type { StageStatus } from '../kernel/machine.js'
 import {
   aborted,
@@ -32,28 +32,8 @@ export const pipelineStates = {
   aborted,
 }
 
-type PipelineMachineConfig = Parameters<typeof createKernelMachine>[0]
-
-/**
- * Root-level target-less bookkeeping: everything except enters. Enter edges stay
- * per-state topology; these handlers fire from any state (finals included) and
- * never move position — the mechanism proven for `stage.exit`, extended to the
- * full derived state.
- */
-export const pipelineRootHandlers: NonNullable<PipelineMachineConfig['on']> = {
-  'stage.exit': { actions: ['markStageDone'] },
-  depth: { actions: ['setDepth'] },
-  'round.open': { actions: ['openRound'] },
-  'round.close': { actions: [] },
-  finding: { actions: ['tallyFinding'] },
-  convergence: { actions: ['flushConvergence'] },
-  'gate.presented': { actions: ['presentGate'] },
-  'gate.answered': { actions: ['answerGate'] },
-  'auto.decision': { actions: ['recordAutoDecision'] },
-  plan: { actions: ['resetChildren'] },
-  'child.spawned': { actions: ['spawnChild'] },
-  'child.done': { actions: ['finishChild'] },
-}
+/** The pipeline graph composes the kernel's root-level bookkeeping vocabulary unchanged. */
+export const pipelineRootHandlers = kernelRootHandlers
 
 function initialStages(): Record<string, StageStatus> {
   return Object.fromEntries(STAGE_ORDER.map((stage) => [stage, 'pending' as const]))

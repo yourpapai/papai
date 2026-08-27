@@ -187,6 +187,30 @@ export type KernelSnapshot = SnapshotFrom<KernelMachine>
 export type KernelActions = readonly ExecutableActionsFrom<KernelMachine>[]
 export type KernelStep = [snapshot: KernelSnapshot, actions: KernelActions]
 
+/**
+ * The root-level target-less bookkeeping vocabulary: everything except
+ * enters. Enter edges stay per-state topology; these handlers fire from any
+ * state (finals included) and never move position — the mechanism proven for
+ * `stage.exit`, extended to the full derived state. Graphs compose this
+ * record as their root `on`.
+ */
+type KernelMachineConfig = Parameters<typeof kernelSetup.createMachine>[0]
+
+export const kernelRootHandlers: NonNullable<KernelMachineConfig['on']> = {
+  'stage.exit': { actions: ['markStageDone'] },
+  depth: { actions: ['setDepth'] },
+  'round.open': { actions: ['openRound'] },
+  'round.close': { actions: [] },
+  finding: { actions: ['tallyFinding'] },
+  convergence: { actions: ['flushConvergence'] },
+  'gate.presented': { actions: ['presentGate'] },
+  'gate.answered': { actions: ['answerGate'] },
+  'auto.decision': { actions: ['recordAutoDecision'] },
+  plan: { actions: ['resetChildren'] },
+  'child.spawned': { actions: ['spawnChild'] },
+  'child.done': { actions: ['finishChild'] },
+}
+
 export function createKernelMachine(config: Parameters<typeof kernelSetup.createMachine>[0]): KernelMachine {
   return kernelSetup.createMachine(config)
 }
