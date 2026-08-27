@@ -21,7 +21,7 @@ design.md carries no Open Questions; nothing to resolve before build. Order foll
 ## 4. Config and documentation
 
 - [x] 4.1 Add the scoped knip ignore `'plugins/task-provider-github/graphql-client.ts': ['exports']` with an inline comment naming `github-provider-projects` as the production consumer (mirrors the `labels.ts` precedent; knip.config.ts guardrail). Verify: `bun run knip`
-- [ ] 4.2 Add the developer-facing "GraphQL API support" section to `plugins/task-provider-github/README.md`: endpoint derivation table, the Projects follow-up as first consumer, and the note that later GraphQL surfaces (Projects V2) require the classic-PAT `project` scope / fine-grained Projects read-write (the foundation needs no scope beyond today's). Verify: `bun run format:check`
+- [x] 4.2 Add the developer-facing "GraphQL API support" section to `plugins/task-provider-github/README.md`: endpoint derivation table, the Projects follow-up as first consumer, and the note that later GraphQL surfaces (Projects V2) require the classic-PAT `project` scope / fine-grained Projects read-write (the foundation needs no scope beyond today's). Verify: `bun run format:check`
 
 ## 5. Full verification
 
