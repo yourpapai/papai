@@ -49,7 +49,7 @@
     "afk-runner:typecheck": "bun run --filter afk-runner typecheck",
     "afk-runner:lint": "bun run --filter afk-runner lint",
     "afk-runner:format:check": "bun run --filter afk-runner format:check",
-    "afk-runner:start": "bun afk-runner/src/index.ts",
+    "afk-runner:start": "bun afk-runner/src/cli.ts",
     "opencode-agent:test": "bun run --filter opencode-agent test",
     "opencode-agent:test:live": "bun run --filter opencode-agent test:live",
     "opencode-agent:test:survival": "bun run --filter opencode-agent test:survival",

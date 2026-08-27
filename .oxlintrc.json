@@ -60,6 +60,23 @@
         "typescript/await-thenable": "off",
         "eslint/no-empty-function": "off"
       }
+    },
+    {
+      "files": ["afk-runner/**"],
+      "rules": {
+        "max-lines-per-function": "off",
+        "max-lines": "off",
+        "typescript/no-unsafe-type-assertion": "off"
+      }
+    },
+    {
+      "files": ["tests/afk-runner/**"],
+      "rules": {
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-argument": "off"
+      }
     }
   ]
 }
