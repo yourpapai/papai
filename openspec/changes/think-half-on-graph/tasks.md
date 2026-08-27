@@ -9,14 +9,14 @@
 
 ## 2. Drive loop + append boundary
 
-- [ ] 2.1 Failing loop tests first with a stub graph and fake work modules: enter/exit bracket around work, successor-or-park rule (enter successor iff it declares work), park reporting values (`awaiting-tail`, `gate-pending`, `stopped`), no stage names in the loop — `bun test tests/afk-runner/drive/loop.test.ts`
-- [ ] 2.2 Implement `workFor(state)` data accessors (work kind + outcome→successor map) co-located in per-state modules and the generic drive loop (`drive/`) to pass — `bun test tests/afk-runner/drive`
-- [ ] 2.3 Failing boundary tests first: an illegal `stage.enter` (no edge from current position) appends nothing and throws naming the refused event; legal self-loop re-entry passes (snapshot-reference probe per design D5) — then implement the append boundary (pure `transition()` probe: identical snapshot reference + zero actions ⇒ refused) — `bun test tests/afk-runner/drive/boundary.test.ts`
-- [ ] 2.4 Crash-resume drill at loop level: log truncated mid-work re-folds to the interrupted state and the loop re-enters via `workFor` without persisted pointers — `bun test tests/afk-runner/drive/resume.test.ts`
+- [x] 2.1 Failing loop tests first with a stub graph and fake work modules: enter/exit bracket around work, successor-or-park rule (enter successor iff it declares work), park reporting values (`awaiting-tail`, `gate-pending`, `stopped`), no stage names in the loop — `bun test tests/afk-runner/drive/loop.test.ts`
+- [x] 2.2 Implement `workFor(state)` data accessors (work kind + outcome→successor map) co-located in per-state modules and the generic drive loop (`drive/`) to pass — `bun test tests/afk-runner/drive`
+- [x] 2.3 Failing boundary tests first: an illegal `stage.enter` (no edge from current position) appends nothing and throws naming the refused event; legal self-loop re-entry passes (snapshot-reference probe per design D5) — then implement the append boundary (pure `transition()` probe: identical snapshot reference + zero actions ⇒ refused) — `bun test tests/afk-runner/drive/boundary.test.ts`
+- [x] 2.4 Crash-resume drill at loop level: log truncated mid-work re-folds to the interrupted state and the loop re-enters via `workFor` without persisted pointers — `bun test tests/afk-runner/drive/resume.test.ts`
 
 ## 3. Think-half work re-host (copies, expectations unchanged)
 
-- [ ] 3.1 Copy slimmed Tier 2 substrate: session-id allocation, session ledger, run-dir conventions, stop-controller/holder machinery; port their tests with expectations unchanged; extend the jscpd prototype ignore to the copied src modules (re-tighten at C7, recorded in the afk-runner change's task 1.6 lineage) — `bun test tests/afk-runner/run-state tests/afk-runner/session`
+- [x] 3.1 Copy slimmed Tier 2 substrate: session-id allocation, session ledger, run-dir conventions, stop-controller/holder machinery; port their tests with expectations unchanged; extend the jscpd prototype ignore to the copied src modules (re-tighten at C7, recorded in the afk-runner change's task 1.6 lineage) — `bun test tests/afk-runner/run-state tests/afk-runner/session`
 - [ ] 3.2 Copy agent-layer (spawn seam, sidecars, usage events) + intake/draft work modules; port tests with fake agents per the `tests/sdd-runner/` pattern; bracket moves to loop mechanics (no `machine.runStage` callers) — `bun test tests/afk-runner/work`
 - [ ] 3.3 Copy review-loop + review-model + steer + materialize as the review work module (recursion stays inside; rounds emit domain events; calm-stop and steer seams preserved); port tests unchanged in expectations — `bun test tests/afk-runner/work/review-loop.test.ts`
 - [ ] 3.4 `state.json` demoted: write as derived memo after appends; delete-and-behave-identically test (start/status/resume) proving memo-is-not-truth — `bun test tests/afk-runner/drive/memo.test.ts`
