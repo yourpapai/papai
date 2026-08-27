@@ -50,7 +50,7 @@ export const planHistoryRequests = (alerts: readonly AlertPrompt[]): HistoryRequ
       for (const child of node.or) walk(child, watched)
       return
     }
-    if ('kind' in node && node.taskId !== undefined) {
+    if ('kind' in node) {
       watched.add(node.taskId)
       const existing = categoriesByTask.get(node.taskId)
       if (existing === undefined && !categoriesByTask.has(node.taskId)) {
@@ -165,7 +165,7 @@ const collectRelevantEntries = (
       for (const child of node.or) walk(child)
       return
     }
-    if ('kind' in node && node.taskId !== undefined) {
+    if ('kind' in node) {
       for (const entry of historyByTask.get(node.taskId) ?? []) {
         if (node.categories !== undefined && !node.categories.includes(entry.category)) continue
         collected.set(`${node.taskId}:${entry.id}`, entry)

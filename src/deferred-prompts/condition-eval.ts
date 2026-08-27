@@ -117,7 +117,7 @@ export const extractActivityTaskIds = (condition: AlertCondition): string[] => {
       for (const child of node.or) walk(child)
       return
     }
-    if ('kind' in node && node.taskId !== undefined) ids.add(node.taskId)
+    if ('kind' in node) ids.add(node.taskId)
   }
   walk(condition)
   return [...ids]
@@ -139,7 +139,6 @@ export const describeCondition = (condition: AlertCondition): string => {
   if ('and' in condition) return `(${condition.and.map(describeCondition).join(' AND ')})`
   if ('or' in condition) return `(${condition.or.map(describeCondition).join(' OR ')})`
   if ('kind' in condition) {
-    if (condition.taskId === undefined) return 'activity'
     const categories = condition.categories === undefined ? '' : ` (categories: ${condition.categories.join(', ')})`
     return `activity on task ${sanitizeValue(condition.taskId)}${categories}`
   }

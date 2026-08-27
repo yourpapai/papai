@@ -262,14 +262,13 @@ describe('alertConditionSchema', () => {
       expect(result.success).toBe(true)
     })
 
-    test('activity leaf without taskId is rejected with an issue naming taskId', () => {
+    test('activity leaf without taskId is rejected with an error naming taskId', () => {
       const result = alertConditionSchema.safeParse({
         kind: 'activity',
       })
       expect(result.success).toBe(false)
       assert(!result.success, 'expected parse to fail')
-      const paths = result.error.issues.map((i) => i.path.join('.'))
-      expect(paths).toContain('taskId')
+      expect(result.error.message).toContain('Activity conditions require a taskId.')
     })
 
     test('activity leaves nest under and', () => {

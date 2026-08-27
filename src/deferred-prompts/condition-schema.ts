@@ -64,21 +64,11 @@ const leafConditionSchema = z
 
 export type LeafCondition = z.infer<typeof leafConditionSchema>
 
-const activityLeafSchema = z
-  .object({
-    kind: z.literal('activity'),
-    taskId: z.string().optional(),
-    categories: z.array(z.string()).optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.taskId === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'Activity conditions require a taskId.',
-        path: ['taskId'],
-      })
-    }
-  })
+const activityLeafSchema = z.object({
+  kind: z.literal('activity'),
+  taskId: z.string({ error: 'Activity conditions require a taskId.' }),
+  categories: z.array(z.string()).optional(),
+})
 
 export type ActivityLeafCondition = z.output<typeof activityLeafSchema>
 
