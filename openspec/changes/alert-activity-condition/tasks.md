@@ -1,6 +1,6 @@
 ## 1. Migration: `last_activity_cursor` column
 
-- [ ] 1.1 Write failing migration test `tests/db/migrations/082_alert_activity_cursor.test.ts` (069 template: `setupTestDb` + `mockLogger`) asserting migration id `082_alert_activity_cursor`, that `alert_prompts.last_activity_cursor` is added and nullable, and idempotent double-run. Verify: `bun run test tests/db/migrations/082_alert_activity_cursor.test.ts`
+- [x] 1.1 Write failing migration test `tests/db/migrations/082_alert_activity_cursor.test.ts` (069 template: `setupTestDb` + `mockLogger`) asserting migration id `082_alert_activity_cursor`, that `alert_prompts.last_activity_cursor` is added and nullable, and idempotent double-run. Verify: `bun run test tests/db/migrations/082_alert_activity_cursor.test.ts`
 - [ ] 1.2 Create `src/db/migrations/082_alert_activity_cursor.ts` (idempotent `ALTER TABLE` behind the `PRAGMA table_info` columnExists guard), register `migration082AlertActivityCursor` after `migration081AlertTaskInstancePin` in `src/db/index.ts`, and add `lastActivityCursor: text('last_activity_cursor')` to `alertPrompts` in `src/db/deferred-schema.ts`. Verify: `bun run test tests/db/migrations/082_alert_activity_cursor.test.ts && bun run typecheck`
 
 ## 2. Condition schema and walkers
