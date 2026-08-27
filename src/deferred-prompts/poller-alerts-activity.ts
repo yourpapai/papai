@@ -7,10 +7,11 @@ import pLimit from 'p-limit'
 
 import { runWithProviderRequestScope } from '../analytics/provider-request-scope.js'
 import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
+import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { Activity, TaskProvider } from '../providers/types.js'
 import { wrapUntrusted } from '../security/prompt-boundary.js'
-import { describeCondition } from './alerts.js'
+import { describeCondition, updateAlertActivityState } from './alerts.js'
 import type { AlertCondition, AlertPrompt } from './types.js'
 
 const log = logger.child({ scope: 'deferred:poller:alerts-activity' })
@@ -178,3 +179,32 @@ export const buildActivitySummary = (evaluations: readonly ActivityEvaluation[])
       return `Alert condition: ${describeCondition(alert.condition)}\n${entryList}`
     })
     .join('\n\n')}`
+
+/** Commit the baseline cursor of a non-firing evaluation: a null cursor (or
+ * one left behind by a condition edit) adopts the newest seen entry so the
+ * first cycle records state instead of replaying history. Delivery-gated
+ * cursors go through markActivityDelivered instead. */
+export const commitActivityBaseline = (evaluation: ActivityEvaluation): void => {
+  const { alert, firingEntries, nextCursor } = evaluation
+  if (firingEntries.length > 0) return
+  if (nextCursor === null || nextCursor === alert.lastActivityCursor) return
+  updateAlertActivityState(alert.id, alert.createdByUserId, alert.lastTriggeredAt, nextCursor)
+}
+
+/** Commit cursor + lastTriggeredAt after a successful activity delivery and
+ * emit the same notification events field alerts use. */
+export const markActivityDelivered = (
+  evaluations: readonly ActivityEvaluation[],
+  now: string,
+  emitNotifications: boolean,
+): void => {
+  for (const { alert, nextCursor } of evaluations) {
+    if (nextCursor === null) continue
+    updateAlertActivityState(alert.id, alert.createdByUserId, now, nextCursor)
+    log.info({ id: alert.id, userId: alert.createdByUserId }, 'Activity alert triggered')
+    if (emitNotifications) {
+      emitUser('deferred:alerted', alert.createdByUserId, { promptId: alert.id })
+      emitUser('notify:deferred_alert', alert.createdByUserId, { promptId: alert.id })
+    }
+  }
+}

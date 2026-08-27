@@ -209,7 +209,7 @@ export const updateAlertMatchState = (
 export const updateAlertActivityState = (
   id: string,
   userId: string,
-  lastTriggeredAt: string,
+  lastTriggeredAt: string | null,
   lastActivityCursor: string,
 ): void => {
   log.debug({ id, userId, lastTriggeredAt, lastActivityCursor }, 'updateAlertActivityState called')
