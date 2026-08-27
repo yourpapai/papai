@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  describeCondition,
   evaluateCondition,
   extractActivityTaskIds,
   extractWatchedTaskIds,
@@ -99,5 +100,50 @@ describe('isPureActivityCondition', () => {
       and: [activityLeaf, { field: 'task.id', op: 'eq', value: 'task-1' }],
     })
     expect(isPureActivityCondition(tree)).toBe(false)
+    const mixedOr = alertConditionSchema.parse({
+      or: [activityLeaf, { field: 'task.status', op: 'eq', value: 'done' }],
+    })
+    expect(isPureActivityCondition(mixedOr)).toBe(false)
+  })
+
+  test('true for an and-combined tree of activity leaves', () => {
+    const tree = alertConditionSchema.parse({
+      and: [activityLeaf, { kind: 'activity', taskId: 'task-2' }],
+    })
+    expect(isPureActivityCondition(tree)).toBe(true)
+  })
+})
+
+describe('isPureWatchCondition — or-combined trees', () => {
+  test('an or of watch and field leaves is not a pure watch', () => {
+    const tree = alertConditionSchema.parse({
+      or: [
+        { field: 'task.id', op: 'eq', value: 'task-1' },
+        { field: 'task.status', op: 'eq', value: 'done' },
+      ],
+    })
+    expect(isPureWatchCondition(tree)).toBe(false)
+  })
+})
+
+describe('describeCondition — activity leaves', () => {
+  test('renders the task id without a categories suffix when categories are absent', () => {
+    expect(describeCondition(activityLeaf)).toBe('activity on task "task-1"')
+  })
+
+  test('renders sanitized categories joined with a comma', () => {
+    const withCategories = alertConditionSchema.parse({
+      kind: 'activity',
+      taskId: 'task-1',
+      categories: ['comment', 'status'],
+    })
+    expect(describeCondition(withCategories)).toBe('activity on task "task-1" (categories: comment, status)')
+  })
+})
+
+describe('describeCondition — sanitization of leaf values', () => {
+  test('collapses newlines inside values to spaces', () => {
+    const leaf = alertConditionSchema.parse({ field: 'task.status', op: 'eq', value: 'done\nsoon' })
+    expect(describeCondition(leaf)).toBe('task.status eq "done soon"')
   })
 })

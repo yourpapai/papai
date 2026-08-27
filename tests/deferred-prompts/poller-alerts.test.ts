@@ -19,6 +19,7 @@ import {
 import * as alertsModule from '../../src/deferred-prompts/alerts.js'
 import { pollAlertsOnce } from '../../src/deferred-prompts/poller-alerts.js'
 import type { BuildProviderFn } from '../../src/deferred-prompts/proactive-llm.js'
+import { getSnapshotsForUser, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
 import type { AlertCondition, AlertPrompt } from '../../src/deferred-prompts/types.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { ProviderClassifiedError, providerError } from '../../src/providers/errors.js'
@@ -991,6 +992,21 @@ describe('pollAlertsOnce — alert task activity', () => {
     expect(state.listCalls).toEqual([])
     expect(state.historyCalls.map(([taskId]) => taskId).sort()).toEqual(['task-1', 'task-2'])
     expect(sentMessages).toHaveLength(0)
+  })
+
+  test('activity-only poll leaves existing task snapshots untouched', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1)])
+    createActivityAlert({ kind: 'activity', taskId: 'task-1' })
+    updateSnapshots(
+      ACTIVITY_USER,
+      [{ id: 'task-unrelated', title: 'Unrelated task', url: 'http://test/task-unrelated', status: 'todo' }],
+      ['status'],
+    )
+
+    await pollAlertsOnce(chat, activityBuildProviderFn(state))
+
+    expect(getSnapshotsForUser(ACTIVITY_USER).get('task-unrelated:status')).toBe('todo')
   })
 
   test('mixed instance still lists tasks for field alerts while activity alerts use history', async () => {
