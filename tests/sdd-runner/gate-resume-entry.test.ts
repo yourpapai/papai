@@ -49,4 +49,17 @@ describe('gate-resume entry', () => {
     const src = fs.readFileSync(srcPath, 'utf8')
     expect(src).not.toContain("import('./orchestrator.js')")
   })
+
+  it('forwards the full PlanChild into runStart instead of discarding it (D6 pass-through)', () => {
+    const srcPath = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      '..',
+      'sdd-runner',
+      'src',
+      'gate-resume-entry.ts',
+    )
+    const src = fs.readFileSync(srcPath, 'utf8')
+    expect(src).toContain('runStart(deps, { child, taskFile, spendBaselineUsd, onRunDirReady })')
+  })
 })

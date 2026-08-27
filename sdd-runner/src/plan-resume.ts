@@ -15,6 +15,7 @@ import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import { logPathFor, presentGateAt } from './gate-digest.js'
 import { PLAN_REVIEW_SURROGATE } from './gate-prelude.js'
 import { planGateRows } from './plan-gate-resume.js'
+import type { PlanChild } from './plan.js'
 import type { RunState } from './run-state.js'
 import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controller.js'
 
@@ -22,6 +23,7 @@ import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controll
 export type StartChildRun = (
   deps: OrchestratorDeps,
   options: {
+    readonly child: PlanChild
     readonly taskFile: string
     readonly spendBaselineUsd: number
     readonly onRunDirReady?: (childRunDir: string) => void
@@ -126,8 +128,8 @@ export async function resumePlanParent(
       })
       return { runId: state.runId, halted: 'gate-pending' }
     }
-    const runChildRun: RunChildRun = (_child, taskFile, spendBaselineUsd, onRunDirReady) =>
-      startChildRun(resolved, { taskFile, spendBaselineUsd, onRunDirReady })
+    const runChildRun: RunChildRun = (child, taskFile, spendBaselineUsd, onRunDirReady) =>
+      startChildRun(resolved, { child, taskFile, spendBaselineUsd, onRunDirReady })
     const result = await runChildren(resolved, state, ctx, { runChildRun, stop })
     return {
       runId: state.runId,

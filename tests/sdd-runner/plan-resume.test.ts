@@ -248,6 +248,42 @@ describe('resumePlanParent (D9 interception)', () => {
     expect(fs.existsSync(path.join(fixture.repoRoot, 'openspec', 'changes', 'composite'))).toBe(false)
   })
 
+  it('forwards the full PlanChild — changeName included — to the orchestrator-supplied starter (D6)', async () => {
+    const fixture = await makeFixture()
+    fs.writeFileSync(
+      path.join(fixture.state.runDir, 'sidecars', 'plan.json'),
+      JSON.stringify({
+        children: [
+          { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [], changeName: 'add-thing' },
+          { id: 'db-api', instruction: 'Rename the API route helpers.', deps: ['db-schema'] },
+        ],
+      }),
+    )
+    const seen: unknown[] = []
+    const startChildRun: StartChildRun = async (_deps, options) => {
+      seen.push(options.child)
+      const child = await createRunState({
+        workDir: fixture.deps.config.workDir,
+        repoRoot: fixture.repoRoot,
+        changeName: 'db-schema',
+      })
+      child.status = 'stopped'
+      await saveRunState(child, new Date('2026-08-12T08:00:00.000Z'))
+      return { runId: child.runId }
+    }
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      () => undefined,
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(result.halted).toBe('stopped')
+    expect(seen[0]).toMatchObject({ id: 'db-schema', changeName: 'add-thing' })
+  })
+
   it('forwards the running tree spend as spendBaselineUsd into the nested starter (D10)', async () => {
     const fixture = await makeFixture()
     appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), {

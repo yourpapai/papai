@@ -40,10 +40,6 @@ export interface AutonomyOverrides {
   readonly deadlineMinutes?: number
 }
 
-function resolveAutonomy(deps: OrchestratorDeps, overrides: AutonomyOverrides = {}): AutonomyConfig {
-  return autonomyOf(deps.config, overrides.deadlineMinutes)
-}
-
 export interface StartOptions {
   readonly taskFile?: string
   /** Inline task text (D3): starts a session without a task file. */
@@ -55,6 +51,8 @@ export interface StartOptions {
   readonly autonomy?: AutonomyOverrides
   /** Tree spend baseline (D10) a nested run adds before its single-ceiling compare. */
   readonly spendBaselineUsd?: number
+  /** The plan child this nested run executes (D6) — a `changeName`-carrier gets a continuation start. */
+  readonly child?: PlanChild
   /** Reports the fresh run dir (D11) before stage work so a parent can propagate calm-stop. */
   readonly onRunDirReady?: (runDir: string) => void
 }
@@ -115,7 +113,7 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
       taskText,
       changeName,
       depthOverride: options.depthOverride,
-      autonomy: resolveAutonomy(deps, options.autonomy),
+      autonomy: autonomyOf(deps.config, options.autonomy?.deadlineMinutes),
     })
     const planned = await runPlanningStages(env, stop)
     const halted =
@@ -135,7 +133,7 @@ export async function runResume(
   runId: string,
   overrides: AutonomyOverrides = {},
 ): Promise<RunResumeResult> {
-  const autonomy = resolveAutonomy(deps, overrides)
+  const autonomy = autonomyOf(deps.config, overrides.deadlineMinutes)
   const state = await loadRunState(deps.config.workDir, runId)
   if (state.gate !== null) {
     deps.stdout?.(`run ${runId} awaits a gate decision (gate ${state.gate.version}, ${state.gate.mode})`)
