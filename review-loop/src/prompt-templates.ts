@@ -124,7 +124,7 @@ export function buildReviewPrompt(planPath: string, outputPath: string): string 
     // does not route it to an edit. Without this line every such finding buys
     // a full fixer cycle that can only end in `needs_human`, the same wasted
     // cycle the fixer-side rule exists to prevent, one layer earlier.
-    "Protected paths: a finding whose fix requires editing a file under `.github/workflows/` is still reportable — describe the exact change in `suggestedFix` for a maintainer to apply by hand. The loop cannot fix it: this pipeline's token cannot push a workflow edit, so report it for manual application rather than as something a fixer will change.",
+    "Protected paths: a finding whose fix requires editing a file under `.github/workflows/` is still reportable — describe the exact change in `suggestedFix` for a maintainer to apply by hand. The suggested fix must be self-contained: the exact replacement text or a copy-pasteable patch, referencing nothing else from this run, because it may be the only record of the change that survives. The loop cannot fix it: this pipeline's token cannot push a workflow edit, so report it for manual application rather than as something a fixer will change.",
     '',
     CLEANUP_FINDINGS,
     '',

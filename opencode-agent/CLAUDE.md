@@ -1186,7 +1186,16 @@ not permitted to create or approve pull requests` is a repository or
   (`git-revert.ts`, driven from `review-push.ts`): its fixes are commits it makes
   in a worktree of its own and merges, so they never pass through an index
   `stageAllowed` sees, and a protected path there fails the **push** rather than
-  being dropped.
+  being dropped. The guard also captures each path's diff through `Git.diffSince`
+  **before the revert destroys it** — the patch is the fix the pipeline wrote and
+  verified, and the phase report is the only place a maintainer can still reach
+  it — and `renderReport` carries those patches as fenced apply-by-hand blocks
+  beside the path note, bounded per path and in total with a `git log -p`
+  recovery reference, newest diff per path when one path is reverted twice. A
+  capture that fails degrades to the path-only note and never blocks the push.
+  PR #362 is the cost of the old paths-only report: the loop's correct ci.yml
+  fix (`df1025cb5`) was reverted by the guard (`e2b213562`) and survived only as
+  `git log -S` archaeology.
 - **A process artefact is not a deliverable, and that is enforced at staging
   too.** `stray-paths.ts` names `*.pid`, `*.sock` and `nohup.out`, and
   `stageAllowed` takes them back out of the index alongside the protected paths.

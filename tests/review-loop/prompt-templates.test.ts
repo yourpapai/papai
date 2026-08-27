@@ -365,6 +365,16 @@ describe('protected-paths rule in prompts', () => {
     expect(p).toContain('by hand')
   })
 
+  test('buildReviewPrompt demands the suggested fix be self-contained', () => {
+    // The suggested fix may be the only record of the change that survives the
+    // run (on CI the ledger dies with the runner), so it must carry the exact
+    // replacement text rather than a description the reader has to reconstruct
+    // from context they do not have.
+    const p = buildReviewPrompt('/plan.md', '/issues.json')
+    expect(p).toContain('self-contained')
+    expect(p).toContain('copy-paste')
+  })
+
   test('the inspect prompts judge diffs and carry nothing', () => {
     // Writing is not their job, and a rule about writing in a prompt that
     // cannot write is noise the model pays for on every issue.

@@ -17,8 +17,8 @@
 
 ## 3. Prompts and docs
 
-- [ ] 3.1 Add the self-contained-suggested-fix clause to the reviewer prompt's protected-path paragraph in `review-loop/src/prompt-templates.ts` (design D5); confirm `protected-paths-rule.test.ts` still passes (shared constant unchanged)
-- [ ] 3.2 Update `review-loop/AGENTS.md` (fix instruction contract: needs-human content now rides the summary) and `opencode-agent/CLAUDE.md` (push-guard doctrine: the guard reports the diff it reverted, paths-plus-patch)
+- [x] 3.1 Add the self-contained-suggested-fix clause to the reviewer prompt's protected-path paragraph in `review-loop/src/prompt-templates.ts` (design D5); confirm `protected-paths-rule.test.ts` still passes (shared constant unchanged)
+- [x] 3.2 Update `review-loop/AGENTS.md` (fix instruction contract: needs-human content now rides the summary) and `opencode-agent/CLAUDE.md` (push-guard doctrine: the guard reports the diff it reverted, paths-plus-patch)
 
 ## 4. Verification
 
