@@ -701,9 +701,12 @@ describe('buildPluginContext', () => {
       // We test this by asserting that a call to a disallowed host still throws allowlist,
       // while the now-configured host does NOT throw an allowlist error.
       await expect(ctx.providerRuntime!.httpFetch('http://unknown-host.lan/v1/transcribe')).rejects.toThrow()
-      // The configured host is in the dynamic set — the rejection must not be an allowlist rejection
+      // The configured host is in the dynamic set — the rejection must not be an allowlist rejection.
+      // DNS failure shapes differ by bun version: ≤1.3.13 wraps the cause as "fetch failed",
+      // 1.4.0 surfaces it as "getaddrinfo ENOTFOUND <host>". Both mean the call got past the
+      // allowlist and died in the network layer, which is what this asserts.
       await expect(ctx.providerRuntime!.httpFetch('http://whisper.lan:9000/v1/transcribe')).rejects.toThrow(
-        /ECONNREFUSED|fetch|network|connect|socket|timeout|abort/iu,
+        /ECONNREFUSED|ENOTFOUND|getaddrinfo|fetch|network|connect|socket|timeout|abort/iu,
       )
     })
 
