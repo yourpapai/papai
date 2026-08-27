@@ -10,14 +10,19 @@ import type { ModelMessage } from 'ai'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { setConfig } from '../../src/config.testing.js'
-import { cancelAlertPrompt, createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
+import {
+  cancelAlertPrompt,
+  createAlertPrompt,
+  getAlertPrompt,
+  updateAlertActivityState,
+} from '../../src/deferred-prompts/alerts.js'
 import * as alertsModule from '../../src/deferred-prompts/alerts.js'
 import { buildAlertSummary, pollAlertsOnce } from '../../src/deferred-prompts/poller-alerts.js'
 import type { BuildProviderFn } from '../../src/deferred-prompts/proactive-llm.js'
 import type { AlertCondition, AlertPrompt } from '../../src/deferred-prompts/types.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { ProviderClassifiedError, providerError } from '../../src/providers/errors.js'
-import type { Task, TaskProvider } from '../../src/providers/types.js'
+import type { Activity, Task, TaskProvider } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createMockChatWithSentMessages,
@@ -776,5 +781,324 @@ describe('pollAlertsOnce — alert task watch', () => {
     await pollAlertsOnce(chat, buildProviderFn)
     expect(sentMessages).toHaveLength(1)
     expect(getAlertPrompt(alert.id, WATCH_USER)!.lastTriggeredAt).not.toBeNull()
+  })
+})
+
+// --- Alert task activity (per-task activity watch) tests ---
+
+describe('pollAlertsOnce — alert task activity', () => {
+  const ACTIVITY_USER = 'poller-activity-user'
+  const T1 = '2026-08-27T09:00:00.000Z'
+  const T2 = '2026-08-27T09:30:00.000Z'
+  const T3 = '2026-08-27T10:00:00.000Z'
+  const T4 = '2026-08-27T10:30:00.000Z'
+  let sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
+  let chat: ChatProvider
+  let generateTextImpl: () => Promise<GenerateTextResult>
+
+  beforeEach(async () => {
+    generateTextImpl = (): Promise<GenerateTextResult> =>
+      Promise.resolve({
+        text: 'Alert triggered.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
+    void mock.module('ai', () => ({
+      generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
+      tool: (opts: unknown): unknown => opts,
+      stepCountIs: (_n: number): unknown => undefined,
+    }))
+    void mock.module('@ai-sdk/openai-compatible', () => ({
+      createOpenAICompatible: (): (() => string) => (): string => 'mock-model',
+    }))
+    mockLogger()
+    await setupTestDb()
+    const result = createMockChatWithSentMessages()
+    chat = result.provider
+    sentMessages = result.sentMessages
+    seedTestPlatformInstance({ id: 'mock-default' })
+    seedTestTaskInstance({ id: 'ti-activity' })
+    setConfig(ACTIVITY_USER, 'timezone', 'UTC')
+    setContextSettings({ contextId: ACTIVITY_USER, taskInstanceId: 'ti-activity', platformInstanceId: 'mock-default' })
+    seedAdminLlmBinding()
+  })
+
+  const activity = (id: string, timestamp: string, overrides: Partial<Activity> = {}): Activity => ({
+    id,
+    timestamp,
+    category: 'comment',
+    author: 'alice',
+    ...overrides,
+  })
+
+  type ActivityProviderState = {
+    provider: TaskProvider
+    historyCalls: Array<[string, { categories?: string[] } | undefined]>
+    listCalls: string[]
+    setHistory: (taskId: string, entries: Activity[]) => void
+    setTask: (task: Task) => void
+  }
+
+  // Describe-scope stateful provider: getTaskHistory serves a mutable
+  // per-task activity table while recording its invocations; list/search
+  // record their calls so absence assertions can prove the targeted path.
+  const makeActivityProvider = (): ActivityProviderState => {
+    const history = new Map<string, Activity[]>()
+    const tasks = new Map<string, Task>()
+    const historyCalls: Array<[string, { categories?: string[] } | undefined]> = []
+    const listCalls: string[] = []
+    const provider = createMockProvider({
+      getTaskHistory: mock((taskId: string, params?: { categories?: string[] }) => {
+        historyCalls.push([taskId, params])
+        return Promise.resolve([...(history.get(taskId) ?? [])])
+      }),
+      getTask: mock((taskId: string): Promise<Task> => {
+        const task = tasks.get(taskId)
+        if (task === undefined) {
+          return Promise.reject(
+            new ProviderClassifiedError(`task ${taskId} not found`, providerError.taskNotFound(taskId)),
+          )
+        }
+        return Promise.resolve(task)
+      }),
+      listProjects: mock(() => {
+        listCalls.push('listProjects')
+        return Promise.resolve([{ id: 'proj-1', name: 'P1', url: 'http://test/proj-1' }])
+      }),
+      listTasks: mock(() => {
+        listCalls.push('listTasks')
+        const items = [...tasks.values()].map((task) => ({
+          id: task.id,
+          title: task.title,
+          status: task.status,
+          url: task.url,
+        }))
+        return Promise.resolve(items)
+      }),
+      searchTasks: mock(() => {
+        listCalls.push('searchTasks')
+        return Promise.resolve([])
+      }),
+    })
+    return {
+      provider,
+      historyCalls,
+      listCalls,
+      setHistory: (taskId, entries) => {
+        history.set(taskId, entries)
+      },
+      setTask: (task) => {
+        tasks.set(task.id, task)
+      },
+    }
+  }
+
+  const createActivityAlert = (condition: AlertCondition, cooldownMinutes = 60): AlertPrompt =>
+    createAlertPrompt(
+      ACTIVITY_USER,
+      'Notify on activity',
+      condition,
+      cooldownMinutes,
+      undefined,
+      undefined,
+      'ti-activity',
+    )
+
+  const activityBuildProviderFn = (state: ActivityProviderState): BuildProviderFn =>
+    recordingBuildProviderFn([], state.provider, new Set())
+
+  test('first poll baselines the cursor to the newest entry without firing', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2)])
+    const alert = createActivityAlert({ kind: 'activity', taskId: 'task-1' })
+
+    await pollAlertsOnce(chat, activityBuildProviderFn(state))
+
+    expect(sentMessages).toHaveLength(0)
+    const after = getAlertPrompt(alert.id, ACTIVITY_USER)!
+    expect(after.lastTriggeredAt).toBeNull()
+    expect(after.lastActivityCursor).toBe(T2)
+  })
+
+  test('later polls fire on entries newer than the cursor and advance cursor and lastTriggeredAt', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2)])
+    const alert = createActivityAlert({ kind: 'activity', taskId: 'task-1' })
+    const buildProviderFn = activityBuildProviderFn(state)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2), activity('e3', T3)])
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.text).toBe('Alert triggered.')
+    const after = getAlertPrompt(alert.id, ACTIVITY_USER)!
+    expect(after.lastActivityCursor).toBe(T3)
+    expect(after.lastTriggeredAt).not.toBeNull()
+  })
+
+  test('entries at or below the cursor never refire', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2)])
+    const alert = createActivityAlert({ kind: 'activity', taskId: 'task-1' })
+    const buildProviderFn = activityBuildProviderFn(state)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2), activity('e3', T3)])
+    await pollAlertsOnce(chat, buildProviderFn)
+    const afterFiring = getAlertPrompt(alert.id, ACTIVITY_USER)!
+    expect(afterFiring.lastActivityCursor).toBe(T3)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+    const after = getAlertPrompt(alert.id, ACTIVITY_USER)!
+    expect(after.lastActivityCursor).toBe(T3)
+    expect(after.lastTriggeredAt).toBe(afterFiring.lastTriggeredAt)
+  })
+
+  test('cursor and lastTriggeredAt advance only after successful delivery', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2)])
+    const alert = createActivityAlert({ kind: 'activity', taskId: 'task-1' })
+    const buildProviderFn = activityBuildProviderFn(state)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2), activity('e3', T3)])
+    generateTextImpl = (): Promise<GenerateTextResult> => Promise.reject(new Error('delivery failed'))
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(0)
+    const afterFailure = getAlertPrompt(alert.id, ACTIVITY_USER)!
+    expect(afterFailure.lastActivityCursor).toBe(T2)
+    expect(afterFailure.lastTriggeredAt).toBeNull()
+
+    generateTextImpl = (): Promise<GenerateTextResult> =>
+      Promise.resolve({
+        text: 'Alert triggered.',
+        toolCalls: [],
+        toolResults: [],
+        finalStep: { response: { messages: [] } },
+      })
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+    const after = getAlertPrompt(alert.id, ACTIVITY_USER)!
+    expect(after.lastActivityCursor).toBe(T3)
+    expect(after.lastTriggeredAt).not.toBeNull()
+  })
+
+  test('cooldown suppresses refire and catches up on the next eligible poll', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2)])
+    const alert = createActivityAlert({ kind: 'activity', taskId: 'task-1' }, 60)
+    const buildProviderFn = activityBuildProviderFn(state)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2), activity('e3', T3)])
+    await pollAlertsOnce(chat, buildProviderFn)
+    expect(sentMessages).toHaveLength(1)
+
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2), activity('e3', T3), activity('e4', T4)])
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+    const suppressed = getAlertPrompt(alert.id, ACTIVITY_USER)!
+    expect(suppressed.lastActivityCursor).toBe(T3)
+
+    updateAlertActivityState(alert.id, ACTIVITY_USER, '2026-08-27T08:00:00.000Z', T3)
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(2)
+    const after = getAlertPrompt(alert.id, ACTIVITY_USER)!
+    expect(after.lastActivityCursor).toBe(T4)
+  })
+
+  test('categories are passed through to getTaskHistory', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1)])
+    createActivityAlert({ kind: 'activity', taskId: 'task-1', categories: ['comment', 'status'] })
+
+    await pollAlertsOnce(chat, activityBuildProviderFn(state))
+
+    expect(state.historyCalls.length).toBeGreaterThan(0)
+    expect(state.historyCalls[0]?.[1]?.categories).toEqual(['comment', 'status'])
+  })
+
+  test('capability loss at poll time skips the alert with the cursor unchanged and the cycle continues', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2)])
+    const alert = createActivityAlert({ kind: 'activity', taskId: 'task-1' })
+    const buildProviderFn = activityBuildProviderFn(state)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    const degraded = createMockProvider({ getTaskHistory: undefined })
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2), activity('e3', T3)])
+    await pollAlertsOnce(chat, recordingBuildProviderFn([], degraded, new Set()))
+
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(alert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T2)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(alert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T3)
+  })
+
+  test('missing activities.read capability at poll time skips the alert without calling history', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2)])
+    const alert = createActivityAlert({ kind: 'activity', taskId: 'task-1' })
+    const buildProviderFn = activityBuildProviderFn(state)
+
+    await pollAlertsOnce(chat, buildProviderFn)
+
+    const degraded = createMockProvider({ capabilities: new Set() })
+    state.setHistory('task-1', [activity('e1', T1), activity('e2', T2), activity('e3', T3)])
+    const degradedCalls: Array<[string, string | null]> = []
+    await pollAlertsOnce(chat, recordingBuildProviderFn(degradedCalls, degraded, new Set()))
+
+    expect(sentMessages).toHaveLength(0)
+    expect(getAlertPrompt(alert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T2)
+  })
+
+  test('activity-only instance performs no listProjects, listTasks or searchTasks calls', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1)])
+    state.setHistory('task-2', [activity('e9', T1)])
+    createActivityAlert({ kind: 'activity', taskId: 'task-1' })
+    createActivityAlert({ kind: 'activity', taskId: 'task-2' })
+
+    await pollAlertsOnce(chat, activityBuildProviderFn(state))
+
+    expect(state.listCalls).toEqual([])
+    expect(state.historyCalls.map(([taskId]) => taskId).sort()).toEqual(['task-1', 'task-2'])
+    expect(sentMessages).toHaveLength(0)
+  })
+
+  test('mixed instance still lists tasks for field alerts while activity alerts use history', async () => {
+    const state = makeActivityProvider()
+    state.setHistory('task-1', [activity('e1', T1)])
+    state.setTask({ id: 'task-5', title: 'Field task', url: 'http://test/task-5', status: 'done' })
+    const activityAlert = createActivityAlert({ kind: 'activity', taskId: 'task-1' })
+    createAlertPrompt(
+      ACTIVITY_USER,
+      'Field alert',
+      { field: 'task.status', op: 'eq', value: 'done' },
+      60,
+      undefined,
+      undefined,
+      'ti-activity',
+    )
+
+    await pollAlertsOnce(chat, activityBuildProviderFn(state))
+
+    expect(state.listCalls).toContain('listProjects')
+    expect(state.listCalls.some((call) => call === 'listTasks')).toBe(true)
+    expect(state.historyCalls.map(([taskId]) => taskId)).toEqual(['task-1'])
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(activityAlert.id, ACTIVITY_USER)!.lastActivityCursor).toBe(T1)
   })
 })
