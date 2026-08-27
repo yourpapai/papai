@@ -59,12 +59,12 @@ export function isSeverityConverged(reviewResult: ReviewLoopResult): boolean {
 export async function runPostConvergenceTail(input: PostConvergenceTailInput): Promise<RunStartResult> {
   const { deps, state, ctx, agent, depth, reviewResult, version } = input
   const machine = createStageMachine({ emit: ctx.emit })
-  await machine.runStage('decompose', () =>
-    runDecompose(
+  await machine.runStage('decompose', async () => {
+    await runDecompose(
       { driver: deps.driver, agent, runDir: state.runDir, sidecarDir: ctx.sidecarDir, cwd: ctx.cwd },
       { changeName: state.changeName },
-    ),
-  )
+    )
+  })
   state.stage = 'decompose'
   await saveRunState(state, nowOf(deps))
   if (depth !== 'S') {
