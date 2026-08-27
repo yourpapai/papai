@@ -22,5 +22,5 @@
 
 ## 4. Verification
 
-- [ ] 4.1 `bun run review-loop:test && bun run review-loop:typecheck && bun run review-loop:lint` and the `tests/opencode-agent/` suites touched above
-- [ ] 4.2 `bun run test:affected --base=origin/master`, then a full `bun run test` before finishing
+- [x] 4.1 `bun run review-loop:test && bun run review-loop:typecheck && bun run review-loop:lint` and the `tests/opencode-agent/` suites touched above
+- [x] 4.2 `bun run test:affected --base=origin/master`, then a full `bun run test` before finishing
