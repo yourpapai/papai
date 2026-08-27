@@ -25,8 +25,8 @@ import { answer, callCapability } from './scripted-llm.js'
 import type { DmHandle, GroupHandle, PluginHandle, TaskInstanceHandle, ThreadHandle, UserHandle } from './world.js'
 import { createScenarioWorld, makeTaskInstanceHandle } from './world.js'
 
-const requireDiscoveredPlugin = (pluginId: string): DiscoveredPlugin => {
-  const plugin = discoverPlugins('plugins').plugins.find(({ manifest }) => manifest.id === pluginId)
+const requireDiscoveredPlugin = async (pluginId: string): Promise<DiscoveredPlugin> => {
+  const plugin = (await discoverPlugins('plugins')).plugins.find(({ manifest }) => manifest.id === pluginId)
   if (plugin === undefined) throw new Error(`Missing test plugin: ${pluginId}`)
   return plugin
 }
@@ -465,13 +465,14 @@ describe('scenario world', () => {
 
   test('approves discoverable plugin prerequisites before one production activation pass', async () => {
     const world = await createScenarioWorld('plugin prerequisite')
-    const plugin = world.api.given.plugin(requireDiscoveredPlugin('synthetic-web-search'))
+    const plugin = world.api.given.plugin(await requireDiscoveredPlugin('synthetic-web-search'))
     plugin satisfies PluginHandle
 
     expect(getActivatedPluginIds()).toEqual([])
     await Promise.all([world.start(), world.start()])
     expect(getActivatedPluginIds()).toContain(plugin.id)
-    expect(() => world.api.given.plugin(requireDiscoveredPlugin('acp'))).toThrow('given.plugin')
+    const acp = await requireDiscoveredPlugin('acp')
+    expect(() => world.api.given.plugin(acp)).toThrow('given.plugin')
 
     await world.stop()
     expect(getActivatedPluginIds()).toEqual([])
@@ -503,7 +504,7 @@ describe('scenario world', () => {
         }
       `,
     )
-    const source = requireDiscoveredPlugin('synthetic-web-search')
+    const source = await requireDiscoveredPlugin('synthetic-web-search')
     const plugin: DiscoveredPlugin = {
       ...source,
       pluginDir: directory,

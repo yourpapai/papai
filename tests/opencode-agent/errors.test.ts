@@ -6,7 +6,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  claudeExitError,
+  claudeResultError,
   dependencyDriftError,
+  isClaudeExit,
+  isClaudeResult,
   isDependencyDrift,
   isRetryFutile,
   isTurnDeadline,
@@ -15,6 +19,7 @@ import {
   openCodeError,
   providerStalledError,
   pullRequestForbiddenError,
+  serverGoneError,
   turnDeadlineError,
   turnStallError,
 } from '../../opencode-agent/src/errors.js'
@@ -150,17 +155,22 @@ describe('isTurnStall', () => {
 })
 
 describe('dependencyDriftError', () => {
-  test('names the drifted files and both ways back in step, never a bare /retry', () => {
+  test('names the drifted files and fields and both ways back in step, never a bare /retry', () => {
     // The message reaches the issue as `lastError` while the footer above it
     // used to invite a `/retry` by reflex — so it has to say up front that a
     // retry alone cannot change the condition, and name the two moves that
-    // can: `/sync`, on the issue or the pull request, and a hand merge.
-    const error = dependencyDriftError('agent/issue-323', 'master', ['bun.lock', 'sdd-runner/package.json'])
+    // can: `/sync`, on the issue or the pull request, and a hand merge. The
+    // field-per-file rendering is the maintainer's first question answered:
+    // which knob moved, in which manifest.
+    const error = dependencyDriftError('agent/issue-323', 'master', [
+      { file: 'bun.lock', fields: [] },
+      { file: 'sdd-runner/package.json', fields: ['devDependencies'] },
+    ])
 
     expect(error.code).toBe('DEPENDENCY_DRIFT')
     expect(error.progress).toBeNull()
     const message = error.message
-    expect(message).toContain('bun.lock, sdd-runner/package.json')
+    expect(message).toContain('bun.lock, sdd-runner/package.json (devDependencies)')
     expect(message).toContain('`agent/issue-323`')
     expect(message).toContain('`master`')
     expect(message).toContain('/sync')
@@ -171,11 +181,18 @@ describe('dependencyDriftError', () => {
     expect(message).toContain('not something `/retry` can change')
     expect(message).toContain('cannot install from the agent branch by design')
   })
+
+  test('renders a whole-file refusal — the lockfile — with no field list', () => {
+    const error = dependencyDriftError('agent/issue-323', 'master', [{ file: 'bun.lock', fields: [] }])
+
+    expect(error.message).toContain('(bun.lock)')
+    expect(error.message).not.toContain('bun.lock (')
+  })
 })
 
 describe('the retry-futile predicates', () => {
   test('a drift refusal is a drift and is retry-futile', () => {
-    const drift = dependencyDriftError('agent/issue-323', 'master', ['bun.lock'])
+    const drift = dependencyDriftError('agent/issue-323', 'master', [{ file: 'bun.lock', fields: [] }])
 
     expect(isDependencyDrift(drift)).toBe(true)
     expect(isRetryFutile(drift)).toBe(true)
@@ -195,5 +212,46 @@ describe('the retry-futile predicates', () => {
     expect(isRetryFutile(broke)).toBe(false)
     expect(isDependencyDrift(new Error('an ordinary crash'))).toBe(false)
     expect(isRetryFutile(new Error('an ordinary crash'))).toBe(false)
+  })
+})
+
+/**
+ * The claude turn family — two codes beside the deadline and the stall, for
+ * failures classified *after* the CLI process has already exited (where the
+ * alive-probe would mislabel them) or before it ever started meaningfully.
+ * Distinguishable from every other turn code, because `runTurn`'s bypass list
+ * and the phase's salvage decisions branch on exactly that.
+ */
+describe('the claude turn-family codes', () => {
+  test('CLAUDE_EXIT carries the exit code and a stderr tail', () => {
+    const error = claudeExitError(2, 'usage: claude ... unknown flag --nope')
+
+    expect(error.code).toBe('CLAUDE_EXIT')
+    expect(error.message).toContain('2')
+    expect(error.message).toContain('unknown flag')
+  })
+
+  test('CLAUDE_RESULT carries what the result line got wrong', () => {
+    const error = claudeResultError('the result line signalled an error')
+
+    expect(error.code).toBe('CLAUDE_RESULT')
+    expect(error.message).toContain('result line')
+  })
+
+  test('each predicate matches its own code and no other turn-family shape', () => {
+    const exit = claudeExitError(1, 'boom')
+    const result = claudeResultError('no result line arrived')
+
+    expect(isClaudeExit(exit)).toBe(true)
+    expect(isClaudeResult(result)).toBe(true)
+    expect(isClaudeExit(result)).toBe(false)
+    expect(isClaudeResult(exit)).toBe(false)
+    expect(isClaudeExit(turnDeadlineError(1_800_000, PROGRESS))).toBe(false)
+    expect(isClaudeResult(turnStallError(300_000, STALL, PROGRESS))).toBe(false)
+    expect(isClaudeExit(serverGoneError('socket closed'))).toBe(false)
+    expect(isClaudeResult(providerStalledError(STALL))).toBe(false)
+    expect(isClaudeExit(openCodeError('rate limited'))).toBe(false)
+    expect(isClaudeExit(new Error('rate limited'))).toBe(false)
+    expect(isClaudeExit(null)).toBe(false)
   })
 })

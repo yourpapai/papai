@@ -9,9 +9,9 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { settleApprovedGate } from '../../sdd-runner/src/extend-round.js'
-import { runGateResume } from '../../sdd-runner/src/extend-round.js'
 import { prepareResumeInput } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
+import { runGateResume } from '../../sdd-runner/src/gate-resume-entry.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 

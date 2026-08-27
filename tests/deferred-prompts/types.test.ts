@@ -204,16 +204,90 @@ describe('alertConditionSchema', () => {
     })
   })
 
+  describe('task.id watch field', () => {
+    test('eq with string value is accepted', () => {
+      const result = alertConditionSchema.safeParse({
+        field: 'task.id',
+        op: 'eq',
+        value: 'task-123',
+      })
+      expect(result.success).toBe(true)
+    })
+
+    test('eq with number value is accepted', () => {
+      const result = alertConditionSchema.safeParse({
+        field: 'task.id',
+        op: 'eq',
+        value: 42,
+      })
+      expect(result.success).toBe(true)
+    })
+
+    test('neq is rejected with a message naming the field, the operator, and eq as the only valid operator', () => {
+      const result = alertConditionSchema.safeParse({
+        field: 'task.id',
+        op: 'neq',
+        value: 'task-123',
+      })
+      expect(result.success).toBe(false)
+      assert(!result.success, 'expected parse to fail')
+      const messages = result.error.issues.map((i) => i.message).join(' ')
+      expect(messages).toContain('task.id')
+      expect(messages).toContain("'neq'")
+      expect(messages).toContain('Valid operators: eq')
+    })
+
+    test('changed_to is rejected', () => {
+      const result = alertConditionSchema.safeParse({
+        field: 'task.id',
+        op: 'changed_to',
+        value: 'task-123',
+      })
+      expect(result.success).toBe(false)
+    })
+
+    test('eq without value is rejected', () => {
+      const result = alertConditionSchema.safeParse({
+        field: 'task.id',
+        op: 'eq',
+      })
+      expect(result.success).toBe(false)
+    })
+
+    test('composes under nested and/or with other fields', () => {
+      const result = alertConditionSchema.safeParse({
+        and: [
+          { field: 'task.id', op: 'eq', value: 'task-123' },
+          {
+            or: [
+              { field: 'task.status', op: 'eq', value: 'done' },
+              { field: 'task.priority', op: 'eq', value: 'urgent' },
+            ],
+          },
+        ],
+      })
+      expect(result.success).toBe(true)
+    })
+  })
+
   describe('exports', () => {
     test('CONDITION_FIELDS contains all expected fields', () => {
-      expect(CONDITION_FIELDS).toEqual([
+      const fields: string[] = [...CONDITION_FIELDS]
+      const expected: string[] = [
+        'task.id',
         'task.status',
         'task.priority',
         'task.assignee',
         'task.dueDate',
         'task.project',
         'task.labels',
-      ])
+      ]
+      expect(fields).toEqual(expected)
+    })
+
+    test('FIELD_OPERATORS allows only eq for task.id', () => {
+      const operators: Record<string, readonly string[]> = FIELD_OPERATORS
+      expect(operators['task.id']).toEqual(['eq'])
     })
 
     test('FIELD_OPERATORS has entry for every field', () => {

@@ -281,3 +281,213 @@ describe('AGENT_MCP_SERVERS', () => {
     expect(pipelineSecrets(loadConfig(ENV, '/repo'))).toEqual(['tok', 'sk-test'])
   })
 })
+
+/**
+ * `AGENT_BACKEND=claude` — the claude route's startup contract.
+ *
+ * Exactly one Anthropic credential before any spend, the gateway credential
+ * refused rather than merely unused, gateway reads optional-empty, and the
+ * chosen credential on the scrub/redaction list. The guard never fires on the
+ * default route, whatever Anthropic variables happen to be present.
+ */
+const ANTHROPIC_KEY = 'sk-ant-api03-a-real-shaped-key-value'
+const OAUTH_TOKEN = 'oauth-token-a-real-shaped-value-1234'
+
+/** The base environment of a claude-route run: no gateway credential at all. */
+const CLAUDE_ENV = {
+  GITHUB_REPOSITORY: 'acme/widgets',
+  GITHUB_TOKEN: 'tok',
+  LLM_MODEL: 'claude-sonnet-5',
+  AGENT_BACKEND: 'claude',
+}
+
+/** Narrows a raised error to the config error the assertions read, outside the test bodies. */
+const asConfigError = (raised: unknown): ConfigError => {
+  if (raised instanceof ConfigError) return raised
+  throw new Error(`expected a ConfigError, got ${JSON.stringify(raised)}`)
+}
+
+describe('AGENT_BACKEND (loadConfig)', () => {
+  test('is read before the gateway block, so a claude run with no gateway at all loads', () => {
+    const config = loadConfig({ ...CLAUDE_ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY }, '/repo')
+
+    expect(config.backend).toBe('claude')
+  })
+
+  test('an unknown value fails job startup naming the variable', () => {
+    expect(() => loadConfig({ ...ENV, AGENT_BACKEND: 'vertex' }, '/repo')).toThrow(ConfigError)
+    expect(() => loadConfig({ ...ENV, AGENT_BACKEND: 'vertex' }, '/repo')).toThrow('AGENT_BACKEND')
+  })
+
+  test('the default route is byte-identical: unset or empty keeps opencode', () => {
+    expect(loadConfig(ENV, '/repo').backend).toBe('opencode')
+    expect(loadConfig({ ...ENV, AGENT_BACKEND: '' }, '/repo').backend).toBe('opencode')
+  })
+
+  test('the default route ignores Anthropic credentials entirely', () => {
+    // The exclusivity guard neither fails the job nor rewrites the environment
+    // on the opencode route — the workflow's forwarding gate is the only
+    // compliant mechanism there.
+    const config = loadConfig(
+      { ...ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY, CLAUDE_CODE_OAUTH_TOKEN: OAUTH_TOKEN },
+      '/repo',
+    )
+
+    expect(config.backend).toBe('opencode')
+    expect(config.claudeCredential).toBeNull()
+    expect(config.openai.apiKey).toBe('sk-test')
+  })
+})
+
+describe('the claude credential guard', () => {
+  test('the OAuth spelling alone loads and carries the credential — it selects the native profile', () => {
+    // The spelling is the profile selector (design D1 of the native-OAuth
+    // change): the guard's shape is unchanged — exactly one spelling — and
+    // the OAuth token alone is the native profile's credential, handed to
+    // the adapter to derive `native` from.
+    const config = loadConfig({ ...CLAUDE_ENV, CLAUDE_CODE_OAUTH_TOKEN: OAUTH_TOKEN }, '/repo')
+
+    expect(config.claudeCredential).toEqual({ name: 'CLAUDE_CODE_OAUTH_TOKEN', value: OAUTH_TOKEN })
+    expect(config.backend).toBe('claude')
+  })
+
+  test('the OAuth credential joins the secret list like the API key does', () => {
+    // Secret handling is unchanged by the profile split: whichever spelling
+    // config chose, its value is scrubbed and redacted by value.
+    const oauth = pipelineSecrets(loadConfig({ ...CLAUDE_ENV, CLAUDE_CODE_OAUTH_TOKEN: OAUTH_TOKEN }, '/repo'))
+    const apiKey = pipelineSecrets(loadConfig({ ...CLAUDE_ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY }, '/repo'))
+
+    expect(oauth).toContain(OAUTH_TOKEN)
+    expect(apiKey).toContain(ANTHROPIC_KEY)
+  })
+
+  test('both credentials set still fails, naming the two profiles the spelling would select', () => {
+    let raised: unknown
+    try {
+      loadConfig({ ...CLAUDE_ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY, CLAUDE_CODE_OAUTH_TOKEN: OAUTH_TOKEN }, '/repo')
+    } catch (error) {
+      raised = error
+    }
+
+    const error = asConfigError(raised)
+    expect(error.code).toBe('CLAUDE_CREDENTIALS')
+    const message = error.message
+    expect(message).toContain('ANTHROPIC_API_KEY')
+    expect(message).toContain('CLAUDE_CODE_OAUTH_TOKEN')
+    // The message names the native profile as the OAuth spelling's meaning:
+    // the exclusivity rule is about profile selection, not a refused route.
+    expect(message).toContain('native')
+    expect(message).toContain('bare')
+    // Names, never values.
+    expect(message).not.toContain(ANTHROPIC_KEY)
+    expect(message).not.toContain(OAUTH_TOKEN)
+  })
+
+  test('neither credential set still fails, naming both spellings and their profiles', () => {
+    let raised: unknown
+    try {
+      loadConfig(CLAUDE_ENV, '/repo')
+    } catch (error) {
+      raised = error
+    }
+
+    const error = asConfigError(raised)
+    expect(error.code).toBe('CLAUDE_CREDENTIALS')
+    const message = error.message
+    expect(message).toContain('ANTHROPIC_API_KEY')
+    expect(message).toContain('CLAUDE_CODE_OAUTH_TOKEN')
+    expect(message).toContain('native')
+  })
+
+  test('the guard fires before the gateway required reads can complain', () => {
+    // No `LLM_BASE_URL`, no `LLM_API_KEY`, no Anthropic credential: the
+    // failure must be the credential guard's, not a missing-gateway error —
+    // on this route the gateway is optional, so its absence is not the story.
+    let raised: unknown
+    try {
+      loadConfig(CLAUDE_ENV, '/repo')
+    } catch (error) {
+      raised = error
+    }
+
+    expect(asConfigError(raised).code).toBe('CLAUDE_CREDENTIALS')
+    expect(() => loadConfig(CLAUDE_ENV, '/repo')).not.toThrow('LLM_BASE_URL')
+  })
+
+  test('a set LLM_API_KEY is refused on the claude route, naming the variable', () => {
+    let raised: unknown
+    try {
+      loadConfig({ ...CLAUDE_ENV, LLM_API_KEY: 'sk-gateway', ANTHROPIC_API_KEY: ANTHROPIC_KEY }, '/repo')
+    } catch (error) {
+      raised = error
+    }
+
+    const error = asConfigError(raised)
+    expect(error.code).toBe('LLM_CREDENTIALS')
+    expect(error.message).toContain('LLM_API_KEY')
+    expect(error.message).not.toContain('sk-gateway')
+  })
+})
+
+describe('the claude route config shape', () => {
+  test('the API key spelling loads and carries the chosen credential — the bare profile’s', () => {
+    const config = loadConfig({ ...CLAUDE_ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY }, '/repo')
+
+    expect(config.claudeCredential).toEqual({ name: 'ANTHROPIC_API_KEY', value: ANTHROPIC_KEY })
+  })
+
+  test('gateway reads are optional-empty: openai keeps its type with empty apiKey and baseUrl', () => {
+    const config = loadConfig({ ...CLAUDE_ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY }, '/repo')
+
+    expect(config.openai.apiKey).toBe('')
+    expect(config.openai.baseUrl).toBe('')
+    expect(config.openai.model).toBe('claude-sonnet-5')
+  })
+
+  test('the model and profile knobs are read on this route too', () => {
+    const config = loadConfig(
+      {
+        ...CLAUDE_ENV,
+        ANTHROPIC_API_KEY: ANTHROPIC_KEY,
+        LLM_MODEL_LIGHT: 'claude-haiku-5',
+        AGENT_EFFORT_PLAN: 'low',
+        AGENT_EFFORT_BUILD: 'high',
+      },
+      '/repo',
+    )
+
+    expect(config.openai.profiles).toEqual({ light: 'claude-haiku-5', planEffort: 'low', buildEffort: 'high' })
+  })
+
+  test('AGENT_MCP_SERVERS is still parsed for the secrets list on this route', () => {
+    const config = loadConfig(
+      {
+        ...CLAUDE_ENV,
+        ANTHROPIC_API_KEY: ANTHROPIC_KEY,
+        AGENT_MCP_SERVERS: JSON.stringify({
+          index: { type: 'remote', url: 'https://mcp.example', headers: { authorization: 'Bearer mcp-secret-value' } },
+        }),
+      },
+      '/repo',
+    )
+
+    // `mcpSecrets` collects whole header values; the knob is inert on this
+    // route (--bare runs no MCP servers) but its embedded credentials must
+    // not survive the scrub just because of that.
+    expect(pipelineSecrets(config)).toContain('Bearer mcp-secret-value')
+  })
+
+  test('empty gateway values do not join the secret list, but the chosen credential does', () => {
+    const config = loadConfig({ ...CLAUDE_ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY }, '/repo')
+    const secrets = pipelineSecrets(config)
+
+    expect(secrets).toContain(ANTHROPIC_KEY)
+    expect(secrets).not.toContain('')
+    // The scrub, the outbound redaction and the diff guard read one list; the
+    // credential must survive a round trip through it.
+    expect(redactSecrets(`token ${ANTHROPIC_KEY} quoted`, secrets)).not.toContain(ANTHROPIC_KEY)
+    const env = { ANTHROPIC_API_KEY: ANTHROPIC_KEY }
+    scrubSecrets(env, secrets)
+    expect(env['ANTHROPIC_API_KEY']).toBeUndefined()
+  })
+})

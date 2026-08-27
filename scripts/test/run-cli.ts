@@ -49,13 +49,13 @@ const realEnsureClientBuilt = (cwd: string): void => {
 /**
  * The environment the suite runs under, with git pinned to the repo's own config.
  *
- * This has to be set here, on the child's *startup* environment, and not in
- * `tests/setup.ts`. Bun does not propagate later `process.env` mutations to
- * subprocesses the way Node does — measured on 1.3.11, a var assigned at runtime is
- * invisible to both `node:child_process.spawnSync` and `Bun.spawnSync` unless it is
- * passed explicitly. A preload therefore cannot reach the ~20 suites that shell out to
- * `git init`, and those emit a 10-line advice block each: about 100 lines, a fifth of
- * everything a near-green full run prints.
+ * This is set on the child's *startup* environment rather than in `tests/setup.ts` —
+ * deliberate even though it is no longer forced: through bun 1.3, runtime
+ * `process.env` mutations did not propagate to subprocesses (fixed in 1.4, pinned by
+ * `tests/git-init-hint.test.ts`), and a preload assignment was therefore invisible to
+ * the ~20 suites that shell out to `git init`, each of which would otherwise emit a
+ * 10-line advice block: about 100 lines, a fifth of everything a near-green full run
+ * prints. Startup-env keeps the pin explicit and independent of propagation semantics.
  *
  * `master` is git's historical default, so suites that name the initial branch still pass.
  */

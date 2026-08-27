@@ -1460,9 +1460,42 @@ say.
 `AGENT_GITHUB_TOKEN` the `workflows: write` permission, re-install it, and drop
 the prefix from `PROTECTED_PREFIXES`. Weigh it first: an agent that can rewrite
 `agent-pipeline.yml` can rewrite the permissions, the concurrency group, the
-guardrails and the secret wiring that bound it, from inside a job that file
+guardrails and the secret wiring that bounded it, from inside a job that file
 defines. The alternative costs a maintainer one commit — the agent says in its
 reply exactly what to apply.
+
+### Branches the job cannot serve
+
+The workflow runs `bun install --frozen-lockfile` on the **base** checkout and
+`ensureBranch` switches onto `agent/issue-<n>` afterwards, with no second
+install — so a branch whose install state diverged from base would run every
+check against a `node_modules` that cannot serve it. The dependency-drift guard
+(`src/git-drift.ts`) refuses such a branch at the switch, before any model turn
+or check is paid for.
+
+What counts as drift is decided by **content, not file paths**:
+
+- `bun.lock` refuses on any byte change — every byte of it is install state.
+- A `package.json` (root or any workspace) refuses only when an
+  install-relevant top-level field moved: the four dependency maps,
+  `resolutions` / `overrides`, `workspaces`, `trustedDependencies`,
+  `patchedDependencies` — the `INSTALL_FIELDS` constant beside the guard. Both
+  sides are parsed and compared field by field, so a re-serialized but
+  identical dependencies map passes, and edits to `scripts`, `name`,
+  `version`, `packageManager` or custom fields pass. Issue #360 is why: a
+  one-line `scripts` edit was a change's whole deliverable, and the older
+  path-based refusal parked the finished branch where `/retry` reproduced the
+  refusal, `/sync` had nothing to merge, and `/review` was refused.
+- Unknown shapes **fail closed**: a manifest that will not parse as JSON on
+  either side refuses, and a manifest that exists on only one side (an added
+  or deleted workspace) refuses when the side that exists carries any install
+  field.
+
+The refusal names the drifted fields per file (`package.json
+(devDependencies, resolutions)`), names `/sync` or a hand merge as the
+remedies, and spends no retry attempt. A branch that _intentionally_ changed
+dependencies is maintainer territory by design: the job never installs from
+the agent branch, so no command can reconcile it for you.
 
 ### Capability containment
 
@@ -1581,49 +1614,148 @@ used by the in-process SDK session _and_, via `OPENCODE_CONFIG_CONTENT`, by the
 `opencode run` subprocesses the review loop spawns — one definition, so the two
 cannot drift.
 
-| Variable                                   | Required | Default                                                                         | Purpose                                                                                                                                                                                                                                                                                   |
-| ------------------------------------------ | -------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `LLM_API_KEY`                              | yes      | —                                                                               | Model credentials                                                                                                                                                                                                                                                                         |
-| `LLM_MODEL`                                | yes      | —                                                                               | Model name, e.g. `gpt-5`                                                                                                                                                                                                                                                                  |
-| `LLM_BASE_URL`                             | yes      | —                                                                               | Any OpenAI-compatible endpoint                                                                                                                                                                                                                                                            |
-| `LLM_PROVIDER`                             | no       | `openai`                                                                        | models.dev id `LLM_MODEL` resolves under; see below                                                                                                                                                                                                                                       |
-| `GITHUB_TOKEN`                             | no       | the job's own `secrets.GITHUB_TOKEN`                                            | Comments, branches, pull requests; see below                                                                                                                                                                                                                                              |
-| `GITHUB_REPOSITORY`                        | no       | the job's own `owner/repo`                                                      | `owner/repo`; see below                                                                                                                                                                                                                                                                   |
-| `AGENT_SELF_LOGIN`                         | no       | derived from the token                                                          | Login the agent posts as; see above                                                                                                                                                                                                                                                       |
-| `AGENT_WORKFLOW_NAME`                      | no       | `OpenCode Issue Agent`                                                          | This workflow's name, for the CI recursion guard                                                                                                                                                                                                                                          |
-| `AGENT_BASE_BRANCH`                        | no       | detected                                                                        | Branch the PR targets; see below                                                                                                                                                                                                                                                          |
-| `AGENT_CHECK_COMMAND`                      | no       | `bun check:full`                                                                | review-loop's build gate                                                                                                                                                                                                                                                                  |
-| `AGENT_REVIEW_COMMAND`                     | no       | detected                                                                        | JSON argv running the review loop; `none` disables it                                                                                                                                                                                                                                     |
-| `AGENT_MCP_SERVERS`                        | no       | unset — no MCP servers                                                          | Secret or variable: JSON map of MCP servers; see below                                                                                                                                                                                                                                    |
-| `AGENT_REVIEW_MAX_ROUNDS`                  | no       | `4`                                                                             | review-loop rounds                                                                                                                                                                                                                                                                        |
-| `AGENT_REVIEW_POOL_SIZE`                   | no       | `1`                                                                             | review-loop worker pool                                                                                                                                                                                                                                                                   |
-| `AGENT_CI_FIX_MAX_ROUNDS`                  | no       | `2`                                                                             | Repair rounds per CI-fix job                                                                                                                                                                                                                                                              |
-| `AGENT_COMMIT_REPAIR_MAX_ROUNDS`           | no       | `3`                                                                             | Commit attempts when the repo's own checks refuse one                                                                                                                                                                                                                                     |
-| `AGENT_MAX_CI_ATTEMPTS`                    | no       | `3`                                                                             | CI-fix jobs per pull request                                                                                                                                                                                                                                                              |
-| `AGENT_MAX_REVIEW_ATTEMPTS`                | no       | `3`                                                                             | `/review` rounds per pull request                                                                                                                                                                                                                                                         |
-| `AGENT_REVIEW_HINT_LINES`                  | no       | `200`                                                                           | Diff size at which a delivery recommends `/review`                                                                                                                                                                                                                                        |
-| `AGENT_MAX_ATTEMPTS`                       | no       | `5`                                                                             | Failures before `/retry` stops resuming                                                                                                                                                                                                                                                   |
-| `AGENT_MAX_CHANGED_FILES`                  | no       | `100`                                                                           | Files one commit may carry                                                                                                                                                                                                                                                                |
-| `AGENT_MAX_CHANGED_LINES`                  | no       | `20000`                                                                         | Lines one commit may change                                                                                                                                                                                                                                                               |
-| `AGENT_TIMEOUT_MS`                         | no       | `5400000`                                                                       | Timeout for one model turn, and for each subprocess                                                                                                                                                                                                                                       |
-| `AGENT_STALL_TIMEOUT_MS`                   | no       | `300000`                                                                        | No-progress window that aborts a turn the provider stopped serving; `0` disables                                                                                                                                                                                                          |
-| `AGENT_JOB_STARTED_MS`                     | no       | unset — no job deadline                                                         | Epoch ms this job began; the workflow's first step                                                                                                                                                                                                                                        |
-| `AGENT_JOB_TIMEOUT_MINUTES`                | no       | unset here; `300` from the workflow                                             | The job's own ceiling, shared with `timeout-minutes:`                                                                                                                                                                                                                                     |
-| `AGENT_TEARDOWN_RESERVE_MS`                | no       | `180000`                                                                        | Held back from the job so a time stop can report                                                                                                                                                                                                                                          |
-| `AGENT_WRAP_UP_MS`                         | no       | `120000`                                                                        | The model's slice of a stop: finish up and hand over                                                                                                                                                                                                                                      |
-| `AGENT_MAX_TOKENS`                         | no       | `5000000`                                                                       | Model tokens one issue may spend, across all its jobs                                                                                                                                                                                                                                     |
-| `AGENT_MODEL_CONTEXT`                      | no       | unset — ask the catalogue                                                       | Context window, for a model no catalogue carries                                                                                                                                                                                                                                          |
-| `AGENT_MODEL_OUTPUT`                       | no       | unset — ask the catalogue                                                       | Output cap, same case                                                                                                                                                                                                                                                                     |
-| `AGENT_MODEL_REASONING`                    | no       | unset — ask the catalogue                                                       | `true`/`false`: does this model support reasoning                                                                                                                                                                                                                                         |
-| `LLM_MODEL_LIGHT`                          | no       | unset — the main model                                                          | Cheaper model for the read-only phases; see below                                                                                                                                                                                                                                         |
-| `AGENT_EFFORT_PLAN`                        | no       | unset — OpenCode's default                                                      | Reasoning effort for the read-only profile                                                                                                                                                                                                                                                |
-| `AGENT_EFFORT_BUILD`                       | no       | unset — OpenCode's default                                                      | Reasoning effort for implement / CI-fix / review                                                                                                                                                                                                                                          |
-| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no       | `github-actions[bot]` / `41898282+github-actions[bot]@users.noreply.github.com` | Commit identity — explicit pin wins per field; otherwise author is the per-run actor (`issue`/`pull-request` → `senderLogin` via `GET /users/:login`, `id+login` noreply) and committer is `github-actions[bot]`; `ci`/`pr-merged` and lookup failures fall back to `github-actions[bot]` |
-| `AGENT_LABEL_PREFIX`                       | no       | `agent:`                                                                        | Namespace for the status labels; `none` disables them                                                                                                                                                                                                                                     |
-| `AGENT_LOG_LEVEL`                          | no       | `info`                                                                          | `debug`, `info`, `warn`, `error`                                                                                                                                                                                                                                                          |
-| `AGENT_LOG_KEY`                            | no       | unset — no transcript                                                           | Secret: base64 32 bytes; encrypts the debug transcript                                                                                                                                                                                                                                    |
+| Variable                                   | Required                             | Default                                                                         | Purpose                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AGENT_BACKEND`                            | no                                   | `opencode`                                                                      | Which backend serves every model turn: `opencode` (headless server, gateway credentials) or `claude` (the official CLI, Anthropic credentials); see [Backend selection](#backend-selection-the-claude-cli-route)                                                                          |
+| `LLM_API_KEY`                              | claude route: refused; otherwise yes | —                                                                               | Model credentials for the OpenAI-compatible gateway                                                                                                                                                                                                                                       |
+| `LLM_MODEL`                                | yes                                  | —                                                                               | Model name, e.g. `gpt-5` on the gateway route, `claude-sonnet-5` on the claude route (a `provider/` prefix is stripped)                                                                                                                                                                   |
+| `LLM_BASE_URL`                             | claude route: unused; otherwise yes  | —                                                                               | Any OpenAI-compatible endpoint; never reaches the claude CLI's environment                                                                                                                                                                                                                |
+| `ANTHROPIC_API_KEY`                        | claude route: one of two             | —                                                                               | Secret. Anthropic Console API key — selects the **bare** profile (Commercial Terms, predictable per-token billing)                                                                                                                                                                        |
+| `CLAUDE_CODE_OAUTH_TOKEN`                  | claude route: one of two             | —                                                                               | Secret. Subscription OAuth token — selects the **native** profile (Pro/Max/Team/Enterprise subscription billing, five-hour windows); see [Backend selection](#backend-selection-the-claude-cli-route)                                                                                     |
+| `LLM_PROVIDER`                             | no                                   | `openai`                                                                        | models.dev id `LLM_MODEL` resolves under; see below                                                                                                                                                                                                                                       |
+| `GITHUB_TOKEN`                             | no                                   | the job's own `secrets.GITHUB_TOKEN`                                            | Comments, branches, pull requests; see below                                                                                                                                                                                                                                              |
+| `GITHUB_REPOSITORY`                        | no                                   | the job's own `owner/repo`                                                      | `owner/repo`; see below                                                                                                                                                                                                                                                                   |
+| `AGENT_SELF_LOGIN`                         | no                                   | derived from the token                                                          | Login the agent posts as; see above                                                                                                                                                                                                                                                       |
+| `AGENT_WORKFLOW_NAME`                      | no                                   | `OpenCode Issue Agent`                                                          | This workflow's name, for the CI recursion guard                                                                                                                                                                                                                                          |
+| `AGENT_BASE_BRANCH`                        | no                                   | detected                                                                        | Branch the PR targets; see below                                                                                                                                                                                                                                                          |
+| `AGENT_CHECK_COMMAND`                      | no                                   | `bun check:full`                                                                | review-loop's build gate                                                                                                                                                                                                                                                                  |
+| `AGENT_REVIEW_COMMAND`                     | no                                   | detected                                                                        | JSON argv running the review loop; `none` disables it                                                                                                                                                                                                                                     |
+| `AGENT_MCP_SERVERS`                        | no                                   | unset — no MCP servers                                                          | Secret or variable: JSON map of MCP servers; see below                                                                                                                                                                                                                                    |
+| `AGENT_REVIEW_MAX_ROUNDS`                  | no                                   | `4`                                                                             | review-loop rounds                                                                                                                                                                                                                                                                        |
+| `AGENT_REVIEW_POOL_SIZE`                   | no                                   | `1`                                                                             | review-loop worker pool                                                                                                                                                                                                                                                                   |
+| `AGENT_CI_FIX_MAX_ROUNDS`                  | no                                   | `2`                                                                             | Repair rounds per CI-fix job                                                                                                                                                                                                                                                              |
+| `AGENT_COMMIT_REPAIR_MAX_ROUNDS`           | no                                   | `3`                                                                             | Commit attempts when the repo's own checks refuse one                                                                                                                                                                                                                                     |
+| `AGENT_MAX_CI_ATTEMPTS`                    | no                                   | `3`                                                                             | CI-fix jobs per pull request                                                                                                                                                                                                                                                              |
+| `AGENT_MAX_REVIEW_ATTEMPTS`                | no                                   | `3`                                                                             | `/review` rounds per pull request                                                                                                                                                                                                                                                         |
+| `AGENT_REVIEW_HINT_LINES`                  | no                                   | `200`                                                                           | Diff size at which a delivery recommends `/review`                                                                                                                                                                                                                                        |
+| `AGENT_MAX_ATTEMPTS`                       | no                                   | `5`                                                                             | Failures before `/retry` stops resuming                                                                                                                                                                                                                                                   |
+| `AGENT_MAX_CHANGED_FILES`                  | no                                   | `100`                                                                           | Files one commit may carry                                                                                                                                                                                                                                                                |
+| `AGENT_MAX_CHANGED_LINES`                  | no                                   | `20000`                                                                         | Lines one commit may change                                                                                                                                                                                                                                                               |
+| `AGENT_TIMEOUT_MS`                         | no                                   | `5400000`                                                                       | Timeout for one model turn, and for each subprocess                                                                                                                                                                                                                                       |
+| `AGENT_STALL_TIMEOUT_MS`                   | no                                   | `300000`                                                                        | No-progress window that aborts a turn the provider stopped serving; `0` disables                                                                                                                                                                                                          |
+| `AGENT_JOB_STARTED_MS`                     | no                                   | unset — no job deadline                                                         | Epoch ms this job began; the workflow's first step                                                                                                                                                                                                                                        |
+| `AGENT_JOB_TIMEOUT_MINUTES`                | no                                   | unset here; `300` from the workflow                                             | The job's own ceiling, shared with `timeout-minutes:`                                                                                                                                                                                                                                     |
+| `AGENT_TEARDOWN_RESERVE_MS`                | no                                   | `180000`                                                                        | Held back from the job so a time stop can report                                                                                                                                                                                                                                          |
+| `AGENT_WRAP_UP_MS`                         | no                                   | `120000`                                                                        | The model's slice of a stop: finish up and hand over                                                                                                                                                                                                                                      |
+| `AGENT_MAX_TOKENS`                         | no                                   | `5000000`                                                                       | Model tokens one issue may spend, across all its jobs                                                                                                                                                                                                                                     |
+| `AGENT_MODEL_CONTEXT`                      | no                                   | unset — ask the catalogue                                                       | Context window, for a model no catalogue carries                                                                                                                                                                                                                                          |
+| `AGENT_MODEL_OUTPUT`                       | no                                   | unset — ask the catalogue                                                       | Output cap, same case                                                                                                                                                                                                                                                                     |
+| `AGENT_MODEL_REASONING`                    | no                                   | unset — ask the catalogue                                                       | `true`/`false`: does this model support reasoning                                                                                                                                                                                                                                         |
+| `LLM_MODEL_LIGHT`                          | no                                   | unset — the main model                                                          | Cheaper model for the read-only phases; see below                                                                                                                                                                                                                                         |
+| `AGENT_EFFORT_PLAN`                        | no                                   | unset — OpenCode's default                                                      | Reasoning effort for the read-only profile                                                                                                                                                                                                                                                |
+| `AGENT_EFFORT_BUILD`                       | no                                   | unset — OpenCode's default                                                      | Reasoning effort for implement / CI-fix / review                                                                                                                                                                                                                                          |
+| `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no                                   | `github-actions[bot]` / `41898282+github-actions[bot]@users.noreply.github.com` | Commit identity — explicit pin wins per field; otherwise author is the per-run actor (`issue`/`pull-request` → `senderLogin` via `GET /users/:login`, `id+login` noreply) and committer is `github-actions[bot]`; `ci`/`pr-merged` and lookup failures fall back to `github-actions[bot]` |
+| `AGENT_LABEL_PREFIX`                       | no                                   | `agent:`                                                                        | Namespace for the status labels; `none` disables them                                                                                                                                                                                                                                     |
+| `AGENT_LOG_LEVEL`                          | no                                   | `info`                                                                          | `debug`, `info`, `warn`, `error`                                                                                                                                                                                                                                                          |
+| `AGENT_LOG_KEY`                            | no                                   | unset — no transcript                                                           | Secret: base64 32 bytes; encrypts the debug transcript                                                                                                                                                                                                                                    |
 
-`LLM_MODEL` and `LLM_BASE_URL` are both required rather than defaulted: with a
+## Backend selection: the claude CLI route
+
+`AGENT_BACKEND=claude` points every model turn of the job at the official
+`claude` CLI instead of the headless OpenCode server: one `claude -p` process
+per turn, pinned per-profile `--allowedTools` allowlists under
+`--permission-mode default`, the prompt on stdin, and the session chained
+through `--resume`. The workflow installs the CLI at one pinned exact version —
+**`@anthropic-ai/claude-code@2.1.239`** — only when the backend is selected;
+the default route is byte-identical to the pre-knob pipeline.
+
+The route runs **one of two invocation profiles, selected by which credential
+secret is set — the spelling, not a knob** (there is no `AGENT_CLAUDE_PROFILE`;
+two switches for one fork would admit nonsense states the guard would then
+have to refuse):
+
+- **`ANTHROPIC_API_KEY` → the bare profile.** Every invocation carries
+  `--bare`, the API key rides the child environment, and the shape is
+  byte-identical to the route's original form. Per-token Console billing.
+- **`CLAUDE_CODE_OAUTH_TOKEN` → the native profile.** No `--bare`; every
+  invocation carries `--setting-sources ''` plus `--strict-mcp-config
+--mcp-config <an empty JSON document>` — the neutralization pair that keeps
+  repository state (`.mcp.json` auto-connect, repository skill discovery,
+  settings files) out of the job — and the OAuth token rides the child
+  environment as the CLI's native path expects. Subscription billing, and
+  **supported only as far as the recorder has proven it**: until a
+  credentialed run has landed the `rate_limit_event` five-hour signature on
+  the pinned CLI version, treat the profile as unproven.
+
+Exactly one spelling may be set — both set fails at startup, neither set fails
+naming both — and a set `LLM_API_KEY` is refused outright on this route: with
+no provider proxy in front of the review loop's `opencode run` children, a
+present gateway key would reach a subprocess whose children the model controls.
+
+The route's trade-offs, so an operator sees them before choosing:
+
+- **No retry layer.** The pipeline cannot see the HTTP status behind an exit
+  code, so it treats every exit as a verdict: a transient provider wave fails
+  the turn (`CLAUDE_EXIT`), the phase parks `FAILED`, and a human `/retry`
+  resumes it. Whatever the CLI absorbs internally is all there is.
+- **Billing follows the spelling — Console per-token, or subscription
+  five-hour windows.** The API key bills predictably per token under the
+  Commercial Terms; the OAuth token bills against the subscription's rate
+  limits, which arrive in five-hour windows. A quota exhausted mid-job is a
+  **turn failure** under the same families (`CLAUDE_RESULT`/`CLAUDE_EXIT`),
+  not a pipeline state — there is deliberately no retry or queueing around
+  the window, and the failure comment's `/retry` advice is time-based
+  recovery: wait out the window, then retry.
+- **`AGENT_STALL_TIMEOUT_MS` is inert.** The mid-turn stall watcher's second
+  condition — retry evidence accumulated since the last progress — is an
+  OpenCode event-stream fact with no analog in a CLI child, and synthesizing
+  fake evidence would manufacture false stalls on long generations. The
+  whole-turn `AGENT_TIMEOUT_MS` deadline remains the only bound.
+- **Killed turns are invisible to the token budget.** A turn stopped before its
+  `result` line has no usage carrier on this route — unlike the OpenCode
+  server, whose session usage survives an abort — so deadline-looping issues
+  burn spend `AGENT_MAX_TOKENS` never sees.
+- **The `/review` hint is a residual.** The review loop shells out to
+  `opencode run`, which a claude-route job cannot serve; `/review` then fails
+  loudly at its own boundary. The delivery comment still recommends it at the
+  threshold because suppressing the hint by backend would fork feedback
+  behaviour above the seam.
+- **The chosen credential is readable by the CLI's own `Bash` children.** The
+  CLI cannot authenticate without the credential in its environment, and every
+  `Bash` tool child inherits that environment — so a prompt-injected build turn
+  can exfiltrate it with one `env | curl`. Unavoidable under first-party-CLI
+  exclusivity, unchanged by the profile split (the OAuth token has exactly the
+  same residual), and part of why the bare profile's credential is the
+  revocable, spend-capped Console API key — a subscription token spent here
+  draws on the operator's own plan.
+- **The CLI is this route's model oracle.** An `LLM_MODEL` value the CLI does
+  not recognize fails the first turn loudly (`CLAUDE_EXIT` with a redacted
+  stderr tail) rather than at config load.
+- **The native profile keeps the CLI's built-in skills in context (~1.5k
+  tokens, recorded).** `--setting-sources ''` removes repository skill
+  discovery but not the CLI's own shipped skills; the census pins them at
+  ~1.5k tokens (1,469 recorded on 2.1.239). They are CLI-shipped, not
+  repository-controlled — a documented residual, not neutralized.
+- **The env token is authoritative over the local keychain.** The CLI's native
+  path reads `CLAUDE_CODE_OAUTH_TOKEN` from the environment before any local
+  keychain, pinned by the recorder's dummy-token leg: a deliberately invalid
+  token fails fast with the recorded 401 `api_error` shape rather than
+  succeeding through whatever login the machine happens to hold — a local
+  recording cannot silently authenticate through the operator's own
+  credentials.
+- **The OAuth-over-helper dead end is recorded, not live.** The pinned CLI's
+  `--bare` never reads the env token, and its `apiKeyHelper` mechanism loads
+  the token but the API refuses the call (401 `authentication_failed`,
+  recorded on 2.1.239 and kept as the `oauth-helper-init.ndjson` provenance).
+  No credential file is ever materialized on either profile; the recorder's
+  dummy-helper leg re-asserts the dead end at every CLI pin move.
+
+The claude fixtures and their provenance live under
+`tests/opencode-agent/fixtures/claude-cli/`; the recorder is the only writer.
+
+`LLM_MODEL` and `LLM_BASE_URL` are both required rather than defaulted (on the
+claude route both become optional-empty and the gateway credential is refused
+instead — see [Backend selection](#backend-selection-the-claude-cli-route)); with a
 model gateway that is not necessarily OpenAI's own, there is no base URL or
 model name that is right by default, and a wrong guess surfaces deep inside the
 first model call instead of at config load. A default of
@@ -1938,6 +2070,37 @@ Nothing to configure for `GITHUB_TOKEN` or `GITHUB_REPOSITORY` — see
 **Configuration** above for why the Actions runtime already supplies both.
 
 The workflow lives at `.github/workflows/agent-pipeline.yml`.
+
+### Switching the model backend to the claude CLI
+
+No workflow edit — the workflow on this branch reads the variable and does the
+rest: installs the pinned `@anthropic-ai/claude-code` CLI only when the backend
+is selected, and forwards the gateway credentials to the job only when it is
+not. To switch (Settings → Secrets and variables → Actions):
+
+1. **Variables** — set `AGENT_BACKEND` to `claude`. Unset or empty is the
+   default `opencode` route; clearing the variable switches back with the
+   gateway secrets untouched.
+2. **Secrets** — set exactly one Anthropic credential. The spelling selects the
+   invocation profile; there is no separate profile knob. `ANTHROPIC_API_KEY`
+   runs the **bare** profile (per-token Console billing);
+   `CLAUDE_CODE_OAUTH_TOKEN` runs the **native** profile (Pro/Max/Team/
+   Enterprise subscription billing, five-hour windows). Both set fails job
+   startup with `CLAUDE_CREDENTIALS`; neither set fails naming both.
+3. `LLM_MODEL` must name a model the CLI recognizes — `claude-sonnet-5`, say
+   (a `provider/` prefix is stripped). An unrecognized name fails the first
+   turn loudly (`CLAUDE_EXIT`), not config load.
+4. `LLM_API_KEY` and `LLM_BASE_URL` can stay exactly as they are: the workflow
+   forwards both empty on the claude route, and the route's guard never sees
+   them.
+5. `LLM_PROVIDER` and the `AGENT_MODEL_*` overrides are unused here — the
+   claude route skips the models.dev catalogue read. `LLM_MODEL_LIGHT` and
+   `AGENT_EFFORT_PLAN` / `AGENT_EFFORT_BUILD` still apply, per profile.
+
+Read [Backend selection](#backend-selection-the-claude-cli-route) before
+pointing a credential at it — the route's trade-offs (no retry layer, the
+`/review` residual, the credential readable by the CLI's own `Bash` children)
+are operator-facing decisions, not footnotes.
 
 ### The fallback comment for a job that never spoke
 

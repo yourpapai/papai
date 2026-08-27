@@ -129,8 +129,8 @@ function createTempPlugin({ pluginId, source, manifestPatch }: TempPluginOptions
   return rootDir
 }
 
-function discoverSinglePlugin(rootDir: string): DiscoveredPlugin {
-  const result = discoverPlugins(rootDir)
+async function discoverSinglePlugin(rootDir: string): Promise<DiscoveredPlugin> {
+  const result = await discoverPlugins(rootDir)
   expect(result.errors).toEqual([])
   expect(result.plugins).toHaveLength(1)
   const plugin = result.plugins[0]
@@ -177,7 +177,7 @@ describe('plugin lifecycle integration', () => {
   test('discovers, approves, activates, opts in, exposes tools/prompts, then deactivates', async () => {
     const provider = createMockProvider()
     const rootDir = createTempPlugin({ pluginId: 'lifecycle-plugin', source: workingPluginSource, manifestPatch: {} })
-    const plugin = discoverSinglePlugin(rootDir)
+    const plugin = await discoverSinglePlugin(rootDir)
 
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
@@ -227,7 +227,7 @@ describe('plugin lifecycle integration', () => {
     // landed in the group channel instead of the originating thread.
     const provider = createMockProvider()
     const rootDir = createTempPlugin({ pluginId: 'thread-plugin', source: workingPluginSource, manifestPatch: {} })
-    const plugin = discoverSinglePlugin(rootDir)
+    const plugin = await discoverSinglePlugin(rootDir)
 
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
@@ -262,9 +262,9 @@ describe('plugin lifecycle integration', () => {
     })
   })
 
-  test('requires reapproval when a discovered manifest hash changes', () => {
+  test('requires reapproval when a discovered manifest hash changes', async () => {
     const rootDir = createTempPlugin({ pluginId: 'changed-plugin', source: workingPluginSource, manifestPatch: {} })
-    const plugin = discoverSinglePlugin(rootDir)
+    const plugin = await discoverSinglePlugin(rootDir)
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
 
@@ -284,7 +284,7 @@ describe('plugin lifecycle integration', () => {
       source: workingPluginSource,
       manifestPatch: { requiredTaskCapabilities: ['tasks.delete'] },
     })
-    const plugin = discoverSinglePlugin(rootDir)
+    const plugin = await discoverSinglePlugin(rootDir)
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
     pluginRegistry.evaluateCompatibilityAcrossInstances([
@@ -306,7 +306,7 @@ describe('plugin lifecycle integration', () => {
         configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
       },
     })
-    const plugin = discoverSinglePlugin(rootDir)
+    const plugin = await discoverSinglePlugin(rootDir)
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
@@ -337,7 +337,7 @@ describe('plugin lifecycle integration', () => {
       `,
       manifestPatch: {},
     })
-    const plugin = discoverSinglePlugin(rootDir)
+    const plugin = await discoverSinglePlugin(rootDir)
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
 
@@ -360,7 +360,7 @@ describe('plugin lifecycle integration', () => {
       source: workingPluginSource,
       manifestPatch: { defaultEnabled: true },
     })
-    const plugin = discoverSinglePlugin(rootDir)
+    const plugin = await discoverSinglePlugin(rootDir)
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
@@ -381,7 +381,7 @@ describe('plugin lifecycle integration', () => {
       source: workingPluginSource,
       manifestPatch: { defaultEnabled: true, requiredTaskCapabilities: ['workItems.list'] },
     })
-    const plugin = discoverSinglePlugin(rootDir)
+    const plugin = await discoverSinglePlugin(rootDir)
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
     pluginRegistry.evaluateCompatibilityAcrossInstances([

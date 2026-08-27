@@ -114,20 +114,62 @@ findings: `ROADMAP.md`.
   testable without a filesystem or a remote, and neither has a literal fallback:
   a baked-in review path reported every run outside this repository as
   permanently red, and a `main` default killed every run inside it.
-- The OpenCode boundary is three files, split by what changes them.
-  `src/sdk-contract.ts` is what the SDK **says** — the shapes, recorded;
-  `src/opencode-connect.ts` is how it is **started and addressed** — a spawned
-  process, a port, a base URL; `src/opencode-adapter.ts` is the **session** the
-  pipeline holds — an id, a lifetime, a teardown. `src/turn-run.ts` is the fourth
-  and the newest: one **turn**, which is the thing with a clock, a heartbeat and
-  four ways to end (answered, deadlined, stalled, dead server). It owns the
-  bounds, the heartbeat and the failure
-  classification, and it never imports back from the adapter — `TurnBounds` and
-  `TurnConnection` are narrow slices that `OpenCodeAgentOptions` and
-  `OpenCodeConnection` extend, so each states what running a turn actually needs
-  rather than restating what an agent is.
+- The model-backend boundary splits the same way on both routes. **OpenCode:** three
+  files, split by what changes them. `src/sdk-contract.ts` is what the SDK
+  **says** — the shapes, recorded; `src/opencode-connect.ts` is how it is
+  **started and addressed** — a spawned process, a port, a base URL;
+  `src/opencode-adapter.ts` is the **session** the pipeline holds — an id, a
+  lifetime, a teardown. `src/turn-run.ts` is the fourth and the newest: one
+  **turn**, which is the thing with a clock, a heartbeat and four ways to end
+  (answered, deadlined, stalled, dead server). It owns the bounds, the heartbeat
+  and the failure classification, and it never imports back from the adapter —
+  `TurnBounds` and `TurnConnection` are narrow slices that
+  `OpenCodeAgentOptions` and `OpenCodeConnection` extend, so each states what
+  running a turn actually needs rather than restating what an agent is.
+  **Claude (`AGENT_BACKEND=claude`):** the same decomposition one route over —
+  `src/claude-contract.ts` (what the CLI says: the NDJSON line schemas recorded
+  in `tests/opencode-agent/fixtures/claude-cli/`) and `src/claude-argv.ts`
+  (what it is asked: the argv builder with the invocation profile and the
+  MAX_ARG_STRLEN refusal), `src/claude-config-dir.ts` (the job-scoped
+  filesystem: the config dir and the native profile's empty-MCP document),
+  `src/claude-connect.ts` (how it is started and addressed: detached group
+  spawn, the one-credential child env, the SIGTERM→grace→SIGKILL group kill),
+  `src/claude-adapter.ts`
+  (the session: `--resume` continuity, result-line resolution, tokens read
+  before teardown), and `src/claude-progress.ts` (names-only progress with the
+  stall watcher wired but no-op). The seam itself is `src/agent-session.ts`'s
+  `AgentSession` — extracted when the second backend arrived, with
+  `opencode-adapter.ts` re-exporting `OpenCodeAgent` as its alias so no existing
+  import changed.
+- **Backend selection is one job-wide knob, and the routes do not mix.**
+  `AGENT_BACKEND=opencode|claude` (default `opencode`, unset/empty is the
+  default) is read before the gateway block; the claude route demands exactly
+  one Anthropic credential and the **spelling selects the invocation profile**
+  (`CLAUDE_CREDENTIALS` failure code on both-set and neither-set):
+  `ANTHROPIC_API_KEY` runs the bare profile (`--bare`, API key on the child
+  env, byte-identical to the original route), `CLAUDE_CODE_OAUTH_TOKEN` runs
+  the native profile — no `--bare`, `--setting-sources ''` plus
+  `--strict-mcp-config --mcp-config <empty>` **mandatory on every
+  invocation**, the token on the child env. Route rule: the census pins
+  (`mcp_servers: []`, built-ins-only skills, no memory-file row) are
+  load-bearing — a CLI pin move must re-answer them at zero spend before any
+  credentialed turn — and `apiKeySource` is **not** the native proof (it
+  reads `none` on that path); the proof is the `rate_limit_event`
+  five-hour signature. The route refuses a set `LLM_API_KEY` outright
+  (`LLM_CREDENTIALS`), makes the gateway reads optional-empty, and crosses
+  the model knobs to `claude-adapter.ts` as plain values — never the
+  `OpenAiSettings` object. `contain()` starts no provider proxy on the
+  claude route (`Contained.proxy` is nullable; `index.ts` gates the one
+  teardown call site), and `runCli` skips the models.dev catalogue read
+  there. Nothing above the seam — phases, budgets, guardrails, the state
+  machine, feedback — knows which backend is running. The route's trade-offs
+  (no retry layer, inert stall knob, killed-turn under-count, the `/review`
+  residual, the credential-in-child-env asymmetry) are operator-facing and
+  documented in `README.md`'s _Backend selection_ section, not re-derived
+  here.
 - Every external boundary is an injected interface (`GitHubApi`, `Git`,
-  `CheckRunner`, `RunReview`, `OpenCodeAgent`, `ReadSkillFile`).
+  `CheckRunner`, `RunReview`, `AgentSession` (aliased `OpenCodeAgent`),
+  `ReadSkillFile`).
 
 ## Local rules
 
@@ -166,14 +208,28 @@ findings: `ROADMAP.md`.
   `ensureBranch` has been called, so a phase that reads too early fails the test
   the way it failed the run. The same call **refuses a dependency-drifted branch**
   (`git-drift.ts`): the workflow installs from the base checkout and no second
-  install follows the branch switch, so a branch whose `bun.lock` / `package.json`
-  manifests differ from base runs every check against a `node_modules` that cannot
-  serve it — run 32507905723 paid for a full PLANNING turn and then died in the
-  pre-commit hook on `TS2307` for an import base had stopped carrying. The refusal
-  (`dependencyDriftError`) names `/sync` and the hand-merge as the remedies and
-  never a bare `/retry`; `/sync` passes `allowDependencyDrift` because a drifted
-  branch is the condition it exists to repair, and the guard must not block its
-  own way out. Issue #323 is the incident that shaped the failure's bookkeeping:
+  install follows the branch switch, so a branch whose install state differs
+  from base runs every check against a `node_modules` that cannot serve it —
+  run 32507905723 paid for a full PLANNING turn and then died in the pre-commit
+  hook on `TS2307` for an import base had stopped carrying. The condition is
+  **content-aware**: `bun.lock` refuses on any byte, and a `package.json`
+  refuses only when an install-relevant top-level field moved — the
+  `INSTALL_FIELDS` constant beside the guard (the four dependency maps,
+  `resolutions`/`overrides`, `workspaces`, `trustedDependencies`,
+  `patchedDependencies`) — judged by parsing both sides (`git show` through the
+  same `GitFn` seam) and deep-equaling the fields, so a re-serialized identical
+  dependencies map passes and `scripts` / `packageManager` / metadata edits
+  pass; issue #360 is the false-positive incident that made it so (a one-line
+  `scripts` edit was the deliverable, and the path-based refusal parked the
+  finished branch with no command-level exit). Every unknown shape fails
+  closed: a manifest that will not parse on either side refuses, and a
+  one-sided (added or deleted) manifest is compared against `{}`, refusing when
+  the existing side carries install fields. The refusal (`dependencyDriftError`)
+  names the drifted fields per file, `/sync` and the hand-merge as the remedies
+  and never a bare `/retry`; `/sync` passes `allowDependencyDrift` because a
+  drifted branch is the condition it exists to repair, and the guard must not
+  block its own way out. Issue #323 is the incident that shaped the failure's
+  bookkeeping:
   a drift park is by construction pre-delivery, so the `/sync` the message
   prescribes must be reachable from the issue (see the `/sync` rule below), the
   refusal carries `attempts` rather than spending one (it fires before any

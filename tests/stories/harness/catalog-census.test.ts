@@ -8,6 +8,7 @@ import nodePath from 'node:path'
 
 import { loadCandidateStoryFiles } from '../../../scripts/story/inputs.js'
 import { extractStoryScenarios } from '../../../scripts/story/scenarios.js'
+import { withSourceParser } from '../../../src/ts-ast/source-parser.js'
 import { censusTier } from '../catalog/census.js'
 import { PARITY_GROUPS } from './parity/expectations.js'
 
@@ -30,7 +31,7 @@ function resolveStoryContractRoot(harnessDirectory: string): string {
 describe('story catalog census', () => {
   test('every Tier 0 story scenario is claimed by a record or declared supporting', async () => {
     const files = await loadCandidateStoryFiles(resolveStoryContractRoot(import.meta.dir))
-    const observed = files.flatMap(({ path, bytes }) => extractStoryScenarios(path, bytes).map(({ id }) => id))
+    const observed = (await withSourceParser((parser) => extractStoryScenarios(parser, files))).map(({ id }) => id)
 
     const census = censusTier('0', observed)
 

@@ -18,6 +18,26 @@ is built per batch from a coverage map (see `scripts/mutation/coverage-map.ts`)
 and falls back to the companion when no covering test is found. Because the
 test set stays small, the accurate mode is cheap.
 
+## Toolchain: Stryker 10 and the runner patch
+
+The gate runs on `@stryker-mutator/core` 10 (Babel 8 instrumentation, an
+empty-expression mutator, Node ≥ 22 for the CLI host — only test children run
+on Bun, so the machine driving `node_modules/.bin/stryker` needs Node 22+; the
+two mutation jobs in `.github/workflows/ci.yml` pin it via `setup-node`).
+Installed next to it is `@hughescr/stryker-bun-runner@1.3.8`, whose published
+metadata only accepts core 9: a Bun patch
+(`patches/@hughescr%2Fstryker-bun-runner@1.3.8.patch`, registered under
+`patchedDependencies` in `package.json`) widens its peer/dependency ranges to
+`^9.0.0 || ^10.0.0`, applying exactly upstream PR
+hughescr/stryker-bun-runner#1. **Delete the patch** (and the
+`patchedDependencies` entry) when any runner release accepting core 10 ships;
+`patchedDependencies` pins the exact version, so drifting breaks loudly at
+install time. Because the score fingerprint hashes `bun.lock` and
+`package.json`, the bump alone invalidated every carried-over score, and
+`baseline.json` was reseeded from a fresh full v10 run (delete the file, then
+`bun test:mutate --update-baseline`) — floors may sit lower than their v9
+values where the new instrumenter counts more mutants.
+
 ## Commands
 
 ```bash
@@ -135,6 +155,16 @@ never typechecks at test runtime, so the pragma bought nothing here; keeping it 
 the sandbox byte-faithful for non-target files. `tests/scripts/mutation/stryker-config.test.ts`
 pins the flag so a config regression fails a test instead of the gate.
 
+One target remains scoped out for an instrumentation-shape reason even with that flag off:
+`plugins/task-provider-kaneo/auto-provision.ts` (via a `!` glob here and
+`isInstrumentationIncompatibleFile` in the changed-files gate). Its killing test
+`tests/analytics/provider-request-scope-setup-paths.test.ts` reads the impl's source text and
+regex-checks that every `runWithProviderRequestScope` call site settles; the file's two call sites
+are bare arrow-tail delegations, and Stryker 10's Babel 8 instrumenter reprints them so the
+**unmutated** instrumented copy already fails the guard — every paired run lands in `errored`
+instead of producing a score. The guard is worth more than a mutation score on a 14-line
+delegation wrapper whose callees (`provision.ts`) stay in scope.
+
 ## Incremental measurement (carried-over scores)
 
 A run measures only the files whose content changed since the previous run on the same branch —
@@ -228,3 +258,32 @@ every recently-changed unbaselined file at once — expect a large one-time
 baseline entries (measured against the companion test set alone, often an
 undercount) ratchet upward as their files are re-measured on later master runs
 with coverage-derived test sets.
+
+### `tsconfigFile` points at a file that does not exist — on purpose
+
+`stryker.config.json` sets `tsconfigFile` to `tsconfig.stryker-rewrite-disabled.json`,
+which is not a real file. That is the switch that turns off Stryker's sandbox
+tsconfig rewrite: the preprocessor looks the path up in the sandbox file set,
+finds nothing, and skips.
+
+The rewrite has to be skipped because it calls `ts.parseConfigFileTextToJson` —
+the TypeScript 6 compiler API. Since the repo moved to TypeScript 7, whose entry
+point exports only the version, that call throws `is not a function` and aborts
+the whole run before a single mutant is tested. Stryker 10 added a TypeScript 7
+_checker_; this sandbox path was not part of that.
+
+Skipping is safe here, and only here, because the rewrite is a no-op for this
+repo's `tsconfig.json`: it declares no `extends` and no `references`, and its
+`exclude` entries and the `papai/plugin-types` path alias are all repo-relative,
+so they resolve unchanged inside the sandbox. `tsconfig.json` itself is still
+copied into the sandbox untouched — plugin sources under `plugins/` import
+through that alias and would not resolve without it (`test:mutate:file
+plugins/task-provider-kaneo/mappers.ts` is the check that proves it).
+
+Revisit if `tsconfig.json` ever gains `extends`, `references`, or a path that
+points outside the repository — then the rewrite stops being a no-op and Stryker
+needs a real classic-API TypeScript again.
+
+`tests/scripts/mutation/stryker-config.test.ts` pins this sentinel: it asserts
+the `tsconfigFile` value and that the file does not exist, so the switch cannot
+be changed or "fixed" without a test naming this section.

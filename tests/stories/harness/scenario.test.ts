@@ -219,7 +219,7 @@ describe('scenario execution', () => {
     try {
       const alice = world.api.given.user('alice')
       const dm = world.api.given.dm(alice)
-      const configured = world.api.given.codingSession({
+      const configured = await world.api.given.codingSession({
         pluginDirectory: 'plugins',
         context: dm,
         magiBaseUrl: 'https://magi.invalid',

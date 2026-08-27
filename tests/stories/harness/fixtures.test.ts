@@ -299,7 +299,7 @@ describe('approveRealTaskProviderPlugin', () => {
     const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
     await fixtures.setupDatabase()
 
-    fixtures.approveRealTaskProviderPlugin('youtrack')
+    await fixtures.approveRealTaskProviderPlugin('youtrack')
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
 
     const descriptor = getTaskProviderDescriptor('youtrack')
@@ -311,7 +311,7 @@ describe('approveRealTaskProviderPlugin', () => {
     const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
     await fixtures.setupDatabase()
 
-    fixtures.approveRealTaskProviderPlugin('youtrack')
+    await fixtures.approveRealTaskProviderPlugin('youtrack')
     expect(() => {
       fixtures.registerTaskProvider()
     }).not.toThrow()
@@ -321,7 +321,7 @@ describe('approveRealTaskProviderPlugin', () => {
     const fixtures = createScenarioFixtures({ taskProvider: new MemoryTaskProvider() })
     await fixtures.setupDatabase()
 
-    fixtures.approveRealTaskProviderPlugin('kaneo')
+    await fixtures.approveRealTaskProviderPlugin('kaneo')
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
 
     const descriptor = getTaskProviderDescriptor('kaneo')

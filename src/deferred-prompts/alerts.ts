@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, gte, lt, or } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { alertPrompts, type AlertPromptRow } from '../db/schema.js'
@@ -38,6 +38,7 @@ const toAlertPrompt = (row: AlertPromptRow): AlertPrompt => ({
   cooldownMinutes: row.cooldownMinutes,
   executionMetadata: parseExecutionMetadata(row.executionMetadata),
   matchedTaskIds: parseMatchedTaskIds(row.matchedTaskIds),
+  taskInstanceId: row.taskInstanceId,
 })
 
 // --- CRUD ---
@@ -49,8 +50,9 @@ export const createAlertPrompt = (
   cooldownMinutes?: number,
   executionMetadata?: ExecutionMetadata,
   delivery?: DeferredPromptDeliveryInput,
+  taskInstanceId?: string | null,
 ): AlertPrompt => {
-  log.debug({ userId, cooldownMinutes }, 'createAlertPrompt called')
+  log.debug({ userId, cooldownMinutes, taskInstanceId }, 'createAlertPrompt called')
   const id = crypto.randomUUID()
   const db = getDrizzleDb()
 
@@ -73,6 +75,7 @@ export const createAlertPrompt = (
       lastTriggeredAt: null,
       cooldownMinutes: cooldownMinutes ?? 60,
       executionMetadata: JSON.stringify(executionMetadata ?? DEFAULT_EXECUTION_METADATA),
+      taskInstanceId: taskInstanceId ?? null,
     })
     .run()
 
@@ -201,6 +204,13 @@ export const updateAlertMatchState = (
   log.info({ id, userId }, 'Alert match state updated')
 }
 
+export const getActiveAlertPrompts = (): AlertPrompt[] => {
+  log.debug('getActiveAlertPrompts called')
+  const db = getDrizzleDb()
+  const rows = db.select().from(alertPrompts).where(eq(alertPrompts.status, 'active')).all()
+  return rows.map(toAlertPrompt)
+}
+
 export const getEligibleAlertPrompts = (): AlertPrompt[] => {
   log.debug('getEligibleAlertPrompts called')
   const db = getDrizzleDb()
@@ -221,6 +231,41 @@ export const getEligibleAlertPrompts = (): AlertPrompt[] => {
     log.debug({ total: rows.length }, 'No eligible alert prompts')
   }
   return eligible.map(toAlertPrompt)
+}
+
+export const cancelActiveAlertsPinnedToInstance = (taskInstanceId: string, configContextId?: string): void => {
+  log.debug({ taskInstanceId, configContextId }, 'cancelActiveAlertsPinnedToInstance called')
+  const db = getDrizzleDb()
+  const conditions = [eq(alertPrompts.taskInstanceId, taskInstanceId), eq(alertPrompts.status, 'active')]
+  if (configContextId !== undefined) {
+    const threadPrefix = `${configContextId}:thread:`
+    const inConfigContext = or(
+      eq(alertPrompts.deliveryContextId, configContextId),
+      and(
+        gte(alertPrompts.deliveryContextId, threadPrefix),
+        lt(alertPrompts.deliveryContextId, `${configContextId}:thread;`),
+      ),
+    )
+    if (inConfigContext !== undefined) conditions.push(inConfigContext)
+  }
+
+  const rows = db
+    .select()
+    .from(alertPrompts)
+    .where(and(...conditions))
+    .all()
+  if (rows.length === 0) {
+    log.debug({ taskInstanceId, configContextId }, 'No active alerts pinned to task instance')
+    return
+  }
+
+  db.update(alertPrompts)
+    .set({ status: 'cancelled' })
+    .where(and(...conditions))
+    .run()
+  for (const row of rows) {
+    log.info({ alertId: row.id, taskInstanceId, configContextId }, 'Alert cancelled: pinned task instance gone')
+  }
 }
 
 export { evaluateCondition, describeCondition } from './condition-eval.js'

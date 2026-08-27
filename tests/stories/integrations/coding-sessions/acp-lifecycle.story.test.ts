@@ -25,7 +25,7 @@ scenario(
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const dm = given.dm(alice)
-    const coding = given.codingSession({
+    const coding = await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
@@ -79,7 +79,7 @@ scenario(
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const dm = given.dm(alice)
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
@@ -117,7 +117,7 @@ scenario(
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const dm = given.dm(alice)
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
@@ -147,7 +147,7 @@ scenario(
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const dm = given.dm(alice)
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
@@ -171,7 +171,7 @@ scenario(
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const dm = given.dm(alice)
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,
@@ -206,7 +206,7 @@ scenario(
   async ({ given, when, then, world }) => {
     const alice = given.user('alice')
     const dm = given.dm(alice)
-    given.codingSession({
+    await given.codingSession({
       pluginDirectory: 'plugins',
       context: dm,
       magiBaseUrl: MAGI_URL,

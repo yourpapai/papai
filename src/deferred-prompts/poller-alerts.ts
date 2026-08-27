@@ -9,25 +9,33 @@ import { runWithProviderRequestScope } from '../analytics/provider-request-scope
 import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { resolveProactiveProviderRequestScope } from '../analytics/provider-scope-factory.js'
 import type { ProactiveScopeInput } from '../analytics/provider-scope-factory.js'
-import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { ChatProvider } from '../chat/types.js'
 import { emitGlobal, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import { recordProactiveInHistory } from '../proactive-history.js'
-import type { Task, TaskProvider } from '../providers/types.js'
+import type { Task } from '../providers/types.js'
 import { wrapUntrusted } from '../security/prompt-boundary.js'
 import {
   describeCondition,
   evaluateCondition,
+  getActiveAlertPrompts,
   getEligibleAlertPrompts,
   updateAlertMatchedTaskIds,
   updateAlertMatchState,
 } from './alerts.js'
 import { hasTaskChanges, LIGHTWEIGHT_SNAPSHOT_FIELDS, RICH_SNAPSHOT_FIELDS } from './change-gate.js'
-import { alertsNeedFullTasks, enrichTasks, fetchAllTasks } from './fetch-tasks.js'
+import { isPureWatchCondition } from './condition-eval.js'
+import { fetchAlertTasks } from './fetch-tasks.js'
+import {
+  groupAlertsByInstance,
+  handleUnresolvableProvider,
+  routableContextGroups,
+  type InstanceAlertGroup,
+} from './poller-alerts-grouping.js'
+import type { AlertEvaluation } from './poller-alerts-watch.js'
+import { collectPureWatchFiring } from './poller-alerts-watch.js'
 import { mergeExecutionMetadata } from './poller-scheduled.js'
 import { resolveProactivePlatformInstanceId, sendProactiveMessage } from './proactive-delivery.js'
-import { getStorageContextId } from './proactive-llm-helpers.js'
 import { dispatchExecution, type BuildProviderFn, type DeferredExecutionContext } from './proactive-llm.js'
 import { getSnapshotsForUser, updateSnapshots } from './snapshots.js'
 import type { AlertPrompt } from './types.js'
@@ -43,21 +51,10 @@ export function logSettledErrors(results: PromiseSettledResult<unknown>[], conte
   }
 }
 
-type AlertEvaluation = {
-  alert: AlertPrompt
-  matchedNow: string[]
-  newMatchedTasks: Task[]
-}
-
 const alertToExecCtx = (alert: AlertPrompt): DeferredExecutionContext => ({
   createdByUserId: alert.createdByUserId,
   deliveryTarget: alert.deliveryTarget,
 })
-
-const alertDeliveryContextKey = (alert: AlertPrompt): string => getStorageContextId(alert.deliveryTarget)
-
-const configContextIdForDelivery = (deliveryTarget: DeferredExecutionContext['deliveryTarget']): string =>
-  getConfigContextIdFromStorageContextId(getStorageContextId(deliveryTarget))
 
 const formatTaskStatus = (status: string | undefined): string => {
   const wrapped = wrapUntrusted(status, 'task-status')
@@ -144,71 +141,68 @@ async function executeAlertsForContext(
   chat: ChatProvider,
   buildProviderFn: BuildProviderFn,
   evalNow: Date,
+  pureWatch: boolean,
 ): Promise<void> {
-  const needsRich = alertsNeedFullTasks(alerts)
-  const tasks = needsRich && enrichedTasks !== null ? enrichedTasks : lightTasks
   const snapshots = getSnapshotsForUser(storageContextId)
-  const fields = needsRich ? RICH_SNAPSHOT_FIELDS : LIGHTWEIGHT_SNAPSHOT_FIELDS
-  if (!hasTaskChanges(tasks, snapshots, fields)) {
-    log.debug({ storageContextId }, 'No task changes detected; skipping alert evaluation')
-    return
-  }
-
   const firing: AlertEvaluation[] = []
-  for (const alert of alerts) {
-    const matchedTasks = tasks.filter((task) => evaluateCondition(alert.condition, task, snapshots, evalNow))
-    const matchedNow = matchedTasks.map((t) => t.id)
-    const previous = new Set(alert.matchedTaskIds)
-    const newMatchedTasks = matchedTasks.filter((t) => !previous.has(t.id))
-    if (newMatchedTasks.length === 0) {
-      updateAlertMatchedTaskIds(alert.id, alert.createdByUserId, matchedNow)
-    } else {
-      firing.push({ alert, matchedNow, newMatchedTasks })
+  let tasks: Task[]
+  let fields: readonly string[]
+  if (pureWatch) {
+    tasks = lightTasks
+    fields = RICH_SNAPSHOT_FIELDS
+    firing.push(...collectPureWatchFiring(alerts, tasks, snapshots, evalNow, fields))
+  } else {
+    // Rich-vs-lightweight follows what the instance cycle actually fetched
+    // (enrichment is instance-level), not this context's own condition scan:
+    // a watch sharing the instance with a rich-field alert in another
+    // context must also count assignee/labels changes (spec: task-watch-alerts).
+    tasks = enrichedTasks ?? lightTasks
+    fields = enrichedTasks === null ? LIGHTWEIGHT_SNAPSHOT_FIELDS : RICH_SNAPSHOT_FIELDS
+    if (!hasTaskChanges(tasks, snapshots, fields)) {
+      log.debug({ storageContextId }, 'No task changes detected; skipping alert evaluation')
+      return
+    }
+    const watchAlerts = alerts.filter((alert) => isPureWatchCondition(alert.condition))
+    firing.push(...collectPureWatchFiring(watchAlerts, tasks, snapshots, evalNow, fields))
+    for (const alert of alerts) {
+      if (isPureWatchCondition(alert.condition)) continue
+      const matchedTasks = tasks.filter((task) => evaluateCondition(alert.condition, task, snapshots, evalNow))
+      const matchedNow = matchedTasks.map((t) => t.id)
+      const previous = new Set(alert.matchedTaskIds)
+      const newMatchedTasks = matchedTasks.filter((t) => !previous.has(t.id))
+      if (newMatchedTasks.length === 0) {
+        updateAlertMatchedTaskIds(alert.id, alert.createdByUserId, matchedNow)
+      } else {
+        firing.push({ alert, matchedNow, newMatchedTasks })
+      }
     }
   }
 
   const delivered = firing.length === 0 ? true : await fireAlertBatch(storageContextId, firing, chat, buildProviderFn)
-  if (delivered) updateSnapshots(storageContextId, tasks)
+  if (delivered) updateSnapshots(storageContextId, tasks, fields)
 }
 
-const fetchAlertTasks = async (
-  configContextId: string,
-  routable: Map<string, AlertPrompt[]>,
-  provider: TaskProvider,
-  scope: ProviderRequestScope,
-): Promise<{ lightTasks: Task[]; enrichedTasks: Task[] | null } | null> => {
-  const lightTasks = await fetchAllTasks(provider, scope)
-  const needsEnrichment = [...routable.values()].some((alerts) => alertsNeedFullTasks(alerts))
-  if (!needsEnrichment || lightTasks.length === 0) return { lightTasks, enrichedTasks: null }
-  try {
-    log.debug(
-      { configContextId, taskCount: lightTasks.length },
-      'Enriching tasks with full details for alert conditions',
-    )
-    return { lightTasks, enrichedTasks: await enrichTasks(provider, lightTasks, scope) }
-  } catch (error) {
-    log.warn(
-      { configContextId, error: error instanceof Error ? error.message : String(error) },
-      'Task enrichment failed; skipping alert cycle for instance',
-    )
-    return null
-  }
-}
+/** Partition domain is the routable context groups only (spec:
+ * task-watch-alerts): alerts in non-routable groups are never evaluated, so
+ * they must not keep the instance on the whole-list path. */
+const allAlertsArePureWatches = (group: InstanceAlertGroup, chat: ChatProvider): boolean =>
+  [...routableContextGroups(group.contextGroups, chat).values()]
+    .flat()
+    .every((alert) => isPureWatchCondition(alert.condition))
 
+/** One poll unit: every alert sharing a config context and an effective task
+ * instance. `pinnedTaskInstanceId` is null when the instance comes from the
+ * context's current settings rather than an alert pin. */
 async function executeAlertsForInstance(
-  configContextId: string,
-  contextGroups: Map<string, AlertPrompt[]>,
+  group: InstanceAlertGroup,
+  pureInstance: boolean,
   chat: ChatProvider,
   buildProviderFn: BuildProviderFn,
   evalNow: Date,
   resolveScope: (input: ProactiveScopeInput) => ProviderRequestScope,
 ): Promise<void> {
-  const routable = new Map<string, AlertPrompt[]>()
-  for (const [storageContextId, alerts] of contextGroups) {
-    if (resolveProactivePlatformInstanceId(chat, alerts[0]!.deliveryTarget) !== null) {
-      routable.set(storageContextId, alerts)
-    }
-  }
+  const { configContextId, pinnedTaskInstanceId, contextGroups } = group
+  const routable = routableContextGroups(contextGroups, chat)
   if (routable.size === 0) return
 
   // One independent proactive scope per instance poll, built from the first
@@ -219,21 +213,31 @@ async function executeAlertsForInstance(
     createdByUserId: firstAlert.createdByUserId,
     deliveryTarget: firstAlert.deliveryTarget,
   })
-  const provider = await runWithProviderRequestScope(scope, () => buildProviderFn(configContextId))
+  const pinnedBuildProviderFn: BuildProviderFn = (contextId) => buildProviderFn(contextId, pinnedTaskInstanceId)
+  const provider = await runWithProviderRequestScope(scope, () => pinnedBuildProviderFn(configContextId))
   if (provider === null) {
-    log.warn({ configContextId }, 'Could not build task provider for alert polling')
+    handleUnresolvableProvider(configContextId, pinnedTaskInstanceId)
     return
   }
 
-  const fetched = await fetchAlertTasks(configContextId, routable, provider, scope)
+  const fetched = await fetchAlertTasks(configContextId, routable, provider, scope, pureInstance)
   if (fetched === null) return
-  const { lightTasks, enrichedTasks } = fetched
+  const { lightTasks, enrichedTasks, pureWatch } = fetched
 
   const contextLimit = pLimit(MAX_CONCURRENT_LLM_CALLS)
   await Promise.all(
     [...routable.entries()].map(([storageContextId, alerts]) =>
       contextLimit(() =>
-        executeAlertsForContext(storageContextId, alerts, lightTasks, enrichedTasks, chat, buildProviderFn, evalNow),
+        executeAlertsForContext(
+          storageContextId,
+          alerts,
+          lightTasks,
+          enrichedTasks,
+          chat,
+          pinnedBuildProviderFn,
+          evalNow,
+          pureWatch,
+        ),
       ),
     ),
   )
@@ -255,24 +259,24 @@ export async function pollAlertsOnce(
   emitGlobal('poller:alerts', { eligibleCount: eligibleAlerts.length })
   if (eligibleAlerts.length === 0) return
   const now = new Date()
-  const byInstance = new Map<string, Map<string, AlertPrompt[]>>()
-  for (const alert of eligibleAlerts) {
-    const storageContextId = alertDeliveryContextKey(alert)
-    const configContextId = configContextIdForDelivery(alert.deliveryTarget)
-    let contextGroups = byInstance.get(configContextId)
-    if (contextGroups === undefined) {
-      contextGroups = new Map()
-      byInstance.set(configContextId, contextGroups)
-    }
-    const group = contextGroups.get(storageContextId)
-    if (group === undefined) contextGroups.set(storageContextId, [alert])
-    else group.push(alert)
-  }
+  const byInstance = groupAlertsByInstance(eligibleAlerts)
+  // Partition on the full active alert set, not the cooldown-eligible subset:
+  // an alert entering cooldown must not flip the instance's fetch mode
+  // mid-life (design D4), or rich getTask results get compared against
+  // lightweight-era snapshots and non-watched snapshot rows get pruned.
+  const activeByInstance = groupAlertsByInstance(getActiveAlertPrompts())
   const userLimit = pLimit(MAX_CONCURRENT_USERS)
   const results = await Promise.allSettled(
-    [...byInstance.entries()].map(([configContextId, contextGroups]) =>
+    [...byInstance.entries()].map(([instanceKey, instanceGroup]) =>
       userLimit((): Promise<void> =>
-        executeAlertsForInstance(configContextId, contextGroups, chat, buildProviderFn, now, deps.resolveScope),
+        executeAlertsForInstance(
+          instanceGroup,
+          allAlertsArePureWatches(activeByInstance.get(instanceKey) ?? instanceGroup, chat),
+          chat,
+          buildProviderFn,
+          now,
+          deps.resolveScope,
+        ),
       ),
     ),
   )

@@ -26,7 +26,7 @@ import { resolveStoryDependencyPlatform } from '../../scripts/story/sandbox.js'
 import type { StorySandboxRequest } from '../../scripts/story/sandbox.js'
 import type { StoryRunnerSession } from '../../scripts/story/session.js'
 import { parseStoryRunnerArguments, runStoryTests, STORY_SEED } from '../../scripts/story/test-stories.js'
-import { writeFrozenCoverageSupport } from './story-frozen-inputs.helpers.js'
+import { writeFrozenSupportInputs } from './story-frozen-inputs.helpers.js'
 
 /**
  * Runs the story runner with its refusal captured rather than printed.
@@ -665,7 +665,7 @@ describe('story runner reports and compatibility', () => {
       mkdirSync(path.join(root, 'tests/stories'), { recursive: true })
       mkdirSync(path.join(root, 'tests/utils'), { recursive: true })
       mkdirSync(path.join(root, 'scripts/story'), { recursive: true })
-      writeFrozenCoverageSupport(root)
+      writeFrozenSupportInputs(root)
       mkdirSync(path.join(root, 'src'), { recursive: true })
       mkdirSync(path.join(root, 'plugins'), { recursive: true })
       mkdirSync(path.join(root, 'context-vault-indexer'), { recursive: true })

@@ -41,6 +41,7 @@ export const deliveryPolicySchema = z
 // --- Condition fields and operators ---
 
 export const CONDITION_FIELDS = [
+  'task.id',
   'task.status',
   'task.priority',
   'task.assignee',
@@ -52,6 +53,7 @@ export const CONDITION_FIELDS = [
 export type ConditionField = (typeof CONDITION_FIELDS)[number]
 
 export const FIELD_OPERATORS: Record<ConditionField, readonly string[]> = {
+  'task.id': ['eq'],
   'task.status': ['eq', 'neq', 'changed_to'],
   'task.priority': ['eq', 'neq', 'changed_to'],
   'task.assignee': ['eq', 'neq', 'changed_to'],
@@ -62,7 +64,11 @@ export const FIELD_OPERATORS: Record<ConditionField, readonly string[]> = {
 
 // --- Alert condition schema (recursive) ---
 
-const conditionFieldSchema = z.enum(CONDITION_FIELDS)
+const conditionFieldSchema = z
+  .enum(CONDITION_FIELDS)
+  .describe(
+    'Task field to watch. Use task.id with eq to watch one specific task (per-task watch); all other fields filter across every task.',
+  )
 
 const leafConditionSchema = z
   .object({
@@ -211,7 +217,7 @@ export const cooldownSchema = z
   .int()
   .min(1)
   .optional()
-  .describe('Minimum minutes between alert triggers (default: 60)')
+  .describe('Minimum minutes between alert triggers, including per-task watches (default: 60)')
 
 export const executionInputSchema = z
   .object({
@@ -261,6 +267,7 @@ export type AlertPrompt = {
   cooldownMinutes: number
   executionMetadata: ExecutionMetadata
   matchedTaskIds: string[]
+  taskInstanceId: string | null
 }
 
 // --- Tool result types ---

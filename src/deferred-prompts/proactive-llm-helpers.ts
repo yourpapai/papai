@@ -72,7 +72,10 @@ type DeferredExecutionContextLike = Readonly<{
   deliveryTarget: DeferredDeliveryTarget
 }>
 
-export type BuildProviderFn = (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
+export type BuildProviderFn = (
+  contextId: string,
+  taskInstanceId?: string | null,
+) => Promise<TaskProvider | null> | TaskProvider | null
 
 export const getConfigContextId = (execCtx: DeferredExecutionContextLike): string =>
   getConfigContextIdFromStorageContextId(getStorageContextId(execCtx.deliveryTarget))

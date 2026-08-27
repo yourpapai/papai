@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { BackendSelection, ClaudeCredential } from './config-values.js'
 import type { DiffLimits } from './diff-guard.js'
 import type { OpenAiSettings } from './openai-config.js'
 
@@ -24,6 +25,24 @@ export interface PipelineConfig {
   owner: string
   repo: string
   githubToken: string
+  /**
+   * Which backend serves this job's model turns (`AGENT_BACKEND`).
+   *
+   * One job-wide selector read before anything else in `loadConfig`: every
+   * route decision — credential demands, proxy or none, which adapter
+   * `contain()` builds — hangs off it. The default `opencode` route is
+   * byte-identical to the pre-change pipeline.
+   */
+  backend: BackendSelection
+  /**
+   * The claude route's single chosen Anthropic credential, or `null` on the
+   * opencode route (where the guard never fires and nothing is rewritten).
+   *
+   * Carried on config so the value-based scrub, the outbound redaction and the
+   * child environment all read one source; the name rides along because it is
+   * the only spelling an operator or a log reader should ever see.
+   */
+  claudeCredential: ClaudeCredential | null
   /**
    * `AGENT_SELF_LOGIN`, or `null` to derive it from the token.
    *

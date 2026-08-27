@@ -1,8 +1,9 @@
-FROM oven/bun:1-alpine@sha256:a108a3f67197646f1f975ff70237a45034d313d255051cd54e98c64737c1d204 AS base
+FROM oven/bun:1-alpine@sha256:07235578f79ef8c6f97d94aee7938e76f5cdba5f21ae5dbfdd3d3d38058437eb AS base
 WORKDIR /app
 
 FROM base AS deps
 COPY package.json bun.lock ./
+COPY patches ./patches
 COPY review-loop/package.json ./review-loop/
 COPY mutation-improve/package.json ./mutation-improve/
 COPY opencode-agent/package.json ./opencode-agent/
@@ -11,6 +12,7 @@ RUN bun install --frozen-lockfile
 
 FROM base AS prod-deps
 COPY package.json bun.lock ./
+COPY patches ./patches
 COPY review-loop/package.json ./review-loop/
 COPY mutation-improve/package.json ./mutation-improve/
 COPY opencode-agent/package.json ./opencode-agent/
@@ -23,7 +25,7 @@ COPY client ./client
 COPY plugins ./plugins
 COPY scripts ./scripts
 COPY src ./src
-COPY package.json tsconfig.json ./
+COPY package.json tsconfig.json vite.config.ts ./
 RUN bun scripts/build-client.ts
 
 FROM base AS final

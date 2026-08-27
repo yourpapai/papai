@@ -31,11 +31,10 @@ Two Bun behaviours the wrapper works around, both pinned by tests:
 - Bun writes the `--reporter-outfile` **only** when at least one file loads, so the wrapper deletes the
   previous JUnit before spawning. Without that, a catastrophic run would be silently described by the
   previous run's index.
-- Bun ≤ 1.3.13 does **not** propagate later `process.env` mutations to child processes the way Node does
-  (1.4.0 fixed it — dev machines on 1.4.0 and CI on the 1.3.13 pin straddle the behaviours; the canary in
-  `tests/git-init-hint.test.ts` records which side it observes). Anything a test's subprocesses must see
-  (the pinned `GIT_CONFIG_GLOBAL`, for instance) has to be on the child's startup environment — correct
-  under both behaviours, so that rule stands regardless of the bun version.
+- Through bun 1.3, runtime `process.env` mutations did **not** propagate to child processes the way they do
+  in Node; bun 1.4 fixed this (pinned by `tests/git-init-hint.test.ts`). The pinned `GIT_CONFIG_GLOBAL`
+  still rides the child's startup environment via `scripts/test/run-cli.ts` — explicit and independent of
+  propagation semantics — so preload-time assignments are not a substitute for it.
 
 **Known Bun defect — JUnit `file` collides on basename.** Two test files with the same basename in different
 directories collapse to one `file=` attribute in the JUnit report; on a full run 53 of 1306 files end up with
@@ -210,6 +209,7 @@ When DI is not available and module evaluation order matters:
 - `bun test:stories` is **Tier 0: Hermetic Full-Stack Stories**. It exercises real in-process application composition from chat input through the scripted LLM/tool loop, task operations, settings, context scopes, and plugin integrations. Fake transports and strict declared HTTP routes replace live providers; use it as the fast architecture-refactor regression gate.
 - Default `bun run test` excludes all of `tests/stories/**`. Run `bun test:stories:contracts` explicitly for every harness unit/contract test, then `bun test:stories` for user stories; CI runs both commands so harness coverage is not lost.
 - The story child starts with `--no-env-file` and inherits only `PATH`, `HOME`, `TMPDIR`, and `CI`, plus `TZ=UTC` and its launcher marker. Live network/process access, undeclared HTTP, active timer/listener leaks, and writes outside the scenario temp root fail immediately. Do not weaken these guards or add retries. Failures should be diagnosed from the recent sanitized event trace.
+- The I/O guard denies every child process, no exceptions: AST scanning parses in-process (`src/ts-ast/source-parser.ts`, via `oxc-parser`), so nothing needs to spawn. `tests/stories/harness/io-guard-probe.ts` pins that even a compiler-binary lookalike planted inside the execution root stays a violation. Do not add a spawn allowance.
 - Scenarios must not leave net `process.env` mutations: the I/O guard fails unrestored changes at teardown. A transient set/restore inside a scenario is technically sanctioned but should be rare — prefer a `given.*` fixture seam when a behavior needs configuration (e.g. `given.publicBaseUrl(url)` sets `SETTINGS_PUBLIC_BASE_URL` and restores it in `fixtures.teardown`).
 - `bun test:stories:stress` repeats/randomizes with deterministic seed `41021`. `bun test:stories:manifest` is manifest-only: it removes stale JUnit output and never discovers or spawns stories. `BASE_REF=<sha> bun test:stories:compat --manifest-only` is the preflight-only refactor proof. An explicit `--baseline-ref=<sha>` also activates compatibility; missing or invalid refs and mismatches fail before child spawn.
 - Manifest scenario IDs cover literal `scenario(...)` and nested `executeScenario(...)` calls in story files, so logical scenario count can exceed the number of Bun/JUnit test cases. Their callback `then` chains are frozen checkpoint metadata.

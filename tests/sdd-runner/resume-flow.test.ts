@@ -10,7 +10,7 @@ import path from 'node:path'
 
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import type { ResumeDecision } from '../../sdd-runner/src/resume-decision.js'
-import { nextGateVersion, resumeFromPoint } from '../../sdd-runner/src/resume-flow.js'
+import { deriveResumeDecision, nextGateVersion, resumeFromPoint } from '../../sdd-runner/src/resume-flow.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
@@ -170,6 +170,50 @@ describe('resumeFromPoint', () => {
       'S',
     )
     await expect(attempt).rejects.toThrow(/not supported yet/u)
+  })
+})
+
+describe('deriveResumeDecision', () => {
+  function rejectingStatusDeps(dir: string): OrchestratorDeps {
+    return {
+      ...makeDeps(dir),
+      driver: {
+        ...createOpenSpecDriverLike(),
+        status: () => Promise.reject(new Error('openspec status failed (exit 1): change not found')),
+      },
+    }
+  }
+
+  it('skips driver.status for a plan parent, whose absent change folder cannot fail the resume (D9)', async () => {
+    const dir = makeDir()
+    const state = await createRunState({ workDir: dir, repoRoot: dir, changeName: 'folderless-parent' })
+    state.plan = { childIds: ['db-schema'], digest: 'digest' }
+    fs.writeFileSync(path.join(state.runDir, 'events.ndjson'), '')
+
+    const decision = await deriveResumeDecision(rejectingStatusDeps(dir), state)
+
+    expect(decision.stage).toBe('decompose')
+    expect(decision.reason).toContain('children pending')
+  })
+
+  it('resolves the intake re-run point for a folder-less intake run whose estimator or planner failed before newChange (2.1)', async () => {
+    const dir = makeDir()
+    const state = await createRunState({ workDir: dir, repoRoot: dir, changeName: 'never-scaffolded' })
+    fs.writeFileSync(path.join(state.runDir, 'events.ndjson'), '')
+
+    const decision = await deriveResumeDecision(rejectingStatusDeps(dir), state)
+
+    expect(decision.stage).toBe('intake')
+    expect(decision.reason).toBe('depth not classified')
+  })
+
+  it("rejects loudly when a single run's driver.status fails instead of routing on empty artifacts", async () => {
+    const dir = makeDir()
+    const state = await createRunState({ workDir: dir, repoRoot: dir, changeName: 'add-thing' })
+    state.depth = 'S'
+    fs.writeFileSync(path.join(state.runDir, 'events.ndjson'), '')
+
+    await expect(deriveResumeDecision(rejectingStatusDeps(dir), state)).rejects.toThrow(/openspec status failed/u)
   })
 })
 

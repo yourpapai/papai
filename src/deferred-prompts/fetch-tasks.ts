@@ -3,13 +3,22 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import pLimit from 'p-limit'
+
 import { runWithProviderRequestScope } from '../analytics/provider-request-scope.js'
 import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
+import { extractAppError } from '../errors.js'
 import { logger } from '../logger.js'
 import type { Task, TaskProvider } from '../providers/types.js'
-import type { AlertCondition } from './types.js'
+import { extractWatchedTaskIds } from './condition-eval.js'
+import type { AlertCondition, AlertPrompt } from './types.js'
 
 const log = logger.child({ scope: 'deferred:fetch-tasks' })
+
+/** Upper bound on concurrent getTask calls when fetching watched tasks. */
+const WATCHED_TASK_FETCH_CONCURRENCY = 4
+
+const watchedTaskLimit = pLimit(WATCHED_TASK_FETCH_CONCURRENCY)
 
 /** Fields that require a full getTask call (not available in TaskListItem). */
 const FIELDS_REQUIRING_FULL_TASK = new Set(['task.assignee', 'task.labels'])
@@ -95,4 +104,71 @@ export function fetchAllTasks(provider: TaskProvider, scope: ProviderRequestScop
 /** Enrich lightweight tasks with full details via getTask. Rejects if any getTask fails. */
 export function enrichTasks(provider: TaskProvider, tasks: Task[], scope: ProviderRequestScope): Promise<Task[]> {
   return runWithProviderRequestScope(scope, () => Promise.all(tasks.map((t) => provider.getTask(t.id))))
+}
+
+const isNotFoundCode = (code: string): boolean => code === 'task-not-found' || code === 'not-found'
+
+/** Fetch the given watched tasks by id via getTask with bounded concurrency.
+ * Ids whose failure classifies as not-found are skipped with a warn; any other
+ * error rejects the whole call. */
+export function fetchWatchedTasks(provider: TaskProvider, ids: string[], scope: ProviderRequestScope): Promise<Task[]> {
+  return runWithProviderRequestScope(scope, () =>
+    Promise.all(
+      ids.map((id) =>
+        watchedTaskLimit(() =>
+          provider.getTask(id).catch((error: unknown) => {
+            // Production providers throw their own *ClassifiedError classes
+            // (an Error carrying an `appError` payload), not
+            // ProviderClassifiedError — classify duck-typed, not by instanceof.
+            const appError = extractAppError(error)
+            if (appError !== null && appError.type === 'provider' && isNotFoundCode(appError.code)) {
+              log.warn({ taskId: id, code: appError.code }, 'Watched task not found; skipping')
+              return null
+            }
+            throw error
+          }),
+        ),
+      ),
+    ).then((results) => results.filter((task): task is Task => task !== null)),
+  )
+}
+
+/** Fetch the tasks one instance poll evaluates: a pure-watch instance (every
+ * active alert in the instance's routable contexts is a pure watch) targets
+ * the deduped watched-id union via getTask; any other instance fetches the
+ * whole list, enriched via getTask when some alert condition needs rich
+ * fields. */
+export async function fetchAlertTasks(
+  configContextId: string,
+  routable: Map<string, AlertPrompt[]>,
+  provider: TaskProvider,
+  scope: ProviderRequestScope,
+  pureInstance: boolean,
+): Promise<{ lightTasks: Task[]; enrichedTasks: Task[] | null; pureWatch: boolean } | null> {
+  if (pureInstance) {
+    const instanceAlerts = [...routable.values()].flat()
+    const watchedIds = [...new Set(instanceAlerts.flatMap((alert) => extractWatchedTaskIds(alert.condition)))]
+    log.debug({ configContextId, watchedCount: watchedIds.length }, 'Pure-watch instance; fetching watched tasks by id')
+    return { lightTasks: await fetchWatchedTasks(provider, watchedIds, scope), enrichedTasks: null, pureWatch: true }
+  }
+  const lightTasks = await fetchAllTasks(provider, scope)
+  const needsEnrichment = [...routable.values()].some((alerts) => alertsNeedFullTasks(alerts))
+  if (!needsEnrichment || lightTasks.length === 0) return { lightTasks, enrichedTasks: null, pureWatch: false }
+  try {
+    log.debug(
+      { configContextId, taskCount: lightTasks.length },
+      'Enriching tasks with full details for alert conditions',
+    )
+    return {
+      lightTasks,
+      enrichedTasks: await enrichTasks(provider, lightTasks, scope),
+      pureWatch: false,
+    }
+  } catch (error) {
+    log.warn(
+      { configContextId, error: error instanceof Error ? error.message : String(error) },
+      'Task enrichment failed; skipping alert cycle for instance',
+    )
+    return null
+  }
 }

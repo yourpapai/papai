@@ -2,6 +2,8 @@
 
 Implements the plan data layer only (proposal: tasks 1.1–3.3); intake behavior (2.3), orchestrator, and gate wiring are parts 2–3. Every task is red-first — the failing tests land before the implementation, green before moving on (design.md, Hook / TDD interaction). Tick each checkbox as it lands.
 
+Reconciliation (design A8): part 2 — `sdd-runner-decomposition-2nd` — landed the runtime path that consumes this data layer: the oversize intake verdict and planner (its §2 ≈ proposal 2.3), the plan-gate grammar/prelude (§3–4 ≈ 4.1–4.3), and the child-execution/orchestrator wiring (§5–6 ≈ 5.1–5.4). This folder's checkboxes are complete as ticked above — no renumbering needed.
+
 ## 1. Plan module (`sdd-runner/src/plan.ts`)
 
 - [x] 1.1 Plan schema, structural validation, deterministic topo sort. Red-first in new `tests/sdd-runner/plan.test.ts`: `PlanSchema` shape (child `id`/`instruction` non-empty, `deps` defaults `[]`, optional `capabilities`, `children.min(1)` with **no upper bound** — an 8-child plan validates and cannot be capped); `validatePlan` rejects duplicate ids, unknown deps, and self-deps, each as a single error naming every offending id; `topoSortChildren` is deterministic under declaration-order ties and throws naming the leftover set on a cycle. Then implement `PlanSchema`, `validatePlan`, `topoSortChildren` in new `sdd-runner/src/plan.ts` (design D2–D4). Verify: `bun run test tests/sdd-runner/plan.test.ts`

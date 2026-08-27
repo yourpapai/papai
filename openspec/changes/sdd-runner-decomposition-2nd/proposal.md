@@ -1,0 +1,24 @@
+# sdd-runner-decomposition (part 2 of 3): intake plan branch, plan gate, parent orchestration
+
+## Capabilities
+
+None — skip_specs proposed because the `sdd-runner-decomposition` capability delta already exists in full in `openspec/changes/sdd-runner-decomposition/specs/sdd-runner-decomposition/spec.md` (drafted with part 1); part 2 implements a subset of those already-written requirements (plan gate, sequential child execution, parent completion semantics) and adds no new requirement a second delta could carry without duplicating the capability claim.
+
+## Goal
+
+Implement tasks 2.3, 4.1–4.3, 5.1–5.4 of `sdd-runner-decomposition` — the end-to-end parent/child runtime path on top of the session-1 data layer (`sdd-runner/src/{plan,config,agent-layer,events,run-state,replay}.ts` already provide `PlanSchema`/`validatePlan`/`topoSortChildren`/`materializeChildFiles`, the `planner` role, `PLAN_REPLAN_PASSES = 1`, `plan`/`child_spawned`/`child_done` L2 events, and the `children` state/replay fold). Branch `agent/issue-331`, on top of the session-1 commit.
+
+## Files to touch
+
+- `sdd-runner/src/intake.ts` (2.3): `runIntake` returns a union — `{ kind: 'single', ... }` byte-identical to today's `IntakeResult` path (change folder scaffolded, depth/disagreement unchanged); `{ kind: 'plan', ... }` when the planner sidecar says oversize — **no change folder created** (scaffold moves to the single branch only). `--depth` override skips planning entirely and stays single. Planner spawn goes through `runStageAgent` with `PlanSchema` as `outputSchema`; structural failures from `validatePlan`/`topoSortChildren` trigger the replan retry (validation-error text appended to the prompt, bounded by `PLAN_REPLAN_PASSES`, then loud failure).
+- `sdd-runner/src/gate-model.ts`, `gate-answers.ts`, `gate-render.ts`, `gate-digest.ts`, `gate-settle.ts`, `gate-prelude.ts` (4.1–4.3): plan-gate grammar — one checkbox row per child (approve = all checked; unchecked child = veto with optional `→ <redirect>`; `ABORT` aborts the parent); `writeGateDigest` renders mode `'plan'`, `gate-answers.ts` renders the identical grammar the parser accepts (write-then-parse self-check preserved); `decisionConsequences` widens to `'plan'` with mode-conditional phrases shared by file and TUI front-ends; `presentGateAt` accepts mode `'plan'`; the auto-policy prelude is **skipped for plan mode except R4** (budget guard stays); veto = exactly one re-plan pass then re-gate as `gate-<n+1>.md` (unbounded rounds, approve/ABORT the only terminals, mirroring `settleVeto` in `gate-resume-tail.ts`).
+- `sdd-runner/src/orchestrator.ts` (+ `gate-resume-tail.ts`/`extend-round.ts` where `runGateResume` lives) (5.1–5.4): plan branch after intake — materialize child task files, present the plan gate, then execute children in **topological spawn order** through an injected `runChildRun` seam (default: `runStart` with the materialized child task file); emit `child_spawned`/`child_done` with usage into the parent log; **aggregate budget ledger fails closed** (parent+child spend vs the single `budget`; exceedance forces a human gate); failure/completion semantics — an aborted/failed child halts the parent at a gate, parent `completed` ⇔ every included child `completed`, parent writes **no change folder** of its own; parent calm-stop writes the active child's stop marker (subtree-scoped, honored at the child's next boundary).
+- Tests, red-first per task, in `tests/sdd-runner/{intake,gate-model,gate-answers,gate-render,gate-digest,gate-settle,gate-prelude,orchestrator}.test.ts` following local DI patterns; tick tasks 2.3, 4.1–4.3, 5.1–5.4 in `openspec/changes/sdd-runner-decomposition/tasks.md` as they land.
+
+## Intended behavior change
+
+Composite (oversize-verdict) runs gain runtime behavior: intake routes to planning without scaffolding a change, a human plan gate precedes any child spend, children run sequentially as full nested `runStart` runs in topo order, and the parent completes only over a fully-completed subtree. Non-plan runs, old state files, and every single-run gate surface stay byte-identical where the tasks say so. No `.github/workflows/` changes.
+
+## Verification
+
+Red-first per task — each task's failing tests land before implementation, its Verify command (`bun run test tests/sdd-runner/<file>.test.ts`) runs green before moving on. Edit loop: `bun run test:affected` plus direct runs of touched test files (it cannot see `mock.module` seams). Before finishing: one full `bun run test`, `bun run typecheck`, `bun run lint` — all green. Backward-compat pins: single-run intake/gate/orchestration output byte-identical; pre-plan state files and non-plan runs untouched paths. Strict TS with `.js` imports, no lint-disable/type-ignore, bounded concurrency via p-limit, structured pino logging (never secrets). Commit as `sdd-runner-decomposition(2/3): intake plan branch, plan gate, parent orchestration`.

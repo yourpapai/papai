@@ -23,48 +23,12 @@ export type { ModelRef, SdkPromptBody } from './sdk-contract.js'
 export { parseModelRef } from './sdk-contract.js'
 import { errorMessage } from './types.js'
 
-export interface AgentPromptRequest {
-  prompt: string
-  system?: string
-  /** OpenCode agent profile (`build`, `plan`, …). */
-  agent?: string
-  /** Per-call tool allow/deny overrides passed straight through to the SDK. */
-  tools?: Record<string, boolean>
-}
-
-export interface AgentPromptResult {
-  text: string
-  sessionId: string
-}
-
-/** A live OpenCode session bound to one workspace directory. */
-export interface OpenCodeAgent {
-  readonly sessionId: string
-  prompt(request: AgentPromptRequest): Promise<AgentPromptResult>
-  /**
-   * Tokens this session has consumed. Zero when the server cannot say — a
-   * budget is a guardrail on the work, not part of it, so a shape it fails to
-   * recognise must not turn every phase into a failure.
-   */
-  tokensUsed(): Promise<number>
-  /**
-   * Stops whatever the model is running, and says whether the server took it.
-   *
-   * The one boundary in this pipeline that is best-effort **and** reports.
-   * Measured against a live server: an abort kills the tool child and leaves the
-   * server up, while `close()` — a bare SIGTERM to one pid on POSIX — kills the
-   * server and leaves the tool child running, reparented to init. So this is the
-   * stop and `close()` is the leak, and the two are not each other's fallback.
-   *
-   * A refused abort must not become the run's failure — the stop it belongs to is
-   * already out of time and cannot afford a second thing to go wrong — but unlike
-   * the feedback channels it cannot swallow the answer either: the salvage stages
-   * a working tree, and staging one whose writer may still be running is the only
-   * thing that path must never do. Hence `boolean` rather than `void`.
-   */
-  abort(): Promise<boolean>
-  close(): Promise<void>
-}
+// The seam interface itself lives in `agent-session.ts` since the claude
+// backend arrived behind it; re-exported under the name every existing import
+// already uses, so the extraction changed no caller.
+export type { AgentPromptRequest, AgentPromptResult } from './agent-session.js'
+export type { AgentSession as OpenCodeAgent } from './agent-session.js'
+import type { AgentSession } from './agent-session.js'
 
 /**
  * Minimal slice of the SDK surface the adapter drives.
@@ -120,7 +84,7 @@ export interface OpenCodeAgentOptions extends TurnBounds {
  * checked-out workspace. The server binds loopback only and dies with the job,
  * which is exactly the lifetime an ephemeral Actions runner gives us.
  */
-export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promise<OpenCodeAgent> => {
+export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promise<AgentSession> => {
   const model = parseModelRef(modelRef(options.openai))
   // Which catalogue row a run resolved decides whether the model has a context
   // window at all — `limit.context` 0 makes `isOverflow` return `false` and

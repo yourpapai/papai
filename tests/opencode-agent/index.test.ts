@@ -205,7 +205,9 @@ describe('contain transcript wiring', () => {
     })
 
     await run.agent.get()
-    await run.proxy.close()
+    // The opencode route always has one; the claude route's null is gated the
+    // same way in index.ts's teardown.
+    await run.proxy?.close()
 
     expect(seen).toHaveLength(1)
     expect(seen[0]?.transcript).toBeDefined()

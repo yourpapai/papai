@@ -9,15 +9,20 @@ import os from 'node:os'
 import path from 'node:path'
 
 import {
+  awaitGateDeadline,
   digestOf,
   isStableEdit,
-  looksAnswered,
   processExpiry,
   shouldEnterWaiter,
   translateSteer,
 } from '../../sdd-runner/src/deadline-waiter.js'
 import { appendEvent } from '../../sdd-runner/src/events.js'
+import type { RunGateResumeResult } from '../../sdd-runner/src/extend-round.js'
+import { looksAnswered } from '../../sdd-runner/src/gate-answered.js'
+import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
+import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
+import type { RunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
 
@@ -91,12 +96,22 @@ describe('hand-edit stability (12.2)', () => {
     expect(looksAnswered('## Gate response\n')).toBe(true)
     expect(looksAnswered('- [ ] A1 unresolved')).toBe(false)
   })
+
+  it('looksAnswered recognizes a hand-checked plan-gate child row', () => {
+    expect(looksAnswered('- [x] C1 db-schema — Rename the schema columns.')).toBe(true)
+    expect(looksAnswered('- [ ] C1 db-schema — Rename the schema columns.')).toBe(false)
+  })
 })
 
 describe('steer translation (12.2)', () => {
   it('extend lands at an early gate but warns and skips at a final gate', () => {
     expect(translateSteer({ kind: 'extend' }, 'early').warn).toBeNull()
     expect(translateSteer({ kind: 'extend' }, 'final').warn).toMatch(/not valid at a final gate/u)
+  })
+
+  it('extend warns and skips at a plan gate too (cap-hit only)', () => {
+    expect(translateSteer({ kind: 'extend' }, 'plan').warn).toMatch(/not valid at a plan gate/u)
+    expect(translateSteer({ kind: 'abort' }, 'plan').warn).toBeNull()
   })
 })
 
@@ -148,4 +163,145 @@ describe('processExpiry (12.3)', () => {
     const outcome = await processExpiry(workDir, runId, 10, (): Promise<boolean> => Promise.resolve(true))
     expect(outcome).toBe('lost-claim')
   })
+})
+
+describe('plan-mode gates under the waiter', () => {
+  async function seedPlanGate(
+    deadlineAt: string | null,
+  ): Promise<{ deps: OrchestratorDeps; state: RunState; stdout: string[] }> {
+    const repoRoot = makeDir()
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    const stdout: string[] = []
+    const state = await createRunState({ workDir, repoRoot, changeName: 'composite' })
+    fs.mkdirSync(path.join(state.runDir, 'sidecars'), { recursive: true })
+    state.gate = { mode: 'plan', version: 1 }
+    state.plan = { childIds: ['db-schema', 'db-api'], digest: 'd'.repeat(16) }
+    state.children = { 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } }
+    state.gateDeadlineAt = deadlineAt
+    await saveRunState(state)
+    appendEvent(path.join(state.runDir, 'events.ndjson'), {
+      altitude: 'L2',
+      type: 'gate',
+      action: 'presented',
+      mode: 'plan',
+      version: 1,
+    })
+    fs.writeFileSync(
+      path.join(state.runDir, 'gate-1.md'),
+      ['## Plan gate — change composite', '', '- [ ] C1 db-schema — Rename the schema columns.', ''].join('\n'),
+    )
+    const deps: OrchestratorDeps = {
+      config: { repoRoot, workDir, model: 'test-model', budget: 5 },
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      driver: createOpenSpecDriver({
+        exec: () => Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 }),
+        cwd: repoRoot,
+      }),
+      resolveCost: () => null,
+      stdout: (line: string): void => {
+        stdout.push(line)
+      },
+    }
+    return { deps, state, stdout }
+  }
+
+  function recordingResume(
+    calls: GateResumeOptionsRecord[],
+  ): (deps: OrchestratorDeps, runId: string, options: GateResumeOptionsRecord) => Promise<RunGateResumeResult> {
+    return (_deps, runId, options) => {
+      calls.push(options)
+      return Promise.resolve({ runId, outcome: 'approved' as const, version: 1 })
+    }
+  }
+
+  interface GateResumeOptionsRecord {
+    readonly abort?: boolean
+    readonly confirmAll?: boolean
+    readonly extend?: boolean
+    readonly noWait?: boolean
+    readonly vetoes?: readonly { readonly id: string; readonly redirect?: string }[]
+  }
+
+  it('a steer abort at a plan gate resumes through the abort flag instead of throwing', async () => {
+    const { deps, state } = await seedPlanGate('2999-01-01T00:00:00.000Z')
+    fs.writeFileSync(path.join(state.runDir, 'steer.md'), 'abort\n')
+    const calls: GateResumeOptionsRecord[] = []
+    const result = await awaitGateDeadline(deps, state.runId, recordingResume(calls))
+    expect(result.outcome).toBe('approved')
+    expect(calls).toEqual([{ abort: true }])
+    expect(fs.existsSync(path.join(state.runDir, 'steer.md'))).toBe(false)
+  }, 15_000)
+
+  it('an expired plan gate stays pending, an extend steer is skipped, and a hand-checked C row settles it', async () => {
+    const { deps, state, stdout } = await seedPlanGate('2026-01-01T00:00:00.000Z')
+    fs.writeFileSync(path.join(state.runDir, 'steer.md'), 'extend\n')
+    const handEdit = setTimeout(() => {
+      fs.writeFileSync(
+        path.join(state.runDir, 'gate-1.md'),
+        ['## Plan gate — change composite', '', '- [x] C1 db-schema — Rename the schema columns.', ''].join('\n'),
+      )
+    }, 1_500)
+    const calls: GateResumeOptionsRecord[] = []
+    try {
+      const result = await awaitGateDeadline(deps, state.runId, recordingResume(calls))
+      expect(result.outcome).toBe('approved')
+    } finally {
+      clearTimeout(handEdit)
+    }
+    expect(calls).toEqual([{ noWait: true }])
+    expect(stdout.some((line) => line.includes('extend is not valid at a plan gate'))).toBe(true)
+    expect(stdout.some((line) => line.includes('gate stays pending'))).toBe(true)
+    const persisted = await loadRunState(deps.config.workDir, state.runId)
+    expect(persisted.gateDeadlineReArmed).toBe(true)
+  }, 20_000)
+
+  it('a hand-edited full veto (→ redirect under an unchecked child) settles the deadline-waited plan gate', async () => {
+    const { deps, state } = await seedPlanGate('2999-01-01T00:00:00.000Z')
+    const handEdit = setTimeout(() => {
+      fs.writeFileSync(
+        path.join(state.runDir, 'gate-1.md'),
+        [
+          '## Plan gate — change composite',
+          '',
+          '- [ ] C1 db-schema — Rename the schema columns.',
+          '→ split the schema child',
+          '',
+        ].join('\n'),
+      )
+    }, 1_500)
+    const calls: GateResumeOptionsRecord[] = []
+    try {
+      const result = await awaitGateDeadline(deps, state.runId, recordingResume(calls))
+      expect(result.outcome).toBe('approved')
+    } finally {
+      clearTimeout(handEdit)
+    }
+    expect(calls).toEqual([{ noWait: true }])
+  }, 15_000)
+
+  it('a hand-written lone ABORT settles the deadline-waited plan gate', async () => {
+    const { deps, state } = await seedPlanGate('2999-01-01T00:00:00.000Z')
+    const handEdit = setTimeout(() => {
+      fs.writeFileSync(
+        path.join(state.runDir, 'gate-1.md'),
+        [
+          '## Plan gate — change composite',
+          '',
+          '- [ ] C1 db-schema — Rename the schema columns.',
+          '',
+          'ABORT',
+          '',
+        ].join('\n'),
+      )
+    }, 1_500)
+    const calls: GateResumeOptionsRecord[] = []
+    try {
+      const result = await awaitGateDeadline(deps, state.runId, recordingResume(calls))
+      expect(result.outcome).toBe('approved')
+    } finally {
+      clearTimeout(handEdit)
+    }
+    expect(calls).toEqual([{ noWait: true }])
+  }, 15_000)
 })

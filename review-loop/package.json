@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "cd .. && bun test tests/review-loop",
-    "typecheck": "tsgo --project tsconfig.json --noEmit",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
     "lint": "cd .. && oxlint --config .oxlintrc.json review-loop/src tests/review-loop",
     "format": "cd .. && oxfmt --write review-loop/src tests/review-loop --ignore-path=.oxfmtignore",
     "format:check": "cd .. && oxfmt --check review-loop/src tests/review-loop --ignore-path=.oxfmtignore",
@@ -14,7 +14,6 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "typescript": "^7.0.2"
   }
 }
