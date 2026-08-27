@@ -262,6 +262,15 @@ describe('alertConditionSchema', () => {
       expect(result.success).toBe(true)
     })
 
+    test('activity leaf with empty categories is rejected', () => {
+      const result = alertConditionSchema.safeParse({
+        kind: 'activity',
+        taskId: 'task-123',
+        categories: [],
+      })
+      expect(result.success).toBe(false)
+    })
+
     test('activity leaf without taskId is rejected with an error naming taskId', () => {
       const result = alertConditionSchema.safeParse({
         kind: 'activity',

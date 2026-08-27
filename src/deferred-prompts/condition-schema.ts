@@ -67,7 +67,7 @@ export type LeafCondition = z.infer<typeof leafConditionSchema>
 const activityLeafSchema = z.object({
   kind: z.literal('activity'),
   taskId: z.string({ error: 'Activity conditions require a taskId.' }),
-  categories: z.array(z.string()).optional(),
+  categories: z.array(z.string()).min(1).optional(),
 })
 
 export type ActivityLeafCondition = z.output<typeof activityLeafSchema>
