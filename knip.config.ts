@@ -277,8 +277,8 @@ export default {
     'src/debug/state-collector.ts': ['exports', 'types'],
     // pollAlertsOnce is consumed by frozen tests/stories/harness/scenario.ts.
     'src/deferred-prompts/poller.ts': ['exports'],
-    // Activity walkers: seam of openspec/changes/alert-activity-condition (poller 4.2/4.3 pending).
-    'src/deferred-prompts/condition-eval.ts': ['exports'],
+    // Activity seam of openspec/changes/alert-activity-condition (poller 4.2-4.3 pending).
+    'src/deferred-prompts/{condition-eval,alerts}.ts': ['exports'],
     // public-types.ts is published as the `papai/plugin-types` package export
     // (package.json `exports`) and consumed by external plugin authors knip
     // cannot trace, plus tests/providers/public-types.test.ts.

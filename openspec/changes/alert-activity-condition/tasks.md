@@ -12,7 +12,7 @@
 
 ## 3. Cursor persistence
 
-- [ ] 3.1 Write failing tests in `tests/deferred-prompts/alerts.test.ts`: `lastActivityCursor` round-trips through `createAlertPrompt` (null at creation) and `toAlertPrompt`; `updateAlertActivityState(id, userId, lastTriggeredAt, lastActivityCursor)` writes cursor + `lastTriggeredAt`; a condition update through `updateAlertPrompt` resets the cursor to null. Verify: `bun run test tests/deferred-prompts/alerts.test.ts`
+- [x] 3.1 Write failing tests in `tests/deferred-prompts/alerts.test.ts`: `lastActivityCursor` round-trips through `createAlertPrompt` (null at creation) and `toAlertPrompt`; `updateAlertActivityState(id, userId, lastTriggeredAt, lastActivityCursor)` writes cursor + `lastTriggeredAt`; a condition update through `updateAlertPrompt` resets the cursor to null. Verify: `bun run test tests/deferred-prompts/alerts.test.ts`
 - [ ] 3.2 Implement the round-trip, the `updateAlertActivityState` helper (sibling of `updateAlertMatchState`), and the cursor reset alongside the existing `matched_task_ids` reset in `src/deferred-prompts/alerts.ts`. Verify: `bun run test tests/deferred-prompts/alerts.test.ts && bun run typecheck`
 
 ## 4. Activity polling path
