@@ -16,7 +16,7 @@ design.md carries no Open Questions; nothing to resolve before build. Order foll
 ## 3. Error classification (test-first)
 
 - [x] 3.1 Add the failing GraphQL typing table to `tests/plugins/task-provider-github/classify-error.test.ts`: `FORBIDDEN`/`INSUFFICIENT_SCOPES` → `authFailed`; `NOT_FOUND` with/without `ClassificationContext` → `taskNotFound`/`projectNotFound`; `RATE_LIMITED` → `rateLimited`; untyped → `validationFailed` with the upstream message; `GitHubClassifiedError` passthrough unchanged. Confirm the expected failure: `bun test tests/plugins/task-provider-github/classify-error.test.ts`
-- [ ] 3.2 Extend `classifyGitHubError` in `plugins/task-provider-github/classify-error.ts` with the `GitHubGraphqlError` branch (after passthrough, before `GitHubApiError`) per design Decision 5. Verify: `bun test tests/plugins/task-provider-github/classify-error.test.ts`
+- [x] 3.2 Extend `classifyGitHubError` in `plugins/task-provider-github/classify-error.ts` with the `GitHubGraphqlError` branch (after passthrough, before `GitHubApiError`) per design Decision 5. Verify: `bun test tests/plugins/task-provider-github/classify-error.test.ts`
 
 ## 4. Config and documentation
 
