@@ -145,6 +145,7 @@
   "plugins/task-provider-youtrack/schemas/work-item.ts": 1,
   "plugins/task-provider-youtrack/task-helpers.ts": 0.5,
   "plugins/task-provider-youtrack/validate-config.ts": 1,
+  "review-loop/src/prompt-templates.ts": 0.5714285714285714,
   "sdd-runner/src/agent-layer.ts": 0.9797297297297297,
   "sdd-runner/src/auto-policy.ts": 0.796078431372549,
   "sdd-runner/src/child-settle.ts": 0.7981651376146789,
