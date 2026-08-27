@@ -3146,6 +3146,10 @@ describe('continuation start for a changeName-carrying child (D6)', () => {
     const result = await runResume({ ...fixture.deps, driver: settled }, 'add-thing-2')
 
     expect(result.halted).toBe('gate')
+    // The resume re-enters at the persisted tail entry: no reviewer or
+    // decomposer spawn over the adopted change (its review evidence lives in
+    // the parent's log; its tasks.md is the split's re-scoped child-#1 slice).
+    expect(fixture.spawnOrder).toEqual(['atomicity.json'])
   })
 })
 
