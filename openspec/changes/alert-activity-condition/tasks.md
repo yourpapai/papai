@@ -23,7 +23,7 @@
 
 ## 5. `create_alert` gating and guidance
 
-- [ ] 5.1 Write failing tool tests in `tests/deferred-prompts/tools.test.ts` (or `tool-handlers.test.ts`): activity condition refused with the standard `{ error }` guidance shape when the capability flag is false or the delivery context's task instance is null; accepted when both hold; a mixed activity+field tree refused at create and at condition update; tool/condition descriptions mention the activity kind. Verify: `bun run test tests/deferred-prompts`
+- [x] 5.1 Write failing tool tests in `tests/deferred-prompts/tools.test.ts` (or `tool-handlers.test.ts`): activity condition refused with the standard `{ error }` guidance shape when the capability flag is false or the delivery context's task instance is null; accepted when both hold; a mixed activity+field tree refused at create and at condition update; tool/condition descriptions mention the activity kind. Verify: `bun run test tests/deferred-prompts`
 - [ ] 5.2 Plumb the assembly-time boolean flag (`provider.capabilities.has('activities.read') && provider.getTaskHistory !== undefined`, computed in `buildTools`) through `addProviderIndependentTools` → `addDeferredPromptTools` → `makeCreateAlertTool` → `executeCreate` — never building a provider inside the tool — and apply the shared pure-tree validator in `createAlert` and `updateAlertFields` in `src/deferred-prompts/tool-handlers.ts`; update the condition `.describe()` and `create_alert` description. Verify: `bun run test tests/deferred-prompts && bun run typecheck`
 
 ## 6. Full gate and docs
