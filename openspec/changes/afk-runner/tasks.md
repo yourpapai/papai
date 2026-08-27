@@ -23,5 +23,5 @@
 
 ## 3. Verification and docs
 
-- [ ] 3.1 Run full `bun test`, `bun run typecheck`, `bun run lint`, `bun run knip`; fix findings in `afk-runner/` only
-- [ ] 3.2 Add `docs/architecture/afk-runner.md` (engine decision A→D, engine loop, grow-not-restore porting strategy, C3–C7 plan pointer, U-ledger pointer) and index it in AGENTS.md docs table; leave `docs/architecture/sdd-pipeline.md` untouched
+- [x] 3.1 Run full `bun test`, `bun run typecheck`, `bun run lint`, `bun run knip`; fix findings in `afk-runner/` only (full suite 17414 tests / 0 fail; typecheck, lint, knip clean — no findings to fix; the standalone `.hooks` enforce-write-policy failures do not reproduce under the full run's preload and predate this change at HEAD)
+- [x] 3.2 Add `docs/architecture/afk-runner.md` (engine decision A→D, engine loop, grow-not-restore porting strategy, C3–C7 plan pointer, U-ledger pointer) and index it in AGENTS.md docs table; leave `docs/architecture/sdd-pipeline.md` untouched (also collapsed a pre-existing duplicated SDD-pipeline row in the AGENTS.md table)
