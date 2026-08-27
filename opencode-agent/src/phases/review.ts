@@ -11,7 +11,8 @@ import { renderPresentation } from '../pull-request-body.js'
 import type { ReviewOutcome, ReviewRunResult } from '../review-runner.js'
 import { errorMessage } from '../types.js'
 import type { AgentState } from '../types.js'
-import { createPush } from './review-push.js'
+import { renderRevertedPatches } from './review-blocked-patch.js'
+import { createPush, type BlockedPath } from './review-push.js'
 
 /**
  * The `review-loop/` workspace, as a phase of its own.
@@ -86,7 +87,7 @@ const runAndKeep = async (
   input: PhaseInput,
   plan: string,
   branch: string,
-): Promise<{ review: ReviewRunResult; applied: boolean; blocked: readonly string[] }> => {
+): Promise<{ review: ReviewRunResult; applied: boolean; blocked: readonly BlockedPath[] }> => {
   const { deps, state } = input
 
   // Opened before the loop, because what it measures is the loop: the branch as
@@ -253,7 +254,7 @@ const renderReport = (
   review: ReviewRunResult,
   applied: boolean,
   verdict: string,
-  blocked: readonly string[],
+  blocked: readonly BlockedPath[],
 ): string => {
   const lines = [
     '### Review report',
@@ -266,10 +267,11 @@ const renderReport = (
     ...(blocked.length === 0
       ? []
       : [
-          `- Reverted before pushing: ${blocked.map((path) => `\`${path}\``).join(', ')} — a push from this ` +
+          `- Reverted before pushing: ${blocked.map((entry) => `\`${entry.path}\``).join(', ')} — a push from this ` +
             'pipeline cannot carry them. Apply by hand if the finding is wanted.',
         ]),
   ]
+  lines.push(...renderRevertedPatches(blocked))
 
   lines.push(...partialWork(review, applied))
 

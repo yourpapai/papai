@@ -667,6 +667,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       io.gitCalls.push(`changedSince:${sha}`)
       return Promise.resolve([...io.changedPaths])
     },
+    diffSince: (sha, paths) => {
+      io.gitCalls.push(`diffSince:${sha}:${paths.join(',')}`)
+      return Promise.resolve('')
+    },
     revertPaths: (sha, paths) => {
       io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
       return Promise.resolve()
@@ -811,6 +815,7 @@ const hostileGit = (): Git => {
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
     headSha: (): Promise<string> => refuse('rev-parse'),
     changedSince: (): Promise<string[]> => refuse('diff --name-only'),
+    diffSince: (): Promise<string> => refuse('diff'),
     revertPaths: (): Promise<void> => refuse('revert'),
     mergeBase: (): Promise<never> => refuse('merge'),
     completeMerge: (): Promise<void> => refuse('commit'),
