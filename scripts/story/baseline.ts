@@ -103,7 +103,7 @@ async function loadBaselineFiles(
 }
 
 export function loadBaselineStoryFiles(root: string, commit: string): Promise<readonly LoadedStoryFile[]> {
-  return loadBaselineFiles(root, commit, ['bunfig.toml', 'tests', 'scripts'], isCapturedStoryInputPath)
+  return loadBaselineFiles(root, commit, ['bunfig.toml', 'tests', 'scripts', 'src/ts-ast'], isCapturedStoryInputPath)
 }
 
 const RUNTIME_DIRECTORY_ROOTS = new Set<string>([

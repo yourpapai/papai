@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "cd .. && bun test tests/sdd-runner",
-    "typecheck": "tsgo --project tsconfig.json --noEmit",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
     "lint": "cd .. && oxlint --config .oxlintrc.json sdd-runner/src tests/sdd-runner",
     "format": "cd .. && oxfmt --write sdd-runner/src tests/sdd-runner --ignore-path=.oxfmtignore",
     "format:check": "cd .. && oxfmt --check sdd-runner/src tests/sdd-runner --ignore-path=.oxfmtignore",
@@ -17,7 +17,6 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "ink-testing-library": "^4.0.0",
     "typescript": "^7.0.2"
   }

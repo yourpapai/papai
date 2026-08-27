@@ -101,7 +101,9 @@ const failureFixture = (state: AgentState): { input: MachineInput; sections: Rep
 }
 
 describe('failRun · a dependency-drift refusal', () => {
-  const drift = dependencyDriftError('agent/issue-323', 'master', ['package.json'])
+  const drift = dependencyDriftError('agent/issue-323', 'master', [
+    { file: 'package.json', fields: ['devDependencies'] },
+  ])
 
   test('parks in FAILED with the resume point but carries attempts instead of spending one', async () => {
     // The guard fires at the branch switch, before any work: the same doctrine

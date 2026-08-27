@@ -13,7 +13,7 @@ import { z } from 'zod'
 import type { EventInput } from './events.js'
 import { readEvents } from './events.js'
 import { parseGateResponse, writeGateDigest } from './gate-model.js'
-import type { GateAssumption, GateBlocker, GateDigestInput } from './gate-model.js'
+import type { GateAssumption, GateBlocker, GateChild, GateDigestInput } from './gate-model.js'
 import { loadRunState, saveRunState } from './run-state.js'
 
 const HashesSchema = z.record(z.string(), z.string())
@@ -94,7 +94,9 @@ export interface ResumeGateInput {
   readonly blockers: readonly GateBlocker[]
   readonly findings?: readonly GateBlocker[]
   readonly requiredAck?: string
-  readonly gateMode: 'early' | 'final'
+  /** Plan-mode child rows (D4/D12): one `C<n>` checkbox per planned child. */
+  readonly children?: readonly GateChild[]
+  readonly gateMode: 'early' | 'final' | 'plan'
 }
 
 export type GateOutcome =
@@ -131,10 +133,14 @@ export async function resumeGate(deps: GateDeps, input: ResumeGateInput): Promis
     blockers: input.blockers,
     ...(input.findings === undefined ? {} : { findings: input.findings }),
     ...(input.requiredAck === undefined ? {} : { requiredAck: input.requiredAck }),
+    ...(input.children === undefined ? {} : { children: input.children }),
     gateMode: input.gateMode,
   })
+  // The hard-coded 'final' on the abort/approve/veto answers is a pinned
+  // early-gate quirk; plan-mode answers carry their true mode (D12).
+  const answeredMode = input.gateMode === 'plan' ? 'plan' : 'final'
   if (response.abort) {
-    deps.emit({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: input.version })
+    deps.emit({ altitude: 'L2', type: 'gate', action: 'answered', mode: answeredMode, version: input.version })
     return { kind: 'aborted' }
   }
   if (response.extend) {
@@ -142,7 +148,7 @@ export async function resumeGate(deps: GateDeps, input: ResumeGateInput): Promis
     return { kind: 'extend' }
   }
   await verifyGateIntegrity(deps, input.version)
-  deps.emit({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: input.version })
+  deps.emit({ altitude: 'L2', type: 'gate', action: 'answered', mode: answeredMode, version: input.version })
   if (response.approved) return { kind: 'approved' }
   return { kind: 'veto', vetoes: response.vetoes }
 }
@@ -197,7 +203,9 @@ export async function runGateReopen(
   }
   const freshVersion = settledGate.version + 1
   if (settledGate.mode === 'plan') {
-    throw new Error(`run ${runId}: a 'plan' gate cannot be reopened (unreachable before part 3 wiring)`)
+    throw new Error(
+      `run ${runId}: a 'plan' gate cannot be reopened (plan gates re-present through a veto round, not reopen)`,
+    )
   }
   const reopenedMd = renderUnansweredDigest(await readFile(sourceMdPath, 'utf8'))
   const gateMdPath = path.join(state.runDir, `gate-${freshVersion}.md`)

@@ -19,7 +19,7 @@ const TRANSCRIPTION_HOST = 'transcribe.invalid'
 scenario(
   'SCN-plugin-audio-transcribe-transformer: a voice attachment is transcribed through the declared host',
   async ({ given, world }) => {
-    const plugin = discoverPlugins('plugins').plugins.find(({ manifest }) => manifest.id === AUDIO_PLUGIN_ID)
+    const plugin = (await discoverPlugins('plugins')).plugins.find(({ manifest }) => manifest.id === AUDIO_PLUGIN_ID)
     if (plugin === undefined) throw new Error('Expected audio-transcribe plugin to be discoverable')
 
     const user = given.user('voice-user')

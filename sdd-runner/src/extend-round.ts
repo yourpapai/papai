@@ -7,19 +7,10 @@ import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { AgentLayerDeps } from './agent-layer.js'
-import { shouldEnterWaiter } from './deadline-waiter.js'
 import { buildDriftCheck } from './drift.js'
 import type { EventInput } from './events.js'
 // prettier-ignore is not allowed; oxfmt keeps this single line under 110 chars
-import {
-  buildBus,
-  finalizeGate,
-  findingsOf,
-  logPathFor,
-  nowOf,
-  prepareResumeInput,
-  presentGateAt,
-} from './gate-digest.js'
+import { finalizeGate, findingsOf, logPathFor, nowOf, prepareResumeInput, presentGateAt } from './gate-digest.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import type { GateAssumption, GateFinding } from './gate-model.js'
 import { settleApprovedGate, settleVeto } from './gate-resume-tail.js'
@@ -33,7 +24,7 @@ import { runPostConvergenceTail } from './post-review-tail.js'
 import type { Verbosity } from './renderer.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
-import { loadRunState, narrowGateMode, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
+import { narrowGateMode, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { removeHolder, writeHolder } from './stop-controller.js'
 import { runTuiGateSession } from './tui-gate-session.js'
@@ -230,16 +221,19 @@ function collectGateOutcome(
   )
 }
 
-export async function runGateResume(
+/**
+ * Early/final half of the gate resume (D12): the entry in
+ * `gate-resume-entry.ts` has already loaded the state, decided the deadline
+ * waiter, and built the bus — this half collects the decision and settles
+ * the outcome (abort/approve/extend/veto).
+ */
+export async function runEarlyFinalGateResume(
   deps: OrchestratorDeps,
-  runId: string,
+  state: RunState,
   options: GateResumeOptions,
+  emit: (event: EventInput) => void,
 ): Promise<RunGateResumeResult> {
-  const state = await loadRunState(deps.config.workDir, runId)
-  if (state.gate === null) throw new Error(`run ${runId} is not gate-pending`)
-  const waiterEntry = await deadlineWaiterEntry(deps, state, options)
-  if (waiterEntry !== null) return waiterEntry
-  const emit = buildBus(deps, logPathFor(state))
+  if (state.gate === null) throw new Error(`run ${state.runId} is not gate-pending`)
   const version = state.gate.version
   const changeDir = path.join(deps.config.repoRoot, 'openspec', 'changes', state.changeName)
   const sidecarDir = path.join(state.runDir, 'sidecars')
@@ -264,25 +258,4 @@ export async function runGateResume(
     removeHolder(state.runDir)
     deps.unmountRunScreen?.()
   }
-}
-
-/** D11: return the waiter result when this invocation should wait, else null. */
-async function deadlineWaiterEntry(
-  deps: OrchestratorDeps,
-  state: RunState,
-  options: GateResumeOptions,
-): Promise<RunGateResumeResult | null> {
-  const wait = shouldEnterWaiter({
-    isTty: deps.interactive?.() === true,
-    deadlineAt: state.gateDeadlineAt,
-    hasDecisionFlags:
-      options.abort === true ||
-      options.confirmAll === true ||
-      options.extend === true ||
-      (options.vetoes?.length ?? 0) > 0,
-    noWait: options.noWait === true,
-  })
-  if (!wait && options.waitDeadline !== true) return null
-  const { awaitGateDeadline } = await import('./deadline-waiter.js')
-  return awaitGateDeadline(deps, state.runId, runGateResume)
 }

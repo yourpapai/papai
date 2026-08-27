@@ -10,7 +10,7 @@ import type { ExpectedGateContent, GateResponse } from './gate-model.js'
 import { decisionConsequences } from './gate-render.js'
 
 export interface GateSessionItem {
-  readonly kind: 'assumption' | 'finding'
+  readonly kind: 'assumption' | 'finding' | 'child'
   readonly id: string
   readonly text: string
   readonly evidence: string
@@ -26,7 +26,7 @@ export interface GateSessionBlocker {
 }
 
 export interface GateSessionView {
-  readonly gateMode: 'early' | 'final'
+  readonly gateMode: 'early' | 'final' | 'plan'
   readonly items: readonly GateSessionItem[]
   readonly blockers: readonly GateSessionBlocker[]
   readonly requiredAck: { readonly id: string; readonly text: string } | null
@@ -58,6 +58,7 @@ function expectedContent(view: GateSessionView): ExpectedGateContent {
     findings: view.items
       .filter((item) => item.kind === 'finding')
       .map((item) => ({ id: item.id, gap: item.text, evidence: item.evidence })),
+    children: view.items.filter((item) => item.kind === 'child').map((item) => ({ id: item.id, text: item.text })),
     ...(view.requiredAck === null ? {} : { requiredAck: view.requiredAck.id }),
     gateMode: view.gateMode,
   }

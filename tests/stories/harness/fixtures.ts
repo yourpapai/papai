@@ -303,7 +303,7 @@ export type ScenarioFixtures = Readonly<{
   ): Promise<{ id: string }>
   issueSettingsAuthCode(input: Readonly<{ platformInstanceId: string; platformUserId: string }>, nowMs: number): string
   approvePlugin(plugin?: DiscoveredPlugin): DiscoveredPlugin
-  approveRealTaskProviderPlugin(type: RealTaskProviderType): void
+  approveRealTaskProviderPlugin(type: RealTaskProviderType): Promise<void>
   seedProviderContextConfig(input: Readonly<{ contextId: string; pluginId: string; key: string; value: string }>): void
   registerTaskProvider(): void
   seedMemo(
@@ -498,9 +498,9 @@ export function createScenarioFixtures(options: ScenarioFixturesOptions = {}): S
       if (!approved) throw new Error(`Failed to approve scenario plugin: ${plugin.manifest.id}`)
       return plugin
     },
-    approveRealTaskProviderPlugin(type): void {
+    async approveRealTaskProviderPlugin(type): Promise<void> {
       const pluginId = REAL_TASK_PROVIDER_PLUGIN_IDS[type]
-      const discovered = discoverPlugins('plugins').plugins.find((plugin) => plugin.manifest.id === pluginId)
+      const discovered = (await discoverPlugins('plugins')).plugins.find((plugin) => plugin.manifest.id === pluginId)
       if (discovered === undefined) {
         throw new Error(`Real task provider plugin not discovered on disk: ${pluginId}`)
       }

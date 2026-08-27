@@ -23,6 +23,7 @@ import { INACTIVITY_TIMEOUT_MS } from '../../sdd-runner/src/config.js'
 import type { RunnerConfig } from '../../sdd-runner/src/config.js'
 import { EventInputSchema } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
+import { buildEstimatorPrompt } from '../../sdd-runner/src/intake.js'
 import { ResolverOutputSchema } from '../../sdd-runner/src/review-loop.js'
 import type { ResolverOutput } from '../../sdd-runner/src/review-loop.js'
 
@@ -313,6 +314,33 @@ describe('sidecar schemas', () => {
 
     const emptyString = DepthClassificationSchema.safeParse({ ...base, capabilities: [''] })
     expect(emptyString.success).toBe(false)
+  })
+
+  it('validates the depth classification sidecar with and without oversize (undefined reads false)', () => {
+    const base = {
+      implicated_files: ['src/chat/router.ts'],
+      signals: {
+        cross_module: false,
+        db_migration: false,
+        provider_surface: false,
+        credentials: false,
+        novelty: 'existing-modules',
+      },
+      rationale: 'single-module chat change',
+    }
+    const withOversize = DepthClassificationSchema.parse({ ...base, oversize: true })
+    expect(withOversize.oversize).toBe(true)
+
+    const withoutOversize = DepthClassificationSchema.parse(base)
+    expect(withoutOversize.oversize).toBeUndefined()
+
+    const nonBoolean = DepthClassificationSchema.safeParse({ ...base, oversize: 'yes' })
+    expect(nonBoolean.success).toBe(false)
+  })
+
+  it('estimator prompt teaches the oversize verdict field', () => {
+    const prompt = buildEstimatorPrompt('add a composite multi-run feature', '/repo')
+    expect(prompt).toContain('"oversize": boolean')
   })
 })
 

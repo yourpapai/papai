@@ -42,7 +42,7 @@ function candidateList(candidates: readonly { runId: string; hint: string }[]): 
 }
 
 function isInterrupted(status: string): boolean {
-  return status === 'stopped' || (status === 'running' && false)
+  return status === 'stopped'
 }
 
 export async function resolveTarget(input: ResolveTargetInput): Promise<RouteAction> {
@@ -80,7 +80,10 @@ async function routeByState(workDir: string, runId: string): Promise<RouteAction
   const states = await readAllRunStates(workDir)
   const found = states.find((s) => s.runId === runId)
   if (found === undefined) return { kind: 'report', runId }
-  if (found.gate !== null && found.status === 'running') return { kind: 'gate', runId }
+  // Gate-pending routes to the gate flow regardless of status: a calm-stopped
+  // run settles to {gate, stopped} and its gate must stay decidable — matching
+  // listPendingGates and routeOfRow, which also ignore status here.
+  if (found.gate !== null) return { kind: 'gate', runId }
   if (isInterrupted(found.status) || found.status === 'running') return { kind: 'resume', runId }
   if (found.status === 'completed') return { kind: 'report', runId }
   return { kind: 'report', runId }

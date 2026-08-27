@@ -14,11 +14,11 @@ import { FindingsSidecarSchema, runStageAgent } from '../../sdd-runner/src/agent
 import type { AgentLayerDeps, Finding, RunStageAgentOptions } from '../../sdd-runner/src/agent-layer.js'
 import type { RunnerConfig } from '../../sdd-runner/src/config.js'
 import { appendEvent, readEvents, type EventInput } from '../../sdd-runner/src/events.js'
-import { costAndDuration } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { runPolicyLadder } from '../../sdd-runner/src/gate-prelude.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
+import { costAndDuration } from '../../sdd-runner/src/usage-aggregate.js'
 import { aggregateUsage } from '../../sdd-runner/src/usage-aggregate.js'
 
 const tmpDirs: string[] = []
@@ -235,6 +235,46 @@ describe('continued-session usage flows through accounting and the budget guard 
   })
 })
 
+describe('the persisted tree baseline reaches the ladder (D10)', () => {
+  it('same child spend, a spendBaselineUsd state flips R1 approve into an R4 gate', () => {
+    const dir = makeDir()
+    const runDir = path.join(dir, '.sdd-runner', 'runs', 'run-1')
+    const sidecarDir = path.join(runDir, 'sidecars')
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), '')
+    fs.writeFileSync(path.join(sidecarDir, 'resolutions-2.json'), JSON.stringify({ resolutions: [], assumptions: [] }))
+    const deps: OrchestratorDeps = {
+      config: { repoRoot: dir, workDir: path.join(dir, '.sdd-runner'), model: 'm', budget: 5 },
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      driver: createOpenSpecDriver({ exec: () => Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }), cwd: dir }),
+      resolveCost: () => null,
+    }
+    const ctx = { emit: (): void => undefined, cwd: dir, changeDir: dir, sidecarDir }
+    const reviewResult: ReviewLoopResult = {
+      outcome: 'converged',
+      rounds: 2,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    }
+    const input = {
+      mode: 'final' as const,
+      version: 1,
+      events: [],
+      costUsd: 0.5,
+      costKnown: true,
+      durationMs: 1000,
+      assumptions: [],
+      trajectory: [],
+    }
+    const topLevel = runPolicyLadder(deps, freshState(dir), ctx, reviewResult, input)
+    const nested = runPolicyLadder(deps, { ...freshState(dir), spendBaselineUsd: 4.6 }, ctx, reviewResult, input)
+    expect(topLevel.decision).toMatchObject({ rule: 'R1', action: 'approve' })
+    expect(nested.decision).toMatchObject({ rule: 'R4', action: 'gate' })
+  })
+})
+
 function freshState(repoRoot: string): Parameters<typeof runPolicyLadder>[1] {
   return {
     runId: 'run-1',
@@ -250,6 +290,7 @@ function freshState(repoRoot: string): Parameters<typeof runPolicyLadder>[1] {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     autoExtendsUsed: 0,
+    spendBaselineUsd: 0,
     gateDeadlineAt: null,
     gateDeadlineReArmed: false,
     runDir: path.join(repoRoot, '.sdd-runner', 'runs', 'run-1'),

@@ -1460,9 +1460,42 @@ say.
 `AGENT_GITHUB_TOKEN` the `workflows: write` permission, re-install it, and drop
 the prefix from `PROTECTED_PREFIXES`. Weigh it first: an agent that can rewrite
 `agent-pipeline.yml` can rewrite the permissions, the concurrency group, the
-guardrails and the secret wiring that bound it, from inside a job that file
+guardrails and the secret wiring that bounded it, from inside a job that file
 defines. The alternative costs a maintainer one commit — the agent says in its
 reply exactly what to apply.
+
+### Branches the job cannot serve
+
+The workflow runs `bun install --frozen-lockfile` on the **base** checkout and
+`ensureBranch` switches onto `agent/issue-<n>` afterwards, with no second
+install — so a branch whose install state diverged from base would run every
+check against a `node_modules` that cannot serve it. The dependency-drift guard
+(`src/git-drift.ts`) refuses such a branch at the switch, before any model turn
+or check is paid for.
+
+What counts as drift is decided by **content, not file paths**:
+
+- `bun.lock` refuses on any byte change — every byte of it is install state.
+- A `package.json` (root or any workspace) refuses only when an
+  install-relevant top-level field moved: the four dependency maps,
+  `resolutions` / `overrides`, `workspaces`, `trustedDependencies`,
+  `patchedDependencies` — the `INSTALL_FIELDS` constant beside the guard. Both
+  sides are parsed and compared field by field, so a re-serialized but
+  identical dependencies map passes, and edits to `scripts`, `name`,
+  `version`, `packageManager` or custom fields pass. Issue #360 is why: a
+  one-line `scripts` edit was a change's whole deliverable, and the older
+  path-based refusal parked the finished branch where `/retry` reproduced the
+  refusal, `/sync` had nothing to merge, and `/review` was refused.
+- Unknown shapes **fail closed**: a manifest that will not parse as JSON on
+  either side refuses, and a manifest that exists on only one side (an added
+  or deleted workspace) refuses when the side that exists carries any install
+  field.
+
+The refusal names the drifted fields per file (`package.json
+(devDependencies, resolutions)`), names `/sync` or a hand merge as the
+remedies, and spends no retry attempt. A branch that _intentionally_ changed
+dependencies is maintainer territory by design: the job never installs from
+the agent branch, so no command can reconcile it for you.
 
 ### Capability containment
 

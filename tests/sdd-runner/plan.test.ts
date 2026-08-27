@@ -223,9 +223,9 @@ describe('topoSortChildren', () => {
 })
 
 describe('planDigest', () => {
-  it('is the sha-256 of JSON.stringify(topo-ordered child ids), sliced to 16 hex chars', () => {
+  it('is the sha-256 of JSON.stringify(topo-ordered [id, instruction] pairs), sliced to 16 hex chars', () => {
     const sorted = topoSortChildren({ children: [child('beta', ['alpha']), child('alpha')] })
-    expect(planDigest(sorted)).toBe('138bf4722f7ae171')
+    expect(planDigest(sorted)).toBe('a61163921a7cc470')
     expect(planDigest(sorted)).toMatch(/^[0-9a-f]{16}$/u)
   })
 
@@ -235,12 +235,21 @@ describe('planDigest', () => {
     expect(planDigest(declared)).not.toBe(planDigest(redeclared))
   })
 
-  it('depends only on the ordered ids, not on instructions or capabilities', () => {
+  it('depends on the ordered ids and instructions, not on deps or capabilities', () => {
     const bare = topoSortChildren({ children: [child('alpha'), child('beta')] })
     const rich = topoSortChildren({
       children: [child('alpha', [], ['codeindex']), child('beta', ['alpha'])],
     })
     expect(planDigest(rich)).toBe(planDigest(bare))
+  })
+
+  it('diverges on an instruction-only revision — the signal the interrupted-replan recovery compares', () => {
+    const before = topoSortChildren({ children: [child('alpha'), child('beta')] })
+    const revised = [
+      { id: 'alpha', instruction: 'do alpha v2', deps: [] },
+      { id: 'beta', instruction: 'do beta', deps: ['alpha'] },
+    ]
+    expect(planDigest(revised)).not.toBe(planDigest(before))
   })
 })
 

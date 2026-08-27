@@ -152,21 +152,42 @@ export const pullRequestForbiddenError = (compareUrl: string, branch: string): P
 export const openCodeError = (message: string): PipelineError => new PipelineError('OPENCODE', message)
 
 /**
- * A branch whose dependency manifests differ from base, refused at the branch
- * switch — see `git-drift.ts` for why the run cannot proceed and whose decision
- * that is. The message is the whole contract: it reaches the issue as
+ * One manifest the guard refused, with the install-relevant fields that moved.
+ *
+ * `fields` empty is the whole-file refusal: the lockfile, refused on any byte,
+ * or a manifest that would not parse — fail-closed, with no fields to name.
+ */
+export interface DriftedManifest {
+  readonly file: string
+  readonly fields: readonly string[]
+}
+
+/** `package.json (devDependencies, resolutions)`, or just `bun.lock` when there is no field to name. */
+const renderDrift = (drift: DriftedManifest): string =>
+  drift.fields.length === 0 ? drift.file : `${drift.file} (${drift.fields.join(', ')})`
+
+/**
+ * A branch whose dependency install state differs from base, refused at the
+ * branch switch — see `git-drift.ts` for why the run cannot proceed and whose
+ * decision that is. The message is the whole contract: it reaches the issue as
  * `lastError`, and the one thing it must never suggest is `/retry` on its own,
  * which would re-run the phase into the same refusal until the budget is gone.
  *
  * Modelled on {@link pullRequestForbiddenError}: a condition the run's own
  * commands cannot change, both remedies named, and the "nothing is lost" fact
  * stated — the branch and its work are fine; only the job cannot serve them.
+ * The opening line names the drifted fields per file, because "which knob
+ * moved" is the first question a maintainer reconciling by hand asks.
  */
-export const dependencyDriftError = (branch: string, base: string, files: readonly string[]): PipelineError =>
+export const dependencyDriftError = (
+  branch: string,
+  base: string,
+  drifted: readonly DriftedManifest[],
+): PipelineError =>
   new PipelineError(
     'DEPENDENCY_DRIFT',
     [
-      `\`${branch}\` and \`${base}\` disagree on the dependency manifests (${files.join(', ')}).`,
+      `\`${branch}\` and \`${base}\` disagree on the dependency manifests (${drifted.map(renderDrift).join(', ')}).`,
       '',
       `Nothing is lost — \`${branch}\` and all its work are untouched. But this job installs dependencies`,
       `from \`${base}\` before checking out \`${branch}\`, so what is installed cannot serve the branch:`,
