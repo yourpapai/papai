@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { describeCondition } from '../../src/deferred-prompts/condition-eval.js'
 import {
   alertConditionSchema,
   CONDITION_FIELDS,
@@ -270,6 +271,55 @@ describe('alertConditionSchema', () => {
     })
   })
 
+  describe('activity leaf conditions', () => {
+    test('activity leaf without categories is accepted', () => {
+      const result = alertConditionSchema.safeParse({
+        kind: 'activity',
+        taskId: 'task-123',
+      })
+      expect(result.success).toBe(true)
+    })
+
+    test('activity leaf with categories is accepted', () => {
+      const result = alertConditionSchema.safeParse({
+        kind: 'activity',
+        taskId: 'task-123',
+        categories: ['comment', 'status'],
+      })
+      expect(result.success).toBe(true)
+    })
+
+    test('activity leaf without taskId is rejected with an issue naming taskId', () => {
+      const result = alertConditionSchema.safeParse({
+        kind: 'activity',
+      })
+      expect(result.success).toBe(false)
+      assert(!result.success, 'expected parse to fail')
+      const paths = result.error.issues.map((i) => i.path.join('.'))
+      expect(paths).toContain('taskId')
+    })
+
+    test('activity leaves nest under and', () => {
+      const result = alertConditionSchema.safeParse({
+        and: [
+          { kind: 'activity', taskId: 'task-1' },
+          { kind: 'activity', taskId: 'task-2' },
+        ],
+      })
+      expect(result.success).toBe(true)
+    })
+
+    test('activity leaves nest under or', () => {
+      const result = alertConditionSchema.safeParse({
+        or: [
+          { kind: 'activity', taskId: 'task-1' },
+          { field: 'task.status', op: 'eq', value: 'done' },
+        ],
+      })
+      expect(result.success).toBe(true)
+    })
+  })
+
   describe('exports', () => {
     test('CONDITION_FIELDS contains all expected fields', () => {
       const fields: string[] = [...CONDITION_FIELDS]
@@ -296,6 +346,38 @@ describe('alertConditionSchema', () => {
         expect(FIELD_OPERATORS[field].length).toBeGreaterThan(0)
       }
     })
+  })
+})
+
+describe('describeCondition: activity leaves', () => {
+  test('renders the activity kind with the task id', () => {
+    const condition = alertConditionSchema.parse({
+      kind: 'activity',
+      taskId: 'task-123',
+    })
+    const rendered = describeCondition(condition)
+    expect(rendered).toContain('activity')
+    expect(rendered).toContain('task-123')
+  })
+
+  test('renders categories when present', () => {
+    const condition = alertConditionSchema.parse({
+      kind: 'activity',
+      taskId: 'task-123',
+      categories: ['comment', 'status'],
+    })
+    const rendered = describeCondition(condition)
+    expect(rendered).toContain('task-123')
+    expect(rendered).toContain('comment')
+    expect(rendered).toContain('status')
+  })
+
+  test('omits the categories clause when absent', () => {
+    const condition = alertConditionSchema.parse({
+      kind: 'activity',
+      taskId: 'task-123',
+    })
+    expect(describeCondition(condition)).not.toContain('categories')
   })
 })
 
