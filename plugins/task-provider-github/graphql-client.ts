@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { resolveApiBaseUrl } from './client.js'
-import { GITHUB_DEFAULT_BASE_URL } from './constants.js'
+import { GITHUB_DEFAULT_BASE_URL, GITHUB_DEFAULT_GRAPHQL_URL } from './constants.js'
 
 const GHES_REST_SUFFIX = '/api/v3'
 
@@ -21,7 +21,7 @@ export const resolveGraphqlEndpoint = (baseUrl: string): string => {
     return `${restBase.slice(0, restBase.length - GHES_REST_SUFFIX.length)}/api/graphql`
   }
   if (restBase === GITHUB_DEFAULT_BASE_URL) {
-    return `${restBase}/graphql`
+    return GITHUB_DEFAULT_GRAPHQL_URL
   }
   return `${restBase}/api/graphql`
 }
