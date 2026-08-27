@@ -62,6 +62,24 @@ const NO_PROSE_RULE = [
 ].join(' ')
 
 /**
+ * Duplicated from `opencode-agent`'s `PROTECTED_PATHS_RULE` rather than
+ * imported — that workspace drives this one as a subprocess and shares no
+ * module boundary — and pinned against divergence by
+ * `tests/opencode-agent/protected-paths-rule.test.ts`, the `MINIMALITY_LADDER`
+ * precedent. Run 32992114904 (issue #360) is the cost of the gap. The second
+ * paragraph is the loop's own: the agent-side rule says "say in your reply",
+ * and a fixer has no reply — it has a JSON result, and without the mapping
+ * the rule's manual-application half has no landing place.
+ */
+export const PROTECTED_PATHS_RULE = [
+  "Never create or edit a file under .github/workflows/ — this pipeline's token cannot push one, and the",
+  'refusal discards the whole commit. If the work needs a workflow change, do the rest and say in your reply',
+  'exactly what a maintainer should apply by hand.',
+  'Your reply is the result file: a fix that requires editing a protected path is not auto-fixable — return',
+  'verdict "needs_human" with the exact change described in `reasoning`, editing nothing.',
+].join(' ')
+
+/**
  * Over-engineering is reportable, as a closed set of five forms rather than an
  * open category — an open one collects everything a reviewer mildly dislikes,
  * which is what the "correct but I would write it differently" exclusion above
@@ -102,6 +120,12 @@ export function buildReviewPrompt(planPath: string, outputPath: string): string 
     'In scope: bugs, security, error-handling gaps, plan-conformance, and violations of the repo conventions in AGENTS.md (already in your context) — e.g. the logging rules, the no-lint-disable rule, .js import paths, and the max-lines design signal.',
     'NOT in scope (do not report): style/formatting a linter owns, naming preferences, or "correct but I would write it differently."',
     '',
+    // A workflow-fix finding is real — the reviewer still reports it, it just
+    // does not route it to an edit. Without this line every such finding buys
+    // a full fixer cycle that can only end in `needs_human`, the same wasted
+    // cycle the fixer-side rule exists to prevent, one layer earlier.
+    "Protected paths: a finding whose fix requires editing a file under `.github/workflows/` is still reportable — describe the exact change in `suggestedFix` for a maintainer to apply by hand. The suggested fix must be self-contained: the exact replacement text or a copy-pasteable patch, referencing nothing else from this run, because it may be the only record of the change that survives. The loop cannot fix it: this pipeline's token cannot push a workflow edit, so report it for manual application rather than as something a fixer will change.",
+    '',
     CLEANUP_FINDINGS,
     '',
     'Evidence rule: only report an issue for files/lines you have actually opened and read. `evidence` must quote the offending source line(s); `file`/`lineStart`/`lineEnd` must point at code you opened. Before raising an issue, verify the impact you claim (e.g. check .gitignore before asserting something "will be committed by git add -A"; trace the control flow before claiming a missing keyword matters). If you cannot cite exact evidence or verify the impact, lower `confidence` or omit the issue.',
@@ -135,6 +159,7 @@ export function buildFixPrompt(issue: ReviewerIssue, outputPath: string, checkCo
     CHECK_BEHIND_RULE,
     'Do NOT commit and do NOT edit the plan/spec. If the issue is really that the code diverged from the plan/spec but is not a code defect (extra files, different structure), do not change anything — return verdict "plan_drift" with reasoning describing the divergence.',
     NO_PROSE_RULE,
+    PROTECTED_PATHS_RULE,
     `Write your result as JSON to: ${outputPath}`,
     'Use this exact schema:',
     FIXER_RESULT_SCHEMA,
@@ -159,6 +184,7 @@ export function buildRetryFixPrompt(
     'Your previous fix broke the build. Fix the build error and try again.',
     `After fixing, run \`${checkCommand}\` to verify the build passes.`,
     MINIMALITY_LADDER,
+    PROTECTED_PATHS_RULE,
     'This is your final attempt. If you cannot make the build pass, report "needs_human" and leave the tree buildable — do not leave a broken tree.',
     `Write your updated result as JSON to: ${outputPath}`,
     'Use this exact schema:',
@@ -220,6 +246,7 @@ export function buildRetryFixWithInspectorFeedbackPrompt(
     '2. If the inspector is WRONG or you can fix differently, produce a corrected fix. Edit only what is necessary; run the check command to confirm.',
     `After fixing, run \`${checkCommand}\` to verify the build passes.`,
     MINIMALITY_LADDER,
+    PROTECTED_PATHS_RULE,
     'This is your final attempt. If you cannot make it work, return verdict "needs_human" — do not leave a broken tree.',
     `Write your result as JSON to: ${outputPath}`,
     'Use this exact schema:',

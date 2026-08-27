@@ -329,10 +329,12 @@ if [ "$STAGED_MODE" = true ]; then
   fi
 else
   # Original behavior: run all checks. Workspace code (review-loop/, mutation-improve/,
-  # sdd-runner/, opencode-agent/) is enforced by these root checks alone: root lint/
-  # typecheck/format:check walk the workspace dirs, and the default test sweep runs
-  # tests/<workspace>/. Per-workspace proxy scripts stay local-only conveniences.
-  checks=("lint" "typecheck" "format:check" "license-headers" "knip" "test" "test:client" "duplicates")
+  # sdd-runner/, opencode-agent/) is enforced by these root checks alone: root lint
+  # (whose tsgolint type-check pass reports every tsgo diagnostic class — see
+  # openspec/changes/dedupe-lint-typecheck), format:check walk the workspace dirs,
+  # and the default test sweep runs tests/<workspace>/. Per-workspace proxy scripts
+  # stay local-only conveniences.
+  checks=("lint" "format:check" "license-headers" "knip" "test" "test:client" "duplicates")
   if [ "$SKIP_TESTS" = true ]; then
     filtered_checks=()
     for check in "${checks[@]}"; do
