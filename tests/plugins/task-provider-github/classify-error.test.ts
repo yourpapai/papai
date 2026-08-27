@@ -6,8 +6,11 @@
 import { describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import type { AppError } from 'papai/plugin-types'
+
 import { classifyGitHubError, GitHubClassifiedError } from '../../../plugins/task-provider-github/classify-error.js'
 import { GitHubApiError } from '../../../plugins/task-provider-github/client.js'
+import { GitHubGraphqlError } from '../../../plugins/task-provider-github/graphql-client.js'
 import { getUserMessage, providerError, systemError } from '../../../src/errors.js'
 
 const headersOf = (entries: Record<string, string> = {}): Headers => new Headers(entries)
@@ -127,6 +130,54 @@ describe('classifyGitHubError', () => {
     test('unrecognized Error → unexpected', () => {
       const result = classifyGitHubError(new Error('something odd'))
       expect(result.appError.code).toBe('unexpected')
+    })
+  })
+
+  describe('GraphQL error classification', () => {
+    const graphqlError = (type: string | undefined, message = 'graphql upstream message'): GitHubGraphqlError =>
+      new GitHubGraphqlError(message, type, [{ message, type }])
+
+    test.each([
+      ['FORBIDDEN', providerError.authFailed()],
+      ['INSUFFICIENT_SCOPES', providerError.authFailed()],
+      ['RATE_LIMITED', providerError.rateLimited()],
+    ])('GraphQL type %s maps onto the matching provider error', (type: string, expected: AppError) => {
+      const result = classifyGitHubError(graphqlError(type))
+      expect(result.appError).toEqual(expected)
+    })
+
+    test('GraphQL NOT_FOUND with a taskId context → taskNotFound', () => {
+      const result = classifyGitHubError(graphqlError('NOT_FOUND'), { taskId: '1347' })
+      expect(result.appError).toEqual(providerError.taskNotFound('1347'))
+      expect(getUserMessage(result.appError)).toContain('1347')
+    })
+
+    test('GraphQL NOT_FOUND with a projectId context → projectNotFound', () => {
+      const result = classifyGitHubError(graphqlError('NOT_FOUND'), { projectId: 'octocat/Hello-World' })
+      expect(result.appError).toEqual(providerError.projectNotFound('octocat/Hello-World'))
+      expect(result.appError).toHaveProperty('projectId', 'octocat/Hello-World')
+    })
+
+    test('GraphQL NOT_FOUND without context → projectNotFound with the unknown id', () => {
+      const result = classifyGitHubError(graphqlError('NOT_FOUND'))
+      expect(result.appError).toHaveProperty('projectId', 'unknown')
+    })
+
+    test.each([
+      ['no type at all', undefined],
+      ['an unrecognized type', 'SERVICE_DISRUPTED'],
+    ])(
+      'GraphQL error with %s → validationFailed carrying the upstream message',
+      (_label: string, type: string | undefined) => {
+        const result = classifyGitHubError(graphqlError(type, 'upstream graphql complaint'))
+        expect(result.appError).toEqual(providerError.validationFailed('unknown', 'upstream graphql complaint'))
+      },
+    )
+
+    test('already-classified GraphQL errors pass through unchanged', () => {
+      const original = classifyGitHubError(graphqlError('FORBIDDEN'))
+      const again = classifyGitHubError(original, { taskId: '999' })
+      expect(again).toBe(original)
     })
   })
 
