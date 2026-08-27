@@ -204,6 +204,13 @@ export const updateAlertMatchState = (
   log.info({ id, userId }, 'Alert match state updated')
 }
 
+export const getActiveAlertPrompts = (): AlertPrompt[] => {
+  log.debug('getActiveAlertPrompts called')
+  const db = getDrizzleDb()
+  const rows = db.select().from(alertPrompts).where(eq(alertPrompts.status, 'active')).all()
+  return rows.map(toAlertPrompt)
+}
+
 export const getEligibleAlertPrompts = (): AlertPrompt[] => {
   log.debug('getEligibleAlertPrompts called')
   const db = getDrizzleDb()
