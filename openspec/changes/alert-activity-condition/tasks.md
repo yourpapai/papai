@@ -6,7 +6,7 @@
 ## 2. Condition schema and walkers
 
 - [x] 2.1 Write failing tests in `tests/deferred-prompts/types.test.ts`: activity leaf accepted with and without `categories`; missing `taskId` rejected; activity leaves nest under `and`/`or`; `describeCondition` renders the activity leaf (task id, categories when present). Verify: `bun run test tests/deferred-prompts/types.test.ts`
-- [ ] 2.2 Implement `activityLeafSchema` (`kind: 'activity'`, required `taskId`, optional `categories`) as a member of the `alertConditionSchema` union, add `ActivityLeafCondition` to `AlertCondition`, and add `lastActivityCursor: string | null` to the `AlertPrompt` domain type in `src/deferred-prompts/types.ts`. Verify: `bun run test tests/deferred-prompts/types.test.ts`
+- [x] 2.2 Implement `activityLeafSchema` (`kind: 'activity'`, required `taskId`, optional `categories`) as a member of the `alertConditionSchema` union, add `ActivityLeafCondition` to `AlertCondition`, and add `lastActivityCursor: string | null` to the `AlertPrompt` domain type in `src/deferred-prompts/types.ts`. Verify: `bun run test tests/deferred-prompts/types.test.ts`
 - [ ] 2.3 Write failing walker tests (condition-eval suite): `extractActivityTaskIds` and `isPureActivityCondition` mirror the pure-watch helpers; `evaluateCondition` returns false for activity leaves; `extractFields` skips activity leaves. Verify: `bun run test tests/deferred-prompts`
 - [ ] 2.4 Implement the walkers: `extractActivityTaskIds`/`isPureActivityCondition` and the `'kind' in node` false-branch in `evaluateCondition` in `src/deferred-prompts/condition-eval.ts`; activity-leaf skip in `extractFields` in `src/deferred-prompts/fetch-tasks.ts`. Verify: `bun run test tests/deferred-prompts && bun run typecheck`
 

@@ -35,6 +35,7 @@ const toAlertPrompt = (row: AlertPromptRow): AlertPrompt => ({
   status: parseStatus(row.status),
   createdAt: row.createdAt,
   lastTriggeredAt: row.lastTriggeredAt,
+  lastActivityCursor: row.lastActivityCursor,
   cooldownMinutes: row.cooldownMinutes,
   executionMetadata: parseExecutionMetadata(row.executionMetadata),
   matchedTaskIds: parseMatchedTaskIds(row.matchedTaskIds),

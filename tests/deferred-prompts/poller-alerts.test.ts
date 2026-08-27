@@ -49,6 +49,7 @@ const makeAlert = (): AlertPrompt => ({
   status: 'active',
   createdAt: '2026-01-01T00:00:00.000Z',
   lastTriggeredAt: null,
+  lastActivityCursor: null,
   cooldownMinutes: 0,
   executionMetadata: { delivery_brief: '', context_snapshot: null },
   matchedTaskIds: [],

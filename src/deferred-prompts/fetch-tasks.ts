@@ -31,7 +31,7 @@ const extractFields = (condition: AlertCondition): Set<string> => {
       for (const child of c.and) walk(child)
     } else if ('or' in c) {
       for (const child of c.or) walk(child)
-    } else {
+    } else if ('field' in c) {
       fields.add(c.field)
     }
   }

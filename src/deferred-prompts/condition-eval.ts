@@ -74,6 +74,7 @@ export const evaluateCondition = (
 ): boolean => {
   if ('and' in condition) return condition.and.every((c) => evaluateCondition(c, task, snapshots, now))
   if ('or' in condition) return condition.or.some((c) => evaluateCondition(c, task, snapshots, now))
+  if ('kind' in condition) return false
   return evaluateLeaf(condition, task, snapshots, now)
 }
 
@@ -91,6 +92,7 @@ export const extractWatchedTaskIds = (condition: AlertCondition): string[] => {
       for (const child of node.or) walk(child)
       return
     }
+    if ('kind' in node) return
     if (isWatchLeaf(node)) ids.add(String(node.value))
   }
   walk(condition)
@@ -100,6 +102,7 @@ export const extractWatchedTaskIds = (condition: AlertCondition): string[] => {
 export const isPureWatchCondition = (condition: AlertCondition): boolean => {
   if ('and' in condition) return condition.and.every(isPureWatchCondition)
   if ('or' in condition) return condition.or.every(isPureWatchCondition)
+  if ('kind' in condition) return false
   return isWatchLeaf(condition)
 }
 
@@ -112,6 +115,11 @@ const sanitizeValue = (value: string | number): string => {
 export const describeCondition = (condition: AlertCondition): string => {
   if ('and' in condition) return `(${condition.and.map(describeCondition).join(' AND ')})`
   if ('or' in condition) return `(${condition.or.map(describeCondition).join(' OR ')})`
+  if ('kind' in condition) {
+    if (condition.taskId === undefined) return 'activity'
+    const categories = condition.categories === undefined ? '' : ` (categories: ${condition.categories.join(', ')})`
+    return `activity on task ${sanitizeValue(condition.taskId)}${categories}`
+  }
   const { field, op, value } = condition
   return value === undefined ? `${field} ${op}` : `${field} ${op} ${sanitizeValue(value)}`
 }
