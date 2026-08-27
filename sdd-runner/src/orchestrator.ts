@@ -64,6 +64,7 @@ export interface RunResumeResult {
   readonly halted: 'gate' | 'gate-pending' | 'stopped' | 'completed'
   readonly gateMdPath?: string
   readonly version?: number
+  readonly childRunId?: string
 }
 
 export interface RunContinueResult {

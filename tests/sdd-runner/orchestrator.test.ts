@@ -2909,7 +2909,7 @@ describe('plan-parent resume interception (D9)', () => {
 
     const result = await runResume(deps, runId)
 
-    expect(result).toEqual({ runId, halted: 'gate-pending' })
+    expect(result).toEqual({ runId, halted: 'gate-pending', childRunId: 'db-schema' })
     const parent = await loadRunState(deps.config.workDir, runId)
     expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
     expect(parent.children?.['db-api']).toEqual({ status: 'pending' })

@@ -15,6 +15,7 @@ import { replayEvents } from './replay.js'
 import { resolveResumeDecision } from './resume-decision.js'
 import type { ResumeDecision } from './resume-decision.js'
 import type { ReviewLoopResult } from './review-loop.js'
+import { descendantGateOf } from './run-index.js'
 import { resolveRoundCap, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { readSessionLedger } from './session-ledger.js'
@@ -125,6 +126,17 @@ export async function settleStoppedResult<T extends { readonly runId: string; re
   }
   deps.stdout?.(`run ${state.runId} stopped calmly — resume with sdd-runner resume ${state.runId}`)
   return { runId: state.runId, halted: 'stopped' }
+}
+
+/**
+ * D2 descent resolver: the deepest gate-pending descendant of the target
+ * run, or null when the next action is not inside a descendant (the
+ * callers settle the run's own gate before consulting this — null means a
+ * plain resume, the `runChildren` skip-forward for a plan parent).
+ * Tolerant by design: an unloadable child state is no pending gate.
+ */
+export function pendingDescendantGateOf(deps: OrchestratorDeps, state: RunState): Promise<string | null> {
+  return descendantGateOf(deps.config.workDir, state)
 }
 
 /** Resolve the D2 resume decision: artifact-first, session-second, rebuild-last. */

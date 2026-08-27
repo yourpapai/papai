@@ -31,6 +31,8 @@ export type StartChildRun = (
 export interface PlanResumeResult {
   readonly runId: string
   readonly halted: 'gate-pending' | 'stopped' | 'completed'
+  /** The gate-pending child's runId (D2 routing) — threaded so every caller can route into the child's gate flow. */
+  readonly childRunId?: string
 }
 
 /** A plan parent (D9): `state.plan` present, resumable while running or stopped. */
@@ -127,7 +129,11 @@ export async function resumePlanParent(
     const runChildRun: RunChildRun = (_child, taskFile, spendBaselineUsd, onRunDirReady) =>
       startChildRun(resolved, { taskFile, spendBaselineUsd, onRunDirReady })
     const result = await runChildren(resolved, state, ctx, { runChildRun, stop })
-    return { runId: state.runId, halted: result.halted }
+    return {
+      runId: state.runId,
+      halted: result.halted,
+      ...(result.halted === 'gate-pending' ? { childRunId: result.childRunId } : {}),
+    }
   } finally {
     removeHolder(state.runDir)
     deps.unmountRunScreen?.()

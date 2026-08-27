@@ -7,15 +7,18 @@ import type { OrchestratorDeps } from './gate-digest.js'
 import { runGateResume } from './gate-resume-entry.js'
 import { runResume } from './orchestrator.js'
 import type { AutonomyOverrides, RunContinueResult } from './orchestrator.js'
+import { pendingDescendantGateOf } from './resume-flow.js'
 import { listPendingGates, resolveRunId } from './run-index.js'
 import { loadRunState } from './run-state.js'
 
 /**
  * `continue` is a pure router (Decision 4): gate-pending → the gate flow
  * (`runGateResume` with no flags — interactive session on a TTY, hand-edited
- * file otherwise); interrupted mid-stage → `runResume`; completed → a pointer
- * to the report. Without an id, discovery picks the single gate-pending run,
- * or lists the candidates when several exist.
+ * file otherwise); a plan parent whose next action lives inside a descendant
+ * descends into that child's gate flow (D2 — with the child's concrete
+ * `sdd <childRunId>` line); interrupted mid-stage → `runResume`; completed →
+ * a pointer to the report. Without an id, discovery picks the single
+ * gate-pending run, or lists the candidates when several exist.
  */
 export async function runContinue(
   deps: OrchestratorDeps,
@@ -33,6 +36,17 @@ export async function runContinue(
     const gate = await runGateResume(deps, resolved, {})
     return {
       runId: resolved,
+      routed: 'gate',
+      ...(gate.gateMdPath === undefined ? {} : { gateMdPath: gate.gateMdPath, version: gate.version }),
+    }
+  }
+  const pendingChildRunId = await pendingDescendantGateOf(deps, state)
+  if (pendingChildRunId !== null) {
+    deps.stdout?.(`run ${resolved} continues in child run ${pendingChildRunId} — its pending gate is the next action`)
+    deps.stdout?.(`sdd ${pendingChildRunId}`)
+    const gate = await runGateResume(deps, pendingChildRunId, {})
+    return {
+      runId: pendingChildRunId,
       routed: 'gate',
       ...(gate.gateMdPath === undefined ? {} : { gateMdPath: gate.gateMdPath, version: gate.version }),
     }

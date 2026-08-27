@@ -292,14 +292,16 @@ describe('resumePlanParent (D9 interception)', () => {
     expect(baselines).toEqual([1.25])
   })
 
-  it('surfaces a gate-pending child and records it running', async () => {
+  it('surfaces a gate-pending child, records it running, and threads its runId for routing (D2)', async () => {
     const fixture = await makeFixture()
+    let spawnedRunId = ''
     const startChildRun: StartChildRun = async (_deps, _options) => {
       const child = await createRunState({
         workDir: fixture.deps.config.workDir,
         repoRoot: fixture.repoRoot,
         changeName: 'db-schema',
       })
+      spawnedRunId = child.runId
       child.gate = { mode: 'final', version: 1 }
       await saveRunState(child, new Date('2026-08-12T08:00:00.000Z'))
       return { runId: child.runId }
@@ -314,6 +316,7 @@ describe('resumePlanParent (D9 interception)', () => {
     )
 
     expect(result.halted).toBe('gate-pending')
+    expect(result.childRunId).toBe(spawnedRunId)
     const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
     expect(persisted.children?.['db-schema']).toEqual({ status: 'running' })
   })
