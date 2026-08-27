@@ -54,7 +54,7 @@ async function runJscpd(): Promise<void> {
     // fixtures and ported substrate tests are near-identical to their
     // sdd-runner sources by design — they are the parity oracle. Re-tighten
     // at the C7 reflection, not before.
-    '**/node_modules/**,**/*.d.ts,**/e2e/**,**/tests/afk-runner/fixtures/**,**/tests/afk-runner/events.test.ts,**/tests/afk-runner/event-schemas.test.ts,**/tests/afk-runner/legacy-fold.test.ts,**/tests/afk-runner/run-state.test.ts,**/tests/afk-runner/stop-controller.test.ts,**/tests/afk-runner/session/**',
+    '**/node_modules/**,**/*.d.ts,**/e2e/**,**/tests/afk-runner/fixtures/**,**/tests/afk-runner/events.test.ts,**/tests/afk-runner/event-schemas.test.ts,**/tests/afk-runner/legacy-fold.test.ts,**/tests/afk-runner/run-state.test.ts,**/tests/afk-runner/stop-controller.test.ts,**/tests/afk-runner/session/**,**/tests/afk-runner/work/**,**/tests/afk-runner/config.test.ts,**/tests/afk-runner/config-strict.test.ts,**/tests/afk-runner/openspec-driver.test.ts',
     '--format',
     'typescript',
     // Allow up to 10% duplication before failing

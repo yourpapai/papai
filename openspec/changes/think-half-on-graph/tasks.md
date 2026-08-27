@@ -17,10 +17,10 @@
 ## 3. Think-half work re-host (copies, expectations unchanged)
 
 - [x] 3.1 Copy slimmed Tier 2 substrate: session-id allocation, session ledger, run-dir conventions, stop-controller/holder machinery; port their tests with expectations unchanged; extend the jscpd prototype ignore to the copied src modules (re-tighten at C7, recorded in the afk-runner change's task 1.6 lineage) — `bun test tests/afk-runner/run-state tests/afk-runner/session`
-- [ ] 3.2 Copy agent-layer (spawn seam, sidecars, usage events) + intake/draft work modules; port tests with fake agents per the `tests/sdd-runner/` pattern; bracket moves to loop mechanics (no `machine.runStage` callers) — `bun test tests/afk-runner/work`
-- [ ] 3.3 Copy review-loop + review-model + steer + materialize as the review work module (recursion stays inside; rounds emit domain events; calm-stop and steer seams preserved); port tests unchanged in expectations — `bun test tests/afk-runner/work/review-loop.test.ts`
-- [ ] 3.4 `state.json` demoted: write as derived memo after appends; delete-and-behave-identically test (start/status/resume) proving memo-is-not-truth — `bun test tests/afk-runner/drive/memo.test.ts`
-- [ ] 3.5 Resume decision re-host: pure function of folded context + session ledger (stage from position, round from context, continuation from ledger); park reporting for converged (`awaiting-tail`) and cap-hit (`gate-pending`) runs as data, not errors — `bun test tests/afk-runner/drive/resume.test.ts`
+- [x] 3.2 Copy agent-layer (spawn seam, sidecars, usage events) + intake/draft work modules; port tests with fake agents per the `tests/sdd-runner/` pattern; bracket moves to loop mechanics (no `machine.runStage` callers) — `bun test tests/afk-runner/work`
+- [x] 3.3 Copy review-loop + review-model + steer + materialize as the review work module (recursion stays inside; rounds emit domain events; calm-stop and steer seams preserved); port tests unchanged in expectations — `bun test tests/afk-runner/work/review-loop.test.ts`
+- [x] 3.4 `state.json` demoted: write as derived memo after appends; delete-and-behave-identically test (start/status/resume) proving memo-is-not-truth — `bun test tests/afk-runner/drive/memo.test.ts`
+- [x] 3.5 Resume decision re-host: pure function of folded context + session ledger (stage from position, round from context, continuation from ledger); park reporting for converged (`awaiting-tail`) and cap-hit (`gate-pending`) runs as data, not errors — `bun test tests/afk-runner/drive/resume.test.ts`
 
 ## 4. Integration surface and verification
 

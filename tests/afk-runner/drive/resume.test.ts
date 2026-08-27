@@ -10,14 +10,20 @@ import path from 'node:path'
 
 import { drive } from '../../../afk-runner/src/drive/loop.js'
 import type { StateModule, WorkIO } from '../../../afk-runner/src/drive/loop.js'
-import { readEvents } from '../../../afk-runner/src/events.js'
+import { parkedReasonOf, reviewResumeEntry } from '../../../afk-runner/src/drive/resume.js'
+import { readEvents, stampEvent } from '../../../afk-runner/src/events.js'
 import type { SddEvent } from '../../../afk-runner/src/events.js'
+import { createPipelineWorkFor } from '../../../afk-runner/src/graph/pipeline-work.js'
+import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
+import { foldEvents } from '../../../afk-runner/src/kernel/fold.js'
+import type { KernelContext } from '../../../afk-runner/src/kernel/machine.js'
 import {
   initialKernelContext,
   createKernelMachine,
   kernelRootHandlers,
   kernelSetup,
 } from '../../../afk-runner/src/kernel/machine.js'
+import type { SessionLedgerLine } from '../../../afk-runner/src/session-ledger.js'
 
 function tempRunDir(): string {
   return mkdtempSync(path.join(tmpdir(), 'afk-resume-'))
@@ -185,5 +191,112 @@ describe('drive crash-resume drill (loop level)', () => {
     const result = await drive({ machine, logPath }, observing)
     expect(result.parked).toBe('awaiting-tail')
     expect(seenRounds).toEqual([1])
+  })
+})
+
+const resumeStamp = (input: Parameters<typeof stampEvent>[0], seq: number): SddEvent =>
+  stampEvent(input, seq, '2026-08-27T00:00:00.000Z')
+
+function pipelineContextOf(events: readonly SddEvent[]): KernelContext {
+  return foldEvents(pipelineMachine, events).snapshot.context
+}
+
+function ledgerLine(overrides: Partial<SessionLedgerLine>): SessionLedgerLine {
+  return {
+    label: 'reviewer',
+    role: 'reviewer',
+    round: 1,
+    attempt: 1,
+    model: 'test-model',
+    opencodeSessionId: 'ses-1',
+    status: 'spawned',
+    ts: '2026-08-27T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+const realWorkFor = createPipelineWorkFor(
+  {
+    spawn: (): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
+      Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+    execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+    driver: {
+      newChange: () => Promise.resolve({ changeName: 'c' }),
+      status: () => Promise.resolve({ schemaName: 'auto-sdd', artifacts: {}, isPlanningComplete: false }),
+      instructions: () =>
+        Promise.resolve({
+          instruction: '',
+          template: undefined,
+          rules: [],
+          resolvedOutputPath: '',
+          existingOutputPaths: [],
+          dependencies: [],
+        }),
+      validateStrict: () => Promise.resolve({ ok: true, output: 'is valid' }),
+    },
+    config: { repoRoot: '/repo', workDir: '/work', model: 'm', budget: 5 },
+  },
+  { taskText: 'task', changeName: 'c' },
+)
+
+describe('resume decision — pure function of folded context + session ledger (design D6)', () => {
+  it('a run with no opened round starts fresh at round 1 with the depth cap', () => {
+    expect(reviewResumeEntry(initialKernelContext({}), [], null)).toEqual({ startRound: 1, cap: 1 })
+    expect(reviewResumeEntry(initialKernelContext({}), [], 'M')).toEqual({ startRound: 1, cap: 3 })
+  })
+
+  it('the interrupted round re-runs from the ledger continuation session when one is in flight', () => {
+    const context = pipelineContextOf([resumeStamp({ altitude: 'L2', type: 'round_open', round: 2, cap: 4 }, 1)])
+    const withSession = reviewResumeEntry(
+      context,
+      [ledgerLine({ round: 2, label: 'reviewer', opencodeSessionId: 'ses-9', status: 'spawned' })],
+      'M',
+    )
+    expect(withSession).toEqual({
+      startRound: 2,
+      cap: 4,
+      resumeSession: { label: 'reviewer', opencodeSessionId: 'ses-9', round: 2 },
+    })
+  })
+
+  it('no in-flight session for the round re-runs it fresh (no continuation)', () => {
+    const context = pipelineContextOf([resumeStamp({ altitude: 'L2', type: 'round_open', round: 3, cap: 5 }, 1)])
+    const settled = reviewResumeEntry(context, [ledgerLine({ round: 1, status: 'done' })], 'M')
+    expect(settled).toEqual({ startRound: 3, cap: 5 })
+  })
+
+  it('parked reporting is data: converged reports awaiting-tail, presented gate reports gate-pending', () => {
+    const converged = pipelineContextOf([
+      resumeStamp({ altitude: 'L2', type: 'stage_enter', stage: 'review' }, 1),
+      resumeStamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'converged',
+          counts: { blocker: 0, material: 0, nitpick: 0 },
+        },
+        2,
+      ),
+      resumeStamp({ altitude: 'L2', type: 'stage_exit', stage: 'review' }, 3),
+    ])
+    expect(parkedReasonOf(converged, 'review', realWorkFor)).toBe('awaiting-tail')
+
+    const gated = pipelineContextOf([
+      resumeStamp({ altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1 }, 1),
+    ])
+    expect(parkedReasonOf(gated, 'review', realWorkFor)).toBe('gate-pending')
+  })
+
+  it('a run that still owes work reports drivable, not parked', () => {
+    expect(parkedReasonOf(initialKernelContext({}), 'start', realWorkFor)).toBe('drivable')
+    const midIntake = pipelineContextOf([resumeStamp({ altitude: 'L2', type: 'stage_enter', stage: 'intake' }, 1)])
+    expect(parkedReasonOf(midIntake, 'intake', realWorkFor)).toBe('drivable')
+    const stopped = pipelineContextOf([
+      resumeStamp({ altitude: 'L2', type: 'stage_enter', stage: 'review' }, 1),
+      resumeStamp({ altitude: 'L2', type: 'round_open', round: 1, cap: 1 }, 2),
+      resumeStamp({ altitude: 'L2', type: 'stage_exit', stage: 'review' }, 3),
+    ])
+    expect(parkedReasonOf(stopped, 'review', realWorkFor)).toBe('drivable')
   })
 })
