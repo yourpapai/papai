@@ -19,6 +19,13 @@ import { saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { clearStagedSteer } from './steer.js'
 
+/** Plan-mode guard (D5): the auto paths only exist for early/final gates. */
+function assertNotPlanGate(state: RunState, operation: string): void {
+  if (state.gate?.mode === 'plan') {
+    throw new Error(`${operation} refuses plan mode: the plan gate is decided by a human only`)
+  }
+}
+
 /**
  * D3 step 4 auto-settle for a permitted R1 approve on a final gate. Write
  * order: gate file (answered, with `decided-by: policy R1`) + hashes sidecar
@@ -34,6 +41,7 @@ export async function autoSettleFinalGate(
   decision: PolicyDecision,
   input: PolicyGateInput,
 ): Promise<RunStartResult> {
+  assertNotPlanGate(state, 'autoSettleFinalGate')
   const gateMdPath = path.join(state.runDir, `gate-${input.version}.md`)
   const md = renderAutoApproveAnswers(decision, input.assumptions)
   await presentAutoDecidedGate(deps, state, ctx, input, md)
@@ -130,6 +138,7 @@ export async function autoExtendRound(
   decision: PolicyDecision,
   version: number,
 ): Promise<RunStartResult> {
+  assertNotPlanGate(state, 'autoExtendRound')
   state.autoExtendsUsed += 1
   await saveRunState(state, nowOf(deps))
   ctx.emit({

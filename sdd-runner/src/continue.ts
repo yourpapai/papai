@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { runGateResume } from './extend-round.js'
 import type { OrchestratorDeps } from './gate-digest.js'
+import { runGateResume } from './gate-resume-entry.js'
 import { runResume } from './orchestrator.js'
 import type { AutonomyOverrides, RunContinueResult } from './orchestrator.js'
 import { listPendingGates, resolveRunId } from './run-index.js'

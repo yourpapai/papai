@@ -72,10 +72,15 @@ export function topoSortChildren(input: unknown): PlanChild[] {
   return sorted
 }
 
-/** D4: sha-256 over `JSON.stringify(topo-ordered child ids)`, sliced to a 16-hex prefix. Order-sensitive by design. */
+/**
+ * D4: sha-256 over `JSON.stringify(topo-ordered [id, instruction] pairs)`,
+ * sliced to a 16-hex prefix. Order-sensitive by design; instructions are
+ * hashed so an instruction-only replan digests differently — the
+ * interrupted-replan recovery compares this against `state.plan.digest`.
+ */
 export function planDigest(children: readonly PlanChild[]): string {
   return createHash('sha256')
-    .update(JSON.stringify(children.map((child) => child.id)))
+    .update(JSON.stringify(children.map((child) => [child.id, child.instruction])))
     .digest('hex')
     .slice(0, 16)
 }

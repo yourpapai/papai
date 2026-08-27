@@ -100,10 +100,11 @@ export interface StopRunDeps {
 /**
  * The one liveness-aware stop entry (stop-dead-runs D2): a live owner gets
  * today's calm-stop marker (honored at its next boundary); a dead run settles
- * immediately — honest per-stage state (D3: `depth === null` means intake
- * never classified, nothing to resume → aborted; otherwise stopped) and a
- * stale marker is consumed so a later resume is clean. Non-running and
- * gate-pending runs are no-ops.
+ * immediately — honest per-stage state (D3: `depth === null` and no recorded
+ * plan means intake never classified, nothing to resume → aborted; otherwise
+ * stopped — a plan parent carries `state.plan` and is resumable without a
+ * depth) and a stale marker is consumed so a later resume is clean.
+ * Non-running and gate-pending runs are no-ops.
  */
 export async function stopRun(workDir: string, runId: string, deps: StopRunDeps = {}): Promise<StopRunResult> {
   const state = await loadRunState(workDir, runId)
@@ -115,7 +116,7 @@ export async function stopRun(workDir: string, runId: string, deps: StopRunDeps 
     requestCalmStop(state.runDir)
     return { kind: 'marker-requested', runId }
   }
-  const to = state.depth === null ? 'aborted' : 'stopped'
+  const to = state.depth === null && state.plan === undefined ? 'aborted' : 'stopped'
   const now = deps.now ?? ((): Date => new Date())
   await saveRunState({ ...state, status: to }, now())
   const settled = createStopMarkerSeam(state.runDir)

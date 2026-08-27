@@ -3,20 +3,23 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { AgentLayerDeps } from './agent-layer.js'
-import { deriveChangeName } from './config.js'
+import { runPlanBranch } from './children.js'
 import { autonomyOf } from './config.js'
 import type { AutonomyConfig } from './config.js'
 import { runDraft } from './draft.js'
 import type { DepthProfile, EventInput } from './events.js'
-import { buildBus, logPathFor, nowOf, presentGateAt } from './gate-digest.js'
+import { buildBus, logPathFor, nowOf } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
-import { runIntake } from './intake.js'
+import { runIntake, resolveTaskSource } from './intake.js'
+import type { IntakeResult } from './intake.js'
 import { createMaterializer } from './materialize.js'
-import { runPostConvergenceTail } from './post-review-tail.js'
+import { isInterruptedPlanBranchResume, isPlanParentResume, resumePlanParent } from './plan-resume.js'
+import type { PlanChild } from './plan.js'
+import { runPostReviewToGate } from './post-review-tail.js'
 import type { Verbosity } from './renderer.js'
 import type { ResumedSession } from './resume-decision.js'
 import { resumeFromPoint } from './resume-flow.js'
@@ -31,7 +34,6 @@ import type { CalmStopController } from './stop-controller.js'
 
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 export type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
-export { runGateResume } from './extend-round.js'
 export { runContinue } from './continue.js'
 
 export interface AutonomyOverrides {
@@ -51,11 +53,15 @@ export interface StartOptions {
   readonly depthOverride?: DepthProfile
   readonly verbosity?: Verbosity
   readonly autonomy?: AutonomyOverrides
+  /** Tree spend baseline (D10) a nested run adds before its single-ceiling compare. */
+  readonly spendBaselineUsd?: number
+  /** Reports the fresh run dir (D11) before stage work so a parent can propagate calm-stop. */
+  readonly onRunDirReady?: (runDir: string) => void
 }
 
 export interface RunResumeResult {
   readonly runId: string
-  readonly halted: 'gate' | 'gate-pending' | 'stopped'
+  readonly halted: 'gate' | 'gate-pending' | 'stopped' | 'completed'
   readonly gateMdPath?: string
   readonly version?: number
 }
@@ -84,29 +90,25 @@ interface PipelineEnv {
 }
 
 export async function runStart(deps: OrchestratorDeps, options: StartOptions): Promise<RunStartResult> {
-  let taskText: string
-  let changeName: string
-  if (options.taskFile === undefined) {
-    const text = options.taskText
-    if (text === undefined) {
-      throw new Error('runStart requires a task file or inline task text')
-    }
-    taskText = text
-    changeName = options.changeName ?? deriveChangeName('task.md', taskText)
-  } else {
-    taskText = await readFile(options.taskFile, 'utf8')
-    changeName = deriveChangeName(options.taskFile, taskText)
-  }
+  const { taskText, changeName } = await resolveTaskSource(options)
   const state = await createRunState(
-    { workDir: deps.config.workDir, repoRoot: deps.config.repoRoot, changeName },
+    {
+      workDir: deps.config.workDir,
+      repoRoot: deps.config.repoRoot,
+      changeName,
+      spendBaselineUsd: options.spendBaselineUsd,
+    },
     nowOf(deps),
   )
+  options.onRunDirReady?.(state.runDir)
   if (options.taskText !== undefined) {
     await writeFile(path.join(state.runDir, 'task.md'), taskText, 'utf8')
   }
   const emit = buildBus(deps, logPathFor(state))
   writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
+  // Fresh-run calm-stop seam (D6/D11): honors the marker at the next round boundary, settles stopped (resumable).
+  const stop = createStopMarkerSeam(state.runDir)
   try {
     const env = buildPipelineEnv(deps, state, emit, {
       taskText,
@@ -114,8 +116,13 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
       depthOverride: options.depthOverride,
       autonomy: resolveAutonomy(deps, options.autonomy),
     })
-    const { depth, reviewResult } = await runPlanningStages(env)
-    return await runPostReviewToGate(env, depth, reviewResult)
+    const planned = await runPlanningStages(env, stop)
+    const halted =
+      planned.kind === 'plan'
+        ? await runPlanBranch(env.deps, env.state, env.ctx, planned.children)
+        : await runPostReviewToGate(tailInputOf(env, planned.depth, planned.reviewResult))
+    await settleStoppedResult(deps, state, stop, halted)
+    return halted
   } finally {
     removeHolder(state.runDir)
     deps.unmountRunScreen?.()
@@ -135,6 +142,10 @@ export async function runResume(
     return { runId, halted: 'gate-pending' }
   }
   const emit = buildBus(deps, logPathFor(state))
+  if (isPlanParentResume(state) || isInterruptedPlanBranchResume(state)) {
+    const resumed = await resumePlanParent(deps, state, emit, autonomy, runStart)
+    return resumed
+  }
   const decision = await deriveResumeDecision(deps, state)
   reportResumeDecision(deps, emit, decision)
   const depth = state.depth ?? 'S'
@@ -152,7 +163,8 @@ export async function runResume(
       { deps: env.deps, state, ctx: env.ctx, agent: env.agent, stop },
       {
         runReviewStage: (d, entry) => runReviewStage(env, d, '', entry, stop),
-        runPostReviewToGate: (d, reviewResult, version) => runPostReviewToGate(env, d, reviewResult, version),
+        runPostReviewToGate: (d, reviewResult, version) =>
+          runPostReviewToGate(tailInputOf(env, d, reviewResult, version)),
       },
       decision,
       depth,
@@ -180,63 +192,53 @@ function buildPipelineEnv(
   return { deps: resolved, state, machine, agent, ctx, input }
 }
 
-function runPostReviewToGate(
+/** Build the shared post-review tail input from the pipeline env. */
+function tailInputOf(
   env: PipelineEnv,
   depth: DepthProfile,
   reviewResult: ReviewLoopResult,
   version: number = 1,
-): Promise<RunStartResult> {
-  const { deps, state, ctx, agent } = env
-  if (isSeverityConverged(reviewResult)) {
-    return runPostConvergenceTail({ deps, state, ctx, agent, depth, reviewResult, version })
-  }
-  if (reviewResult.outcome === 'cap-hit') return presentGateAt(deps, state, ctx, reviewResult, version, 'early')
-  return runPostConvergenceTail({ deps, state, ctx, agent, depth, reviewResult, version })
+): Parameters<typeof runPostReviewToGate>[0] {
+  return { deps: env.deps, state: env.state, ctx: env.ctx, agent: env.agent, depth, reviewResult, version }
 }
 
-/**
- * Severity-based convergence (orchestrator-level verdict): a cap-hit round
- * with zero open BLOCKERs and zero open MATERIALs — nitpicks only, each
- * resolved or dismissed — is treated as converged and flows into decompose
- * without an early gate. Blockers/materials still force the early gate.
- */
-function isSeverityConverged(reviewResult: ReviewLoopResult): boolean {
-  return (
-    reviewResult.outcome === 'cap-hit' &&
-    reviewResult.openBlockers.length === 0 &&
-    reviewResult.openMaterial.length === 0
-  )
-}
+type PlanningOutcome =
+  | { readonly kind: 'plan'; readonly children: PlanChild[] }
+  | { readonly kind: 'single'; readonly depth: DepthProfile; readonly reviewResult: ReviewLoopResult }
 
-async function runPlanningStages(
-  env: PipelineEnv,
-  stop?: CalmStopController,
-): Promise<{ depth: DepthProfile; reviewResult: ReviewLoopResult }> {
+async function runPlanningStages(env: PipelineEnv, stop?: CalmStopController): Promise<PlanningOutcome> {
   const { deps, state } = env
-  const depth = await runIntakeStage(env)
+  const intake = await runIntakeStage(env)
   await saveRunState(state, nowOf(deps))
-  await runDraftStage(env, depth)
+  if (intake.kind === 'plan') return { kind: 'plan', children: intake.children }
+  await runDraftStage(env, intake.depth)
   state.stage = 'draft'
   await saveRunState(state, nowOf(deps))
-  const reviewResult = await runReviewStage(env, depth, env.input.taskText, {}, stop)
+  const reviewResult = await runReviewStage(env, intake.depth, env.input.taskText, {}, stop)
   state.stage = 'review'
   await saveRunState(state, nowOf(deps))
-  return { depth, reviewResult }
+  return { kind: 'single', depth: intake.depth, reviewResult }
 }
 
-async function runIntakeStage(env: PipelineEnv): Promise<DepthProfile> {
+async function runIntakeStage(env: PipelineEnv): Promise<IntakeResult> {
   const { deps, state, machine, agent, ctx, input } = env
-  let depth: DepthProfile = input.depthOverride ?? 'S'
+  let intake: IntakeResult = {
+    kind: 'single',
+    changeName: input.changeName,
+    depth: input.depthOverride ?? 'S',
+    disagreement: false,
+  }
   await machine.runStage('intake', async () => {
-    const result = await runIntake(
+    intake = await runIntake(
       { driver: deps.driver, agent, emit: ctx.emit, sidecarDir: ctx.sidecarDir, runDir: state.runDir, cwd: ctx.cwd },
       { changeName: input.changeName, taskText: input.taskText, depthOverride: input.depthOverride },
     )
-    depth = result.depth
-    state.depth = depth
-    state.roundCap = resolveRoundCap({ depth, roundCap: undefined })
+    if (intake.kind === 'single') {
+      state.depth = intake.depth
+      state.roundCap = resolveRoundCap({ depth: intake.depth, roundCap: undefined })
+    }
   })
-  return depth
+  return intake
 }
 
 async function runDraftStage(env: PipelineEnv, depth: DepthProfile): Promise<void> {

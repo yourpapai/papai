@@ -24,6 +24,15 @@ export type GateAnswerItem =
       /** Optional per-item attribution suffix (`· decided-by: policy Rx`). */
       readonly decidedBy?: string
     }
+  | {
+      readonly kind: 'child'
+      readonly id: string
+      readonly text: string
+      readonly accepted: boolean
+      readonly redirect?: string
+      /** Optional per-item attribution suffix (`· decided-by: policy Rx`). */
+      readonly decidedBy?: string
+    }
 
 export interface GateBlockerAnswer {
   readonly id: string

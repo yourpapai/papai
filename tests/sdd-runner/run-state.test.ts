@@ -348,10 +348,12 @@ describe('plan/children state fields (3.2)', () => {
   })
 })
 
-describe('narrowGateMode (part-1 scaffolding)', () => {
-  it('narrows the pre-part-3 modes and refuses plan with the wiring note', () => {
+describe('narrowGateMode (early/final narrowing guard)', () => {
+  it('narrows early/final and refuses plan as a dispatch-invariant break', () => {
     expect(narrowGateMode('early')).toBe('early')
     expect(narrowGateMode('final')).toBe('final')
-    expect(() => narrowGateMode('plan')).toThrow("gate mode 'plan' has no resume path before part 3 wiring")
+    expect(() => narrowGateMode('plan')).toThrow(
+      "gate mode 'plan' must not reach early/final narrowing — plan gates resume via runPlanGateResume",
+    )
   })
 })

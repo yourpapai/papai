@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, it } from 'bun:test'
+import assert from 'node:assert'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -14,18 +15,21 @@ import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { readEvents } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
+import { appendEvent } from '../../sdd-runner/src/events.js'
 import { presentGateAt } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import type { StageContext } from '../../sdd-runner/src/gate-digest.js'
+import { runGateResume } from '../../sdd-runner/src/gate-resume-entry.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
-import { runContinue, runGateResume, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
+import { runContinue, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
 import type { RunGateResumeResult } from '../../sdd-runner/src/orchestrator.js'
+import { materializeChildFiles, planDigest } from '../../sdd-runner/src/plan.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
-import { readHolder } from '../../sdd-runner/src/stop-controller.js'
+import { readHolder, requestCalmStop, stopMarkerPath } from '../../sdd-runner/src/stop-controller.js'
 
 const tmpDirs: string[] = []
 
@@ -47,6 +51,62 @@ function errorMessageOf(failure: unknown): string {
   return failure.message
 }
 
+/** Poll with jitter tolerance (D11 propagation runs on a 25 ms watcher). */
+async function pollFor(condition: () => boolean, timeoutMs = 2000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (condition()) return true
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10)
+    })
+  }
+  return condition()
+}
+
+/**
+ * D11 wrapper: on the first spawn (the child's own intake — the plan-gate
+ * parent spawns nothing) it requests the parent's calm stop, then holds the
+ * child in flight until the propagated child marker appears.
+ */
+function stopRequestingSpawn(
+  base: SpawnFn,
+  parentRunDir: string,
+  childMarker: string,
+): { readonly spawn: SpawnFn; readonly markerArrived: () => boolean } {
+  let stopRequested = false
+  let markerArrived = false
+  const spawn: SpawnFn = async (command, args, options) => {
+    if (!stopRequested) {
+      stopRequested = true
+      requestCalmStop(parentRunDir)
+      markerArrived = await pollFor(() => fs.existsSync(childMarker))
+    }
+    return base(command, args, options)
+  }
+  return { spawn, markerArrived: (): boolean => markerArrived }
+}
+
+/**
+ * D6 plan-branch helper: the first `depth.json` spawn (the parent intake)
+ * classifies oversize and routes into the plan branch; every later one (child
+ * intakes) falls through to the fixture spawn's single-change sidecar.
+ */
+function oversizeFirstDepthSpawn(base: SpawnFn, oversizeDepth: string, spawnOrder: string[]): SpawnFn {
+  let servedOversize = false
+  return (command, args, options) => {
+    const prompt = String(args[args.length - 1])
+    const match = prompt.match(/\.review-loop\/([\w-]+\.json)/u)
+    const basename = match?.[1] ?? 'unknown.json'
+    if (basename !== 'depth.json' || servedOversize) return base(command, args, options)
+    servedOversize = true
+    spawnOrder.push(basename)
+    const target = agentWritePath(options.cwd, basename)
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, oversizeDepth)
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
+  }
+}
+
 interface Fixture {
   readonly deps: OrchestratorDeps
   readonly repoRoot: string
@@ -56,6 +116,7 @@ interface Fixture {
   readonly rendered: EventInput[]
   readonly stdoutLines: string[]
   readonly spawnOrder: string[]
+  readonly prompts: string[]
 }
 
 function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
@@ -67,6 +128,7 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
   const rendered: EventInput[] = []
   const stdoutLines: string[] = []
   const spawnOrder: string[] = []
+  const prompts: string[] = []
 
   const sidecars: Record<string, string> = {
     'draft-proposal.json': JSON.stringify({
@@ -114,6 +176,7 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
   }
   const spawn: SpawnFn = (_command, args, options) => {
     const prompt = String(args[args.length - 1])
+    prompts.push(prompt)
     const match = prompt.match(/\.review-loop\/([\w-]+\.json)/u)
     const basename = match?.[1] ?? 'unknown.json'
     spawnOrder.push(basename)
@@ -202,6 +265,7 @@ function makeFixture(sidecarOverrides: Record<string, string> = {}): Fixture {
     rendered,
     stdoutLines,
     spawnOrder,
+    prompts,
   }
 }
 
@@ -250,6 +314,61 @@ describe('holder lifecycle (process ownership)', () => {
     )
     expect(failure instanceof Error).toBe(true)
     expect(readHolder(runDirOf(fixture))).toBe(null)
+  })
+
+  it('an oversize intake routes into the plan branch: no draft/review stages, no parent change folder', async () => {
+    const fixture = makeFixture({
+      'depth.json': JSON.stringify({
+        implicated_files: ['src/a.ts'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'declared scope too large for one change',
+        oversize: true,
+      }),
+      'plan-draft.json': JSON.stringify({
+        children: [
+          { id: 'auth-db', instruction: 'Add the auth database schema.', deps: [] },
+          { id: 'auth-api', instruction: 'Add the auth API endpoints.', deps: ['auth-db'] },
+        ],
+      }),
+    })
+    const result = await runStart(fixture.deps, { taskFile: fixture.taskFile })
+
+    expect(result.halted).toBe('gate')
+    expect(result.version).toBe(1)
+    expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('## Plan gate')
+    expect(fs.existsSync(fixture.changeDir)).toBe(false)
+    expect(fixture.spawnOrder).toEqual(['depth.json', 'plan-draft.json'])
+
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    const plan = state.plan
+    assert(plan !== undefined)
+    expect(plan.childIds).toEqual(['auth-db', 'auth-api'])
+    expect(plan.digest).toMatch(/^[0-9a-f]{16}$/u)
+    expect(state.children).toEqual({
+      'auth-db': { status: 'pending' },
+      'auth-api': { status: 'pending' },
+    })
+    expect(state.gate).toEqual({ mode: 'plan', version: 1 })
+    const events = readEvents(path.join(state.runDir, 'events.ndjson'))
+    const stages = events
+      .filter(
+        (e): e is Extract<ReturnType<typeof readEvents>[number], { type: 'stage_enter' }> => e.type === 'stage_enter',
+      )
+      .map((e) => e.stage)
+    expect(stages).toEqual(['intake'])
+    const planEvents = events.filter(
+      (e): e is Extract<ReturnType<typeof readEvents>[number], { type: 'plan' }> => e.type === 'plan',
+    )
+    expect(planEvents).toHaveLength(1)
+    expect(planEvents[0]).toMatchObject({ childCount: 2 })
+    expect(fs.existsSync(path.join(state.runDir, 'children', '1-auth-db.md'))).toBe(true)
+    expect(fs.existsSync(path.join(state.runDir, 'children', '2-auth-api.md'))).toBe(true)
   })
 })
 
@@ -312,6 +431,36 @@ describe('runStart', () => {
       verbosity: 'debug',
     })
     expect(result.halted).toBe('gate')
+  })
+
+  it('persists the D10 tree spend baseline from StartOptions into the run state', async () => {
+    const fixture = makeFixture()
+    const result = await runStart(fixture.deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+      spendBaselineUsd: 2.5,
+    })
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(state.spendBaselineUsd).toBe(2.5)
+  })
+
+  it('reports the fresh run dir through onRunDirReady before any stage work (D11)', async () => {
+    const fixture = makeFixture()
+    const reported: string[] = []
+    let spawnCountAtReport = -1
+
+    const result = await runStart(fixture.deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+      onRunDirReady: (runDir: string): void => {
+        reported.push(runDir)
+        spawnCountAtReport = fixture.spawnOrder.length
+      },
+    })
+
+    const state = await loadRunState(fixture.deps.config.workDir, result.runId)
+    expect(reported).toEqual([state.runDir])
+    expect(spawnCountAtReport).toBe(0)
   })
 })
 
@@ -2687,5 +2836,607 @@ describe('live-view mounts (tui wiring)', () => {
     const result = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
     expect(result.halted).toBe('gate')
     expect(fixture.rendered.some((e) => e.type === 'stage_enter')).toBe(true)
+  })
+})
+
+describe('plan-parent resume interception (D9)', () => {
+  const PLAN = {
+    children: [
+      { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+      { id: 'db-api', instruction: 'Rename the API route helpers.', deps: ['db-schema'] },
+    ],
+  }
+
+  async function seedPlanParent(fixture: ReturnType<typeof makeFixture>): Promise<string> {
+    const runId = 'composite-parent'
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'sidecars', 'plan.json'), JSON.stringify(PLAN))
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), '')
+    await materializeChildFiles(PLAN, runDir)
+    const logPath = path.join(runDir, 'events.ndjson')
+    appendEvent(logPath, { altitude: 'L2', type: 'plan', childCount: PLAN.children.length, digest: 'd'.repeat(16) })
+    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 1 })
+    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'answered', mode: 'plan', version: 1 })
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir: fixture.deps.config.workDir,
+          changeName: 'composite',
+          stage: 'intake',
+          depth: null,
+          round: 0,
+          gate: null,
+          status: 'running',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          plan: { childIds: ['db-schema', 'db-api'], digest: 'd'.repeat(16) },
+          children: { 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    return runId
+  }
+
+  it('runResume intercepts a plan parent before resumeFromPoint and drives runChildren through nested runStart', async () => {
+    const fixture = makeFixture({
+      'depth.json': JSON.stringify({
+        implicated_files: ['drizzle/x.sql'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'single-module child change',
+      }),
+      'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
+    })
+    const runId = await seedPlanParent(fixture)
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runResume(deps, runId)
+
+    expect(result).toEqual({ runId, halted: 'gate-pending' })
+    const parent = await loadRunState(deps.config.workDir, runId)
+    expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
+    expect(parent.children?.['db-api']).toEqual({ status: 'pending' })
+    const child = await loadRunState(deps.config.workDir, 'db-schema')
+    expect(child.gate).not.toBe(null)
+    expect(stdoutLines.some((line) => line === 'sdd db-schema')).toBe(true)
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    const spawn = events.filter(
+      (e): e is Extract<ReturnType<typeof readEvents>[number], { type: 'child_spawned' }> => e.type === 'child_spawned',
+    )
+    expect(spawn).toHaveLength(1)
+    expect(spawn[0]).toMatchObject({ child: 'db-schema', runId: 'db-schema' })
+  })
+
+  /** The crash window between the plan sidecar promotion and `runPlanBranch`'s first persist. */
+  async function seedCrashedPlanBranch(fixture: ReturnType<typeof makeFixture>): Promise<string> {
+    const runId = 'crashed-plan-parent'
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'sidecars', 'plan.json'), JSON.stringify(PLAN))
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), '')
+    const logPath = path.join(runDir, 'events.ndjson')
+    appendEvent(logPath, {
+      altitude: 'L2',
+      type: 'depth',
+      profile: 'L',
+      rationale: 'declares multi-change scope',
+      source: 'estimator',
+      oversize: true,
+    })
+    appendEvent(logPath, {
+      altitude: 'L2',
+      type: 'plan',
+      childCount: PLAN.children.length,
+      digest: planDigest(PLAN.children),
+    })
+    await materializeChildFiles(PLAN, runDir)
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir: fixture.deps.config.workDir,
+          changeName: 'composite',
+          stage: 'intake',
+          depth: null,
+          round: 0,
+          gate: null,
+          status: 'running',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    return runId
+  }
+
+  it('runResume recovers a crash between the plan sidecar promotion and the state.plan persist (recovered, not stranded)', async () => {
+    const fixture = makeFixture()
+    const runId = await seedCrashedPlanBranch(fixture)
+
+    const result = await runResume(fixture.deps, runId)
+
+    expect(result).toEqual({ runId, halted: 'gate-pending' })
+    const parent = await loadRunState(fixture.deps.config.workDir, runId)
+    expect(parent.plan).toEqual({ childIds: ['db-schema', 'db-api'], digest: planDigest(PLAN.children) })
+    expect(parent.children).toEqual({ 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } })
+    expect(parent.gate).toEqual({ mode: 'plan', version: 1 })
+    const md = fs.readFileSync(path.join(parent.runDir, 'gate-1.md'), 'utf8')
+    expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    expect(fixture.spawnOrder).toEqual([])
+  })
+})
+
+describe('runGateResume plan mode (D12)', () => {
+  const PLAN = {
+    children: [
+      { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+      { id: 'db-api', instruction: 'Rename the API route helpers.', deps: ['db-schema'] },
+    ],
+  }
+
+  async function seedPlanGateParent(fixture: ReturnType<typeof makeFixture>, gateMd: string): Promise<string> {
+    const runId = 'plan-gate-parent'
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'sidecars', 'plan.json'), JSON.stringify(PLAN))
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), '')
+    await materializeChildFiles(PLAN, runDir)
+    fs.writeFileSync(path.join(runDir, 'gate-1.md'), gateMd)
+    fs.writeFileSync(path.join(runDir, 'gate-hashes-1.json'), '{}\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir: fixture.deps.config.workDir,
+          changeName: 'composite',
+          stage: 'intake',
+          depth: null,
+          round: 0,
+          gate: { mode: 'plan', version: 1 },
+          status: 'running',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          plan: { childIds: ['db-schema', 'db-api'], digest: planDigest(PLAN.children) },
+          children: { 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    return runId
+  }
+
+  const CHECKED_GATE = [
+    '## Plan gate — change composite',
+    '',
+    '- [x] C1 db-schema — Rename the schema columns.',
+    '- [x] C2 db-api — Rename the API route helpers. · deps: db-schema',
+    '',
+  ].join('\n')
+
+  it('an approved plan gate (hand-edited file) settles, emits answered mode plan, and drives runChildren', async () => {
+    const fixture = makeFixture({
+      'depth.json': JSON.stringify({
+        implicated_files: ['drizzle/x.sql'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'single-module child change',
+      }),
+      'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
+    })
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runGateResume(deps, runId, {})
+
+    expect(result.outcome).toBe('approved')
+    expect(result.version).toBe(1)
+    const parent = await loadRunState(deps.config.workDir, runId)
+    expect(parent.gate).toBe(null)
+    expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
+    expect(parent.children?.['db-api']).toEqual({ status: 'pending' })
+    const child = await loadRunState(deps.config.workDir, 'db-schema')
+    expect(child.gate).not.toBe(null)
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    const answered = gateAnsweredOf(events)
+    expect(answered).toHaveLength(1)
+    expect(answered[0]).toMatchObject({ mode: 'plan', version: 1 })
+    const spawn = events.filter(
+      (e): e is Extract<ReturnType<typeof readEvents>[number], { type: 'child_spawned' }> => e.type === 'child_spawned',
+    )
+    expect(spawn).toHaveLength(1)
+    expect(spawn[0]).toMatchObject({ child: 'db-schema', runId: 'db-schema' })
+    expect(fs.existsSync(fixture.changeDir.replace(fixture.changeName, 'composite'))).toBe(false)
+  })
+
+  it('a parent calm-stop requested while the child is in flight writes the child stop marker (D11)', async () => {
+    const fixture = makeFixture({
+      'depth.json': JSON.stringify({
+        implicated_files: ['drizzle/x.sql'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'single-module child change',
+      }),
+      'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
+    })
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const wrapper = stopRequestingSpawn(
+      fixture.deps.spawn,
+      path.join(fixture.deps.config.workDir, 'runs', runId),
+      stopMarkerPath(path.join(fixture.deps.config.workDir, 'runs', 'db-schema')),
+    )
+    const deps: OrchestratorDeps = { ...fixture.deps, spawn: wrapper.spawn }
+
+    const result = await runGateResume(deps, runId, {})
+
+    expect(result.outcome).toBe('approved')
+    expect(wrapper.markerArrived()).toBe(true)
+    const parent = await loadRunState(deps.config.workDir, runId)
+    expect(parent.status).toBe('stopped')
+    expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
+    const child = await loadRunState(deps.config.workDir, 'db-schema')
+    expect(child.status).toBe('stopped')
+    expect(child.gate).not.toBe(null)
+    expect(fs.existsSync(stopMarkerPath(path.join(fixture.deps.config.workDir, 'runs', 'db-schema')))).toBe(false)
+  })
+
+  it('a fresh run with a calm-stop marker mid-flight settles through the stopped tail (D6/D11)', async () => {
+    const fixture = makeFixture()
+    let runDir = ''
+    const result = await runStart(fixture.deps, {
+      taskFile: fixture.taskFile,
+      depthOverride: 'S',
+      onRunDirReady: (dir: string) => {
+        runDir = dir
+        requestCalmStop(dir)
+      },
+    })
+
+    expect(result.runId).toBe('add-thing')
+    const persisted = await loadRunState(fixture.deps.config.workDir, 'add-thing')
+    expect(persisted.status).toBe('stopped')
+    expect(persisted.gate).not.toBe(null)
+    expect(fs.existsSync(stopMarkerPath(runDir))).toBe(false)
+    expect(fixture.stdoutLines.some((line) => line.includes('stopped calmly'))).toBe(true)
+  })
+
+  it('a calm stop during the planner flight is consumed at the plan gate, so approval runs children (D6)', async () => {
+    const fixture = makeFixture({
+      'depth.json': JSON.stringify({
+        implicated_files: ['drizzle/x.sql'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'single-module child change',
+      }),
+      'plan-draft.json': JSON.stringify(PLAN),
+      'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
+    })
+    const oversizeDepth = JSON.stringify({
+      implicated_files: ['src/a.ts'],
+      signals: {
+        cross_module: false,
+        db_migration: false,
+        provider_surface: false,
+        credentials: false,
+        novelty: 'existing-modules',
+      },
+      rationale: 'declared scope too large for one change',
+      oversize: true,
+    })
+    const stdoutLines: string[] = []
+    let runDir = ''
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+      spawn: oversizeFirstDepthSpawn(fixture.deps.spawn, oversizeDepth, fixture.spawnOrder),
+    }
+
+    const result = await runStart(deps, {
+      taskFile: fixture.taskFile,
+      onRunDirReady: (dir: string) => {
+        runDir = dir
+        requestCalmStop(dir)
+      },
+    })
+
+    expect(result.halted).toBe('gate')
+    const persisted = await loadRunState(deps.config.workDir, 'add-thing')
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+    expect(persisted.status).toBe('stopped')
+    expect(fs.existsSync(stopMarkerPath(runDir))).toBe(false)
+    expect(stdoutLines.some((line: string) => line.includes('stopped calmly'))).toBe(true)
+
+    const gateMd = fs.readFileSync(result.gateMdPath, 'utf8')
+    fs.writeFileSync(result.gateMdPath, gateMd.replaceAll('- [ ] ', '- [x] '))
+    const approved = await runGateResume(deps, 'add-thing', {})
+    expect(approved.outcome).toBe('approved')
+    const parent = await loadRunState(deps.config.workDir, 'add-thing')
+    expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
+    const child = await loadRunState(deps.config.workDir, 'db-schema')
+    expect(child.gate).not.toBe(null)
+  })
+
+  it('an abort flag finalizes the gate aborted before any child exists', async () => {
+    const fixture = makeFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+
+    const result = await runGateResume(fixture.deps, runId, { abort: true })
+
+    expect(result.outcome).toBe('aborted')
+    const parent = await loadRunState(fixture.deps.config.workDir, runId)
+    expect(parent.status).toBe('aborted')
+    expect(parent.gate).toBe(null)
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    expect(events.filter((e) => e.type === 'child_spawned')).toHaveLength(0)
+    const answered = gateAnsweredOf(events)
+    expect(answered[0]).toMatchObject({ mode: 'plan', version: 1 })
+    expect(await loadRunState(fixture.deps.config.workDir, 'db-schema').catch(() => null)).toBe(null)
+  })
+
+  it('vetoes desugar through the render-then-parse grammar before routing into the replan', async () => {
+    const fixture = makeFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+
+    const failure = await runGateResume(fixture.deps, runId, {
+      confirmAll: true,
+      vetoes: [{ id: 'C1', redirect: 'split the schema child' }],
+    }).catch((error: unknown) => error)
+    // No planner draft override in this fixture: the routed replan planner
+    // fails schema validation on the fake '{}' output — proving the veto
+    // reached runPlanner after the desugar wrote the gate file.
+    expect(errorMessageOf(failure)).toMatch(/planner failed validation/u)
+    expect(fixture.spawnOrder.filter((name) => name === 'plan-draft.json').length).toBeGreaterThan(0)
+    const md = fs.readFileSync(path.join(fixture.deps.config.workDir, 'runs', runId, 'gate-1.md'), 'utf8')
+    expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    expect(md).toContain('→ split the schema child')
+    expect(md).toContain('- [x] C2 db-api — Rename the API route helpers. · deps: db-schema')
+  })
+
+  it('an extend flag is rejected by the parser at plan mode (cap-hit only)', async () => {
+    const fixture = makeFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+
+    const failure = await runGateResume(fixture.deps, runId, { extend: true }).catch((error: unknown) => error)
+    expect(errorMessageOf(failure)).toMatch(/RUN 1 MORE.*plan gate.*cap-hit/u)
+  })
+
+  it('an unknown veto id fails before anything is written', async () => {
+    const fixture = makeFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const before = fs.readFileSync(path.join(fixture.deps.config.workDir, 'runs', runId, 'gate-1.md'), 'utf8')
+
+    const failure = await runGateResume(fixture.deps, runId, {
+      confirmAll: true,
+      vetoes: [{ id: 'C9' }],
+    }).catch((error: unknown) => error)
+    expect(errorMessageOf(failure)).toMatch(/unknown veto id: C9/u)
+    const after = fs.readFileSync(path.join(fixture.deps.config.workDir, 'runs', runId, 'gate-1.md'), 'utf8')
+    expect(after).toBe(before)
+  })
+})
+
+function gateAnsweredOf(
+  events: readonly ReturnType<typeof readEvents>[number][],
+): Extract<ReturnType<typeof readEvents>[number], { type: 'gate' }>[] {
+  return events.filter(
+    (e): e is Extract<ReturnType<typeof readEvents>[number], { type: 'gate' }> =>
+      e.type === 'gate' && e.action === 'answered',
+  )
+}
+
+describe('settlePlanVeto — one re-plan per veto round, unbounded rounds (D6)', () => {
+  const INITIAL_PLAN = {
+    children: [
+      { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+      { id: 'db-api', instruction: 'Rename the API route helpers.', deps: ['db-schema'] },
+    ],
+  }
+  const REVISED_PLAN = {
+    children: [
+      { id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] },
+      { id: 'db-migrations', instruction: 'Add the migration files.', deps: ['db-schema'] },
+      { id: 'db-api', instruction: 'Rename the API route helpers.', deps: ['db-migrations'] },
+    ],
+  }
+
+  async function seedPlanGateParent(fixture: ReturnType<typeof makeFixture>, gateMd: string): Promise<string> {
+    const runId = 'plan-veto-parent'
+    const runDir = path.join(fixture.deps.config.workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'sidecars', 'plan.json'), JSON.stringify(INITIAL_PLAN))
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), '')
+    await materializeChildFiles(INITIAL_PLAN, runDir)
+    fs.writeFileSync(path.join(runDir, 'gate-1.md'), gateMd)
+    fs.writeFileSync(path.join(runDir, 'gate-hashes-1.json'), '{}\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir: fixture.deps.config.workDir,
+          changeName: 'composite',
+          stage: 'intake',
+          depth: null,
+          round: 0,
+          gate: { mode: 'plan', version: 1 },
+          status: 'running',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          plan: { childIds: ['db-schema', 'db-api'], digest: planDigest(INITIAL_PLAN.children) },
+          children: { 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    return runId
+  }
+
+  const CHECKED_GATE = [
+    '- [x] C1 db-schema — Rename the schema columns.',
+    '- [x] C2 db-api — Rename the API route helpers. · deps: db-schema',
+    '',
+  ].join('\n')
+
+  function makeVetoFixture(): ReturnType<typeof makeFixture> {
+    return makeFixture({
+      'plan-draft.json': JSON.stringify(REVISED_PLAN),
+      'depth.json': JSON.stringify({
+        implicated_files: ['drizzle/x.sql'],
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'single-module child change',
+      }),
+      'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
+    })
+  }
+
+  it('a veto round re-runs the planner with the redirects, re-materializes, emits a fresh plan event, and re-presents at gate-2', async () => {
+    const fixture = makeVetoFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runGateResume(deps, runId, {
+      confirmAll: true,
+      vetoes: [{ id: 'C2', redirect: 'add a dedicated migrations child first' }],
+    })
+
+    expect(result).toEqual({ runId, outcome: 'veto', version: 2 })
+    expect(fixture.spawnOrder).toEqual(['plan-draft.json'])
+
+    const plannerPrompt = fixture.prompts[0]
+    assert(plannerPrompt !== undefined)
+    expect(plannerPrompt).toContain('add a dedicated migrations child first')
+    expect(plannerPrompt).toContain('db-api')
+
+    const parent = await loadRunState(deps.config.workDir, runId)
+    expect(parent.plan?.childIds).toEqual(['db-schema', 'db-migrations', 'db-api'])
+    expect(parent.children).toEqual({
+      'db-schema': { status: 'pending' },
+      'db-migrations': { status: 'pending' },
+      'db-api': { status: 'pending' },
+    })
+    expect(parent.gate).toEqual({ mode: 'plan', version: 2 })
+
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    const planEvents = events.filter((e) => e.type === 'plan')
+    expect(planEvents).toHaveLength(1)
+    expect(planEvents[0]).toMatchObject({ childCount: 3 })
+    const answered = gateAnsweredOf(events)
+    expect(answered).toHaveLength(1)
+    expect(answered[0]).toMatchObject({ mode: 'plan', version: 1 })
+    expect(events.filter((e) => e.type === 'child_spawned')).toHaveLength(0)
+
+    const gate2 = fs.readFileSync(path.join(parent.runDir, 'gate-2.md'), 'utf8')
+    expect(gate2).toContain('## Plan gate')
+    expect(gate2).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    expect(gate2).toContain('- [ ] C2 db-migrations — Add the migration files.')
+    expect(gate2).toContain('- [ ] C3 db-api — Rename the API route helpers. · deps: db-migrations')
+    expect(gate2).not.toContain('### Auto-decision preview')
+    expect(fs.existsSync(path.join(parent.runDir, 'auto-policy.jsonl'))).toBe(false)
+
+    expect(fs.existsSync(path.join(parent.runDir, 'children', '1-db-schema.md'))).toBe(true)
+    expect(fs.existsSync(path.join(parent.runDir, 'children', '2-db-migrations.md'))).toBe(true)
+    expect(fs.existsSync(path.join(parent.runDir, 'children', '3-db-api.md'))).toBe(true)
+    const sidecar: unknown = JSON.parse(fs.readFileSync(path.join(parent.runDir, 'sidecars', 'plan.json'), 'utf8'))
+    expect(sidecar).toEqual(REVISED_PLAN)
+  })
+
+  it('rounds repeat: an approve on the re-presented gate is a terminal that drives the children', async () => {
+    const fixture = makeVetoFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const vetoed = await runGateResume(fixture.deps, runId, {
+      confirmAll: true,
+      vetoes: [{ id: 'C2', redirect: 'add a dedicated migrations child first' }],
+    })
+    expect(vetoed.outcome).toBe('veto')
+
+    const result = await runGateResume(fixture.deps, runId, { confirmAll: true })
+
+    expect(result.outcome).toBe('approved')
+    const parent = await loadRunState(fixture.deps.config.workDir, runId)
+    expect(parent.gate).toBe(null)
+    expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
+    const child = await loadRunState(fixture.deps.config.workDir, 'db-schema')
+    expect(child.gate).not.toBe(null)
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    expect(events.filter((e) => e.type === 'child_spawned')).toHaveLength(1)
+  })
+
+  it('ABORT on a re-presented plan gate is a terminal before any child exists', async () => {
+    const fixture = makeVetoFixture()
+    const runId = await seedPlanGateParent(fixture, CHECKED_GATE)
+    const vetoed = await runGateResume(fixture.deps, runId, {
+      confirmAll: true,
+      vetoes: [{ id: 'C2', redirect: 'add a dedicated migrations child first' }],
+    })
+    expect(vetoed.outcome).toBe('veto')
+
+    const result = await runGateResume(fixture.deps, runId, { abort: true })
+
+    expect(result.outcome).toBe('aborted')
+    const parent = await loadRunState(fixture.deps.config.workDir, runId)
+    expect(parent.status).toBe('aborted')
+    expect(parent.gate).toBe(null)
+    const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
+    expect(events.filter((e) => e.type === 'child_spawned')).toHaveLength(0)
   })
 })

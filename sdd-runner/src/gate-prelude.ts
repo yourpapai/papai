@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs'
 import { appendFile, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { classifyAssumptions, evaluateCapHit, evaluateFinalGate } from './auto-policy.js'
+import { classifyAssumptions, evaluateCapHit, evaluateFinalGate, evaluatePlanGate } from './auto-policy.js'
 import type { PolicyDecision, PolicySignals } from './auto-policy.js'
 import type { ClassifiedAssumption } from './auto-policy.js'
 import type { AutonomyConfig } from './config.js'
@@ -25,7 +25,7 @@ import type { RunState } from './run-state.js'
 import { pendingSteerOverride } from './steer.js'
 
 export interface PolicyGateInput {
-  readonly mode: 'early' | 'final'
+  readonly mode: 'early' | 'final' | 'plan'
   readonly version: number
   readonly events: readonly SddEvent[]
   readonly costUsd: number
@@ -68,9 +68,44 @@ export function runPolicyLadder(
     autoExtendsUsed: state.autoExtendsUsed,
     deadlineExpired: false,
     config: autonomy,
+    spendBaselineUsd: state.spendBaselineUsd,
   }
   const decision = input.mode === 'early' ? evaluateCapHit(signals) : evaluateFinalGate(signals)
   return { decision, classified }
+}
+
+/** Plan-mode review surrogate (D5): a parent has no review rounds at its gate. */
+export const PLAN_REVIEW_SURROGATE: ReviewLoopResult = {
+  outcome: 'converged',
+  rounds: 0,
+  openBlockers: [],
+  openMaterial: [],
+  openNitpicks: [],
+}
+
+/**
+ * Plan-mode prelude (D5): R4 only, over the plan projection — no rule can
+ * settle, extend, or accept-items at a plan gate, so there is no ladder.
+ */
+export function runPlanPolicy(
+  deps: OrchestratorDeps,
+  state: RunState,
+  cost: { readonly costUsd: number; readonly costKnown: boolean },
+  childCount: number,
+): PolicyEvaluation {
+  const planSignals: PolicySignals = {
+    reviewResult: PLAN_REVIEW_SURROGATE,
+    trajectory: [],
+    assumptions: [],
+    spentUsd: cost.costUsd,
+    costKnown: cost.costKnown,
+    autoExtendsUsed: state.autoExtendsUsed,
+    deadlineExpired: false,
+    config: deps.autonomy ?? AUTONOMY_DEFAULTS,
+    childCount,
+    spendBaselineUsd: state.spendBaselineUsd,
+  }
+  return { decision: evaluatePlanGate(planSignals), classified: [] }
 }
 
 function guardedReviewResult(
@@ -192,7 +227,14 @@ export async function writePresentedRecord(
     gateVersion: input.version,
   })
   if (decision.action !== 'accept-items') {
-    await appendPolicyDebt(deps, state, decision, input.version)
+    const ledger = {
+      ts: nowOf(deps).toISOString(),
+      runId: state.runId,
+      gateVersion: input.version,
+      rule: decision.rule,
+      evidenceDigest: decision.evidenceDigest,
+    }
+    await appendFile(path.join(deps.config.workDir, 'policy-debt.jsonl'), `${JSON.stringify(ledger)}\n`)
   }
 }
 
@@ -222,22 +264,6 @@ async function preCheckLowBlastItems(
     })
     .join('\n')
   await writeFile(gateMdPath, updated)
-}
-
-async function appendPolicyDebt(
-  deps: OrchestratorDeps,
-  state: RunState,
-  decision: PolicyDecision,
-  version: number,
-): Promise<void> {
-  const ledger = {
-    ts: nowOf(deps).toISOString(),
-    runId: state.runId,
-    gateVersion: version,
-    rule: decision.rule,
-    evidenceDigest: decision.evidenceDigest,
-  }
-  await appendFile(path.join(deps.config.workDir, 'policy-debt.jsonl'), `${JSON.stringify(ledger)}\n`)
 }
 
 /** Parse-inert by construction: every line is `> `-prefixed blockquote. */
