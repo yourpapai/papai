@@ -3085,6 +3085,22 @@ describe('continuation start for a changeName-carrying child (D6)', () => {
     expect(readEvents(parentLog)).toHaveLength(parentEventsBefore)
   })
 
+  it('emits a depth event for the inherited profile, so the report fold never renders a continuation child as not classified', async () => {
+    const fixture = makeFixture()
+    const { taskFile } = await seedSplitParent(fixture, 'M')
+
+    await runStart(fixture.deps, { child: SPLIT_CHILDREN[0], taskFile })
+
+    const state = await loadRunState(fixture.deps.config.workDir, 'add-thing-2')
+    const depthEvents = readEvents(path.join(state.runDir, 'events.ndjson')).filter((event) => event.type === 'depth')
+    expect(depthEvents).toHaveLength(1)
+    expect(depthEvents[0]).toMatchObject({
+      profile: 'M',
+      source: 'override',
+      rationale: 'inherited from parent run add-thing',
+    })
+  })
+
   it('the allocator yields the next free <slug>-<n> past an occupied suffix, and S gates without any spawn', async () => {
     const fixture = makeFixture()
     const { taskFile } = await seedSplitParent(fixture, 'S')

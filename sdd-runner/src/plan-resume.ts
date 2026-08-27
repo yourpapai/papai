@@ -68,8 +68,14 @@ async function nextContinuationSessionId(workDir: string, slug: string): Promise
 }
 
 /** D6 inherited depth: the parent run behind the child task file (`<parentRunDir>/children/<n>-<slug>.md`). */
-async function continuationDepthOf(deps: OrchestratorDeps, options: ContinuationStartOptions): Promise<DepthProfile> {
-  if (options.taskFile === undefined) return options.depthOverride ?? 'S'
+async function continuationDepthOf(
+  deps: OrchestratorDeps,
+  options: ContinuationStartOptions,
+): Promise<{ readonly profile: DepthProfile; readonly rationale: string }> {
+  if (options.depthOverride !== undefined) return { profile: options.depthOverride, rationale: 'override via --depth' }
+  if (options.taskFile === undefined) {
+    return { profile: 'S', rationale: 'no parent run to inherit a depth from — defaulted to S' }
+  }
   const parentRunId = path.basename(path.dirname(path.dirname(options.taskFile)))
   const parent = await loadRunState(deps.config.workDir, parentRunId).catch(() => null)
   if (parent === null) {
@@ -77,7 +83,9 @@ async function continuationDepthOf(deps: OrchestratorDeps, options: Continuation
       `continuation start cannot find the parent run behind ${options.taskFile ?? '(no task file)'} — the change folder cannot be adopted`,
     )
   }
-  return options.depthOverride ?? parent.depth ?? 'S'
+  return parent.depth === null
+    ? { profile: 'S', rationale: `parent run ${parentRunId} carries no depth — defaulted to S` }
+    : { profile: parent.depth, rationale: `inherited from parent run ${parentRunId}` }
 }
 
 /**
@@ -90,8 +98,12 @@ async function continuationStateOf(
   deps: OrchestratorDeps,
   options: ContinuationStartOptions,
   changeName: string,
-): Promise<{ readonly state: RunState; readonly depth: DepthProfile }> {
-  const depth = await continuationDepthOf(deps, options)
+): Promise<{
+  readonly state: RunState
+  readonly depth: DepthProfile
+  readonly depthRationale: string
+}> {
+  const { profile: depth, rationale: depthRationale } = await continuationDepthOf(deps, options)
   const state = await createRunState(
     {
       workDir: deps.config.workDir,
@@ -106,7 +118,7 @@ async function continuationStateOf(
   state.roundCap = resolveRoundCap({ depth, roundCap: undefined })
   state.stage = depth === 'S' ? 'gate' : 'atomicity'
   await saveRunState(state, nowOf(deps))
-  return { state, depth }
+  return { state, depth, depthRationale }
 }
 
 /**
@@ -125,9 +137,12 @@ export async function runContinuationStart(
   options: ContinuationStartOptions,
   changeName: string,
 ): Promise<RunStartResult> {
-  const { state, depth } = await continuationStateOf(deps, options, changeName)
+  const { state, depth, depthRationale } = await continuationStateOf(deps, options, changeName)
   options.onRunDirReady?.(state.runDir)
   const emit = buildBus(deps, logPathFor(state))
+  // The inherited depth was never classified here — the event keeps every log
+  // fold (report, replay, live renderer) seeing the adopted profile.
+  emit({ altitude: 'L2', type: 'depth', profile: depth, rationale: depthRationale, source: 'override' })
   writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
   const stop = createStopMarkerSeam(state.runDir)
