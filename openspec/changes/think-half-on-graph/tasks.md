@@ -26,5 +26,5 @@
 
 - [x] 4.1 CLI wiring: `afk-runner:start -- <task>` drives a fresh think-half run to park with stubbed agents (integration test); status prints the folded full-state summary; resume re-enters an interrupted think-half run — `bun test tests/afk-runner/cli.test.ts`
 - [x] 4.2 Live-shaped integration: start → intake → draft → review (stubbed agents) → park both flavors (converged, cap-hit with `gate` presented appended); kill-and-resume drill between rounds asserting the corpus-real review self-loop in the log — `bun test tests/afk-runner/integration`
-- [ ] 4.3 Full gates: `bun test`, `bun run typecheck`, `bun run lint`, `bun run knip`, `bun run duplicates`; fix findings in `afk-runner/`-scoped code only
-- [ ] 4.4 Update `docs/architecture/afk-runner.md`: engine loop live, C3 delivery-plan row checked, D1–D7 decision pointers for C4–C7 inheritance
+- [x] 4.3 Full gates: `bun test`, `bun run typecheck`, `bun run lint`, `bun run knip`, `bun run duplicates`; fix findings in `afk-runner/`-scoped code only
+- [x] 4.4 Update `docs/architecture/afk-runner.md`: engine loop live, C3 delivery-plan row checked, D1–D7 decision pointers for C4–C7 inheritance
