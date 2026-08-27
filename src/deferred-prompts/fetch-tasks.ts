@@ -11,7 +11,7 @@ import { extractAppError } from '../errors.js'
 import { logger } from '../logger.js'
 import type { Activity, Task, TaskProvider } from '../providers/types.js'
 import { extractWatchedTaskIds } from './condition-eval.js'
-import { fetchTaskHistories, planHistoryRequests } from './poller-alerts-activity.js'
+import { fetchTaskHistories, isNotFoundCode, planHistoryRequests } from './poller-alerts-activity.js'
 import type { AlertCondition, AlertPrompt } from './types.js'
 
 const log = logger.child({ scope: 'deferred:fetch-tasks' })
@@ -106,8 +106,6 @@ export function fetchAllTasks(provider: TaskProvider, scope: ProviderRequestScop
 export function enrichTasks(provider: TaskProvider, tasks: Task[], scope: ProviderRequestScope): Promise<Task[]> {
   return runWithProviderRequestScope(scope, () => Promise.all(tasks.map((t) => provider.getTask(t.id))))
 }
-
-const isNotFoundCode = (code: string): boolean => code === 'task-not-found' || code === 'not-found'
 
 /** Fetch the given watched tasks by id via getTask with bounded concurrency.
  * Ids whose failure classifies as not-found are skipped with a warn; any other

@@ -20,6 +20,7 @@ import {
   planHistoryRequests,
 } from '../../src/deferred-prompts/poller-alerts-activity.js'
 import type { AlertPrompt } from '../../src/deferred-prompts/types.js'
+import { ProviderClassifiedError, providerError, type ProviderError } from '../../src/providers/errors.js'
 import type { Activity } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger } from '../utils/test-helpers.js'
@@ -64,6 +65,18 @@ const drainGates = async (gates: Array<() => void>): Promise<void> => {
 }
 
 const innerTextOf = (block: RegExpMatchArray | undefined): string => block?.[1] ?? ''
+
+/** getTaskHistory mock that rejects with a classified provider error for
+ * configured ids and resolves with one entry otherwise — kept at module scope
+ * so test bodies stay conditional-free. */
+const createClassifiedFailingGetTaskHistory =
+  (failures: Record<string, ProviderError>): ((taskId: string) => Promise<Activity[]>) =>
+  (taskId: string): Promise<Activity[]> => {
+    const failure = failures[taskId]
+    return failure === undefined
+      ? Promise.resolve([activity(`${taskId}-e1`, '2026-08-27T09:00:00.000Z')])
+      : Promise.reject(new ProviderClassifiedError(`classified failure for ${taskId}`, failure))
+  }
 
 const makeAlert = (condition: unknown, lastActivityCursor: string | null): AlertPrompt => ({
   type: 'alert',
@@ -209,6 +222,41 @@ describe('fetchTaskHistories', () => {
     await drainGates(gates)
     const history = await pending
     expect(history.size).toBe(6)
+  })
+
+  test('skips tasks failing as not-found under both provider codes, keeps the rest', async () => {
+    const provider = createMockProvider({
+      getTaskHistory: mock(
+        createClassifiedFailingGetTaskHistory({
+          't-gone': providerError.taskNotFound('t-gone'),
+          't-other': providerError.notFound('task', 't-other'),
+        }),
+      ),
+    })
+
+    const history = await fetchTaskHistories(
+      provider,
+      [
+        { taskId: 't-1', categories: undefined },
+        { taskId: 't-gone', categories: undefined },
+        { taskId: 't-other', categories: undefined },
+      ],
+      makeActorScope(),
+    )
+
+    expect(history.get('t-1')).toEqual([activity('t-1-e1', '2026-08-27T09:00:00.000Z')])
+    expect(history.get('t-gone')).toEqual([])
+    expect(history.get('t-other')).toEqual([])
+  })
+
+  test('rejects when a history request fails with another error', async () => {
+    const provider = createMockProvider({
+      getTaskHistory: mock(createClassifiedFailingGetTaskHistory({ 't-1': providerError.accessDenied('task') })),
+    })
+
+    await expect(
+      fetchTaskHistories(provider, [{ taskId: 't-1', categories: undefined }], makeActorScope()),
+    ).rejects.toThrow('classified failure for t-1')
   })
 })
 

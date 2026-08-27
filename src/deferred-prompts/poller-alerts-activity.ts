@@ -8,6 +8,7 @@ import pLimit from 'p-limit'
 import { runWithProviderRequestScope } from '../analytics/provider-request-scope.js'
 import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
 import { emitUser } from '../debug/event-bus.js'
+import { extractAppError } from '../errors.js'
 import { logger } from '../logger.js'
 import type { Activity, TaskProvider } from '../providers/types.js'
 import { wrapUntrusted } from '../security/prompt-boundary.js'
@@ -71,9 +72,15 @@ export const planHistoryRequests = (alerts: readonly AlertPrompt[]): HistoryRequ
 export const hasActivityCapability = (provider: TaskProvider): boolean =>
   provider.getTaskHistory !== undefined && provider.capabilities.has('activities.read')
 
+/** Provider error codes meaning the watched task no longer exists; shared
+ * with the pure-watch fetch path so both classify task deletion alike. */
+export const isNotFoundCode = (code: string): boolean => code === 'task-not-found' || code === 'not-found'
+
 /** Fetch task history for the planned requests with bounded concurrency
  * inside the instance poll's scope lease. An incapable provider yields an
- * empty map (skip with a warn); any request failure rejects the call. */
+ * empty map (skip with a warn); requests failing as not-found (e.g. the
+ * watched task was deleted) are skipped with a warn and mapped to an empty
+ * entry list; any other request failure rejects the call. */
 export function fetchTaskHistories(
   provider: TaskProvider,
   requests: readonly HistoryRequest[],
@@ -87,10 +94,22 @@ export function fetchTaskHistories(
     Promise.all(
       requests.map((request) =>
         historyLimit(() =>
-          provider.getTaskHistory?.(
-            request.taskId,
-            request.categories === undefined ? undefined : { categories: request.categories },
-          ),
+          provider
+            .getTaskHistory?.(
+              request.taskId,
+              request.categories === undefined ? undefined : { categories: request.categories },
+            )
+            ?.catch((error: unknown) => {
+              // Production providers throw their own *ClassifiedError classes
+              // (an Error carrying an `appError` payload), not
+              // ProviderClassifiedError — classify duck-typed, not by instanceof.
+              const appError = extractAppError(error)
+              if (appError !== null && appError.type === 'provider' && isNotFoundCode(appError.code)) {
+                log.warn({ taskId: request.taskId, code: appError.code }, 'Task history not found; skipping')
+                return null
+              }
+              throw error
+            }),
         ),
       ),
     ),
