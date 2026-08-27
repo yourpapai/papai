@@ -240,7 +240,7 @@ async function buildRunReport(
 ): Promise<string> {
   const state = await loadRunState(config.workDir, runId)
   const branch = await discoverBranch(execGit, config.repoRoot)
-  const resolveCost = await buildResolveCost()
+  const resolveCost = state.plan === undefined ? undefined : await buildResolveCost()
   const input: ReportInput = {
     readEvents: () => readEvents(path.join(config.workDir, 'runs', runId, 'events.ndjson')),
     readChangeDir: () => readChangeSummary(config.repoRoot, state.changeName),
