@@ -152,7 +152,7 @@ export async function fetchAlertTasks(
   historyByTask: Map<string, Activity[]>
 } | null> {
   const historyByTask = needHistory
-    ? await fetchTaskHistories(provider, planHistoryRequests([...routable.values()].flat()), scope)
+    ? await fetchTaskHistories(provider, planHistoryRequests([...routable.values()].flat()), scope, configContextId)
     : new Map<string, Activity[]>()
   if (targeted) {
     const instanceAlerts = [...routable.values()].flat()

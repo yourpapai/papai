@@ -23,6 +23,7 @@ import type { AlertPrompt } from '../../src/deferred-prompts/types.js'
 import { ProviderClassifiedError, providerError, type ProviderError } from '../../src/providers/errors.js'
 import type { Activity } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
+import { createTrackedLoggerMock, type TrackedLoggerMock } from '../utils/logger-mock.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 const makeActorScope = (): ActorProviderRequestScope =>
@@ -189,6 +190,7 @@ describe('fetchTaskHistories', () => {
         { taskId: 'task-2', categories: undefined },
       ],
       scope,
+      'pi-1:chat-1',
     )
 
     expect(history.get('task-1')).toEqual([activity('task-1-e1', '2026-08-27T09:00:00.000Z')])
@@ -202,7 +204,12 @@ describe('fetchTaskHistories', () => {
   test('returns an empty map without provider calls when the capability is missing', async () => {
     const provider = createMockProvider({ getTaskHistory: undefined })
 
-    const history = await fetchTaskHistories(provider, [{ taskId: 'task-1', categories: undefined }], makeActorScope())
+    const history = await fetchTaskHistories(
+      provider,
+      [{ taskId: 'task-1', categories: undefined }],
+      makeActorScope(),
+      'pi-1:chat-1',
+    )
 
     expect(history.size).toBe(0)
   })
@@ -228,7 +235,7 @@ describe('fetchTaskHistories', () => {
       ),
     })
     const requests = ['t1', 't2', 't3', 't4', 't5', 't6'].map((taskId) => ({ taskId, categories: undefined }))
-    const pending = fetchTaskHistories(provider, requests, makeActorScope())
+    const pending = fetchTaskHistories(provider, requests, makeActorScope(), 'pi-1:chat-1')
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 0)
     })
@@ -257,6 +264,7 @@ describe('fetchTaskHistories', () => {
         { taskId: 't-other', categories: undefined },
       ],
       makeActorScope(),
+      'pi-1:chat-1',
     )
 
     expect(history.get('t-1')).toEqual([activity('t-1-e1', '2026-08-27T09:00:00.000Z')])
@@ -270,8 +278,43 @@ describe('fetchTaskHistories', () => {
     })
 
     await expect(
-      fetchTaskHistories(provider, [{ taskId: 't-1', categories: undefined }], makeActorScope()),
+      fetchTaskHistories(provider, [{ taskId: 't-1', categories: undefined }], makeActorScope(), 'pi-1:chat-1'),
     ).rejects.toThrow('classified failure for t-1')
+  })
+
+  describe('capability-loss warn', () => {
+    const tracked: TrackedLoggerMock = createTrackedLoggerMock()
+
+    // poller-alerts-activity.ts binds its child logger at module load, so the
+    // tracked logger is installed first and the module imported through a
+    // cachebuster query for a fresh binding (pattern from fetch-tasks.test.ts).
+    const importFresh = (): Promise<typeof import('../../src/deferred-prompts/poller-alerts-activity.js')> =>
+      import(`../../src/deferred-prompts/poller-alerts-activity.js?test=${crypto.randomUUID()}`)
+
+    beforeEach(() => {
+      tracked.clearCalls()
+      void mock.module('../../src/logger.js', () => ({
+        getLogLevel: tracked.getLogLevel,
+        logger: tracked.logger,
+      }))
+    })
+
+    test('carries the config context when the capability is missing at poll time', async () => {
+      const { fetchTaskHistories: fetchTaskHistoriesFresh } = await importFresh()
+      const provider = createMockProvider({ getTaskHistory: undefined })
+
+      const history = await fetchTaskHistoriesFresh(
+        provider,
+        [{ taskId: 'task-1', categories: undefined }],
+        makeActorScope(),
+        'pi-1:chat-1',
+      )
+
+      expect(history.size).toBe(0)
+      const warnDump = JSON.stringify(tracked.getCallsByLevel('warn').map((c) => c.args))
+      expect(warnDump).toContain('Task history unavailable at poll time; skipping activity alerts for this instance')
+      expect(warnDump).toContain('"configContextId":"pi-1:chat-1"')
+    })
   })
 })
 

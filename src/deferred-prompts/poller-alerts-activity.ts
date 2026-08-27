@@ -80,16 +80,18 @@ export const isNotFoundCode = (code: string): boolean => code === 'task-not-foun
 
 /** Fetch task history for the planned requests with bounded concurrency
  * inside the instance poll's scope lease. An incapable provider yields an
- * empty map (skip with a warn); requests failing as not-found (e.g. the
- * watched task was deleted) are skipped with a warn and mapped to an empty
- * entry list; any other request failure rejects the call. */
+ * empty map (skip with a warn naming the config context); requests failing
+ * as not-found (e.g. the watched task was deleted) are skipped with a warn
+ * and mapped to an empty entry list; any other request failure rejects the
+ * call. */
 export function fetchTaskHistories(
   provider: TaskProvider,
   requests: readonly HistoryRequest[],
   scope: ProviderRequestScope,
+  configContextId: string,
 ): Promise<Map<string, Activity[]>> {
   if (!hasActivityCapability(provider)) {
-    log.warn('Task history unavailable at poll time; skipping activity alerts for this instance')
+    log.warn({ configContextId }, 'Task history unavailable at poll time; skipping activity alerts for this instance')
     return Promise.resolve(new Map<string, Activity[]>())
   }
   return runWithProviderRequestScope(scope, () =>
