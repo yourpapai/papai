@@ -9,11 +9,11 @@
 
 ## 2. Push guard surfaces the reverted diff (R2)
 
-- [ ] 2.1 TDD red: `tests/opencode-agent/` test asserting the new `Git.diffSince(since, paths)` seam method shells `git diff <since> -- <paths>`
-- [ ] 2.2 Implement `diffSince` in the git module behind the `Git` interface
-- [ ] 2.3 TDD red: `review-push` tests — `dropUnpushable` captures the diff before `revertPaths`; `blocked()` returns path-keyed records with optional diff; a same-path re-revert overwrites with the newest diff; capture failure degrades to path-only and never throws
-- [ ] 2.4 Implement in `opencode-agent/src/phases/review-push.ts` per design D3
-- [ ] 2.5 TDD red: `phases/review` renderReport test — reverted-path note renders per-path fenced patch blocks with the by-hand instruction, per-path and total bounds with truncation markers and a `git show` recovery reference (design D4); then implement in `src/phases/review.ts`
+- [x] 2.1 TDD red: `tests/opencode-agent/` test asserting the new `Git.diffSince(since, paths)` seam method shells `git diff <since> -- <paths>`
+- [x] 2.2 Implement `diffSince` in the git module behind the `Git` interface
+- [x] 2.3 TDD red: `review-push` tests — `dropUnpushable` captures the diff before `revertPaths`; `blocked()` returns path-keyed records with optional diff; a same-path re-revert overwrites with the newest diff; capture failure degrades to path-only and never throws
+- [x] 2.4 Implement in `opencode-agent/src/phases/review-push.ts` per design D3
+- [x] 2.5 TDD red: `phases/review` renderReport test — reverted-path note renders per-path fenced patch blocks with the by-hand instruction, per-path and total bounds with truncation markers and a `git show` recovery reference (design D4); then implement in `src/phases/review.ts`
 
 ## 3. Prompts and docs
 

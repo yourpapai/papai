@@ -363,6 +363,10 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       io.gitCalls.push(`changedSince:${sha}`)
       return Promise.resolve([])
     },
+    diffSince: (sha: string, paths: readonly string[]): Promise<string> => {
+      io.gitCalls.push(`diffSince:${sha}:${paths.join(',')}`)
+      return Promise.resolve('')
+    },
     revertPaths: (sha: string, paths: readonly string[]): Promise<void> => {
       io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
       return Promise.resolve()

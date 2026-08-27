@@ -24,6 +24,17 @@ import { errorMessage } from '../types.js'
  * the marker arrives on the child's stdout, mid-turn, where nothing can be
  * awaited, and two markers in quick succession must not push concurrently.
  */
+/** A path the guard reverted, with the diff it took back out when that could be read. */
+export interface BlockedPath {
+  path: string
+  /**
+   * The patch `since`..HEAD carried for `path`, captured before the revert
+   * destroyed it — the artifact a maintainer applies by hand. `null` when the
+   * capture failed; the path is still reported, the patch is not.
+   */
+  diff: string | null
+}
+
 export interface DurablePush {
   /** Handed to the loop, called when a fix lands. Never throws. */
   onFixMerged: () => void
@@ -39,7 +50,7 @@ export interface DurablePush {
    */
   push: (committed: boolean) => Promise<boolean>
   /** Paths reverted because a push could not carry them, across every push made. */
-  blocked: () => readonly string[]
+  blocked: () => readonly BlockedPath[]
 }
 
 /**
@@ -75,16 +86,36 @@ const readHead = async (input: PhaseInput): Promise<string | null> => {
  * revert itself breaks, the push that follows is the one GitHub was always going
  * to refuse — the same outcome as before this existed — whereas letting it throw
  * would turn a review that found real problems into a failed run. What it must
- * not do is stay quiet: the paths it reverted ride out into the phase's report.
+ * not do is stay quiet: the paths it reverted ride out into the phase's report,
+ * each with the diff it took back out when that could be read — the patch is
+ * the fix the pipeline wrote and verified, and the report is the only place a
+ * maintainer can still reach it (PR #362: the correct ci.yml edit survived only
+ * as git-history archaeology).
  */
-const dropUnpushable = async (input: PhaseInput, since: string, blocked: string[]): Promise<void> => {
+const dropUnpushable = async (input: PhaseInput, since: string, blocked: Map<string, string | null>): Promise<void> => {
   const { deps, state } = input
   try {
     const unpushable = protectedAmong(await deps.git.changedSince(since))
     if (unpushable.length === 0) return
 
+    // Every capture before any revert: the first `revertPaths` destroys what
+    // the later captures would ask for. Per-path, so one unreadable diff does
+    // not blind the report to the rest.
+    const captures = await Promise.all(
+      unpushable.map(async (path): Promise<readonly [string, string | null]> => {
+        try {
+          return [path, await deps.git.diffSince(since, [path])] as const
+        } catch (error) {
+          deps.log.warn(
+            { issue: state.issueId, path, error: errorMessage(error) },
+            'Could not capture the protected diff for the report',
+          )
+          return [path, null] as const
+        }
+      }),
+    )
+    for (const [path, diff] of captures) blocked.set(path, diff)
     await deps.git.revertPaths(since, unpushable)
-    blocked.push(...unpushable.filter((path) => !blocked.includes(path)))
   } catch (error) {
     deps.log.warn(
       { issue: state.issueId, error: errorMessage(error) },
@@ -104,16 +135,40 @@ const dropUnpushable = async (input: PhaseInput, since: string, blocked: string[
  * again internally, idempotently — the ancestor check answers "already
  * merged".
  */
-const guardBeforePush = async (input: PhaseInput, branch: string, since: string, blocked: string[]): Promise<void> => {
+const guardBeforePush = async (
+  input: PhaseInput,
+  branch: string,
+  since: string,
+  blocked: Map<string, string | null>,
+): Promise<void> => {
   await input.deps.git.reconcile(branch)
   await dropUnpushable(input, since, blocked)
+}
+
+/**
+ * Pushes the branch and returns the head the push is about to carry, read
+ * after the guard and before the ref moves. Not the comparison head, which
+ * predates the guard's revert (run 32992114904); not after the push either —
+ * the loop's child merges each fix into this checkout unsynchronized with this
+ * push, so a fix landing mid-push is not carried, and a post-push read records
+ * a head the remote never accepted, skipping that fix's next push. Read here,
+ * the record can only fall short of what was carried — a redundant push, never
+ * a lost fix — and only a successful push may store what this returns: refusals
+ * retry.
+ */
+const pushCarrying = async (input: PhaseInput, branch: string): Promise<string | null> => {
+  const carried = readHead(input)
+  await input.deps.git.push(branch)
+  return carried
 }
 
 export const createPush = (input: PhaseInput, branch: string): DurablePush => {
   const { deps, state } = input
   // Accumulated across every push this loop makes, because the marker fires per
-  // fix and only the last one reaches the report.
-  const blocked: string[] = []
+  // fix and only the last one reaches the report. Keyed by path — a path the
+  // guard reverts twice keeps only the newest diff, which is the one a
+  // maintainer applying by hand today needs.
+  const blocked = new Map<string, string | null>()
   // Read now — before the loop is started by the caller — because what every
   // comparison below means is "since the review began".
   let pushedAt: Promise<string | null> = readHead(input)
@@ -125,17 +180,7 @@ export const createPush = (input: PhaseInput, branch: string): DurablePush => {
     if (!committed && last !== null && head !== null && last === head) return advanced
 
     if (last !== null) await guardBeforePush(input, branch, last, blocked)
-    // The head this push is about to carry, read after the guard and before
-    // the ref moves. Not `head` above, which predates the guard's revert
-    // (run 32992114904); not after the push either — the loop's child merges
-    // each fix into this checkout unsynchronized with this push, so a fix
-    // landing mid-push is not carried, and a post-push read records a head
-    // the remote never accepted, skipping that fix's next push. Read here,
-    // the record can only fall short of what was carried — a redundant push,
-    // never a lost fix — and only a successful push advances it: refusals retry.
-    const carried = readHead(input)
-    await deps.git.push(branch)
-    pushedAt = carried
+    pushedAt = pushCarrying(input, branch)
     advanced = true
     return advanced
   }
@@ -155,6 +200,6 @@ export const createPush = (input: PhaseInput, branch: string): DurablePush => {
     },
     settled: (): Promise<void> => chain,
     push: (committed) => pushIfMoved(committed),
-    blocked: (): readonly string[] => blocked,
+    blocked: (): readonly BlockedPath[] => [...blocked.entries()].map(([path, diff]) => ({ path, diff })),
   }
 }
