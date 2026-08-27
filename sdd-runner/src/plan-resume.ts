@@ -69,8 +69,8 @@ async function nextContinuationSessionId(workDir: string, slug: string): Promise
 
 /** D6 inherited depth: the parent run behind the child task file (`<parentRunDir>/children/<n>-<slug>.md`). */
 async function continuationDepthOf(deps: OrchestratorDeps, options: ContinuationStartOptions): Promise<DepthProfile> {
-  const parentRunId = path.basename(path.dirname(path.dirname(options.taskFile ?? '')))
-  if (parentRunId === '') return options.depthOverride ?? 'S'
+  if (options.taskFile === undefined) return options.depthOverride ?? 'S'
+  const parentRunId = path.basename(path.dirname(path.dirname(options.taskFile)))
   const parent = await loadRunState(deps.config.workDir, parentRunId).catch(() => null)
   if (parent === null) {
     throw new Error(

@@ -3111,6 +3111,20 @@ describe('continuation start for a changeName-carrying child (D6)', () => {
     expect(stages).toEqual(['gate'])
   })
 
+  it('a continuation start without a task file inherits depthOverride instead of failing to derive a parent run', async () => {
+    const fixture = makeFixture()
+    fs.mkdirSync(fixture.changeDir, { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\n\nship the slice safely\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'tasks.md'), '## 1. Slice\n\n- [ ] 1.1 a\n- [ ] 1.2 b\n')
+
+    const result = await runStart(fixture.deps, { child: SPLIT_CHILDREN[0], depthOverride: 'M' })
+
+    expect(result.halted).toBe('gate')
+    const state = await loadRunState(fixture.deps.config.workDir, 'add-thing-2')
+    expect(state.depth).toBe('M')
+    expect(state.stage).toBe('gate')
+  })
+
   it('persists the inherited depth before the atomicity flight, so a crash mid-tail resumes instead of stranding (D8)', async () => {
     const fixture = makeFixture()
     const { taskFile } = await seedSplitParent(fixture, 'M')
