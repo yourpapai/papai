@@ -6,7 +6,7 @@ design.md carries no Open Questions; nothing to resolve before build. Order foll
 
 - [x] 1.1 Scaffold `tests/plugins/task-provider-github/graphql-client.test.ts` (tracked-logger `mock.module` + delayed `await import`, `setMockFetch`/`restoreFetch`, GraphQL-specific local capture/envelope helpers — design Decision 10) with failing `resolveGraphqlEndpoint` derivation-table tests: empty baseUrl, explicit `https://api.github.com`, GHES `/api/v3` suffix (incl. sub-path prefix), GHES bare origin, trailing slashes. Confirm the expected failure: `bun test tests/plugins/task-provider-github/graphql-client.test.ts`
 - [x] 1.2 Add the failing `GITHUB_DEFAULT_GRAPHQL_URL` assertion to `tests/plugins/task-provider-github/constants.test.ts`, then add the constant (`'https://api.github.com/graphql'`) to `plugins/task-provider-github/constants.ts`. Verify: `bun test tests/plugins/task-provider-github/constants.test.ts`
-- [ ] 1.3 Implement `resolveGraphqlEndpoint(baseUrl)` in new `plugins/task-provider-github/graphql-client.ts`, composed on `resolveApiBaseUrl`'s output per design Decision 2. Verify: `bun test tests/plugins/task-provider-github/graphql-client.test.ts`
+- [x] 1.3 Implement `resolveGraphqlEndpoint(baseUrl)` in new `plugins/task-provider-github/graphql-client.ts`, composed on `resolveApiBaseUrl`'s output per design Decision 2. Verify: `bun test tests/plugins/task-provider-github/graphql-client.test.ts`
 
 ## 2. GraphQL executor (test-first)
 

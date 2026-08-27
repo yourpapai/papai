@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { svelteCompiler } from './knip-svelte-compiler.js'
+
 // GUARDRAIL: keep the ignore surface minimal. New ignores require an inline
 // justification comment naming the dynamic mechanism knip cannot trace, and a
 // linked task when the gap is temporary. Prefer code fixes (moving dead code,
@@ -13,17 +15,6 @@
 // repoint test imports to the concrete module, or prune the dead binding)
 // instead of adding an ignore. See
 // docs/superpowers/specs/2026-08-04-knip-facade-import-triage-design.md.
-
-// knip's built-in Svelte plugin enables but never registers its compiler:
-// its hasDependency('svelte') probe fails under bun's node_modules-less
-// install layout. Register an equivalent script-body extractor here.
-const svelteCompiler = (source: string): string => {
-  const scripts: string[] = []
-  for (const m of source.matchAll(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>/gmu)) {
-    if (m[1] !== undefined && m[1] !== '') scripts.push(m[1])
-  }
-  return scripts.join(';\n')
-}
 
 export default {
   // The review-loop, mutation-improve and opencode-agent workspaces are
@@ -115,6 +106,9 @@ export default {
     'plugins/audio-transcribe/runtime.ts!',
     'plugins/context-vault/runtime.ts!',
     'plugins/task-provider-kaneo/auto-provision.ts!',
+    // github-provider-graphql-api: GraphQL transport has no static importer
+    // until github-provider-projects lands as its first consumer.
+    'plugins/task-provider-github/graphql-client.ts!',
     // Test-seam shims: re-export test-only symbols so tests have an explicit
     // import site; see the *.testing.ts ignoreIssues glob below.
     'src/**/*.testing.ts!',
@@ -173,6 +167,9 @@ export default {
     // exist but stay unwired — TaskProvider declares no such methods (design
     // non-goal); a later session adds the consuming surface.
     'plugins/task-provider-github/operations/labels.ts': ['exports', 'types'],
+    // github-provider-graphql-api: graphql-client exports stay unwired until
+    // github-provider-projects lands as the production consumer; remove then.
+    'plugins/task-provider-github/graphql-client.ts': ['exports'],
     // acp bridge modules are consumed by plugins/acp/index.ts through
     // import.meta.require() (entry-graph containment for their src/analytics
     // imports, same pattern as the kaneo bridges above); knip cannot trace
