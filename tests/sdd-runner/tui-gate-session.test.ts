@@ -242,3 +242,31 @@ describe('runTuiGateSession', () => {
     expect(written.length).toBe(0)
   })
 })
+
+describe('plan-gate settle self-check (D10)', () => {
+  const PLAN_VIEW: GateSessionView = {
+    gateMode: 'plan',
+    items: [
+      { kind: 'child', id: 'C1', text: 'auth-db — Ship the drafted slice.', evidence: '', blastRadius: '' },
+      { kind: 'child', id: 'C2', text: 'auth-api — Partition the remainder.', evidence: '', blastRadius: '' },
+    ],
+    blockers: [],
+    requiredAck: null,
+  }
+
+  it('a plan-gate approve settle passes the write-then-parse self-check through the shared children-aware expected content', async () => {
+    const written: string[] = []
+    const result = await runTuiGateSession({
+      view: PLAN_VIEW,
+      writeGateMd: (md) => {
+        written.push(md)
+        return Promise.resolve()
+      },
+      keyScript: 'a',
+    })
+    expect(result).toMatchObject({ status: 'answered', decision: 'approve' })
+    expect(written.length).toBe(1)
+    expect(written[0]).toContain('- [x] C1 auth-db — Ship the drafted slice.')
+    expect(written[0]).toContain('- [x] C2 auth-api — Partition the remainder.')
+  })
+})
