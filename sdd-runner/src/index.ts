@@ -240,6 +240,7 @@ async function buildRunReport(
 ): Promise<string> {
   const state = await loadRunState(config.workDir, runId)
   const branch = await discoverBranch(execGit, config.repoRoot)
+  const resolveCost = await buildResolveCost()
   const input: ReportInput = {
     readEvents: () => readEvents(path.join(config.workDir, 'runs', runId, 'events.ndjson')),
     readChangeDir: () => readChangeSummary(config.repoRoot, state.changeName),
@@ -248,6 +249,7 @@ async function buildRunReport(
     changeName: state.changeName,
     branch,
     pr,
+    resolveCost,
     ...(state.plan === undefined
       ? {}
       : {
@@ -257,7 +259,7 @@ async function buildRunReport(
             loadRunState(config.workDir, childRunId)
               .then((child) => child.status)
               .catch(() => null),
-          childUsage: (childRunId: string) => childUsageOf(runDirOf(config.workDir, childRunId))?.costUsd,
+          childUsage: (childRunId: string) => childUsageOf(runDirOf(config.workDir, childRunId), resolveCost)?.costUsd,
         }),
   }
   return buildReport(input)
