@@ -124,17 +124,27 @@ describe('isPlanParentResume', () => {
 })
 
 /**
- * The earlier crash window: the planner promoted `sidecars/plan.json` and the
- * `depth oversize` verdict is durable, but the crash landed anywhere before
- * `runPlanBranch`'s first `saveRunState` — so `state.plan` was never persisted.
+ * The earlier crash windows: the planner promoted `sidecars/plan.json` but the
+ * crash landed anywhere before `runPlanBranch`'s first `saveRunState` — so
+ * `state.plan` was never persisted. Two entries reach that window: the
+ * intake-oversize plan (default — the `depth oversize` verdict is durable) and
+ * the decompose-split diversion (`diverted` — a `needs_split` verdict promoted
+ * the sidecar past the persisted `stage: 'decompose'`, and the depth event
+ * never carries `oversize` because intake classified the run a single).
  */
 async function makeCrashedFixture(
-  options: { readonly oversize?: boolean; readonly withSidecar?: boolean; readonly withPlanEvent?: boolean } = {},
+  options: {
+    readonly oversize?: boolean
+    readonly withSidecar?: boolean
+    readonly withPlanEvent?: boolean
+    readonly diverted?: boolean
+  } = {},
 ): Promise<{ repoRoot: string; deps: OrchestratorDeps; state: RunState }> {
-  const { oversize = true, withSidecar = true, withPlanEvent = true } = options
+  const { oversize = true, withSidecar = true, withPlanEvent = true, diverted = false } = options
   const repoRoot = makeDir()
   const workDir = path.join(repoRoot, '.sdd-runner')
   const state = await createRunState({ workDir, repoRoot, changeName: 'composite' })
+  if (diverted) state.stage = 'decompose'
   if (withSidecar) {
     fs.mkdirSync(path.join(state.runDir, 'sidecars'), { recursive: true })
     fs.writeFileSync(path.join(state.runDir, 'sidecars', 'plan.json'), JSON.stringify({ children: CHILDREN }))
@@ -146,8 +156,12 @@ async function makeCrashedFixture(
     profile: 'L',
     rationale: 'declares multi-change scope',
     source: 'estimator',
-    ...(oversize ? { oversize: true } : {}),
+    ...(oversize && !diverted ? { oversize: true } : {}),
   })
+  if (diverted) {
+    appendEvent(logPath, { altitude: 'L2', type: 'stage_enter', stage: 'decompose' })
+    appendEvent(logPath, { altitude: 'L2', type: 'stage_exit', stage: 'decompose' })
+  }
   if (withPlanEvent) {
     appendEvent(logPath, { altitude: 'L2', type: 'plan', childCount: CHILDREN.length, digest: planDigest(CHILDREN) })
   }
@@ -183,6 +197,19 @@ describe('isInterruptedPlanBranchResume (crash before the state.plan persist)', 
     const settled = await makeFixture()
     expect(isInterruptedPlanBranchResume(settled.state)).toBe(false)
   })
+
+  it('accepts the interrupted decompose-split diversion shape (D5) — stage decompose, no oversize verdict', async () => {
+    const diverted = await makeCrashedFixture({ diverted: true })
+    expect(isInterruptedPlanBranchResume(diverted.state)).toBe(true)
+    diverted.state.status = 'stopped'
+    expect(isInterruptedPlanBranchResume(diverted.state)).toBe(true)
+    diverted.state.status = 'completed'
+    expect(isInterruptedPlanBranchResume(diverted.state)).toBe(false)
+    const withoutSidecar = await makeCrashedFixture({ diverted: true, withSidecar: false })
+    expect(isInterruptedPlanBranchResume(withoutSidecar.state)).toBe(false)
+    const withoutPlanEvent = await makeCrashedFixture({ diverted: true, withPlanEvent: false })
+    expect(isInterruptedPlanBranchResume(withoutPlanEvent.state)).toBe(true)
+  })
 })
 
 describe('resumePlanParent interrupted plan-branch recovery', () => {
@@ -214,6 +241,65 @@ describe('resumePlanParent interrupted plan-branch recovery', () => {
     expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
     expect(md).toContain('- [ ] C2 db-api — Rename the API route helpers. · deps: db-schema')
     expect(fs.existsSync(path.join(fixture.state.runDir, 'children', '1-db-schema.md'))).toBe(true)
+  })
+})
+
+describe('resumePlanParent decompose-split diversion recovery (D5 crash window)', () => {
+  it('finishes the interrupted settle from the promoted sidecar — no decompose re-run, no child spawn, pin preserved', async () => {
+    const fixture = await makeCrashedFixture({ diverted: true })
+    const pinned = [{ ...CHILDREN[0]!, changeName: 'composite' }, ...CHILDREN.slice(1)]
+    fs.writeFileSync(path.join(fixture.state.runDir, 'sidecars', 'plan.json'), JSON.stringify({ children: pinned }))
+    const spawned: string[] = []
+    const startChildRun: StartChildRun = () => {
+      spawned.push('ran')
+      return Promise.resolve({ runId: 'must-not-run' })
+    }
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      (event) => {
+        appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), event)
+      },
+      { level: 'assist', costCeilingUsd: 5 },
+      startChildRun,
+    )
+
+    expect(spawned).toEqual([])
+    expect(result).toEqual({ runId: fixture.state.runId, halted: 'gate-pending' })
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.plan).toEqual({ childIds: CHILDREN.map((child) => child.id), digest: planDigest(CHILDREN) })
+    expect(persisted.children).toEqual({ 'db-schema': { status: 'pending' }, 'db-api': { status: 'pending' } })
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 1 })
+    const md = fs.readFileSync(path.join(fixture.state.runDir, 'gate-1.md'), 'utf8')
+    expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
+    expect(md).toContain('- [ ] C2 db-api — Rename the API route helpers. · deps: db-schema')
+    expect(fs.existsSync(path.join(fixture.state.runDir, 'children', '1-db-schema.md'))).toBe(true)
+    expect(fs.readFileSync(path.join(fixture.state.runDir, 'sidecars', 'plan.json'), 'utf8')).toBe(
+      JSON.stringify({ children: pinned }),
+    )
+  })
+
+  it('presents the plan gate at the next free version instead of overwriting an earlier gate file', async () => {
+    const fixture = await makeCrashedFixture({ diverted: true })
+    const gateOne = path.join(fixture.state.runDir, 'gate-1.md')
+    fs.writeFileSync(gateOne, 'early gate record\n')
+
+    const result = await resumePlanParent(
+      fixture.deps,
+      fixture.state,
+      (event) => {
+        appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), event)
+      },
+      { level: 'assist', costCeilingUsd: 5 },
+      () => Promise.resolve({ runId: 'must-not-run' }),
+    )
+
+    expect(result.halted).toBe('gate-pending')
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.gate).toEqual({ mode: 'plan', version: 2 })
+    expect(fs.readFileSync(gateOne, 'utf8')).toBe('early gate record\n')
+    expect(fs.existsSync(path.join(fixture.state.runDir, 'gate-2.md'))).toBe(true)
   })
 })
 

@@ -19,7 +19,7 @@ import { PLAN_REVIEW_SURROGATE } from './gate-prelude.js'
 import { planGateRows } from './plan-gate-resume.js'
 import type { PlanChild } from './plan.js'
 import { runTailFromAtomicity } from './post-review-tail.js'
-import { settleStoppedResult } from './resume-flow.js'
+import { nextGateVersion, settleStoppedResult } from './resume-flow.js'
 import { readAllRunStates } from './run-index.js'
 import { createRunState, loadRunState, resolveRoundCap, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
@@ -183,15 +183,20 @@ export function isPlanParentResume(state: RunState): boolean {
 }
 
 /**
- * The earlier crash window (D9): a crash between the planner's sidecar
- * promotion (`sidecars/plan.json`) and `runPlanBranch`'s first
- * `saveRunState` leaves no persisted `state.plan`, so the plain
- * interception above misses it — yet the durable `depth oversize` verdict
- * plus the promoted sidecar carry everything the interrupted settle needs.
+ * The earlier crash windows: a crash between the planner's sidecar promotion
+ * (`sidecars/plan.json`) and `runPlanBranch`'s first `saveRunState` leaves no
+ * persisted `state.plan`, so the plain interception above misses it — yet the
+ * promoted sidecar carries everything the interrupted settle needs. Two
+ * entries reach that window: the intake-oversize plan (D9 — the durable
+ * `depth oversize` verdict is the log's proof) and the decompose-split
+ * diversion (D5 — a `needs_split` verdict promoted the sidecar past the
+ * persisted `stage: 'decompose'`, and the log's depth event never carries
+ * `oversize` because intake classified the run a single).
  */
 export function isInterruptedPlanBranchResume(state: RunState): boolean {
   if (state.plan !== undefined || (state.status !== 'running' && state.status !== 'stopped')) return false
   if (!existsSync(path.join(state.runDir, 'sidecars', 'plan.json'))) return false
+  if (state.stage === 'decompose') return true
   const logPath = logPathFor(state)
   return existsSync(logPath) && readEvents(logPath).some((event) => event.type === 'depth' && event.oversize === true)
 }
@@ -257,8 +262,10 @@ export async function resumePlanParent(
       // Finish the interrupted `runPlanBranch` settle from the sidecar (D3):
       // topo-sort, re-materialize, digest, persist `state.plan`/children —
       // then present the plan gate. No gate answer can predate a plan
-      // persist, so the presentation starts the gate fresh at version 1.
-      await runPlanBranch(resolved, state, ctx, await planChildrenOf(ctx))
+      // persist, so the presentation starts the gate fresh — at the next
+      // free version, which is 1 unless the split diversion crashed past an
+      // earlier gate file (an early-gate approval entered the tail).
+      await runPlanBranch(resolved, state, ctx, await planChildrenOf(ctx), { version: nextGateVersion(state) })
       return { runId: state.runId, halted: 'gate-pending' }
     }
     const approval = planGateApprovalOf(state)
