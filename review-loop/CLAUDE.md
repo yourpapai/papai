@@ -37,7 +37,7 @@ primary lock and never throws; `finalizeRun` still does the final merge.
 
 ## Fix instruction contract
 
-Three rules the fix prompts carry, all of them shaping the fix at generation time rather than
+Four rules the fix prompts carry, all of them shaping the fix at generation time rather than
 gating it afterwards — a gate rejects only once the fixer's 5–21 minutes and the build check are
 already spent.
 
@@ -62,6 +62,24 @@ afterwards does not count.
 documentation: name the file and report the gap in `reasoning` instead. The loop cannot keep
 prose true — no actor sees two fixes, and the terminal round's fixes are never reviewed — so a
 paragraph one fix writes and a later fix invalidates ships confidently wrong.
+
+**Protected paths** (`PROTECTED_PATHS_RULE`) forbids creating or editing a file under
+`.github/workflows/` — a push from the pipeline's token cannot carry one, and the refusal
+discards the whole commit — and lands the "say what a maintainer should apply by hand" half on
+the fixer's result schema: a fix that genuinely requires such an edit is verdict `needs_human`
+with the exact change described in `reasoning`, editing nothing. All three fix prompts carry it,
+retries included, for the same reason the ladder is. The reviewer prompt carries the reporting
+half: a workflow-fix finding describes the change in `suggestedFix` for manual application — the
+defect is real, it just does not route to an edit that can never be pushed. Run 32992114904
+(issue #360) is the cost of the gap: the fixer edited `.github/workflows/ci.yml`, the push guard
+reverted it, and the run died on a push GitHub refused whole.
+
+Like the ladder, that constant is **duplicated across the workspace boundary and pinned**:
+`opencode-agent`'s `protected-paths.ts` owns the text, this workspace's copy carries it verbatim
+plus the one fixer-only mapping line (a fixer has no reply, it has a JSON result), and
+`tests/opencode-agent/protected-paths-rule.test.ts` asserts the containment. The inspect prompts
+carry nothing — they judge diffs and write nothing. The prompts are the courtesy; the mechanism
+is the push guard in the opencode-agent phase that reverts what they could not prevent.
 
 The orchestrator records one advisory boolean per accepted fix: did its diff touch a test path
 (`measureCheckBehind`, `commit-attempt.ts`). It gates nothing and touches no retry budget; it

@@ -93,6 +93,22 @@ const dropUnpushable = async (input: PhaseInput, since: string, blocked: string[
   }
 }
 
+/**
+ * Everything that belongs between deciding to push and the push itself.
+ *
+ * Reconcile before the protected-path revert, not after it: a reconciling
+ * merge can bring the human line's own commits in, and only once it has
+ * landed can `dropUnpushable` see — and take back out — a path a push cannot
+ * carry. The other order lets a workflow file ride the merge into a push
+ * GitHub refuses whole (the issue #240 failure class). `push` reconciles
+ * again internally, idempotently — the ancestor check answers "already
+ * merged".
+ */
+const guardBeforePush = async (input: PhaseInput, branch: string, since: string, blocked: string[]): Promise<void> => {
+  await input.deps.git.reconcile(branch)
+  await dropUnpushable(input, since, blocked)
+}
+
 export const createPush = (input: PhaseInput, branch: string): DurablePush => {
   const { deps, state } = input
   // Accumulated across every push this loop makes, because the marker fires per
@@ -108,16 +124,18 @@ export const createPush = (input: PhaseInput, branch: string): DurablePush => {
     const [last, head] = await Promise.all([pushedAt, readHead(input)])
     if (!committed && last !== null && head !== null && last === head) return advanced
 
-    // Before the protected-path revert, not after it: a reconciling merge can
-    // bring the human line's own commits in, and only once it has landed can
-    // `dropUnpushable` see — and take back out — a path a push cannot carry.
-    // The other order lets a workflow file ride the merge into a push GitHub
-    // refuses whole (the issue #240 failure class). `push` reconciles again
-    // internally, idempotently — the ancestor check answers "already merged".
-    if (last !== null) await deps.git.reconcile(branch)
-    if (last !== null) await dropUnpushable(input, last, blocked)
+    if (last !== null) await guardBeforePush(input, branch, last, blocked)
+    // The head this push is about to carry, read after the guard and before
+    // the ref moves. Not `head` above, which predates the guard's revert
+    // (run 32992114904); not after the push either — the loop's child merges
+    // each fix into this checkout unsynchronized with this push, so a fix
+    // landing mid-push is not carried, and a post-push read records a head
+    // the remote never accepted, skipping that fix's next push. Read here,
+    // the record can only fall short of what was carried — a redundant push,
+    // never a lost fix — and only a successful push advances it: refusals retry.
+    const carried = readHead(input)
     await deps.git.push(branch)
-    pushedAt = Promise.resolve(head)
+    pushedAt = carried
     advanced = true
     return advanced
   }
