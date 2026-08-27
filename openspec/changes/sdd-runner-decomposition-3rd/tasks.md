@@ -25,7 +25,7 @@ Implements the proposal's tasks 6.1–6.2, 7.1, 8.1–8.3, 9.1 only: operator su
 
 ## 5. Report children section (design D9; proposal 8.2)
 
-- [ ] 5.1 Children rows, subtree totals, no parent task counts. Red-first in `tests/sdd-runner/report.test.ts`: a parent's report (`state.plan` present) gains a children section — per-child id, latest spawn's runId, status (live child `state.json`, falling back to the parent's `children` record when unloadable), and cost via `childUsageOf`; a subtree total row from `treeSpend` over the parent's repriced events; unknown/unpriced cost renders the `unknown` marker, never `$0.00`; the parent reports no `### Tasks` section (it owns no change folder); single-run reports pinned byte-identical. Then implement in `report.ts` (design D9). Verify: `bun run test tests/sdd-runner/report.test.ts`
+- [x] 5.1 Children rows, subtree totals, no parent task counts. Red-first in `tests/sdd-runner/report.test.ts`: a parent's report (`state.plan` present) gains a children section — per-child id, latest spawn's runId, status (live child `state.json`, falling back to the parent's `children` record when unloadable), and cost via `childUsageOf`; a subtree total row from `treeSpend` over the parent's repriced events; unknown/unpriced cost renders the `unknown` marker, never `$0.00`; the parent reports no `### Tasks` section (it owns no change folder); single-run reports pinned byte-identical. Then implement in `report.ts` (design D9). Verify: `bun run test tests/sdd-runner/report.test.ts`
 
 ## 6. Plan-gate TUI rows (design D10; proposal 8.3)
 
