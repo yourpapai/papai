@@ -15,8 +15,8 @@ import { pipelineMachine } from './graph/pipeline.js'
 import { foldLog } from './kernel/fold.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { ExecFn } from './openspec-driver.js'
-import { resumeRun, startRun, statusRun } from './run.js'
-import type { RunDeps, RunStatus } from './run.js'
+import { resumeRun, startRun, statusRun, stopRunOperator } from './run.js'
+import type { OperatorStop, RunDeps, RunStatus } from './run.js'
 import { oneSecondTick } from './work/gate-waiter.js'
 import { buildRunReport } from './work/report.js'
 
@@ -156,6 +156,29 @@ export async function runResumeCommand(deps: RunDeps, runId: string): Promise<st
   return summary
 }
 
+/** Outcome → the operator line the stop verb prints (C6 D7). */
+export function stopMessageOf(result: OperatorStop, steerPath: string): string {
+  if (result.kind === 'calm-requested') {
+    return `calm stop requested for ${result.runId} — honored at the next boundary`
+  }
+  if (result.kind === 'aborted') {
+    return `run ${result.runId} aborted by operator — the session id is released`
+  }
+  if (result.kind === 'gate-pending') {
+    return `run ${result.runId} awaits a gate decision — write 'abort' to ${steerPath} to end it`
+  }
+  return `run ${result.runId} is already final (${result.position}) — nothing to stop`
+}
+
+/** The stop verb (C6 D7): calm-stop marker for live runs, `run_abort` for dead ones. */
+export async function runStopCommand(deps: RunDeps, runId: string): Promise<string> {
+  const result = await stopRunOperator(deps, runId)
+  const steerPath = path.join(deps.config.workDir, 'runs', runId, 'steer.md')
+  const summary = stopMessageOf(result, steerPath)
+  console.log(summary)
+  return summary
+}
+
 function printUsage(): void {
   console.log(
     [
@@ -163,6 +186,7 @@ function printUsage(): void {
       '  afk-runner start <taskFile> [--depth S|M|L]   drive a fresh think-half run to park',
       '  afk-runner status <runId>                     print the folded full-state summary',
       '  afk-runner resume <runId>                     re-enter an interrupted or parked run',
+      '  afk-runner stop <runId>                       calm-stop a live run; abort a dead one',
       '  afk-runner report <runId> [--pr]              print the passive run report',
       '  afk-runner <runDir>                           print the fold summary of a run dir',
     ].join('\n'),
@@ -171,10 +195,21 @@ function printUsage(): void {
 
 export function cliMain(argv: readonly string[]): Promise<string | undefined> {
   const [command, ...rest] = argv
-  if (command === 'start' || command === 'status' || command === 'resume' || command === 'report') {
+  if (
+    command === 'start' ||
+    command === 'status' ||
+    command === 'resume' ||
+    command === 'report' ||
+    command === 'stop'
+  ) {
     const deps = defaultCliDeps()
     if (command === 'start') return runStartCommand(deps, rest)
     if (command === 'report') return runReportCommand(deps, rest)
+    if (command === 'stop') {
+      const runId = rest[0]
+      if (runId === undefined || runId.length === 0) throw new Error('usage: afk-runner stop <runId>')
+      return runStopCommand(deps, runId)
+    }
     const runId = rest[0]
     if (runId === undefined || runId.length === 0) throw new Error(`usage: afk-runner ${command} <runId>`)
     return command === 'status' ? runStatusCommand(deps, runId) : runResumeCommand(deps, runId)

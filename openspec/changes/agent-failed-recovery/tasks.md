@@ -29,8 +29,8 @@
 
 ## 6. Operator face (D7)
 
-- [ ] 6.1 Failing tests: `stop` — live owner → calm-stop marker written, parks stopped at next boundary; dead/parked → `run_abort` appended, folds to aborted, memo terminal, session slug releasable; gate-pending points at steer abort. Verify: `bun test tests/afk-runner/cli-stop.test.ts` (fails)
-- [ ] 6.2 Implement the CLI verb + marker/event paths. Verify: `bun test tests/afk-runner/cli-stop.test.ts tests/afk-runner/cli.test.ts`
+- [x] 6.1 Failing tests: `stop` — live owner → calm-stop marker written, parks stopped at next boundary; dead/parked → `run_abort` appended, folds to aborted, memo terminal, session slug releasable; gate-pending points at steer abort. Verify: `bun test tests/afk-runner/cli-stop.test.ts` (fails)
+- [x] 6.2 Implement the CLI verb + marker/event paths. Verify: `bun test tests/afk-runner/cli-stop.test.ts tests/afk-runner/cli.test.ts`
 
 ## 7. Memo face (D8)
 

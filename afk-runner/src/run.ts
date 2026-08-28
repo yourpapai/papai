@@ -27,7 +27,7 @@ import type { KernelContext } from './kernel/machine.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { createRunState, loadRunState, resolveRoundCap, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
-import { removeHolder, writeHolder } from './stop-controller.js'
+import { createStopMarkerSeam, removeHolder, requestCalmStop, runHasLiveOwner, writeHolder } from './stop-controller.js'
 import { runGatePrelude } from './work/gate-prelude.js'
 import { readReviewResultFromSidecars } from './work/gate-settle.js'
 import { awaitGateSettle } from './work/gate-waiter.js'
@@ -199,6 +199,10 @@ async function driveRun(
   seed: MemoSeed,
   input: { readonly taskText: string; readonly changeName: string; readonly depthOverride?: DepthProfile },
 ): Promise<RunHalt> {
+  // The calm-stop marker is the default stop seam (C6 D7): the stop verb is
+  // its first producer; a drive honors it at the next boundary.
+  const runDir = path.join(seed.workDir, 'runs', seed.runId)
+  const stop = deps.stop ?? createStopMarkerSeam(runDir)
   const workFor = createPipelineWorkFor(
     {
       spawn: deps.spawn,
@@ -207,16 +211,18 @@ async function driveRun(
       config: deps.config,
       conventions: deps.conventions,
       stdout: deps.stdout,
-      ...(deps.stop === undefined ? {} : { stop: deps.stop }),
+      stop,
     },
     input,
   )
-  const runDir = path.join(seed.workDir, 'runs', seed.runId)
   const logPath = logPathOf(runDir)
   const escalation = escalationPresenterOf(deps, input, seed.runId)
   writeHolder(runDir)
   try {
-    const initial: DriveResult = await drive({ machine: pipelineMachine, logPath, now: deps.now, escalation }, workFor)
+    const initial: DriveResult = await drive(
+      { machine: pipelineMachine, logPath, now: deps.now, escalation, stop },
+      workFor,
+    )
     const result = await waitSettledGates(deps, seed, input, runDir, logPath, workFor, initial)
     await writeRunMemo(seed, result.parked, result.position, result.context, logPath)
     deps.stdout?.(parkLine(result.parked))
@@ -478,4 +484,41 @@ export async function statusRun(deps: RunDeps, runId: string): Promise<RunStatus
     context: folded.context,
     parked: parkedReasonOf(folded.context, folded.position, workFor),
   }
+}
+
+export type OperatorStop =
+  | { readonly kind: 'calm-requested'; readonly runId: string }
+  | { readonly kind: 'aborted'; readonly runId: string }
+  | { readonly kind: 'gate-pending'; readonly runId: string }
+  | { readonly kind: 'final'; readonly runId: string; readonly position: string }
+
+/**
+ * The operator give-up path (C6 D7): a live owner gets the calm-stop marker
+ * (the machinery's first producer — honored at the next boundary, parks
+ * resumable); a gate-pending run points at steer abort (no new surface); a
+ * dead or parked run appends `run_abort`, reaches the aborted final, writes
+ * the terminal memo, and releases the session id through TERMINAL_STATUSES.
+ */
+export async function stopRunOperator(deps: RunDeps, runId: string): Promise<OperatorStop> {
+  const runDir = path.join(deps.config.workDir, 'runs', runId)
+  const logPath = logPathOf(runDir)
+  const folded = foldRun(logPath)
+  if (folded.position === 'completed' || folded.position === 'aborted') {
+    return { kind: 'final', runId, position: folded.position }
+  }
+  const gate = folded.context.gate
+  if (folded.position === 'gate.awaiting' && gate !== null && !gate.answered) {
+    return { kind: 'gate-pending', runId }
+  }
+  if (runHasLiveOwner(runDir)) {
+    requestCalmStop(runDir)
+    return { kind: 'calm-requested', runId }
+  }
+  const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
+  boundary.append({ altitude: 'L2', type: 'run_abort', reason: 'operator' })
+  const after = foldRun(logPath)
+  const changeName = await changeNameOf(deps, runId, runDir)
+  const seed = seedOf(deps, runId, changeName, folded.createdAt)
+  await writeRunMemo(seed, 'final', after.position, after.context, logPath)
+  return { kind: 'aborted', runId }
 }
