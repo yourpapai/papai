@@ -17,6 +17,7 @@ import type { ExecFn } from './openspec-driver.js'
 import { resumeRun, startRun, statusRun } from './run.js'
 import type { RunDeps, RunStatus } from './run.js'
 import { oneSecondTick } from './work/gate-waiter.js'
+import { buildRunReport } from './work/report.js'
 
 export function runCli(argv: readonly string[]): string {
   const runDir = argv[0]
@@ -117,9 +118,21 @@ export async function runStartCommand(deps: RunDeps, args: readonly string[]): P
 
 export async function runStatusCommand(deps: RunDeps, runId: string): Promise<string> {
   const status = await statusRun(deps, runId)
-  const summary = [`run: ${runId}`, fullStateSummary(status)].join('\n')
+  const lines = [`run: ${runId}`, fullStateSummary(status)]
+  if (status.parked === 'final') lines.push(`report: afk-runner report ${runId}`)
+  const summary = lines.join('\n')
   console.log(summary)
   return summary
+}
+
+/** The passive report command (C5 D8): `report <runId> [--pr]` prints the summary without writing run state. */
+export async function runReportCommand(deps: RunDeps, args: readonly string[]): Promise<string> {
+  const runId = args[0]
+  if (runId === undefined || runId.length === 0) throw new Error('usage: afk-runner report <runId> [--pr]')
+  const pr = args.includes('--pr')
+  const report = await buildRunReport({ config: deps.config, execGit: deps.execGit }, runId, pr)
+  console.log(report)
+  return report
 }
 
 export async function runResumeCommand(deps: RunDeps, runId: string): Promise<string> {
@@ -142,6 +155,7 @@ function printUsage(): void {
       '  afk-runner start <taskFile> [--depth S|M|L]   drive a fresh think-half run to park',
       '  afk-runner status <runId>                     print the folded full-state summary',
       '  afk-runner resume <runId>                     re-enter an interrupted or parked run',
+      '  afk-runner report <runId> [--pr]              print the passive run report',
       '  afk-runner <runDir>                           print the fold summary of a run dir',
     ].join('\n'),
   )
@@ -149,9 +163,10 @@ function printUsage(): void {
 
 export function cliMain(argv: readonly string[]): Promise<string | undefined> {
   const [command, ...rest] = argv
-  if (command === 'start' || command === 'status' || command === 'resume') {
+  if (command === 'start' || command === 'status' || command === 'resume' || command === 'report') {
     const deps = defaultCliDeps()
     if (command === 'start') return runStartCommand(deps, rest)
+    if (command === 'report') return runReportCommand(deps, rest)
     const runId = rest[0]
     if (runId === undefined || runId.length === 0) throw new Error(`usage: afk-runner ${command} <runId>`)
     return command === 'status' ? runStatusCommand(deps, runId) : runResumeCommand(deps, runId)

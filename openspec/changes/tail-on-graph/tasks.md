@@ -43,8 +43,8 @@
 
 ## 8. Report face (D8)
 
-- [ ] 8.1 Failing report tests (facts, gains/median-dwell math, commits line, PR-body variant) — port `report.ts` as a work copy. Verify: `bun test tests/afk-runner/work/report.test.ts` (fails)
-- [ ] 8.2 Implement the port + `report <runId> [--pr]` CLI command; status-of-terminal run prints the pointer. Verify: `bun test tests/afk-runner/work/report.test.ts tests/afk-runner/cli.test.ts`
+- [x] 8.1 Failing report tests (facts, gains/median-dwell math, commits line, PR-body variant) — port `report.ts` as a work copy. Verify: `bun test tests/afk-runner/work/report.test.ts` (fails)
+- [x] 8.2 Implement the port + `report <runId> [--pr]` CLI command; status-of-terminal run prints the pointer. Verify: `bun test tests/afk-runner/work/report.test.ts tests/afk-runner/cli.test.ts`
 
 ## 9. Full verification
 

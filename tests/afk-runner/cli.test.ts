@@ -87,6 +87,7 @@ describe('afk-runner cli commands (fake agents)', () => {
     expect(summary).toContain('last verdict: converged')
     expect(summary).toContain('gate: final v1 answered')
     expect(summary).toContain('halted: final')
+    expect(summary).toContain('report: afk-runner report add-thing')
   })
 
   it('fullStateSummary renders the gate-pending flavor from folded context', async () => {
