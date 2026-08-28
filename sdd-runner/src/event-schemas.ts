@@ -206,7 +206,7 @@ const ResumeEvent = z.object({
 export const AutoDecisionRuleSchema = z.enum(['R1', 'R2', 'R3', 'R4', 'R5', 'none'])
 export type AutoDecisionRule = z.infer<typeof AutoDecisionRuleSchema>
 
-export const AutoDecisionKindSchema = z.enum(['preview', 'approve', 'extend', 'accept-items', 'gate'])
+export const AutoDecisionKindSchema = z.enum(['preview', 'approve', 'extend', 'accept-items', 'gate', 'pending'])
 export type AutoDecisionKind = z.infer<typeof AutoDecisionKindSchema>
 
 const AutoDecisionEvent = z.object({

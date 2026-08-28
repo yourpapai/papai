@@ -13,8 +13,10 @@ import { carriesDecision } from './gate-answered.js'
 import type { OrchestratorDeps } from './gate-digest.js'
 
 type ResumeGate = (deps: OrchestratorDeps, runId: string, options: GateResumeOptions) => Promise<RunGateResumeResult>
+import type { PolicyDecision } from './auto-policy.js'
+import { appendEvent } from './events.js'
 import type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
-import { nowOf } from './gate-digest.js'
+import { logPathFor, nowOf } from './gate-digest.js'
 import { runPolicyLadder } from './gate-prelude.js'
 import { consumeSteerFile } from './review-loop.js'
 import { loadRunState, narrowGateMode, saveRunState } from './run-state.js'
@@ -79,12 +81,16 @@ export function translateSteer(
  * re-armed deadline is written). Never auto-aborts: with no conservative
  * branch available the gate stays pending; after one re-arm it stays pending
  * indefinitely. The claim file remains as an append-only audit artifact.
+ * Every claimed outcome appends the standard `auto_decision` L2 event after
+ * its settle/state write — settle names the deciding rule, re-arm and
+ * stay-pending record `none`/`pending` — so replay alone distinguishes
+ * waiter-settled gates from human-settled ones (which emit nothing).
  */
 export async function processExpiry(
   workDir: string,
   runId: string,
   reArmMinutes: number,
-  trySettle: (state: RunState) => Promise<boolean>,
+  trySettle: (state: RunState) => Promise<PolicyDecision | null>,
 ): Promise<'claimed-and-settled' | 'claimed-rearmed' | 'claimed-stay-pending' | 'lost-claim'> {
   const state = await loadRunState(workDir, runId)
   const version = state.gate?.version
@@ -97,12 +103,38 @@ export async function processExpiry(
   } catch {
     return 'lost-claim'
   }
-  const settled = await trySettle(state)
-  if (settled) return 'claimed-and-settled'
-  if (state.gateDeadlineReArmed) return 'claimed-stay-pending'
+  const emitDecision = (record: {
+    rule: PolicyDecision['rule']
+    decision: 'approve' | 'extend' | 'pending'
+    evidenceDigest: string
+  }): void => {
+    appendEvent(logPathFor(state), {
+      altitude: 'L2',
+      type: 'auto_decision',
+      rule: record.rule,
+      decision: record.decision,
+      evidenceDigest: record.evidenceDigest,
+      gateVersion: version,
+    })
+  }
+  const pendingDigest = digestOf(`expiry-pending:${version}`)
+  const decision = await trySettle(state)
+  if (decision !== null) {
+    emitDecision({
+      rule: decision.rule,
+      decision: decision.action === 'extend' ? 'extend' : 'approve',
+      evidenceDigest: decision.evidenceDigest,
+    })
+    return 'claimed-and-settled'
+  }
+  if (state.gateDeadlineReArmed) {
+    emitDecision({ rule: 'none', decision: 'pending', evidenceDigest: pendingDigest })
+    return 'claimed-stay-pending'
+  }
   state.gateDeadlineReArmed = true
   state.gateDeadlineAt = new Date(Date.now() + reArmMinutes * 60_000).toISOString()
   await saveRunState(state)
+  emitDecision({ rule: 'none', decision: 'pending', evidenceDigest: pendingDigest })
   return 'claimed-rearmed'
 }
 
@@ -171,7 +203,7 @@ export function awaitGateDeadline(
     const resumed = await maybeResume(deps, state, runId, digests, resume)
     if (resumed !== null) return resumed
     if (expiryDue(state)) {
-      const handled = await handleExpiry(deps, state, runId, reArmMinutes)
+      const handled = await handleExpiry(deps, state, runId, reArmMinutes, resume)
       if (handled !== null) return handled
     }
     const next = await nextDigestsOf(state, digests)
@@ -211,11 +243,22 @@ async function handleExpiry(
   state: RunState,
   runId: string,
   reArmMinutes: number,
+  resume: ResumeGate,
 ): Promise<RunGateResumeResult | null> {
-  const outcome = await processExpiry(deps.config.workDir, runId, reArmMinutes, (claimed) =>
-    conservativeBranchApplies(deps, claimed),
-  )
-  if (outcome === 'claimed-and-settled' || outcome === 'lost-claim') {
+  let settled: RunGateResumeResult | null = null
+  const outcome = await processExpiry(deps.config.workDir, runId, reArmMinutes, async (claimed) => {
+    const decision = await conservativeBranchApplies(deps, claimed)
+    if (decision === null) return null
+    settled =
+      decision.action === 'extend'
+        ? await resume(deps, runId, { extend: true })
+        : await resume(deps, runId, { confirmAll: true })
+    return decision
+  })
+  if (outcome === 'claimed-and-settled') {
+    return settled ?? { runId, outcome: 'approved', version: state.gate?.version ?? 0 }
+  }
+  if (outcome === 'lost-claim') {
     return { runId, outcome: 'approved', version: state.gate?.version ?? 0 }
   }
   deps.stdout?.('\x07auto-deadline: no safe policy branch — gate stays pending')
@@ -257,14 +300,15 @@ function steerOptionsFor(steer: SteerLanding, state: RunState, deps: Orchestrato
 }
 
 /**
- * Expiry re-runs the ladder with `deadlineExpired` semantics permitting only
- * conservative branches (R1 approve, else R2 extend, else stay pending). A
- * plan gate has no conservative branch (the plan prelude can only gate — no
- * rule settles or extends at plan mode), so it stays pending.
+ * Expiry re-runs the ladder permitting only conservative branches (R1
+ * approve, else R2 extend, else stay pending) and returns the deciding
+ * `PolicyDecision` (null = stay pending). A plan gate has no conservative
+ * branch (the plan prelude can only gate — no rule settles or extends at plan
+ * mode), so it stays pending.
  */
-function conservativeBranchApplies(deps: OrchestratorDeps, claimed: RunState): Promise<boolean> {
-  if (claimed.gate?.mode === 'plan') return Promise.resolve(false)
-  const decision = runPolicyLadder(
+function conservativeBranchApplies(deps: OrchestratorDeps, claimed: RunState): Promise<PolicyDecision | null> {
+  if (claimed.gate?.mode === 'plan') return Promise.resolve(null)
+  const evaluation = runPolicyLadder(
     { ...deps, autonomy: { ...(deps.autonomy ?? AUTONOMY_DEFAULTS) } },
     claimed,
     {
@@ -273,7 +317,13 @@ function conservativeBranchApplies(deps: OrchestratorDeps, claimed: RunState): P
       sidecarDir: path.join(claimed.runDir, 'sidecars'),
       emit: (): void => undefined,
     },
-    { outcome: 'converged', rounds: claimed.round, openBlockers: [], openMaterial: [], openNitpicks: [] },
+    {
+      outcome: 'converged',
+      rounds: claimed.round,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    },
     {
       mode: narrowGateMode(claimed.gate?.mode ?? 'final'),
       version: claimed.gate?.version ?? 1,
@@ -284,5 +334,7 @@ function conservativeBranchApplies(deps: OrchestratorDeps, claimed: RunState): P
       trajectory: [],
     },
   )
-  return Promise.resolve(decision.decision.action === 'approve' || decision.decision.action === 'extend')
+  const action = evaluation.decision.action
+  if (action === 'approve' || action === 'extend') return Promise.resolve(evaluation.decision)
+  return Promise.resolve(null)
 }

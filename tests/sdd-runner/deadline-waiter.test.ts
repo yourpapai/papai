@@ -16,7 +16,7 @@ import {
   shouldEnterWaiter,
   translateSteer,
 } from '../../sdd-runner/src/deadline-waiter.js'
-import { appendEvent } from '../../sdd-runner/src/events.js'
+import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import type { RunGateResumeResult } from '../../sdd-runner/src/extend-round.js'
 import { looksAnswered } from '../../sdd-runner/src/gate-answered.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
@@ -116,6 +116,8 @@ describe('steer translation (12.2)', () => {
 })
 
 describe('processExpiry (12.3)', () => {
+  const approveDecision = { rule: 'R1' as const, action: 'approve' as const, evidenceDigest: 'deadbeef' }
+
   async function seedDeadlineRun(deadlineAt: string, reArmed = false): Promise<{ workDir: string; runId: string }> {
     const workDir = path.join(makeDir(), '.sdd-runner')
     const state = await createRunState({ workDir, repoRoot: workDir, changeName: 'thing' })
@@ -135,33 +137,57 @@ describe('processExpiry (12.3)', () => {
     return { workDir, runId: state.runId }
   }
 
-  it('a conservative settle branch applies → claimed and settled', async () => {
+  async function waiterEvents(workDir: string, runId: string): Promise<ReturnType<typeof readEvents>> {
+    const state = await loadRunState(workDir, runId)
+    return readEvents(path.join(state.runDir, 'events.ndjson'))
+  }
+
+  it('a conservative settle branch applies → claimed and settled, with the auto_decision appended after the settle write', async () => {
     const { workDir, runId } = await seedDeadlineRun('2026-01-01T00:00:00.000Z')
-    const outcome = await processExpiry(workDir, runId, 10, (): Promise<boolean> => Promise.resolve(true))
+    const outcome = await processExpiry(workDir, runId, 10, (): Promise<typeof approveDecision> =>
+      Promise.resolve(approveDecision),
+    )
     expect(outcome).toBe('claimed-and-settled')
+    const events = await waiterEvents(workDir, runId)
+    expect(events.at(-1)).toMatchObject({
+      type: 'auto_decision',
+      rule: 'R1',
+      decision: 'approve',
+      evidenceDigest: 'deadbeef',
+      gateVersion: 1,
+    })
   })
 
-  it('no settle branch + first expiry → re-arms once with the flag persisted first', async () => {
+  it('no settle branch + first expiry → re-arms once with the flag persisted first, emitting a pending auto_decision', async () => {
     const { workDir, runId } = await seedDeadlineRun('2026-01-01T00:00:00.000Z')
-    const outcome = await processExpiry(workDir, runId, 10, (): Promise<boolean> => Promise.resolve(false))
+    const outcome = await processExpiry(workDir, runId, 10, (): Promise<null> => Promise.resolve(null))
     expect(outcome).toBe('claimed-rearmed')
     const state = await loadRunState(workDir, runId)
     expect(state.gateDeadlineReArmed).toBe(true)
     expect(state.gateDeadlineAt).not.toBeNull()
+    const events = await waiterEvents(workDir, runId)
+    expect(events.at(-1)).toMatchObject({ type: 'auto_decision', rule: 'none', decision: 'pending', gateVersion: 1 })
   })
 
-  it('second expiry with no safe decision leaves the gate pending indefinitely', async () => {
+  it('second expiry with no safe decision leaves the gate pending indefinitely, still emitting the pending record', async () => {
     const { workDir, runId } = await seedDeadlineRun('2026-01-01T00:00:00.000Z', true)
-    const outcome = await processExpiry(workDir, runId, 10, (): Promise<boolean> => Promise.resolve(false))
+    const outcome = await processExpiry(workDir, runId, 10, (): Promise<null> => Promise.resolve(null))
     expect(outcome).toBe('claimed-stay-pending')
+    const events = await waiterEvents(workDir, runId)
+    expect(events.filter((event) => event.type === 'auto_decision')).toHaveLength(1)
+    expect(events.at(-1)).toMatchObject({ type: 'auto_decision', decision: 'pending' })
   })
 
-  it('a loser of the exclusive claim exits without acting', async () => {
+  it('a loser of the exclusive claim exits without acting and without emitting', async () => {
     const { workDir, runId } = await seedDeadlineRun('2026-01-01T00:00:00.000Z')
     const state = await loadRunState(workDir, runId)
     fs.writeFileSync(path.join(state.runDir, 'gate-1.expiry-claim'), 'other-waiter\n')
-    const outcome = await processExpiry(workDir, runId, 10, (): Promise<boolean> => Promise.resolve(true))
+    const outcome = await processExpiry(workDir, runId, 10, (): Promise<typeof approveDecision> =>
+      Promise.resolve(approveDecision),
+    )
     expect(outcome).toBe('lost-claim')
+    const events = await waiterEvents(workDir, runId)
+    expect(events.every((event) => event.type !== 'auto_decision')).toBe(true)
   })
 })
 
@@ -254,6 +280,10 @@ describe('plan-mode gates under the waiter', () => {
     expect(stdout.some((line) => line.includes('gate stays pending'))).toBe(true)
     const persisted = await loadRunState(deps.config.workDir, state.runId)
     expect(persisted.gateDeadlineReArmed).toBe(true)
+    const events = readEvents(path.join(state.runDir, 'events.ndjson'))
+    const autoDecisions = events.filter((event) => event.type === 'auto_decision')
+    expect(autoDecisions).toHaveLength(1)
+    expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'pending' })
   }, 20_000)
 
   it('a hand-edited full veto (→ redirect under an unchecked child) settles the deadline-waited plan gate', async () => {

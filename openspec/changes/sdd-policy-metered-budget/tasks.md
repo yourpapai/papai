@@ -11,9 +11,9 @@
 
 ## 3. Waiter settle audit events
 
-- [ ] 3.1 Red-first `tests/sdd-runner/events.test.ts`: `auto_decision.decision` widens additively (`'gate' | 'approve' | 'extend' | 'pending'`); old events parse unchanged — `bun test tests/sdd-runner/events.test.ts`
-- [ ] 3.2 Red-first `tests/sdd-runner/deadline-waiter.test.ts`: expiry claim + settle/re-arm/stay-pending each emit `auto_decision` (rule, decision, gateVersion) appended after the settle write; externally-settled gates emit nothing — `bun test tests/sdd-runner/deadline-waiter.test.ts`
-- [ ] 3.3 Implement the emits in the waiter's settle seam in `sdd-runner/src/deadline-waiter.ts` — `bun test tests/sdd-runner/deadline-waiter.test.ts`
+- [x] 3.1 Red-first `tests/sdd-runner/events.test.ts`: `auto_decision.decision` widens additively (`'gate' | 'approve' | 'extend' | 'pending'`); old events parse unchanged — `bun test tests/sdd-runner/events.test.ts`
+- [x] 3.2 Red-first `tests/sdd-runner/deadline-waiter.test.ts`: expiry claim + settle/re-arm/stay-pending each emit `auto_decision` (rule, decision, gateVersion) appended after the settle write; externally-settled gates emit nothing — `bun test tests/sdd-runner/deadline-waiter.test.ts`
+- [x] 3.3 Implement the emits in the waiter's settle seam in `sdd-runner/src/deadline-waiter.ts` — `bun test tests/sdd-runner/deadline-waiter.test.ts`
 
 ## 4. Expiry ladder parity
 

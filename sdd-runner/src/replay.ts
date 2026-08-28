@@ -17,7 +17,7 @@ export interface DigestRecord {
 
 export interface AutoDecisionRecord {
   readonly rule: AutoDecisionRule
-  readonly decision: 'preview' | 'approve' | 'extend' | 'accept-items' | 'gate'
+  readonly decision: 'preview' | 'approve' | 'extend' | 'accept-items' | 'gate' | 'pending'
   readonly evidenceDigest: string
   readonly gateVersion: number
   readonly seq: number

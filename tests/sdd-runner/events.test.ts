@@ -115,6 +115,7 @@ describe('auto_decision event', () => {
       { rule: 'R4', decision: 'accept-items' },
       { rule: 'R5', decision: 'gate' },
       { rule: 'none', decision: 'gate' },
+      { rule: 'none', decision: 'pending' },
     ] as const
     pairs.forEach((pair, i) => {
       appendEvent(
