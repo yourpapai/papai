@@ -17,7 +17,7 @@
 - [x] 3.2 If any check below surfaces a defect in prior sessions' code: write the failing test first, apply the minimal fix, re-run the affected file, then repeat 3.3–3.7; skip when everything is green. Verify: `bun test <affected test file>`
 - [x] 3.3 Full suite, reading persisted artifacts for follow-ups instead of re-running: `bun run test` (failures via `bun run test:failures` and `bun run test:show <id>` against `reports/test/`)
 - [x] 3.4 `bun run typecheck`
-- [ ] 3.5 `bun run lint`
+- [x] 3.5 `bun run lint`
 - [ ] 3.6 `bun run format:check`
 - [ ] 3.7 `bun run check:full` (a failure names the log file under `reports/checks/` to open) — shared-host rules per AGENTS.md: never two full suites concurrently; if a shell timeout kills a run, consult `bun run test:status` / `test:log` before restarting
 - [ ] 3.8 Final sweep: confirm the affected `docs/architecture/` pages (tasks 2.1–2.4) are updated and every check in 3.3–3.7 is green. Verify: `openspec validate task-provider-subscriptions --strict`
