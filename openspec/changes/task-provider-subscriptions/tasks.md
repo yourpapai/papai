@@ -19,5 +19,5 @@
 - [x] 3.4 `bun run typecheck`
 - [x] 3.5 `bun run lint`
 - [x] 3.6 `bun run format:check`
-- [ ] 3.7 `bun run check:full` (a failure names the log file under `reports/checks/` to open) — shared-host rules per AGENTS.md: never two full suites concurrently; if a shell timeout kills a run, consult `bun run test:status` / `test:log` before restarting
+- [x] 3.7 `bun run check:full` (a failure names the log file under `reports/checks/` to open) — shared-host rules per AGENTS.md: never two full suites concurrently; if a shell timeout kills a run, consult `bun run test:status` / `test:log` before restarting
 - [ ] 3.8 Final sweep: confirm the affected `docs/architecture/` pages (tasks 2.1–2.4) are updated and every check in 3.3–3.7 is green. Verify: `openspec validate task-provider-subscriptions --strict`
