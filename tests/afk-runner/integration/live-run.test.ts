@@ -11,6 +11,7 @@ import { readEvents } from '../../../afk-runner/src/events.js'
 import { appendEvent } from '../../../afk-runner/src/events.js'
 import type { SddEvent } from '../../../afk-runner/src/events.js'
 import { resumeRun, startRun } from '../../../afk-runner/src/run.js'
+import { renderGateAnswers } from '../../../afk-runner/src/work/gate-answers.js'
 import { BLOCKER_ROUND, M_MULTI_ROUND, TASK_TEXT, makeFakePipeline } from '../fixtures/fake-pipeline.js'
 
 /** A crash predicate that fires exactly once on the given output basename, then lets the resume proceed. */
@@ -56,6 +57,51 @@ function endsAtTailPark(logPath: string): boolean {
   const tokens = skeletonTokens(logPath)
   const presentedFinal = tokens.includes('gate:presented:final')
   return presentedFinal && tokens.at(-1) === 'stage_exit:decompose'
+}
+
+/** True once the re-presented final gate has parked (two final presentations, tail closed). */
+function atSecondPresentationPark(logPath: string): boolean {
+  const tokens = skeletonTokens(logPath)
+  const presentations = tokens.filter((token) => token === 'gate:presented:final').length
+  return presentations >= 2 && tokens.at(-1) === 'stage_exit:atomicity'
+}
+
+/** Release ticks (bounded) until the predicate holds on the log. */
+async function ticksUntil(
+  clock: { readonly release: () => void },
+  logPath: string,
+  done: (logPath: string) => boolean,
+  budget = 30,
+): Promise<void> {
+  for (let i = 0; i < budget; i += 1) {
+    await releaseTick(clock)
+    if (done(logPath)) break
+  }
+}
+
+/** Release ticks (bounded) until the parked-gate resume settles and returns. */
+async function settleViaTicks<T>(
+  pending: Promise<T>,
+  clock: { readonly release: () => void },
+  budget = 10,
+): Promise<T> {
+  for (let i = 0; i < budget; i += 1) {
+    await releaseTick(clock)
+    const done = await Promise.race([pending.then((): boolean => true), Promise.resolve(false)])
+    if (done) break
+  }
+  return pending
+}
+
+async function waitFor(predicate: () => boolean, budgetMs = 5_000): Promise<boolean> {
+  const deadline = Date.now() + budgetMs
+  while (Date.now() < deadline) {
+    if (predicate()) return true
+    await new Promise((resolve) => {
+      setTimeout(resolve, 25)
+    })
+  }
+  return predicate()
 }
 
 /** Release ticks (bounded) until the healed settle re-drives into the tail and parks at the final gate. */
@@ -112,6 +158,7 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
       'stage_enter:gate',
       'gate:presented:final',
       'auto_decision:approve',
+      'stage_exit:gate',
       'gate:answered:final:approve',
       'stage_exit:decompose',
     ])
@@ -137,11 +184,88 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
       'stage_enter:gate',
       'gate:presented:final',
       'auto_decision:approve',
+      'stage_exit:gate',
       'gate:answered:final:approve',
       'stage_exit:atomicity',
     ])
     expect(pipeline.spawnOrder).toContain('decompose-tasks.json')
     expect(pipeline.spawnOrder).toContain('atomicity.json')
+  })
+
+  it('extend-at-final full cycle: settle extends, the M tail re-runs, v2 approves, the run completes', async () => {
+    const highBlastAssumption = {
+      id: 'A1',
+      text: 'the rollout stays behind a flag',
+      basis: 'code-evidence',
+      confidence: 'high',
+      blast_radius: 'group replies',
+      status: 'open',
+      evidence: { files: ['src/a.ts'] },
+    }
+    const pipeline = makeFakePipeline({
+      sidecarOverrides: {
+        'depth.json': JSON.stringify({
+          implicated_files: ['src/a.ts', 'src/b.ts'],
+          signals: {
+            cross_module: true,
+            db_migration: false,
+            provider_surface: false,
+            credentials: false,
+            novelty: 'existing-modules',
+          },
+          rationale: 'two modules',
+        }),
+        'draft-design.json': JSON.stringify({ files_written: ['openspec/changes/add-thing/design.md'] }),
+        'resolutions-1.json': JSON.stringify({ resolutions: [], assumptions: [highBlastAssumption] }),
+        'findings-2.json': JSON.stringify({ findings: [] }),
+        'resolutions-2.json': JSON.stringify({ resolutions: [], assumptions: [] }),
+      },
+    })
+    const clock = fakeClock()
+    const taskFile = path.join(pipeline.repoRoot, 'task.md')
+    fs.writeFileSync(taskFile, TASK_TEXT)
+    const runPromise = startRun({ ...pipeline.deps, gateWait: { tick: clock.tick } }, { taskFile })
+
+    await waitFor((): boolean => pipeline.stdoutLines.some((line) => line.includes('gate-pending')))
+    const runDir = pipeline.runDirOf(firstRunOf(pipeline))
+    const logPath = path.join(runDir, 'events.ndjson')
+    // v1 parks at the human gate: the high-blast assumption blocks R1.
+    expect(skeletonTokens(logPath).slice(-3)).toEqual([
+      'gate:presented:final',
+      'auto_decision:gate',
+      'stage_exit:atomicity',
+    ])
+
+    fs.writeFileSync(path.join(runDir, 'gate-1.md'), '## Gate response\n\n→ RUN 1 MORE\n')
+    await ticksUntil(clock, logPath, atSecondPresentationPark)
+
+    // v2 parks at the human gate too (the high-blast assumption persists);
+    // the human approves it by checking the box.
+    const approveMd = renderGateAnswers({
+      items: [{ kind: 'assumption', id: 'A1', text: 'the rollout stays behind a flag', accepted: true }],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'approve',
+    })
+    fs.writeFileSync(path.join(runDir, 'gate-2.md'), approveMd)
+    const halted = await settleViaTicks(runPromise, clock, 30)
+
+    // Pre-C6 vocabulary: the completed run parks awaiting-tail at the final.
+    expect(halted).toMatchObject({ halted: 'awaiting-tail', position: 'completed' })
+    const tokens = skeletonTokens(logPath)
+    // the tail re-ran as fresh brackets and re-presented at v2
+    expect(tokens.filter((token) => token === 'stage_enter:decompose')).toHaveLength(2)
+    expect(tokens.filter((token) => token === 'stage_enter:atomicity')).toHaveLength(2)
+    const presentations = tokens.filter((token) => token === 'gate:presented:final')
+    expect(presentations).toHaveLength(2)
+    // the extend settle: answered first, then the exit, then the raised-cap round
+    const extendAnswer = tokens.indexOf('gate:answered:final:extend')
+    expect(tokens[extendAnswer + 1]).toBe('stage_exit:gate')
+    expect(tokens[extendAnswer + 2]).toBe('round_open:2')
+    // the v2 approve settles exit-first and completes on the answer
+    const approveAnswer = tokens.indexOf('gate:answered:final:approve')
+    expect(tokens[approveAnswer - 1]).toBe('stage_exit:gate')
+    expect(tokens.at(-1)).toBe('gate:answered:final:approve')
   })
 
   it('cap-hit with open blockers appends gate presented and parks gate-pending', async () => {
@@ -201,7 +325,7 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
       'round_close:2',
     ])
     // The converged M run continues into the tail and presents its final gate.
-    expect(tokens.slice(-9)).toEqual([
+    expect(tokens.slice(-10)).toEqual([
       'stage_exit:review',
       'stage_enter:decompose',
       'stage_exit:decompose',
@@ -209,6 +333,7 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
       'stage_enter:gate',
       'gate:presented:final',
       'auto_decision:approve',
+      'stage_exit:gate',
       'gate:answered:final:approve',
       'stage_exit:atomicity',
     ])

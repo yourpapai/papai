@@ -135,12 +135,12 @@ function processArrowLine(
   prevLine: string,
   payload: string,
   blockerIds: Set<string>,
-  gateMode: 'early' | 'final' | undefined,
+  _gateMode: 'early' | 'final' | undefined,
 ): void {
   if (RUN_DIRECTIVE_RE.test(line)) {
-    if (gateMode !== 'early') {
-      throw new Error(`gate response line ${lineNo}: → RUN 1 MORE is not valid at a final gate (cap-hit only)`)
-    }
+    // C5: the extend directive is valid at a final gate too — a human asking
+    // for another round re-opens review and re-runs the tail (D3); the steer
+    // surface keeps its own final-gate extend guard (waiter-level).
     state.extend = true
     return
   }

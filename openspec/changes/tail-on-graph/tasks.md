@@ -21,8 +21,8 @@
 
 ## 4. Seam face (D3)
 
-- [ ] 4.1 Failing settle tests per outcome at final mode (approve: exit→answered→completed; extend: answered→exit→round_open, no completion; veto: answered→exit→enter(draft); abort: answered→aborted; early mode: no exit). Verify: `bun test tests/afk-runner/work/gate-settle-final.test.ts` (fails)
-- [ ] 4.2 Implement the outcome-ordered branch in the settle seam; extend/veto-at-final full-cycle goldens (tail re-runs, v+1 re-presentation, completed). Verify: `bun test tests/afk-runner/work/gate-settle-final.test.ts`
+- [x] 4.1 Failing settle tests per outcome at final mode (approve: exit→answered→completed; extend: answered→exit→round_open, no completion; veto: answered→exit→enter(draft); abort: answered→aborted; early mode: no exit). Verify: `bun test tests/afk-runner/work/gate-settle-final.test.ts` (fails)
+- [x] 4.2 Implement the outcome-ordered branch in the settle seam; extend/veto-at-final full-cycle goldens (tail re-runs, v+1 re-presentation, completed). Verify: `bun test tests/afk-runner/work/gate-settle-final.test.ts`
 
 ## 5. Recovery face (D5)
 

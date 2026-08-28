@@ -31,14 +31,20 @@ export type ReviewOutcome = 'converged' | 'cap-hit' | 'incomplete'
 /**
  * The review outcome as a pure reader of folded context: an unanswered gate
  * parks cap-hit (an answered one releases continuation — the extend path
- * never clears the gate record, so answered gates must not re-park); a
- * converged verdict — including the severity rule (a nitpick-only open
+ * never clears the gate record, so answered gates must not re-park); an
+ * opened round without its recorded verdict still owes work (the
+ * extend-at-final mover re-opens review after a converged verdict — C5 D3);
+ * a converged verdict — including the severity rule (a nitpick-only open
  * cap-hit counts as converged, mirroring the legacy orchestrator) — or a
  * passed review stage is converged; anything else means the loop still owes
  * work (fresh, crashed mid-round, or calm-stopped).
  */
 export function reviewOutcomeOf(context: KernelContext): ReviewOutcome {
   if (context.gate !== null && !context.gate.answered) return 'cap-hit'
+  const round = context.round
+  if (round !== null && !context.perRound.some((record) => record.round === round.current)) {
+    return 'incomplete'
+  }
   const verdict = context.lastVerdict
   if (
     verdict !== null &&

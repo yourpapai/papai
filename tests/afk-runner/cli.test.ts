@@ -81,12 +81,12 @@ describe('afk-runner cli commands (fake agents)', () => {
     const started = await runStartCommand(pipeline.deps, [taskFile])
     const runId = runIdOf(started)
     const summary = await runStatusCommand(pipeline.deps, runId)
-    expect(summary).toContain('value: gate.awaiting')
+    expect(summary).toContain('value: completed')
     expect(summary).toContain('depth: S')
     expect(summary).toContain('round: 1/1')
     expect(summary).toContain('last verdict: converged')
     expect(summary).toContain('gate: final v1 answered')
-    expect(summary).toContain('halted: gate-pending')
+    expect(summary).toContain('halted: awaiting-tail')
   })
 
   it('fullStateSummary renders the gate-pending flavor from folded context', async () => {

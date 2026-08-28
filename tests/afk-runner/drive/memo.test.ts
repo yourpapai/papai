@@ -12,11 +12,11 @@ import { resumeRun, startRun, statusRun } from '../../../afk-runner/src/run.js'
 import { BLOCKER_ROUND, TASK_TEXT, makeFakePipeline } from '../fixtures/fake-pipeline.js'
 
 describe('state.json is a derived memo, never truth (design D6)', () => {
-  it('a converged run drives the S tail to the final gate and writes the memo from the fold', async () => {
+  it('a converged run drives the S tail; the R1 auto-approve completes it and the memo comes from the fold', async () => {
     const pipeline = makeFakePipeline()
     const result = await startRun(pipeline.deps, { taskText: TASK_TEXT })
     expect(result.halted).toBe('gate-pending')
-    expect(result.position).toBe('gate.awaiting')
+    expect(result.position).toBe('completed')
     const runDir = pipeline.runDirOf(result.runId)
     const memoPath = path.join(runDir, 'state.json')
     expect(fs.existsSync(memoPath)).toBe(true)
@@ -47,7 +47,7 @@ describe('state.json is a derived memo, never truth (design D6)', () => {
     expect(statusWithout.parked).toBe(statusWithMemo.parked)
     expect(statusWithout.context).toEqual(statusWithMemo.context)
     expect(resumeWithout).toEqual(resumeWithMemo)
-    expect(resumeWithout).toMatchObject({ halted: 'gate-pending', drove: false })
+    expect(resumeWithout).toMatchObject({ halted: 'awaiting-tail', position: 'completed', drove: false })
 
     // the resume rewrote the memo from the fold — identical body
     expect(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8')).toBe(memoBody)

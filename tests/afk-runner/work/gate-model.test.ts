@@ -307,11 +307,11 @@ describe('parseGateResponse → RUN 1 MORE (extend directive)', () => {
     expect(response.approved).toBe(false)
   })
 
-  it('throws at a final gate naming the line and explaining extend is cap-hit-only', () => {
+  it('produces extend: true at a final gate too — C5 makes the extend-at-final cycle first-class', () => {
     const md = '## Final gate\n\n→ RUN 1 MORE\n'
-    expect(() => parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'final' })).toThrow(
-      /RUN 1 MORE.*final gate.*cap-hit/u,
-    )
+    const response = parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'final' })
+    expect(response.extend).toBe(true)
+    expect(response.approved).toBe(false)
   })
 
   it('rejects → RUN 2 MORE, → RUN MORE, and → RUN 1 MORE x with an error naming the line', () => {

@@ -60,6 +60,16 @@ export async function settleGateWithAnswers(input: SettleInput, answers: GateAns
  * event with its explicit outcome and the outcome's mover event through the
  * boundary — extend re-opens the review round (n+1, cap+1), approve on an
  * early gate enters decompose, veto re-enters draft, abort appends nothing.
+ *
+ * C5 outcome ordering (D3) at a FINAL gate, where the presentation entered
+ * the gate stage in the map: approve appends the gate stage exit BEFORE the
+ * answered event so the completed edge fires on the answer (corpus-identical
+ * — a uniform exit-first ordering would wrongly complete extend/veto runs);
+ * extend and veto append the answered event first (the guard correctly
+ * blocks completion while the gate stage is still active), then the exit for
+ * map hygiene, then the mover; abort appends the answered event alone (the
+ * aborted edge ignores the map). Early gates never entered the gate stage,
+ * so no exit is appended there.
  */
 export async function settleGateFile(input: SettleInput): Promise<SettleResult> {
   const gateMdPath = path.join(input.gate.runDir, `gate-${input.version}.md`)
@@ -70,14 +80,27 @@ export async function settleGateFile(input: SettleInput): Promise<SettleResult> 
     await verifyGateIntegrity(input.gate, input.version)
   }
   const answeredMode = outcome === 'extend' ? input.gateMode : 'final'
-  input.gate.emit({
-    altitude: 'L2',
-    type: 'gate',
-    action: 'answered',
-    mode: answeredMode,
-    version: input.version,
-    outcome,
-  })
+  const emitAnswered = (): void => {
+    input.gate.emit({
+      altitude: 'L2',
+      type: 'gate',
+      action: 'answered',
+      mode: answeredMode,
+      version: input.version,
+      outcome,
+    })
+  }
+  const emitGateStageExit = (): void => {
+    input.gate.emit({ altitude: 'L2', type: 'stage_exit', stage: 'gate' })
+  }
+  const owesExit = input.gateMode === 'final' && outcome !== 'abort'
+  if (owesExit && outcome === 'approve') {
+    emitGateStageExit()
+    emitAnswered()
+    return { outcome, vetoes: response.vetoes, answeredMode }
+  }
+  emitAnswered()
+  if (owesExit) emitGateStageExit()
   appendMover(input, outcome)
   return { outcome, vetoes: response.vetoes, answeredMode }
 }
