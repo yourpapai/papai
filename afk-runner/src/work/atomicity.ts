@@ -56,7 +56,8 @@ async function attemptAtomicity(
   const validation = await deps.driver.validateStrict(changeName)
   if (validation.ok) return report.value
   const problem = `openspec validate --strict failed: ${validation.output}`
-  if (attempt >= 2) throw new StageHaltError(`atomicity failed after 2 attempts: ${problem}`, 'resume the run')
+  if (attempt >= 2)
+    throw new StageHaltError(`atomicity failed after 2 attempts: ${problem}`, 'resume the run', 'exhausted')
   return attemptAtomicity(deps, changeName, tasksFile, attempt + 1, problem)
 }
 
@@ -67,7 +68,11 @@ export async function runAtomicity(
   if (!runsAtomicity(options.depth)) return { skipped: true }
   const tasksFile = path.join(deps.cwd, 'openspec', 'changes', options.changeName, 'tasks.md')
   if (!fs.existsSync(tasksFile))
-    throw new StageHaltError(`atomicity cannot run: tasks.md missing at ${tasksFile}`, 'resume after decomposition')
+    throw new StageHaltError(
+      `atomicity cannot run: tasks.md missing at ${tasksFile}`,
+      'resume after decomposition',
+      'precondition',
+    )
   const result = await attemptAtomicity(deps, options.changeName, tasksFile, 1, null)
   return { skipped: false, split: result.split, merged: result.merged }
 }

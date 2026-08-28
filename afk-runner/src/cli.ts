@@ -8,6 +8,7 @@ import path from 'node:path'
 
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { realSpawn } from '../../review-loop/src/spawn.js'
+import { typedSpawn } from './agent-seam.js'
 import type { ExecGitFn, RunnerConfig } from './config.js'
 import type { DepthProfile } from './events.js'
 import { pipelineMachine } from './graph/pipeline.js'
@@ -57,7 +58,10 @@ export function fullStateSummary(status: RunStatus): string {
 }
 
 const EXEC_GIT: ExecGitFn = (cwd, args) => {
-  const proc = Bun.spawnSync(['git', '-C', cwd, ...args], { stdout: 'pipe', stderr: 'pipe' })
+  const proc = Bun.spawnSync(['git', '-C', cwd, ...args], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
   return Promise.resolve({
     stdout: new TextDecoder().decode(proc.stdout),
     stderr: new TextDecoder().decode(proc.stderr),
@@ -65,7 +69,11 @@ const EXEC_GIT: ExecGitFn = (cwd, args) => {
 }
 
 const EXEC_OPENSPEC: ExecFn = (args, options) => {
-  const proc = Bun.spawnSync([...args], { cwd: options.cwd, stdout: 'pipe', stderr: 'pipe' })
+  const proc = Bun.spawnSync([...args], {
+    cwd: options.cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
   return Promise.resolve({
     stdout: new TextDecoder().decode(proc.stdout),
     stderr: new TextDecoder().decode(proc.stderr),
@@ -87,7 +95,7 @@ export function defaultCliDeps(cwd: string = process.cwd()): CliDeps {
   }
   return {
     config,
-    spawn: realSpawn,
+    spawn: typedSpawn(realSpawn),
     execGit: EXEC_GIT,
     driver: createOpenSpecDriver({ exec: EXEC_OPENSPEC, cwd: config.repoRoot }),
     // The operator runs the CLI interactively — gate-pending parks keep the

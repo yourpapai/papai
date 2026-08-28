@@ -72,7 +72,8 @@ async function attemptDecompose(
   const validation = await deps.driver.validateStrict(changeName)
   if (validation.ok) return
   const problem = `openspec validate --strict failed: ${validation.output}`
-  if (attempt >= 2) throw new StageHaltError(`decompose failed after 2 attempts: ${problem}`, 'resume the run')
+  if (attempt >= 2)
+    throw new StageHaltError(`decompose failed after 2 attempts: ${problem}`, 'resume the run', 'exhausted')
   await attemptDecompose(deps, changeName, instr, tasksFile, attempt + 1, problem)
 }
 

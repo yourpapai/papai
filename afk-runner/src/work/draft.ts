@@ -101,7 +101,11 @@ async function attemptDraftArtifact(
     ...(validation.ok ? [] : [`openspec validate --strict failed: ${validation.output}`]),
   ]
   if (attempt >= 2) {
-    throw new StageHaltError(`draft ${artifactId} failed after 2 attempts: ${problems.join('; ')}`, `resume the run`)
+    throw new StageHaltError(
+      `draft ${artifactId} failed after 2 attempts: ${problems.join('; ')}`,
+      `resume the run`,
+      'exhausted',
+    )
   }
   await attemptDraftArtifact(deps, options, artifactId, instr, attempt + 1, problems.join('\n'))
 }

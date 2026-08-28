@@ -10,6 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import {
+  AgentValidationError,
   AssumptionsSidecarSchema,
   DepthClassificationSchema,
   FindingsSidecarSchema,
@@ -72,7 +73,11 @@ interface FakeSpawn {
 
 function makeFakeSpawn(
   basename: string,
-  outcomes: Array<{ write?: string; result?: Partial<SpawnResult>; lines?: readonly string[] }>,
+  outcomes: Array<{
+    write?: string
+    result?: Partial<SpawnResult>
+    lines?: readonly string[]
+  }>,
 ): FakeSpawn {
   const prompts: string[] = []
   const models: string[] = []
@@ -95,7 +100,12 @@ function makeFakeSpawn(
       const sink: LineSink = onLine
       for (const line of outcome.lines) sink(line)
     }
-    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '', ...outcome.result })
+    return Promise.resolve({
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      ...outcome.result,
+    })
   }
   return { spawn, prompts, models, inactivity, calls }
 }
@@ -160,18 +170,34 @@ describe('sidecar schemas', () => {
   it('accepts well-formed findings and rejects a finding without a gap quote', () => {
     const good = FindingsSidecarSchema.safeParse(JSON.parse(VALID_FINDINGS))
     expect(good.success).toBe(true)
-    const missingGap = { findings: [{ id: 'F1', class: 'BLOCKER', question: 'q', code_evidence_attempted: 'read x' }] }
+    const missingGap = {
+      findings: [
+        {
+          id: 'F1',
+          class: 'BLOCKER',
+          question: 'q',
+          code_evidence_attempted: 'read x',
+        },
+      ],
+    }
     expect(FindingsSidecarSchema.safeParse(missingGap).success).toBe(false)
   })
 
   it('requires a justification when a resolution dismisses', () => {
     const dismissed = {
       resolutions: [
-        { id: 'F1', class: 'NITPICK', resolution: 'dismissed', justification: 'answered verbatim in design D2' },
+        {
+          id: 'F1',
+          class: 'NITPICK',
+          resolution: 'dismissed',
+          justification: 'answered verbatim in design D2',
+        },
       ],
     }
     expect(ResolutionsSidecarSchema.safeParse(dismissed).success).toBe(true)
-    const unjustified = { resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'dismissed' }] }
+    const unjustified = {
+      resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'dismissed' }],
+    }
     const parsed = ResolutionsSidecarSchema.safeParse(unjustified)
     expect(parsed.success).toBe(false)
     assert(!parsed.success)
@@ -249,7 +275,16 @@ describe('sidecar schemas', () => {
     }
     expect(AssumptionsSidecarSchema.safeParse(withEvidence).success).toBe(true)
     const missing = {
-      assumptions: [{ id: 'A1', text: 't', basis: 'default', confidence: 'high', blast_radius: 'b', status: 'open' }],
+      assumptions: [
+        {
+          id: 'A1',
+          text: 't',
+          basis: 'default',
+          confidence: 'high',
+          blast_radius: 'b',
+          status: 'open',
+        },
+      ],
     }
     expect(AssumptionsSidecarSchema.safeParse(missing).success).toBe(false)
     const emptyFiles = {
@@ -286,7 +321,11 @@ describe('sidecar schemas', () => {
       signals: { ...classification.signals, novelty: 'new-subsystem' },
     })
     expect(newSubsystem.success).toBe(true)
-    const bad = { implicated_files: [], signals: { cross_module: 'yes' }, rationale: 'x' }
+    const bad = {
+      implicated_files: [],
+      signals: { cross_module: 'yes' },
+      rationale: 'x',
+    }
     expect(DepthClassificationSchema.safeParse(bad).success).toBe(false)
   })
 
@@ -311,7 +350,10 @@ describe('sidecar schemas', () => {
     const withoutCapabilities = DepthClassificationSchema.parse(base)
     expect(withoutCapabilities.capabilities).toBeUndefined()
 
-    const emptyString = DepthClassificationSchema.safeParse({ ...base, capabilities: [''] })
+    const emptyString = DepthClassificationSchema.safeParse({
+      ...base,
+      capabilities: [''],
+    })
     expect(emptyString.success).toBe(false)
   })
 })
@@ -361,6 +403,26 @@ describe('runStageAgent', () => {
     const { agent } = makeAgent(dir, fake)
     const run = runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
     await expect(run).rejects.toThrow(/validation/u)
+    expect(fake.calls.count).toBe(2)
+  })
+
+  it('types schema-validation exhaustion as AgentValidationError with the byte-identical message (C6 D1)', async () => {
+    const dir = makeDir()
+    const fake = makeFakeSpawn('findings-1.json', [
+      { write: '{"findings":[{"id":"F1"}]}' },
+      { write: '{"findings":[{"id":"F1"}]}' },
+    ])
+    const { agent } = makeAgent(dir, fake)
+    const failure = await runStageAgent(agent, makeOptions(dir, 'findings-1.json')).then(
+      () => null,
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(AgentValidationError)
+    expect(failure).toBeInstanceOf(Error)
+    assert(failure instanceof AgentValidationError)
+    expect(failure.name).toBe('AgentValidationError')
+    expect(failure.kind).toBe('exhausted')
+    expect(failure.message.startsWith('stage agent reviewer-r1 failed validation after 2 attempts: ')).toBe(true)
     expect(fake.calls.count).toBe(2)
   })
 
@@ -492,6 +554,10 @@ describe('runStageAgent', () => {
     await runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
     const toolUseEvents = emitted.filter((e): e is Extract<EventInput, { type: 'tool_use' }> => e.type === 'tool_use')
     expect(toolUseEvents.length).toBeGreaterThanOrEqual(1)
-    expect(toolUseEvents[0]).toMatchObject({ agent: 'reviewer-r1', tool: 'read', arg: 'foo.ts' })
+    expect(toolUseEvents[0]).toMatchObject({
+      agent: 'reviewer-r1',
+      tool: 'read',
+      arg: 'foo.ts',
+    })
   })
 })
