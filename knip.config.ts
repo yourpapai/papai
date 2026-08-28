@@ -3,6 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+// Extracted, not inline: oxlint's pedantic max-lines rule caps this file at
+// 300 lines, and the scoped graphql-client ignore below
+// (github-provider-graphql-api) pushed the inline form to 301. Re-inline only
+// alongside an equal size reduction here.
 import { svelteCompiler } from './knip-svelte-compiler.js'
 
 // GUARDRAIL: keep the ignore surface minimal. New ignores require an inline
