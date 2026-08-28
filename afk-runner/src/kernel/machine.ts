@@ -115,6 +115,8 @@ export const kernelSetup = setup({
   guards: {
     isStage: ({ event }, params: { stage: string }) => event.type === 'stage.enter' && event.stage === params.stage,
     allStagesDone: ({ context }) => Object.values(context.stages).every((status) => status === 'done'),
+    /** Abort exits are new-log-only (D2): a historical answered event carries no outcome and never aborts. */
+    isAbortOutcome: ({ event }) => event.type === 'gate.answered' && event.outcome === 'abort',
   },
   actions: {
     closeThenActivate: assign(({ context, event }) => {

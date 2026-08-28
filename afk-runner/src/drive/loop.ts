@@ -69,8 +69,20 @@ function foldCurrent(deps: DriveDeps): KernelSnapshot {
   return foldLogOrInitial(deps.machine, deps.logPath).snapshot
 }
 
-function positionOf(snapshot: KernelSnapshot): string {
-  return typeof snapshot.value === 'string' ? snapshot.value : JSON.stringify(snapshot.value)
+/**
+ * The drivable position key: a plain string passes through; a compound
+ * snapshot value (C4's `{ gate: 'awaiting' }` is the first) flattens to a
+ * dot-path (`gate.awaiting`) so the work registry stays a flat string map.
+ */
+export function positionOf(snapshot: KernelSnapshot): string {
+  return flattenPosition(snapshot.value)
+}
+
+export function flattenPosition(value: KernelSnapshot['value']): string {
+  if (typeof value === 'string') return value
+  return Object.entries(value)
+    .map(([parent, child]) => `${parent}.${String(child)}`)
+    .join('.')
 }
 
 interface LoopState {
@@ -158,7 +170,8 @@ async function driveStep(
   }
 
   if ('park' in successor) {
-    return { position, context: foldCurrent(deps).context, parked: successor.park }
+    const parked = foldCurrent(deps)
+    return { position: positionOf(parked), context: parked.context, parked: successor.park }
   }
   const target = successor.enter
   const targetModule = workFor(target)

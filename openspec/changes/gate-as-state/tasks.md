@@ -14,9 +14,9 @@ Ordered per design.md Migration Plan; every face starts with its failing test (T
 
 ## 3. Graph face — the awaiting substate
 
-- [ ] 3.1 Failing graph-shape tests: `gate` compound with `awaiting` initial child; `gate.presented` edge from review moves position without stage-map writes; re-presentation re-enters awaiting at v+1; mover edges (`round.open`→review carrying `openRound`, `stage.enter(decompose)`→decompose, `stage.enter(draft)`→draft); `gate.answered`+`outcome=abort`→aborted; existing answered+all-done→completed edge intact. Verify: `bun test tests/afk-runner/graph-shape.test.ts` (fails)
-- [ ] 3.2 Land the state config changes; full parity over all fixtures plus re-answer fold-tolerance (marathon fixture unchanged). Verify: `bun test tests/afk-runner/parity.test.ts tests/afk-runner/graph-shape.test.ts`
-- [ ] 3.3 Compound-position handling in the drive loop (flatten `gate.awaiting` to a drivable position key; awaiting declares no work, parks gate-pending positionally). Failing loop test with the fake pipeline first. Verify: `bun test tests/afk-runner/drive-loop.test.ts`
+- [x] 3.1 Failing graph-shape tests: `gate` compound with `awaiting` initial child; `gate.presented` edge from review moves position without stage-map writes; re-presentation re-enters awaiting at v+1; mover edges (`round.open`→review carrying `openRound`, `stage.enter(decompose)`→decompose, `stage.enter(draft)`→draft); `gate.answered`+`outcome=abort`→aborted; existing answered+all-done→completed edge intact. Verify: `bun test tests/afk-runner/graph-shape.test.ts` (fails)
+- [x] 3.2 Land the state config changes; full parity over all fixtures plus re-answer fold-tolerance (marathon fixture unchanged). Verify: `bun test tests/afk-runner/parity.test.ts tests/afk-runner/graph-shape.test.ts`
+- [x] 3.3 Compound-position handling in the drive loop (flatten `gate.awaiting` to a drivable position key; awaiting declares no work, parks gate-pending positionally). Failing loop test with the fake pipeline first. Verify: `bun test tests/afk-runner/drive-loop.test.ts`
 
 ## 4. Seam face — presentation and settlement
 

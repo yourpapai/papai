@@ -35,8 +35,10 @@ export interface PipelineRunInput {
  * The pipeline's state modules: work declarations co-located with the
  * outcome→successor data (design D3). The drive loop consumes only this
  * registry — adding C5's tail states means adding modules here, not loop
- * edits. Tail states (decompose/atomicity/gate) declare no work yet and the
- * loop parks awaiting-tail instead of entering them.
+ * edits. Tail states (decompose/atomicity) declare no work and the loop
+ * parks awaiting-tail instead of entering them; `gate.awaiting` (C4) is the
+ * positional park of a presented gate — no work, parks gate-pending until a
+ * settle producer answers through the seam.
  */
 export function createPipelineWorkFor(deps: PipelineWorkDeps, input: PipelineRunInput): WorkFor {
   const repoRoot = deps.config.repoRoot
@@ -124,6 +126,13 @@ export function createPipelineWorkFor(deps: PipelineWorkDeps, input: PipelineRun
         },
         outcomeOf: reviewOutcomeOf,
         successors: { converged: { enter: 'decompose' }, 'cap-hit': { park: 'gate-pending' } },
+      }
+    }
+    if (state === 'gate.awaiting') {
+      return {
+        work: null,
+        outcomeOf: () => 'awaiting',
+        successors: { awaiting: { park: 'gate-pending' } },
       }
     }
     return null

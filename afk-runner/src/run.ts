@@ -12,6 +12,7 @@ import { deriveChangeName } from './config.js'
 import type { ExecGitFn, RunnerConfig } from './config.js'
 import { drive } from './drive/loop.js'
 import type { DriveResult, ParkedReason, StopSeam } from './drive/loop.js'
+import { flattenPosition } from './drive/loop.js'
 import { parkedReasonOf } from './drive/resume.js'
 import type { DepthProfile } from './events.js'
 import { readEvents } from './events.js'
@@ -117,7 +118,7 @@ function foldRun(logPath: string): {
   const snapshot = foldEvents(pipelineMachine, events).snapshot
   return {
     context: snapshot.context,
-    position: typeof snapshot.value === 'string' ? snapshot.value : JSON.stringify(snapshot.value),
+    position: flattenPosition(snapshot.value),
     createdAt: events[0]?.ts ?? null,
   }
 }
