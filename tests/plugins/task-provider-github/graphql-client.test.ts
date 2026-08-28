@@ -219,6 +219,18 @@ describe('githubGraphql envelope', () => {
     expect(error.errors).toEqual([])
   })
 
+  test('fails the whole call on errors[] without a data key (pre-execution failure shape)', async () => {
+    setMockFetch(() => Promise.resolve(gqResponse({ errors: [{ message: 'rate limited', type: 'RATE_LIMITED' }] })))
+    const error: unknown = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>
+      githubGraphql(gqlConfig, GQL_QUERY).catch((caught: unknown) => caught),
+    )
+    assert.ok(error instanceof GitHubGraphqlError)
+    expect(error.message).toBe('rate limited')
+    expect(error.type).toBe('RATE_LIMITED')
+    expect(error.errors).toEqual([{ message: 'rate limited', type: 'RATE_LIMITED' }])
+    expect(error.message).not.toContain('envelope')
+  })
+
   test('maps a non-2xx response to GitHubApiError with status, headers, and parsed body', async () => {
     setMockFetch(() => Promise.resolve(gqResponse({ message: 'Not Found' }, 404)))
     const error: unknown = await runWithProviderRequestScope(NO_ANALYTICS_SCOPE, () =>

@@ -50,7 +50,9 @@ const graphqlErrorSchema = z.looseObject({
 })
 
 const graphqlEnvelopeSchema = z.looseObject({
-  data: z.unknown(),
+  // Optional under Zod v4: `z.unknown()` alone requires the key to be present, but
+  // the GraphQL spec omits `data` entirely when a request fails before execution.
+  data: z.unknown().optional(),
   errors: z.array(graphqlErrorSchema).optional(),
 })
 
