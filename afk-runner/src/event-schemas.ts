@@ -155,12 +155,19 @@ const DepthEvent = z.object({
   disagreement: z.boolean().optional(),
 })
 
+export const GateOutcomeSchema = z.enum(['approve', 'veto', 'extend', 'abort'])
+export type GateOutcome = z.infer<typeof GateOutcomeSchema>
+
 const GateEvent = z.object({
   altitude: z.literal('L2'),
   type: z.literal('gate'),
   action: z.enum(['presented', 'answered']),
   mode: z.enum(['early', 'final', 'plan']),
   version: z.number().int().positive(),
+  /** Explicit settle outcome (C4); historical answered events carry none. */
+  outcome: GateOutcomeSchema.optional(),
+  /** Absolute deadline stamp (C4) — present only when a deadline is configured. */
+  deadlineAt: z.string().min(1).optional(),
 })
 
 const PlanEvent = z.object({

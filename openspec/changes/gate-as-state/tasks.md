@@ -9,8 +9,8 @@ Ordered per design.md Migration Plan; every face starts with its failing test (T
 
 ## 2. Kernel face — outcome and deadline fields
 
-- [ ] 2.1 Failing tests: `gate answered` maps to a kernel event with optional `outcome`; `gate presented` maps with optional `deadlineAt`; both absent on historical logs. Verify: `bun test tests/afk-runner/kernel-fold.test.ts` (fails)
-- [ ] 2.2 Extend event schemas (additive optional fields), `toKernelEvent`, and the fold; context unchanged for all historical fixtures. Verify: `bun test tests/afk-runner/` (parity suites green)
+- [x] 2.1 Failing tests: `gate answered` maps to a kernel event with optional `outcome`; `gate presented` maps with optional `deadlineAt`; both absent on historical logs. Verify: `bun test tests/afk-runner/kernel-fold.test.ts` (fails)
+- [x] 2.2 Extend event schemas (additive optional fields), `toKernelEvent`, and the fold; context unchanged for all historical fixtures. Verify: `bun test tests/afk-runner/` (parity suites green)
 
 ## 3. Graph face — the awaiting substate
 

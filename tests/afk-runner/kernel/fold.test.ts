@@ -168,6 +168,70 @@ describe('kernel fold', () => {
     })
   })
 
+  it('maps gate answered/presented optional outcome/deadlineAt when present, absent on historical logs', () => {
+    expect(
+      toKernelEvent(
+        stamp({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'early', version: 1, outcome: 'extend' }, 1),
+      ),
+    ).toEqual({ type: 'gate.answered', outcome: 'extend' })
+    expect(
+      toKernelEvent(stamp({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'early', version: 1 }, 2)),
+    ).toEqual({ type: 'gate.answered' })
+    expect(
+      toKernelEvent(
+        stamp(
+          {
+            altitude: 'L2',
+            type: 'gate',
+            action: 'presented',
+            mode: 'final',
+            version: 2,
+            deadlineAt: '2026-09-01T00:00:00.000Z',
+          },
+          3,
+        ),
+      ),
+    ).toEqual({ type: 'gate.presented', mode: 'final', version: 2, deadlineAt: '2026-09-01T00:00:00.000Z' })
+    expect(
+      toKernelEvent(stamp({ altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 2 }, 4)),
+    ).toEqual({ type: 'gate.presented', mode: 'final', version: 2 })
+  })
+
+  it('folds outcome/deadlineAt into non-projected context residue; historical logs stay null', () => {
+    const kernel = foldEvents(pipelineMachine, [
+      stamp(
+        {
+          altitude: 'L2',
+          type: 'gate',
+          action: 'presented',
+          mode: 'early',
+          version: 1,
+          deadlineAt: '2026-09-01T00:00:00.000Z',
+        },
+        1,
+      ),
+      stamp({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'early', version: 1, outcome: 'extend' }, 2),
+    ])
+    expect(kernel.snapshot.context.gateOutcome).toBe('extend')
+    expect(kernel.snapshot.context.gateDeadlineAt).toBe('2026-09-01T00:00:00.000Z')
+    expect(kernel.snapshot.context.gate).toEqual({ mode: 'early', version: 1, answered: true })
+
+    const historical = foldEvents(pipelineMachine, [
+      stamp({ altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1 }, 1),
+      stamp({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'early', version: 1 }, 2),
+    ])
+    expect(historical.snapshot.context.gateOutcome).toBeNull()
+    expect(historical.snapshot.context.gateDeadlineAt).toBeNull()
+
+    const rePresented = foldEvents(pipelineMachine, [
+      stamp({ altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1 }, 1),
+      stamp({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'early', version: 1, outcome: 'extend' }, 2),
+      stamp({ altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 2 }, 3),
+    ])
+    expect(rePresented.snapshot.context.gateOutcome).toBeNull()
+    expect(rePresented.snapshot.context.gateDeadlineAt).toBeNull()
+  })
+
   it('folds a mapped event list into machine state with exact accounting', () => {
     const machine = linearMachine()
     const events = [
@@ -272,6 +336,8 @@ describe('kernel fold', () => {
       ],
       children: {},
       tally: { 2: { resolved: 1, dismissed: 0 } },
+      gateOutcome: null,
+      gateDeadlineAt: null,
     })
   })
 

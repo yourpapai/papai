@@ -6,7 +6,7 @@
 import { assign, initialTransition, setup, transition } from 'xstate'
 import type { ExecutableActionsFrom, SnapshotFrom } from 'xstate'
 
-import type { AutoDecisionKind, AutoDecisionRule, DepthProfile, FindingCounts } from '../events.js'
+import type { AutoDecisionKind, AutoDecisionRule, DepthProfile, FindingCounts, GateOutcome } from '../events.js'
 import type { AutoDecisionRecord, DigestRecord } from '../legacy-fold.js'
 
 export type StageStatus = 'pending' | 'active' | 'done'
@@ -46,6 +46,13 @@ export interface KernelContext {
   readonly autoDecisions: readonly AutoDecisionRecord[]
   readonly children: Readonly<Record<string, ChildRecord>>
   readonly tally: RoundTally
+  /**
+   * Non-projected gate residue (C4, like the tally — never a parity field):
+   * the latest explicit answered outcome and the presented deadline stamp,
+   * null on historical logs and re-cleared by every presentation.
+   */
+  readonly gateOutcome: GateOutcome | null
+  readonly gateDeadlineAt: string | null
 }
 
 export function initialKernelContext(stages: Readonly<Record<string, StageStatus>>): KernelContext {
@@ -59,6 +66,8 @@ export function initialKernelContext(stages: Readonly<Record<string, StageStatus
     autoDecisions: [],
     children: {},
     tally: {},
+    gateOutcome: null,
+    gateDeadlineAt: null,
   }
 }
 
@@ -79,8 +88,13 @@ export type KernelEvent =
       readonly verdict: 'converged' | 'open'
       readonly counts: FindingCounts
     }
-  | { readonly type: 'gate.presented'; readonly mode: GateRecord['mode']; readonly version: number }
-  | { readonly type: 'gate.answered' }
+  | {
+      readonly type: 'gate.presented'
+      readonly mode: GateRecord['mode']
+      readonly version: number
+      readonly deadlineAt?: string
+    }
+  | { readonly type: 'gate.answered'; readonly outcome?: GateOutcome }
   | {
       readonly type: 'auto.decision'
       readonly rule: AutoDecisionRule
@@ -149,12 +163,19 @@ export const kernelSetup = setup({
     }),
     presentGate: assign(({ event }) => {
       if (event.type !== 'gate.presented') return {}
-      return { gate: { mode: event.mode, version: event.version, answered: false } }
+      return {
+        gate: { mode: event.mode, version: event.version, answered: false },
+        gateOutcome: null,
+        gateDeadlineAt: event.deadlineAt ?? null,
+      }
     }),
     answerGate: assign(({ context, event }) => {
       if (event.type !== 'gate.answered') return {}
       if (context.gate === null) return {}
-      return { gate: { ...context.gate, answered: true } }
+      return {
+        gate: { ...context.gate, answered: true },
+        ...(event.outcome === undefined ? {} : { gateOutcome: event.outcome }),
+      }
     }),
     recordAutoDecision: assign(({ context, event }) => {
       if (event.type !== 'auto.decision') return {}

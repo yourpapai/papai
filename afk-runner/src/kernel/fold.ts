@@ -32,9 +32,16 @@ export function toKernelEvent(event: SddEvent): KernelEvent | null {
     return { type: 'convergence', round: event.round, verdict: event.verdict, counts: event.counts }
   }
   if (event.type === 'gate' && event.action === 'presented') {
-    return { type: 'gate.presented', mode: event.mode, version: event.version }
+    return {
+      type: 'gate.presented',
+      mode: event.mode,
+      version: event.version,
+      ...(event.deadlineAt === undefined ? {} : { deadlineAt: event.deadlineAt }),
+    }
   }
-  if (event.type === 'gate' && event.action === 'answered') return { type: 'gate.answered' }
+  if (event.type === 'gate' && event.action === 'answered') {
+    return { type: 'gate.answered', ...(event.outcome === undefined ? {} : { outcome: event.outcome }) }
+  }
   if (event.type === 'auto_decision') {
     return {
       type: 'auto.decision',
