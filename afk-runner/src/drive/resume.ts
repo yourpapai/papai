@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { DepthProfile } from '../events.js'
+import type { DepthProfile, EventInput } from '../events.js'
 import type { KernelContext } from '../kernel/machine.js'
 import { ROUND_CAPS } from '../run-state.js'
 import type { SessionLedgerLine } from '../session-ledger.js'
@@ -73,4 +73,33 @@ export function parkedReasonOf(context: KernelContext, position: string, workFor
   if ('park' in successor) return successor.park
   const target = workFor(successor.enter)
   return target === null || target.work === null ? 'awaiting-tail' : 'drivable'
+}
+
+/**
+ * Owed-mover recovery (design D7): a log whose answered event carries an
+ * explicit outcome but whose mover event never landed — the crash window
+ * between the two appends — resumes by appending the owed mover. A
+ * historical answered event without an outcome owes nothing: it parks
+ * awaiting settlement and heals on the next settle instead.
+ */
+export function owedMoverOf(context: KernelContext, position: string): EventInput | null {
+  if (position !== 'gate.awaiting') return null
+  const gate = context.gate
+  if (gate === null || !gate.answered) return null
+  if (context.gateOutcome === 'extend') {
+    const round = context.round
+    return {
+      altitude: 'L2',
+      type: 'round_open',
+      round: (round?.current ?? 0) + 1,
+      cap: (round?.cap ?? 0) + 1,
+    }
+  }
+  if (context.gateOutcome === 'approve' && gate.mode === 'early') {
+    return { altitude: 'L2', type: 'stage_enter', stage: 'decompose' }
+  }
+  if (context.gateOutcome === 'veto') {
+    return { altitude: 'L2', type: 'stage_enter', stage: 'draft' }
+  }
+  return null
 }

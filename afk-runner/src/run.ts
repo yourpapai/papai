@@ -12,9 +12,9 @@ import { deriveChangeName } from './config.js'
 import type { ExecGitFn, RunnerConfig } from './config.js'
 import { createAppendBoundary } from './drive/boundary.js'
 import { drive } from './drive/loop.js'
-import type { DriveResult, ParkedReason, StopSeam } from './drive/loop.js'
+import type { DriveResult, ParkedReason, StopSeam, WorkFor } from './drive/loop.js'
 import { flattenPosition } from './drive/loop.js'
-import { parkedReasonOf } from './drive/resume.js'
+import { owedMoverOf, parkedReasonOf } from './drive/resume.js'
 import type { DepthProfile } from './events.js'
 import { readEvents } from './events.js'
 import type { SddEvent } from './events.js'
@@ -157,30 +157,50 @@ async function driveRun(
   const logPath = logPathOf(runDir)
   writeHolder(runDir)
   try {
-    let result: DriveResult = await drive({ machine: pipelineMachine, logPath, now: deps.now }, workFor)
-    while (result.parked === 'gate-pending' && deps.gateWait !== undefined) {
-      await writeRunMemo(seed, result.parked, result.position, result.context, logPath)
-      deps.stdout?.(parkLine(result.parked))
-      const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
-      const waited = await awaitGateSettle({
-        runDir,
-        logPath,
-        sidecarDir: path.join(runDir, 'sidecars'),
-        changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', input.changeName),
-        machine: pipelineMachine,
-        emit: boundary.append,
-        tick: deps.gateWait.tick,
-        ...(deps.stdout === undefined ? {} : { stdout: deps.stdout }),
-      })
-      if (waited.kind === 'external') deps.stdout?.('gate settled externally — re-evaluating')
-      result = await drive({ machine: pipelineMachine, logPath, now: deps.now }, workFor)
-    }
+    const initial: DriveResult = await drive({ machine: pipelineMachine, logPath, now: deps.now }, workFor)
+    const result = await waitSettledGates(deps, seed, input, runDir, logPath, workFor, initial)
     await writeRunMemo(seed, result.parked, result.position, result.context, logPath)
     deps.stdout?.(parkLine(result.parked))
     return { runId: seed.runId, halted: result.parked, position: result.position }
   } finally {
     removeHolder(runDir)
   }
+}
+
+/**
+ * The gate continuation loop (design D3): after a gate-pending park, wait in
+ * the foreground waiter, settle, and re-drive — repeating while the run keeps
+ * presenting gates. Shared by start and resume so a parked resume continues
+ * identically.
+ */
+async function waitSettledGates(
+  deps: RunDeps,
+  seed: MemoSeed,
+  input: { readonly taskText: string; readonly changeName: string; readonly depthOverride?: DepthProfile },
+  runDir: string,
+  logPath: string,
+  workFor: WorkFor,
+  initial: DriveResult,
+): Promise<DriveResult> {
+  let result = initial
+  while (result.parked === 'gate-pending' && deps.gateWait !== undefined) {
+    await writeRunMemo(seed, result.parked, result.position, result.context, logPath)
+    deps.stdout?.(parkLine(result.parked))
+    const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
+    const waited = await awaitGateSettle({
+      runDir,
+      logPath,
+      sidecarDir: path.join(runDir, 'sidecars'),
+      changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', input.changeName),
+      machine: pipelineMachine,
+      emit: boundary.append,
+      tick: deps.gateWait.tick,
+      ...(deps.stdout === undefined ? {} : { stdout: deps.stdout }),
+    })
+    if (waited.kind === 'external') deps.stdout?.('gate settled externally — re-evaluating')
+    result = await drive({ machine: pipelineMachine, logPath, now: deps.now }, workFor)
+  }
+  return result
 }
 
 function parkLine(parked: ParkedReason): string {
@@ -232,15 +252,22 @@ function seedOf(deps: RunDeps, runId: string, changeName: string, createdAt: str
 }
 
 /**
- * Resume by replay (design D6): a pure function of the event log plus the
- * session ledger — re-fold, derive the parked reason as data, and either
- * re-enter the interrupted stage through the same drive loop or report the
- * park. No persisted state pointer is consulted for control flow.
+ * Resume by replay (design D6/D7): a pure function of the event log plus the
+ * session ledger — re-fold, append the owed mover when a settle's mover
+ * never landed, derive the parked reason as data, and either re-enter the
+ * interrupted stage through the same drive loop or report the park. No
+ * persisted state pointer is consulted for control flow.
  */
 export async function resumeRun(deps: RunDeps, runId: string): Promise<ResumeOutcome> {
   const runDir = path.join(deps.config.workDir, 'runs', runId)
   const logPath = logPathOf(runDir)
-  const folded = foldRun(logPath)
+  let folded = foldRun(logPath)
+  const owed = owedMoverOf(folded.context, folded.position)
+  if (owed !== null) {
+    const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
+    boundary.append(owed)
+    folded = foldRun(logPath)
+  }
   const changeName = await changeNameOf(deps, runId, runDir)
   const taskText = await readFile(path.join(runDir, 'task.md'), 'utf8')
   const workFor = createPipelineWorkFor(
@@ -257,6 +284,33 @@ export async function resumeRun(deps: RunDeps, runId: string): Promise<ResumeOut
   const parked = parkedReasonOf(folded.context, folded.position, workFor)
   if (parked !== 'drivable') {
     const seed = seedOf(deps, runId, changeName, folded.createdAt)
+    if (parked === 'gate-pending' && deps.gateWait !== undefined) {
+      // A parked gate resumes into the same foreground continuation a live
+      // drive uses: wait for the settle, then continue per outcome.
+      const runDirHere = runDir
+      writeHolder(runDirHere)
+      try {
+        const initial: DriveResult = {
+          position: folded.position,
+          context: folded.context,
+          parked: 'gate-pending',
+        }
+        const result = await waitSettledGates(
+          deps,
+          seed,
+          { taskText, changeName },
+          runDirHere,
+          logPath,
+          workFor,
+          initial,
+        )
+        await writeRunMemo(seed, result.parked, result.position, result.context, logPath)
+        deps.stdout?.(parkLine(result.parked))
+        return { runId, halted: result.parked, position: result.position, drove: result.parked !== 'gate-pending' }
+      } finally {
+        removeHolder(runDirHere)
+      }
+    }
     await writeRunMemo(seed, parked, folded.position, folded.context, logPath)
     deps.stdout?.(parkLine(parked))
     return { runId, halted: parked, position: folded.position, drove: false }

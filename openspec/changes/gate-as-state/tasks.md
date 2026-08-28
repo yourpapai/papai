@@ -37,8 +37,8 @@ Ordered per design.md Migration Plan; every face starts with its failing test (T
 
 ## 7. Resume face — owed movers and heal
 
-- [ ] 7.1 Failing resume tests: explicit `outcome` with missing mover → resume appends the owed mover (`round_open` / `stage_enter(decompose)` and parks awaiting-tail until C5); historical answered-no-outcome parks awaiting settlement. Verify: `bun test tests/afk-runner/resume-gate.test.ts` (fails)
-- [ ] 7.2 Implement owed-mover recovery and heal-on-settle (next settlement of a historical log appends an explicit-outcome event); end-to-end drill: settle-by-file-edit on a fixture-shaped run continues per outcome. Verify: `bun test tests/afk-runner/resume-gate.test.ts tests/afk-runner/integration.test.ts`
+- [x] 7.1 Failing resume tests: explicit `outcome` with missing mover → resume appends the owed mover (`round_open` / `stage_enter(decompose)` and parks awaiting-tail until C5); historical answered-no-outcome parks awaiting settlement. Verify: `bun test tests/afk-runner/resume-gate.test.ts` (fails)
+- [x] 7.2 Implement owed-mover recovery and heal-on-settle (next settlement of a historical log appends an explicit-outcome event); end-to-end drill: settle-by-file-edit on a fixture-shaped run continues per outcome. Verify: `bun test tests/afk-runner/resume-gate.test.ts tests/afk-runner/integration.test.ts`
 
 ## 8. Veto face — synthetic attestation
 

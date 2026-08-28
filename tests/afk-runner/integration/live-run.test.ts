@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { readEvents } from '../../../afk-runner/src/events.js'
+import { appendEvent } from '../../../afk-runner/src/events.js'
 import type { SddEvent } from '../../../afk-runner/src/events.js'
 import { resumeRun, startRun } from '../../../afk-runner/src/run.js'
 import { BLOCKER_ROUND, M_MULTI_ROUND, TASK_TEXT, makeFakePipeline } from '../fixtures/fake-pipeline.js'
@@ -26,6 +27,47 @@ function killOnceOn(basename: string): (candidate: string) => boolean {
 function firstRunOf(pipeline: ReturnType<typeof makeFakePipeline>): string {
   const entries = fs.readdirSync(path.join(pipeline.workDir, 'runs'))
   return entries[0] ?? ''
+}
+
+/** Fake clock: each tick resolves only when the test releases it. */
+function fakeClock(): { readonly tick: () => Promise<void>; readonly release: () => void } {
+  const queue: Array<() => void> = []
+  return {
+    tick: () =>
+      new Promise<void>((resolve) => {
+        queue.push(resolve)
+      }),
+    release: () => {
+      const resolve = queue.shift()
+      if (resolve !== undefined) resolve()
+    },
+  }
+}
+
+/** Release one tick and let the waiter's continuation run before the next. */
+async function releaseTick(clock: { readonly release: () => void }): Promise<void> {
+  clock.release()
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0)
+  })
+}
+
+/** Release ticks (bounded) until the parked-gate resume settles and returns. */
+async function settleViaTicks<T>(
+  pending: Promise<T>,
+  clock: { readonly release: () => void },
+  budget = 10,
+): Promise<T> {
+  for (let i = 0; i < budget; i += 1) {
+    await releaseTick(clock)
+    const done = await Promise.race([pending.then((): boolean => true), Promise.resolve(false)])
+    if (done) break
+  }
+  return pending
+}
+
+function answeredGateEvents(events: readonly SddEvent[]): SddEvent[] {
+  return events.filter((event) => event.type === 'gate' && event.action === 'answered')
 }
 
 type Token = string
@@ -124,5 +166,55 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
       'round_close:2',
       'stage_exit:review',
     ])
+  })
+
+  it('heal-on-settle: a historical answered-no-outcome run heals via a file-edit settle and continues per outcome', async () => {
+    const materialRound = {
+      'findings-1.json': JSON.stringify({
+        findings: [
+          {
+            id: 'F1',
+            class: 'MATERIAL',
+            gap: 'proposal lacks a rollback story',
+            question: 'how do we roll back?',
+            code_evidence_attempted: 'searched the repo, none found',
+          },
+        ],
+      }),
+      'resolutions-1.json': JSON.stringify({
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'evidence-answered', outcome: 'kept as documented' }],
+        assumptions: [],
+      }),
+    }
+    const pipeline = makeFakePipeline({ sidecarOverrides: materialRound })
+    const started = await startRun(pipeline.deps, { taskText: TASK_TEXT })
+    const runDir = pipeline.runDirOf(started.runId)
+    const logPath = path.join(runDir, 'events.ndjson')
+    // A historical settle: answered with no outcome field, no mover after it.
+    appendEvent(logPath, { altitude: 'L2', type: 'gate', action: 'answered', mode: 'early', version: 1 })
+
+    const parked = await resumeRun(pipeline.deps, started.runId)
+    expect(parked).toMatchObject({ halted: 'gate-pending', drove: false })
+
+    // The next settlement — a hand-edited gate file — appends an
+    // explicit-outcome answered event; history heals forward.
+    const gateMd = path.join(runDir, 'gate-1.md')
+    const checked = fs
+      .readFileSync(gateMd, 'utf8')
+      .split('\n')
+      .map((line) => line.replace(/^(\s*-\s*\[) (\])/u, '$1x$2'))
+      .join('\n')
+    fs.writeFileSync(gateMd, checked)
+
+    const clock = fakeClock()
+    const resumedPromise = resumeRun({ ...pipeline.deps, gateWait: { tick: clock.tick } }, started.runId)
+    const outcome = await settleViaTicks(resumedPromise, clock)
+    expect(outcome.halted).toBe('awaiting-tail')
+
+    const events = readEvents(logPath)
+    const answers = answeredGateEvents(events)
+    expect(answers.length).toBe(2)
+    expect(answers[1]).toMatchObject({ outcome: 'approve' })
+    expect(events.at(-1)).toMatchObject({ type: 'stage_enter', stage: 'decompose' })
   })
 })
