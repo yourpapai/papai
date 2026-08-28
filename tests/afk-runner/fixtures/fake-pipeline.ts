@@ -27,6 +27,12 @@ export interface FakePipeline {
 export interface FakePipelineOptions {
   /** Sidecar JSON bodies by basename, overriding the defaults (fake agents write these). */
   readonly sidecarOverrides?: Record<string, string>
+  /**
+   * Successive sidecar bodies by basename: each spawn for that basename
+   * writes the next entry (the last sticks). Wins over overrides/defaults
+   * while entries remain — the fail-once-then-succeed drill shape.
+   */
+  readonly sidecarSequences?: Record<string, readonly string[]>
   /** When given, a spawn whose output basename matches crashes (rejected spawn) — kill drill. */
   readonly crashOn?: (basename: string) => boolean
 }
@@ -92,6 +98,7 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
   const workDir = path.join(repoRoot, '.sdd-runner')
   const spawnOrder: string[] = []
   const stdoutLines: string[] = []
+  const sequenceWrites: Record<string, number> = {}
 
   const sidecars: Record<string, string> = {
     'depth.json': JSON.stringify({
@@ -137,9 +144,16 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
       fs.mkdirSync(path.dirname(artifact), { recursive: true })
       fs.writeFileSync(artifact, `<!-- content for ${basename} -->\n`)
     }
+    const sequence = options.sidecarSequences?.[basename]
+    let body = sidecars[basename] ?? '{}'
+    if (sequence !== undefined && sequence.length > 0) {
+      const written = sequenceWrites[basename] ?? 0
+      sequenceWrites[basename] = written + 1
+      body = sequence[Math.min(written, sequence.length - 1)] ?? body
+    }
     const target = agentWritePath(spawnOptions.cwd, basename)
     fs.mkdirSync(path.dirname(target), { recursive: true })
-    fs.writeFileSync(target, sidecars[basename] ?? '{}')
+    fs.writeFileSync(target, body)
     return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })
   }
 

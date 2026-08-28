@@ -340,6 +340,7 @@ describe('kernel fold', () => {
       gateDeadlineAt: null,
       gateDeadlineReArmed: false,
       failures: {},
+      failureKinds: {},
     })
   })
 

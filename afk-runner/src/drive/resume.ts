@@ -12,6 +12,7 @@ import { foldEvents } from '../kernel/fold.js'
 import type { KernelContext } from '../kernel/machine.js'
 import { ROUND_CAPS } from '../run-state.js'
 import type { SessionLedgerLine } from '../session-ledger.js'
+import { escalationOwed } from './failure-budget.js'
 import type { ParkedReason, WorkFor } from './loop.js'
 
 export interface ResumeSession {
@@ -73,11 +74,14 @@ export function reviewResumeEntry(
  * A run is drivable when its state module still owes work or movement;
  * otherwise it reports a parked reason as data. Unknown positions and
  * workless successors park defensively as `final` (C5 D6 — the boundary's
- * refusal vocabulary remains the alarm for illegal movement).
+ * refusal vocabulary remains the alarm for illegal movement). C6 D3: the
+ * budget check is consulted here symmetrically — an over-budget stage owes an
+ * escalation gate, not another work re-entry.
  */
 export function parkedReasonOf(context: KernelContext, position: string, workFor: WorkFor): ParkedReason | 'drivable' {
   const module = workFor(position)
   if (module === null) return 'final'
+  if (escalationOwed(context, position)) return 'gate-pending'
   const successor = module.successors[module.outcomeOf(context)]
   if (successor === undefined) return 'drivable'
   if ('park' in successor) return successor.park

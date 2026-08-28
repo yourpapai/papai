@@ -121,6 +121,7 @@ type Token = string
 function skeletonTokens(logPath: string): Token[] {
   return readEvents(logPath).flatMap((event: SddEvent): Token[] => {
     if (event.type === 'stage_enter' || event.type === 'stage_exit') return [`${event.type}:${event.stage}`]
+    if (event.type === 'stage_failed') return [`stage_failed:${event.stage}`]
     if (event.type === 'round_open' || event.type === 'round_close') return [`${event.type}:${event.round}`]
     if (event.type === 'convergence') return [`convergence:${event.round}:${event.verdict}`]
     if (event.type === 'gate')
@@ -336,6 +337,37 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
       'stage_exit:gate',
       'gate:answered:final:approve',
       'stage_exit:atomicity',
+    ])
+  })
+
+  it('under-budget retry: a review failure declared once is retried in-process and the run completes (C6 D3)', async () => {
+    const pipeline = makeFakePipeline({
+      sidecarSequences: {
+        // two invalid findings sidecars exhaust the agent layer's in-work
+        // attempts -> AgentValidationError -> one declared stage_failed; the
+        // third write converges round 1
+        'findings-1.json': [
+          JSON.stringify({ findings: [{ id: 'F1' }] }),
+          JSON.stringify({ findings: [{ id: 'F1' }] }),
+          JSON.stringify({ findings: [] }),
+        ],
+      },
+    })
+    const result = await startRun(pipeline.deps, { taskText: TASK_TEXT })
+    expect(result.halted).toBe('final')
+    expect(result.position).toBe('completed')
+    const events = readEvents(path.join(pipeline.runDirOf(result.runId), 'events.ndjson'))
+    const declared = events.filter((event) => event.type === 'stage_failed')
+    expect(declared).toHaveLength(1)
+    expect(declared[0]).toMatchObject({ stage: 'review', kind: 'exhausted' })
+    // the failed bracket stayed open: no stage exit between the failure and the re-run's round
+    const tokens = skeletonTokens(path.join(pipeline.runDirOf(result.runId), 'events.ndjson'))
+    const failedAt = tokens.indexOf('stage_failed:review')
+    expect(tokens.slice(failedAt - 1, failedAt + 3)).toEqual([
+      'round_open:1',
+      'stage_failed:review',
+      'round_open:1',
+      'convergence:1:converged',
     ])
   })
 

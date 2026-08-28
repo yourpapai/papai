@@ -17,9 +17,9 @@
 
 ## 4. Loop face (D2/D3)
 
-- [ ] 4.1 Failing tests: `runWorkBracket` catches classified failures (StageHaltError/AgentValidationError/SpawnError), appends `stage_failed`, skips the exit append (stage stays active); untyped errors rethrow unchanged. Verify: `bun test tests/afk-runner/drive/loop-failure.test.ts` (fails)
-- [ ] 4.2 Failing tests: `escalationOwed(context)` — `failures[stage] ≥ STAGE_FAILURE_BUDGET ∧ no unanswered gate`; `precondition` escalates immediately; consulted by loop and by `parkedReasonOf` symmetrically. Verify: `bun test tests/afk-runner/drive/escalation-owed.test.ts` (fails)
-- [ ] 4.3 Implement the catch + budget check; under-budget integration drill (fake agents fail once then succeed — the run completes in one process). Verify: `bun test tests/afk-runner/drive/loop-failure.test.ts tests/afk-runner/integration/live-run.test.ts`
+- [x] 4.1 Failing tests: `runWorkBracket` catches classified failures (StageHaltError/AgentValidationError/SpawnError), appends `stage_failed`, skips the exit append (stage stays active); untyped errors rethrow unchanged. Verify: `bun test tests/afk-runner/drive/loop-failure.test.ts` (fails)
+- [x] 4.2 Failing tests: `escalationOwed(context)` — `failures[stage] ≥ STAGE_FAILURE_BUDGET ∧ no unanswered gate`; `precondition` escalates immediately; consulted by loop and by `parkedReasonOf` symmetrically. Verify: `bun test tests/afk-runner/drive/escalation-owed.test.ts` (fails)
+- [x] 4.3 Implement the catch + budget check; under-budget integration drill (fake agents fail once then succeed — the run completes in one process). Verify: `bun test tests/afk-runner/drive/loop-failure.test.ts tests/afk-runner/integration/live-run.test.ts`
 
 ## 5. Escalation face (D4/D5/D6)
 

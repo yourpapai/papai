@@ -68,6 +68,8 @@ export interface KernelContext {
    * escalation-extend — never a parity field.
    */
   readonly failures: Readonly<Record<string, number>>
+  /** The last declared failure kind per stage (C6 D3) — precondition escalates immediately. */
+  readonly failureKinds: Readonly<Record<string, FailureKind>>
 }
 
 export function initialKernelContext(stages: Readonly<Record<string, StageStatus>>): KernelContext {
@@ -85,6 +87,7 @@ export function initialKernelContext(stages: Readonly<Record<string, StageStatus
     gateDeadlineAt: null,
     gateDeadlineReArmed: false,
     failures: {},
+    failureKinds: {},
   }
 }
 
@@ -160,12 +163,16 @@ export const kernelSetup = setup({
       // A stage's exit closes its bracket successfully — its failure ledger
       // entry resets (C6 D2: a later failure of the same stage counts fresh).
       const failures = Object.fromEntries(Object.entries(context.failures).filter(([stage]) => stage !== event.stage))
-      return { stages: { ...context.stages, [event.stage]: 'done' }, failures }
+      const failureKinds = Object.fromEntries(
+        Object.entries(context.failureKinds).filter(([stage]) => stage !== event.stage),
+      )
+      return { stages: { ...context.stages, [event.stage]: 'done' }, failures, failureKinds }
     }),
     recordFailure: assign(({ context, event }) => {
       if (event.type !== 'stage.failed') return {}
       return {
         failures: { ...context.failures, [event.stage]: (context.failures[event.stage] ?? 0) + 1 },
+        failureKinds: { ...context.failureKinds, [event.stage]: event.kind },
       }
     }),
     setDepth: assign(({ event }) => {

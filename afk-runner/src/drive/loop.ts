@@ -10,6 +10,7 @@ import { foldLogOrInitial } from '../kernel/fold.js'
 import type { KernelContext, KernelMachine, KernelSnapshot } from '../kernel/machine.js'
 import { createAppendBoundary } from './boundary.js'
 import type { AppendBoundary } from './boundary.js'
+import { declaredFailureOf, escalationOwed } from './failure-budget.js'
 
 /**
  * Park vocabulary (C5 D6): `gate-pending` — a presented gate awaits an
@@ -106,6 +107,13 @@ type BracketResult =
  * the state — resume re-entry appends the graph's own self-loop), run the
  * work, close the bracket, and resolve the settled successor from the folded
  * context.
+ *
+ * C6 failure catch (D2/D3): a classified failure appends `stage_failed` and
+ * skips the exit append — the bracket stays open, the stage map untouched
+ * (failure is crash-shaped by design; the stage still owes work). Under
+ * budget the settled successor re-enters this stage (the self-successor
+ * re-run); over budget it parks gate-pending for the escalation presentation.
+ * Untyped errors rethrow unchanged — refusal-alarm crash semantics.
  */
 async function runWorkBracket(
   deps: DriveDeps,
@@ -121,7 +129,25 @@ async function runWorkBracket(
     loop.entered = true
   }
   const runDir = path.dirname(deps.logPath)
-  await module.work?.run({ append: boundary.append, context: snapshot.context, runDir })
+  try {
+    await module.work?.run({ append: boundary.append, context: snapshot.context, runDir })
+  } catch (error) {
+    const failure = declaredFailureOf(error)
+    if (failure === null) throw error
+    boundary.append({
+      altitude: 'L2',
+      type: 'stage_failed',
+      stage: position as StageId,
+      kind: failure.kind,
+      reason: failure.reason,
+      ...(failure.resumeHint === undefined ? {} : { resumeHint: failure.resumeHint }),
+    })
+    const failed = foldCurrent(deps)
+    if (escalationOwed(failed.context, position)) {
+      return { kind: 'settled', successor: { park: 'gate-pending' }, context: failed.context }
+    }
+    return { kind: 'settled', successor: { enter: position }, context: failed.context }
+  }
   boundary.append(stageExit(position))
   if (deps.stop?.stopRequested() === true) {
     deps.stop.consumeMarker?.()
