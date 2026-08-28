@@ -37,6 +37,7 @@ import {
 } from '../../opencode-agent/src/state-manager.js'
 import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
+import { fakeGit } from './fake-git.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
@@ -418,6 +419,20 @@ const PLAN_REPLY = JSON.stringify({
 const OK_CHECK: CommandResult = { command: 'check', exitCode: 0, stdout: '', stderr: '' }
 
 const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
+  // The shared `Git` double (see `fake-git.ts`). Every scripted answer reads
+  // `io` inside a function so a test that moves a harness field after
+  // construction — `headSha`, `syncOutcome`, `salvageError`, … — is still a
+  // live read, exactly as the local object this replaced was. `io.gitCalls` is
+  // the double's own `calls` array, so every existing assertion keeps reading
+  // the same log it always did.
+  const fake = fakeGit({
+    commitAll: () => asOutcome(io.committedTotals),
+    salvageAll: () => io.salvageError ?? io.salvaged,
+    defaultBranch: () => io.detectedBranch,
+    headSha: () => io.headSha,
+    changedSince: () => [...io.changedPaths],
+    mergeBase: () => io.syncOutcome ?? { kind: 'up-to-date' },
+  })
   const io: PipelineIo = {
     thread: [],
     posted: [],
@@ -429,7 +444,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     aborts: 0,
     abortAccepted: true,
     agentClosed: false,
-    gitCalls: [],
+    gitCalls: fake.calls,
     checkResults: new Map(),
     runJobs: [],
     jobLogs: {},
@@ -629,65 +644,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     listCheckRunsForRef: (): Promise<readonly RefCheckRun[]> => Promise.resolve([...io.refCheckRuns]),
   }
 
-  const git: Git = {
-    ensureBranch: (branch, base) => {
-      io.gitCalls.push(`ensureBranch:${branch}:${base}`)
-      return Promise.resolve()
-    },
-    resetBranchToBase: (branch, base) => {
-      io.gitCalls.push(`ensureBranch:${branch}:${base}`)
-      return Promise.resolve()
-    },
-    deleteRemoteBranch: (branch) => {
-      io.gitCalls.push(`deleteRemoteBranch:${branch}`)
-      return Promise.resolve()
-    },
-    commitAll: (message) => {
-      io.gitCalls.push(`commit:${message.split('\n')[0]}`)
-      return Promise.resolve(asOutcome(io.committedTotals))
-    },
-    salvageAll: (message) => {
-      io.gitCalls.push(`salvage:${message.split('\n')[0]}`)
-      return io.salvageError === null ? Promise.resolve(io.salvaged) : Promise.reject(io.salvageError)
-    },
-    push: (branch, options) => {
-      io.gitCalls.push(`push:${branch}${options?.noVerify === true ? ':no-verify' : ''}`)
-      return Promise.resolve()
-    },
-    reconcile: (branch) => {
-      io.gitCalls.push(`reconcile:${branch}`)
-      return Promise.resolve()
-    },
-    defaultBranch: () => Promise.resolve(io.detectedBranch),
-    // Constant, which is the ordinary case: the review loop is a fake here, so
-    // nothing moves the branch behind the pipeline's back. A test that wants the
-    // opposite overrides this — see the review-phase tests in `phases.test.ts`.
-    headSha: () => Promise.resolve(io.headSha),
-    changedSince: (sha) => {
-      io.gitCalls.push(`changedSince:${sha}`)
-      return Promise.resolve([...io.changedPaths])
-    },
-    diffSince: (sha, paths) => {
-      io.gitCalls.push(`diffSince:${sha}:${paths.join(',')}`)
-      return Promise.resolve('')
-    },
-    revertPaths: (sha, paths) => {
-      io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
-      return Promise.resolve()
-    },
-    mergeBase: (base) => {
-      io.gitCalls.push(`mergeBase:${base}`)
-      return Promise.resolve(io.syncOutcome ?? { kind: 'up-to-date' as const })
-    },
-    completeMerge: (message) => {
-      io.gitCalls.push(`completeMerge:${message.split('\n')[0]}`)
-      return Promise.resolve()
-    },
-    abortMerge: () => {
-      io.gitCalls.push('abortMerge')
-      return Promise.resolve()
-    },
-  }
+  const git: Git = fake.git
 
   const agent: OpenCodeAgent = {
     sessionId: 'session-1',

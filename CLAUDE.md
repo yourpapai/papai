@@ -82,14 +82,16 @@ See `tests/CLAUDE.md`. Prefer DI over `mock.module()` where the module supports 
 whole run to `reports/test/` — log, JUnit index, and a joined `last-run.json`. Every follow-up question is a
 read against that artifact, so a second question costs milliseconds instead of another full suite.
 
-| Want                                     | Command                              |
-| ---------------------------------------- | ------------------------------------ |
-| the failures, with `file:line`           | `bun run test:failures`              |
-| one failure's full diagnostic            | `bun run test:show <id>`             |
-| a different filter over the same run     | `bun run test:log <pattern> [-C n]`  |
-| what the last run was, and if it's stale | `bun run test:status`                |
-| where the wall time went                 | `bun run test:slowest`               |
-| just the tests a change can reach        | `bun run test:affected [--base=REF]` |
+| Want                                     | Command                                 |
+| ---------------------------------------- | --------------------------------------- |
+| the failures, with `file:line`           | `bun run test:failures`                 |
+| one failure's full diagnostic            | `bun run test:show <id>`                |
+| a different filter over the same run     | `bun run test:log <pattern> [-C n]`     |
+| what the last run was, and if it's stale | `bun run test:status`                   |
+| where the wall time went                 | `bun run test:slowest`                  |
+| just the tests a change can reach        | `bun run test:affected [--base=REF]`    |
+| per-file case/assertion fragmentation    | `bun run test:audit`                    |
+| consolidation speed evidence             | `bun run test:benchmark [-- --project]` |
 
 `test:affected` is a static-import heuristic — it cannot see `mock.module()` targets, computed dynamic
 imports, or behaviour reached through DI seams, and it says so on every run. Use it in the loop; run the full

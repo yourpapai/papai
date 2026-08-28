@@ -32,5 +32,8 @@
       "papai/plugin-types": ["./src/providers/public-types.ts"]
     }
   },
-  "exclude": [".pi", ".opencode", "docs/superpowers/extensions", "public", "storybook-static"]
+  // `reports/` is the gitignored evidence tree: generated check artifacts and the
+  // test-audit benchmark's .bench.ts arms (which intentionally carry an unused
+  // import so a pairing's arms stay import-identical). Not source; never typechecked.
+  "exclude": [".pi", ".opencode", "docs/superpowers/extensions", "public", "reports", "storybook-static"]
 }
