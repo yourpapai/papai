@@ -42,8 +42,8 @@ Ordered per design.md Migration Plan; every face starts with its failing test (T
 
 ## 8. Veto face — synthetic attestation
 
-- [ ] 8.1 Add the synthetic-marked veto scenario fixture (veto answer → `stage_enter(draft)` mover) and lock its fold. Verify: `bun test tests/afk-runner/fixtures/scenarios/inventory.test.ts`
-- [ ] 8.2 Port the veto-updater revision round as draft re-entry work. Verify: `bun test tests/afk-runner/veto-revision.test.ts`
+- [x] 8.1 Add the synthetic-marked veto scenario fixture (veto answer → `stage_enter(draft)` mover) and lock its fold. Verify: `bun test tests/afk-runner/fixtures/scenarios/inventory.test.ts`
+- [x] 8.2 Port the veto-updater revision round as draft re-entry work. Verify: `bun test tests/afk-runner/veto-revision.test.ts`
 
 ## 9. Deadline face — thin, config-gated
 

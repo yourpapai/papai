@@ -61,6 +61,7 @@ const FINAL_VALUES: Readonly<Record<string, string | Record<string, string>>> = 
   'resume-artifact-skip-gate.ndjson': AWAITING,
   's-depth-calm-stop-resume.ndjson': 'review',
   'steer-extend-round.ndjson': 'review',
+  'veto-revision-synthetic.ndjson': 'draft',
 }
 
 const REPLAY_FIELDS = [
@@ -134,7 +135,7 @@ describe('golden-replay parity: graph v0 vs legacy fold', () => {
     })
   }
 
-  it('holds all fourteen fixtures from the C1 corpus', () => {
-    expect(collectFixtures()).toHaveLength(14)
+  it('holds all fifteen fixtures from the C1+C4 corpus', () => {
+    expect(collectFixtures()).toHaveLength(15)
   })
 })

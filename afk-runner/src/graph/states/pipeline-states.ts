@@ -27,11 +27,20 @@ export const intake = kernelSetup.createStateConfig({
 
 export const draft = kernelSetup.createStateConfig({
   on: {
-    'stage.enter': {
-      target: 'review',
-      guard: { type: 'isStage', params: { stage: 'review' } },
-      actions: ['closeThenActivate'],
-    },
+    'stage.enter': [
+      {
+        // The veto mover re-enters draft (C4 D8): the revision round runs as
+        // draft re-entry work before flowing back to review.
+        target: 'draft',
+        guard: { type: 'isStage', params: { stage: 'draft' } },
+        actions: ['closeThenActivate'],
+      },
+      {
+        target: 'review',
+        guard: { type: 'isStage', params: { stage: 'review' } },
+        actions: ['closeThenActivate'],
+      },
+    ],
   },
 })
 

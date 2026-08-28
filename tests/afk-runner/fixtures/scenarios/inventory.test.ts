@@ -8,6 +8,8 @@ import { readdirSync } from 'node:fs'
 import path from 'node:path'
 
 import { readEvents } from '../../../../afk-runner/src/events.js'
+import { pipelineMachine } from '../../../../afk-runner/src/graph/pipeline.js'
+import { foldEvents } from '../../../../afk-runner/src/kernel/fold.js'
 import { replayEvents } from '../../../../afk-runner/src/legacy-fold.js'
 
 const SCENARIO_ROOT = import.meta.dir
@@ -21,12 +23,13 @@ function scenarioFiles(): string[] {
 const logOf = (name: string): string => path.join(SCENARIO_ROOT, name)
 
 describe('scenario corpus inventory', () => {
-  it('holds exactly the four recorded scenario fixtures', () => {
+  it('holds exactly the five recorded scenario fixtures', () => {
     expect(scenarioFiles()).toEqual([
       'children-plan-synthetic.ndjson',
       'resume-artifact-skip-gate.ndjson',
       's-depth-calm-stop-resume.ndjson',
       'steer-extend-round.ndjson',
+      'veto-revision-synthetic.ndjson',
     ])
   })
 
@@ -64,5 +67,15 @@ describe('scenario corpus inventory', () => {
   it('children-plan-synthetic folds the synthetic plan/children layer the runtime never produces', () => {
     const state = replayEvents(logOf('children-plan-synthetic.ndjson'))
     expect(state.children).toEqual({ gamma: { status: 'running' } })
+  })
+
+  it('veto-revision-synthetic locks the veto fold: answered outcome=veto, draft re-entry mover, no round opened', () => {
+    const state = replayEvents(logOf('veto-revision-synthetic.ndjson'))
+    expect(state.gate).toEqual({ mode: 'early', version: 1, answered: true })
+    expect(state.stages.draft).toBe('active')
+    expect(state.round).toEqual({ current: 1, cap: 1 })
+    const kernel = foldEvents(pipelineMachine, readEvents(logOf('veto-revision-synthetic.ndjson'))).snapshot
+    expect(kernel.value).toBe('draft')
+    expect(kernel.context.gateOutcome).toBe('veto')
   })
 })
