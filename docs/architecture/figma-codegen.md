@@ -63,12 +63,17 @@ looking their **frame name** up in the registry (or plan output).
 
         bun run figma:connect plan
 
-2.  In the Figma MCP, set each **component** node's `description` to its
-    payload's `description` (`use_figma`; node ids come from the plan
-    output). Screen/section frames are verified against plan output, not
-    pushed.
+2.  Verify the file before writing: every payload carries the registry's
+    `fileKey` — confirm it matches the Figma file the MCP session targets
+    before pushing anything (node ids are file-scoped; a duplicated or
+    re-created file breaks every lookup silently).
 
-3.  Confirm idempotence: read the descriptions back and compare with plan
+3.  In the Figma MCP, set each **component** node's `description` to its
+    payload's `description` (`use_figma`; node ids come from the plan
+    output, canonical scripts in the skill). Screen/section frames are
+    verified against plan output, not pushed.
+
+4.  Confirm idempotence: read the descriptions back and compare with plan
     output — zero mismatches means the push is a no-op from here on. Plan is
     deterministic, so re-pushing an unchanged registry writes identical
     bytes.

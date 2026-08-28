@@ -44,6 +44,7 @@ export const SectionEntrySchema = z.object({
 
 export const RegistrySchema = z.object({
   version: z.literal(1),
+  fileKey: z.string().min(1),
   components: z.array(ComponentEntrySchema).min(1),
   screens: z.array(ScreenEntrySchema),
   sections: z.array(SectionEntrySchema),
@@ -102,6 +103,9 @@ export const checkRegistry = (
   sourceExists: (path: string) => boolean = (path) => existsSync(path),
 ): readonly RegistryProblem[] => {
   const problems: RegistryProblem[] = []
+  if (!registry.fileKey) {
+    problems.push({ entry: 'fileKey', message: 'registry_file_key_missing: fileKey' })
+  }
   for (const entry of registry.components) {
     if (!sourceExists(entry.source)) problems.push(missingSource(entry.name, entry.source))
   }
@@ -144,6 +148,7 @@ export const loadRegistry = (deps: LoadRegistryDeps = {}): Registry => {
 export interface DescriptionPayload {
   readonly name: string
   readonly figmaNode: string
+  readonly fileKey: string
   readonly description: string
 }
 
@@ -151,16 +156,19 @@ export const planPayloads = (registry: Registry): readonly DescriptionPayload[] 
   ...registry.components.map((entry) => ({
     name: entry.name,
     figmaNode: entry.figmaNode,
+    fileKey: registry.fileKey,
     description: canonicalDescription(entry),
   })),
   ...registry.screens.map((entry) => ({
     name: entry.name,
     figmaNode: entry.figmaNode,
+    fileKey: registry.fileKey,
     description: canonicalDescription(entry),
   })),
   ...registry.sections.map((entry) => ({
     name: entry.section,
     figmaNode: entry.figmaNode,
+    fileKey: registry.fileKey,
     description: canonicalDescription(entry),
   })),
 ]

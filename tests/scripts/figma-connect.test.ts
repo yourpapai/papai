@@ -36,6 +36,7 @@ const component = (overrides: Partial<ComponentEntry> = {}): ComponentEntry => (
 
 const registryWith = (overrides: Partial<Registry> = {}): Registry => ({
   version: 1,
+  fileKey: 'o8B8JfxhFeOHqIfpv0eSdZ',
   components: BASE_KIT_COMPONENTS.map((name) =>
     component({ name, figmaNode: `1:${name.length}`, source: `src/${name}.tpl` }),
   ),
@@ -43,6 +44,11 @@ const registryWith = (overrides: Partial<Registry> = {}): Registry => ({
   sections: [],
   ...overrides,
 })
+
+const registryWithoutFileKey = (): Omit<Registry, 'fileKey'> => {
+  const { fileKey: _fileKey, ...rest } = registryWith()
+  return rest
+}
 
 const always = (): boolean => true
 
@@ -65,6 +71,11 @@ describe('RegistrySchema', () => {
     }
   })
 
+  test('requires a non-empty top-level fileKey', () => {
+    expect(RegistrySchema.safeParse(registryWithoutFileKey()).success).toBe(false)
+    expect(RegistrySchema.safeParse(registryWith({ fileKey: '' })).success).toBe(false)
+  })
+
   test('rejects malformed figma node ids and wrong version', () => {
     expect(RegistrySchema.safeParse({ ...registryWith(), version: 2 }).success).toBe(false)
     expect(RegistrySchema.safeParse(registryWith({ components: [component({ figmaNode: 'btn' })] })).success).toBe(
@@ -79,6 +90,11 @@ describe('RegistrySchema', () => {
 describe('checkRegistry', () => {
   test('passes a complete registry whose sources exist', () => {
     expect(checkRegistry(registryWith(), always)).toEqual([])
+  })
+
+  test('reports a blank file key as a problem', () => {
+    const problems = checkRegistry(registryWith({ fileKey: '' }), always)
+    expect(problems.some((problem) => problem.entry === 'fileKey')).toBe(true)
   })
 
   test('names the entry and path of a missing source', () => {
@@ -291,19 +307,51 @@ describe('planPayloads', () => {
       {
         name: 'ui/Btn',
         figmaNode: '1:6',
+        fileKey: 'o8B8JfxhFeOHqIfpv0eSdZ',
         description: componentDescription.replace('src/ui/Btn.tpl', 'src/ui/Btn.tpl'),
       },
-      { name: 'ui/Input', figmaNode: '1:8', description: componentDescription.replace('Btn', 'Input') },
-      { name: 'ui/Field', figmaNode: '1:8', description: componentDescription.replace('Btn', 'Field') },
-      { name: 'ui/PageHeader', figmaNode: '1:13', description: componentDescription.replace('Btn', 'PageHeader') },
-      { name: 'ui/SidebarLink', figmaNode: '1:14', description: componentDescription.replace('Btn', 'SidebarLink') },
-      { name: 'ui/TopBar', figmaNode: '1:9', description: componentDescription.replace('Btn', 'TopBar') },
+      {
+        name: 'ui/Input',
+        figmaNode: '1:8',
+        fileKey: 'o8B8JfxhFeOHqIfpv0eSdZ',
+        description: componentDescription.replace('Btn', 'Input'),
+      },
+      {
+        name: 'ui/Field',
+        figmaNode: '1:8',
+        fileKey: 'o8B8JfxhFeOHqIfpv0eSdZ',
+        description: componentDescription.replace('Btn', 'Field'),
+      },
+      {
+        name: 'ui/PageHeader',
+        figmaNode: '1:13',
+        fileKey: 'o8B8JfxhFeOHqIfpv0eSdZ',
+        description: componentDescription.replace('Btn', 'PageHeader'),
+      },
+      {
+        name: 'ui/SidebarLink',
+        figmaNode: '1:14',
+        fileKey: 'o8B8JfxhFeOHqIfpv0eSdZ',
+        description: componentDescription.replace('Btn', 'SidebarLink'),
+      },
+      {
+        name: 'ui/TopBar',
+        figmaNode: '1:9',
+        fileKey: 'o8B8JfxhFeOHqIfpv0eSdZ',
+        description: componentDescription.replace('Btn', 'TopBar'),
+      },
       {
         name: 'screen/TaskProviderSection',
         figmaNode: '22:198',
+        fileKey: 'o8B8JfxhFeOHqIfpv0eSdZ',
         description: 'CODE: src/screen/TaskProviderSection.tpl',
       },
-      { name: 'Bind form', figmaNode: '22:199', description: 'CODE: src/screen/Bind-form.tpl | section: Bind form' },
+      {
+        name: 'Bind form',
+        figmaNode: '22:199',
+        fileKey: 'o8B8JfxhFeOHqIfpv0eSdZ',
+        description: 'CODE: src/screen/Bind-form.tpl | section: Bind form',
+      },
     ])
   })
 })
