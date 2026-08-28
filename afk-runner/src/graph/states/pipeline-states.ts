@@ -5,8 +5,16 @@
 
 import { kernelSetup } from '../../kernel/machine.js'
 
+/**
+ * Operator abort mixin (C6 D7): `run_abort` reaches the aborted final from
+ * every non-final state. Spread per-state — movement lives in state configs,
+ * not a root-level targeted handler (the commonErrorTransitions pattern).
+ */
+const runAbort = { 'run.abort': { target: '#pipeline.aborted' } } as const
+
 export const start = kernelSetup.createStateConfig({
   on: {
+    ...runAbort,
     'stage.enter': {
       target: 'intake',
       guard: { type: 'isStage', params: { stage: 'intake' } },
@@ -17,6 +25,7 @@ export const start = kernelSetup.createStateConfig({
 
 export const intake = kernelSetup.createStateConfig({
   on: {
+    ...runAbort,
     'stage.enter': [
       {
         // Mid-intake crash resume re-enters intake through its own self-loop
@@ -31,11 +40,15 @@ export const intake = kernelSetup.createStateConfig({
         actions: ['closeThenActivate'],
       },
     ],
+    // Escalation presentation (C6 D4): interstitial — the presented event is
+    // the mover; the failed stage stays active in the map.
+    'gate.presented': { target: 'gate', actions: ['presentGate'] },
   },
 })
 
 export const draft = kernelSetup.createStateConfig({
   on: {
+    ...runAbort,
     'stage.enter': [
       {
         // The veto mover re-enters draft (C4 D8): the revision round runs as
@@ -50,11 +63,13 @@ export const draft = kernelSetup.createStateConfig({
         actions: ['closeThenActivate'],
       },
     ],
+    'gate.presented': { target: 'gate', actions: ['presentGate'] },
   },
 })
 
 export const review = kernelSetup.createStateConfig({
   on: {
+    ...runAbort,
     'stage.enter': [
       {
         target: 'review',
@@ -76,6 +91,7 @@ export const review = kernelSetup.createStateConfig({
 
 export const decompose = kernelSetup.createStateConfig({
   on: {
+    ...runAbort,
     'stage.enter': [
       {
         // Mid-decompose crash resume re-enters through its own self-loop (C5 D4).
@@ -96,11 +112,13 @@ export const decompose = kernelSetup.createStateConfig({
         actions: ['closeThenActivate'],
       },
     ],
+    'gate.presented': { target: 'gate', actions: ['presentGate'] },
   },
 })
 
 export const atomicity = kernelSetup.createStateConfig({
   on: {
+    ...runAbort,
     'stage.enter': [
       {
         // Mid-atomicity crash resume re-enters through its own self-loop (C5 D4).
@@ -114,24 +132,29 @@ export const atomicity = kernelSetup.createStateConfig({
         actions: ['closeThenActivate'],
       },
     ],
+    'gate.presented': { target: 'gate', actions: ['presentGate'] },
   },
 })
 
 /**
  * GATE compound (C4 D1): `awaiting` is the machine-state park of a presented
- * gate. Entries: interstitial `gate.presented` from review (early) or the
- * compound's own initial child via `stage.enter(gate)` (final, C5's bracket).
- * Exits key on the legacy mover events — `round.open` (extend) back to
- * review, `stage.enter(decompose)` (approve-early), `stage.enter(draft)`
- * (veto) — plus `gate.answered` + all-done → completed (existing edge) and
- * `gate.answered` outcome=abort → aborted (new logs only). Per-state edges
- * re-declare the root assigns they shadow (`openRound`, `closeThenActivate`,
- * `presentGate`, `answerGate`); re-presentation re-enters awaiting (fresh
- * version = genuinely fresh awaiting, D1).
+ * gate. Entries: interstitial `gate.presented` from any work stage (early
+ * cap-hit, C6 escalation) or the compound's own initial child via
+ * `stage.enter(gate)` (final, C5's bracket). Exits key on the legacy mover
+ * events — `round.open` (extend) back to review, `stage.enter(decompose)`
+ * (approve-early), `stage.enter(draft)` (veto) — plus `gate.answered` +
+ * all-done → completed (existing edge), `gate.answered` outcome=abort →
+ * aborted (new logs only), the C6 escalation retry movers
+ * (`stage.enter(review|atomicity|intake)` re-entering the still-active failed
+ * stage), and the `run_abort` mixin. Per-state edges re-declare the root
+ * assigns they shadow (`openRound`, `closeThenActivate`, `presentGate`,
+ * `answerGate`); re-presentation re-enters awaiting (fresh version =
+ * genuinely fresh awaiting, D1).
  */
 export const gate = kernelSetup.createStateConfig({
   initial: 'awaiting',
   on: {
+    ...runAbort,
     'gate.answered': { target: 'completed', guard: 'allStagesDone', actions: ['answerGate'] },
   },
   states: {
@@ -142,6 +165,11 @@ export const gate = kernelSetup.createStateConfig({
         'round.open': { target: '#pipeline.review', actions: ['openRound'] },
         'stage.enter': [
           {
+            target: '#pipeline.review',
+            guard: { type: 'isStage', params: { stage: 'review' } },
+            actions: ['closeThenActivate'],
+          },
+          {
             target: '#pipeline.decompose',
             guard: { type: 'isStage', params: { stage: 'decompose' } },
             actions: ['closeThenActivate'],
@@ -149,6 +177,16 @@ export const gate = kernelSetup.createStateConfig({
           {
             target: '#pipeline.draft',
             guard: { type: 'isStage', params: { stage: 'draft' } },
+            actions: ['closeThenActivate'],
+          },
+          {
+            target: '#pipeline.atomicity',
+            guard: { type: 'isStage', params: { stage: 'atomicity' } },
+            actions: ['closeThenActivate'],
+          },
+          {
+            target: '#pipeline.intake',
+            guard: { type: 'isStage', params: { stage: 'intake' } },
             actions: ['closeThenActivate'],
           },
         ],

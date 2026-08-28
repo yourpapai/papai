@@ -59,6 +59,7 @@ const FINAL_VALUES: Readonly<Record<string, string | Record<string, string>>> = 
   'tests-consolidation': 'completed',
   'abort-at-final-synthetic.ndjson': 'aborted',
   'children-plan-synthetic.ndjson': 'start',
+  'escalation-approve-cycle-synthetic.ndjson': 'completed',
   'extend-at-final-cycle-synthetic.ndjson': 'completed',
   'resume-artifact-skip-gate.ndjson': AWAITING,
   's-depth-calm-stop-resume.ndjson': 'review',
@@ -141,7 +142,7 @@ describe('golden-replay parity: graph v0 vs legacy fold', () => {
     })
   }
 
-  it('holds all twenty-one fixtures from the C1+C4+C5 corpus', () => {
-    expect(collectFixtures()).toHaveLength(21)
+  it('holds all twenty-two fixtures from the C1+C4+C5+C6 corpus', () => {
+    expect(collectFixtures()).toHaveLength(22)
   })
 })

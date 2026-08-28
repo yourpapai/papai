@@ -58,6 +58,7 @@ export function toKernelEvent(event: SddEvent): KernelEvent | null {
     }
   }
   if (event.type === 'plan') return { type: 'plan' }
+  if (event.type === 'run_abort') return { type: 'run.abort' }
   if (event.type === 'child_spawned') return { type: 'child.spawned', child: event.child }
   if (event.type === 'child_done') return { type: 'child.done', child: event.child, outcome: event.outcome }
   return null

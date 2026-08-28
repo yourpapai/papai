@@ -30,7 +30,9 @@ export const PersistedRunStateSchema = z.object({
   depth: DepthProfileSchema.nullable(),
   round: z.number().int().nonnegative(),
   roundCap: z.number().int().positive().optional(),
-  gate: z.object({ mode: z.enum(['early', 'final', 'plan']), version: z.number().int().positive() }).nullable(),
+  gate: z
+    .object({ mode: z.enum(['early', 'final', 'plan', 'escalation']), version: z.number().int().positive() })
+    .nullable(),
   status: z.enum(['running', 'completed', 'aborted', 'failed', 'stopped']),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),

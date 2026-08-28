@@ -343,18 +343,14 @@ describe('pipeline graph v0 behavior', () => {
     expect(snapshot.context.stages['draft']).toBe('done')
   })
 
-  it('gate.presented is a mapped no-op that never moves position', () => {
+  it('gate.presented at a position with no presented edge (start) is a tolerated no-op', () => {
     let snapshot = initialStep(pipelineMachine)[0]
-    snapshot = step(pipelineMachine, snapshot, {
-      type: 'stage.enter',
-      stage: 'intake',
-    })[0]
     snapshot = step(pipelineMachine, snapshot, {
       type: 'gate.presented',
       mode: 'early',
       version: 1,
     })[0]
-    expect(snapshot.value).toBe('intake')
+    expect(snapshot.value).toBe('start')
   })
 
   it('stage.exit marks the map done from any position, including finals', () => {
@@ -379,5 +375,107 @@ describe('pipeline graph v0 behavior', () => {
     })[0]
     expect(snapshot.value).toBe('completed')
     expect(snapshot.context.stages['gate']).toBe('done')
+  })
+})
+
+describe('pipeline C6 escalation edges — interstitial presentation from the work stages (D4)', () => {
+  function atStage(stages: readonly string[]): KernelSnapshot {
+    let snapshot = initialStep(pipelineMachine)[0]
+    for (const stage of stages) {
+      snapshot = step(pipelineMachine, snapshot, { type: 'stage.enter', stage })[0]
+    }
+    return snapshot
+  }
+
+  it.each(['intake', 'draft', 'decompose', 'atomicity'] as const)(
+    'gate.presented (escalation) from %s moves into the gate compound, stage map untouched',
+    (stage) => {
+      const walk = ['intake', 'draft', 'review', 'decompose', 'atomicity'].slice(
+        0,
+        ['intake', 'draft', 'review', 'decompose', 'atomicity'].indexOf(stage) + 1,
+      )
+      const before = atStage(walk)
+      const after = step(pipelineMachine, before, {
+        type: 'gate.presented',
+        mode: 'escalation',
+        version: 1,
+      })[0]
+      expect(after.value).toEqual({ gate: 'awaiting' })
+      expect(after.context.stages[stage]).toBe('active')
+      expect(after.context.stages['gate']).toBe('pending')
+      expect(after.context.gate).toEqual({ mode: 'escalation', version: 1, answered: false })
+    },
+  )
+
+  function toAwaitingFrom(walk: readonly string[]): KernelSnapshot {
+    const snapshot = atStage(walk)
+    return step(pipelineMachine, snapshot, { type: 'gate.presented', mode: 'escalation', version: 1 })[0]
+  }
+
+  it('stage.enter(review) from awaiting moves to review — the escalation retry mover', () => {
+    const snapshot = step(pipelineMachine, toAwaitingFrom(['intake', 'draft', 'review']), {
+      type: 'stage.enter',
+      stage: 'review',
+    })[0]
+    expect(snapshot.value).toBe('review')
+    expect(snapshot.context.stages['review']).toBe('active')
+  })
+
+  it('stage.enter(atomicity) from awaiting moves to atomicity — the escalation retry mover', () => {
+    const snapshot = step(pipelineMachine, toAwaitingFrom(['intake', 'draft', 'review', 'decompose', 'atomicity']), {
+      type: 'stage.enter',
+      stage: 'atomicity',
+    })[0]
+    expect(snapshot.value).toBe('atomicity')
+    expect(snapshot.context.stages['atomicity']).toBe('active')
+  })
+
+  it('stage.enter(intake) from awaiting moves to intake — the escalation retry mover', () => {
+    const snapshot = step(pipelineMachine, toAwaitingFrom(['intake']), {
+      type: 'stage.enter',
+      stage: 'intake',
+    })[0]
+    expect(snapshot.value).toBe('intake')
+    expect(snapshot.context.stages['intake']).toBe('active')
+  })
+})
+
+describe('pipeline C6 run_abort — operator abort mixin from every non-final state (D7)', () => {
+  const POSITIONS: Readonly<Record<string, readonly string[]>> = {
+    start: [],
+    intake: ['intake'],
+    draft: ['intake', 'draft'],
+    review: ['intake', 'draft', 'review'],
+    decompose: ['intake', 'draft', 'review', 'decompose'],
+    atomicity: ['intake', 'draft', 'review', 'decompose', 'atomicity'],
+  }
+
+  it.each(Object.keys(POSITIONS))('run.abort from %s reaches the aborted final', (position) => {
+    let snapshot = initialStep(pipelineMachine)[0]
+    for (const stage of POSITIONS[position]!) {
+      snapshot = step(pipelineMachine, snapshot, { type: 'stage.enter', stage })[0]
+    }
+    snapshot = step(pipelineMachine, snapshot, { type: 'run.abort' })[0]
+    expect(snapshot.value).toBe('aborted')
+    expect(snapshot.status).toBe('done')
+  })
+
+  it('run.abort from gate.awaiting reaches the aborted final', () => {
+    let snapshot = initialStep(pipelineMachine)[0]
+    for (const stage of ['intake', 'draft', 'review'] as const) {
+      snapshot = step(pipelineMachine, snapshot, { type: 'stage.enter', stage })[0]
+    }
+    snapshot = step(pipelineMachine, snapshot, { type: 'gate.presented', mode: 'escalation', version: 1 })[0]
+    snapshot = step(pipelineMachine, snapshot, { type: 'run.abort' })[0]
+    expect(snapshot.value).toBe('aborted')
+    expect(snapshot.status).toBe('done')
+  })
+
+  it('run.abort from a final state is a no-op', () => {
+    let snapshot = initialStep(pipelineMachine)[0]
+    snapshot = step(pipelineMachine, snapshot, { type: 'run.abort' })[0]
+    snapshot = step(pipelineMachine, snapshot, { type: 'run.abort' })[0]
+    expect(snapshot.value).toBe('aborted')
+    expect(snapshot.status).toBe('done')
   })
 })

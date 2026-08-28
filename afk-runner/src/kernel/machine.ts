@@ -24,7 +24,7 @@ export interface RoundStatus {
 }
 
 export interface GateRecord {
-  readonly mode: 'early' | 'final' | 'plan'
+  readonly mode: 'early' | 'final' | 'plan' | 'escalation'
   readonly version: number
   readonly answered: boolean
 }
@@ -124,6 +124,7 @@ export type KernelEvent =
       readonly ts: string
     }
   | { readonly type: 'plan' }
+  | { readonly type: 'run.abort' }
   | { readonly type: 'child.spawned'; readonly child: string }
   | { readonly type: 'child.done'; readonly child: string; readonly outcome: 'done' | 'failed' }
 export const kernelSetup = setup({

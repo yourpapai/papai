@@ -38,15 +38,20 @@ function gateVersionsOf(events: readonly FixtureEvent[], action: 'presented' | '
     .map((event) => (event.type === 'gate' ? event.version : 0))
 }
 
+function escalationPresentations(events: readonly FixtureEvent[]): FixtureEvent[] {
+  return events.filter((event) => event.type === 'gate' && event.action === 'presented' && event.mode === 'escalation')
+}
+
 function firstAnsweredOf(events: readonly FixtureEvent[], outcome: string): FixtureEvent | undefined {
   return events.find((event) => event.type === 'gate' && event.action === 'answered' && event.outcome === outcome)
 }
 
 describe('scenario corpus inventory', () => {
-  it('holds exactly the eleven recorded scenario fixtures', () => {
+  it('holds exactly the twelve recorded scenario fixtures', () => {
     expect(scenarioFiles()).toEqual([
       'abort-at-final-synthetic.ndjson',
       'children-plan-synthetic.ndjson',
+      'escalation-approve-cycle-synthetic.ndjson',
       'extend-at-final-cycle-synthetic.ndjson',
       'resume-artifact-skip-gate.ndjson',
       's-depth-calm-stop-resume.ndjson',
@@ -174,5 +179,24 @@ describe('scenario corpus inventory', () => {
     expect(state.stages.gate).toBe('active')
     const kernel = foldEvents(pipelineMachine, events).snapshot
     expect(kernel.value).toEqual({ gate: 'awaiting' })
+  })
+
+  it('escalation-approve-cycle-synthetic covers the interstitial escalation cycle: failure ledger, no gate-stage entry, retry mover, completed run', () => {
+    const events = readEvents(logOf('escalation-approve-cycle-synthetic.ndjson'))
+    expect(events).toHaveLength(24)
+    // interstitial presentation: the presented event fires from review's
+    // position — no stage_enter(gate) precedes it, the gate stage never activates
+    expect(stageEvents(events, 'stage_enter', 'gate')[0]?.seq).toBe(19)
+    expect(escalationPresentations(events)).toHaveLength(1)
+    // the approve retry mover re-enters the still-active failed stage
+    expect(stageEvents(events, 'stage_enter', 'review').map((event) => event.seq)).toEqual([6, 13])
+    const kernel = foldEvents(pipelineMachine, events).snapshot
+    expect(kernel.value).toBe('completed')
+    expect(kernel.context.failures).toEqual({})
+    // the review exit after the successful retry cleared its ledger entry
+    const atMover = foldEvents(pipelineMachine, events.slice(0, 13)).snapshot
+    expect(atMover.value).toBe('review')
+    expect(atMover.context.stages['review']).toBe('active')
+    expect(atMover.context.failures).toEqual({ review: 2 })
   })
 })

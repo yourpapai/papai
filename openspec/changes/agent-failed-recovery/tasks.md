@@ -11,9 +11,9 @@
 
 ## 3. Edges face (D4/D7)
 
-- [ ] 3.1 Add the `escalation-approve-cycle-synthetic` fixture + README/inventory rows — red seed: the mover `stage_enter(<stage>)` from `gate.awaiting` refuses at the boundary. Verify: `bun test tests/afk-runner/fixtures/scenarios/inventory.test.ts tests/afk-runner/parity/golden-replay.test.ts` (fails at the mover)
-- [ ] 3.2 Failing graph tests: `gate.presented → gate` edges from intake/draft/decompose/atomicity; awaiting `stage.enter` edges to review/atomicity/intake; `run_abort → aborted` from every non-final state (mixin). Verify: `bun test tests/afk-runner/graph/pipeline.test.ts` (fails)
-- [ ] 3.3 Implement the edges + mixin in `pipeline-states.ts`; graph tests green; full parity unchanged (no historical log contains these events). Verify: `bun test tests/afk-runner/graph/pipeline.test.ts tests/afk-runner/parity/`
+- [x] 3.1 Add the `escalation-approve-cycle-synthetic` fixture + README/inventory rows — red seed: the mover `stage_enter(<stage>)` from `gate.awaiting` refuses at the boundary. Verify: `bun test tests/afk-runner/fixtures/scenarios/inventory.test.ts tests/afk-runner/parity/golden-replay.test.ts` (fails at the mover)
+- [x] 3.2 Failing graph tests: `gate.presented → gate` edges from intake/draft/decompose/atomicity; awaiting `stage.enter` edges to review/atomicity/intake; `run_abort → aborted` from every non-final state (mixin). Verify: `bun test tests/afk-runner/graph/pipeline.test.ts` (fails)
+- [x] 3.3 Implement the edges + mixin in `pipeline-states.ts`; graph tests green; full parity unchanged (no historical log contains these events). Verify: `bun test tests/afk-runner/graph/pipeline.test.ts tests/afk-runner/parity/`
 
 ## 4. Loop face (D2/D3)
 

@@ -92,7 +92,7 @@ export interface MemoFields {
   readonly depth: KernelContext['depth']
   readonly round: number
   readonly roundCap: number
-  readonly gate: { readonly mode: 'early' | 'final' | 'plan'; readonly version: number } | null
+  readonly gate: { readonly mode: 'early' | 'final' | 'plan' | 'escalation'; readonly version: number } | null
   readonly status: 'running' | 'stopped' | 'completed' | 'aborted'
   readonly createdAt: string
   readonly updatedAt: string

@@ -102,7 +102,7 @@ export type GateWaiterResult =
   | { readonly kind: 'settled'; readonly outcome: SettleOutcome }
   | { readonly kind: 'external' }
 
-function narrowGateMode(mode: 'early' | 'final' | 'plan'): 'early' | 'final' {
+function narrowGateMode(mode: 'early' | 'final' | 'plan' | 'escalation'): 'early' | 'final' {
   return mode === 'early' ? 'early' : 'final'
 }
 

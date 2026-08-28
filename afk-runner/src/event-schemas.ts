@@ -175,7 +175,7 @@ const GateEvent = z.object({
   altitude: z.literal('L2'),
   type: z.literal('gate'),
   action: z.enum(['presented', 'answered', 'rearmed']),
-  mode: z.enum(['early', 'final', 'plan']),
+  mode: z.enum(['early', 'final', 'plan', 'escalation']),
   version: z.number().int().positive(),
   /** Explicit settle outcome (C4); historical answered events carry none. */
   outcome: GateOutcomeSchema.optional(),
@@ -218,6 +218,13 @@ const ResumeEvent = z.object({
   session: z.string().min(1).optional(),
 })
 
+/** Operator abort (C6 D7): the stop verb's event-sourced give-up for runs with no live owner. */
+const RunAbortEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('run_abort'),
+  reason: z.literal('operator'),
+})
+
 export const AutoDecisionRuleSchema = z.enum(['R1', 'R2', 'R3', 'R4', 'R5', 'none'])
 export type AutoDecisionRule = z.infer<typeof AutoDecisionRuleSchema>
 
@@ -256,6 +263,7 @@ const EVENT_VARIANTS = [
   ChildDoneEvent,
   HumanEditsEvent,
   ResumeEvent,
+  RunAbortEvent,
   AutoDecisionEvent,
 ] as const
 
@@ -287,6 +295,7 @@ export const SddEventSchema = z.discriminatedUnion('type', [
   ChildDoneEvent.extend(StampShape),
   HumanEditsEvent.extend(StampShape),
   ResumeEvent.extend(StampShape),
+  RunAbortEvent.extend(StampShape),
   AutoDecisionEvent.extend(StampShape),
 ])
 export type SddEvent = z.infer<typeof SddEventSchema>
