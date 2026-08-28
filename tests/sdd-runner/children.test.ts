@@ -795,6 +795,32 @@ describe('aggregate budget ledger (D10)', () => {
     expect(stdoutLines.some((line) => /budget guard.*unknown/u.test(line))).toBe(true)
   })
 
+  it('an unmetered parent (budget: null) keeps spawning despite unpriceable spend — no ceiling to guard', async () => {
+    const fixture = await makeFixture()
+    await seedParent(fixture, ['auth-db', 'auth-api'], { 'auth-db': 'done' })
+    appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), {
+      altitude: 'L2',
+      type: 'child_done',
+      child: 'auth-db',
+      outcome: 'done',
+    })
+    const tracker = makeRunner(fixture, {})
+    const stdoutLines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      config: { ...fixture.deps.config, budget: null },
+      stdout: (line: string) => {
+        stdoutLines.push(line)
+      },
+    }
+
+    const result = await runChildren(deps, fixture.state, fixture.ctx, { runChildRun: tracker.runChildRun })
+
+    expect(result.halted).toBe('completed')
+    expect(tracker.spawned).toEqual(['auth-api'])
+    expect(stdoutLines.some((line) => line.includes('budget guard'))).toBe(false)
+  })
+
   it('halts before the next child_spawned when a completed child usage cannot be priced (fail closed)', async () => {
     const fixture = await makeFixture()
     await seedParent(fixture, ['auth-db', 'auth-api'], {})

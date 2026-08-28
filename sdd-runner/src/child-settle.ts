@@ -91,8 +91,9 @@ export async function stopAtBudgetGuard(
   state.status = 'stopped'
   await saveRunState(state, deps.now?.() ?? new Date())
   const shape = spend.costKnown ? `$${spend.spentUsd.toFixed(2)}` : 'unknown'
+  const ceiling = deps.config.budget === null ? 'unmetered' : `$${deps.config.budget.toFixed(2)}`
   deps.stdout?.(
-    `budget guard: tree spend ${shape} vs budget $${deps.config.budget.toFixed(2)} — parent stopped before child ${childId} (resumable)`,
+    `budget guard: tree spend ${shape} vs budget ${ceiling} — parent stopped before child ${childId} (resumable)`,
   )
   return { halted: 'stopped', child: childId, childStatus: 'budget-guard' }
 }
