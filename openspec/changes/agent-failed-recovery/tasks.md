@@ -34,8 +34,8 @@
 
 ## 7. Memo face (D8)
 
-- [ ] 7.1 Failing tests: escalation park → `running` + `gate {mode:'escalation'}`; abort-at-escalation → status `failed`; every drive exit path writes the memo (no stale `running` after a failure park); memo-parity suite over the originals stays green. Verify: `bun test tests/afk-runner/memo-failed.test.ts` (fails)
-- [ ] 7.2 Widen the memo unions and extend `memoFieldsOf` (failure-caused terminal derived from events). Verify: `bun test tests/afk-runner/memo-failed.test.ts tests/afk-runner/memo-parity.test.ts`
+- [x] 7.1 Failing tests: escalation park → `running` + `gate {mode:'escalation'}`; abort-at-escalation → status `failed`; every drive exit path writes the memo (no stale `running` after a failure park); memo-parity suite over the originals stays green. Verify: `bun test tests/afk-runner/memo-failed.test.ts` (fails)
+- [x] 7.2 Widen the memo unions and extend `memoFieldsOf` (failure-caused terminal derived from events). Verify: `bun test tests/afk-runner/memo-failed.test.ts tests/afk-runner/memo-parity.test.ts`
 
 ## 8. Validation face (D10)
 

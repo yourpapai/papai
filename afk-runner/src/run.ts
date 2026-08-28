@@ -81,9 +81,20 @@ function logPathOf(runDir: string): string {
   return path.join(runDir, 'events.ndjson')
 }
 
-/** Terminal parks map to the memo's terminal statuses (C5 D6): session-id release follows through TERMINAL_STATUSES. */
-function memoStatusOf(halted: ParkedReason, position: string): 'running' | 'stopped' | 'completed' | 'aborted' {
-  if (halted === 'final') return position === 'aborted' ? 'aborted' : 'completed'
+/**
+ * Terminal parks map to the memo's terminal statuses (C5 D6): session-id
+ * release follows through TERMINAL_STATUSES. C6 D8: an abort settled at an
+ * escalation gate is failure-caused terminal — the dormant `failed` status
+ * finally means something (the agent couldn't do the job) vs `aborted` (a
+ * human chose to stop).
+ */
+function memoStatusOf(
+  halted: ParkedReason,
+  position: string,
+  failureCaused: boolean,
+): 'running' | 'stopped' | 'completed' | 'aborted' | 'failed' {
+  if (halted === 'final' && position === 'aborted') return failureCaused ? 'failed' : 'aborted'
+  if (halted === 'final') return 'completed'
   if (halted === 'stopped') return 'stopped'
   return 'running'
 }
@@ -94,7 +105,7 @@ export interface MemoFields {
   readonly round: number
   readonly roundCap: number
   readonly gate: { readonly mode: 'early' | 'final' | 'plan' | 'escalation'; readonly version: number } | null
-  readonly status: 'running' | 'stopped' | 'completed' | 'aborted'
+  readonly status: 'running' | 'stopped' | 'completed' | 'aborted' | 'failed'
   readonly createdAt: string
   readonly updatedAt: string
   readonly autoExtendsUsed: number
@@ -129,6 +140,13 @@ export function memoFieldsOf(
   position: string,
 ): MemoFields {
   const lastEnter = [...events].reverse().find((event) => event.type === 'stage_enter')
+  // Failure-caused terminal (C6 D8), derived from the events: an answered
+  // abort at an escalation-mode gate. Parity-free — no historical run ever
+  // persisted `failed`.
+  const failureCaused = events.some(
+    (event) =>
+      event.type === 'gate' && event.action === 'answered' && event.outcome === 'abort' && event.mode === 'escalation',
+  )
   return {
     stage: lastEnter !== undefined && lastEnter.type === 'stage_enter' ? lastEnter.stage : 'intake',
     depth: context.depth,
@@ -136,7 +154,7 @@ export function memoFieldsOf(
     roundCap: context.round?.cap ?? resolveRoundCap({ depth: context.depth }),
     gate:
       halted === 'final' || context.gate === null ? null : { mode: context.gate.mode, version: context.gate.version },
-    status: memoStatusOf(halted, position),
+    status: memoStatusOf(halted, position, failureCaused),
     createdAt: events[0]?.ts ?? new Date().toISOString(),
     updatedAt: events[events.length - 1]?.ts ?? new Date().toISOString(),
     autoExtendsUsed: context.autoDecisions.filter((record) => record.decision === 'extend').length,
