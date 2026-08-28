@@ -65,6 +65,7 @@ describe('createRunView rendering', () => {
         state: bag.state,
         slots: bag.slots,
         findings: bag.findings,
+        history: bag.history,
         width: 100,
         startedAt: Date.parse('2026-01-01T00:00:00.000Z'),
         now: Date.parse('2026-01-01T00:01:00.000Z'),
@@ -88,6 +89,7 @@ describe('createRunView rendering', () => {
         state: bag.state,
         slots: bag.slots,
         findings: bag.findings,
+        history: bag.history,
         width: 100,
         startedAt: 0,
         now: 0,
@@ -102,8 +104,8 @@ function frameText(frame: string | undefined): string {
   return frame ?? ''
 }
 
-function historyTitleLines(frame: string): readonly string[] {
-  return frame.split('\n').filter((line) => line.includes('╭─ Findings') || line.includes('╭─ Burndown'))
+function firstHistoryLineOf(line: string | undefined): string {
+  return line ?? ''
 }
 
 describe('running screen presentation (6.2)', () => {
@@ -125,7 +127,7 @@ describe('running screen presentation (6.2)', () => {
     }
   }
 
-  it('frames panels with findings beside burndown at wide width', () => {
+  it('history rows render as framed body lines beside the live panels (7.4 split)', () => {
     let bag = emptyRunFold()
     bag = foldRunView(bag, stamped(1, { altitude: 'L2', type: 'stage_enter', stage: 'review' }))
     bag = foldRunView(
@@ -148,20 +150,22 @@ describe('running screen presentation (6.2)', () => {
         state: bag.state,
         slots: bag.slots,
         findings: bag.findings,
+        history: bag.history,
         width: 100,
         startedAt: 0,
         now: 0,
       }),
     )
     const frame = frameText(lastFrame())
-    expect(frame).toContain('╭─ Findings')
-    expect(frame).toContain('╭─ Burndown')
-    expect(frame).toContain('╮╭─ Burndown')
+    expect(frame).toContain('│ BLOCKER  F1 r1')
+    expect(frame).toContain('│ round 1: 1b 0m 0n')
+    expect(frame).toContain('╭─ Pipeline')
+    expect(frame).toContain('╭─ Agents')
     frame.split('\n').forEach((line) => expect(displayWidth(line)).toBeLessThanOrEqual(100))
     unmount()
   })
 
-  it('narrow width stacks findings above burndown and stays inside the width', () => {
+  it('narrow width truncates history and live rows instead of overflowing', () => {
     let bag = emptyRunFold()
     bag = foldRunView(bag, stamped(1, { altitude: 'L2', type: 'stage_enter', stage: 'review' }))
     bag = foldRunView(
@@ -184,17 +188,15 @@ describe('running screen presentation (6.2)', () => {
         state: bag.state,
         slots: bag.slots,
         findings: bag.findings,
+        history: bag.history,
         width: 48,
         startedAt: 0,
         now: 0,
       }),
     )
     const frame = frameText(lastFrame())
-    expect(frame).not.toContain('╮╭─ Burndown')
-    const titles = historyTitleLines(frame)
-    expect(titles.length).toBe(2)
-    expect(titles[0]).toContain('Findings')
-    expect(titles[1]).toContain('Burndown')
+    expect(frame).toContain('NITPICK')
+    expect(frame).toContain('round 1:')
     frame.split('\n').forEach((line) => expect(displayWidth(line)).toBeLessThanOrEqual(48))
     unmount()
   })
@@ -224,6 +226,7 @@ describe('running screen presentation (6.2)', () => {
         state: bag.state,
         slots: bag.slots,
         findings: bag.findings,
+        history: bag.history,
         width: 100,
         startedAt: 0,
         now: 0,
@@ -255,6 +258,7 @@ describe('running screen presentation (6.2)', () => {
         state: bag.state,
         slots: bag.slots,
         findings: bag.findings,
+        history: bag.history,
         width: 100,
         startedAt: Date.parse('2026-01-01T00:00:00.000Z'),
         now: Date.parse('2026-01-01T00:01:00.000Z'),
@@ -264,6 +268,62 @@ describe('running screen presentation (6.2)', () => {
     expect(frame).toContain('$0.0500')
     expect(frame).toContain('\u001b[36m$0.0500')
     expect(frame).toContain('\u001b[36m$0.05')
+    unmount()
+  })
+
+  it('later events never mutate or reorder emitted history rows (7.4)', () => {
+    let bag = emptyRunFold()
+    bag = foldRunView(
+      bag,
+      stamped(1, { altitude: 'L2', type: 'finding', action: 'filed', id: 'F1', round: 1, class: 'BLOCKER' }),
+    )
+    const RunView = createRunView()
+    const { lastFrame, rerender, unmount } = render(
+      createElement(RunView, {
+        state: bag.state,
+        slots: bag.slots,
+        findings: bag.findings,
+        history: bag.history,
+        width: 100,
+        startedAt: 0,
+        now: 0,
+      }),
+    )
+    const firstHistoryLine = frameText(lastFrame())
+      .split('\n')
+      .find((line) => line.includes('BLOCKER'))
+    expect(firstHistoryLine).toBeDefined()
+    bag = foldRunView(
+      bag,
+      stamped(2, { altitude: 'L2', type: 'finding', action: 'filed', id: 'F2', round: 1, class: 'NITPICK' }),
+    )
+    bag = foldRunView(
+      bag,
+      stamped(3, {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 1,
+        verdict: 'open',
+        counts: { blocker: 1, material: 0, nitpick: 1 },
+      }),
+    )
+    rerender(
+      createElement(RunView, {
+        state: bag.state,
+        slots: bag.slots,
+        findings: bag.findings,
+        history: bag.history,
+        width: 100,
+        startedAt: 0,
+        now: 0,
+      }),
+    )
+    const grown = frameText(lastFrame())
+    const f1Index = grown.indexOf('F1 r1')
+    const f2Index = grown.indexOf('F2 r1')
+    expect(f1Index).toBeGreaterThanOrEqual(0)
+    expect(f2Index).toBeGreaterThan(f1Index)
+    expect(grown).toContain(firstHistoryLineOf(firstHistoryLine))
     unmount()
   })
 
@@ -288,6 +348,7 @@ describe('running screen presentation (6.2)', () => {
         state: bag.state,
         slots: bag.slots,
         findings: bag.findings,
+        history: bag.history,
         width: 100,
         startedAt: 0,
         now: 0,

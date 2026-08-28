@@ -3,16 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { Box, Text } from 'ink'
+import { Box, Static, Text } from 'ink'
 import { createElement } from 'react'
 
 import type { SddEvent, EventInput } from './events.js'
 import { formatElapsed, formatTokenCount, MIDDLE_DOT, renderPipelineMap } from './renderer.js'
 import { createReplayFolder, initialReplayState } from './replay.js'
 import type { ReplayState } from './replay.js'
-import { frameBodyLine, frameBottom, frameTop, joinOrStack, padDisplay, truncateDisplay } from './tui-panels.js'
+import { foldHistoryRows } from './tui-history.js'
+import type { HistoryRow } from './tui-history.js'
+import { frameBodyLine, frameBottom, frameTop, padDisplay, truncateDisplay } from './tui-panels.js'
 import { costToken, retryToken, severityToken, stageToken } from './tui-tokens.js'
-import type { ColorMode, InkColorProps, Severity, StageStatus } from './tui-tokens.js'
+import type { ColorMode, InkColorProps, StageStatus } from './tui-tokens.js'
 import { foldFindings, foldSlots } from './watch-view.js'
 import type { SlotState, WatchFinding } from './watch-view.js'
 
@@ -33,6 +35,8 @@ export interface RunViewProps {
   readonly state: ReplayState
   readonly slots: readonly SlotState[]
   readonly findings: readonly WatchFinding[]
+  /** Finalized rows for the append-only region (fancy-ui D6). */
+  readonly history: readonly HistoryRow[]
   readonly width: number
   readonly startedAt: number
   readonly now: number
@@ -43,21 +47,25 @@ export interface RunFold {
   readonly state: ReplayState
   readonly slots: readonly SlotState[]
   readonly findings: readonly WatchFinding[]
+  /** Append-only finalized rows — grown by foldRunView, rendered once in `Static`. */
+  readonly history: readonly HistoryRow[]
   /** Persistent replay folder — foldRunView keeps it per bag. */
   readonly folder: ReturnType<typeof createReplayFolder>
 }
 
 /** Empty fold bag (fresh run / before the first event). */
 export function emptyRunFold(): RunFold {
-  return { state: initialReplayState(), slots: [], findings: [], folder: createReplayFolder() }
+  return { state: initialReplayState(), slots: [], findings: [], history: [], folder: createReplayFolder() }
 }
 
 /** Fold one event into the run-view aggregate (single loop for the bus). */
 export function foldRunView(bag: RunFold, event: SddEvent | EventInput): RunFold {
+  const slots = foldSlots(bag.slots, event)
   return {
     state: bag.folder.fold(event),
-    slots: foldSlots(bag.slots, event),
+    slots,
     findings: foldFindings(bag.findings, event),
+    history: foldHistoryRows(bag.history, event, slots),
     folder: bag.folder,
   }
 }
@@ -103,13 +111,6 @@ function costSegments(props: RunViewProps): readonly StatusPart[] {
     ...(cost === undefined ? [] : [cost]),
     { key: 'tail', text: `${elapsed} · q to stop` },
   ]
-}
-
-function severityOfClass(value: string): Severity | null {
-  if (value === 'BLOCKER') return 'blocker'
-  if (value === 'MATERIAL') return 'material'
-  if (value === 'NITPICK') return 'nitpick'
-  return null
 }
 
 /** Done-slot row: the cost rides the line end with the known-cost token; truncation never cuts the cost. */
@@ -192,10 +193,9 @@ function panel(title: string, rows: readonly PanelRow[], width: number): ReturnT
 interface RunRows {
   readonly pipeline: readonly PanelRow[]
   readonly agents: readonly PanelRow[]
-  readonly burndown: readonly PanelRow[]
-  readonly findings: readonly PanelRow[]
 }
 
+/** Live rows only: pipeline map plus active/retrying slots — done agents live in the history region. */
 function runRows(props: RunViewProps, mode: ColorMode): RunRows {
   const contentWidth = Math.max(1, props.width - 4)
   const pipelineLines = renderPipelineMap(props.state, { width: props.width })
@@ -204,48 +204,48 @@ function runRows(props: RunViewProps, mode: ColorMode): RunRows {
     return row(`p-${String(index)}`, line, stageToken(mode, status))
   })
   const idle = props.slots.length === 0 && Object.values(props.state.stages).every((status) => status === 'pending')
+  const live = props.slots.filter((slot) => slot.status !== 'done')
   const agents = idle
     ? [row('idle', 'idle — waiting for events')]
-    : props.slots.map((slot, index) => slotRow(slot, mode, index, contentWidth))
-  const burndown = props.state.perRound.map((record) =>
-    row(
-      `b-${String(record.round)}`,
-      `round ${record.round}: ${record.counts.blocker}b ${record.counts.material}m ${record.counts.nitpick}n`,
-    ),
-  )
-  const findings = props.findings.map((finding) => {
-    const severity = severityOfClass(finding.class)
-    return row(
-      `f-${finding.id}`,
-      `${padDisplay(finding.class, 8)} ${finding.id} r${finding.round}${finding.detail === undefined ? '' : ` ${finding.detail}`}`,
-      severity === null ? {} : severityToken(mode, severity),
-    )
-  })
-  return { pipeline, agents, burndown, findings }
+    : live.map((slot, index) => slotRow(slot, mode, index, contentWidth))
+  return { pipeline, agents }
 }
 
-/** Findings beside burndown at wide width (each at half width), stacked below the join threshold. */
-function historyRegion(rows: RunRows, width: number): ReturnType<typeof createElement> {
-  const joined = joinOrStack(width) === 'join' && rows.burndown.length > 0 && rows.findings.length > 0
-  const halfWidth = Math.floor(width / 2)
-  if (joined) {
+/** One append-only history row: a framed body line, toned where the row carries semantics. */
+function historyElement(entry: HistoryRow, width: number, mode: ColorMode): ReturnType<typeof createElement> {
+  const contentWidth = Math.max(1, width - 4)
+  if (entry.parts !== undefined && entry.parts.length === 2) {
+    const prefix = entry.parts[0]?.text ?? ''
+    const cost = entry.parts[1]?.text ?? ''
+    const prefixBudget = Math.max(0, contentWidth - cost.length)
     return createElement(
-      Box,
-      { key: 'history', flexDirection: 'row' },
-      createElement(Box, { key: 'f-col', flexDirection: 'column' }, ...panel('Findings', rows.findings, halfWidth)),
-      createElement(
-        Box,
-        { key: 'b-col', flexDirection: 'column' },
-        ...panel('Burndown', rows.burndown, width - halfWidth),
-      ),
+      Text,
+      { key: entry.key },
+      '│ ',
+      padDisplay(truncateDisplay(prefix, prefixBudget), prefixBudget),
+      createElement(Text, { key: `${entry.key}-cost`, ...costToken(mode, 'known') }, cost),
+      ' │',
     )
   }
   return createElement(
-    Box,
-    { key: 'history', flexDirection: 'column' },
-    ...(rows.findings.length > 0 ? panel('Findings', rows.findings, width) : []),
-    ...(rows.burndown.length > 0 ? panel('Burndown', rows.burndown, width) : []),
+    Text,
+    { key: entry.key, ...(entry.severity === undefined ? {} : severityToken(mode, entry.severity)) },
+    frameBodyLine(entry.text, width),
   )
+}
+
+/** Static's item type erases to `unknown` through createElement; this guard restores it without an assertion. */
+function isHistoryRow(value: unknown): value is HistoryRow {
+  return typeof value === 'object' && value !== null && 'key' in value && 'text' in value
+}
+
+/** The append-only `Static` region: finalized rows emitted exactly once, keyed stably. */
+function historyRegion(props: RunViewProps, mode: ColorMode): ReturnType<typeof createElement> {
+  return createElement(Static, {
+    items: [...props.history],
+    children: (item: unknown): ReturnType<typeof createElement> =>
+      historyElement(isHistoryRow(item) ? item : { key: `raw:${String(item)}`, text: String(item) }, props.width, mode),
+  })
 }
 
 export function createRunView(): (props: RunViewProps) => ReturnType<typeof createElement> {
@@ -255,9 +255,9 @@ export function createRunView(): (props: RunViewProps) => ReturnType<typeof crea
     return createElement(
       Box,
       { flexDirection: 'column' },
+      historyRegion(props, mode),
       ...panel('Pipeline', rows.pipeline, props.width),
       ...panel('Agents', rows.agents, props.width),
-      ...(rows.findings.length > 0 || rows.burndown.length > 0 ? [historyRegion(rows, props.width)] : []),
       createElement(
         Box,
         { key: 'status', flexDirection: 'row' },

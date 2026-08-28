@@ -24,6 +24,7 @@ function frameFor(bag: RunFold, width: number): string {
       state: bag.state,
       slots: bag.slots,
       findings: bag.findings,
+      history: bag.history,
       width,
       startedAt: START,
       now: NOW,

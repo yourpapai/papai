@@ -8,7 +8,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { Box, Static, Text } from 'ink'
 import { render } from 'ink-testing-library'
 import { createElement } from 'react'
 import type { ReactElement } from 'react'
@@ -191,54 +190,58 @@ describe('run-screen stop keys (4.6)', () => {
 })
 
 describe('factory-identity pin (1.4: rerenders never remount the mounted tree)', () => {
-  const ROWS = ['h-row-1', 'h-row-2', 'h-row-3'] as const
   const START = Date.parse('2026-01-01T00:00:00.000Z')
   const NOW = Date.parse('2026-01-01T00:01:00.000Z')
 
-  function streamHarness(rows: readonly string[], bag: RunFold): ReactElement {
-    return createElement(
-      Box,
-      { flexDirection: 'column' },
-      createElement(Static, {
-        items: [...rows],
-        children: (row: unknown): ReactElement => createElement(Text, { key: String(row) }, String(row)),
-      }),
-      createElement(RunScreenTui, {
-        bag,
-        width: 100,
-        startedAt: START,
-        now: NOW,
-        onRequestCalmStop: () => undefined,
-        onHardExit: () => undefined,
-      }),
-    )
+  function harness(bag: RunFold): ReactElement {
+    return createElement(RunScreenTui, {
+      bag,
+      startedAt: START,
+      now: NOW,
+      onRequestCalmStop: () => undefined,
+      onHardExit: () => undefined,
+    })
   }
 
-  it('a toy Static sibling emits each row exactly once while the live region keeps updating', async () => {
+  it('history rows emit exactly once across rerenders while the live region keeps updating', async () => {
     let bag = emptyRunFold()
     bag = foldRunView(bag, e(1, { altitude: 'L2', type: 'stage_enter', stage: 'review' }))
-    const mount = mountToStream(streamHarness([ROWS[0]], bag))
-    await waitFor(() => mount.streamText().includes(ROWS[0]))
-    bag = foldRunView(bag, spawnEvent(2, 'reviewer-r1'))
-    mount.rerender(streamHarness([ROWS[0], ROWS[1]], bag))
-    await waitFor(() => mount.streamText().includes(ROWS[1]))
-    bag = foldRunView(bag, spawnEvent(3, 'fixer-r1'))
-    mount.rerender(streamHarness([...ROWS], bag))
-    await waitFor(() => mount.streamText().includes(ROWS[2]))
-    mount.rerender(streamHarness([...ROWS], bag))
-    await mount.waitUntilRenderFlush()
-    const text = mount.streamText()
-    mount.unmount()
-    for (const row of ROWS) {
-      expect(countOccurrences(text, row)).toBe(1)
+    const mount = mountToStream(harness(bag))
+    try {
+      bag = foldRunView(
+        bag,
+        e(2, { altitude: 'L2', type: 'finding', action: 'filed', id: 'F1', round: 1, class: 'BLOCKER' }),
+      )
+      mount.rerender(harness(bag))
+      await waitFor(() => mount.streamText().includes('F1 r1'))
+      bag = foldRunView(bag, spawnEvent(3, 'reviewer-r1'))
+      bag = foldRunView(
+        bag,
+        e(4, {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'open',
+          counts: { blocker: 1, material: 0, nitpick: 0 },
+        }),
+      )
+      mount.rerender(harness(bag))
+      await waitFor(() => mount.streamText().includes('round 1: 1b 0m 0n'))
+      await waitFor(() => mount.streamText().includes('reviewer-r1'))
+      mount.rerender(harness(bag))
+      await mount.waitUntilRenderFlush()
+      const text = mount.streamText()
+      expect(countOccurrences(text, 'F1 r1')).toBe(1)
+      expect(countOccurrences(text, 'round 1: 1b 0m 0n')).toBe(1)
+      expect(text).toContain('reviewer-r1')
+    } finally {
+      mount.unmount()
     }
-    expect(text).toContain('reviewer-r1')
-    expect(text).toContain('fixer-r1')
   })
 })
 
-function stackedFrame(frame: string): boolean {
-  return frame.includes('╭─ Findings') && !frame.includes('╮╭─ Burndown')
+function joinedPipeline(frame: string): boolean {
+  return frame.split('\n').some((line) => line.includes('intake pending') && line.includes('review active'))
 }
 
 describe('running screen chrome (6.2: footer + help overlay + width reflow)', () => {
@@ -249,6 +252,16 @@ describe('running screen chrome (6.2: footer + help overlay + width reflow)', ()
     escape: false,
     backspace: false,
     delete: false,
+  }
+
+  function bareHarness(bag: RunFold): ReactElement {
+    return createElement(RunScreenTui, {
+      bag,
+      startedAt: 0,
+      now: 60_000,
+      onRequestCalmStop: () => undefined,
+      onHardExit: () => undefined,
+    })
   }
 
   async function mountedRunScreen(bag: RunFold): Promise<{
@@ -319,7 +332,7 @@ describe('running screen chrome (6.2: footer + help overlay + width reflow)', ()
     }
   })
 
-  it('narrow→stack→rejoin reflow without losing content', async () => {
+  it('narrow→stack→rejoin reflow without losing history (7.4)', async () => {
     let bag = emptyRunFold()
     bag = foldRunView(bag, e(1, { altitude: 'L2', type: 'stage_enter', stage: 'review' }))
     bag = foldRunView(
@@ -338,14 +351,49 @@ describe('running screen chrome (6.2: footer + help overlay + width reflow)', ()
     )
     const { mount } = await mountedRunScreen(bag)
     try {
-      await waitFor(() => mount.lastFrame().includes('╮╭─ Burndown'))
-      mount.stdout.resizeTo(48, 24)
-      await waitFor(() => stackedFrame(mount.lastFrame()))
+      await waitFor(() => joinedPipeline(mount.lastFrame()))
+      mount.stdout.resizeTo(40, 24)
+      await waitFor(() => !joinedPipeline(mount.lastFrame()))
+      expect(mount.lastFrame()).toContain('· intake pending')
       mount.stdout.resizeTo(100, 24)
-      await waitFor(() => mount.lastFrame().includes('╮╭─ Burndown'))
-      expect(mount.lastFrame()).toContain('round 1: 1b 0m 0n')
-      expect(mount.lastFrame()).toContain('BLOCKER')
-      expect(mount.lastFrame()).toContain('F1 r1')
+      await waitFor(() => joinedPipeline(mount.lastFrame()))
+      expect(mount.streamText()).toContain('round 1: 1b 0m 0n')
+      expect(mount.streamText()).toContain('BLOCKER')
+    } finally {
+      mount.unmount()
+    }
+  })
+
+  it('later events update the live region without reordering history (7.4)', async () => {
+    let bag = emptyRunFold()
+    bag = foldRunView(bag, e(1, { altitude: 'L2', type: 'stage_enter', stage: 'review' }))
+    bag = foldRunView(
+      bag,
+      e(2, { altitude: 'L1', type: 'spawned', agent: 'reviewer-r1', role: 'reviewer', model: 'glm' }),
+    )
+    const { mount } = await mountedRunScreen(bag)
+    try {
+      await waitFor(() => mount.streamText().includes('reviewer-r1'))
+      bag = foldRunView(
+        bag,
+        e(3, { altitude: 'L2', type: 'finding', action: 'filed', id: 'F1', round: 1, class: 'MATERIAL' }),
+      )
+      mount.rerender(bareHarness(bag))
+      await waitFor(() => mount.streamText().includes('MATERIAL F1 r1'))
+      bag = foldRunView(
+        bag,
+        e(4, {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'open',
+          counts: { blocker: 0, material: 1, nitpick: 0 },
+        }),
+      )
+      mount.rerender(bareHarness(bag))
+      await waitFor(() => mount.streamText().includes('round 1: 0b 1m 0n'))
+      expect(mount.streamText().indexOf('MATERIAL F1 r1')).toBeLessThan(mount.streamText().indexOf('round 1: 0b 1m 0n'))
+      expect(mount.streamText()).toContain('reviewer-r1')
     } finally {
       mount.unmount()
     }

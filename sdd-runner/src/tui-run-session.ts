@@ -111,6 +111,7 @@ export function RunScreenTui(props: RunScreenTuiProps): ReturnType<typeof create
         state: bag.state,
         slots: bag.slots,
         findings: bag.findings,
+        history: bag.history,
         width,
         startedAt,
         now,
