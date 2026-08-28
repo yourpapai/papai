@@ -52,5 +52,5 @@ Ordered per design.md Migration Plan; every face starts with its failing test (T
 
 ## 10. Full verification and docs
 
-- [ ] 10.1 Run full `bun test`, `bun run typecheck`, `bun run lint`, `bun run knip`, `bun workflows:lint`; fix findings. Verify: all green
-- [ ] 10.2 Update `docs/architecture/afk-runner.md` (C4 row delivered, engine loop gate note, `schedule`-dormant rationale) and the C4 row of the delivery plan. Verify: docs reflect implemented state
+- [x] 10.1 Run full `bun test`, `bun run typecheck`, `bun run lint`, `bun run knip`, `bun workflows:lint`; fix findings. Verify: all green
+- [x] 10.2 Update `docs/architecture/afk-runner.md` (C4 row delivered, engine loop gate note, `schedule`-dormant rationale) and the C4 row of the delivery plan. Verify: docs reflect implemented state
