@@ -54,7 +54,7 @@ describe('EventInputSchema variants', () => {
 
   it('auto_decision accepts known rule ids and kinds, rejects the rest', () => {
     expect(AutoDecisionRuleSchema.options).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'none'])
-    expect(AutoDecisionKindSchema.options).toEqual(['preview', 'approve', 'extend', 'accept-items', 'gate'])
+    expect(AutoDecisionKindSchema.options).toEqual(['preview', 'approve', 'extend', 'accept-items', 'gate', 'pending'])
     expect(
       EventInputSchema.parse({
         altitude: 'L2',

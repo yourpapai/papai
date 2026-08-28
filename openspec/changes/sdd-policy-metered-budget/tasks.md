@@ -22,5 +22,5 @@
 
 ## 5. Verification and docs
 
-- [ ] 5.1 One full `bun run test`, `bun run typecheck`, `bun run lint` — all green
-- [ ] 5.2 Update `docs/architecture/sdd-pipeline.md` (Config and autonomy keys, Deadline, Cost / duration markers, Event model) in the same commit as the final code
+- [x] 5.1 One full `bun run test`, `bun run typecheck`, `bun run lint` — all green
+- [x] 5.2 Update `docs/architecture/sdd-pipeline.md` (Config and autonomy keys, Deadline, Cost / duration markers, Event model) in the same commit as the final code
