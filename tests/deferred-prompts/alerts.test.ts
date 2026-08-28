@@ -17,6 +17,7 @@ import {
   getAlertPrompt,
   getEligibleAlertPrompts,
   listAlertPrompts,
+  updateAlertActivityState,
   updateAlertMatchState,
   updateAlertMatchedTaskIds,
   updateAlertPrompt,
@@ -259,6 +260,45 @@ describe('alert prompt CRUD', () => {
     const eligible = getEligibleAlertPrompts()
     expect(eligible).toHaveLength(1)
     expect(eligible[0]!.prompt).toBe('Past cooldown alert')
+  })
+})
+
+describe('alert activity cursor persistence', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  test('createAlertPrompt returns a null lastActivityCursor that round-trips through toAlertPrompt', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', condition)
+
+    expect(created.lastActivityCursor).toBeNull()
+    expect(getAlertPrompt(created.id, 'user1')?.lastActivityCursor).toBeNull()
+  })
+
+  test('updateAlertActivityState writes the cursor and lastTriggeredAt', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', condition)
+    const firedAt = '2026-08-27T10:00:00.000Z'
+    const cursor = '2026-08-27T09:59:00.000Z'
+
+    updateAlertActivityState(created.id, 'user1', firedAt, cursor)
+
+    const reloaded = getAlertPrompt(created.id, 'user1')
+    expect(reloaded?.lastActivityCursor).toBe(cursor)
+    expect(reloaded?.lastTriggeredAt).toBe(firedAt)
+  })
+
+  test('condition update through updateAlertPrompt resets the cursor to null', () => {
+    const oldCondition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', oldCondition)
+    updateAlertActivityState(created.id, 'user1', '2026-08-27T10:00:00.000Z', '2026-08-27T09:59:00.000Z')
+
+    const newCondition: AlertCondition = { field: 'task.priority', op: 'eq', value: 'high' }
+    const updated = updateAlertPrompt(created.id, 'user1', { condition: newCondition })
+
+    expect(updated?.lastActivityCursor).toBeNull()
+    expect(updated?.matchedTaskIds).toEqual([])
   })
 })
 
