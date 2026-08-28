@@ -49,9 +49,9 @@ Atomicity rule: one task = one change that lands and verifies on its own; every 
 
 ## 8. Pinned invariants (design D8)
 
-- [ ] 8.1 Decision parity: extend `tui-gate-session.test.ts` — the same gate key script with and without interleaved `?` toggles, color-mode flips, and width changes produces byte-identical `GateAnswers` and gate-file markdown. Verify: `bun run test tests/sdd-runner/tui-gate-session.test.ts`
-- [ ] 8.2 Degradation: extend `tui-narrow.test.ts` — the `NO_COLOR` frame equals the colored frame line-for-line once ANSI sequences are stripped, across every screen shape. Verify: `bun run test tests/sdd-runner/tui-narrow.test.ts`
-- [ ] 8.3 Non-TTY freeze: extend `tui-exclusivity.test.ts` — no presentation-layer (or any) ANSI escape reaches a non-TTY stream; the byte stream matches the frozen contract exactly. Verify: `bun run test tests/sdd-runner/tui-exclusivity.test.ts`
+- [x] 8.1 Decision parity: extend `tui-gate-session.test.ts` — the same gate key script with and without interleaved `?` toggles, color-mode flips, and width changes produces byte-identical `GateAnswers` and gate-file markdown. Verify: `bun run test tests/sdd-runner/tui-gate-session.test.ts`
+- [x] 8.2 Degradation: extend `tui-narrow.test.ts` — the `NO_COLOR` frame equals the colored frame line-for-line once ANSI sequences are stripped, across every screen shape. Verify: `bun run test tests/sdd-runner/tui-narrow.test.ts`
+- [x] 8.3 Non-TTY freeze: extend `tui-exclusivity.test.ts` — no presentation-layer (or any) ANSI escape reaches a non-TTY stream; the byte stream matches the frozen contract exactly. Verify: `bun run test tests/sdd-runner/tui-exclusivity.test.ts`
 
 ## 9. Docs + full gate
 

@@ -421,3 +421,87 @@ describe('gate chrome (6.1: footer + help overlay)', () => {
     }
   })
 })
+describe('decision parity (8.1)', () => {
+  const PLAIN: KeyFlags = {
+    upArrow: false,
+    downArrow: false,
+    return: false,
+    escape: false,
+    backspace: false,
+    delete: false,
+  }
+  const DOWN: KeyFlags = { ...PLAIN, downArrow: true }
+  const CR: KeyFlags = { ...PLAIN, return: true }
+
+  interface ParityLeg {
+    readonly answers: GateAnswers
+    readonly md: string
+  }
+
+  async function settleLeg(options: { toggles: boolean; noColor: boolean; resizes: boolean }): Promise<ParityLeg> {
+    const priorNoColor = process.env['NO_COLOR']
+    if (options.noColor) process.env['NO_COLOR'] = '1'
+    try {
+      const feed = createKeyFeed()
+      const answers = new Promise<GateAnswers>((settle) => {
+        void (async (): Promise<void> => {
+          const mount = mountToStream(
+            createElement(GateSessionTui, {
+              view: VIEW,
+              onSettle: (settled) => {
+                settle(settled)
+              },
+              onAbandoned: () => {
+                settle({ items: [], blockerAnswers: [], acks: [], decision: 'abort' })
+              },
+              keys: feed,
+            }),
+          )
+          await feed.whenSubscribed
+          await mount.waitUntilRenderFlush()
+          const script: ReadonlyArray<readonly [string, KeyFlags]> = [
+            ['\u001b[B', DOWN],
+            [' ', PLAIN],
+            ['\r', CR],
+            ['quote the scope id', PLAIN],
+            ['\r', CR],
+            ['\u001b[B', DOWN],
+            ['\r', CR],
+            ['covered by test x', PLAIN],
+            ['\r', CR],
+            ['\u001b[B', DOWN],
+            [' ', PLAIN],
+            ['a', PLAIN],
+          ]
+          for (const [input, key] of script) {
+            if (input === '\u001b[B' && options.toggles) {
+              feed.emit('?', PLAIN)
+              feed.emit('?', PLAIN)
+            }
+            feed.emit(input, key)
+            if (input === '\r' && options.resizes) mount.stdout.resizeTo(64, 24)
+            if (input === 'a' && options.resizes) mount.stdout.resizeTo(100, 24)
+            await new Promise((resolve) => {
+              setTimeout(resolve, 5)
+            })
+          }
+          await mount.waitUntilRenderFlush()
+        })()
+      })
+      const settled = await answers
+      return { answers: settled, md: renderGateAnswers(settled) }
+    } finally {
+      if (priorNoColor === undefined) delete process.env['NO_COLOR']
+      else process.env['NO_COLOR'] = priorNoColor
+    }
+  }
+
+  it('the same key script yields byte-identical answers and gate markdown under ? toggles, NO_COLOR, and width changes', async () => {
+    const plain = await settleLeg({ toggles: false, noColor: false, resizes: false })
+    const decorated = await settleLeg({ toggles: true, noColor: true, resizes: true })
+    expect(JSON.stringify(decorated.answers)).toBe(JSON.stringify(plain.answers))
+    expect(decorated.md).toBe(plain.md)
+    expect(plain.answers.decision).toBe('veto')
+    expectSelfChecks(plain.answers)
+  })
+})
