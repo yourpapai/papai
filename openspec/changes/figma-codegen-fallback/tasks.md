@@ -19,11 +19,11 @@
 
 ## 4. Verification loop (TDD)
 
-- [ ] 4.1 Add `pixelmatch` + `pngjs` devDependencies to package.json and justify in the PR description (design Decision 5). Verify: `bun install` clean, `bun run knip` reports no unused deps
-- [ ] 4.2 Write failing tests for the compare core in `scripts/figma-connect-lib.ts`: diff of identical PNGs → pass with measured 0; diff beyond threshold → failure with artifact path; missing render → explicit skip result. Verify: tests fail
-- [ ] 4.3 Implement the compare core (decode both PNGs, normalize scale, pixelmatch, write diff artifact under `reports/figma-verify/`). Verify: step 4.2 tests pass
-- [ ] 4.4 Write failing tests for the `figma:verify` CLI arg parsing (`--story`, `--figma` PNG path or node id, `--threshold`), then implement `verify` subcommand producing the report. Verify: `bun test tests/scripts/figma-connect.test.ts`, then a manual smoke: `bun run figma:verify --story <existing baseline> --figma <same PNG>` passes with 0 diff
-- [ ] 4.5 Document the loop in `docs/architecture/storybook-screenshots.md` ("Verifying generated code against designs"). Verify: manual read
+- [x] 4.1 Add `pixelmatch` + `pngjs` devDependencies to package.json and justify in the PR description (design Decision 5). Verify: `bun install` clean, `bun run knip` reports no unused deps
+- [x] 4.2 Write failing tests for the compare core in `scripts/figma-connect-lib.ts`: diff of identical PNGs → pass with measured 0; diff beyond threshold → failure with artifact path; missing render → explicit skip result. Verify: tests fail
+- [x] 4.3 Implement the compare core (decode both PNGs, normalize scale, pixelmatch, write diff artifact under `reports/figma-verify/`). Verify: step 4.2 tests pass
+- [x] 4.4 Write failing tests for the `figma:verify` CLI arg parsing (`--story`, `--figma` PNG path or node id, `--threshold`), then implement `verify` subcommand producing the report. Verify: `bun test tests/scripts/figma-connect.test.ts`, then a manual smoke: `bun run figma:verify --story <existing baseline> --figma <same PNG>` passes with 0 diff
+- [x] 4.5 Document the loop in `docs/architecture/storybook-screenshots.md` ("Verifying generated code against designs"). Verify: manual read
 
 ## 5. Screen-section registry entries
 

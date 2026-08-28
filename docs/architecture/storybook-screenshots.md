@@ -146,6 +146,29 @@ as `stale` and left untouched. Geometry (0.5× scale, 3 columns for `admin`, 4
 elsewhere, 40/60/72/20/8 spacing constants) lives in `scripts/figma-sync-lib.ts`
 with tests in `tests/scripts/figma-sync.test.ts`.
 
+## Verifying generated code against designs
+
+After generating `client/` code from a papai Figma node (the `figma-codegen`
+skill), compare the implemented render against the design render:
+
+1.  Produce the implemented side with the normal shoot loop — a baseline PNG
+    under `.storybook-shots/` for the touched component/section story.
+
+2.  Produce the Figma side: export the corresponding frame via the Figma MCP
+    (`download_assets` on the node id) and save it as a PNG.
+
+3.  Compare (report-only — it never edits code, Figma nodes, or baselines):
+
+        bun run figma:verify --story <baseline.png> --figma <figma.png> [--threshold 0.1]
+
+    `--figma` also accepts a bare node id (`22:198`); the run then reports an
+    explicit `status=skip` naming the missing side instead of a render, since
+    repo scripts cannot reach Figma. Renders at different scales are
+    bilinearly normalized to the smaller size before diffing (`pixelmatch` +
+    `pngjs`, dev-only). Pass/fail is the mismatched-pixel ratio against
+    `--threshold` (default 0.1); a failing run writes the diff image under
+    `reports/figma-verify/` and names it in the report.
+
 ## Structured UX review
 
 To turn a screenshot into a scored, severity-ranked findings document, use the

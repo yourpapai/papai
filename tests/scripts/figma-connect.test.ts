@@ -4,19 +4,24 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { PNG } from 'pngjs'
 
 import {
   BASE_KIT_COMPONENTS,
   RegistrySchema,
   canonicalDescription,
   checkRegistry,
+  compareRenders,
   loadRegistry,
   parseRegistryText,
   planPayloads,
 } from '../../scripts/figma-connect-lib.js'
 import type { ComponentEntry, Registry } from '../../scripts/figma-connect-lib.js'
-import { parseConnectArgs } from '../../scripts/figma-connect.js'
+import { parseConnectArgs, runVerify } from '../../scripts/figma-connect.js'
 
 const REGISTRY_PATH = new URL('../../scripts/figma/registry.json', import.meta.url).pathname
 
@@ -195,6 +200,73 @@ describe('parseConnectArgs', () => {
   test('rejects unknown flags', () => {
     expect(() => parseConnectArgs(['validate', '--fancy'])).toThrow(/unknown_flag:--fancy/u)
   })
+
+  test('verify parses --story, --figma, and defaults the threshold', () => {
+    expect(parseConnectArgs(['verify', '--story', '.storybook-shots/a-1.png', '--figma', 'figma.png'])).toEqual({
+      command: 'verify',
+      story: '.storybook-shots/a-1.png',
+      figma: 'figma.png',
+      threshold: 0.1,
+    })
+  })
+
+  test('verify accepts --figma as a node id and --threshold as a number', () => {
+    expect(parseConnectArgs(['verify', '--story', 'a.png', '--figma', '22:198', '--threshold', '0.05'])).toEqual({
+      command: 'verify',
+      story: 'a.png',
+      figma: '22:198',
+      threshold: 0.05,
+    })
+  })
+
+  test('verify rejects missing story/figma and bad thresholds', () => {
+    expect(() => parseConnectArgs(['verify'])).toThrow(/missing_story/u)
+    expect(() => parseConnectArgs(['verify', '--story', 'a.png'])).toThrow(/missing_figma/u)
+    expect(() => parseConnectArgs(['verify', '--story', 'a.png', '--figma', 'b.png', '--threshold', 'big'])).toThrow(
+      /invalid_threshold/u,
+    )
+  })
+})
+
+describe('runVerify', () => {
+  test('comparing a baseline against itself passes with diff 0', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'figma-verify-'))
+    const png = join(dir, 'same.png')
+    writeFileSync(png, solidPng(8, 8, 1, 2, 3))
+    const report = runVerify({ command: 'verify', story: png, figma: png, threshold: 0.1 })
+    expect(report.status).toBe('pass')
+    expect(report.diffPixels).toBe(0)
+  })
+
+  test('a missing story file is an explicit skip naming the side', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'figma-verify-'))
+    const png = join(dir, 'figma.png')
+    writeFileSync(png, solidPng(8, 8, 1, 2, 3))
+    const report = runVerify({ command: 'verify', story: join(dir, 'nope.png'), figma: png, threshold: 0.1 })
+    expect(report.status).toBe('skip')
+    expect(report.missingSide).toBe('story')
+  })
+
+  test('a figma node id is an explicit skip instructing an export', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'figma-verify-'))
+    const png = join(dir, 'story.png')
+    writeFileSync(png, solidPng(8, 8, 1, 2, 3))
+    const report = runVerify({ command: 'verify', story: png, figma: '22:198', threshold: 0.1 })
+    expect(report.status).toBe('skip')
+    expect(report.missingSide).toBe('figma')
+    expect(report.reason).toContain('22:198')
+  })
+
+  test('a difference beyond the threshold fails with the artifact path under the report dir', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'figma-verify-'))
+    const story = join(dir, 'story.png')
+    const figma = join(dir, 'figma.png')
+    writeFileSync(story, solidPng(8, 8, 0, 0, 0))
+    writeFileSync(figma, patchedPng(solidPng(8, 8, 0, 0, 0)))
+    const report = runVerify({ command: 'verify', story, figma, threshold: 0.1 })
+    expect(report.status).toBe('fail')
+    expect(report.artifactPath).toContain('reports/figma-verify/')
+  })
 })
 
 describe('planPayloads', () => {
@@ -233,5 +305,83 @@ describe('planPayloads', () => {
       },
       { name: 'Bind form', figmaNode: '22:199', description: 'CODE: src/screen/Bind-form.tpl | section: Bind form' },
     ])
+  })
+})
+
+const solidPng = (width: number, height: number, red: number, green: number, blue: number): Uint8Array => {
+  const png = new PNG({ width, height })
+  for (let index = 0; index < width * height; index += 1) {
+    const offset = index * 4
+    png.data[offset] = red
+    png.data[offset + 1] = green
+    png.data[offset + 2] = blue
+    png.data[offset + 3] = 255
+  }
+  return new Uint8Array(PNG.sync.write(png))
+}
+
+const patchedPng = (bytes: Uint8Array): Uint8Array => {
+  const png = PNG.sync.read(Buffer.from(bytes))
+  for (let index = 0; index < 32; index += 1) png.data[index] = 255 - (png.data[index] ?? 0)
+  return new Uint8Array(PNG.sync.write(png))
+}
+
+describe('compareRenders', () => {
+  test('identical renders pass with a measured diff of 0', () => {
+    const png = solidPng(8, 8, 10, 20, 30)
+    const outcome = compareRenders({ storyPng: png, figmaPng: solidPng(8, 8, 10, 20, 30), artifactPath: '/unused.png' })
+    expect(outcome.status).toBe('pass')
+    expect(outcome.diffPixels).toBe(0)
+    expect(outcome.totalPixels).toBe(64)
+    expect(outcome.ratio).toBe(0)
+  })
+
+  test('a difference beyond the threshold fails and writes the diff artifact', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'figma-verify-'))
+    const artifactPath = join(dir, 'diff.png')
+    const outcome = compareRenders({
+      storyPng: solidPng(8, 8, 0, 0, 0),
+      figmaPng: patchedPng(solidPng(8, 8, 0, 0, 0)),
+      artifactPath,
+    })
+    expect(outcome.status).toBe('fail')
+    expect(outcome.artifactPath).toBe(artifactPath)
+    expect(outcome.diffPixels).toBeGreaterThan(0)
+    expect(outcome.ratio).toBeGreaterThan(0.1)
+    expect(readFileSync(artifactPath).byteLength).toBeGreaterThan(0)
+  })
+
+  test('a difference within the threshold passes with the measured value', () => {
+    const outcome = compareRenders({
+      storyPng: solidPng(100, 100, 0, 0, 0),
+      figmaPng: patchedPng(solidPng(100, 100, 0, 0, 0)),
+      artifactPath: '/unused.png',
+      threshold: 0.5,
+    })
+    expect(outcome.status).toBe('pass')
+    expect(outcome.ratio).toBeLessThanOrEqual(0.5)
+  })
+
+  test('a missing story render is an explicit skip naming the side', () => {
+    const outcome = compareRenders({ figmaPng: solidPng(8, 8, 0, 0, 0), artifactPath: '/unused.png' })
+    expect(outcome.status).toBe('skip')
+    expect(outcome.missingSide).toBe('story')
+    expect(outcome.reason).toContain('story')
+  })
+
+  test('a missing figma render is an explicit skip naming the side', () => {
+    const outcome = compareRenders({ storyPng: solidPng(8, 8, 0, 0, 0), artifactPath: '/unused.png' })
+    expect(outcome.status).toBe('skip')
+    expect(outcome.missingSide).toBe('figma')
+  })
+
+  test('renders at different scales are normalized to the smaller size before diffing', () => {
+    const outcome = compareRenders({
+      storyPng: solidPng(16, 16, 12, 34, 56),
+      figmaPng: solidPng(8, 8, 12, 34, 56),
+      artifactPath: '/unused.png',
+    })
+    expect(outcome.status).toBe('pass')
+    expect(outcome.totalPixels).toBe(64)
   })
 })
