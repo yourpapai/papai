@@ -26,9 +26,9 @@
 
 ## 5. Recovery face (D5)
 
-- [ ] 5.1 Failing resume tests: W3a (record-less awaiting → owed presentation at the file-scan version + ladder re-run, then parks gate-pending — no waiter loop) and W3b (stale answered early record → owed final presentation, no phantom `round_open`). Verify: `bun test tests/afk-runner/drive/resume-tail.test.ts` (fails)
-- [ ] 5.2 Implement owed-presentation recovery and map-signal gating on owed movers in `resume.ts`. Verify: `bun test tests/afk-runner/drive/resume-tail.test.ts tests/afk-runner/drive/resume-gate.test.ts`
-- [ ] 5.3 Presented-without-ladder window: document the accepted risk in `resume.ts` doc comment (no behavior). Verify: `bun run typecheck`
+- [x] 5.1 Failing resume tests: W3a (record-less awaiting → owed presentation at the file-scan version + ladder re-run, then parks gate-pending — no waiter loop) and W3b (stale answered early record → owed final presentation, no phantom `round_open`). Verify: `bun test tests/afk-runner/drive/resume-tail.test.ts` (fails)
+- [x] 5.2 Implement owed-presentation recovery and map-signal gating on owed movers in `resume.ts`. Verify: `bun test tests/afk-runner/drive/resume-tail.test.ts tests/afk-runner/drive/resume-gate.test.ts`
+- [x] 5.3 Presented-without-ladder window: document the accepted risk in `resume.ts` doc comment (no behavior). Verify: `bun run typecheck`
 
 ## 6. Finals face (D6)
 

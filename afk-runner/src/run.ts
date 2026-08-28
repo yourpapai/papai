@@ -10,11 +10,12 @@ import path from 'node:path'
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { deriveChangeName } from './config.js'
 import type { ExecGitFn, RunnerConfig } from './config.js'
+import { autonomyOf } from './config.js'
 import { createAppendBoundary } from './drive/boundary.js'
 import { drive } from './drive/loop.js'
 import type { DriveResult, ParkedReason, StopSeam, WorkFor } from './drive/loop.js'
 import { flattenPosition } from './drive/loop.js'
-import { owedMoverOf, parkedReasonOf } from './drive/resume.js'
+import { owedMoverOf, owedPresentationOf, parkedReasonOf, refoldedContext } from './drive/resume.js'
 import type { DepthProfile } from './events.js'
 import { readEvents } from './events.js'
 import type { SddEvent } from './events.js'
@@ -28,6 +29,8 @@ import type { OpenSpecDriver } from './openspec-driver.js'
 import { createRunState, loadRunState, resolveRoundCap, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { removeHolder, writeHolder } from './stop-controller.js'
+import { runGatePrelude } from './work/gate-prelude.js'
+import { readReviewResultFromSidecars } from './work/gate-settle.js'
 import { awaitGateSettle } from './work/gate-waiter.js'
 
 export interface RunDeps {
@@ -252,16 +255,69 @@ function seedOf(deps: RunDeps, runId: string, changeName: string, createdAt: str
 }
 
 /**
+ * Owed-presentation recovery (C5 D5): append the presented event the crashed
+ * presenter never landed (at the file-scan version) and re-run the ladder —
+ * which may itself settle through the seam. Pure recovery: no work re-enters,
+ * the run parks gate-pending right after unless the ladder decided.
+ */
+async function recoverOwedPresentation(
+  deps: RunDeps,
+  runDir: string,
+  logPath: string,
+  changeName: string,
+  presented: { readonly version: number },
+): Promise<void> {
+  const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
+  const emit = (event: Parameters<typeof boundary.append>[0]): void => {
+    boundary.append(event)
+  }
+  const sidecarDir = path.join(runDir, 'sidecars')
+  const changeDir = path.join(deps.config.repoRoot, 'openspec', 'changes', changeName)
+  const context = refoldedContext(logPath)
+  const round = context.round?.current ?? 1
+  await runGatePrelude({
+    version: presented.version,
+    mode: 'final',
+    reviewResult: await readReviewResultFromSidecars(sidecarDir, round, 'converged'),
+    context,
+    events: readEvents(logPath),
+    sidecarDir,
+    changeDir,
+    runDir,
+    repoRoot: deps.config.repoRoot,
+    emit,
+    autonomy: autonomyOf(deps.config),
+  })
+}
+
+/**
  * Resume by replay (design D6/D7): a pure function of the event log plus the
  * session ledger — re-fold, append the owed mover when a settle's mover
- * never landed, derive the parked reason as data, and either re-enter the
- * interrupted stage through the same drive loop or report the park. No
- * persisted state pointer is consulted for control flow.
+ * never landed, heal the owed presentation when the tail presenter died in
+ * the entry↔presented window, derive the parked reason as data, and either
+ * re-enter the interrupted stage through the same drive loop or report the
+ * park. No persisted state pointer is consulted for control flow.
+ *
+ * W4 (accepted risk): a crash between the presented event and the ladder's
+ * `auto_decision` record loses only that record — the gate settles normally
+ * on the next producer. Re-running the ladder there is NOT safe: a second
+ * R2 record would double-count against the auto-extend allowance, and the
+ * window is milliseconds wide.
  */
 export async function resumeRun(deps: RunDeps, runId: string): Promise<ResumeOutcome> {
   const runDir = path.join(deps.config.workDir, 'runs', runId)
   const logPath = logPathOf(runDir)
   let folded = foldRun(logPath)
+  const owedPresentation = owedPresentationOf(folded.context, folded.position, runDir)
+  if (owedPresentation !== null && owedPresentation.type === 'gate') {
+    const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
+    boundary.append(owedPresentation)
+    const changeNameForRecovery = await changeNameOf(deps, runId, runDir)
+    await recoverOwedPresentation(deps, runDir, logPath, changeNameForRecovery, {
+      version: owedPresentation.version,
+    })
+    folded = foldRun(logPath)
+  }
   const owed = owedMoverOf(folded.context, folded.position)
   if (owed !== null) {
     const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
