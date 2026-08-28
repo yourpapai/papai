@@ -9,7 +9,7 @@ import { render } from 'ink-testing-library'
 import { createElement } from 'react'
 
 import type { DigestRecord, ReplayState } from '../../sdd-runner/src/replay.js'
-import { WatchView } from '../../sdd-runner/src/watch-view.js'
+import { foldSlots, WatchView } from '../../sdd-runner/src/watch-view.js'
 import type { SlotState } from '../../sdd-runner/src/watch-view.js'
 
 function replay(overrides: Partial<ReplayState> = {}): ReplayState {
@@ -50,16 +50,17 @@ function replay(overrides: Partial<ReplayState> = {}): ReplayState {
 
 function slots(): readonly SlotState[] {
   return [
-    { agent: 'resolver-r2', model: 'glm', status: 'running', label: 'readFile src/a.ts', attempt: 1 },
+    { agent: 'resolver-r2', model: 'glm', status: 'running', label: 'readFile src/a.ts', attempt: 1, spawn: 1 },
     {
       agent: 'reviewer-r2',
       model: 'glm',
       status: 'done',
       label: 'done',
       attempt: 1,
+      spawn: 2,
       usage: { input: 5000, output: 1200, costUsd: 0.01 },
     },
-    { agent: 'skeptic-r2', model: 'glm', status: 'retrying', label: 'search', attempt: 2 },
+    { agent: 'skeptic-r2', model: 'glm', status: 'retrying', label: 'search', attempt: 2, spawn: 3 },
   ]
 }
 
@@ -81,5 +82,38 @@ describe('WatchView (15.2)', () => {
     expect(frame).toContain('round 2')
     expect(frame).toContain('resolver-r2')
     expect(frame).toContain('retry 2')
+  })
+})
+
+describe('foldSlots spawn ordinal (7.1)', () => {
+  it('assigns a monotonic in-memory ordinal per spawn; a re-spawned label gets a fresh one', () => {
+    let folded: readonly SlotState[] = []
+    folded = foldSlots(folded, {
+      altitude: 'L1',
+      type: 'spawned',
+      agent: 'reviewer-r1',
+      role: 'reviewer',
+      model: 'glm',
+    })
+    expect(folded[0]?.spawn).toBe(1)
+    folded = foldSlots(folded, {
+      altitude: 'L1',
+      type: 'spawned',
+      agent: 'skeptic-r1',
+      role: 'skeptic',
+      model: 'glm',
+    })
+    expect(folded.map((slot) => slot.spawn)).toEqual([1, 2])
+    folded = foldSlots(folded, { altitude: 'L1', type: 'retrying', agent: 'skeptic-r1', reason: 'stall', attempt: 2 })
+    folded = foldSlots(folded, {
+      altitude: 'L1',
+      type: 'spawned',
+      agent: 'reviewer-r1',
+      role: 'reviewer',
+      model: 'glm',
+    })
+    expect(folded.map((slot) => slot.agent)).toEqual(['skeptic-r1', 'reviewer-r1'])
+    expect(folded.find((slot) => slot.agent === 'reviewer-r1')?.spawn).toBe(3)
+    expect(folded.find((slot) => slot.agent === 'skeptic-r1')?.spawn).toBe(2)
   })
 })

@@ -9,6 +9,16 @@
 // Set log level to silent before any modules load
 process.env['LOG_LEVEL'] = 'silent'
 
+// Force ink/chalk color on before any suite can load them. chalk snapshots
+// color support from the env at import time, and in a serial run whichever
+// test file first reaches `sdd-runner/src` transitively loads ink — a pure
+// reducer suite with no color interest of its own works just as well. If that
+// happens before FORCE_COLOR is set (CI's file-discovery order does exactly
+// this), every later suite's frames render monochrome and the escape-asserting
+// TUI tests fail no matter what they set. A preload precedes every file load,
+// so this line is the only place the snapshot cannot be raced.
+process.env['FORCE_COLOR'] ??= '1'
+
 // Store original console methods
 const originalConsole = {
   log: console.log,

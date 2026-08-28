@@ -8,7 +8,10 @@ import { describe, expect, it, mock } from 'bun:test'
 import type { RemoveRunResult } from '../../sdd-runner/src/remove-run.js'
 import type { SessionTargetAction } from '../../sdd-runner/src/session-flow.js'
 import type { SessionRow } from '../../sdd-runner/src/session-list.js'
+import type { AckMount } from '../../sdd-runner/src/tui-ack-screen.js'
+import { displayWidth } from '../../sdd-runner/src/tui-panels.js'
 import { runSessionPicker } from '../../sdd-runner/src/tui-session-picker.js'
+import { countOccurrences, FakeStdout, mountToStream } from './stream-harness.js'
 
 const CR = '\r'
 const DOWN = '\u001b[B'
@@ -57,6 +60,7 @@ interface PickerOptions {
   readonly reportImpl?: (runId: string) => Promise<string>
   readonly createImpl?: (taskText: string) => Promise<void>
   readonly removeImpl?: (runId: string) => Promise<RemoveRunResult>
+  readonly mount?: AckMount
 }
 
 function picker(options: PickerOptions): { readonly events: string[]; readonly result: Promise<'quit'> } {
@@ -69,6 +73,7 @@ function picker(options: PickerOptions): { readonly events: string[]; readonly r
     },
     ...(options.initial === undefined ? {} : { initial: options.initial }),
     keyScript: options.keyScript,
+    ...(options.mount === undefined ? {} : { mount: options.mount }),
     execute: (action: SessionTargetAction): Promise<void> => {
       events.push(`exec:${action.kind}:${action.runId}`)
       return (options.executeImpl ?? ((): Promise<void> => Promise.resolve()))(action)
@@ -229,5 +234,69 @@ describe('runSessionPicker loop (scripted keys)', () => {
     const created = picker({ keyScript: `nfrom scratch${CR}q`, rows: (): readonly SessionRow[] => [] })
     await created.result
     expect(created.events).toEqual(['list', 'create:"# from scratch\\n"', 'list'])
+  })
+
+  it('a long in-mount interaction keeps every buffer — a per-frame remount would reset the form (1.3 pin)', async () => {
+    const TAB = '\t'
+    const run = picker({ keyScript: `nfix auth${TAB}stops flaky login${CR}q` })
+    await run.result
+    expect(run.events).toEqual(['list', 'create:"# fix auth\\n\\nstops flaky login\\n"', 'list'])
+  })
+
+  it('? opens the overlay; q is swallowed while open; after dismissal q quits', async () => {
+    const run = picker({ keyScript: '?q?q' })
+    await expect(run.result).resolves.toBe('quit')
+    expect(run.events).toEqual(['list'])
+  })
+
+  it('? on the delete-confirmation sub-screen cancels back to the list — no overlay', async () => {
+    const run = picker({ keyScript: `${DOWN}${DOWN}d?q` })
+    await run.result
+    expect(run.events).toEqual(['list'])
+  })
+
+  it('? is literal text in creation-form fields', async () => {
+    const run = picker({ keyScript: `n?ab${CR}q` })
+    await run.result
+    expect(run.events).toEqual(['list', 'create:"# ?ab\\n"', 'list'])
+  })
+})
+
+describe('session picker chrome (6.3: footer across the loop, resize)', () => {
+  function sharedStreamMount(stdout: FakeStdout, onMount?: () => void): AckMount {
+    return (element) => {
+      const mount = mountToStream(element, stdout)
+      if (onMount !== undefined) onMount()
+      return {
+        unmount: (): void => {
+          mount.unmount()
+        },
+        lastFrame: (): string => mount.lastFrame(),
+      }
+    }
+  }
+
+  it('the footer survives the picker\u2019s re-present loop', async () => {
+    const stdout = new FakeStdout()
+    const run = picker({ keyScript: `nti${CR}q`, mount: sharedStreamMount(stdout) })
+    await run.result
+    expect(run.events).toEqual(['list', 'create:"# ti\\n"', 'list'])
+    expect(countOccurrences(stdout.writes.join(''), '(n)ew')).toBeGreaterThanOrEqual(2)
+  })
+
+  it('text entry and the footer survive a resize of the mounted screen', async () => {
+    const stdout = new FakeStdout()
+    const resizeOnMount = sharedStreamMount(stdout, () => {
+      stdout.resizeTo(48, 24)
+    })
+    const run = picker({ keyScript: `nfix auth${CR}q`, mount: resizeOnMount })
+    await run.result
+    expect(run.events).toEqual(['list', 'create:"# fix auth\\n"', 'list'])
+    const text = stdout.writes.join('')
+    expect(text).toContain('(q)uit')
+    const finalFrame = stdout.writes
+      .filter((write) => write.includes('\n'))
+      .reduce((_acc: string, write: string) => write, '')
+    finalFrame.split('\n').forEach((line) => expect(displayWidth(line)).toBeLessThanOrEqual(48))
   })
 })
