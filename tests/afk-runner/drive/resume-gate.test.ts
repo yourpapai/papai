@@ -7,7 +7,7 @@ import { describe, expect, it } from 'bun:test'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { owedMoverOf } from '../../../afk-runner/src/drive/resume.js'
+import { owedMoversOf } from '../../../afk-runner/src/drive/resume.js'
 import { appendEvent, readEvents } from '../../../afk-runner/src/events.js'
 import type { EventInput, SddEvent } from '../../../afk-runner/src/events.js'
 import { initialKernelContext } from '../../../afk-runner/src/kernel/machine.js'
@@ -26,43 +26,51 @@ function contextOf(overrides: Partial<KernelContext> = {}): KernelContext {
   }
 }
 
-describe('owedMoverOf — pure reader of the answered-but-unmoved window', () => {
+describe('owedMoversOf — pure reader of the answered-but-unmoved window', () => {
   it('an answered extend with no mover owes round_open n+1 at cap+1', () => {
-    expect(owedMoverOf(contextOf(), 'gate.awaiting')).toEqual({
-      altitude: 'L2',
-      type: 'round_open',
-      round: 5,
-      cap: 5,
-    })
+    expect(owedMoversOf(contextOf(), 'gate.awaiting')).toEqual([
+      {
+        altitude: 'L2',
+        type: 'round_open',
+        round: 5,
+        cap: 5,
+      },
+    ])
   })
 
   it('an answered early approve owes the stage_enter(decompose) mover', () => {
-    expect(owedMoverOf(contextOf({ gateOutcome: 'approve' }), 'gate.awaiting')).toEqual({
-      altitude: 'L2',
-      type: 'stage_enter',
-      stage: 'decompose',
-    })
+    expect(owedMoversOf(contextOf({ gateOutcome: 'approve' }), 'gate.awaiting')).toEqual([
+      {
+        altitude: 'L2',
+        type: 'stage_enter',
+        stage: 'decompose',
+      },
+    ])
   })
 
   it('an answered veto owes the stage_enter(draft) mover', () => {
-    expect(owedMoverOf(contextOf({ gateOutcome: 'veto' }), 'gate.awaiting')).toEqual({
-      altitude: 'L2',
-      type: 'stage_enter',
-      stage: 'draft',
-    })
+    expect(owedMoversOf(contextOf({ gateOutcome: 'veto' }), 'gate.awaiting')).toEqual([
+      {
+        altitude: 'L2',
+        type: 'stage_enter',
+        stage: 'draft',
+      },
+    ])
   })
 
   it('a historical answered-no-outcome gate owes nothing (parks awaiting settlement)', () => {
-    expect(owedMoverOf(contextOf({ gateOutcome: null }), 'gate.awaiting')).toBeNull()
+    expect(owedMoversOf(contextOf({ gateOutcome: null }), 'gate.awaiting')).toEqual([])
   })
 
   it('an unanswered gate owes nothing, and positions outside awaiting owe nothing', () => {
-    expect(owedMoverOf(contextOf({ gate: { mode: 'early', version: 1, answered: false } }), 'gate.awaiting')).toBeNull()
-    expect(owedMoverOf(contextOf(), 'review')).toBeNull()
+    expect(owedMoversOf(contextOf({ gate: { mode: 'early', version: 1, answered: false } }), 'gate.awaiting')).toEqual(
+      [],
+    )
+    expect(owedMoversOf(contextOf(), 'review')).toEqual([])
   })
 
   it('an abort outcome never owes a mover (the graph edge already terminated the run)', () => {
-    expect(owedMoverOf(contextOf({ gateOutcome: 'abort' }), 'gate.awaiting')).toBeNull()
+    expect(owedMoversOf(contextOf({ gateOutcome: 'abort' }), 'gate.awaiting')).toEqual([])
   })
 })
 

@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { existsSync, readdirSync } from 'node:fs'
+import path from 'node:path'
 
 import type { DepthProfile, EventInput } from '../events.js'
 import { readEvents } from '../events.js'
@@ -12,7 +13,7 @@ import { foldEvents } from '../kernel/fold.js'
 import type { KernelContext } from '../kernel/machine.js'
 import { ROUND_CAPS } from '../run-state.js'
 import type { SessionLedgerLine } from '../session-ledger.js'
-import { escalationOwed } from './failure-budget.js'
+import { escalationOwed, escalationStageOf } from './failure-budget.js'
 import type { ParkedReason, WorkFor } from './loop.js'
 
 export interface ResumeSession {
@@ -103,28 +104,45 @@ export function parkedReasonOf(context: KernelContext, position: string, workFor
  * appending a mover there would phantom-open a round for an extend that
  * already landed. Veto movers are position-guarded already: a landed veto
  * mover has left `gate.awaiting`.
+ *
+ * C6 escalation rows (W7): the mover targets the still-active failed stage —
+ * approve re-enters it directly; extend closes its bracket first (the exit
+ * clears the failure ledger, C6 D2) then re-enters.
  */
-export function owedMoverOf(context: KernelContext, position: string): EventInput | null {
-  if (position !== 'gate.awaiting') return null
+export function owedMoversOf(context: KernelContext, position: string): readonly EventInput[] {
+  if (position !== 'gate.awaiting') return []
   const gate = context.gate
-  if (gate === null || !gate.answered) return null
+  if (gate === null || !gate.answered) return []
+  if (gate.mode === 'escalation') {
+    const failedStage = escalationStageOf(context)
+    if (failedStage === null) return []
+    if (context.gateOutcome === 'approve' || context.gateOutcome === 'extend') {
+      return [
+        { altitude: 'L2', type: 'stage_exit', stage: failedStage },
+        { altitude: 'L2', type: 'stage_enter', stage: failedStage },
+      ]
+    }
+    return []
+  }
   const mapGateActive = context.stages['gate'] === 'active'
   if (context.gateOutcome === 'extend' && !mapGateActive) {
     const round = context.round
-    return {
-      altitude: 'L2',
-      type: 'round_open',
-      round: (round?.current ?? 0) + 1,
-      cap: (round?.cap ?? 0) + 1,
-    }
+    return [
+      {
+        altitude: 'L2',
+        type: 'round_open',
+        round: (round?.current ?? 0) + 1,
+        cap: (round?.cap ?? 0) + 1,
+      },
+    ]
   }
   if (context.gateOutcome === 'approve' && gate.mode === 'early' && !mapGateActive) {
-    return { altitude: 'L2', type: 'stage_enter', stage: 'decompose' }
+    return [{ altitude: 'L2', type: 'stage_enter', stage: 'decompose' }]
   }
   if (context.gateOutcome === 'veto') {
-    return { altitude: 'L2', type: 'stage_enter', stage: 'draft' }
+    return [{ altitude: 'L2', type: 'stage_enter', stage: 'draft' }]
   }
-  return null
+  return []
 }
 
 /** The highest `gate-<n>.md` version on disk, or null when no gate file exists. */
@@ -135,6 +153,25 @@ export function latestGateFileVersion(runDir: string): number | null {
     .filter((match): match is string => match !== undefined)
     .map(Number)
   return versions.length === 0 ? null : Math.max(...versions)
+}
+
+/**
+ * Owed escalation presentation (C6 D10, W5/W6): the presenter died between
+ * the `stage_failed` appends and the presented event — the budget is spent at
+ * the active stage, no gate parks the run, and the machine never entered the
+ * compound. Returns the stage and the on-disk file version when the crashed
+ * presentation's file exists (re-present at that version); null version means
+ * fresh-render.
+ */
+export function owedEscalationPresentationOf(
+  context: KernelContext,
+  position: string,
+  runDir: string,
+): { readonly stage: string; readonly version: number | null } | null {
+  if (!escalationOwed(context, position)) return null
+  if (context.stages['gate'] === 'active') return null
+  const next = (context.gate?.version ?? 0) + 1
+  return { stage: position, version: existsSync(path.join(runDir, `gate-${next}.md`)) ? next : null }
 }
 
 /**

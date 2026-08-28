@@ -15,8 +15,14 @@ import { createAppendBoundary } from './drive/boundary.js'
 import { drive } from './drive/loop.js'
 import type { DriveResult, ParkedReason, StopSeam, WorkFor, WorkIO } from './drive/loop.js'
 import { flattenPosition } from './drive/loop.js'
-import { owedMoverOf, owedPresentationOf, parkedReasonOf, refoldedContext } from './drive/resume.js'
-import type { DepthProfile } from './events.js'
+import {
+  owedEscalationPresentationOf,
+  owedMoversOf,
+  owedPresentationOf,
+  parkedReasonOf,
+  refoldedContext,
+} from './drive/resume.js'
+import type { DepthProfile, EventInput } from './events.js'
 import { readEvents } from './events.js'
 import type { SddEvent } from './events.js'
 import type { StageId } from './events.js'
@@ -389,6 +395,53 @@ async function recoverOwedPresentation(
 }
 
 /**
+ * Owed escalation-presentation recovery (C6 D10, W5/W6): files present —
+ * append the owed presented event at the on-disk file version and re-run the
+ * ladder (which always logs; never auto-settles); files absent — fresh-render
+ * through the presenter itself. Pure recovery: the run parks gate-pending
+ * right after unless the ladder decided (it cannot).
+ */
+async function recoverOwedEscalation(
+  deps: RunDeps,
+  runDir: string,
+  logPath: string,
+  changeName: string,
+  owed: { readonly stage: string; readonly version: number | null },
+): Promise<void> {
+  const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
+  const emit = (event: EventInput): SddEvent => boundary.append(event)
+  const context = refoldedContext(logPath)
+  if (owed.version === null) {
+    await presentEscalationGate(
+      { config: deps.config, repoRoot: deps.config.repoRoot, changeName, runId: path.basename(runDir) },
+      { append: emit, context, runDir },
+      owed.stage,
+    )
+    return
+  }
+  boundary.append({ altitude: 'L2', type: 'gate', action: 'presented', mode: 'escalation', version: owed.version })
+  await runGatePrelude({
+    version: owed.version,
+    mode: 'escalation',
+    reviewResult: {
+      outcome: 'converged',
+      rounds: context.round?.current ?? 1,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    },
+    context,
+    events: readEvents(logPath),
+    sidecarDir: path.join(runDir, 'sidecars'),
+    changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', changeName),
+    runDir,
+    repoRoot: deps.config.repoRoot,
+    emit,
+    autonomy: autonomyOf(deps.config),
+  })
+}
+
+/**
  * Resume by replay (design D6/D7): a pure function of the event log plus the
  * session ledger — re-fold, append the owed mover when a settle's mover
  * never landed, heal the owed presentation when the tail presenter died in
@@ -416,10 +469,16 @@ export async function resumeRun(deps: RunDeps, runId: string): Promise<ResumeOut
     })
     folded = foldRun(logPath)
   }
-  const owed = owedMoverOf(folded.context, folded.position)
-  if (owed !== null) {
+  const owedEscalation = owedEscalationPresentationOf(folded.context, folded.position, runDir)
+  if (owedEscalation !== null) {
+    const changeNameForRecovery = await changeNameOf(deps, runId, runDir)
+    await recoverOwedEscalation(deps, runDir, logPath, changeNameForRecovery, owedEscalation)
+    folded = foldRun(logPath)
+  }
+  const owed = owedMoversOf(folded.context, folded.position)
+  if (owed.length > 0) {
     const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
-    boundary.append(owed)
+    for (const event of owed) boundary.append(event)
     folded = foldRun(logPath)
   }
   const changeName = await changeNameOf(deps, runId, runDir)

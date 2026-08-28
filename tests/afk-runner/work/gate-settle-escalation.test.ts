@@ -90,7 +90,7 @@ function makeParkedEscalationGate(failedStage: StageId = 'review'): Harness {
 }
 
 describe('settle seam at escalation gates (C6 D4)', () => {
-  it('approve appends the answered event then the stage_enter mover — no gate exit owed, ledger intact', async () => {
+  it('approve appends the answered event then the exit+enter mover — fresh bracket, ledger cleared', async () => {
     const h = makeParkedEscalationGate()
     const result = await h.settleWith({
       items: [],
@@ -101,14 +101,15 @@ describe('settle seam at escalation gates (C6 D4)', () => {
     expect(result.outcome).toBe('approve')
     expect(result.answeredMode).toBe('escalation')
     const events = h.log()
-    expect(events.at(-2)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'approve', mode: 'escalation' })
+    expect(events.at(-3)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'approve', mode: 'escalation' })
+    expect(events.at(-2)).toMatchObject({ type: 'stage_exit', stage: 'review' })
     expect(events.at(-1)).toMatchObject({ type: 'stage_enter', stage: 'review' })
     const folded = foldEvents(pipelineMachine, events).snapshot
     expect(folded.value).toBe('review')
     expect(folded.context.stages['review']).toBe('active')
     expect(folded.context.stages['gate']).toBe('pending')
-    // approve keeps the ledger — each approve buys exactly one more attempt
-    expect(folded.context.failures).toEqual({ review: 2 })
+    // the retry runs as a fresh bracket: the exit cleared the ledger
+    expect(folded.context.failures).toEqual({})
   })
 
   it('extend clears the ledger via the failed stage exit, then re-enters it', async () => {

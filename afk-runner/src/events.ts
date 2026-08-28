@@ -64,7 +64,7 @@ export function appendEvent(logPath: string, event: unknown, now: Date = new Dat
   return parsed
 }
 
-export function readEvents(logPath: string): SddEvent[] {
+export function readEvents(logPath: string, onTornTail: (detail: string) => void = console.warn): SddEvent[] {
   const lines = fs.readFileSync(logPath, 'utf8').split('\n')
   const events: SddEvent[] = []
   lines.forEach((line, index) => {
@@ -73,6 +73,15 @@ export function readEvents(logPath: string): SddEvent[] {
       events.push(SddEventSchema.parse(JSON.parse(line)))
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
+      // Torn-tail tolerance (C6 D10): a kill -9 between partial writes inside
+      // an append leaves exactly one malformed FINAL line — the write was in
+      // flight, so the fold behaves as if it were absent. A malformed line
+      // with any later content is corruption, not a crash window: hard error.
+      const isFinal = lines.slice(index + 1).every((later) => later.length === 0)
+      if (isFinal) {
+        onTornTail(`events.ndjson torn tail: ignoring malformed final line ${index + 1} (${detail})`)
+        return
+      }
       throw new Error(`events.ndjson line ${index + 1}: ${detail}`, { cause: error })
     }
   })

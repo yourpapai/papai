@@ -39,11 +39,11 @@
 
 ## 8. Validation face (D10)
 
-- [ ] 8.1 Failing torn-tail tests (the latent bug): malformed final line tolerated-as-absent with a warn; malformed interior line throws naming the line. Verify: `bun test tests/afk-runner/events-torn-tail.test.ts` (fails)
-- [ ] 8.2 Implement the read policy in `events.ts`. Verify: `bun test tests/afk-runner/events-torn-tail.test.ts`
-- [ ] 8.3 Prefix property: every event-prefix of every fixture/scenario folds without throwing to a legal state with a parked/drivable verdict. Verify: `bun test tests/afk-runner/prefix-property.test.ts`
-- [ ] 8.4 Resume-equivalence drill: deterministic fake-agent run completed, then resumed from every prefix reaches the same terminal state + memo. Verify: `bun test tests/afk-runner/resume-equivalence.test.ts`
-- [ ] 8.5 W5–W7 recovery drills: owed escalation presentation (files-present at file-scan version; files-absent fresh render); owed escalation mover targets the still-active stage. Verify: `bun test tests/afk-runner/drive/resume-escalation.test.ts`
+- [x] 8.1 Failing torn-tail tests (the latent bug): malformed final line tolerated-as-absent with a warn; malformed interior line throws naming the line. Verify: `bun test tests/afk-runner/events-torn-tail.test.ts` (fails)
+- [x] 8.2 Implement the read policy in `events.ts`. Verify: `bun test tests/afk-runner/events-torn-tail.test.ts`
+- [x] 8.3 Prefix property: every event-prefix of every fixture/scenario folds without throwing to a legal state with a parked/drivable verdict. Verify: `bun test tests/afk-runner/prefix-property.test.ts`
+- [x] 8.4 Resume-equivalence drill: deterministic fake-agent run completed, then resumed from every prefix reaches the same terminal state + memo. Verify: `bun test tests/afk-runner/resume-equivalence.test.ts`
+- [x] 8.5 W5–W7 recovery drills: owed escalation presentation (files-present at file-scan version; files-absent fresh render); owed escalation mover targets the still-active stage. Verify: `bun test tests/afk-runner/drive/resume-escalation.test.ts`
 
 ## 9. Corpus face (D11)
 

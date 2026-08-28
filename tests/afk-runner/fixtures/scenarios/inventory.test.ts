@@ -183,20 +183,20 @@ describe('scenario corpus inventory', () => {
 
   it('escalation-approve-cycle-synthetic covers the interstitial escalation cycle: failure ledger, no gate-stage entry, retry mover, completed run', () => {
     const events = readEvents(logOf('escalation-approve-cycle-synthetic.ndjson'))
-    expect(events).toHaveLength(24)
+    expect(events).toHaveLength(25)
     // interstitial presentation: the presented event fires from review's
     // position — no stage_enter(gate) precedes it, the gate stage never activates
-    expect(stageEvents(events, 'stage_enter', 'gate')[0]?.seq).toBe(19)
+    expect(stageEvents(events, 'stage_enter', 'gate')[0]?.seq).toBe(20)
     expect(escalationPresentations(events)).toHaveLength(1)
     // the approve retry mover re-enters the still-active failed stage
-    expect(stageEvents(events, 'stage_enter', 'review').map((event) => event.seq)).toEqual([6, 13])
+    expect(stageEvents(events, 'stage_enter', 'review').map((event) => event.seq)).toEqual([6, 14])
     const kernel = foldEvents(pipelineMachine, events).snapshot
     expect(kernel.value).toBe('completed')
     expect(kernel.context.failures).toEqual({})
-    // the review exit after the successful retry cleared its ledger entry
-    const atMover = foldEvents(pipelineMachine, events.slice(0, 13)).snapshot
+    // the settle's exit cleared the ledger before the retry re-entered the stage
+    const atMover = foldEvents(pipelineMachine, events.slice(0, 14)).snapshot
     expect(atMover.value).toBe('review')
     expect(atMover.context.stages['review']).toBe('active')
-    expect(atMover.context.failures).toEqual({ review: 2 })
+    expect(atMover.context.failures).toEqual({})
   })
 })

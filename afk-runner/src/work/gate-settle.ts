@@ -117,18 +117,13 @@ export async function settleGateFile(input: SettleInput): Promise<SettleResult> 
 function appendMover(input: SettleInput, outcome: SettleOutcome): void {
   if (input.gateMode === 'escalation') {
     const failedStage = input.failedStage
-    if (outcome === 'approve' && failedStage !== undefined) {
-      // approve retries the failed stage — the ledger keeps counting (each
-      // approve buys exactly one more attempt; C6 D4).
-      input.gate.emit({ altitude: 'L2', type: 'stage_enter', stage: failedStage })
-      return
-    }
-    if (outcome === 'extend' && failedStage !== undefined) {
-      // extend grants fresh budget: the failed stage's exit clears its ledger
-      // (C6 D2), then the same retry mover re-enters it.
+    if ((outcome === 'approve' || outcome === 'extend') && failedStage !== undefined) {
+      // Both retry outcomes re-enter the failed stage through a fresh bracket:
+      // the exit clears its failure ledger (C6 D2 — the budget counts the
+      // CURRENT bracket's consecutive failures), so the next failure counts
+      // from zero and the pure `escalationOwed` check stays sound.
       input.gate.emit({ altitude: 'L2', type: 'stage_exit', stage: failedStage })
       input.gate.emit({ altitude: 'L2', type: 'stage_enter', stage: failedStage })
-      return
     }
     return
   }

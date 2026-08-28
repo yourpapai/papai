@@ -68,11 +68,16 @@ describe('appendEvent + readEvents', () => {
     expect(() => appendEvent(log, JSON.parse(raw), at('00'))).toThrow()
   })
 
-  it('throws naming the line when the log contains a corrupt entry', () => {
+  it('tolerates a corrupt final line as a torn tail (C6 D10), reading the clean prefix', () => {
     const log = makeLog()
     appendEvent(log, { altitude: 'L2', type: 'stage_enter', stage: 'intake' }, at('00'))
     fs.appendFileSync(log, '{"altitude":"L2","type":"stage_enter"}\n')
-    expect(() => readEvents(log)).toThrow(/line 2/u)
+    const warnings: string[] = []
+    const events = readEvents(log, (line) => {
+      warnings.push(line)
+    })
+    expect(events.map((e) => e.seq)).toEqual([1])
+    expect(warnings).toHaveLength(1)
   })
 })
 
