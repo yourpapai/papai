@@ -20,10 +20,10 @@ Ordered per design.md Migration Plan; every face starts with its failing test (T
 
 ## 4. Seam face — presentation and settlement
 
-- [ ] 4.1 Port gate rendering copies (gate-model, gate-answers, gate-digest/render/extract, hashes sidecar) with ported unit tests. Verify: `bun test tests/afk-runner/gate-render.test.ts`
-- [ ] 4.2 Upgrade review's cap-hit presentation to full presentation: write `gate-<n>.md` + `gate-hashes-<n>.json`, then append `presented`. Failing integration test with stubbed agents. Verify: `bun test tests/afk-runner/review-work.test.ts`
-- [ ] 4.3 Implement the settle seam: answers → render → parse-back → integrity → append `answered`(+`outcome`) through the boundary. Failing seam tests (approve/extend/veto/abort answer objects). Verify: `bun test tests/afk-runner/gate-settle.test.ts`
-- [ ] 4.4 First-writer-wins claims: `gate-<n>.settle-claim` exclusive-create, loser rejected naming the winner, legacy `expiry-claim` counts. Verify: `bun test tests/afk-runner/gate-claims.test.ts`
+- [x] 4.1 Port gate rendering copies (gate-model, gate-answers, gate-digest/render/extract, hashes sidecar) with ported unit tests. Verify: `bun test tests/afk-runner/gate-render.test.ts`
+- [x] 4.2 Upgrade review's cap-hit presentation to full presentation: write `gate-<n>.md` + `gate-hashes-<n>.json`, then append `presented`. Failing integration test with stubbed agents. Verify: `bun test tests/afk-runner/review-work.test.ts`
+- [x] 4.3 Implement the settle seam: answers → render → parse-back → integrity → append `answered`(+`outcome`) through the boundary. Failing seam tests (approve/extend/veto/abort answer objects). Verify: `bun test tests/afk-runner/gate-settle.test.ts`
+- [x] 4.4 First-writer-wins claims: `gate-<n>.settle-claim` exclusive-create, loser rejected naming the winner, legacy `expiry-claim` counts. Verify: `bun test tests/afk-runner/gate-claims.test.ts`
 
 ## 5. Waiter face — foreground continuation
 

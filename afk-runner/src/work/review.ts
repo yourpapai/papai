@@ -10,10 +10,14 @@ import type { AgentLayerDeps } from '../agent-layer.js'
 import type { ExecGitFn, RunnerConfig } from '../config.js'
 import type { WorkIO } from '../drive/loop.js'
 import { reviewResumeEntry } from '../drive/resume.js'
+import { readEvents } from '../events.js'
 import type { DepthProfile, EventInput } from '../events.js'
 import type { KernelContext } from '../kernel/machine.js'
 import { ROUND_CAPS } from '../run-state.js'
 import { readSessionLedger } from '../session-ledger.js'
+import { readChangeDigest } from './gate-digest-extract.js'
+import { presentGate } from './gate-files.js'
+import { findingsOf, gatherGateSignals } from './gate-signals.js'
 import { createMaterializer } from './materialize.js'
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
@@ -68,13 +72,15 @@ export interface ReviewWorkInput {
  * The review work module body: the legacy review loop recursion stays inside;
  * rounds emit their domain events through the validated append; the re-entry
  * point derives from folded context plus the session ledger; a blocking
- * cap-hit appends the presented early gate and the run parks gate-pending.
+ * cap-hit presents the full early gate (gate MD + hashes sidecar + presented
+ * event) and the run parks gate-pending.
  */
 export async function runReviewWork(input: ReviewWorkInput, io: WorkIO): Promise<ReviewLoopResult> {
   const emit = (event: EventInput): void => {
     io.append(event)
   }
   const runDir = io.runDir
+  const logPath = path.join(runDir, 'events.ndjson')
   const sidecarDir = path.join(runDir, 'sidecars')
   const changeDir = path.join(input.repoRoot, 'openspec', 'changes', input.changeName)
   const materialize = createMaterializer(sidecarDir, changeDir, emit, input.repoRoot)
@@ -112,8 +118,47 @@ export async function runReviewWork(input: ReviewWorkInput, io: WorkIO): Promise
     { startRound: entry.startRound, cap: entry.cap },
   )
   if (presentsGate(result)) {
-    const version = (io.context.gate?.version ?? 0) + 1
-    emit({ altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version })
+    await presentEarlyGate(input, io, { sidecarDir, changeDir, logPath, emit, runDir }, result)
   }
   return result
+}
+
+/** Cap-hit presentation: full gate digest + hashes sidecar + the presented event (design D5). */
+async function presentEarlyGate(
+  input: ReviewWorkInput,
+  io: WorkIO,
+  paths: { sidecarDir: string; changeDir: string; logPath: string; emit: (event: EventInput) => void; runDir: string },
+  result: ReviewLoopResult,
+): Promise<void> {
+  const version = (io.context.gate?.version ?? 0) + 1
+  const events = readEvents(paths.logPath)
+  const signals = await gatherGateSignals(
+    paths.sidecarDir,
+    result.rounds,
+    io.context,
+    events,
+    events[0]?.ts ?? new Date().toISOString(),
+    new Date(),
+  )
+  const findings = findingsOf(result)
+  await presentGate(
+    { emit: paths.emit, runDir: paths.runDir, changeDir: paths.changeDir, driftCheck: () => Promise.resolve() },
+    {
+      version,
+      mode: 'early',
+      changeName: input.changeName,
+      runId: path.basename(paths.runDir),
+      assumptions: signals.assumptions,
+      blockers: findings.blockers,
+      openMaterial: findings.material,
+      openNitpicks: findings.nitpicks,
+      trajectory: signals.trajectory,
+      capHitFired: true,
+      summary: input.changeName,
+      costUsd: signals.costUsd,
+      costKnown: signals.costKnown,
+      durationMs: signals.durationMs,
+      changeDigest: await readChangeDigest(paths.changeDir),
+    },
+  )
 }
