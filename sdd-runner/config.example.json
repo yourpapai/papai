@@ -3,5 +3,7 @@
   "workDir": ".sdd-runner",
   "model": "anthropic/claude-opus-4-1",
   "budget": 5,
-  "deadline": 90
+  "deadline": 90,
+  "_budget": "USD spend ceiling (default 5). null = unmetered (subscription providers): the cost-unknown auto-decision guard is disabled; the round cap and the trajectory bound are the sole spend guards.",
+  "_metered": "optional boolean overriding derived metered-ness (derived: true unless budget is null). metered: false with a numeric budget keeps the ceiling but skips the cost-unknown guard."
 }

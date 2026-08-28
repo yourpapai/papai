@@ -27,7 +27,8 @@ export type AgentRole = z.infer<typeof AgentRoleSchema>
  */
 export interface AutonomyConfig {
   readonly level: 'assist'
-  readonly costCeilingUsd: number
+  readonly costCeilingUsd: number | null
+  readonly metered: boolean
   readonly deadlineMinutes?: number
 }
 
@@ -49,8 +50,9 @@ const FiveKeySchema = z.object({
   repoRoot: z.string().min(1),
   workDir: z.string().min(1).default('.sdd-runner'),
   model: z.string().min(1),
-  budget: z.number().positive().default(5),
+  budget: z.number().positive().nullable().default(5),
   deadline: z.number().positive().optional(),
+  metered: z.boolean().optional(),
 })
 
 export const RunnerConfigSchema = z.strictObject({
@@ -61,11 +63,12 @@ export interface RunnerConfig {
   readonly repoRoot: string
   readonly workDir: string
   readonly model: string
-  readonly budget: number
+  readonly budget: number | null
   readonly deadline?: number
+  readonly metered?: boolean
 }
 
-export const AUTONOMY_DEFAULTS: AutonomyConfig = { level: 'assist', costCeilingUsd: 5 }
+export const AUTONOMY_DEFAULTS: AutonomyConfig = { level: 'assist', costCeilingUsd: 5, metered: true }
 
 function removedKeyError(key: string): Error {
   const pointer = REMOVED_KEY_POINTERS[key] ?? 'not part of the five-key config — remove it'
@@ -114,6 +117,7 @@ export function autonomyOf(config: RunnerConfig, deadlineMinutesOverride?: numbe
   return {
     level: 'assist',
     costCeilingUsd: config.budget,
+    metered: config.metered ?? config.budget !== null,
     ...(deadlineMinutesOverride === undefined && config.deadline === undefined
       ? {}
       : { deadlineMinutes: deadlineMinutesOverride ?? config.deadline }),

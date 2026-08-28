@@ -2475,7 +2475,7 @@ describe('assist auto-settle (7.2)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5 },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
 
@@ -2555,7 +2555,7 @@ describe('assist auto-settle (7.2)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5 },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
 
@@ -2635,7 +2635,7 @@ describe('R3 accept-items partial path (7.5)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5 },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
 
@@ -2711,7 +2711,7 @@ describe('R2 trajectory auto-extend (8.2)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5 },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
 
@@ -2740,7 +2740,7 @@ describe('R2 trajectory auto-extend (8.2)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5 },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
     const events = readEvents(path.join(deps.config.workDir, 'runs', result.runId, 'events.ndjson'))

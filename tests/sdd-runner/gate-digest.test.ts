@@ -459,7 +459,7 @@ describe('presentGateAt plan mode (D5)', () => {
   })
 
   it('a fired R4 writes the preview block, auto-policy.jsonl line, and auto_decision event with attribution', async () => {
-    const fixture = await makePlanFixture({ level: 'assist', costCeilingUsd: 1 })
+    const fixture = await makePlanFixture({ level: 'assist', costCeilingUsd: 1, metered: true })
     const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, CONVERGED, 1, 'plan', {
       children: PLAN_CHILDREN,
     })
