@@ -24,6 +24,7 @@ describe('pipeline graph v0 shape', () => {
     expect(Object.keys(pipelineRootHandlers).sort()).toEqual(
       [
         'stage.exit',
+        'stage.failed',
         'depth',
         'round.open',
         'round.close',

@@ -24,6 +24,7 @@ export interface FoldResult {
 export function toKernelEvent(event: SddEvent): KernelEvent | null {
   if (event.type === 'stage_enter') return { type: 'stage.enter', stage: event.stage }
   if (event.type === 'stage_exit') return { type: 'stage.exit', stage: event.stage }
+  if (event.type === 'stage_failed') return { type: 'stage.failed', stage: event.stage, kind: event.kind }
   if (event.type === 'depth') return { type: 'depth', profile: event.profile }
   if (event.type === 'round_open') return { type: 'round.open', round: event.round, cap: event.cap }
   if (event.type === 'round_close') return { type: 'round.close', round: event.round, cap: event.cap }

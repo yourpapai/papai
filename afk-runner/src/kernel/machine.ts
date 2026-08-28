@@ -6,7 +6,14 @@
 import { assign, initialTransition, setup, transition } from 'xstate'
 import type { ExecutableActionsFrom, SnapshotFrom } from 'xstate'
 
-import type { AutoDecisionKind, AutoDecisionRule, DepthProfile, FindingCounts, GateOutcome } from '../events.js'
+import type {
+  AutoDecisionKind,
+  AutoDecisionRule,
+  DepthProfile,
+  FailureKind,
+  FindingCounts,
+  GateOutcome,
+} from '../events.js'
 import type { AutoDecisionRecord, DigestRecord } from '../legacy-fold.js'
 
 export type StageStatus = 'pending' | 'active' | 'done'
@@ -55,6 +62,12 @@ export interface KernelContext {
   readonly gateDeadlineAt: string | null
   /** Whether this gate version's deadline was already re-armed once (D4). */
   readonly gateDeadlineReArmed: boolean
+  /**
+   * Non-projected failure residue (C6 D2, like the tally): per-stage
+   * consecutive declared-failure counts, cleared by that stage's exit and by
+   * escalation-extend — never a parity field.
+   */
+  readonly failures: Readonly<Record<string, number>>
 }
 
 export function initialKernelContext(stages: Readonly<Record<string, StageStatus>>): KernelContext {
@@ -71,12 +84,14 @@ export function initialKernelContext(stages: Readonly<Record<string, StageStatus
     gateOutcome: null,
     gateDeadlineAt: null,
     gateDeadlineReArmed: false,
+    failures: {},
   }
 }
 
 export type KernelEvent =
   | { readonly type: 'stage.enter'; readonly stage: string }
   | { readonly type: 'stage.exit'; readonly stage: string }
+  | { readonly type: 'stage.failed'; readonly stage: string; readonly kind: FailureKind }
   | { readonly type: 'depth'; readonly profile: DepthProfile }
   | { readonly type: 'round.open'; readonly round: number; readonly cap: number }
   | { readonly type: 'round.close'; readonly round: number; readonly cap: number }
@@ -141,7 +156,16 @@ export const kernelSetup = setup({
     }),
     markStageDone: assign(({ context, event }) => {
       if (event.type !== 'stage.exit') return {}
-      return { stages: { ...context.stages, [event.stage]: 'done' } }
+      // A stage's exit closes its bracket successfully — its failure ledger
+      // entry resets (C6 D2: a later failure of the same stage counts fresh).
+      const failures = Object.fromEntries(Object.entries(context.failures).filter(([stage]) => stage !== event.stage))
+      return { stages: { ...context.stages, [event.stage]: 'done' }, failures }
+    }),
+    recordFailure: assign(({ context, event }) => {
+      if (event.type !== 'stage.failed') return {}
+      return {
+        failures: { ...context.failures, [event.stage]: (context.failures[event.stage] ?? 0) + 1 },
+      }
     }),
     setDepth: assign(({ event }) => {
       if (event.type !== 'depth') return {}
@@ -239,6 +263,7 @@ type KernelMachineConfig = Parameters<typeof kernelSetup.createMachine>[0]
 
 export const kernelRootHandlers: NonNullable<KernelMachineConfig['on']> = {
   'stage.exit': { actions: ['markStageDone'] },
+  'stage.failed': { actions: ['recordFailure'] },
   depth: { actions: ['setDepth'] },
   'round.open': { actions: ['openRound'] },
   'round.close': { actions: [] },

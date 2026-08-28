@@ -6,8 +6,8 @@
 
 ## 2. Kernel face (D2)
 
-- [ ] 2.1 Failing schema/fold tests: `stage_failed {stage, kind, reason, resumeHint?}` parses; maps to `stage.failed`; root handler increments a per-stage `failures` ledger (non-projected residue); the stage map is untouched; a stage's successful exit clears its ledger entry; legacy-fold tolerates the type. Verify: `bun test tests/afk-runner/kernel/failures.test.ts` (fails)
-- [ ] 2.2 Implement schema + `toKernelEvent` + `recordFailure`/clear assigns in `machine.ts`. Verify: `bun test tests/afk-runner/kernel/failures.test.ts tests/afk-runner/parity/`
+- [x] 2.1 Failing schema/fold tests: `stage_failed {stage, kind, reason, resumeHint?}` parses; maps to `stage.failed`; root handler increments a per-stage `failures` ledger (non-projected residue); the stage map is untouched; a stage's successful exit clears its ledger entry; legacy-fold tolerates the type. Verify: `bun test tests/afk-runner/kernel/failures.test.ts` (fails)
+- [x] 2.2 Implement schema + `toKernelEvent` + `recordFailure`/clear assigns in `machine.ts`. Verify: `bun test tests/afk-runner/kernel/failures.test.ts tests/afk-runner/parity/`
 
 ## 3. Edges face (D4/D7)
 

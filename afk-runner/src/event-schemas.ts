@@ -10,6 +10,10 @@ export type StageId = z.infer<typeof StageIdSchema>
 
 export const STAGE_ORDER: readonly StageId[] = ['intake', 'draft', 'review', 'decompose', 'atomicity', 'gate']
 
+/** Declared failure kinds (C6 D1 taxonomy): exhaustion, structural precondition, agent-transport infra. */
+export const FailureKindSchema = z.enum(['exhausted', 'precondition', 'infra'])
+export type FailureKind = z.infer<typeof FailureKindSchema>
+
 export const DepthProfileSchema = z.enum(['S', 'M', 'L'])
 export type DepthProfile = z.infer<typeof DepthProfileSchema>
 
@@ -97,6 +101,15 @@ const StageExitEvent = z.object({
   altitude: z.literal('L2'),
   type: z.literal('stage_exit'),
   stage: StageIdSchema,
+})
+
+const StageFailedEvent = z.object({
+  altitude: z.literal('L2'),
+  type: z.literal('stage_failed'),
+  stage: StageIdSchema,
+  kind: FailureKindSchema,
+  reason: z.string().min(1),
+  resumeHint: z.string().min(1).optional(),
 })
 
 const RoundOpenEvent = z.object({
@@ -229,6 +242,7 @@ const EVENT_VARIANTS = [
   DoneEvent,
   StageEnterEvent,
   StageExitEvent,
+  StageFailedEvent,
   RoundOpenEvent,
   RoundCloseEvent,
   FindingEvent,
@@ -259,6 +273,7 @@ export const SddEventSchema = z.discriminatedUnion('type', [
   DoneEvent.extend(StampShape),
   StageEnterEvent.extend(StampShape),
   StageExitEvent.extend(StampShape),
+  StageFailedEvent.extend(StampShape),
   RoundOpenEvent.extend(StampShape),
   RoundCloseEvent.extend(StampShape),
   FindingEvent.extend(StampShape),
