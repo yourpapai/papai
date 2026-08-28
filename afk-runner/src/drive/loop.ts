@@ -151,7 +151,6 @@ async function runWorkBracket(
     })
     const failed = foldCurrent(deps)
     if (escalationOwed(failed.context, position)) {
-      const runDir = path.dirname(deps.logPath)
       if (deps.escalation !== undefined) {
         await deps.escalation.present({ append: boundary.append, context: failed.context, runDir }, position)
       }

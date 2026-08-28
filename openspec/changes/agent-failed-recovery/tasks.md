@@ -51,4 +51,4 @@
 
 ## 10. Full verification
 
-- [ ] 10.1 Run full `bun test`, `bun run typecheck`, `bun run lint`, `bun run knip`; update `docs/architecture/afk-runner.md` (C6 delivered row, layout additions, taxonomy vocabulary) and `docs/architecture/sdd-pipeline.md` cross-reference if stale. Verify: `bun check:full`
+- [x] 10.1 Run full `bun test`, `bun run typecheck`, `bun run lint`, `bun run knip`; update `docs/architecture/afk-runner.md` (C6 delivered row, layout additions, taxonomy vocabulary) and `docs/architecture/sdd-pipeline.md` cross-reference if stale. Verify: `bun check:full`

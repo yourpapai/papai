@@ -14,7 +14,9 @@ import type { SddEvent } from '../../afk-runner/src/events.js'
 import { readEvents } from '../../afk-runner/src/events.js'
 import { createPipelineWorkFor } from '../../afk-runner/src/graph/pipeline-work.js'
 import { pipelineMachine } from '../../afk-runner/src/graph/pipeline.js'
-import { foldEvents } from '../../afk-runner/src/kernel/fold.js'
+import { toKernelEvent } from '../../afk-runner/src/kernel/fold.js'
+import { initialStep, step } from '../../afk-runner/src/kernel/machine.js'
+import type { KernelSnapshot } from '../../afk-runner/src/kernel/machine.js'
 import { makeFakePipeline, TASK_TEXT } from './fixtures/fake-pipeline.js'
 
 const REAL_ROOT = path.join(import.meta.dir, 'fixtures', 'real')
@@ -44,12 +46,15 @@ function workForOf(): WorkFor {
   )
 }
 
-function foldPrefix(prefix: readonly SddEvent[]): ReturnType<typeof foldEvents>['snapshot'] {
-  return foldEvents(pipelineMachine, prefix).snapshot
+function positionOf(snapshot: KernelSnapshot): string {
+  return flattenPosition(snapshot.value)
 }
 
-function positionOf(snapshot: ReturnType<typeof foldEvents>['snapshot']): string {
-  return flattenPosition(snapshot.value)
+/** Step one mapped event forward (tolerated events step nothing). */
+function advance(snapshot: KernelSnapshot, event: SddEvent): KernelSnapshot {
+  const kernelEvent = toKernelEvent(event)
+  if (kernelEvent === null) return snapshot
+  return step(pipelineMachine, snapshot, kernelEvent)[0]
 }
 
 /**
@@ -67,11 +72,13 @@ describe('prefix property — every event prefix of the corpus folds legally (C6
   for (const logPath of logPaths()) {
     it(`${path.relative(path.join(import.meta.dir, '..'), logPath)}: all prefixes fold to a legal state`, () => {
       const events = readEvents(logPath)
-      for (let cut = 0; cut <= events.length; cut += 1) {
-        const prefix = events.slice(0, cut)
-        const snapshot = foldPrefix(prefix)
-        const verdict: ParkedReason | 'drivable' = parkedReasonOf(snapshot.context, positionOf(snapshot), workFor)
-        expect(['final', 'gate-pending', 'stopped', 'drivable']).toContain(verdict)
+      let snapshot = initialStep(pipelineMachine)[0]
+      const verdictAt = (current: KernelSnapshot): ParkedReason | 'drivable' =>
+        parkedReasonOf(current.context, positionOf(current), workFor)
+      expect(['final', 'gate-pending', 'stopped', 'drivable']).toContain(verdictAt(snapshot))
+      for (const event of events) {
+        snapshot = advance(snapshot, event)
+        expect(['final', 'gate-pending', 'stopped', 'drivable']).toContain(verdictAt(snapshot))
       }
     })
   }

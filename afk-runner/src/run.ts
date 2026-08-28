@@ -436,7 +436,9 @@ async function recoverOwedEscalation(
     changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', changeName),
     runDir,
     repoRoot: deps.config.repoRoot,
-    emit,
+    emit: (event) => {
+      emit(event)
+    },
     autonomy: autonomyOf(deps.config),
   })
 }

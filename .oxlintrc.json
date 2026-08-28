@@ -40,7 +40,13 @@
     "eslint/no-empty": "error",
     "eslint/no-empty-function": "error",
     "eslint/no-param-reassign": "error",
-    "import/extensions": ["error", "always", { "ignorePackages": true }],
+    "import/extensions": [
+      "error",
+      "always",
+      {
+        "ignorePackages": true
+      }
+    ],
     "import/no-cycle": "error",
     "oxc/no-barrel-file": "error",
     "oxc/no-optional-chaining": "error",
@@ -66,7 +72,8 @@
       "rules": {
         "max-lines-per-function": "off",
         "max-lines": "off",
-        "typescript/no-unsafe-type-assertion": "off"
+        "typescript/no-unsafe-type-assertion": "off",
+        "max-classes-per-file": "off"
       }
     },
     {
