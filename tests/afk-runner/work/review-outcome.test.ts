@@ -4,14 +4,24 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, it } from 'bun:test'
+import path from 'node:path'
 
 import type { SddEvent } from '../../../afk-runner/src/events.js'
-import { stampEvent } from '../../../afk-runner/src/events.js'
+import { readEvents, stampEvent } from '../../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../../afk-runner/src/kernel/fold.js'
 import type { KernelContext } from '../../../afk-runner/src/kernel/machine.js'
 import { initialKernelContext } from '../../../afk-runner/src/kernel/machine.js'
 import { reviewOutcomeOf } from '../../../afk-runner/src/work/review.js'
+
+const MARATHON_LOG = path.join(
+  import.meta.dir,
+  '..',
+  'fixtures',
+  'real',
+  '2026-08-19T12-04-49-341Z-7d97443e',
+  'events.ndjson',
+)
 
 const stamp = (input: Parameters<typeof stampEvent>[0], seq: number): SddEvent =>
   stampEvent(input, seq, '2026-08-27T00:00:00.000Z')
@@ -21,7 +31,7 @@ function contextOf(events: readonly SddEvent[]): KernelContext {
 }
 
 describe('review outcome — pure reader of folded context', () => {
-  it('a presented gate parks cap-hit, answered or not', () => {
+  it('an unanswered presented gate parks cap-hit', () => {
     const context = contextOf([
       stamp({ altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1 }, 1),
     ])
@@ -76,4 +86,19 @@ describe('review outcome — pure reader of folded context', () => {
     expect(reviewOutcomeOf(open)).toBe('incomplete')
     expect(reviewOutcomeOf(initialKernelContext({}))).toBe('incomplete')
   })
+})
+
+describe('review outcome — answered gates release continuation (marathon regression)', () => {
+  const events = readEvents(MARATHON_LOG)
+
+  it.each([1188, 1194, 1200])(
+    'truncated right after answered seq %s: the extended round is drivable, not cap-hit',
+    (seq: number) => {
+      const truncated = events.filter((event) => event.seq <= seq)
+      const context = foldEvents(pipelineMachine, truncated).snapshot.context
+      expect(context.gate).toEqual({ mode: 'early', version: 1, answered: true })
+      expect(reviewOutcomeOf(context)).not.toBe('cap-hit')
+      expect(reviewOutcomeOf(context)).toBe('incomplete')
+    },
+  )
 })

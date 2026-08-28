@@ -21,14 +21,16 @@ import type { ReviewLoopResult } from './review-loop.js'
 export type ReviewOutcome = 'converged' | 'cap-hit' | 'incomplete'
 
 /**
- * The review outcome as a pure reader of folded context: a presented gate
- * parks cap-hit; a converged verdict — including the severity rule (a
- * nitpick-only open cap-hit counts as converged, mirroring the legacy
- * orchestrator) — or a passed review stage is converged; anything else means
- * the loop still owes work (fresh, crashed mid-round, or calm-stopped).
+ * The review outcome as a pure reader of folded context: an unanswered gate
+ * parks cap-hit (an answered one releases continuation — the extend path
+ * never clears the gate record, so answered gates must not re-park); a
+ * converged verdict — including the severity rule (a nitpick-only open
+ * cap-hit counts as converged, mirroring the legacy orchestrator) — or a
+ * passed review stage is converged; anything else means the loop still owes
+ * work (fresh, crashed mid-round, or calm-stopped).
  */
 export function reviewOutcomeOf(context: KernelContext): ReviewOutcome {
-  if (context.gate !== null) return 'cap-hit'
+  if (context.gate !== null && !context.gate.answered) return 'cap-hit'
   const verdict = context.lastVerdict
   if (
     verdict !== null &&
