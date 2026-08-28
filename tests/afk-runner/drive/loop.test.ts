@@ -231,7 +231,7 @@ function gateStubWorkFor(fate: 'converged' | 'cap-hit'): (state: string) => Stat
           return 'incomplete'
         },
         successors: {
-          converged: { park: 'awaiting-tail' },
+          converged: { park: 'final' },
           'cap-hit': { park: 'gate-pending' },
         },
       }
@@ -285,16 +285,16 @@ describe('drive loop — generic, stage-agnostic', () => {
       'convergence',
       'stage_exit:review',
     ])
-    expect(result.parked).toBe('awaiting-tail')
+    expect(result.parked).toBe('final')
     expect(result.position).toBe('review')
   })
 
-  it('successor-or-park: enters a successor only when it declares work, else parks awaiting-tail', async () => {
+  it('successor-or-park: enters a successor only when it declares work, else parks final', async () => {
     const runDir = tempRunDir()
     const logPath = path.join(runDir, 'events.ndjson')
     const result = await drive({ machine: stubMachine(), logPath }, standardWorkFor('converged'))
     expect(enteredStages(logPath)).not.toContain('stage_enter:decompose')
-    expect(result.parked).toBe('awaiting-tail')
+    expect(result.parked).toBe('final')
   })
 
   it('parks gate-pending when the successor map parks after a presented gate', async () => {
@@ -345,7 +345,7 @@ describe('drive loop — generic, stage-agnostic', () => {
     const logPath = path.join(runDir, 'events.ndjson')
     const result = await drive({ machine: stubMachine(), logPath }, composedWorkFor)
     expect(logTypes(logPath)).toEqual(['stage_enter:review', 'round_open', 'convergence', 'stage_exit:review'])
-    expect(result.parked).toBe('awaiting-tail')
+    expect(result.parked).toBe('final')
   })
 })
 
@@ -408,7 +408,7 @@ describe('drive loop — compound positions (C4 gate.awaiting)', () => {
     ])
     const result = await drive({ machine: gateStubMachine(), logPath }, gateStubWorkFor('converged'))
     expect(result.position).toBe('review')
-    expect(result.parked).toBe('awaiting-tail')
+    expect(result.parked).toBe('final')
     expect(logTypes(logPath).slice(-4)).toEqual([
       'stage_enter:review',
       'round_open',

@@ -32,8 +32,8 @@
 
 ## 6. Finals face (D6)
 
-- [ ] 6.1 Failing loop/run tests: final snapshots park `'final'` (not awaiting-tail); memo writes completed/aborted; session id released; resume-of-terminal prints the report pointer and appends nothing; `awaiting-tail` retired from the union and `parkLine`. Verify: `bun test tests/afk-runner/drive/loop.test.ts tests/afk-runner/run-final.test.ts` (fails)
-- [ ] 6.2 Implement the terminal park reason + memo status mapping + resume early-exit; waiter re-drive exits on final park. Verify: `bun test tests/afk-runner/drive/ tests/afk-runner/run-final.test.ts`
+- [x] 6.1 Failing loop/run tests: final snapshots park `'final'` (not awaiting-tail); memo writes completed/aborted; session id released; resume-of-terminal prints the report pointer and appends nothing; `awaiting-tail` retired from the union and `parkLine`. Verify: `bun test tests/afk-runner/drive/loop.test.ts tests/afk-runner/run-final.test.ts` (fails)
+- [x] 6.2 Implement the terminal park reason + memo status mapping + resume early-exit; waiter re-drive exits on final park. Verify: `bun test tests/afk-runner/drive/ tests/afk-runner/run-final.test.ts`
 
 ## 7. Memo face (D7)
 

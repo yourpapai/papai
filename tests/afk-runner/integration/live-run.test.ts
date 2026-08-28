@@ -137,7 +137,8 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
   it('start → intake → draft → review → S tail presents the final gate from decompose and parks gate-pending', async () => {
     const pipeline = makeFakePipeline()
     const result = await startRun(pipeline.deps, { taskText: TASK_TEXT })
-    expect(result.halted).toBe('gate-pending')
+    expect(result.halted).toBe('final')
+    expect(result.position).toBe('completed')
     const tokens = skeletonTokens(path.join(pipeline.runDirOf(result.runId), 'events.ndjson'))
     expect(tokens).toEqual([
       'stage_enter:intake',
@@ -170,10 +171,10 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
     expect(pipeline.spawnOrder).not.toContain('atomicity.json')
   })
 
-  it('M run drives the full tail: decompose bracket, atomicity bracket, final presentation parks gate-pending', async () => {
+  it('M run drives the full tail: decompose bracket, atomicity bracket, final presentation, R1 completes', async () => {
     const pipeline = makeFakePipeline({ sidecarOverrides: M_MULTI_ROUND })
     const result = await startRun(pipeline.deps, { taskText: TASK_TEXT })
-    expect(result.halted).toBe('gate-pending')
+    expect(result.halted).toBe('final')
     const tokens = skeletonTokens(path.join(pipeline.runDirOf(result.runId), 'events.ndjson'))
     const tailStart = tokens.indexOf('stage_enter:decompose')
     expect(tailStart).toBeGreaterThan(tokens.indexOf('stage_exit:review'))
@@ -250,8 +251,7 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
     fs.writeFileSync(path.join(runDir, 'gate-2.md'), approveMd)
     const halted = await settleViaTicks(runPromise, clock, 30)
 
-    // Pre-C6 vocabulary: the completed run parks awaiting-tail at the final.
-    expect(halted).toMatchObject({ halted: 'awaiting-tail', position: 'completed' })
+    expect(halted).toMatchObject({ halted: 'final', position: 'completed' })
     const tokens = skeletonTokens(logPath)
     // the tail re-ran as fresh brackets and re-presented at v2
     expect(tokens.filter((token) => token === 'stage_enter:decompose')).toHaveLength(2)
@@ -297,7 +297,7 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
     fs.rmSync(path.join(crashed.runDirOf(runId), 'state.json'))
 
     const resumed = await resumeRun(crashed.deps, runId)
-    expect(resumed.halted).toBe('gate-pending')
+    expect(resumed.halted).toBe('final')
     expect(resumed.drove).toBe(true)
 
     const tokens = skeletonTokens(logPath)

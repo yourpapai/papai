@@ -87,6 +87,13 @@ function stageOf(position: string): StageId {
   return position === 'start' ? 'intake' : 'gate'
 }
 
+/** Terminal parks map to the memo's terminal statuses (C5 D6): session-id release follows through TERMINAL_STATUSES. */
+function memoStatusOf(halted: ParkedReason, position: string): 'running' | 'stopped' | 'completed' | 'aborted' {
+  if (halted === 'final') return position === 'aborted' ? 'aborted' : 'completed'
+  if (halted === 'stopped') return 'stopped'
+  return 'running'
+}
+
 /**
  * The derived memo (design D6): written after appends as a pure projection of
  * the log — stage from the folded position, round and gate from context,
@@ -111,8 +118,13 @@ async function writeRunMemo(
     depth: context.depth,
     round: context.round?.current ?? 0,
     roundCap: context.round?.cap ?? resolveRoundCap({ depth: context.depth }),
-    gate: context.gate === null ? null : { mode: context.gate.mode, version: context.gate.version },
-    status: halted === 'stopped' ? 'stopped' : 'running',
+    gate:
+      halted === 'final'
+        ? null
+        : context.gate === null
+          ? null
+          : { mode: context.gate.mode, version: context.gate.version },
+    status: memoStatusOf(halted, position),
     createdAt: events[0]?.ts ?? seed.createdAt,
     updatedAt: events[events.length - 1]?.ts ?? seed.createdAt,
     runDir,
@@ -209,7 +221,7 @@ async function waitSettledGates(
 function parkLine(parked: ParkedReason): string {
   if (parked === 'gate-pending') return 'run parked gate-pending — answer the presented gate'
   if (parked === 'stopped') return 'run stopped calmly — resume with afk-runner resume <runId>'
-  return 'run parked awaiting-tail — the tail stages land in C5'
+  return 'run reached a final — print the report with afk-runner report <runId>'
 }
 
 export async function startRun(deps: RunDeps, options: StartOptions): Promise<RunHalt> {

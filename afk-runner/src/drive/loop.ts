@@ -11,7 +11,14 @@ import type { KernelContext, KernelMachine, KernelSnapshot } from '../kernel/mac
 import { createAppendBoundary } from './boundary.js'
 import type { AppendBoundary } from './boundary.js'
 
-export type ParkedReason = 'awaiting-tail' | 'gate-pending' | 'stopped'
+/**
+ * Park vocabulary (C5 D6): `gate-pending` — a presented gate awaits an
+ * answer; `stopped` — a calm stop; `final` — the machine reached a final
+ * (completed/aborted) or an unknown position parks defensively. The tail
+ * declaring work retired the old `awaiting-tail`; the append boundary's
+ * refusal remains the alarm for genuinely illegal movement.
+ */
+export type ParkedReason = 'final' | 'gate-pending' | 'stopped'
 
 export type Successor = { readonly enter: string } | { readonly park: ParkedReason }
 
@@ -152,8 +159,9 @@ async function driveStep(
 ): Promise<DriveResult> {
   const snapshot = foldCurrent(deps)
   const position = positionOf(snapshot)
+  if (snapshot.status === 'done') return { position, context: snapshot.context, parked: 'final' }
   const module = workFor(position)
-  if (module === null) return { position, context: snapshot.context, parked: 'awaiting-tail' }
+  if (module === null) return { position, context: snapshot.context, parked: 'final' }
 
   let context = snapshot.context
   let successor: Successor | null = module.successors[module.outcomeOf(context)] ?? null
@@ -175,13 +183,16 @@ async function driveStep(
 
   if ('park' in successor) {
     const parked = foldCurrent(deps)
+    // The work may itself have finished the run (a ladder auto-settle during
+    // the presentation) — a done snapshot parks final over the module's park.
+    if (parked.status === 'done') return { position: positionOf(parked), context: parked.context, parked: 'final' }
     return { position: positionOf(parked), context: parked.context, parked: successor.park }
   }
   const target = successor.enter
   if (target === position) return driveStep(deps, workFor, boundary, loop)
   const targetModule = workFor(target)
   if (targetModule === null || targetModule.work === null) {
-    return { position, context, parked: 'awaiting-tail' }
+    return { position, context, parked: 'final' }
   }
   boundary.append(stageEnter(target))
   loop.entered = true

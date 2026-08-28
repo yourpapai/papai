@@ -69,7 +69,7 @@ describe('afk-runner cli commands (fake agents)', () => {
     const taskFile = path.join(pipeline.repoRoot, 'task.md')
     fs.writeFileSync(taskFile, TASK_TEXT)
     const summary = await runStartCommand(pipeline.deps, [taskFile])
-    expect(summary).toContain('halted: gate-pending')
+    expect(summary).toContain('halted: final')
     const runId = runIdOf(summary)
     expect(fs.existsSync(path.join(pipeline.runDirOf(runId), 'events.ndjson'))).toBe(true)
   })
@@ -86,7 +86,7 @@ describe('afk-runner cli commands (fake agents)', () => {
     expect(summary).toContain('round: 1/1')
     expect(summary).toContain('last verdict: converged')
     expect(summary).toContain('gate: final v1 answered')
-    expect(summary).toContain('halted: awaiting-tail')
+    expect(summary).toContain('halted: final')
   })
 
   it('fullStateSummary renders the gate-pending flavor from folded context', async () => {
@@ -115,7 +115,7 @@ describe('afk-runner cli commands (fake agents)', () => {
     fs.rmSync(path.join(pipeline.runDirOf(runId), 'state.json'))
 
     const summary = await runResumeCommand(pipeline.deps, runId)
-    expect(summary).toContain('halted: gate-pending')
+    expect(summary).toContain('halted: final')
     expect(summary).toContain('resumed: re-entered work')
 
     expect(reviewEnterCount(logPath)).toBe(2)

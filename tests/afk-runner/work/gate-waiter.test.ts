@@ -311,18 +311,17 @@ describe('gate waiter as run-level continuation (C4 5.1)', () => {
 
     const gateMd = path.join(runDir, 'gate-1.md')
     fs.writeFileSync(gateMd, `${fs.readFileSync(gateMd, 'utf8')}\n## Gate response\n\n→ RUN 1 MORE\n`)
-    // Release ticks until the extended round converges and the S tail presents
-    // the final gate (the waiter then holds for the human answer — completing
-    // an approved final gate is C5 §4/§6 machinery).
-    await waitFor(tailParkedAtFinalGate(clock, runDir))
+    // The extended round converges; the S tail presents the final gate and
+    // R1 approves it — the waiter's re-drive exits on the final park and the
+    // holder is removed (C5 D6).
+    const halted = await waitForRunEnd(runPromise, clock)
+    expect(halted.halted).toBe('final')
     const events = readEvents(path.join(runDir, 'events.ndjson'))
     expect(hasAnsweredGate(events)).toBe(true)
     expect(hasRoundOpen(events, 2)).toBe(true)
     expect(pipeline.spawnOrder).toContain('findings-2.json')
     expect(presentedGateEvents(events).at(-1)).toMatchObject({ mode: 'final', version: 2 })
-    // still waiting at the final gate: the holder stays alive with the waiter
-    expect(fs.existsSync(holderPath(runDir))).toBe(true)
-    void runPromise
+    expect(fs.existsSync(holderPath(runDir))).toBe(false)
   })
 })
 
@@ -331,15 +330,16 @@ function presentedGateEvents(events: readonly SddEvent[]): SddEvent[] {
 }
 
 /** One waiter-clock poll step: release a tick, then report whether the re-drive has presented the final gate and parked. */
-function tailParkedAtFinalGate(clock: { readonly release: () => void }, runDir: string): () => boolean {
-  return (): boolean => {
+async function waitForRunEnd<T>(pending: Promise<T>, clock: { readonly release: () => void }, budget = 30): Promise<T> {
+  for (let i = 0; i < budget; i += 1) {
     clock.release()
-    const events = readEvents(path.join(runDir, 'events.ndjson'))
-    const presentedFinal = events.some(
-      (event) => event.type === 'gate' && event.action === 'presented' && event.mode === 'final',
-    )
-    return presentedFinal && events.at(-1)?.type === 'stage_exit'
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+    const done = await Promise.race([pending.then((): boolean => true), Promise.resolve(false)])
+    if (done) break
   }
+  return pending
 }
 
 function extendSkipWarning(line: string): boolean {

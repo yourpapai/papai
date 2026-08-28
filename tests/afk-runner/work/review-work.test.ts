@@ -61,7 +61,7 @@ describe('review work presents the full early gate (C4 seam face)', () => {
     fs.writeFileSync(taskFile, TASK_TEXT)
     const halted = await startRun(pipeline.deps, { taskFile })
     const runDir = pipeline.runDirOf(halted.runId)
-    expect(halted.halted).toBe('gate-pending')
+    expect(halted.halted).toBe('final')
     const presented = presentedEvents(runDir)
     expect(presented).toHaveLength(1)
     expect(presented[0]).toMatchObject({ mode: 'final', version: 1 })

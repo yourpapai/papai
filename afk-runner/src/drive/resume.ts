@@ -69,15 +69,20 @@ export function reviewResumeEntry(
   }
 }
 
-/** A run is drivable when its state module still owes work or movement; otherwise it reports a parked reason as data. */
+/**
+ * A run is drivable when its state module still owes work or movement;
+ * otherwise it reports a parked reason as data. Unknown positions and
+ * workless successors park defensively as `final` (C5 D6 — the boundary's
+ * refusal vocabulary remains the alarm for illegal movement).
+ */
 export function parkedReasonOf(context: KernelContext, position: string, workFor: WorkFor): ParkedReason | 'drivable' {
   const module = workFor(position)
-  if (module === null) return 'awaiting-tail'
+  if (module === null) return 'final'
   const successor = module.successors[module.outcomeOf(context)]
   if (successor === undefined) return 'drivable'
   if ('park' in successor) return successor.park
   const target = workFor(successor.enter)
-  return target === null || target.work === null ? 'awaiting-tail' : 'drivable'
+  return target === null || target.work === null ? 'final' : 'drivable'
 }
 
 /**

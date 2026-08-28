@@ -235,7 +235,7 @@ describe('gate prelude wired into the live presentation (integration)', () => {
     fs.writeFileSync(taskFile, TASK_TEXT)
     const halted = await startRun(pipeline.deps, { taskFile })
 
-    expect(halted.halted).toBe('gate-pending')
+    expect(halted.halted).toBe('final')
     const runDir = pipeline.runDirOf(firstRunOf(pipeline))
     const events = readEvents(path.join(runDir, 'events.ndjson'))
     const autoDecisions = events.filter((event) => event.type === 'auto_decision')

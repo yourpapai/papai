@@ -85,7 +85,7 @@ function modules(opts: {
           ? {
               work: { kind: 'stub-review', run: opts.reviewWork },
               outcomeOf: (context) => (context.lastVerdict?.verdict === 'converged' ? 'converged' : 'incomplete'),
-              successors: { converged: { park: 'awaiting-tail' } },
+              successors: { converged: { park: 'final' } },
             }
           : null
 }
@@ -142,7 +142,7 @@ describe('drive crash-resume drill (loop level)', () => {
       },
     })
     const result = await drive({ machine, logPath }, completing)
-    expect(result.parked).toBe('awaiting-tail')
+    expect(result.parked).toBe('final')
 
     const types = logTypes(logPath)
     expect(types).toEqual([
@@ -189,7 +189,7 @@ describe('drive crash-resume drill (loop level)', () => {
       },
     })
     const result = await drive({ machine, logPath }, observing)
-    expect(result.parked).toBe('awaiting-tail')
+    expect(result.parked).toBe('final')
     expect(seenRounds).toEqual([1])
   })
 })
@@ -226,7 +226,7 @@ describe('drive crash-resume drill (real pipeline graph — C5 D4 self-loops)', 
     appendEvent(logPath, { altitude: 'L2', type: 'stage_enter', stage: 'intake' })
 
     const result = await drive({ machine: pipelineMachine, logPath }, intakeDepthModule)
-    expect(result.parked).toBe('awaiting-tail')
+    expect(result.parked).toBe('final')
     expect(result.position).toBe('intake')
     expect(logTypes(logPath)).toEqual(['stage_enter:intake', 'stage_enter:intake', 'depth', 'stage_exit:intake'])
   })
@@ -249,7 +249,7 @@ describe('drive crash-resume drill (real pipeline graph — C5 D4 self-loops)', 
     }
 
     const result = await drive({ machine: pipelineMachine, logPath }, decomposeDoneModule)
-    expect(result.parked).toBe('awaiting-tail')
+    expect(result.parked).toBe('final')
     expect(result.position).toBe('decompose')
     expect(logTypes(logPath).slice(-2)).toEqual(['stage_enter:decompose', 'stage_exit:decompose'])
   })
