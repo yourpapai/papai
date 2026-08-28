@@ -26,6 +26,9 @@ files. When a mapped component is involved, the generic design-to-code sketch
 see `docs/architecture/storybook-screenshots.md`); UX review (`ux-review`
 skill); regenerating Figma frames from code.
 
+Background reading: `docs/architecture/figma-codegen.md` (registry, push,
+verify loop end to end).
+
 ## The registry
 
 `scripts/figma/registry.json` is the source of truth for the component↔code

@@ -149,7 +149,8 @@ with tests in `tests/scripts/figma-sync.test.ts`.
 ## Verifying generated code against designs
 
 After generating `client/` code from a papai Figma node (the `figma-codegen`
-skill), compare the implemented render against the design render:
+skill — full flow: `docs/architecture/figma-codegen.md`), compare the
+implemented render against the design render:
 
 1.  Produce the implemented side with the normal shoot loop — a baseline PNG
     under `.storybook-shots/` for the touched component/section story.
