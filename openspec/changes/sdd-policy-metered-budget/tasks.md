@@ -17,8 +17,8 @@
 
 ## 4. Expiry ladder parity
 
-- [ ] 4.1 Red-first: waiter's `conservativeBranchApplies` calls the same metered-aware R4 predicate as the prelude (unmetered expiry may R2-extend; metered unknown cost stays pending) — `bun test tests/sdd-runner/deadline-waiter.test.ts`
-- [ ] 4.2 Refactor the waiter to consume the shared predicate; pin prelude-vs-expiry agreement over the corpus fixture gates — `bun test tests/sdd-runner/deadline-waiter.test.ts tests/sdd-runner/auto-policy.test.ts`
+- [x] 4.1 Red-first: waiter's `conservativeBranchApplies` calls the same metered-aware R4 predicate as the prelude (unmetered expiry may R2-extend; metered unknown cost stays pending) — `bun test tests/sdd-runner/deadline-waiter.test.ts`
+- [x] 4.2 Refactor the waiter to consume the shared predicate; pin prelude-vs-expiry agreement over the corpus fixture gates — `bun test tests/sdd-runner/deadline-waiter.test.ts tests/sdd-runner/auto-policy.test.ts`
 
 ## 5. Verification and docs
 
