@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { ProviderRequestObservation } from '../../../src/analytics/provider-observer.js'
@@ -17,8 +17,15 @@ import { createTrackedLoggerMock } from '../../utils/logger-mock.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 const tracked = createTrackedLoggerMock()
-// Top-level mock + delayed import: the module under test must load after the logger mock installs.
-void mock.module('../../../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
+// The client creates its child logger at call time (see the module comment
+// there), so the tracked mock must be installed at call time too, not just at
+// module-eval time: combined runs load this module under another file's graph
+// before this file's mocks run. File-level install for the delayed import, plus
+// a suite-level re-install after the global mock-reset restore (tests/AGENTS.md).
+const installTrackedLogger = (): void => {
+  void mock.module('../../../src/logger.js', () => ({ logger: tracked.logger, getLogLevel: tracked.getLogLevel }))
+}
+installTrackedLogger()
 
 const { resolveGraphqlEndpoint, githubGraphql, GitHubGraphqlError } =
   await import('../../../plugins/task-provider-github/graphql-client.js')
@@ -27,6 +34,10 @@ const { GitHubApiError } = await import('../../../plugins/task-provider-github/c
 afterEach(() => {
   restoreFetch()
   tracked.clearCalls()
+})
+
+beforeEach(() => {
+  installTrackedLogger()
 })
 
 type EndpointCase = Readonly<{

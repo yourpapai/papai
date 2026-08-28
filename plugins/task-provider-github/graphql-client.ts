@@ -17,7 +17,11 @@ import { GitHubApiError, readErrorBody, resolveApiBaseUrl } from './client.js'
 import type { GitHubConfig } from './client.js'
 import { GITHUB_DEFAULT_BASE_URL, GITHUB_DEFAULT_GRAPHQL_URL } from './constants.js'
 
-const log = logger.child({ scope: 'github:graphql' })
+// The child logger is created inside a factory, not at module scope: a
+// module-scope child pins whatever logger was installed at first evaluation,
+// which breaks combined test runs where another file loads this module before
+// the logger mock is installed (see identity-resolver.ts for the same trap).
+const graphqlLog = (): ReturnType<typeof logger.child> => logger.child({ scope: 'github:graphql' })
 
 const GHES_REST_SUFFIX = '/api/v3'
 
@@ -99,7 +103,7 @@ const effectiveTypeOf = (error: GraphqlErrorEntry): string | undefined => error.
 
 /** Builds the envelope-violation error, logging the failed external call first (metadata-only, like the sibling failure paths). */
 const envelopeViolation = (detail: string, response: Response, operation: GraphqlOperation): GitHubGraphqlError => {
-  log.error({ statusCode: response.status, operation }, 'GitHub GraphQL envelope validation failed')
+  graphqlLog().error({ statusCode: response.status, operation }, 'GitHub GraphQL envelope validation failed')
   return new GitHubGraphqlError(`GitHub GraphQL envelope validation failed: ${detail}`, undefined)
 }
 
@@ -142,6 +146,7 @@ export function githubGraphql(
   return Promise.resolve().then(async () => {
     const scope = requireProviderRequestScope()
     const clock = createProviderRequestClock()
+    const log = graphqlLog()
     let caught: unknown = null
     let status: number | null = null
     try {
