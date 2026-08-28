@@ -10,11 +10,14 @@ import type { DepthProfile } from './events.js'
 import type { EventInput } from './events.js'
 import { logPathFor, nowOf, readReviewResultFromSidecars } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
-import { runPostConvergenceTail } from './post-review-tail.js'
+import { PLAN_REVIEW_SURROGATE } from './gate-prelude.js'
+import { runPostConvergenceTail, runTailFromAtomicity } from './post-review-tail.js'
 import { replayEvents } from './replay.js'
 import { resolveResumeDecision } from './resume-decision.js'
 import type { ResumeDecision } from './resume-decision.js'
+import { isContinuationTailEntry } from './resume-point.js'
 import type { ReviewLoopResult } from './review-loop.js'
+import { descendantGateOf } from './run-index.js'
 import { resolveRoundCap, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { readSessionLedger } from './session-ledger.js'
@@ -60,6 +63,30 @@ export function nextGateVersion(state: RunState): number {
   return Math.max(...versions) + 1
 }
 
+/**
+ * D6 continuation child resume: re-enter the tail at its persisted entry — no
+ * decompose (the slice is the split's re-scoped child #1) and the final gate
+ * presents over the adopted-review surrogate, exactly like the continuation
+ * start itself.
+ */
+async function resumeContinuationTail(env: ResumeEnv, depth: DepthProfile): Promise<RunStartResult> {
+  const gate = await runTailFromAtomicity({
+    deps: env.deps,
+    state: env.state,
+    ctx: env.ctx,
+    agent: env.agent,
+    depth,
+    reviewResult: PLAN_REVIEW_SURROGATE,
+    version: nextGateVersion(env.state),
+  })
+  return {
+    runId: env.state.runId,
+    halted: 'gate',
+    gateMdPath: gate.gateMdPath,
+    version: gate.version,
+  }
+}
+
 export async function resumeFromPoint(
   env: ResumeEnv,
   runners: ResumeStageRunners,
@@ -83,12 +110,14 @@ export async function resumeFromPoint(
     return { runId, halted: 'gate', gateMdPath: gate.gateMdPath, version: gate.version }
   }
   if (decision.stage === 'decompose' || decision.stage === 'atomicity' || decision.stage === 'gate') {
+    const replay = replayEvents(logPathFor(state))
+    if (isContinuationTailEntry(state, replay)) return resumeContinuationTail(env, depth)
     const reviewResult = await readReviewResultFromSidecars(
       env.ctx.sidecarDir,
       state.round,
       decision.stage === 'gate' ? 'converged' : 'cap-hit',
     )
-    const reviewSettled = replayEvents(logPathFor(state)).gate?.answered === true
+    const reviewSettled = replay.gate?.answered === true
     const outcome = reviewSettled ? 'converged' : reviewResult.outcome
     const settledResult: ReviewLoopResult = { ...reviewResult, outcome }
     const version = nextGateVersion(state)
@@ -125,6 +154,17 @@ export async function settleStoppedResult<T extends { readonly runId: string; re
   }
   deps.stdout?.(`run ${state.runId} stopped calmly — resume with sdd-runner resume ${state.runId}`)
   return { runId: state.runId, halted: 'stopped' }
+}
+
+/**
+ * D2 descent resolver: the deepest gate-pending descendant of the target
+ * run, or null when the next action is not inside a descendant (the
+ * callers settle the run's own gate before consulting this — null means a
+ * plain resume, the `runChildren` skip-forward for a plan parent).
+ * Tolerant by design: an unloadable child state is no pending gate.
+ */
+export function pendingDescendantGateOf(deps: OrchestratorDeps, state: RunState): Promise<string | null> {
+  return descendantGateOf(deps.config.workDir, state)
 }
 
 /** Resolve the D2 resume decision: artifact-first, session-second, rebuild-last. */

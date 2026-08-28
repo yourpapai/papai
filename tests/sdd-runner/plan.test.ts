@@ -133,6 +133,19 @@ describe('PlanSchema', () => {
     const plan = PlanSchema.parse({ children })
     expect(plan.children).toHaveLength(8)
   })
+
+  it('accepts an optional changeName — old plans parse unchanged (D6)', () => {
+    const plan = PlanSchema.parse({
+      children: [{ id: 'alpha', instruction: 'do alpha', changeName: 'add-thing' }],
+    })
+    expect(plan.children[0]?.changeName).toBe('add-thing')
+    const legacy = PlanSchema.parse({ children: [{ id: 'alpha', instruction: 'do alpha' }] })
+    expect(legacy.children[0]?.changeName).toBeUndefined()
+  })
+
+  it('rejects an empty changeName', () => {
+    expect(() => PlanSchema.parse({ children: [{ id: 'alpha', instruction: 'do', changeName: '' }] })).toThrow()
+  })
 })
 
 describe('validatePlan', () => {
@@ -184,6 +197,13 @@ describe('validatePlan', () => {
     expect(message).toMatch(/unknown/u)
     expect(message).toContain('alpha')
     expect(message).toContain('ghost')
+  })
+
+  it('adds no structural rule for changeName — a carrying plan validates unchanged (D6)', () => {
+    const plan = validatePlan({
+      children: [child('alpha'), { ...child('beta', ['alpha']), changeName: 'existing-change' }],
+    })
+    expect(plan.children[1]?.changeName).toBe('existing-change')
   })
 })
 

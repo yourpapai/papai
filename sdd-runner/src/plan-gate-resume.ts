@@ -26,8 +26,9 @@ import type { PlanChild } from './plan.js'
 import { saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controller.js'
+import { runTuiGateSession } from './tui-gate-session.js'
 
-/** D12 plan session view: child rows only — the TUI keeps early/final views until part 3. */
+/** D12 plan session view: child rows only — plan mode has no assumptions/findings/blockers. */
 function planSessionView(rows: readonly { readonly id: string; readonly text: string }[]): GateSessionView {
   return {
     gateMode: 'plan',
@@ -124,10 +125,11 @@ export interface PlanGateResumeDeps {
 /**
  * D12 plan-gate resume: expected content from `sidecars/plan.json` +
  * `state.plan`; decision flags desugar through the D4 render-then-parse
- * functions onto the gate file; a flagless resume of a still-unanswered file
- * abandons without settling (no TUI session at plan mode in part 2, and an
- * unchecked C-row must not spend a veto replan by default); an answered
- * hand-edit is parsed as-is; approve → `runChildren`; abort →
+ * functions onto the gate file; a flagless TTY resume drives the plan
+ * session view through the TUI (an abandoned session writes nothing); a
+ * still-unanswered file abandons without settling (an unchecked C-row must
+ * not spend a veto replan by default); an answered hand-edit is parsed
+ * as-is; approve → `runChildren`; abort →
  * `finalizeGate('aborted')` before any child exists; extend is unreachable
  * (the parser rejects `→ RUN 1 MORE` at plan mode first); veto rounds land
  * with `settlePlanVeto` (6.3); a sidecar moved past the pending gate by an
@@ -171,9 +173,12 @@ export async function runPlanGateResume(
 }
 
 /**
- * Desugar the decision flags onto the gate file (D4 render-then-parse), then
- * apply the unanswered-gate guard: a flagless resume of a file carrying no
- * human decision abandons rather than parsing an all-children veto.
+ * Desugar the decision flags onto the gate file (D4 render-then-parse); a
+ * flagless TTY resume first drives the plan session view through the TUI —
+ * the same `collectGateDecision` front half as early/final gates, so an
+ * abandoned session writes nothing and abandons here; then the
+ * unanswered-gate guard keeps a still-undecided file from parsing as an
+ * all-children veto.
  */
 async function desugarOrAbandon(
   deps: OrchestratorDeps,
@@ -190,6 +195,16 @@ async function desugarOrAbandon(
     (options.vetoes?.length ?? 0) > 0
   ) {
     await desugarFlags(options, planSessionView(rows), (md) => writeFile(gateMdPath, md))
+  } else if (deps.interactive?.() === true) {
+    const session = await runTuiGateSession({
+      view: planSessionView(rows),
+      writeGateMd: (md) => writeFile(gateMdPath, md),
+      ...(deps.gateKeyScript === undefined ? {} : { keyScript: deps.gateKeyScript }),
+    })
+    if (session.status === 'abandoned') {
+      deps.stdout?.('plan gate session abandoned — nothing written, the gate remains pending')
+      return { runId: state.runId, outcome: 'abandoned', version }
+    }
   }
   if (!planGateCarriesDecision(await readFile(gateMdPath, 'utf8'))) {
     deps.stdout?.(

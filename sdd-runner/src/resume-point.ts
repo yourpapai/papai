@@ -43,6 +43,24 @@ interface PendingChild {
   readonly total: number
 }
 
+/**
+ * D6 continuation child (D8 crash window): a run born in the post-review tail
+ * — persisted stage 'atomicity'/'gate' while its own log holds no review
+ * history (no review stage enter, no round, no verdict — the review evidence
+ * lives in the parent's log, so the replay fold cannot see it settled). Its
+ * resume re-enters at the persisted tail entry instead of re-reviewing. A
+ * normal run persists those stages only after its own review settled, which
+ * the replay guard reflects, so drifted singles stay on the artifact cascade.
+ */
+export function isContinuationTailEntry(state: PersistedRunState, replay: ReplayState): boolean {
+  return (
+    (state.stage === 'atomicity' || state.stage === 'gate') &&
+    replay.stages.review === 'pending' &&
+    replay.round === null &&
+    replay.lastVerdict === null
+  )
+}
+
 /** Next child in topo order whose status is not done; a missing map counts as all-pending (D10). */
 function nextPendingChild(state: PersistedRunState): PendingChild | null {
   if (state.plan === undefined) return null
@@ -69,6 +87,9 @@ export function deriveResumePoint(
     }
   }
   if (state.depth === null) return { stage: 'intake', round: 0, reason: 'depth not classified' }
+  if (isContinuationTailEntry(state, replay)) {
+    return { stage: state.stage, round: state.round, reason: 'continuation child tail entry' }
+  }
   if (!draftComplete(state, artifacts)) return { stage: 'draft', round: 0, reason: 'draft artifacts incomplete' }
   if (!reviewSettled(replay)) {
     const round = Math.max(state.round, replay.round?.current ?? 0, 1)

@@ -105,6 +105,12 @@ export function formatEvent(event: EventInput, verbosity: Verbosity): string | n
   if (event.type === 'round_close') return `round ${event.round}/${event.cap} closed`
   if (event.type === 'depth') return `depth classified: ${event.profile} (${event.source})`
   if (event.type === 'gate') return `gate ${event.action} (${event.mode}, v${event.version})`
+  if (event.type === 'plan') return `plan: ${event.childCount} children (${event.digest})`
+  if (event.type === 'child_spawned')
+    return event.runId === undefined
+      ? `child ${event.child} spawned`
+      : `child ${event.child} spawned (run ${event.runId})`
+  if (event.type === 'child_done') return `child ${event.child} ${event.outcome}`
   if (event.type === 'finding')
     return `finding ${event.id} ${event.action} (${event.class ?? '?'}) round ${event.round}`
   if (event.type === 'assumption') return `assumption ${event.id} ${event.action}`
