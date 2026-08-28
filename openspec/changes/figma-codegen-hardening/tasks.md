@@ -15,5 +15,5 @@
 
 ## 3. Verification
 
-- [ ] 3.1 `bun test tests/scripts/figma-connect.test.ts` green; full suite, typecheck, lint, format pass
-- [ ] 3.2 Re-run the push + read-back snippets against the live file once to confirm they reproduce the verified state (6/6, zero mismatches)
+- [x] 3.1 `bun test tests/scripts/figma-connect.test.ts` green; full suite, typecheck, lint, format pass
+- [x] 3.2 Re-run the push + read-back snippets against the live file once to confirm they reproduce the verified state (6/6, zero mismatches)
