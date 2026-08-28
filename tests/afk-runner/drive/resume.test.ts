@@ -11,7 +11,7 @@ import path from 'node:path'
 import { drive } from '../../../afk-runner/src/drive/loop.js'
 import type { StateModule, WorkIO } from '../../../afk-runner/src/drive/loop.js'
 import { parkedReasonOf, reviewResumeEntry } from '../../../afk-runner/src/drive/resume.js'
-import { readEvents, stampEvent } from '../../../afk-runner/src/events.js'
+import { appendEvent, readEvents, stampEvent } from '../../../afk-runner/src/events.js'
 import type { SddEvent } from '../../../afk-runner/src/events.js'
 import { createPipelineWorkFor } from '../../../afk-runner/src/graph/pipeline-work.js'
 import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
@@ -191,6 +191,67 @@ describe('drive crash-resume drill (loop level)', () => {
     const result = await drive({ machine, logPath }, observing)
     expect(result.parked).toBe('awaiting-tail')
     expect(seenRounds).toEqual([1])
+  })
+})
+
+const depthEvent = { altitude: 'L2', type: 'depth', profile: 'S', rationale: 'stub', source: 'estimator' } as const
+
+/** Real-graph drill modules: work only at the named state, everything else workless. */
+function singleStateModule(state: string, module: StateModule): (position: string) => StateModule | null {
+  return (position): StateModule | null => (position === state ? module : null)
+}
+
+const intakeDepthModule = singleStateModule('intake', {
+  work: {
+    kind: 'stub-intake',
+    run: (io: WorkIO) => {
+      io.append(depthEvent)
+    },
+  },
+  outcomeOf: (context) => (context.depth === null ? 'incomplete' : 'done'),
+  successors: { done: { enter: 'draft' } },
+})
+
+const decomposeDoneModule = singleStateModule('decompose', {
+  work: { kind: 'stub-decompose', run: () => {} },
+  outcomeOf: (context) => (context.stages['decompose'] === 'done' ? 'done' : 'incomplete'),
+  successors: { done: { enter: 'atomicity' } },
+})
+
+describe('drive crash-resume drill (real pipeline graph — C5 D4 self-loops)', () => {
+  it('a mid-intake crash resumes by re-entering intake through its own self-loop — no append refusal', async () => {
+    const runDir = tempRunDir()
+    const logPath = path.join(runDir, 'events.ndjson')
+    // Crash log: the intake bracket opened, work died before any bookkeeping.
+    appendEvent(logPath, { altitude: 'L2', type: 'stage_enter', stage: 'intake' })
+
+    const result = await drive({ machine: pipelineMachine, logPath }, intakeDepthModule)
+    expect(result.parked).toBe('awaiting-tail')
+    expect(result.position).toBe('intake')
+    expect(logTypes(logPath)).toEqual(['stage_enter:intake', 'stage_enter:intake', 'depth', 'stage_exit:intake'])
+  })
+
+  it('a mid-decompose crash resumes by re-entering decompose through its own self-loop — no append refusal', async () => {
+    const runDir = tempRunDir()
+    const logPath = path.join(runDir, 'events.ndjson')
+    // Crash log: the walk reached decompose, whose bracket opened and work died.
+    for (const event of [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake' },
+      depthEvent,
+      { altitude: 'L2', type: 'stage_exit', stage: 'intake' },
+      { altitude: 'L2', type: 'stage_enter', stage: 'draft' },
+      { altitude: 'L2', type: 'stage_exit', stage: 'draft' },
+      { altitude: 'L2', type: 'stage_enter', stage: 'review' },
+      { altitude: 'L2', type: 'stage_exit', stage: 'review' },
+      { altitude: 'L2', type: 'stage_enter', stage: 'decompose' },
+    ] as const) {
+      appendEvent(logPath, event)
+    }
+
+    const result = await drive({ machine: pipelineMachine, logPath }, decomposeDoneModule)
+    expect(result.parked).toBe('awaiting-tail')
+    expect(result.position).toBe('decompose')
+    expect(logTypes(logPath).slice(-2)).toEqual(['stage_enter:decompose', 'stage_exit:decompose'])
   })
 })
 

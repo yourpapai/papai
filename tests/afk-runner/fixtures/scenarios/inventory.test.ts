@@ -22,12 +22,23 @@ function scenarioFiles(): string[] {
 
 const logOf = (name: string): string => path.join(SCENARIO_ROOT, name)
 
+type FixtureEvent = ReturnType<typeof readEvents>[number]
+
+function stageEvents(
+  events: readonly FixtureEvent[],
+  action: 'stage_enter' | 'stage_exit',
+  stage: string,
+): FixtureEvent[] {
+  return events.filter((event) => event.type === action && event.stage === stage)
+}
+
 describe('scenario corpus inventory', () => {
-  it('holds exactly the five recorded scenario fixtures', () => {
+  it('holds exactly the six recorded scenario fixtures', () => {
     expect(scenarioFiles()).toEqual([
       'children-plan-synthetic.ndjson',
       'resume-artifact-skip-gate.ndjson',
       's-depth-calm-stop-resume.ndjson',
+      's-final-tail-synthetic.ndjson',
       'steer-extend-round.ndjson',
       'veto-revision-synthetic.ndjson',
     ])
@@ -77,5 +88,19 @@ describe('scenario corpus inventory', () => {
     const kernel = foldEvents(pipelineMachine, readEvents(logOf('veto-revision-synthetic.ndjson'))).snapshot
     expect(kernel.value).toBe('draft')
     expect(kernel.context.gateOutcome).toBe('veto')
+  })
+
+  it('s-final-tail-synthetic covers the depth-S tail: decompose→gate entry, no atomicity bracket, exit-after-presented close', () => {
+    const events = readEvents(logOf('s-final-tail-synthetic.ndjson'))
+    expect(events).toHaveLength(16)
+    expect(stageEvents(events, 'stage_enter', 'atomicity')).toHaveLength(0)
+    expect(stageEvents(events, 'stage_exit', 'atomicity')).toHaveLength(0)
+    expect(stageEvents(events, 'stage_enter', 'gate')[0]?.seq).toBe(13)
+    const state = replayEvents(logOf('s-final-tail-synthetic.ndjson'))
+    expect(state.depth).toBe('S')
+    expect(state.stages.decompose).toBe('done')
+    expect(state.stages.atomicity).toBe('pending')
+    expect(state.stages.gate).toBe('active')
+    expect(state.gate).toEqual({ mode: 'final', version: 1, answered: false })
   })
 })

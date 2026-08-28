@@ -207,6 +207,54 @@ describe('pipeline gate compound — awaiting substate (C4)', () => {
   })
 })
 
+describe('pipeline C5 kernel completions — decompose→gate edge and tail self-loops (D4)', () => {
+  function toStage(stages: readonly string[]): KernelSnapshot {
+    let snapshot = initialStep(pipelineMachine)[0]
+    for (const stage of stages) {
+      snapshot = step(pipelineMachine, snapshot, { type: 'stage.enter', stage })[0]
+    }
+    return snapshot
+  }
+
+  it('stage.enter(gate) from decompose is legal — the depth-S tail skips atomicity', () => {
+    const snapshot = step(pipelineMachine, toStage(['intake', 'draft', 'review', 'decompose']), {
+      type: 'stage.enter',
+      stage: 'gate',
+    })[0]
+    expect(snapshot.value).toEqual({ gate: 'awaiting' })
+    expect(snapshot.context.stages['gate']).toBe('active')
+    expect(snapshot.context.stages['decompose']).toBe('done')
+    expect(snapshot.context.stages['atomicity']).toBe('pending')
+  })
+
+  it('decompose re-entry self-loops (mid-decompose crash resume)', () => {
+    const before = toStage(['intake', 'draft', 'review', 'decompose'])
+    const [after, actions] = step(pipelineMachine, before, { type: 'stage.enter', stage: 'decompose' })
+    expect(after).not.toBe(before)
+    expect(actions).toHaveLength(0)
+    expect(after.value).toBe('decompose')
+    expect(after.context.stages['decompose']).toBe('active')
+  })
+
+  it('atomicity re-entry self-loops (mid-atomicity crash resume)', () => {
+    const before = toStage(['intake', 'draft', 'review', 'decompose', 'atomicity'])
+    const [after, actions] = step(pipelineMachine, before, { type: 'stage.enter', stage: 'atomicity' })
+    expect(after).not.toBe(before)
+    expect(actions).toHaveLength(0)
+    expect(after.value).toBe('atomicity')
+    expect(after.context.stages['atomicity']).toBe('active')
+  })
+
+  it('intake re-entry self-loops (mid-intake crash resume — the inherited gap)', () => {
+    const before = toStage(['intake'])
+    const [after, actions] = step(pipelineMachine, before, { type: 'stage.enter', stage: 'intake' })
+    expect(after).not.toBe(before)
+    expect(actions).toHaveLength(0)
+    expect(after.value).toBe('intake')
+    expect(after.context.stages['intake']).toBe('active')
+  })
+})
+
 describe('pipeline graph v0 behavior', () => {
   it('walks the full happy path to completed on final gate answer', () => {
     let snapshot = initialStep(pipelineMachine)[0]

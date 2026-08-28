@@ -17,11 +17,20 @@ export const start = kernelSetup.createStateConfig({
 
 export const intake = kernelSetup.createStateConfig({
   on: {
-    'stage.enter': {
-      target: 'draft',
-      guard: { type: 'isStage', params: { stage: 'draft' } },
-      actions: ['closeThenActivate'],
-    },
+    'stage.enter': [
+      {
+        // Mid-intake crash resume re-enters intake through its own self-loop
+        // (C5 D4, the inherited sdd-runner gap healed here only).
+        target: 'intake',
+        guard: { type: 'isStage', params: { stage: 'intake' } },
+        actions: ['closeThenActivate'],
+      },
+      {
+        target: 'draft',
+        guard: { type: 'isStage', params: { stage: 'draft' } },
+        actions: ['closeThenActivate'],
+      },
+    ],
   },
 })
 
@@ -67,21 +76,44 @@ export const review = kernelSetup.createStateConfig({
 
 export const decompose = kernelSetup.createStateConfig({
   on: {
-    'stage.enter': {
-      target: 'atomicity',
-      guard: { type: 'isStage', params: { stage: 'atomicity' } },
-      actions: ['closeThenActivate'],
-    },
+    'stage.enter': [
+      {
+        // Mid-decompose crash resume re-enters through its own self-loop (C5 D4).
+        target: 'decompose',
+        guard: { type: 'isStage', params: { stage: 'decompose' } },
+        actions: ['closeThenActivate'],
+      },
+      {
+        // The depth-S tail skips atomicity entirely (C5 D4): decompose's
+        // presentation act enters the gate compound directly.
+        target: 'gate',
+        guard: { type: 'isStage', params: { stage: 'gate' } },
+        actions: ['closeThenActivate'],
+      },
+      {
+        target: 'atomicity',
+        guard: { type: 'isStage', params: { stage: 'atomicity' } },
+        actions: ['closeThenActivate'],
+      },
+    ],
   },
 })
 
 export const atomicity = kernelSetup.createStateConfig({
   on: {
-    'stage.enter': {
-      target: 'gate',
-      guard: { type: 'isStage', params: { stage: 'gate' } },
-      actions: ['closeThenActivate'],
-    },
+    'stage.enter': [
+      {
+        // Mid-atomicity crash resume re-enters through its own self-loop (C5 D4).
+        target: 'atomicity',
+        guard: { type: 'isStage', params: { stage: 'atomicity' } },
+        actions: ['closeThenActivate'],
+      },
+      {
+        target: 'gate',
+        guard: { type: 'isStage', params: { stage: 'gate' } },
+        actions: ['closeThenActivate'],
+      },
+    ],
   },
 })
 

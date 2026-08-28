@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
+import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
 import {
   initialStep,
   kernelSetup,
@@ -128,5 +129,76 @@ describe('kernel machine-as-data builder', () => {
       return { value: snapshot.value, context: snapshot.context }
     }
     expect(foldOnce()).toEqual(foldOnce())
+  })
+})
+
+describe('allStagesDone guard reshape — gate done && no active stages (C5 D4)', () => {
+  function walk(events: readonly Parameters<typeof step>[2][]): ReturnType<typeof step> {
+    let snapshot = initialStep(pipelineMachine)[0]
+    for (const event of events) {
+      snapshot = step(pipelineMachine, snapshot, event)[0]
+    }
+    return [snapshot, []] as ReturnType<typeof step>
+  }
+
+  it('a depth-S run completes on the final approve with atomicity still pending', () => {
+    const [snapshot] = walk([
+      { type: 'stage.enter', stage: 'intake' },
+      { type: 'stage.exit', stage: 'intake' },
+      { type: 'stage.enter', stage: 'draft' },
+      { type: 'stage.exit', stage: 'draft' },
+      { type: 'stage.enter', stage: 'review' },
+      { type: 'stage.exit', stage: 'review' },
+      { type: 'stage.enter', stage: 'decompose' },
+      { type: 'stage.exit', stage: 'decompose' },
+      { type: 'stage.enter', stage: 'gate' },
+      { type: 'stage.exit', stage: 'gate' },
+    ])
+    const answered = step(pipelineMachine, snapshot, { type: 'gate.answered', outcome: 'approve' })[0]
+    expect(answered.value).toBe('completed')
+    expect(answered.status).toBe('done')
+    expect(answered.context.stages['atomicity']).toBe('pending')
+  })
+
+  it('an early approve stays blocked: the gate stage is pending at interstitial gates', () => {
+    const [snapshot] = walk([
+      { type: 'stage.enter', stage: 'intake' },
+      { type: 'stage.enter', stage: 'draft' },
+      { type: 'stage.enter', stage: 'review' },
+      { type: 'stage.exit', stage: 'review' },
+    ])
+    const awaiting = step(pipelineMachine, snapshot, {
+      type: 'gate.presented',
+      mode: 'early',
+      version: 1,
+    })[0]
+    const answered = step(pipelineMachine, awaiting, { type: 'gate.answered', outcome: 'approve' })[0]
+    expect(answered.value).toEqual({ gate: 'awaiting' })
+    expect(answered.status).toBe('active')
+    const moved = step(pipelineMachine, answered, { type: 'stage.enter', stage: 'decompose' })[0]
+    expect(moved.value).toBe('decompose')
+  })
+
+  it('an extend answered while the gate stage is still active does not complete', () => {
+    const [snapshot] = walk([
+      { type: 'stage.enter', stage: 'intake' },
+      { type: 'stage.enter', stage: 'draft' },
+      { type: 'stage.enter', stage: 'review' },
+      { type: 'stage.exit', stage: 'review' },
+      { type: 'stage.enter', stage: 'decompose' },
+      { type: 'stage.exit', stage: 'decompose' },
+      { type: 'stage.enter', stage: 'atomicity' },
+      { type: 'stage.exit', stage: 'atomicity' },
+      { type: 'stage.enter', stage: 'gate' },
+      { type: 'gate.presented', mode: 'final', version: 1 },
+    ])
+    const answered = step(pipelineMachine, snapshot, { type: 'gate.answered', outcome: 'extend' })[0]
+    expect(answered.value).toEqual({ gate: 'awaiting' })
+    expect(answered.status).toBe('active')
+    expect(answered.context.gate).toEqual({ mode: 'final', version: 1, answered: true })
+    const exited = step(pipelineMachine, answered, { type: 'stage.exit', stage: 'gate' })[0]
+    const reopened = step(pipelineMachine, exited, { type: 'round.open', round: 2, cap: 4 })[0]
+    expect(reopened.value).toBe('review')
+    expect(reopened.status).toBe('active')
   })
 })
