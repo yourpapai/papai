@@ -27,8 +27,8 @@ Ordered per design.md Migration Plan; every face starts with its failing test (T
 
 ## 5. Waiter face — foreground continuation
 
-- [ ] 5.1 Port the waiter as a run-level post-park continuation: 1s poll of gate file and `steer.md`, external-settlement exit, holder alive while waiting, calm-stop no-op at gate-pending. Failing tests with a fake clock. Verify: `bun test tests/afk-runner/gate-waiter.test.ts`
-- [ ] 5.2 Stability guard (3 consecutive ticks, same content, looks-answered) and steer translation (extend-at-final skipped with warning). Verify: `bun test tests/afk-runner/gate-waiter.test.ts`
+- [x] 5.1 Port the waiter as a run-level post-park continuation: 1s poll of gate file and `steer.md`, external-settlement exit, holder alive while waiting, calm-stop no-op at gate-pending. Failing tests with a fake clock. Verify: `bun test tests/afk-runner/gate-waiter.test.ts`
+- [x] 5.2 Stability guard (3 consecutive ticks, same content, looks-answered) and steer translation (extend-at-final skipped with warning). Verify: `bun test tests/afk-runner/gate-waiter.test.ts`
 
 ## 6. Ladder face — autonomy producer
 

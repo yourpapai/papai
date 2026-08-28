@@ -10,6 +10,7 @@ import path from 'node:path'
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { deriveChangeName } from './config.js'
 import type { ExecGitFn, RunnerConfig } from './config.js'
+import { createAppendBoundary } from './drive/boundary.js'
 import { drive } from './drive/loop.js'
 import type { DriveResult, ParkedReason, StopSeam } from './drive/loop.js'
 import { flattenPosition } from './drive/loop.js'
@@ -27,6 +28,7 @@ import type { OpenSpecDriver } from './openspec-driver.js'
 import { createRunState, loadRunState, resolveRoundCap, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { removeHolder, writeHolder } from './stop-controller.js'
+import { awaitGateSettle } from './work/gate-waiter.js'
 
 export interface RunDeps {
   readonly config: RunnerConfig
@@ -38,6 +40,13 @@ export interface RunDeps {
   readonly now?: () => Date
   /** Calm-stop seam honored by the review loop between rounds. */
   readonly stop?: StopSeam
+  /**
+   * Foreground gate waiter (C4 design D3): when present, a gate-pending park
+   * keeps the process alive polling the gate file, steer file, and log —
+   * settling through the seam and re-driving per outcome. Absent (tests,
+   * embedders) the park returns immediately as before.
+   */
+  readonly gateWait?: { readonly tick: () => Promise<void> }
 }
 
 export interface RunHalt {
@@ -144,15 +153,33 @@ async function driveRun(
     },
     input,
   )
-  const logPath = logPathOf(path.join(seed.workDir, 'runs', seed.runId))
-  writeHolder(path.dirname(logPath))
+  const runDir = path.join(seed.workDir, 'runs', seed.runId)
+  const logPath = logPathOf(runDir)
+  writeHolder(runDir)
   try {
-    const result: DriveResult = await drive({ machine: pipelineMachine, logPath, now: deps.now }, workFor)
+    let result: DriveResult = await drive({ machine: pipelineMachine, logPath, now: deps.now }, workFor)
+    while (result.parked === 'gate-pending' && deps.gateWait !== undefined) {
+      await writeRunMemo(seed, result.parked, result.position, result.context, logPath)
+      deps.stdout?.(parkLine(result.parked))
+      const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
+      const waited = await awaitGateSettle({
+        runDir,
+        logPath,
+        sidecarDir: path.join(runDir, 'sidecars'),
+        changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', input.changeName),
+        machine: pipelineMachine,
+        emit: boundary.append,
+        tick: deps.gateWait.tick,
+        ...(deps.stdout === undefined ? {} : { stdout: deps.stdout }),
+      })
+      if (waited.kind === 'external') deps.stdout?.('gate settled externally — re-evaluating')
+      result = await drive({ machine: pipelineMachine, logPath, now: deps.now }, workFor)
+    }
     await writeRunMemo(seed, result.parked, result.position, result.context, logPath)
     deps.stdout?.(parkLine(result.parked))
     return { runId: seed.runId, halted: result.parked, position: result.position }
   } finally {
-    removeHolder(path.dirname(logPath))
+    removeHolder(runDir)
   }
 }
 

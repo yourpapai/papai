@@ -16,6 +16,7 @@ import { createOpenSpecDriver } from './openspec-driver.js'
 import type { ExecFn } from './openspec-driver.js'
 import { resumeRun, startRun, statusRun } from './run.js'
 import type { RunDeps, RunStatus } from './run.js'
+import { oneSecondTick } from './work/gate-waiter.js'
 
 export function runCli(argv: readonly string[]): string {
   const runDir = argv[0]
@@ -88,6 +89,9 @@ export function defaultCliDeps(cwd: string = process.cwd()): CliDeps {
     spawn: realSpawn,
     execGit: EXEC_GIT,
     driver: createOpenSpecDriver({ exec: EXEC_OPENSPEC, cwd: config.repoRoot }),
+    // The operator runs the CLI interactively — gate-pending parks keep the
+    // process alive in the foreground waiter (C4 design D3).
+    gateWait: { tick: oneSecondTick },
   }
 }
 
