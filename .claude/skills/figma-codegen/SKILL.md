@@ -97,15 +97,54 @@ screen-section entry is used.
    bun run figma:connect plan
    ```
 
-   and push each returned payload for a **component** node to its description
-   via the Figma MCP (`use_figma`, setting the node's `description` to the
-   payload's `description` field). Screen and section frames cannot store
-   descriptions — their mapping lives in the registry, keyed by frame name;
-   verify (don't push) them against plan output. Plan is deterministic, so
-   re-pushing an unchanged registry is a no-op. If `plan` output disagrees
-   with the live Figma property definitions (renamed/removed component
-   properties), fix `scripts/figma/registry.json` first — the registry is the
-   source of truth, Figma descriptions are a projection of it.
+   then apply the canonical scripts below. Screen and section frames cannot
+   store descriptions — their mapping lives in the registry, keyed by frame
+   name; verify (don't push) them against plan output. Plan is
+   deterministic, so re-pushing an unchanged registry is a no-op. If `plan`
+   output disagrees with the live Figma property definitions (renamed/removed
+   component properties), fix `scripts/figma/registry.json` first — the
+   registry is the source of truth, Figma descriptions are a projection of
+   it.
+
+   **File check (before any write).** Every payload carries the registry's
+   `fileKey`. Confirm it equals the `fileKey` of the Figma file your MCP
+   session targets (the `fileKey` argument of every `use_figma` call). If
+   they differ, stop — node ids are file-scoped, and writing into a
+   duplicated or re-created file corrupts the mapping silently.
+
+   **Push script.** Paste the component payloads (only nodes with a
+   `description` — components) from plan output, ≤10 entries per
+   `use_figma` call; repeat for the remainder:
+
+   ```js
+   const FILE_KEY = '<paste fileKey from plan output>'
+   if (FILE_KEY !== '<fileKey your session targets>') throw new Error('file_key_mismatch')
+   const payloads = [/* paste component payloads: { figmaNode, description } */]
+   const mutated = []
+   for (const { figmaNode, description } of payloads) {
+     const node = await figma.getNodeByIdAsync(figmaNode)
+     if (!node || !('description' in node)) continue
+     node.description = description
+     mutated.push(figmaNode)
+   }
+   return { mutatedNodeIds: mutated, applied: mutated.length }
+   ```
+
+   **Read-back script (idempotence check).** Byte-identical comparison of
+   descriptions against plan output; `mismatches: 0` means the push is a
+   no-op:
+
+   ```js
+   const expected = {/* paste: { figmaNode: description } for each component payload */}
+   const mismatches = []
+   for (const [figmaNode, want] of Object.entries(expected)) {
+     const node = await figma.getNodeByIdAsync(figmaNode)
+     if (!node || node.description !== want) {
+       mismatches.push({ figmaNode, actual: node ? node.description : null })
+     }
+   }
+   return { mismatches, checked: Object.keys(expected).length }
+   ```
 
 8. **Verify the result.** After generating code for a mapped component or
    section, run the compare loop (`bun run figma:verify --story <baseline>

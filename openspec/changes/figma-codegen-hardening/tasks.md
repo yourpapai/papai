@@ -9,9 +9,9 @@
 
 ## 2. Canonical push/verify snippets in the skill
 
-- [ ] 2.1 Add the canonical push script to `.claude/skills/figma-codegen/SKILL.md` step 7 — batched component-description writes (≤~10 per call), returning mutated node ids, after confirming the target file key matches the payload's `fileKey`
-- [ ] 2.2 Add the canonical read-back script — compares each component description verbatim against plan output, returns the mismatch count (zero = idempotent)
-- [ ] 2.3 Adjust step-7 prose to reference the snippets instead of describing the steps abstractly
+- [x] 2.1 Add the canonical push script to `.claude/skills/figma-codegen/SKILL.md` step 7 — batched component-description writes (≤~10 per call), returning mutated node ids, after confirming the target file key matches the payload's `fileKey`
+- [x] 2.2 Add the canonical read-back script — compares each component description verbatim against plan output, returns the mismatch count (zero = idempotent)
+- [x] 2.3 Adjust step-7 prose to reference the snippets instead of describing the steps abstractly
 
 ## 3. Verification
 
