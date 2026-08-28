@@ -45,11 +45,116 @@
     {
       "name": "ui/TopBar",
       "figmaNode": "22:65",
-      "source": "client/shared/ui/TopBar.svelte",
-      "props": { "Page": "page" },
+      "source": "client/settings/components/SettingsTopBar.svelte",
+      "props": {},
       "values": {}
     }
   ],
-  "screens": [],
-  "sections": []
+  "screens": [
+    {
+      "name": "screen/SettingsApp",
+      "figmaNode": "22:198",
+      "source": "client/settings/SettingsApp.svelte"
+    },
+    {
+      "name": "screen/MembersSection",
+      "figmaNode": "23:58",
+      "source": "client/settings/sections/MembersSection.svelte"
+    },
+    {
+      "name": "screen/TaskProviderSection",
+      "figmaNode": "23:103",
+      "source": "client/settings/sections/TaskProviderSection.svelte"
+    },
+    {
+      "name": "screen/ToolsSection",
+      "figmaNode": "25:133",
+      "source": "client/settings/sections/ToolsSection.svelte"
+    },
+    {
+      "name": "screen/OverviewSection (admin)",
+      "figmaNode": "25:221",
+      "source": "client/admin/sections/OverviewSection.svelte"
+    }
+  ],
+  "sections": [
+    {
+      "screen": "screen/SettingsApp",
+      "section": "Sidebar",
+      "figmaNode": "22:206",
+      "source": "client/settings/components/SettingsSidebar.svelte"
+    },
+    {
+      "screen": "screen/SettingsApp",
+      "section": "Section — profile",
+      "figmaNode": "22:248",
+      "source": "client/settings/sections/ProfileSection.svelte"
+    },
+    {
+      "screen": "screen/SettingsApp",
+      "section": "Section — task-provider",
+      "figmaNode": "22:260",
+      "source": "client/settings/sections/TaskProviderSection.svelte"
+    },
+    {
+      "screen": "screen/SettingsApp",
+      "section": "Section — tools",
+      "figmaNode": "22:275",
+      "source": "client/settings/sections/ToolsSection.svelte"
+    },
+    {
+      "screen": "screen/MembersSection",
+      "section": "Add form",
+      "figmaNode": "23:65",
+      "source": "client/settings/sections/MembersSection.svelte"
+    },
+    {
+      "screen": "screen/MembersSection",
+      "section": "DataTable — members",
+      "figmaNode": "23:73",
+      "source": "client/settings/sections/MembersSection.svelte"
+    },
+    {
+      "screen": "screen/TaskProviderSection",
+      "section": "Bind form",
+      "figmaNode": "23:110",
+      "source": "client/settings/sections/TaskProviderSection.svelte"
+    },
+    {
+      "screen": "screen/TaskProviderSection",
+      "section": "Provision block",
+      "figmaNode": "23:120",
+      "source": "client/settings/sections/TaskProviderSection.svelte"
+    },
+    {
+      "screen": "screen/ToolsSection",
+      "section": "Preset row",
+      "figmaNode": "25:140",
+      "source": "client/settings/sections/ToolsSection.svelte"
+    },
+    {
+      "screen": "screen/ToolsSection",
+      "section": "Domain — TASKS",
+      "figmaNode": "25:151",
+      "source": "client/settings/sections/ToolsSection.svelte"
+    },
+    {
+      "screen": "screen/ToolsSection",
+      "section": "Domain — WEB",
+      "figmaNode": "25:192",
+      "source": "client/settings/sections/ToolsSection.svelte"
+    },
+    {
+      "screen": "screen/OverviewSection (admin)",
+      "section": "KPI row",
+      "figmaNode": "25:228",
+      "source": "client/admin/sections/OverviewSection.svelte"
+    },
+    {
+      "screen": "screen/OverviewSection (admin)",
+      "section": "Charts",
+      "figmaNode": "25:249",
+      "source": "client/admin/sections/OverviewSection.svelte"
+    }
+  ]
 }

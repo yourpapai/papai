@@ -55,6 +55,12 @@ screen-section entry is used.
    - `values:` — Figma value → code value, same shape.
    - `section:` — present only on screen-section entries; names the region.
 
+   Note: only **components** carry `CODE:` descriptions — Figma frames
+   (screens, section regions) have no description field. Resolve a screen or
+   section frame by looking its **frame name** up in
+   `scripts/figma/registry.json` (`screens`/`sections` collections) or in
+   `bun run figma:connect plan` output (`name`/`figmaNode`/`description`).
+
 3. **Read the live source.** Open the mapped `.svelte` file and read its
    `interface Props` before emitting code. The registry dictionary is the
    translation table, but the source is the contract — emit the component as
@@ -80,21 +86,23 @@ screen-section entry is used.
    mismatch explicitly in the response, then proceed using only the
    properties both sides share. Do not pick a side quietly.
 
-7. **Refresh stale mappings.** When a mapped node's description is missing,
-   does not start with `CODE:`, or disagrees with `bun run figma:connect plan`
-   output: run
+7. **Refresh stale mappings.** When a mapped component's description is
+   missing, does not start with `CODE:`, or disagrees with
+   `bun run figma:connect plan` output: run
 
    ```bash
    bun run figma:connect plan
    ```
 
-   and push each returned payload to its node's description via the Figma MCP
-   (`use_figma`, setting the node's description to the payload's `description`
-   field). Plan is deterministic, so re-pushing an unchanged registry is a
-   no-op. If `plan` output disagrees with the live Figma property definitions
-   (renamed/removed component properties), fix `scripts/figma/registry.json`
-   first — the registry is the source of truth, Figma descriptions are a
-   projection of it.
+   and push each returned payload for a **component** node to its description
+   via the Figma MCP (`use_figma`, setting the node's `description` to the
+   payload's `description` field). Screen and section frames cannot store
+   descriptions — their mapping lives in the registry, keyed by frame name;
+   verify (don't push) them against plan output. Plan is deterministic, so
+   re-pushing an unchanged registry is a no-op. If `plan` output disagrees
+   with the live Figma property definitions (renamed/removed component
+   properties), fix `scripts/figma/registry.json` first — the registry is the
+   source of truth, Figma descriptions are a projection of it.
 
 8. **Verify the result.** After generating code for a mapped component or
    section, run the compare loop (`bun run figma:verify --story <baseline>

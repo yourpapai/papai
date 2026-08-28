@@ -27,8 +27,8 @@
 
 ## 5. Screen-section registry entries
 
-- [ ] 5.1 Extend `scripts/figma/registry.json` with section entries for the five editable screens (22:198, 23:58, 23:103, 25:133, 25:221) mapping registered sections to their Svelte regions; extend zod schema + validation tests first (section entries require a `section` name and screen reference). Verify: `bun test tests/scripts/figma-connect.test.ts`
-- [ ] 5.2 Run the agent push: `bun run figma:connect plan`, apply descriptions to all mapped Figma nodes via `use_figma`, re-run plan to confirm idempotence (no changes). Verify: `bun run figma:connect plan` reports zero pending; spot-check one description in Figma
+- [x] 5.1 Extend `scripts/figma/registry.json` with section entries for the five editable screens (22:198, 23:58, 23:103, 25:133, 25:221) mapping registered sections to their Svelte regions; extend zod schema + validation tests first (section entries require a `section` name and screen reference). Verify: `bun test tests/scripts/figma-connect.test.ts`
+- [x] 5.2 Run the agent push: `bun run figma:connect plan`, apply descriptions to all mapped Figma nodes via `use_figma`, re-run plan to confirm idempotence (no changes). Verify: `bun run figma:connect plan` reports zero pending; spot-check one description in Figma
 
 ## 6. Full verification
 
