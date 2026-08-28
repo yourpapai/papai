@@ -21,5 +21,5 @@
 
 ## 5. Verification and docs
 
-- [ ] 5.1 One full `bun run test`, `bun run typecheck`, `bun run lint` — all green
-- [ ] 5.2 Update `docs/architecture/sdd-pipeline.md` (Intake stage, Depth profiles, Composite runs opening) in the same commit as the final code; cross-reference the unarchived `sdd-runner-decomposition` trilogy as owner of plan-branch semantics
+- [x] 5.1 One full `bun run test`, `bun run typecheck`, `bun run lint` — all green
+- [x] 5.2 Update `docs/architecture/sdd-pipeline.md` (Intake stage, Depth profiles, Composite runs opening) in the same commit as the final code; cross-reference the unarchived `sdd-runner-decomposition` trilogy as owner of plan-branch semantics
