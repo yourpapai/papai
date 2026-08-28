@@ -344,7 +344,7 @@ describe('resume decision — pure function of folded context + session ledger (
     expect(next).toEqual({ startRound: 2, cap: 3 })
   })
 
-  it('parked reporting is data: converged reports awaiting-tail, presented gate reports gate-pending', () => {
+  it('parked reporting is data: converged reports drivable (the tail owes work), presented gate reports gate-pending', () => {
     const converged = pipelineContextOf([
       resumeStamp({ altitude: 'L2', type: 'stage_enter', stage: 'review' }, 1),
       resumeStamp(
@@ -359,7 +359,7 @@ describe('resume decision — pure function of folded context + session ledger (
       ),
       resumeStamp({ altitude: 'L2', type: 'stage_exit', stage: 'review' }, 3),
     ])
-    expect(parkedReasonOf(converged, 'review', realWorkFor)).toBe('awaiting-tail')
+    expect(parkedReasonOf(converged, 'review', realWorkFor)).toBe('drivable')
 
     const gated = pipelineContextOf([
       resumeStamp({ altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1 }, 1),

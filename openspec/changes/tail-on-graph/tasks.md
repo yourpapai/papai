@@ -8,16 +8,16 @@
 
 ## 2. Fixtures face (D9)
 
-- [ ] 2.1 Add `extend-at-final-cycle-synthetic` (29 events) and `abort-at-final-synthetic` (17) + README/inventory rows; both fold identical under legacy and kernel. Verify: `bun test tests/afk-runner/fixtures/scenarios/ tests/afk-runner/parity/`
-- [ ] 2.2 Add `veto-at-final-cycle-synthetic` (33) and `tail-crash-resume-synthetic` (13-event crash form + 18-event healed form); parity identical including at every event (per-event divergence check). Verify: `bun test tests/afk-runner/parity/golden-replay.test.ts`
+- [x] 2.1 Add `extend-at-final-cycle-synthetic` (29 events) and `abort-at-final-synthetic` (17) + README/inventory rows; both fold identical under legacy and kernel. Verify: `bun test tests/afk-runner/fixtures/scenarios/ tests/afk-runner/parity/`
+- [x] 2.2 Add `veto-at-final-cycle-synthetic` (33) and `tail-crash-resume-synthetic` (13-event crash form + 18-event healed form); parity identical including at every event (per-event divergence check). Verify: `bun test tests/afk-runner/parity/golden-replay.test.ts`
 
 ## 3. Work face (D1/D2)
 
-- [ ] 3.1 Failing tests: decompose work module (decomposer agent writes tasks.md, 2-attempt `validateStrict` retry, halt after two) — copy from `sdd-runner/src/decompose.ts`. Verify: `bun test tests/afk-runner/work/decompose.test.ts` (fails)
-- [ ] 3.2 Implement the decompose module + registry entry; depth-aware outcome (S presents, M/L enters atomicity). Verify: `bun test tests/afk-runner/work/decompose.test.ts`
-- [ ] 3.3 Atomicity work module (split/merge report, S never declares it) + registry entry. Verify: `bun test tests/afk-runner/work/atomicity.test.ts`
-- [ ] 3.4 Presenter helper (file+hashes sidecar first → `stage_enter(gate)` → `presented` at max-version+1 → ladder prelude) shared by atomicity and S-decompose. Verify: `bun test tests/afk-runner/work/present-final.test.ts`
-- [ ] 3.5 Integration: fake-agent M run drives intake→…→final gate park, and S run skips atomicity and parks at its final gate; exit brackets land from `gate.awaiting`. Verify: `bun test tests/afk-runner/integration/live-run.test.ts`
+- [x] 3.1 Failing tests: decompose work module (decomposer agent writes tasks.md, 2-attempt `validateStrict` retry, halt after two) — copy from `sdd-runner/src/decompose.ts`. Verify: `bun test tests/afk-runner/work/decompose.test.ts` (fails)
+- [x] 3.2 Implement the decompose module + registry entry; depth-aware outcome (S presents, M/L enters atomicity). Verify: `bun test tests/afk-runner/work/decompose.test.ts`
+- [x] 3.3 Atomicity work module (split/merge report, S never declares it) + registry entry. Verify: `bun test tests/afk-runner/work/atomicity.test.ts`
+- [x] 3.4 Presenter helper (file+hashes sidecar first → `stage_enter(gate)` → `presented` at max-version+1 → ladder prelude) shared by atomicity and S-decompose. Verify: `bun test tests/afk-runner/work/present-final.test.ts`
+- [x] 3.5 Integration: fake-agent M run drives intake→…→final gate park, and S run skips atomicity and parks at its final gate; exit brackets land from `gate.awaiting`. Verify: `bun test tests/afk-runner/integration/live-run.test.ts`
 
 ## 4. Seam face (D3)
 

@@ -76,6 +76,22 @@ function listAgentArtifacts(changeDir: string): string[] {
 }
 
 /**
+ * File-first rendering (C5 D2): write the gate digest MD and its
+ * presentation-time hashes sidecar — nothing else. The final-gate presenter
+ * interleaves the `stage_enter(gate)` append between this and the presented
+ * event; C4's `presentGate` composes both unchanged.
+ */
+export async function writeGateFiles(deps: GateDeps, input: PresentGateInput): Promise<PresentGateResult> {
+  const gateMdPath = path.join(deps.runDir, `gate-${input.version}.md`)
+  const md = writeGateDigest(input)
+  await writeFile(gateMdPath, `${md}\n`)
+  const artifacts = listAgentArtifacts(deps.changeDir)
+  const hashes = await recordArtifactHashes(deps.changeDir, artifacts)
+  await writeFile(path.join(deps.runDir, `gate-hashes-${input.version}.json`), `${JSON.stringify(hashes, null, 2)}\n`)
+  return { gateMdPath, version: input.version }
+}
+
+/**
  * Full presentation (C4 seam face): write the gate digest MD and its
  * presentation-time hashes sidecar, then append the `gate presented` event
  * through the emit boundary. The sidecar is the integrity oracle every later
@@ -87,12 +103,7 @@ export async function presentGate(
   input: PresentGateInput,
   options: { readonly deadlineAt?: string } = {},
 ): Promise<PresentGateResult> {
-  const gateMdPath = path.join(deps.runDir, `gate-${input.version}.md`)
-  const md = writeGateDigest(input)
-  await writeFile(gateMdPath, `${md}\n`)
-  const artifacts = listAgentArtifacts(deps.changeDir)
-  const hashes = await recordArtifactHashes(deps.changeDir, artifacts)
-  await writeFile(path.join(deps.runDir, `gate-hashes-${input.version}.json`), `${JSON.stringify(hashes, null, 2)}\n`)
+  const result = await writeGateFiles(deps, input)
   deps.emit({
     altitude: 'L2',
     type: 'gate',
@@ -101,7 +112,7 @@ export async function presentGate(
     version: input.version,
     ...(options.deadlineAt === undefined ? {} : { deadlineAt: options.deadlineAt }),
   })
-  return { gateMdPath, version: input.version }
+  return result
 }
 
 /**

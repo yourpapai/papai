@@ -311,17 +311,36 @@ describe('gate waiter as run-level continuation (C4 5.1)', () => {
 
     const gateMd = path.join(runDir, 'gate-1.md')
     fs.writeFileSync(gateMd, `${fs.readFileSync(gateMd, 'utf8')}\n## Gate response\n\n→ RUN 1 MORE\n`)
-    for (let i = 0; i < 6; i += 1) await releaseTick(clock)
-
-    const halted = await runPromise
-    expect(halted.halted).toBe('awaiting-tail')
+    // Release ticks until the extended round converges and the S tail presents
+    // the final gate (the waiter then holds for the human answer — completing
+    // an approved final gate is C5 §4/§6 machinery).
+    await waitFor(tailParkedAtFinalGate(clock, runDir))
     const events = readEvents(path.join(runDir, 'events.ndjson'))
     expect(hasAnsweredGate(events)).toBe(true)
     expect(hasRoundOpen(events, 2)).toBe(true)
     expect(pipeline.spawnOrder).toContain('findings-2.json')
-    expect(fs.existsSync(holderPath(runDir))).toBe(false)
+    expect(presentedGateEvents(events).at(-1)).toMatchObject({ mode: 'final', version: 2 })
+    // still waiting at the final gate: the holder stays alive with the waiter
+    expect(fs.existsSync(holderPath(runDir))).toBe(true)
+    void runPromise
   })
 })
+
+function presentedGateEvents(events: readonly SddEvent[]): SddEvent[] {
+  return events.filter((event) => event.type === 'gate' && event.action === 'presented')
+}
+
+/** One waiter-clock poll step: release a tick, then report whether the re-drive has presented the final gate and parked. */
+function tailParkedAtFinalGate(clock: { readonly release: () => void }, runDir: string): () => boolean {
+  return (): boolean => {
+    clock.release()
+    const events = readEvents(path.join(runDir, 'events.ndjson'))
+    const presentedFinal = events.some(
+      (event) => event.type === 'gate' && event.action === 'presented' && event.mode === 'final',
+    )
+    return presentedFinal && events.at(-1)?.type === 'stage_exit'
+  }
+}
 
 function extendSkipWarning(line: string): boolean {
   return line.includes('extend is not valid at a final gate')

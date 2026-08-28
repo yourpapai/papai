@@ -113,12 +113,15 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
     }),
     'findings-1.json': JSON.stringify({ findings: [] }),
     'resolutions-1.json': JSON.stringify({ resolutions: [], assumptions: [] }),
+    'decompose-tasks.json': JSON.stringify({ tasks_file: 'openspec/changes/add-thing/tasks.md' }),
+    'atomicity.json': JSON.stringify({ split: 0, merged: 0 }),
     ...options.sidecarOverrides,
   }
   const artifacts: Record<string, string> = {
     'draft-proposal.json': path.join(changeDir, 'proposal.md'),
     'draft-specs.json': path.join(changeDir, 'specs', 'thing', 'spec.md'),
     'draft-design.json': path.join(changeDir, 'design.md'),
+    'decompose-tasks.json': path.join(changeDir, 'tasks.md'),
   }
 
   const spawn: SpawnFn = (_command, args, spawnOptions) => {

@@ -55,14 +55,15 @@ describe('review work presents the full early gate (C4 seam face)', () => {
     expect(presentedEvents(runDir)[0]).toMatchObject({ mode: 'early', version: 1 })
   })
 
-  it('a converged review presents no gate files', async () => {
+  it('a converged review presents no early gate files — the tail presents the final gate instead', async () => {
     const pipeline = makeFakePipeline()
     const taskFile = path.join(pipeline.repoRoot, 'task.md')
     fs.writeFileSync(taskFile, TASK_TEXT)
     const halted = await startRun(pipeline.deps, { taskFile })
     const runDir = pipeline.runDirOf(halted.runId)
-    expect(halted.halted).toBe('awaiting-tail')
-    expect(fs.existsSync(path.join(runDir, 'gate-1.md'))).toBe(false)
-    expect(fs.existsSync(path.join(runDir, 'gate-hashes-1.json'))).toBe(false)
+    expect(halted.halted).toBe('gate-pending')
+    const presented = presentedEvents(runDir)
+    expect(presented).toHaveLength(1)
+    expect(presented[0]).toMatchObject({ mode: 'final', version: 1 })
   })
 })

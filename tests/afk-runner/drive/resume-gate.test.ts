@@ -117,6 +117,10 @@ function roundOpenTwo(event: SddEvent): boolean {
   return event.type === 'round_open' && event.round === 2
 }
 
+function presentedGates(events: readonly SddEvent[]): SddEvent[] {
+  return events.filter((event) => event.type === 'gate' && event.action === 'presented')
+}
+
 describe('resume gate — owed movers and historical parks', () => {
   it('resume appends the owed round_open for a crash between answer and mover, then drives the round', async () => {
     const h = await parkedGateRun()
@@ -128,15 +132,16 @@ describe('resume gate — owed movers and historical parks', () => {
     expect(h.pipeline.spawnOrder).toContain('findings-2.json')
   })
 
-  it('resume appends the owed stage_enter(decompose) and parks awaiting-tail until C5', async () => {
+  it('resume appends the owed stage_enter(decompose) and drives the S tail to the final gate', async () => {
     const h = await parkedGateRun()
     h.append({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: 1, outcome: 'approve' })
     const before = readLog(h.runDir).length
     const resumed = await resumeRun(h.pipeline.deps, h.runId)
-    expect(resumed.halted).toBe('awaiting-tail')
+    expect(resumed.halted).toBe('gate-pending')
     const events = readLog(h.runDir)
-    expect(events.length).toBe(before + 1)
-    expect(events.at(-1)).toMatchObject({ type: 'stage_enter', stage: 'decompose' })
+    expect(events.length).toBeGreaterThan(before + 1)
+    expect(events.at(-1)).toMatchObject({ type: 'stage_exit', stage: 'decompose' })
+    expect(presentedGates(events).at(-1)).toMatchObject({ mode: 'final', version: 2 })
   })
 
   it('a historical answered-no-outcome log parks awaiting settlement with nothing appended', async () => {

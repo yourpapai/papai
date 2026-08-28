@@ -52,18 +52,18 @@ async function releaseTick(clock: { readonly release: () => void }): Promise<voi
   })
 }
 
-/** Release ticks (bounded) until the parked-gate resume settles and returns. */
-async function settleViaTicks<T>(
-  pending: Promise<T>,
-  clock: { readonly release: () => void },
-  budget = 10,
-): Promise<T> {
-  for (let i = 0; i < budget; i += 1) {
+function endsAtTailPark(logPath: string): boolean {
+  const tokens = skeletonTokens(logPath)
+  const presentedFinal = tokens.includes('gate:presented:final')
+  return presentedFinal && tokens.at(-1) === 'stage_exit:decompose'
+}
+
+/** Release ticks (bounded) until the healed settle re-drives into the tail and parks at the final gate. */
+async function ticksUntilTailPark(clock: { readonly release: () => void }, logPath: string): Promise<void> {
+  for (let i = 0; i < 20; i += 1) {
     await releaseTick(clock)
-    const done = await Promise.race([pending.then((): boolean => true), Promise.resolve(false)])
-    if (done) break
+    if (endsAtTailPark(logPath)) break
   }
-  return pending
 }
 
 function answeredGateEvents(events: readonly SddEvent[]): SddEvent[] {
@@ -77,23 +77,25 @@ function skeletonTokens(logPath: string): Token[] {
     if (event.type === 'stage_enter' || event.type === 'stage_exit') return [`${event.type}:${event.stage}`]
     if (event.type === 'round_open' || event.type === 'round_close') return [`${event.type}:${event.round}`]
     if (event.type === 'convergence') return [`convergence:${event.round}:${event.verdict}`]
-    if (event.type === 'gate') return [`gate:${event.action}:${event.mode}`]
+    if (event.type === 'gate')
+      return [`gate:${event.action}:${event.mode}${event.outcome === undefined ? '' : `:${event.outcome}`}`]
+    if (event.type === 'auto_decision') return [`auto_decision:${event.decision}`]
     if (event.type === 'artifact') return ['artifact']
-    if (event.type === 'depth') return ['depth']
+    if (event.type === 'depth') return [`depth:${event.profile}`]
     if (event.type === 'finding') return [`finding:${event.action}:${event.id}`]
     return []
   })
 }
 
 describe('live-shaped think-half integration (stubbed agents)', () => {
-  it('start → intake → draft → review → park awaiting-tail after convergence', async () => {
+  it('start → intake → draft → review → S tail presents the final gate from decompose and parks gate-pending', async () => {
     const pipeline = makeFakePipeline()
     const result = await startRun(pipeline.deps, { taskText: TASK_TEXT })
-    expect(result.halted).toBe('awaiting-tail')
+    expect(result.halted).toBe('gate-pending')
     const tokens = skeletonTokens(path.join(pipeline.runDirOf(result.runId), 'events.ndjson'))
     expect(tokens).toEqual([
       'stage_enter:intake',
-      'depth',
+      'depth:S',
       'stage_exit:intake',
       'stage_enter:draft',
       'artifact',
@@ -106,7 +108,40 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
       'artifact',
       'round_close:1',
       'stage_exit:review',
+      'stage_enter:decompose',
+      'stage_enter:gate',
+      'gate:presented:final',
+      'auto_decision:approve',
+      'gate:answered:final:approve',
+      'stage_exit:decompose',
     ])
+    expect(tokens.filter((token) => token.includes('atomicity'))).toEqual([])
+    const runDir = pipeline.runDirOf(result.runId)
+    expect(fs.existsSync(path.join(runDir, 'gate-1.md'))).toBe(true)
+    expect(fs.existsSync(path.join(runDir, 'gate-hashes-1.json'))).toBe(true)
+    expect(pipeline.spawnOrder).toContain('decompose-tasks.json')
+    expect(pipeline.spawnOrder).not.toContain('atomicity.json')
+  })
+
+  it('M run drives the full tail: decompose bracket, atomicity bracket, final presentation parks gate-pending', async () => {
+    const pipeline = makeFakePipeline({ sidecarOverrides: M_MULTI_ROUND })
+    const result = await startRun(pipeline.deps, { taskText: TASK_TEXT })
+    expect(result.halted).toBe('gate-pending')
+    const tokens = skeletonTokens(path.join(pipeline.runDirOf(result.runId), 'events.ndjson'))
+    const tailStart = tokens.indexOf('stage_enter:decompose')
+    expect(tailStart).toBeGreaterThan(tokens.indexOf('stage_exit:review'))
+    expect(tokens.slice(tailStart)).toEqual([
+      'stage_enter:decompose',
+      'stage_exit:decompose',
+      'stage_enter:atomicity',
+      'stage_enter:gate',
+      'gate:presented:final',
+      'auto_decision:approve',
+      'gate:answered:final:approve',
+      'stage_exit:atomicity',
+    ])
+    expect(pipeline.spawnOrder).toContain('decompose-tasks.json')
+    expect(pipeline.spawnOrder).toContain('atomicity.json')
   })
 
   it('cap-hit with open blockers appends gate presented and parks gate-pending', async () => {
@@ -138,7 +173,7 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
     fs.rmSync(path.join(crashed.runDirOf(runId), 'state.json'))
 
     const resumed = await resumeRun(crashed.deps, runId)
-    expect(resumed.halted).toBe('awaiting-tail')
+    expect(resumed.halted).toBe('gate-pending')
     expect(resumed.drove).toBe(true)
 
     const tokens = skeletonTokens(logPath)
@@ -157,14 +192,25 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
       'round_close:1',
       'round_open:2',
     ])
-    expect(tokens.slice(secondEnter)).toEqual([
+    expect(tokens.slice(secondEnter, secondEnter + 6)).toEqual([
       'stage_enter:review',
       'round_open:2',
       'convergence:2:converged',
       'artifact',
       'artifact',
       'round_close:2',
+    ])
+    // The converged M run continues into the tail and presents its final gate.
+    expect(tokens.slice(-9)).toEqual([
       'stage_exit:review',
+      'stage_enter:decompose',
+      'stage_exit:decompose',
+      'stage_enter:atomicity',
+      'stage_enter:gate',
+      'gate:presented:final',
+      'auto_decision:approve',
+      'gate:answered:final:approve',
+      'stage_exit:atomicity',
     ])
   })
 
@@ -208,13 +254,25 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
 
     const clock = fakeClock()
     const resumedPromise = resumeRun({ ...pipeline.deps, gateWait: { tick: clock.tick } }, started.runId)
-    const outcome = await settleViaTicks(resumedPromise, clock)
-    expect(outcome.halted).toBe('awaiting-tail')
-
+    // The waiter then holds for the human answer — the outcome ordering that
+    // completes an approved final gate is C5 §4.
+    await ticksUntilTailPark(clock, logPath)
     const events = readEvents(logPath)
     const answers = answeredGateEvents(events)
     expect(answers.length).toBe(2)
     expect(answers[1]).toMatchObject({ outcome: 'approve' })
-    expect(events.at(-1)).toMatchObject({ type: 'stage_enter', stage: 'decompose' })
+    // The approve-early mover entered decompose; the drive re-entered through
+    // the self-loop and the S tail presented the final gate (open material
+    // finding F1 keeps the ladder at the human gate).
+    expect(skeletonTokens(logPath).slice(-7)).toEqual([
+      'gate:answered:final:approve',
+      'stage_enter:decompose',
+      'stage_enter:decompose',
+      'stage_enter:gate',
+      'gate:presented:final',
+      'auto_decision:gate',
+      'stage_exit:decompose',
+    ])
+    void resumedPromise
   })
 })

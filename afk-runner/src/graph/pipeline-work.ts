@@ -7,15 +7,19 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import type { SpawnFn } from '../../../review-loop/src/agent-runner.js'
+import type { AgentLayerDeps } from '../agent-layer.js'
 import type { ExecGitFn, RunnerConfig } from '../config.js'
 import type { StateModule, WorkFor, WorkIO } from '../drive/loop.js'
 import type { DepthProfile, EventInput } from '../events.js'
 import type { KernelContext } from '../kernel/machine.js'
 import type { OpenSpecDriver } from '../openspec-driver.js'
+import { runAtomicity } from '../work/atomicity.js'
+import { runDecompose, runsAtomicity } from '../work/decompose.js'
 import { runDraft } from '../work/draft.js'
 import { parseGateResponse } from '../work/gate-model.js'
 import { expectedContentFor } from '../work/gate-settle.js'
 import { runIntake } from '../work/intake.js'
+import { presentFinalGate } from '../work/present-final.js'
 import { reviewOutcomeOf, runReviewWork } from '../work/review.js'
 import { runVetoUpdater, updateAssumptionsFromVetoes } from '../work/veto-updater.js'
 
@@ -45,9 +49,64 @@ export interface PipelineRunInput {
  * positional park of a presented gate — no work, parks gate-pending until a
  * settle producer answers through the seam.
  */
-/** A settled veto re-enters draft: the gate is answered with outcome veto (design D8). */
+/**
+ * A settled veto re-enters draft: the gate is answered with outcome veto (design D8). */
 function isVetoRevision(context: KernelContext): boolean {
   return context.gate !== null && context.gate.answered && context.gateOutcome === 'veto'
+}
+
+/** The decompose outcome as a pure reader: work owed until done, then depth picks the successor (C5 D1). */
+export function decomposeOutcomeOf(context: KernelContext): 'incomplete' | 'converged' | 'presented' {
+  if (context.stages['decompose'] !== 'done') return 'incomplete'
+  return runsAtomicity(context.depth ?? 'S') ? 'converged' : 'presented'
+}
+
+/** The atomicity outcome: work owed until done, then the presentation has parked the run (C5 D1). */
+export function atomicityOutcomeOf(context: KernelContext): 'incomplete' | 'presented' {
+  return context.stages['atomicity'] === 'done' ? 'presented' : 'incomplete'
+}
+
+/** The decompose stage work: the legacy decomposer copy, then (depth S) the final-gate presentation as its last act. */
+async function runDecomposeStage(deps: PipelineWorkDeps, input: PipelineRunInput, io: WorkIO): Promise<void> {
+  await runDecompose(
+    {
+      driver: deps.driver,
+      agent: agentOf(deps, io),
+      runDir: io.runDir,
+      sidecarDir: path.join(io.runDir, 'sidecars'),
+      cwd: deps.config.repoRoot,
+    },
+    { changeName: input.changeName },
+  )
+  if (!runsAtomicity(io.context.depth ?? 'S')) {
+    await presentFinalGate({ config: deps.config, repoRoot: deps.config.repoRoot, changeName: input.changeName }, io)
+  }
+}
+
+/** The atomicity stage work: the legacy atomicity copy, then the final-gate presentation as its last act. */
+async function runAtomicityStage(deps: PipelineWorkDeps, input: PipelineRunInput, io: WorkIO): Promise<void> {
+  await runAtomicity(
+    {
+      driver: deps.driver,
+      agent: agentOf(deps, io),
+      runDir: io.runDir,
+      sidecarDir: path.join(io.runDir, 'sidecars'),
+      cwd: deps.config.repoRoot,
+    },
+    { changeName: input.changeName, depth: io.context.depth ?? 'S' },
+  )
+  await presentFinalGate({ config: deps.config, repoRoot: deps.config.repoRoot, changeName: input.changeName }, io)
+}
+
+function agentOf(deps: PipelineWorkDeps, io: WorkIO): AgentLayerDeps {
+  return {
+    spawn: deps.spawn,
+    config: deps.config,
+    execGit: deps.execGit,
+    emit: (event: EventInput): void => {
+      io.append(event)
+    },
+  }
 }
 
 /**
@@ -178,6 +237,27 @@ export function createPipelineWorkFor(deps: PipelineWorkDeps, input: PipelineRun
           // The round still owes work — an extended round opened by a gate
           // settle, a crashed mid-round, a fresh entry: review re-runs itself.
           incomplete: { enter: 'review' },
+        },
+      }
+    }
+    if (state === 'decompose') {
+      return {
+        work: { kind: 'decompose', run: (io) => runDecomposeStage(deps, input, io) },
+        outcomeOf: decomposeOutcomeOf,
+        successors: {
+          incomplete: { enter: 'decompose' },
+          converged: { enter: 'atomicity' },
+          presented: { park: 'gate-pending' },
+        },
+      }
+    }
+    if (state === 'atomicity') {
+      return {
+        work: { kind: 'atomicity', run: (io) => runAtomicityStage(deps, input, io) },
+        outcomeOf: atomicityOutcomeOf,
+        successors: {
+          incomplete: { enter: 'atomicity' },
+          presented: { park: 'gate-pending' },
         },
       }
     }

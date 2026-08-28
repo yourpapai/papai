@@ -12,18 +12,18 @@ import { resumeRun, startRun, statusRun } from '../../../afk-runner/src/run.js'
 import { BLOCKER_ROUND, TASK_TEXT, makeFakePipeline } from '../fixtures/fake-pipeline.js'
 
 describe('state.json is a derived memo, never truth (design D6)', () => {
-  it('a converged run parks awaiting-tail and writes the memo from the fold', async () => {
+  it('a converged run drives the S tail to the final gate and writes the memo from the fold', async () => {
     const pipeline = makeFakePipeline()
     const result = await startRun(pipeline.deps, { taskText: TASK_TEXT })
-    expect(result.halted).toBe('awaiting-tail')
-    expect(result.position).toBe('review')
+    expect(result.halted).toBe('gate-pending')
+    expect(result.position).toBe('gate.awaiting')
     const runDir = pipeline.runDirOf(result.runId)
     const memoPath = path.join(runDir, 'state.json')
     expect(fs.existsSync(memoPath)).toBe(true)
     const memo: Record<string, unknown> = JSON.parse(fs.readFileSync(memoPath, 'utf8'))
     expect(memo['depth']).toBe('S')
     expect(memo['round']).toBe(1)
-    expect(memo['gate']).toBeNull()
+    expect(memo['gate']).toEqual({ mode: 'final', version: 1 })
     expect(memo['status']).toBe('running')
     const types = readEvents(path.join(runDir, 'events.ndjson')).map((event) => event.type)
     expect(types).toContain('stage_enter')
@@ -47,7 +47,7 @@ describe('state.json is a derived memo, never truth (design D6)', () => {
     expect(statusWithout.parked).toBe(statusWithMemo.parked)
     expect(statusWithout.context).toEqual(statusWithMemo.context)
     expect(resumeWithout).toEqual(resumeWithMemo)
-    expect(resumeWithout).toMatchObject({ halted: 'awaiting-tail', drove: false })
+    expect(resumeWithout).toMatchObject({ halted: 'gate-pending', drove: false })
 
     // the resume rewrote the memo from the fold — identical body
     expect(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8')).toBe(memoBody)

@@ -104,9 +104,9 @@ describe('veto revision as draft re-entry work (integration)', () => {
 
     const clock = fakeClock()
     const resumedPromise = resumeRun({ ...pipeline.deps, gateWait: { tick: clock.tick } }, started.runId)
-    const outcome = await settleViaTicks(resumedPromise, clock)
-    expect(outcome.halted).toBe('awaiting-tail')
-    expect(outcome.drove).toBe(true)
+    // The waiter then holds for the human answer — completing an approved
+    // final gate is C5 §4/§6 machinery.
+    await ticksUntilTailPark(clock, logPath)
 
     expect(pipeline.spawnOrder).toContain('veto-updater.json')
     expect(pipeline.spawnOrder).toContain('findings-2.json')
@@ -117,6 +117,7 @@ describe('veto revision as draft re-entry work (integration)', () => {
     expect(tokens).toContain('gate:answered:veto')
     expect(tokens).toContain('round_open:2')
     expect(tokens).toContain('convergence:2:converged')
+    void resumedPromise
   })
 })
 
@@ -156,16 +157,18 @@ async function releaseTick(clock: { readonly release: () => void }): Promise<voi
   })
 }
 
-/** Release ticks (bounded) until the parked-gate resume settles and returns. */
-async function settleViaTicks<T>(
-  pending: Promise<T>,
-  clock: { readonly release: () => void },
-  budget = 10,
-): Promise<T> {
-  for (let i = 0; i < budget; i += 1) {
+function endsAtTailPark(logPath: string): boolean {
+  const tokens = eventTokens(logPath)
+  const presentedFinal = readEvents(logPath).some(
+    (event) => event.type === 'gate' && event.action === 'presented' && event.mode === 'final',
+  )
+  return presentedFinal && tokens.at(-1) === 'stage_exit:decompose'
+}
+
+/** Release ticks (bounded) until the revision round converges and the tail parks at the final gate. */
+async function ticksUntilTailPark(clock: { readonly release: () => void }, logPath: string): Promise<void> {
+  for (let i = 0; i < 30; i += 1) {
     await releaseTick(clock)
-    const done = await Promise.race([pending.then((): boolean => true), Promise.resolve(false)])
-    if (done) break
+    if (endsAtTailPark(logPath)) break
   }
-  return pending
 }

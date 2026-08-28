@@ -181,6 +181,14 @@ function hasEventType(events: readonly SddEvent[], type: string, action: string)
   return events.some((event) => event.type === type && 'action' in event && event.action === action)
 }
 
+function isR2Extend(event: SddEvent): boolean {
+  return event.type === 'auto_decision' && event.rule === 'R2' && event.decision === 'extend'
+}
+
+function presentedGates(events: readonly SddEvent[]): SddEvent[] {
+  return events.filter((event) => event.type === 'gate' && event.action === 'presented')
+}
+
 describe('gate prelude wired into the live presentation (integration)', () => {
   it('an M-depth run with a decreasing trajectory auto-extends at the cap and runs the extended round', async () => {
     const materials = (count: number, round: number): Record<string, string> => ({
@@ -227,15 +235,22 @@ describe('gate prelude wired into the live presentation (integration)', () => {
     fs.writeFileSync(taskFile, TASK_TEXT)
     const halted = await startRun(pipeline.deps, { taskFile })
 
-    expect(halted.halted).toBe('awaiting-tail')
+    expect(halted.halted).toBe('gate-pending')
     const runDir = pipeline.runDirOf(firstRunOf(pipeline))
     const events = readEvents(path.join(runDir, 'events.ndjson'))
     const autoDecisions = events.filter((event) => event.type === 'auto_decision')
     expect(autoDecisions.length).toBeGreaterThan(0)
-    expect(autoDecisions[autoDecisions.length - 1]).toMatchObject({ rule: 'R2', decision: 'extend' })
+    expect(autoDecisions.some(isR2Extend)).toBe(true)
+    // the final-gate presentation's ladder decision is the last one logged
+    expect(autoDecisions[autoDecisions.length - 1]).toMatchObject({ gateVersion: 2 })
     expect(hasEventType(events, 'gate', 'answered')).toBe(true)
     expect(events.some(roundOpenFour)).toBe(true)
     expect(pipeline.spawnOrder).toContain('findings-4.json')
     expect(pipeline.spawnOrder).toContain('resolutions-4.json')
+    // The converged extended round runs the M tail: both brackets and the
+    // final-gate presentation land before the park.
+    expect(pipeline.spawnOrder).toContain('decompose-tasks.json')
+    expect(pipeline.spawnOrder).toContain('atomicity.json')
+    expect(presentedGates(events).at(-1)).toMatchObject({ mode: 'final' })
   })
 })
