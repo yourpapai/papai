@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "components": [
+    {
+      "name": "ui/Btn",
+      "figmaNode": "19:35",
+      "source": "client/shared/ui/Btn.svelte",
+      "props": { "Variant": "variant", "Label": "children" },
+      "values": {
+        "Primary": "primary",
+        "Secondary": "secondary",
+        "Outline": "outline",
+        "Ghost": "ghost",
+        "Danger": "danger"
+      }
+    },
+    {
+      "name": "ui/Input",
+      "figmaNode": "22:45",
+      "source": "client/shared/ui/Input.svelte",
+      "props": { "Value": "value", "Placeholder": "placeholder", "Type": "type" },
+      "values": { "Text": "text", "Search": "search", "Password": "password" }
+    },
+    {
+      "name": "ui/Field",
+      "figmaNode": "22:47",
+      "source": "client/shared/ui/Field.svelte",
+      "props": { "Label": "label", "Required": "required", "Hint": "hint", "Error": "error" },
+      "values": {}
+    },
+    {
+      "name": "ui/PageHeader",
+      "figmaNode": "22:52",
+      "source": "client/shared/ui/PageHeader.svelte",
+      "props": { "Title": "title", "Eyebrow": "eyebrow", "Sub": "sub" },
+      "values": {}
+    },
+    {
+      "name": "ui/SidebarLink",
+      "figmaNode": "22:62",
+      "source": "client/settings/components/SettingsSidebar.svelte",
+      "props": { "Label": "label", "Active": "active" },
+      "values": { "True": "true", "False": "false" }
+    },
+    {
+      "name": "ui/TopBar",
+      "figmaNode": "22:65",
+      "source": "client/shared/ui/TopBar.svelte",
+      "props": { "Page": "page" },
+      "values": {}
+    }
+  ],
+  "screens": [],
+  "sections": []
+}
