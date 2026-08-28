@@ -5,7 +5,15 @@
 
 import { readEvents } from './events.js'
 import { STAGE_ORDER } from './events.js'
-import type { AutoDecisionRule, DepthProfile, EventInput, FindingClass, FindingCounts, StageId } from './events.js'
+import type {
+  AutoDecisionRule,
+  DepthProfile,
+  EventInput,
+  FindingClass,
+  FindingCounts,
+  OversizeSignals,
+  StageId,
+} from './events.js'
 
 export interface DigestRecord {
   readonly round: number
@@ -39,6 +47,14 @@ export interface ReplayState {
   readonly children: Readonly<Record<string, { readonly status: 'pending' | 'running' | 'done' | 'failed' }>>
   /** Per-fingerprint concern history (loop-memory D5, additive): old logs fold to {}. */
   readonly concerns?: Readonly<Record<string, { readonly entries: readonly ConcernEntry[] }>>
+  /** Oversize routing record (estimator-signals, additive): replayed states always carry it; hand-built literals may omit. */
+  readonly routing?: RoutingRecord | null
+}
+
+export interface RoutingRecord {
+  readonly oversize: boolean
+  readonly oversizeSignals?: OversizeSignals
+  readonly routeForced?: 'plan' | 'depth'
 }
 
 export interface ConcernEntry {
@@ -75,6 +91,23 @@ export function initialReplayState(): ReplayState {
     autoDecisions: [],
     children: {},
     concerns: {},
+    routing: null,
+  }
+}
+
+/** Depth fold: profile always; the routing record only when routing fields are present (additive). */
+function foldDepthEvent(state: ReplayState, event: Extract<EventInput, { type: 'depth' }>): ReplayState {
+  if (event.oversize === undefined && event.routeForced === undefined) {
+    return { ...state, depth: event.profile }
+  }
+  return {
+    ...state,
+    depth: event.profile,
+    routing: {
+      oversize: event.oversize === true,
+      ...(event.oversizeSignals === undefined ? {} : { oversizeSignals: event.oversizeSignals }),
+      ...(event.routeForced === undefined ? {} : { routeForced: event.routeForced }),
+    },
   }
 }
 
@@ -130,7 +163,7 @@ function foldEvent(state: ReplayState, event: EventInput, pending: Map<number, R
     return { ...state, stages }
   }
   if (event.type === 'stage_exit') return { ...state, stages: { ...state.stages, [event.stage]: 'done' } }
-  if (event.type === 'depth') return { ...state, depth: event.profile }
+  if (event.type === 'depth') return foldDepthEvent(state, event)
   if (event.type === 'round_open') return { ...state, round: { current: event.round, cap: event.cap } }
   if (event.type === 'finding') return foldFindingEvent(state, event, pending)
   if (event.type === 'convergence') {

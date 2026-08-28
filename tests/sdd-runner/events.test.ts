@@ -78,6 +78,51 @@ describe('appendEvent + readEvents', () => {
   })
 })
 
+describe('depth event routing fields', () => {
+  it('carries the oversize verdict, weighed signals, and forced route additively', () => {
+    const log = makeLog()
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'depth',
+      profile: 'L',
+      rationale: 'new subsystem across modules',
+      source: 'estimator',
+      oversize: true,
+      oversizeSignals: { novelty: 'new-subsystem', cross_module: true, implicatedFiles: 36 },
+    })
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'depth',
+      profile: 'M',
+      rationale: 'operator forced the plan branch',
+      source: 'estimator',
+      oversize: false,
+      oversizeSignals: { novelty: 'existing-modules', cross_module: true, implicatedFiles: 12 },
+      routeForced: 'plan',
+    })
+    const events = readEvents(log)
+    expect(events[0]).toMatchObject({
+      type: 'depth',
+      oversize: true,
+      oversizeSignals: { implicatedFiles: 36 },
+    })
+    expect(events[1]).toMatchObject({ type: 'depth', routeForced: 'plan' })
+  })
+
+  it('parses pre-change depth events without the routing fields unchanged', () => {
+    const log = makeLog()
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'depth',
+      profile: 'M',
+      rationale: 'old',
+      source: 'estimator',
+      oversize: true,
+    })
+    expect(readEvents(log)[0]).toMatchObject({ type: 'depth', oversize: true })
+  })
+})
+
 describe('auto_decision event', () => {
   it('round-trips a preview decision with rule, evidence digest, and gate version', () => {
     const log = makeLog()
