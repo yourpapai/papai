@@ -24,11 +24,37 @@ describe('runAckScreen', () => {
     })
     expect(outcome.frames[0]).toContain('## Report')
     expect(outcome.frames[0]).toContain('body of report')
-    expect(outcome.frames[0]).toContain('(any key) back to sessions')
+    expect(outcome.frames[0]).toContain('(any key)')
   })
 
   it('an exhausted script still resolves, so the loop can never hang on it', async () => {
     const outcome = await runAckScreen({ lines: ['! something failed'], keyScript: '', mount: testingMount })
     expect(outcome.frames[0]).toContain('something failed')
+  })
+})
+
+function frameText(frame: string | undefined): string {
+  return frame ?? ''
+}
+
+describe('ack shell presentation (6.4: framing only)', () => {
+  it('frames the block and lists its single any-key affordance in the footer', async () => {
+    const outcome = await runAckScreen({
+      lines: ['## Report', 'body of report'],
+      keyScript: 'x',
+      mount: testingMount,
+    })
+    const frame = frameText(outcome.frames[0])
+    expect(frame).toContain('╭')
+    expect(frame).toContain('│ ## Report')
+    expect(frame).toContain('(any key)')
+    expect(frame).not.toContain('(?) help')
+    expect(frame).not.toContain('Keys ·')
+  })
+
+  it('? acks like any other key — no overlay, immediate return', async () => {
+    const outcome = await runAckScreen({ lines: ['! notice'], keyScript: '?', mount: testingMount })
+    expect(outcome.frames.length).toBeGreaterThan(0)
+    expect(outcome.frames[0]).not.toContain('Keys ·')
   })
 })

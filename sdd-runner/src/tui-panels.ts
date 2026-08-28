@@ -4,7 +4,12 @@
 // See LICENSE in the project root for details.
 
 import cliTruncate from 'cli-truncate'
+import { Box, Text } from 'ink'
+import { createElement } from 'react'
+import type { ReactElement } from 'react'
 import stringWidth from 'string-width'
+
+import type { InkColorProps } from './tui-tokens.js'
 
 /**
  * tui-panels (fancy-ui D3/D4): the single width authority for the TUI's
@@ -66,6 +71,57 @@ export function frameBodyLine(text: string, width: number): string {
  */
 export function frameLines(lines: readonly string[], width: number, title = ''): string[] {
   return [frameTop(width, title), ...lines.map((line) => frameBodyLine(line, width)), frameBottom(width)]
+}
+
+/** One styled span of a framed row; the tone decorates the span, never the frame. */
+export interface PanelPart {
+  readonly text: string
+  readonly tone?: InkColorProps
+}
+
+export interface PanelRow {
+  readonly key: string
+  readonly parts: readonly PanelPart[]
+}
+
+/** A single-part row helper (plain or toned). */
+export function panelRow(key: string, text: string, tone: InkColorProps = {}): PanelRow {
+  return { key, parts: [{ text, tone }] }
+}
+
+/** The shared framed-panel component: one style, per-part tones, width-exact lines. */
+export function FramedPanel(props: {
+  readonly title: string
+  readonly rows: readonly PanelRow[]
+  readonly width: number
+}): ReactElement {
+  const contentWidth = Math.max(1, props.width - 4)
+  const bodyRow = (row: PanelRow): ReactElement => {
+    const single = row.parts.length === 1 ? row.parts[0] : undefined
+    if (single !== undefined && (single.tone === undefined || Object.keys(single.tone).length === 0)) {
+      return createElement(Text, { key: row.key }, frameBodyLine(single.text, props.width))
+    }
+    const parts =
+      single === undefined
+        ? row.parts
+        : [{ text: padDisplay(truncateDisplay(single.text, contentWidth), contentWidth), tone: single.tone }]
+    return createElement(
+      Text,
+      { key: row.key },
+      '│ ',
+      ...parts.map((part, partIndex) =>
+        createElement(Text, { key: `${row.key}-${String(partIndex)}`, ...part.tone }, part.text),
+      ),
+      ' │',
+    )
+  }
+  return createElement(
+    Box,
+    { flexDirection: 'column' },
+    createElement(Text, { key: 'top' }, frameTop(props.width, props.title)),
+    ...props.rows.map(bodyRow),
+    createElement(Text, { key: 'bottom' }, frameBottom(props.width)),
+  )
 }
 
 /**

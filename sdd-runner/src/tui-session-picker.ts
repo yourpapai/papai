@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { render, useInput } from 'ink'
-import { createElement, useCallback, useEffect, useRef, useState } from 'react'
+import { render, useInput, useStdout } from 'ink'
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { KeyFlags } from './gate-session-state.js'
 import type { RemoveRunResult } from './remove-run.js'
@@ -14,12 +14,17 @@ import type { SessionTargetAction } from './session-flow.js'
 import { listSessions } from './session-list.js'
 import type { SessionRow } from './session-list.js'
 import { runAckScreen } from './tui-ack-screen.js'
+import type { AckInstance, AckMount } from './tui-ack-screen.js'
+import { reduceHelpOverlay } from './tui-chrome.js'
+import type { OverlayState } from './tui-chrome.js'
 import { createKeyFeed } from './tui-gate-session.js'
 import type { KeyFeed } from './tui-gate-session.js'
 import { createScriptKeys, pumpScript } from './tui-session-keys.js'
 import type { ScriptKeys } from './tui-session-keys.js'
 import { initialSessionScreenState, reduceSessionScreen, SessionScreen } from './tui-session-screen.js'
 import type { SessionScreenAction, SessionScreenState } from './tui-session-screen.js'
+import { colorModeFromStdout } from './tui-tokens.js'
+import { useTerminalWidth } from './tui-width.js'
 
 /**
  * Live driver for the session screen loop: re-read rows → render → settle a
@@ -50,6 +55,8 @@ export interface SessionPickerDeps {
   readonly createRun: (taskText: string) => Promise<void>
   /** Guarded removal seam: one run dir, fresh state read + owner liveness. */
   readonly removeRun: (runId: string) => Promise<RemoveRunResult>
+  /** Injectable list-screen mount (tests); defaults to the live ink renderer. */
+  readonly mount?: AckMount
 }
 
 function SessionPicker(props: {
@@ -59,10 +66,24 @@ function SessionPicker(props: {
   readonly onSettle: (decision: ListDecision | null) => void
   readonly keys?: KeyFeed
 }): ReturnType<typeof createElement> {
+  const { stdout } = useStdout()
+  const width = useTerminalWidth()
+  const colorMode = useMemo(() => colorModeFromStdout(stdout), [stdout])
   const [state, setState] = useState<SessionScreenState>(props.initial)
   const stateRef = useRef(state)
+  const [overlay, setOverlay] = useState<OverlayState>({ open: false })
+  const overlayRef = useRef(overlay)
   const handle = useCallback(
     (input: string, key: KeyFlags): void => {
+      if (stateRef.current.screen !== 'confirmDelete') {
+        const routing = reduceHelpOverlay(overlayRef.current, stateRef.current.screen === 'create', input, key)
+        if (routing.kind === 'state') {
+          overlayRef.current = routing.state
+          setOverlay(routing.state)
+          return
+        }
+        if (routing.kind === 'consume') return
+      }
       const action = reduceSessionScreen(stateRef.current, props.rows, input, key)
       if (action.kind === 'none') return
       if (action.kind === 'state') {
@@ -83,13 +104,24 @@ function SessionPicker(props: {
     if (props.keys === undefined) return undefined
     return props.keys.onKey(handle)
   }, [props.keys, handle])
-  return createElement(SessionScreen, { rows: props.rows, state, now: props.now })
+  return createElement(SessionScreen, { rows: props.rows, state, now: props.now, width, colorMode, overlay })
+}
+
+function liveListMount(element: ReturnType<typeof createElement>): AckInstance {
+  const instance = render(element, { stdin: process.stdin, exitOnCtrlC: false })
+  return {
+    unmount: (): void => {
+      instance.unmount()
+    },
+    lastFrame: (): undefined => undefined,
+  }
 }
 
 function runListScreen(deps: {
   readonly rows: readonly SessionRow[]
   readonly initial: SessionScreenState
   readonly script: ScriptKeys | undefined
+  readonly mount: AckMount
 }): Promise<ListDecision | null> {
   const keys = deps.script === undefined ? undefined : createKeyFeed()
   return new Promise<ListDecision | null>((resolve) => {
@@ -100,7 +132,7 @@ function runListScreen(deps: {
       instance.unmount()
       resolve(outcome)
     }
-    const instance = render(
+    const instance = deps.mount(
       createElement(SessionPicker, {
         rows: deps.rows,
         initial: deps.initial,
@@ -108,7 +140,6 @@ function runListScreen(deps: {
         ...(keys === undefined ? {} : { keys }),
         onSettle: finish,
       }),
-      { stdin: process.stdin, exitOnCtrlC: false },
     )
     if (keys === undefined || deps.script === undefined) return
     void pumpScript(keys, deps.script, (): boolean => settled).then(() => {
@@ -142,7 +173,7 @@ async function runIteration(deps: SessionPickerDeps, script: ScriptKeys | undefi
   const rows = await (deps.listRows?.() ?? listSessions(deps.workDir ?? '.'))
   const initialScreen =
     first && deps.initial === 'create' ? initialSessionScreenState('create') : initialSessionScreenState()
-  const decision = await runListScreen({ rows, initial: initialScreen, script })
+  const decision = await runListScreen({ rows, initial: initialScreen, script, mount: deps.mount ?? liveListMount })
   if (decision === null) return false
   if (decision.kind === 'submitCreate') {
     const taskText = decision.taskText

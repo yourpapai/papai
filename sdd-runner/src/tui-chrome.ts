@@ -131,10 +131,10 @@ export function reduceHelpOverlay(
   return { kind: 'pass' }
 }
 
-/** Persistent key-hints footer: the hint keys, joined and width-truncated. */
+/** Persistent key-hints footer: the hint keys, joined and width-truncated. Colorless — monochrome frames stay escape-free. */
 export function Footer(props: { readonly hints: readonly KeyHint[]; readonly width: number }): ReactElement {
   const line = truncateDisplay(props.hints.map((hint) => hint.key).join(' · '), Math.max(1, props.width - 2))
-  return createElement(Text, { dimColor: true }, line)
+  return createElement(Text, null, line)
 }
 
 /** Help overlay: an inset framed panel listing this screen's keys with meanings. */
