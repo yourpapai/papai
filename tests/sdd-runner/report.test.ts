@@ -261,3 +261,102 @@ describe('buildReport verdict and lens edges (mutation kills)', () => {
     expect(body).not.toMatch(/^ $/mu)
   })
 })
+
+describe('children section (D9)', () => {
+  function parentEvents(withUsage = true): SddEvent[] {
+    const usage = {
+      inputTokens: 1000,
+      outputTokens: 500,
+      reasoningTokens: 0,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
+      costUsd: 1.25,
+      wallMs: 10_000,
+    }
+    return [
+      { altitude: 'L2', type: 'depth', profile: 'M', rationale: 'cross-module', source: 'estimator', seq: 1, ts: 'x' },
+      { altitude: 'L2', type: 'plan', childCount: 2, digest: 'd'.repeat(16), seq: 2, ts: 'x' },
+      { altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: 'auth-db-2', seq: 3, ts: 'x' },
+      { altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: 'auth-db-9', seq: 4, ts: 'x' },
+      {
+        altitude: 'L2',
+        type: 'child_done',
+        child: 'auth-db',
+        outcome: 'done',
+        ...(withUsage ? { usage } : {}),
+        seq: 5,
+        ts: 'x',
+      },
+      { altitude: 'L2', type: 'child_spawned', child: 'auth-api', runId: 'auth-api-3', seq: 6, ts: 'x' },
+    ]
+  }
+
+  function parentInput(
+    overrides: Partial<ReportInput> = {},
+    parentEvs: readonly SddEvent[] = parentEvents(),
+  ): ReportInput {
+    return {
+      readEvents: () => parentEvs,
+      readChangeDir: () => Promise.resolve(changeDir()),
+      execGit: gitLog('abc Section 1\n'),
+      runId: 'parent-1',
+      changeName: 'composite',
+      branch: 'composite',
+      pr: false,
+      plan: { childIds: ['auth-db', 'auth-api'] },
+      childrenRecords: { 'auth-db': { status: 'done' }, 'auth-api': { status: 'running' } },
+      readChildStatus: (runId) => Promise.resolve(runId === 'auth-db-9' ? 'completed' : 'running'),
+      childUsage: (runId) => (runId === 'auth-db-9' ? 1.25 : undefined),
+      ...overrides,
+    }
+  }
+
+  it('renders per-child id, latest spawn runId, live status, cost, and a subtree total; reports no Tasks section', async () => {
+    const body = await buildReport(parentInput())
+    expect(body).toContain('### Children')
+    expect(body).toContain('- auth-db · run auth-db-9 · completed · $1.25')
+    expect(body).toContain('- auth-api · run auth-api-3 · running · unknown')
+    expect(body).toContain('subtree total: $1.25')
+    expect(body).not.toContain('### Tasks')
+    expect(body).not.toContain('tasks complete')
+  })
+
+  it('falls back to the parent children record when the live child state is unloadable', async () => {
+    const body = await buildReport(parentInput({ readChildStatus: () => Promise.resolve(null) }))
+    expect(body).toContain('- auth-db · run auth-db-9 · done · $1.25')
+    expect(body).toContain('- auth-api · run auth-api-3 · running · unknown')
+  })
+
+  it('renders a never-spawned child without a run part, pending from the record, and an unknown cost', async () => {
+    const body = await buildReport(
+      parentInput({
+        plan: { childIds: ['auth-db', 'auth-web'] },
+        childrenRecords: { 'auth-db': { status: 'done' }, 'auth-web': { status: 'pending' } },
+      }),
+    )
+    expect(body).toContain('- auth-web · pending · unknown')
+  })
+
+  it('renders the unknown marker for the subtree total when a settled child_done carries no usage — never $0.00', async () => {
+    const body = await buildReport(parentInput({}, parentEvents(false)))
+    expect(body).toContain('subtree total: unknown')
+    expect(body).not.toContain('subtree total: $0.00')
+    expect(body).not.toContain('· $0.00')
+  })
+
+  it('single-run reports keep the Tasks section and render no children section (pinned)', async () => {
+    const body = await buildReport({
+      readEvents: events,
+      readChangeDir: () => Promise.resolve(changeDir()),
+      execGit: gitLog('abc1234 Section 1\n def5678 Section 2\n 9ab0cde Section 3\n'),
+      runId: 'run-1',
+      changeName: 'add-thing',
+      branch: 'add-thing',
+      pr: false,
+    })
+    expect(body).toContain('### Tasks')
+    expect(body).toContain('3/3 tasks complete')
+    expect(body).not.toContain('### Children')
+    expect(body).not.toContain('subtree total')
+  })
+})

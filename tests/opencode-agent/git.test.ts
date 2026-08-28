@@ -339,3 +339,33 @@ describe('abortMerge', () => {
     expect(content).toBe('agent version\n')
   })
 })
+
+describe('diffSince', () => {
+  it('returns the patch of the requested paths since a base, excluding paths not asked for', async () => {
+    const fixture = await makeFixture()
+    const base = await fixture.git.headSha()
+    await commitOn(
+      fixture,
+      'agent/issue-42',
+      '.github/workflows/ci.yml',
+      'jobs:\n  check:\n    timeout-minutes: 30\n',
+      'workflow edit the guard will revert',
+    )
+    await commitOn(fixture, 'agent/issue-42', 'README.md', 'unrelated\n', 'unrelated edit')
+
+    const diff = await fixture.git.diffSince(base, ['.github/workflows/ci.yml'])
+
+    expect(diff).toContain('diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml')
+    expect(diff).toContain('+    timeout-minutes: 30')
+    expect(diff).not.toContain('README.md')
+  })
+
+  it('returns the empty string when a requested path is unchanged since the base', async () => {
+    const fixture = await makeFixture()
+    const base = await fixture.git.headSha()
+
+    const diff = await fixture.git.diffSince(base, ['.github/workflows/ci.yml'])
+
+    expect(diff).toBe('')
+  })
+})

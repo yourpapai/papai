@@ -8,8 +8,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { listPendingGates, readAllRunStates, resolveRunId } from '../../sdd-runner/src/run-index.js'
-import { createRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
+import { appendEvent } from '../../sdd-runner/src/events.js'
+import { descendantGateOf, listPendingGates, readAllRunStates, resolveRunId } from '../../sdd-runner/src/run-index.js'
+import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
 
@@ -39,6 +40,8 @@ async function seedRun(
     gate?: { mode: 'early' | 'final' | 'plan'; version: number } | null
     changeName?: string
     updatedAt?: string
+    children?: Record<string, { status: 'pending' | 'running' | 'done' | 'failed' }>
+    spawns?: { child: string; runId?: string }[]
   },
 ): Promise<void> {
   const created = await createRunState({
@@ -49,7 +52,19 @@ async function seedRun(
   })
   const gate = opts.gate === undefined ? { mode: 'early' as const, version: 1 } : opts.gate
   const stamp = opts.updatedAt ?? created.updatedAt
-  await saveRunState({ ...created, gate, updatedAt: stamp }, new Date(stamp))
+  await saveRunState(
+    { ...created, ...(opts.children === undefined ? {} : { children: opts.children }), gate, updatedAt: stamp },
+    new Date(stamp),
+  )
+  const log = path.join(created.runDir, 'events.ndjson')
+  for (const spawn of opts.spawns ?? []) {
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'child_spawned',
+      child: spawn.child,
+      ...(spawn.runId === undefined ? {} : { runId: spawn.runId }),
+    })
+  }
 }
 
 describe('readAllRunStates', () => {
@@ -172,5 +187,130 @@ describe('listPendingGates robustness', () => {
     await seedRun(workDir, 'run-live', { gate: { mode: 'final', version: 1 } })
     const pending = await listPendingGates(workDir)
     expect(pending.map((entry) => entry.runId)).toEqual(['run-live'])
+  })
+})
+
+describe('descendantGateOf (D1 tree discovery)', () => {
+  it('resolves a running child from the parent log spawn lines and returns its gate-pending runId', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'parent-run', {
+      gate: null,
+      children: { 'auth-db': { status: 'running' } },
+      spawns: [{ child: 'auth-db', runId: 'child-run-1' }],
+    })
+    await seedRun(workDir, 'child-run-1', { gate: { mode: 'early', version: 2 }, changeName: 'auth-db' })
+
+    expect(await descendantGateOf(workDir, await loadRunState(workDir, 'parent-run'))).toBe('child-run-1')
+  })
+
+  it('recurses into grandchildren and returns the deepest gate-pending descendant', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'parent-run', {
+      gate: null,
+      children: { 'auth-db': { status: 'running' } },
+      spawns: [{ child: 'auth-db', runId: 'child-run-1' }],
+    })
+    await seedRun(workDir, 'child-run-1', {
+      gate: { mode: 'early', version: 1 },
+      children: { 'api-layer': { status: 'running' } },
+      spawns: [{ child: 'api-layer', runId: 'grand-run-1' }],
+    })
+    await seedRun(workDir, 'grand-run-1', { gate: { mode: 'plan', version: 1 } })
+
+    expect(await descendantGateOf(workDir, await loadRunState(workDir, 'parent-run'))).toBe('grand-run-1')
+  })
+
+  it('counts an unloadable child state as no pending gate and keeps scanning later children', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'parent-run', {
+      gate: null,
+      children: { ghost: { status: 'running' }, 'auth-db': { status: 'running' } },
+      spawns: [
+        { child: 'ghost', runId: 'ghost-run' },
+        { child: 'auth-db', runId: 'child-run-1' },
+      ],
+    })
+    await seedRun(workDir, 'child-run-1', { gate: { mode: 'final', version: 1 } })
+
+    expect(await descendantGateOf(workDir, await loadRunState(workDir, 'parent-run'))).toBe('child-run-1')
+  })
+
+  it('returns null for a non-parent state', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'plain-run', { gate: null })
+
+    expect(await descendantGateOf(workDir, await loadRunState(workDir, 'plain-run'))).toBe(null)
+  })
+
+  it('returns null when no descendant is gate-pending', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'parent-run', {
+      gate: null,
+      children: { done: { status: 'done' }, queued: { status: 'pending' }, 'auth-db': { status: 'running' } },
+      spawns: [{ child: 'auth-db', runId: 'child-run-1' }],
+    })
+    await seedRun(workDir, 'child-run-1', { gate: null })
+
+    expect(await descendantGateOf(workDir, await loadRunState(workDir, 'parent-run'))).toBe(null)
+  })
+
+  it('skips a running child whose log carries no spawn runId', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'parent-run', {
+      gate: null,
+      children: { 'auth-db': { status: 'running' } },
+      spawns: [{ child: 'auth-db' }],
+    })
+
+    expect(await descendantGateOf(workDir, await loadRunState(workDir, 'parent-run'))).toBe(null)
+  })
+
+  it('guards cyclic malformed state — a self-spawning child still yields its own gate', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'parent-run', {
+      gate: null,
+      children: { 'auth-db': { status: 'running' } },
+      spawns: [{ child: 'auth-db', runId: 'child-run-1' }],
+    })
+    await seedRun(workDir, 'child-run-1', {
+      gate: { mode: 'early', version: 1 },
+      children: { loop: { status: 'running' } },
+      spawns: [{ child: 'loop', runId: 'child-run-1' }],
+    })
+
+    expect(await descendantGateOf(workDir, await loadRunState(workDir, 'parent-run'))).toBe('child-run-1')
+  })
+
+  it('guards cyclic malformed state — a spawn pointing back at the parent is never descended into', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'parent-run', {
+      gate: { mode: 'plan', version: 1 },
+      children: { 'auth-db': { status: 'running' } },
+      spawns: [{ child: 'auth-db', runId: 'child-run-1' }],
+    })
+    await seedRun(workDir, 'child-run-1', {
+      gate: null,
+      children: { loop: { status: 'running' } },
+      spawns: [{ child: 'loop', runId: 'parent-run' }],
+    })
+
+    expect(await descendantGateOf(workDir, await loadRunState(workDir, 'parent-run'))).toBe(null)
+  })
+
+  it('tree-member prefix ambiguity keeps failing loudly listing every candidate (D3 pin)', async () => {
+    const workDir = makeWorkDir()
+    await seedRun(workDir, 'tree-run-sub', { gate: { mode: 'final', version: 1 }, changeName: 'auth-db' })
+    await seedRun(workDir, 'tree-run', {
+      gate: null,
+      children: { 'auth-db': { status: 'running' } },
+      spawns: [{ child: 'auth-db', runId: 'tree-run-sub' }],
+    })
+
+    const message = (await errorOf(resolveRunId(workDir, 'tree-ru'))).message
+    expect(message).toMatch(/ambiguous/iu)
+    expect(message).toContain('tree-run')
+    expect(message).toContain('tree-run-sub')
+    // one candidate per line: both tree members are listed
+    expect(message.match(/\n {2}tree-run/gu)).toHaveLength(2)
   })
 })

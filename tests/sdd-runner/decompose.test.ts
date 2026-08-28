@@ -11,7 +11,14 @@ import path from 'node:path'
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import type { RunnerConfig } from '../../sdd-runner/src/config.js'
-import { countTaskSections, runAtomicity, runDecompose, runsAtomicity } from '../../sdd-runner/src/decompose.js'
+import {
+  buildDecomposerPrompt,
+  countTaskSections,
+  DecomposeReportSchema,
+  runAtomicity,
+  runDecompose,
+  runsAtomicity,
+} from '../../sdd-runner/src/decompose.js'
 import type { AtomicityDeps, DecomposeDeps } from '../../sdd-runner/src/decompose.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { ExecFn } from '../../sdd-runner/src/openspec-driver.js'
@@ -164,6 +171,47 @@ describe('runDecompose', () => {
       [false, false],
     )
     await expect(runDecompose(fixture.deps, { changeName: 'add-thing' })).rejects.toThrow(StageHaltError)
+  })
+
+  it('returns the parsed report — a needs_split verdict flows to the caller (D4)', async () => {
+    const dir = makeDir()
+    const fixture = makeDecomposeFixture(dir, {
+      decomposer: ['{"tasks_file":"openspec/changes/add-thing/tasks.md","needs_split":true}'],
+    })
+    const report = await runDecompose(fixture.deps, { changeName: 'add-thing' })
+    expect(report).toEqual({ tasks_file: 'openspec/changes/add-thing/tasks.md', needs_split: true })
+  })
+
+  it('returns the parsed report with needs_split absent when the sidecar omits it (D4)', async () => {
+    const dir = makeDir()
+    const fixture = makeDecomposeFixture(dir, {
+      decomposer: ['{"tasks_file":"openspec/changes/add-thing/tasks.md"}'],
+    })
+    const report = await runDecompose(fixture.deps, { changeName: 'add-thing' })
+    expect(report).toEqual({ tasks_file: 'openspec/changes/add-thing/tasks.md' })
+    expect(report.needs_split).not.toBe(true)
+  })
+})
+
+describe('DecomposeReportSchema needs_split (D4)', () => {
+  it('parses sidecars without the field unchanged (backward-compat pin)', () => {
+    const parsed = DecomposeReportSchema.parse({ tasks_file: 'openspec/changes/add-thing/tasks.md' })
+    expect(parsed).toEqual({ tasks_file: 'openspec/changes/add-thing/tasks.md' })
+    expect(parsed.needs_split).toBeUndefined()
+  })
+
+  it('parses needs_split true and false', () => {
+    expect(DecomposeReportSchema.parse({ tasks_file: 't.md', needs_split: true }).needs_split).toBe(true)
+    expect(DecomposeReportSchema.parse({ tasks_file: 't.md', needs_split: false }).needs_split).toBe(false)
+  })
+})
+
+describe('buildDecomposerPrompt needs_split contract (D4)', () => {
+  it('teaches the field and the first-slice-only tasks.md scoping', () => {
+    const prompt = buildDecomposerPrompt('/repo/openspec/changes/add-thing/tasks.md', 'Write tasks.md.', '/repo', null)
+    expect(prompt).toContain('needs_split')
+    expect(prompt).toContain('first slice only')
+    expect(prompt).toContain('child #1')
   })
 })
 

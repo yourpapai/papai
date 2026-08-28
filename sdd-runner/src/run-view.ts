@@ -76,6 +76,20 @@ function slotRow(slot: SlotState): string {
   return `${slot.agent} → ${slot.label}${badge}`
 }
 
+/**
+ * D8 children rows: one `<child-id> <status>` line per fold entry — the
+ * first non-pending/non-done child (the in-flight or failed node) marks the
+ * active tree position with the `▶` marker.
+ */
+function childRows(children: ReplayState['children']): string[] {
+  let activeMarked = false
+  return Object.entries(children).map(([childId, record]) => {
+    const active = !activeMarked && record.status !== 'pending' && record.status !== 'done'
+    if (active) activeMarked = true
+    return `${active ? '▶ ' : ''}${childId} ${record.status}`
+  })
+}
+
 export function createRunView(): (props: RunViewProps) => ReturnType<typeof createElement> {
   return function RunView(props: RunViewProps): ReturnType<typeof createElement> {
     const pipeline = renderPipelineMap(props.state, { width: props.width })
@@ -88,6 +102,7 @@ export function createRunView(): (props: RunViewProps) => ReturnType<typeof crea
         `${finding.class.padEnd(8)} ${finding.id} r${finding.round}${finding.detail === undefined ? '' : ` ${finding.detail}`}`,
     )
     const idle = props.slots.length === 0 && Object.values(props.state.stages).every((status) => status === 'pending')
+    const children = childRows(props.state.children)
     return createElement(
       Box,
       { flexDirection: 'column' },
@@ -106,6 +121,12 @@ export function createRunView(): (props: RunViewProps) => ReturnType<typeof crea
         ? [
             createElement(Text, { key: 'f-h' }, '## Findings'),
             ...findingRows.map((row) => createElement(Text, { key: `f-${row}` }, row)),
+          ]
+        : []),
+      ...(children.length > 0
+        ? [
+            createElement(Text, { key: 'ch-h' }, '## Children'),
+            ...children.map((row) => createElement(Text, { key: `c-${row}` }, row)),
           ]
         : []),
       createElement(Text, { key: 'status' }, statusLine(props)),
