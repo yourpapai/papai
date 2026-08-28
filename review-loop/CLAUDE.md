@@ -2,7 +2,53 @@
 
 ## Purpose
 
-`review-loop/` is a standalone Bun workspace for the shell-invoked autonomous code-review loop runner. It spawns reviewer and fixer `opencode run` agent subprocesses via shell calls with file-based JSON exchange, collects reviewer issues into a durable ledger, and drives multi-round verify/fix cycles. It is local developer tooling, not a papai runtime dependency.
+`review-loop/` is a standalone Bun workspace for the shell-invoked autonomous code-review loop runner. It spawns reviewer and fixer agent subprocesses via shell calls with file-based JSON exchange, collects reviewer issues into a durable ledger, and drives multi-round verify/fix cycles. It is local developer tooling, not a papai runtime dependency.
+
+## Agent Backend Selection
+
+One run-wide knob selects which CLI serves every agent role. The `backend` field
+lives **inside the per-role agent blocks** (`reviewer`/`fixer`/`matcher`/`inspector`)
+with values `"opencode"` (the default) and `"claude"` — there is no top-level key,
+and a top-level spelling is silently stripped by config parsing. Each role may
+omit the field; every role that names it must agree, or config validation fails
+naming "one backend per run". The default `opencode` route is byte-identical to
+the pre-knob loop: no `claude` process spawns and no Anthropic credential is read.
+
+The `claude` route shells out to the official Claude Code CLI instead of
+`opencode run`:
+
+- **Credentials select the profile.** Exactly one of `ANTHROPIC_API_KEY`
+  (→ the bare profile, `--bare`) or `CLAUDE_CODE_OAUTH_TOKEN` (→ the native
+  profile with the neutralization flags) must be set — both or neither refuse
+  before any spend, as does a set `LLM_API_KEY`. A present-but-empty value
+  reads as unset, because CI forwards unset secrets as `''`.
+- **CLI state is run-scoped.** Each spawn gets its own `CLAUDE_CONFIG_DIR`
+  under an OS-tmp parent created at run start and removed at teardown — never
+  inside a worktree, so no loop commit can stage it.
+- **One model knob serves either backend**: a `provider/model` spelling keeps
+  its model id.
+- **Usage accounting is unchanged** — token/cost totals, live lines and
+  `metrics.json` carry the same fields, counted once per turn from the claude
+  `result` line.
+
+Operator trade-offs on the claude route: analysis roles (reviewer, matcher,
+inspector) get **no `Bash`** — the prompts direct `git diff`/`rg` calls those
+roles cannot run, so each turn eats refused calls (recorded refusal shape, no
+tool effect); turns killed before their `result` line are invisible to usage
+totals (under-count, same as the parent route); there is no retry layer beyond
+the loop's standing retry-once-on-stall; the OAuth spelling bills against
+five-hour subscription windows and a quota exhausted mid-run is an ordinary
+turn failure. The credential is readable by the fixer's `Bash` children (the
+accepted fixer residual); the loop scrubs it from its own logs and captures.
+
+**Install the pinned CLI** — `@anthropic-ai/claude-code@2.1.239`, the version
+the fixture corpus and the allowlist doctrine were recorded against. A drifted
+CLI presents as the missing-`result`-line attempt failure (every NDJSON line
+unrecognized); an absent binary presents as `spawn claude ENOENT` — retried
+once per the standing policy, then an `AgentRunError` naming the label. Both
+mean "install the pinned CLI", not a PATH problem.
+
+## Agent subprocess guards
 
 Agent subprocess guards live in `src/spawn.ts` + `src/agent-runner.ts`: besides the wall-clock `timeout`, an optional `inactivityTimeoutMs` watchdog kills a child that produces no stdout (hung LLM stream) and reports `stalled: true`; `runAgent` retries a stall once but never retries a wall-clock timeout. Callers opt in by passing `inactivityTimeoutMs` through `RunAgentOptions` (mutation-improve wires it from `agent.inactivityTimeoutMs`; review-loop's own config does not yet).
 

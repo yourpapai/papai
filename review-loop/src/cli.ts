@@ -3,9 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { rmSync } from 'node:fs'
 import { access, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import { openClaudeContext, resolveAgentBackend, type ResolvedAgentBackend } from './backend-select.js'
 import { createShellExec, runBuildCheck, type ShellExecFn } from './build-checker.js'
 import { parseCliArgs, type CliArgs } from './cli-args.js'
 import { MergeConflictError, formatBuildFailureMessage } from './cli-errors.js'
@@ -20,7 +22,7 @@ import { readPersistedRunStats, writeRunArtifacts } from './run-artifacts.js'
 import { createRunState, loadRunState, type RunState } from './run-state.js'
 import { RunStats } from './run-stats.js'
 import { realSpawn } from './spawn.js'
-import { createStopController, remainingBudget, type StopController, type StopReason } from './stop-controller.js'
+import { createRunStopController, reportStop, type StopController } from './stop-controller.js'
 import { createFileTraceLogger, type TraceLogger } from './trace-log.js'
 import { createWorkerPool, type WorkerPool } from './worker-pool.js'
 import {
@@ -122,31 +124,15 @@ async function executeReviewLoop(input: ExecuteInput): Promise<CliOutcome> {
     return { exitCode: STOPPED_EXIT_CODE }
   }
 
-  await finalizeRun(config, runState, { exec, runBuildCheck, mergeWorktree, removeWorktree })
+  await finalizeRun(config, runState, {
+    exec,
+    // The build check's output is scrubbed at its single producer on the
+    // claude route (D5), so build-check.log reads one scrubbed copy.
+    runBuildCheck: (deps) => runBuildCheck({ ...deps, credentialValue: config.claude?.credentialValue }),
+    mergeWorktree,
+    removeWorktree,
+  })
   return { exitCode: 0 }
-}
-
-/**
- * What a stopped run does *instead of* finalizing, and why it does nothing.
- *
- * `finalizeRun` is a full build check and then a merge — minutes of work whose
- * whole purpose is to gate a merge that has not happened yet. A run that stopped
- * because it is out of time has neither the minutes nor anything left to gate:
- * under `mergeEachFix` every accepted fix is already in the checkout, and
- * without it they are on the loop's branch, which is exactly where a merge that
- * failed its gate would have left them anyway. Spending the last of the clock on
- * a check whose only possible outcome is to throw is how a stop loses the work
- * it stopped in order to keep.
- *
- * So the branch is left alone, deliberately, and the run says where it is.
- */
-function reportStop(config: ReviewLoopConfig, runState: RunState, log: ProgressReporter): void {
-  const branch = `review-loop/${runState.runId}`
-  log.event(
-    config.mergeEachFix
-      ? `${STOP_MARKER} every accepted fix is already on the working branch; skipping the final build gate`
-      : `${STOP_MARKER} accepted fixes are on ${branch}; merge it by hand — the final build gate was skipped`,
-  )
 }
 
 /**
@@ -161,16 +147,8 @@ function reportStop(config: ReviewLoopConfig, runState: RunState, log: ProgressR
  */
 export const STOPPED_EXIT_CODE = 75
 
-/** The line a stopped run prints, and the prefix its caller can match on. */
-const STOP_MARKER = '[review-loop] stopped:'
-
 export interface CliOutcome {
   exitCode: number
-}
-
-const STOP_NOTICE: Record<StopReason, string> = {
-  budget: 'out of time for this run — finishing what is in hand and stopping',
-  signal: 'asked to stop — finishing what is in hand and stopping',
 }
 
 interface OpenRun {
@@ -215,33 +193,47 @@ async function openRun(config: ReviewLoopConfig, args: CliArgs, stdout: Renderer
  * `stdout` is the live renderer's sink, real by default so a run still prints its
  * progress. It writes past every console suppression, so a test can only quiet it here.
  */
-export async function runCli(argv: readonly string[], stdout: RendererStream = process.stdout): Promise<CliOutcome> {
-  const startedAt = Date.now()
+/**
+ * The startup preamble, split from `runCli` when the claude seams pushed it
+ * past `max-lines-per-function`: config load, the backend credential guard and
+ * the commit identity, in that order. The guard runs before identity, worktree,
+ * install or any spawn (D4) — a refused credential environment must cost
+ * nothing — and the opencode route never calls the resolver, its credentials
+ * being the gateway's, not Anthropic's.
+ */
+async function loadRunPreamble(argv: readonly string[]): Promise<{
+  args: CliArgs
+  config: ReviewLoopConfig
+  resolvedClaude: ResolvedAgentBackend | null
+}> {
   const args = parseCliArgs(argv)
   const config = await loadReviewLoopConfig({ configPath: args.configPath, repoRoot: args.repoRoot })
   if (args.poolSize !== undefined) config.poolSize = args.poolSize
-
+  const resolvedClaude: ResolvedAgentBackend | null =
+    config.backend === 'claude' ? resolveAgentBackend('claude', process.env) : null
   // Before the first worktree, let alone the first commit: `createWorktree` and
   // every git child after it inherit this process's environment, and a runner
   // with no `user.name` anywhere cannot commit at all — see `git-identity.ts`.
   applyCommitIdentity(config.commitAuthor, process.env)
+  return { args, config, resolvedClaude }
+}
+
+export async function runCli(argv: readonly string[], stdout: RendererStream = process.stdout): Promise<CliOutcome> {
+  const startedAt = Date.now()
+  const { args, config, resolvedClaude } = await loadRunPreamble(argv)
 
   const { runState, ledger, log, exec, trace, pool } = await openRun(config, args, stdout)
 
-  const stop = createStopController({
-    // Measured from when this process started, not from here: cutting the
-    // worktrees above is minutes of `bun install` on a cold runner, and a budget
-    // that ignored them would expire after the caller's kill rather than before.
-    runTimeoutMs: remainingBudget(config.runTimeoutMs, Date.now() - startedAt),
-    onStop: (reason) => {
-      log.event(`${STOP_MARKER} ${STOP_NOTICE[reason]}`)
-    },
-    // The handler this installs is what makes a first Ctrl-C graceful; a second
-    // one has to mean now, and 130 is what a shell reports for a SIGINT death.
-    onRepeatedSignal: () => process.exit(130),
-  })
+  const stop = createRunStopController(config, log, startedAt)
 
+  let claudeParent: string | null = null
   try {
+    // The claude context opens as the first statement of the finally-protected
+    // region — never between mkdtemp and coverage, where a throw would leak
+    // the dir outside every teardown path (D8).
+    if (config.backend === 'claude' && resolvedClaude !== null) {
+      claudeParent = await openClaudeContext(config, resolvedClaude)
+    }
     return await executeReviewLoop({
       config,
       runState,
@@ -255,6 +247,12 @@ export async function runCli(argv: readonly string[], stdout: RendererStream = p
       stop,
     })
   } finally {
+    if (claudeParent !== null) {
+      // Best-effort: takes every per-spawn child with it. A SIGKILL'd run
+      // leaks one tmp parent the OS cleaner owns — the same residual every
+      // tmp scratch has.
+      rmSync(claudeParent, { recursive: true, force: true })
+    }
     stop.dispose()
     await pool.close()
   }

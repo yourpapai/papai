@@ -3,10 +3,27 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdirSync } from 'node:fs'
+import path from 'node:path'
 
+import { createIssueLedger } from '../../review-loop/src/issue-ledger.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
-import { capCleanupSeverity } from '../../review-loop/src/review-round.js'
+import { capCleanupSeverity, runReviewStep } from '../../review-loop/src/review-round.js'
+import { newCollector } from '../../review-loop/src/round-collector.js'
+import { createRunState } from '../../review-loop/src/run-state.js'
+import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
+import {
+  claudeRecordingSpawn,
+  claudeRunContext,
+  claudeScratchResponder,
+  cleanupTempDirs,
+  createReviewLoopConfigFixture,
+  makeTempDir,
+  silentReporter,
+} from './test-helpers.js'
+
+afterEach(cleanupTempDirs)
 
 const issue: ReviewerIssue = {
   title: 'Race condition in queue flush path',
@@ -83,5 +100,28 @@ describe('capCleanupSeverity', () => {
   test('a round with no cleanups passes through unchanged', () => {
     const input = [issue]
     expect(capCleanupSeverity(input)).toEqual(input)
+  })
+})
+
+describe('runReviewStep backend threading', () => {
+  test('passes the resolved backend and claude context into the reviewer spawn', async () => {
+    const repoRoot = makeTempDir('round-claude-')
+    const context = claudeRunContext()
+    const config = createReviewLoopConfigFixture(repoRoot, { backend: 'claude', claude: context })
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    mkdirSync(runState.worktreePath, { recursive: true })
+    const ledger = await createIssueLedger(runState.runDir)
+    const { logger } = createCapturingTraceLogger()
+
+    const { spawn, commands, envs } = claudeRecordingSpawn(claudeScratchResponder(() => ({ issues: [] })))
+
+    const issues = await runReviewStep(
+      { config, runState, ledger, spawn, log: silentReporter(), trace: logger },
+      newCollector(),
+    )
+
+    expect(issues).toEqual([])
+    expect(commands[0]).toBe('claude')
+    expect(envs[0]?.['CLAUDE_CONFIG_DIR']).toContain(context.configDirRoot)
   })
 })

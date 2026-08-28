@@ -3,9 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { realSpawn, splitLines } from '../../review-loop/src/spawn.js'
+
+/** PATH as the env-seam legs hand it, kept out of the test bodies (no conditionals in tests). */
+const pathEnv = (): string => process.env['PATH'] ?? '/usr/bin:/bin'
 
 describe('splitLines', () => {
   const cases: ReadonlyArray<{
@@ -119,5 +122,68 @@ describe('realSpawn', () => {
     })
     expect(result.exitCode).toBe(0)
     expect(result.stalled).toBeUndefined()
+  })
+})
+
+describe('realSpawn stdin seam', () => {
+  test('writes stdin to the child and half-closes the stream after the write', async () => {
+    // `cat` reads until EOF: a write without the end() would hang until the
+    // inactivity watchdog, so completing at all proves the half-close.
+    const result = await realSpawn('cat', [], { cwd: process.cwd(), stdin: 'hello-from-stdin' })
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toBe('hello-from-stdin')
+  })
+
+  test('a mid-flush EPIPE fails the attempt through the exit path, never the loop process', async () => {
+    // A child that exits without reading, fed more than the OS pipe buffer
+    // queues the write; the queued write turns into EPIPE once the child is
+    // gone. Without an error handler on the stdin pipe, that error is an
+    // uncaught exception that kills the whole loop process.
+    const bigPayload = 'x'.repeat(1024 * 1024)
+    const result = await realSpawn('sh', ['-c', 'exit 0'], { cwd: process.cwd(), stdin: bigPayload })
+    expect(result.exitCode).toBe(0)
+  })
+
+  test('no stdin option leaves the child without one, as before', async () => {
+    const result = await realSpawn('echo', ['ok'], { cwd: process.cwd() })
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout.trim()).toBe('ok')
+  })
+})
+
+describe('realSpawn env seam', () => {
+  const PARENT_MARKER = 'REVIEW_LOOP_SPAWN_PARENT_MARKER'
+
+  beforeEach((): void => {
+    process.env[PARENT_MARKER] = 'parent-value'
+  })
+  afterEach((): void => {
+    Reflect.deleteProperty(process.env, PARENT_MARKER)
+  })
+
+  test('a passed env is the child entire replacement environment', async () => {
+    const result = await realSpawn('sh', ['-c', 'echo "parent=$REVIEW_LOOP_SPAWN_PARENT_MARKER-set"'], {
+      cwd: process.cwd(),
+      env: { PATH: pathEnv() },
+    })
+    // The merge-over-process.env shape cannot pass: the stripped parent name
+    // is absent from the captured child env, so the shell expands it empty.
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout.trim()).toBe('parent=-set')
+  })
+
+  test('a passed env reaches the child verbatim', async () => {
+    const result = await realSpawn('sh', ['-c', 'echo "child=$REVIEW_LOOP_SPAWN_CHILD_MARKER"'], {
+      cwd: process.cwd(),
+      env: { PATH: pathEnv(), REVIEW_LOOP_SPAWN_CHILD_MARKER: 'child-value' },
+    })
+    expect(result.stdout.trim()).toBe('child=child-value')
+  })
+
+  test('realSpawn inherits process.env when no env is given (today behavior)', async () => {
+    const result = await realSpawn('sh', ['-c', 'echo "parent=$REVIEW_LOOP_SPAWN_PARENT_MARKER-set"'], {
+      cwd: process.cwd(),
+    })
+    expect(result.stdout.trim()).toBe('parent=parent-value-set')
   })
 })

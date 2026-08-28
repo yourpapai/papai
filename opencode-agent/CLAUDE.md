@@ -1345,7 +1345,10 @@ container, and the Dockerfile's `prod-deps` stage installs with `--production`.
 The Actions workflow runs a plain `bun install --frozen-lockfile`, so both are
 present there.
 
-The workflow additionally installs the `opencode` CLI (the review-loop workspace
-shells out to `opencode run`) and checks out `obra/superpowers` to `.superpowers/`.
+The workflow additionally installs the CLIs the job's route needs — `opencode`
+by default, plus the pinned `@anthropic-ai/claude-code` on the claude route
+(the review-loop workspace shells out to whichever backend the job's config
+selects, so a claude-route `/review` runs through the loop's own claude
+subprocess contract) — and checks out `obra/superpowers` to `.superpowers/`.
 Both of those paths, plus the generated `.opencode-agent/` run inputs, are
 gitignored — `git add --all` in the implement phase would otherwise commit them.
