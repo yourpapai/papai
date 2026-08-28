@@ -55,5 +55,5 @@ Atomicity rule: one task = one change that lands and verifies on its own; every 
 
 ## 9. Docs + full gate
 
-- [ ] 9.1 Update `docs/architecture/sdd-pipeline.md` — `## Live rendering`, `## Gate decisions`, and the `## Commands` session-screen paragraphs — to describe the presentation layer (tokens, framed panels, footer/overlay, width reflow, Static/live split) and the any-key carve-outs. Verify: `grep -nE 'tui-tokens|Static|footer|overlay' docs/architecture/sdd-pipeline.md` shows hits inside each of the three updated sections
+- [x] 9.1 Update `docs/architecture/sdd-pipeline.md` — `## Live rendering`, `## Gate decisions`, and the `## Commands` session-screen paragraphs — to describe the presentation layer (tokens, framed panels, footer/overlay, width reflow, Static/live split) and the any-key carve-outs. Verify: `grep -nE 'tui-tokens|Static|footer|overlay' docs/architecture/sdd-pipeline.md` shows hits inside each of the three updated sections
 - [ ] 9.2 Full verification from a clean state: run the complete suite, typecheck, lint, and format:check and fix any fallout; the frozen non-TTY byte contract is asserted by `tui-exclusivity.test.ts` inside the same run. Verify: `bun run check:full`
