@@ -25,6 +25,8 @@
     "build:storybook": "bun storybook:prepare && storybook build -o storybook-static",
     "shoot:gen": "crvy-strybk generate --config ./strybk.config.ts && bun run format >/dev/null && bun run license:headers >/dev/null",
     "shoot": "playwright test --update-snapshots=all",
+    "figma:plugin": "bun build scripts/figma-sync-plugin/code.ts --outfile scripts/figma-sync-plugin/dist/code.js",
+    "figma:sync": "bun run figma:plugin && bun scripts/figma-sync.ts",
     "visual:audit": "VISUAL_AUDIT=1 playwright test",
     "check:bundle-isolation": "bun build:client && bun run scripts/check-bundle-isolation.ts",
     "start": "bun build:client && bun run src/index.ts",

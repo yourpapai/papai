@@ -120,6 +120,32 @@ unconditionally. Do not drop the `=all`.
 `@crvy/rprtr` is wired in `playwright.config.ts`. Run `bunx crvy-rprtr` to open a
 side-by-side review UI. Drop the reporter line from the config to remove it.
 
+## Syncing stories to Figma
+
+`bun figma:sync` mirrors the baselines into captioned Figma boards (one page per
+area — e.g. "Admin UI — stories", "Settings UI — stories"). The MCP upload path
+this automates is otherwise agent-only; a repo script cannot reach it, so the
+script serves everything from localhost and a small development plugin does the
+writes inside Figma:
+
+1.  One-time: Figma desktop → Plugins → Development → Import plugin from
+    manifest… → `scripts/figma-sync-plugin/manifest.json`. The plugin talks to
+    `http://127.0.0.1:7781` only (declared in `networkAccess`).
+2.  Run `bun figma:sync` (default areas: `admin,settings`; add `--no-shoot` to
+    reuse existing `.storybook-shots/` baselines). It prints `status=ready` and
+    waits.
+3.  In the target Figma file run Plugins → Development → papai story sync. The
+    plugin builds the boards, streams the PNGs into image fills, POSTs a report
+    back, and the script exits `status=ok` / `status=error` with counters.
+
+Idempotency: every story frame carries a `pluginData` key (the PNG's path under
+`.storybook-shots/`), so re-syncs resize, reposition, and refill existing frames
+in place instead of duplicating them; boards created before the plugin existed
+are adopted by frame-name match. Frames whose key no longer exists are counted
+as `stale` and left untouched. Geometry (0.5× scale, 3 columns for `admin`, 4
+elsewhere, 40/60/72/20/8 spacing constants) lives in `scripts/figma-sync-lib.ts`
+with tests in `tests/scripts/figma-sync.test.ts`.
+
 ## Structured UX review
 
 To turn a screenshot into a scored, severity-ranked findings document, use the
