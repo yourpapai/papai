@@ -39,6 +39,14 @@ export const INACTIVITY_TIMEOUT_MS = 600_000
 /** Structural plan-replan passes the planner agent gets before failing the run (D6). */
 export const PLAN_REPLAN_PASSES = 1
 
+/**
+ * Oversize routing threshold (sdd-oversize-estimator-signals D1): the
+ * implicated-file count leg of the conjunction, compiled on purpose — corpus
+ * calibration splits kb (36, routed) from build-claude-code-cli (19, not).
+ * Recalibration is a code change with corpus evidence, never a config key.
+ */
+export const OVERSIZE_MIN_IMPLICATED_FILES = 30
+
 const REMOVED_KEY_POINTERS: Readonly<Record<string, string>> = {
   autonomy: "replace with the top-level 'budget' and 'deadline' keys",
   models: "replace with the single top-level 'model'",

@@ -13,6 +13,7 @@ import type { AgentUsage, SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { createAgentReporter } from './agent-reporter.js'
 import { INACTIVITY_TIMEOUT_MS, WALL_CLOCK_TIMEOUT_MS, modelFor } from './config.js'
 import type { AgentRole, ExecGitFn, RunnerConfig } from './config.js'
+import { OversizeSignalsSchema } from './event-schemas.js'
 import type { EventInput } from './events.js'
 import { nextSessionAttempt, recordSessionId, settleSessionAttempt, transcriptPathFor } from './session-ledger.js'
 import { guardWorkingTree, snapshotWorkingTree } from './working-tree-guard.js'
@@ -80,6 +81,7 @@ export const DepthClassificationSchema = z.object({
   rationale: z.string().min(1),
   capabilities: z.array(z.string().min(1)).optional(),
   oversize: z.boolean().optional(),
+  oversize_signals: OversizeSignalsSchema.optional(),
 })
 export type DepthClassification = z.infer<typeof DepthClassificationSchema>
 

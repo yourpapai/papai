@@ -291,6 +291,48 @@ describe('sidecar schemas', () => {
     expect(DepthClassificationSchema.safeParse(bad).success).toBe(false)
   })
 
+  it('accepts the optional oversize_signals record and keeps old sidecars parsing unchanged', () => {
+    const withSignals = DepthClassificationSchema.safeParse({
+      implicated_files: ['src/kb/a.ts'],
+      signals: {
+        cross_module: true,
+        db_migration: false,
+        provider_surface: false,
+        credentials: false,
+        novelty: 'new-subsystem',
+      },
+      rationale: 'new subsystem across modules',
+      oversize: true,
+      oversize_signals: { novelty: 'new-subsystem', cross_module: true, implicatedFiles: 36 },
+    })
+    expect(withSignals.success).toBe(true)
+    const withoutSignals = DepthClassificationSchema.safeParse({
+      implicated_files: ['src/chat/router.ts'],
+      signals: {
+        cross_module: false,
+        db_migration: false,
+        provider_surface: false,
+        credentials: false,
+        novelty: 'existing-modules',
+      },
+      rationale: 'plain change',
+    })
+    expect(withoutSignals.success).toBe(true)
+    const badSignals = DepthClassificationSchema.safeParse({
+      implicated_files: ['src/kb/a.ts'],
+      signals: {
+        cross_module: true,
+        db_migration: false,
+        provider_surface: false,
+        credentials: false,
+        novelty: 'new-subsystem',
+      },
+      rationale: 'new subsystem across modules',
+      oversize_signals: { novelty: 'new-subsystem', cross_module: 'yes', implicatedFiles: 36 },
+    })
+    expect(badSignals.success).toBe(false)
+  })
+
   it('validates the depth classification sidecar with and without capabilities', () => {
     const base = {
       implicated_files: ['src/chat/router.ts'],
@@ -338,9 +380,9 @@ describe('sidecar schemas', () => {
     expect(nonBoolean.success).toBe(false)
   })
 
-  it('estimator prompt teaches the oversize verdict field', () => {
+  it('estimator prompt omits the oversize field — the runner computes the verdict, not the agent', () => {
     const prompt = buildEstimatorPrompt('add a composite multi-run feature', '/repo')
-    expect(prompt).toContain('"oversize": boolean')
+    expect(prompt).not.toContain('"oversize": boolean')
   })
 })
 
