@@ -9,10 +9,13 @@ import path from 'node:path'
 import type { GateOutcome, StageId } from '../events.js'
 import { renderGateAnswers } from './gate-answers.js'
 import type { GateAnswers } from './gate-answers.js'
+import { gatherAssumptions } from './gate-digest-extract.js'
 import type { GateDeps } from './gate-files.js'
 import { verifyGateIntegrity } from './gate-files.js'
 import type { ExpectedGateContent, GateResponse } from './gate-model.js'
 import { parseGateResponse } from './gate-model.js'
+import { ResolverOutputSchema } from './review-loop.js'
+import type { ReviewLoopResult } from './review-loop.js'
 
 export type SettleOutcome = GateOutcome
 
@@ -91,5 +94,53 @@ function appendMover(input: SettleInput, outcome: SettleOutcome): void {
   }
   if (outcome === 'veto') {
     input.gate.emit({ altitude: 'L2', type: 'stage_enter', stage: 'draft' as StageId })
+  }
+}
+
+/** Review result from a round's resolver sidecar (gate-digest copy, fail-empty). */
+export async function readReviewResultFromSidecars(
+  sidecarDir: string,
+  round: number,
+  outcome: 'converged' | 'cap-hit',
+): Promise<ReviewLoopResult> {
+  try {
+    const raw = await readFile(path.join(sidecarDir, `resolutions-${round}.json`), 'utf8')
+    const parsed = ResolverOutputSchema.parse(JSON.parse(raw))
+    return {
+      outcome,
+      rounds: round,
+      openBlockers: parsed.resolutions.filter((entry) => entry.class === 'BLOCKER'),
+      openMaterial: parsed.resolutions.filter((entry) => entry.class === 'MATERIAL'),
+      openNitpicks: parsed.resolutions.filter((entry) => entry.class === 'NITPICK'),
+    }
+  } catch {
+    return { outcome, rounds: round, openBlockers: [], openMaterial: [], openNitpicks: [] }
+  }
+}
+
+/** Expected gate content at settle time (prepareResumeInput copy): assumptions, blockers, findings, ack. */
+export async function expectedContentFor(
+  sidecarDir: string,
+  round: number,
+  gateMode: 'early' | 'final',
+): Promise<ExpectedGateContent> {
+  const assumptions = await gatherAssumptions(sidecarDir, round)
+  const capHitFired = gateMode === 'early'
+  const reviewResult = await readReviewResultFromSidecars(sidecarDir, round, capHitFired ? 'cap-hit' : 'converged')
+  const blockerIds = new Set(reviewResult.openBlockers.map((entry) => entry.id))
+  return {
+    assumptions,
+    blockers: [...blockerIds].map((id) => ({ id, gap: id, evidence: '' })),
+    ...(reviewResult.openMaterial.length === 0
+      ? {}
+      : {
+          findings: reviewResult.openMaterial.map((entry) => ({
+            id: entry.id,
+            gap: entry.id,
+            evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
+          })),
+        }),
+    ...(capHitFired && blockerIds.size === 0 ? { requiredAck: 'T1' } : {}),
+    gateMode,
   }
 }

@@ -7,16 +7,20 @@ import path from 'node:path'
 
 import type { SpawnFn } from '../../../review-loop/src/agent-runner.js'
 import type { AgentLayerDeps } from '../agent-layer.js'
+import { autonomyOf } from '../config.js'
 import type { ExecGitFn, RunnerConfig } from '../config.js'
 import type { WorkIO } from '../drive/loop.js'
 import { reviewResumeEntry } from '../drive/resume.js'
 import { readEvents } from '../events.js'
 import type { DepthProfile, EventInput } from '../events.js'
+import { pipelineMachine } from '../graph/pipeline.js'
+import { foldEvents } from '../kernel/fold.js'
 import type { KernelContext } from '../kernel/machine.js'
 import { ROUND_CAPS } from '../run-state.js'
 import { readSessionLedger } from '../session-ledger.js'
 import { readChangeDigest } from './gate-digest-extract.js'
 import { presentGate } from './gate-files.js'
+import { runGatePrelude } from './gate-prelude.js'
 import { findingsOf, gatherGateSignals } from './gate-signals.js'
 import { createMaterializer } from './materialize.js'
 import { runReviewLoop } from './review-loop.js'
@@ -123,7 +127,7 @@ export async function runReviewWork(input: ReviewWorkInput, io: WorkIO): Promise
   return result
 }
 
-/** Cap-hit presentation: full gate digest + hashes sidecar + the presented event (design D5). */
+/** Cap-hit presentation: full gate digest + hashes sidecar + presented event + the ladder prelude (design D5/D6). */
 async function presentEarlyGate(
   input: ReviewWorkInput,
   io: WorkIO,
@@ -132,10 +136,13 @@ async function presentEarlyGate(
 ): Promise<void> {
   const version = (io.context.gate?.version ?? 0) + 1
   const events = readEvents(paths.logPath)
+  // Fold is truth: the rounds just appended changed the derived state the
+  // digest (trajectory) and the ladder (per-round digests, cap) consume.
+  const settled = foldEvents(pipelineMachine, events).snapshot.context
   const signals = await gatherGateSignals(
     paths.sidecarDir,
     result.rounds,
-    io.context,
+    settled,
     events,
     events[0]?.ts ?? new Date().toISOString(),
     new Date(),
@@ -161,4 +168,17 @@ async function presentEarlyGate(
       changeDigest: await readChangeDigest(paths.changeDir),
     },
   )
+  await runGatePrelude({
+    version,
+    mode: 'early',
+    reviewResult: result,
+    context: settled,
+    events,
+    sidecarDir: paths.sidecarDir,
+    changeDir: paths.changeDir,
+    runDir: paths.runDir,
+    repoRoot: input.repoRoot,
+    emit: paths.emit,
+    autonomy: autonomyOf(input.agent.config),
+  })
 }

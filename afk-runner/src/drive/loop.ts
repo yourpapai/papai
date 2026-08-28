@@ -156,8 +156,12 @@ async function driveStep(
   if (module === null) return { position, context: snapshot.context, parked: 'awaiting-tail' }
 
   let context = snapshot.context
-  let successor = module.successors[module.outcomeOf(context)] ?? null
-  if (successor === null) {
+  let successor: Successor | null = module.successors[module.outcomeOf(context)] ?? null
+  // A self-successor means the state still owes its own work (the extended
+  // round after a gate settle, a crashed mid-round): run the bracket rather
+  // than re-entering — the outcome is indistinguishable from fresh entry.
+  const selfEnter = successor !== null && 'enter' in successor && successor.enter === position
+  if (successor === null || selfEnter) {
     if (module.work === null) {
       throw new Error(`workless state '${position}' has no successor for outcome '${module.outcomeOf(context)}'`)
     }
@@ -174,6 +178,7 @@ async function driveStep(
     return { position: positionOf(parked), context: parked.context, parked: successor.park }
   }
   const target = successor.enter
+  if (target === position) return driveStep(deps, workFor, boundary, loop)
   const targetModule = workFor(target)
   if (targetModule === null || targetModule.work === null) {
     return { position, context, parked: 'awaiting-tail' }

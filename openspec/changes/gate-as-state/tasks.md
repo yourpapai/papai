@@ -32,8 +32,8 @@ Ordered per design.md Migration Plan; every face starts with its failing test (T
 
 ## 6. Ladder face — autonomy producer
 
-- [ ] 6.1 Port auto-policy (R1–R4, never-cut pre-checks, blast classification) with ported rule tests. Verify: `bun test tests/afk-runner/auto-policy.test.ts`
-- [ ] 6.2 Presentation-time prelude: always append `auto_decision` (rule=none included; `preview`/`gate` drift tolerated); R1 auto-approves and R2 auto-extends through the seam; allowance derived from folded records. Failing tests, then wire. Verify: `bun test tests/afk-runner/gate-prelude.test.ts`
+- [x] 6.1 Port auto-policy (R1–R4, never-cut pre-checks, blast classification) with ported rule tests. Verify: `bun test tests/afk-runner/auto-policy.test.ts`
+- [x] 6.2 Presentation-time prelude: always append `auto_decision` (rule=none included; `preview`/`gate` drift tolerated); R1 auto-approves and R2 auto-extends through the seam; allowance derived from folded records. Failing tests, then wire. Verify: `bun test tests/afk-runner/gate-prelude.test.ts`
 
 ## 7. Resume face — owed movers and heal
 

@@ -125,7 +125,13 @@ export function createPipelineWorkFor(deps: PipelineWorkDeps, input: PipelineRun
             ).then(() => undefined),
         },
         outcomeOf: reviewOutcomeOf,
-        successors: { converged: { enter: 'decompose' }, 'cap-hit': { park: 'gate-pending' } },
+        successors: {
+          converged: { enter: 'decompose' },
+          'cap-hit': { park: 'gate-pending' },
+          // The round still owes work — an extended round opened by a gate
+          // settle, a crashed mid-round, a fresh entry: review re-runs itself.
+          incomplete: { enter: 'review' },
+        },
       }
     }
     if (state === 'gate.awaiting') {
