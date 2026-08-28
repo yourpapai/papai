@@ -6,7 +6,9 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
+import { reviewLoopEnv } from '../../opencode-agent/src/deps.js'
 import type { LogFields, Logger } from '../../opencode-agent/src/logger.js'
+import { opencodeConfigEnv } from '../../opencode-agent/src/openai-config.js'
 import {
   buildReviewLoopConfig,
   describeFailure,
@@ -39,6 +41,7 @@ const settings = (overrides: Partial<ReviewLoopSettings> = {}): ReviewLoopSettin
   agentTimeoutMs: 1_000,
   softStopMs: 60_000,
   commitAuthor: { name: 'agent[bot]', email: 'agent@example.invalid' },
+  backend: 'opencode',
   ...overrides,
 })
 
@@ -304,5 +307,80 @@ describe('the config handed to review-loop', () => {
 
   test('agrees with the loop on which exit code means "I stopped"', () => {
     expect(REVIEW_STOPPED_EXIT_CODE).toBe(STOPPED_EXIT_CODE)
+  })
+})
+
+describe('buildReviewLoopConfig backend hand-off', () => {
+  const ROLES = ['reviewer', 'fixer', 'matcher', 'inspector'] as const
+
+  /** The generated agent block for one role, as a typed view. */
+  const agentOf = (
+    config: Record<string, unknown>,
+    role: string,
+  ): { model: string; backend?: unknown; extraArgs: unknown } => {
+    const block = config[role]
+    if (typeof block !== 'object' || block === null || Array.isArray(block)) {
+      throw new Error(`missing agent block: ${role}`)
+    }
+    const fields: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(block)) {
+      fields[key] = value
+    }
+    if (typeof fields['model'] !== 'string') throw new Error(`missing model on ${role}`)
+    return { model: fields['model'], backend: fields['backend'], extraArgs: fields['extraArgs'] }
+  }
+
+  test('the opencode route is unchanged: provider-prefixed model, no backend key', () => {
+    const config = buildReviewLoopConfig(settings({ backend: 'opencode' }))
+
+    for (const role of ROLES) {
+      const agent = agentOf(config, role)
+      expect(agent.model).toBe('openai/m')
+      expect(agent.backend).toBeUndefined()
+      expect(agent.extraArgs).toEqual([])
+    }
+  })
+
+  test('the claude route stamps backend claude into every agent block with the plain model id', () => {
+    const config = buildReviewLoopConfig(settings({ backend: 'claude' }))
+
+    for (const role of ROLES) {
+      const agent = agentOf(config, role)
+      expect(agent.model).toBe('m')
+      expect(agent.backend).toBe('claude')
+      expect(agent.extraArgs).toEqual([])
+    }
+  })
+
+  test('the claude-route config is one the review-loop workspace accepts', () => {
+    expect(() => ReviewLoopConfigSchema.parse(buildReviewLoopConfig(settings({ backend: 'claude' })))).not.toThrow()
+  })
+})
+
+describe('reviewLoopEnv (makeReviewRunner env branch)', () => {
+  test('the claude route carries exactly the job credential, no OpenCode config content', () => {
+    const env = reviewLoopEnv({
+      backend: 'claude',
+      claudeCredential: { name: 'ANTHROPIC_API_KEY', value: 'sk-ant-secret-0123456789' },
+      openai: settings().openai,
+    })
+
+    expect(env).toEqual({ ANTHROPIC_API_KEY: 'sk-ant-secret-0123456789' })
+    expect('OPENCODE_CONFIG_CONTENT' in env).toBe(false)
+  })
+
+  test('the oauth spelling rides under its own name', () => {
+    const env = reviewLoopEnv({
+      backend: 'claude',
+      claudeCredential: { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'oauth-token-0123456789' },
+      openai: settings().openai,
+    })
+
+    expect(env).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token-0123456789' })
+  })
+
+  test('the opencode route is byte-identical to opencodeConfigEnv(config.openai)', () => {
+    const openai = settings().openai
+    expect(reviewLoopEnv({ backend: 'opencode', claudeCredential: null, openai })).toEqual(opencodeConfigEnv(openai))
   })
 })

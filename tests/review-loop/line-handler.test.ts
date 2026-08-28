@@ -10,6 +10,8 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import type { RunAgentOptions, SpawnResult } from '../../review-loop/src/agent-runner.js'
+import { MIN_SECRET_LENGTH } from '../../review-loop/src/backend-select.js'
+import { createClaudeStreamDecoder } from '../../review-loop/src/claude-stream.js'
 import { createLineHandler, enqueueLog } from '../../review-loop/src/line-handler.js'
 import type { ProgressReporter, UsageDelta } from '../../review-loop/src/progress-log.js'
 import { RunStats } from '../../review-loop/src/run-stats.js'
@@ -319,6 +321,145 @@ describe('createLineHandler reporter wiring', () => {
     handler.onLine(JSON.stringify({ type: 'step_start', timestamp: 1, part: {} }))
     await handler.dispose()
     expect(slots[slots.length - 1]).toEqual(['drain', null])
+  })
+})
+
+describe('createLineHandler decoder injection', () => {
+  test('defaults to the opencode adapter when no decoder is passed', () => {
+    const cwd = makeTempDir('line-handler-default-decoder-')
+    const handler = createLineHandler(makeOptions(cwd, path.join(cwd, 'agent.log')))
+    handler.onLine(
+      JSON.stringify({
+        type: 'tool_use',
+        part: { tool: 'read', callID: 'c1', state: { status: 'running', input: { filePath: '/a' } } },
+      }),
+    )
+    expect(handler.ctx.toolCount).toBe(1)
+    // An opencode line carries its session id top-level; the default adapter reads it.
+    handler.onLine(JSON.stringify({ type: 'step_start', sessionID: 'ses_oc', timestamp: 1, part: {} }))
+    expect(handler.ctx.sessionId).toBe('ses_oc')
+  })
+
+  test('an injected claude decoder processes claude NDJSON lines', () => {
+    const cwd = makeTempDir('line-handler-claude-decoder-')
+    const handler = createLineHandler(makeOptions(cwd, path.join(cwd, 'agent.log')), createClaudeStreamDecoder())
+
+    handler.onLine(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'claude-sess-1', cwd, tools: [] }))
+    expect(handler.ctx.sessionId).toBe('claude-sess-1')
+
+    handler.onLine(
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: { file_path: 'README.md' } }],
+          stop_reason: 'tool_use',
+        },
+        session_id: 'claude-sess-1',
+      }),
+    )
+    expect(handler.ctx.toolCount).toBe(1)
+    expect(handler.ctx.tool).toBe('Read')
+
+    handler.onLine(
+      JSON.stringify({
+        type: 'result',
+        is_error: false,
+        stop_reason: 'end_turn',
+        session_id: 'claude-sess-1',
+        total_cost_usd: 0.02,
+        usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+      }),
+    )
+    expect(handler.ctx.usage.inputTokens).toBe(10)
+    expect(handler.ctx.usage.costUsd).toBeCloseTo(0.02)
+  })
+
+  test('the decoder is re-armable per attempt', () => {
+    // runAttempt re-arms the decoder beside handler.ctx.sessionId so a retry
+    // never reads the stalled attempt's result line as its own.
+    const cwd = makeTempDir('line-handler-rearm-decoder-')
+    const handler = createLineHandler(makeOptions(cwd, path.join(cwd, 'agent.log')), createClaudeStreamDecoder())
+    handler.onLine(
+      JSON.stringify({ type: 'result', is_error: true, stop_reason: 'stop_sequence', total_cost_usd: 0, usage: {} }),
+    )
+    expect(handler.decoder.resultOutcome()).toEqual({ seen: true, isError: true })
+
+    handler.decoder = createClaudeStreamDecoder()
+    handler.ctx.sessionId = null
+    expect(handler.decoder.resultOutcome()).toEqual({ seen: false, isError: false })
+  })
+})
+
+describe('createLineHandler credential scrub (enqueueLog sink)', () => {
+  const SECRET = 'sk-ant-secret-0123456789'
+
+  function claudeOptions(cwd: string, logPath: string, credentialValue: string): RunAgentOptions<{ ok: boolean }> {
+    return {
+      ...makeOptions(cwd, logPath),
+      backend: 'claude',
+      claude: {
+        profile: 'bare',
+        credentialName: 'ANTHROPIC_API_KEY',
+        credentialValue,
+        configDirRoot: path.join(cwd, 'claude-root'),
+        envSource: {},
+      },
+    }
+  }
+
+  test('MIN_SECRET_LENGTH mirrors the parent route 12-char floor', () => {
+    expect(MIN_SECRET_LENGTH).toBe(12)
+  })
+
+  test('a raw NDJSON line embedding the credential comes out of the sink scrubbed', async () => {
+    const cwd = makeTempDir('line-handler-scrub-raw-')
+    const logPath = path.join(cwd, 'agent.log')
+    const handler = createLineHandler(claudeOptions(cwd, logPath, SECRET))
+    handler.onLine(
+      JSON.stringify({
+        type: 'user',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: `printenv said ${SECRET}`, is_error: false }],
+        },
+      }),
+    )
+    await handler.dispose()
+    const logged = readFileSync(logPath, 'utf8')
+    expect(logged).toContain('[redacted]')
+    expect(logged).not.toContain(SECRET)
+  })
+
+  test('the stderr caller path (enqueueLog directly) is scrubbed by construction', async () => {
+    const cwd = makeTempDir('line-handler-scrub-stderr-')
+    const logPath = path.join(cwd, 'agent.log')
+    const handler = createLineHandler(claudeOptions(cwd, logPath, SECRET))
+    enqueueLog(handler.ctx, `[fixer-w1] stderr: env: ANTHROPIC_API_KEY=${SECRET}\n`)
+    await handler.dispose()
+    const logged = readFileSync(logPath, 'utf8')
+    expect(logged).toContain('[redacted]')
+    expect(logged).not.toContain(SECRET)
+  })
+
+  test('a sub-floor credential value survives the scrub unscrubbed', async () => {
+    const cwd = makeTempDir('line-handler-scrub-subfloor-')
+    const logPath = path.join(cwd, 'agent.log')
+    const shortValue = 'short-token'
+    expect(shortValue.length).toBeLessThan(MIN_SECRET_LENGTH)
+    const handler = createLineHandler(claudeOptions(cwd, logPath, shortValue))
+    handler.onLine(`echo ${shortValue}`)
+    await handler.dispose()
+    const logged = readFileSync(logPath, 'utf8')
+    expect(logged).toContain(shortValue)
+  })
+
+  test('the opencode route (no claude context) logs verbatim', async () => {
+    const cwd = makeTempDir('line-handler-noscrub-')
+    const logPath = path.join(cwd, 'agent.log')
+    const handler = createLineHandler(makeOptions(cwd, logPath))
+    handler.onLine(`harmless ${SECRET}`)
+    await handler.dispose()
+    const logged = readFileSync(logPath, 'utf8')
+    expect(logged).toContain(SECRET)
   })
 })
 

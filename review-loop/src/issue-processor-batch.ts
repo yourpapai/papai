@@ -111,6 +111,8 @@ async function runOneBatch(
     const result = await runAgent({
       spawn: deps.spawn,
       model: deps.config.fixer.model,
+      backend: deps.config.backend,
+      claude: deps.config.claude,
       cwd: worker.worktreePath,
       prompt,
       outputPath,
