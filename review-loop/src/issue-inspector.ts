@@ -3,7 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { agentWritePath, emptyUsage, runAgent, AgentRunError, type AgentUsage, type SpawnFn } from './agent-runner.js'
+import {
+  agentWritePath,
+  emptyUsage,
+  runAgent,
+  AgentRunError,
+  type AgentUsage,
+  type ClaudeRunContext,
+  type SpawnFn,
+} from './agent-runner.js'
+import type { AgentBackend } from './config.js'
 import type { IssueWorker } from './issue-processor-attempts.js'
 import type { IssueProcessorDeps } from './issue-processor.js'
 import {
@@ -33,6 +42,8 @@ export interface RunInspectorDeps {
   reporter: ProgressReporter
   model: string
   extraArgs: readonly string[]
+  backend?: AgentBackend
+  claude?: ClaudeRunContext
   timeoutMs?: number
   label: string
 }
@@ -62,6 +73,8 @@ export async function runInspector(
   const result = await runAgent({
     spawn: deps.spawn,
     model: deps.model,
+    backend: deps.backend,
+    claude: deps.claude,
     cwd: deps.cwd,
     prompt: buildInspectPrompt(deps.issue, diff, deps.fixerReasoning, agentWritePath(deps.cwd, deps.outputPath)),
     outputPath: deps.outputPath,
@@ -103,6 +116,8 @@ export async function runInspectorOrTreatAsRejection(
         reporter: deps.log,
         model: inspectorConfig.model,
         extraArgs: inspectorConfig.extraArgs,
+        backend: deps.config.backend,
+        claude: deps.config.claude,
         timeoutMs: inspectorConfig.timeoutMs ?? deps.config.agentTimeoutMs,
         label: `inspector${labelSuffix}`,
       },
@@ -136,6 +151,8 @@ export interface AggregatedInspectorDeps {
   reporter: ProgressReporter
   model: string
   extraArgs: readonly string[]
+  backend?: AgentBackend
+  claude?: ClaudeRunContext
   timeoutMs?: number
   label: string
 }
@@ -151,6 +168,8 @@ export async function runAggregatedInspector(
   const result = await runAgent({
     spawn: deps.spawn,
     model: deps.model,
+    backend: deps.backend,
+    claude: deps.claude,
     cwd: deps.cwd,
     prompt: buildAggregatedInspectPrompt(deps.issues, diff, agentWritePath(deps.cwd, deps.outputPath)),
     outputPath: deps.outputPath,
@@ -195,6 +214,8 @@ export async function runAggregatedInspectorOrTreatAsRejection(
       inspector?: { model: string; extraArgs: readonly string[]; timeoutMs?: number }
       fixer: { model: string; extraArgs: readonly string[]; timeoutMs?: number }
       agentTimeoutMs: number
+      backend?: AgentBackend
+      claude?: ClaudeRunContext
     }
     spawn: SpawnFn
     log: ProgressReporter
@@ -224,6 +245,8 @@ export async function runAggregatedInspectorOrTreatAsRejection(
         reporter: deps.log,
         model: cfg.model,
         extraArgs: cfg.extraArgs,
+        backend: deps.config.backend,
+        claude: deps.config.claude,
         timeoutMs: cfg.timeoutMs ?? deps.config.agentTimeoutMs,
         label: 'inspector-aggregated',
       },

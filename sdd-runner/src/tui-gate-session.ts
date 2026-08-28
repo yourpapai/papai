@@ -11,6 +11,7 @@ import type { GateAnswers } from './gate-answers.js'
 import { parseGateResponse } from './gate-model.js'
 import { decisionAnswers, reduceSession } from './gate-session-state.js'
 import type { Decision, KeyFlags, SessionState } from './gate-session-state.js'
+import { expectedGateContentOf } from './gate-session.js'
 import type { GateSessionView } from './gate-session.js'
 import { keyHints, reduceHelpOverlay, ScreenChrome } from './tui-chrome.js'
 import type { OverlayState } from './tui-chrome.js'
@@ -170,27 +171,13 @@ export type TuiGateSessionResult =
   | { readonly status: 'answered'; readonly decision: GateAnswers['decision']; readonly gateMd: string }
   | { readonly status: 'abandoned' }
 
-function expectedContent(view: GateSessionView): Parameters<typeof parseGateResponse>[1] {
-  return {
-    assumptions: view.items
-      .filter((item) => item.kind === 'assumption')
-      .map((item) => ({ id: item.id, text: item.text, blast_radius: item.blastRadius })),
-    blockers: view.blockers.map((blocker) => ({ id: blocker.id, gap: blocker.gap, evidence: blocker.evidence })),
-    findings: view.items
-      .filter((item) => item.kind === 'finding')
-      .map((item) => ({ id: item.id, gap: item.text, evidence: item.evidence })),
-    ...(view.requiredAck === null ? {} : { requiredAck: view.requiredAck.id }),
-    gateMode: view.gateMode,
-  }
-}
-
 async function settleWithSelfCheck(
   answers: GateAnswers,
   view: GateSessionView,
   writeGateMd: (md: string) => Promise<void>,
 ): Promise<{ readonly gateMd: string }> {
   const md = renderGateAnswers(answers)
-  const parsed = parseGateResponse(md, expectedContent(view))
+  const parsed = parseGateResponse(md, expectedGateContentOf(view))
   if (JSON.stringify(parsed) !== JSON.stringify(responseFromAnswers(answers))) {
     throw new Error('answer self-check failed: rendered answers parse back as a different outcome')
   }

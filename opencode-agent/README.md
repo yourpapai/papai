@@ -1715,11 +1715,17 @@ The route's trade-offs, so an operator sees them before choosing:
   `result` line has no usage carrier on this route — unlike the OpenCode
   server, whose session usage survives an abort — so deadline-looping issues
   burn spend `AGENT_MAX_TOKENS` never sees.
-- **The `/review` hint is a residual.** The review loop shells out to
-  `opencode run`, which a claude-route job cannot serve; `/review` then fails
-  loudly at its own boundary. The delivery comment still recommends it at the
-  threshold because suppressing the hint by backend would fork feedback
-  behaviour above the seam.
+- **The review loop rides the same route.** `/review` hands the loop its own
+  claude backend (design D9): the generated loop config stamps
+  `backend: "claude"` into every agent block, and the loop's env carries
+  exactly this job's selected Anthropic credential — no
+  `OPENCODE_CONFIG_CONTENT`, no gateway settings. A claude-route `/review`
+  runs its reviewer/fixer/matcher/inspector as `claude -p` subprocesses with
+  per-role allowlists and run-scoped CLI state, instead of failing at its own
+  boundary. The loop's own trade-offs on the route (Bash-less analysis roles
+  eating the prompt's refused `git diff`/`rg` calls, killed-turn usage
+  under-count, no retry layer, the OAuth five-hour window) are documented
+  operator-facing in `review-loop/CLAUDE.md`.
 - **The chosen credential is readable by the CLI's own `Bash` children.** The
   CLI cannot authenticate without the credential in its environment, and every
   `Bash` tool child inherits that environment — so a prompt-injected build turn

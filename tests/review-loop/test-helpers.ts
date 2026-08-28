@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
+import type { ClaudeRunContext, SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import type { Verdict } from '../../review-loop/src/issue-schema.js'
 import type { RendererStream } from '../../review-loop/src/live-renderer.js'
@@ -59,6 +59,7 @@ export function createReviewLoopConfigFixture(
     runTimeoutMs: 0,
     checkCommand: 'bun check:full',
     poolSize: 3,
+    backend: 'opencode',
     reviewer: {
       model: 'ollama-cloud/kimi-k2.6:cloud',
       extraArgs: [],
@@ -82,6 +83,72 @@ export function silentReporter(): ProgressReporter {
     live() {},
     clearLive() {},
     log() {},
+  }
+}
+
+/** A claude run context over a real temp config-dir root (the default mkdtemp seam needs one). */
+export function claudeRunContext(overrides: Partial<ClaudeRunContext> = {}): ClaudeRunContext {
+  return {
+    profile: 'bare',
+    credentialName: 'ANTHROPIC_API_KEY',
+    credentialValue: 'sk-ant-secret-0123456789',
+    configDirRoot: makeTempDir('claude-root-'),
+    envSource: { PATH: '/usr/bin' },
+    ...overrides,
+  }
+}
+
+/** A healthy claude `result` line, so the exit-0 result-outcome gate passes. */
+export function claudeResultLine(): string {
+  return JSON.stringify({
+    type: 'result',
+    is_error: false,
+    stop_reason: 'end_turn',
+    session_id: 'sess-test',
+    total_cost_usd: 0.01,
+    usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+  })
+}
+
+/**
+ * A spawn fake for the claude route: records the composed command/argv, emits a
+ * healthy result line, then lets the caller write the role's scratch output.
+ * The prompt rides `opts.stdin`, so the responder reads it from there.
+ */
+export function claudeRecordingSpawn(respond: (opts: { cwd: string; stdin?: string }) => void): {
+  spawn: SpawnFn
+  commands: string[]
+  args: string[][]
+  envs: Array<Record<string, string> | undefined>
+} {
+  const commands: string[] = []
+  const args: string[][] = []
+  const envs: Array<Record<string, string> | undefined> = []
+  const spawn: SpawnFn = (command, argv, opts, onLine) => {
+    commands.push(command)
+    args.push([...argv])
+    envs.push(opts.env)
+    onLine?.(claudeResultLine())
+    respond(opts)
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' } satisfies SpawnResult)
+  }
+  return { spawn, commands, args, envs }
+}
+
+/** Extracts the absolute scratch path a role prompt names, from either an argv prompt or stdin. */
+export function promptOutputPath(prompt: string): string {
+  return prompt.match(/as JSON to:\s*(\S+)/u)?.[1] ?? ''
+}
+
+/**
+ * A `claudeRecordingSpawn` responder that writes the scratch output a role
+ * prompt names, built by the given producer. The prompt-path extraction lives
+ * here rather than in the test body so the responder carries no conditionals.
+ */
+export function claudeScratchResponder(build: () => unknown): (opts: { cwd: string; stdin?: string }) => void {
+  return (opts) => {
+    const out = promptOutputPath(opts.stdin ?? '')
+    writeFileSync(out, JSON.stringify(build()))
   }
 }
 

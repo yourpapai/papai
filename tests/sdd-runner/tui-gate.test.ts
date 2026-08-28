@@ -228,3 +228,83 @@ describe('gateAnswersFromToggles', () => {
     expect(parsed.override).toBe(true)
   })
 })
+
+describe('plan-mode screen and toggles (D10)', () => {
+  const PLAN_VIEW = {
+    gateMode: 'plan' as const,
+    items: [
+      { kind: 'child' as const, id: 'C1', text: 'auth-db — Ship the drafted slice.', evidence: '', blastRadius: '' },
+      { kind: 'child' as const, id: 'C2', text: 'auth-api — Partition the remainder.', evidence: '', blastRadius: '' },
+    ],
+    blockers: [],
+    requiredAck: null,
+  }
+
+  function planProps(overrides: Partial<GateScreenProps> = {}): GateScreenProps {
+    return {
+      view: PLAN_VIEW,
+      toggles: {},
+      redirects: {},
+      blockerAnswers: {},
+      ackAffirmed: false,
+      width: 100,
+      ...overrides,
+    }
+  }
+
+  it('renders child rows as standard checkboxes with the standard decisions block — no extend entry, no plan-specific affordances', () => {
+    const GateScreen = createGateScreen()
+    const { lastFrame, unmount } = render(createElement(GateScreen, planProps({ cursor: 1 })))
+    expect(lastFrame()).toContain('╭─ Gate · plan')
+    expect(lastFrame()).toContain('  [x] C1 auth-db — Ship the drafted slice.')
+    expect(lastFrame()).toContain('❯ [x] C2 auth-api — Partition the remainder.')
+    expect(lastFrame()).toContain('(a)pprove')
+    expect(lastFrame()).toContain('(x)abort')
+    expect(lastFrame()).not.toContain('(e)xtend')
+    unmount()
+  })
+
+  it('an unchecked child renders unchecked with its redirect collected beneath the row', () => {
+    const GateScreen = createGateScreen()
+    const { lastFrame, unmount } = render(
+      createElement(
+        GateScreen,
+        planProps({ toggles: { C2: false }, redirects: { C2: 'fold the API slice into child 1' } }),
+      ),
+    )
+    expect(lastFrame()).toContain('[ ] C2 auth-api — Partition the remainder.')
+    expect(lastFrame()).toContain('→ fold the API slice into child 1')
+    unmount()
+  })
+
+  it('every child checked settles approve; an unchecked child settles veto carrying the redirect', () => {
+    const approved = gateAnswersFromToggles(PLAN_VIEW, {
+      toggles: { C1: true, C2: true },
+      redirects: {},
+      blockerAnswers: {},
+      ackAffirmed: false,
+    })
+    expect(approved.decision).toBe('approve')
+    const vetoed = gateAnswersFromToggles(PLAN_VIEW, {
+      toggles: { C1: true, C2: false },
+      redirects: { C2: 'fold the API slice into child 1' },
+      blockerAnswers: {},
+      ackAffirmed: false,
+    })
+    expect(vetoed.decision).toBe('veto')
+    const c2 = vetoed.items.find((item) => item.id === 'C2')
+    expect(c2).toMatchObject({ accepted: false, redirect: 'fold the API slice into child 1' })
+  })
+
+  it('final-mode screens keep the extend entry off — pinned unchanged beside the plan pin', () => {
+    const GateScreen = createGateScreen()
+    const finalView = { ...VIEW, gateMode: 'final' as const }
+    const { lastFrame, unmount } = render(createElement(GateScreen, baseProps({ view: finalView })))
+    expect(lastFrame()).toContain('(a)pprove')
+    expect(lastFrame()).not.toContain('(e)xtend')
+    unmount()
+    const { lastFrame: earlyFrame, unmount: earlyUmount } = render(createElement(GateScreen, baseProps()))
+    expect(earlyFrame()).toContain('(e)xtend')
+    earlyUmount()
+  })
+})

@@ -2,7 +2,53 @@
 
 ## Purpose
 
-`review-loop/` is a standalone Bun workspace for the shell-invoked autonomous code-review loop runner. It spawns reviewer and fixer `opencode run` agent subprocesses via shell calls with file-based JSON exchange, collects reviewer issues into a durable ledger, and drives multi-round verify/fix cycles. It is local developer tooling, not a papai runtime dependency.
+`review-loop/` is a standalone Bun workspace for the shell-invoked autonomous code-review loop runner. It spawns reviewer and fixer agent subprocesses via shell calls with file-based JSON exchange, collects reviewer issues into a durable ledger, and drives multi-round verify/fix cycles. It is local developer tooling, not a papai runtime dependency.
+
+## Agent Backend Selection
+
+One run-wide knob selects which CLI serves every agent role. The `backend` field
+lives **inside the per-role agent blocks** (`reviewer`/`fixer`/`matcher`/`inspector`)
+with values `"opencode"` (the default) and `"claude"` — there is no top-level key,
+and a top-level spelling is silently stripped by config parsing. Each role may
+omit the field; every role that names it must agree, or config validation fails
+naming "one backend per run". The default `opencode` route is byte-identical to
+the pre-knob loop: no `claude` process spawns and no Anthropic credential is read.
+
+The `claude` route shells out to the official Claude Code CLI instead of
+`opencode run`:
+
+- **Credentials select the profile.** Exactly one of `ANTHROPIC_API_KEY`
+  (→ the bare profile, `--bare`) or `CLAUDE_CODE_OAUTH_TOKEN` (→ the native
+  profile with the neutralization flags) must be set — both or neither refuse
+  before any spend, as does a set `LLM_API_KEY`. A present-but-empty value
+  reads as unset, because CI forwards unset secrets as `''`.
+- **CLI state is run-scoped.** Each spawn gets its own `CLAUDE_CONFIG_DIR`
+  under an OS-tmp parent created at run start and removed at teardown — never
+  inside a worktree, so no loop commit can stage it.
+- **One model knob serves either backend**: a `provider/model` spelling keeps
+  its model id.
+- **Usage accounting is unchanged** — token/cost totals, live lines and
+  `metrics.json` carry the same fields, counted once per turn from the claude
+  `result` line.
+
+Operator trade-offs on the claude route: analysis roles (reviewer, matcher,
+inspector) get **no `Bash`** — the prompts direct `git diff`/`rg` calls those
+roles cannot run, so each turn eats refused calls (recorded refusal shape, no
+tool effect); turns killed before their `result` line are invisible to usage
+totals (under-count, same as the parent route); there is no retry layer beyond
+the loop's standing retry-once-on-stall; the OAuth spelling bills against
+five-hour subscription windows and a quota exhausted mid-run is an ordinary
+turn failure. The credential is readable by the fixer's `Bash` children (the
+accepted fixer residual); the loop scrubs it from its own logs and captures.
+
+**Install the pinned CLI** — `@anthropic-ai/claude-code@2.1.239`, the version
+the fixture corpus and the allowlist doctrine were recorded against. A drifted
+CLI presents as the missing-`result`-line attempt failure (every NDJSON line
+unrecognized); an absent binary presents as `spawn claude ENOENT` — retried
+once per the standing policy, then an `AgentRunError` naming the label. Both
+mean "install the pinned CLI", not a PATH problem.
+
+## Agent subprocess guards
 
 Agent subprocess guards live in `src/spawn.ts` + `src/agent-runner.ts`: besides the wall-clock `timeout`, an optional `inactivityTimeoutMs` watchdog kills a child that produces no stdout (hung LLM stream) and reports `stalled: true`; `runAgent` retries a stall once but never retries a wall-clock timeout. Callers opt in by passing `inactivityTimeoutMs` through `RunAgentOptions` (mutation-improve wires it from `agent.inactivityTimeoutMs`; review-loop's own config does not yet).
 
@@ -37,7 +83,7 @@ primary lock and never throws; `finalizeRun` still does the final merge.
 
 ## Fix instruction contract
 
-Three rules the fix prompts carry, all of them shaping the fix at generation time rather than
+Four rules the fix prompts carry, all of them shaping the fix at generation time rather than
 gating it afterwards — a gate rejects only once the fixer's 5–21 minutes and the build check are
 already spent.
 
@@ -62,6 +108,30 @@ afterwards does not count.
 documentation: name the file and report the gap in `reasoning` instead. The loop cannot keep
 prose true — no actor sees two fixes, and the terminal round's fixes are never reviewed — so a
 paragraph one fix writes and a later fix invalidates ships confidently wrong.
+
+**Protected paths** (`PROTECTED_PATHS_RULE`) forbids creating or editing a file under
+`.github/workflows/` — a push from the pipeline's token cannot carry one, and the refusal
+discards the whole commit — and lands the "say what a maintainer should apply by hand" half on
+the fixer's result schema: a fix that genuinely requires such an edit is verdict `needs_human`
+with the exact change described in `reasoning`, editing nothing. All three fix prompts carry it,
+retries included, for the same reason the ladder is. The reviewer prompt carries the reporting
+half: a workflow-fix finding describes the change in `suggestedFix` for manual application —
+self-contained, the exact replacement text or a copy-pasteable patch, because it may be the
+only record of the change that survives the run. The defect is real, it just does not route to
+an edit that can never be pushed. Run 32992114904 (issue #360) is the cost of the gap: the
+fixer edited `.github/workflows/ci.yml`, the push guard reverted it, and the run died on a push
+GitHub refused whole. And PR #362's `#35d7c517` is the cost of the _reporting_ gap the loop
+has since closed: a needs-human finding reached the maintainer as a title line while the exact
+change sat in a `ledger.json` that dies with the runner — so the run summary now renders the
+suggested fix and the fixer's reasoning under each needs-human line, bounded, with a ledger
+pointer when neither exists.
+
+Like the ladder, that constant is **duplicated across the workspace boundary and pinned**:
+`opencode-agent`'s `protected-paths.ts` owns the text, this workspace's copy carries it verbatim
+plus the one fixer-only mapping line (a fixer has no reply, it has a JSON result), and
+`tests/opencode-agent/protected-paths-rule.test.ts` asserts the containment. The inspect prompts
+carry nothing — they judge diffs and write nothing. The prompts are the courtesy; the mechanism
+is the push guard in the opencode-agent phase that reverts what they could not prevent.
 
 The orchestrator records one advisory boolean per accepted fix: did its diff touch a test path
 (`measureCheckBehind`, `commit-attempt.ts`). It gates nothing and touches no retry budget; it

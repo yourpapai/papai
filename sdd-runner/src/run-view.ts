@@ -27,9 +27,10 @@ import type { SlotState, WatchFinding } from './watch-view.js'
  * Presentation (fancy-ui 6.2): framed panels in the one shared style —
  * findings beside burndown at wide width, stacked below the join threshold —
  * with severity/cost/retry/stage tokens decorating the existing text
- * markers (color never carries meaning alone). The status line and slots
- * keep their exact texts; the footer/overlay chrome lives one level up in
- * the session mount.
+ * markers (color never carries meaning alone). Decomposition children ride
+ * a live `Children` panel (their status keeps changing; only plan runs
+ * show it). The status line and slots keep their exact texts; the
+ * footer/overlay chrome lives one level up in the session mount.
  */
 export interface RunViewProps {
   readonly state: ReplayState
@@ -193,9 +194,10 @@ function panel(title: string, rows: readonly PanelRow[], width: number): ReturnT
 interface RunRows {
   readonly pipeline: readonly PanelRow[]
   readonly agents: readonly PanelRow[]
+  readonly children: readonly PanelRow[]
 }
 
-/** Live rows only: pipeline map plus active/retrying slots — done agents live in the history region. */
+/** Live rows only: pipeline map, active/retrying slots, decomposition children — done agents live in the history region. */
 function runRows(props: RunViewProps, mode: ColorMode): RunRows {
   const contentWidth = Math.max(1, props.width - 4)
   const pipelineLines = renderPipelineMap(props.state, { width: props.width })
@@ -208,7 +210,8 @@ function runRows(props: RunViewProps, mode: ColorMode): RunRows {
   const agents = idle
     ? [row('idle', 'idle — waiting for events')]
     : live.map((slot, index) => slotRow(slot, mode, index, contentWidth))
-  return { pipeline, agents }
+  const children = childRows(props.state.children).map((line, index) => row(`c-${String(index)}`, line))
+  return { pipeline, agents, children }
 }
 
 /** One append-only history row: a framed body line, toned where the row carries semantics. */
@@ -248,6 +251,20 @@ function historyRegion(props: RunViewProps, mode: ColorMode): ReturnType<typeof 
   })
 }
 
+/**
+ * D8 children rows: one `<child-id> <status>` line per fold entry — the
+ * first non-pending/non-done child (the in-flight or failed node) marks the
+ * active tree position with the `▶` marker.
+ */
+function childRows(children: ReplayState['children']): string[] {
+  let activeMarked = false
+  return Object.entries(children).map(([childId, record]) => {
+    const active = !activeMarked && record.status !== 'pending' && record.status !== 'done'
+    if (active) activeMarked = true
+    return `${active ? '▶ ' : ''}${childId} ${record.status}`
+  })
+}
+
 export function createRunView(): (props: RunViewProps) => ReturnType<typeof createElement> {
   return function RunView(props: RunViewProps): ReturnType<typeof createElement> {
     const mode = props.colorMode ?? 'color'
@@ -258,6 +275,7 @@ export function createRunView(): (props: RunViewProps) => ReturnType<typeof crea
       historyRegion(props, mode),
       ...panel('Pipeline', rows.pipeline, props.width),
       ...panel('Agents', rows.agents, props.width),
+      ...(rows.children.length > 0 ? panel('Children', rows.children, props.width) : []),
       createElement(
         Box,
         { key: 'status', flexDirection: 'row' },

@@ -16,6 +16,8 @@ export const PlanChildSchema = z.object({
   instruction: z.string().min(1),
   deps: z.array(z.string().min(1)).default([]),
   capabilities: z.array(z.string().min(1)).optional(),
+  /** D6: the existing change folder this child adopts (a decompose-split continuation); absent on ordinary children. */
+  changeName: z.string().min(1).optional(),
 })
 export type PlanChild = z.infer<typeof PlanChildSchema>
 

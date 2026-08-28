@@ -505,3 +505,94 @@ describe('decision parity (8.1)', () => {
     expectSelfChecks(plain.answers)
   })
 })
+
+describe('plan-gate settle self-check (D10)', () => {
+  const PLAN_VIEW: GateSessionView = {
+    gateMode: 'plan',
+    items: [
+      { kind: 'child', id: 'C1', text: 'auth-db — Ship the drafted slice.', evidence: '', blastRadius: '' },
+      { kind: 'child', id: 'C2', text: 'auth-api — Partition the remainder.', evidence: '', blastRadius: '' },
+    ],
+    blockers: [],
+    requiredAck: null,
+  }
+
+  it('a plan-gate approve settle passes the write-then-parse self-check through the shared children-aware expected content', async () => {
+    const written: string[] = []
+    const result = await runTuiGateSession({
+      view: PLAN_VIEW,
+      writeGateMd: (md) => {
+        written.push(md)
+        return Promise.resolve()
+      },
+      keyScript: 'a',
+    })
+    expect(result).toMatchObject({ status: 'answered', decision: 'approve' })
+    expect(written.length).toBe(1)
+    expect(written[0]).toContain('- [x] C1 auth-db — Ship the drafted slice.')
+    expect(written[0]).toContain('- [x] C2 auth-api — Partition the remainder.')
+  })
+})
+
+describe('plan-mode child-row toggle semantics (D10)', () => {
+  const PLAN_VIEW: GateSessionView = {
+    gateMode: 'plan',
+    items: [
+      { kind: 'child', id: 'C1', text: 'auth-db — Ship the drafted slice.', evidence: '', blastRadius: '' },
+      { kind: 'child', id: 'C2', text: 'auth-api — Partition the remainder.', evidence: '', blastRadius: '' },
+    ],
+    blockers: [],
+    requiredAck: null,
+  }
+
+  it('child rows toggle exactly like assumption checkboxes — a toggle cycle returns to checked and settles approve', async () => {
+    const { settled, frame } = await drive([' ', ' ', 'a'], PLAN_VIEW)
+    expect(frame()).toContain('[x] C1 auth-db — Ship the drafted slice.')
+    expect(settled.length).toBe(1)
+    expect(settled[0]?.decision).toBe('approve')
+    expect(settled[0]?.items.every((item) => item.accepted)).toBe(true)
+  })
+
+  it('settle with an unchecked child vetoes, carrying the redirect collected beneath the row', async () => {
+    const { settled, frame } = await drive([' ', '\r', 'fold the API slice into child 1', '\r', 'a'], PLAN_VIEW)
+    expect(frame()).toContain('[ ] C1 auth-db — Ship the drafted slice.')
+    expect(frame()).toContain('→ fold the API slice into child 1')
+    expect(settled.length).toBe(1)
+    const answers = settled[0]
+    expect(answers?.decision).toBe('veto')
+    const c1 = answers?.items.find((item) => item.id === 'C1')
+    expect(c1).toMatchObject({ accepted: false, redirect: 'fold the API slice into child 1' })
+    expect(answers?.items.find((item) => item.id === 'C2')?.accepted).toBe(true)
+  })
+
+  it('an unchecked-child veto passes the full write-then-parse self-check and writes the redirect into the gate md', async () => {
+    const written: string[] = []
+    const result = await runTuiGateSession({
+      view: PLAN_VIEW,
+      writeGateMd: (md) => {
+        written.push(md)
+        return Promise.resolve()
+      },
+      keyScript: ' \rfold the API slice into child 1\ra',
+    })
+    expect(result).toMatchObject({ status: 'answered', decision: 'veto' })
+    expect(written.length).toBe(1)
+    expect(written[0]).toContain('- [ ] C1 auth-db — Ship the drafted slice.')
+    expect(written[0]).toContain('→ fold the API slice into child 1')
+    expect(written[0]).toContain('- [x] C2 auth-api — Partition the remainder.')
+  })
+
+  it('e (extend) is refused at plan mode — no settle, no write', async () => {
+    const written: string[] = []
+    const result = await runTuiGateSession({
+      view: PLAN_VIEW,
+      writeGateMd: (md) => {
+        written.push(md)
+        return Promise.resolve()
+      },
+      keyScript: 'e',
+    })
+    expect(result.status).toBe('abandoned')
+    expect(written.length).toBe(0)
+  })
+})

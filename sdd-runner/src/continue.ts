@@ -6,16 +6,26 @@
 import type { OrchestratorDeps } from './gate-digest.js'
 import { runGateResume } from './gate-resume-entry.js'
 import { runResume } from './orchestrator.js'
-import type { AutonomyOverrides, RunContinueResult } from './orchestrator.js'
+import type { AutonomyOverrides } from './orchestrator.js'
+import { pendingDescendantGateOf } from './resume-flow.js'
 import { listPendingGates, resolveRunId } from './run-index.js'
 import { loadRunState } from './run-state.js'
+
+export interface RunContinueResult {
+  readonly runId: string | null
+  readonly routed: 'gate' | 'resume' | 'report' | 'list'
+  readonly gateMdPath?: string
+  readonly version?: number
+}
 
 /**
  * `continue` is a pure router (Decision 4): gate-pending → the gate flow
  * (`runGateResume` with no flags — interactive session on a TTY, hand-edited
- * file otherwise); interrupted mid-stage → `runResume`; completed → a pointer
- * to the report. Without an id, discovery picks the single gate-pending run,
- * or lists the candidates when several exist.
+ * file otherwise); a plan parent whose next action lives inside a descendant
+ * descends into that child's gate flow (D2 — with the child's concrete
+ * `sdd <childRunId>` line); interrupted mid-stage → `runResume`; completed →
+ * a pointer to the report. Without an id, discovery picks the single
+ * gate-pending run, or lists the candidates when several exist.
  */
 export async function runContinue(
   deps: OrchestratorDeps,
@@ -37,6 +47,17 @@ export async function runContinue(
       ...(gate.gateMdPath === undefined ? {} : { gateMdPath: gate.gateMdPath, version: gate.version }),
     }
   }
+  const pendingChildRunId = await pendingDescendantGateOf(deps, state)
+  if (pendingChildRunId !== null) {
+    deps.stdout?.(`run ${resolved} continues in child run ${pendingChildRunId} — its pending gate is the next action`)
+    deps.stdout?.(`sdd ${pendingChildRunId}`)
+    const gate = await runGateResume(deps, pendingChildRunId, {})
+    return {
+      runId: pendingChildRunId,
+      routed: 'gate',
+      ...(gate.gateMdPath === undefined ? {} : { gateMdPath: gate.gateMdPath, version: gate.version }),
+    }
+  }
   if (state.status === 'completed') {
     deps.stdout?.(`run ${resolved} is completed — report via: sdd ${resolved}`)
     return { runId: resolved, routed: 'report' }
@@ -51,7 +72,8 @@ export async function runContinue(
 
 /**
  * Discovery for a bare `continue`: exactly one gate-pending run routes to it;
- * several print the per-run gate commands and route nowhere (the operator
+ * several print the per-run gate commands — mode beside version, matching
+ * `routeBySoleCandidate`'s hint (D3) — and route nowhere (the operator
  * picks); none is an error (there is nothing obvious to continue).
  */
 async function pickContinueRun(deps: OrchestratorDeps): Promise<string | null> {
@@ -60,7 +82,7 @@ async function pickContinueRun(deps: OrchestratorDeps): Promise<string | null> {
   if (pending.length > 1) {
     deps.stdout?.('several runs await gate decisions:')
     for (const entry of pending) {
-      deps.stdout?.(`  sdd ${entry.runId}  (${entry.changeName}, gate v${entry.gateVersion})`)
+      deps.stdout?.(`  sdd ${entry.runId}  (${entry.changeName}, gate ${entry.gateMode} v${entry.gateVersion})`)
     }
     return null
   }
