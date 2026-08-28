@@ -8,9 +8,9 @@
 
 ## 2. figma:connect CLI
 
-- [ ] 2.1 Write failing tests for the CLI core: `validate` (headless: registry vs repo) returns named failures; `plan` emits the per-node description payloads without touching Figma. Verify: tests fail
-- [ ] 2.2 Implement `scripts/figma-connect.ts` with `validate` and `plan` subcommands (headless) plus a documented agent-run push path (skill references `plan` output via `use_figma`); add `figma:connect` to package.json. Verify: step 2.1 tests pass, `bun run figma:connect validate` exits 0 on the current registry
-- [ ] 2.3 Wire `figma:connect` into `docs/architecture/commands.md` next to the `figma:sync` bullet. Verify: manual read
+- [x] 2.1 Write failing tests for the CLI core: `validate` (headless: registry vs repo) returns named failures; `plan` emits the per-node description payloads without touching Figma. Verify: tests fail
+- [x] 2.2 Implement `scripts/figma-connect.ts` with `validate` and `plan` subcommands (headless) plus a documented agent-run push path (skill references `plan` output via `use_figma`); add `figma:connect` to package.json. Verify: step 2.1 tests pass, `bun run figma:connect validate` exits 0 on the current registry
+- [x] 2.3 Wire `figma:connect` into `docs/architecture/commands.md` next to the `figma:sync` bullet. Verify: manual read
 
 ## 3. figma-codegen skill
 

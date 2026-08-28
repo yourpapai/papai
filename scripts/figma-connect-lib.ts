@@ -80,10 +80,10 @@ const missingSource = (entry: string, source: string): RegistryProblem => ({
   message: `registry_source_missing: ${entry} → ${source}`,
 })
 
-const dictionary = (entry: ComponentEntry | SectionEntry): Record<string, string> =>
+const dictionary = (entry: ComponentEntry | ScreenEntry | SectionEntry): Record<string, string> =>
   'props' in entry ? entry.props : {}
 
-export const canonicalDescription = (entry: ComponentEntry | SectionEntry): string => {
+export const canonicalDescription = (entry: ComponentEntry | ScreenEntry | SectionEntry): string => {
   const parts = [`CODE: ${entry.source}`]
   const props = Object.entries(dictionary(entry))
   if (props.length > 0) parts.push(`props: ${props.map(([figma, code]) => `${figma}→${code}`).join(', ')}`)
@@ -138,3 +138,27 @@ export const loadRegistry = (deps: LoadRegistryDeps = {}): Registry => {
   }
   return registry
 }
+
+export interface DescriptionPayload {
+  readonly name: string
+  readonly figmaNode: string
+  readonly description: string
+}
+
+export const planPayloads = (registry: Registry): readonly DescriptionPayload[] => [
+  ...registry.components.map((entry) => ({
+    name: entry.name,
+    figmaNode: entry.figmaNode,
+    description: canonicalDescription(entry),
+  })),
+  ...registry.screens.map((entry) => ({
+    name: entry.name,
+    figmaNode: entry.figmaNode,
+    description: canonicalDescription(entry),
+  })),
+  ...registry.sections.map((entry) => ({
+    name: entry.section,
+    figmaNode: entry.figmaNode,
+    description: canonicalDescription(entry),
+  })),
+]

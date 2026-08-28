@@ -13,8 +13,10 @@ import {
   checkRegistry,
   loadRegistry,
   parseRegistryText,
+  planPayloads,
 } from '../../scripts/figma-connect-lib.js'
 import type { ComponentEntry, Registry } from '../../scripts/figma-connect-lib.js'
+import { parseConnectArgs } from '../../scripts/figma-connect.js'
 
 const REGISTRY_PATH = new URL('../../scripts/figma/registry.json', import.meta.url).pathname
 
@@ -176,5 +178,60 @@ describe('loadRegistry', () => {
   test('throws a named error on malformed registry JSON', () => {
     expect(() => parseRegistryText('not json')).toThrow(/registry_parse_failed/u)
     expect(() => parseRegistryText('{"version":2}')).toThrow(/registry_schema_invalid/u)
+  })
+})
+
+describe('parseConnectArgs', () => {
+  test('accepts the validate and plan subcommands', () => {
+    expect(parseConnectArgs(['validate'])).toEqual({ command: 'validate' })
+    expect(parseConnectArgs(['plan'])).toEqual({ command: 'plan' })
+  })
+
+  test('rejects a missing or unknown subcommand', () => {
+    expect(() => parseConnectArgs([])).toThrow(/missing_command/u)
+    expect(() => parseConnectArgs(['sync'])).toThrow(/unknown_command:sync/u)
+  })
+
+  test('rejects unknown flags', () => {
+    expect(() => parseConnectArgs(['validate', '--fancy'])).toThrow(/unknown_flag:--fancy/u)
+  })
+})
+
+describe('planPayloads', () => {
+  test('emits one deterministic payload per component, screen, and section', () => {
+    const registry = registryWith({
+      screens: [
+        { name: 'screen/TaskProviderSection', figmaNode: '22:198', source: 'src/screen/TaskProviderSection.tpl' },
+      ],
+      sections: [
+        {
+          screen: 'screen/TaskProviderSection',
+          section: 'Bind form',
+          figmaNode: '22:199',
+          source: 'src/screen/Bind-form.tpl',
+        },
+      ],
+    })
+    const componentDescription =
+      'CODE: src/ui/Btn.tpl | props: Variant→variant, Label→children | values: Primary→primary, Secondary→secondary, Outline→outline, Ghost→ghost, Danger→danger'
+    const payloads = planPayloads(registry)
+    expect(payloads).toEqual([
+      {
+        name: 'ui/Btn',
+        figmaNode: '1:6',
+        description: componentDescription.replace('src/ui/Btn.tpl', 'src/ui/Btn.tpl'),
+      },
+      { name: 'ui/Input', figmaNode: '1:8', description: componentDescription.replace('Btn', 'Input') },
+      { name: 'ui/Field', figmaNode: '1:8', description: componentDescription.replace('Btn', 'Field') },
+      { name: 'ui/PageHeader', figmaNode: '1:13', description: componentDescription.replace('Btn', 'PageHeader') },
+      { name: 'ui/SidebarLink', figmaNode: '1:14', description: componentDescription.replace('Btn', 'SidebarLink') },
+      { name: 'ui/TopBar', figmaNode: '1:9', description: componentDescription.replace('Btn', 'TopBar') },
+      {
+        name: 'screen/TaskProviderSection',
+        figmaNode: '22:198',
+        description: 'CODE: src/screen/TaskProviderSection.tpl',
+      },
+      { name: 'Bind form', figmaNode: '22:199', description: 'CODE: src/screen/Bind-form.tpl | section: Bind form' },
+    ])
   })
 })
