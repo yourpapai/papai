@@ -24,7 +24,11 @@ const logOf = (name: string): string => path.join(SCENARIO_ROOT, name)
 
 type FixtureEvent = ReturnType<typeof readEvents>[number]
 
-function stageEvents(events: readonly FixtureEvent[], action: 'stage_enter' | 'stage_exit', stage: string): FixtureEvent[] {
+function stageEvents(
+  events: readonly FixtureEvent[],
+  action: 'stage_enter' | 'stage_exit',
+  stage: string,
+): FixtureEvent[] {
   return events.filter((event) => event.type === action && event.stage === stage)
 }
 
