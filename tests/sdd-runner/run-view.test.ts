@@ -6,7 +6,6 @@
 import { describe, expect, it } from 'bun:test'
 import assert from 'node:assert'
 
-import './color-frames.js'
 import { render } from 'ink-testing-library'
 import { createElement } from 'react'
 
