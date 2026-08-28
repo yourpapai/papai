@@ -57,11 +57,16 @@ const FINAL_VALUES: Readonly<Record<string, string | Record<string, string>>> = 
   'opencode-agent-fix-command': 'completed',
   'sdd-runner-decomposition-2nd': 'intake',
   'tests-consolidation': 'completed',
+  'abort-at-final-synthetic.ndjson': 'aborted',
   'children-plan-synthetic.ndjson': 'start',
+  'extend-at-final-cycle-synthetic.ndjson': 'completed',
   'resume-artifact-skip-gate.ndjson': AWAITING,
   's-depth-calm-stop-resume.ndjson': 'review',
   's-final-tail-synthetic.ndjson': AWAITING,
   'steer-extend-round.ndjson': 'review',
+  'tail-crash-resume-healed-synthetic.ndjson': AWAITING,
+  'tail-crash-resume-synthetic.ndjson': AWAITING,
+  'veto-at-final-cycle-synthetic.ndjson': 'completed',
   'veto-revision-synthetic.ndjson': 'draft',
 }
 
@@ -136,7 +141,7 @@ describe('golden-replay parity: graph v0 vs legacy fold', () => {
     })
   }
 
-  it('holds all sixteen fixtures from the C1+C4+C5 corpus', () => {
-    expect(collectFixtures()).toHaveLength(16)
+  it('holds all twenty-one fixtures from the C1+C4+C5 corpus', () => {
+    expect(collectFixtures()).toHaveLength(21)
   })
 })

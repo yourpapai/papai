@@ -24,22 +24,33 @@ const logOf = (name: string): string => path.join(SCENARIO_ROOT, name)
 
 type FixtureEvent = ReturnType<typeof readEvents>[number]
 
-function stageEvents(
-  events: readonly FixtureEvent[],
-  action: 'stage_enter' | 'stage_exit',
-  stage: string,
-): FixtureEvent[] {
+function stageEvents(events: readonly FixtureEvent[], action: 'stage_enter' | 'stage_exit', stage: string): FixtureEvent[] {
   return events.filter((event) => event.type === action && event.stage === stage)
 }
 
+function gateVersionsOf(events: readonly FixtureEvent[], action: 'presented' | 'answered'): number[] {
+  return events
+    .filter((event) => event.type === 'gate' && event.action === action)
+    .map((event) => (event.type === 'gate' ? event.version : 0))
+}
+
+function firstAnsweredOf(events: readonly FixtureEvent[], outcome: string): FixtureEvent | undefined {
+  return events.find((event) => event.type === 'gate' && event.action === 'answered' && event.outcome === outcome)
+}
+
 describe('scenario corpus inventory', () => {
-  it('holds exactly the six recorded scenario fixtures', () => {
+  it('holds exactly the eleven recorded scenario fixtures', () => {
     expect(scenarioFiles()).toEqual([
+      'abort-at-final-synthetic.ndjson',
       'children-plan-synthetic.ndjson',
+      'extend-at-final-cycle-synthetic.ndjson',
       'resume-artifact-skip-gate.ndjson',
       's-depth-calm-stop-resume.ndjson',
       's-final-tail-synthetic.ndjson',
       'steer-extend-round.ndjson',
+      'tail-crash-resume-healed-synthetic.ndjson',
+      'tail-crash-resume-synthetic.ndjson',
+      'veto-at-final-cycle-synthetic.ndjson',
       'veto-revision-synthetic.ndjson',
     ])
   })
@@ -102,5 +113,62 @@ describe('scenario corpus inventory', () => {
     expect(state.stages.atomicity).toBe('pending')
     expect(state.stages.gate).toBe('active')
     expect(state.gate).toEqual({ mode: 'final', version: 1, answered: false })
+  })
+
+  it('extend-at-final-cycle-synthetic covers the full extend cycle: answered-first settle, tail re-run, v2 re-presentation, approve completes', () => {
+    const events = readEvents(logOf('extend-at-final-cycle-synthetic.ndjson'))
+    expect(events).toHaveLength(32)
+    expect(stageEvents(events, 'stage_enter', 'decompose')).toHaveLength(2)
+    expect(gateVersionsOf(events, 'presented')).toEqual([1, 2])
+    expect(firstAnsweredOf(events, 'extend')?.seq).toBe(18)
+    expect(stageEvents(events, 'stage_exit', 'gate')[0]?.seq).toBe(19)
+    const kernel = foldEvents(pipelineMachine, events).snapshot
+    expect(kernel.value).toBe('completed')
+    expect(kernel.context.round).toEqual({ current: 2, cap: 4 })
+  })
+
+  it('abort-at-final-synthetic covers the abort settle: answered outcome=abort alone reaches the aborted final', () => {
+    const events = readEvents(logOf('abort-at-final-synthetic.ndjson'))
+    expect(events).toHaveLength(18)
+    expect(events.at(-1)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'abort' })
+    const kernel = foldEvents(pipelineMachine, events).snapshot
+    expect(kernel.value).toBe('aborted')
+    expect(kernel.status).toBe('done')
+  })
+
+  it('veto-at-final-cycle-synthetic covers the veto cycle: answered→exit→draft, revision round, v2 approve completes without a phantom round_open', () => {
+    const events = readEvents(logOf('veto-at-final-cycle-synthetic.ndjson'))
+    expect(events).toHaveLength(35)
+    expect(firstAnsweredOf(events, 'veto')?.seq).toBe(18)
+    expect(stageEvents(events, 'stage_exit', 'gate')[0]?.seq).toBe(19)
+    expect(stageEvents(events, 'stage_enter', 'draft').at(-1)?.seq).toBe(20)
+    expect(stageEvents(events, 'stage_enter', 'decompose')).toHaveLength(2)
+    const kernel = foldEvents(pipelineMachine, events).snapshot
+    expect(kernel.value).toBe('completed')
+    expect(kernel.context.round).toEqual({ current: 2, cap: 3 })
+  })
+
+  it('tail-crash-resume-synthetic covers the W3a crash window: gate entered, presentation never landed', () => {
+    const events = readEvents(logOf('tail-crash-resume-synthetic.ndjson'))
+    expect(events).toHaveLength(14)
+    expect(events.at(-1)).toMatchObject({ type: 'stage_enter', stage: 'gate' })
+    const state = replayEvents(logOf('tail-crash-resume-synthetic.ndjson'))
+    expect(state.gate).toBeNull()
+    expect(state.stages.atomicity).toBe('done')
+    expect(state.stages.gate).toBe('active')
+    const kernel = foldEvents(pipelineMachine, events).snapshot
+    expect(kernel.value).toEqual({ gate: 'awaiting' })
+  })
+
+  it('tail-crash-resume-healed-synthetic covers the healed W3a: owed presented at the file-scan version, ladder re-run', () => {
+    const events = readEvents(logOf('tail-crash-resume-healed-synthetic.ndjson'))
+    expect(events).toHaveLength(16)
+    expect(events.slice(14).map((event) => event.type)).toEqual(['gate', 'auto_decision'])
+    const state = replayEvents(logOf('tail-crash-resume-healed-synthetic.ndjson'))
+    expect(state.gate).toEqual({ mode: 'final', version: 1, answered: false })
+    expect(state.stages.atomicity).toBe('done')
+    expect(state.stages.gate).toBe('active')
+    const kernel = foldEvents(pipelineMachine, events).snapshot
+    expect(kernel.value).toEqual({ gate: 'awaiting' })
   })
 })
