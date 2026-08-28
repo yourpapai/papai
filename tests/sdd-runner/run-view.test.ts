@@ -268,7 +268,116 @@ describe('running screen presentation (6.2)', () => {
     expect(frame).toContain('$0.0500')
     expect(frame).toContain('\u001b[36m$0.0500')
     expect(frame).toContain('\u001b[36m$0.05')
+    expect(frame).toContain('\u001b[36m $0.05')
     unmount()
+  })
+
+  it('zero total cost renders no cost segment on the status line', () => {
+    let bag = emptyRunFold()
+    bag = foldRunView(bag, stamped(1, { altitude: 'L2', type: 'stage_enter', stage: 'review' }))
+    bag = foldRunView(
+      bag,
+      stamped(2, { altitude: 'L1', type: 'spawned', agent: 'reviewer-r1', role: 'reviewer', model: 'glm' }),
+    )
+    bag = foldRunView(bag, stamped(3, usage(0)))
+    const RunView = createRunView()
+    const { lastFrame, unmount } = render(
+      createElement(RunView, {
+        state: bag.state,
+        slots: bag.slots,
+        findings: bag.findings,
+        history: bag.history,
+        width: 100,
+        startedAt: 0,
+        now: 0,
+      }),
+    )
+    const frame = frameText(lastFrame())
+    const statusLine = frame.split('\n').find((line) => line.includes('q to stop'))
+    assert(statusLine !== undefined)
+    expect(statusLine.includes('$')).toBe(false)
+    expect(frame).toContain('$0.0000')
+    unmount()
+  })
+
+  it('narrow stacked pipeline lines carry the stage token for their icon', () => {
+    let bag = emptyRunFold()
+    bag = foldRunView(
+      bag,
+      stamped(1, { altitude: 'L2', type: 'depth', profile: 'S', rationale: 'single-file bugfix', source: 'override' }),
+    )
+    bag = foldRunView(bag, stamped(2, { altitude: 'L2', type: 'stage_enter', stage: 'intake' }))
+    bag = foldRunView(bag, stamped(3, { altitude: 'L2', type: 'stage_enter', stage: 'draft' }))
+    const RunView = createRunView()
+    const { lastFrame, unmount } = render(
+      createElement(RunView, {
+        state: bag.state,
+        slots: bag.slots,
+        findings: bag.findings,
+        history: bag.history,
+        width: 48,
+        startedAt: 0,
+        now: 0,
+      }),
+    )
+    const lines = frameText(lastFrame()).split('\n')
+    const lineOf = (needle: string): string => {
+      const hit = lines.find((line) => line.includes(needle))
+      assert(hit !== undefined)
+      return hit
+    }
+    const done = lineOf('\u2713 intake done')
+    expect(done.includes('\u001b[32m')).toBe(true)
+    expect(done.includes('\u001b[1m')).toBe(false)
+    const active = lineOf('\u25b6 draft active')
+    expect(active.includes('\u001b[1m\u001b[32m')).toBe(true)
+    const skipped = lineOf('\u2014 atomicity skipped')
+    expect(skipped.includes('\u001b[90m')).toBe(true)
+    const pending = lineOf('\u00b7 review pending')
+    expect(pending.includes('\u001b[2m')).toBe(true)
+    expect(pending.includes('\u001b[32m')).toBe(false)
+    unmount()
+  })
+
+  it('the retry badge rides only retrying slots', () => {
+    let bag = emptyRunFold()
+    bag = foldRunView(bag, stamped(1, { altitude: 'L2', type: 'stage_enter', stage: 'review' }))
+    bag = foldRunView(
+      bag,
+      stamped(2, { altitude: 'L1', type: 'spawned', agent: 'resolver-r1', role: 'resolver', model: 'glm' }),
+    )
+    const RunView = createRunView()
+    const props = {
+      state: bag.state,
+      slots: bag.slots,
+      findings: bag.findings,
+      history: bag.history,
+      width: 100,
+      startedAt: 0,
+      now: 0,
+    }
+    const first = render(createElement(RunView, props))
+    expect(frameText(first.lastFrame()).includes('[retry')).toBe(false)
+    first.unmount()
+    bag = foldRunView(
+      bag,
+      stamped(3, { altitude: 'L1', type: 'retrying', agent: 'resolver-r1', reason: 'stall', attempt: 2 }),
+    )
+    const second = render(
+      createElement(RunView, {
+        state: bag.state,
+        slots: bag.slots,
+        findings: bag.findings,
+        history: bag.history,
+        width: 100,
+        startedAt: 0,
+        now: 0,
+      }),
+    )
+    const frame = frameText(second.lastFrame())
+    expect(frame).toContain('[retry 2]')
+    expect(frame).toContain('\u001b[1m\u001b[35m')
+    second.unmount()
   })
 
   it('later events never mutate or reorder emitted history rows (7.4)', () => {

@@ -114,33 +114,8 @@ function costSegments(props: RunViewProps): readonly StatusPart[] {
   ]
 }
 
-/** Done-slot row: the cost rides the line end with the known-cost token; truncation never cuts the cost. */
-function doneSlotRow(
-  slot: SlotState & { readonly usage: { readonly input: number; readonly output: number; readonly costUsd: number } },
-  mode: ColorMode,
-  index: number,
-  contentWidth: number,
-): PanelRow {
-  const modelPart = slot.model === undefined ? '' : ` ${MIDDLE_DOT} ${slot.model}`
-  const cost = `$${slot.usage.costUsd.toFixed(4)}`
-  const prefixWidth = contentWidth - cost.length
-  const prefix = `${slot.agent} done${modelPart} ${MIDDLE_DOT} in ${formatTokenCount(slot.usage.input)} out ${formatTokenCount(slot.usage.output)} ${MIDDLE_DOT} `
-  if (prefixWidth < 8) {
-    return { key: `s-${String(index)}`, parts: [{ text: truncateDisplay(`${prefix}${cost}`, contentWidth) }] }
-  }
-  return {
-    key: `s-${String(index)}`,
-    parts: [
-      { text: padDisplay(truncateDisplay(prefix, prefixWidth), prefixWidth) },
-      { text: cost, tone: costToken(mode, 'known') },
-    ],
-  }
-}
-
-function slotRow(slot: SlotState, mode: ColorMode, index: number, contentWidth: number): PanelRow {
-  if (slot.status === 'done' && slot.usage !== undefined) {
-    return doneSlotRow({ ...slot, usage: slot.usage }, mode, index, contentWidth)
-  }
+/** Done slots never reach this row: they are finalized into history rows (see `foldHistoryRows`). */
+function slotRow(slot: SlotState, mode: ColorMode, index: number): PanelRow {
   const badge = slot.status === 'retrying' ? ` [retry ${slot.attempt}]` : ''
   return row(
     `s-${String(index)}`,
@@ -199,7 +174,6 @@ interface RunRows {
 
 /** Live rows only: pipeline map, active/retrying slots, decomposition children — done agents live in the history region. */
 function runRows(props: RunViewProps, mode: ColorMode): RunRows {
-  const contentWidth = Math.max(1, props.width - 4)
   const pipelineLines = renderPipelineMap(props.state, { width: props.width })
   const pipeline = pipelineLines.map((line, index) => {
     const status = pipelineLines.length === 1 ? wideStageStatus(props.state) : stageStatusOfLine(line)
@@ -209,7 +183,7 @@ function runRows(props: RunViewProps, mode: ColorMode): RunRows {
   const live = props.slots.filter((slot) => slot.status !== 'done')
   const agents = idle
     ? [row('idle', 'idle — waiting for events')]
-    : live.map((slot, index) => slotRow(slot, mode, index, contentWidth))
+    : live.map((slot, index) => slotRow(slot, mode, index))
   const children = childRows(props.state.children).map((line, index) => row(`c-${String(index)}`, line))
   return { pipeline, agents, children }
 }
