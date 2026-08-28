@@ -7,10 +7,10 @@ import pLimit from 'p-limit'
 
 import { runWithProviderRequestScope } from '../analytics/provider-request-scope.js'
 import type { ProviderRequestScope } from '../analytics/provider-request-scope.js'
-import { extractAppError } from '../errors.js'
 import { logger } from '../logger.js'
-import type { Task, TaskProvider } from '../providers/types.js'
+import type { Activity, Task, TaskProvider } from '../providers/types.js'
 import { extractWatchedTaskIds } from './condition-eval.js'
+import { classifyNotFound, fetchTaskHistories, planHistoryRequests } from './poller-alerts-activity.js'
 import type { AlertCondition, AlertPrompt } from './types.js'
 
 const log = logger.child({ scope: 'deferred:fetch-tasks' })
@@ -31,7 +31,7 @@ const extractFields = (condition: AlertCondition): Set<string> => {
       for (const child of c.and) walk(child)
     } else if ('or' in c) {
       for (const child of c.or) walk(child)
-    } else {
+    } else if ('field' in c) {
       fields.add(c.field)
     }
   }
@@ -106,8 +106,6 @@ export function enrichTasks(provider: TaskProvider, tasks: Task[], scope: Provid
   return runWithProviderRequestScope(scope, () => Promise.all(tasks.map((t) => provider.getTask(t.id))))
 }
 
-const isNotFoundCode = (code: string): boolean => code === 'task-not-found' || code === 'not-found'
-
 /** Fetch the given watched tasks by id via getTask with bounded concurrency.
  * Ids whose failure classifies as not-found are skipped with a warn; any other
  * error rejects the whole call. */
@@ -117,12 +115,9 @@ export function fetchWatchedTasks(provider: TaskProvider, ids: string[], scope: 
       ids.map((id) =>
         watchedTaskLimit(() =>
           provider.getTask(id).catch((error: unknown) => {
-            // Production providers throw their own *ClassifiedError classes
-            // (an Error carrying an `appError` payload), not
-            // ProviderClassifiedError — classify duck-typed, not by instanceof.
-            const appError = extractAppError(error)
-            if (appError !== null && appError.type === 'provider' && isNotFoundCode(appError.code)) {
-              log.warn({ taskId: id, code: appError.code }, 'Watched task not found; skipping')
+            const notFound = classifyNotFound(error)
+            if (notFound !== null) {
+              log.warn({ taskId: id, code: notFound.code }, 'Watched task not found; skipping')
               return null
             }
             throw error
@@ -133,27 +128,43 @@ export function fetchWatchedTasks(provider: TaskProvider, ids: string[], scope: 
   )
 }
 
-/** Fetch the tasks one instance poll evaluates: a pure-watch instance (every
- * active alert in the instance's routable contexts is a pure watch) targets
- * the deduped watched-id union via getTask; any other instance fetches the
- * whole list, enriched via getTask when some alert condition needs rich
- * fields. */
+/** Fetch the tasks one instance poll evaluates: a targeted instance (every
+ * active alert in the instance's routable contexts is a pure watch or a pure
+ * activity watch) targets the deduped watched-id union via getTask; any other
+ * instance fetches the whole list, enriched via getTask when some alert
+ * condition needs rich fields. Activity history is fetched alongside either
+ * path whenever the instance watches activity. */
 export async function fetchAlertTasks(
   configContextId: string,
   routable: Map<string, AlertPrompt[]>,
   provider: TaskProvider,
   scope: ProviderRequestScope,
-  pureInstance: boolean,
-): Promise<{ lightTasks: Task[]; enrichedTasks: Task[] | null; pureWatch: boolean } | null> {
-  if (pureInstance) {
+  targeted: boolean,
+  needHistory: boolean,
+): Promise<{
+  lightTasks: Task[]
+  enrichedTasks: Task[] | null
+  pureWatch: boolean
+  historyByTask: Map<string, Activity[]>
+} | null> {
+  const historyByTask = needHistory
+    ? await fetchTaskHistories(provider, planHistoryRequests([...routable.values()].flat()), scope, configContextId)
+    : new Map<string, Activity[]>()
+  if (targeted) {
     const instanceAlerts = [...routable.values()].flat()
     const watchedIds = [...new Set(instanceAlerts.flatMap((alert) => extractWatchedTaskIds(alert.condition)))]
-    log.debug({ configContextId, watchedCount: watchedIds.length }, 'Pure-watch instance; fetching watched tasks by id')
-    return { lightTasks: await fetchWatchedTasks(provider, watchedIds, scope), enrichedTasks: null, pureWatch: true }
+    log.debug({ configContextId, watchedCount: watchedIds.length }, 'Targeted instance; fetching watched tasks by id')
+    return {
+      lightTasks: await fetchWatchedTasks(provider, watchedIds, scope),
+      enrichedTasks: null,
+      pureWatch: true,
+      historyByTask,
+    }
   }
   const lightTasks = await fetchAllTasks(provider, scope)
   const needsEnrichment = [...routable.values()].some((alerts) => alertsNeedFullTasks(alerts))
-  if (!needsEnrichment || lightTasks.length === 0) return { lightTasks, enrichedTasks: null, pureWatch: false }
+  if (!needsEnrichment || lightTasks.length === 0)
+    return { lightTasks, enrichedTasks: null, pureWatch: false, historyByTask }
   try {
     log.debug(
       { configContextId, taskCount: lightTasks.length },
@@ -163,6 +174,7 @@ export async function fetchAlertTasks(
       lightTasks,
       enrichedTasks: await enrichTasks(provider, lightTasks, scope),
       pureWatch: false,
+      historyByTask,
     }
   } catch (error) {
     log.warn(

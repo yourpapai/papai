@@ -70,12 +70,7 @@ type BuilderArgs =
       contextType: ContextType | undefined,
       username: string | null | undefined,
       stagedDownloadFn: StagedFileDownloadFn | undefined,
-    ]
-  | readonly [
-      contextType: ContextType | undefined,
-      username: string | null | undefined,
-      stagedDownloadFn: StagedFileDownloadFn | undefined,
-      chatParticipantResolver: ChatParticipantResolver | undefined,
+      chatParticipantResolver?: ChatParticipantResolver | undefined,
     ]
 
 function maybeAddProjectTools(tools: ToolSet, provider: TaskProvider): void {
@@ -262,6 +257,7 @@ export function buildTools(
     username,
     stagedDownloadFn,
     allowTaskDependentDeferredPrompts: true,
+    activityAlertsEnabled: provider.capabilities.has('activities.read') && provider.getTaskHistory !== undefined,
   })
   const storageOwnerId = getStorageOwnerId(chatUserId, contextId)
   if (storageOwnerId !== undefined)

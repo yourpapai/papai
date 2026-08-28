@@ -33,6 +33,7 @@ export function addDeferredPromptTools(
   contextType: ContextType | undefined,
   username: string | null | undefined,
   allowTaskConditions = true,
+  activityAlertsEnabled = false,
 ): void {
   if (storageOwnerId === undefined || chatUserId === undefined) return
   const ctxId = getContextId(contextId, storageOwnerId)
@@ -43,6 +44,13 @@ export function addDeferredPromptTools(
   tools['update_reminder'] = makeUpdateReminderTool(storageOwnerId)
   tools['cancel_reminder'] = makeCancelReminderTool(storageOwnerId)
   if (allowTaskConditions) {
-    tools['create_alert'] = makeCreateAlertTool(storageOwnerId, ctxId, ctxType, username, chatUserId)
+    tools['create_alert'] = makeCreateAlertTool(
+      storageOwnerId,
+      ctxId,
+      ctxType,
+      username,
+      chatUserId,
+      activityAlertsEnabled,
+    )
   }
 }

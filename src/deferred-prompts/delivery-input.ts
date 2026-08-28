@@ -11,7 +11,12 @@ export type CreateDeliveryContext = {
   userId: string
   storageContextId: string
   contextType: ContextType
-} & Partial<Readonly<{ username: string | null }>>
+} & Partial<
+  Readonly<{
+    username: string | null
+    activityAlertsEnabled: boolean
+  }>
+>
 
 export type DeliveryPolicy = Partial<Readonly<{ mention_user_ids: string[] }>>
 
