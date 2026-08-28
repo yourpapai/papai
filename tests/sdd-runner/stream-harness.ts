@@ -80,6 +80,8 @@ export interface StreamMount {
   readonly waitUntilRenderFlush: () => Promise<void>
   readonly stdout: FakeStdout
   readonly streamText: () => string
+  /** The most recent non-empty write — the current frame, not the cumulative stream. */
+  readonly lastFrame: () => string
 }
 
 export function mountToStream(element: ReactElement, stdout: FakeStdout = new FakeStdout()): StreamMount {
@@ -103,6 +105,13 @@ export function mountToStream(element: ReactElement, stdout: FakeStdout = new Fa
     waitUntilRenderFlush: (): Promise<void> => instance.waitUntilRenderFlush(),
     stdout,
     streamText: (): string => stdout.writes.join(''),
+    lastFrame: (): string => {
+      for (let index = stdout.writes.length - 1; index >= 0; index -= 1) {
+        const write = stdout.writes[index]
+        if (write !== undefined && write.includes('\n')) return write
+      }
+      return ''
+    },
   }
 }
 

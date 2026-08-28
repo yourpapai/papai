@@ -12,6 +12,7 @@ import { renderPipelineMap } from '../../sdd-runner/src/renderer.js'
 import { createRunView } from '../../sdd-runner/src/run-view.js'
 import { emptyRunFold } from '../../sdd-runner/src/run-view.js'
 import type { RunFold } from '../../sdd-runner/src/run-view.js'
+import { displayWidth } from '../../sdd-runner/src/tui-panels.js'
 
 const NOW = 9_000_000
 const START = 0
@@ -26,6 +27,7 @@ function frameFor(bag: RunFold, width: number): string {
       width,
       startedAt: START,
       now: NOW,
+      colorMode: 'monochrome',
     }),
   )
   const frame = lastFrame() ?? ''
@@ -49,7 +51,7 @@ describe('narrow-terminal degradation (4.8)', () => {
 
   it('the run view under 60 cols renders no line wider than the terminal', () => {
     const frame = frameFor(emptyRunFold(), 40)
-    const widest = Math.max(...frame.split('\n').map((line) => line.length))
+    const widest = Math.max(...frame.split('\n').map((line) => displayWidth(line)))
     expect(widest).toBeLessThanOrEqual(40)
   })
 

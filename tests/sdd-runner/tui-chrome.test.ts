@@ -45,8 +45,10 @@ describe('keyHints (exact values, only currently-active bindings)', () => {
   it('early gate lists extend; final gate does not', () => {
     const early = keyHints({ screen: 'gate', gateMode: 'early', inputOpen: false })
     const final = keyHints({ screen: 'gate', gateMode: 'final', inputOpen: false })
+    const plan = keyHints({ screen: 'gate', gateMode: 'plan', inputOpen: false })
     expect(early.map((hint) => hint.key)).toContain('(e)xtend')
     expect(final.map((hint) => hint.key)).not.toContain('(e)xtend')
+    expect(plan.map((hint) => hint.key)).not.toContain('(e)xtend')
     expect(final.map((hint) => hint.key)).toEqual([
       '(↑/↓)',
       '(space)',

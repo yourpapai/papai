@@ -30,7 +30,7 @@ export interface KeyHint {
 }
 
 export type HintsInput =
-  | { readonly screen: 'gate'; readonly gateMode: 'early' | 'final'; readonly inputOpen: boolean }
+  | { readonly screen: 'gate'; readonly gateMode: 'early' | 'final' | 'plan'; readonly inputOpen: boolean }
   | { readonly screen: 'running' }
   | {
       readonly screen: 'session-list'

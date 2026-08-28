@@ -15,8 +15,11 @@ import type { ReactElement } from 'react'
 
 import type { EventInput } from '../../sdd-runner/src/events.js'
 import { appendEvent, stampEvent } from '../../sdd-runner/src/events.js'
+import type { KeyFlags } from '../../sdd-runner/src/gate-session-state.js'
 import { emptyRunFold, foldRunView } from '../../sdd-runner/src/run-view.js'
 import type { RunFold } from '../../sdd-runner/src/run-view.js'
+import { createKeyFeed } from '../../sdd-runner/src/tui-gate-session.js'
+import type { KeyFeed } from '../../sdd-runner/src/tui-gate-session.js'
 import { RunScreenTui } from '../../sdd-runner/src/tui-run-session.js'
 import { createRunScreenSession } from '../../sdd-runner/src/tui-run-session.js'
 import type { RunScreenSessionDeps } from '../../sdd-runner/src/tui-run-session.js'
@@ -231,5 +234,120 @@ describe('factory-identity pin (1.4: rerenders never remount the mounted tree)',
     }
     expect(text).toContain('reviewer-r1')
     expect(text).toContain('fixer-r1')
+  })
+})
+
+function stackedFrame(frame: string): boolean {
+  return frame.includes('╭─ Findings') && !frame.includes('╮╭─ Burndown')
+}
+
+describe('running screen chrome (6.2: footer + help overlay + width reflow)', () => {
+  const PLAIN: KeyFlags = {
+    upArrow: false,
+    downArrow: false,
+    return: false,
+    escape: false,
+    backspace: false,
+    delete: false,
+  }
+
+  async function mountedRunScreen(bag: RunFold): Promise<{
+    readonly mount: ReturnType<typeof mountToStream>
+    readonly keys: KeyFeed
+  }> {
+    const keys = createKeyFeed()
+    const mount = mountToStream(
+      createElement(RunScreenTui, {
+        bag,
+        startedAt: 0,
+        now: 60_000,
+        onRequestCalmStop: () => undefined,
+        onHardExit: () => undefined,
+        keys,
+      }),
+    )
+    await keys.whenSubscribed
+    await mount.waitUntilRenderFlush()
+    return { mount, keys }
+  }
+
+  it('renders the persistent footer beside the status line', async () => {
+    const { mount } = await mountedRunScreen(emptyRunFold())
+    try {
+      expect(mount.streamText()).toContain('(q) · (Ctrl-C ×2) · (?) help')
+      expect(mount.streamText()).toContain('q to stop')
+    } finally {
+      mount.unmount()
+    }
+  })
+
+  it('? opens the overlay; while open q and Ctrl-C are swallowed; after dismissal q stops calmly', async () => {
+    const dir = makeDir()
+    const logPath = path.join(dir, 'events.ndjson')
+    fs.writeFileSync(logPath, '')
+    const spy = makeDeps(logPath)
+    const calmKeys = createKeyFeed()
+    const calmMount = mountToStream(
+      createElement(RunScreenTui, {
+        bag: emptyRunFold(),
+        startedAt: 0,
+        now: 0,
+        onRequestCalmStop: spy.deps.requestCalmStop,
+        onHardExit: (): void => {
+          spy.deps.hardExit(130)
+        },
+        keys: calmKeys,
+      }),
+    )
+    try {
+      await calmKeys.whenSubscribed
+      calmKeys.emit('?', PLAIN)
+      await waitFor(() => calmMount.streamText().includes('Keys · running'))
+      calmKeys.emit('q', PLAIN)
+      calmKeys.emit('\u0003', PLAIN)
+      await calmMount.waitUntilRenderFlush()
+      expect(spy.calmStops).toBe(0)
+      expect(spy.exitCodes).toEqual([])
+      expect(calmMount.streamText()).toContain('Keys · running')
+      calmKeys.emit('?', PLAIN)
+      await calmMount.waitUntilRenderFlush()
+      calmKeys.emit('q', PLAIN)
+      await waitFor(() => spy.calmStops === 1)
+      expect(spy.exitCodes).toEqual([])
+    } finally {
+      calmMount.unmount()
+    }
+  })
+
+  it('narrow→stack→rejoin reflow without losing content', async () => {
+    let bag = emptyRunFold()
+    bag = foldRunView(bag, e(1, { altitude: 'L2', type: 'stage_enter', stage: 'review' }))
+    bag = foldRunView(
+      bag,
+      e(2, { altitude: 'L2', type: 'finding', action: 'filed', id: 'F1', round: 1, class: 'BLOCKER' }),
+    )
+    bag = foldRunView(
+      bag,
+      e(3, {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 1,
+        verdict: 'open',
+        counts: { blocker: 1, material: 0, nitpick: 0 },
+      }),
+    )
+    const { mount } = await mountedRunScreen(bag)
+    try {
+      await waitFor(() => mount.lastFrame().includes('╮╭─ Burndown'))
+      mount.stdout.resizeTo(48, 24)
+      await waitFor(() => stackedFrame(mount.lastFrame()))
+      mount.stdout.resizeTo(100, 24)
+      await waitFor(() => mount.lastFrame().includes('╮╭─ Burndown'))
+      expect(mount.lastFrame()).toContain('round 1: 1b 0m 0n')
+      expect(mount.lastFrame()).toContain('BLOCKER')
+      expect(mount.lastFrame()).toContain('F1 r1')
+    } finally {
+      mount.unmount()
+    }
   })
 })

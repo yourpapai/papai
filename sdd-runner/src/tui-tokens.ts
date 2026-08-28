@@ -64,6 +64,17 @@ export function colorModeFor(env: ColorEnv): ColorMode {
   return 'color'
 }
 
+/** A stdout-shaped color source; a missing (fake) `getColorDepth` means color-capable. */
+export interface ColorSource {
+  getColorDepth?(): number | undefined
+}
+
+/** Resolve the mode from a mounted stdout plus the process env. */
+export function colorModeFromStdout(stdout: ColorSource): ColorMode {
+  const depth = typeof stdout.getColorDepth === 'function' ? (stdout.getColorDepth() ?? 8) : 8
+  return colorModeFor({ noColor: process.env['NO_COLOR'], colorDepth: depth })
+}
+
 export function severityToken(mode: ColorMode, severity: Severity): InkColorProps {
   return mode === 'color' ? SEVERITY[severity] : {}
 }

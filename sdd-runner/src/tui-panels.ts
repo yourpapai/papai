@@ -42,18 +42,30 @@ function repeatChar(char: string, count: number): string {
   return char.repeat(Math.max(0, count))
 }
 
+/** Top frame line: `╭─ Title ─╮` (or an untitled bar), padded to `width` columns. */
+export function frameTop(width: number, title = ''): string {
+  const titleText = title === '' ? '' : ` ${title} `
+  return `╭─${titleText}${repeatChar('─', width - 3 - displayWidth(titleText))}╮`
+}
+
+/** Bottom frame line: `╰──╯`, padded to `width` columns. */
+export function frameBottom(width: number): string {
+  return `╰${repeatChar('─', width - 2)}╯`
+}
+
+/** One framed body line: content padded and truncated by display width. */
+export function frameBodyLine(text: string, width: number): string {
+  const contentWidth = Math.max(1, width - 4)
+  return `│ ${padDisplay(truncateDisplay(text, contentWidth), contentWidth)} │`
+}
+
 /**
  * One shared frame style: `╭─ Title ─╮ … ╰──╯` with content padded and
  * truncated by display width so every framed line is exactly `width`
  * columns (or fewer when width is degenerately small).
  */
 export function frameLines(lines: readonly string[], width: number, title = ''): string[] {
-  const contentWidth = Math.max(1, width - 4)
-  const titleText = title === '' ? '' : ` ${title} `
-  const top = `╭─${titleText}${repeatChar('─', width - 3 - displayWidth(titleText))}╮`
-  const bottom = `╰${repeatChar('─', width - 2)}╯`
-  const body = lines.map((line) => `│ ${padDisplay(truncateDisplay(line, contentWidth), contentWidth)} │`)
-  return [top, ...body, bottom]
+  return [frameTop(width, title), ...lines.map((line) => frameBodyLine(line, width)), frameBottom(width)]
 }
 
 /**

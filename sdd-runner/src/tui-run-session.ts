@@ -3,17 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { render, useInput } from 'ink'
-import { createElement, useCallback, useEffect, useRef } from 'react'
+import { render, useInput, useStdout } from 'ink'
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { EventInput } from './events.js'
 import type { RunFold } from './run-view.js'
 import { createRunView, emptyRunFold, foldRunView } from './run-view.js'
+import { keyHints, reduceHelpOverlay, ScreenChrome } from './tui-chrome.js'
+import type { OverlayState } from './tui-chrome.js'
 import { createKeyFeed } from './tui-gate-session.js'
 import type { KeyFeed } from './tui-gate-session.js'
 import { restoreRunFold } from './tui-restore.js'
 import { reduceStopKey } from './tui-signals.js'
 import type { StopKeyState } from './tui-signals.js'
+import { colorModeFromStdout } from './tui-tokens.js'
+import { useTerminalWidth } from './tui-width.js'
 
 /**
  * TUI running screen session (tui-wiring D1): mounts the existing RunView
@@ -21,11 +25,16 @@ import type { StopKeyState } from './tui-signals.js'
  * state — the fold rebuilds from `events.ndjson`, so unmount is always safe.
  * Stop keys ride `reduceStopKey`: `q` / first Ctrl-C request a calm stop
  * through the injected seam, a second Ctrl-C hard-exits 130.
+ *
+ * Presentation (fancy-ui 6.2): the persistent footer + `?` help overlay ride
+ * `ScreenChrome` above the stop keys (an open overlay swallows stop keys);
+ * width is reactive (`useTerminalWidth` replaces the mount-time capture).
  */
 
 export interface RunScreenTuiProps {
   readonly bag: RunFold
-  readonly width: number
+  /** Injectable width override; the terminal width when absent. */
+  readonly width?: number
   readonly startedAt: number
   readonly now: number
   readonly onRequestCalmStop: () => void
@@ -46,11 +55,30 @@ const PLAIN_KEY = {
 /** Instantiated once per module, not per render — the run tree must keep a stable component identity so `Static` regions never re-emit (fancy-ui D6). */
 const RunView = createRunView()
 
-export function RunScreenTui(props: RunScreenTuiProps): ReturnType<typeof createElement> {
-  const { bag, width, startedAt, now, onRequestCalmStop, onHardExit, keys } = props
+/** Overlay routing above the stop keys: an open overlay swallows `q`/Ctrl-C; `?`/Esc toggle it. */
+function useRunScreenKeys(
+  onRequestCalmStop: () => void,
+  onHardExit: () => void,
+): { readonly handle: (input: string) => void; readonly overlay: OverlayState } {
   const stopState = useRef<StopKeyState>({ interruptions: 0 })
+  const [overlay, setOverlay] = useState<OverlayState>({ open: false })
+  const overlayRef = useRef<OverlayState>(overlay)
   const handle = useCallback(
     (input: string) => {
+      const routing = reduceHelpOverlay(overlayRef.current, false, input, {
+        upArrow: false,
+        downArrow: false,
+        return: false,
+        escape: input === '\u001b',
+        backspace: false,
+        delete: false,
+      })
+      if (routing.kind === 'state') {
+        overlayRef.current = routing.state
+        setOverlay(routing.state)
+        return
+      }
+      if (routing.kind === 'consume') return
       const reduced = reduceStopKey(stopState.current, input)
       stopState.current = reduced.state
       if (reduced.action.kind === 'calm-stop') onRequestCalmStop()
@@ -58,18 +86,37 @@ export function RunScreenTui(props: RunScreenTuiProps): ReturnType<typeof create
     },
     [onRequestCalmStop, onHardExit],
   )
+  return { handle, overlay }
+}
+
+export function RunScreenTui(props: RunScreenTuiProps): ReturnType<typeof createElement> {
+  const { bag, startedAt, now, onRequestCalmStop, onHardExit, keys } = props
+  const { stdout } = useStdout()
+  const terminalWidth = useTerminalWidth()
+  const width = props.width ?? terminalWidth
+  const colorMode = useMemo(() => colorModeFromStdout(stdout), [stdout])
+  const { handle, overlay } = useRunScreenKeys(onRequestCalmStop, onHardExit)
   useInput(handle, { isActive: keys === undefined })
   useEffect(() => {
     if (keys === undefined) return undefined
     return keys.onKey(handle)
   }, [keys, handle])
-  return createElement(RunView, {
-    state: bag.state,
-    slots: bag.slots,
-    findings: bag.findings,
+  return createElement(ScreenChrome, {
+    overlay,
+    screen: 'running',
+    hints: keyHints({ screen: 'running' }),
     width,
-    startedAt,
-    now,
+    children: [
+      createElement(RunView, {
+        state: bag.state,
+        slots: bag.slots,
+        findings: bag.findings,
+        width,
+        startedAt,
+        now,
+        colorMode,
+      }),
+    ],
   })
 }
 
@@ -106,13 +153,11 @@ async function feedScript(feed: KeyFeed, script: string): Promise<void> {
 
 export function createRunScreenSession(deps: RunScreenSessionDeps): RunScreenSession {
   let bag = seedFold(deps.logPath)
-  const width = process.stdout.columns ?? 100
   const startedAt = Date.now()
   const keys = deps.keyScript === undefined ? undefined : createKeyFeed()
   const element = (): ReturnType<typeof createElement> =>
     createElement(RunScreenTui, {
       bag,
-      width,
       startedAt,
       now: Date.now(),
       onRequestCalmStop: (): void => {

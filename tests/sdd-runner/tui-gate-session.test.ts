@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
+import './color-frames.js'
 import { render } from 'ink-testing-library'
 import { createElement } from 'react'
 
@@ -14,6 +15,7 @@ import { parseGateResponse } from '../../sdd-runner/src/gate-model.js'
 import type { GateSessionView } from '../../sdd-runner/src/gate-session.js'
 import type { KeyFlags } from '../../sdd-runner/src/tui-gate-session.js'
 import { createKeyFeed, GateSessionTui, runTuiGateSession } from '../../sdd-runner/src/tui-gate-session.js'
+import { mountToStream, waitFor } from './stream-harness.js'
 
 const VIEW: GateSessionView = {
   gateMode: 'early',
@@ -240,5 +242,182 @@ describe('runTuiGateSession', () => {
     })
     expect(result.status).toBe('abandoned')
     expect(written.length).toBe(0)
+  })
+})
+
+async function driveInteractive(view: GateSessionView = VIEW): Promise<{
+  readonly press: (input: string, key?: KeyFlags) => Promise<void>
+  readonly settled: GateAnswers[]
+  readonly abandoned: () => boolean
+  readonly frame: () => string
+  readonly unmount: () => void
+}> {
+  const feed = createKeyFeed()
+  const settled: GateAnswers[] = []
+  let abandoned = false
+  const instance = render(
+    createElement(GateSessionTui, {
+      view,
+      onSettle: (answers) => {
+        settled.push(answers)
+      },
+      onAbandoned: () => {
+        abandoned = true
+      },
+      keys: feed,
+    }),
+  )
+  await feed.whenSubscribed
+  const plain: KeyFlags = {
+    upArrow: false,
+    downArrow: false,
+    return: false,
+    escape: false,
+    backspace: false,
+    delete: false,
+  }
+  return {
+    press: async (input: string, key: KeyFlags = plain): Promise<void> => {
+      const before = instance.lastFrame()
+      feed.emit(input, key)
+      const deadline = Date.now() + 150
+      while (instance.lastFrame() === before && Date.now() < deadline) {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 5)
+        })
+      }
+    },
+    settled,
+    abandoned: (): boolean => abandoned,
+    frame: (): string => instance.lastFrame() ?? '',
+    unmount: (): void => {
+      instance.unmount()
+    },
+  }
+}
+
+describe('gate chrome (6.1: footer + help overlay)', () => {
+  it('renders the persistent gate footer with the current bindings', async () => {
+    const session = await driveInteractive()
+    expect(session.frame()).toContain('(a)pprove · (e)xtend · (x)abort · (q)uit · (?) help')
+    session.unmount()
+  })
+
+  it('? opens the overlay above the footer; dismissal restores the frame exactly', async () => {
+    const session = await driveInteractive()
+    const plain = session.frame()
+    await session.press('?')
+    expect(session.frame()).toContain('Keys · gate')
+    expect(session.frame()).toContain('(?) help')
+    expect(session.frame()).toContain('(e)xtend — ')
+    await session.press('?')
+    expect(session.frame()).toBe(plain)
+    session.unmount()
+  })
+
+  it('an open overlay swallows every key — no decisions, no abandon', async () => {
+    const session = await driveInteractive()
+    await session.press('?')
+    await session.press('a', {
+      upArrow: false,
+      downArrow: false,
+      return: false,
+      escape: false,
+      backspace: false,
+      delete: false,
+    })
+    await session.press('x')
+    await session.press('q')
+    await session.press('\u001b[B', {
+      upArrow: false,
+      downArrow: true,
+      return: false,
+      escape: false,
+      backspace: false,
+      delete: false,
+    })
+    expect(session.settled.length).toBe(0)
+    expect(session.abandoned()).toBe(false)
+    expect(session.frame()).toContain('Keys · gate')
+    session.unmount()
+  })
+
+  it('? stays literal while a redirect or blocker input is open', async () => {
+    const session = await driveInteractive()
+    await session.press('\u001b[B', {
+      upArrow: false,
+      downArrow: true,
+      return: false,
+      escape: false,
+      backspace: false,
+      delete: false,
+    })
+    await session.press(' ')
+    await session.press('\r', {
+      upArrow: false,
+      downArrow: false,
+      return: true,
+      escape: false,
+      backspace: false,
+      delete: false,
+    })
+    await session.press('?')
+    expect(session.frame()).toContain('redirect for F1: ?')
+    expect(session.frame()).not.toContain('Keys · gate')
+    await session.press('x')
+    expect(session.frame()).toContain('redirect for F1: ?x')
+    expect(session.settled.length).toBe(0)
+    session.unmount()
+  })
+
+  it('a mid-entry resize preserves the in-view input buffer and typing continues', async () => {
+    const feed = createKeyFeed()
+    const mount = mountToStream(
+      createElement(GateSessionTui, {
+        view: VIEW,
+        onSettle: () => {},
+        onAbandoned: () => {},
+        keys: feed,
+      }),
+    )
+    try {
+      await mount.waitUntilRenderFlush()
+      const down: KeyFlags = {
+        upArrow: false,
+        downArrow: true,
+        return: false,
+        escape: false,
+        backspace: false,
+        delete: false,
+      }
+      const cr: KeyFlags = {
+        upArrow: false,
+        downArrow: false,
+        return: true,
+        escape: false,
+        backspace: false,
+        delete: false,
+      }
+      const plain: KeyFlags = {
+        upArrow: false,
+        downArrow: false,
+        return: false,
+        escape: false,
+        backspace: false,
+        delete: false,
+      }
+      await feed.whenSubscribed
+      feed.emit('\u001b[B', down)
+      feed.emit(' ', plain)
+      feed.emit('\r', cr)
+      feed.emit('why', plain)
+      await waitFor(() => mount.streamText().includes('redirect for F1: why'))
+      mount.stdout.resizeTo(48, 24)
+      await waitFor(() => mount.streamText().includes('    evidence: proposal.md L5'))
+      feed.emit(' now', plain)
+      await waitFor(() => mount.streamText().includes('redirect for F1: why now'))
+    } finally {
+      mount.unmount()
+    }
   })
 })

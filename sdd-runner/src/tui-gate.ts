@@ -9,6 +9,9 @@ import { createElement } from 'react'
 import type { GateAnswers, GateAnswerItem } from './gate-answers.js'
 import type { GateSessionView } from './gate-session.js'
 import { consequenceLines } from './gate-session.js'
+import { frameBodyLine, frameBottom, frameTop, joinOrStack } from './tui-panels.js'
+import { severityToken } from './tui-tokens.js'
+import type { ColorMode } from './tui-tokens.js'
 
 /**
  * TUI gate screen (D4): every assumption, open finding, and blocker as an
@@ -17,6 +20,11 @@ import { consequenceLines } from './gate-session.js'
  * Approve stays unavailable until the trajectory ack is affirmed and every
  * blocker is answered — the constraint lives here in pure view logic the
  * component renders, not in the component's own state.
+ *
+ * Presentation (fancy-ui 6.1): framed panels in the one shared style —
+ * items beside their evidence at wide width, evidence stacked under the
+ * item below the join threshold — and the blocker severity token colors
+ * blocker rows (decoration only; the text carries the meaning).
  */
 export interface GateToggles {
   readonly toggles: Readonly<Record<string, boolean>>
@@ -29,6 +37,7 @@ export interface GateScreenProps extends GateToggles {
   readonly view: GateSessionView
   readonly width: number
   readonly cursor?: number
+  readonly colorMode?: ColorMode
 }
 
 /** Approve is unavailable until the ack is affirmed and every blocker answered. */
@@ -67,64 +76,116 @@ export function gateAnswersFromToggles(view: GateSessionView, state: GateToggles
   return { items, blockerAnswers, acks, decision: anyDeclined ? 'veto' : 'approve' }
 }
 
-type GateLine = { readonly key: string; readonly text: string }
+type GateRow = { readonly key: string; readonly text: string; readonly tone?: 'blocker' }
 
-function gateScreenLines(view: GateSessionView, state: GateToggles, cursor: number): GateLine[] {
-  let row = -1
-  const mark = (): string => {
-    row += 1
-    return row === cursor ? '❯ ' : '  '
+interface GatePanel {
+  readonly title: string
+  readonly rows: readonly GateRow[]
+}
+
+interface RowCursor {
+  row: number
+}
+
+function mark(cursor: RowCursor, target: number): string {
+  const current = cursor.row
+  cursor.row += 1
+  return current === target ? '❯ ' : '  '
+}
+
+function ackRow(view: GateSessionView, state: GateToggles, cursor: RowCursor, target: number): GateRow {
+  return {
+    key: 'ack',
+    text: `${mark(cursor, target)}[${state.ackAffirmed ? 'x' : ' '}] ${view.requiredAck?.id ?? ''} ${view.requiredAck?.text ?? ''} (toggle to affirm)`,
   }
-  const lines: GateLine[] = []
-  lines.push({ key: 'mode', text: `## Gate (${view.gateMode})` })
+}
+
+function gateItemRows(
+  view: GateSessionView,
+  state: GateToggles,
+  cursor: RowCursor,
+  target: number,
+  wide: boolean,
+): readonly GateRow[] {
+  const rows: GateRow[] = []
   for (const item of view.items) {
     const accepted = state.toggles[item.id] !== false
     const readOnly = item.decidedBy !== undefined
     const check = readOnly || accepted ? '[x]' : '[ ]'
     const suffix = readOnly ? ` · decided-by: ${item.decidedBy} (read-only)` : ''
-    lines.push({ key: item.id, text: `${mark()}${check} ${item.id} ${item.text}${suffix}` })
-    if (!accepted && state.redirects[item.id] !== undefined) {
-      lines.push({ key: `${item.id}-r`, text: `→ ${state.redirects[item.id]}` })
-    }
-    if (!readOnly) {
-      lines.push({ key: `${item.id}-e`, text: `    evidence: ${item.evidence === '' ? '(none)' : item.evidence}` })
-    }
-  }
-  if (view.blockers.length > 0) {
-    lines.push({ key: 'blockers-h', text: '## Blockers' })
-    for (const blocker of view.blockers) {
-      lines.push({ key: blocker.id, text: `${mark()}${blocker.id} ${blocker.gap}` })
-      const answer = state.blockerAnswers[blocker.id]
-      lines.push({ key: `${blocker.id}-a`, text: answer === undefined ? '→ (unanswered)' : `→ ${answer}` })
-    }
-  }
-  if (view.requiredAck !== null) {
-    lines.push({
-      key: 'ack',
-      text: `${mark()}[${state.ackAffirmed ? 'x' : ' '}] ${view.requiredAck.id} ${view.requiredAck.text} (toggle to affirm)`,
+    const evidence = `evidence: ${item.evidence === '' ? '(none)' : item.evidence}`
+    const besideEvidence = wide && !readOnly ? ` · ${evidence}` : ''
+    rows.push({
+      key: item.id,
+      text: `${mark(cursor, target)}${check} ${item.id} ${item.text}${suffix}${besideEvidence}`,
     })
+    if (!accepted && state.redirects[item.id] !== undefined) {
+      rows.push({ key: `${item.id}-r`, text: `→ ${state.redirects[item.id]}` })
+    }
+    if (!wide && !readOnly) {
+      rows.push({ key: `${item.id}-e`, text: `    ${evidence}` })
+    }
   }
-  const consequences = consequenceLines(view)
-  for (const line of consequences) {
+  return rows
+}
+
+function gateBlockerRows(
+  view: GateSessionView,
+  state: GateToggles,
+  cursor: RowCursor,
+  target: number,
+): readonly GateRow[] {
+  const rows: GateRow[] = []
+  for (const blocker of view.blockers) {
+    rows.push({ key: blocker.id, text: `${mark(cursor, target)}${blocker.id} ${blocker.gap}`, tone: 'blocker' })
+    const answer = state.blockerAnswers[blocker.id]
+    rows.push({ key: `${blocker.id}-a`, text: answer === undefined ? '→ (unanswered)' : `→ ${answer}` })
+  }
+  if (view.requiredAck !== null) rows.push(ackRow(view, state, cursor, target))
+  return rows
+}
+
+function gateDecisionRows(view: GateSessionView, state: GateToggles): readonly GateRow[] {
+  const rows: GateRow[] = []
+  for (const line of consequenceLines(view)) {
     if (line === 'Decision:') continue
-    if (line.startsWith('  approve')) lines.push({ key: 'c-a', text: line.replace('  approve —', '(a)pprove —') })
-    else if (line.startsWith('  extend')) lines.push({ key: 'c-e', text: line.replace('  extend —', '(e)xtend —') })
-    else if (line.startsWith('  abort')) lines.push({ key: 'c-x', text: line.replace('  abort —', '(x)abort —') })
-    else lines.push({ key: `c-${line}`, text: line })
+    if (line.startsWith('  approve')) rows.push({ key: 'c-a', text: line.replace('  approve —', '(a)pprove —') })
+    else if (line.startsWith('  extend')) rows.push({ key: 'c-e', text: line.replace('  extend —', '(e)xtend —') })
+    else if (line.startsWith('  abort')) rows.push({ key: 'c-x', text: line.replace('  abort —', '(x)abort —') })
+    else rows.push({ key: `c-${line}`, text: line })
   }
-  return lines
+  const blocked = approveBlockers(view, state)
+  if (blocked !== null) rows.push({ key: 'blocked', text: blocked })
+  return rows
+}
+
+function gatePanels(view: GateSessionView, state: GateToggles, cursor: number, width: number): readonly GatePanel[] {
+  const wide = joinOrStack(width) === 'join'
+  const counter: RowCursor = { row: 0 }
+  const gateRows: GateRow[] = [...gateItemRows(view, state, counter, cursor, wide)]
+  if (view.requiredAck !== null && view.blockers.length === 0) gateRows.push(ackRow(view, state, counter, cursor))
+  const panels: GatePanel[] = [{ title: `Gate · ${view.gateMode}`, rows: gateRows }]
+  if (view.blockers.length > 0) panels.push({ title: 'Blockers', rows: gateBlockerRows(view, state, counter, cursor) })
+  panels.push({ title: 'Decision', rows: gateDecisionRows(view, state) })
+  return panels
 }
 
 export function createGateScreen(): (props: GateScreenProps) => ReturnType<typeof createElement> {
   return function GateScreen(props: GateScreenProps): ReturnType<typeof createElement> {
     const { view } = props
-    const lines = gateScreenLines(view, props, props.cursor ?? 0)
-    const blocked = approveBlockers(view, props)
-    if (blocked !== null) lines.push({ key: 'blocked', text: blocked })
-    return createElement(
-      Box,
-      { flexDirection: 'column' },
-      ...lines.map((line) => createElement(Text, { key: line.key }, line.text)),
-    )
+    const mode = props.colorMode ?? 'color'
+    const panels = gatePanels(view, props, props.cursor ?? 0, props.width)
+    const elements = panels.flatMap((panel) => [
+      createElement(Text, { key: `${panel.title}-top` }, frameTop(props.width, panel.title)),
+      ...panel.rows.map((row) =>
+        createElement(
+          Text,
+          { key: row.key, ...(row.tone === 'blocker' ? severityToken(mode, 'blocker') : {}) },
+          frameBodyLine(row.text, props.width),
+        ),
+      ),
+      createElement(Text, { key: `${panel.title}-bottom` }, frameBottom(props.width)),
+    ])
+    return createElement(Box, { flexDirection: 'column' }, ...elements)
   }
 }
