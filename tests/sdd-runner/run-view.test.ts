@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, it } from 'bun:test'
+import assert from 'node:assert'
 
 import { render } from 'ink-testing-library'
 import { createElement } from 'react'
@@ -93,5 +94,70 @@ describe('createRunView rendering', () => {
     )
     expect(lastFrame()).toContain('idle')
     unmount()
+  })
+})
+
+describe('run-view children block (D8)', () => {
+  function renderFold(events: readonly EventInput[]): string | undefined {
+    let bag = emptyRunFold()
+    for (const [index, event] of events.entries()) {
+      bag = foldRunView(bag, stamped(index + 1, event))
+    }
+    const RunView = createRunView()
+    const { lastFrame, unmount } = render(
+      createElement(RunView, {
+        state: bag.state,
+        slots: bag.slots,
+        findings: bag.findings,
+        width: 100,
+        startedAt: 0,
+        now: 0,
+      }),
+    )
+    const frame = lastFrame()
+    unmount()
+    return frame
+  }
+
+  it('renders one <child-id> <status> line per fold entry, the active node marked', () => {
+    const frame = renderFold([
+      { altitude: 'L2', type: 'plan', childCount: 2, digest: 'd'.repeat(16) },
+      { altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: 'auth-db-2' },
+      { altitude: 'L2', type: 'child_done', child: 'auth-db', outcome: 'done' },
+      { altitude: 'L2', type: 'child_spawned', child: 'auth-api', runId: 'auth-api-2' },
+    ])
+    assert(frame !== undefined)
+    expect(frame).toContain('## Children')
+    expect(frame).toContain('auth-db done')
+    expect(frame).toContain('auth-api running')
+    const childrenLines = frame.split('\n').filter((line) => line.includes('auth-'))
+    expect(childrenLines).toHaveLength(2)
+    const activeLine = childrenLines.find((line) => line.includes('auth-api'))
+    assert(activeLine !== undefined)
+    expect(activeLine.trim().startsWith('▶')).toBe(true)
+    const doneLine = childrenLines.find((line) => line.includes('auth-db'))
+    assert(doneLine !== undefined)
+    expect(doneLine.trim().startsWith('▶')).toBe(false)
+  })
+
+  it('marks a failed in-flight child as the active node too — the first non-done entry', () => {
+    const frame = renderFold([
+      { altitude: 'L2', type: 'plan', childCount: 1, digest: 'd'.repeat(16) },
+      { altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: 'auth-db-2' },
+      { altitude: 'L2', type: 'child_done', child: 'auth-db', outcome: 'failed' },
+    ])
+    assert(frame !== undefined)
+    const failedLine = frame.split('\n').find((line) => line.includes('auth-db failed'))
+    assert(failedLine !== undefined)
+    expect(failedLine.trim().startsWith('▶')).toBe(true)
+  })
+
+  it('omits the section entirely when the fold is empty — single-run screens unchanged', () => {
+    const frame = renderFold([
+      { altitude: 'L2', type: 'stage_enter', stage: 'review' },
+      { altitude: 'L2', type: 'round_open', round: 1, cap: 2 },
+    ])
+    assert(frame !== undefined)
+    expect(frame).not.toContain('## Children')
   })
 })

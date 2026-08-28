@@ -5,6 +5,8 @@
 
 import type { ExecGitFn } from './config.js'
 import type { SddEvent } from './events.js'
+import type { ResolveCostFn } from './usage-aggregate.js'
+import { treeSpend } from './usage-aggregate.js'
 
 export interface ChangeDirSummary {
   readonly tasksDone: number
@@ -20,6 +22,16 @@ export interface ReportInput {
   readonly changeName: string
   readonly branch: string
   readonly pr: boolean
+  /** Present on a plan parent (D9): the report renders a children section instead of Tasks. */
+  readonly plan?: { readonly childIds: readonly string[] }
+  /** The parent's persisted `children` records — the status fallback when a live child state is unloadable. */
+  readonly childrenRecords?: Readonly<Record<string, { readonly status: string }>>
+  /** Live child `state.json` status reader; null = unloadable (falls back to the record). */
+  readonly readChildStatus?: (runId: string) => Promise<string | null>
+  /** Per-child subtree cost via `childUsageOf`; undefined = unknown/unpriced. */
+  readonly childUsage?: (runId: string) => number | undefined
+  /** Cost resolver for the subtree total's reprice of the parent's events. */
+  readonly resolveCost?: ResolveCostFn
 }
 
 interface PipelineFacts {
@@ -150,12 +162,58 @@ function gainsLines(gains: GainsFacts): string[] {
   return lines
 }
 
+/** Fail-closed cost rendering (D9): unknown/unpriced renders the marker, never `$0.00`. */
+function formatTreeCost(costUsd: number | undefined): string {
+  return costUsd === undefined ? 'unknown' : `$${costUsd.toFixed(2)}`
+}
+
+/** Latest spawn runId per child (D9): the flight that produced the current status. */
+function latestSpawnRunIdsOf(events: readonly SddEvent[]): Map<string, string> {
+  const ids = new Map<string, string>()
+  for (const event of events) {
+    if (event.type === 'child_spawned' && event.runId !== undefined) ids.set(event.child, event.runId)
+  }
+  return ids
+}
+
+/**
+ * D9 children section: one row per planned child — id, latest spawn's runId,
+ * status (live child `state.json`, falling back to the parent's `children`
+ * record when unloadable, `pending` when neither knows), and subtree cost via
+ * `childUsageOf` — plus a subtree total row from `treeSpend` over the
+ * parent's repriced events. The parent owns no change folder, so its report
+ * carries this section instead of `### Tasks`.
+ */
+async function childrenSectionLines(input: ReportInput, events: readonly SddEvent[]): Promise<string[]> {
+  const spawns = latestSpawnRunIdsOf(events)
+  const childIds = [...(input.plan?.childIds ?? [])]
+  const liveStatuses = await Promise.all(
+    childIds.map((childId): Promise<string | null> => {
+      const runId = spawns.get(childId)
+      if (runId === undefined || input.readChildStatus === undefined) return Promise.resolve(null)
+      return input.readChildStatus(runId)
+    }),
+  )
+  const rows = childIds.map((childId, index) => {
+    const runId = spawns.get(childId)
+    const status = liveStatuses[index] ?? input.childrenRecords?.[childId]?.status ?? 'pending'
+    const cost = runId !== undefined && input.childUsage !== undefined ? input.childUsage(runId) : undefined
+    return ['- '.concat(childId), ...(runId === undefined ? [] : [`run ${runId}`]), status, formatTreeCost(cost)].join(
+      ' · ',
+    )
+  })
+  const spend = treeSpend(events, input.resolveCost)
+  rows.push(`subtree total: ${formatTreeCost(spend.costKnown ? spend.spentUsd : undefined)}`)
+  return ['### Children', ...rows]
+}
+
 export async function buildReport(input: ReportInput): Promise<string> {
   const events = input.readEvents()
   const facts = factsFrom(events)
   const gains = collectGains(events)
   const change = await input.readChangeDir()
   const commits = await commitsLine(input)
+  const childrenSection = input.plan === undefined ? null : await childrenSectionLines(input, events)
   const lines: string[] = []
   if (input.pr) lines.push('## Summary', '', `Change \`${input.changeName}\` — see below for the scrutiny envelope.`)
   lines.push(
@@ -168,9 +226,9 @@ export async function buildReport(input: ReportInput): Promise<string> {
     `gate versions presented: ${facts.gateVersions}`,
     lensLine(facts),
     '',
-    `### Tasks`,
-    `${change.tasksDone}/${change.tasksTotal} tasks complete`,
-    '',
+    ...(childrenSection === null
+      ? [`### Tasks`, `${change.tasksDone}/${change.tasksTotal} tasks complete`, '']
+      : [...childrenSection, '']),
     ...(gains.avoidedByRule.size > 0 || gains.acceptItemsByRule.size > 0 ? [...gainsLines(gains), ''] : []),
     `### Commits on ${input.branch}`,
     ...commits,

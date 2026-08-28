@@ -8,11 +8,18 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { appendEvent } from '../../sdd-runner/src/events.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
+import { runResume } from '../../sdd-runner/src/orchestrator.js'
 import type { ResumeDecision } from '../../sdd-runner/src/resume-decision.js'
-import { deriveResumeDecision, nextGateVersion, resumeFromPoint } from '../../sdd-runner/src/resume-flow.js'
+import {
+  pendingDescendantGateOf,
+  deriveResumeDecision,
+  nextGateVersion,
+  resumeFromPoint,
+} from '../../sdd-runner/src/resume-flow.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
-import { createRunState } from '../../sdd-runner/src/run-state.js'
+import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
@@ -225,5 +232,96 @@ describe('nextGateVersion', () => {
       fs.writeFileSync(path.join(state.runDir, name), 'stale\n')
     }
     expect(nextGateVersion(state)).toBe(11)
+  })
+})
+
+interface TreeSeed {
+  readonly deps: OrchestratorDeps
+  readonly workDir: string
+}
+
+/** An approved plan parent whose `db-schema` child is in flight as `child-run-1`. */
+async function seedTree(
+  dir: string,
+  opts: { readonly grandchild?: boolean; readonly childGate?: 'early' | 'plan' | null } = {},
+): Promise<TreeSeed> {
+  const workDir = path.join(dir, '.sdd-runner')
+  const parent = await createRunState({ workDir, repoRoot: dir, changeName: 'composite', runId: 'parent-run' })
+  const log = path.join(parent.runDir, 'events.ndjson')
+  appendEvent(log, { altitude: 'L2', type: 'stage_enter', stage: 'intake' })
+  parent.plan = { childIds: ['db-schema'], digest: 'd'.repeat(16) }
+  parent.children = { 'db-schema': { status: 'running' } }
+  appendEvent(log, { altitude: 'L2', type: 'plan', childCount: 1, digest: 'd'.repeat(16) })
+  appendEvent(log, { altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 1 })
+  appendEvent(log, { altitude: 'L2', type: 'gate', action: 'answered', mode: 'plan', version: 1 })
+  appendEvent(log, { altitude: 'L2', type: 'child_spawned', child: 'db-schema', runId: 'child-run-1' })
+  await saveRunState(parent)
+  fs.mkdirSync(path.join(parent.runDir, 'sidecars'), { recursive: true })
+  fs.writeFileSync(
+    path.join(parent.runDir, 'sidecars', 'plan.json'),
+    JSON.stringify({ children: [{ id: 'db-schema', instruction: 'Rename the schema columns.', deps: [] }] }),
+  )
+  const child = await createRunState({ workDir, repoRoot: dir, changeName: 'db-schema', runId: 'child-run-1' })
+  if (opts.grandchild === true) {
+    child.plan = { childIds: ['db-api'], digest: 'e'.repeat(16) }
+    child.children = { 'db-api': { status: 'running' } }
+    appendEvent(path.join(child.runDir, 'events.ndjson'), {
+      altitude: 'L2',
+      type: 'child_spawned',
+      child: 'db-api',
+      runId: 'grand-run-1',
+    })
+    await saveRunState(child)
+    const grand = await createRunState({ workDir, repoRoot: dir, changeName: 'db-api', runId: 'grand-run-1' })
+    grand.gate = { mode: 'plan', version: 1 }
+    await saveRunState(grand)
+  } else if (opts.childGate !== null && opts.childGate !== undefined) {
+    child.gate = { mode: opts.childGate, version: 2 }
+    await saveRunState(child)
+  } else {
+    await saveRunState(child)
+  }
+  return { deps: makeDeps(dir), workDir }
+}
+
+describe('pendingDescendantGateOf (D2 descent resolver)', () => {
+  it('returns the gate-pending child runId for a one-level tree', async () => {
+    const dir = makeDir()
+    const { deps } = await seedTree(dir, { childGate: 'early' })
+    const state = await loadRunState(deps.config.workDir, 'parent-run')
+    expect(await pendingDescendantGateOf(deps, state)).toBe('child-run-1')
+  })
+
+  it('returns the deepest gate-pending descendant runId, recursing into grandchildren', async () => {
+    const dir = makeDir()
+    const { deps } = await seedTree(dir, { grandchild: true })
+    const state = await loadRunState(deps.config.workDir, 'parent-run')
+    expect(await pendingDescendantGateOf(deps, state)).toBe('grand-run-1')
+  })
+
+  it('returns null for a non-parent state — no descent, plain resume', async () => {
+    const dir = makeDir()
+    const deps = makeDeps(dir)
+    const single = await createRunState({ workDir: deps.config.workDir, repoRoot: dir, changeName: 'plain-run' })
+    await saveRunState(single)
+    expect(await pendingDescendantGateOf(deps, single)).toBe(null)
+  })
+
+  it('returns null when no descendant is gate-pending — the parent falls back to plain resume', async () => {
+    const dir = makeDir()
+    const { deps } = await seedTree(dir, { childGate: null })
+    const state = await loadRunState(deps.config.workDir, 'parent-run')
+    expect(await pendingDescendantGateOf(deps, state)).toBe(null)
+  })
+})
+
+describe('runResume plan-parent gate-pending threading (D2)', () => {
+  it('threads the gate-pending child runId through the plan-parent resume result', async () => {
+    const dir = makeDir()
+    const { deps } = await seedTree(dir, { childGate: 'early' })
+
+    const result = await runResume(deps, 'parent-run')
+
+    expect(result).toEqual({ runId: 'parent-run', halted: 'gate-pending', childRunId: 'child-run-1' })
   })
 })

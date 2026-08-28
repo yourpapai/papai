@@ -15,7 +15,12 @@ import type { DepthProfile } from './events.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { StageHaltError } from './stage-machine.js'
 
-export const DecomposeReportSchema = z.object({ tasks_file: z.string().min(1) })
+export const DecomposeReportSchema = z.object({
+  tasks_file: z.string().min(1),
+  /** D4: the change cannot land as one atomic-shippable change — undefined reads false (old sidecars parse). */
+  needs_split: z.boolean().optional(),
+})
+export type DecomposeReport = z.infer<typeof DecomposeReportSchema>
 export const AtomicityReportSchema = z.object({
   split: z.number().int().nonnegative(),
   merged: z.number().int().nonnegative(),
@@ -49,7 +54,10 @@ export function buildDecomposerPrompt(tasksFile: string, instr: string, cwd: str
     instr,
     '',
     `Write tasks.md to: ${tasksFile}`,
-    `Then write a JSON report to ${report}: {"tasks_file": "<path relative to the repo root>"}`,
+    `Then write a JSON report to ${report}: {"tasks_file": "<path relative to the repo root>", "needs_split": boolean}`,
+    'Set needs_split true only when the change cannot land as one atomic-shippable change; false otherwise.',
+    'A needs_split: true report scopes tasks.md to the first slice only — child #1 of the split —',
+    "leaving the siblings' scope out of the file.",
   ]
   if (lastError !== null) parts.push('', 'Previous attempt failed:', lastError)
   return parts.join('\n')
@@ -62,8 +70,8 @@ async function attemptDecompose(
   tasksFile: string,
   attempt: number,
   lastError: string | null,
-): Promise<void> {
-  await runStageAgent(deps.agent, {
+): Promise<DecomposeReport> {
+  const report = await runStageAgent(deps.agent, {
     role: 'decomposer',
     changeName,
     cwd: deps.cwd,
@@ -76,16 +84,19 @@ async function attemptDecompose(
     sidecarDir: deps.sidecarDir,
   })
   const validation = await deps.driver.validateStrict(changeName)
-  if (validation.ok) return
+  if (validation.ok) return report.value
   const problem = `openspec validate --strict failed: ${validation.output}`
   if (attempt >= 2) throw new StageHaltError(`decompose failed after 2 attempts: ${problem}`, 'resume the run')
-  await attemptDecompose(deps, changeName, instr, tasksFile, attempt + 1, problem)
+  return attemptDecompose(deps, changeName, instr, tasksFile, attempt + 1, problem)
 }
 
-export async function runDecompose(deps: StageDeps, options: { readonly changeName: string }): Promise<void> {
+export async function runDecompose(
+  deps: StageDeps,
+  options: { readonly changeName: string },
+): Promise<DecomposeReport> {
   const instr = await deps.driver.instructions('tasks', options.changeName)
   const tasksFile = `${deps.cwd}/openspec/changes/${options.changeName}/tasks.md`
-  await attemptDecompose(deps, options.changeName, instr.instruction, tasksFile, 1, null)
+  return attemptDecompose(deps, options.changeName, instr.instruction, tasksFile, 1, null)
 }
 
 export function buildAtomicityPrompt(tasksFile: string, cwd: string, lastError: string | null): string {

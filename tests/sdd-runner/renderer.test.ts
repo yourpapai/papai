@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
+import type { EventInput } from '../../sdd-runner/src/events.js'
 import type { ResolvedCost } from '../../sdd-runner/src/pricing.js'
 import {
   createRenderer,
@@ -487,5 +488,55 @@ describe('formatEvent verbosity gating', () => {
     expect(ftb([record])).toBe(
       ['### Cap-hit trajectory', 'round 2: 1b 2m 3n · 4 resolved · 5 dismissed · open'].join('\n'),
     )
+  })
+})
+
+describe('formatEvent tree-event lines (D7)', () => {
+  it('renders the plan line with child count and digest', async () => {
+    const { formatEvent: fmt } = await import('../../sdd-runner/src/renderer.js')
+    expect(fmt({ altitude: 'L2', type: 'plan', childCount: 3, digest: 'a61163921a7cc470' }, 'normal')).toBe(
+      'plan: 3 children (a61163921a7cc470)',
+    )
+  })
+
+  it('renders child_spawned with the child and its run id; a legacy line without a runId drops the run part', async () => {
+    const { formatEvent: fmt } = await import('../../sdd-runner/src/renderer.js')
+    expect(fmt({ altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: 'auth-db-2' }, 'normal')).toBe(
+      'child auth-db spawned (run auth-db-2)',
+    )
+    expect(fmt({ altitude: 'L2', type: 'child_spawned', child: 'auth-db' }, 'normal')).toBe('child auth-db spawned')
+  })
+
+  it('renders child_done with the child and its outcome', async () => {
+    const { formatEvent: fmt } = await import('../../sdd-runner/src/renderer.js')
+    expect(fmt({ altitude: 'L2', type: 'child_done', child: 'auth-db', outcome: 'done' }, 'normal')).toBe(
+      'child auth-db done',
+    )
+    expect(fmt({ altitude: 'L2', type: 'child_done', child: 'auth-api', outcome: 'failed' }, 'normal')).toBe(
+      'child auth-api failed',
+    )
+  })
+
+  it('single-run event streams render byte-identically — no tree line leaks in (pinned)', async () => {
+    const { formatEvent: fmt } = await import('../../sdd-runner/src/renderer.js')
+    const singleRunStream: EventInput[] = [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake' },
+      { altitude: 'L2', type: 'depth', profile: 'M', rationale: 'why', source: 'estimator' },
+      { altitude: 'L2', type: 'stage_exit', stage: 'review' },
+      { altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 1 },
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 2,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+      },
+    ]
+    expect(singleRunStream.map((event) => fmt(event, 'normal')).filter((line) => line !== null)).toEqual([
+      '[intake] entered',
+      'depth classified: M (estimator)',
+      '[review] done',
+      'gate presented (final, v1)',
+    ])
   })
 })

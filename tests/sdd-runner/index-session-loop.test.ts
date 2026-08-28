@@ -243,7 +243,7 @@ describe('runEntry session-loop wiring (interactive)', () => {
     const picker = pickerCalls[0]
     expect(picker).toBeDefined()
     await picker?.createRun('# Fresh thing\n\nbody\n')
-    expect(startOptions).toEqual([{ taskText: '# Fresh thing\n\nbody\n', depthOverride: 'L' }])
+    expect(startOptions).toStrictEqual([{ taskText: '# Fresh thing\n\nbody\n', depthOverride: 'L' }])
     expect(fx.writes.join('')).toContain('started fresh-run')
   })
 
@@ -251,7 +251,7 @@ describe('runEntry session-loop wiring (interactive)', () => {
     const fx = makeEntryFixture()
     await runEntryAgainst(fx, [])
     await pickerCalls[0]?.createRun('plain text\n')
-    expect(startOptions).toEqual([{ taskText: 'plain text\n' }])
+    expect(startOptions).toStrictEqual([{ taskText: 'plain text\n' }])
   })
 
   it('gate and resume decisions forward to the orchestrator verbs with the resolved id', async () => {
