@@ -121,6 +121,8 @@ const FindingEvent = z.object({
   round: z.number().int().positive(),
   class: FindingClassSchema.optional(),
   detail: z.string().optional(),
+  /** Concern fingerprint (loop-memory D5, additive): joins this event to its cross-round concern. */
+  fingerprint: z.string().min(1).optional(),
 })
 
 const AssumptionEvent = z.object({

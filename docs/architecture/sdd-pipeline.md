@@ -63,6 +63,8 @@ The L1 `done` event carries the model id (`done.model`) that produced its usage.
 
 Three L2 variants exist for run decomposition — `plan` (child count + digest), `child_spawned` (child id + run id), `child_done` (child id + `done|failed` outcome + optional aggregated usage) — and `gate.mode` accepts `'plan'`. The plan branch emits them (see Composite runs); replay folds them into `ReplayState.children`, and pre-decomposition logs replay to the identical state plus an empty `children` map.
 
+`finding` events carry an optional `fingerprint` (the concern fingerprint); replay folds them into `ReplayState.concerns` per fingerprint, and pre-change logs replay to the identical state plus an empty `concerns` map.
+
 ### Cost fallback
 
 `done.usage.costUsd` is the emit-time meter read; for subscription providers (e.g. `zai-coding-plan/glm-5.2`) it is `0` regardless of token volume. `aggregateUsage` (`usage-aggregate.ts`) runs a reprice pass before reducing: every zero-cost `done` event with tokens > 0 is repriced via `resolveCost` (`pricing.ts`), which fetches `https://models.dev/api.json` (60-min cache at `~/.cache/sdd-runner/models.json`) and resolves PRIMARY (configured provider's own non-zero price) → FALLBACK (median of non-zero entries across providers) → LAST RESORT (`null`). `reasoningTokens` fold into the input side of the recompute. Repricing is a no-op when emit-time cost is already non-zero, so an upstream fix composes without conflict. `pricing.ts` has a second consumer that reads none of this: `lookupModel` returns the **whole** catalogue row — `limit`, `reasoning`, `tool_call`, `temperature`, `attachment` — and `opencode-agent/src/model-metadata.ts` splices those into the OpenCode provider config it emits, so a model OpenCode cannot find still gets a declared context window. Every field beside `cost` is `.catch(undefined)` rather than merely optional: `loadDb` swallows a parse error and answers `{}`, so one malformed entry would otherwise cost both consumers the whole database.
@@ -121,6 +123,18 @@ Consequences:
 ### Severity-based convergence
 
 A cap-hit round with **zero open BLOCKERs and zero open MATERIALs** — nitpicks only, each resolved or dismissed — is treated as converged at the orchestrator level (`runPostReviewToGate`) and flows into decompose → atomicity → final gate **without presenting an early gate**. The review loop itself keeps reporting `cap-hit`; reclassification lives in the orchestrator so the loop's semantics and sidecar formats are untouched. A cap-hit round with any open BLOCKER or MATERIAL still presents the early gate for human sign-off — unresolved blocker/material findings are never auto-accepted.
+
+### Lens merge and concern memory
+
+The two lenses' findings are merged by a normalized gap **fingerprint** (case-folded, punctuation-stripped, stopword-pruned token set — `fingerprintOf` in `concern-model.ts`), not exact text; differently-quoted copies of one concern merge to a single finding carrying the most severe class. Skeptic ids are namespaced (`S1, S2, …`, enforced by the skeptic sidecar schema), and a resolver sidecar with duplicate finding ids fails validation and retries like any schema violation. Convergence counts **distinct ids** — duplicate entries can no longer inflate counts or flip verdicts.
+
+Prior rounds reach the next reviewer prompt as a **known-concerns digest**: per concern one round-tagged line (`r3 [S1] MATERIAL edited — narrowed gap (seen r1..r3)`), most recent first, capped at 15 concerns with an overflow note — never the flat ledger. Each round close also persists the cross-round history to `sidecars/concerns.json` and stamps `finding` events with their concern `fingerprint` (additive; old logs replay to an empty `concerns` fold).
+
+**Concern-history gate.** When a concern with ≥2 prior resolved/dismissed entries is raised again, or a resolved concern is re-raised at a different class, the loop stops and presents the early gate with a `### Concern history` section listing each recurring concern's round-by-round history (file and TUI front-ends share `concernHistoryLines`) — a thrashing loop gets a human interrupt instead of silently burning rounds.
+
+**Cross-artifact consistency check.** At every round the lens merge is appended with a deterministic scan (`consistencyFindings` in `materialize.ts`) over the change folder's proposal/design/spec files: seeded decision-term vocabulary (migration strategy, `*60*1000` interval literals, backticked table/column identifiers) rendered differently across artifacts becomes a synthesized `C<n>` MATERIAL finding naming both files and both renderings, resolved by the resolver like any finding. No spawn, no tokens; the vocabulary widens only on analyzer evidence.
+
+Gate finding rows render the finding's **gap text**, joined by id back to the round's findings sidecars (`findingsGapTextsFor`; a missing sidecar falls back to the id).
 
 ### Resume and continue
 

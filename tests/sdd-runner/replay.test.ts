@@ -261,6 +261,123 @@ describe('children fold (3.3)', () => {
   })
 })
 
+describe('concerns fold (loop-memory D5)', () => {
+  it('the finding event schema accepts and preserves an optional fingerprint', () => {
+    const log = makeLog()
+    const stamped = appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'finding',
+        action: 'classified',
+        id: 'F1',
+        round: 1,
+        class: 'MATERIAL',
+        fingerprint: 'fp-a',
+      },
+      at('00'),
+    )
+    expect(stamped).toMatchObject({ type: 'finding', fingerprint: 'fp-a' })
+  })
+
+  it('folds per-fingerprint concern history from fingerprinted finding events', () => {
+    const log = makeLog()
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'finding',
+        action: 'classified',
+        id: 'F2',
+        round: 1,
+        class: 'MATERIAL',
+        fingerprint: 'fp-a',
+      },
+      at('00'),
+    )
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'finding',
+        action: 'resolved',
+        id: 'F2',
+        round: 1,
+        class: 'MATERIAL',
+        fingerprint: 'fp-a',
+      },
+      at('01'),
+    )
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'finding',
+        action: 'classified',
+        id: 'S1',
+        round: 2,
+        class: 'MATERIAL',
+        fingerprint: 'fp-a',
+      },
+      at('02'),
+    )
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'finding',
+        action: 'classified',
+        id: 'F9',
+        round: 2,
+        class: 'NITPICK',
+        fingerprint: 'fp-b',
+      },
+      at('03'),
+    )
+    const state = replayEvents(log)
+    expect(state.concerns).toMatchObject({
+      'fp-a': {
+        entries: [
+          { round: 1, id: 'F2', class: 'MATERIAL', action: 'classified' },
+          { round: 1, id: 'F2', class: 'MATERIAL', action: 'resolved' },
+          { round: 2, id: 'S1', class: 'MATERIAL', action: 'classified' },
+        ],
+      },
+      'fp-b': { entries: [{ round: 2, id: 'F9', class: 'NITPICK', action: 'classified' }] },
+    })
+  })
+
+  it('folds pre-change logs to empty concerns without touching any other fold', () => {
+    const log = makeLog()
+    appendEvent(
+      log,
+      { altitude: 'L2', type: 'finding', action: 'classified', id: 'F2', round: 1, class: 'MATERIAL' },
+      at('00'),
+    )
+    appendEvent(
+      log,
+      { altitude: 'L2', type: 'finding', action: 'resolved', id: 'F2', round: 1, class: 'NITPICK' },
+      at('01'),
+    )
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 1,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 1 },
+      },
+      at('02'),
+    )
+    const state = replayEvents(log)
+    expect(state.concerns).toEqual({})
+    expect(state.perRound).toEqual([
+      { round: 1, counts: { blocker: 0, material: 0, nitpick: 1 }, resolved: 1, dismissed: 0, verdict: 'converged' },
+    ])
+  })
+})
+
 function makeLogNoWrite(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-replay-empty-'))
   tmpDirs.push(dir)

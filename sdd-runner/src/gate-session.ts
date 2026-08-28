@@ -30,6 +30,8 @@ export interface GateSessionView {
   readonly items: readonly GateSessionItem[]
   readonly blockers: readonly GateSessionBlocker[]
   readonly requiredAck: { readonly id: string; readonly text: string } | null
+  /** Shared concern-history copy (loop-memory 3.4) rendered above the items. */
+  readonly concernHistory?: readonly string[]
 }
 
 export type GateSessionResult =

@@ -1367,7 +1367,7 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
     expect(result.outcome).toBe('veto')
     const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
     expect(gate2).toContain('### Open MATERIAL findings at cap (reviewed)')
-    expect(gate2).toContain('- [ ] F1 F1')
+    expect(gate2).toContain('- [ ] F1 design lacks rollback')
     expect(gate2).toContain('resolver: edited — narrowed gap')
     expect(gate2).toContain('- [ ] T1 I reviewed the trajectory')
   })
@@ -1734,7 +1734,7 @@ describe('runGateResume', () => {
       rounds[`findings-${round}.json`] = JSON.stringify({ findings: [blockerFinding] })
       rounds[`resolutions-${round}.json`] = JSON.stringify({ resolutions: [blockerResolution], assumptions: [] })
     }
-    rounds['findings-skeptic-3.json'] = JSON.stringify({ findings: [blockerFinding] })
+    rounds['findings-skeptic-3.json'] = JSON.stringify({ findings: [{ ...blockerFinding, id: 'S1' }] })
     const fixture = makeFixture(rounds)
     const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
 
@@ -1760,7 +1760,7 @@ describe('runGateResume', () => {
       rounds[`findings-${round}.json`] = JSON.stringify({ findings: [blockerFinding] })
       rounds[`resolutions-${round}.json`] = JSON.stringify({ resolutions: [blockerResolution], assumptions: [] })
     }
-    rounds['findings-skeptic-3.json'] = JSON.stringify({ findings: [blockerFinding] })
+    rounds['findings-skeptic-3.json'] = JSON.stringify({ findings: [{ ...blockerFinding, id: 'S1' }] })
     const fixture = makeFixture(rounds)
     const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
 
@@ -2680,7 +2680,7 @@ describe('R2 trajectory auto-extend (8.2)', () => {
   const materialFinding = (id: string): Record<string, string> => ({
     id,
     class: 'MATERIAL',
-    gap: 'gap grows',
+    gap: `gap grows for ${id}`,
     question: 'q',
     code_evidence_attempted: 'e',
   })
@@ -3620,5 +3620,47 @@ describe('settlePlanVeto — one re-plan per veto round, unbounded rounds (D6)',
     expect(parent.gate).toBe(null)
     const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
     expect(events.filter((e) => e.type === 'child_spawned')).toHaveLength(0)
+  })
+})
+
+describe('concern-history gate routing (loop-memory 3.3)', () => {
+  const asRecords = (value: unknown): readonly unknown[] =>
+    Array.isArray(value) ? value.map((entry: unknown): unknown => entry) : []
+
+  it('stops a thrashing concern at round 3 with an early gate instead of burning to the L cap', async () => {
+    const recurring = JSON.stringify({
+      findings: [
+        {
+          id: 'F1',
+          class: 'MATERIAL',
+          gap: 'the migration strategy is named drizzle in the proposal only',
+          question: 'q',
+          code_evidence_attempted: 'e',
+        },
+      ],
+    })
+    const recurringResolved = JSON.stringify({
+      resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }],
+      assumptions: [],
+    })
+    const rounds: Record<string, string> = {}
+    for (const round of [1, 2, 3, 4]) {
+      rounds[`findings-${round}.json`] = recurring
+      rounds[`resolutions-${round}.json`] = recurringResolved
+      rounds[`findings-skeptic-${round}.json`] = JSON.stringify({ findings: [] })
+    }
+    const fixture = makeFixture(rounds)
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'L' })
+
+    const state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.gate?.mode).toBe('early')
+    expect(fixture.spawnOrder).toContain('findings-3.json')
+    expect(fixture.spawnOrder).not.toContain('findings-4.json')
+    const gateMd = fs.readFileSync(started.gateMdPath, 'utf8')
+    expect(gateMd).toContain('### Concern history')
+    expect(gateMd).toContain('(seen r1..r3)')
+    const records = asRecords(JSON.parse(fs.readFileSync(path.join(state.runDir, 'sidecars', 'concerns.json'), 'utf8')))
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({ entries: [{ round: 1 }, { round: 2 }, { round: 3 }] })
   })
 })

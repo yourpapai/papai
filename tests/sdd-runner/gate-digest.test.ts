@@ -11,16 +11,11 @@ import path from 'node:path'
 import type { AutonomyConfig } from '../../sdd-runner/src/config.js'
 import type { SddEvent } from '../../sdd-runner/src/events.js'
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
-import {
-  blockersOf,
-  buildBus,
-  findingsOf,
-  presentGateAt,
-  readReviewResultFromSidecars,
-} from '../../sdd-runner/src/gate-digest.js'
+import { blockersOf, buildBus, findingsOf, presentGateAt } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps, StageContext } from '../../sdd-runner/src/gate-digest.js'
 import type { GateChild } from '../../sdd-runner/src/gate-model.js'
 import { writeGateDigest } from '../../sdd-runner/src/gate-model.js'
+import { readReviewResultFromSidecars } from '../../sdd-runner/src/gate-sidecars.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
@@ -84,6 +79,21 @@ describe('findingsOf', () => {
   })
 })
 
+describe('findingsOf gap join (loop-memory D7)', () => {
+  const result: ReviewLoopResult = {
+    outcome: 'cap-hit',
+    rounds: 3,
+    openBlockers: [],
+    openMaterial: [{ id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }],
+    openNitpicks: [{ id: 'S1', class: 'NITPICK', resolution: 'dismissed', justification: 'j' }],
+  }
+
+  it('falls back to the id when no sidecar entry provides the gap', () => {
+    const findings = findingsOf(result, new Map())
+    expect(findings.material[0]?.gap).toBe('F2')
+  })
+})
+
 describe('costAndDuration', () => {
   it('sums done-event cost and measures elapsed time', () => {
     const events: readonly SddEvent[] = [
@@ -130,6 +140,38 @@ describe('writeGateDigest cost marker', () => {
     durationMs: 2607_000,
     changeDigest: { what: null, why: null, touches: null, hasTasks: false },
   }
+
+  it('renders the concern-history section round by round when a thrashing concern stopped the loop (loop-memory 3.4)', () => {
+    const md = writeGateDigest({
+      ...base,
+      mode: 'early',
+      costUsd: 0,
+      costKnown: false,
+      openMaterial: [
+        {
+          id: 'F1',
+          gap: 'the migration strategy is named drizzle in the proposal only',
+          evidence: 'edited — narrowed',
+        },
+      ],
+      concernHistory: [
+        {
+          fingerprint: 'migration strategy named drizzle proposal',
+          firstRound: 1,
+          lastRound: 3,
+          entries: [
+            { round: 1, id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' },
+            { round: 2, id: 'F5', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' },
+            { round: 3, id: 'S1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' },
+          ],
+        },
+      ],
+    })
+    expect(md).toContain('### Concern history')
+    expect(md).toContain('(seen r1..r3)')
+    expect(md).toContain('r1 [F2] MATERIAL edited — narrowed gap')
+    expect(md).toContain('r3 [S1] MATERIAL edited — narrowed gap')
+  })
 
   it('renders metered when costKnown is true', () => {
     const md = writeGateDigest({ ...base, costUsd: 1.23, costKnown: true })

@@ -3,10 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
+import type { ConcernRecord } from './concern-model.js'
 import type { AutonomyConfig, ExecGitFn, RunnerConfig } from './config.js'
 import { deadlineStampFor } from './deadline-waiter.js'
 import { createEventBus } from './event-bus.js'
@@ -25,12 +25,12 @@ import {
 } from './gate-prelude.js'
 import type { PolicyGateInput } from './gate-prelude.js'
 import { autoExtendRound, autoSettleFinalGate } from './gate-settle.js'
+import { findingsGapTextsFor, readReviewResultFromSidecars } from './gate-sidecars.js'
 import { gatherGateSignals } from './gate-signals.js'
 import type { PresentGateInput } from './gate.js'
 import { presentGate } from './gate.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { replayEvents } from './replay.js'
-import { ResolverOutputSchema } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
@@ -157,7 +157,7 @@ async function digestParts(
   options: { readonly children?: readonly GateChild[] },
   ctx: StageContext,
 ): Promise<GateDigestParts> {
-  const findings = findingsOf(reviewResult)
+  const findings = findingsOf(reviewResult, await findingsGapTextsFor(ctx.sidecarDir, reviewResult.rounds))
   return {
     version,
     mode,
@@ -171,6 +171,7 @@ async function digestParts(
     durationMs: signals.durationMs,
     changeDigest: await readChangeDigest(ctx.changeDir),
     children: options.children,
+    ...(reviewResult.recurringConcerns === undefined ? {} : { concernHistory: reviewResult.recurringConcerns }),
   }
 }
 
@@ -191,6 +192,7 @@ interface GateDigestParts {
   readonly durationMs: number
   readonly changeDigest: ChangeDigest
   readonly children?: readonly GateChild[]
+  readonly concernHistory?: readonly ConcernRecord[]
 }
 
 function gateDigestInput(state: RunState, reviewResult: ReviewLoopResult, parts: GateDigestParts): PresentGateInput {
@@ -211,6 +213,7 @@ function gateDigestInput(state: RunState, reviewResult: ReviewLoopResult, parts:
     durationMs: parts.durationMs,
     changeDigest: parts.changeDigest,
     ...(parts.children === undefined ? {} : { children: parts.children }),
+    ...(parts.concernHistory === undefined ? {} : { concernHistory: parts.concernHistory }),
   }
 }
 
@@ -218,47 +221,31 @@ export function blockersOf(result: ReviewLoopResult): GateBlocker[] {
   return findingsOf(result).blockers
 }
 
-export function findingsOf(result: ReviewLoopResult): {
+export function findingsOf(
+  result: ReviewLoopResult,
+  gaps: ReadonlyMap<string, string> = new Map(),
+): {
   blockers: GateBlocker[]
   material: GateFinding[]
   nitpicks: GateFinding[]
 } {
+  const gapOf = (id: string): string => gaps.get(id) ?? id
   const blockers = result.openBlockers.map((entry) => ({
     id: entry.id,
-    gap: entry.id,
+    gap: gapOf(entry.id),
     evidence: entry.outcome ?? entry.justification ?? '',
   }))
   const material = result.openMaterial.map((entry) => ({
     id: entry.id,
-    gap: entry.id,
+    gap: gapOf(entry.id),
     evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
   }))
   const nitpicks = result.openNitpicks.map((entry) => ({
     id: entry.id,
-    gap: entry.id,
+    gap: gapOf(entry.id),
     evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
   }))
   return { blockers, material, nitpicks }
-}
-
-export async function readReviewResultFromSidecars(
-  sidecarDir: string,
-  round: number,
-  outcome: 'converged' | 'cap-hit',
-): Promise<ReviewLoopResult> {
-  try {
-    const raw = await readFile(path.join(sidecarDir, `resolutions-${round}.json`), 'utf8')
-    const parsed = ResolverOutputSchema.parse(JSON.parse(raw))
-    return {
-      outcome,
-      rounds: round,
-      openBlockers: parsed.resolutions.filter((r) => r.class === 'BLOCKER'),
-      openMaterial: parsed.resolutions.filter((r) => r.class === 'MATERIAL'),
-      openNitpicks: parsed.resolutions.filter((r) => r.class === 'NITPICK'),
-    }
-  } catch {
-    return { outcome, rounds: round, openBlockers: [], openMaterial: [], openNitpicks: [] }
-  }
 }
 
 export async function finalizeGate(
@@ -283,11 +270,13 @@ export async function prepareResumeInput(
   assumptions: readonly { id: string; text: string; blast_radius: string }[]
   reviewResult: ReviewLoopResult
   requiredAck: string | undefined
+  gaps: ReadonlyMap<string, string>
 }> {
   const assumptions = await gatherAssumptions(sidecarDir, round)
   const capHitFired = gateMode === 'early'
   const reviewResult = await readReviewResultFromSidecars(sidecarDir, round, capHitFired ? 'cap-hit' : 'converged')
-  const findings = findingsOf(reviewResult)
+  const gaps = await findingsGapTextsFor(sidecarDir, round)
+  const findings = findingsOf(reviewResult, gaps)
   const requiredAck = capHitFired && findings.blockers.length === 0 ? 'T1' : undefined
-  return { assumptions, reviewResult, requiredAck }
+  return { assumptions, reviewResult, requiredAck, gaps }
 }

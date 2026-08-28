@@ -42,6 +42,7 @@ const VIEW = {
   ],
   blockers: [{ id: 'B1', gap: 'migration untested', evidence: 'drizzle/0007 x.sql' }],
   requiredAck: { id: 'T1', text: 'trajectory is improving' },
+  concernHistory: [],
 }
 
 function baseProps(overrides: Partial<GateScreenProps> = {}): GateScreenProps {
@@ -65,6 +66,25 @@ describe('TUI gate screen (4.4/4.5)', () => {
     expect(frame).toContain('F1 proposal never names the scope id')
     expect(frame).toContain('evidence: proposal.md L5')
     expect(frame).toContain('B1 migration untested')
+    unmount()
+  })
+
+  it('renders the shared concern-history lines above the items (loop-memory 3.4)', () => {
+    const GateScreen = createGateScreen()
+    const { lastFrame, unmount } = render(
+      createElement(
+        GateScreen,
+        baseProps({
+          view: {
+            ...VIEW,
+            concernHistory: ['### Concern history', 'r1 [F2] MATERIAL edited — narrowed gap (seen r1..r3)'],
+          },
+        }),
+      ),
+    )
+    const frame = lastFrame()
+    expect(frame).toContain('### Concern history')
+    expect(frame).toContain('r1 [F2] MATERIAL edited — narrowed gap (seen r1..r3)')
     unmount()
   })
 
