@@ -124,14 +124,15 @@ When the harness supports `obra/superpowers` skills, preserve that workflow for 
 
 Planning runs on OpenSpec in this repo: code-behavior work enters through `/opsx:explore` / `/opsx:propose` and lives under `openspec/changes/<name>/`; `brainstorming` keeps non-code creative work only. A proposal must justify each capability it declares and route declined scope into Non-goals (`openspec/config.yaml` `rules.proposal`); that governs what a change **admits**, never how tasks are divided — see [Admission vs division](docs/architecture/sdd-pipeline.md#admission-vs-division).
 
-| Trigger                                         | Route                                                                                |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------ |
-| "Let's build / add / change X" (code behavior)  | `/opsx:explore` or `/opsx:propose` — **not** brainstorming                           |
-| Non-code creative work (docs, process, writing) | brainstorming (unchanged)                                                            |
-| Bug / test failure                              | systematic-debugging; if root cause becomes a change, `/opsx:propose`                |
-| Inside `/opsx:apply`                            | test-driven-development, verification-before-completion                              |
-| Autonomous SDD pipeline (`/sdd:auto`)           | `docs/architecture/sdd-pipeline.md`; use `/sdd:auto <task-file>` for end-to-end runs |
-| Plan drifted from code                          | syncing-plan-with-code against `openspec/changes/<name>/` artifacts                  |
+| Trigger                                         | Route                                                                                                                                                           |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Let's build / add / change X" (code behavior)  | `/opsx:explore` or `/opsx:propose` — **not** brainstorming                                                                                                      |
+| Non-code creative work (docs, process, writing) | brainstorming (unchanged)                                                                                                                                       |
+| Design-to-code on papai Figma nodes             | `figma-codegen` skill — **required before** translating papai Figma frames/components into `client/` code; resolves `CODE:` descriptions to live Svelte sources |
+| Bug / test failure                              | systematic-debugging; if root cause becomes a change, `/opsx:propose`                                                                                           |
+| Inside `/opsx:apply`                            | test-driven-development, verification-before-completion                                                                                                         |
+| Autonomous SDD pipeline (`/sdd:auto`)           | `docs/architecture/sdd-pipeline.md`; use `/sdd:auto <task-file>` for end-to-end runs                                                                            |
+| Plan drifted from code                          | syncing-plan-with-code against `openspec/changes/<name>/` artifacts                                                                                             |
 
 ## Codebase Search Protocol
 

@@ -14,8 +14,8 @@
 
 ## 3. figma-codegen skill
 
-- [ ] 3.1 Write `.claude/skills/figma-codegen/SKILL.md`: mandatory-before-use declaration, `CODE:` description parsing protocol, live-source resolution, prop/value translation via registry, screen section composition, drift surfacing rule, and the instruction to run `bun run figma:connect plan` + push when descriptions are missing or stale. Verify: manual read against specs/figma-codegen-skill requirements
-- [ ] 3.2 Add the routing-table row to CLAUDE.md (and the skills list it participates in). Verify: manual read
+- [x] 3.1 Write `.claude/skills/figma-codegen/SKILL.md`: mandatory-before-use declaration, `CODE:` description parsing protocol, live-source resolution, prop/value translation via registry, screen section composition, drift surfacing rule, and the instruction to run `bun run figma:connect plan` + push when descriptions are missing or stale. Verify: manual read against specs/figma-codegen-skill requirements
+- [x] 3.2 Add the routing-table row to CLAUDE.md (and the skills list it participates in). Verify: manual read
 
 ## 4. Verification loop (TDD)
 
