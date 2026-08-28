@@ -1,7 +1,9 @@
 {
-  "plugins/task-provider-github/classify-error.ts": 0.6521739130434783,
+  "plugins/task-provider-github/classify-error.ts": 0.744,
+  "plugins/task-provider-github/constants.ts": 1,
   "plugins/task-provider-github/due-date.ts": 1,
   "plugins/task-provider-github/entry-runtime.ts": 0.42857142857142855,
+  "plugins/task-provider-github/graphql-client.ts": 0.7362637362637363,
   "plugins/task-provider-github/identity-resolver.ts": 0.6521739130434783,
   "plugins/task-provider-github/mappers.ts": 0.9787234042553191,
   "plugins/task-provider-github/operations/activities.ts": 0.853448275862069,
