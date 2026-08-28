@@ -217,6 +217,9 @@ describe('githubGraphql envelope', () => {
     expect(error.message).toContain('envelope')
     expect(error.type).toBeUndefined()
     expect(error.errors).toEqual([])
+    expect(
+      tracked.getCallsByLevel('error').some((call) => call.args[1] === 'GitHub GraphQL envelope validation failed'),
+    ).toBe(true)
   })
 
   test('fails the whole call on errors[] without a data key (pre-execution failure shape)', async () => {

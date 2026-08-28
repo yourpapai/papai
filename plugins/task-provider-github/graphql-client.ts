@@ -97,20 +97,30 @@ const observeBoundary = (
 
 const effectiveTypeOf = (error: GraphqlErrorEntry): string | undefined => error.extensions?.type ?? error.type
 
-const envelopeViolation = (detail: string): GitHubGraphqlError =>
-  new GitHubGraphqlError(`GitHub GraphQL envelope validation failed: ${detail}`, undefined)
+/** Builds the envelope-violation error, logging the failed external call first (metadata-only, like the sibling failure paths). */
+const envelopeViolation = (detail: string, response: Response, operation: GraphqlOperation): GitHubGraphqlError => {
+  log.error({ statusCode: response.status, operation }, 'GitHub GraphQL envelope validation failed')
+  return new GitHubGraphqlError(`GitHub GraphQL envelope validation failed: ${detail}`, undefined)
+}
 
-const parseEnvelope = async (response: Response): Promise<z.infer<typeof graphqlEnvelopeSchema>> => {
+const parseEnvelope = async (
+  response: Response,
+  operation: GraphqlOperation,
+): Promise<z.infer<typeof graphqlEnvelopeSchema>> => {
   let body: unknown
   try {
     body = await response.json()
   } catch {
-    throw envelopeViolation('body is not valid JSON')
+    throw envelopeViolation('body is not valid JSON', response, operation)
   }
   const parsed = graphqlEnvelopeSchema.safeParse(body)
   if (!parsed.success) {
     const violation = parsed.error.issues[0]
-    throw envelopeViolation(violation === undefined ? 'unexpected envelope shape' : violation.message)
+    throw envelopeViolation(
+      violation === undefined ? 'unexpected envelope shape' : violation.message,
+      response,
+      operation,
+    )
   }
   return parsed.data
 }
@@ -155,7 +165,7 @@ export function githubGraphql(
           errorBody,
         )
       }
-      const envelope = await parseEnvelope(response)
+      const envelope = await parseEnvelope(response, operation)
       for (const error of envelope.errors ?? []) {
         log.error({ operation, graphqlErrorType: effectiveTypeOf(error) ?? null }, 'GitHub GraphQL errors present')
         throw new GitHubGraphqlError(error.message, effectiveTypeOf(error), envelope.errors)
