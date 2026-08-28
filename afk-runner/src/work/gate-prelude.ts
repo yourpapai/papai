@@ -8,7 +8,7 @@ import path from 'node:path'
 import type { AutonomyConfig } from '../config.js'
 import type { EventInput, SddEvent } from '../events.js'
 import type { KernelContext } from '../kernel/machine.js'
-import { classifyAssumptions, evaluateCapHit, evaluateFinalGate } from './auto-policy.js'
+import { classifyAssumptions, evaluateCapHit, evaluateEscalationGate, evaluateFinalGate } from './auto-policy.js'
 import type { PolicyDecision, PolicySignals } from './auto-policy.js'
 import { renderGateAnswers } from './gate-answers.js'
 import type { GateAnswers } from './gate-answers.js'
@@ -19,7 +19,7 @@ import type { ReviewLoopResult } from './review-loop.js'
 
 export interface GatePreludeInput {
   readonly version: number
-  readonly mode: 'early' | 'final'
+  readonly mode: 'early' | 'final' | 'escalation'
   readonly reviewResult: ReviewLoopResult
   readonly context: KernelContext
   readonly events: readonly SddEvent[]
@@ -157,7 +157,15 @@ export function evaluateLadder(
   deadlineExpired: boolean,
 ): PolicyDecision {
   const signals = signalsOf(input, assumptions, deadlineExpired)
-  return input.mode === 'early' ? evaluateCapHit(signals) : evaluateFinalGate(signals)
+  if (input.mode === 'early') return evaluateCapHit(signals)
+  if (input.mode === 'escalation') {
+    return evaluateEscalationGate({
+      spentUsd: signals.spentUsd,
+      costKnown: signals.costKnown,
+      config: signals.config,
+    })
+  }
+  return evaluateFinalGate(signals)
 }
 
 async function expectedAssumptionsOf(input: GatePreludeInput, round: number): Promise<readonly GateAssumption[]> {

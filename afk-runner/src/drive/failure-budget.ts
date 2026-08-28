@@ -5,7 +5,7 @@
 
 import { AgentValidationError } from '../agent-layer.js'
 import { SpawnError } from '../agent-seam.js'
-import type { FailureKind } from '../events.js'
+import type { FailureKind, StageId } from '../events.js'
 import type { KernelContext } from '../kernel/machine.js'
 import { StageHaltError } from '../work/stage-halt.js'
 
@@ -55,4 +55,18 @@ export function escalationOwed(context: KernelContext, stage: string): boolean {
   if (count === 0) return false
   if (context.failureKinds[stage] === 'precondition') return true
   return count > STAGE_FAILURE_BUDGET
+}
+
+/**
+ * The still-active stage carrying declared failures — the escalation retry
+ * mover's target (C6 D4/W7). Derived from the map: a settled escalation gate
+ * parks with its failed stage active and its ledger intact.
+ */
+export function escalationStageOf(context: KernelContext): StageId | null {
+  for (const stage of Object.keys(context.failures)) {
+    if ((context.failures[stage] ?? 0) > 0 && context.stages[stage] === 'active') {
+      return stage as StageId
+    }
+  }
+  return null
 }

@@ -57,6 +57,13 @@ export interface DriveDeps {
   readonly logPath: string
   readonly stop?: StopSeam
   readonly now?: () => Date
+  /**
+   * C6 D4: the escalation presenter — the loop catch calls it when a stage's
+   * budget is spent (the presentation itself moves the machine into the gate
+   * compound), then parks gate-pending. Absent (generic tests) the catch parks
+   * gate-pending unpresented — the owed-escalation recovery shape.
+   */
+  readonly escalation?: { readonly present: (io: WorkIO, stage: string) => Promise<void> }
 }
 
 export interface DriveResult {
@@ -144,7 +151,11 @@ async function runWorkBracket(
     })
     const failed = foldCurrent(deps)
     if (escalationOwed(failed.context, position)) {
-      return { kind: 'settled', successor: { park: 'gate-pending' }, context: failed.context }
+      const runDir = path.dirname(deps.logPath)
+      if (deps.escalation !== undefined) {
+        await deps.escalation.present({ append: boundary.append, context: failed.context, runDir }, position)
+      }
+      return { kind: 'settled', successor: { park: 'gate-pending' }, context: foldCurrent(deps).context }
     }
     return { kind: 'settled', successor: { enter: position }, context: failed.context }
   }

@@ -22,7 +22,9 @@ export type SettleOutcome = GateOutcome
 export interface SettleInput {
   readonly gate: GateDeps
   readonly version: number
-  readonly gateMode: 'early' | 'final'
+  readonly gateMode: 'early' | 'final' | 'escalation'
+  /** The still-active failed stage at an escalation gate — the retry mover's target (C6 D4). */
+  readonly failedStage?: StageId
   readonly expected: ExpectedGateContent
   /** The folded round status — the extend mover opens round n+1 at cap+1. */
   readonly round: { readonly current: number; readonly cap: number } | null
@@ -31,8 +33,13 @@ export interface SettleInput {
 export interface SettleResult {
   readonly outcome: SettleOutcome
   readonly vetoes: readonly { readonly id: string; readonly redirect?: string }[]
-  /** The mode the answered event carries (legacy-faithful: extend keeps the gate's mode, the rest say final). */
-  readonly answeredMode: 'early' | 'final'
+  /** The mode the answered event carries (legacy-faithful: extend keeps the gate's mode, the rest say final; escalation gates always say escalation). */
+  readonly answeredMode: 'early' | 'final' | 'escalation'
+}
+
+/** The escalation gate's expected content: the trajectory ack, nothing else — no assumptions, no blockers, no veto (C6 D4). */
+export function escalationExpectedContent(): ExpectedGateContent {
+  return { assumptions: [], blockers: [], requiredAck: 'T1', gateMode: 'escalation' }
 }
 
 export function outcomeOfResponse(response: GateResponse): SettleOutcome {
@@ -76,10 +83,12 @@ export async function settleGateFile(input: SettleInput): Promise<SettleResult> 
   const md = await readFile(gateMdPath, 'utf8')
   const response = parseGateResponse(md, input.expected)
   const outcome = outcomeOfResponse(response)
-  if (outcome === 'approve' || outcome === 'veto') {
+  // Escalation gates present no artifact-hashes sidecar (their content is the
+  // failure ledger, not the digest) — integrity verification is final/early only.
+  if ((outcome === 'approve' || outcome === 'veto') && input.gateMode !== 'escalation') {
     await verifyGateIntegrity(input.gate, input.version)
   }
-  const answeredMode = outcome === 'extend' ? input.gateMode : 'final'
+  const answeredMode = input.gateMode === 'escalation' ? 'escalation' : outcome === 'extend' ? input.gateMode : 'final'
   const emitAnswered = (): void => {
     input.gate.emit({
       altitude: 'L2',
@@ -106,6 +115,23 @@ export async function settleGateFile(input: SettleInput): Promise<SettleResult> 
 }
 
 function appendMover(input: SettleInput, outcome: SettleOutcome): void {
+  if (input.gateMode === 'escalation') {
+    const failedStage = input.failedStage
+    if (outcome === 'approve' && failedStage !== undefined) {
+      // approve retries the failed stage — the ledger keeps counting (each
+      // approve buys exactly one more attempt; C6 D4).
+      input.gate.emit({ altitude: 'L2', type: 'stage_enter', stage: failedStage })
+      return
+    }
+    if (outcome === 'extend' && failedStage !== undefined) {
+      // extend grants fresh budget: the failed stage's exit clears its ledger
+      // (C6 D2), then the same retry mover re-enters it.
+      input.gate.emit({ altitude: 'L2', type: 'stage_exit', stage: failedStage })
+      input.gate.emit({ altitude: 'L2', type: 'stage_enter', stage: failedStage })
+      return
+    }
+    return
+  }
   if (outcome === 'extend') {
     const round = input.round ?? { current: 0, cap: 1 }
     input.gate.emit({ altitude: 'L2', type: 'round_open', round: round.current + 1, cap: round.cap + 1 })
@@ -145,8 +171,9 @@ export async function readReviewResultFromSidecars(
 export async function expectedContentFor(
   sidecarDir: string,
   round: number,
-  gateMode: 'early' | 'final',
+  gateMode: 'early' | 'final' | 'escalation',
 ): Promise<ExpectedGateContent> {
+  if (gateMode === 'escalation') return escalationExpectedContent()
   const assumptions = await gatherAssumptions(sidecarDir, round)
   const capHitFired = gateMode === 'early'
   const reviewResult = await readReviewResultFromSidecars(sidecarDir, round, capHitFired ? 'cap-hit' : 'converged')

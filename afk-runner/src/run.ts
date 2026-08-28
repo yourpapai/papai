@@ -13,7 +13,7 @@ import type { ExecGitFn, RunnerConfig } from './config.js'
 import { autonomyOf } from './config.js'
 import { createAppendBoundary } from './drive/boundary.js'
 import { drive } from './drive/loop.js'
-import type { DriveResult, ParkedReason, StopSeam, WorkFor } from './drive/loop.js'
+import type { DriveResult, ParkedReason, StopSeam, WorkFor, WorkIO } from './drive/loop.js'
 import { flattenPosition } from './drive/loop.js'
 import { owedMoverOf, owedPresentationOf, parkedReasonOf, refoldedContext } from './drive/resume.js'
 import type { DepthProfile } from './events.js'
@@ -31,6 +31,7 @@ import { removeHolder, writeHolder } from './stop-controller.js'
 import { runGatePrelude } from './work/gate-prelude.js'
 import { readReviewResultFromSidecars } from './work/gate-settle.js'
 import { awaitGateSettle } from './work/gate-waiter.js'
+import { presentEscalationGate } from './work/present-escalation.js'
 
 export interface RunDeps {
   readonly config: RunnerConfig
@@ -212,15 +213,33 @@ async function driveRun(
   )
   const runDir = path.join(seed.workDir, 'runs', seed.runId)
   const logPath = logPathOf(runDir)
+  const escalation = escalationPresenterOf(deps, input, seed.runId)
   writeHolder(runDir)
   try {
-    const initial: DriveResult = await drive({ machine: pipelineMachine, logPath, now: deps.now }, workFor)
+    const initial: DriveResult = await drive({ machine: pipelineMachine, logPath, now: deps.now, escalation }, workFor)
     const result = await waitSettledGates(deps, seed, input, runDir, logPath, workFor, initial)
     await writeRunMemo(seed, result.parked, result.position, result.context, logPath)
     deps.stdout?.(parkLine(result.parked))
     return { runId: seed.runId, halted: result.parked, position: result.position }
   } finally {
     removeHolder(runDir)
+  }
+}
+
+/** The loop's escalation presenter (C6 D4): renders the gate, moves position, runs the ladder. */
+function escalationPresenterOf(
+  deps: RunDeps,
+  input: { readonly changeName: string },
+  runId: string,
+): { readonly present: (io: WorkIO, stage: string) => Promise<void> } {
+  return {
+    present: async (io, stage) => {
+      await presentEscalationGate(
+        { config: deps.config, repoRoot: deps.config.repoRoot, changeName: input.changeName, runId },
+        io,
+        stage,
+      )
+    },
   }
 }
 
@@ -256,7 +275,8 @@ async function waitSettledGates(
     ...(deps.stdout === undefined ? {} : { stdout: deps.stdout }),
   })
   if (waited.kind === 'external') deps.stdout?.('gate settled externally — re-evaluating')
-  const result = await drive({ machine: pipelineMachine, logPath, now: deps.now }, workFor)
+  const escalation = escalationPresenterOf(deps, input, seed.runId)
+  const result = await drive({ machine: pipelineMachine, logPath, now: deps.now, escalation }, workFor)
   return waitSettledGates(deps, seed, input, runDir, logPath, workFor, result)
 }
 

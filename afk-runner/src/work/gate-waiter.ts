@@ -9,8 +9,9 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { AutonomyConfig } from '../config.js'
+import { escalationStageOf } from '../drive/failure-budget.js'
 import { flattenPosition } from '../drive/loop.js'
-import type { EventInput } from '../events.js'
+import type { EventInput, StageId } from '../events.js'
 import { readEvents } from '../events.js'
 import { foldLogOrInitial } from '../kernel/fold.js'
 import type { KernelMachine } from '../kernel/machine.js'
@@ -70,13 +71,16 @@ export function peekSteer(runDir: string): SteerLanding | null {
   return null
 }
 
-/** Steer taxonomy (deadline-waiter copy): extend-at-final is invalid and skipped with a warning. */
+/** Steer taxonomy (deadline-waiter copy): extend-at-final is invalid and skipped with a warning; veto is invalid at escalation gates (C6 D6). */
 export function translateSteer(
   directive: SteerLanding,
-  gateMode: 'early' | 'final',
+  gateMode: 'early' | 'final' | 'escalation',
 ): { readonly outcome: SteerLanding; readonly warn: string | null } {
   if (directive.kind === 'extend' && gateMode === 'final') {
     return { outcome: directive, warn: 'steer: extend is not valid at a final gate — skipped' }
+  }
+  if (directive.kind === 'veto' && gateMode === 'escalation') {
+    return { outcome: directive, warn: 'steer: veto is not valid at an escalation gate — skipped' }
   }
   return { outcome: directive, warn: null }
 }
@@ -102,8 +106,9 @@ export type GateWaiterResult =
   | { readonly kind: 'settled'; readonly outcome: SettleOutcome }
   | { readonly kind: 'external' }
 
-function narrowGateMode(mode: 'early' | 'final' | 'plan' | 'escalation'): 'early' | 'final' {
-  return mode === 'early' ? 'early' : 'final'
+/** Escalation stays first-class (C6 D4); only the dormant plan mode collapses to final. */
+function narrowGateMode(mode: 'early' | 'final' | 'plan' | 'escalation'): 'early' | 'final' | 'escalation' {
+  return mode === 'plan' ? 'final' : mode
 }
 
 function readGateMd(runDir: string, version: number): Promise<string | null> {
@@ -147,8 +152,9 @@ export function awaitGateSettle(ports: GateWaiterPorts): Promise<GateWaiterResul
   async function attemptSettle(
     context: {
       readonly version: number
-      readonly gateMode: 'early' | 'final'
+      readonly gateMode: 'early' | 'final' | 'escalation'
       readonly round: { readonly current: number; readonly cap: number } | null
+      readonly failedStage?: StageId
     },
     via: (input: SettleInput) => Promise<{ outcome: SettleOutcome }>,
   ): Promise<GateWaiterResult> {
@@ -168,6 +174,7 @@ export function awaitGateSettle(ports: GateWaiterPorts): Promise<GateWaiterResul
       gateMode: context.gateMode,
       expected: await expectedContentFor(ports.sidecarDir, context.round?.current ?? 1, context.gateMode),
       round: context.round,
+      ...(context.failedStage === undefined ? {} : { failedStage: context.failedStage }),
     }
     const result = await via(input)
     return { kind: 'settled', outcome: result.outcome }
@@ -180,6 +187,8 @@ export function awaitGateSettle(ports: GateWaiterPorts): Promise<GateWaiterResul
     const gate = snapshot.context.gate
     if (gate === null) return { kind: 'external' }
     const gateMode = narrowGateMode(gate.mode)
+    // The escalation retry mover targets the still-active failed stage (C6 D4)
+    const escalationStage = gateMode === 'escalation' ? escalationStageOf(snapshot.context) : null
 
     const expiry = await processExpiry(
       ports,
@@ -188,6 +197,7 @@ export function awaitGateSettle(ports: GateWaiterPorts): Promise<GateWaiterResul
       snapshot.context.round,
       snapshot.context.gateDeadlineAt,
       snapshot.context.gateDeadlineReArmed,
+      escalationStage,
     )
     if (expiry !== null) return expiry
 
@@ -199,8 +209,14 @@ export function awaitGateSettle(ports: GateWaiterPorts): Promise<GateWaiterResul
         ports.stdout?.(translated.warn)
         return step()
       }
-      return attemptSettle({ version: gate.version, gateMode, round: snapshot.context.round }, (input) =>
-        settleGateWithAnswers(input, steerAnswers(steer)),
+      return attemptSettle(
+        {
+          version: gate.version,
+          gateMode,
+          round: snapshot.context.round,
+          ...(escalationStage === null ? {} : { failedStage: escalationStage }),
+        },
+        (input) => settleGateWithAnswers(input, steerAnswers(steer)),
       )
     }
 
@@ -211,8 +227,14 @@ export function awaitGateSettle(ports: GateWaiterPorts): Promise<GateWaiterResul
     }
     digests = [...digests, digestOf(md)]
     if (isStableEdit(digests)) {
-      return attemptSettle({ version: gate.version, gateMode, round: snapshot.context.round }, (input) =>
-        settleGateFile(input),
+      return attemptSettle(
+        {
+          version: gate.version,
+          gateMode,
+          round: snapshot.context.round,
+          ...(escalationStage === null ? {} : { failedStage: escalationStage }),
+        },
+        (input) => settleGateFile(input),
       )
     }
     return step()
@@ -242,10 +264,11 @@ function claimGateExpiry(runDir: string, version: number): boolean {
 async function processExpiry(
   ports: GateWaiterPorts,
   version: number,
-  gateMode: 'early' | 'final',
+  gateMode: 'early' | 'final' | 'escalation',
   round: { readonly current: number; readonly cap: number } | null,
   deadlineAt: string | null,
   reArmed: boolean,
+  failedStage: StageId | null,
 ): Promise<GateWaiterResult | null> {
   if (deadlineAt === null || ports.now === undefined || ports.repoRoot === undefined || ports.autonomy === undefined) {
     return null
@@ -294,6 +317,7 @@ async function processExpiry(
         gateMode,
         expected: await expectedContentFor(ports.sidecarDir, currentRound, gateMode),
         round,
+        ...(failedStage === null ? {} : { failedStage }),
       },
       decision.action === 'approve'
         ? renderAutoApproveAnswers(decision, assumptions)

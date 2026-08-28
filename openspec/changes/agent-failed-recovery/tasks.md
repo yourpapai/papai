@@ -23,9 +23,9 @@
 
 ## 5. Escalation face (D4/D5/D6)
 
-- [ ] 5.1 Failing tests: escalation presentation — file-first `gate-<v>.md` (failure ledger + resume hint + budget math + spend), `gate presented {mode:'escalation'}` from the failed stage's position, ladder always-logs (R5 over-ceiling/unknown-cost with extend suppressed; else none), parks gate-pending with the failed stage active. Verify: `bun test tests/afk-runner/work/present-escalation.test.ts` (fails)
-- [ ] 5.2 Failing settle tests: approve → mover `stage_enter(failedStage)`, no gate exit owed; extend → ledger cleared + same mover; abort → answered alone → aborted final; veto not offered (parse rejects); steer rows (extend/abort valid, veto invalid); expiry inherits the standard path (no conservative branch, re-arm once, pending). Verify: `bun test tests/afk-runner/work/gate-settle-escalation.test.ts` (fails)
-- [ ] 5.3 Implement mode `'escalation'` across the eight fork points (schema/kernel unions, narrowGateMode/SettleInput, owesExit, appendMover, evaluateLadder arm, translateSteer, content assembler, memo unions) — approve/extend/abort golden logs. Verify: `bun test tests/afk-runner/work/present-escalation.test.ts tests/afk-runner/work/gate-settle-escalation.test.ts`
+- [x] 5.1 Failing tests: escalation presentation — file-first `gate-<v>.md` (failure ledger + resume hint + budget math + spend), `gate presented {mode:'escalation'}` from the failed stage's position, ladder always-logs (R5 over-ceiling/unknown-cost with extend suppressed; else none), parks gate-pending with the failed stage active. Verify: `bun test tests/afk-runner/work/present-escalation.test.ts` (fails)
+- [x] 5.2 Failing settle tests: approve → mover `stage_enter(failedStage)`, no gate exit owed; extend → ledger cleared + same mover; abort → answered alone → aborted final; veto not offered (parse rejects); steer rows (extend/abort valid, veto invalid); expiry inherits the standard path (no conservative branch, re-arm once, pending). Verify: `bun test tests/afk-runner/work/gate-settle-escalation.test.ts` (fails)
+- [x] 5.3 Implement mode `'escalation'` across the eight fork points (schema/kernel unions, narrowGateMode/SettleInput, owesExit, appendMover, evaluateLadder arm, translateSteer, content assembler, memo unions) — approve/extend/abort golden logs. Verify: `bun test tests/afk-runner/work/present-escalation.test.ts tests/afk-runner/work/gate-settle-escalation.test.ts`
 
 ## 6. Operator face (D7)
 

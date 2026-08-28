@@ -202,3 +202,72 @@ function appendSparkline(block: string, trajectory: readonly DigestRecord[]): st
   )
   return `${block}\nsparkline: ${spark}`
 }
+
+/** One failure-ledger row of the escalation gate (C6 D4): kind, reason, resume hint. */
+export interface EscalationFailureRow {
+  readonly kind: string
+  readonly reason: string
+  readonly resumeHint?: string
+}
+
+export interface EscalationGateInput {
+  readonly version: number
+  readonly changeName: string
+  readonly runId: string
+  readonly stage: string
+  readonly failures: readonly EscalationFailureRow[]
+  readonly budget: number
+  readonly spendUsd: number
+  readonly costKnown: boolean
+  /** False when R5 suppressed the offer (over ceiling / unknown cost). */
+  readonly extendOffered: boolean
+}
+
+/**
+ * The escalation gate content assembler (C6 D4): failure ledger, resume hint,
+ * budget math, and spend — deliberately NOT `GateDigestInput`, which models
+ * assumptions/blockers. Approve checks the trajectory-style ack; extend and
+ * abort reuse the directive grammar the parser already knows.
+ */
+export function renderEscalationGate(input: EscalationGateInput): string {
+  const lines: string[] = [
+    `<!-- gate-${input.version}.md -->`,
+    '',
+    `## Escalation gate — ${input.stage} exhausted its retry budget — change ${input.changeName}`,
+    '',
+    `The stage burned its budget of consecutive declared failures. Approve retries it now; extend clears the ledger first; abort ends the run as failed.`,
+    '',
+    '### Decisions',
+    '',
+    '- **approve** — check the trajectory-reviewed box below to retry the failed stage',
+    ...(input.extendOffered
+      ? ['- **extend** (`→ RUN 1 MORE`) — clear the failure ledger, then retry the stage fresh']
+      : []),
+    '- **abort** (`ABORT` on its own line) — ends the run as failed',
+    '',
+    '### Failure ledger',
+    '',
+  ]
+  for (const failure of input.failures) {
+    lines.push(`- ${input.stage} · ${failure.kind}: ${failure.reason}`)
+    if (failure.resumeHint !== undefined) lines.push(`  resume: ${failure.resumeHint}`)
+  }
+  lines.push(
+    '',
+    '### Budget',
+    '',
+    `${input.failures.length} declared failures · budget ${input.budget} (precondition escalates immediately)`,
+    '',
+    '### Cost / spend',
+    '',
+    input.costKnown ? `$${input.spendUsd.toFixed(2)} · metered` : 'unknown · unmetered spend',
+    '',
+    '### Trajectory reviewed',
+    '',
+    '- [ ] T1 I reviewed the failure ledger above — approve retries the failed stage',
+    '',
+    '### Resume',
+    `afk-runner resume ${input.runId}`,
+  )
+  return lines.join('\n')
+}

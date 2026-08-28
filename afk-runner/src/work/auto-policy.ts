@@ -262,3 +262,38 @@ export function evaluateCapHit(signals: PolicySignals): PolicyDecision {
   if (r2 !== null) return r2
   return gateDecision('none', signals, 'cap-hit-undecidable')
 }
+
+/** Slim escalation inputs (C6 D5): the retry question reads spend only, never review shape. */
+export interface EscalationSignals {
+  readonly spentUsd: number
+  readonly costKnown: boolean
+  readonly config: AutonomyConfig
+}
+
+/**
+ * Escalation ladder (C6 D5): R4's fail-closed shape mirrored onto the retry
+ * question — spend over the configured ceiling or unknown cost attributes the
+ * gate to the reserved `R5` rule (extend suppressed in the rendered gate);
+ * everything else hands to the human (rule none). Never auto-settles.
+ */
+export function evaluateEscalationGate(signals: EscalationSignals): PolicyDecision {
+  if (!signals.costKnown) {
+    return {
+      rule: 'R5',
+      action: 'gate',
+      evidenceDigest: digestOf(['escalation-cost-unknown']),
+    }
+  }
+  if (signals.spentUsd >= signals.config.costCeilingUsd) {
+    return {
+      rule: 'R5',
+      action: 'gate',
+      evidenceDigest: digestOf(['escalation-over-ceiling', signals.spentUsd, signals.config.costCeilingUsd]),
+    }
+  }
+  return {
+    rule: 'none',
+    action: 'gate',
+    evidenceDigest: digestOf(['escalation-human', signals.spentUsd]),
+  }
+}

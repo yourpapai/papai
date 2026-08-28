@@ -71,7 +71,7 @@ export interface ExpectedGateContent {
    * only at an early (cap-hit) gate; at a final gate (or when unspecified) it
    * is rejected with a clear error.
    */
-  readonly gateMode?: 'early' | 'final'
+  readonly gateMode?: 'early' | 'final' | 'escalation'
 }
 
 const OVERRIDE_TOKEN = 'OVERRIDE'
@@ -135,7 +135,7 @@ function processArrowLine(
   prevLine: string,
   payload: string,
   blockerIds: Set<string>,
-  _gateMode: 'early' | 'final' | undefined,
+  _gateMode: 'early' | 'final' | 'escalation' | undefined,
 ): void {
   if (RUN_DIRECTIVE_RE.test(line)) {
     // C5: the extend directive is valid at a final gate too — a human asking
@@ -172,7 +172,7 @@ function processLine(
   prevLine: string,
   itemIds: Set<string>,
   blockerIds: Set<string>,
-  gateMode: 'early' | 'final' | undefined,
+  gateMode: 'early' | 'final' | 'escalation' | undefined,
 ): void {
   if (DECIDED_BY_LINE_RE.test(line)) return
   // Membership routing: a box belongs to this gate when its id was declared in
