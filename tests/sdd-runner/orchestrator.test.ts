@@ -329,16 +329,15 @@ describe('holder lifecycle (process ownership)', () => {
   it('an oversize intake routes into the plan branch: no draft/review stages, no parent change folder', async () => {
     const fixture = makeFixture({
       'depth.json': JSON.stringify({
-        implicated_files: ['src/a.ts'],
+        implicated_files: Array.from({ length: 36 }, (_, i) => `src/kb/file-${i}.ts`),
         signals: {
-          cross_module: false,
+          cross_module: true,
           db_migration: false,
           provider_surface: false,
           credentials: false,
-          novelty: 'existing-modules',
+          novelty: 'new-subsystem',
         },
-        rationale: 'declared scope too large for one change',
-        oversize: true,
+        rationale: 'new knowledge-base subsystem across chat, tools, and storage',
       }),
       'plan-draft.json': JSON.stringify({
         children: [
@@ -3338,16 +3337,15 @@ describe('runGateResume plan mode (D12)', () => {
       'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
     })
     const oversizeDepth = JSON.stringify({
-      implicated_files: ['src/a.ts'],
+      implicated_files: Array.from({ length: 36 }, (_, i) => `src/kb/file-${i}.ts`),
       signals: {
-        cross_module: false,
+        cross_module: true,
         db_migration: false,
         provider_surface: false,
         credentials: false,
-        novelty: 'existing-modules',
+        novelty: 'new-subsystem',
       },
-      rationale: 'declared scope too large for one change',
-      oversize: true,
+      rationale: 'new knowledge-base subsystem across chat, tools, and storage',
     })
     const stdoutLines: string[] = []
     let runDir = ''

@@ -6,17 +6,17 @@
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { AgentLayerDeps } from './agent-layer.js'
 import { runPlanBranch } from './children.js'
 import { autonomyOf } from './config.js'
-import type { AutonomyConfig } from './config.js'
 import { runDraft } from './draft.js'
-import type { DepthProfile, EventInput } from './events.js'
+import type { DepthProfile } from './events.js'
 import { buildBus, logPathFor, nowOf } from './gate-digest.js'
-import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
+import type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 import { runIntake, resolveTaskSource } from './intake.js'
 import type { IntakeResult } from './intake.js'
 import { createMaterializer } from './materialize.js'
+import { buildPipelineEnv, tailInputOf } from './pipeline-env.js'
+import type { PipelineEnv } from './pipeline-env.js'
 import {
   isInterruptedPlanBranchResume,
   isPlanParentResume,
@@ -32,8 +32,6 @@ import { deriveResumeDecision, reportResumeDecision, settleStoppedResult } from 
 import { runReviewLoop } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { createRunState, loadRunState, resolveRoundCap, saveRunState, steerSeamFor } from './run-state.js'
-import type { RunState } from './run-state.js'
-import { createStageMachine } from './stage-machine.js'
 import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controller.js'
 import type { CalmStopController } from './stop-controller.js'
 
@@ -53,6 +51,8 @@ export interface StartOptions {
   /** Explicit session name; defaults to the first heading of inline text. */
   readonly changeName?: string
   readonly depthOverride?: DepthProfile
+  /** Operator routing override (D3): force the plan branch at intake. */
+  readonly forcePlan?: boolean
   readonly verbosity?: Verbosity
   readonly autonomy?: AutonomyOverrides
   /** Tree spend baseline (D10) a nested run adds before its single-ceiling compare. */
@@ -71,20 +71,12 @@ export interface RunResumeResult {
   readonly childRunId?: string
 }
 
-interface FreshInput {
-  readonly taskText: string
-  readonly changeName: string
-  readonly depthOverride?: DepthProfile
-  readonly autonomy: AutonomyConfig
-}
-
-interface PipelineEnv {
-  readonly deps: OrchestratorDeps
-  readonly state: RunState
-  readonly machine: ReturnType<typeof createStageMachine>
-  readonly agent: AgentLayerDeps
-  readonly ctx: StageContext
-  readonly input: FreshInput
+export interface RunResumeResult {
+  readonly runId: string
+  readonly halted: 'gate' | 'gate-pending' | 'stopped' | 'completed'
+  readonly gateMdPath?: string
+  readonly version?: number
+  readonly childRunId?: string
 }
 
 export async function runStart(deps: OrchestratorDeps, options: StartOptions): Promise<RunStartResult> {
@@ -112,6 +104,7 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
       taskText,
       changeName,
       depthOverride: options.depthOverride,
+      forcePlan: options.forcePlan,
       autonomy: autonomyOf(deps.config, options.autonomy?.deadlineMinutes),
     })
     const planned = await runPlanningStages(env, stop)
@@ -174,32 +167,6 @@ export async function runResume(
   }
 }
 
-function buildPipelineEnv(
-  deps: OrchestratorDeps,
-  state: RunState,
-  emit: (event: EventInput) => void,
-  input: FreshInput,
-): PipelineEnv {
-  const cwd = deps.config.repoRoot
-  const sidecarDir = path.join(state.runDir, 'sidecars')
-  const changeDir = path.join(cwd, 'openspec', 'changes', input.changeName)
-  const machine = createStageMachine({ emit })
-  const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
-  const ctx: StageContext = { cwd, changeDir, sidecarDir, emit }
-  const resolved: OrchestratorDeps = { ...deps, autonomy: input.autonomy }
-  return { deps: resolved, state, machine, agent, ctx, input }
-}
-
-/** Build the shared post-review tail input from the pipeline env. */
-function tailInputOf(
-  env: PipelineEnv,
-  depth: DepthProfile,
-  reviewResult: ReviewLoopResult,
-  version: number = 1,
-): Parameters<typeof runPostReviewToGate>[0] {
-  return { deps: env.deps, state: env.state, ctx: env.ctx, agent: env.agent, depth, reviewResult, version }
-}
-
 type PlanningOutcome =
   | { readonly kind: 'plan'; readonly children: PlanChild[] }
   | { readonly kind: 'single'; readonly depth: DepthProfile; readonly reviewResult: ReviewLoopResult }
@@ -229,7 +196,12 @@ async function runIntakeStage(env: PipelineEnv): Promise<IntakeResult> {
   await machine.runStage('intake', async () => {
     intake = await runIntake(
       { driver: deps.driver, agent, emit: ctx.emit, sidecarDir: ctx.sidecarDir, runDir: state.runDir, cwd: ctx.cwd },
-      { changeName: input.changeName, taskText: input.taskText, depthOverride: input.depthOverride },
+      {
+        changeName: input.changeName,
+        taskText: input.taskText,
+        depthOverride: input.depthOverride,
+        forcePlan: input.forcePlan,
+      },
     )
     if (intake.kind === 'single') {
       state.depth = intake.depth

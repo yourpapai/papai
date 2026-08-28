@@ -42,6 +42,7 @@ export interface CliHarness {
   readonly sessionLoop?: (options: {
     readonly initial: 'list' | 'create'
     readonly depth?: DepthProfile
+    readonly plan?: true
   }) => Promise<void>
   /** Version of the run's most recently answered gate, null when none settled. */
   readonly latestSettledGateVersion?: (runId: string) => Promise<number | null>
@@ -51,6 +52,8 @@ export interface ParsedRoute {
   readonly target: string | undefined
   readonly verb: 'route' | 'stop'
   readonly depth?: DepthProfile
+  /** Operator routing override (D3): force the plan branch at intake. */
+  readonly plan?: true
   readonly configPath?: string
   readonly pr: boolean
   readonly reopen?: true | number
@@ -92,6 +95,7 @@ function rejectLegacyShape(verb: 'route' | 'stop', target: string | undefined, p
 
 interface FlagState {
   readonly depth?: DepthProfile
+  readonly plan?: true
   readonly configPath?: string
   readonly pr: boolean
   readonly reopen?: true | number
@@ -99,6 +103,7 @@ interface FlagState {
 
 function parseFlagArgs(args: readonly string[], start: number): FlagState {
   let depth: DepthProfile | undefined
+  let plan: true | undefined
   let configPath: string | undefined
   let pr = false
   let reopen: true | number | undefined
@@ -110,6 +115,8 @@ function parseFlagArgs(args: readonly string[], start: number): FlagState {
       if (depthValue === undefined) throw new Error(`invalid --depth: ${val} (S|M|L)`)
       depth = depthValue
       i += 1
+    } else if (arg === '--plan') {
+      plan = true
     } else if (arg === '--config') {
       configPath = args[i + 1]
       if (configPath === undefined) throw new Error('--config requires a path')
@@ -129,11 +136,15 @@ function parseFlagArgs(args: readonly string[], start: number): FlagState {
         `${arg} was removed: hand-edit the gate file (gate-<n>.md) as the non-interactive decision path, then rerun \`sdd <run-id>\``,
       )
     } else {
-      throw new Error(`unknown flag: ${arg} (valid: --depth S|M|L, --config <path>, --pr, --reopen [<n>])`)
+      throw new Error(`unknown flag: ${arg} (valid: --depth S|M|L, --plan, --config <path>, --pr, --reopen [<n>])`)
     }
+  }
+  if (plan !== undefined && depth !== undefined) {
+    throw new Error('--plan and --depth conflict: a forced plan branch cannot take an explicit depth')
   }
   return {
     ...(depth === undefined ? {} : { depth }),
+    ...(plan === undefined ? {} : { plan }),
     ...(configPath === undefined ? {} : { configPath }),
     pr,
     ...(reopen === undefined ? {} : { reopen }),
@@ -155,16 +166,25 @@ const REMOVED_FLAGS = new Set([
 
 function requireSessionLoop(
   harness: CliHarness,
-): (options: { readonly initial: 'list' | 'create'; readonly depth?: DepthProfile }) => Promise<void> {
+): (options: {
+  readonly initial: 'list' | 'create'
+  readonly depth?: DepthProfile
+  readonly plan?: true
+}) => Promise<void> {
   if (harness.sessionLoop === undefined) {
     throw new Error('interactive session screen requires a harness with sessionLoop (TTY only)')
   }
   return harness.sessionLoop
 }
 
-async function runInteractive(initial: 'list' | 'create', harness: CliHarness, depth?: DepthProfile): Promise<number> {
+async function runInteractive(
+  initial: 'list' | 'create',
+  harness: CliHarness,
+  depth?: DepthProfile,
+  plan?: true,
+): Promise<number> {
   const loop = requireSessionLoop(harness)
-  await loop({ initial, ...(depth === undefined ? {} : { depth }) })
+  await loop({ initial, ...(depth === undefined ? {} : { depth }), ...(plan === undefined ? {} : { plan }) })
   return 0
 }
 
@@ -179,8 +199,8 @@ export async function main(argv: readonly string[], harness: CliHarness): Promis
     return 0
   }
   const action = await resolveTarget({ workDir: harness.workDir, target: parsed.target, tty })
-  if (action.kind === 'select') return runInteractive('list', harness, parsed.depth)
-  if (action.kind === 'create') return runInteractive('create', harness, parsed.depth)
+  if (action.kind === 'select') return runInteractive('list', harness, parsed.depth, parsed.plan)
+  if (action.kind === 'create') return runInteractive('create', harness, parsed.depth, parsed.plan)
   if (parsed.reopen !== undefined) {
     if (action.kind === 'start') rejectStartReopen()
     if (action.kind !== 'gate' && action.kind !== 'resume' && action.kind !== 'report') {
@@ -194,6 +214,7 @@ export async function main(argv: readonly string[], harness: CliHarness): Promis
     await harness.runStart({
       taskFile: action.taskFile,
       ...(parsed.depth === undefined ? {} : { depthOverride: parsed.depth }),
+      ...(parsed.plan === undefined ? {} : { forcePlan: true }),
     })
     return 0
   }

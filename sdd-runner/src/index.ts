@@ -25,19 +25,16 @@ import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { runContinue, runResume, runStart } from './orchestrator.js'
 import { stdinIsInteractive } from './prompter.js'
-import { removeRun } from './remove-run.js'
 import { createRenderer } from './renderer.js'
 import type { Verbosity } from './renderer.js'
 import { buildReport } from './report.js'
 import type { ChangeDirSummary, ReportInput } from './report.js'
 import { resolveRunId } from './run-index.js'
 import { loadRunState, runDirOf } from './run-state.js'
-import { executeSessionTarget } from './session-flow.js'
-import type { SessionFlowDeps } from './session-flow.js'
+import { sessionLoopOf } from './session-harness.js'
 import { requestCalmStop, stopRun } from './stop-controller.js'
 import { registerTerminalTitle, TERMINAL_TITLE_RESTORE } from './terminal-title.js'
 import { createRunScreenSession } from './tui-run-session.js'
-import { runSessionPicker } from './tui-session-picker.js'
 import { buildResolveCost, childUsageOf } from './usage-aggregate.js'
 
 export const USAGE = [
@@ -183,49 +180,7 @@ function harnessMembers(
     latestSettledGateVersion: (runId) =>
       resolveAndCall(config.workDir, runId, (r) => latestSettledGateVersion(config.workDir, r)),
   }
-  return { ...members, sessionLoop: sessionLoopOf(config, orchestratorDeps, members, execGit) }
-}
-
-type DepthOverride = Parameters<typeof runStart>[1] extends { depthOverride?: infer D } ? D : never
-
-function sessionFlowDepsOf(members: CliHarness): SessionFlowDeps {
-  return {
-    runGateResume: (runId) => members.runGateResume(runId),
-    runResume: (runId) => members.runResume(runId),
-    buildReport: (runId) => members.buildReport(runId, false),
-    requestCalmStop: (runId) => members.requestCalmStop(runId),
-    reopenGate: async (runId) => {
-      const version = await members.latestSettledGateVersion?.(runId)
-      if (version === undefined || version === null) throw new Error(`run ${runId} has no settled gate to reopen`)
-      await members.runGateReopen(runId, version)
-    },
-    removeRun: (runId) => removeRun(members.workDir, runId),
-    stdout: members.stdout,
-  }
-}
-
-function sessionLoopOf(
-  config: { readonly workDir: string; readonly repoRoot: string },
-  orchestratorDeps: OrchestratorDeps,
-  members: CliHarness,
-  execGit: ExecGitFn,
-): (options: { readonly initial: 'list' | 'create'; readonly depth?: DepthOverride }) => Promise<void> {
-  return async (options): Promise<void> => {
-    await runSessionPicker({
-      workDir: config.workDir,
-      ...(options.initial === 'list' ? {} : { initial: options.initial }),
-      execute: (action) => executeSessionTarget(action, sessionFlowDepsOf(members)),
-      buildReport: (runId) => buildRunReport(config, runId, false, execGit),
-      createRun: async (taskText): Promise<void> => {
-        const started = await runStart(orchestratorDeps, {
-          taskText,
-          ...(options.depth === undefined ? {} : { depthOverride: options.depth }),
-        })
-        members.stdout(`started ${started.runId}`)
-      },
-      removeRun: (runId) => removeRun(config.workDir, runId),
-    })
-  }
+  return { ...members, sessionLoop: sessionLoopOf(config, orchestratorDeps, members) }
 }
 
 function harnessStdout(line: string): void {

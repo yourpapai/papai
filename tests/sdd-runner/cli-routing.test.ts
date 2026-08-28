@@ -10,6 +10,8 @@ import path from 'node:path'
 
 import { resolveTarget } from '../../sdd-runner/src/cli-routing.js'
 import type { RouteAction } from '../../sdd-runner/src/cli-routing.js'
+import { main, parseSddArgs } from '../../sdd-runner/src/cli.js'
+import type { CliHarness } from '../../sdd-runner/src/cli.js'
 import { appendEvent } from '../../sdd-runner/src/events.js'
 
 const dirs: string[] = []
@@ -379,5 +381,43 @@ describe('sdd stop routing (6.2)', () => {
       kind: 'stop',
       runId: 'stop-me',
     })
+  })
+})
+
+describe('--plan routing override (sdd-oversize-estimator-signals 4.x)', () => {
+  it('parses --plan and keeps --depth parsing unchanged', () => {
+    expect(parseSddArgs(['task.md', '--plan'])).toMatchObject({ target: 'task.md', plan: true })
+    expect(parseSddArgs(['task.md', '--depth', 'S'])).toMatchObject({ target: 'task.md', depth: 'S' })
+    expect(parseSddArgs(['task.md'])).toMatchObject({ target: 'task.md' })
+  })
+
+  it('--plan together with --depth fails loudly naming the conflict in either order', () => {
+    expect(() => parseSddArgs(['task.md', '--plan', '--depth', 'S'])).toThrow(/--plan.*--depth|--depth.*--plan/u)
+    expect(() => parseSddArgs(['task.md', '--depth', 'S', '--plan'])).toThrow(/--plan.*--depth|--depth.*--plan/u)
+  })
+
+  it('a task-file start with --plan threads forcePlan to runStart; --depth alone does not', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    const started: string[] = []
+    const harness: CliHarness = {
+      workDir,
+      runStart: (options) => {
+        started.push(`plan:${options.forcePlan === true}`)
+        return Promise.resolve({ runId: 'run-1', halted: 'gate', gateMdPath: '/x/gate-1.md', version: 1 })
+      },
+      runResume: () => Promise.reject(new Error('unreachable')),
+      runGateResume: () => Promise.reject(new Error('unreachable')),
+      runContinue: () => Promise.reject(new Error('unreachable')),
+      buildReport: () => Promise.reject(new Error('unreachable')),
+      requestCalmStop: () => Promise.reject(new Error('unreachable')),
+      runGateReopen: () => Promise.reject(new Error('unreachable')),
+      stdout: () => undefined,
+    }
+    const startTask = path.join(dir, 'task.md')
+    writeFileSync(startTask, '# Plan me\n')
+    await main([startTask, '--plan'], harness)
+    await main([startTask], harness)
+    expect(started).toEqual(['plan:true', 'plan:false'])
   })
 })
