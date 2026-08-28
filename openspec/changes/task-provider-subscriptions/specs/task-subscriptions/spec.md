@@ -65,7 +65,7 @@ An alert whose condition tree consists only of `task.id eq` leaves (in any `and`
 #### Scenario: Cooldown suppresses an immediate re-fire
 
 - **WHEN** a per-task watch fires and the watched task changes again before its cooldown window (default 60 minutes) has elapsed
-- **THEN** the alert does not fire again until the cooldown has elapsed and a further change is observed
+- **THEN** the alert does not fire again before its cooldown window has elapsed; the cooldown excludes the alert from polling rather than consuming the change, so the pending change is caught up at the first post-cooldown cycle unless another eligible alert's cycle in the same conversation context refreshes the shared snapshots first
 
 #### Scenario: Missing watched task is skipped
 
@@ -88,15 +88,15 @@ Conditions that mix `task.id` leaves with any other condition field SHALL keep t
 
 ### Requirement: Targeted polling for pure-watch instances
 
-When every alert eligible in a task-instance poll — across every conversation context group routable for that instance — is a pure per-task watch, the poller SHALL fetch only the union of the watched task ids through the task provider's single-task retrieval, with bounded concurrency, and SHALL NOT enumerate the task instance (no project listing, task listing, or task search). A failure of a single-task fetch SHALL abort that instance's cycle: no alerts fire and no snapshots or alert state are updated for that instance in that cycle, and the failure is logged.
+When every active alert routable for a task instance — across every routable conversation context group, including alerts currently inside their cooldown, so an alert entering cooldown cannot flip the instance's fetch mode mid-life — is a pure per-task watch, the poller SHALL fetch only the union of the watched task ids through the task provider's single-task retrieval, with bounded concurrency, and SHALL NOT enumerate the task instance (no project listing, task listing, or task search). A failure of a single-task fetch SHALL abort that instance's cycle: no alerts fire and no snapshots or alert state are updated for that instance in that cycle, and the failure is logged.
 
-When at least one non-watch alert is eligible for the instance, the poller SHALL keep the existing whole-list fetch path (including task enrichment when required), and pure watches in that instance SHALL evaluate their watch semantics against their watched tasks as drawn from the full task list; when another alert in the same instance poll causes richer task details to be fetched, changes to the richer change-tracked fields of a watched task also count.
+When at least one active routable alert for the instance is neither a pure per-task watch nor a pure activity watch, the poller SHALL keep the existing whole-list fetch path (including task enrichment when required), and pure watches in that instance SHALL evaluate their watch semantics against their watched tasks as drawn from the full task list; when another alert in the same instance poll causes richer task details to be fetched, changes to the richer change-tracked fields of a watched task also count.
 
 The targeted fetch SHALL run against the same task instance the alerts resolve to (a per-alert pinned instance or the context's currently configured instance), and instance pinning behavior SHALL be unchanged. An instance whose task provider cannot be resolved — including when no task instance is configured — SHALL be skipped for the cycle exactly as for other alerts, without firing.
 
 #### Scenario: Pure-watch instance skips whole-list enumeration
 
-- **WHEN** all eligible alerts for a task instance are pure per-task watches
+- **WHEN** all active routable alerts for a task instance are pure per-task watches
 - **THEN** the poll fetches each watched task individually and issues no project-listing, task-listing, or task-search request to the task provider
 
 #### Scenario: Watched ids are deduplicated across context groups
@@ -106,7 +106,7 @@ The targeted fetch SHALL run against the same task instance the alerts resolve t
 
 #### Scenario: Mixed instance keeps the whole-list path
 
-- **WHEN** an instance poll has at least one eligible alert that is not a pure per-task watch
+- **WHEN** an instance poll has at least one active routable alert that is neither a pure per-task watch nor a pure activity watch
 - **THEN** the poll fetches the instance's full task list (with enrichment as today), and pure watches in that instance still fire on changes to their watched tasks
 
 #### Scenario: Single-task fetch failure aborts the instance cycle
@@ -218,7 +218,7 @@ Activity alerts SHALL be evaluated by polling the task provider's history for th
 #### Scenario: Cooldown suppresses immediate refire
 
 - **WHEN** an activity alert fired within its cooldown window and new activity appears before the cooldown elapses
-- **THEN** the alert is not delivered again until the cooldown elapses, under the same cooldown eligibility the other alert kinds use
+- **THEN** the alert is not delivered again until the cooldown elapses, under the same cooldown eligibility the other alert kinds use; a suppressed cycle does not advance the cursor, so the entries that appeared during the cooldown are caught up and delivered at the first poll after the cooldown elapses
 
 #### Scenario: Multi-task tree watches the union
 
@@ -241,16 +241,16 @@ If, at poll time, the provider backing an activity alert no longer exposes activ
 
 ### Requirement: Activity-only contexts skip whole-list fetches
 
-When every routable alert for a context is a pure-activity alert or a pure-watch task-equality alert, the poll cycle for that context SHALL NOT fetch the task list (no project listing, task listing, or task search). When a context mixes activity alerts with field-value alerts, the cycle SHALL still perform the task-list fetch for the field-value alerts while the activity alerts are evaluated through history lookups.
+When every routable alert for a task-instance poll is a pure-activity alert or a pure-watch task-equality alert, the poll cycle SHALL NOT fetch the task list (no project listing, task listing, or task search). When an instance poll mixes activity alerts with field-value alerts, the cycle SHALL still perform the task-list fetch for the field-value alerts while the activity alerts are evaluated through history lookups.
 
 #### Scenario: Activity-only context performs no list fetch
 
-- **WHEN** a context's routable alerts are all activity alerts (or all pure-watch task-equality alerts)
+- **WHEN** an instance poll's routable alerts are all activity alerts (or all pure-watch task-equality alerts)
 - **THEN** the poll cycle issues no project-list, task-list, or task-search request to the provider
 
 #### Scenario: Mixed context still lists tasks for field alerts
 
-- **WHEN** a context has both activity alerts and field-value alerts
+- **WHEN** an instance poll has both activity alerts and field-value alerts
 - **THEN** the poll cycle fetches the task list for the field-value alert evaluation and evaluates the activity alerts via history lookups
 
 ### Requirement: Firing summaries treat activity content as untrusted
@@ -349,7 +349,7 @@ Every alert kind — field-condition alerts, per-task watches, and activity watc
 #### Scenario: Cooldown gates every alert kind equally
 
 - **WHEN** an alert of any kind fires and its watched state changes again before its cooldown window (default 60 minutes) elapses
-- **THEN** the alert is not delivered again until the cooldown has elapsed and a further change or new activity is observed
+- **THEN** the alert is not delivered again before its cooldown window has elapsed; the cooldown works by excluding the alert from polling rather than by consuming the change, so activity entries and newly matched tasks are caught up at the first post-cooldown cycle, and per-task watch changes too except where another eligible alert's cycle refreshes the shared snapshots first
 
 #### Scenario: Already-reported state never refires
 

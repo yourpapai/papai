@@ -2,7 +2,7 @@
 
 ## 1. OpenSpec delta
 
-- [ ] 1.1 Cross-check every requirement in `specs/task-subscriptions/spec.md` against its source delta (`openspec/changes/pin-alerts-to-task-instances/`, `alert-task-watch/`, `alert-activity-condition/` under `specs/`) and the covering tests under `tests/deferred-prompts/` and `tests/tools/create-alert.test.ts`; fix any drift, add no new behavior. Verify: `openspec validate task-provider-subscriptions --strict`
+- [x] 1.1 Cross-check every requirement in `specs/task-subscriptions/spec.md` against its source delta (`openspec/changes/pin-alerts-to-task-instances/`, `alert-task-watch/`, `alert-activity-condition/` under `specs/`) and the covering tests under `tests/deferred-prompts/` and `tests/tools/create-alert.test.ts`; fix any drift, add no new behavior. Verify: `openspec validate task-provider-subscriptions --strict`
 
 ## 2. Documentation
 
