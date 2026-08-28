@@ -59,14 +59,18 @@ const FINAL_VALUES: Readonly<Record<string, string | Record<string, string>>> = 
   'tests-consolidation': 'completed',
   'abort-at-final-synthetic.ndjson': 'aborted',
   'children-plan-synthetic.ndjson': 'start',
+  'escalation-abort-synthetic.ndjson': 'aborted',
   'escalation-approve-cycle-synthetic.ndjson': 'completed',
+  'escalation-extend-cycle-synthetic.ndjson': 'completed',
   'extend-at-final-cycle-synthetic.ndjson': 'completed',
+  'precondition-escalation-synthetic.ndjson': 'completed',
   'resume-artifact-skip-gate.ndjson': AWAITING,
   's-depth-calm-stop-resume.ndjson': 'review',
   's-final-tail-synthetic.ndjson': AWAITING,
   'steer-extend-round.ndjson': 'review',
   'tail-crash-resume-healed-synthetic.ndjson': AWAITING,
   'tail-crash-resume-synthetic.ndjson': AWAITING,
+  'under-budget-retry-synthetic.ndjson': 'completed',
   'veto-at-final-cycle-synthetic.ndjson': 'completed',
   'veto-revision-synthetic.ndjson': 'draft',
 }
@@ -142,7 +146,7 @@ describe('golden-replay parity: graph v0 vs legacy fold', () => {
     })
   }
 
-  it('holds all twenty-two fixtures from the C1+C4+C5+C6 corpus', () => {
-    expect(collectFixtures()).toHaveLength(22)
+  it('holds all twenty-six fixtures from the C1+C4+C5+C6 corpus', () => {
+    expect(collectFixtures()).toHaveLength(26)
   })
 })

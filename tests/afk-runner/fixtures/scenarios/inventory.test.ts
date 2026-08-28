@@ -46,19 +46,27 @@ function firstAnsweredOf(events: readonly FixtureEvent[], outcome: string): Fixt
   return events.find((event) => event.type === 'gate' && event.action === 'answered' && event.outcome === outcome)
 }
 
+function roundOpensOf(events: readonly FixtureEvent[], round: number): FixtureEvent[] {
+  return events.filter((event) => event.type === 'round_open' && event.round === round)
+}
+
 describe('scenario corpus inventory', () => {
-  it('holds exactly the twelve recorded scenario fixtures', () => {
+  it('holds exactly the sixteen recorded scenario fixtures', () => {
     expect(scenarioFiles()).toEqual([
       'abort-at-final-synthetic.ndjson',
       'children-plan-synthetic.ndjson',
+      'escalation-abort-synthetic.ndjson',
       'escalation-approve-cycle-synthetic.ndjson',
+      'escalation-extend-cycle-synthetic.ndjson',
       'extend-at-final-cycle-synthetic.ndjson',
+      'precondition-escalation-synthetic.ndjson',
       'resume-artifact-skip-gate.ndjson',
       's-depth-calm-stop-resume.ndjson',
       's-final-tail-synthetic.ndjson',
       'steer-extend-round.ndjson',
       'tail-crash-resume-healed-synthetic.ndjson',
       'tail-crash-resume-synthetic.ndjson',
+      'under-budget-retry-synthetic.ndjson',
       'veto-at-final-cycle-synthetic.ndjson',
       'veto-revision-synthetic.ndjson',
     ])
@@ -198,5 +206,54 @@ describe('scenario corpus inventory', () => {
     expect(atMover.value).toBe('review')
     expect(atMover.context.stages['review']).toBe('active')
     expect(atMover.context.failures).toEqual({})
+  })
+
+  it('escalation-extend-cycle-synthetic: extend settles answered→exit→enter, the ledger clears, the run completes', () => {
+    const events = readEvents(logOf('escalation-extend-cycle-synthetic.ndjson'))
+    expect(events).toHaveLength(25)
+    expect(gateVersionsOf(events, 'answered')).toEqual([1, 2])
+    const extendAnswer = firstAnsweredOf(events, 'extend')
+    expect(extendAnswer?.seq).toBe(12)
+    expect(events[12]).toMatchObject({ type: 'stage_exit', stage: 'review' })
+    const kernel = foldEvents(pipelineMachine, events).snapshot
+    expect(kernel.value).toBe('completed')
+    expect(kernel.context.failures).toEqual({})
+  })
+
+  it('escalation-abort-synthetic: the answered abort alone reaches the aborted final — the failed memo shape', () => {
+    const events = readEvents(logOf('escalation-abort-synthetic.ndjson'))
+    expect(events).toHaveLength(12)
+    expect(events.at(-1)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'abort', mode: 'escalation' })
+    const kernel = foldEvents(pipelineMachine, events).snapshot
+    expect(kernel.value).toBe('aborted')
+    expect(kernel.status).toBe('done')
+    expect(kernel.context.failures).toEqual({ review: 2 })
+    expect(kernel.context.gateOutcome).toBe('abort')
+  })
+
+  it('precondition-escalation-synthetic: ONE precondition failure escalates immediately from atomicity', () => {
+    const events = readEvents(logOf('precondition-escalation-synthetic.ndjson'))
+    expect(events).toHaveLength(25)
+    expect(events.filter((event) => event.type === 'stage_failed')).toHaveLength(1)
+    const kernel = foldEvents(pipelineMachine, events).snapshot
+    expect(kernel.value).toBe('completed')
+    // the presented event moved atomicity's position into the compound interstitially
+    const atPresented = foldEvents(pipelineMachine, events.slice(0, 15)).snapshot
+    expect(atPresented.value).toEqual({ gate: 'awaiting' })
+    expect(atPresented.context.stages['atomicity']).toBe('active')
+  })
+
+  it('under-budget-retry-synthetic: one failure re-runs the bracket in-place — no gate, no re-enter, completed', () => {
+    const events = readEvents(logOf('under-budget-retry-synthetic.ndjson'))
+    expect(events).toHaveLength(19)
+    expect(events.filter((event) => event.type === 'stage_failed')).toHaveLength(1)
+    expect(escalationPresentations(events)).toHaveLength(0)
+    // the failed bracket stayed open: exactly one review enter, one exit, two round_opens
+    expect(stageEvents(events, 'stage_enter', 'review')).toHaveLength(1)
+    expect(stageEvents(events, 'stage_exit', 'review')).toHaveLength(1)
+    expect(roundOpensOf(events, 1)).toHaveLength(2)
+    const kernel = foldEvents(pipelineMachine, events).snapshot
+    expect(kernel.value).toBe('completed')
+    expect(kernel.context.failures).toEqual({})
   })
 })

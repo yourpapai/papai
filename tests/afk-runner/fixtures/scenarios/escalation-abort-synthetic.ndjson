@@ -1,0 +1,12 @@
+{"altitude":"L2","type":"stage_enter","stage":"intake","seq":1,"ts":"2026-01-06T02:00:00.000Z"}
+{"altitude":"L2","type":"depth","profile":"S","rationale":"one module","source":"estimator","seq":2,"ts":"2026-01-06T02:00:00.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"intake","seq":3,"ts":"2026-01-06T02:00:00.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"draft","seq":4,"ts":"2026-01-06T02:00:00.000Z"}
+{"altitude":"L2","type":"stage_exit","stage":"draft","seq":5,"ts":"2026-01-06T02:00:00.000Z"}
+{"altitude":"L2","type":"stage_enter","stage":"review","seq":6,"ts":"2026-01-06T02:00:00.000Z"}
+{"altitude":"L2","type":"round_open","round":1,"cap":1,"seq":7,"ts":"2026-01-06T02:00:00.000Z"}
+{"altitude":"L2","type":"stage_failed","stage":"review","kind":"exhausted","reason":"review round 1 failed after 2 attempts: schema invalid","resumeHint":"resume the run","seq":8,"ts":"2026-01-06T02:00:01.000Z"}
+{"altitude":"L2","type":"stage_failed","stage":"review","kind":"exhausted","reason":"review round 1 failed after 2 attempts: schema invalid","resumeHint":"resume the run","seq":9,"ts":"2026-01-06T02:00:02.000Z"}
+{"altitude":"L2","type":"gate","action":"presented","mode":"escalation","version":1,"seq":10,"ts":"2026-01-06T02:00:02.000Z"}
+{"altitude":"L2","type":"auto_decision","rule":"none","decision":"gate","evidenceDigest":"5e9f1c04b7a2d3e8","gateVersion":1,"seq":11,"ts":"2026-01-06T02:00:02.000Z"}
+{"altitude":"L2","type":"gate","action":"answered","mode":"escalation","version":1,"outcome":"abort","seq":12,"ts":"2026-01-06T02:05:00.000Z"}

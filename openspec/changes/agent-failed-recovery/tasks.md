@@ -47,7 +47,7 @@
 
 ## 9. Corpus face (D11)
 
-- [ ] 9.1 Add `escalation-extend-cycle-synthetic`, `escalation-abort-synthetic`, `precondition-escalation-synthetic`, `under-budget-retry-synthetic` + README/inventory rows; parity identical per event incl. the historical fixtures. Verify: `bun test tests/afk-runner/fixtures/scenarios/ tests/afk-runner/parity/`
+- [x] 9.1 Add `escalation-extend-cycle-synthetic`, `escalation-abort-synthetic`, `precondition-escalation-synthetic`, `under-budget-retry-synthetic` + README/inventory rows; parity identical per event incl. the historical fixtures. Verify: `bun test tests/afk-runner/fixtures/scenarios/ tests/afk-runner/parity/`
 
 ## 10. Full verification
 
