@@ -180,27 +180,27 @@ async function waitSettledGates(
   runDir: string,
   logPath: string,
   workFor: WorkFor,
-  initial: DriveResult,
+  current: DriveResult,
 ): Promise<DriveResult> {
-  let result = initial
-  while (result.parked === 'gate-pending' && deps.gateWait !== undefined) {
-    await writeRunMemo(seed, result.parked, result.position, result.context, logPath)
-    deps.stdout?.(parkLine(result.parked))
-    const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
-    const waited = await awaitGateSettle({
-      runDir,
-      logPath,
-      sidecarDir: path.join(runDir, 'sidecars'),
-      changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', input.changeName),
-      machine: pipelineMachine,
-      emit: boundary.append,
-      tick: deps.gateWait.tick,
-      ...(deps.stdout === undefined ? {} : { stdout: deps.stdout }),
-    })
-    if (waited.kind === 'external') deps.stdout?.('gate settled externally — re-evaluating')
-    result = await drive({ machine: pipelineMachine, logPath, now: deps.now }, workFor)
-  }
-  return result
+  if (current.parked !== 'gate-pending' || deps.gateWait === undefined) return current
+  await writeRunMemo(seed, current.parked, current.position, current.context, logPath)
+  deps.stdout?.(parkLine(current.parked))
+  const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
+  const waited = await awaitGateSettle({
+    runDir,
+    logPath,
+    sidecarDir: path.join(runDir, 'sidecars'),
+    changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', input.changeName),
+    machine: pipelineMachine,
+    emit: (event) => {
+      boundary.append(event)
+    },
+    tick: deps.gateWait.tick,
+    ...(deps.stdout === undefined ? {} : { stdout: deps.stdout }),
+  })
+  if (waited.kind === 'external') deps.stdout?.('gate settled externally — re-evaluating')
+  const result = await drive({ machine: pipelineMachine, logPath, now: deps.now }, workFor)
+  return waitSettledGates(deps, seed, input, runDir, logPath, workFor, result)
 }
 
 function parkLine(parked: ParkedReason): string {

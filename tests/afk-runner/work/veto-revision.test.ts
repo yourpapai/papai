@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 import { readEvents } from '../../../afk-runner/src/events.js'
@@ -34,7 +35,7 @@ describe('veto-updater port (C4 D8)', () => {
   })
 
   it('updateAssumptionsFromVetoes applies redirects and marks bare vetoes in the sidecar', async () => {
-    const dir = fs.mkdtempSync(path.join(fs.realpathSync(fs.mkdtempSync('x')), 'afk-veto'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'afk-veto-'))
     const sidecarPath = path.join(dir, 'resolutions-2.json')
     fs.writeFileSync(
       sidecarPath,

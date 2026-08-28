@@ -106,8 +106,8 @@ function narrowGateMode(mode: 'early' | 'final' | 'plan'): 'early' | 'final' {
   return mode === 'early' ? 'early' : 'final'
 }
 
-async function readGateMd(runDir: string, version: number): Promise<string | null> {
-  return readFile(path.join(runDir, `gate-${version}.md`), 'utf8').catch(() => null)
+function readGateMd(runDir: string, version: number): Promise<string | null> {
+  return readFile(path.join(runDir, `gate-${version}.md`), 'utf8').catch((): string | null => null)
 }
 
 function steerAnswers(steer: SteerLanding): GateAnswers {
@@ -141,7 +141,7 @@ function steerAnswers(steer: SteerLanding): GateAnswers {
  * Calm-stop against a parked gate is a no-op: the waiter never consults the
  * stop marker. Ctrl-C is the operator's exit.
  */
-export async function awaitGateSettle(ports: GateWaiterPorts): Promise<GateWaiterResult> {
+export function awaitGateSettle(ports: GateWaiterPorts): Promise<GateWaiterResult> {
   let digests: string[] = []
 
   async function attemptSettle(

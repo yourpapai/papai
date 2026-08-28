@@ -69,7 +69,14 @@ async function runVetoRevision(deps: PipelineWorkDeps, input: PipelineRunInput, 
   await runVetoUpdater(
     {
       driver: deps.driver,
-      agent: { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit: (event) => io.append(event) },
+      agent: {
+        spawn: deps.spawn,
+        config: deps.config,
+        execGit: deps.execGit,
+        emit: (event) => {
+          io.append(event)
+        },
+      },
       runDir,
       sidecarDir,
       cwd: deps.config.repoRoot,
