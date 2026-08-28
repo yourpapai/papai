@@ -11,6 +11,7 @@ import { createElement } from 'react'
 import type { KeyFlags } from '../../sdd-runner/src/gate-session-state.js'
 import { initialCreateForm } from '../../sdd-runner/src/session-create-form.js'
 import type { SessionRow } from '../../sdd-runner/src/session-list.js'
+import { displayWidth } from '../../sdd-runner/src/tui-panels.js'
 import { SessionScreen, reduceSessionScreen } from '../../sdd-runner/src/tui-session-screen.js'
 import type { SessionScreenState } from '../../sdd-runner/src/tui-session-screen.js'
 
@@ -98,12 +99,123 @@ describe('SessionScreen rendering', () => {
   })
 
   it('shows stop and reopen hints for eligible rows and the key legend', () => {
-    const frame = render(createElement(SessionScreen, { rows: ROWS, state: baseState(), now: NOW })).lastFrame()
-    expect(frame).toContain('(Enter) continue')
-    expect(frame).toContain('(s)top')
-    expect(frame).toContain('(r)eopen gate')
-    expect(frame).toContain('(n)ew session')
-    expect(frame).toContain('(q)uit')
+    const running = render(createElement(SessionScreen, { rows: ROWS, state: baseState(), now: NOW })).lastFrame()
+    expect(running).toContain('(Enter)')
+    expect(running).toContain('(s)top active')
+    expect(running).toContain('(d)elete')
+    expect(running).toContain('(n)ew')
+    expect(running).toContain('(q)uit')
+    expect(running).toContain('(?) help')
+    expect(running).not.toContain('(r)eopen gate')
+    const finished = render(createElement(SessionScreen, { rows: ROWS, state: baseState(2), now: NOW })).lastFrame()
+    expect(finished).toContain('(r)eopen gate')
+    expect(finished).not.toContain('(s)top active')
+  })
+})
+
+function createScreenStateOf(
+  action: ReturnType<typeof reduceSessionScreen>,
+): Extract<SessionScreenState, { screen: 'create' }> {
+  const state = stateOf(action)
+  if (state.screen !== 'create') throw new Error(`expected the create screen, got '${state.screen}'`)
+  return state
+}
+
+describe('session screen presentation (6.3)', () => {
+  function frameText(frame: string | undefined): string {
+    return frame ?? ''
+  }
+
+  it('frames session rows and truncates instead of overflowing at any width', () => {
+    const wide = frameText(
+      render(createElement(SessionScreen, { rows: ROWS, state: baseState(), now: NOW })).lastFrame(),
+    )
+    expect(wide).toContain('╭─ Sessions')
+    wide.split('\n').forEach((line) => expect(displayWidth(line)).toBeLessThanOrEqual(100))
+    const narrow = frameText(
+      render(createElement(SessionScreen, { rows: ROWS, state: baseState(), now: NOW, width: 40 })).lastFrame(),
+    )
+    narrow.split('\n').forEach((line) => expect(displayWidth(line)).toBeLessThanOrEqual(40))
+  })
+
+  it('cost states carry tokens: known cyan, unknown dimmed', () => {
+    const frame = frameText(
+      render(createElement(SessionScreen, { rows: ROWS, state: baseState(), now: NOW })).lastFrame(),
+    )
+    expect(frame).toContain('\u001b[36m$0.31')
+    expect(frame).toContain('\u001b[2mcost ?')
+    const mono = frameText(
+      render(
+        createElement(SessionScreen, { rows: ROWS, state: baseState(), now: NOW, colorMode: 'monochrome' }),
+      ).lastFrame(),
+    )
+    expect(mono).not.toContain('\u001b[')
+  })
+
+  it('the per-sub-screen footer matches each sub-screen', () => {
+    const list = frameText(
+      render(createElement(SessionScreen, { rows: ROWS, state: baseState(), now: NOW })).lastFrame(),
+    )
+    expect(list).toContain('(↑/↓) · (Enter) · (s)top active · (d)elete · (n)ew · (q)uit · (?) help')
+    const finished = frameText(
+      render(createElement(SessionScreen, { rows: ROWS, state: baseState(2), now: NOW })).lastFrame(),
+    )
+    expect(finished).toContain('(↑/↓) · (Enter) · (r)eopen gate · (d)elete · (n)ew · (q)uit · (?) help')
+    const create = frameText(
+      render(createElement(SessionScreen, { rows: ROWS, state: createScreenState(), now: NOW })).lastFrame(),
+    )
+    expect(create).toContain('(Tab) · (Enter) · (Esc)')
+    expect(create).not.toContain('(?) help')
+    const confirming = frameText(
+      render(
+        createElement(SessionScreen, {
+          rows: ROWS,
+          state: {
+            screen: 'confirmDelete',
+            cursor: 2,
+            runId: 'usage-failure-queries',
+            changeName: 'usage-failure-queries',
+          },
+          now: NOW,
+        }),
+      ).lastFrame(),
+    )
+    expect(confirming).toContain('(y) · (any other key)')
+  })
+
+  it('? opens the overlay on the list with the footer still beneath it', () => {
+    const frame = frameText(
+      render(
+        createElement(SessionScreen, { rows: ROWS, state: baseState(), now: NOW, overlay: { open: true } }),
+      ).lastFrame(),
+    )
+    expect(frame).toContain('Keys · session-list')
+    expect(frame).toContain('(?) help')
+  })
+
+  it('the delete-confirmation sub-screen never composes the overlay — ? keeps its any-key contract', () => {
+    const frame = frameText(
+      render(
+        createElement(SessionScreen, {
+          rows: ROWS,
+          state: {
+            screen: 'confirmDelete',
+            cursor: 2,
+            runId: 'usage-failure-queries',
+            changeName: 'usage-failure-queries',
+          },
+          now: NOW,
+          overlay: { open: true },
+        }),
+      ).lastFrame(),
+    )
+    expect(frame).not.toContain('Keys ·')
+    expect(frame).toContain('(y) delete')
+  })
+
+  it('? is literal input in creation-form fields', () => {
+    const state = createScreenStateOf(reduceSessionScreen(createScreenState(), ROWS, '?', keys()))
+    expect(state.form.title).toBe('?')
   })
 })
 

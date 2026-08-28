@@ -3,19 +3,26 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { Box, Text, render, useInput } from 'ink'
+import { render, useInput } from 'ink'
 import { createElement, useCallback, useEffect } from 'react'
 
+import { keyHints, ScreenChrome } from './tui-chrome.js'
 import { createKeyFeed } from './tui-gate-session.js'
 import type { KeyFeed } from './tui-gate-session.js'
+import { FramedPanel, panelRow } from './tui-panels.js'
 import { createScriptKeys, pumpScript } from './tui-session-keys.js'
 import type { ScriptKeys } from './tui-session-keys.js'
+import { useTerminalWidth } from './tui-width.js'
 
 /**
  * Any-key ack screen: a static block (report, notice) owned by the session
  * shell — no pager, no truncation. Any key returns; an exhausted script also
  * resolves so a scripted run can never hang on it. The mount is injectable:
  * ink-testing-library exposes frames, the live ink instance does not.
+ *
+ * Presentation (fancy-ui 6.4): framing only — the block sits in the shared
+ * frame style with a footer listing the single any-key affordance. `?` acks
+ * like any other key; the overlay is never composed here.
  */
 
 export interface AckInstance {
@@ -47,16 +54,25 @@ function AckScreen(props: {
   const handle = useCallback((): void => {
     props.onAck()
   }, [props])
+  const width = useTerminalWidth()
   useInput(handle, { isActive: props.keys === undefined })
   useEffect(() => {
     if (props.keys === undefined) return undefined
     return props.keys.onKey(handle)
   }, [props.keys, handle])
-  return createElement(
-    Box,
-    { flexDirection: 'column' },
-    ...props.lines.map((line, index) => createElement(Text, { key: String(index) }, line)),
-  )
+  return createElement(ScreenChrome, {
+    overlay: { open: false },
+    screen: 'ack',
+    hints: keyHints({ screen: 'ack' }),
+    width,
+    children: [
+      createElement(FramedPanel, {
+        title: '',
+        rows: props.lines.map((line, index) => panelRow(`l${String(index)}`, line)),
+        width,
+      }),
+    ],
+  })
 }
 
 export function runAckScreen(deps: {
@@ -68,7 +84,7 @@ export function runAckScreen(deps: {
   /** Injectable mount; defaults to the live ink renderer. */
   readonly mount?: AckMount
 }): Promise<AckFrames> {
-  const lines = [...deps.lines, '', '(any key) back to sessions']
+  const lines = [...deps.lines]
   const script = deps.script ?? (deps.keyScript === undefined ? undefined : createScriptKeys(deps.keyScript))
   const keys = script === undefined ? undefined : createKeyFeed()
   const mount = deps.mount ?? inkMount

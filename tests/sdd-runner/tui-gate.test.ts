@@ -12,6 +12,7 @@ import { renderGateAnswers, responseFromAnswers } from '../../sdd-runner/src/gat
 import { parseGateResponse } from '../../sdd-runner/src/gate-model.js'
 import { createGateScreen, gateAnswersFromToggles } from '../../sdd-runner/src/tui-gate.js'
 import type { GateScreenProps } from '../../sdd-runner/src/tui-gate.js'
+import { displayWidth } from '../../sdd-runner/src/tui-panels.js'
 
 const VIEW = {
   gateMode: 'early' as const,
@@ -133,6 +134,53 @@ describe('TUI gate screen (4.4/4.5)', () => {
   })
 })
 
+function frameText(frame: string | undefined): string {
+  return frame ?? ''
+}
+
+describe('gate screen presentation (6.1)', () => {
+  it('frames panels with items beside their evidence at wide width', () => {
+    const GateScreen = createGateScreen()
+    const { lastFrame, unmount } = render(createElement(GateScreen, baseProps()))
+    const frame = frameText(lastFrame())
+    expect(frame).toContain('╭─ Gate · early')
+    expect(frame).toContain('╭─ Blockers')
+    expect(frame).toContain('guests stay read-only · evidence: src/chat/guard.ts:12')
+    expect(frame).toContain('F1 proposal never names the scope id · evidence: proposal.md L5')
+    frame.split('\n').forEach((line) => expect(displayWidth(line)).toBeLessThanOrEqual(100))
+    unmount()
+  })
+
+  it('narrow width stacks evidence under the item and truncates instead of overflowing', () => {
+    const GateScreen = createGateScreen()
+    const { lastFrame, unmount } = render(createElement(GateScreen, baseProps({ width: 40 })))
+    const frame = frameText(lastFrame())
+    expect(frame).toContain('F1 proposal')
+    expect(frame).toContain('    evidence: proposal.md L5')
+    expect(frame).not.toContain('F1 proposal never names the scope id · evidence')
+    frame.split('\n').forEach((line) => expect(displayWidth(line)).toBeLessThanOrEqual(40))
+    unmount()
+  })
+
+  it('blocker rows carry the blocker severity token in color mode', () => {
+    const GateScreen = createGateScreen()
+    const { lastFrame, unmount } = render(createElement(GateScreen, baseProps()))
+    const frame = frameText(lastFrame())
+    expect(frame).toContain('B1 migration untested')
+    expect(frame).toContain('\u001b[1m\u001b[31m│')
+    unmount()
+  })
+
+  it('monochrome mode omits the severity escapes entirely', () => {
+    const GateScreen = createGateScreen()
+    const { lastFrame, unmount } = render(createElement(GateScreen, baseProps({ colorMode: 'monochrome' })))
+    const frame = frameText(lastFrame())
+    expect(frame).toContain('B1 migration untested')
+    expect(frame).not.toContain('\u001b[')
+    unmount()
+  })
+})
+
 describe('gateAnswersFromToggles', () => {
   it('builds GateAnswers the write-then-parse self-check accepts', () => {
     const answers = gateAnswersFromToggles(VIEW, {
@@ -206,7 +254,7 @@ describe('plan-mode screen and toggles (D10)', () => {
   it('renders child rows as standard checkboxes with the standard decisions block — no extend entry, no plan-specific affordances', () => {
     const GateScreen = createGateScreen()
     const { lastFrame, unmount } = render(createElement(GateScreen, planProps({ cursor: 1 })))
-    expect(lastFrame()).toContain('## Gate (plan)')
+    expect(lastFrame()).toContain('╭─ Gate · plan')
     expect(lastFrame()).toContain('  [x] C1 auth-db — Ship the drafted slice.')
     expect(lastFrame()).toContain('❯ [x] C2 auth-api — Partition the remainder.')
     expect(lastFrame()).toContain('(a)pprove')

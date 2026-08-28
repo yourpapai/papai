@@ -142,6 +142,20 @@ jobs:
           # the timing assertions are not subject to parallel-worker CPU contention.
           PAPAI_PERF_BUDGETS: '1'
         run: bun check:full
+      # check.sh persists every check's full output to reports/checks/<name>.log,
+      # but its failure `cat` dies on EAGAIN partway through a ~20k-line test log
+      # (run 33153391880: only the first ~800 lines reached the job log, and the
+      # files died with the runner). Upload them so a red Checks job is diagnosable
+      # from artifacts alone. `always()`, not `failure()`: a green run's test.log
+      # also carries CI-side per-test timings the streamed output does not.
+      - name: Upload check logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checks-logs
+          path: reports/checks/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

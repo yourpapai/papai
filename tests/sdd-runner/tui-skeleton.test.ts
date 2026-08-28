@@ -12,6 +12,8 @@ import type { EventInput, SddEvent } from '../../sdd-runner/src/events.js'
 import { stampEvent } from '../../sdd-runner/src/events.js'
 import { createReplayFolder } from '../../sdd-runner/src/replay.js'
 import { createRunView } from '../../sdd-runner/src/run-view.js'
+import { foldHistoryRows } from '../../sdd-runner/src/tui-history.js'
+import type { HistoryRow } from '../../sdd-runner/src/tui-history.js'
 import { foldFindings, foldSlots } from '../../sdd-runner/src/watch-view.js'
 import type { SlotState, WatchFinding } from '../../sdd-runner/src/watch-view.js'
 
@@ -71,10 +73,12 @@ describe('TUI walking skeleton (4.1): Ink renders a full event sequence in-proce
     const folder = createReplayFolder()
     let slots: readonly SlotState[] = []
     let findings: readonly WatchFinding[] = []
+    let history: readonly HistoryRow[] = []
     for (const event of fixtureEvents()) {
       folder.fold(event)
       slots = foldSlots(slots, event)
       findings = foldFindings(findings, event)
+      history = foldHistoryRows(history, event, slots)
     }
     const RunView = createRunView()
     const { lastFrame, unmount } = render(
@@ -82,6 +86,7 @@ describe('TUI walking skeleton (4.1): Ink renders a full event sequence in-proce
         state: folder.state,
         slots,
         findings,
+        history,
         width: 100,
         startedAt: Date.parse('2026-01-01T00:00:00.000Z'),
         now: Date.parse('2026-01-01T00:02:00.000Z'),
@@ -103,6 +108,7 @@ describe('TUI walking skeleton (4.1): Ink renders a full event sequence in-proce
         state: createReplayFolder().state,
         slots: [],
         findings: [],
+        history: [],
         width: 100,
         startedAt: 0,
         now: 0,
@@ -126,6 +132,7 @@ describe('TUI walking skeleton (4.1): Ink renders a full event sequence in-proce
         state: folder.state,
         slots,
         findings: [],
+        history: [],
         width: 100,
         startedAt: 0,
         now: 0,
@@ -133,5 +140,24 @@ describe('TUI walking skeleton (4.1): Ink renders a full event sequence in-proce
     )
     expect(lastFrame()).toContain('estimator')
     unmount()
+  })
+})
+
+describe('foldSlots spawn ordinals through the fixture stream (7.1)', () => {
+  it('every folded slot carries its ordinal; a re-spawn of the same label is distinct', () => {
+    let slots: readonly SlotState[] = []
+    for (const event of fixtureEvents()) slots = foldSlots(slots, event)
+    expect(slots.map((slot) => [slot.agent, slot.spawn])).toEqual([
+      ['drafter-proposal', 1],
+      ['reviewer-r1', 2],
+    ])
+    const respawned = foldSlots(slots, {
+      altitude: 'L1',
+      type: 'spawned',
+      agent: 'reviewer-r1',
+      role: 'reviewer',
+      model: 'glm',
+    })
+    expect(respawned.filter((slot) => slot.agent === 'reviewer-r1').map((slot) => slot.spawn)).toEqual([3])
   })
 })

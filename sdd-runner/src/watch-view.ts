@@ -19,6 +19,8 @@ export interface SlotState {
   readonly status: 'running' | 'retrying' | 'done'
   readonly label: string
   readonly attempt: number
+  /** In-memory monotonic spawn ordinal (fancy-ui D6): keys history rows when an agent label is re-spawned. Fold-only — never persisted. */
+  readonly spawn: number
   readonly usage?: { readonly input: number; readonly output: number; readonly costUsd: number }
 }
 
@@ -132,9 +134,10 @@ export function foldSlots(
   event: SddEvent | import('./events.js').EventInput,
 ): readonly SlotState[] {
   if (event.type === 'spawned') {
+    const spawn = slots.reduce((max, slot) => Math.max(max, slot.spawn), 0) + 1
     return [
       ...slots.filter((slot) => slot.agent !== event.agent),
-      { agent: event.agent, model: event.model, status: 'running', label: 'spawned', attempt: 1 },
+      { agent: event.agent, model: event.model, status: 'running', label: 'spawned', attempt: 1, spawn },
     ]
   }
   if (event.type === 'retrying') {
