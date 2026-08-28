@@ -68,7 +68,11 @@ export function renderAutoApproveAnswers(
   }
 }
 
-function signalsOf(input: GatePreludeInput, assumptions: readonly GateAssumption[]): PolicySignals {
+function signalsOf(
+  input: GatePreludeInput,
+  assumptions: readonly GateAssumption[],
+  deadlineExpired: boolean,
+): PolicySignals {
   const recordedPaths = input.events
     .filter((event) => event.type === 'artifact')
     .map((event) => (event as { path: string }).path)
@@ -89,7 +93,7 @@ function signalsOf(input: GatePreludeInput, assumptions: readonly GateAssumption
     spentUsd: spent,
     costKnown,
     autoExtendsUsed: autoExtendsUsedOf(input.context),
-    deadlineExpired: false,
+    deadlineExpired,
     config: input.autonomy,
   }
 }
@@ -115,8 +119,7 @@ function sumTokens(usage: {
 export async function runGatePrelude(input: GatePreludeInput): Promise<GatePreludeResult> {
   const round = input.context.round?.current ?? input.reviewResult.rounds
   const assumptions = await expectedAssumptionsOf(input, round)
-  const signals = signalsOf(input, assumptions)
-  const decision = input.mode === 'early' ? evaluateCapHit(signals) : evaluateFinalGate(signals)
+  const decision = evaluateLadder(input, assumptions, false)
   input.emit({
     altitude: 'L2',
     type: 'auto_decision',
@@ -145,6 +148,16 @@ export async function runGatePrelude(input: GatePreludeInput): Promise<GatePrelu
     )
   }
   return { rule: decision.rule, action: decision.action }
+}
+
+/** Assemble the ladder signals and run the mode's ladder (shared with deadline expiry). */
+export function evaluateLadder(
+  input: GatePreludeInput,
+  assumptions: readonly GateAssumption[],
+  deadlineExpired: boolean,
+): PolicyDecision {
+  const signals = signalsOf(input, assumptions, deadlineExpired)
+  return input.mode === 'early' ? evaluateCapHit(signals) : evaluateFinalGate(signals)
 }
 
 async function expectedAssumptionsOf(input: GatePreludeInput, round: number): Promise<readonly GateAssumption[]> {

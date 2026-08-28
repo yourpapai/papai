@@ -47,8 +47,8 @@ Ordered per design.md Migration Plan; every face starts with its failing test (T
 
 ## 9. Deadline face — thin, config-gated
 
-- [ ] 9.1 Stamp optional `deadlineAt` at presentation when configured (absolute time; nothing when unconfigured). Verify: `bun test tests/afk-runner/gate-deadline.test.ts`
-- [ ] 9.2 Expiry: exclusive claim, conservative-ladder re-run (approve/extend only), re-arm at most once via one additive event, never auto-abort. Verify: `bun test tests/afk-runner/gate-deadline.test.ts`
+- [x] 9.1 Stamp optional `deadlineAt` at presentation when configured (absolute time; nothing when unconfigured). Verify: `bun test tests/afk-runner/gate-deadline.test.ts`
+- [x] 9.2 Expiry: exclusive claim, conservative-ladder re-run (approve/extend only), re-arm at most once via one additive event, never auto-abort. Verify: `bun test tests/afk-runner/gate-deadline.test.ts`
 
 ## 10. Full verification and docs
 

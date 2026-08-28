@@ -161,7 +161,7 @@ export type GateOutcome = z.infer<typeof GateOutcomeSchema>
 const GateEvent = z.object({
   altitude: z.literal('L2'),
   type: z.literal('gate'),
-  action: z.enum(['presented', 'answered']),
+  action: z.enum(['presented', 'answered', 'rearmed']),
   mode: z.enum(['early', 'final', 'plan']),
   version: z.number().int().positive(),
   /** Explicit settle outcome (C4); historical answered events carry none. */

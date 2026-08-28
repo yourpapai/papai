@@ -4,17 +4,25 @@
 // See LICENSE in the project root for details.
 
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import type { AutonomyConfig } from '../config.js'
 import { flattenPosition } from '../drive/loop.js'
 import type { EventInput } from '../events.js'
+import { readEvents } from '../events.js'
 import { foldLogOrInitial } from '../kernel/fold.js'
 import type { KernelMachine } from '../kernel/machine.js'
 import type { GateAnswers } from './gate-answers.js'
 import { claimGateSettle } from './gate-claims.js'
-import { expectedContentFor, settleGateFile, settleGateWithAnswers } from './gate-settle.js'
+import { evaluateLadder, renderAutoApproveAnswers } from './gate-prelude.js'
+import {
+  expectedContentFor,
+  readReviewResultFromSidecars,
+  settleGateFile,
+  settleGateWithAnswers,
+} from './gate-settle.js'
 import type { SettleInput, SettleOutcome } from './gate-settle.js'
 import { consumeSteerFile } from './steer.js'
 
@@ -84,6 +92,10 @@ export interface GateWaiterPorts {
   /** One poll period; injected in tests, the 1s default in production. */
   readonly tick: () => Promise<void>
   readonly stdout?: (line: string) => void
+  /** Expiry face (D4): ladder inputs, clock, and re-arm window. */
+  readonly repoRoot?: string
+  readonly autonomy?: AutonomyConfig
+  readonly now?: () => Date
 }
 
 export type GateWaiterResult =
@@ -169,6 +181,16 @@ export async function awaitGateSettle(ports: GateWaiterPorts): Promise<GateWaite
     if (gate === null) return { kind: 'external' }
     const gateMode = narrowGateMode(gate.mode)
 
+    const expiry = await processExpiry(
+      ports,
+      gate.version,
+      gateMode,
+      snapshot.context.round,
+      snapshot.context.gateDeadlineAt,
+      snapshot.context.gateDeadlineReArmed,
+    )
+    if (expiry !== null) return expiry
+
     const steer = peekSteer(ports.runDir)
     if (steer !== null) {
       const translated = translateSteer(steer, gateMode)
@@ -197,6 +219,104 @@ export async function awaitGateSettle(ports: GateWaiterPorts): Promise<GateWaite
   }
 
   return step()
+}
+
+/** Exclusive-create claim for the deadline expiry path (legacy artifact name, D4). */
+function claimGateExpiry(runDir: string, version: number): boolean {
+  try {
+    writeFileSync(path.join(runDir, `gate-${version}.expiry-claim`), `${new Date().toISOString()}\n`, { flag: 'wx' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Deadline expiry (design D4): claim the gate exclusively under the legacy
+ * `expiry-claim` name, re-run the ladder with expiry semantics (conservative
+ * branches only — approve/extend, never abort), settle through the seam when
+ * one applies, re-arm at most once via one additive `gate rearmed` event,
+ * and otherwise leave the gate pending indefinitely. Returns null to keep
+ * waiting.
+ */
+async function processExpiry(
+  ports: GateWaiterPorts,
+  version: number,
+  gateMode: 'early' | 'final',
+  round: { readonly current: number; readonly cap: number } | null,
+  deadlineAt: string | null,
+  reArmed: boolean,
+): Promise<GateWaiterResult | null> {
+  if (deadlineAt === null || ports.now === undefined || ports.repoRoot === undefined || ports.autonomy === undefined) {
+    return null
+  }
+  if (ports.now().getTime() < new Date(deadlineAt).getTime()) return null
+  if (!claimGateExpiry(ports.runDir, version)) {
+    ports.stdout?.(`gate ${version} expiry already claimed by another process`)
+    return { kind: 'external' }
+  }
+  const events = readEvents(ports.logPath)
+  const currentRound = round?.current ?? 1
+  const reviewResult = await readReviewResultFromSidecars(
+    ports.sidecarDir,
+    currentRound,
+    gateMode === 'early' ? 'cap-hit' : 'converged',
+  )
+  const context = foldLogOrInitial(ports.machine, ports.logPath).snapshot.context
+  const assumptions = (await expectedContentFor(ports.sidecarDir, currentRound, gateMode)).assumptions
+  const decision = evaluateLadder(
+    {
+      version,
+      mode: gateMode,
+      reviewResult,
+      context,
+      events,
+      sidecarDir: ports.sidecarDir,
+      changeDir: ports.changeDir,
+      runDir: ports.runDir,
+      repoRoot: ports.repoRoot,
+      emit: ports.emit,
+      autonomy: ports.autonomy,
+    },
+    assumptions,
+    true,
+  )
+  if (decision.action === 'approve' || decision.action === 'extend') {
+    const result = await settleGateWithAnswers(
+      {
+        gate: {
+          emit: ports.emit,
+          runDir: ports.runDir,
+          changeDir: ports.changeDir,
+          driftCheck: () => Promise.resolve(),
+        },
+        version,
+        gateMode,
+        expected: await expectedContentFor(ports.sidecarDir, currentRound, gateMode),
+        round,
+      },
+      decision.action === 'approve'
+        ? renderAutoApproveAnswers(decision, assumptions)
+        : { items: [], blockerAnswers: [], acks: [], decision: 'extend' },
+    )
+    return { kind: 'settled', outcome: result.outcome }
+  }
+  if (reArmed) {
+    ports.stdout?.('auto-deadline: no safe policy branch — gate stays pending')
+    return null
+  }
+  const reArmMinutes = ports.autonomy.deadlineMinutes ?? 10
+  const nextDeadline = new Date(ports.now().getTime() + reArmMinutes * 60_000).toISOString()
+  ports.emit({
+    altitude: 'L2',
+    type: 'gate',
+    action: 'rearmed',
+    mode: gateMode,
+    version,
+    deadlineAt: nextDeadline,
+  })
+  ports.stdout?.(`auto-deadline: no safe policy branch — re-armed once at ${nextDeadline}`)
+  return null
 }
 
 /** The production tick: one second between polls. */

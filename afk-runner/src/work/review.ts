@@ -148,6 +148,11 @@ async function presentEarlyGate(
     new Date(),
   )
   const findings = findingsOf(result)
+  const autonomy = autonomyOf(input.agent.config)
+  const deadlineAt =
+    autonomy.deadlineMinutes === undefined
+      ? undefined
+      : new Date(Date.now() + autonomy.deadlineMinutes * 60_000).toISOString()
   await presentGate(
     { emit: paths.emit, runDir: paths.runDir, changeDir: paths.changeDir, driftCheck: () => Promise.resolve() },
     {
@@ -167,6 +172,7 @@ async function presentEarlyGate(
       durationMs: signals.durationMs,
       changeDigest: await readChangeDigest(paths.changeDir),
     },
+    ...(deadlineAt === undefined ? [{}] : [{ deadlineAt }]),
   )
   await runGatePrelude({
     version,
@@ -179,6 +185,6 @@ async function presentEarlyGate(
     runDir: paths.runDir,
     repoRoot: input.repoRoot,
     emit: paths.emit,
-    autonomy: autonomyOf(input.agent.config),
+    autonomy,
   })
 }

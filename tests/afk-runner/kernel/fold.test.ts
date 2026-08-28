@@ -338,6 +338,7 @@ describe('kernel fold', () => {
       tally: { 2: { resolved: 1, dismissed: 0 } },
       gateOutcome: null,
       gateDeadlineAt: null,
+      gateDeadlineReArmed: false,
     })
   })
 

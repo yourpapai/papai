@@ -31,6 +31,7 @@ describe('pipeline graph v0 shape', () => {
         'convergence',
         'gate.presented',
         'gate.answered',
+        'gate.rearmed',
         'auto.decision',
         'plan',
         'child.spawned',

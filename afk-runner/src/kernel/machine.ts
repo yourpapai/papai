@@ -53,6 +53,8 @@ export interface KernelContext {
    */
   readonly gateOutcome: GateOutcome | null
   readonly gateDeadlineAt: string | null
+  /** Whether this gate version's deadline was already re-armed once (D4). */
+  readonly gateDeadlineReArmed: boolean
 }
 
 export function initialKernelContext(stages: Readonly<Record<string, StageStatus>>): KernelContext {
@@ -68,6 +70,7 @@ export function initialKernelContext(stages: Readonly<Record<string, StageStatus
     tally: {},
     gateOutcome: null,
     gateDeadlineAt: null,
+    gateDeadlineReArmed: false,
   }
 }
 
@@ -95,6 +98,7 @@ export type KernelEvent =
       readonly deadlineAt?: string
     }
   | { readonly type: 'gate.answered'; readonly outcome?: GateOutcome }
+  | { readonly type: 'gate.rearmed'; readonly version: number; readonly deadlineAt: string }
   | {
       readonly type: 'auto.decision'
       readonly rule: AutoDecisionRule
@@ -169,7 +173,12 @@ export const kernelSetup = setup({
         gate: { mode: event.mode, version: event.version, answered: false },
         gateOutcome: null,
         gateDeadlineAt: event.deadlineAt ?? null,
+        gateDeadlineReArmed: false,
       }
+    }),
+    reArmGate: assign(({ event }) => {
+      if (event.type !== 'gate.rearmed') return {}
+      return { gateDeadlineAt: event.deadlineAt, gateDeadlineReArmed: true }
     }),
     answerGate: assign(({ context, event }) => {
       if (event.type !== 'gate.answered') return {}
@@ -228,6 +237,7 @@ export const kernelRootHandlers: NonNullable<KernelMachineConfig['on']> = {
   convergence: { actions: ['flushConvergence'] },
   'gate.presented': { actions: ['presentGate'] },
   'gate.answered': { actions: ['answerGate'] },
+  'gate.rearmed': { actions: ['reArmGate'] },
   'auto.decision': { actions: ['recordAutoDecision'] },
   plan: { actions: ['resetChildren'] },
   'child.spawned': { actions: ['spawnChild'] },

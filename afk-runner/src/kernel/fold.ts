@@ -42,6 +42,9 @@ export function toKernelEvent(event: SddEvent): KernelEvent | null {
   if (event.type === 'gate' && event.action === 'answered') {
     return { type: 'gate.answered', ...(event.outcome === undefined ? {} : { outcome: event.outcome }) }
   }
+  if (event.type === 'gate' && event.action === 'rearmed') {
+    return { type: 'gate.rearmed', version: event.version, deadlineAt: event.deadlineAt ?? '' }
+  }
   if (event.type === 'auto_decision') {
     return {
       type: 'auto.decision',
