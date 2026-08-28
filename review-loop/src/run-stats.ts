@@ -69,6 +69,30 @@ function emptyLabelStats(): LabelStats {
   return { input: 0, output: 0, reasoning: 0, cachedRead: 0, cachedWrite: 0, toolCalls: 0, added: 0, removed: 0 }
 }
 
+export interface AgentUsage {
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  /** Cached input tokens read from the provider prompt cache; never folded into inputTokens. */
+  cachedReadTokens: number
+  /** Cached input tokens written to the provider prompt cache; never folded into inputTokens. */
+  cachedWriteTokens: number
+  costUsd: number
+  wallMs: number
+}
+
+export function emptyUsage(): AgentUsage {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cachedReadTokens: 0,
+    cachedWriteTokens: 0,
+    costUsd: 0,
+    wallMs: 0,
+  }
+}
+
 export class RunStats {
   private readonly pricing: PricingTable | undefined
   private readonly model: string | undefined

@@ -102,6 +102,8 @@ export async function runReviewStep(
   const reviewResult = await runAgent({
     spawn: deps.spawn,
     model: deps.config.reviewer.model,
+    backend: deps.config.backend,
+    claude: deps.config.claude,
     cwd: deps.runState.worktreePath,
     prompt: buildReviewPrompt(
       deps.runState.planPath,
@@ -142,6 +144,8 @@ export async function runMatchAndRecord(
     cwd: deps.runState.worktreePath,
     model: deps.config.matcher.model,
     extraArgs: deps.config.matcher.extraArgs,
+    backend: deps.config.backend,
+    claude: deps.config.claude,
     reporter: deps.log,
     timeoutMs: deps.config.matcher.timeoutMs ?? deps.config.agentTimeoutMs,
   })

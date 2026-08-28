@@ -31,14 +31,14 @@ import type { Verbosity } from './renderer.js'
 import { buildReport } from './report.js'
 import type { ChangeDirSummary, ReportInput } from './report.js'
 import { resolveRunId } from './run-index.js'
-import { loadRunState } from './run-state.js'
+import { loadRunState, runDirOf } from './run-state.js'
 import { executeSessionTarget } from './session-flow.js'
 import type { SessionFlowDeps } from './session-flow.js'
 import { requestCalmStop, stopRun } from './stop-controller.js'
 import { registerTerminalTitle, TERMINAL_TITLE_RESTORE } from './terminal-title.js'
 import { createRunScreenSession } from './tui-run-session.js'
 import { runSessionPicker } from './tui-session-picker.js'
-import { buildResolveCost } from './usage-aggregate.js'
+import { buildResolveCost, childUsageOf } from './usage-aggregate.js'
 
 export const USAGE = [
   'sdd — autonomous SDD pipeline',
@@ -240,6 +240,7 @@ async function buildRunReport(
 ): Promise<string> {
   const state = await loadRunState(config.workDir, runId)
   const branch = await discoverBranch(execGit, config.repoRoot)
+  const resolveCost = state.plan === undefined ? undefined : await buildResolveCost()
   const input: ReportInput = {
     readEvents: () => readEvents(path.join(config.workDir, 'runs', runId, 'events.ndjson')),
     readChangeDir: () => readChangeSummary(config.repoRoot, state.changeName),
@@ -248,6 +249,18 @@ async function buildRunReport(
     changeName: state.changeName,
     branch,
     pr,
+    resolveCost,
+    ...(state.plan === undefined
+      ? {}
+      : {
+          plan: { childIds: state.plan.childIds },
+          childrenRecords: state.children,
+          readChildStatus: (childRunId: string) =>
+            loadRunState(config.workDir, childRunId)
+              .then((child) => child.status)
+              .catch(() => null),
+          childUsage: (childRunId: string) => childUsageOf(runDirOf(config.workDir, childRunId), resolveCost)?.costUsd,
+        }),
   }
   return buildReport(input)
 }

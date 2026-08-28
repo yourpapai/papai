@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { IssueLedgerSnapshot, LedgerIssueRecord } from '../../review-loop/src/issue-ledger.js'
-import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
+import type { ReviewerIssue, VerifierDecision } from '../../review-loop/src/issue-schema.js'
 import { buildMetricsJson, buildSummary, type SummaryInput } from '../../review-loop/src/summary.js'
 import type { RoundMetric } from '../../review-loop/src/trace-log.js'
 import { assertEach, type Row } from '../utils/grouped-assertions.js'
@@ -836,6 +836,76 @@ describe('exposure line', () => {
       ],
       runBodyRow,
     ))
+})
+
+function makeNeedsHumanDecision(reasoning: string): VerifierDecision {
+  return {
+    verdict: 'needs_human',
+    fixability: 'manual',
+    reasoning,
+    targetFiles: ['.github/workflows/ci.yml'],
+  }
+}
+
+describe('buildSummary needs-human manual-change content', () => {
+  test('renders the suggested fix and fixer reasoning indented under the issue line', () => {
+    const record = makeRecord('needs_human', {
+      suggestedFix: 'Reword the timeout comment to ~30s of lint/knip/format',
+    })
+    record.verifierDecision = makeNeedsHumanDecision(
+      'The fix is a comment edit under .github/workflows/, which a pipeline push cannot carry.',
+    )
+    const summary = buildSummary(inputOf({ ledger: ledgerOf(record) }))
+    expect(summary).toContain('      apply by hand: Reword the timeout comment to ~30s of lint/knip/format')
+    expect(summary).toContain(
+      '      fixer note: The fix is a comment edit under .github/workflows/, which a pipeline push cannot carry.',
+    )
+  })
+
+  test('indents every line of a multi-line suggested fix', () => {
+    const record = makeRecord('needs_human', { suggestedFix: 'line one\nline two' })
+    const summary = buildSummary(inputOf({ ledger: ledgerOf(record) }))
+    expect(summary).toContain('      apply by hand: line one')
+    expect(summary).toContain('      line two')
+  })
+
+  test('cuts combined content at the bound with an explicit ledger marker', () => {
+    const record = makeRecord('needs_human', { suggestedFix: 'f'.repeat(1000) })
+    record.verifierDecision = makeNeedsHumanDecision('r'.repeat(1000))
+    const summary = buildSummary(inputOf({ ledger: ledgerOf(record) }))
+    expect(summary).toContain('… (truncated; full text in ledger.json)')
+    expect(summary).not.toContain('f'.repeat(1000))
+    expect(summary).not.toContain('r'.repeat(1000))
+  })
+
+  test('points at the ledger when a needs-human record has no manual-change content', () => {
+    const record = makeRecord('needs_human', { suggestedFix: '   ' })
+    record.verifierDecision = null
+    const summary = buildSummary(inputOf({ ledger: ledgerOf(record) }))
+    expect(summary).toContain('      (no manual-change content recorded — see ledger.json)')
+    expect(summary).not.toContain('apply by hand:')
+  })
+
+  test('non needs-human records stay one-liners', () => {
+    const record = makeRecord('closed', { suggestedFix: 'f'.repeat(1000) })
+    record.verifierDecision = makeNeedsHumanDecision('r'.repeat(1000))
+    const summary = buildSummary(inputOf({ ledger: ledgerOf(record) }))
+    expect(summary).not.toContain('apply by hand:')
+    expect(summary).not.toContain('fixer note:')
+  })
+
+  test('records beyond the group cap render no content', () => {
+    const records = Array.from({ length: 21 }, (_, i) => {
+      const record = makeRecord('needs_human', { suggestedFix: `unique-fix-${i}` })
+      record.verifierDecision = makeNeedsHumanDecision(`unique-note-${i}`)
+      return record
+    })
+    const summary = buildSummary(inputOf({ ledger: ledgerOf(...records) }))
+    expect(summary).toContain('apply by hand: unique-fix-19')
+    expect(summary).not.toContain('unique-fix-20')
+    expect(summary).not.toContain('unique-note-20')
+    expect(summary).toContain('    …and 1 more (see ledger.json)')
+  })
 })
 
 function lineStartingWith(summary: string, prefix: string): string | undefined {

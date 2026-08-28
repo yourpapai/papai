@@ -6,6 +6,7 @@
 import { appendFile } from 'node:fs/promises'
 
 import { emptyUsage, type AgentUsage, type LineSink, type RunAgentOptions } from './agent-runner.js'
+import { scrubCredentialValue } from './backend-select.js'
 import { type OpencodeEvent, parseEventLine, sessionIdOfLine } from './event-stream.js'
 import { formatLiveLine, formatToolArg } from './live-format.js'
 import type { ProgressReporter } from './progress-log.js'
@@ -13,8 +14,38 @@ import type { ProgressReporter } from './progress-log.js'
 export interface LineHandler {
   readonly ctx: LiveCtx
   onLine: LineSink
+  /**
+   * The line decoder this handler applies. Re-armable per attempt (D6): the
+   * claude decoder's tool-pairing map and result outcome are attempt state,
+   * and `runAttempt` replaces it beside `ctx.sessionId` so a stall retry never
+   * reads the stalled attempt's result line as its own.
+   */
+  decoder: EventDecoder
   /** Clears live rendering and resolves after every queued log write has hit disk. */
   dispose: () => Promise<void>
+}
+
+/**
+ * One backend's NDJSON line decode: zero or more events per line (a claude
+ * message carries a content *array*, so one line can yield several tool_use
+ * events) plus the session-id read. The result-outcome read is what the
+ * claude route's exit-0 gate consults; the opencode adapter answers "not
+ * seen" (opencode has no result-line contract).
+ */
+export interface EventDecoder {
+  parseLine(line: string): OpencodeEvent[]
+  sessionIdOf(line: string): string | null
+  resultOutcome(): { seen: boolean; isError: boolean }
+}
+
+/** The opencode adapter: the existing single-event pair, list-wrapped (D6). */
+export const opencodeEventDecoder: EventDecoder = {
+  parseLine: (line): OpencodeEvent[] => {
+    const evt = parseEventLine(line)
+    return evt === null ? [] : [evt]
+  },
+  sessionIdOf: sessionIdOfLine,
+  resultOutcome: () => ({ seen: false, isError: false }),
 }
 
 /**
@@ -48,6 +79,13 @@ export interface LiveCtx {
   /** Preferred ledger attempt for this spawn; the id is recorded exactly once per handler. */
   sessionAttempt: number
   sessionId: string | null
+  /**
+   * The selected credential's value on the claude route, threaded from the
+   * `claude` context so `enqueueLog` — the single sink both callers write
+   * through — can scrub it from every line it persists (D5). `null` on the
+   * opencode route, which logs verbatim.
+   */
+  credentialValue: string | null
 }
 
 function liveLine(ctx: LiveCtx, done: boolean): string {
@@ -143,8 +181,8 @@ function applyEvent(evt: OpencodeEvent, ctx: LiveCtx): void {
  * line arrives (D1). Idempotent per handler; best-effort — a ledger error
  * must never fail event processing.
  */
-function captureSessionId(ctx: LiveCtx, line: string): void {
-  const sessionId = sessionIdOfLine(line)
+function captureSessionId(ctx: LiveCtx, decoder: EventDecoder, line: string): void {
+  const sessionId = decoder.sessionIdOf(line)
   if (sessionId === null || ctx.sessionId !== null) return
   ctx.sessionId = sessionId
   try {
@@ -154,7 +192,10 @@ function captureSessionId(ctx: LiveCtx, line: string): void {
   }
 }
 
-export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
+export function createLineHandler<T>(
+  options: RunAgentOptions<T>,
+  decoder: EventDecoder = opencodeEventDecoder,
+): LineHandler {
   const ctx: LiveCtx = {
     label: options.label,
     slotKey: options.slotKey ?? options.label,
@@ -175,23 +216,27 @@ export function createLineHandler<T>(options: RunAgentOptions<T>): LineHandler {
     logChain: Promise.resolve(),
     sessionAttempt: options.sessionAttempt ?? 1,
     sessionId: null,
+    credentialValue: options.claude?.credentialValue ?? null,
   }
-  const onLine: LineSink = (line: string): void => {
-    enqueueLog(ctx, `${line}\n`)
-    captureSessionId(ctx, line)
-    const evt = parseEventLine(line)
-    if (evt !== null) {
-      applyEvent(evt, ctx)
-    }
+  const handler: LineHandler = {
+    ctx,
+    decoder,
+    onLine: (line: string): void => {
+      enqueueLog(ctx, `${line}\n`)
+      captureSessionId(ctx, handler.decoder, line)
+      for (const evt of handler.decoder.parseLine(line)) {
+        applyEvent(evt, ctx)
+      }
+    },
+    dispose: async (): Promise<void> => {
+      if (ctx.timer !== null) {
+        clearInterval(ctx.timer)
+      }
+      commitSlotOnDispose(ctx)
+      await ctx.logChain
+    },
   }
-  const dispose = async (): Promise<void> => {
-    if (ctx.timer !== null) {
-      clearInterval(ctx.timer)
-    }
-    commitSlotOnDispose(ctx)
-    await ctx.logChain
-  }
-  return { ctx, onLine, dispose }
+  return handler
 }
 
 function commitSlotOnDispose(ctx: LiveCtx): void {
@@ -210,14 +255,19 @@ function commitSlotOnDispose(ctx: LiveCtx): void {
 }
 
 /**
- * Best-effort serialized log append. A fire-and-forget `void appendFile(...)` floats past the
- * caller's lifetime: if the destination disappears first (temp-dir cleanup, run teardown), the
- * rejection is unhandled and crashes whichever code is running when it lands. Chaining lets
+ * Best-effort serialized log append, scrubbed of the selected credential's
+ * value inside the sink itself (D5): both callers — every raw NDJSON line and
+ * the attempt's stderr line — write through here, so coverage is by
+ * construction, not by auditing call sites. A fire-and-forget
+ * `void appendFile(...)` floats past the caller's lifetime: if the destination
+ * disappears first (temp-dir cleanup, run teardown), the rejection is
+ * unhandled and crashes whichever code is running when it lands. Chaining lets
  * `dispose` drain the queue so no write outlives `runAgent`'s finally.
  */
 export function enqueueLog(ctx: LiveCtx, text: string): void {
+  const scrubbed = scrubCredentialValue(text, ctx.credentialValue)
   ctx.logChain = ctx.logChain
-    .then(() => appendFile(ctx.logPath, text))
+    .then(() => appendFile(ctx.logPath, scrubbed))
     .then(
       () => undefined,
       () => undefined,

@@ -63,6 +63,22 @@ interface ReviewRunnerInput {
   transcript: TranscriptSink | undefined
 }
 
+/**
+ * The environment handed to the review loop, branched on the job's backend.
+ *
+ * The opencode route carries the OpenCode config content, byte-identical to
+ * the pre-backend shape. The claude route carries exactly the job's selected
+ * Anthropic credential under its one spelling — no `OPENCODE_CONFIG_CONTENT`,
+ * no gateway settings — because the loop's own guard derives the invocation
+ * profile from that spelling and refuses a set `LLM_API_KEY` (design D9).
+ */
+export const reviewLoopEnv = (
+  config: Pick<PipelineConfig, 'backend' | 'claudeCredential' | 'openai'>,
+): Record<string, string> =>
+  config.backend === 'claude' && config.claudeCredential !== null
+    ? { [config.claudeCredential.name]: config.claudeCredential.value }
+    : opencodeConfigEnv(config.openai)
+
 const makeReviewRunner =
   (
     { run, config, log, now, transcript }: ReviewRunnerInput,
@@ -81,6 +97,7 @@ const makeReviewRunner =
         repoRoot: config.repoRoot,
         command: config.reviewCommand,
         openai: config.openai,
+        backend: config.backend,
         checkCommand: config.checkCommand,
         maxRounds: config.reviewMaxRounds,
         poolSize: config.reviewPoolSize,
@@ -90,7 +107,7 @@ const makeReviewRunner =
       },
       plan,
       run,
-      env: opencodeConfigEnv(config.openai),
+      env: reviewLoopEnv(config),
       log,
       timeoutMs: budget.hardMs,
       transcript,

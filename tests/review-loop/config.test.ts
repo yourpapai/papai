@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { loadReviewLoopConfig, ReviewLoopConfigSchema } from '../../review-loop/src/config.js'
+import { effectiveBackend, loadReviewLoopConfig, ReviewLoopConfigSchema } from '../../review-loop/src/config.js'
 import { cleanupTempDirs, makeTempDir } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
@@ -221,6 +221,110 @@ function baseConfig(): Record<string, unknown> {
     matcher: { model: 'm3', extraArgs: [] },
   }
 }
+
+describe('backend selection', () => {
+  // One backend serves every role of a run (spec: review-loop-agent-backend).
+  // All of these fail at config load, before any subprocess starts.
+
+  test('a config naming no backend resolves to the effective backend opencode', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+    })
+    expect(effectiveBackend(parsed)).toBe('opencode')
+  })
+
+  test('a config naming one backend for every role resolves to it', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1', backend: 'claude' },
+      fixer: { model: 'm2', backend: 'claude' },
+      matcher: { model: 'm3', backend: 'claude' },
+      inspector: { model: 'm2', backend: 'claude' },
+    })
+    expect(effectiveBackend(parsed)).toBe('claude')
+  })
+
+  test('a single role naming a backend resolves to it (the one non-undefined value)', () => {
+    const parsed = ReviewLoopConfigSchema.parse({
+      workDir: '.review-loop',
+      reviewer: { model: 'm1', backend: 'claude' },
+      fixer: { model: 'm2' },
+      matcher: { model: 'm3' },
+    })
+    expect(effectiveBackend(parsed)).toBe('claude')
+  })
+
+  test('a config naming different backends for two roles fails validation naming one backend per run', () => {
+    expect(() =>
+      ReviewLoopConfigSchema.parse({
+        workDir: '.review-loop',
+        reviewer: { model: 'm1', backend: 'claude' },
+        fixer: { model: 'm2', backend: 'opencode' },
+        matcher: { model: 'm3' },
+      }),
+    ).toThrow(/one backend per run/u)
+  })
+
+  test('the backend disagreement refusal names the disagreeing spellings', () => {
+    const parse = (): unknown =>
+      ReviewLoopConfigSchema.parse({
+        workDir: '.review-loop',
+        reviewer: { model: 'm1', backend: 'claude' },
+        fixer: { model: 'm2', backend: 'opencode' },
+        matcher: { model: 'm3' },
+      })
+    expect(parse).toThrow(/claude/u)
+    expect(parse).toThrow(/opencode/u)
+  })
+
+  test('an inspector disagreeing with the reviewer is refused too', () => {
+    expect(() =>
+      ReviewLoopConfigSchema.parse({
+        workDir: '.review-loop',
+        reviewer: { model: 'm1', backend: 'claude' },
+        fixer: { model: 'm2', backend: 'claude' },
+        matcher: { model: 'm3', backend: 'claude' },
+        inspector: { model: 'm2', backend: 'opencode' },
+      }),
+    ).toThrow(/one backend per run/u)
+  })
+
+  test('a backend value outside opencode/claude fails at load naming the selection', () => {
+    expect(() =>
+      ReviewLoopConfigSchema.parse({
+        workDir: '.review-loop',
+        reviewer: { model: 'm1', backend: 'codex' },
+        fixer: { model: 'm2' },
+        matcher: { model: 'm3' },
+      }),
+    ).toThrow(/codex/u)
+  })
+
+  test('loadReviewLoopConfig carries the resolved effective backend', async () => {
+    const dir = makeTempDir('config-backend-')
+    const defaultPath = path.join(dir, 'default.json')
+    writeFileSync(defaultPath, JSON.stringify(baseConfig()))
+    const claudePath = path.join(dir, 'claude.json')
+    writeFileSync(
+      claudePath,
+      JSON.stringify({
+        ...baseConfig(),
+        reviewer: { model: 'm1', extraArgs: [], backend: 'claude' },
+        fixer: { model: 'm2', extraArgs: [], backend: 'claude' },
+        matcher: { model: 'm3', extraArgs: [], backend: 'claude' },
+      }),
+    )
+
+    const loaded = await loadReviewLoopConfig({ configPath: defaultPath, repoRoot: dir })
+    expect(loaded.backend).toBe('opencode')
+
+    const claude = await loadReviewLoopConfig({ configPath: claudePath, repoRoot: dir })
+    expect(claude.backend).toBe('claude')
+  })
+})
 
 describe('loadReviewLoopConfig repoRoot resolution', () => {
   test('honors repoRoot written in the config file', async () => {

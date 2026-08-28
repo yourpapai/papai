@@ -23,6 +23,7 @@ import type { TraceEvent } from '../../review-loop/src/trace-log.js'
 import type { WorkerPool } from '../../review-loop/src/worker-pool.js'
 import { execGit } from '../../review-loop/src/worktree.js'
 import {
+  claudeRunContext,
   cleanupTempDirs,
   createReviewLoopConfigFixture,
   fakePool,
@@ -156,10 +157,17 @@ interface BatchScenario {
 
 async function setupBatch(
   records: readonly LedgerIssueRecord[],
-  opts?: { exec?: ShellExecFn; spawnOptions?: BatchSpawnOptions; stop?: StopController; inspect?: boolean },
+  opts?: {
+    exec?: ShellExecFn
+    spawnOptions?: BatchSpawnOptions
+    stop?: StopController
+    inspect?: boolean
+    spawn?: SpawnFn
+    configOverrides?: Partial<ReviewLoopConfig>
+  },
 ): Promise<{ scenario: BatchScenario; run: () => Promise<number> }> {
   const repoRoot = makeTempDir('batch-verify-')
-  const config = createReviewLoopConfigFixture(repoRoot, { batchVerify: true })
+  const config = createReviewLoopConfigFixture(repoRoot, { batchVerify: true, ...opts?.configOverrides })
   writeFileSync(path.join(repoRoot, 'plan.md'), '# Plan')
   const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
   const ledger = await createIssueLedger(runState.runDir)
@@ -184,7 +192,7 @@ async function setupBatch(
   }
   const collector = newCollector()
   const { logger, events } = createCapturingTraceLogger()
-  const spawn = batchSpawn(opts?.spawnOptions ?? {})
+  const spawn = opts?.spawn ?? batchSpawn(opts?.spawnOptions ?? {})
 
   const deps: IssueProcessorDeps = {
     config,
@@ -376,5 +384,72 @@ describe('processBatched deferral', () => {
     expect(scenario.ledger.snapshot.issues['rec-low']?.status).toBe('discovered')
     expect(scenario.collector.deferred).toBe(1)
     expect(fixed).toBe(1)
+  })
+})
+
+/**
+ * The claude-route batch fake: the same prompt-keyed responder as `batchSpawn`,
+ * reading the prompt off stdin and emitting a healthy claude result line. The
+ * conditionals live here, at module level, not inside the test body.
+ */
+function claudeBatchSpawn(commands: string[]): SpawnFn {
+  return (_cmd, _args, spawnOpts, onLine) => {
+    commands.push(_cmd)
+    const prompt = spawnOpts.stdin ?? ''
+    const outputPath = prompt.match(/as JSON to:\s*(\S+)/u)?.[1]
+    if (outputPath === undefined) return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' } satisfies SpawnResult)
+    const ids = [...prompt.matchAll(/"id":\s*"([^"]+)"/gu)].map((m) => m[1]!)
+    onLine?.(
+      JSON.stringify({
+        type: 'result',
+        is_error: false,
+        stop_reason: 'end_turn',
+        session_id: 'sess-batch',
+        total_cost_usd: 0,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      }),
+    )
+    if (prompt.includes('You are an inspector')) {
+      writeFileSync(
+        path.resolve(spawnOpts.cwd, outputPath),
+        JSON.stringify({
+          results: ids.map((id) => ({ id, addresses: true, reasoning: 'ok', confidence: 0.9 })),
+        }),
+      )
+      return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' } satisfies SpawnResult)
+    }
+    for (const id of ids) writeFileSync(path.join(spawnOpts.cwd, `fix-${id}.ts`), 'fixed\n')
+    writeFileSync(
+      path.resolve(spawnOpts.cwd, outputPath),
+      JSON.stringify({
+        results: ids.map((id) => ({
+          id,
+          verdict: 'valid',
+          fixability: 'auto',
+          fixed: true,
+          reasoning: `batch fix ${id}`,
+          targetFiles: [`fix-${id}.ts`],
+          severity: 'low',
+        })),
+      }),
+    )
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' } satisfies SpawnResult)
+  }
+}
+
+describe('processBatched backend threading', () => {
+  test('the batch fixer spawn receives the resolved backend and claude context', async () => {
+    const recA = buildRecord('rec-a', 'src/a.ts')
+    const commands: string[] = []
+
+    const { run } = await setupBatch([recA], {
+      spawn: claudeBatchSpawn(commands),
+      configOverrides: { backend: 'claude', claude: claudeRunContext() },
+    })
+    const fixed = await run()
+
+    expect(fixed).toBe(1)
+    expect(commands.length).toBeGreaterThan(0)
+    expect(commands.every((command) => command === 'claude')).toBe(true)
   })
 })

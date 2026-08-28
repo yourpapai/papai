@@ -24,6 +24,7 @@ describe('fakeGit', () => {
       'completeMerge',
       'defaultBranch',
       'deleteRemoteBranch',
+      'diffSince',
       'ensureBranch',
       'headSha',
       'mergeBase',
@@ -62,6 +63,7 @@ describe('fakeGit', () => {
     await expect(git.defaultBranch()).resolves.toBeNull()
     await expect(git.headSha()).resolves.toBe('head-sha')
     await expect(git.changedSince('sha')).resolves.toEqual([])
+    await expect(git.diffSince('sha', ['a.ts'])).resolves.toBe('')
   })
 
   test('records every call as method:arg lines', async () => {
@@ -75,6 +77,7 @@ describe('fakeGit', () => {
     await git.push('agent/issue-1')
     await git.push('agent/issue-1', { noVerify: true })
     await git.changedSince('head-sha')
+    await git.diffSince('moved', ['src/a.ts', 'src/b.ts'])
     await git.revertPaths('moved', ['.github/workflows/ci.yml', 'run.pid'])
     await git.mergeBase('main')
     await git.completeMerge('merge subject\nbody')
@@ -90,6 +93,7 @@ describe('fakeGit', () => {
       'push:agent/issue-1',
       'push:agent/issue-1:no-verify',
       'changedSince:head-sha',
+      'diffSince:moved:src/a.ts,src/b.ts',
       'revertPaths:moved:.github/workflows/ci.yml,run.pid',
       'mergeBase:main',
       'completeMerge:merge subject',
@@ -103,7 +107,7 @@ describe('fakeGit', () => {
     // assertions depend on it.
     await git.defaultBranch()
     await git.headSha()
-    expect(calls).toHaveLength(13)
+    expect(calls).toHaveLength(14)
   })
 
   test('a scripted queue serves one outcome per call, then falls back to the default', async () => {

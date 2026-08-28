@@ -101,8 +101,10 @@ export const POOL_RANGE: IntRange = { min: 1, max: 16 }
  *
  * A review worker is not one `opencode run` — it is that plus a full
  * `AGENT_CHECK_COMMAND`, and this repository's is `bun check:full`, which fans
- * lint, typecheck, knip, format and the whole test suite out *in parallel* on
- * its own. Two of those on one 4-vCPU runner is the OOM `scripts/check.sh`
+ * lint (whose tsgolint type-check pass replaced the dropped standalone
+ * typecheck leg — openspec/changes/dedupe-lint-typecheck), knip, format and
+ * the whole test suite out *in parallel* on its own. Two of those on one
+ * 4-vCPU runner is the OOM `scripts/check.sh`
  * already documents for `bun test --parallel`, and it does not merely fail the
  * gate: it takes the runner with it. Runs 31704544065 and 31745493737 both
  * ended with the VM gone mid-review — exit 143 and "the runner has received a

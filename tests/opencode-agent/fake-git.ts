@@ -31,6 +31,7 @@ export interface GitScript {
   defaultBranch?: Outcome<string | null>
   headSha?: Outcome<string>
   changedSince?: Outcome<string[]>
+  diffSince?: Outcome<string>
   revertPaths?: Outcome<void>
   mergeBase?: Outcome<MergeOutcome>
   completeMerge?: Outcome<void>
@@ -64,6 +65,7 @@ const DEFAULTS: { [K in keyof Git]: () => Awaited<ReturnType<Git[K]>> } = {
   defaultBranch: () => null,
   headSha: () => 'head-sha',
   changedSince: () => [],
+  diffSince: () => '',
   revertPaths: () => undefined,
   mergeBase: () => ({ kind: 'up-to-date' }),
   completeMerge: () => undefined,
@@ -134,6 +136,10 @@ export const fakeGit = (script: GitScript = {}): FakeGit => {
     changedSince: (sha) => {
       calls.push(`changedSince:${sha}`)
       return answer<string[]>(DEFAULTS.changedSince, script.changedSince)
+    },
+    diffSince: (sha, paths) => {
+      calls.push(`diffSince:${sha}:${paths.join(',')}`)
+      return answer(DEFAULTS.diffSince, script.diffSince)
     },
     revertPaths: (sha, paths) => {
       calls.push(`revertPaths:${sha}:${paths.join(',')}`)

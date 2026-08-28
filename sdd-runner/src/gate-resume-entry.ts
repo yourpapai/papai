@@ -42,8 +42,8 @@ export async function runGateResume(
   const emit = buildBus(deps, logPathFor(state))
   if (state.gate.mode === 'plan') {
     return runPlanGateResume(deps, state, options, emit, {
-      startChildRun: (_child, taskFile, spendBaselineUsd, onRunDirReady) =>
-        runStart(deps, { taskFile, spendBaselineUsd, onRunDirReady }),
+      startChildRun: (child, taskFile, spendBaselineUsd, onRunDirReady) =>
+        runStart(deps, { child, taskFile, spendBaselineUsd, onRunDirReady }),
     })
   }
   return runEarlyFinalGateResume(deps, state, options, emit)

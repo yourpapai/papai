@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { AgentLayerDeps } from './agent-layer.js'
@@ -78,7 +78,36 @@ function redirectLines(
 }
 
 function taskTextOf(children: readonly PlanChild[]): string {
-  return children.map((child) => `- ${child.id}: ${child.instruction} (deps: ${child.deps.join(', ')})`).join('\n')
+  return children
+    .map((child) => {
+      const adopts = child.changeName === undefined ? '' : ` (adopts change: ${child.changeName})`
+      return `- ${child.id}: ${child.instruction} (deps: ${child.deps.join(', ')})${adopts}`
+    })
+    .join('\n')
+}
+
+/**
+ * D6 re-pin after a replan: `runPlanner`'s promotion replaces `plan.json`
+ * with fresh output whose advertised shape never carries `changeName`, so
+ * the child that adopted the existing change folder is re-pinned — by id —
+ * and the sidecar rewritten, mirroring `divertToSplitPlan`. A replan that
+ * drops the adopted child's id keeps no pin: no child is left to adopt the
+ * folder.
+ */
+async function repinAdoptedChild(
+  previous: readonly PlanChild[],
+  replanned: readonly PlanChild[],
+  sidecarDir: string,
+): Promise<readonly PlanChild[]> {
+  const adopted = previous.find(
+    (child): child is PlanChild & { readonly changeName: string } => child.changeName !== undefined,
+  )
+  if (adopted === undefined) return replanned
+  const pinned = replanned.map((child) =>
+    child.id === adopted.id ? { ...child, changeName: adopted.changeName } : child,
+  )
+  await writeFile(path.join(sidecarDir, 'plan.json'), `${JSON.stringify({ children: pinned }, null, 2)}\n`)
+  return pinned
 }
 
 /**
@@ -124,5 +153,11 @@ export async function settlePlanVeto(
       redirects,
     },
   )
-  return presentReplannedGate(deps, state, ctx, ordered, version)
+  return presentReplannedGate(
+    deps,
+    state,
+    ctx,
+    await repinAdoptedChild(current.children, ordered, ctx.sidecarDir),
+    version,
+  )
 }

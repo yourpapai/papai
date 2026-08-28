@@ -772,6 +772,7 @@ const hostileGit = (): Git => {
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
     headSha: (): Promise<string> => refuse('rev-parse'),
     changedSince: (): Promise<string[]> => refuse('diff --name-only'),
+    diffSince: (): Promise<string> => refuse('diff'),
     revertPaths: (): Promise<void> => refuse('revert'),
     mergeBase: (): Promise<never> => refuse('merge'),
     completeMerge: (): Promise<void> => refuse('commit'),
