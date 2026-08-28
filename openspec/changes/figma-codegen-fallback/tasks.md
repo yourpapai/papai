@@ -32,5 +32,5 @@
 
 ## 6. Full verification
 
-- [ ] 6.1 Run full `bun test`, `bun run typecheck`, `bun run lint`, `bun run knip`, `bun run format:check`. Verify: all green
-- [ ] 6.2 Update `docs/architecture/commands.md` and `docs/architecture/storybook-screenshots.md` for any drift that emerged during implementation; confirm CLAUDE.md routing row is accurate. Verify: manual read
+- [x] 6.1 Run full `bun test`, `bun run typecheck`, `bun run lint`, `bun run knip`, `bun run format:check`. Verify: all green
+- [x] 6.2 Update `docs/architecture/commands.md` and `docs/architecture/storybook-screenshots.md` for any drift that emerged during implementation; confirm CLAUDE.md routing row is accurate. Verify: manual read
