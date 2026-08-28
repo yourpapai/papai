@@ -37,9 +37,9 @@
 
 ## 7. Memo face (D7)
 
-- [ ] 7.1 Copy surviving originals' `state.json` into their fixture dirs (sweep the hoard; at least `2f6e644a`, `tests-consolidation`, `opencode-agent-fix-command`). Verify: `ls tests/afk-runner/fixtures/real/*/state.json`
-- [ ] 7.2 Failing memo-parity test: derive the memo purely from each fixture's events and match fold-derivable fields (gate-null at terminal, last-entered stage, autoExtendsUsed, deadline residues, plan/children projection, updatedAt tolerance). Verify: `bun test tests/afk-runner/memo-parity.test.ts` (fails)
-- [ ] 7.3 Extend the memo schema + projection in `run-state.ts`/`run.ts`. Verify: `bun test tests/afk-runner/memo-parity.test.ts tests/afk-runner/run-state.test.ts`
+- [x] 7.1 Copy surviving originals' `state.json` into their fixture dirs (sweep the hoard; at least `2f6e644a`, `tests-consolidation`, `opencode-agent-fix-command`). Verify: `ls tests/afk-runner/fixtures/real/*/state.json`
+- [x] 7.2 Failing memo-parity test: derive the memo purely from each fixture's events and match fold-derivable fields (gate-null at terminal, last-entered stage, autoExtendsUsed, deadline residues, plan/children projection, updatedAt tolerance). Verify: `bun test tests/afk-runner/memo-parity.test.ts` (fails)
+- [x] 7.3 Extend the memo schema + projection in `run-state.ts`/`run.ts`. Verify: `bun test tests/afk-runner/memo-parity.test.ts tests/afk-runner/run-state.test.ts`
 
 ## 8. Report face (D8)
 

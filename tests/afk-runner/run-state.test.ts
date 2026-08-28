@@ -230,12 +230,27 @@ describe('event replay integration', () => {
   })
 })
 
-describe('slimmed memo shape (C3)', () => {
-  it('rejects fields that belong to later capabilities (plan/children/deadlines)', () => {
+describe('memo shape (C5 D7 — parity complete)', () => {
+  it('accepts the projected plan/children/deadline residues with their canonical shapes', () => {
     const base: Record<string, unknown> = { ...createSeeded('/w') }
-    expect(PersistedRunStateSchema.safeParse({ ...base, gateDeadlineAt: 'x' }).success).toBe(true)
-    expect(PersistedRunStateSchema.safeParse({ ...base, plan: { childIds: ['a'], digest: 'd' } }).success).toBe(true)
-    expect(PersistedRunStateSchema.safeParse({ ...base, children: { x: { status: 'skipped' } } }).success).toBe(true)
+    expect(PersistedRunStateSchema.safeParse({ ...base, gateDeadlineAt: '2026-01-01T00:00:00.000Z' }).success).toBe(
+      true,
+    )
+    expect(PersistedRunStateSchema.safeParse({ ...base, autoExtendsUsed: 2 }).success).toBe(true)
+    expect(PersistedRunStateSchema.safeParse({ ...base, gateDeadlineReArmed: true }).success).toBe(true)
+    expect(PersistedRunStateSchema.safeParse({ ...base, plan: { childCount: 3, digest: 'd0a4c8e9' } }).success).toBe(
+      true,
+    )
+    expect(PersistedRunStateSchema.safeParse({ ...base, children: { x: { status: 'running' } } }).success).toBe(true)
+    expect(PersistedRunStateSchema.safeParse({ ...base, children: null }).success).toBe(true)
+    expect(PersistedRunStateSchema.safeParse({ ...base, plan: null }).success).toBe(true)
+  })
+
+  it('rejects malformed projections', () => {
+    const base: Record<string, unknown> = { ...createSeeded('/w') }
+    expect(PersistedRunStateSchema.safeParse({ ...base, plan: { childIds: ['a'], digest: 'd' } }).success).toBe(false)
+    expect(PersistedRunStateSchema.safeParse({ ...base, children: { x: { status: 'skipped' } } }).success).toBe(false)
+    expect(PersistedRunStateSchema.safeParse({ ...base, autoExtendsUsed: -1 }).success).toBe(false)
   })
 
   it("reloads a persisted gate with mode 'plan' and lists it pending", async () => {

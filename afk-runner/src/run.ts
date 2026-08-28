@@ -19,7 +19,6 @@ import { owedMoverOf, owedPresentationOf, parkedReasonOf, refoldedContext } from
 import type { DepthProfile } from './events.js'
 import { readEvents } from './events.js'
 import type { SddEvent } from './events.js'
-import { STAGE_ORDER } from './events.js'
 import type { StageId } from './events.js'
 import { createPipelineWorkFor } from './graph/pipeline-work.js'
 import { pipelineMachine } from './graph/pipeline.js'
@@ -81,12 +80,6 @@ function logPathOf(runDir: string): string {
   return path.join(runDir, 'events.ndjson')
 }
 
-function stageOf(position: string): StageId {
-  const stage = STAGE_ORDER.find((entry) => entry === position)
-  if (stage !== undefined) return stage
-  return position === 'start' ? 'intake' : 'gate'
-}
-
 /** Terminal parks map to the memo's terminal statuses (C5 D6): session-id release follows through TERMINAL_STATUSES. */
 function memoStatusOf(halted: ParkedReason, position: string): 'running' | 'stopped' | 'completed' | 'aborted' {
   if (halted === 'final') return position === 'aborted' ? 'aborted' : 'completed'
@@ -94,9 +87,68 @@ function memoStatusOf(halted: ParkedReason, position: string): 'running' | 'stop
   return 'running'
 }
 
+export interface MemoFields {
+  readonly stage: StageId
+  readonly depth: KernelContext['depth']
+  readonly round: number
+  readonly roundCap: number
+  readonly gate: { readonly mode: 'early' | 'final' | 'plan'; readonly version: number } | null
+  readonly status: 'running' | 'stopped' | 'completed' | 'aborted'
+  readonly createdAt: string
+  readonly updatedAt: string
+  readonly autoExtendsUsed: number
+  readonly gateDeadlineAt: string | null
+  readonly gateDeadlineReArmed: boolean
+  readonly plan: { readonly childCount: number; readonly digest: string } | null
+  readonly children: Readonly<Record<string, { readonly status: 'pending' | 'running' | 'done' | 'failed' }>> | null
+}
+
+/** The last plan event's payload (childCount + digest) — the memo projects the dormant plan fields, no producer exists (U2). */
+function lastPlanOf(events: readonly SddEvent[]): MemoFields['plan'] {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event !== undefined && event.type === 'plan') return { childCount: event.childCount, digest: event.digest }
+  }
+  return null
+}
+
+/**
+ * The memo projection as a pure function of the log (C5 D7 — parity
+ * complete): every field sdd-runner persisted derives from the events and
+ * the folded context. Terminal rules reconciled against the real persisted
+ * `state.json`s: `gate` nulls at terminal status (legacy nulls at finalize),
+ * `stage` holds the last ENTERED stage rather than the final position
+ * (legacy completed runs say `gate`, not `completed`), and the deadline
+ * residues mirror the fold's non-projected context.
+ */
+export function memoFieldsOf(
+  events: readonly SddEvent[],
+  context: KernelContext,
+  halted: ParkedReason,
+  position: string,
+): MemoFields {
+  const lastEnter = [...events].reverse().find((event) => event.type === 'stage_enter')
+  return {
+    stage: lastEnter !== undefined && lastEnter.type === 'stage_enter' ? lastEnter.stage : 'intake',
+    depth: context.depth,
+    round: context.round?.current ?? 0,
+    roundCap: context.round?.cap ?? resolveRoundCap({ depth: context.depth }),
+    gate:
+      halted === 'final' || context.gate === null ? null : { mode: context.gate.mode, version: context.gate.version },
+    status: memoStatusOf(halted, position),
+    createdAt: events[0]?.ts ?? new Date().toISOString(),
+    updatedAt: events[events.length - 1]?.ts ?? new Date().toISOString(),
+    autoExtendsUsed: context.autoDecisions.filter((record) => record.decision === 'extend').length,
+    gateDeadlineAt: context.gateDeadlineAt,
+    gateDeadlineReArmed: context.gateDeadlineReArmed,
+    plan: lastPlanOf(events),
+    children: Object.keys(context.children).length === 0 ? null : context.children,
+  }
+}
+
 /**
  * The derived memo (design D6): written after appends as a pure projection of
- * the log — stage from the folded position, round and gate from context,
+ * the log — stage from the last entered stage, round and gate from context,
  * timestamps from the first and last events. Never read for control flow; a
  * missing or stale copy changes nothing.
  */
@@ -114,17 +166,7 @@ async function writeRunMemo(
     repoRoot: seed.repoRoot,
     workDir: seed.workDir,
     changeName: seed.changeName,
-    stage: stageOf(position),
-    depth: context.depth,
-    round: context.round?.current ?? 0,
-    roundCap: context.round?.cap ?? resolveRoundCap({ depth: context.depth }),
-    gate:
-      halted === 'final'
-        ? null
-        : context.gate === null
-          ? null
-          : { mode: context.gate.mode, version: context.gate.version },
-    status: memoStatusOf(halted, position),
+    ...memoFieldsOf(events, context, halted, position),
     createdAt: events[0]?.ts ?? seed.createdAt,
     updatedAt: events[events.length - 1]?.ts ?? seed.createdAt,
     runDir,

@@ -1,0 +1,20 @@
+{
+  "runId": "2026-08-21T15-16-08-514Z-039e8174",
+  "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/translate-announcement",
+  "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/translate-announcement/.sdd-runner",
+  "changeName": "translate-announcement",
+  "stage": "gate",
+  "depth": "M",
+  "round": 2,
+  "roundCap": 3,
+  "gate": {
+    "mode": "final",
+    "version": 1
+  },
+  "status": "running",
+  "createdAt": "2026-08-21T15:16:08.514Z",
+  "updatedAt": "2026-08-21T18:05:44.553Z",
+  "autoExtendsUsed": 0,
+  "gateDeadlineAt": "2026-08-21T19:35:44.553Z",
+  "gateDeadlineReArmed": false
+}

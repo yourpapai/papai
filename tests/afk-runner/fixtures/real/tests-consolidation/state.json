@@ -1,0 +1,17 @@
+{
+  "runId": "tests-consolidation",
+  "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/tests-consolidation",
+  "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/tests-consolidation/.sdd-runner",
+  "changeName": "tests-consolidation",
+  "stage": "gate",
+  "depth": "M",
+  "round": 8,
+  "roundCap": 8,
+  "gate": null,
+  "status": "completed",
+  "createdAt": "2026-08-24T11:06:05.550Z",
+  "updatedAt": "2026-08-24T17:02:43.481Z",
+  "autoExtendsUsed": 0,
+  "gateDeadlineAt": null,
+  "gateDeadlineReArmed": false
+}

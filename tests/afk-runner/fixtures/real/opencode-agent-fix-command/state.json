@@ -1,0 +1,17 @@
+{
+  "runId": "opencode-agent-fix-command",
+  "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/sdd-runner-decomposition",
+  "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/sdd-runner-decomposition/.sdd-runner",
+  "changeName": "opencode-agent-fix-command",
+  "stage": "gate",
+  "depth": "M",
+  "round": 6,
+  "roundCap": 6,
+  "gate": null,
+  "status": "completed",
+  "createdAt": "2026-08-23T19:40:14.287Z",
+  "updatedAt": "2026-08-24T04:22:56.817Z",
+  "autoExtendsUsed": 0,
+  "gateDeadlineAt": null,
+  "gateDeadlineReArmed": false
+}

@@ -1,0 +1,17 @@
+{
+  "runId": "build-claude-code-cli-as-a-selectable-model-backend-in-opencode",
+  "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/claude-agent-ci",
+  "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/claude-agent-ci/.sdd-runner",
+  "changeName": "build-claude-code-cli-as-a-selectable-model-backend-in-opencode",
+  "stage": "gate",
+  "depth": "L",
+  "round": 7,
+  "roundCap": 7,
+  "gate": null,
+  "status": "completed",
+  "createdAt": "2026-08-24T10:09:25.228Z",
+  "updatedAt": "2026-08-24T13:44:56.654Z",
+  "autoExtendsUsed": 0,
+  "gateDeadlineAt": null,
+  "gateDeadlineReArmed": false
+}

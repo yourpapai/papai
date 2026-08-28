@@ -34,6 +34,18 @@ export const PersistedRunStateSchema = z.object({
   status: z.enum(['running', 'completed', 'aborted', 'failed', 'stopped']),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
+  /** C5 D7 pure projections — optional so legacy memos parse unchanged. */
+  autoExtendsUsed: z.number().int().nonnegative().optional(),
+  gateDeadlineAt: z.string().min(1).nullable().optional(),
+  gateDeadlineReArmed: z.boolean().optional(),
+  plan: z
+    .object({ childCount: z.number().int().positive(), digest: z.string().min(1) })
+    .nullable()
+    .optional(),
+  children: z
+    .record(z.string(), z.object({ status: z.enum(['pending', 'running', 'done', 'failed']) }))
+    .nullable()
+    .optional(),
 })
 
 export type PersistedRunState = z.infer<typeof PersistedRunStateSchema>
