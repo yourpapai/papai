@@ -120,7 +120,8 @@ evidence (n=1, verdicts provisional; full evidence and falsifiable triggers in
 | U8 | TUI re-host as pure fold render             | hold    |
 | U9 | sdd-runner retirement; cross-run accounting | **next** |
 
-Follow-ups ledger (U1–U9: team/mission spawner, child-actor execution, execution-half states, documenting+reflection, vision intake/L4 portfolio, `conflict_detected`, snapshot memo, TUI re-host, sdd-runner retirement) is re-scored after C7 — table in `openspec/changes/afk-runner/design.md`.
+The ledger was re-scored after C7 from live-run evidence; the historical U1–U9 seed table stays in
+`openspec/changes/afk-runner/design.md` as the pre-C7 record.
 
 ## Prototype relaxation window (C1–C7)
 
