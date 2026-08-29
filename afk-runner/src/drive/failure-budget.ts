@@ -6,6 +6,7 @@
 import { AgentRunError } from '../../../review-loop/src/agent-runner.js'
 import { AgentValidationError, SpawnError, StageHaltError } from '../errors.js'
 import type { FailureKind, StageId } from '../events.js'
+import { StageIdSchema } from '../events.js'
 import type { KernelContext } from '../kernel/machine.js'
 
 /**
@@ -65,7 +66,7 @@ export function escalationOwed(context: KernelContext, stage: string): boolean {
 export function escalationStageOf(context: KernelContext): StageId | null {
   for (const stage of Object.keys(context.failures)) {
     if ((context.failures[stage] ?? 0) > 0 && context.stages[stage] === 'active') {
-      return stage as StageId
+      return StageIdSchema.parse(stage)
     }
   }
   return null

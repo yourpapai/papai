@@ -5,7 +5,8 @@
 
 import path from 'node:path'
 
-import type { EventInput, SddEvent, StageId } from '../events.js'
+import type { EventInput, SddEvent } from '../events.js'
+import { StageIdSchema } from '../events.js'
 import { foldLogOrInitial } from '../kernel/fold.js'
 import type { KernelContext, KernelMachine, KernelSnapshot } from '../kernel/machine.js'
 import { createAppendBoundary } from './boundary.js'
@@ -73,11 +74,11 @@ export interface DriveResult {
 }
 
 function stageEnter(stage: string): EventInput {
-  return { altitude: 'L2', type: 'stage_enter', stage: stage as StageId }
+  return { altitude: 'L2', type: 'stage_enter', stage: StageIdSchema.parse(stage) }
 }
 
 function stageExit(stage: string): EventInput {
-  return { altitude: 'L2', type: 'stage_exit', stage: stage as StageId }
+  return { altitude: 'L2', type: 'stage_exit', stage: StageIdSchema.parse(stage) }
 }
 
 function foldCurrent(deps: DriveDeps): KernelSnapshot {
@@ -144,7 +145,7 @@ async function runWorkBracket(
     boundary.append({
       altitude: 'L2',
       type: 'stage_failed',
-      stage: position as StageId,
+      stage: StageIdSchema.parse(position),
       kind: failure.kind,
       reason: failure.reason,
       ...(failure.resumeHint === undefined ? {} : { resumeHint: failure.resumeHint }),
