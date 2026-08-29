@@ -5,8 +5,8 @@
 
 ## 2. Component definitions (fix first — instances propagate)
 
-- [ ] 2.1 Fix `ui/PageHeader` (component fill + `Text` + `Action`) and `ui/TopBar` (`Brand`) per the inventory, fill-only edits in one `use_figma` call returning mutated ids; never touch instance-internal nodes — verify: mutated ids match the inventory's component rows
-- [ ] 2.2 Visual check of both components and one screen containing their instances (`screen/MembersSection`): instance whites cleared via propagation, no overrides added — verify: fill scan shows zero white frames under `ui/PageHeader`, `ui/TopBar`, and instance subtrees
+- [x] 2.1 Fix `ui/PageHeader` (component fill + `Text` + `Action`) and `ui/TopBar` (`Brand`) per the inventory, fill-only edits in one `use_figma` call returning mutated ids; never touch instance-internal nodes — verify: mutated ids match the inventory's component rows
+- [x] 2.2 Visual check of both components and one screen containing their instances (`screen/MembersSection`): instance whites cleared via propagation, no overrides added — verify: fill scan shows zero white frames under `ui/PageHeader`, `ui/TopBar`, and instance subtrees
 
 ## 3. Screen fixes (one batch per screen, visual pass immediately after each)
 
