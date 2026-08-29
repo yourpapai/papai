@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFileSync } from 'node:fs'
 import { appendFile, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -16,10 +15,9 @@ import { readEvents } from './events.js'
 import type { SddEvent } from './events.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import { logPathFor, nowOf } from './gate-digest.js'
+import { guardedReviewResult } from './gate-integrity.js'
 import type { GateAssumption } from './gate-model.js'
 import type { DigestRecord } from './replay.js'
-import { replayEvents } from './replay.js'
-import { ResolverOutputSchema } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import type { RunState } from './run-state.js'
 import { pendingSteerOverride } from './steer.js'
@@ -56,8 +54,7 @@ export function runPolicyLadder(
   input: PolicyGateInput,
 ): PolicyEvaluation {
   const autonomy: AutonomyConfig = deps.autonomy ?? AUTONOMY_DEFAULTS
-  const sidecarCounts = openCountsFromSidecarsSync(ctx.sidecarDir, reviewResult.rounds)
-  const review = guardedReviewResult(reviewResult, state, sidecarCounts)
+  const review = guardedReviewResult(reviewResult, logPathFor(state), ctx.sidecarDir)
   const classified = classifyForPolicy(deps, ctx, state, input.assumptions)
   const signals: PolicySignals = {
     reviewResult: review,
@@ -110,33 +107,6 @@ export function runPlanPolicy(
   return { decision: evaluatePlanGate(planSignals), classified: [] }
 }
 
-function guardedReviewResult(
-  reviewResult: ReviewLoopResult,
-  state: RunState,
-  sidecarCounts: { blocker: number; material: number; nitpick: number } | null,
-): ReviewLoopResult {
-  if (sidecarCounts === null) {
-    return integrityBlocked(reviewResult, 'sidecar unparseable')
-  }
-  const verdict = replayEvents(logPathFor(state)).lastVerdict
-  if (
-    verdict !== null &&
-    (verdict.counts.blocker !== sidecarCounts.blocker ||
-      verdict.counts.material !== sidecarCounts.material ||
-      verdict.counts.nitpick !== sidecarCounts.nitpick)
-  ) {
-    return integrityBlocked(reviewResult, 'sidecar/event count mismatch')
-  }
-  return reviewResult
-}
-
-function integrityBlocked(reviewResult: ReviewLoopResult, why: string): ReviewLoopResult {
-  return {
-    ...reviewResult,
-    openBlockers: [{ id: 'POLICY-INTEGRITY', class: 'BLOCKER', resolution: 'evidence-answered', outcome: why }],
-  }
-}
-
 function classifyForPolicy(
   deps: OrchestratorDeps,
   ctx: StageContext,
@@ -149,25 +119,6 @@ function classifyForPolicy(
   const changeDirRel = path.relative(deps.config.repoRoot, ctx.changeDir)
   const runDirRel = path.relative(deps.config.repoRoot, state.runDir)
   return classifyAssumptions(assumptions, { changeDir: changeDirRel, runDir: runDirRel, recordedPaths })
-}
-
-function openCountsFromSidecarsSync(
-  sidecarDir: string,
-  rounds: number,
-): { blocker: number; material: number; nitpick: number } | null {
-  try {
-    const raw = readFileSync(path.join(sidecarDir, `resolutions-${rounds}.json`), 'utf8')
-    const parsed = ResolverOutputSchema.parse(JSON.parse(raw))
-    const counts = { blocker: 0, material: 0, nitpick: 0 }
-    for (const resolution of parsed.resolutions) {
-      if (resolution.class === 'BLOCKER') counts.blocker += 1
-      else if (resolution.class === 'MATERIAL') counts.material += 1
-      else counts.nitpick += 1
-    }
-    return counts
-  } catch {
-    return null
-  }
 }
 
 /**

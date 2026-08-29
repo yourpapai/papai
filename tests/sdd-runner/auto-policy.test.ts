@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
+import type { Resolution } from '../../sdd-runner/src/agent-layer.js'
 import { classifyAssumptions, evaluateCapHit, evaluateFinalGate } from '../../sdd-runner/src/auto-policy.js'
 import type { ClassifiableAssumption, PolicySignals } from '../../sdd-runner/src/auto-policy.js'
 import type { AutonomyConfig } from '../../sdd-runner/src/config.js'
@@ -319,5 +320,96 @@ describe('ladder evidence digest', () => {
     const c = evaluateFinalGate(signals({ spentUsd: 1.5 }))
     expect(a.evidenceDigest).toBe(b.evidenceDigest)
     expect(a.evidenceDigest).not.toBe(c.evidenceDigest)
+  })
+})
+
+describe('the ladder reads the set each question needs', () => {
+  const dismissed = (id: string, cls: Resolution['class']): Resolution => ({
+    id,
+    class: cls,
+    resolution: 'dismissed',
+    justification: 'out of scope',
+  })
+
+  function ladderSignals(overrides: Partial<PolicySignals> = {}): PolicySignals {
+    return {
+      reviewResult: converged(),
+      trajectory: [],
+      assumptions: [],
+      spentUsd: 0.1,
+      costKnown: true,
+      autoExtendsUsed: 0,
+      deadlineExpired: false,
+      config: autonomy(),
+      ...overrides,
+    }
+  }
+
+  it('R1 approves a round that raised findings and genuinely resolved every one', () => {
+    // The open lists are what R1 reads; a round can have raised plenty and
+    // still leave nothing for a human.
+    const decision = evaluateFinalGate(ladderSignals({ reviewResult: converged() }))
+    expect(decision).toMatchObject({ rule: 'R1', action: 'approve' })
+  })
+
+  it('R1 is blocked by a dismissed blocker', () => {
+    const result = converged({ openBlockers: [dismissed('F1', 'BLOCKER')] })
+    expect(evaluateFinalGate(ladderSignals({ reviewResult: result })).action).toBe('gate')
+  })
+
+  it('R1 is blocked by a dismissed material finding', () => {
+    const result = converged({ openMaterial: [dismissed('F1', 'MATERIAL')] })
+    expect(evaluateFinalGate(ladderSignals({ reviewResult: result })).action).toBe('gate')
+  })
+
+  it('R1 is blocked by a dismissed nitpick', () => {
+    const result = converged({ openNitpicks: [dismissed('F1', 'NITPICK')] })
+    expect(evaluateFinalGate(ladderSignals({ reviewResult: result })).action).toBe('gate')
+  })
+
+  it('a dismissed blocker still forces the gate through the never-cut pre-check', () => {
+    const decision = evaluateFinalGate(
+      ladderSignals({ reviewResult: converged({ openBlockers: [dismissed('B1', 'BLOCKER')] }) }),
+    )
+    expect(decision).toMatchObject({ rule: 'none', action: 'gate' })
+  })
+
+  it('R2 judges eligibility on the open set and its trajectory on the raised set', () => {
+    // Raised totals fall 3 -> 2 while the open set stays flat: the trajectory
+    // question is "are reviewers running out of things to say", so R2 fires.
+    const burndown: DigestRecord[] = [
+      {
+        round: 1,
+        counts: { blocker: 0, material: 3, nitpick: 0 },
+        open: { blocker: 0, material: 1, nitpick: 0 },
+        resolved: 2,
+        dismissed: 1,
+        verdict: 'open',
+      },
+      {
+        round: 2,
+        counts: { blocker: 0, material: 2, nitpick: 0 },
+        open: { blocker: 0, material: 1, nitpick: 0 },
+        resolved: 1,
+        dismissed: 1,
+        verdict: 'open',
+      },
+    ]
+    const decision = evaluateCapHit(
+      ladderSignals({
+        reviewResult: capHit({ openMaterial: [dismissed('F1', 'MATERIAL')] }),
+        trajectory: burndown,
+      }),
+    )
+    expect(decision).toMatchObject({ rule: 'R2', action: 'extend' })
+  })
+
+  it('R2 is inapplicable when nothing material is open, however much was raised', () => {
+    const burndown: DigestRecord[] = [
+      { round: 1, counts: { blocker: 0, material: 3, nitpick: 0 }, resolved: 3, dismissed: 0, verdict: 'open' },
+      { round: 2, counts: { blocker: 0, material: 2, nitpick: 0 }, resolved: 2, dismissed: 0, verdict: 'open' },
+    ]
+    const decision = evaluateCapHit(ladderSignals({ reviewResult: capHit({ openMaterial: [] }), trajectory: burndown }))
+    expect(decision.rule).not.toBe('R2')
   })
 })
