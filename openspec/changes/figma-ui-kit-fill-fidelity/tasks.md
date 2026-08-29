@@ -10,11 +10,11 @@
 
 ## 3. Screen fixes (one batch per screen, visual pass immediately after each)
 
-- [ ] 3.1 `screen/SettingsApp` (25 nodes): apply inventory fills in ≤10-node `use_figma` batches, then `get_screenshot` pass — verify: scan clean for this top + screenshot shows dark theme with legible headings and no white blocks
-- [ ] 3.2 `screen/ToolsSection` (19 nodes): same batch-then-screenshot loop — verify: scan clean + screenshot readable
-- [ ] 3.3 `screen/MembersSection` (remaining screen-local nodes): same loop — verify: scan clean + screenshot readable
-- [ ] 3.4 `screen/OverviewSection (admin)` (6 nodes): same loop — verify: scan clean + screenshot readable
-- [ ] 3.5 `screen/TaskProviderSection` (4 nodes): same loop — verify: scan clean + screenshot readable
+- [x] 3.1 `screen/SettingsApp` (25 nodes): apply inventory fills in ≤10-node `use_figma` batches, then `get_screenshot` pass — verify: scan clean for this top + screenshot shows dark theme with legible headings and no white blocks
+- [x] 3.2 `screen/ToolsSection` (19 nodes): same batch-then-screenshot loop — verify: scan clean + screenshot readable
+- [x] 3.3 `screen/MembersSection` (remaining screen-local nodes): same loop — verify: scan clean + screenshot readable
+- [x] 3.4 `screen/OverviewSection (admin)` (6 nodes): same loop — verify: scan clean + screenshot readable
+- [x] 3.5 `screen/TaskProviderSection` (4 nodes): same loop — verify: scan clean + screenshot readable
 
 ## 4. Verification
 
