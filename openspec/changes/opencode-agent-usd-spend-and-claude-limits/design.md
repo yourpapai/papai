@@ -418,9 +418,13 @@ and every touched decoder is hook-gated, so each lands behind its failing test:
 
 ## Open Questions
 
-- Does the pinned OpenCode server populate cache buckets on `session.get`? D5 is
-  correct either way; the answer only decides whether rung ② is reachable on that
-  route. Answered by the live lane during task group 2.
+- ~~Does the pinned OpenCode server populate cache buckets on `session.get`?~~
+  **Answered — yes.** The recorded fixture in `adapters.test.ts` already carried
+  `tokens: { …, cache: { read, write } }`, and the live lane now pins it against
+  a real server (`checkTheUsageShape`, all four checks green on
+  `opencode-ai@1.18.7`). Rung ② is reachable on the OpenCode route. D5's
+  absent-is-not-zero rule stays exactly as written — it is now the guard for the
+  day the server stops reporting them, rather than a hedge against never having.
 - Should `source: 'catalogue'` distinguish `resolveCost`'s exact-row and
   cross-provider-median tiers in the log line? A log-detail question with no
   effect on the specs, the ladder or the render.

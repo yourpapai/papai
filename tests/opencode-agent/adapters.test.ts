@@ -179,7 +179,15 @@ describe('the recorded SDK contract', () => {
   }
 
   test('reads a session’s running totals back from the envelope', () => {
-    expect(decodeSessionUsage(LIVE_SESSION_USAGE)).toEqual({ tokens: 3602, cost: 0.014425 })
+    expect(decodeSessionUsage(LIVE_SESSION_USAGE)).toEqual({
+      tokens: 3602,
+      cost: 0.014425,
+      input: 2468,
+      output: 1134,
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    })
   })
 
   test('counts reasoning tokens, which are spend like any other', () => {
@@ -200,7 +208,101 @@ describe('the recorded SDK contract', () => {
     // not know, which for an arbitrary configured endpoint is the ordinary case.
     const unpriced = { ...LIVE_SESSION_USAGE, data: { ...LIVE_SESSION_USAGE.data, cost: 0 } }
 
-    expect(decodeSessionUsage(unpriced)).toEqual({ tokens: 3602, cost: 0 })
+    expect(decodeSessionUsage(unpriced)).toEqual({
+      tokens: 3602,
+      cost: 0,
+      input: 2468,
+      output: 1134,
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    })
+  })
+
+  /**
+   * The per-bucket counts, beside the sum the budget reads.
+   *
+   * The sum cannot be repriced: cache reads and writes are charged at their own
+   * rates, and folding them into one number loses the split that pricing needs.
+   * So the decoder surfaces both — the scalar for the ceiling, the buckets for
+   * the cost ladder — from one read of one envelope.
+   */
+  test('surfaces the per-bucket counts alongside the summed total', () => {
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: {
+        ...LIVE_SESSION_USAGE.data,
+        tokens: { input: 100, output: 200, reasoning: 50, cache: { read: 900, write: 400 } },
+      },
+    }
+
+    expect(decodeSessionUsage(usage)).toEqual({
+      tokens: 350,
+      cost: 0.014425,
+      input: 100,
+      output: 200,
+      reasoning: 50,
+      cacheRead: 900,
+      cacheWrite: 400,
+    })
+  })
+
+  /**
+   * Absent is not zero, and this is the one decoder here that must keep them
+   * apart. `reasoning` beside it carries `.default(0)` and is right to: it is a
+   * count the budget adds up, where a missing value and a zero spend the same.
+   * A cache bucket feeds the *price*, and there "the server reported none" and
+   * "the server did not say" are different answers — the second cannot be
+   * priced at all, and defaulting it to 0 would silently under-charge a
+   * cache-heavy run instead of reporting it unpriced.
+   */
+  test('a reported zero cache bucket decodes as zero', () => {
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: { ...LIVE_SESSION_USAGE.data, tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } } },
+    }
+
+    expect(decodeSessionUsage(usage)).toMatchObject({ cacheRead: 0, cacheWrite: 0 })
+  })
+
+  test('an omitted cache bucket decodes as absent, not as zero', () => {
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: { ...LIVE_SESSION_USAGE.data, tokens: { input: 1, output: 1, reasoning: 0, cache: {} } },
+    }
+    const decoded = decodeSessionUsage(usage)
+
+    expect(decoded?.cacheRead).toBeUndefined()
+    expect(decoded?.cacheWrite).toBeUndefined()
+  })
+
+  test('an absent cache object leaves both buckets absent', () => {
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: { ...LIVE_SESSION_USAGE.data, tokens: { input: 1, output: 1, reasoning: 0 } },
+    }
+    const decoded = decodeSessionUsage(usage)
+
+    expect(decoded?.tokens).toBe(2)
+    expect(decoded?.cacheRead).toBeUndefined()
+    expect(decoded?.cacheWrite).toBeUndefined()
+  })
+
+  test('a cache bucket in an unrecognized shape degrades to absent rather than failing the read', () => {
+    // The `decodeSessionUsage` doctrine, one field in: a budget is a guardrail
+    // on the work, so a moved field costs that field and not the whole read.
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: {
+        ...LIVE_SESSION_USAGE.data,
+        tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 'lots', write: 400 } },
+      },
+    }
+    const decoded = decodeSessionUsage(usage)
+
+    expect(decoded?.tokens).toBe(2)
+    expect(decoded?.cacheRead).toBeUndefined()
+    expect(decoded?.cacheWrite).toBe(400)
   })
 
   test.each([
@@ -325,7 +427,8 @@ const streamOf = (events: readonly unknown[], onDrained: () => void = (): void =
 const noEvents = (): Promise<AsyncIterable<unknown>> => Promise.resolve(streamOf([]))
 
 /** A session that has spent nothing, for the tests the budget is not about. */
-const noUsage = (): Promise<SessionUsage | null> => Promise.resolve({ tokens: 0, cost: 0 })
+const noUsage = (): Promise<SessionUsage | null> =>
+  Promise.resolve({ tokens: 0, cost: 0, input: 0, output: 0, reasoning: 0 })
 
 /** An abort nobody in this test is asking about, answering the recorded shape. */
 const noAbort = (): Promise<unknown> => Promise.resolve({ data: true })
@@ -540,7 +643,7 @@ describe('createOpenCodeAgent', () => {
           createSession: () => Promise.resolve('session-1'),
           sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
           events: noEvents,
-          usage: () => Promise.resolve({ tokens: 3602, cost: 0.014 }),
+          usage: () => Promise.resolve({ tokens: 3602, cost: 0.014, input: 2468, output: 1134, reasoning: 0 }),
           abort: noAbort,
           alive: stillThere,
           close: () => Promise.resolve(),

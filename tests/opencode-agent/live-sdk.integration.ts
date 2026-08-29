@@ -32,10 +32,12 @@ import { z } from 'zod'
 
 import { buildOpencodeConfig } from '../../opencode-agent/src/openai-config.js'
 import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
+import { modelRef } from '../../opencode-agent/src/openai-config.js'
 import { createOpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
+import { connectSdk } from '../../opencode-agent/src/opencode-connect.js'
 import { proxiedSettings, startProviderProxy } from '../../opencode-agent/src/provider-proxy.js'
-import { decodeAbort, decodeSessionId } from '../../opencode-agent/src/sdk-contract.js'
+import { buildBody, decodeAbort, decodeSessionId, parseModelRef } from '../../opencode-agent/src/sdk-contract.js'
 
 const REPLY_TEXT = '{"status":"spec","spec":"live round trip"}'
 
@@ -214,6 +216,63 @@ const checkTheStop = async (openai: OpenAiSettings): Promise<boolean[]> => {
   return results
 }
 
+/**
+ * Whether `session.get` reports the per-bucket split the cost ladder prices on.
+ *
+ * The recorded fixture in `adapters.test.ts` was taken from this lane and
+ * already carries `tokens.cache.{read,write}` — so this check is a *pin* rather
+ * than a discovery, and its job is to fail loudly the day the pinned server
+ * stops reporting them. That day the ladder cannot reprice an OpenCode run at
+ * all: the buckets are charged at their own rates, and a cache read folded into
+ * the input count is not a smaller error than a missing one, it is a wrong
+ * price reported as a right one.
+ *
+ * Driven through `connectSdk` rather than the agent seam because the seam
+ * exposes what a *run* spent, and this is a question about what the server
+ * *says* — the same reason the abort probe below drives a raw client.
+ *
+ * **Last recorded run confirmed:** `tokens` is
+ * `{ input, output, reasoning, cache: { read, write } }`, every field present
+ * and numeric after one billed turn.
+ */
+const checkTheUsageShape = async (openai: OpenAiSettings): Promise<boolean[]> => {
+  const connection = await connectSdk(process.cwd(), openai)
+  try {
+    const sessionId = await connection.createSession('live-usage-shape')
+    await connection.sendPrompt(sessionId, buildBody(parseModelRef(modelRef(openai)), { prompt: 'hello' }))
+    const usage = await connection.usage(sessionId)
+
+    return [
+      check('session.get reports usage after a billed turn', usage !== null, 'the envelope decoded as unknown'),
+      check(
+        'the summed total still reads as the budget enforces on',
+        (usage?.tokens ?? 0) > 0,
+        `session.get reported ${usage?.tokens ?? 0} tokens after a turn the stub billed at ${USAGE.total_tokens}`,
+      ),
+      check(
+        'the input and output buckets are reported separately',
+        usage?.input !== undefined && usage.output !== undefined,
+        `got input=${String(usage?.input)} output=${String(usage?.output)}`,
+      ),
+      // Absent, not zero, is the failure worth naming: the decoder keeps the two
+      // apart on purpose, so a bucket that stops being reported degrades to
+      // "unpriced" rather than to a silently cheaper run.
+      check(
+        'the cache read bucket is reported, so a cached run can be priced',
+        usage?.cacheRead !== undefined,
+        'tokens.cache.read is absent — the ladder must now report an OpenCode run unpriced',
+      ),
+      check(
+        'the cache write bucket is reported, so a cached run can be priced',
+        usage?.cacheWrite !== undefined,
+        'tokens.cache.write is absent — the ladder must now report an OpenCode run unpriced',
+      ),
+    ]
+  } finally {
+    await connection.close()
+  }
+}
+
 /** The abort call, kept out of the sequence above so it reads as one step. */
 const abortNow = (client: ReturnType<typeof createOpencodeClient>, sessionId: string): Promise<unknown> =>
   client.session.abort({ path: { id: sessionId }, query: { directory: process.cwd() } })
@@ -331,6 +390,9 @@ const run = async (): Promise<number> => {
         `a reply leaked into ${JSON.stringify(progressLines).slice(0, 200)}`,
       ),
     )
+
+    // What the server says it spent, in the shape the cost ladder prices on.
+    results.push(...(await checkTheUsageShape(openai)))
 
     // The two measurements the wall-clock stop is built on, on their own server so
     // that closing it does not disturb the agents above.

@@ -67,14 +67,14 @@ Groups 2 and 6 touch no recording and may run alongside it.
       `unifiedWindows` is self-described `@internal` (design D7), so leniency is
       load-bearing rather than defensive. Verify that same test passes and the
       existing contract suite is green.
-- [ ] 3.3 Write the failing `sdk-contract` test for cache buckets on
+- [x] 3.3 Write the failing `sdk-contract` test for cache buckets on
       `session.get` usage: present-and-zero decodes as zero, absent decodes as
       absent (not zero), and an unrecognized shape still returns `null` rather
       than throwing. Verify `bun test tests/opencode-agent/adapters.test.ts` fails.
-- [ ] 3.4 Widen `sessionUsageSchema` in `opencode-agent/src/sdk-contract.ts` for
+- [x] 3.4 Widen `sessionUsageSchema` in `opencode-agent/src/sdk-contract.ts` for
       the cache buckets, `.optional()` without `.default(0)` per design D5, and
       surface them on `SessionUsage`. Verify that test passes.
-- [ ] 3.5 Assert the live shape in
+- [x] 3.5 Assert the live shape in
       `tests/opencode-agent/live-sdk.integration.ts` — whether the pinned server
       populates cache buckets — and record the answer in the test's own comment.
       Verify `bun run opencode-agent:test:live`.
