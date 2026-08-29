@@ -13,6 +13,7 @@ import type { OpenAiSettings } from './openai-config.js'
 import { connectSdk } from './opencode-connect.js'
 import { createProgressTracker } from './progress.js'
 import type { ProgressTracker, TranscriptSink } from './progress.js'
+import { resolveRunCost } from './run-spend.js'
 import { buildBody, decodeAbort, decodeReply, parseModelRef } from './sdk-contract.js'
 import type { SessionUsage } from './sdk-contract.js'
 import { requireAnswer } from './turn-answer.js'
@@ -28,7 +29,7 @@ import { errorMessage } from './types.js'
 // already uses, so the extraction changed no caller.
 export type { AgentPromptRequest, AgentPromptResult } from './agent-session.js'
 export type { AgentSession as OpenCodeAgent } from './agent-session.js'
-import type { AgentSession } from './agent-session.js'
+import type { AgentSession, RunSpend } from './agent-session.js'
 
 /**
  * Minimal slice of the SDK surface the adapter drives.
@@ -116,6 +117,7 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
       return { text, sessionId }
     },
     tokensUsed: () => readTokensUsed(connection, sessionId, options.log),
+    spend: () => readSpend(connection, sessionId, options),
     abort: () => abortSession(connection, sessionId, options.log),
     close: async (): Promise<void> => {
       // Reporting first. Closing the server does not, by itself, end the stream
@@ -125,6 +127,48 @@ export const createOpenCodeAgent = async (options: OpenCodeAgentOptions): Promis
       await connection.close()
     },
   }
+}
+
+/**
+ * What the run cost, on the route with no subscription window to report.
+ *
+ * `windows` is always empty here and that is a statement rather than a gap:
+ * OpenCode talks to an arbitrary OpenAI-compatible endpoint, which has no Claude
+ * rate-limit standing to carry. Empty means "nothing to say", which is what the
+ * renderer reads it as — never "no limits".
+ *
+ * Beside {@link readTokensUsed} and extracted for the same reason: it turns
+ * every way the read can go wrong into an answer the caller can use. The two
+ * differ in what "wrong" costs — the budget degrades to `0` and warns, because a
+ * ceiling must still return a number; this degrades to `null`, because a cost
+ * report may say it does not know.
+ */
+const readSpend = async (
+  connection: OpenCodeConnection,
+  sessionId: string,
+  options: OpenCodeAgentOptions,
+): Promise<RunSpend> => {
+  const usage = await connection.usage(sessionId).catch(() => null)
+  if (usage === null) {
+    options.log.warn({ sessionId }, 'The server did not report session usage; this run reports unpriced')
+    return { usd: null, source: 'none', windows: [] }
+  }
+
+  const cost = await resolveRunCost(
+    {
+      backendUsd: usage.cost,
+      buckets: {
+        input: usage.input,
+        output: usage.output,
+        reasoning: usage.reasoning,
+        ...(usage.cacheRead === undefined ? {} : { cacheRead: usage.cacheRead }),
+        ...(usage.cacheWrite === undefined ? {} : { cacheWrite: usage.cacheWrite }),
+      },
+      settings: options.openai,
+    },
+    { log: options.log },
+  )
+  return { ...cost, windows: [] }
 }
 
 /**

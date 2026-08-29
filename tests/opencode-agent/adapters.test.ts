@@ -653,6 +653,67 @@ describe('createOpenCodeAgent', () => {
     expect(await agent.tokensUsed()).toBe(3602)
   })
 
+  /**
+   * The OpenCode route's `spend()`. `windows` is always empty here and that is a
+   * statement, not a gap: this backend talks to an arbitrary OpenAI-compatible
+   * endpoint, which has no Claude subscription window to report.
+   */
+  const spendingAgent = (
+    usage: () => Promise<SessionUsage | null>,
+    model = 'm',
+    provider = 'openai',
+  ): Promise<OpenCodeAgent> =>
+    createOpenCodeAgent({
+      directory: '/repo',
+      openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model, provider },
+      sessionTitle: 't',
+      log: silentLog,
+      connect: () =>
+        Promise.resolve({
+          createSession: () => Promise.resolve('session-1'),
+          sendPrompt: () => Promise.resolve({ data: { parts: [] } }),
+          events: noEvents,
+          usage,
+          abort: noAbort,
+          alive: stillThere,
+          close: () => Promise.resolve(),
+        }),
+    })
+
+  test('takes the server’s own cost figure when it reports one', async () => {
+    const agent = await spendingAgent(() =>
+      Promise.resolve({ tokens: 3602, cost: 0.014, input: 2468, output: 1134, reasoning: 0 }),
+    )
+
+    expect(await agent.spend()).toEqual({ usd: 0.014, source: 'backend', windows: [] })
+  })
+
+  test('a model the server cannot price is unpriced rather than free', async () => {
+    // The incident `types.ts` records: OpenCode reports a literal 0 for a model
+    // its catalogue does not know, and the ladder must not pin that as a figure.
+    const agent = await spendingAgent(
+      () => Promise.resolve({ tokens: 3602, cost: 0, input: 2468, output: 1134, reasoning: 0 }),
+      'a-model-no-catalogue-has-heard-of',
+      'self-hosted',
+    )
+
+    expect(await agent.spend()).toEqual({ usd: null, source: 'none', windows: [] })
+  })
+
+  test('a session the server will not report on is unpriced, and does not fail the phase', async () => {
+    const agent = await spendingAgent(() => Promise.resolve(null))
+
+    expect(await agent.spend()).toEqual({ usd: null, source: 'none', windows: [] })
+  })
+
+  test('this route never reports a rate-limit window, whatever it spent', async () => {
+    const agent = await spendingAgent(() =>
+      Promise.resolve({ tokens: 10, cost: 0.5, input: 5, output: 5, reasoning: 0 }),
+    )
+
+    expect((await agent.spend()).windows).toEqual([])
+  })
+
   test.each([
     ['the server cannot say', (): Promise<null> => Promise.resolve(null)],
     ['the read fails outright', (): Promise<never> => Promise.reject(new Error('gone'))],

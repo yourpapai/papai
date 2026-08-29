@@ -221,6 +221,8 @@ const agentFor = async (credential: ClaudeCredential | null, env: NodeJS.Process
   const options: ClaudeAgentOptions = {
     directory: process.cwd(),
     knobs: recorderKnobs(),
+    // Only `provider`/`model` are read here, for the cost catalogue lookup.
+    pricing: { apiKey: 'unused', baseUrl: 'unused', model: recorderKnobs().model, provider: 'anthropic' },
     ...(credential === null ? {} : { credential }),
     env,
     log: silentLog,

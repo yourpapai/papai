@@ -106,24 +106,24 @@ technique the OpenCode route already uses.
 
 ## 5. Rate-limit accumulation and the session seam
 
-- [ ] 5.1 Write the failing test for the per-window latest-wins fold: several
+- [x] 5.1 Write the failing test for the per-window latest-wins fold: several
       turns reporting one window keep the last (including its `utilization`),
       `unifiedWindows` entries fold as their own windows beside the top-level
       one, an unknown window name passes through, a window reported without
       `utilization` folds without one, and a stream with no rate-limit line folds
       to `[]`. Verify the new test file fails.
-- [ ] 5.2 Implement the fold and add `spend(): Promise<RunSpend>` to
+- [x] 5.2 Implement the fold and add `spend(): Promise<RunSpend>` to
       `AgentSession` in `opencode-agent/src/agent-session.ts`, leaving
       `tokensUsed()` and every caller of it untouched. Verify
       `bun run opencode-agent:typecheck` names every unimplemented adapter.
-- [ ] 5.3 Implement `spend()` on the claude adapter: sum `total_cost_usd` and the
+- [x] 5.3 Implement `spend()` on the claude adapter: sum `total_cost_usd` and the
       usage buckets in `foldLine` beside the existing token total, and accumulate
       the rate-limit windows. Verify
       `bun test tests/opencode-agent/claude-adapter.test.ts`, including a case
       proving `claude-progress.ts` still ignores the rate-limit line for progress.
-- [ ] 5.4 Implement `spend()` on the OpenCode adapter over `session.get` usage,
+- [x] 5.4 Implement `spend()` on the OpenCode adapter over `session.get` usage,
       windows always `[]`. Verify `bun test tests/opencode-agent/adapters.test.ts`.
-- [ ] 5.5 Add `rateLimits()` to `AgentHandle` in
+- [x] 5.5 Add `rateLimits()` to `AgentHandle` in
       `opencode-agent/src/agent-handle.ts`, returning `[]` when no session was
       booted, and thread `spend` through `deps.ts` / `phase-context.ts`. Verify
       `bun test tests/opencode-agent/adapters.test.ts tests/opencode-agent/orchestrator.test.ts`.

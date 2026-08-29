@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { RunSpend } from './agent-session.js'
 import type { IssueComment } from './blocks.js'
 import type { CheckRunner } from './check-loop.js'
 import type { CiGroups } from './ci-groups.js'
@@ -57,6 +58,8 @@ export interface PhaseDeps {
    * would cost a great deal.
    */
   tokensUsed: () => Promise<number>
+  /** What this job spent, and its provider's standing. Reporting only — see {@link RunSpend}. */
+  spend: () => Promise<RunSpend>
   skills: (phase: Phase) => Promise<SkillDocument[]>
   /**
    * Writes composed artifact content to a resolved path under the change folder

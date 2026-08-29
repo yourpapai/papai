@@ -103,6 +103,7 @@ const scriptedAgent = (outcomeFor: (index: number) => Promise<string>): Scripted
         prompts.push(request)
         return outcomeFor(prompts.length - 1).then((text) => ({ text, sessionId: 's' }))
       },
+      spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
       tokensUsed: (): Promise<number> => Promise.resolve(0),
       abort: (): Promise<boolean> => {
         state.aborts += 1

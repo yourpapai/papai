@@ -1574,6 +1574,7 @@ const syncFixture = (over: {
   // the model edits the marked file in the working tree and nothing else.
   const inner: OpenCodeAgent = {
     sessionId: 's',
+    spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
     prompt: (request: AgentPromptRequest): Promise<{ text: string; sessionId: string }> => {
       recording.io.prompts.push(request)
       if (over.repair !== undefined) recording.io.readContents['/repo/src/same.txt'] = over.repair

@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import type { RunSpend } from '../../opencode-agent/src/agent-session.js'
 import { findHandoff, HANDOFF_MARKER, renderArtifact } from '../../opencode-agent/src/artifacts.js'
 import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
@@ -259,6 +260,8 @@ interface PipelineIo {
   replies: string[]
   /** Tokens the fake session reports as spent this job. */
   tokensUsed: number
+  /** What the fake session reports having spent. Unpriced unless a test says otherwise. */
+  spend: RunSpend
   reviewResult: ReviewRunResult
   /** What `git rev-parse HEAD` answers; constant unless a test moves it. */
   headSha: string
@@ -451,6 +454,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     refCheckRuns: [],
     replies: [],
     tokensUsed: 0,
+    spend: { usd: null, source: 'none', windows: [] },
     reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0, failure: null },
     headSha: 'head-sha',
     changedPaths: [],
@@ -659,6 +663,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // cannot answer — which is what makes "record the spend before anything closes
     // the server" a testable claim rather than a comment.
     tokensUsed: () => Promise.resolve(io.agentClosed ? 0 : io.tokensUsed),
+    // Unpriced by default: the harness drives the state machine, not the
+    // accounting, and a stub that reported dollars would make every phase test
+    // silently assert a cost nobody wrote.
+    spend: () => Promise.resolve(io.spend),
     abort: () => {
       io.aborts += 1
       return Promise.resolve(io.abortAccepted)
@@ -688,6 +696,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       return io.reviewError === null ? Promise.resolve(io.reviewResult) : Promise.reject(io.reviewError)
     },
     agent: () => Promise.resolve(agent),
+    spend: () => Promise.resolve(io.spend),
     // Through the session, the way `memoizeAgent` wires it, so a run that closed
     // the server reads what a closed server answers.
     tokensUsed: () => agent.tokensUsed(),
@@ -3131,6 +3140,7 @@ describe('the token budget', () => {
         sessionId: 'session-1',
         prompt: () => Promise.reject(new Error('the model timed out')),
         tokensUsed: () => Promise.resolve(harness.io.tokensUsed),
+        spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
         abort: () => Promise.resolve(true),
         close: () => Promise.resolve(),
       })

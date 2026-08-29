@@ -152,6 +152,10 @@ const claudeSessionOptions = ({
   const profiles = contained.openai.profiles
   return {
     directory: contained.repoRoot,
+    // The contained settings, carrying the placeholder key: only `provider` and
+    // `model` are read, and design D5's rule is that the *credential* never
+    // crosses this seam — not the model's name.
+    pricing: contained.openai,
     knobs: {
       model: contained.openai.model,
       lightModel: profiles?.light ?? null,
