@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { RunSpend } from './agent-session.js'
 import type { OpenCodeAgent } from './opencode-adapter.js'
 
 /**
@@ -26,6 +27,16 @@ export interface AgentHandle {
    * than the guardrail saves.
    */
   tokensUsed: () => Promise<number>
+  /**
+   * What this job spent and what its provider says about its limits, or nothing
+   * at all when no session was ever opened.
+   *
+   * The empty answer mirrors `tokensUsed`'s zero and differs from it in one
+   * telling way: an unopened session is `usd: null`, not `usd: 0`. Zero tokens
+   * is the truth for a job that never prompted; zero *dollars* would be a
+   * priced claim about work that was never done.
+   */
+  spend: () => Promise<RunSpend>
   close: () => Promise<void>
 }
 
@@ -49,6 +60,10 @@ export const memoizeAgent = (create: () => Promise<OpenCodeAgent>): AgentHandle 
     tokensUsed: async () => {
       if (pending === null) return 0
       return (await pending).tokensUsed()
+    },
+    spend: async () => {
+      if (pending === null) return { usd: null, source: 'none', windows: [] }
+      return (await pending).spend()
     },
     // Never boots a server just to shut one down, and never turns a teardown
     // failure into a pipeline failure.

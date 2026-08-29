@@ -7,11 +7,14 @@ import { describe, expect, test } from 'bun:test'
 
 import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
+import { decodeClaudeLine, parseNdjsonStream } from '../../opencode-agent/src/claude-contract.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { PostedComment } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import { renderThread } from '../../opencode-agent/src/prompt-budget.js'
 import { createEnvelope } from '../../opencode-agent/src/prompts.js'
+import { foldRateLimits } from '../../opencode-agent/src/rate-limit-windows.js'
+import type { RateLimitStanding } from '../../opencode-agent/src/rate-limit-windows.js'
 import { createReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
 import type { ReplyDeps, ReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
 import { BODY_BUDGET, renderReply, STATUS_MARKER } from '../../opencode-agent/src/reply-comment.js'
@@ -81,12 +84,35 @@ const state = (patch: Partial<AgentState> = {}): AgentState => ({ ...initialStat
 
 const view = (overrides: Partial<ReplyView> = {}): ReplyView => ({
   state: state({ phase: 'REVIEW_AND_MUTATE' }),
+  entry: state({ phase: 'REVIEW_AND_MUTATE' }),
+  windows: [],
   sections: [],
   runUrl: RUN_URL,
   startedMs: STARTED,
   config: config(),
   ...overrides,
 })
+
+/**
+ * A view of a run that began on `carried` and ended on `now`.
+ *
+ * The per-run figure is the difference between them rather than a field of its
+ * own, so a test that wants "this run cost $1.87" says so by naming both ends —
+ * which is exactly the property that makes the two figures unable to disagree.
+ */
+const spentView = (
+  carried: Partial<AgentState>,
+  now: Partial<AgentState>,
+  windows: RateLimitStanding[] = [],
+): ReplyView =>
+  view({
+    entry: state({ phase: 'REVIEW_AND_MUTATE', ...carried }),
+    state: state({ phase: 'REVIEW_AND_MUTATE', ...now }),
+    windows,
+  })
+
+/** The `**Claude limits:**` line of a rendered body, or an empty string when there is none. */
+const limitsOf = (body: string): string => body.split('\n').find((line) => line.startsWith('**Claude limits:**')) ?? ''
 
 const section = (summary: string, body: string, blocks: readonly string[] = []): ReportSection => ({
   summary,
@@ -438,6 +464,7 @@ const replyHarness = (overrides: Partial<PipelineConfig> = {}): { io: ReplyIo; d
     log: { ...silentLogger(), error: (_meta, message): void => void io.errors.push(message ?? '') },
     config: config(overrides),
     selfLogin: (): Promise<string> => Promise.resolve(AGENT_LOGIN),
+    windows: () => Promise.resolve([]),
   }
 
   return { io, deps }
@@ -703,3 +730,150 @@ describe('persistState', () => {
  * it happens. The record is the other half and does not move: the report and the
  * `AGENT_STATE` block stay on the issue, where `findLatestState` scans.
  */
+
+/**
+ * The money, and the provider's standing.
+ *
+ * Both are decoration on a finished run: they sit inside the collapsed `Run
+ * detail`, below the marker `renderThread` cuts at, so nothing here is ever read
+ * back to the model.
+ */
+describe('renderReply · what the run cost', () => {
+  test('a priced run on a fresh issue reports the same figure twice', () => {
+    const body = renderReply(spentView({ usdSpent: 0 }, { usdSpent: 1.87 }))
+
+    expect(body).toContain('**Cost:** $1.87 this run · $1.87 on this issue')
+  })
+
+  test('a priced run carrying an earlier total reports both', () => {
+    const body = renderReply(spentView({ usdSpent: 10.53 }, { usdSpent: 12.4 }))
+
+    expect(body).toContain('**Cost:** $1.87 this run · $12.40 on this issue')
+  })
+
+  test('an unpriced run inside a priced issue reports the total as a floor', () => {
+    const body = renderReply(spentView({ usdSpent: 12.4, usdUnpriced: false }, { usdSpent: 12.4, usdUnpriced: true }))
+
+    expect(body).toContain('unpriced')
+    expect(body).toContain('≥ $12.40')
+  })
+
+  test('an issue nothing has ever priced omits the cost line entirely', () => {
+    // A missing line beats a line that says nothing — the rule `jobLine`
+    // already follows for a local run with no job to link.
+    const body = renderReply(spentView({ usdSpent: 0, usdUnpriced: true }, { usdSpent: 0, usdUnpriced: true }))
+
+    expect(body).not.toContain('**Cost:**')
+  })
+
+  test('the budget line is unchanged by any of it', () => {
+    const body = renderReply(spentView({ usdSpent: 0 }, { usdSpent: 1.87, tokensSpent: 900_000 }))
+
+    expect(body).toContain('**Budget:** 900,000 of 5,000,000 tokens')
+  })
+})
+
+describe('renderReply · the subscription’s standing', () => {
+  test('a five-hour window reports what is left, not what is used', () => {
+    const body = renderReply(spentView({}, {}, [{ window: 'five_hour', utilization: 0.235, status: 'allowed' }]))
+
+    expect(body).toContain('5-hour 76.5% left')
+  })
+
+  test('a weekly window reports its own figure beside it', () => {
+    const body = renderReply(
+      spentView({}, {}, [
+        { window: 'five_hour', utilization: 0.235 },
+        { window: 'seven_day', utilization: 0.412 },
+      ]),
+    )
+
+    expect(body).toContain('5-hour 76.5% left')
+    expect(body).toContain('7-day 58.8% left')
+  })
+
+  test('a spent window reports nothing left rather than a negative', () => {
+    const body = renderReply(spentView({}, {}, [{ window: 'five_hour', utilization: 1.04 }]))
+    // Scoped to the line, and to a negative *percentage* specifically: the
+    // branch name `agent/issue-42` carries a `-4` and the window label `5-hour`
+    // carries a hyphen, so neither a whole-body nor a bare `-` assertion says
+    // what this test means.
+    const limits = limitsOf(body)
+
+    expect(limits).toContain('0% left')
+    expect(limits).not.toMatch(/-[\d.]+% left/u)
+  })
+
+  test('a window with no stated share reports its status and reset, and no percentage', () => {
+    const body = renderReply(spentView({}, {}, [{ window: 'five_hour', status: 'allowed', resetsAt: 1_788_005_782 }]))
+
+    expect(body).toContain('5-hour')
+    expect(body).not.toContain('% left')
+  })
+
+  test('a route that reported no window omits the line entirely', () => {
+    expect(renderReply(view())).not.toContain('**Claude limits:**')
+  })
+
+  test('an unrecognized window name is reported as given', () => {
+    expect(renderReply(spentView({}, {}, [{ window: 'lunar_cycle', utilization: 0.5 }]))).toContain('lunar_cycle')
+  })
+
+  test('overage is named when it is in play', () => {
+    const body = renderReply(spentView({}, {}, [{ window: 'five_hour', utilization: 0.9, isUsingOverage: true }]))
+
+    expect(body.toLowerCase()).toContain('overage')
+  })
+})
+
+describe('renderReply · the accounting carries names and figures only', () => {
+  test('no credential, model prose or tool output reaches the comment', () => {
+    // This surface is a public issue, not a log. The run detail is built from a
+    // phase, a count and a status, so the rule holds by construction — this is
+    // the test that says the new lines did not quietly open a hole in it.
+    const body = renderReply(
+      spentView({ usdSpent: 1 }, { usdSpent: 2.5 }, [
+        { window: 'five_hour', utilization: 0.235, status: 'allowed', resetsAt: 1_788_005_782 },
+      ]),
+    )
+    const detail = body.slice(body.indexOf('<details><summary>Run detail'))
+
+    for (const secret of ['sk-ant-', 'sk-', 'Bearer ', 'ANTHROPIC', 'CLAUDE_CODE_OAUTH_TOKEN']) {
+      expect(detail).not.toContain(secret)
+    }
+    // Only digits, names, punctuation and the glyphs the table already used.
+    expect(detail).not.toMatch(/[A-Za-z0-9+/]{40,}/u)
+  })
+})
+
+/**
+ * The whole path, on real recorded bytes: decoder → fold → render.
+ *
+ * Every layer below has its own tests against its own inputs, and each could
+ * pass while the seam between two of them dropped the figure — a decoded window
+ * the fold discards, a folded standing the renderer never reads. This drives the
+ * recorded stream end to end and asserts the percentages arrive in the posted
+ * body.
+ *
+ * Hermetic: `stub-rate-limit-turn.ndjson` is recorded by
+ * `claude-stub.integration.ts` against a stub Anthropic endpoint, so this needs
+ * no credential and costs nothing.
+ */
+describe('renderReply · the recorded stream reaches the comment intact', () => {
+  test('both recorded windows arrive as remaining percentages', async () => {
+    const recorded = await Bun.file(
+      new URL('./fixtures/claude-cli/stub-rate-limit-turn.ndjson', import.meta.url).pathname,
+    ).text()
+    const lines = parseNdjsonStream(recorded)
+      .map((raw) => decodeClaudeLine(raw))
+      .filter((line): line is NonNullable<typeof line> => line !== null)
+
+    const body = renderReply(spentView({ usdSpent: 0 }, { usdSpent: 0.009714 }, [...foldRateLimits(lines)]))
+
+    // 0.235 consumed → 76.5% left; 0.412 → 58.8%. The recorded figures, not
+    // round ones, so a renderer that printed a constant would fail here.
+    expect(limitsOf(body)).toContain('5-hour 76.5% left')
+    expect(limitsOf(body)).toContain('7-day 58.8% left')
+    expect(body).toContain('**Cost:** $0.01 this run')
+  })
+})

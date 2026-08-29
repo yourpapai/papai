@@ -497,6 +497,7 @@ describe('contain', () => {
           sessionId: 's',
           prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
           tokensUsed: () => Promise.resolve(0),
+          spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
           abort: () => Promise.resolve(true),
           close: () => Promise.resolve(),
         })
@@ -547,6 +548,7 @@ describe('contain', () => {
           sessionId: 's',
           prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
           tokensUsed: () => Promise.resolve(0),
+          spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
           abort: () => Promise.resolve(true),
           close: () => Promise.resolve(),
         })
@@ -588,6 +590,7 @@ describe('contain', () => {
           sessionId: 's',
           prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
           tokensUsed: () => Promise.resolve(0),
+          spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
           abort: () => Promise.resolve(true),
           close: () => Promise.resolve(),
         })
@@ -704,6 +707,7 @@ const firstOptions = (seen: readonly ClaudeAgentOptions[]): ClaudeAgentOptions =
     options ?? {
       directory: '',
       knobs: { model: '', lightModel: null, planEffort: null, buildEffort: null },
+      pricing: { apiKey: '', baseUrl: '', model: '', provider: '' },
       credential: { name: 'ANTHROPIC_API_KEY', value: '' },
       env: {},
       log: { debug: (): void => {}, info: (): void => {}, warn: (): void => {}, error: (): void => {} },
@@ -727,6 +731,7 @@ describe('contain (claude route)', () => {
     sessionId: 'claude-job-x',
     prompt: () => Promise.resolve({ text: '', sessionId: 'claude-job-x' }),
     tokensUsed: () => Promise.resolve(0),
+    spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
     abort: () => Promise.resolve(true),
     close: () => Promise.resolve(),
   })

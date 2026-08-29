@@ -3,6 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { RateLimitStanding } from './rate-limit-windows.js'
+import type { CostSource } from './run-spend.js'
+
 /**
  * The seam every model backend implements — a *session* the pipeline holds:
  * an id, a lifetime, a stop, a teardown.
@@ -30,6 +33,40 @@ export interface AgentPromptResult {
   sessionId: string
 }
 
+/**
+ * What a session spent, and what its provider says about its own limits.
+ *
+ * Beside `tokensUsed()` rather than replacing it, and that is the whole design
+ * of this seam. The ceiling reads tokens because token counts are always right;
+ * this reads money and standing, both of which a backend may decline to report.
+ * A budget that could fail to price a model is a budget that has quietly stopped
+ * bounding it (`types.ts` records the incident), so the guardrail's path stays
+ * exactly as it was and everything that can answer "unknown" lives here.
+ *
+ * One method rather than two because both halves are observed by the same
+ * adapter over the same stream and read by the same reporter at the same
+ * instant. Two thunks would be two samples of one accumulating state, and two
+ * figures that can disagree are worse than one — the reconciliation bug
+ * `run-detail.ts` still carries a note about.
+ */
+export interface RunSpend {
+  /**
+   * What this session cost in USD, or `null` when nothing could price it.
+   *
+   * Never `0` for unknown. A `0` that reads as a real figure is the failure this
+   * whole surface exists to avoid.
+   */
+  readonly usd: number | null
+  /** Which rung of the cost ladder answered, for the run log. */
+  readonly source: CostSource
+  /**
+   * The provider's rate-limit standing per window, or empty when it reported
+   * none — a route that is not a Claude subscription, or a stream that carried
+   * no such line. Empty means "nothing to say", never "no limits".
+   */
+  readonly windows: readonly RateLimitStanding[]
+}
+
 /** A live model-backend session bound to one workspace directory. */
 export interface AgentSession {
   readonly sessionId: string
@@ -40,6 +77,13 @@ export interface AgentSession {
    * recognise must not turn every phase into a failure.
    */
   tokensUsed(): Promise<number>
+  /**
+   * What this session cost and what its provider says about its limits.
+   *
+   * Reporting, not enforcement: every field may degrade to unknown, and nothing
+   * here may fail a phase. See {@link RunSpend}.
+   */
+  spend(): Promise<RunSpend>
   /**
    * Stops whatever the model is running, and says whether the stop landed.
    *

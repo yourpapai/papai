@@ -44,7 +44,7 @@ export type ClaudeStreamLine =
       readonly usage: ClaudeUsage
       readonly costUsd: number
     }
-  | { readonly kind: 'rate-limit-event'; readonly window: string }
+  | ({ readonly kind: 'rate-limit-event' } & RateLimitFact)
 
 /**
  * The init line: the stream's first line, and the only session-id source.
@@ -66,22 +66,105 @@ const initLineSchema = z.object({
 })
 
 /**
- * The subscription rate-limit fact — the native profile's proof of
- * authentication (design D4): `apiKeySource` reads `none` on that path even
- * when the env token authenticates, so the recorder's evidence is this line
- * instead. Recorded shape (2.1.239, `native-success-turn.ndjson`): a
- * top-level `rate_limit_event` line — not a system/subtype envelope — whose
- * nested `rate_limit_info` carries the window. The window is a pass-through
- * string, never enumerated — the recorded value is `five_hour`, and other
- * plans carry other windows the decoder has no business refusing. Optional
- * by construction: a stream without one decodes fine, and the adapter
- * ignores the fact where present — it is recorder evidence, never a budget
- * input.
+ * One rate-limit window as the pipeline reads it.
+ *
+ * `window` is a pass-through string, never enumerated: the corpus carries
+ * `five_hour` and `seven_day`, and other plans carry windows this decoder has no
+ * business refusing.
+ *
+ * `utilization` is the consumed share as a 0–1 fraction, straight from the
+ * provider. The *remaining* percentage a reader wants is its complement, and
+ * that subtraction lives at the render rather than here — a decoder that
+ * published a derived figure would make it impossible to tell, later, whether
+ * the provider stated it or we computed it.
  */
+export interface RateLimitWindow {
+  readonly window: string
+  readonly utilization?: number
+  readonly resetsAt?: number
+}
+
+/** The account-level standing, plus every window the line named. */
+export interface RateLimitFact {
+  readonly windows: readonly RateLimitWindow[]
+  readonly status?: string
+  readonly overageStatus?: string
+  readonly overageResetsAt?: number
+  readonly isUsingOverage?: boolean
+}
+
+/**
+ * The subscription rate-limit fact.
+ *
+ * Recorded on two CLI versions, and the newer one is a **break** rather than an
+ * addition. 2.1.239 (`native-success-turn.ndjson`) named one window at the top
+ * level as `rateLimitType` and published no figure for it. 2.1.251
+ * (`stub-rate-limit-turn.ndjson`) carries **no `rateLimitType` at all** and puts
+ * the figures in `unifiedWindows` — so the schema this file used to have, which
+ * required `rateLimitType`, does not lose a field against the newer CLI: it
+ * fails the line and skips the whole fact. A rate-limit render over that schema
+ * would report nothing at all while looking correctly implemented.
+ *
+ * Hence: every field optional and lenient, and `windows` assembled from whichever
+ * shape arrived. `unifiedWindows` describes itself `@internal` in the CLI's own
+ * schema, which is the argument for leniency rather than against reading it — a
+ * moved field must cost that field and never the account-level fact beside it,
+ * the same rule `ModelEntrySchema` records one workspace over.
+ *
+ * The line remains optional evidence: a stream without one decodes fine, and it
+ * is still the native profile's proof of authentication (design D4) because
+ * `apiKeySource` reads `none` on that path.
+ */
+const windowFigureSchema = z
+  .object({ utilization: z.number().optional().catch(undefined), resetsAt: z.number().optional().catch(undefined) })
+  .optional()
+  .catch(undefined)
+
 const rateLimitLineSchema = z.object({
   type: z.literal('rate_limit_event'),
-  rate_limit_info: z.object({ rateLimitType: z.string().min(1) }),
+  rate_limit_info: z.object({
+    rateLimitType: z.string().min(1).optional().catch(undefined),
+    status: z.string().optional().catch(undefined),
+    resetsAt: z.number().optional().catch(undefined),
+    utilization: z.number().optional().catch(undefined),
+    overageStatus: z.string().optional().catch(undefined),
+    overageResetsAt: z.number().optional().catch(undefined),
+    isUsingOverage: z.boolean().optional().catch(undefined),
+    unifiedWindows: z.record(z.string(), windowFigureSchema).optional().catch(undefined),
+  }),
 })
+
+/**
+ * The windows a line named, newest shape first.
+ *
+ * `unifiedWindows` wins when present because it is the shape that carries
+ * figures; the top-level `rateLimitType` is the older CLI's single unfigured
+ * window and is read only when nothing richer arrived. A line naming neither has
+ * no window to report, which is not an error — the account-level status on it is
+ * still worth decoding.
+ */
+const windowsOf = (info: z.infer<typeof rateLimitLineSchema>['rate_limit_info']): RateLimitWindow[] => {
+  const unified = Object.entries(info.unifiedWindows ?? {}).flatMap(([window, figure]) =>
+    figure === undefined
+      ? [{ window }]
+      : [
+          {
+            window,
+            ...(figure.utilization === undefined ? {} : { utilization: figure.utilization }),
+            ...(figure.resetsAt === undefined ? {} : { resetsAt: figure.resetsAt }),
+          },
+        ],
+  )
+  if (unified.length > 0) return unified
+  if (info.rateLimitType === undefined) return []
+  return [
+    {
+      window: info.rateLimitType,
+      ...(info.utilization === undefined ? {} : { utilization: info.utilization }),
+      ...(info.resetsAt === undefined ? {} : { resetsAt: info.resetsAt }),
+    },
+  ]
+}
 
 /** A content block reduced to its shape and, for tool calls, its name. */
 const blockSchema = z.object({ type: z.string(), name: z.string().optional() })
@@ -121,6 +204,25 @@ const resultLineSchema = z.object({
 })
 
 /**
+ * The whole fact one rate-limit line carries, assembled from whichever shape
+ * arrived.
+ *
+ * Its own function because {@link decodeClaudeLine} is a dispatch table and this
+ * is the one branch with assembly in it — inlined, it pushed that function past
+ * `max-lines-per-function`, which is the seam declaring itself.
+ */
+const rateLimitFactOf = (
+  info: z.infer<typeof rateLimitLineSchema>['rate_limit_info'],
+): Extract<ClaudeStreamLine, { kind: 'rate-limit-event' }> => ({
+  kind: 'rate-limit-event',
+  windows: windowsOf(info),
+  ...(info.status === undefined ? {} : { status: info.status }),
+  ...(info.overageStatus === undefined ? {} : { overageStatus: info.overageStatus }),
+  ...(info.overageResetsAt === undefined ? {} : { overageResetsAt: info.overageResetsAt }),
+  ...(info.isUsingOverage === undefined ? {} : { isUsingOverage: info.isUsingOverage }),
+})
+
+/**
  * Decodes one NDJSON line, or `null` when its shape is not recognized.
  *
  * `null` never fails the turn — the `activity.ts` doctrine: a line the pin
@@ -134,7 +236,7 @@ export const decodeClaudeLine = (raw: unknown): ClaudeStreamLine | null => {
     return { kind: 'init', sessionId: init.data.session_id, apiKeySource: init.data.apiKeySource ?? null }
 
   const rateLimit = rateLimitLineSchema.safeParse(raw)
-  if (rateLimit.success) return { kind: 'rate-limit-event', window: rateLimit.data.rate_limit_info.rateLimitType }
+  if (rateLimit.success) return rateLimitFactOf(rateLimit.data.rate_limit_info)
 
   const assistant = assistantLineSchema.safeParse(raw)
   if (assistant.success) {

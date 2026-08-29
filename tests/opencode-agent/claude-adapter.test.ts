@@ -119,6 +119,12 @@ const transcriptCapture = (): TranscriptCapture => {
 const baseOptions = (spawn: SpawnClaude, log: Logger, extra: Partial<ClaudeAgentOptions> = {}): ClaudeAgentOptions => ({
   directory: '/repo',
   knobs: { model: 'claude-sonnet-5', lightModel: null, planEffort: null, buildEffort: null },
+  pricing: {
+    apiKey: 'placeholder',
+    baseUrl: 'https://unused.test/v1',
+    model: 'claude-sonnet-5',
+    provider: 'anthropic',
+  },
   credential: CREDENTIAL,
   env: {},
   log,
@@ -572,5 +578,80 @@ describe('progress translation', () => {
     expect(detail).toContain('[redacted]')
     // Unabridged beside the redaction: the rest of the line survives.
     expect(detail).toContain('the credential is')
+  })
+})
+
+/**
+ * `spend()` beside `tokensUsed()`: the same stream read for a different
+ * question. The ceiling wants a count it can always trust; this wants money and
+ * provider standing, either of which may be unknown.
+ */
+describe('createClaudeAgent · what the run spent', () => {
+  test('reports the CLI’s own cost figure for the turns it ran', async () => {
+    const spawn = scriptedSpawn([{ stdout: fixture('stub-rate-limit-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'first' })
+    const spent = await agent.spend()
+
+    // The recorded turn's own `total_cost_usd`, taken as-is: the backend rung.
+    expect(spent.source).toBe('backend')
+    expect(spent.usd).toBeCloseTo(0.009714, 6)
+  })
+
+  test('sums the cost across a run’s turns, as it sums the tokens', async () => {
+    const spawn = scriptedSpawn([
+      { stdout: fixture('stub-rate-limit-turn.ndjson') },
+      { stdout: fixture('stub-rate-limit-turn.ndjson') },
+    ])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'first' })
+    await agent.prompt({ prompt: 'second' })
+
+    expect((await agent.spend()).usd).toBeCloseTo(0.009714 * 2, 6)
+  })
+
+  test('reports the provider’s standing for every window the run saw', async () => {
+    const spawn = scriptedSpawn([{ stdout: fixture('stub-rate-limit-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'first' })
+
+    expect((await agent.spend()).windows).toMatchObject([
+      { window: 'five_hour', utilization: 0.235 },
+      { window: 'seven_day', utilization: 0.412 },
+    ])
+  })
+
+  test('a session that never prompted is unpriced, not free', async () => {
+    // The distinction `tokensUsed` cannot make — it answers 0 and warns — and
+    // this one can say outright.
+    const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    expect(await agent.spend()).toEqual({ usd: null, source: 'none', windows: [] })
+  })
+
+  test('a stream carrying no rate-limit line reports no windows', async () => {
+    const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'first' })
+
+    expect((await agent.spend()).windows).toEqual([])
+  })
+
+  test('the rate-limit line still never reaches the progress log', async () => {
+    // `claude-progress.ts` skips it deliberately: that channel is a live log and
+    // this is a run's final account. The fold reads the line; progress does not.
+    const log = publicLog()
+    const spawn = scriptedSpawn([{ stdout: fixture('stub-rate-limit-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, log.log))
+
+    await agent.prompt({ prompt: 'first' })
+
+    expect(log.rows.some((row) => JSON.stringify(row).includes('rate'))).toBe(false)
+    expect((await agent.spend()).windows.length).toBe(2)
   })
 })

@@ -174,6 +174,8 @@ const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunRes
       // it runs, so adding it to the *restored* figure gives a monotonic total;
       // adding it to each phase's own would count the earlier phases again.
       carriedTokens: restored.tokensSpent,
+      carriedUsd: restored.usdSpent,
+      carriedUnpriced: restored.usdUnpriced,
     })
 
     return settleLabels(deps, result, entry.state)

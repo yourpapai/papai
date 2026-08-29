@@ -198,6 +198,7 @@ describe('contain transcript wiring', () => {
           sessionId: 's',
           prompt: () => Promise.resolve({ text: '', sessionId: 's' }),
           tokensUsed: () => Promise.resolve(0),
+          spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
           abort: () => Promise.resolve(true),
           close: () => Promise.resolve(),
         })
