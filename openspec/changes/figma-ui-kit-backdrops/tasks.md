@@ -15,6 +15,6 @@
 
 ## 4. Verification
 
-- [ ] 4.1 Post audit vs baseline: re-run `validate` + `plan` + live read-back (`mismatches: 0`), all 34 component node ids resolve, component fills/variants/descriptions unchanged, 18 screen/section ids unchanged; record in `audit-post.md` — verify: `mismatches: 0` + no baseline drift
-- [ ] 4.2 Run full `bun test`, `bun run typecheck`, `bun run lint` (repo diff is docs-only; expect green) and confirm the two doc updates from section 3 are the only repo changes — verify: all three commands pass
-- [ ] 4.3 Archive this change only after `figma-ui-kit-components` archives (the delta presumes the `figma-ui-kit` capability spec that change creates) — verify: archive order respected
+- [x] 4.1 Post audit vs baseline: re-run `validate` + `plan` + live read-back (`mismatches: 0`), all 34 component node ids resolve, component fills/variants/descriptions unchanged, 18 screen/section ids unchanged; record in `audit-post.md` — verify: `mismatches: 0` + no baseline drift
+- [x] 4.2 Run full `bun test`, `bun run typecheck`, `bun run lint` (repo diff is docs-only; expect green) and confirm the two doc updates from section 3 are the only repo changes — verify: all three commands pass
+- [x] 4.3 Archive this change only after `figma-ui-kit-components` archives (the delta presumes the `figma-ui-kit` capability spec that change creates) — verify: archive order respected
