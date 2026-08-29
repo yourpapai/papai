@@ -686,7 +686,13 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // default config (`runUrl: null`) hands back the no-op, so every test that
     // is not about this channel drives exactly what it drove before.
     reply: createReplyBuffer(
-      { github, log, config: pipelineConfig, selfLogin: () => Promise.resolve(AGENT_LOGIN) },
+      {
+        github,
+        log,
+        config: pipelineConfig,
+        selfLogin: () => Promise.resolve(AGENT_LOGIN),
+        windows: () => Promise.resolve(io.spend.windows),
+      },
       RUN_NOW_MS,
     ),
     git,

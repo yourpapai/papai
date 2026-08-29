@@ -8,6 +8,7 @@ import { feedbackTarget } from './feedback-target.js'
 import type { GitHubApi, PostedComment } from './github.js'
 import { reportIdentityDrift } from './identity.js'
 import type { Logger } from './logger.js'
+import type { RateLimitStanding } from './rate-limit-windows.js'
 import { renderReply } from './reply-comment.js'
 import type { ReportSection, ReplyView } from './reply-comment.js'
 import { errorMessage } from './types.js'
@@ -72,6 +73,14 @@ export interface ReplyDeps {
   config: PipelineConfig
   /** Who the pipeline believes it is, checked against who GitHub recorded. */
   selfLogin: () => Promise<string>
+  /**
+   * The provider's rate-limit standing at the end of the run.
+   *
+   * A thunk rather than a value because the buffer is built before the session
+   * exists, and the answer is only final once the run is. Empty on any route
+   * that reported none, and on a run that never opened a session at all.
+   */
+  windows: () => Promise<readonly RateLimitStanding[]>
 }
 
 /** Everything one run's reply remembers. */
@@ -98,8 +107,16 @@ const attempt = async <T>(reply: Reply, action: () => Promise<T>, message: strin
   }
 }
 
-const viewOf = (reply: Reply, state: AgentState): ReplyView => ({
+/**
+ * `entry` is the state the run began on, so the run detail can report this run's
+ * own spend as the difference between the two rather than as a third figure. It
+ * falls back to `state` — a run with no entry has nothing to subtract, and a
+ * difference of zero is the truthful reading.
+ */
+const viewOf = (reply: Reply, state: AgentState, windows: readonly RateLimitStanding[]): ReplyView => ({
   state,
+  entry: reply.entry ?? state,
+  windows,
   sections: reply.sections,
   runUrl: reply.deps.config.runUrl,
   startedMs: reply.startedMs,
@@ -121,9 +138,13 @@ const post = async (reply: Reply): Promise<PostedComment | null> => {
   const state = reply.latest ?? entry
   if (entry === null || state === null || reply.sections.length === 0) return null
 
+  // Asked once, here, because this is the only moment the answer is final and
+  // the only reader of it. A run that never opened a session answers `[]`
+  // without booting one — `AgentHandle`'s rule, not this module's.
+  const windows = await reply.deps.windows()
   const posted = await attempt(
     reply,
-    () => reply.deps.github.createComment(feedbackTarget(entry), renderReply(viewOf(reply, state))),
+    () => reply.deps.github.createComment(feedbackTarget(entry), renderReply(viewOf(reply, state, windows))),
     'Could not post the run’s reply; the workflow’s fallback comment is now in scope',
   )
   if (posted === null) return null

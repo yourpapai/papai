@@ -150,7 +150,7 @@ technique the OpenCode route already uses.
 
 ## 7. Render
 
-- [ ] 7.1 Write the failing `run-detail` tests: a priced run on a fresh issue, a
+- [x] 7.1 Write the failing `run-detail` tests: a priced run on a fresh issue, a
       priced run carrying an earlier total, an unpriced run inside a priced issue
       rendering a floor, an issue that has never been priced omitting the cost
       line entirely, a five-hour window at 23.5% consumed rendering `76.5%`
@@ -160,16 +160,16 @@ technique the OpenCode route already uses.
       route with no windows omitting the limits line, and the budget line
       unchanged in every case. Verify
       `bun test tests/opencode-agent/reply.test.ts` fails.
-- [ ] 7.2 Derive the per-run figure in `opencode-agent/src/reply-buffer.ts` from
+- [x] 7.2 Derive the per-run figure in `opencode-agent/src/reply-buffer.ts` from
       `latest.usdSpent − entry.usdSpent` (design D8) and pass the windows thunk
       through `ReplyDeps`, wired in `contain.ts`. Verify the 7.1 tests pass.
-- [ ] 7.3 Render the cost and rate-limit lines in
+- [x] 7.3 Render the cost and rate-limit lines in
       `opencode-agent/src/run-detail.ts`, deriving remaining as
       `100 − utilization × 100` at the render and nowhere else (design D6), and
       splitting the file if it crosses `max-lines` rather than compressing it.
       Verify
       `bun test tests/opencode-agent/reply.test.ts && bun run opencode-agent:lint`.
-- [ ] 7.4 Write and satisfy the test that neither the rendered comment nor the
+- [x] 7.4 Write and satisfy the test that neither the rendered comment nor the
       run log carries the credential or any model or tool content (the spec's
       secrets scenario). Verify `bun test tests/opencode-agent/reply.test.ts`.
 
