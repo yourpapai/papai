@@ -39,17 +39,17 @@ Groups 2 and 6 touch no recording and may run alongside it.
 
 ## 2. Reusable pricing arithmetic (`sdd-runner`)
 
-- [ ] 2.1 Write the failing test for an exported `costOfUsage(buckets, cost)` in
+- [x] 2.1 Write the failing test for an exported `costOfUsage(buckets, cost)` in
       `sdd-runner`: token buckets × per-million rates, cache read and cache write
       priced at their own rates when present and skipped when absent, reasoning
       tokens at the input rate. Verify `bun run sdd-runner:test` fails on the
       missing export.
-- [ ] 2.2 Extract `costOfUsage` out of `repriceEvent` in
+- [x] 2.2 Extract `costOfUsage` out of `repriceEvent` in
       `sdd-runner/src/usage-aggregate.ts` and have `repriceEvent` call it. Verify
       `bun run sdd-runner:test` passes with the existing `usage-aggregate` and
       `pricing` suites unchanged — an unchanged suite is the proof this is a pure
       extraction.
-- [ ] 2.3 Verify the extraction is behaviour-neutral end to end:
+- [x] 2.3 Verify the extraction is behaviour-neutral end to end:
       `bun run sdd-runner:typecheck && bun run sdd-runner:lint`.
 
 ## 3. Decoders: widen what each backend is allowed to say
