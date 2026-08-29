@@ -1666,8 +1666,15 @@ cannot drift.
 per turn, pinned per-profile `--allowedTools` allowlists under
 `--permission-mode default`, the prompt on stdin, and the session chained
 through `--resume`. The workflow installs the CLI at one pinned exact version —
-**`@anthropic-ai/claude-code@2.1.239`** — only when the backend is selected;
+**`@anthropic-ai/claude-code@2.1.251`** — only when the backend is selected;
 the default route is byte-identical to the pre-knob pipeline.
+
+That version is a **floor**, not a routine pin. 2.1.239 emits no
+`unifiedWindows` on its `rate_limit_event` line, so the run detail's
+`**Claude limits:**` row would be silently empty on it. The two shapes differ
+more than by an added field: 2.1.239 names one window as `rateLimitType` and
+publishes no figure for it, while 2.1.251 carries per-window `utilization` and
+**no `rateLimitType` at all**. The decoder reads both.
 
 The route runs **one of two invocation profiles, selected by which credential
 secret is set — the spelling, not a knob** (there is no `AGENT_CLAUDE_PROFILE`;
@@ -1740,8 +1747,12 @@ The route's trade-offs, so an operator sees them before choosing:
 - **The native profile keeps the CLI's built-in skills in context (~1.5k
   tokens, recorded).** `--setting-sources ''` removes repository skill
   discovery but not the CLI's own shipped skills; the census pins them at
-  ~1.5k tokens (1,469 recorded on 2.1.239). They are CLI-shipped, not
-  repository-controlled — a documented residual, not neutralized.
+  ~1.5k tokens (1,469 recorded on 2.1.239, when there were 15 of them). They
+  are CLI-shipped, not repository-controlled — a documented residual, not
+  neutralized. The **count** moved with the pin: the hermetic census
+  (`stub-facts.json`) reads 17 on 2.1.251, so the token figure above is a
+  2.1.239 measurement awaiting a re-measure rather than a current one. The
+  residual grows with the CLI, which is the reason the census pins it at all.
 - **The env token is authoritative over the local keychain.** The CLI's native
   path reads `CLAUDE_CODE_OAUTH_TOKEN` from the environment before any local
   keychain, pinned by the recorder's dummy-token leg: a deliberately invalid

@@ -221,6 +221,8 @@ const agentFor = async (credential: ClaudeCredential | null, env: NodeJS.Process
   const options: ClaudeAgentOptions = {
     directory: process.cwd(),
     knobs: recorderKnobs(),
+    // Only `provider`/`model` are read here, for the cost catalogue lookup.
+    pricing: { apiKey: 'unused', baseUrl: 'unused', model: recorderKnobs().model, provider: 'anthropic' },
     ...(credential === null ? {} : { credential }),
     env,
     log: silentLog,
@@ -550,7 +552,10 @@ const nativeProofLeg = (token: string, facts: Record<string, string>): { checks:
   const result = decodeClaudeLine(lineOfKind(parsed, 'result'))
   const windows = parsed
     .map((raw) => decodeClaudeLine(raw))
-    .flatMap((line) => (line !== null && line.kind === 'rate-limit-event' ? [line.window] : []))
+    // One line can name several windows since 2.1.251 (`unifiedWindows`), so
+    // this flattens rather than taking a single name — the older CLI's
+    // single-window line still yields exactly one.
+    .flatMap((line) => (line !== null && line.kind === 'rate-limit-event' ? line.windows.map((w) => w.window) : []))
   const text = result !== null && result.kind === 'result' ? result.text : ''
   // An answered turn, not merely a wordy failure: the recorded 401 shape
   // carries non-empty result text too, and must not pass for a reply.

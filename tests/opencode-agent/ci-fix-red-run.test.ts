@@ -42,6 +42,8 @@ const STATE: AgentState = {
   changeName: null,
   planRevision: 1,
   tokensSpent: 0,
+  usdSpent: 0,
+  usdUnpriced: false,
   lastError: null,
   prUrl: 'https://example.test/pull/7',
   prNumber: 7,

@@ -1,0 +1,10 @@
+{
+  "cliVersion": "2.1.251",
+  "stubCensusMcpServers": "[]",
+  "stubCensusSkillCount": "17",
+  "stubApiKeySource": "none",
+  "stubProofWindows": "five_hour,seven_day",
+  "stubFiveHourUtilization": "0.235",
+  "stubSevenDayUtilization": "0.412",
+  "stubResultCostUsd": "0.009713999999999999"
+}

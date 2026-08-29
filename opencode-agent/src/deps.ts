@@ -223,6 +223,7 @@ export const assembleDeps = async (input: DepsInput): Promise<PhaseDeps> => {
     openspec: createOpenSpecDriver({ runner: input.run, cwd: input.config.repoRoot }),
     agent: input.agent.get,
     tokensUsed: input.agent.tokensUsed,
+    spend: input.agent.spend,
     skills: makeSkillLoader(input.config, input.log),
     writeFile: (filePath, content) => writeArtifactFile(filePath, content),
     readFile: (filePath) => readFileNode(filePath, 'utf8'),

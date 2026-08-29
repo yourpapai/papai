@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { RunSpend } from './agent-session.js'
 import type { IssueComment } from './blocks.js'
 import type { CheckRunner } from './check-loop.js'
 import type { CiGroups } from './ci-groups.js'
@@ -57,6 +58,8 @@ export interface PhaseDeps {
    * would cost a great deal.
    */
   tokensUsed: () => Promise<number>
+  /** What this job spent, and its provider's standing. Reporting only — see {@link RunSpend}. */
+  spend: () => Promise<RunSpend>
   skills: (phase: Phase) => Promise<SkillDocument[]>
   /**
    * Writes composed artifact content to a resolved path under the change folder
@@ -156,6 +159,17 @@ export interface MachineInput extends PhaseInput {
   posted: boolean
   /** Tokens this issue had spent before this job started. */
   carriedTokens: number
+  /**
+   * Dollars this issue had cost before this job started, and whether any of that
+   * earlier spend was unpriceable.
+   *
+   * Captured once from the restored block, exactly as `carriedTokens` is and for
+   * the same reason: a job's session total is already cumulative across the
+   * phases it cascades through, so adding it per phase would count the earlier
+   * phases again.
+   */
+  carriedUsd: number
+  carriedUnpriced: boolean
 }
 
 /**

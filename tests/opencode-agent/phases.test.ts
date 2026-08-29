@@ -65,6 +65,8 @@ const baseState = (issueId = 42, over: Partial<AgentState> = {}): AgentState => 
   changeName: null,
   planRevision: 0,
   tokensSpent: 0,
+  usdSpent: 0,
+  usdUnpriced: false,
   lastError: null,
   prUrl: null,
   prNumber: null,
@@ -550,6 +552,8 @@ const planningState = (over: Partial<AgentState> = {}): AgentState => ({
   changeName: CHANGE,
   planRevision: 0,
   tokensSpent: 0,
+  usdSpent: 0,
+  usdUnpriced: false,
   lastError: null,
   prUrl: null,
   prNumber: null,
@@ -1574,6 +1578,7 @@ const syncFixture = (over: {
   // the model edits the marked file in the working tree and nothing else.
   const inner: OpenCodeAgent = {
     sessionId: 's',
+    spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
     prompt: (request: AgentPromptRequest): Promise<{ text: string; sessionId: string }> => {
       recording.io.prompts.push(request)
       if (over.repair !== undefined) recording.io.readContents['/repo/src/same.txt'] = over.repair
@@ -1620,6 +1625,8 @@ const syncFixture = (over: {
       answer: false,
       posted: false,
       carriedTokens: state.tokensSpent,
+      carriedUsd: state.usdSpent,
+      carriedUnpriced: state.usdUnpriced,
       sync: true,
     },
     io: recording.io,

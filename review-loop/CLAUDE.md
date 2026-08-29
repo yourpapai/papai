@@ -41,7 +41,7 @@ five-hour subscription windows and a quota exhausted mid-run is an ordinary
 turn failure. The credential is readable by the fixer's `Bash` children (the
 accepted fixer residual); the loop scrubs it from its own logs and captures.
 
-**Install the pinned CLI** — `@anthropic-ai/claude-code@2.1.239`, the version
+**Install the pinned CLI** — `@anthropic-ai/claude-code@2.1.251`, the version
 the fixture corpus and the allowlist doctrine were recorded against. A drifted
 CLI presents as the missing-`result`-line attempt failure (every NDJSON line
 unrecognized); an absent binary presents as `spawn claude ENOENT` — retried

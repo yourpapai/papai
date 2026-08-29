@@ -54,6 +54,47 @@ opencode-agent:test:claude-live`): the whole stream of a neutralized native
   arrives even with `status: "allowed"` — every credentialed subscription
   turn carries it. A re-run that answers without it fails the recorder
   loudly.
+- `stub-rate-limit-turn.ndjson` + `stub-facts.json` — **genuinely recorded,
+  and credential-free**, by `claude-stub.integration.ts`
+  (`bun run opencode-agent:test:claude-stub`) on 2.1.251. The CLI honours
+  `ANTHROPIC_BASE_URL`, so the lane drives the real binary on the native
+  profile's own flags against a loopback stub that answers with the
+  `anthropic-ratelimit-unified-*` headers. The bytes are the CLI's own
+  serializer's, which is what this corpus means by _recorded_ — the technique
+  `live-sdk.integration.ts` already uses on the OpenCode route. It costs
+  nothing, needs no token, and re-runs on any machine.
+
+  **What it pins:** the _shape_ of `rate_limit_event` on 2.1.251 —
+  `unifiedWindows.five_hour` and `.seven_day`, each with `utilization`
+  (a 0–1 fraction) and `resetsAt` — plus a `result` line carrying a real
+  `total_cost_usd` over populated cache buckets.
+
+  **What it does NOT pin, and must never be read as pinning: authentication.**
+  The native profile's proof is that a _real subscription_ answered; a stub
+  answering proves only that a stub answered. `native-success-turn.ndjson`
+  remains that proof and keeps its own 2.1.239 provenance.
+
+  **The finding that made this lane a fix rather than an addition:** the
+  recorded 2.1.251 line carries **no `rateLimitType` at all**, and the decoder
+  in `claude-contract.ts` used to require one (`z.string().min(1)`). Against
+  the newer CLI it therefore failed the line and skipped the whole fact — a
+  rate-limit render over that schema would have reported nothing while looking
+  correctly implemented. The decoder now reads both shapes.
+
+  **A census pin moved.** `stubCensusSkillCount` reads **17** on 2.1.251 where
+  `facts.json` recorded **15** on 2.1.239; `stubCensusMcpServers` (`[]`) and
+  `stubApiKeySource` (`none`) are unchanged. Recorded here rather than
+  overwritten into `facts.json`, which is the credentialed lane's record: a
+  hermetic run has not re-answered the legs it does not cover, and merging the
+  ones it shares would leave the rest reading as current.
+
+  **Version skew is deliberate and bounded.** `VERSION` (and the workflow's
+  install pin, which `workflow.test.ts` holds equal to it) is 2.1.251, because
+  2.1.239 emits no `unifiedWindows` and the feature would be silently empty on
+  it. The credentialed `.ndjson` files below were recorded on 2.1.239 and are
+  **awaiting a re-record by a token holder**; until then they document the
+  older CLI's shapes, which the decoder still reads.
+
 - `success-turn.ndjson`, `adversarial-plan-bash-refused.ndjson`,
   `resume-turn.ndjson` — **provisional, documented shapes**. An API-key-mode
   credentialed recorder run (`ANTHROPIC_API_KEY=<key> bun run
