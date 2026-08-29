@@ -81,17 +81,17 @@ Groups 2 and 6 touch no recording and may run alongside it.
 
 ## 4. The cost ladder
 
-- [ ] 4.1 Write the failing test for the ladder module: backend figure wins when
+- [x] 4.1 Write the failing test for the ladder module: backend figure wins when
       non-zero (`source: 'backend'`); a zero backend figure with priceable
       buckets falls to the catalogue (`source: 'catalogue'`); no priced row
       yields `null` / `'none'`; an absent bucket yields `null` rather than a
       partial price; an unreachable catalogue yields `null` and does not throw.
       Verify the new test file fails.
-- [ ] 4.2 Implement the ladder in a new `opencode-agent/src/run-spend.ts` over
+- [x] 4.2 Implement the ladder in a new `opencode-agent/src/run-spend.ts` over
       `costOfUsage` plus `loadDb`/`resolveCost` from
       `sdd-runner/src/pricing.js` — the import edge `model-metadata.ts` already
       opened. Verify the 4.1 test passes.
-- [ ] 4.3 Write and satisfy the test that the ladder's catalogue rung and
+- [x] 4.3 Write and satisfy the test that the ladder's catalogue rung and
       `sdd-runner`'s repricing produce the identical figure for one set of counts
       and rates (the spec's cross-workspace scenario). Verify
       `bun run opencode-agent:test`.
