@@ -23,8 +23,15 @@ import { parseModelRef } from './sdk-contract.js'
  */
 export const MAX_ARG_STRLEN = 131_072
 
-/** The profile → allowlist mapping, pinned by the spec. No wildcard exists here. */
-const ALLOWLISTS = {
+/**
+ * The profile → allowlist mapping, pinned by the spec. No wildcard exists here.
+ *
+ * Exported additively so the review-loop workspace's duplicated doctrine can
+ * be pinned equal to this one by `tests/opencode-agent/claude-doctrine.test.ts`
+ * — a test-time import across the subprocess boundary, the same seam
+ * `minimality-rule.test.ts` already uses.
+ */
+export const ALLOWLISTS = {
   plan: 'Read,Glob,Grep',
   propose: 'Read,Edit,Write,Glob,Grep',
   build: 'Read,Edit,Write,Bash,Glob,Grep',

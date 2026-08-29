@@ -6,6 +6,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import type { BackendSelection } from './config-backend-values.js'
 import type { Logger } from './logger.js'
 import { modelRef } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
@@ -68,6 +69,13 @@ export interface ReviewLoopSettings {
    * that way, having already paid for the turn that wrote it.
    */
   commitAuthor: { name: string; email: string }
+  /**
+   * Which backend the loop's role subprocesses run on — the job's own route,
+   * handed through (design D9). On `claude` every agent block names the backend
+   * and the model crosses as the plain id, never the `OpenAiSettings` object
+   * whose gateway half must not reach a claude path.
+   */
+  backend: BackendSelection
 }
 
 export const buildReviewLoopConfig = (settings: ReviewLoopSettings): Record<string, unknown> => {
@@ -77,7 +85,10 @@ export const buildReviewLoopConfig = (settings: ReviewLoopSettings): Record<stri
   // for an hour past the point the loop agreed to stop, which is the whole
   // budget spent on one subprocess nobody will read the result of.
   const subprocessTimeoutMs = Math.min(settings.agentTimeoutMs, settings.softStopMs)
-  const agent = { model: modelRef(settings.openai), extraArgs: [], timeoutMs: subprocessTimeoutMs }
+  const agent =
+    settings.backend === 'claude'
+      ? { model: settings.openai.model, backend: 'claude', extraArgs: [], timeoutMs: subprocessTimeoutMs }
+      : { model: modelRef(settings.openai), extraArgs: [], timeoutMs: subprocessTimeoutMs }
 
   return {
     repoRoot: settings.repoRoot,

@@ -12,10 +12,16 @@ import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
 import type { RecurrenceSpec } from '../types/recurrence.js'
 import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
+import { activitySupportError, mixedActivityTreeError } from './activity-gating.js'
 import { cancelAlertPrompt, createAlertPrompt, getAlertPrompt, listAlertPrompts, updateAlertPrompt } from './alerts.js'
 import { buildDeliveryInput, type CreateDeliveryContext, type DeliveryPolicy } from './delivery-input.js'
 import { defaultDeliveryTarget, storageContextIdForTarget } from './delivery-target.js'
-import { buildScheduleUpdates, parseExecution, type ScheduleFieldUpdates } from './schedule-update-helpers.js'
+import {
+  buildScheduleUpdates,
+  parseExecution,
+  validateFutureFireAt,
+  type ScheduleFieldUpdates,
+} from './schedule-update-helpers.js'
 import {
   cancelScheduledPrompt,
   createScheduledPrompt,
@@ -72,14 +78,6 @@ export type UpdateInput = {
 export type ListInput = Partial<Readonly<{ type: 'scheduled' | 'alert'; status: 'active' | 'completed' | 'cancelled' }>>
 
 // --- Handlers ---
-
-function validateFutureFireAt(date: string, time: string, timezone: string): string | { error: string } {
-  const utcStr = localDatetimeToUtc(date, time, timezone)
-  const fireDate = new Date(utcStr)
-  if (Number.isNaN(fireDate.getTime())) return { error: `Invalid fire_at date/time: '${date}T${time}'` }
-  if (fireDate.getTime() <= Date.now()) return { error: 'fire_at must be a future date and time.' }
-  return utcStr
-}
 
 function createScheduled(
   userId: string,
@@ -139,14 +137,19 @@ function createAlert(
   cooldownMinutes: number | undefined,
   executionMetadata: ExecutionMetadata,
   delivery: DeferredPromptDeliveryInput | undefined,
+  activityAlertsEnabled: boolean,
 ): CreateResult {
   const parseResult = alertConditionSchema.safeParse(condition)
   if (!parseResult.success) return { error: `Invalid condition: ${parseResult.error.message}` }
+  const mixedError = mixedActivityTreeError(parseResult.data)
+  if (mixedError !== null) return { error: mixedError }
 
   const configContextId = getConfigContextIdFromStorageContextId(
     storageContextIdForTarget(delivery ?? defaultDeliveryTarget(userId)),
   )
   const taskInstanceId = getContextSettings(configContextId)?.taskInstanceId ?? null
+  const supportError = activitySupportError(parseResult.data, activityAlertsEnabled, taskInstanceId)
+  if (supportError !== null) return { error: supportError }
 
   const result = createAlertPrompt(
     userId,
@@ -185,7 +188,15 @@ export function executeCreate(
     if (result !== undefined && 'id' in result) emitUser('deferred:created', userId, { promptId: result.id })
     return result
   }
-  const result = createAlert(userId, input.prompt, input.condition, input.cooldown_minutes, executionMetadata, delivery)
+  const result = createAlert(
+    userId,
+    input.prompt,
+    input.condition,
+    input.cooldown_minutes,
+    executionMetadata,
+    delivery,
+    deliveryCtx?.activityAlertsEnabled ?? false,
+  )
   if (result !== undefined && 'id' in result) emitUser('deferred:created', userId, { promptId: result.id })
   return result
 }
@@ -241,6 +252,8 @@ function updateAlertFields(id: string, userId: string, input: UpdateInput): Upda
   if (input.condition !== undefined) {
     const parseResult = alertConditionSchema.safeParse(input.condition)
     if (!parseResult.success) return { error: `Invalid condition: ${parseResult.error.message}` }
+    const mixedError = mixedActivityTreeError(parseResult.data)
+    if (mixedError !== null) return { error: mixedError }
     updates.condition = parseResult.data
   }
   if (input.cooldown_minutes !== undefined) updates.cooldownMinutes = input.cooldown_minutes

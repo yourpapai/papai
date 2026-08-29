@@ -55,6 +55,8 @@ export function runFixerRaw(
   return runAgent({
     spawn: deps.spawn,
     model: deps.config.fixer.model,
+    backend: deps.config.backend,
+    claude: deps.config.claude,
     cwd: worker.worktreePath,
     prompt,
     outputPath: workerOutputPath(deps.runState.runDir, worker.id, 'result.json'),
@@ -134,7 +136,9 @@ export async function runBuildAttempt(
   collector: RoundCollector,
 ): Promise<BuildStepResult> {
   const buildStart = Date.now()
-  const buildResult = await runBuildWithLogging(deps.exec, deps.log, worker.worktreePath)
+  const buildResult = await runBuildWithLogging(deps.exec, deps.log, worker.worktreePath, {
+    credentialValue: deps.config.claude?.credentialValue,
+  })
   tallyPhaseMs(collector, 'build', Date.now() - buildStart)
   emitBuildComplete(deps.trace, round, record.id, buildResult.passed, attempt, Date.now() - buildStart)
 

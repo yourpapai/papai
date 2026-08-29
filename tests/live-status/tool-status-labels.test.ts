@@ -6,150 +6,222 @@
 import { describe, expect, test } from 'bun:test'
 
 import { formatToolStatus } from '../../src/live-status/tool-status-labels.js'
+import { assertEach, type Row } from '../utils/grouped-assertions.js'
+
+type LabelRow = Row<{ readonly tool: string; readonly input: unknown; readonly expected: string }>
 
 describe('formatToolStatus', () => {
-  test('web_fetch shows the host without quotes', () => {
-    expect(formatToolStatus('web_fetch', { url: 'https://example.com/path?q=1' })).toBe('🌐 Fetching example.com…')
-  })
-
-  test('falls back to the raw value when the url is unparseable', () => {
-    expect(formatToolStatus('web_fetch', { url: 'not a url' })).toBe('🌐 Fetching not a url…')
-  })
-
-  test('search_memory quotes the query argument', () => {
-    expect(formatToolStatus('search_memory', { query: 'budget' })).toBe('🔍 Searching memory: "budget"…')
-  })
-
-  test('create_task quotes the title argument', () => {
-    expect(formatToolStatus('create_task', { title: 'Buy milk' })).toBe('📝 Creating task: "Buy milk"…')
-  })
-
-  test('mapped tool with no extractable argument omits the argument', () => {
-    expect(formatToolStatus('create_task', {})).toBe('📝 Creating task…')
-  })
-
-  test('getStringField prefers the first listed key when both are present', () => {
-    expect(formatToolStatus('create_task', { title: 'A', name: 'B' })).toBe('📝 Creating task: "A"…')
-  })
-
-  test('getStringField skips an empty first key and falls back to the next', () => {
-    expect(formatToolStatus('create_task', { title: '', name: 'B' })).toBe('📝 Creating task: "B"…')
-  })
-
-  test('getStringField skips a non-string first key and falls back to the next', () => {
-    expect(formatToolStatus('create_task', { title: 5, name: 'B' })).toBe('📝 Creating task: "B"…')
-  })
-
-  test('a whitespace-only argument is omitted like a missing argument', () => {
-    expect(formatToolStatus('search_memory', { query: '   ' })).toBe('🔍 Searching memory…')
-  })
-
-  test('collapses whitespace and truncates long arguments to 40 chars', () => {
-    const result = formatToolStatus('search_memory', { query: `  multi\nline   ${'a'.repeat(50)}` })
-    expect(result).toBe(`🔍 Searching memory: "multi line ${'a'.repeat(29)}…"…`)
-  })
-
-  test('a 40-char argument is not truncated (boundary: length > MAX_ARG_LENGTH is false at 40)', () => {
-    expect(formatToolStatus('search_memory', { query: 'a'.repeat(40) })).toBe(
-      `🔍 Searching memory: "${'a'.repeat(40)}"…`,
-    )
-  })
-
-  test('a 41-char argument truncates to 40 chars plus ellipsis (boundary)', () => {
-    expect(formatToolStatus('search_memory', { query: 'a'.repeat(41) })).toBe(
-      `🔍 Searching memory: "${'a'.repeat(40)}…"…`,
-    )
-  })
-
-  test('plugin tool falls back to humanized last segment', () => {
-    expect(formatToolStatus('plugin_audio-transcribe__transcribe', { audioId: 'x' })).toBe('⚙️ Running transcribe…')
-  })
-
-  test('mcp tool falls back to humanized last segment', () => {
-    expect(formatToolStatus('mcp_server__do_thing', {})).toBe('⚙️ Running do thing…')
-  })
-
-  test('unmapped core tool falls back to humanized full name', () => {
-    expect(formatToolStatus('add_watcher', {})).toBe('⚙️ Running add watcher…')
-  })
-
-  test('never returns the argument when input is not a record', () => {
-    expect(formatToolStatus('search_memory', 'budget')).toBe('🔍 Searching memory…')
-  })
-
-  test('web_fetch keeps the port in the host (host, not hostname)', () => {
-    expect(formatToolStatus('web_fetch', { url: 'https://host.example:8080/x' })).toBe('🌐 Fetching host.example:8080…')
-  })
-
-  test('asRecord rejects an array and yields the no-arg label', () => {
-    expect(formatToolStatus('search_memory', ['query'])).toBe('🔍 Searching memory…')
-  })
-
-  test('asRecord rejects null and yields the no-arg label', () => {
-    expect(formatToolStatus('search_memory', null)).toBe('🔍 Searching memory…')
-  })
-
-  test('asRecord rejects a number and yields the no-arg label', () => {
-    expect(formatToolStatus('search_memory', 42)).toBe('🔍 Searching memory…')
-  })
-
-  test('a mapped tool with no arg extractor renders only the emoji and label', () => {
-    expect(formatToolStatus('list_memory', {})).toBe('🧠 Recalling memory…')
-  })
-
-  test('fetch_chat_link renders the quote:false host form (second hostOf entry)', () => {
-    expect(formatToolStatus('fetch_chat_link', { url: 'https://example.com/x' })).toBe('🔗 Reading link example.com…')
-  })
-
-  test('update_task renders the updating label with no arg', () => {
-    expect(formatToolStatus('update_task', {})).toBe('✏️ Updating task…')
-  })
-
-  test('delete_task renders the deleting label with no arg', () => {
-    expect(formatToolStatus('delete_task', {})).toBe('🗑️ Deleting task…')
-  })
-
-  test('humanizeToolName converts hyphens to spaces', () => {
-    expect(formatToolStatus('mcp_s__audio-transcribe', {})).toBe('⚙️ Running audio transcribe…')
-  })
-
-  test('humanizeToolName lowercases the segments', () => {
-    expect(formatToolStatus('mcp_s__CamelCase', {})).toBe('⚙️ Running camelcase…')
-  })
-
-  test('humanizeToolName uses the last __ segment (lastIndexOf, not indexOf)', () => {
-    expect(formatToolStatus('plugin_a__b__c', {})).toBe('⚙️ Running c…')
-  })
-
-  test('humanizeToolName strips a leading mcp_ prefix when there is no __ segment', () => {
-    expect(formatToolStatus('mcp_standalone', {})).toBe('⚙️ Running standalone…')
-  })
-
-  test('getStringField skips a whitespace-only first key via trim and falls back to the next', () => {
-    expect(formatToolStatus('create_task', { title: '   ', name: 'B' })).toBe('📝 Creating task: "B"…')
-  })
-
-  test('humanizeToolName only strips a leading mcp_/plugin_ prefix (anchored)', () => {
-    expect(formatToolStatus('x_mcp_foo', {})).toBe('⚙️ Running x mcp foo…')
-  })
-
-  test('humanizeToolName collapses consecutive separators via the + quantifier', () => {
-    expect(formatToolStatus('mcp_x__foo--bar', {})).toBe('⚙️ Running foo bar…')
-  })
-
-  test('humanizeToolName trims the separator-separated base before rendering', () => {
-    expect(formatToolStatus('mcp_s__foo_', {})).toBe('⚙️ Running foo…')
-  })
-
-  test('asRecord rejects a function even when it carries an allowlisted field', () => {
-    const input = (): string => 'x'
-    input.query = 'q'
-    expect(formatToolStatus('search_memory', input)).toBe('🔍 Searching memory…')
+  test('rendering matrix', async () => {
+    const functionInput = (): string => 'x'
+    functionInput.query = 'q'
+    const rows: readonly LabelRow[] = [
+      {
+        label: 'web_fetch shows the host without quotes',
+        tool: 'web_fetch',
+        input: { url: 'https://example.com/path?q=1' },
+        expected: '🌐 Fetching example.com…',
+      },
+      {
+        label: 'falls back to the raw value when the url is unparseable',
+        tool: 'web_fetch',
+        input: { url: 'not a url' },
+        expected: '🌐 Fetching not a url…',
+      },
+      {
+        label: 'search_memory quotes the query argument',
+        tool: 'search_memory',
+        input: { query: 'budget' },
+        expected: '🔍 Searching memory: "budget"…',
+      },
+      {
+        label: 'create_task quotes the title argument',
+        tool: 'create_task',
+        input: { title: 'Buy milk' },
+        expected: '📝 Creating task: "Buy milk"…',
+      },
+      {
+        label: 'mapped tool with no extractable argument omits the argument',
+        tool: 'create_task',
+        input: {},
+        expected: '📝 Creating task…',
+      },
+      {
+        label: 'getStringField prefers the first listed key when both are present',
+        tool: 'create_task',
+        input: { title: 'A', name: 'B' },
+        expected: '📝 Creating task: "A"…',
+      },
+      {
+        label: 'getStringField skips an empty first key and falls back to the next',
+        tool: 'create_task',
+        input: { title: '', name: 'B' },
+        expected: '📝 Creating task: "B"…',
+      },
+      {
+        label: 'getStringField skips a non-string first key and falls back to the next',
+        tool: 'create_task',
+        input: { title: 5, name: 'B' },
+        expected: '📝 Creating task: "B"…',
+      },
+      {
+        label: 'a whitespace-only argument is omitted like a missing argument',
+        tool: 'search_memory',
+        input: { query: '   ' },
+        expected: '🔍 Searching memory…',
+      },
+      {
+        label: 'collapses whitespace and truncates long arguments to 40 chars',
+        tool: 'search_memory',
+        input: { query: `  multi\nline   ${'a'.repeat(50)}` },
+        expected: `🔍 Searching memory: "multi line ${'a'.repeat(29)}…"…`,
+      },
+      {
+        label: 'a 40-char argument is not truncated (boundary: length > MAX_ARG_LENGTH is false at 40)',
+        tool: 'search_memory',
+        input: { query: 'a'.repeat(40) },
+        expected: `🔍 Searching memory: "${'a'.repeat(40)}"…`,
+      },
+      {
+        label: 'a 41-char argument truncates to 40 chars plus ellipsis (boundary)',
+        tool: 'search_memory',
+        input: { query: 'a'.repeat(41) },
+        expected: `🔍 Searching memory: "${'a'.repeat(40)}…"…`,
+      },
+      {
+        label: 'plugin tool falls back to humanized last segment',
+        tool: 'plugin_audio-transcribe__transcribe',
+        input: { audioId: 'x' },
+        expected: '⚙️ Running transcribe…',
+      },
+      {
+        label: 'mcp tool falls back to humanized last segment',
+        tool: 'mcp_server__do_thing',
+        input: {},
+        expected: '⚙️ Running do thing…',
+      },
+      {
+        label: 'unmapped core tool falls back to humanized full name',
+        tool: 'add_watcher',
+        input: {},
+        expected: '⚙️ Running add watcher…',
+      },
+      {
+        label: 'never returns the argument when input is not a record',
+        tool: 'search_memory',
+        input: 'budget',
+        expected: '🔍 Searching memory…',
+      },
+      {
+        label: 'web_fetch keeps the port in the host (host, not hostname)',
+        tool: 'web_fetch',
+        input: { url: 'https://host.example:8080/x' },
+        expected: '🌐 Fetching host.example:8080…',
+      },
+      {
+        label: 'asRecord rejects an array and yields the no-arg label',
+        tool: 'search_memory',
+        input: ['query'],
+        expected: '🔍 Searching memory…',
+      },
+      {
+        label: 'asRecord rejects null and yields the no-arg label',
+        tool: 'search_memory',
+        input: null,
+        expected: '🔍 Searching memory…',
+      },
+      {
+        label: 'asRecord rejects a number and yields the no-arg label',
+        tool: 'search_memory',
+        input: 42,
+        expected: '🔍 Searching memory…',
+      },
+      {
+        label: 'a mapped tool with no arg extractor renders only the emoji and label',
+        tool: 'list_memory',
+        input: {},
+        expected: '🧠 Recalling memory…',
+      },
+      {
+        label: 'fetch_chat_link renders the quote:false host form (second hostOf entry)',
+        tool: 'fetch_chat_link',
+        input: { url: 'https://example.com/x' },
+        expected: '🔗 Reading link example.com…',
+      },
+      {
+        label: 'update_task renders the updating label with no arg',
+        tool: 'update_task',
+        input: {},
+        expected: '✏️ Updating task…',
+      },
+      {
+        label: 'delete_task renders the deleting label with no arg',
+        tool: 'delete_task',
+        input: {},
+        expected: '🗑️ Deleting task…',
+      },
+      {
+        label: 'humanizeToolName converts hyphens to spaces',
+        tool: 'mcp_s__audio-transcribe',
+        input: {},
+        expected: '⚙️ Running audio transcribe…',
+      },
+      {
+        label: 'humanizeToolName lowercases the segments',
+        tool: 'mcp_s__CamelCase',
+        input: {},
+        expected: '⚙️ Running camelcase…',
+      },
+      {
+        label: 'humanizeToolName uses the last __ segment (lastIndexOf, not indexOf)',
+        tool: 'plugin_a__b__c',
+        input: {},
+        expected: '⚙️ Running c…',
+      },
+      {
+        label: 'humanizeToolName strips a leading mcp_ prefix when there is no __ segment',
+        tool: 'mcp_standalone',
+        input: {},
+        expected: '⚙️ Running standalone…',
+      },
+      {
+        label: 'getStringField skips a whitespace-only first key via trim and falls back to the next',
+        tool: 'create_task',
+        input: { title: '   ', name: 'B' },
+        expected: '📝 Creating task: "B"…',
+      },
+      {
+        label: 'humanizeToolName only strips a leading mcp_/plugin_ prefix (anchored)',
+        tool: 'x_mcp_foo',
+        input: {},
+        expected: '⚙️ Running x mcp foo…',
+      },
+      {
+        label: 'humanizeToolName collapses consecutive separators via the + quantifier',
+        tool: 'mcp_x__foo--bar',
+        input: {},
+        expected: '⚙️ Running foo bar…',
+      },
+      {
+        label: 'humanizeToolName trims the separator-separated base before rendering',
+        tool: 'mcp_s__foo_',
+        input: {},
+        expected: '⚙️ Running foo…',
+      },
+      {
+        label: 'asRecord rejects a function even when it carries an allowlisted field',
+        tool: 'search_memory',
+        input: functionInput,
+        expected: '🔍 Searching memory…',
+      },
+    ]
+    await assertEach(rows, (row) => {
+      expect(formatToolStatus(row.tool, row.input)).toBe(row.expected)
+    })
   })
 })
 
 describe('REGISTRY entries render their exact emoji, label, and arg form', () => {
-  const cases: ReadonlyArray<[string, unknown, string]> = [
+  const cases: ReadonlyArray<readonly [string, unknown, string]> = [
     ['web_fetch', { url: 'https://example.com/x' }, '🌐 Fetching example.com…'],
     ['fetch_chat_link', { url: 'https://example.com/x' }, '🔗 Reading link example.com…'],
     ['search_memory', { query: 'q' }, '🔍 Searching memory: "q"…'],
@@ -185,24 +257,40 @@ describe('REGISTRY entries render their exact emoji, label, and arg form', () =>
     ['find_user', {}, '👤 Looking up a user…'],
     ['get_current_time', {}, '🕒 Checking the time…'],
   ]
-  for (const [name, input, expected] of cases) {
-    test(`${name} renders ${JSON.stringify(expected)}`, () => {
-      expect(formatToolStatus(name, input)).toBe(expected)
+  const rows: readonly Row<{ readonly name: string; readonly input: unknown; readonly expected: string }>[] = cases.map(
+    ([name, input, expected]): Row<{ readonly name: string; readonly input: unknown; readonly expected: string }> => ({
+      label: `${name} renders ${JSON.stringify(expected)}`,
+      name,
+      input,
+      expected,
+    }),
+  )
+  test('registry matrix', async () => {
+    await assertEach(rows, (row) => {
+      expect(formatToolStatus(row.name, row.input)).toBe(row.expected)
     })
-  }
+  })
 })
 
 describe('reminder/alert live-status labels', () => {
-  test('create_reminder renders a friendly reminder label', () => {
-    expect(formatToolStatus('create_reminder', { prompt: 'Check the gigachat model' })).toBe(
-      '⏰ Setting up a reminder: "Check the gigachat model"…',
-    )
-  })
-
-  test('create_alert renders a friendly alert label', () => {
-    expect(formatToolStatus('create_alert', { prompt: 'Ping me when done' })).toBe(
-      '🔔 Setting up an alert: "Ping me when done"…',
-    )
+  test('friendly reminder and alert labels', async () => {
+    const rows: readonly LabelRow[] = [
+      {
+        label: 'create_reminder renders a friendly reminder label',
+        tool: 'create_reminder',
+        input: { prompt: 'Check the gigachat model' },
+        expected: '⏰ Setting up a reminder: "Check the gigachat model"…',
+      },
+      {
+        label: 'create_alert renders a friendly alert label',
+        tool: 'create_alert',
+        input: { prompt: 'Ping me when done' },
+        expected: '🔔 Setting up an alert: "Ping me when done"…',
+      },
+    ]
+    await assertEach(rows, (row) => {
+      expect(formatToolStatus(row.tool, row.input)).toBe(row.expected)
+    })
   })
 
   test('cancel_reminder renders a friendly label and never mentions "deferred"', () => {
@@ -213,27 +301,52 @@ describe('reminder/alert live-status labels', () => {
 })
 
 describe('formatToolStatus locale', () => {
-  test('ru renders the catalog label for a registered tool with a quoted arg', () => {
-    expect(formatToolStatus('search_tasks', { query: 'deploy' }, 'ru')).toBe('🔍 Ищу задачи: "deploy"…')
-  })
-
-  test('ru renders the catalog label for a registered tool with no arg', () => {
-    expect(formatToolStatus('update_task', {}, 'ru')).toBe('✏️ Обновляю задачу…')
-  })
-
-  test('ru keeps the quote:false bare-host form for web_fetch', () => {
-    expect(formatToolStatus('web_fetch', { url: 'https://example.com/x' }, 'ru')).toBe('🌐 Загружаю example.com…')
-  })
-
-  test('ru renders the localized runningTool fallback for unregistered tools', () => {
-    expect(formatToolStatus('add_watcher', {}, 'ru')).toBe('⚙️ Выполняю add watcher…')
-  })
-
-  test('ru truncation and quoting stay identical to the en path', () => {
-    const long = `  multi\nline   ${'a'.repeat(50)}`
-    expect(formatToolStatus('search_memory', { query: long }, 'ru')).toBe(
-      `🔍 Ищу в памяти: "multi line ${'a'.repeat(29)}…"…`,
-    )
+  test('ru rendering matrix', async () => {
+    const rows: readonly Row<{
+      readonly tool: string
+      readonly input: unknown
+      readonly locale: 'en' | 'ru'
+      readonly expected: string
+    }>[] = [
+      {
+        label: 'ru renders the catalog label for a registered tool with a quoted arg',
+        tool: 'search_tasks',
+        input: { query: 'deploy' },
+        locale: 'ru',
+        expected: '🔍 Ищу задачи: "deploy"…',
+      },
+      {
+        label: 'ru renders the catalog label for a registered tool with no arg',
+        tool: 'update_task',
+        input: {},
+        locale: 'ru',
+        expected: '✏️ Обновляю задачу…',
+      },
+      {
+        label: 'ru keeps the quote:false bare-host form for web_fetch',
+        tool: 'web_fetch',
+        input: { url: 'https://example.com/x' },
+        locale: 'ru',
+        expected: '🌐 Загружаю example.com…',
+      },
+      {
+        label: 'ru renders the localized runningTool fallback for unregistered tools',
+        tool: 'add_watcher',
+        input: {},
+        locale: 'ru',
+        expected: '⚙️ Выполняю add watcher…',
+      },
+      {
+        label: 'ru truncation and quoting stay identical to the en path',
+        tool: 'search_memory',
+        input: { query: `  multi\nline   ${'a'.repeat(50)}` },
+        locale: 'ru',
+        expected: `🔍 Ищу в памяти: "multi line ${'a'.repeat(29)}…"…`,
+      },
+    ]
+    await assertEach(rows, (row) => {
+      expect(formatToolStatus(row.tool, row.input, row.locale)).toBe(row.expected)
+    })
   })
 
   test('explicit en is byte-identical to the default no-locale output', () => {

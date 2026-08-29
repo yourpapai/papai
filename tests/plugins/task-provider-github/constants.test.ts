@@ -7,7 +7,11 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { GITHUB_CAPABILITIES, GITHUB_DEFAULT_BASE_URL } from '../../../plugins/task-provider-github/constants.js'
+import {
+  GITHUB_CAPABILITIES,
+  GITHUB_DEFAULT_BASE_URL,
+  GITHUB_DEFAULT_GRAPHQL_URL,
+} from '../../../plugins/task-provider-github/constants.js'
 
 const manifestCapabilities = (): string[] => {
   const raw: unknown = JSON.parse(
@@ -53,5 +57,11 @@ describe('GITHUB_CAPABILITIES', () => {
 describe('GITHUB_DEFAULT_BASE_URL', () => {
   test('is the public GitHub REST API base', () => {
     expect(GITHUB_DEFAULT_BASE_URL).toBe('https://api.github.com')
+  })
+})
+
+describe('GITHUB_DEFAULT_GRAPHQL_URL', () => {
+  test('is the public GitHub GraphQL endpoint', () => {
+    expect(GITHUB_DEFAULT_GRAPHQL_URL).toBe('https://api.github.com/graphql')
   })
 })

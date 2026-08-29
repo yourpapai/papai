@@ -143,6 +143,53 @@ describe('module', () => {
 })
 ```
 
+## Grouped assertion tests
+
+The default is **one test per behavior**. For same-fixture value matrices — many inputs, one unit under test,
+exact expected outputs — write **one** `test('…matrix')` whose rows run through
+`assertEach` (`tests/utils/grouped-assertions.js`) instead of one `test()` wrapper per value:
+
+```typescript
+import { assertEach, type Row } from '../utils/grouped-assertions.js'
+
+type CaseRow = Row<{ readonly input: string; readonly expected: string }>
+
+test('rendering matrix', async () => {
+  const rows: readonly CaseRow[] = [
+    { label: 'empty input renders the bare label', input: '', expected: 'Bare' },
+    { label: 'quoted input renders the quoted label', input: 'x', expected: '"x"' },
+  ]
+  await assertEach(rows, (row) => {
+    expect(render(row.input)).toBe(row.expected)
+  })
+})
+```
+
+The group registers as **one** runner case; a failing row reports its own label, its input/expected pair, and
+the matcher's Expected/Received text, so diagnosability matches separate cases.
+
+Eligibility checklist — group only when every row:
+
+- shares one fixture (same unit under test, one fixed setup, no per-row mocks/db state);
+- is order-independent (no row reads state another row mutates);
+- needs no per-case isolation or teardown to be meaningful;
+- makes no timing-dependent assertions (fixed wall-clock waits, polling bounds).
+
+Keep ineligible cases as their own `test()`s — their presence never blocks grouping the rest.
+
+Non-mechanisms and exclusions:
+
+- `test.each`/`it.each` are **not** consolidation: the runner still counts each row as its own case.
+- Never drop or weaken an assertion to fit a table; every merged case's input/expected pair survives verbatim.
+- Grouping is confined to the in-process unit-test lane. Excluded outright: `tests/stories/**`, `tests/e2e/**`,
+  `tests/client/**`, `tests/visual/**` (outside default discovery) and `tests/operational/**`, `tests/smoke/**`,
+  `tests/platform/**` (inside default `bun test` discovery but belonging to the operational, smoke, and
+  platform-adapter lanes — their per-scenario structure is contractual).
+
+`bun run test:audit` (read-only, writes `reports/test-audit/fragmentation.json`) reports per-file case counts,
+matcher-call counts, and single-assert share for the unit lane; consolidation changes cite its before/after
+numbers plus a row-by-row accounting and per-source mutation re-measures.
+
 ## Legacy Module-Mock Pattern
 
 When DI is not available and module evaluation order matters:

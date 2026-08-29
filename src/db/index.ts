@@ -92,6 +92,7 @@ import { migration078RepairEpochAggregateSourceCounters } from './migrations/078
 import { migration079ToolCallDurationNormalize } from './migrations/079_tool_call_duration_normalize.js'
 import { migration080ReleaseAnnouncementBodies } from './migrations/080_release_announcement_bodies.js'
 import { migration081AlertTaskInstancePin } from './migrations/081_alert_task_instance_pin.js'
+import { migration082AlertActivityCursor } from './migrations/082_alert_activity_cursor.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -208,6 +209,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration079ToolCallDurationNormalize,
   migration080ReleaseAnnouncementBodies,
   migration081AlertTaskInstancePin,
+  migration082AlertActivityCursor,
 ]
 
 export const initDb = (): void => {

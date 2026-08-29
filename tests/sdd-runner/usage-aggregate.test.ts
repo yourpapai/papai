@@ -12,6 +12,7 @@ import { appendEvent } from '../../sdd-runner/src/events.js'
 import type { AgentUsage, DoneEvent, SddEvent } from '../../sdd-runner/src/events.js'
 import type { ResolvedCost } from '../../sdd-runner/src/pricing.js'
 import { aggregateUsage } from '../../sdd-runner/src/usage-aggregate.js'
+import { costOfUsage } from '../../sdd-runner/src/usage-aggregate.js'
 import { childUsageOf } from '../../sdd-runner/src/usage-aggregate.js'
 import { repriceEvent } from '../../sdd-runner/src/usage-aggregate.js'
 import { repriceEvents } from '../../sdd-runner/src/usage-aggregate.js'
@@ -523,5 +524,78 @@ describe('childUsageOf (D10 subtree shape)', () => {
 
   it('is undefined for an unreadable run dir', () => {
     expect(childUsageOf(path.join(os.tmpdir(), 'sdd-no-such-run'))).toBeUndefined()
+  })
+})
+
+/**
+ * The arithmetic itself, extracted so a second workspace can price a run with
+ * the same code that prices a gate rather than a copy of it. `repriceEvent`'s
+ * own suite above is the proof the extraction was pure: it is unchanged.
+ *
+ * The neutral bucket names are deliberate. `AgentUsage` spells them
+ * `inputTokens`/`cachedReadTokens`; a backend that is not this pipeline spells
+ * them whatever its provider does, so the shared function names the quantity
+ * rather than either caller's record.
+ */
+describe('costOfUsage', () => {
+  it('prices input and output at their per-million rates', () => {
+    expect(costOfUsage({ input: 1_000_000, output: 1_000_000 }, { input: 5, output: 15 })).toBe(20)
+  })
+
+  it('charges reasoning tokens at the input rate', () => {
+    expect(costOfUsage({ input: 0, output: 0, reasoning: 1_000_000 }, { input: 5, output: 15 })).toBe(5)
+  })
+
+  it('prices cached reads and writes at their own published rates', () => {
+    expect(
+      costOfUsage(
+        { input: 1_000_000, output: 0, cacheRead: 2_000_000, cacheWrite: 1_000_000 },
+        { input: 5, output: 15, cache_read: 0.5, cache_write: 6.25 },
+      ),
+    ).toBeCloseTo(5 + 1 + 6.25, 10)
+  })
+
+  it('charges nothing for cached tokens when no cache rate is published', () => {
+    expect(
+      costOfUsage(
+        { input: 1_000_000, output: 0, cacheRead: 9_000_000, cacheWrite: 9_000_000 },
+        { input: 5, output: 15 },
+      ),
+    ).toBe(5)
+  })
+
+  it('treats an absent optional bucket as zero of that bucket', () => {
+    expect(
+      costOfUsage({ input: 1_000_000, output: 0 }, { input: 5, output: 15, cache_read: 99, cache_write: 99 }),
+    ).toBe(5)
+  })
+
+  it('is zero for a run that consumed nothing', () => {
+    expect(costOfUsage({ input: 0, output: 0 }, { input: 5, output: 15 })).toBe(0)
+  })
+
+  it('agrees with repriceEvent on the same counts and rates', () => {
+    const usage = makeUsage({
+      inputTokens: 1_000_000,
+      outputTokens: 500_000,
+      reasoningTokens: 250_000,
+      cachedReadTokens: 2_000_000,
+      cachedWriteTokens: 1_000_000,
+      costUsd: 0,
+    })
+    const rates = { input: 5, output: 15, cache_read: 0.5, cache_write: 6.25 }
+
+    expect(
+      costOfUsage(
+        {
+          input: usage.inputTokens,
+          output: usage.outputTokens,
+          reasoning: usage.reasoningTokens,
+          cacheRead: usage.cachedReadTokens,
+          cacheWrite: usage.cachedWriteTokens,
+        },
+        rates,
+      ),
+    ).toBe(repriceEvent(doneEvent(usage, 1), rates).usage.costUsd)
   })
 })

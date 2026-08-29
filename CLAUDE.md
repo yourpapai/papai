@@ -8,21 +8,22 @@ papai is a chat bot that manages tasks via LLM tool-calling: a user sends natura
 
 Detailed reference moved out of this file to keep it short. Read the relevant doc before working in that area.
 
-| Topic                 | Doc                                                                                          | Covers                                                                                                                   |
-| --------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Project & behaviors   | [`docs/architecture/behaviors.md`](docs/architecture/behaviors.md)                           | runtime model + every non-obvious behavior (scope model, guest mode, mid-run steering, live status, announcements, …)    |
-| Commands & TDD hooks  | [`docs/architecture/commands.md`](docs/architecture/commands.md)                             | non-obvious `bun` script semantics; the Write/Edit TDD hook pipeline and write protections                               |
-| Environment variables | [`docs/architecture/environment.md`](docs/architecture/environment.md)                       | startup/required vars, central + BYOK LLM creds, bootstrap, S3, dashboard, runtime config keys                           |
-| Architecture          | [`docs/architecture/overview.md`](docs/architecture/overview.md)                             | request flow, module map, debug/settings server surfaces, `/stats/*` anonymity contract                                  |
-| Analytics operations  | [`docs/operations/analytics-runbook.md`](docs/operations/analytics-runbook.md)               | rollout stages A–E, operator commands, reconciliation schedule; incident response in `analytics-incident-runbook.md`     |
-| Legacy corpus porting | [`docs/operations/legacy-migration-runbook.md`](docs/operations/legacy-migration-runbook.md) | triage signals + four lanes (archive/adopt/seed/retire) for moving `docs/superpowers/` items into OpenSpec one at a time |
-| ACP coding sessions   | [`docs/architecture/coding-sessions.md`](docs/architecture/coding-sessions.md)               | `plugins/acp/` + magi, agent/provider picker, forge connections, operator/group guardrails, transcript viewer            |
-| Context Vault         | [`docs/architecture/context-vault.md`](docs/architecture/context-vault.md)                   | indexer push API, token store, reducer/summarizer, `context-vault` plugin tools, lock-file daemon singleton              |
-| Storybook screenshots | [`docs/architecture/storybook-screenshots.md`](docs/architecture/storybook-screenshots.md)   | agent visual-feedback loop: generate specs, shoot stories, read PNGs                                                     |
-| Plugin system         | [`docs/architecture/plugins.md`](docs/architecture/plugins.md)                               | layout, lifecycle, storage, context facade, permissions, attachment transformers                                         |
-| Tools                 | [`docs/architecture/tools.md`](docs/architecture/tools.md)                                   | capability/context gating, `tool_prefs` permissions, presets, compaction/disclosure, memory bridge                       |
-| SDD pipeline          | [`docs/architecture/sdd-pipeline.md`](docs/architecture/sdd-pipeline.md)                     | stages, event model, depth profiles, gate protocol, runner commands                                                      |
-| SDD pipeline          | [`docs/architecture/sdd-pipeline.md`](docs/architecture/sdd-pipeline.md)                     | stages, event model, depth profiles, gate protocol, runner commands                                                      |
+| Topic                  | Doc                                                                                          | Covers                                                                                                                   |
+| ---------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Project & behaviors    | [`docs/architecture/behaviors.md`](docs/architecture/behaviors.md)                           | runtime model + every non-obvious behavior (scope model, guest mode, mid-run steering, live status, announcements, …)    |
+| Commands & TDD hooks   | [`docs/architecture/commands.md`](docs/architecture/commands.md)                             | non-obvious `bun` script semantics; the Write/Edit TDD hook pipeline and write protections                               |
+| Environment variables  | [`docs/architecture/environment.md`](docs/architecture/environment.md)                       | startup/required vars, central + BYOK LLM creds, bootstrap, S3, dashboard, runtime config keys                           |
+| Architecture           | [`docs/architecture/overview.md`](docs/architecture/overview.md)                             | request flow, module map, debug/settings server surfaces, `/stats/*` anonymity contract                                  |
+| Analytics operations   | [`docs/operations/analytics-runbook.md`](docs/operations/analytics-runbook.md)               | rollout stages A–E, operator commands, reconciliation schedule; incident response in `analytics-incident-runbook.md`     |
+| Legacy corpus porting  | [`docs/operations/legacy-migration-runbook.md`](docs/operations/legacy-migration-runbook.md) | triage signals + four lanes (archive/adopt/seed/retire) for moving `docs/superpowers/` items into OpenSpec one at a time |
+| ACP coding sessions    | [`docs/architecture/coding-sessions.md`](docs/architecture/coding-sessions.md)               | `plugins/acp/` + magi, agent/provider picker, forge connections, operator/group guardrails, transcript viewer            |
+| Context Vault          | [`docs/architecture/context-vault.md`](docs/architecture/context-vault.md)                   | indexer push API, token store, reducer/summarizer, `context-vault` plugin tools, lock-file daemon singleton              |
+| Storybook screenshots  | [`docs/architecture/storybook-screenshots.md`](docs/architecture/storybook-screenshots.md)   | agent visual-feedback loop: generate specs, shoot stories, read PNGs                                                     |
+| Figma codegen fallback | [`docs/architecture/figma-codegen.md`](docs/architecture/figma-codegen.md)                   | registry + `figma:connect` validate/push, `figma-codegen` skill, `figma:verify` compare loop                             |
+| Plugin system          | [`docs/architecture/plugins.md`](docs/architecture/plugins.md)                               | layout, lifecycle, storage, context facade, permissions, attachment transformers                                         |
+| Tools                  | [`docs/architecture/tools.md`](docs/architecture/tools.md)                                   | capability/context gating, `tool_prefs` permissions, presets, compaction/disclosure, memory bridge                       |
+| SDD pipeline           | [`docs/architecture/sdd-pipeline.md`](docs/architecture/sdd-pipeline.md)                     | stages, event model, depth profiles, gate protocol, runner commands                                                      |
+| SDD pipeline           | [`docs/architecture/sdd-pipeline.md`](docs/architecture/sdd-pipeline.md)                     | stages, event model, depth profiles, gate protocol, runner commands                                                      |
 
 ### Path-scoped `CLAUDE.md` files (read when working under that path)
 
@@ -82,14 +83,16 @@ See `tests/CLAUDE.md`. Prefer DI over `mock.module()` where the module supports 
 whole run to `reports/test/` — log, JUnit index, and a joined `last-run.json`. Every follow-up question is a
 read against that artifact, so a second question costs milliseconds instead of another full suite.
 
-| Want                                     | Command                              |
-| ---------------------------------------- | ------------------------------------ |
-| the failures, with `file:line`           | `bun run test:failures`              |
-| one failure's full diagnostic            | `bun run test:show <id>`             |
-| a different filter over the same run     | `bun run test:log <pattern> [-C n]`  |
-| what the last run was, and if it's stale | `bun run test:status`                |
-| where the wall time went                 | `bun run test:slowest`               |
-| just the tests a change can reach        | `bun run test:affected [--base=REF]` |
+| Want                                     | Command                                 |
+| ---------------------------------------- | --------------------------------------- |
+| the failures, with `file:line`           | `bun run test:failures`                 |
+| one failure's full diagnostic            | `bun run test:show <id>`                |
+| a different filter over the same run     | `bun run test:log <pattern> [-C n]`     |
+| what the last run was, and if it's stale | `bun run test:status`                   |
+| where the wall time went                 | `bun run test:slowest`                  |
+| just the tests a change can reach        | `bun run test:affected [--base=REF]`    |
+| per-file case/assertion fragmentation    | `bun run test:audit`                    |
+| consolidation speed evidence             | `bun run test:benchmark [-- --project]` |
 
 `test:affected` is a static-import heuristic — it cannot see `mock.module()` targets, computed dynamic
 imports, or behaviour reached through DI seams, and it says so on every run. Use it in the loop; run the full
@@ -122,14 +125,15 @@ When the harness supports `obra/superpowers` skills, preserve that workflow for 
 
 Planning runs on OpenSpec in this repo: code-behavior work enters through `/opsx:explore` / `/opsx:propose` and lives under `openspec/changes/<name>/`; `brainstorming` keeps non-code creative work only. A proposal must justify each capability it declares and route declined scope into Non-goals (`openspec/config.yaml` `rules.proposal`); that governs what a change **admits**, never how tasks are divided — see [Admission vs division](docs/architecture/sdd-pipeline.md#admission-vs-division).
 
-| Trigger                                         | Route                                                                                |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------ |
-| "Let's build / add / change X" (code behavior)  | `/opsx:explore` or `/opsx:propose` — **not** brainstorming                           |
-| Non-code creative work (docs, process, writing) | brainstorming (unchanged)                                                            |
-| Bug / test failure                              | systematic-debugging; if root cause becomes a change, `/opsx:propose`                |
-| Inside `/opsx:apply`                            | test-driven-development, verification-before-completion                              |
-| Autonomous SDD pipeline (`/sdd:auto`)           | `docs/architecture/sdd-pipeline.md`; use `/sdd:auto <task-file>` for end-to-end runs |
-| Plan drifted from code                          | syncing-plan-with-code against `openspec/changes/<name>/` artifacts                  |
+| Trigger                                         | Route                                                                                                                                                           |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Let's build / add / change X" (code behavior)  | `/opsx:explore` or `/opsx:propose` — **not** brainstorming                                                                                                      |
+| Non-code creative work (docs, process, writing) | brainstorming (unchanged)                                                                                                                                       |
+| Design-to-code on papai Figma nodes             | `figma-codegen` skill — **required before** translating papai Figma frames/components into `client/` code; resolves `CODE:` descriptions to live Svelte sources |
+| Bug / test failure                              | systematic-debugging; if root cause becomes a change, `/opsx:propose`                                                                                           |
+| Inside `/opsx:apply`                            | test-driven-development, verification-before-completion                                                                                                         |
+| Autonomous SDD pipeline (`/sdd:auto`)           | `docs/architecture/sdd-pipeline.md`; use `/sdd:auto <task-file>` for end-to-end runs                                                                            |
+| Plan drifted from code                          | syncing-plan-with-code against `openspec/changes/<name>/` artifacts                                                                                             |
 
 ## Codebase Search Protocol
 

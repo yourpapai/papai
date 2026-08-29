@@ -6,6 +6,7 @@
 import type { Task } from '../providers/types.js'
 import { evaluateCondition, updateAlertMatchedTaskIds } from './alerts.js'
 import { RICH_SNAPSHOT_FIELDS } from './change-gate.js'
+import { isPureWatchCondition } from './condition-eval.js'
 import { SNAPSHOT_FIELDS, TRACKED_FIELDS_ROW } from './snapshots.js'
 import type { AlertPrompt } from './types.js'
 
@@ -46,6 +47,34 @@ export const watchTaskChanged = (
     if (current !== previous) return true
   }
   return false
+}
+
+/** Whole-list field evaluation: pure watches inside a mixed instance report
+ * on snapshot-visible changes; filter alerts fire on the match edge (newly
+ * matched tasks) and keep matched-set bookkeeping on non-firing cycles. */
+export function collectFieldFirings(
+  fieldAlerts: AlertPrompt[],
+  tasks: Task[],
+  snapshots: Map<string, string>,
+  evalNow: Date,
+  fields: readonly string[],
+): AlertEvaluation[] {
+  const firing: AlertEvaluation[] = []
+  const watchAlerts = fieldAlerts.filter((alert) => isPureWatchCondition(alert.condition))
+  firing.push(...collectPureWatchFiring(watchAlerts, tasks, snapshots, evalNow, fields))
+  for (const alert of fieldAlerts) {
+    if (isPureWatchCondition(alert.condition)) continue
+    const matchedTasks = tasks.filter((task) => evaluateCondition(alert.condition, task, snapshots, evalNow))
+    const matchedNow = matchedTasks.map((t) => t.id)
+    const previous = new Set(alert.matchedTaskIds)
+    const newMatchedTasks = matchedTasks.filter((t) => !previous.has(t.id))
+    if (newMatchedTasks.length === 0) {
+      updateAlertMatchedTaskIds(alert.id, alert.createdByUserId, matchedNow)
+    } else {
+      firing.push({ alert, matchedNow, newMatchedTasks })
+    }
+  }
+  return firing
 }
 
 /** Pure-watch evaluation: an alert fires when a task it matches has a

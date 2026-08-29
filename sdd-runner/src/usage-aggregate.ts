@@ -29,10 +29,52 @@ export interface AggregateUsage extends AgentUsage {
   readonly costKnown: boolean
 }
 
-export function repriceEvent(
-  event: DoneEvent,
-  cost: { input: number; output: number; cache_read?: number; cache_write?: number },
-): DoneEvent {
+/**
+ * One turn's token counts, named by quantity rather than by any one caller's
+ * record.
+ *
+ * The neutral spelling is the point: `AgentUsage` calls these `inputTokens` and
+ * `cachedReadTokens`, the claude CLI calls them `input_tokens` and
+ * `cache_read_input_tokens`, and OpenCode calls them something else again. A
+ * shared arithmetic that named either side's fields would make the other side's
+ * call read as a conversion.
+ *
+ * The three optional buckets are optional because a backend may genuinely not
+ * report them; each is priced as zero when absent, which is the same answer as
+ * a reported zero. A caller that needs to distinguish "reported none" from "did
+ * not say" must make that decision before it gets here — this function prices
+ * what it is handed.
+ */
+export interface UsageBuckets {
+  readonly input: number
+  readonly output: number
+  readonly reasoning?: number
+  readonly cacheRead?: number
+  readonly cacheWrite?: number
+}
+
+/** Per-million-token rates, the shape `pricing.ts` publishes. */
+type TokenRates = { input: number; output: number; cache_read?: number; cache_write?: number }
+
+/**
+ * What a set of token counts costs at a set of published rates.
+ *
+ * Extracted out of {@link repriceEvent} so `opencode-agent` can price a coding
+ * run with the same code that prices a gate here, rather than a second copy of
+ * it that would drift. Everything the arithmetic knows lives here: the
+ * per-million scale, cache tokens charged at their own rate or not at all, and
+ * reasoning tokens charged at the *input* rate — which is a convention rather
+ * than an arithmetic fact, and so exactly the kind of thing that must not be
+ * re-decided by a second implementation.
+ */
+export function costOfUsage(buckets: UsageBuckets, cost: TokenRates): number {
+  const { input, output, reasoning = 0, cacheRead = 0, cacheWrite = 0 } = buckets
+  const cacheReadCost = (cacheRead / TOKEN_SCALE) * (cost.cache_read ?? 0)
+  const cacheWriteCost = (cacheWrite / TOKEN_SCALE) * (cost.cache_write ?? 0)
+  return ((input + reasoning) * cost.input + output * cost.output) / TOKEN_SCALE + cacheReadCost + cacheWriteCost
+}
+
+export function repriceEvent(event: DoneEvent, cost: TokenRates): DoneEvent {
   if (event.usage.costUsd > 0) return event
   const { inputTokens, outputTokens, reasoningTokens, cachedReadTokens, cachedWriteTokens } = event.usage
   if (
@@ -44,12 +86,16 @@ export function repriceEvent(
   ) {
     return event
   }
-  const cacheReadCost = (cachedReadTokens / TOKEN_SCALE) * (cost.cache_read ?? 0)
-  const cacheWriteCost = (cachedWriteTokens / TOKEN_SCALE) * (cost.cache_write ?? 0)
-  const costUsd =
-    ((inputTokens + reasoningTokens) * cost.input + outputTokens * cost.output) / TOKEN_SCALE +
-    cacheReadCost +
-    cacheWriteCost
+  const costUsd = costOfUsage(
+    {
+      input: inputTokens,
+      output: outputTokens,
+      reasoning: reasoningTokens,
+      cacheRead: cachedReadTokens,
+      cacheWrite: cachedWriteTokens,
+    },
+    cost,
+  )
   return { ...event, usage: { ...event.usage, costUsd } }
 }
 

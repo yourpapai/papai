@@ -13,5 +13,6 @@
   "nativeProofWindows": "five_hour",
   "nativeProofReplyChars": "175",
   "nativeAdapterSpawns": "2",
-  "nativeWebFetchRefused": "true"
+  "nativeWebFetchRefused": "true",
+  "bareCensusMemoryFiles": "[]"
 }

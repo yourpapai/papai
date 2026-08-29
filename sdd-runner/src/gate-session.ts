@@ -49,7 +49,13 @@ export function consequenceLines(view: GateSessionView): string[] {
   return lines
 }
 
-function expectedContent(view: GateSessionView): ExpectedGateContent {
+/**
+ * Expected gate content for response parsing, derived from the session view
+ * (D10): assumptions, blockers, findings, and the plan-gate's child rows —
+ * the single children-aware builder both write paths (flag desugaring and
+ * the TUI session's write-then-parse self-check) share, so they cannot drift.
+ */
+export function expectedGateContentOf(view: GateSessionView): ExpectedGateContent {
   return {
     assumptions: view.items
       .filter((item) => item.kind === 'assumption')
@@ -140,7 +146,7 @@ async function settleAnswers(
   writeGateMd: (md: string) => Promise<void>,
 ): Promise<GateSessionResult> {
   const md = renderGateAnswers(answers)
-  const parsed = parseGateResponse(md, expectedContent(view))
+  const parsed = parseGateResponse(md, expectedGateContentOf(view))
   if (!sameResponse(parsed, responseFromAnswers(answers))) {
     throw new Error('answer self-check failed: rendered answers parse back as a different outcome')
   }

@@ -3,7 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { agentWritePath, emptyUsage, runAgent, type AgentUsage, type SpawnFn } from './agent-runner.js'
+import {
+  agentWritePath,
+  emptyUsage,
+  runAgent,
+  type AgentUsage,
+  type ClaudeRunContext,
+  type SpawnFn,
+} from './agent-runner.js'
+import type { AgentBackend } from './config.js'
 import type { LedgerIssueRecord } from './issue-ledger.js'
 import { IssueMatchesSchema } from './issue-schema.js'
 import type { IssueMatch, ReviewerIssue } from './issue-schema.js'
@@ -18,6 +26,8 @@ export interface MatchIssuesDeps {
   cwd: string
   model: string
   extraArgs: readonly string[]
+  backend?: AgentBackend
+  claude?: ClaudeRunContext
   reporter: ProgressReporter
   timeoutMs?: number
 }
@@ -71,6 +81,8 @@ export async function matchIssues(deps: MatchIssuesDeps): Promise<{ matches: Iss
   const agentResult = await runAgent({
     spawn: deps.spawn,
     model: deps.model,
+    backend: deps.backend,
+    claude: deps.claude,
     cwd: deps.cwd,
     prompt,
     outputPath: deps.outputPath,

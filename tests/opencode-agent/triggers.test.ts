@@ -41,6 +41,8 @@ const baseState = (over: Partial<AgentState> = {}): AgentState => ({
   changeName: null,
   planRevision: 0,
   tokensSpent: 0,
+  usdSpent: 0,
+  usdUnpriced: false,
   lastError: null,
   prUrl: null,
   prNumber: null,
