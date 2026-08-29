@@ -45,4 +45,25 @@ describe('first-writer-wins settle claims', () => {
     expect(claimGateSettle(runDir, 2, 'waiter-B').claimed).toBe(true)
     expect(claimGateSettle(runDir, 1, 'waiter-C').winner).toBe('waiter-A')
   })
+
+  it('a claim naming a dead waiter pid is stolen by the next claimant', async () => {
+    const runDir = tempRunDir()
+    const dead = Bun.spawn(['sleep', '30'])
+    dead.kill(9)
+    await dead.exited
+    const deadWinner = `waiter-${dead.pid}`
+    fs.writeFileSync(path.join(runDir, 'gate-4.settle-claim'), `${deadWinner}\n`)
+    const stolen = claimGateSettle(runDir, 4, 'waiter-B')
+    expect(stolen.claimed).toBe(true)
+    expect(stolen.winner).toBe('waiter-B')
+    expect(fs.readFileSync(path.join(runDir, 'gate-4.settle-claim'), 'utf8')).toContain('waiter-B')
+  })
+
+  it('a claim naming a live waiter pid is honored, not stolen', () => {
+    const runDir = tempRunDir()
+    const liveWinner = `waiter-${process.pid}`
+    fs.writeFileSync(path.join(runDir, 'gate-5.settle-claim'), `${liveWinner}\n`)
+    const loser = claimGateSettle(runDir, 5, 'waiter-B')
+    expect(loser).toEqual({ claimed: false, winner: liveWinner })
+  })
 })

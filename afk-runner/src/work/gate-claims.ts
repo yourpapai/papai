@@ -19,6 +19,27 @@ function holderOf(claimPath: string): string | null {
   }
 }
 
+const WAITER_PID_CLAIM_RE = /^waiter-(\d+)$/u
+
+/**
+ * A crashed waiter leaves its claim behind with no release path — the pid is
+ * the liveness signal. Only pid-shaped waiter claims are stealable; anything
+ * else (legacy expiry-claim timestamps, foreign formats) is honored as held.
+ * EPERM means the pid exists but is not ours: alive, not stealable.
+ */
+function namesDeadWaiter(winner: string): boolean {
+  const match = winner.match(WAITER_PID_CLAIM_RE)
+  if (match === null) return false
+  try {
+    process.kill(Number(match[1]), 0)
+    return false
+  } catch (error) {
+    return (
+      error !== null && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === 'ESRCH'
+    )
+  }
+}
+
 /**
  * First-writer-wins settle claim (design D5/D10): cross-process arbitration
  * for concurrent settlers of one gate version — an exclusive-create
@@ -31,6 +52,10 @@ export function claimGateSettle(runDir: string, version: number, claimant: strin
   if (legacyWinner !== null) return { claimed: false, winner: legacyWinner }
   const claimPath = path.join(runDir, `gate-${version}.settle-claim`)
   const existing = holderOf(claimPath)
+  if (existing !== null && namesDeadWaiter(existing)) {
+    writeFileSync(claimPath, `${claimant}\n`, { flag: 'w' })
+    return { claimed: true, winner: claimant }
+  }
   if (existing !== null) return { claimed: false, winner: existing }
   try {
     writeFileSync(claimPath, `${claimant}\n`, { flag: 'wx' })
