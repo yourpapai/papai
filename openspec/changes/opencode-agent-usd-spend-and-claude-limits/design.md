@@ -224,7 +224,8 @@ its line.
 
 ```ts
 interface RateLimitWindow {
-  window: string          // pass-through: "five_hour", and whatever else a plan carries
+  window: string          // pass-through: "five_hour", "seven_day", whatever a plan carries
+  utilization?: number    // 0–1 fraction, as the provider states it (see D7)
   status?: string         // "allowed" | "allowed_warning" | … — never enumerated
   resetsAt?: number       // epoch seconds
   overageStatus?: string
@@ -233,36 +234,94 @@ interface RateLimitWindow {
 }
 ```
 
+**Remaining is derived, at the render, from `utilization` alone:**
+
+```
+remaining% = 100 − utilization × 100
+```
+
+A window whose `utilization` the provider did not state has a row without a
+remaining figure — status and reset only. The fraction is never reconstructed
+from a reset timestamp, from the elapsed share of a window, or from any other
+window's figure; see the second half of D7.
+
 The adapter keeps a `Map<window, RateLimitWindow>`, last line wins per window.
 Latest-wins rather than first: the last turn of a run is the one whose standing
 the maintainer will meet on the next run. A window the stream never carried has
-no row — **the weekly row appears if and only if a stream carries one**, which is
-the whole of D7.
+no row — **a window is reported if and only if a stream carries it**, which is
+what makes the weekly row a fact about the CLI pin rather than about this
+renderer (D7).
 
 `claude-progress.ts` keeps ignoring the line for *progress* purposes; the fold in
 `claude-adapter.ts` is what accumulates it. The two readers stay separate because
 one is a live log and the other is a run's final account.
 
-### D7 — What "remaining" honestly renders today, and the spike that may change it
+### D7 — The pin move is the prerequisite, and it brings the remaining figure
 
-The recorded corpus (CLI 2.1.239, `native-success-turn.ndjson`) carries exactly
-one `rate_limit_event`, one window, and **no remaining fraction**:
+The corpus is pinned to CLI 2.1.239, whose `rate_limit_event` carries one window
+and no remaining fraction at all:
 
 ```json
 {"status":"allowed","resetsAt":1787644800,"rateLimitType":"five_hour",
  "overageStatus":"allowed","overageResetsAt":1788220800,"isUsingOverage":false}
 ```
 
-So the renderer says what is recorded — window, status, reset, overage when it is
-in play — and no percentage is invented from a reset timestamp. A remaining
-figure is added **only** behind a recording that carries one, which is what the
-spike (task group 1) is for: re-run `opencode-agent:test:claude-live` against the
-current pin and record whether a newer CLI emits a remaining fraction or a second
-window, and whether any endpoint the CLI itself consults is a recordable source.
-If it does, D6's interface gains the field and the renderer gains a row; if it
-does not, the spike's finding is written into the corpus README as the reason
-this surface stops where it does. **The spike gates only the remaining figure —
-every other requirement here ships regardless of its outcome.**
+2.1.251 builds that line differently. Read off the shipped binary — the
+constructor and its own schema, not a guess:
+
+```js
+// the emitted line's builder
+{ status, resetsAt, rateLimitType,
+  ...utilization !== undefined && { utilization },     // ← added since 2.1.239
+  overageStatus, overageResetsAt,
+  unifiedWindows }                                     // ← added since 2.1.239
+
+// unifiedWindows' declared shape
+{ five_hour?:                  { utilization, resetsAt },
+  seven_day?:                  { utilization, resetsAt },
+  seven_day_overage_included?: { utilization, resetsAt } }
+```
+
+and the emission site passes it (`unifiedWindows: dn(j$())`, where `j$()` returns
+per-window raw utilization filtered to windows whose reset is still future).
+Upstream, every figure is parsed from response headers —
+`anthropic-ratelimit-unified-{5h,7d,overage}-{utilization,reset}` and
+`-unified-status` — so `utilization` is a 0–1 fraction, which is what makes D6's
+derivation a subtraction rather than an estimate.
+
+So the weekly window is not a hypothetical this design defers: it arrives on the
+same line as the five-hour one, on a CLI this repo can pin. **The prerequisite is
+the pin, not a spike.** `.github/workflows/agent-pipeline.yml` installs
+`@anthropic-ai/claude-code@2.1.239`; it moves to ≥ 2.1.251.
+
+**What the pin move obliges.** `opencode-agent/CLAUDE.md` states the rule: the
+census pins (`mcp_servers: []`, built-ins-only skills, no memory-file row) are
+load-bearing, and *a CLI pin move must re-answer them at zero spend before any
+credentialed turn*. So the bump carries the whole recorder census with it —
+`facts.json`'s twelve pinned answers, the negative legs, and
+`nativeProofWindows`, which reads `"five_hour"` today and is exactly the fact the
+re-record revises. That is task group 1, and it gates the decoder work in group 3
+because the decoder is written against the recording.
+
+**Two things the recording, not the code read, has to settle.** The `utilization`
+field is emitted *conditionally* (`utilization !== undefined`), and `j$()` drops
+a window whose reset has passed — so whether this account's plan populates the
+seven-day headers is an empirical question the credentialed proof turn answers,
+not one the constructor answers. If a window never arrives it simply has no row,
+which the absence clause in the spec already covers, and the five-hour figure is
+unaffected.
+
+**The anti-invention rule survives the good news, narrowed.** Remaining is
+derived from a fraction the provider stated (D6). Nothing else is: no percentage
+reconstructed from `resetsAt`, no weekly figure inferred from the overage window
+— note `overageResetsAt` sits ~6.7 days out in the recording and is *not* the
+weekly limit — and no row for a window the stream did not carry.
+
+**Caveat worth carrying: `unifiedWindows` describes itself `@internal`.** It is
+on the wire and stable enough to decode, but it is not a promised public
+contract. That is an argument for keeping D6's leniency rule exactly as it is
+rather than relaxing it now that the fields are known, and for re-recording the
+corpus at every pin move — which the rule above already requires anyway.
 
 ### D8 — The per-run figure is derived, not plumbed
 
@@ -286,12 +345,13 @@ prompt (the reasoning `AgentHandle.tokensUsed`'s `0` already records).
 ```
 **Budget:** 412,000 of 5,000,000 tokens · attempt 1 of 3
 **Cost:** $1.87 this run · $12.40 on this issue
-**Claude limits:** 5-hour window allowed · resets 14:00 UTC
+**Claude limits:** 5-hour 76% left · resets 14:00 UTC · 7-day 59% left · resets Tue
 ```
 
 with the unpriced total rendering `≥ $12.40 (some turns unpriced)`, the cost line
-omitted entirely when nothing on the issue has ever been priced, and the limits
-line omitted on any route that carried no window. A missing line beats a line
+omitted entirely when nothing on the issue has ever been priced, a window whose
+`utilization` was not stated rendering status and reset without a percentage, and
+the limits line omitted on any route that carried no window. A missing line beats a line
 that says nothing — the rule `jobLine` already follows for a local run.
 
 ## Risks / Trade-offs
@@ -306,9 +366,21 @@ that says nothing — the rule `jobLine` already follows for a local run.
   the honest reading is "what this would have cost on the API"; the design does
   not claim it is billed. The distinction belongs in the docs line for
   `**Cost:**`, not in a second number.
-- **Widening `rate_limit_info` couples a renderer to an unstable shape.** → Every
-  field but the window is lenient and optional; a moved or dropped field costs
-  that field's clause and nothing else, and the corpus re-records at each pin.
+- **Widening `rate_limit_info` couples a renderer to an unstable shape**, and
+  `unifiedWindows` is self-described `@internal` (D7). → Every field but the
+  window is lenient and optional; a moved or dropped field costs that field's
+  clause and nothing else — a vanished `utilization` costs the percentage and
+  keeps the row — and the corpus re-records at each pin.
+- **The pin move is the largest piece of work here and touches the whole
+  recorder census**, not just this change's surface: twelve pinned facts and the
+  negative legs re-answer, and a census pin that moved for an unrelated reason
+  surfaces as this change's failure. → It is task group 1, ahead of everything
+  that reads a recording, and the census is re-answered at zero spend before any
+  credentialed turn — the rule, not this change's invention.
+- **The seven-day window may not arrive for a given plan or account** (D7). →
+  The absence clause covers it: no row, no inferred figure, five-hour unaffected.
+  The credentialed proof turn in group 1 is what establishes which windows this
+  account actually sees.
 - **The state grows two fields on a hot path.** → Both default and neither is
   read by the machine; `openspec/changes/*` precedent and `zod`'s unknown-key
   stripping make a rollback lose the figures and strand nothing.
@@ -324,14 +396,22 @@ were never accounted. Rollback drops the keys as unknown (zod strips them), whic
 loses accumulated dollars and strands nothing; the token ceiling is untouched in
 both directions.
 
-Test-first order, per the Write/Edit TDD hook pipeline — every new module
-(`run-spend.ts`, `rate-limit-windows.ts` or whatever the split lands as) and every
-touched decoder is hook-gated, so each lands behind its failing test:
+The CLI pin bump is the one ordering constraint that is not about tests: the
+decoder is written against a recording, so the recording has to exist first.
+Rolling the pin back after this ships would cost the remaining percentages and
+leave the rest — status, reset, cost — working, because every field is optional.
 
+Test-first order otherwise, per the Write/Edit TDD hook pipeline — every new
+module (`run-spend.ts`, `rate-limit-windows.ts` or whatever the split lands as)
+and every touched decoder is hook-gated, so each lands behind its failing test:
+
+0. Pin bump and census re-record (group 1) — nothing that reads a recording
+   starts before it.
 1. `costOfUsage` extraction in `sdd-runner` + its test, with `repriceEvent`'s
    existing suite green and unchanged as the proof it is a pure extraction.
-2. Decoder widening (claude `rate_limit_info`, OpenCode cache buckets) against
-   the fixture corpus.
+2. Decoder widening — claude `rate_limit_info` incl. `utilization` /
+   `unifiedWindows` against the re-recorded corpus, OpenCode cache buckets
+   against the live SDK lane.
 3. The ladder, unit-tested per rung including both `null` paths.
 4. Seam, adapters, handle, state, accumulation.
 5. Render, last — so every figure it prints already has a test that produced it.
@@ -344,3 +424,8 @@ touched decoder is hook-gated, so each lands behind its failing test:
 - Should `source: 'catalogue'` distinguish `resolveCost`'s exact-row and
   cross-provider-median tiers in the log line? A log-detail question with no
   effect on the specs, the ladder or the render.
+
+Not an open question, though it reads like one: *which* windows this account's
+plan reports is settled by group 1's proof turn. The spec requires a row per
+window the provider states, so either answer is a correct render rather than a
+change of approach — which is why it is a task and not a deferral.

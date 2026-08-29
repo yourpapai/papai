@@ -135,20 +135,23 @@ stopped at a budget ceiling.
 
 When the run's model credential is a Claude OAuth subscription token and the
 provider reported its rate-limit standing during the run, the summary detail
-SHALL report that standing: the window, its status, when it resets, and whether
-overage is in play. The report SHALL cover every window the provider reported,
-and no other.
+SHALL report that standing: the window, how much of it remains, its status, when
+it resets, and whether overage is in play. The report SHALL cover every window
+the provider reported, and no other.
 
 #### Scenario: The provider reports one window
 
 - **WHEN** a subscription-credentialed run's provider reports a five-hour window
   that is allowed and resets at a stated time
-- **THEN** the summary detail reports that window, its status and its reset time
+- **THEN** the summary detail reports that window, its remaining share, its
+  status and its reset time
 
-#### Scenario: The provider reports several windows
+#### Scenario: The provider reports both a five-hour and a weekly window
 
-- **WHEN** a run's provider reports both a five-hour and a longer window
-- **THEN** the summary detail reports a row for each
+- **WHEN** a run's provider reports a five-hour window and a seven-day window,
+  each with its own consumed share and reset time
+- **THEN** the summary detail reports a row for each, with that window's own
+  remaining share and reset time
 
 #### Scenario: The provider reports a window more than once
 
@@ -175,29 +178,48 @@ and no other.
   seen
 - **THEN** that window is reported as given, and the run is unaffected
 
-### Requirement: No rate-limit figure is reported that the provider did not state
+### Requirement: Remaining quota is reported as a percentage, derived from the stated consumed share
 
-The rate-limit report SHALL contain only facts the provider stated. A remaining
-quota, a consumed fraction, or a window the provider did not report SHALL NOT be
-inferred, estimated, or derived from a reset timestamp.
+For each reported window whose consumed share the provider states, the summary
+detail SHALL report the remaining quota as a percentage — the complement of the
+consumed share. It SHALL NOT be inferred, estimated, or derived from a reset
+timestamp, from elapsed time within the window, or from any other window's
+figure. A window whose consumed share the provider does not state SHALL be
+reported without a remaining figure rather than omitted.
 
-#### Scenario: The provider states no remaining quota
+#### Scenario: A five-hour window with a stated consumed share
 
-- **WHEN** the provider reports a window's status and reset time but no remaining
-  quota
-- **THEN** the summary detail reports the status and reset time and reports no
-  remaining quota
+- **WHEN** the provider states that 23.5% of the five-hour window is consumed
+- **THEN** the summary detail reports 76.5% remaining for that window
 
-#### Scenario: The provider states a remaining quota
+#### Scenario: A weekly window with a stated consumed share
 
-- **WHEN** the provider reports a remaining quota for a window
-- **THEN** the summary detail reports that figure as stated
+- **WHEN** the provider states that 41.2% of the seven-day window is consumed
+- **THEN** the summary detail reports 58.8% remaining for that window
 
-#### Scenario: The provider reports no weekly window
+#### Scenario: A fully consumed window
+
+- **WHEN** the provider states a window's consumed share as 100% or above
+- **THEN** the summary detail reports no remaining quota for that window rather
+  than a negative percentage
+
+#### Scenario: A window reported without a consumed share
+
+- **WHEN** the provider reports a window's status and reset time but states no
+  consumed share for it
+- **THEN** the summary detail reports that window's status and reset time and
+  reports no remaining percentage for it
+
+#### Scenario: No figure is reconstructed from a timestamp
+
+- **WHEN** a window carries a reset time but no consumed share
+- **THEN** no remaining percentage is computed from how much of the window has
+  elapsed, from any overage reset time, or from another window's share
+
+#### Scenario: A window the provider never reported
 
 - **WHEN** the provider reports only a five-hour window
-- **THEN** no weekly row appears, and no weekly figure is inferred from the
-  five-hour window or from any overage reset
+- **THEN** no weekly row appears and no weekly figure is inferred
 
 ### Requirement: Accounting never fails the work it reports on
 
