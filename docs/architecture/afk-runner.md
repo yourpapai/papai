@@ -100,7 +100,25 @@ Each follow-on is its own explored OpenSpec change:
 | C4 | gate-as-state — GATE substate, four setters as event sources | **delivered** — gate.awaiting positional park, one settle seam with first-writer-wins claims, foreground waiter, autonomy ladder as always-logging producer, thin config-gated deadlines, owed-mover resume + heal-on-settle, veto-updater revision; decisions D1–D8 in `openspec/changes/gate-as-state/design.md` |
 | C5 | tail-on-graph — decompose/atomicity/finals/report; parity complete | **delivered** — tail work modules, final-gate presentation as tail work, outcome-ordered settles, S completion + self-loops (incl. the inherited intake gap), owed-presentation resume, finals vocabulary + terminal memo, report + CLI, memo-parity oracle over the surviving originals; decisions D1–D9 in `openspec/changes/tail-on-graph/design.md` |
 | C6 | agent-failed-recovery — retry budget, escalation gate, kill -9 resume drill | **delivered** — typed failure taxonomy at three seams, `stage_failed` bookkeeping with a per-stage budget and immediate under-budget re-run, the escalation gate as mode `escalation` on the C4 stack (R5 rung, steer answerability, inherited deadlines), the `stop` verb (`run_abort` mixin, calm-stop marker producer, slug release), honest memos on every park with the `failed` status, torn-tail tolerance + prefix property + resume-equivalence + W5–W7 recovery, five synthetic failure fixtures; decisions D1–D11 in `openspec/changes/agent-failed-recovery/design.md` |
-| C7 | v1-live-proof — one real S change end-to-end → reflect, re-score the U-ledger, decide next | planned |
+| C7 | v1-live-proof — live conformance runs, incident drills, harvest, reflection + re-score | **delivered** — three live runs (S-shaped calibration, M proof with kill/veto incidents, declared-failure scratch), the live corpus lane (`tests/afk-runner/fixtures/live/`), the reflection artifact (`openspec/changes/v1-live-proof/reflection.md`), the living U-table below; three crash-shaped engine fixes landed under the escape clause (dead-pid claim steal, `AgentRunError` → `exhausted`, idempotent intake resume) |
+
+## Living follow-ups ledger (U1–U9, re-scored after C7)
+
+The ledger lives here now — the afk-runner change's design.md is history. Re-scored from the C7 live
+evidence (n=1, verdicts provisional; full evidence and falsifiable triggers in
+`openspec/changes/v1-live-proof/reflection.md`):
+
+| #  | Follow-up                                   | Verdict |
+|----|---------------------------------------------|---------|
+| U1 | team/mission spawner                        | hold    |
+| U2 | child-actor execution                       | park    |
+| U3 | execution-half states                       | hold    |
+| U4 | documenting + reflection states             | rise    |
+| U5 | vision intake / L4 portfolio                | park    |
+| U6 | `conflict_detected`                         | park    |
+| U7 | snapshot memo for the fold                  | fall    |
+| U8 | TUI re-host as pure fold render             | hold    |
+| U9 | sdd-runner retirement; cross-run accounting | **next** |
 
 Follow-ups ledger (U1–U9: team/mission spawner, child-actor execution, execution-half states, documenting+reflection, vision intake/L4 portfolio, `conflict_detected`, snapshot memo, TUI re-host, sdd-runner retirement) is re-scored after C7 — table in `openspec/changes/afk-runner/design.md`.
 

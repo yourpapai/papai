@@ -26,8 +26,8 @@
 
 ## 6. Reflection and ledger re-score
 
-- [ ] 6.1 Write the reflection artifact: verdict/evidence/trigger for every U-item (exactly one `next` or an explicit tie note), the n=1 preamble, the five pre-registered findings verbatim plus whatever the runs added, the pass-criteria verdict per D3, and the incident observations (orphan behavior, watchdog count, taxonomy boundary). Verify: `openspec validate "v1-live-proof" --strict` passes with the reflection referenced from the change docs
-- [ ] 6.2 Move the living U-table to `docs/architecture/afk-runner.md` with the re-scored verdicts and update the stale pointer to the afk-runner change's design.md. Verify: `rg -n "re-scored after C7" docs/architecture/afk-runner.md` finds the updated living-table language, not the old pointer
+- [x] 6.1 Write the reflection artifact: verdict/evidence/trigger for every U-item (exactly one `next` or an explicit tie note), the n=1 preamble, the five pre-registered findings verbatim plus whatever the runs added, the pass-criteria verdict per D3, and the incident observations (orphan behavior, watchdog count, taxonomy boundary). Verify: `openspec validate "v1-live-proof" --strict` passes with the reflection referenced from the change docs
+- [x] 6.2 Move the living U-table to `docs/architecture/afk-runner.md` with the re-scored verdicts and update the stale pointer to the afk-runner change's design.md. Verify: `rg -n "re-scored after C7" docs/architecture/afk-runner.md` finds the updated living-table language, not the old pointer
 
 ## 7. Re-tighten (post-reflection)
 

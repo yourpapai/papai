@@ -1,5 +1,8 @@
 # Design: v1-live-proof
 
+> Post-run record: [`reflection.md`](reflection.md) — pass-criteria verdict per D3, the pre-registered
+> findings adjudicated, incident observations, and the U-ledger re-score (exactly one `next`: U9).
+
 ## Context
 
 See proposal.md — Why. C1–C6 shipped the graph kernel, think-half, gates, tail, and failure recovery, all proven against the 26-fixture corpus and in-process drills. The engine has never run live: real `opencode` spawns through `typedSpawn(realSpawn)`, real wall clock, real budget, a human answering gates. C7 is simultaneously the live proof, the reflection that re-scores the U-ledger, and the close-out of the C1–C7 relaxation window (`docs/architecture/afk-runner.md` §Prototype relaxation window). Empirical grounding established during exploration: five historical M-depth runs show 10–12 spawns, median 4–10m wall per spawn (max 20m), $3.4–7.6 at mid-tier pricing, and 2.7–3.8-day spans on gate waits; token volumes are fixture-faithful (`costUsd` is 0 — history ran free-tier models).
