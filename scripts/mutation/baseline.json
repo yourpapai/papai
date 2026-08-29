@@ -216,7 +216,7 @@
   "sdd-runner/src/tui-session-screen.ts": 0.7569832402234636,
   "sdd-runner/src/tui-tokens.ts": 0.9027777777777778,
   "sdd-runner/src/tui-width.ts": 0.7777777777777778,
-  "sdd-runner/src/usage-aggregate.ts": 0.9120879120879121,
+  "sdd-runner/src/usage-aggregate.ts": 0.9239130434782609,
   "sdd-runner/src/watch-view.ts": 0.48823529411764705,
   "sdd-runner/src/working-tree-guard.ts": 0.7,
   "src/coding-sessions/configure.ts": 0.6666666666666666,
