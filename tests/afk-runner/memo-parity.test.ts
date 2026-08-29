@@ -10,31 +10,18 @@ import path from 'node:path'
 import { flattenPosition } from '../../afk-runner/src/drive/loop.js'
 import type { ParkedReason } from '../../afk-runner/src/drive/loop.js'
 import { readEvents } from '../../afk-runner/src/events.js'
-import type { DepthProfile, SddEvent, StageId } from '../../afk-runner/src/events.js'
+import type { SddEvent } from '../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../afk-runner/src/kernel/fold.js'
 import { memoFieldsOf } from '../../afk-runner/src/memo-project.js'
+import { PersistedRunStateSchema } from '../../afk-runner/src/run-state.js'
+import type { PersistedRunState } from '../../afk-runner/src/run-state.js'
 
 const REAL_ROOT = path.join(import.meta.dir, 'fixtures', 'real')
 
 /** Legacy stamps createdAt at run start (ms-skew) and updatedAt at its save clock — completed runs save ms past the last event, stragglers minutes later. */
 const CREATED_AT_TOLERANCE_MS = 2_000
 const UPDATED_AT_TOLERANCE_MS = 300_000
-
-interface PersistedMemo {
-  readonly stage: StageId
-  readonly depth: DepthProfile | null
-  readonly round: number
-  readonly roundCap?: number
-  readonly gate: { readonly mode: 'early' | 'final' | 'plan'; readonly version: number } | null
-  readonly status: string
-  readonly createdAt: string
-  readonly updatedAt: string
-  readonly autoExtendsUsed?: number
-  readonly gateDeadlineAt?: string | null
-  readonly gateDeadlineReArmed?: boolean
-  readonly plan?: { readonly childCount: number; readonly digest: string } | null
-}
 
 function fixturesWithState(): { readonly name: string; readonly logPath: string; readonly statePath: string }[] {
   return readdirSync(REAL_ROOT, { withFileTypes: true })
@@ -58,7 +45,11 @@ function haltedOf(status: string): ParkedReason {
 }
 
 /** Match one derived memo against its persisted original on every fold-derivable field. */
-function assertMemoParity(derived: ReturnType<typeof memoFieldsOf>, persisted: PersistedMemo, foldDone: boolean): void {
+function assertMemoParity(
+  derived: ReturnType<typeof memoFieldsOf>,
+  persisted: PersistedRunState,
+  foldDone: boolean,
+): void {
   expect(derived.stage).toBe(persisted.stage)
   expect(derived.depth).toBe(persisted.depth)
   expect(derived.round).toBe(persisted.round)
@@ -107,7 +98,7 @@ describe('memo parity with the surviving originals (C5 D7 — parity complete)',
       const snapshot = foldEvents(pipelineMachine, events).snapshot
       const halted = haltedOf(snapshot.status)
       const derived = memoFieldsOf(events, snapshot.context, halted, flattenPosition(snapshot.value))
-      const persisted: PersistedMemo = JSON.parse(readFileSync(fixture.statePath, 'utf8'))
+      const persisted = PersistedRunStateSchema.parse(JSON.parse(readFileSync(fixture.statePath, 'utf8')))
       assertMemoParity(derived, persisted, snapshot.status === 'done')
     })
   }

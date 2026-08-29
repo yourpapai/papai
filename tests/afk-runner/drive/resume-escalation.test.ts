@@ -14,6 +14,7 @@ import type { EventInput, SddEvent } from '../../../afk-runner/src/events.js'
 import { readEvents } from '../../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../../afk-runner/src/kernel/fold.js'
+import { PersistedRunStateSchema } from '../../../afk-runner/src/run-state.js'
 import { resumeRun } from '../../../afk-runner/src/run.js'
 import { TASK_TEXT, makeFakePipeline } from '../fixtures/fake-pipeline.js'
 
@@ -99,7 +100,7 @@ describe('W5/W6 — owed escalation presentation on resume (C6 D10)', () => {
     expect(firstOfKind(events, 'auto_decision')).toMatchObject({ decision: 'gate', gateVersion: 1 })
     expect(foldOf(h.logPath).value).toBe('gate.awaiting')
     // the failed stage stays active in the map through the healed presentation
-    const memo = JSON.parse(fs.readFileSync(path.join(h.runDir, 'state.json'), 'utf8'))
+    const memo = PersistedRunStateSchema.parse(JSON.parse(fs.readFileSync(path.join(h.runDir, 'state.json'), 'utf8')))
     expect(memo.status).toBe('running')
     expect(memo.gate).toEqual({ mode: 'escalation', version: 1 })
   })

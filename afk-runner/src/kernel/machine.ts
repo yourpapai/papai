@@ -131,12 +131,9 @@ export type KernelEvent =
   | { readonly type: 'child.spawned'; readonly child: string }
   | { readonly type: 'child.done'; readonly child: string; readonly outcome: 'done' | 'failed' }
 export const kernelSetup = setup({
-  types: {
-    context: {} as KernelContext,
-    events: {} as KernelEvent,
-  },
   guards: {
-    isStage: ({ event }, params: { stage: string }) => event.type === 'stage.enter' && event.stage === params.stage,
+    isStage: ({ event }: { event: KernelEvent }, params: { stage: string }) =>
+      event.type === 'stage.enter' && event.stage === params.stage,
     /**
      * C5 reshape (D4): the gate stage done and nothing active — the all-done
      * requirement made depth-S completion graph-impossible (the map is
@@ -145,10 +142,10 @@ export const kernelSetup = setup({
      * gates keep the gate stage pending (blocked), completed shapes have all
      * done (fires) — the only flip is the intended S final approve.
      */
-    allStagesDone: ({ context }) =>
+    allStagesDone: ({ context }: { context: KernelContext }) =>
       context.stages['gate'] === 'done' && Object.values(context.stages).every((status) => status !== 'active'),
     /** Abort exits are new-log-only (D2): a historical answered event carries no outcome and never aborts. */
-    isAbortOutcome: ({ event }) => event.type === 'gate.answered' && event.outcome === 'abort',
+    isAbortOutcome: ({ event }: { event: KernelEvent }) => event.type === 'gate.answered' && event.outcome === 'abort',
   },
   actions: {
     closeThenActivate: assign(({ context, event }) => {

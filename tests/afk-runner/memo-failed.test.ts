@@ -12,6 +12,7 @@ import type { EventInput, SddEvent } from '../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../afk-runner/src/kernel/fold.js'
 import { memoFieldsOf } from '../../afk-runner/src/memo-project.js'
+import { PersistedRunStateSchema } from '../../afk-runner/src/run-state.js'
 import { resumeRun, startRun } from '../../afk-runner/src/run.js'
 import { makeFakePipeline, TASK_TEXT } from './fixtures/fake-pipeline.js'
 
@@ -82,7 +83,7 @@ describe('every drive exit path writes an honest memo (C6 D8)', () => {
     const result = await startRun(pipeline.deps, { taskText: TASK_TEXT })
     expect(result.halted).toBe('gate-pending')
     const runDir = pipeline.runDirOf(result.runId)
-    const memo = JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8'))
+    const memo = PersistedRunStateSchema.parse(JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8')))
     expect(memo.status).toBe('running')
     expect(memo.gate).toEqual({ mode: 'escalation', version: 1 })
     const events = fs.readFileSync(path.join(runDir, 'events.ndjson'), 'utf8')
@@ -108,7 +109,7 @@ describe('every drive exit path writes an honest memo (C6 D8)', () => {
     const resumed = await resumeRun(pipeline.deps, started.runId)
     expect(resumed.halted).toBe('final')
     expect(resumed.position).toBe('aborted')
-    const memo = JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8'))
+    const memo = PersistedRunStateSchema.parse(JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8')))
     expect(memo.status).toBe('failed')
   })
 })

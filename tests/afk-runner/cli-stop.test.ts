@@ -20,7 +20,7 @@ import {
   kernelRootHandlers,
   kernelSetup,
 } from '../../afk-runner/src/kernel/machine.js'
-import { allocateSessionId } from '../../afk-runner/src/run-state.js'
+import { allocateSessionId, PersistedRunStateSchema } from '../../afk-runner/src/run-state.js'
 import type { RunDeps } from '../../afk-runner/src/run.js'
 import { startRun } from '../../afk-runner/src/run.js'
 import {
@@ -110,7 +110,7 @@ describe('afk-runner stop — dead run aborts through events, slug released (C6 
     expect(snapshot.value).toBe('aborted')
     expect(snapshot.status).toBe('done')
 
-    const memo = JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8'))
+    const memo = PersistedRunStateSchema.parse(JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8')))
     expect(memo.status).toBe('aborted')
 
     // released: the slug allocates again instead of refusing (a fresh name

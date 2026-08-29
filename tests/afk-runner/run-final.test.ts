@@ -9,13 +9,13 @@ import path from 'node:path'
 
 import { appendEvent, readEvents } from '../../afk-runner/src/events.js'
 import type { EventInput } from '../../afk-runner/src/events.js'
-import { createRunState } from '../../afk-runner/src/run-state.js'
+import { createRunState, PersistedRunStateSchema } from '../../afk-runner/src/run-state.js'
+import type { PersistedRunState } from '../../afk-runner/src/run-state.js'
 import { resumeRun, startRun } from '../../afk-runner/src/run.js'
 import { makeFakePipeline, TASK_TEXT } from './fixtures/fake-pipeline.js'
 
-function memoOf(runDir: string): Record<string, unknown> {
-  const memo: Record<string, unknown> = JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8'))
-  return memo
+function memoOf(runDir: string): PersistedRunState {
+  return PersistedRunStateSchema.parse(JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8')))
 }
 
 /** A parked final gate (presented, ladder logged, tail bracket closed) as a hand-seeded log. */

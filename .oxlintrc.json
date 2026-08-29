@@ -40,13 +40,7 @@
     "eslint/no-empty": "error",
     "eslint/no-empty-function": "error",
     "eslint/no-param-reassign": "error",
-    "import/extensions": [
-      "error",
-      "always",
-      {
-        "ignorePackages": true
-      }
-    ],
+    "import/extensions": ["error", "always", { "ignorePackages": true }],
     "import/no-cycle": "error",
     "oxc/no-barrel-file": "error",
     "oxc/no-optional-chaining": "error",
@@ -65,21 +59,6 @@
         "typescript/no-confusing-void-expression": "off",
         "typescript/await-thenable": "off",
         "eslint/no-empty-function": "off"
-      }
-    },
-    {
-      "files": ["tests/afk-runner/**"],
-      "rules": {
-        "typescript/no-unsafe-assignment": "off",
-        "typescript/no-unsafe-member-access": "off",
-        "typescript/no-unsafe-call": "off",
-        "typescript/no-unsafe-argument": "off"
-      }
-    },
-    {
-      "files": ["afk-runner/src/kernel/machine.ts"],
-      "rules": {
-        "typescript/no-unsafe-type-assertion": "off"
       }
     }
   ]

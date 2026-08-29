@@ -11,6 +11,7 @@ import path from 'node:path'
 import { readEvents } from '../../../afk-runner/src/events.js'
 import { resumeRun, startRun } from '../../../afk-runner/src/run.js'
 import { renderGateAnswers } from '../../../afk-runner/src/work/gate-answers.js'
+import { ResolverOutputSchema } from '../../../afk-runner/src/work/review-loop.js'
 import { buildVetoUpdaterPrompt, updateAssumptionsFromVetoes } from '../../../afk-runner/src/work/veto-updater.js'
 import { makeFakePipeline, TASK_TEXT } from '../fixtures/fake-pipeline.js'
 
@@ -58,10 +59,7 @@ describe('veto-updater port (C4 D8)', () => {
       { id: 'A1', redirect: 'dm-only' },
       { id: 'F1', redirect: 'narrow the rollback gap' },
     ])
-    const updated: {
-      assumptions: { id: string; text: string; status: string }[]
-      resolutions: { id: string; outcome?: string }[]
-    } = JSON.parse(fs.readFileSync(sidecarPath, 'utf8'))
+    const updated = ResolverOutputSchema.parse(JSON.parse(fs.readFileSync(sidecarPath, 'utf8')))
     expect(updated.assumptions[0]).toMatchObject({ id: 'A1', text: 'dm-only', status: 'open' })
     expect(updated.resolutions[0]).toMatchObject({ id: 'F1', outcome: 'narrow the rollback gap' })
   })
