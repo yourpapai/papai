@@ -18,7 +18,7 @@
 
 ## 4. Verification
 
-- [ ] 4.1 Post audit vs baseline: re-run validate + plan + live read-back (`mismatches: 0`), all 52 registered ids still resolve, names/variant definitions unchanged; re-run the fill scan (expect zero default whites outside the keep-list) and confirm fill deltas vs the old baseline equal exactly the inventory's fixed set; record everything incl. the D4 supersession note in `audit-post.md` — verify: `mismatches: 0` + scan clean + deltas reconcile
-- [ ] 4.2 Full visual pass across all 5 screens and the 2 fixed components: dark-theme readability (headings, surfaces on dark, no white blocks); record any accepted exceptions in `audit-post.md` — verify: no unexplained exceptions
-- [ ] 4.3 Run full `bun test`, `bun run typecheck`, `bun run lint` (repo diff is openspec artifacts + audit files only; expect green) and confirm no `src/`, `client/`, `scripts/figma/`, or docs changes are needed — verify: all three commands pass + `git status` shows only change-folder files
-- [ ] 4.4 Archive this change only after `figma-ui-kit-components` and `figma-ui-kit-backdrops` archive (the delta extends their pending `figma-ui-kit` capability) — verify: archive order respected
+- [x] 4.1 Post audit vs baseline: re-run validate + plan + live read-back (`mismatches: 0`), all 52 registered ids still resolve, names/variant definitions unchanged; re-run the fill scan (expect zero default whites outside the keep-list) and confirm fill deltas vs the old baseline equal exactly the inventory's fixed set; record everything incl. the D4 supersession note in `audit-post.md` — verify: `mismatches: 0` + scan clean + deltas reconcile
+- [x] 4.2 Full visual pass across all 5 screens and the 2 fixed components: dark-theme readability (headings, surfaces on dark, no white blocks); record any accepted exceptions in `audit-post.md` — verify: no unexplained exceptions
+- [x] 4.3 Run full `bun test`, `bun run typecheck`, `bun run lint` (repo diff is openspec artifacts + audit files only; expect green) and confirm no `src/`, `client/`, `scripts/figma/`, or docs changes are needed — verify: all three commands pass + `git status` shows only change-folder files
+- [x] 4.4 Archive this change only after `figma-ui-kit-components` and `figma-ui-kit-backdrops` archive (the delta extends their pending `figma-ui-kit` capability) — verify: archive order respected
