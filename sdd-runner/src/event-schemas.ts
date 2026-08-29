@@ -135,8 +135,15 @@ const ConvergenceEvent = z.object({
   altitude: z.literal('L2'),
   type: z.literal('convergence'),
   round: z.number().int().positive(),
-  verdict: z.enum(['converged', 'open']),
+  verdict: z.enum(['converged', 'needs-review', 'open']),
+  /** Every finding the round recorded — the trajectory's number. */
   counts: FindingCountsSchema,
+  /**
+   * Only what a human must settle — the gate's number. Optional so a log
+   * written before the split parses unchanged; replay reads its absence as
+   * equal to `counts`, reproducing the pre-split verdicts exactly.
+   */
+  open: FindingCountsSchema.optional(),
 })
 
 const ArtifactEvent = z.object({

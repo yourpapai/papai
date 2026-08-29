@@ -16,7 +16,7 @@ predicate (§1) is what every later task reads.
 
 ## 3. Event model and replay
 
-- [ ] 3.1 Additive `open` counts on the convergence event. Red-first in `tests/sdd-runner/events.test.ts` and `tests/sdd-runner/replay.test.ts`: a `convergence` event stamps and round-trips with and without `open`; a pre-change line parses and folds with `open` reading as `raised`; the `finding` event's action enum is unchanged (pin it, so a later change cannot widen it by accident); `DigestRecord` carries both sets. Then extend `ConvergenceEvent` in `event-schemas.ts` and the fold in `replay.ts`. Verify: `bun run test tests/sdd-runner/events.test.ts tests/sdd-runner/replay.test.ts`
+- [x] 3.1 Additive `open` counts on the convergence event. Red-first in `tests/sdd-runner/events.test.ts` and `tests/sdd-runner/replay.test.ts`: a `convergence` event stamps and round-trips with and without `open`; a pre-change line parses and folds with `open` reading as `raised`; the `finding` event's action enum is unchanged (pin it, so a later change cannot widen it by accident); `DigestRecord` carries both sets. Then extend `ConvergenceEvent` in `event-schemas.ts` and the fold in `replay.ts`. Verify: `bun run test tests/sdd-runner/events.test.ts tests/sdd-runner/replay.test.ts`
 
 ## 4. Review loop wiring
 

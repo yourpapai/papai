@@ -4,12 +4,14 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, it } from 'bun:test'
+import assert from 'node:assert'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
 import { appendEvent } from '../../sdd-runner/src/events.js'
 import { createReplayFolder, initialReplayState, replayEvents } from '../../sdd-runner/src/replay.js'
+import type { DigestRecord } from '../../sdd-runner/src/replay.js'
 
 const tmpDirs: string[] = []
 
@@ -82,6 +84,8 @@ describe('replayEvents', () => {
       round: 2,
       verdict: 'converged',
       counts: { blocker: 0, material: 0, nitpick: 1 },
+      // Pre-split log line: open folds as equal to counts.
+      open: { blocker: 0, material: 0, nitpick: 1 },
       resolved: 0,
       dismissed: 0,
     })
@@ -118,9 +122,12 @@ describe('replayEvents', () => {
       appendEvent(log, event, at(String(i).padStart(2, '0')))
     })
     const state = replayEvents(log)
+    const counts = { blocker: 1, material: 1, nitpick: 0 }
     const expected = {
       round: 1,
-      counts: { blocker: 1, material: 1, nitpick: 0 },
+      counts,
+      // The log line carries no open set, so it folds as equal to counts.
+      open: counts,
       resolved: 1,
       dismissed: 1,
       verdict: 'open' as const,
@@ -266,3 +273,39 @@ function makeLogNoWrite(): string {
   tmpDirs.push(dir)
   return path.join(dir, 'events.ndjson')
 }
+
+describe('replay folds both convergence count sets', () => {
+  const raised = { blocker: 1, material: 2, nitpick: 0 }
+  const open = { blocker: 0, material: 1, nitpick: 0 }
+
+  function foldOne(event: Record<string, unknown>): DigestRecord {
+    const log = makeLog()
+    appendEvent(log, event)
+    const record = replayEvents(log).lastVerdict
+    assert(record !== null)
+    return record
+  }
+
+  it('carries the open set through to the digest record', () => {
+    const record = foldOne({ altitude: 'L2', type: 'convergence', round: 1, verdict: 'open', counts: raised, open })
+    expect(record.counts).toEqual(raised)
+    expect(record.open).toEqual(open)
+  })
+
+  it('reads a pre-change line’s absent open set as equal to its raised set', () => {
+    const record = foldOne({ altitude: 'L2', type: 'convergence', round: 1, verdict: 'open', counts: raised })
+    expect(record.open).toEqual(raised)
+  })
+
+  it('folds the needs-review verdict', () => {
+    const record = foldOne({
+      altitude: 'L2',
+      type: 'convergence',
+      round: 1,
+      verdict: 'needs-review',
+      counts: raised,
+      open: { blocker: 0, material: 0, nitpick: 0 },
+    })
+    expect(record.verdict).toBe('needs-review')
+  })
+})
