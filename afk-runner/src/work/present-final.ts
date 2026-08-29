@@ -41,7 +41,22 @@ export interface PresentFinalResult {
  * overwritten at the same version); only the entry↔presented gap needs the
  * resume-level owed-presentation recovery.
  */
-export async function presentFinalGate(deps: PresentFinalDeps, io: WorkIO): Promise<PresentFinalResult> {
+/** The derivation half of the final-gate presentation: paths, fold, version, signals, findings, autonomy. */
+async function finalGateContext(
+  deps: PresentFinalDeps,
+  io: WorkIO,
+): Promise<{
+  readonly runDir: string
+  readonly logPath: string
+  readonly sidecarDir: string
+  readonly changeDir: string
+  readonly version: number
+  readonly round: number
+  readonly emit: (event: EventInput) => void
+  readonly signals: Awaited<ReturnType<typeof gatherGateSignals>>
+  readonly autonomy: ReturnType<typeof autonomyOf>
+  readonly deadlineAt: string | undefined
+}> {
   const runDir = io.runDir
   const logPath = path.join(runDir, 'events.ndjson')
   const sidecarDir = path.join(runDir, 'sidecars')
@@ -61,13 +76,19 @@ export async function presentFinalGate(deps: PresentFinalDeps, io: WorkIO): Prom
     events[0]?.ts ?? new Date().toISOString(),
     new Date(),
   )
-  const reviewResult: ReviewLoopResult = await readReviewResultFromSidecars(sidecarDir, round, 'converged')
-  const findings = findingsOf(reviewResult)
   const autonomy = autonomyOf(deps.config)
   const deadlineAt =
     autonomy.deadlineMinutes === undefined
       ? undefined
       : new Date(Date.now() + autonomy.deadlineMinutes * 60_000).toISOString()
+  return { runDir, logPath, sidecarDir, changeDir, version, round, emit, signals, autonomy, deadlineAt }
+}
+
+export async function presentFinalGate(deps: PresentFinalDeps, io: WorkIO): Promise<PresentFinalResult> {
+  const { runDir, logPath, sidecarDir, changeDir, version, round, emit, signals, autonomy, deadlineAt } =
+    await finalGateContext(deps, io)
+  const reviewResult: ReviewLoopResult = await readReviewResultFromSidecars(sidecarDir, round, 'converged')
+  const findings = findingsOf(reviewResult)
   await writeGateFiles(
     { emit: (): void => undefined, runDir, changeDir, driftCheck: () => Promise.resolve() },
     {

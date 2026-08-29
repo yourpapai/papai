@@ -31,11 +31,11 @@
 
 ## 7. Re-tighten (post-reflection)
 
-- [ ] 7.1 Split the four over-limit files along their natural seams as informed by the reflection (run.ts, gate-waiter.ts, agent-layer.ts, event-schemas.ts) — behavior-preserving moves only. Verify: `bun test tests/afk-runner/` green and `bun run typecheck`
+- [x] 7.1 Split the four over-limit files along their natural seams as informed by the reflection (run.ts, gate-waiter.ts, agent-layer.ts, event-schemas.ts) — behavior-preserving moves only. Verify: `bun test tests/afk-runner/` green and `bun run typecheck`
 - [x] 7.2 Convert the four StageId `as`-narrowings (drive/loop.ts ×3, drive/failure-budget.ts ×1) to zod-parse. Verify: `bun test tests/afk-runner/drive/` green and `bun run typecheck`
 - [x] 7.3 Extract the C6 error-taxonomy classes to their own module, resolving the `max-classes-per-file` conflict by extraction. Verify: `bun test tests/afk-runner/` green and `bun run typecheck`
-- [ ] 7.4 Delete the afk-scoped oxlint overrides (max-lines pair, no-unsafe-type-assertion, max-classes-per-file); re-annotate the tests-side `no-unsafe-*` block and the jscpd ignores in `scripts/detect-duplicates.ts` as timed to the sdd-runner retirement follow-up with the recorded justification. Verify: `bun run lint` green and `bun run duplicates` unchanged
-- [ ] 7.5 Update `docs/architecture/afk-runner.md`: C7 row to delivered, the relaxation-window section rewritten as closed with the U9 re-time recorded, layout section updated for the splits. Verify: `rg -n "re-tighten|U9" docs/architecture/afk-runner.md` reflects the close-out
+- [x] 7.4 Delete the afk-scoped oxlint overrides (max-lines pair, no-unsafe-type-assertion, max-classes-per-file); re-annotate the tests-side `no-unsafe-*` block and the jscpd ignores in `scripts/detect-duplicates.ts` as timed to the sdd-runner retirement follow-up with the recorded justification. Verify: `bun run lint` green and `bun run duplicates` unchanged
+- [x] 7.5 Update `docs/architecture/afk-runner.md`: C7 row to delivered, the relaxation-window section rewritten as closed with the U9 re-time recorded, layout section updated for the splits. Verify: `rg -n "re-tighten|U9" docs/architecture/afk-runner.md` reflects the close-out
 
 ## 8. Full verification
 

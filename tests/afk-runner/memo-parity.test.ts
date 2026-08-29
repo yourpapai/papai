@@ -13,7 +13,7 @@ import { readEvents } from '../../afk-runner/src/events.js'
 import type { DepthProfile, SddEvent, StageId } from '../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../afk-runner/src/kernel/fold.js'
-import { memoFieldsOf } from '../../afk-runner/src/run.js'
+import { memoFieldsOf } from '../../afk-runner/src/memo-project.js'
 
 const REAL_ROOT = path.join(import.meta.dir, 'fixtures', 'real')
 

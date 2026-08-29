@@ -5,6 +5,23 @@
 
 import { z } from 'zod'
 
+export {
+  ToolUseEvent,
+  StepFinishEvent,
+  SpawnedEvent,
+  RetryingEvent,
+  KilledEvent,
+  AgentDoneEvent,
+} from './agent-noise-schemas.js'
+import {
+  ToolUseEvent,
+  StepFinishEvent,
+  SpawnedEvent,
+  RetryingEvent,
+  KilledEvent,
+  AgentDoneEvent,
+} from './agent-noise-schemas.js'
+
 export const StageIdSchema = z.enum(['intake', 'draft', 'review', 'decompose', 'atomicity', 'gate'])
 export type StageId = z.infer<typeof StageIdSchema>
 
@@ -17,16 +34,7 @@ export type FailureKind = z.infer<typeof FailureKindSchema>
 export const DepthProfileSchema = z.enum(['S', 'M', 'L'])
 export type DepthProfile = z.infer<typeof DepthProfileSchema>
 
-export const AgentUsageSchema = z.object({
-  inputTokens: z.number().nonnegative(),
-  outputTokens: z.number().nonnegative(),
-  reasoningTokens: z.number().nonnegative(),
-  cachedReadTokens: z.number().nonnegative().default(0),
-  cachedWriteTokens: z.number().nonnegative().default(0),
-  costUsd: z.number().nonnegative(),
-  wallMs: z.number().nonnegative(),
-})
-export type AgentUsage = z.infer<typeof AgentUsageSchema>
+export { AgentUsageSchema, type AgentUsage } from './agent-noise-schemas.js'
 
 export const FindingClassSchema = z.enum(['BLOCKER', 'MATERIAL', 'NITPICK'])
 export type FindingClass = z.infer<typeof FindingClassSchema>
@@ -37,59 +45,6 @@ export const FindingCountsSchema = z.object({
   nitpick: z.number().int().nonnegative(),
 })
 export type FindingCounts = z.infer<typeof FindingCountsSchema>
-
-const ToolUseEvent = z.object({
-  altitude: z.literal('L0'),
-  type: z.literal('tool_use'),
-  agent: z.string().min(1),
-  tool: z.string().min(1),
-  arg: z.string().optional(),
-})
-
-const StepFinishEvent = z.object({
-  altitude: z.literal('L0'),
-  type: z.literal('step_finish'),
-  agent: z.string().min(1),
-  tokens: z.object({
-    input: z.number().nonnegative(),
-    output: z.number().nonnegative(),
-    reasoning: z.number().nonnegative(),
-    cacheRead: z.number().nonnegative().default(0),
-    cacheWrite: z.number().nonnegative().default(0),
-  }),
-  costUsd: z.number().nonnegative(),
-})
-
-const SpawnedEvent = z.object({
-  altitude: z.literal('L1'),
-  type: z.literal('spawned'),
-  agent: z.string().min(1),
-  role: z.string().min(1),
-  model: z.string().min(1),
-})
-
-const RetryingEvent = z.object({
-  altitude: z.literal('L1'),
-  type: z.literal('retrying'),
-  agent: z.string().min(1),
-  reason: z.enum(['stall', 'validation']),
-  attempt: z.number().int().positive(),
-})
-
-const KilledEvent = z.object({
-  altitude: z.literal('L1'),
-  type: z.literal('killed'),
-  agent: z.string().min(1),
-  cause: z.enum(['timeout', 'inactivity', 'abort']),
-})
-
-const DoneEvent = z.object({
-  altitude: z.literal('L1'),
-  type: z.literal('done'),
-  agent: z.string().min(1),
-  model: z.string().min(1).optional(),
-  usage: AgentUsageSchema,
-})
 
 const StageEnterEvent = z.object({
   altitude: z.literal('L2'),
@@ -246,7 +201,7 @@ const EVENT_VARIANTS = [
   SpawnedEvent,
   RetryingEvent,
   KilledEvent,
-  DoneEvent,
+  AgentDoneEvent,
   StageEnterEvent,
   StageExitEvent,
   StageFailedEvent,
@@ -278,7 +233,7 @@ export const SddEventSchema = z.discriminatedUnion('type', [
   SpawnedEvent.extend(StampShape),
   RetryingEvent.extend(StampShape),
   KilledEvent.extend(StampShape),
-  DoneEvent.extend(StampShape),
+  AgentDoneEvent.extend(StampShape),
   StageEnterEvent.extend(StampShape),
   StageExitEvent.extend(StampShape),
   StageFailedEvent.extend(StampShape),

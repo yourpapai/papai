@@ -11,7 +11,8 @@ import { appendEvent, stampEvent } from '../../afk-runner/src/events.js'
 import type { EventInput, SddEvent } from '../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../afk-runner/src/kernel/fold.js'
-import { memoFieldsOf, resumeRun, startRun } from '../../afk-runner/src/run.js'
+import { memoFieldsOf } from '../../afk-runner/src/memo-project.js'
+import { resumeRun, startRun } from '../../afk-runner/src/run.js'
 import { makeFakePipeline, TASK_TEXT } from './fixtures/fake-pipeline.js'
 
 const STAMP = new Date('2026-08-29T00:00:00.000Z')

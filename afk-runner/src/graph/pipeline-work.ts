@@ -9,7 +9,7 @@ import path from 'node:path'
 import type { SpawnFn } from '../../../review-loop/src/agent-runner.js'
 import type { AgentLayerDeps } from '../agent-layer.js'
 import type { ExecGitFn, RunnerConfig } from '../config.js'
-import type { StateModule, WorkFor, WorkIO } from '../drive/loop.js'
+import type { StateModule, StopSeam, WorkFor, WorkIO } from '../drive/loop.js'
 import type { DepthProfile, EventInput } from '../events.js'
 import type { KernelContext } from '../kernel/machine.js'
 import type { OpenSpecDriver } from '../openspec-driver.js'
@@ -144,130 +144,145 @@ async function runVetoRevision(deps: PipelineWorkDeps, input: PipelineRunInput, 
   )
 }
 
-export function createPipelineWorkFor(deps: PipelineWorkDeps, input: PipelineRunInput): WorkFor {
-  const repoRoot = deps.config.repoRoot
-  const sidecarDirFor = (io: WorkIO): string => path.join(io.runDir, 'sidecars')
-  return (state): StateModule | null => {
-    if (state === 'start') {
-      return { work: null, outcomeOf: () => 'boot', successors: { boot: { enter: 'intake' } } }
-    }
-    if (state === 'intake') {
-      return {
-        work: {
-          kind: 'intake',
-          run: (io) =>
-            runIntake(
+const START_MODULE: StateModule = { work: null, outcomeOf: () => 'boot', successors: { boot: { enter: 'intake' } } }
+const GATE_AWAITING_MODULE: StateModule = {
+  work: null,
+  outcomeOf: () => 'awaiting',
+  successors: { awaiting: { park: 'gate-pending' } },
+}
+
+function sidecarDirOf(io: WorkIO): string {
+  return path.join(io.runDir, 'sidecars')
+}
+
+function agentSeamsOf(deps: PipelineWorkDeps, io: WorkIO): AgentLayerDeps {
+  return {
+    spawn: deps.spawn,
+    config: deps.config,
+    execGit: deps.execGit,
+    emit: (event: EventInput): void => {
+      io.append(event)
+    },
+  }
+}
+
+function intakeModule(deps: PipelineWorkDeps, input: PipelineRunInput): StateModule {
+  return {
+    work: {
+      kind: 'intake',
+      run: (io) =>
+        runIntake(
+          {
+            driver: deps.driver,
+            agent: agentSeamsOf(deps, io),
+            emit: (event: EventInput): void => {
+              io.append(event)
+            },
+            sidecarDir: sidecarDirOf(io),
+            runDir: io.runDir,
+            cwd: deps.config.repoRoot,
+          },
+          { changeName: input.changeName, taskText: input.taskText, depthOverride: input.depthOverride },
+        ).then(() => undefined),
+    },
+    outcomeOf: (context) => (context.depth === null ? 'incomplete' : 'done'),
+    successors: { done: { enter: 'draft' } },
+  }
+}
+
+function draftModule(deps: PipelineWorkDeps, input: PipelineRunInput): StateModule {
+  return {
+    work: {
+      kind: 'draft',
+      run: (io) =>
+        isVetoRevision(io.context)
+          ? runVetoRevision(deps, input, io)
+          : runDraft(
               {
                 driver: deps.driver,
-                agent: {
-                  spawn: deps.spawn,
-                  config: deps.config,
-                  execGit: deps.execGit,
-                  emit: (event: EventInput): void => {
-                    io.append(event)
-                  },
-                },
-                emit: (event: EventInput): void => {
-                  io.append(event)
-                },
-                sidecarDir: sidecarDirFor(io),
+                agent: agentSeamsOf(deps, io),
                 runDir: io.runDir,
-                cwd: repoRoot,
+                sidecarDir: sidecarDirOf(io),
+                cwd: deps.config.repoRoot,
               },
-              { changeName: input.changeName, taskText: input.taskText, depthOverride: input.depthOverride },
-            ).then(() => undefined),
-        },
-        outcomeOf: (context) => (context.depth === null ? 'incomplete' : 'done'),
-        successors: { done: { enter: 'draft' } },
-      }
-    }
-    if (state === 'draft') {
-      return {
-        work: {
-          kind: 'draft',
-          run: (io) =>
-            isVetoRevision(io.context)
-              ? runVetoRevision(deps, input, io)
-              : runDraft(
-                  {
-                    driver: deps.driver,
-                    agent: {
-                      spawn: deps.spawn,
-                      config: deps.config,
-                      execGit: deps.execGit,
-                      emit: (event: EventInput): void => {
-                        io.append(event)
-                      },
-                    },
-                    runDir: io.runDir,
-                    sidecarDir: sidecarDirFor(io),
-                    cwd: repoRoot,
-                  },
-                  { changeName: input.changeName, taskText: input.taskText, depth: io.context.depth ?? 'S' },
-                ),
-        },
-        outcomeOf: (context) => (context.stages['draft'] === 'done' ? 'done' : 'incomplete'),
-        successors: { done: { enter: 'review' } },
-      }
-    }
-    if (state === 'review') {
-      return {
-        work: {
-          kind: 'review',
-          run: (io) =>
-            runReviewWork(
-              {
-                agent: { spawn: deps.spawn, config: deps.config, execGit: deps.execGit },
-                repoRoot,
-                changeName: input.changeName,
-                taskText: input.taskText,
-                conventions: deps.conventions ?? '',
-                ...(deps.stop === undefined ? {} : { stop: deps.stop }),
-                ...(deps.stdout === undefined
-                  ? {}
-                  : { onSteerWarning: (line: string) => deps.stdout?.(`steer: ${line}`) }),
-              },
-              io,
-            ).then(() => undefined),
-        },
-        outcomeOf: reviewOutcomeOf,
-        successors: {
-          converged: { enter: 'decompose' },
-          'cap-hit': { park: 'gate-pending' },
-          // The round still owes work — an extended round opened by a gate
-          // settle, a crashed mid-round, a fresh entry: review re-runs itself.
-          incomplete: { enter: 'review' },
-        },
-      }
-    }
-    if (state === 'decompose') {
-      return {
-        work: { kind: 'decompose', run: (io) => runDecomposeStage(deps, input, io) },
-        outcomeOf: decomposeOutcomeOf,
-        successors: {
-          incomplete: { enter: 'decompose' },
-          converged: { enter: 'atomicity' },
-          presented: { park: 'gate-pending' },
-        },
-      }
-    }
-    if (state === 'atomicity') {
-      return {
-        work: { kind: 'atomicity', run: (io) => runAtomicityStage(deps, input, io) },
-        outcomeOf: atomicityOutcomeOf,
-        successors: {
-          incomplete: { enter: 'atomicity' },
-          presented: { park: 'gate-pending' },
-        },
-      }
-    }
-    if (state === 'gate.awaiting') {
-      return {
-        work: null,
-        outcomeOf: () => 'awaiting',
-        successors: { awaiting: { park: 'gate-pending' } },
-      }
-    }
+              { changeName: input.changeName, taskText: input.taskText, depth: io.context.depth ?? 'S' },
+            ),
+    },
+    outcomeOf: (context) => (context.stages['draft'] === 'done' ? 'done' : 'incomplete'),
+    successors: { done: { enter: 'review' } },
+  }
+}
+
+function reviewModule(deps: PipelineWorkDeps, input: PipelineRunInput): StateModule {
+  return {
+    work: {
+      kind: 'review',
+      run: (io) =>
+        runReviewWork(
+          {
+            agent: { spawn: deps.spawn, config: deps.config, execGit: deps.execGit },
+            repoRoot: deps.config.repoRoot,
+            changeName: input.changeName,
+            taskText: input.taskText,
+            conventions: deps.conventions ?? '',
+            ...(deps.stop === undefined ? {} : { stop: deps.stop }),
+            ...(deps.stdout === undefined ? {} : { onSteerWarning: (line: string) => deps.stdout?.(`steer: ${line}`) }),
+          },
+          io,
+        ).then(() => undefined),
+    },
+    outcomeOf: reviewOutcomeOf,
+    successors: {
+      converged: { enter: 'decompose' },
+      'cap-hit': { park: 'gate-pending' },
+      // The round still owes work — an extended round opened by a gate
+      // settle, a crashed mid-round, a fresh entry: review re-runs itself.
+      incomplete: { enter: 'review' },
+    },
+  }
+}
+
+function decomposeModule(deps: PipelineWorkDeps, input: PipelineRunInput): StateModule {
+  return {
+    work: { kind: 'decompose', run: (io) => runDecomposeStage(deps, input, io) },
+    outcomeOf: decomposeOutcomeOf,
+    successors: {
+      incomplete: { enter: 'decompose' },
+      converged: { enter: 'atomicity' },
+      presented: { park: 'gate-pending' },
+    },
+  }
+}
+
+function atomicityModule(deps: PipelineWorkDeps, input: PipelineRunInput): StateModule {
+  return {
+    work: { kind: 'atomicity', run: (io) => runAtomicityStage(deps, input, io) },
+    outcomeOf: atomicityOutcomeOf,
+    successors: {
+      incomplete: { enter: 'atomicity' },
+      presented: { park: 'gate-pending' },
+    },
+  }
+}
+
+export function createPipelineWorkFor(deps: PipelineWorkDeps, input: PipelineRunInput): WorkFor {
+  return (state): StateModule | null => {
+    if (state === 'start') return START_MODULE
+    if (state === 'intake') return intakeModule(deps, input)
+    if (state === 'draft') return draftModule(deps, input)
+    if (state === 'review') return reviewModule(deps, input)
+    if (state === 'decompose') return decomposeModule(deps, input)
+    if (state === 'atomicity') return atomicityModule(deps, input)
+    if (state === 'gate.awaiting') return GATE_AWAITING_MODULE
     return null
   }
+}
+
+/** The RunDeps-shaped seam adapter: wires the run seams (+optional stop) into the work registry. */
+export function workForOf(
+  deps: Omit<PipelineWorkDeps, 'stop'> & { readonly stop?: StopSeam },
+  input: { readonly taskText: string; readonly changeName: string; readonly depthOverride?: DepthProfile },
+): WorkFor {
+  const { stop, ...rest } = deps
+  return createPipelineWorkFor({ ...rest, ...(stop === undefined ? {} : { stop }) }, input)
 }

@@ -12,6 +12,7 @@ import type { ExecGitFn, RunnerConfig } from '../config.js'
 import type { WorkIO } from '../drive/loop.js'
 import { reviewResumeEntry } from '../drive/resume.js'
 import { readEvents } from '../events.js'
+import type { SddEvent } from '../events.js'
 import type { DepthProfile, EventInput } from '../events.js'
 import { pipelineMachine } from '../graph/pipeline.js'
 import { foldEvents } from '../kernel/fold.js'
@@ -134,12 +135,20 @@ export async function runReviewWork(input: ReviewWorkInput, io: WorkIO): Promise
 }
 
 /** Cap-hit presentation: full gate digest + hashes sidecar + presented event + the ladder prelude (design D5/D6). */
-async function presentEarlyGate(
+/** The derivation half of the cap-hit presentation: fold, version, signals, findings, autonomy, deadline. */
+async function earlyGateContext(
   input: ReviewWorkInput,
   io: WorkIO,
   paths: { sidecarDir: string; changeDir: string; logPath: string; emit: (event: EventInput) => void; runDir: string },
   result: ReviewLoopResult,
-): Promise<void> {
+): Promise<{
+  readonly version: number
+  readonly settled: KernelContext
+  readonly events: readonly SddEvent[]
+  readonly signals: Awaited<ReturnType<typeof gatherGateSignals>>
+  readonly autonomy: ReturnType<typeof autonomyOf>
+  readonly deadlineAt: string | undefined
+}> {
   const version = (io.context.gate?.version ?? 0) + 1
   const events = readEvents(paths.logPath)
   // Fold is truth: the rounds just appended changed the derived state the
@@ -153,12 +162,22 @@ async function presentEarlyGate(
     events[0]?.ts ?? new Date().toISOString(),
     new Date(),
   )
-  const findings = findingsOf(result)
   const autonomy = autonomyOf(input.agent.config)
   const deadlineAt =
     autonomy.deadlineMinutes === undefined
       ? undefined
       : new Date(Date.now() + autonomy.deadlineMinutes * 60_000).toISOString()
+  return { version, settled, events, signals, autonomy, deadlineAt }
+}
+
+async function presentEarlyGate(
+  input: ReviewWorkInput,
+  io: WorkIO,
+  paths: { sidecarDir: string; changeDir: string; logPath: string; emit: (event: EventInput) => void; runDir: string },
+  result: ReviewLoopResult,
+): Promise<void> {
+  const { version, settled, events, signals, autonomy, deadlineAt } = await earlyGateContext(input, io, paths, result)
+  const findings = findingsOf(result)
   await presentGate(
     { emit: paths.emit, runDir: paths.runDir, changeDir: paths.changeDir, driftCheck: () => Promise.resolve() },
     {

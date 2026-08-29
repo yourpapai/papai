@@ -68,21 +68,18 @@
       }
     },
     {
-      "files": ["afk-runner/**"],
-      "rules": {
-        "max-lines-per-function": "off",
-        "max-lines": "off",
-        "typescript/no-unsafe-type-assertion": "off",
-        "max-classes-per-file": "off"
-      }
-    },
-    {
       "files": ["tests/afk-runner/**"],
       "rules": {
         "typescript/no-unsafe-assignment": "off",
         "typescript/no-unsafe-member-access": "off",
         "typescript/no-unsafe-call": "off",
         "typescript/no-unsafe-argument": "off"
+      }
+    },
+    {
+      "files": ["afk-runner/src/kernel/machine.ts"],
+      "rules": {
+        "typescript/no-unsafe-type-assertion": "off"
       }
     }
   ]

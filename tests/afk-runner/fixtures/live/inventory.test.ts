@@ -12,8 +12,8 @@ import { readEvents } from '../../../../afk-runner/src/events.js'
 import type { SddEvent } from '../../../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../../../afk-runner/src/kernel/fold.js'
+import { memoFieldsOf } from '../../../../afk-runner/src/memo-project.js'
 import { PersistedRunStateSchema } from '../../../../afk-runner/src/run-state.js'
-import { memoFieldsOf } from '../../../../afk-runner/src/run.js'
 
 const LIVE_ROOT = import.meta.dir
 
