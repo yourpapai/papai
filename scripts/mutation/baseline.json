@@ -155,6 +155,7 @@
   "review-loop/src/claude-stream.ts": 0.7669172932330827,
   "review-loop/src/cli.ts": 0.7850467289719626,
   "review-loop/src/config.ts": 0.896551724137931,
+  "review-loop/src/issue-clustering.ts": 0.6395348837209303,
   "review-loop/src/issue-inspector.ts": 0.7866666666666666,
   "review-loop/src/issue-matcher.ts": 0.7948717948717948,
   "review-loop/src/issue-processor-attempts.ts": 0.6730769230769231,
