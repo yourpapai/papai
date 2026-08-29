@@ -28,6 +28,8 @@ const state = (over: Partial<AgentState> = {}): AgentState => ({
   changeName: 'add-retries',
   planRevision: 1,
   tokensSpent: 0,
+  usdSpent: 0,
+  usdUnpriced: false,
   lastError: null,
   prUrl: null,
   prNumber: null,

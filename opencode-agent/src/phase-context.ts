@@ -159,6 +159,17 @@ export interface MachineInput extends PhaseInput {
   posted: boolean
   /** Tokens this issue had spent before this job started. */
   carriedTokens: number
+  /**
+   * Dollars this issue had cost before this job started, and whether any of that
+   * earlier spend was unpriceable.
+   *
+   * Captured once from the restored block, exactly as `carriedTokens` is and for
+   * the same reason: a job's session total is already cumulative across the
+   * phases it cascades through, so adding it per phase would count the earlier
+   * phases again.
+   */
+  carriedUsd: number
+  carriedUnpriced: boolean
 }
 
 /**

@@ -646,6 +646,8 @@ describe('runCli', () => {
           phase: 'DESIGN_SPEC',
           issueId: 42,
           tokensSpent: 60_000,
+          usdSpent: 0,
+          usdUnpriced: false,
         })} -->`,
       },
     ]
@@ -695,6 +697,8 @@ describe('runCli', () => {
           phase: 'DESIGN_SPEC',
           issueId: 42,
           tokensSpent: 60_000,
+          usdSpent: 0,
+          usdUnpriced: false,
         })} -->`,
       },
     ]

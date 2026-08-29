@@ -5650,3 +5650,98 @@ describe('the pull request carries the run, record included', () => {
     expect(fresh.io.posted.length).toBeGreaterThan(0)
   })
 })
+
+/**
+ * The ceiling and the cost report share a state patch now, and this is the group
+ * of claims that says the sharing changed nothing about the ceiling.
+ *
+ * `types.ts` records why the budget counts tokens: a model the catalogue cannot
+ * price reports a cost of `0`, and a ceiling that silently never fires is worse
+ * than no ceiling. Writing money into the same patch is only safe while the
+ * money cannot reach the decision.
+ */
+describe('the token ceiling is unaffected by what pricing can or cannot say', () => {
+  const seedSpend = (harness: Harness, tokensSpent: number): void => {
+    const prior: AgentState = { ...initialState(ISSUE), phase: 'DESIGN_SPEC', tokensSpent }
+    harness.io.thread.push({ id: 900, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+  }
+
+  test('an unpriceable run is still stopped by the token ceiling', async () => {
+    const harness = makeHarness({ maxTokens: 50_000 })
+    seedSpend(harness, 60_000)
+    harness.io.spend = { usd: null, source: 'none', windows: [] }
+
+    const result = await runPipeline({ event: comment('/changes again'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(result.reason).toContain('Token budget spent')
+  })
+
+  test('a run that cost more dollars than the ceiling has tokens is not stopped', async () => {
+    // A figure far larger than the ceiling's number, deliberately: if the two
+    // were ever compared this run would stop, and it must not.
+    const harness = makeHarness({ maxTokens: 5_000_000 })
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    harness.io.spend = { usd: 9_000_000, source: 'backend', windows: [] }
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.reason).not.toContain('budget')
+  })
+
+  test('an unpriced run adds nothing to the issue’s total but marks it a floor', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    harness.io.spend = { usd: null, source: 'none', windows: [] }
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.usdSpent).toBe(0)
+    expect(latestPostedState(harness)?.usdUnpriced).toBe(true)
+  })
+
+  test('a priced run records its figure beside the tokens', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    harness.io.spend = { usd: 1.5, source: 'backend', windows: [] }
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.usdSpent).toBe(1.5)
+    expect(latestPostedState(harness)?.usdUnpriced).toBe(false)
+  })
+
+  test('a second job adds to what the first spent, as the tokens do', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    harness.io.spend = { usd: 1.5, source: 'backend', windows: [] }
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.spend = { usd: 2.25, source: 'backend', windows: [] }
+    await runPipeline({ event: comment('/changes tighten it up'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.usdSpent).toBeCloseTo(3.75, 10)
+  })
+
+  test('one unpriced job in a priced issue makes the whole total a floor, permanently', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    harness.io.spend = { usd: null, source: 'none', windows: [] }
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.spend = { usd: 2.25, source: 'backend', windows: [] }
+    await runPipeline({ event: comment('/changes tighten it up'), deps: harness.deps })
+
+    // The flag is sticky: a later priced turn cannot un-spend an earlier
+    // unpriced one, so the total stays a floor.
+    expect(latestPostedState(harness)?.usdSpent).toBe(2.25)
+    expect(latestPostedState(harness)?.usdUnpriced).toBe(true)
+  })
+})

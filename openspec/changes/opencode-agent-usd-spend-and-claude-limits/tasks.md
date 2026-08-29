@@ -130,21 +130,21 @@ technique the OpenCode route already uses.
 
 ## 6. Persisted accumulation
 
-- [ ] 6.1 Write the failing `state-manager` test: `usdSpent` and `usdUnpriced`
+- [x] 6.1 Write the failing `state-manager` test: `usdSpent` and `usdUnpriced`
       default on a block that carries neither, an unpriced run flips the flag and
       adds nothing to the sum, and a priced run adds its figure once for a
       multi-phase cascade. Verify
       `bun test tests/opencode-agent/state-manager.test.ts` fails.
-- [ ] 6.2 Add both fields to `agentStateSchema` in `opencode-agent/src/types.ts`
+- [x] 6.2 Add both fields to `agentStateSchema` in `opencode-agent/src/types.ts`
       with defaults and no `STATE_VERSION` bump, documenting why the ceiling
       stays in tokens (design D4, and the decision the file already records).
       Verify the 6.1 test passes.
-- [ ] 6.3 Extend `spendPatch` / `recordSpend` in
+- [x] 6.3 Extend `spendPatch` / `recordSpend` in
       `opencode-agent/src/token-budget.ts` to write all three fields together, so
       the success path, `failRun`, `failAnswer` and both over-budget stops cannot
       disagree. Verify
       `bun test tests/opencode-agent/orchestrator.test.ts tests/opencode-agent/phase-failure.test.ts`.
-- [ ] 6.4 Write and satisfy the regression test that `withinBudget`,
+- [x] 6.4 Write and satisfy the regression test that `withinBudget`,
       `totalTokens` and `stopIfOverBudget` behave identically when pricing is
       unavailable. Verify `bun test tests/opencode-agent/time-budget.test.ts tests/opencode-agent/orchestrator.test.ts`.
 
