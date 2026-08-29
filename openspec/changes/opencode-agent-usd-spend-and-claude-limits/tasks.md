@@ -9,33 +9,41 @@ See LICENSE in the project root for details.
 
 Ordered test-first, per design.md — Migration Plan. Group 1 is the one ordering
 constraint that is not about tests: the decoders in group 3 are written against a
-recording, so the CLI pin has to move and the corpus has to be re-recorded first.
-Groups 2 and 6 touch no recording and may run alongside it.
+recording, so the recording has to exist first. It needs no credentials — the
+recorder drives the real CLI against a stub Anthropic endpoint (design D7), the
+technique the OpenCode route already uses.
 
-## 1. CLI pin bump and the census it obliges
+## 1. A credential-free recorder, and the pin it lets us move
 
-- [ ] 1.1 Bump the pin in `.github/workflows/agent-pipeline.yml` (line ~470,
-      `bun add --global @anthropic-ai/claude-code@2.1.239`) to ≥ 2.1.251 — the
-      floor that carries `utilization` and `unifiedWindows` (design D7). Verify
-      `bun run workflows:lint` passes and the installed version in a job log
-      matches.
-- [ ] 1.2 Re-answer the recorder census at **zero spend before any credentialed
-      turn**, per the route rule in `opencode-agent/CLAUDE.md`: `mcp_servers: []`,
-      built-ins-only skills, no memory-file row, and both negative legs
-      (`oauth-helper-init.ndjson`, `native-auth-error.ndjson`). Verify the
-      regenerated `tests/opencode-agent/fixtures/claude-cli/facts.json` and
-      `VERSION`, with any moved census pin explained in the corpus README before
-      the credentialed turn runs.
-- [ ] 1.3 Re-record `native-success-turn.ndjson` with the credentialed proof turn
-      (`CLAUDE_CODE_OAUTH_TOKEN=<token> bun run opencode-agent:test:claude-live`).
-      Verify the recorded `rate_limit_event` line carries `utilization` and
-      `unifiedWindows`, and update `nativeProofWindows` in `facts.json` from
-      `"five_hour"` to the windows the run actually reported.
-- [ ] 1.4 Record which windows this account's plan reports — five-hour alone, or
-      five-hour and seven-day — in the corpus README beside the run that proves
-      it. A five-hour-only answer is a valid outcome and changes no requirement:
-      the spec reports a row per window the provider states. Verify by the
-      README entry naming the recording.
+- [x] 1.1 Add a hermetic claude recorder lane
+      (`tests/opencode-agent/claude-stub.integration.ts` + an
+      `opencode-agent:test:claude-stub` script): a stub Anthropic endpoint
+      answering the `anthropic-ratelimit-unified-*` headers over
+      `ANTHROPIC_BASE_URL`, driving the real CLI on the native profile's own
+      flags. Verify the lane runs green with no token set and on a machine that
+      has never held one.
+- [x] 1.2 Record `stub-rate-limit-turn.ndjson` from that lane and stamp
+      `VERSION`. Verify the recorded `rate_limit_event` carries
+      `unifiedWindows.five_hour` and `.seven_day`, each with `utilization` and
+      `resetsAt`, and that the `result` line beside it carries a non-zero
+      `total_cost_usd` over populated cache buckets.
+- [x] 1.3 Re-answer the census pins from the same lane's init line at zero spend,
+      per the route rule in `opencode-agent/CLAUDE.md`: `mcp_servers: []`,
+      built-ins-only skills, no memory-file row. Verify the regenerated
+      `facts.json`, and record any pin that moved between CLI versions in the
+      corpus README rather than quietly overwriting it.
+- [x] 1.4 Bump `.github/workflows/agent-pipeline.yml` (line ~470,
+      `@anthropic-ai/claude-code@2.1.239`) to the recorded version — 2.1.239
+      emits no `unifiedWindows`, so CI must run the newer pin or the feature is
+      dead in production. Verify `bun run workflows:lint` **and**
+      `bun test tests/opencode-agent/workflow.test.ts`, whose
+      `the recorded stamp equals the workflow install pin` assertion is what
+      makes the pin and the stamp atomic.
+- [x] 1.5 Record in the corpus README what the hermetic lane does and does not
+      prove: it pins the line's *shape*, never authentication — the credentialed
+      legs remain the native profile's proof and keep their own 2.1.239
+      provenance, marked as awaiting a re-record by a token holder. Verify by the
+      README entry.
 
 ## 2. Reusable pricing arithmetic (`sdd-runner`)
 
@@ -54,14 +62,14 @@ Groups 2 and 6 touch no recording and may run alongside it.
 
 ## 3. Decoders: widen what each backend is allowed to say
 
-- [ ] 3.1 Write the failing `claude-contract` test asserting the whole
+- [x] 3.1 Write the failing `claude-contract` test asserting the whole
       re-recorded `rate_limit_info` decodes — window, `utilization`, status,
       `resetsAt`, overage status, overage reset, `isUsingOverage`, and each
       `unifiedWindows` entry's `utilization`/`resetsAt` — from
       `native-success-turn.ndjson`, plus a case proving a malformed or absent
       field degrades to unknown without failing its line. Verify
       `bun test tests/opencode-agent/claude-contract.test.ts` fails.
-- [ ] 3.2 Widen `rateLimitLineSchema` and the `rate-limit-event` line shape in
+- [x] 3.2 Widen `rateLimitLineSchema` and the `rate-limit-event` line shape in
       `opencode-agent/src/claude-contract.ts` for `utilization` and
       `unifiedWindows`, every field but the window optional and lenient —
       `unifiedWindows` is self-described `@internal` (design D7), so leniency is

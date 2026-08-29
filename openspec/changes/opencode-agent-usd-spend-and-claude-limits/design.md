@@ -294,22 +294,53 @@ same line as the five-hour one, on a CLI this repo can pin. **The prerequisite i
 the pin, not a spike.** `.github/workflows/agent-pipeline.yml` installs
 `@anthropic-ai/claude-code@2.1.239`; it moves to ≥ 2.1.251.
 
-**What the pin move obliges.** `opencode-agent/CLAUDE.md` states the rule: the
-census pins (`mcp_servers: []`, built-ins-only skills, no memory-file row) are
-load-bearing, and *a CLI pin move must re-answer them at zero spend before any
-credentialed turn*. So the bump carries the whole recorder census with it —
-`facts.json`'s twelve pinned answers, the negative legs, and
-`nativeProofWindows`, which reads `"five_hour"` today and is exactly the fact the
-re-record revises. That is task group 1, and it gates the decoder work in group 3
-because the decoder is written against the recording.
+**The recording is credential-free.** A credentialed proof turn is not the only
+way to record this line, and it is not the way this change takes: the CLI honours
+`ANTHROPIC_BASE_URL`, so a stub Anthropic endpoint that answers with the
+`anthropic-ratelimit-unified-*` headers makes the CLI's **own serializer** emit
+the line. That is a recording in the sense the corpus means — the bytes are the
+CLI's, not a hand-written guess — and it costs nothing, needs no token, and is
+reproducible on any machine. It is the technique `live-sdk.integration.ts`
+already uses on the OpenCode route ("a stub OpenAI-compatible endpoint stands in
+for the provider"), carried to the claude route.
 
-**Two things the recording, not the code read, has to settle.** The `utilization`
-field is emitted *conditionally* (`utilization !== undefined`), and `j$()` drops
-a window whose reset has passed — so whether this account's plan populates the
-seven-day headers is an empirical question the credentialed proof turn answers,
-not one the constructor answers. If a window never arrives it simply has no row,
-which the absence clause in the spec already covers, and the five-hour figure is
-unaffected.
+Recorded that way on 2.1.251, driving the native profile's own flags:
+
+```json
+{"type":"rate_limit_event","rate_limit_info":{
+  "status":"allowed","resetsAt":1788005498,"isUsingOverage":false,
+  "unifiedWindows":{"five_hour":{"utilization":0.235,"resetsAt":1788005498},
+                    "seven_day":{"utilization":0.412,"resetsAt":1788426698}}}}
+```
+
+Three facts fall out of it that the constructor alone did not give:
+
+1. **`rateLimitType` is absent**, even with the representative-claim header set —
+   and today's `rateLimitLineSchema` requires it (`z.string().min(1)`), so this
+   line **decodes as `null` and is skipped entirely**. The decoder must stop
+   requiring it, or the feature reports nothing at all.
+2. **Per-window figures live in `unifiedWindows`, not at the top level.** The
+   top-level `utilization` the constructor allows for did not arrive; the fold
+   reads the nested windows.
+3. The `result` line of the same run carries a real `total_cost_usd` (0.009714)
+   over the full cache buckets, so the cost ladder's rung ① records here too.
+
+**What the recording does *not* prove, and must not claim to.** The credentialed
+turn's purpose in this corpus is the *native profile's proof of authentication*
+— `opencode-agent/CLAUDE.md` names the `rate_limit_event` five-hour signature as
+that proof precisely because `apiKeySource` reads `none` there. A stub cannot
+prove authentication: it proves the **line's shape**. So the two are separate
+fixtures with separate stated purposes, and the credentialed leg keeps its own
+provenance rather than being replaced by a hermetic one.
+
+**The pin still moves, and the census still re-answers.** 2.1.239 emits no
+`unifiedWindows` at all, so CI must run ≥ 2.1.251 or the feature is dead in
+production. `opencode-agent/CLAUDE.md`'s route rule stands — the census pins
+re-answer at zero spend before any credentialed turn — and the census legs are
+themselves credential-free (they read the init line), so the stub lane re-answers
+them too. The credentialed legs stay stamped at the version that recorded them
+and are marked as awaiting a re-record by someone holding a token; that is a
+state the corpus README already has vocabulary for.
 
 **The anti-invention rule survives the good news, narrowed.** Remaining is
 derived from a fraction the provider stated (D6). Nothing else is: no percentage

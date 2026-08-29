@@ -48,6 +48,7 @@
     "opencode-agent:test:live": "bun run --filter opencode-agent test:live",
     "opencode-agent:test:survival": "bun run --filter opencode-agent test:survival",
     "opencode-agent:test:claude-live": "bun run --filter opencode-agent test:claude-live",
+    "opencode-agent:test:claude-stub": "bun run --filter opencode-agent test:claude-stub",
     "opencode-agent:verify-skills": "bun run --filter opencode-agent verify-skills",
     "opencode-agent:typecheck": "bun run --filter opencode-agent typecheck",
     "opencode-agent:lint": "bun run --filter opencode-agent lint",

@@ -464,10 +464,14 @@ jobs:
       # the recorded fixture corpus was shaped by. Gated on the job-level
       # AGENT_BACKEND: the default route installs nothing. The version here,
       # the recorder's fixture stamp and the README's copy move together.
+      #
+      # 2.1.251 is a floor with a reason, not a routine bump: 2.1.239 emits no
+      # `unifiedWindows` on its `rate_limit_event` line, so the run comment's
+      # rate-limit report would be silently empty on the older CLI.
       - name: Install the claude CLI the claude backend spawns
         if: env.AGENT_BACKEND == 'claude'
         run: |
-          bun add --global @anthropic-ai/claude-code@2.1.239
+          bun add --global @anthropic-ai/claude-code@2.1.251
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
 
       # `id:` is load-bearing, not decoration: the pipeline writes
