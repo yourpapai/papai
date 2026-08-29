@@ -39,4 +39,4 @@
 
 ## 8. Full verification
 
-- [ ] 8.1 Run the full gate: `bun test`, `bun run typecheck`, `bun run lint`, `bun run duplicates`, and confirm `docs/architecture/` pages affected by this change are current (afk-runner.md; AGENTS.md docs-table row if stale)
+- [x] 8.1 Run the full gate: `bun test`, `bun run typecheck`, `bun run lint`, `bun run duplicates`, and confirm `docs/architecture/` pages affected by this change are current (afk-runner.md; AGENTS.md docs-table row if stale)
