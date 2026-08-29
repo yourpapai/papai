@@ -5,8 +5,6 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { AgentValidationError } from '../../../afk-runner/src/agent-layer.js'
-import { SpawnError } from '../../../afk-runner/src/agent-seam.js'
 import {
   declaredFailureOf,
   escalationOwed,
@@ -14,12 +12,12 @@ import {
 } from '../../../afk-runner/src/drive/failure-budget.js'
 import type { ParkedReason, WorkFor } from '../../../afk-runner/src/drive/loop.js'
 import { parkedReasonOf } from '../../../afk-runner/src/drive/resume.js'
+import { AgentValidationError, SpawnError, StageHaltError } from '../../../afk-runner/src/errors.js'
 import type { EventInput, FailureKind, StageId } from '../../../afk-runner/src/events.js'
 import { stampEvent } from '../../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../../afk-runner/src/kernel/fold.js'
 import type { KernelContext } from '../../../afk-runner/src/kernel/machine.js'
-import { StageHaltError } from '../../../afk-runner/src/work/stage-halt.js'
 import { AgentRunError } from '../../../review-loop/src/agent-runner.js'
 
 const WALK: readonly EventInput[] = [

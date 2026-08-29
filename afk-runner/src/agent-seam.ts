@@ -4,21 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
-
-/**
- * Infra-kind transport failure (C6 D1): the agent could not be reached —
- * the child never launched. Everything else crossing the seam stays as it
- * was: agent-level failures are results (the watchdogs below decide), and
- * arbitrary errors from a custom spawn fn stay plain and crash-shaped.
- */
-export class SpawnError extends Error {
-  readonly kind = 'infra'
-
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options)
-    this.name = 'SpawnError'
-  }
-}
+import { SpawnError } from './errors.js'
 
 /** Node child-process launch failures surface as `spawn <cmd> <ERRNO>` in the error event's message. */
 const LAUNCH_FAILURE_RE = /\bspawn \S+ [A-Z]+\b/u

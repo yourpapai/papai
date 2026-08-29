@@ -10,9 +10,9 @@ import { z } from 'zod'
 import { agentWritePath } from '../../../review-loop/src/agent-runner.js'
 import type { AgentLayerDeps } from '../agent-layer.js'
 import { runStageAgent } from '../agent-layer.js'
+import { StageHaltError } from '../errors.js'
 import type { DepthProfile } from '../events.js'
 import type { OpenSpecDriver } from '../openspec-driver.js'
-import { StageHaltError } from './stage-halt.js'
 
 export const DecomposeReportSchema = z.object({ tasks_file: z.string().min(1) })
 

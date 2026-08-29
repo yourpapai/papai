@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import type { RunnerConfig } from '../../../afk-runner/src/config.js'
+import { StageHaltError } from '../../../afk-runner/src/errors.js'
 import { EventInputSchema } from '../../../afk-runner/src/events.js'
 import type { EventInput } from '../../../afk-runner/src/events.js'
 import { createOpenSpecDriver } from '../../../afk-runner/src/openspec-driver.js'
@@ -20,7 +21,6 @@ import {
   runsAtomicity,
 } from '../../../afk-runner/src/work/decompose.js'
 import type { StageDeps } from '../../../afk-runner/src/work/decompose.js'
-import { StageHaltError } from '../../../afk-runner/src/work/stage-halt.js'
 import { agentWritePath } from '../../../review-loop/src/agent-runner.js'
 import type { SpawnFn } from '../../../review-loop/src/agent-runner.js'
 

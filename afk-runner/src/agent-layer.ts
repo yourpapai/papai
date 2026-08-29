@@ -117,19 +117,8 @@ export class DiffGuardViolationError extends Error {
   }
 }
 
-/**
- * Schema-validation exhaustion (C6 D1): the objective output validator
- * rejected the agent's sidecar after its in-work retries — a declared
- * `exhausted` failure, not a crash (a StageHalt in disguise).
- */
-export class AgentValidationError extends Error {
-  readonly kind = 'exhausted'
-
-  constructor(message: string) {
-    super(message)
-    this.name = 'AgentValidationError'
-  }
-}
+export { AgentValidationError } from './errors.js'
+import { AgentValidationError } from './errors.js'
 
 const MAX_VALIDATION_ATTEMPTS = 2
 const ALLOWED_PREFIX = 'openspec/changes/'

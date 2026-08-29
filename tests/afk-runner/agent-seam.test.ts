@@ -6,8 +6,9 @@
 import { describe, expect, it } from 'bun:test'
 import assert from 'node:assert'
 
-import { SpawnError, typedSpawn } from '../../afk-runner/src/agent-seam.js'
+import { typedSpawn } from '../../afk-runner/src/agent-seam.js'
 import { defaultCliDeps } from '../../afk-runner/src/cli.js'
+import { SpawnError } from '../../afk-runner/src/errors.js'
 import type { SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
 
 const result = (overrides: Partial<SpawnResult> = {}): SpawnResult => ({

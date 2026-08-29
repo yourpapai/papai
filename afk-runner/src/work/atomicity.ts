@@ -10,10 +10,10 @@ import { z } from 'zod'
 
 import { agentWritePath } from '../../../review-loop/src/agent-runner.js'
 import { runStageAgent } from '../agent-layer.js'
+import { StageHaltError } from '../errors.js'
 import type { DepthProfile } from '../events.js'
 import { runsAtomicity } from './decompose.js'
 import type { StageDeps } from './decompose.js'
-import { StageHaltError } from './stage-halt.js'
 
 export const AtomicityReportSchema = z.object({
   split: z.number().int().nonnegative(),

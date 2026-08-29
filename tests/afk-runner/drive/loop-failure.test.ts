@@ -8,10 +8,10 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { AgentValidationError } from '../../../afk-runner/src/agent-layer.js'
-import { SpawnError } from '../../../afk-runner/src/agent-seam.js'
 import { drive } from '../../../afk-runner/src/drive/loop.js'
 import type { StateModule, WorkIO } from '../../../afk-runner/src/drive/loop.js'
+import { AgentValidationError } from '../../../afk-runner/src/errors.js'
+import { SpawnError, StageHaltError } from '../../../afk-runner/src/errors.js'
 import { readEvents } from '../../../afk-runner/src/events.js'
 import type { SddEvent } from '../../../afk-runner/src/events.js'
 import {
@@ -20,7 +20,6 @@ import {
   kernelRootHandlers,
   kernelSetup,
 } from '../../../afk-runner/src/kernel/machine.js'
-import { StageHaltError } from '../../../afk-runner/src/work/stage-halt.js'
 
 function tempRunDir(): string {
   return mkdtempSync(path.join(tmpdir(), 'afk-fail-'))

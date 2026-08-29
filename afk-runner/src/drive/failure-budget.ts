@@ -4,11 +4,9 @@
 // See LICENSE in the project root for details.
 
 import { AgentRunError } from '../../../review-loop/src/agent-runner.js'
-import { AgentValidationError } from '../agent-layer.js'
-import { SpawnError } from '../agent-seam.js'
+import { AgentValidationError, SpawnError, StageHaltError } from '../errors.js'
 import type { FailureKind, StageId } from '../events.js'
 import type { KernelContext } from '../kernel/machine.js'
-import { StageHaltError } from '../work/stage-halt.js'
 
 /**
  * Per-stage consecutive-failure budget (C6 D3): a compiled constant in the

@@ -11,9 +11,9 @@ import { z } from 'zod'
 import { agentWritePath } from '../../../review-loop/src/agent-runner.js'
 import { runStageAgent } from '../agent-layer.js'
 import type { AgentLayerDeps } from '../agent-layer.js'
+import { StageHaltError } from '../errors.js'
 import type { DepthProfile } from '../events.js'
 import type { InstructionsResult, OpenSpecDriver } from '../openspec-driver.js'
-import { StageHaltError } from './stage-halt.js'
 
 export const DraftReportSchema = z.object({ files_written: z.array(z.string().min(1)).min(1) })
 export type DraftReport = z.infer<typeof DraftReportSchema>
