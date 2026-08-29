@@ -7,7 +7,7 @@
 
 ## 2. Calibration run (S, docs-shaped)
 
-- [ ] 2.1 Run `afk-runner start <taskFile>` from this worktree against the target; attend gates via the documented answer surfaces only; let the run reach its terminal memo. Verify: memo records `completed`, `afk-runner report <runId>` prints, and `openspec validate <changeName> --strict` passes inside the target worktree
+- [x] 2.1 Run `afk-runner start <taskFile>` from this worktree against the target; attend gates via the documented answer surfaces only; let the run reach its terminal memo. Verify: memo records `completed`, `afk-runner report <runId>` prints, and `openspec validate <changeName> --strict` passes inside the target worktree
 
 ## 3. Proof run (M) with incidents A and B
 
