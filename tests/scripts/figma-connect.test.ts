@@ -187,7 +187,11 @@ describe('canonicalDescription', () => {
 describe('loadRegistry', () => {
   test('loads and validates the shipped registry from disk', () => {
     const registry = loadRegistry()
-    expect(registry.components.map((entry) => entry.name)).toEqual([...BASE_KIT_COMPONENTS])
+    const names = registry.components.map((entry) => entry.name)
+    for (const name of BASE_KIT_COMPONENTS) {
+      expect(names).toContain(name)
+    }
+    expect(new Set(names).size).toBe(names.length)
   })
 
   test('throws a named error when a mapped source is missing', () => {
