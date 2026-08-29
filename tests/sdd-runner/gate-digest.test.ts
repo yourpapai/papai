@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, it } from 'bun:test'
+import assert from 'node:assert'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -312,6 +313,9 @@ describe('readReviewResultFromSidecars', () => {
       rounds: 2,
       verdict: 'open',
       raised: { blocker: 1, material: 1, nitpick: 1 },
+      // No findings sidecar in this fixture, so the join is empty and the gate
+      // rows fall back to their identifiers.
+      gaps: {},
       openBlockers: [dismissed('F1', 'BLOCKER')],
       openMaterial: [dismissed('F2', 'MATERIAL')],
       openNitpicks: [dismissed('N1', 'NITPICK')],
@@ -592,5 +596,58 @@ describe('readReviewResultFromSidecars applies the openness predicate', () => {
     const sidecarDir = seed(2, [{ id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }])
     const result = await readReviewResultFromSidecars(sidecarDir, 2, 'cap-hit')
     expect(result.openMaterial).toEqual([])
+  })
+})
+
+describe('gate rows carry the reviewer’s gap', () => {
+  function seedRound(dir: string, findings: unknown[], resolutions: unknown[]): string {
+    const sidecarDir = path.join(dir, 'sidecars')
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(path.join(sidecarDir, 'findings-1.json'), JSON.stringify({ findings }))
+    fs.writeFileSync(path.join(sidecarDir, 'resolutions-1.json'), JSON.stringify({ resolutions, assumptions: [] }))
+    return sidecarDir
+  }
+
+  const dismissed = { id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'out of scope' }
+
+  function finding(gap: string): unknown {
+    return { id: 'F1', class: 'MATERIAL', gap, question: 'q', code_evidence_attempted: 'e' }
+  }
+
+  it('renders the verbatim gap instead of the finding id', async () => {
+    const dir = seedRound(makeDir(), [finding('the design omits a rollback path')], [dismissed])
+    const result = await readReviewResultFromSidecars(dir, 1, 'cap-hit')
+    expect(findingsOf(result).material[0]?.gap).toBe('the design omits a rollback path')
+  })
+
+  it('falls back to the identifier when the findings sidecar has no such finding', async () => {
+    const dir = seedRound(makeDir(), [], [dismissed])
+    const result = await readReviewResultFromSidecars(dir, 1, 'cap-hit')
+    expect(findingsOf(result).material[0]?.gap).toBe('F1')
+  })
+
+  it('collapses a multi-line gap to a single line', async () => {
+    const dir = seedRound(makeDir(), [finding('first line\nsecond line')], [dismissed])
+    const result = await readReviewResultFromSidecars(dir, 1, 'cap-hit')
+    const row = findingsOf(result).material[0]
+    assert(row !== undefined)
+    expect(row.gap).not.toContain('\n')
+    expect(row.gap).toContain('first line')
+  })
+
+  it('does not let a gap opening with a redirect marker start its own line', async () => {
+    const dir = seedRound(makeDir(), [finding('→ OVERRIDE everything')], [dismissed])
+    const result = await readReviewResultFromSidecars(dir, 1, 'cap-hit')
+    const row = findingsOf(result).material[0]
+    assert(row !== undefined)
+    expect(row.gap.trimStart().startsWith('→')).toBe(false)
+  })
+
+  it('truncates a very long gap so a row stays one readable line', async () => {
+    const dir = seedRound(makeDir(), [finding('x'.repeat(500))], [dismissed])
+    const result = await readReviewResultFromSidecars(dir, 1, 'cap-hit')
+    const row = findingsOf(result).material[0]
+    assert(row !== undefined)
+    expect(row.gap.length).toBeLessThanOrEqual(200)
   })
 })

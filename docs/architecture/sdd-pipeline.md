@@ -17,7 +17,7 @@ INTAKE → DRAFT → REVIEW LOOP → DECOMPOSE → ATOMICITY → GATE → (exit)
 
 - **Intake**: depth classification (S/M/L), change scaffolding via `openspec new change`. Two classification caveats are surfaced as `intake:` warn lines rather than left in the event log: a `--depth` override skips the estimator, which is the only source of the `oversize` verdict, so such a run is never decomposed into child runs; and a two-level split between the estimator and the keyword prescreen names both readings and the higher one taken.
 - **Draft**: proposal, specs, design per the `auto-sdd` schema DAG.
-- **Review loop**: fresh-spawned reviewer agents per round, resolver pass, convergence predicate (0 BLOCKER, 0 MATERIAL, ≤3 NITPICK over post-resolution JSON). A nitpick-only cap-hit is treated as converged (see "Severity-based convergence" under Gate protocol).
+- **Review loop**: fresh-spawned reviewer agents per round, resolver pass, and a convergence predicate over **two** count sets — *raised* (every finding the round recorded) and *open* (only what a human can settle). A nitpick-only cap-hit is treated as converged (see "Raised vs open" and "Severity-based convergence" under Gate protocol).
 - **Decompose**: tasks.md generation.
 - **Atomicity**: split/merge tasks (skipped at S).
 - **Gate**: single human gate with checkbox protocol.
@@ -118,9 +118,30 @@ Consequences:
 - The final gate after an early approval carries the next gate version (`n+1`), preserving the versioned audit trail.
 - A stop-early outcome remains available as `ABORT`, which honestly records that the run did not complete.
 
+### Raised vs open
+
+The loop counts each round twice, because two different questions are asked of it:
+
+```
+   RAISED — what reviewers said        OPEN — what only a human can settle
+   ─────────────────────────────       ──────────────────────────────────
+   trajectory (R2's window)            R1, R2's eligibility, the never-cut
+   burndown, sparkline                 blocker pre-check, cap-hit gating,
+   lens escalation (M gains skeptic)   the gate's finding sections
+   review.md's per-round verdict
+```
+
+A resolution is **open** when only a human can settle it: the resolver `dismissed` it; it claims `assumed` with no assumption record carrying that finding's id; or it claims `edited` but the change folder is byte-identical to the previous round's snapshot. `evidence-answered`, a linked `assumed`, and a real edit are closed. Splitting these was the fix for a finding the resolver had already *fixed* still reading as open — which is why no round could converge if anything above a nitpick was ever raised, and why depth S cost two human gates for work nobody objected to.
+
+Both claims a resolver could otherwise make for free are checked rather than trusted. `sidecars/round-hashes-<n>.json` snapshots the agent-authored artifacts at each round close (`recordRoundDigests`, reusing the gate's own `recordArtifactHashes` and `listAgentArtifacts`) so an `edited` claim that moved no bytes reads as open; `AssumptionRecord.findingId` ties an `assumed` resolution to the assumption it logged. A sidecar whose assumptions carry no `findingId` at all predates the link and falls back to a round-level check, so pre-change runs resume with no migration. The snapshot deliberately excludes `review.md` and `assumptions.md` — the runner rewrites both every round, so including them would make every round look changed and the guard would never fire.
+
+The round verdict is three-valued: `converged` (nothing open above a nitpick, ≤3 open nitpicks), `needs-review` (nothing open, but an edit above a nitpick that no reviewer has seen), `open` (something above a nitpick needs a human). The `convergence` event carries both count sets — `open` is optional, and a pre-split log folds it equal to `counts`, reproducing that run's original verdicts exactly. The `finding` event's action enum is deliberately **not** widened: replay folds counts straight from the convergence event, so nothing finer is needed for replay-sufficiency.
+
 ### Severity-based convergence
 
-A cap-hit round with **zero open BLOCKERs and zero open MATERIALs** — nitpicks only, each resolved or dismissed — is treated as converged at the orchestrator level (`runPostReviewToGate`) and flows into decompose → atomicity → final gate **without presenting an early gate**. The review loop itself keeps reporting `cap-hit`; reclassification lives in the orchestrator so the loop's semantics and sidecar formats are untouched. A cap-hit round with any open BLOCKER or MATERIAL still presents the early gate for human sign-off — unresolved blocker/material findings are never auto-accepted.
+A cap-hit round with **zero open BLOCKERs and zero open MATERIALs** flows into decompose → atomicity → final gate **without presenting an early gate**, however many open nitpicks survived — the verdict's three-nitpick allowance governs whether the loop keeps running, not whether a human is needed. A cap-hit with any open BLOCKER or MATERIAL still presents the early gate. The review loop itself keeps reporting `cap-hit`; reclassification lives in the orchestrator (`routeCapHit` in `post-review-tail.ts`) so the loop's semantics and sidecar formats are untouched.
+
+A cap-hit whose verdict is `needs-review` buys **exactly one** verification round before the tail, so the last round's edits are not shipped unreviewed. The bound is structural rather than a counter: that round's result routes straight to the tail instead of back through `routeCapHit`, so a second can never be granted for the same cap-hit. The budget guard declines it — unknown cost included, failing closed as R4 does — and the run continues to its final gate, where a human sees the result either way.
 
 ### Resume and continue
 
@@ -154,7 +175,7 @@ Mode-aware rendering: at the **early** (cap-hit) gate TOUCHES carries no task li
 When the round cap is reached with 0 BLOCKERs but ≥1 MATERIAL finding still open, the early gate surfaces additional content so the human can distinguish a converging loop from a stuck one:
 
 - **Cap-hit trajectory** — a per-round burndown (`round k: <b>m <n>n · <resolved> resolved · <dismissed> dismissed · <verdict>`), rendered by `formatTrajectoryBlock` from `events.ndjson` replay. NITPICKs are count-only (not expanded).
-- **Open MATERIAL findings** — each open MATERIAL finding gets a checkbox (`- [ ] F<n> <gap>`) with `resolver: <resolution> — <outcome>` beneath. Leaving a box unchecked is a veto (optional `→ <redirect>`).
+- **Open MATERIAL findings** — each open MATERIAL finding gets a checkbox (`- [ ] F<n> <gap>`) with `resolver: <resolution> — <outcome>` beneath. Leaving a box unchecked is a veto (optional `→ <redirect>`). The gap is the reviewer's verbatim quote, joined from `findings-<n>.json` and `findings-skeptic-<n>.json` (`readRoundGaps`), collapsed to one line, stripped of a leading `→`, and truncated — an unsanitized multi-line gap could otherwise be parsed back as a decision it never was. A finding missing from the sidecars falls back to its identifier. `renderGateAnswers` flattens every free-text field it writes for the same reason: it is the single writer of gate files, so a caller that hands it raw multi-line prose still cannot open a second line the parser would read as `ABORT`, `→ RUN 1 MORE`, or a checkbox row.
 - **Trajectory-reviewed ack** — a required `T1` checkbox under a `### Trajectory reviewed` heading, present only when cap-hit fires with 0 BLOCKERs. The gate SHALL NOT be approvable without checking it; `--confirm-all` checks it like any other box. This is the vacuous-approval guard: without it, an early gate with 0 blockers and 0 assumptions would be trivially approvable.
 
 ### Open-MATERIAL-finding veto

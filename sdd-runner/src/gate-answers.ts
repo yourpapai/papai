@@ -57,6 +57,26 @@ export interface GateAnswers {
 const EXTEND_DIRECTIVE = '→ RUN 1 MORE'
 const OVERRIDE_TOKEN = 'OVERRIDE'
 
+/**
+ * Every free-text field below lands inside a single line of gate grammar, and
+ * agent-authored prose reaches them — a finding row carries the reviewer's
+ * verbatim gap. A newline in one would open a second physical line the parser
+ * reads as a directive (`ABORT`, `→ RUN 1 MORE`, a checkbox row of its own).
+ * The renderer is the single writer of gate files, so it flattens here rather
+ * than trusting every caller to have sanitized first; `responseFromAnswers`
+ * flattens the same fields so the answers denote what the file actually says.
+ */
+function flatten(text: string): string {
+  return text.replace(/\s+/gu, ' ').trim()
+}
+
+/** A redirect that flattens to nothing renders no `→` line, so it is no redirect. */
+function redirectOf(redirect: string | undefined): string | undefined {
+  if (redirect === undefined) return undefined
+  const flat = flatten(redirect)
+  return flat === '' ? undefined : flat
+}
+
 export function responseFromAnswers(answers: GateAnswers): GateResponse {
   if (answers.decision === 'abort') {
     return { approved: false, abort: true, override: false, extend: false, vetoes: [], answers: [] }
@@ -66,9 +86,12 @@ export function responseFromAnswers(answers: GateAnswers): GateResponse {
   }
   const vetoes = answers.items
     .filter((item) => !item.accepted)
-    .map((item) => (item.redirect === undefined ? { id: item.id } : { id: item.id, redirect: item.redirect }))
-  const overrides = answers.blockerAnswers.filter((blocker) => blocker.answer === OVERRIDE_TOKEN)
-  const answered = answers.blockerAnswers.filter((blocker) => blocker.answer !== OVERRIDE_TOKEN)
+    .map((item) => {
+      const redirect = redirectOf(item.redirect)
+      return redirect === undefined ? { id: item.id } : { id: item.id, redirect }
+    })
+  const overrides = answers.blockerAnswers.filter((blocker) => flatten(blocker.answer) === OVERRIDE_TOKEN)
+  const answered = answers.blockerAnswers.filter((blocker) => flatten(blocker.answer) !== OVERRIDE_TOKEN)
   const approved = answers.decision === 'approve' && vetoes.length === 0
   return {
     approved,
@@ -76,7 +99,7 @@ export function responseFromAnswers(answers: GateAnswers): GateResponse {
     override: overrides.length > 0,
     extend: false,
     vetoes,
-    answers: answered.map((blocker) => ({ id: blocker.id, answer: blocker.answer })),
+    answers: answered.map((blocker) => ({ id: blocker.id, answer: flatten(blocker.answer) })),
   }
 }
 
@@ -85,18 +108,19 @@ export function renderGateAnswers(answers: GateAnswers): string {
   if (answers.decision === 'extend') return `${EXTEND_DIRECTIVE}\n`
   const lines: string[] = ['## Gate response', '']
   if (answers.decidedBy !== undefined) {
-    lines.push(`decided-by: ${answers.decidedBy}`, '')
+    lines.push(`decided-by: ${flatten(answers.decidedBy)}`, '')
   }
-  for (const ack of answers.acks) lines.push(`- [x] ${ack.id} ${ack.text}`)
+  for (const ack of answers.acks) lines.push(`- [x] ${ack.id} ${flatten(ack.text)}`)
   if (answers.acks.length > 0) lines.push('')
   for (const item of answers.items) {
-    const suffix = item.decidedBy === undefined ? '' : ` · decided-by: ${item.decidedBy}`
-    lines.push(`- [${item.accepted ? 'x' : ' '}] ${item.id} ${item.text}${suffix}`)
-    if (!item.accepted && item.redirect !== undefined) lines.push(`→ ${item.redirect}`)
+    const suffix = item.decidedBy === undefined ? '' : ` · decided-by: ${flatten(item.decidedBy)}`
+    lines.push(`- [${item.accepted ? 'x' : ' '}] ${item.id} ${flatten(item.text)}${suffix}`)
+    const redirect = item.accepted ? undefined : redirectOf(item.redirect)
+    if (redirect !== undefined) lines.push(`→ ${redirect}`)
   }
   if (answers.items.length > 0) lines.push('')
   for (const blocker of answers.blockerAnswers) {
-    lines.push(`${blocker.id} ${blocker.gap}`, `→ ${blocker.answer}`)
+    lines.push(`${blocker.id} ${flatten(blocker.gap)}`, `→ ${flatten(blocker.answer)}`)
   }
   if (answers.blockerAnswers.length > 0) lines.push('')
   return `${lines.join('\n')}\n`

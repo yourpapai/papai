@@ -1365,7 +1365,8 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
     expect(result.outcome).toBe('veto')
     const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
     expect(gate2).toContain('### Open MATERIAL findings at cap (reviewed)')
-    expect(gate2).toContain('- [ ] F1 F1')
+    // The row carries the reviewer's verbatim gap, not the finding id.
+    expect(gate2).toContain('- [ ] F1 design lacks rollback')
     expect(gate2).toContain('resolver: edited — narrowed gap')
     expect(gate2).toContain('- [ ] T1 I reviewed the trajectory')
   })

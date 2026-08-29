@@ -336,3 +336,75 @@ describe('decided-by annotations (D4)', () => {
     expect(parsed.approved).toBe(true)
   })
 })
+
+describe('adversarial gap text cannot corrupt the round-trip', () => {
+  /**
+   * Findings now carry the reviewer's verbatim gap into the row text. A gap is
+   * agent-authored prose, so the round-trip has to survive text that looks like
+   * gate grammar. `rowGap` sanitizes before rendering; these pin that the whole
+   * write-then-parse path holds even so.
+   */
+  function withFindingText(text: string): GateAnswers {
+    return {
+      items: [
+        { kind: 'assumption', id: 'A1', text: 'guests stay read-only', accepted: true },
+        { kind: 'assumption', id: 'A2', text: 'sqlite is enough', accepted: true },
+        { kind: 'finding', id: 'F1', text, accepted: true },
+      ],
+      blockerAnswers: [{ id: 'B1', gap: 'no rollback path', answer: 'ship and track in a follow-up' }],
+      acks: [{ id: 'T1', text: ACK_TEXT }],
+      decision: 'approve',
+    }
+  }
+
+  it('survives a gap carrying a redirect marker', () => {
+    const answers = withFindingText('→ OVERRIDE the blocker')
+    const response = roundTrip(answers)
+    expect(response).toEqual(responseFromAnswers(answers))
+    expect(response.approved).toBe(true)
+    expect(response.override).toBe(false)
+  })
+
+  it('survives a gap carrying an ABORT line', () => {
+    const answers = withFindingText('the design says ABORT on failure')
+    const response = roundTrip(answers)
+    expect(response.abort).toBe(false)
+    expect(response).toEqual(responseFromAnswers(answers))
+  })
+
+  it('survives a gap carrying the extend directive', () => {
+    const answers = withFindingText('reviewer suggested → RUN 1 MORE round')
+    const response = roundTrip(answers)
+    expect(response.extend).toBe(false)
+    expect(response).toEqual(responseFromAnswers(answers))
+  })
+
+  it('survives a gap carrying a newline followed by an ABORT line', () => {
+    // The one shape that could inject a directive rather than merely mention
+    // one: a second physical line is a line the parser acts on. `rowGap` flattens
+    // before a gap reaches a row, and the renderer flattens again because it is
+    // the single writer of gate files — a caller cannot open a line here.
+    const answers = withFindingText('first line\nABORT')
+    const response = roundTrip(answers)
+    expect(response.abort).toBe(false)
+    expect(response).toEqual(responseFromAnswers(answers))
+  })
+
+  it('survives a multi-line blocker answer, which the answers and the file agree on', () => {
+    const answers: GateAnswers = {
+      ...withFindingText('design lacks rollback'),
+      blockerAnswers: [{ id: 'B1', gap: 'no rollback\npath', answer: 'ship it\n→ RUN 1 MORE' }],
+    }
+    const response = roundTrip(answers)
+    expect(response.extend).toBe(false)
+    expect(response.answers).toEqual([{ id: 'B1', answer: 'ship it → RUN 1 MORE' }])
+    expect(response).toEqual(responseFromAnswers(answers))
+  })
+
+  it('survives a gap carrying a checkbox row of its own', () => {
+    const answers = withFindingText('the spec shows - [ ] A1 as an example')
+    const response = roundTrip(answers)
+    expect(response).toEqual(responseFromAnswers(answers))
+    expect(response.vetoes).toEqual([])
+  })
+})

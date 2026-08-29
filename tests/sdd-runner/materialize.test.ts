@@ -16,6 +16,7 @@ import {
   materializeAssumptions,
   materializeReview,
   readRoundDigests,
+  readRoundGaps,
   recordRoundDigests,
 } from '../../sdd-runner/src/materialize.js'
 
@@ -455,5 +456,60 @@ describe('readRoundDigests', () => {
 
   it('answers null for a round with no snapshot rather than throwing', async () => {
     expect(await readRoundDigests(makeDir(), 7)).toBeNull()
+  })
+})
+
+describe('readRoundGaps', () => {
+  function seed(dir: string, name: string, payload: unknown): void {
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, name), JSON.stringify(payload))
+  }
+
+  const reviewerFinding = {
+    id: 'F1',
+    class: 'MATERIAL',
+    gap: 'the design omits a rollback path',
+    question: 'how do we roll back?',
+    code_evidence_attempted: 'read design.md',
+  }
+  const skepticFinding = {
+    id: 'F2',
+    class: 'BLOCKER',
+    gap: 'no migration path for existing rows',
+    question: 'what breaks on downgrade?',
+    code_evidence_attempted: 'read drizzle/',
+  }
+
+  it('keys each finding’s verbatim gap by its id', async () => {
+    const dir = path.join(makeDir(), 'sidecars')
+    seed(dir, 'findings-1.json', { findings: [reviewerFinding] })
+    expect(await readRoundGaps(dir, 1)).toEqual({ F1: 'the design omits a rollback path' })
+  })
+
+  it('merges the skeptic lens, so an L-profile round does not lose half its gaps', async () => {
+    const dir = path.join(makeDir(), 'sidecars')
+    seed(dir, 'findings-1.json', { findings: [reviewerFinding] })
+    seed(dir, 'findings-skeptic-1.json', { findings: [skepticFinding] })
+    expect(await readRoundGaps(dir, 1)).toEqual({
+      F1: 'the design omits a rollback path',
+      F2: 'no migration path for existing rows',
+    })
+  })
+
+  it('answers an empty join when no sidecar exists rather than throwing', async () => {
+    expect(await readRoundGaps(path.join(makeDir(), 'absent'), 3)).toEqual({})
+  })
+
+  it('answers an empty join for a malformed sidecar', async () => {
+    const dir = path.join(makeDir(), 'sidecars')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'findings-1.json'), '{not json')
+    expect(await readRoundGaps(dir, 1)).toEqual({})
+  })
+
+  it('lets the skeptic lens fill a gap the reviewer sidecar is missing', async () => {
+    const dir = path.join(makeDir(), 'sidecars')
+    seed(dir, 'findings-skeptic-1.json', { findings: [skepticFinding] })
+    expect(await readRoundGaps(dir, 1)).toEqual({ F2: 'no migration path for existing rows' })
   })
 })

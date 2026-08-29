@@ -10,13 +10,33 @@ import type { Resolution } from './agent-layer.js'
 import type { FindingCounts } from './events.js'
 import { gatherAssumptions } from './gate-digest-extract.js'
 import type { GateBlocker, GateFinding } from './gate-model.js'
-import { readRoundDigests } from './materialize.js'
+import { readRoundDigests, readRoundGaps } from './materialize.js'
 import { ResolverOutputSchema } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { evaluateConvergence, isOpenResolution } from './review-model.js'
 
 export function blockersOf(result: ReviewLoopResult): GateBlocker[] {
   return findingsOf(result).blockers
+}
+
+/** Row width that keeps a checkbox line readable and the grammar intact. */
+const MAX_GAP_LEN = 200
+
+/**
+ * A gap as a gate row can safely carry it: one line, no leading redirect
+ * marker, bounded length. The checkbox grammar anchors on `- [x] F3` at line
+ * start and a redirect is a line opening with an arrow, so an unsanitized
+ * multi-line gap could otherwise be parsed back as a decision it never was.
+ */
+function rowGap(id: string, gaps: Record<string, string> | undefined): string {
+  const raw = gaps?.[id]
+  if (raw === undefined || raw.trim() === '') return id
+  const flat = raw
+    .replace(/\s+/gu, ' ')
+    .replace(/^[\s→]+/u, '')
+    .trim()
+  if (flat === '') return id
+  return flat.length > MAX_GAP_LEN ? `${flat.slice(0, MAX_GAP_LEN - 1)}…` : flat
 }
 
 export function findingsOf(result: ReviewLoopResult): {
@@ -26,20 +46,19 @@ export function findingsOf(result: ReviewLoopResult): {
 } {
   const blockers = result.openBlockers.map((entry) => ({
     id: entry.id,
-    gap: entry.id,
+    gap: rowGap(entry.id, result.gaps),
     evidence: entry.outcome ?? entry.justification ?? '',
   }))
-  const material = result.openMaterial.map((entry) => ({
+  const detailed = (entry: Resolution): GateFinding => ({
     id: entry.id,
-    gap: entry.id,
+    gap: rowGap(entry.id, result.gaps),
     evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
-  }))
-  const nitpicks = result.openNitpicks.map((entry) => ({
-    id: entry.id,
-    gap: entry.id,
-    evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
-  }))
-  return { blockers, material, nitpicks }
+  })
+  return {
+    blockers,
+    material: result.openMaterial.map(detailed),
+    nitpicks: result.openNitpicks.map(detailed),
+  }
 }
 
 const EMPTY_COUNTS: FindingCounts = { blocker: 0, material: 0, nitpick: 0 }
@@ -68,6 +87,7 @@ export async function readReviewResultFromSidecars(
       readRoundDigests(sidecarDir, round - 1),
     ])
     const context = { assumptions: parsed.assumptions, digests: { previous, current: current ?? {} } }
+    const gaps = await readRoundGaps(sidecarDir, round)
     const { verdict, raised } = evaluateConvergence(parsed.resolutions, context)
     const openOf = (cls: Resolution['class']): Resolution[] =>
       parsed.resolutions.filter((r) => r.class === cls && isOpenResolution(r, context.assumptions, context.digests))
@@ -76,6 +96,7 @@ export async function readReviewResultFromSidecars(
       rounds: round,
       verdict,
       raised,
+      gaps,
       openBlockers: openOf('BLOCKER'),
       openMaterial: openOf('MATERIAL'),
       openNitpicks: openOf('NITPICK'),

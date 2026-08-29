@@ -40,6 +40,34 @@ async function readJson<T>(file: string, schema: z.ZodType<T>): Promise<T | null
   }
 }
 
+/**
+ * Every finding a round filed, across both lenses. The skeptic writes its own
+ * sidecar, so a reader that only opens `findings-<n>.json` loses half an
+ * L-profile round; the reviewer's entries win a duplicate id, matching the
+ * merge order the loop itself uses.
+ */
+async function readRoundFindings(sidecarDir: string, round: number): Promise<Finding[]> {
+  const [reviewer, skeptic] = await Promise.all([
+    readJson(path.join(sidecarDir, `findings-${round}.json`), FindingsSidecarSchema),
+    readJson(path.join(sidecarDir, `findings-skeptic-${round}.json`), FindingsSidecarSchema),
+  ])
+  return [...(skeptic?.findings ?? []), ...(reviewer?.findings ?? [])]
+}
+
+/**
+ * A round's verbatim reviewer-quoted gaps, keyed by finding id. The gate joins
+ * against this so its checkbox rows carry the evidence a human needs rather
+ * than an identifier; a missing or malformed sidecar answers an empty join, and
+ * the caller falls back to the id.
+ */
+export async function readRoundGaps(sidecarDir: string, round: number): Promise<Record<string, string>> {
+  const gaps: Record<string, string> = {}
+  for (const finding of await readRoundFindings(sidecarDir, round)) {
+    gaps[finding.id] = finding.gap
+  }
+  return gaps
+}
+
 async function readRound(sidecarDir: string, round: number): Promise<RoundData> {
   const findingsFile = await readJson(path.join(sidecarDir, `findings-${round}.json`), FindingsSidecarSchema)
   const resolutionsFile = await readJson(path.join(sidecarDir, `resolutions-${round}.json`), ResolverOutputSchema)
