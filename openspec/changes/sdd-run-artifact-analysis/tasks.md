@@ -5,11 +5,11 @@
 
 ## 2. Per-run metrics (pure functions over replay + sidecars)
 
-- [ ] 2.1 Red-first trajectory + gate forensics metrics: per-round class counts/verdicts, `gateLatency` (presented→answered, never-answered with age), `extendOrigin`, `retryTaxonomy` — fixtures shaped from `opencode-agent-fix-command` and the trilogy's waiter-settled final gate — `bun test tests/sdd-runner/analyze.test.ts`
-- [ ] 2.2 Red-first finding-lifecycle metrics: `duplicateIdRate`, `lensOverlapRate`, `classChurn`, `resolverActionMix` over findings/resolutions sidecar joins (fix-command r3 dup fixture) — `bun test tests/sdd-runner/analyze.test.ts`
-- [ ] 2.3 Red-first `concernPersistence` (imports `fingerprintOf` from the review-model once `sdd-review-loop-memory` lands; reports `unknown` until then) and `r2EligibilityRate` over convergence event pairs — `bun test tests/sdd-runner/analyze.test.ts`
-- [ ] 2.4 Red-first `decisionConsistency` + `eraContamination`: answered-without-presented flagging, completion-after-unsuperseded-abort flagging, `.bak` residue, gate files without answered events — fixtures shaped from the trilogy run's `gate-1..6.md` × events × `state.json.bak` — `bun test tests/sdd-runner/analyze.test.ts`
-- [ ] 2.5 Implement the metric functions in `sdd-runner/src/analyze.ts` consuming `replay.ts` folds + sidecar joins (no second fold engine; `usage-aggregate.ts` reprice seam for per-role usage) — `bun test tests/sdd-runner/analyze.test.ts`
+- [x] 2.1 Red-first trajectory + gate forensics metrics: per-round class counts/verdicts, `gateLatency` (presented→answered, never-answered with age), `extendOrigin`, `retryTaxonomy` — fixtures shaped from `opencode-agent-fix-command` and the trilogy's waiter-settled final gate — `bun test tests/sdd-runner/analyze.test.ts`
+- [x] 2.2 Red-first finding-lifecycle metrics: `duplicateIdRate`, `lensOverlapRate`, `classChurn`, `resolverActionMix` over findings/resolutions sidecar joins (fix-command r3 dup fixture) — `bun test tests/sdd-runner/analyze.test.ts`
+- [x] 2.3 Red-first `concernPersistence` (imports `fingerprintOf` from the review-model once `sdd-review-loop-memory` lands; reports `unknown` until then) and `r2EligibilityRate` over convergence event pairs — `bun test tests/sdd-runner/analyze.test.ts`
+- [x] 2.4 Red-first `decisionConsistency` + `eraContamination`: answered-without-presented flagging, completion-after-unsuperseded-abort flagging, `.bak` residue, gate files without answered events — fixtures shaped from the trilogy run's `gate-1..6.md` × events × `state.json.bak` — `bun test tests/sdd-runner/analyze.test.ts`
+- [x] 2.5 Implement the metric functions in `sdd-runner/src/analyze.ts` consuming `replay.ts` folds + sidecar joins (no second fold engine; `usage-aggregate.ts` reprice seam for per-role usage) — `bun test tests/sdd-runner/analyze.test.ts`
 
 ## 3. Ground-truth join
 

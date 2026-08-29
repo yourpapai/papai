@@ -8,8 +8,23 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import type { AnalyzeFs, AnalyzeGit } from '../../sdd-runner/src/analyze-io.js'
+import type { Finding, Resolution } from '../../sdd-runner/src/agent-layer.js'
+import {
+  classChurn,
+  concernPersistence,
+  duplicateIdRate,
+  lensOverlapRate,
+  r2EligibilityRate,
+  resolverActionMix,
+} from '../../sdd-runner/src/analyze-findings.js'
+import { decisionConsistency, gateForensics } from '../../sdd-runner/src/analyze-gates.js'
+import type { AnalyzeFs, AnalyzeGit, GateFileRecord, RunBundle } from '../../sdd-runner/src/analyze-io.js'
 import { loadRunBundle, nodeAnalyzeFs, readOnlyGit } from '../../sdd-runner/src/analyze-io.js'
+import type { Metric } from '../../sdd-runner/src/analyze.js'
+import { retryTaxonomy, trajectoryMetric } from '../../sdd-runner/src/analyze.js'
+import type { EventInput, SddEvent } from '../../sdd-runner/src/events.js'
+import { stampEvent } from '../../sdd-runner/src/events.js'
+import type { PersistedRunState } from '../../sdd-runner/src/run-state.js'
 
 const dirs: string[] = []
 function makeDir(): string {
@@ -222,3 +237,456 @@ function seedState(runDir: string, overrides: { runId: string; changeName: strin
     }),
   )
 }
+
+const T0 = '2026-08-23T19:40:00.000Z'
+const at = (minutes: number): string => new Date(new Date(T0).getTime() + minutes * 60_000).toISOString()
+const ev = (init: EventInput, seq: number, ts: string): SddEvent => stampEvent(init, seq, ts)
+
+const roundOpen = (round: number, cap: number): EventInput => ({ altitude: 'L2', type: 'round_open', round, cap })
+const convergenceOf = (
+  round: number,
+  verdict: 'converged' | 'open',
+  counts: { blocker: number; material: number; nitpick: number },
+): EventInput => ({ altitude: 'L2', type: 'convergence', round, verdict, counts })
+const gatePresented = (version: number, mode: 'early' | 'final' | 'plan'): EventInput => ({
+  altitude: 'L2',
+  type: 'gate',
+  action: 'presented',
+  mode,
+  version,
+})
+const gateAnswered = (version: number, mode: 'early' | 'final' | 'plan'): EventInput => ({
+  altitude: 'L2',
+  type: 'gate',
+  action: 'answered',
+  mode,
+  version,
+})
+const autoDecision = (
+  rule: 'R1' | 'R2' | 'R3' | 'R4' | 'R5' | 'none',
+  decision: 'preview' | 'approve' | 'extend' | 'accept-items' | 'gate' | 'pending',
+  version: number,
+): EventInput => ({
+  altitude: 'L2',
+  type: 'auto_decision',
+  rule,
+  decision,
+  evidenceDigest: 'digest',
+  gateVersion: version,
+})
+const spawnedAs = (agent: string, role: string): EventInput => ({
+  altitude: 'L1',
+  type: 'spawned',
+  agent,
+  role,
+  model: 'model-x',
+})
+const retryingAs = (agent: string, reason: 'stall' | 'validation', attempt: number): EventInput => ({
+  altitude: 'L1',
+  type: 'retrying',
+  agent,
+  reason,
+  attempt,
+})
+const findingEvent = (
+  round: number,
+  id: string,
+  action: 'filed' | 'classified' | 'resolved' | 'dismissed',
+  klass?: 'BLOCKER' | 'MATERIAL' | 'NITPICK',
+  fingerprint?: string,
+): EventInput => ({
+  altitude: 'L2',
+  type: 'finding',
+  action,
+  id,
+  round,
+  ...(klass === undefined ? {} : { class: klass }),
+  ...(fingerprint === undefined ? {} : { fingerprint }),
+})
+
+const findingOf = (id: string, gap: string, klass: Finding['class'] = 'MATERIAL'): Finding => ({
+  id,
+  class: klass,
+  gap,
+  question: `${id}?`,
+  code_evidence_attempted: 'checked the repo',
+})
+const resolutionOf = (
+  id: string,
+  klass: Finding['class'] = 'NITPICK',
+  action: Resolution['resolution'] = 'edited',
+): Resolution => ({
+  id,
+  class: klass,
+  resolution: action,
+  ...(action === 'dismissed' ? { justification: 'duplicate' } : { outcome: 'done' }),
+})
+
+function stateOf(overrides: Partial<PersistedRunState>): PersistedRunState {
+  return {
+    runId: 'r',
+    repoRoot: '/repo',
+    workDir: '/w',
+    changeName: 'thing',
+    stage: 'gate',
+    depth: 'M',
+    round: 1,
+    gate: null,
+    status: 'completed',
+    createdAt: T0,
+    updatedAt: T0,
+    autoExtendsUsed: 0,
+    gateDeadlineAt: null,
+    gateDeadlineReArmed: false,
+    ...overrides,
+  }
+}
+
+interface BundleSeed {
+  readonly events?: readonly SddEvent[]
+  readonly findings?: readonly { readonly round: number; readonly items: readonly Finding[] }[]
+  readonly skeptic?: readonly { readonly round: number; readonly items: readonly Finding[] }[]
+  readonly resolutions?: readonly { readonly round: number; readonly items: readonly Resolution[] }[]
+  readonly gateFiles?: readonly GateFileRecord[]
+  readonly expiryClaims?: readonly number[]
+  readonly state?: PersistedRunState | null
+  readonly stateBak?: boolean
+}
+
+function bundleOf(seed: BundleSeed = {}): RunBundle {
+  return {
+    workDir: '/w',
+    runId: 'r',
+    runDir: '/w/runs/r',
+    state: seed.state === undefined ? null : seed.state,
+    stateBak: seed.stateBak ?? false,
+    events: seed.events ?? [],
+    droppedEventLines: 0,
+    findings: seed.findings ?? [],
+    skepticFindings: seed.skeptic ?? [],
+    resolutions: seed.resolutions ?? [],
+    gateFiles: seed.gateFiles ?? [],
+    expiryClaimVersions: seed.expiryClaims ?? [],
+    sidecarFailures: 0,
+  }
+}
+
+function knownValue<T>(metric: Metric<T>): T {
+  if (metric.status !== 'known') throw new Error(`expected a known metric, got unknown: ${metric.reason}`)
+  return metric.value
+}
+
+describe('trajectory and gate forensics (2.1)', () => {
+  it('folds per-round class counts, verdicts, and resolved/dismissed tallies', () => {
+    const bundle = bundleOf({
+      events: [
+        ev(roundOpen(1, 3), 1, at(0)),
+        ev(findingEvent(1, 'F1', 'resolved', 'MATERIAL'), 2, at(1)),
+        ev(findingEvent(1, 'F2', 'dismissed', 'NITPICK'), 3, at(2)),
+        ev(convergenceOf(1, 'open', { blocker: 1, material: 2, nitpick: 1 }), 4, at(3)),
+        ev(roundOpen(2, 3), 5, at(4)),
+        ev(convergenceOf(2, 'converged', { blocker: 0, material: 0, nitpick: 2 }), 6, at(5)),
+      ],
+    })
+    const rounds = knownValue(trajectoryMetric(bundle))
+    expect(rounds).toHaveLength(2)
+    expect(rounds[0]).toMatchObject({ round: 1, verdict: 'open', resolved: 1, dismissed: 1 })
+    expect(rounds[0]?.counts).toEqual({ blocker: 1, material: 2, nitpick: 1 })
+    expect(rounds[1]).toMatchObject({ round: 2, verdict: 'converged', resolved: 0, dismissed: 0 })
+  })
+
+  it('trajectory is unknown for a run that never reached review', () => {
+    expect(trajectoryMetric(bundleOf()).status).toBe('unknown')
+  })
+
+  it('gate latency: answered gates carry presented→answered ms; never-answered carry age', () => {
+    const now = new Date(at(60))
+    const bundle = bundleOf({
+      events: [
+        ev(gatePresented(1, 'final'), 1, at(0)),
+        ev(gateAnswered(1, 'final'), 2, at(5)),
+        ev(gatePresented(2, 'final'), 3, at(10)),
+      ],
+    })
+    const forensics = knownValue(gateForensics(bundle, now))
+    expect(forensics.answered).toEqual([
+      { version: 1, mode: 'final', latencyMs: 5 * 60_000, settledBy: 'human', rule: null },
+    ])
+    expect(forensics.neverAnswered).toEqual([{ version: 2, mode: 'final', ageMs: 50 * 60_000 }])
+  })
+
+  it('gate forensics attributes policy extends, waiter settles, and human extends', () => {
+    const bundle = bundleOf({
+      events: [
+        ev(gatePresented(1, 'final'), 1, at(0)),
+        ev(autoDecision('R2', 'extend', 1), 2, at(1)),
+        ev(gatePresented(2, 'final'), 3, at(5)),
+        ev(gateAnswered(2, 'final'), 4, at(6)),
+        ev(autoDecision('R1', 'approve', 2), 5, at(6)),
+        ev(gatePresented(3, 'final'), 6, at(10)),
+        ev(gateAnswered(3, 'final'), 7, at(12)),
+      ],
+      gateFiles: [{ version: 3, md: '→ RUN 1 MORE\n' }],
+      expiryClaims: [2],
+    })
+    const forensics = knownValue(gateForensics(bundle, new Date(at(30))))
+    expect(forensics.extends).toEqual([
+      { version: 1, origin: 'policy', rule: 'R2' },
+      { version: 3, origin: 'human', rule: null },
+    ])
+    expect(forensics.answered.find((entry) => entry.version === 2)).toMatchObject({
+      settledBy: 'waiter',
+      rule: 'R1',
+    })
+    expect(forensics.answered.find((entry) => entry.version === 3)).toMatchObject({ settledBy: 'human' })
+    expect(forensics.autoDecisionsByRule).toEqual({ R1: 1, R2: 1 })
+  })
+
+  it('retry taxonomy counts stall vs validation per role', () => {
+    const bundle = bundleOf({
+      events: [
+        ev(spawnedAs('a1', 'drafter'), 1, at(0)),
+        ev(spawnedAs('a2', 'reviewer'), 2, at(0)),
+        ev(retryingAs('a1', 'stall', 1), 3, at(1)),
+        ev(retryingAs('a1', 'stall', 2), 4, at(2)),
+        ev(retryingAs('a2', 'validation', 1), 5, at(3)),
+      ],
+    })
+    expect(knownValue(retryTaxonomy(bundle))).toEqual({
+      drafter: { stall: 2, validation: 0 },
+      reviewer: { stall: 0, validation: 1 },
+    })
+  })
+
+  it('retry taxonomy is unknown without an event log', () => {
+    expect(retryTaxonomy(bundleOf()).status).toBe('unknown')
+  })
+})
+
+describe('finding lifecycle (2.2)', () => {
+  it('duplicateIdRate: r3 re-files r2 ids (fix-command r3 dup fixture)', () => {
+    const bundle = bundleOf({
+      resolutions: [
+        { round: 2, items: [resolutionOf('F1', 'MATERIAL'), resolutionOf('F2', 'NITPICK')] },
+        {
+          round: 3,
+          items: [resolutionOf('F2', 'NITPICK'), resolutionOf('F3', 'NITPICK'), resolutionOf('F1', 'MATERIAL')],
+        },
+      ],
+    })
+    expect(knownValue(duplicateIdRate(bundle))).toBeCloseTo(2 / 5)
+  })
+
+  it('duplicateIdRate is unknown for a pre-skeptic-era run without sidecars', () => {
+    expect(duplicateIdRate(bundleOf({ events: [ev(roundOpen(1, 1), 1, at(0))] })).status).toBe('unknown')
+  })
+
+  it('lensOverlapRate: skeptic findings matching same-round reviewer gaps', () => {
+    const gap = 'the design asserts X without evidence'
+    const bundle = bundleOf({
+      findings: [{ round: 3, items: [findingOf('F1', gap), findingOf('F2', 'an unrelated gap')] }],
+      skeptic: [{ round: 3, items: [findingOf('S1', gap), findingOf('S2', 'a skeptic-only gap')] }],
+    })
+    expect(knownValue(lensOverlapRate(bundle))).toBeCloseTo(0.5)
+  })
+
+  it('lensOverlapRate is unknown without skeptic sidecars', () => {
+    expect(lensOverlapRate(bundleOf({ findings: [{ round: 3, items: [findingOf('F1', 'gap')] }] })).status).toBe(
+      'unknown',
+    )
+  })
+
+  it('classChurn: ids whose class changed across rounds over multi-round ids', () => {
+    const bundle = bundleOf({
+      findings: [
+        { round: 1, items: [findingOf('F1', 'gap one', 'MATERIAL'), findingOf('F2', 'gap two', 'NITPICK')] },
+        { round: 2, items: [findingOf('F1', 'gap one', 'BLOCKER'), findingOf('F2', 'gap two', 'NITPICK')] },
+      ],
+    })
+    expect(knownValue(classChurn(bundle))).toBeCloseTo(1 / 2)
+  })
+
+  it('classChurn is unknown when no id spans multiple rounds', () => {
+    expect(classChurn(bundleOf({ findings: [{ round: 1, items: [findingOf('F1', 'gap')] }] })).status).toBe('unknown')
+  })
+
+  it('resolverActionMix over the resolutions ledger', () => {
+    const bundle = bundleOf({
+      resolutions: [
+        {
+          round: 1,
+          items: [resolutionOf('F1', 'MATERIAL', 'edited'), resolutionOf('F2', 'NITPICK', 'dismissed')],
+        },
+        {
+          round: 2,
+          items: [
+            resolutionOf('F3', 'NITPICK', 'evidence-answered'),
+            resolutionOf('F4', 'NITPICK', 'assumed'),
+            resolutionOf('F5', 'MATERIAL', 'edited'),
+          ],
+        },
+      ],
+    })
+    expect(knownValue(resolverActionMix(bundle))).toEqual({
+      edited: 2,
+      dismissed: 1,
+      'evidence-answered': 1,
+      assumed: 1,
+    })
+  })
+})
+
+describe('concern persistence and R2 eligibility (2.3)', () => {
+  it('concernPersistence: clusters spanning ≥2 rounds over distinct concerns (sidecar gaps)', () => {
+    const bundle = bundleOf({
+      findings: [
+        { round: 1, items: [findingOf('F1', 'the same concern text'), findingOf('F2', 'a one-off concern')] },
+        { round: 2, items: [findingOf('F3', 'the same concern text')] },
+      ],
+    })
+    expect(knownValue(concernPersistence(bundle))).toBeCloseTo(1 / 2)
+  })
+
+  it('concernPersistence folds fingerprinted finding events when sidecars are absent', () => {
+    const bundle = bundleOf({
+      events: [
+        ev(findingEvent(1, 'F1', 'filed', 'MATERIAL', 'fp-x'), 1, at(0)),
+        ev(findingEvent(2, 'F1', 'filed', 'MATERIAL', 'fp-x'), 2, at(1)),
+        ev(findingEvent(2, 'F2', 'filed', 'NITPICK', 'fp-y'), 3, at(2)),
+      ],
+    })
+    expect(knownValue(concernPersistence(bundle))).toBeCloseTo(1 / 2)
+  })
+
+  it('concernPersistence is unknown with neither findings sidecars nor fingerprints', () => {
+    expect(concernPersistence(bundleOf()).status).toBe('unknown')
+  })
+
+  it('r2EligibilityRate: cap-hit gate states with decreasing blocker-free trajectories', () => {
+    const bundle = bundleOf({
+      events: [
+        ev(roundOpen(1, 3), 1, at(0)),
+        ev(convergenceOf(1, 'open', { blocker: 0, material: 3, nitpick: 2 }), 2, at(1)),
+        ev(roundOpen(2, 3), 3, at(2)),
+        ev(convergenceOf(2, 'open', { blocker: 0, material: 4, nitpick: 1 }), 4, at(3)),
+        ev(roundOpen(3, 3), 5, at(4)),
+        ev(convergenceOf(3, 'open', { blocker: 0, material: 2, nitpick: 1 }), 6, at(5)),
+      ],
+    })
+    expect(knownValue(r2EligibilityRate(bundle))).toEqual({ eligible: 1, gateStates: 1 })
+  })
+
+  it('r2EligibilityRate: open blockers or a non-decreasing trajectory make the state ineligible', () => {
+    const withBlocker = bundleOf({
+      events: [
+        ev(roundOpen(1, 2), 1, at(0)),
+        ev(convergenceOf(1, 'open', { blocker: 0, material: 3, nitpick: 0 }), 2, at(1)),
+        ev(roundOpen(2, 2), 3, at(2)),
+        ev(convergenceOf(2, 'open', { blocker: 1, material: 2, nitpick: 0 }), 4, at(3)),
+      ],
+    })
+    const nonDecreasing = bundleOf({
+      events: [
+        ev(roundOpen(1, 2), 1, at(0)),
+        ev(convergenceOf(1, 'open', { blocker: 0, material: 2, nitpick: 0 }), 2, at(1)),
+        ev(roundOpen(2, 2), 3, at(2)),
+        ev(convergenceOf(2, 'open', { blocker: 0, material: 3, nitpick: 1 }), 4, at(3)),
+      ],
+    })
+    expect(knownValue(r2EligibilityRate(withBlocker))).toEqual({ eligible: 0, gateStates: 1 })
+    expect(knownValue(r2EligibilityRate(nonDecreasing))).toEqual({ eligible: 0, gateStates: 1 })
+  })
+
+  it('r2EligibilityRate is unknown without cap-hit convergence pairs', () => {
+    const converged = bundleOf({
+      events: [
+        ev(roundOpen(1, 3), 1, at(0)),
+        ev(convergenceOf(1, 'converged', { blocker: 0, material: 0, nitpick: 1 }), 2, at(1)),
+      ],
+    })
+    expect(r2EligibilityRate(converged).status).toBe('unknown')
+    expect(r2EligibilityRate(bundleOf()).status).toBe('unknown')
+  })
+})
+
+describe('decision-record consistency (2.4)', () => {
+  const responded = '## Gate response\n\n- [x] F13 F13\n'
+
+  it('the trilogy signature: phantom answers and .bak residue mark the run era-contaminated', () => {
+    const bundle = bundleOf({
+      state: stateOf({ status: 'completed' }),
+      stateBak: true,
+      events: [
+        ev(gatePresented(1, 'early'), 1, at(0)),
+        ev(gateAnswered(1, 'early'), 2, at(10)),
+        ev(gateAnswered(2, 'final'), 3, at(20)),
+        ev(gateAnswered(3, 'final'), 4, at(30)),
+        ev(gateAnswered(4, 'final'), 5, at(40)),
+        ev(gateAnswered(5, 'final'), 6, at(50)),
+        ev(gatePresented(6, 'final'), 7, at(60)),
+        ev(autoDecision('R1', 'approve', 6), 8, at(70)),
+        ev(gateAnswered(6, 'final'), 9, at(70)),
+      ],
+      gateFiles: [
+        { version: 1, md: 'ABORT\n' },
+        { version: 2, md: responded },
+        { version: 3, md: responded },
+        { version: 4, md: responded },
+        { version: 5, md: 'ABORT\n' },
+        { version: 6, md: responded },
+      ],
+      expiryClaims: [6],
+    })
+    const audit = decisionConsistency(bundle)
+    expect(audit.answeredWithoutPresented).toEqual([2, 3, 4, 5])
+    expect(audit.bakResidue).toBe(true)
+    expect(audit.completedAfterUnsupersededAbort).toBe(false)
+    expect(audit.gateFilesWithoutAnsweredEvent).toEqual([])
+    expect(audit.eraContaminated).toBe(true)
+  })
+
+  it('completion after an unsuperseded ABORT is flagged for manual review', () => {
+    const bundle = bundleOf({
+      state: stateOf({ status: 'completed' }),
+      events: [
+        ev(gatePresented(1, 'final'), 1, at(0)),
+        ev(gateAnswered(1, 'final'), 2, at(5)),
+        ev(gatePresented(2, 'final'), 3, at(10)),
+        ev(gateAnswered(2, 'final'), 4, at(15)),
+      ],
+      gateFiles: [
+        { version: 1, md: responded },
+        { version: 2, md: 'ABORT\n' },
+      ],
+    })
+    const audit = decisionConsistency(bundle)
+    expect(audit.completedAfterUnsupersededAbort).toBe(true)
+    expect(audit.eraContaminated).toBe(true)
+  })
+
+  it('a consistent run raises no flags and stays out of era-contaminated aggregates', () => {
+    const bundle = bundleOf({
+      state: stateOf({ status: 'completed' }),
+      events: [ev(gatePresented(1, 'final'), 1, at(0)), ev(gateAnswered(1, 'final'), 2, at(5))],
+      gateFiles: [{ version: 1, md: responded }],
+    })
+    const audit = decisionConsistency(bundle)
+    expect(audit.answeredWithoutPresented).toEqual([])
+    expect(audit.completedAfterUnsupersededAbort).toBe(false)
+    expect(audit.bakResidue).toBe(false)
+    expect(audit.gateFilesWithoutAnsweredEvent).toEqual([])
+    expect(audit.eraContaminated).toBe(false)
+  })
+
+  it('a decision-carrying gate file without an answered event is flagged', () => {
+    const bundle = bundleOf({
+      state: stateOf({ status: 'stopped', gate: { mode: 'final', version: 2 } }),
+      events: [ev(gatePresented(3, 'final'), 1, at(0))],
+      gateFiles: [
+        { version: 2, md: '- [ ] F13 F13\n' },
+        { version: 3, md: responded },
+      ],
+    })
+    expect(decisionConsistency(bundle).gateFilesWithoutAnsweredEvent).toEqual([3])
+  })
+})
