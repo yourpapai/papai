@@ -10,8 +10,8 @@
 
 ## 3. Docs
 
-- [ ] 3.1 Add a backdrop-plate note to `docs/architecture/figma-codegen.md`: plates are canvas furniture (`backdrop/*` sibling frames) — never component content, never registry entries, never codegen input — verify: note present and consistent with skill wording
-- [ ] 3.2 Add the same one-line rule to `.claude/skills/figma-codegen/SKILL.md` step 1 (read the node) — verify: skill text updated
+- [x] 3.1 Add a backdrop-plate note to `docs/architecture/figma-codegen.md`: plates are canvas furniture (`backdrop/*` sibling frames) — never component content, never registry entries, never codegen input — verify: note present and consistent with skill wording
+- [x] 3.2 Add the same one-line rule to `.claude/skills/figma-codegen/SKILL.md` step 1 (read the node) — verify: skill text updated
 
 ## 4. Verification
 

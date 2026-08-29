@@ -44,7 +44,9 @@ screen-section entry is used.
 
 1. **Read the node.** Use `get_design_context` (Figma MCP) on the target node.
    Figma surfaces each component instance's name, properties, and the
-   component description verbatim.
+   component description verbatim. `backdrop/*` sibling frames on kit pages
+   are presentation-only plates — never component content, never codegen
+   input.
 
 2. **Parse `CODE:` descriptions.** A description starting with `CODE:` is the
    canonical mapping, one concern per `|`-separated clause in stable order:

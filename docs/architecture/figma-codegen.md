@@ -78,6 +78,16 @@ looking their **frame name** up in the registry (or plan output).
     deterministic, so re-pushing an unchanged registry writes identical
     bytes.
 
+## Backdrop plates (canvas furniture)
+
+Every kit component on the `Editable UI` page sits on a sibling frame named
+`backdrop/<component name>` — a dark (`--bg` `#0a0c0a`) plate sized to the
+component plus padding, so transparent-background components stay legible on
+Figma's light canvas. Plates are presentation-only: never component content
+(the component's parent stays the page), never registry entries, never
+codegen input. When reading or rendering a node, ignore `backdrop/*`
+siblings.
+
 ## Generating code from a papai Figma node (agents)
 
 Load `.claude/skills/figma-codegen/SKILL.md` first — it is routed as
