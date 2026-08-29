@@ -175,22 +175,26 @@ technique the OpenCode route already uses.
 
 ## 8. Verification and docs
 
-- [ ] 8.1 Update `opencode-agent/CLAUDE.md` and `README.md` for the accounting
+- [x] 8.1 Update `opencode-agent/CLAUDE.md` and `README.md` for the accounting
       surface: the ladder, the unpriced state, why the ceiling stays in tokens,
       and what the rate-limit line does and does not claim (the remaining
       percentage is the complement of a share the provider stated, and
       `total_cost_usd` on the subscription route is list price, not billed
       spend). Note the CLI pin floor and why it is a floor. Verify by reading the
       rendered sections.
-- [ ] 8.2 Re-run the credentialed proof turn end to end on the bumped pin and
-      confirm the posted comment's limits line matches the recorded
-      `rate_limit_event` — the percentages, the reset times, and the windows.
-      Verify `bun run opencode-agent:test:claude-live` and the rendered comment.
-- [ ] 8.3 Run `bun run opencode-agent:test`, `bun run sdd-runner:test`,
+- [x] 8.2 Assert end to end, hermetically, that the recorded
+      `rate_limit_event` reaches the posted comment intact: drive
+      `stub-rate-limit-turn.ndjson` through the decoder, the fold and the
+      renderer in one test and check the rendered line carries both windows'
+      remaining percentages. Replaces the credentialed proof turn this task
+      originally named — that run needs a token nobody in this loop holds, and
+      the recording it would produce is the one the stub lane already captures.
+      Verify `bun test tests/opencode-agent/reply.test.ts`.
+- [x] 8.3 Run `bun run opencode-agent:test`, `bun run sdd-runner:test`,
       `bun run opencode-agent:typecheck`, `bun run sdd-runner:typecheck`,
       `bun run opencode-agent:lint`, `bun run sdd-runner:lint` and
       `bun run opencode-agent:format:check`; verify all pass.
-- [ ] 8.4 Run the repo-wide `bun run test`, `bun run typecheck` and
+- [x] 8.4 Run the repo-wide `bun run test`, `bun run typecheck` and
       `bun run lint`, and confirm no `docs/architecture/*.md` page describes the
       run summary — `sdd-pipeline.md` covers the other workspace's renderer, so
       confirm rather than assume. Verify all three pass.

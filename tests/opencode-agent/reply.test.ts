@@ -7,11 +7,13 @@ import { describe, expect, test } from 'bun:test'
 
 import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
+import { decodeClaudeLine, parseNdjsonStream } from '../../opencode-agent/src/claude-contract.js'
 import type { PipelineConfig } from '../../opencode-agent/src/config.js'
 import type { PostedComment } from '../../opencode-agent/src/github.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import { renderThread } from '../../opencode-agent/src/prompt-budget.js'
 import { createEnvelope } from '../../opencode-agent/src/prompts.js'
+import { foldRateLimits } from '../../opencode-agent/src/rate-limit-windows.js'
 import type { RateLimitStanding } from '../../opencode-agent/src/rate-limit-windows.js'
 import { createReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
 import type { ReplyDeps, ReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
@@ -841,5 +843,37 @@ describe('renderReply · the accounting carries names and figures only', () => {
     }
     // Only digits, names, punctuation and the glyphs the table already used.
     expect(detail).not.toMatch(/[A-Za-z0-9+/]{40,}/u)
+  })
+})
+
+/**
+ * The whole path, on real recorded bytes: decoder → fold → render.
+ *
+ * Every layer below has its own tests against its own inputs, and each could
+ * pass while the seam between two of them dropped the figure — a decoded window
+ * the fold discards, a folded standing the renderer never reads. This drives the
+ * recorded stream end to end and asserts the percentages arrive in the posted
+ * body.
+ *
+ * Hermetic: `stub-rate-limit-turn.ndjson` is recorded by
+ * `claude-stub.integration.ts` against a stub Anthropic endpoint, so this needs
+ * no credential and costs nothing.
+ */
+describe('renderReply · the recorded stream reaches the comment intact', () => {
+  test('both recorded windows arrive as remaining percentages', async () => {
+    const recorded = await Bun.file(
+      new URL('./fixtures/claude-cli/stub-rate-limit-turn.ndjson', import.meta.url).pathname,
+    ).text()
+    const lines = parseNdjsonStream(recorded)
+      .map((raw) => decodeClaudeLine(raw))
+      .filter((line): line is NonNullable<typeof line> => line !== null)
+
+    const body = renderReply(spentView({ usdSpent: 0 }, { usdSpent: 0.009714 }, [...foldRateLimits(lines)]))
+
+    // 0.235 consumed → 76.5% left; 0.412 → 58.8%. The recorded figures, not
+    // round ones, so a renderer that printed a constant would fail here.
+    expect(limitsOf(body)).toContain('5-hour 76.5% left')
+    expect(limitsOf(body)).toContain('7-day 58.8% left')
+    expect(body).toContain('**Cost:** $0.01 this run')
   })
 })
