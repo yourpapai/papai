@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { AgentRunError } from '../../../review-loop/src/agent-runner.js'
 import { AgentValidationError } from '../agent-layer.js'
 import { SpawnError } from '../agent-seam.js'
 import type { FailureKind, StageId } from '../events.js'
@@ -39,6 +40,7 @@ export function declaredFailureOf(error: unknown): DeclaredFailure | null {
     }
   }
   if (error instanceof AgentValidationError) return { kind: 'exhausted', reason: error.message }
+  if (error instanceof AgentRunError) return { kind: 'exhausted', reason: error.message }
   if (error instanceof SpawnError) return { kind: 'infra', reason: error.message }
   return null
 }

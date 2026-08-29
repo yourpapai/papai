@@ -17,7 +17,7 @@
 
 ## 4. Incident C (scratch run)
 
-- [ ] 4.1 In a scratch run dir with a bogus model name in the config, start, watch the watchdog retries burn, then answer the escalation gate with abort. Verify: the log shows `retrying` events, `stage_failed` with kind `exhausted`, an escalation-mode `presented`, and the memo records `failed` — deviations recorded as findings, not surprises
+- [x] 4.1 In a scratch run dir with a bogus model name in the config, start, watch the watchdog retries burn, then answer the escalation gate with abort. Verify: the log shows `retrying` events, `stage_failed` with kind `exhausted`, an escalation-mode `presented`, and the memo records `failed` — deviations recorded as findings, not surprises
 
 ## 5. Harvest
 

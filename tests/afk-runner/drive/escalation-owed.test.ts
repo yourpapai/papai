@@ -20,6 +20,7 @@ import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../../afk-runner/src/kernel/fold.js'
 import type { KernelContext } from '../../../afk-runner/src/kernel/machine.js'
 import { StageHaltError } from '../../../afk-runner/src/work/stage-halt.js'
+import { AgentRunError } from '../../../review-loop/src/agent-runner.js'
 
 const WALK: readonly EventInput[] = [
   { altitude: 'L2', type: 'stage_enter', stage: 'intake' },
@@ -121,6 +122,25 @@ describe('declaredFailureOf — the typed-error classifier (C6 D1)', () => {
     expect(declaredFailureOf(new SpawnError('could not reach the agent: spawn opencode ENOENT'))).toMatchObject({
       kind: 'infra',
       reason: 'could not reach the agent: spawn opencode ENOENT',
+    })
+  })
+
+  it('maps AgentRunError (agent exited non-zero after retries) to exhausted — the process-level agent failure', () => {
+    expect(
+      declaredFailureOf(
+        new AgentRunError('estimator exited with code 1: ', {
+          inputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          cachedReadTokens: 0,
+          cachedWriteTokens: 0,
+          costUsd: 0,
+          wallMs: 0,
+        }),
+      ),
+    ).toMatchObject({
+      kind: 'exhausted',
+      reason: 'estimator exited with code 1: ',
     })
   })
 

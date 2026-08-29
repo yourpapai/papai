@@ -3,6 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+
 import { agentWritePath } from '../../../review-loop/src/agent-runner.js'
 import { DepthClassificationSchema, runStageAgent } from '../agent-layer.js'
 import type { AgentLayerDeps, DepthSignals } from '../agent-layer.js'
@@ -76,7 +79,12 @@ export function buildEstimatorPrompt(taskText: string, cwd: string): string {
 }
 
 export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promise<IntakeResult> {
-  await deps.driver.newChange(options.changeName, 'auto-sdd')
+  // Resume re-entry into intake must be idempotent: the scaffold already
+  // exists after any earlier attempt, and `openspec new change` fails on an
+  // existing dir — skip it instead of crashing the re-entered bracket.
+  if (!existsSync(path.join(deps.cwd, 'openspec', 'changes', options.changeName))) {
+    await deps.driver.newChange(options.changeName, 'auto-sdd')
+  }
   if (options.depthOverride !== undefined) {
     deps.emit({
       altitude: 'L2',

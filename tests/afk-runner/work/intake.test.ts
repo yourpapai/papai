@@ -160,6 +160,26 @@ describe('runIntake', () => {
     expect(events[0]).toMatchObject({ type: 'depth', profile: 'S', source: 'override' })
   })
 
+  it('skips scaffolding when the change dir already exists — resume re-entry into intake is idempotent', async () => {
+    const dir = makeDir()
+    fs.mkdirSync(path.join(dir, 'openspec', 'changes', 'fix-typo'), { recursive: true })
+    let newChangeCalls = 0
+    const fixture = makeFixture(dir)
+    const guardedDriver = {
+      ...fixture.deps.driver,
+      newChange: (): Promise<{ changeName: string }> => {
+        newChangeCalls += 1
+        return Promise.resolve({ changeName: 'fix-typo' })
+      },
+    }
+    const result = await runIntake(
+      { ...fixture.deps, driver: guardedDriver },
+      { changeName: 'fix-typo', taskText: 'fix typo in README', depthOverride: 'S' },
+    )
+    expect(newChangeCalls).toBe(0)
+    expect(result.depth).toBe('S')
+  })
+
   it('runs the estimator when no override is given and records the classification', async () => {
     const dir = makeDir()
     const fixture = makeFixture(dir)
