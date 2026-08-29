@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Makes the remaining human attention on sdd-runner runs cheap: Tier 0 terminal-output detail polish with a frozen non-TTY byte contract, an interactive gate-session front-end, and a live `watch` attach verb over the event log.
+Defines the detail sdd-runner renders about a run and the contract that bounds it: the pipeline map, per-agent slot lines, the status line, the gate trajectory sparkline, and the terminal title — with the non-TTY byte stream frozen, so a pipe, log file, or CI run stays byte-identical while interactive detail evolves. The interactive surface itself belongs to the `sdd-runner-tui` capability.
 
 ## Requirements
 
