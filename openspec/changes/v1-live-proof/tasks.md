@@ -21,8 +21,8 @@
 
 ## 5. Harvest
 
-- [ ] 5.1 Review the M run's log for anything non-repo-local (prompts/task text are fine; tokens/keys must be absent by design), then copy `events.ndjson` + `state.json` into a live-marked fixture lane; write the lane's oracle test: fold(log) reproduces the persisted memo fields and every line validates against the event schemas. Verify: `bun test tests/afk-runner/fixtures/` green including the new lane test
-- [ ] 5.2 Confirm the corpus marking vocabulary distinguishes live from legacy/synthetic without touching ported-test expectations. Verify: `bun test tests/afk-runner/fixtures/scenarios/inventory.test.ts` (or its successor) green
+- [x] 5.1 Review the M run's log for anything non-repo-local (prompts/task text are fine; tokens/keys must be absent by design), then copy `events.ndjson` + `state.json` into a live-marked fixture lane; write the lane's oracle test: fold(log) reproduces the persisted memo fields and every line validates against the event schemas. Verify: `bun test tests/afk-runner/fixtures/` green including the new lane test
+- [x] 5.2 Confirm the corpus marking vocabulary distinguishes live from legacy/synthetic without touching ported-test expectations. Verify: `bun test tests/afk-runner/fixtures/scenarios/inventory.test.ts` (or its successor) green
 
 ## 6. Reflection and ledger re-score
 

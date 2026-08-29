@@ -1,0 +1,19 @@
+{
+  "runId": "mutation-floor-hardening-for-analytics-normalizer-and-intent-cla",
+  "repoRoot": "/Users/ki/Projects/yourpapai/papai/.worktrees/v1-live-proof-target-m2",
+  "workDir": "/Users/ki/Projects/yourpapai/papai/.worktrees/v1-live-proof-target-m2/.sdd-runner",
+  "changeName": "mutation-floor-hardening-for-analytics-normalizer-and-intent-cla",
+  "stage": "gate",
+  "depth": "M",
+  "round": 4,
+  "roundCap": 4,
+  "gate": null,
+  "status": "completed",
+  "createdAt": "2026-08-29T12:41:37.449Z",
+  "updatedAt": "2026-08-29T14:22:46.667Z",
+  "autoExtendsUsed": 0,
+  "gateDeadlineAt": null,
+  "gateDeadlineReArmed": false,
+  "plan": null,
+  "children": null
+}
