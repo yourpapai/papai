@@ -115,13 +115,19 @@ export interface CorpusOptions {
   readonly resolveCost?: ResolveCostFn
 }
 
-export function buildCorpusReport(
+/** Within-round duplicate ledger entries per bundle (the dead-dedup count). */
+function duplicateEntriesOf(bundle: RunBundle): number {
+  return bundle.resolutions.reduce(
+    (acc, round) => acc + (round.items.length - new Set(round.items.map((item) => item.id)).size),
+    0,
+  )
+}
+
+function aggregatesOf(
   bundles: readonly RunBundle[],
+  runs: readonly RunAnalysis[],
   groundTruth: readonly ChangeGroundTruth[],
-  options: CorpusOptions,
-): CorpusReport {
-  const resolveCost: ResolveCostFn = options.resolveCost ?? ((): null => null)
-  const runs = bundles.map((bundle) => analyzeRun(bundle, options.now, resolveCost))
+): CorpusAggregates {
   const clean = runs.filter((run) => !run.eraContaminated)
   const autoDecisionsByRule: Record<string, number> = {}
   for (const run of clean) {
@@ -131,37 +137,42 @@ export function buildCorpusReport(
     }
   }
   const r2Parts = clean.flatMap((run) => (run.r2Eligibility.status === 'known' ? [run.r2Eligibility.value] : []))
-  const r2Eligibility: R2Eligibility | null =
-    r2Parts.length === 0
-      ? null
-      : {
-          eligible: r2Parts.reduce((acc, part) => acc + part.eligible, 0),
-          gateStates: r2Parts.reduce((acc, part) => acc + part.gateStates, 0),
-        }
+  return {
+    runsAggregated: clean.length,
+    eraContaminated: runs.filter((run) => run.eraContaminated).map((run) => run.runId),
+    autoDecisionsByRule,
+    duplicateResolutionEntries: clean.reduce((acc, run) => {
+      const bundle = bundles.find((candidate) => candidate.runId === run.runId)
+      return bundle === undefined ? acc : acc + duplicateEntriesOf(bundle)
+    }, 0),
+    r2Eligibility:
+      r2Parts.length === 0
+        ? null
+        : {
+            eligible: r2Parts.reduce((acc, part) => acc + part.eligible, 0),
+            gateStates: r2Parts.reduce((acc, part) => acc + part.gateStates, 0),
+          },
+    gatesNeverAnswered: clean.reduce(
+      (acc, run) => acc + (run.gates.status === 'known' ? run.gates.value.neverAnswered.length : 0),
+      0,
+    ),
+    strandedComplete: groundTruth.filter((change) => change.strandedComplete).map((change) => change.changeName),
+    mergedUnimplemented: groundTruth.filter((change) => change.mergedUnimplemented).map((change) => change.changeName),
+  }
+}
+
+export function buildCorpusReport(
+  bundles: readonly RunBundle[],
+  groundTruth: readonly ChangeGroundTruth[],
+  options: CorpusOptions,
+): CorpusReport {
+  const resolveCost: ResolveCostFn = options.resolveCost ?? ((): null => null)
+  const runs = bundles.map((bundle) => analyzeRun(bundle, options.now, resolveCost))
   return {
     generatedAt: options.now.toISOString(),
     workdirs: [...new Set(bundles.map((bundle) => bundle.workDir))],
     runs,
     groundTruth,
-    aggregates: {
-      runsAggregated: clean.length,
-      eraContaminated: runs.filter((run) => run.eraContaminated).map((run) => run.runId),
-      autoDecisionsByRule,
-      duplicateResolutionEntries: clean.reduce((acc, run) => {
-        const bundle = bundles.find((candidate) => candidate.runId === run.runId)
-        if (bundle === undefined) return acc
-        const entries = bundle.resolutions.flatMap((round) => round.items.map((item) => item.id))
-        return acc + (entries.length - new Set(entries).size)
-      }, 0),
-      r2Eligibility,
-      gatesNeverAnswered: clean.reduce(
-        (acc, run) => acc + (run.gates.status === 'known' ? run.gates.value.neverAnswered.length : 0),
-        0,
-      ),
-      strandedComplete: groundTruth.filter((change) => change.strandedComplete).map((change) => change.changeName),
-      mergedUnimplemented: groundTruth
-        .filter((change) => change.mergedUnimplemented)
-        .map((change) => change.changeName),
-    },
+    aggregates: aggregatesOf(bundles, runs, groundTruth),
   }
 }

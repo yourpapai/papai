@@ -42,6 +42,7 @@ describe('USAGE', () => {
       'Usage:',
       '  sdd [<task-file> | <run-id>] [--depth S|M|L] [--pr] [--reopen [<n>]] [--config <path>]',
       '  sdd stop [<run-id>]',
+      '  sdd analyze [workdirs…] [--json] [--config <path>]',
       '',
       'A task file starts a run; a run id routes by its state (gate decision, resume, report).',
       'No target opens the session screen on a terminal — a loop, not a launcher: pick a run',
@@ -49,6 +50,8 @@ describe('USAGE', () => {
       'description (n), and every finished action returns to the refreshed list; only an explicit',
       'quit (q) exits. Non-terminals keep the list-and-exit contract. Gate decisions: the TUI on',
       'a terminal; else hand-edit the gate file.',
+      'Analyze replays run artifacts read-only across workdirs (default: this worktree) and',
+      'prints a corpus report — it never routes into a run or disturbs pending gates.',
     ])
   })
 })

@@ -498,17 +498,22 @@ describe('trajectory and gate forensics (2.1)', () => {
 })
 
 describe('finding lifecycle (2.2)', () => {
-  it('duplicateIdRate: r3 re-files r2 ids (fix-command r3 dup fixture)', () => {
+  it('duplicateIdRate: ids repeated within one round ledger (fix-command r3 dup fixture)', () => {
     const bundle = bundleOf({
       resolutions: [
         { round: 2, items: [resolutionOf('F1', 'MATERIAL'), resolutionOf('F2', 'NITPICK')] },
         {
           round: 3,
-          items: [resolutionOf('F2', 'NITPICK'), resolutionOf('F3', 'NITPICK'), resolutionOf('F1', 'MATERIAL')],
+          items: [
+            resolutionOf('F1', 'MATERIAL'),
+            resolutionOf('F2', 'NITPICK'),
+            resolutionOf('F3', 'NITPICK'),
+            resolutionOf('F1', 'MATERIAL'),
+          ],
         },
       ],
     })
-    expect(knownValue(duplicateIdRate(bundle))).toBeCloseTo(2 / 5)
+    expect(knownValue(duplicateIdRate(bundle))).toBeCloseTo(1 / 6)
   })
 
   it('duplicateIdRate is unknown for a pre-skeptic-era run without sidecars', () => {
@@ -951,7 +956,10 @@ describe('corpus report (4.1)', () => {
       ],
       resolutions: [
         { round: 1, items: [resolutionOf('F1', 'MATERIAL'), resolutionOf('F2', 'NITPICK')] },
-        { round: 2, items: [resolutionOf('F1', 'MATERIAL'), resolutionOf('F3', 'NITPICK')] },
+        {
+          round: 2,
+          items: [resolutionOf('F1', 'MATERIAL'), resolutionOf('F3', 'NITPICK'), resolutionOf('F3', 'NITPICK')],
+        },
       ],
     })
     const contaminated = bundleOf({

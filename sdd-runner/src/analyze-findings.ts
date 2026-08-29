@@ -11,11 +11,20 @@ import type { SddEvent } from './events.js'
 
 /** Finding-lifecycle metrics over the findings/resolutions sidecar joins. */
 
+/**
+ * Duplicate-id rate over the resolutions ledger: entries whose id repeats
+ * within a single round's ledger (the dead-dedup signature the fix-command
+ * r3 sidecar exposed) over all resolution entries. Cross-round re-feeds are
+ * the ledger working as designed and belong to `concernPersistence`.
+ */
 export function duplicateIdRate(bundle: RunBundle): Metric<number> {
-  const entries = bundle.resolutions.flatMap((round) => round.items.map((item) => item.id))
-  if (entries.length === 0) return unknownMetric('no resolutions sidecars')
-  const distinct = new Set(entries).size
-  return knownMetric((entries.length - distinct) / entries.length)
+  const entries = bundle.resolutions.reduce((acc, round) => acc + round.items.length, 0)
+  if (entries === 0) return unknownMetric('no resolutions sidecars')
+  const duplicates = bundle.resolutions.reduce(
+    (acc, round) => acc + (round.items.length - new Set(round.items.map((item) => item.id)).size),
+    0,
+  )
+  return knownMetric(duplicates / entries)
 }
 
 export function lensOverlapRate(bundle: RunBundle): Metric<number> {

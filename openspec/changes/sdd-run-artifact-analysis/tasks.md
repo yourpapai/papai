@@ -24,6 +24,6 @@
 
 ## 5. Verification, acceptance, docs
 
-- [ ] 5.1 One full `bun run test`, `bun run typecheck`, `bun run lint` — all green
-- [ ] 5.2 Acceptance run: `bun run sdd-runner:start -- analyze` plus the sibling workdirs' corpora; compare against the exploration's hand-measured numbers (31 R4 gates, 78 dup entries, 11/26 R2-eligible, 5 stranded, 1 merged-unimplemented, 1 era-contaminated run) — record deltas in the run report
-- [ ] 5.3 Update `docs/architecture/sdd-pipeline.md` with the Analysis section (read-only contract, metric inventory) in the same commit as the final code
+- [x] 5.1 One full `bun run test`, `bun run typecheck`, `bun run lint` — all green
+- [x] 5.2 Acceptance run: `bun run sdd-runner:start -- analyze` plus the sibling workdirs' corpora; compare against the exploration's hand-measured numbers (31 R4 gates, 78 dup entries, 11/26 R2-eligible, 5 stranded, 1 merged-unimplemented, 1 era-contaminated run) — record deltas in the run report
+- [x] 5.3 Update `docs/architecture/sdd-pipeline.md` with the Analysis section (read-only contract, metric inventory) in the same commit as the final code
