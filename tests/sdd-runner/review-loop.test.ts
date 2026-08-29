@@ -55,7 +55,9 @@ function finding(overrides: Partial<Finding> = {}): Finding {
 describe('evaluateConvergence', () => {
   it('converges with zero blockers, zero materials, and at most three nitpicks', () => {
     const verdict = evaluateConvergence([resolution(), resolution({ id: 'F2' }), resolution({ id: 'F3' })])
-    expect(verdict).toEqual({ verdict: 'converged', counts: { blocker: 0, material: 0, nitpick: 3 } })
+    const counts = { blocker: 0, material: 0, nitpick: 3 }
+    // Without a context `open` mirrors `raised`: the pre-split reading exactly.
+    expect(verdict).toEqual({ verdict: 'converged', counts, raised: counts, open: counts })
   })
 
   it('stays open with any blocker or material, or more than three nitpicks', () => {

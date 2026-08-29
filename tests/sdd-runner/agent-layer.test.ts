@@ -12,6 +12,7 @@ import path from 'node:path'
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import type { LineSink, SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import {
+  AssumptionRecordSchema,
   AssumptionsSidecarSchema,
   DepthClassificationSchema,
   FindingsSidecarSchema,
@@ -521,5 +522,36 @@ describe('runStageAgent', () => {
     const toolUseEvents = emitted.filter((e): e is Extract<EventInput, { type: 'tool_use' }> => e.type === 'tool_use')
     expect(toolUseEvents.length).toBeGreaterThanOrEqual(1)
     expect(toolUseEvents[0]).toMatchObject({ agent: 'reviewer-r1', tool: 'read', arg: 'foo.ts' })
+  })
+})
+
+describe('AssumptionRecordSchema findingId link', () => {
+  function assumption(extra: Record<string, unknown> = {}): unknown {
+    return {
+      id: 'A1',
+      text: 'guests stay read-only',
+      basis: 'default',
+      confidence: 'high',
+      blast_radius: 'b',
+      status: 'open',
+      evidence: { files: ['openspec/changes/foo/proposal.md'] },
+      ...extra,
+    }
+  }
+
+  it('accepts an assumption carrying the finding it was assumed against', () => {
+    expect(AssumptionRecordSchema.safeParse(assumption({ findingId: 'F3' })).success).toBe(true)
+  })
+
+  it('still accepts a pre-change assumption with no findingId', () => {
+    expect(AssumptionRecordSchema.safeParse(assumption()).success).toBe(true)
+  })
+
+  it('rejects an empty findingId rather than treating it as absent', () => {
+    expect(AssumptionRecordSchema.safeParse(assumption({ findingId: '' })).success).toBe(false)
+  })
+
+  it('leaves the A-prefix id convention unchanged', () => {
+    expect(AssumptionRecordSchema.safeParse(assumption({ id: 'F1', findingId: 'F1' })).success).toBe(false)
   })
 })

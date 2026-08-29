@@ -10,6 +10,7 @@ import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { AssumptionRecordSchema, FindingsSidecarSchema, ResolutionSchema, runStageAgent } from './agent-layer.js'
 import type { AgentLayerDeps, Finding, Resolution } from './agent-layer.js'
 import type { DepthProfile, EventInput } from './events.js'
+import { recordRoundDigests } from './materialize.js'
 export { consumeSteerFile, parseSteerDirectives, reloadStagedSteer } from './steer.js'
 export type { ParsedSteer, StagedSteer, SteerDirective } from './steer.js'
 import {
@@ -239,6 +240,10 @@ async function runRound(
     merged,
     sessionForLabel(consumedSession, 'resolver', round),
   )
+  // Round close: snapshot the agent-authored artifacts as the resolver left
+  // them, before any verdict is taken over them. The next round compares
+  // against this to tell a real edit from a claimed one.
+  await recordRoundDigests(deps.sidecarDir, options.changeDir, round)
   const { verdict, counts } = evaluateConvergence(resolved.resolutions)
   deps.emit({ altitude: 'L2', type: 'convergence', round, verdict, counts })
   await deps.materialize(round)
