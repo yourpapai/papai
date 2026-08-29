@@ -13,8 +13,8 @@
 
 ## 3. Ground-truth join
 
-- [ ] 3.1 Red-first: per change folder — tasks done/total, folder existence, commit count, main-branch presence; corpus report sections `stranded-complete` and `merged-unimplemented` (fancy-ui-shaped and kb-shaped fixtures) — `bun test tests/sdd-runner/analyze.test.ts`
-- [ ] 3.2 Implement the git/openspec join with the read-only git wrapper — `bun test tests/sdd-runner/analyze.test.ts`
+- [x] 3.1 Red-first: per change folder — tasks done/total, folder existence, commit count, main-branch presence; corpus report sections `stranded-complete` and `merged-unimplemented` (fancy-ui-shaped and kb-shaped fixtures) — `bun test tests/sdd-runner/analyze.test.ts`
+- [x] 3.2 Implement the git/openspec join with the read-only git wrapper — `bun test tests/sdd-runner/analyze.test.ts`
 
 ## 4. Corpus report and CLI route
 

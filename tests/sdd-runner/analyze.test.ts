@@ -20,6 +20,7 @@ import {
 import { decisionConsistency, gateForensics } from '../../sdd-runner/src/analyze-gates.js'
 import type { AnalyzeFs, AnalyzeGit, GateFileRecord, RunBundle } from '../../sdd-runner/src/analyze-io.js'
 import { loadRunBundle, nodeAnalyzeFs, readOnlyGit } from '../../sdd-runner/src/analyze-io.js'
+import { groundTruthJoin } from '../../sdd-runner/src/analyze-truth.js'
 import type { Metric } from '../../sdd-runner/src/analyze.js'
 import { retryTaxonomy, trajectoryMetric } from '../../sdd-runner/src/analyze.js'
 import type { EventInput, SddEvent } from '../../sdd-runner/src/events.js'
@@ -688,5 +689,121 @@ describe('decision-record consistency (2.4)', () => {
       ],
     })
     expect(decisionConsistency(bundle).gateFilesWithoutAnsweredEvent).toEqual([3])
+  })
+})
+
+describe('ground-truth join (3.1/3.2)', () => {
+  interface GitScript {
+    readonly logByRepo: Readonly<Record<string, number>>
+    readonly mainPaths: readonly string[]
+  }
+
+  function scriptedGit(script: GitScript): { git: AnalyzeGit; calls: string[][] } {
+    const calls: string[][] = []
+    const git: AnalyzeGit = (cwd, args) => {
+      calls.push([...args])
+      if (args[0] === 'log') {
+        const commits = script.logByRepo[cwd] ?? 0
+        return Promise.resolve({
+          stdout: Array.from({ length: commits }, (_, i) => `abc${i} commit ${i + 1}`)
+            .join('\n')
+            .concat('\n'),
+          stderr: '',
+        })
+      }
+      const ref = args[1] ?? ''
+      const target = args[2] ?? ''
+      return Promise.resolve({
+        stdout: script.mainPaths.includes(`${ref}:${target}`) ? `040000 tree abc\t${target}\n` : '',
+        stderr: '',
+      })
+    }
+    return { git, calls }
+  }
+
+  function seedChange(repoRoot: string, name: string, lines: string[]): void {
+    const changeDir = path.join(repoRoot, 'openspec', 'changes', name)
+    mkdirSync(changeDir, { recursive: true })
+    writeFileSync(path.join(changeDir, 'tasks.md'), lines.join('\n').concat('\n'))
+  }
+
+  it('a fancy-ui-shaped stranded-complete change: all tasks done, absent from every main ref', async () => {
+    const repoRoot = makeDir()
+    seedChange(repoRoot, 'fancy-ui', ['- [x] one', '- [x] two'])
+    const { git } = scriptedGit({ logByRepo: { [repoRoot]: 2 }, mainPaths: [] })
+
+    const [truth] = await groundTruthJoin(
+      nodeAnalyzeFs(),
+      git,
+      [{ repoRoot, changeName: 'fancy-ui' }],
+      ['main', 'master'],
+    )
+
+    expect(truth).toMatchObject({
+      changeName: 'fancy-ui',
+      exists: true,
+      tasksDone: 2,
+      tasksTotal: 2,
+      commits: 2,
+      onMainBranch: false,
+      strandedComplete: true,
+      mergedUnimplemented: false,
+    })
+  })
+
+  it('a kb-shaped merged-unimplemented change: on the main ref with zero tasks done', async () => {
+    const repoRoot = makeDir()
+    seedChange(repoRoot, 'kb', ['- [ ] one', '- [ ] two'])
+    const { git } = scriptedGit({ logByRepo: { [repoRoot]: 3 }, mainPaths: ['master:openspec/changes/kb'] })
+
+    const [truth] = await groundTruthJoin(nodeAnalyzeFs(), git, [{ repoRoot, changeName: 'kb' }], ['main', 'master'])
+
+    expect(truth).toMatchObject({
+      exists: true,
+      tasksDone: 0,
+      tasksTotal: 2,
+      commits: 3,
+      onMainBranch: true,
+      strandedComplete: false,
+      mergedUnimplemented: true,
+    })
+  })
+
+  it('a change in flight (partial tasks, not on main) is neither stranded nor merged-unimplemented', async () => {
+    const repoRoot = makeDir()
+    seedChange(repoRoot, 'wip', ['- [x] one', '- [ ] two'])
+    const { git } = scriptedGit({ logByRepo: {}, mainPaths: [] })
+
+    const [truth] = await groundTruthJoin(nodeAnalyzeFs(), git, [{ repoRoot, changeName: 'wip' }], ['main'])
+
+    expect(truth?.strandedComplete).toBe(false)
+    expect(truth?.mergedUnimplemented).toBe(false)
+  })
+
+  it('a missing change folder reports exists false with zero commits, not a failure', async () => {
+    const repoRoot = makeDir()
+    const { git } = scriptedGit({ logByRepo: {}, mainPaths: [] })
+
+    const [truth] = await groundTruthJoin(nodeAnalyzeFs(), git, [{ repoRoot, changeName: 'vanished' }], ['main'])
+
+    expect(truth).toMatchObject({ exists: false, tasksDone: 0, tasksTotal: 0, commits: 0, onMainBranch: false })
+  })
+
+  it('duplicate change folders across workdirs join once', async () => {
+    const repoRoot = makeDir()
+    seedChange(repoRoot, 'shared', ['- [x] one'])
+    const { git } = scriptedGit({ logByRepo: {}, mainPaths: [] })
+
+    const truth = await groundTruthJoin(
+      nodeAnalyzeFs(),
+      git,
+      [
+        { repoRoot, changeName: 'shared' },
+        { repoRoot, changeName: 'shared' },
+      ],
+      ['main'],
+    )
+
+    expect(truth).toHaveLength(1)
   })
 })
