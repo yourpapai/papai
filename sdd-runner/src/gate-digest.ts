@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
@@ -13,7 +12,6 @@ import { createEventBus } from './event-bus.js'
 import { appendEvent } from './events.js'
 import type { EventInput } from './events.js'
 import { readChangeDigest } from './gate-digest-extract.js'
-import { gatherAssumptions } from './gate-digest-extract.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateChild, GateFinding } from './gate-model.js'
 import {
@@ -24,13 +22,13 @@ import {
   writePresentedRecord,
 } from './gate-prelude.js'
 import type { PolicyGateInput } from './gate-prelude.js'
+import { findingsOf } from './gate-review-input.js'
 import { autoExtendRound, autoSettleFinalGate } from './gate-settle.js'
 import { gatherGateSignals } from './gate-signals.js'
 import type { PresentGateInput } from './gate.js'
 import { presentGate } from './gate.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { replayEvents } from './replay.js'
-import { ResolverOutputSchema } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
@@ -214,53 +212,6 @@ function gateDigestInput(state: RunState, reviewResult: ReviewLoopResult, parts:
   }
 }
 
-export function blockersOf(result: ReviewLoopResult): GateBlocker[] {
-  return findingsOf(result).blockers
-}
-
-export function findingsOf(result: ReviewLoopResult): {
-  blockers: GateBlocker[]
-  material: GateFinding[]
-  nitpicks: GateFinding[]
-} {
-  const blockers = result.openBlockers.map((entry) => ({
-    id: entry.id,
-    gap: entry.id,
-    evidence: entry.outcome ?? entry.justification ?? '',
-  }))
-  const material = result.openMaterial.map((entry) => ({
-    id: entry.id,
-    gap: entry.id,
-    evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
-  }))
-  const nitpicks = result.openNitpicks.map((entry) => ({
-    id: entry.id,
-    gap: entry.id,
-    evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
-  }))
-  return { blockers, material, nitpicks }
-}
-
-export async function readReviewResultFromSidecars(
-  sidecarDir: string,
-  round: number,
-  outcome: 'converged' | 'cap-hit',
-): Promise<ReviewLoopResult> {
-  try {
-    const raw = await readFile(path.join(sidecarDir, `resolutions-${round}.json`), 'utf8')
-    const parsed = ResolverOutputSchema.parse(JSON.parse(raw))
-    return {
-      outcome,
-      rounds: round,
-      openBlockers: parsed.resolutions.filter((r) => r.class === 'BLOCKER'),
-      openMaterial: parsed.resolutions.filter((r) => r.class === 'MATERIAL'),
-      openNitpicks: parsed.resolutions.filter((r) => r.class === 'NITPICK'),
-    }
-  } catch {
-    return { outcome, rounds: round, openBlockers: [], openMaterial: [], openNitpicks: [] }
-  }
-}
-
 export async function finalizeGate(
   deps: OrchestratorDeps,
   state: RunState,
@@ -273,21 +224,4 @@ export async function finalizeGate(
   state.gateDeadlineReArmed = false
   await saveRunState(state, nowOf(deps))
   return { runId: state.runId, outcome: status === 'completed' ? 'approved' : 'aborted', version }
-}
-
-export async function prepareResumeInput(
-  sidecarDir: string,
-  round: number,
-  gateMode: 'early' | 'final',
-): Promise<{
-  assumptions: readonly { id: string; text: string; blast_radius: string }[]
-  reviewResult: ReviewLoopResult
-  requiredAck: string | undefined
-}> {
-  const assumptions = await gatherAssumptions(sidecarDir, round)
-  const capHitFired = gateMode === 'early'
-  const reviewResult = await readReviewResultFromSidecars(sidecarDir, round, capHitFired ? 'cap-hit' : 'converged')
-  const findings = findingsOf(reviewResult)
-  const requiredAck = capHitFired && findings.blockers.length === 0 ? 'T1' : undefined
-  return { assumptions, reviewResult, requiredAck }
 }

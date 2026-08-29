@@ -17,6 +17,8 @@ const CHANGE_DIR = 'openspec/changes/thing'
 function planSignals(overrides: Partial<PolicySignals> = {}): PolicySignals {
   const reviewResult: ReviewLoopResult = {
     outcome: 'converged',
+    verdict: 'converged',
+    raised: { blocker: 0, material: 0, nitpick: 0 },
     rounds: 2,
     openBlockers: [],
     openMaterial: [],
@@ -95,6 +97,8 @@ describe('evaluatePlanGate (D5: R4 only)', () => {
     const capHitSignals = planSignals({
       reviewResult: {
         outcome: 'cap-hit',
+        verdict: 'open',
+        raised: { blocker: 0, material: 0, nitpick: 0 },
         rounds: 3,
         openBlockers: [],
         openMaterial: [{ id: 'F1', class: 'MATERIAL', resolution: 'assumed', outcome: 'kept' }],

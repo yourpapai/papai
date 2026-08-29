@@ -22,7 +22,7 @@ import type { Verbosity } from './renderer.js'
 import { resumeFromPoint } from './resume-flow.js'
 import { deriveResumeDecision, reportResumeDecision, settleStoppedResult } from './resume-flow.js'
 import type { ReviewLoopResult } from './review-loop.js'
-import { createRunState, loadRunState } from './run-state.js'
+import { createRunState, loadRunState, resolveRoundCap, saveRunState } from './run-state.js'
 import type { RunState } from './run-state.js'
 import { createStageMachine } from './stage-machine.js'
 import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controller.js'
@@ -178,5 +178,34 @@ function tailInputOf(
   reviewResult: ReviewLoopResult,
   version: number = 1,
 ): Parameters<typeof runPostReviewToGate>[0] {
-  return { deps: env.deps, state: env.state, ctx: env.ctx, agent: env.agent, depth, reviewResult, version }
+  return {
+    deps: env.deps,
+    state: env.state,
+    ctx: env.ctx,
+    agent: env.agent,
+    depth,
+    reviewResult,
+    version,
+    runVerification: (result) => runVerificationRound(env, depth, result),
+  }
+}
+
+/**
+ * One further review round over edits no reviewer has seen. It raises the
+ * persisted cap by one — the round is real spend and the trajectory must show
+ * it — and re-enters the loop at the next round, exactly as an extend does.
+ */
+async function runVerificationRound(
+  env: PipelineEnv,
+  depth: DepthProfile,
+  result: ReviewLoopResult,
+): Promise<ReviewLoopResult> {
+  env.state.roundCap = resolveRoundCap(env.state) + 1
+  const verified = await runReviewStage(env, depth, env.input.taskText, {
+    startRound: result.rounds + 1,
+    cap: env.state.roundCap,
+  })
+  env.state.round = verified.rounds
+  await saveRunState(env.state, nowOf(env.deps))
+  return verified
 }

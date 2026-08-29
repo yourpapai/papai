@@ -20,13 +20,16 @@ be `needs-review` when the open set is clean by that test but the round recorded
 at least one edit above a nitpick that no reviewer has since seen. It SHALL be
 `open` otherwise.
 
-A round reaching the round cap SHALL route by that verdict: `converged` flows
-into decomposition without an early gate; `open` presents an early gate for
-human sign-off; `needs-review` SHALL run exactly one further review round when
-the budget guard permits it, and SHALL then flow into decomposition regardless
-of that round's outcome. The further round SHALL NOT be granted more than once
-per cap-hit, and SHALL be declined — flowing into decomposition instead — when
-the budget guard would refuse the spend.
+A round reaching the round cap SHALL present an early gate when its open set
+holds any finding above a nitpick, and SHALL NOT gate on the number of open
+nitpicks alone — the verdict's three-nitpick allowance governs whether the loop
+keeps running, not whether a human is needed. When nothing above a nitpick is
+open and the verdict is `needs-review`, the runner SHALL run exactly one
+further review round when the budget guard permits it, and SHALL then flow into
+decomposition regardless of that round's outcome. The further round SHALL NOT
+be granted more than once per cap-hit, and SHALL be declined — flowing into
+decomposition instead — when the budget guard would refuse the spend or when
+cost is unknown.
 
 #### Scenario: Fixed finding no longer blocks convergence
 
@@ -38,7 +41,7 @@ the budget guard would refuse the spend.
 #### Scenario: Nitpick-only cap-hit converges without a gate
 
 - **WHEN** the review loop reaches its round cap and every open finding is a
-  resolved or dismissed nitpick
+  resolved or dismissed nitpick, however many of them there are
 - **THEN** the pipeline proceeds directly to decomposition as if the loop had
   converged on a clean round
 

@@ -78,6 +78,8 @@ export function runPolicyLadder(
 export const PLAN_REVIEW_SURROGATE: ReviewLoopResult = {
   outcome: 'converged',
   rounds: 0,
+  verdict: 'converged',
+  raised: { blocker: 0, material: 0, nitpick: 0 },
   openBlockers: [],
   openMaterial: [],
   openNitpicks: [],

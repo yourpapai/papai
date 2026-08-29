@@ -9,21 +9,23 @@ import { z } from 'zod'
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { AssumptionRecordSchema, FindingsSidecarSchema, ResolutionSchema, runStageAgent } from './agent-layer.js'
 import type { AgentLayerDeps, Finding, Resolution } from './agent-layer.js'
-import type { DepthProfile, EventInput } from './events.js'
-import { recordRoundDigests } from './materialize.js'
+import type { DepthProfile, EventInput, FindingCounts } from './events.js'
+import { readRoundDigests, recordRoundDigests } from './materialize.js'
 export { consumeSteerFile, parseSteerDirectives, reloadStagedSteer } from './steer.js'
 export type { ParsedSteer, StagedSteer, SteerDirective } from './steer.js'
+import { applySteerAtBoundary, consumeResumeSession, sessionForLabel } from './review-boundary.js'
 import {
   buildResolverPrompt,
   buildReviewerPrompt,
   evaluateConvergence,
+  isOpenResolution,
   lensesForRound,
   mergeLensFindings,
   readResolutionsLedger,
   readReviewArtifacts,
   ROUND_CAPS,
 } from './review-model.js'
-import { consumeSteerFile } from './steer.js'
+import type { ConvergenceContext } from './review-model.js'
 import type { SteerDirective } from './steer.js'
 
 export const ResolverOutputSchema = z.object({
@@ -78,8 +80,17 @@ export interface ReviewLoopOptions {
 }
 
 export interface ReviewLoopResult {
+  /** How the loop ended, not what the last round found — see `verdict` for that. */
   readonly outcome: 'converged' | 'cap-hit'
   readonly rounds: number
+  /**
+   * The last round's verdict. `needs-review` means nothing is open but the
+   * round produced an edit no reviewer has seen; cap-hit routing reads this to
+   * tell a loop that needs one more look from one that needs a human.
+   */
+  readonly verdict: 'converged' | 'needs-review' | 'open'
+  /** Every finding the last round recorded, by class — the trajectory's number. */
+  readonly raised: FindingCounts
   readonly openBlockers: readonly Resolution[]
   readonly openMaterial: readonly Resolution[]
   readonly openNitpicks: readonly Resolution[]
@@ -154,44 +165,6 @@ async function runResolver(
   return result.value
 }
 
-/**
- * Round-boundary steer consumption (D6): at each round-cap evaluation point
- * consume `steer.md` (rename-on-consume, staged set persisted first), surface
- * unknown directives as warn lines, and re-read the persisted round cap so a
- * steered `extend` takes effect at this boundary — never consuming
- * `autoExtendsUsed`.
- */
-function applySteerAtBoundary(deps: ReviewLoopDeps, entryCap: number): number {
-  const steer = deps.steer
-  if (steer === undefined) return entryCap
-  const consumed = consumeSteerFile(steer.runDir)
-  for (const warning of consumed.warnings) steer.onWarning(warning)
-  if (consumed.valid.length > 0) steer.onDirectives?.(consumed.valid)
-  return steer.readRoundCap()
-}
-
-/**
- * The resumed session applies only to the round it was recorded in; a resume
- * entering an earlier round runs it fresh by design.
- */
-function consumeResumeSession(
-  resumeSession: ReviewLoopDeps['resumeSession'],
-  round: number,
-): ReviewLoopDeps['resumeSession'] {
-  if (resumeSession === undefined || resumeSession.round !== round) return undefined
-  return resumeSession
-}
-
-/** The resume session id for a given spawn label in this round, if it matches. */
-function sessionForLabel(
-  consumedSession: ReviewLoopDeps['resumeSession'],
-  label: string,
-  round: number,
-): string | undefined {
-  if (consumedSession === undefined) return undefined
-  return consumedSession.label === `${label}-r${round}` ? consumedSession.opencodeSessionId : undefined
-}
-
 /** Run this round's lenses (bounded 2-way) and merge their findings. */
 async function runLenses(
   deps: ReviewLoopDeps,
@@ -240,28 +213,77 @@ async function runRound(
     merged,
     sessionForLabel(consumedSession, 'resolver', round),
   )
-  // Round close: snapshot the agent-authored artifacts as the resolver left
-  // them, before any verdict is taken over them. The next round compares
-  // against this to tell a real edit from a claimed one.
-  await recordRoundDigests(deps.sidecarDir, options.changeDir, round)
-  const { verdict, counts } = evaluateConvergence(resolved.resolutions)
-  deps.emit({ altitude: 'L2', type: 'convergence', round, verdict, counts })
-  await deps.materialize(round)
-  deps.emit({ altitude: 'L2', type: 'round_close', round, cap: effectiveCap })
+  const { verdict, raised, openLists } = await closeRound(deps, options, resolved, round, effectiveCap)
+  const settled = { rounds: round, verdict, raised } as const
   if (verdict === 'converged') {
-    const openNitpicks = resolved.resolutions.filter((entry) => entry.class === 'NITPICK')
-    return { outcome: 'converged', rounds: round, openBlockers: [], openMaterial: [], openNitpicks }
+    const openNitpicks = openLists.openNitpicks
+    return { ...settled, outcome: 'converged', openBlockers: [], openMaterial: [], openNitpicks }
   }
-  const openBlockers = resolved.resolutions.filter((entry) => entry.class === 'BLOCKER')
-  const openMaterial = resolved.resolutions.filter((entry) => entry.class === 'MATERIAL')
-  const openNitpicks = resolved.resolutions.filter((entry) => entry.class === 'NITPICK')
   if (deps.stop?.stopRequested() === true) {
     // Calm stop (D6): the in-flight round is fully recorded; do not enter the next.
-    return { outcome: 'cap-hit', rounds: round, openBlockers, openMaterial, openNitpicks }
+    return { ...settled, outcome: 'cap-hit', ...openLists }
   }
   const nextCap = applySteerAtBoundary(deps, effectiveCap)
-  if (round >= nextCap) return { outcome: 'cap-hit', rounds: round, openBlockers, openMaterial, openNitpicks }
-  return runRound(deps, options, round + 1, nextCap, openBlockers.length)
+  if (round >= nextCap) return { ...settled, outcome: 'cap-hit', ...openLists }
+  // Lens escalation asks "are blockers still being found", not "is one waiting
+  // for a human", so it carries the raised count forward — not the open one.
+  return runRound(deps, options, round + 1, nextCap, raised.blocker)
+}
+
+interface ClosedRound {
+  readonly verdict: ReviewLoopResult['verdict']
+  readonly raised: FindingCounts
+  readonly openLists: Pick<ReviewLoopResult, 'openBlockers' | 'openMaterial' | 'openNitpicks'>
+}
+
+/**
+ * Close a round: snapshot the agent-authored artifacts as the resolver left
+ * them — the next round compares against this to tell a real edit from a
+ * claimed one — then take the verdict over them, record it, and materialize
+ * the round's views.
+ */
+async function closeRound(
+  deps: ReviewLoopDeps,
+  options: ReviewLoopOptions,
+  resolved: ResolverOutput,
+  round: number,
+  cap: number,
+): Promise<ClosedRound> {
+  await recordRoundDigests(deps.sidecarDir, options.changeDir, round)
+  const context = await roundContext(deps, resolved, round)
+  const { verdict, raised, open } = evaluateConvergence(resolved.resolutions, context)
+  deps.emit({ altitude: 'L2', type: 'convergence', round, verdict, counts: raised, open })
+  await deps.materialize(round)
+  deps.emit({ altitude: 'L2', type: 'round_close', round, cap })
+  const openOf = (cls: Resolution['class']): Resolution[] =>
+    resolved.resolutions.filter(
+      (entry) => entry.class === cls && isOpenResolution(entry, context.assumptions, context.digests),
+    )
+  return {
+    verdict,
+    raised,
+    openLists: {
+      openBlockers: openOf('BLOCKER'),
+      openMaterial: openOf('MATERIAL'),
+      openNitpicks: openOf('NITPICK'),
+    },
+  }
+}
+
+/**
+ * The openness context for this round: the assumptions the resolver just logged
+ * and the change-folder snapshots either side of it.
+ */
+async function roundContext(
+  deps: ReviewLoopDeps,
+  resolved: ResolverOutput,
+  round: number,
+): Promise<ConvergenceContext> {
+  const [current, previous] = await Promise.all([
+    readRoundDigests(deps.sidecarDir, round),
+    readRoundDigests(deps.sidecarDir, round - 1),
+  ])
+  return { assumptions: resolved.assumptions, digests: { previous, current: current ?? {} } }
 }
 
 export function runReviewLoop(

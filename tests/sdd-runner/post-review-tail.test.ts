@@ -10,10 +10,11 @@ import path from 'node:path'
 
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
-import { readReviewResultFromSidecars } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps, StageContext } from '../../sdd-runner/src/gate-digest.js'
+import { readReviewResultFromSidecars } from '../../sdd-runner/src/gate-review-input.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
-import { runPostConvergenceTail } from '../../sdd-runner/src/post-review-tail.js'
+import { routeCapHit, runPostConvergenceTail } from '../../sdd-runner/src/post-review-tail.js'
+import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
 
@@ -34,6 +35,8 @@ afterEach(() => {
 
 const REVIEW_RESULT = {
   outcome: 'converged' as const,
+  verdict: 'converged' as const,
+  raised: { blocker: 0, material: 0, nitpick: 0 },
   rounds: 1,
   openBlockers: [],
   openMaterial: [],
@@ -210,5 +213,73 @@ describe('policy prelude at the final-gate seam', () => {
     const autoDecisions = readEvents(logPath).filter((e) => e.type === 'auto_decision')
     expect(autoDecisions).toHaveLength(1)
     expect(autoDecisions[0]).toMatchObject({ decision: 'gate', gateVersion: 1 })
+  })
+})
+
+describe('cap-hit routing by verdict', () => {
+  const EMPTY = { blocker: 0, material: 0, nitpick: 0 }
+
+  function capHit(verdict: ReviewLoopResult['verdict'], open: Partial<ReviewLoopResult> = {}): ReviewLoopResult {
+    return {
+      outcome: 'cap-hit',
+      rounds: 2,
+      verdict,
+      raised: EMPTY,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+      ...open,
+    }
+  }
+
+  it('routes a converged cap-hit into the tail with no early gate', () => {
+    expect(routeCapHit(capHit('converged'))).toEqual({ kind: 'tail' })
+  })
+
+  it('routes a cap-hit with an open material finding to the early gate', () => {
+    const open = capHit('open', {
+      openMaterial: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'j' }],
+    })
+    expect(routeCapHit(open)).toEqual({ kind: 'early-gate' })
+  })
+
+  it('does not gate a nitpick-only cap-hit, however many nitpicks survived', () => {
+    // Severity convergence never had a nitpick ceiling; the verdict's
+    // three-nitpick bar governs looping, not gating.
+    const nitpicky = capHit('open', {
+      openNitpicks: Array.from({ length: 5 }, (_, i) => ({
+        id: `N${String(i)}`,
+        class: 'NITPICK' as const,
+        resolution: 'dismissed' as const,
+        justification: 'cosmetic',
+      })),
+    })
+    expect(routeCapHit(nitpicky)).toEqual({ kind: 'tail' })
+  })
+
+  it('buys exactly one verification round for a needs-review cap-hit', () => {
+    expect(routeCapHit(capHit('needs-review'))).toEqual({ kind: 'verify' })
+  })
+
+  it('does not buy a second verification round once one has been spent', () => {
+    expect(routeCapHit(capHit('needs-review'), { verified: true })).toEqual({ kind: 'tail' })
+  })
+
+  it('declines the verification round when the budget guard refuses the spend', () => {
+    expect(routeCapHit(capHit('needs-review'), { overBudget: true })).toEqual({ kind: 'tail' })
+  })
+
+  it('still gates an open cap-hit even when a verification round was already spent', () => {
+    // The verification round can surface a dismissal of its own; that is the
+    // human's call, not something the spent round waives.
+    const open = capHit('open', {
+      openBlockers: [{ id: 'B1', class: 'BLOCKER', resolution: 'dismissed', justification: 'j' }],
+    })
+    expect(routeCapHit(open, { verified: true })).toEqual({ kind: 'early-gate' })
+  })
+
+  it('leaves a converged loop outcome untouched', () => {
+    const converged: ReviewLoopResult = { ...capHit('converged'), outcome: 'converged' }
+    expect(routeCapHit(converged)).toEqual({ kind: 'tail' })
   })
 })

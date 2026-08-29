@@ -82,6 +82,8 @@ function makeAgent(): Parameters<typeof resumeFromPoint>[0]['agent'] {
 
 const CONVERGED: ReviewLoopResult = {
   outcome: 'converged',
+  verdict: 'converged',
+  raised: { blocker: 0, material: 0, nitpick: 0 },
   rounds: 2,
   openBlockers: [],
   openMaterial: [],

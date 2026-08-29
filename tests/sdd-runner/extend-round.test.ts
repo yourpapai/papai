@@ -9,9 +9,9 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { settleApprovedGate } from '../../sdd-runner/src/extend-round.js'
-import { prepareResumeInput } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { runGateResume } from '../../sdd-runner/src/gate-resume-entry.js'
+import { prepareResumeInput } from '../../sdd-runner/src/gate-review-input.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 
@@ -129,7 +129,15 @@ describe('settleApprovedGate export (7.1)', () => {
           emit,
         },
       },
-      { outcome: 'converged', rounds: 1, openBlockers: [], openMaterial: [], openNitpicks: [] },
+      {
+        outcome: 'converged',
+        verdict: 'converged',
+        raised: { blocker: 0, material: 0, nitpick: 0 },
+        rounds: 1,
+        openBlockers: [],
+        openMaterial: [],
+        openNitpicks: [],
+      },
     )
     expect(result.outcome).toBe('approved')
     expect(result.version).toBe(3)

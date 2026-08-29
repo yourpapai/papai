@@ -731,7 +731,15 @@ describe('runResume', () => {
     fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nseeded\n')
     fs.writeFileSync(path.join(fixture.changeDir, 'design.md'), '## Context\nseeded\n')
     fs.writeFileSync(path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'), '## ADDED Requirements\n')
-    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    // Dismissed, not edited: a dismissal is the one resolution only a human
+    // can settle, so R1 leaves the final gate presented rather than approving
+    // it — which is what this test is about.
+    const materialResolution = {
+      id: 'F1',
+      class: 'MATERIAL',
+      resolution: 'dismissed',
+      justification: 'accepted as-is for now',
+    }
     fs.writeFileSync(
       path.join(runDir, 'sidecars', 'resolutions-1.json'),
       JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
@@ -1589,8 +1597,8 @@ describe('runGateResume', () => {
     const materialResolution = {
       id: 'F1',
       class: 'MATERIAL',
-      resolution: 'edited',
-      outcome: 'narrowed gap',
+      resolution: 'dismissed',
+      justification: 'accepted as-is for now',
     }
     const fixture = makeFixture({
       'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
@@ -1652,8 +1660,8 @@ describe('runGateResume', () => {
     const materialResolution = {
       id: 'F1',
       class: 'MATERIAL',
-      resolution: 'edited',
-      outcome: 'narrowed gap',
+      resolution: 'dismissed',
+      justification: 'accepted as-is for now',
     }
     const fixture = makeFixture({
       'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
@@ -2019,8 +2027,8 @@ describe('runGateResume', () => {
     const materialResolution = {
       id: 'F1',
       class: 'MATERIAL',
-      resolution: 'edited',
-      outcome: 'narrowed gap',
+      resolution: 'dismissed',
+      justification: 'accepted as-is for now',
     }
     const fixture = makeFixture({
       'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
@@ -2185,6 +2193,8 @@ describe('presentGateAt cost fallback', () => {
     }
     const reviewResult: ReviewLoopResult = {
       outcome: 'converged',
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       rounds: 1,
       openBlockers: [],
       openMaterial: [],
@@ -2262,6 +2272,8 @@ describe('presentGateAt change digest', () => {
 
   const reviewResult: ReviewLoopResult = {
     outcome: 'converged',
+    verdict: 'converged',
+    raised: { blocker: 0, material: 0, nitpick: 0 },
     rounds: 1,
     openBlockers: [],
     openMaterial: [],

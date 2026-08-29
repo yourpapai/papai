@@ -273,7 +273,15 @@ function conservativeBranchApplies(deps: OrchestratorDeps, claimed: RunState): P
       sidecarDir: path.join(claimed.runDir, 'sidecars'),
       emit: (): void => undefined,
     },
-    { outcome: 'converged', rounds: claimed.round, openBlockers: [], openMaterial: [], openNitpicks: [] },
+    {
+      outcome: 'converged',
+      rounds: claimed.round,
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    },
     {
       mode: narrowGateMode(claimed.gate?.mode ?? 'final'),
       version: claimed.gate?.version ?? 1,

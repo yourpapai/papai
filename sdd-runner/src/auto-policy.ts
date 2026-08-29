@@ -64,7 +64,7 @@ export interface PolicyDecision {
 
 const R2_WINDOW = 2
 /** Conservative per-round cost projection when no rounds are recorded. */
-const DEFAULT_ROUND_COST_USD = 0.5
+export const DEFAULT_ROUND_COST_USD = 0.5
 
 function startsWithDir(repoRelative: string, dir: string): boolean {
   if (repoRelative === dir) return true

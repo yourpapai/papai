@@ -52,6 +52,8 @@ describe('gatherGateSignals', () => {
     }
     const signals = await gatherGateSignals(deps, state, ctx, {
       outcome: 'converged',
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       rounds: 1,
       openBlockers: [],
       openMaterial: [],
