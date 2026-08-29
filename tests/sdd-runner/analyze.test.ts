@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import type { Finding, Resolution } from '../../sdd-runner/src/agent-layer.js'
+import { analyzeRun, buildCorpusReport } from '../../sdd-runner/src/analyze-corpus.js'
 import {
   classChurn,
   concernPersistence,
@@ -20,6 +21,8 @@ import {
 import { decisionConsistency, gateForensics } from '../../sdd-runner/src/analyze-gates.js'
 import type { AnalyzeFs, AnalyzeGit, GateFileRecord, RunBundle } from '../../sdd-runner/src/analyze-io.js'
 import { loadRunBundle, nodeAnalyzeFs, readOnlyGit } from '../../sdd-runner/src/analyze-io.js'
+import { renderCorpusJson, renderCorpusReport } from '../../sdd-runner/src/analyze-report.js'
+import type { ChangeGroundTruth } from '../../sdd-runner/src/analyze-truth.js'
 import { groundTruthJoin } from '../../sdd-runner/src/analyze-truth.js'
 import type { Metric } from '../../sdd-runner/src/analyze.js'
 import { retryTaxonomy, trajectoryMetric } from '../../sdd-runner/src/analyze.js'
@@ -323,6 +326,21 @@ const resolutionOf = (
   ...(action === 'dismissed' ? { justification: 'duplicate' } : { outcome: 'done' }),
 })
 
+const doneAs = (agent: string, costUsd: number): EventInput => ({
+  altitude: 'L1',
+  type: 'done',
+  agent,
+  usage: {
+    inputTokens: 1000,
+    outputTokens: 200,
+    reasoningTokens: 0,
+    cachedReadTokens: 0,
+    cachedWriteTokens: 0,
+    costUsd,
+    wallMs: 60_000,
+  },
+})
+
 function stateOf(overrides: Partial<PersistedRunState>): PersistedRunState {
   return {
     runId: 'r',
@@ -344,6 +362,8 @@ function stateOf(overrides: Partial<PersistedRunState>): PersistedRunState {
 }
 
 interface BundleSeed {
+  readonly workDir?: string
+  readonly runId?: string
   readonly events?: readonly SddEvent[]
   readonly findings?: readonly { readonly round: number; readonly items: readonly Finding[] }[]
   readonly skeptic?: readonly { readonly round: number; readonly items: readonly Finding[] }[]
@@ -356,9 +376,9 @@ interface BundleSeed {
 
 function bundleOf(seed: BundleSeed = {}): RunBundle {
   return {
-    workDir: '/w',
-    runId: 'r',
-    runDir: '/w/runs/r',
+    workDir: seed.workDir ?? '/w',
+    runId: seed.runId ?? 'r',
+    runDir: `${seed.workDir ?? '/w'}/runs/${seed.runId ?? 'r'}`,
     state: seed.state === undefined ? null : seed.state,
     stateBak: seed.stateBak ?? false,
     events: seed.events ?? [],
@@ -375,6 +395,19 @@ function bundleOf(seed: BundleSeed = {}): RunBundle {
 function knownValue<T>(metric: Metric<T>): T {
   if (metric.status !== 'known') throw new Error(`expected a known metric, got unknown: ${metric.reason}`)
   return metric.value
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null
+}
+
+function recordOf(value: unknown): Readonly<Record<string, unknown>> {
+  return isRecord(value) ? value : {}
+}
+
+function arrayField(record: Readonly<Record<string, unknown>>, key: string): readonly unknown[] {
+  const value = record[key]
+  return Array.isArray(value) ? value : []
 }
 
 describe('trajectory and gate forensics (2.1)', () => {
@@ -805,5 +838,192 @@ describe('ground-truth join (3.1/3.2)', () => {
     )
 
     expect(truth).toHaveLength(1)
+  })
+})
+
+describe('corpus report (4.1)', () => {
+  const responded = '## Gate response\n\n- [x] F13 F13\n'
+
+  it('renders per-run sections, corpus aggregates, and ground-truth sections as plain text without ANSI', () => {
+    const now = new Date(at(60))
+    const healthy = bundleOf({
+      workDir: '/w-a',
+      runId: 'healthy',
+      state: stateOf({ runId: 'healthy', changeName: 'fix-command', status: 'completed' }),
+      events: [
+        ev(roundOpen(1, 3), 1, at(0)),
+        ev(spawnedAs('a1', 'drafter'), 2, at(0)),
+        ev(doneAs('a1', 0.01), 3, at(2)),
+        ev(retryingAs('a1', 'stall', 1), 4, at(1)),
+        ev(convergenceOf(1, 'open', { blocker: 0, material: 3, nitpick: 2 }), 5, at(3)),
+        ev(roundOpen(2, 3), 6, at(4)),
+        ev(convergenceOf(2, 'open', { blocker: 0, material: 2, nitpick: 1 }), 7, at(5)),
+        ev(gatePresented(1, 'final'), 8, at(10)),
+        ev(gateAnswered(1, 'final'), 9, at(15)),
+      ],
+      gateFiles: [{ version: 1, md: responded }],
+      resolutions: [
+        { round: 1, items: [resolutionOf('F1', 'MATERIAL'), resolutionOf('F2', 'NITPICK')] },
+        { round: 2, items: [resolutionOf('F1', 'MATERIAL'), resolutionOf('F3', 'NITPICK')] },
+      ],
+    })
+    const contaminated = bundleOf({
+      workDir: '/w-a',
+      runId: 'trilogy',
+      state: stateOf({ runId: 'trilogy', changeName: 'decompose', status: 'completed' }),
+      stateBak: true,
+      events: [
+        ev(gatePresented(1, 'early'), 1, at(0)),
+        ev(gateAnswered(1, 'early'), 2, at(1)),
+        ev(gateAnswered(2, 'final'), 3, at(2)),
+      ],
+      gateFiles: [
+        { version: 1, md: responded },
+        { version: 2, md: responded },
+      ],
+    })
+    const pending = bundleOf({
+      workDir: '/w-b',
+      runId: 'pending-gate',
+      state: stateOf({
+        runId: 'pending-gate',
+        changeName: 'kb',
+        status: 'running',
+        gate: { mode: 'final', version: 4 },
+      }),
+      events: [ev(gatePresented(4, 'final'), 1, at(5))],
+      gateFiles: [{ version: 4, md: '- [ ] F1 F1\n' }],
+    })
+    const truth: readonly ChangeGroundTruth[] = [
+      {
+        changeName: 'fancy-ui',
+        repoRoot: '/repo',
+        exists: true,
+        tasksDone: 2,
+        tasksTotal: 2,
+        commits: 2,
+        onMainBranch: false,
+        strandedComplete: true,
+        mergedUnimplemented: false,
+      },
+      {
+        changeName: 'kb',
+        repoRoot: '/repo',
+        exists: true,
+        tasksDone: 0,
+        tasksTotal: 2,
+        commits: 3,
+        onMainBranch: true,
+        strandedComplete: false,
+        mergedUnimplemented: true,
+      },
+    ]
+
+    const report = buildCorpusReport([healthy, contaminated, pending], truth, { now })
+    const text = renderCorpusReport(report)
+
+    expect(text).toContain('## run healthy (/w-a)')
+    expect(text).toContain('## run trilogy (/w-a)')
+    expect(text).toContain('## run pending-gate (/w-b)')
+    expect(text).toContain('## corpus')
+    expect(text).toContain('## stranded-complete')
+    expect(text).toContain('fancy-ui')
+    expect(text).toContain('## merged-unimplemented')
+    expect(text).toContain('kb')
+    expect(text).not.toContain(String.fromCharCode(27))
+  })
+
+  it('aggregates exclude era-contaminated runs and pool the corpus-level counts', () => {
+    const now = new Date(at(60))
+    const healthy = bundleOf({
+      workDir: '/w-a',
+      runId: 'healthy',
+      state: stateOf({ runId: 'healthy', changeName: 'fix-command', status: 'completed' }),
+      events: [
+        ev(roundOpen(1, 2), 1, at(0)),
+        ev(convergenceOf(1, 'open', { blocker: 0, material: 3, nitpick: 1 }), 2, at(1)),
+        ev(roundOpen(2, 2), 3, at(2)),
+        ev(convergenceOf(2, 'open', { blocker: 0, material: 2, nitpick: 0 }), 4, at(3)),
+        ev(gatePresented(1, 'final'), 5, at(5)),
+        ev(autoDecision('R4', 'gate', 1), 6, at(6)),
+        ev(gateAnswered(1, 'final'), 7, at(7)),
+        ev(gatePresented(2, 'final'), 8, at(10)),
+      ],
+      resolutions: [
+        { round: 1, items: [resolutionOf('F1', 'MATERIAL'), resolutionOf('F2', 'NITPICK')] },
+        { round: 2, items: [resolutionOf('F1', 'MATERIAL'), resolutionOf('F3', 'NITPICK')] },
+      ],
+    })
+    const contaminated = bundleOf({
+      workDir: '/w-a',
+      runId: 'trilogy',
+      state: stateOf({ runId: 'trilogy', changeName: 'decompose', status: 'completed' }),
+      events: [
+        ev(gatePresented(1, 'early'), 1, at(0)),
+        ev(gateAnswered(1, 'early'), 2, at(1)),
+        ev(gateAnswered(2, 'final'), 3, at(2)),
+      ],
+      gateFiles: [
+        { version: 1, md: responded },
+        { version: 2, md: responded },
+      ],
+      resolutions: [{ round: 1, items: [resolutionOf('F9', 'MATERIAL'), resolutionOf('F9', 'MATERIAL')] }],
+    })
+
+    const report = buildCorpusReport([healthy, contaminated], [], { now })
+
+    expect(report.aggregates.runsAggregated).toBe(1)
+    expect(report.aggregates.eraContaminated).toEqual(['trilogy'])
+    expect(report.aggregates.autoDecisionsByRule).toEqual({ R4: 1 })
+    expect(report.aggregates.duplicateResolutionEntries).toBe(1)
+    expect(report.aggregates.r2Eligibility).toEqual({ eligible: 1, gateStates: 1 })
+    expect(report.aggregates.gatesNeverAnswered).toBe(1)
+  })
+
+  it('--json emits the same structure machine-readably', () => {
+    const now = new Date(at(60))
+    const healthy = bundleOf({
+      workDir: '/w-a',
+      runId: 'healthy',
+      state: stateOf({ runId: 'healthy', changeName: 'fix-command', status: 'completed' }),
+      events: [ev(gatePresented(1, 'final'), 1, at(0)), ev(gateAnswered(1, 'final'), 2, at(1))],
+      gateFiles: [{ version: 1, md: responded }],
+    })
+    const truth: readonly ChangeGroundTruth[] = [
+      {
+        changeName: 'kb',
+        repoRoot: '/repo',
+        exists: true,
+        tasksDone: 0,
+        tasksTotal: 2,
+        commits: 3,
+        onMainBranch: true,
+        strandedComplete: false,
+        mergedUnimplemented: true,
+      },
+    ]
+    const report = buildCorpusReport([healthy], truth, { now })
+
+    const parsed = recordOf(JSON.parse(renderCorpusJson(report)))
+    const runs = arrayField(parsed, 'runs')
+    const truthEntries = arrayField(parsed, 'groundTruth')
+    const merged = arrayField(recordOf(parsed['aggregates']), 'mergedUnimplemented')
+    expect(runs).toHaveLength(1)
+    expect(truthEntries.map((entry) => recordOf(entry)['changeName'])).toEqual(['kb'])
+    expect(merged).toContain('kb')
+  })
+
+  it('usage per role reprices through the reprice seam with costKnown fail-closed', () => {
+    const priced = bundleOf({
+      events: [ev(spawnedAs('a1', 'drafter'), 1, at(0)), ev(doneAs('a1', 0.02), 2, at(1))],
+    })
+    const unpriced = bundleOf({
+      events: [ev(spawnedAs('a1', 'drafter'), 1, at(0)), ev(doneAs('a1', 0), 3, at(1))],
+    })
+    const pricedRun = analyzeRun(priced, new Date(at(10)), () => null)
+    const unpricedRun = analyzeRun(unpriced, new Date(at(10)), () => null)
+    expect(pricedRun.usage.costKnown).toBe(true)
+    expect(pricedRun.usage.byRole['drafter']?.costUsd).toBeCloseTo(0.02)
+    expect(unpricedRun.usage.costKnown).toBe(false)
   })
 })

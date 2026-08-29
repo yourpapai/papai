@@ -9,6 +9,11 @@ import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
 import { realSpawn } from '../../review-loop/src/spawn.js'
+import { buildCorpusReport } from './analyze-corpus.js'
+import { loadCorpus } from './analyze-io.js'
+import { nodeAnalyzeFs, readOnlyGit } from './analyze-io.js'
+import { renderCorpusJson, renderCorpusReport } from './analyze-report.js'
+import { groundTruthJoin } from './analyze-truth.js'
 import { main } from './cli.js'
 import type { CliHarness } from './cli.js'
 import { parseSddArgs } from './cli.js'
@@ -43,6 +48,7 @@ export const USAGE = [
   'Usage:',
   '  sdd [<task-file> | <run-id>] [--depth S|M|L] [--pr] [--reopen [<n>]] [--config <path>]',
   '  sdd stop [<run-id>]',
+  '  sdd analyze [workdirs…] [--json] [--config <path>]',
   '',
   'A task file starts a run; a run id routes by its state (gate decision, resume, report).',
   'No target opens the session screen on a terminal — a loop, not a launcher: pick a run',
@@ -50,6 +56,8 @@ export const USAGE = [
   'description (n), and every finished action returns to the refreshed list; only an explicit',
   'quit (q) exits. Non-terminals keep the list-and-exit contract. Gate decisions: the TUI on',
   'a terminal; else hand-edit the gate file.',
+  'Analyze replays run artifacts read-only across workdirs (default: this worktree) and',
+  'prints a corpus report — it never routes into a run or disturbs pending gates.',
 ].join('\n')
 
 export async function readChangeSummary(repoRoot: string, changeName: string): Promise<ChangeDirSummary> {
@@ -175,6 +183,7 @@ function harnessMembers(
     runGateReopen: (runId, gateVersion) =>
       resolveAndCall(config.workDir, runId, (r) => runGateReopen(orchestratorDeps, config.workDir, r, gateVersion)),
     buildReport: (runId, pr) => buildRunReport(config, runId, pr, execGit),
+    runAnalysis: (workdirs, json) => runCorpusAnalysis(config, execGit, workdirs, json),
     stdout: harnessStdout,
     interactive: (): boolean => stdinIsInteractive(),
     latestSettledGateVersion: (runId) =>
@@ -185,6 +194,30 @@ function harnessMembers(
 
 function harnessStdout(line: string): void {
   process.stdout.write(`${line}\n`)
+}
+
+/**
+ * The analyze verb's entry (analysis spec): load runs over the explicit
+ * workdirs (default: the config workDir), join each change folder to openspec
+ * and git through the read-only seams, and print the corpus report — JSON
+ * with `--json`. Reads only; the output is stdout.
+ */
+async function runCorpusAnalysis(
+  config: { readonly repoRoot: string; readonly workDir: string },
+  execGit: ExecGitFn,
+  workdirs: readonly string[],
+  json: boolean,
+): Promise<void> {
+  const dirs = workdirs.length > 0 ? workdirs.map((dir) => path.resolve(dir)) : [config.workDir]
+  const fs = nodeAnalyzeFs()
+  const bundles = await loadCorpus(fs, dirs)
+  const changeRefs = bundles.flatMap((bundle) =>
+    bundle.state === null ? [] : [{ repoRoot: bundle.state.repoRoot, changeName: bundle.state.changeName }],
+  )
+  const truth = await groundTruthJoin(fs, readOnlyGit(execGit), changeRefs)
+  const resolveCost = await buildResolveCost()
+  const report = buildCorpusReport(bundles, truth, { now: new Date(), resolveCost })
+  harnessStdout(json ? renderCorpusJson(report) : renderCorpusReport(report))
 }
 
 async function buildRunReport(

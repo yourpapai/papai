@@ -13,7 +13,7 @@ import type { ResolvedCost } from './pricing.js'
 
 const TOKEN_SCALE = 1_000_000
 
-const EMPTY_USAGE: AgentUsage = {
+export const EMPTY_USAGE: AgentUsage = {
   inputTokens: 0,
   outputTokens: 0,
   reasoningTokens: 0,
@@ -117,7 +117,7 @@ export async function buildResolveCost(): Promise<ResolveCostFn> {
   }
 }
 
-function plusUsage(acc: AgentUsage, add: AgentUsage): AgentUsage {
+export function plusUsage(acc: AgentUsage, add: AgentUsage): AgentUsage {
   return {
     inputTokens: acc.inputTokens + add.inputTokens,
     outputTokens: acc.outputTokens + add.outputTokens,

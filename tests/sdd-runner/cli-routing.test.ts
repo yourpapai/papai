@@ -412,6 +412,7 @@ describe('--plan routing override (sdd-oversize-estimator-signals 4.x)', () => {
       buildReport: () => Promise.reject(new Error('unreachable')),
       requestCalmStop: () => Promise.reject(new Error('unreachable')),
       runGateReopen: () => Promise.reject(new Error('unreachable')),
+      runAnalysis: () => Promise.reject(new Error('unreachable')),
       stdout: () => undefined,
     }
     const startTask = path.join(dir, 'task.md')
@@ -419,5 +420,59 @@ describe('--plan routing override (sdd-oversize-estimator-signals 4.x)', () => {
     await main([startTask, '--plan'], harness)
     await main([startTask], harness)
     expect(started).toEqual(['plan:true', 'plan:false'])
+  })
+})
+
+describe('analyze verb routing (4.2)', () => {
+  function analyzeHarness(workDir: string, into: { calls: string[][] }): CliHarness {
+    return {
+      workDir,
+      runStart: () => Promise.reject(new Error('analyze must not start runs')),
+      runResume: () => Promise.reject(new Error('analyze must not resume runs')),
+      runGateResume: () => Promise.reject(new Error('analyze must not touch gates')),
+      runContinue: () => Promise.reject(new Error('analyze must not continue runs')),
+      buildReport: () => Promise.reject(new Error('analyze must not build run reports')),
+      requestCalmStop: () => Promise.reject(new Error('analyze must not stop runs')),
+      runGateReopen: () => Promise.reject(new Error('analyze must not reopen gates')),
+      runAnalysis: (workdirs, json) => {
+        into.calls.push([workdirs.join(','), `${json}`])
+        return Promise.resolve()
+      },
+      stdout: () => undefined,
+    }
+  }
+
+  it('parseSddArgs routes analyze with workdir positionals and --json', () => {
+    expect(parseSddArgs(['analyze'])).toMatchObject({ verb: 'analyze', analyze: { workdirs: [], json: false } })
+    expect(parseSddArgs(['analyze', '/w1', '/w2', '--json'])).toMatchObject({
+      verb: 'analyze',
+      analyze: { workdirs: ['/w1', '/w2'], json: true },
+    })
+    expect(parseSddArgs(['analyze', '--config', '/cfg.json'])).toMatchObject({
+      verb: 'analyze',
+      configPath: '/cfg.json',
+    })
+  })
+
+  it('analyze flags are only --json and --config', () => {
+    expect(() => parseSddArgs(['analyze', '--depth', 'S'])).toThrow(/unknown flag: --depth/u)
+    expect(() => parseSddArgs(['analyze', '--pr'])).toThrow(/unknown flag: --pr/u)
+  })
+
+  it('main routes analyze to the analysis surface with the config default workdir', async () => {
+    const calls: string[][] = []
+    await main(['analyze'], analyzeHarness('/default/.sdd-runner', { calls }))
+    expect(calls).toEqual([['', 'false']])
+  })
+
+  it('analyze passes explicit workdirs and --json, and never touches runs or pending gates', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd')
+    seedRun(workDir, 'gate-run', (state) => {
+      state.gate = { mode: 'final', version: 1 }
+    })
+    const calls: string[][] = []
+    await main(['analyze', '/other/.sdd-runner', workDir, '--json'], analyzeHarness(workDir, { calls }))
+    expect(calls).toEqual([['/other/.sdd-runner,' + workDir, 'true']])
   })
 })

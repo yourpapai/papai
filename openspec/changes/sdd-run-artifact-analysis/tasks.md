@@ -18,9 +18,9 @@
 
 ## 4. Corpus report and CLI route
 
-- [ ] 4.1 Red-first aggregate: multi-workdir corpus report renders per-run sections + corpus aggregates in plain text; `--json` emits the same structure machine-readably; no ANSI escapes — `bun test tests/sdd-runner/analyze.test.ts`
-- [ ] 4.2 Red-first `tests/sdd-runner/cli-routing.test.ts`: first argument `analyze` routes to the analysis surface (default workdir from config; extra args are workdir paths); existing run-id/task-file routing unchanged; gate-pending runs untouched — `bun test tests/sdd-runner/cli-routing.test.ts`
-- [ ] 4.3 Implement the route in `cli-routing.ts`/`index.ts` and the report renderer — `bun test tests/sdd-runner/cli-routing.test.ts tests/sdd-runner/analyze.test.ts`
+- [x] 4.1 Red-first aggregate: multi-workdir corpus report renders per-run sections + corpus aggregates in plain text; `--json` emits the same structure machine-readably; no ANSI escapes — `bun test tests/sdd-runner/analyze.test.ts`
+- [x] 4.2 Red-first `tests/sdd-runner/cli-routing.test.ts`: first argument `analyze` routes to the analysis surface (default workdir from config; extra args are workdir paths); existing run-id/task-file routing unchanged; gate-pending runs untouched — `bun test tests/sdd-runner/cli-routing.test.ts`
+- [x] 4.3 Implement the route in `cli-routing.ts`/`index.ts` and the report renderer — `bun test tests/sdd-runner/cli-routing.test.ts tests/sdd-runner/analyze.test.ts`
 
 ## 5. Verification, acceptance, docs
 

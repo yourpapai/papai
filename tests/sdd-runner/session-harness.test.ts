@@ -36,6 +36,7 @@ function captureHarness(overrides: Partial<CliHarness> = {}): { harness: CliHarn
       calls.push(`reopen:${runId}:${version}`)
       return Promise.resolve({ runId, gateVersion: version })
     },
+    runAnalysis: () => Promise.reject(new Error('unreachable')),
     stdout: (line) => {
       calls.push(`out:${line}`)
     },
