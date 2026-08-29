@@ -5,8 +5,8 @@
 
 ## 2. Backdrop plates (Figma, file `o8B8JfxhFeOHqIfpv0eSdZ`, page `Editable UI`)
 
-- [ ] 2.1 Create the `backdrop/<name>` plate frames behind all 34 kit component sets per design D4 (sibling frames, set + padding, `#828d84` label, ≤10 ops per `use_figma` call, fills from 1.2); never reparent or edit a component — verify: layer tree shows plates as siblings named `backdrop/*`
-- [ ] 2.2 Visual pass (`get_screenshot` over page regions): every transparent-background component (`ui/Select`, `ui/Segmented`, `ui/Pill` neutral/mute, `settings/SettingsTable`, …) is legible on its plate — verify: no light-on-light rendering; note exceptions (if any) in `audit-post.md`
+- [x] 2.1 Create the `backdrop/<name>` plate frames behind all 34 kit component sets per design D4 (sibling frames, set + padding, `#828d84` label, ≤10 ops per `use_figma` call, fills from 1.2); never reparent or edit a component — verify: layer tree shows plates as siblings named `backdrop/*`
+- [x] 2.2 Visual pass (`get_screenshot` over page regions): every transparent-background component (`ui/Select`, `ui/Segmented`, `ui/Pill` neutral/mute, `settings/SettingsTable`, …) is legible on its plate — verify: no light-on-light rendering; note exceptions (if any) in `audit-post.md`
 
 ## 3. Docs
 
