@@ -95,28 +95,48 @@ function estimateSavedMs(gains: GainsFacts): number {
   return totalAvoided * dwell
 }
 
-function collectGains(events: readonly SddEvent[]): GainsFacts {
+/**
+ * Human-gate dwell distances (U9 cross-run accounting seam): each gate's
+ * `presented` → `answered` timestamp distance, excluding auto-decided gates
+ * and unanswered presentations — the exact list `collectGains` medians over.
+ */
+export function gateDwellsMs(events: readonly SddEvent[]): number[] {
   const answeredAt = new Map<number, string>()
-  const humanDwellsMs: number[] = []
   for (const event of events) {
-    if (event.type !== 'gate') continue
-    if (event.action === 'answered') answeredAt.set(event.version, event.ts)
+    if (event.type === 'gate' && event.action === 'answered') answeredAt.set(event.version, event.ts)
   }
   const presentedHuman = new Map<number, string>()
-  const avoidedByRule = new Map<string, number>()
-  const acceptItemsByRule = new Map<string, number>()
-  let humanGates = 0
   for (const event of events) {
-    if (event.type === 'gate' && event.action === 'presented') {
-      presentedHuman.set(event.version, event.ts)
-    }
+    if (event.type === 'gate' && event.action === 'presented') presentedHuman.set(event.version, event.ts)
   }
   const autoDecidedVersions = new Set<number>()
   for (const event of events) {
     if (event.type !== 'auto_decision') continue
     if (event.decision === 'approve' || event.decision === 'extend') {
-      if (answeredAt.has(event.gateVersion)) {
-        autoDecidedVersions.add(event.gateVersion)
+      if (answeredAt.has(event.gateVersion)) autoDecidedVersions.add(event.gateVersion)
+    }
+  }
+  const dwellsMs: number[] = []
+  for (const [version, presentedTs] of presentedHuman) {
+    const answeredTs = answeredAt.get(version)
+    if (answeredTs === undefined) continue
+    if (autoDecidedVersions.has(version)) continue
+    dwellsMs.push(Math.max(0, new Date(answeredTs).getTime() - new Date(presentedTs).getTime()))
+  }
+  return dwellsMs
+}
+
+function collectGains(events: readonly SddEvent[]): GainsFacts {
+  const answeredVersions = new Set<number>()
+  for (const event of events) {
+    if (event.type === 'gate' && event.action === 'answered') answeredVersions.add(event.version)
+  }
+  const avoidedByRule = new Map<string, number>()
+  const acceptItemsByRule = new Map<string, number>()
+  for (const event of events) {
+    if (event.type !== 'auto_decision') continue
+    if (event.decision === 'approve' || event.decision === 'extend') {
+      if (answeredVersions.has(event.gateVersion)) {
         avoidedByRule.set(event.rule, (avoidedByRule.get(event.rule) ?? 0) + 1)
       }
     }
@@ -124,13 +144,7 @@ function collectGains(events: readonly SddEvent[]): GainsFacts {
       acceptItemsByRule.set(event.rule, (acceptItemsByRule.get(event.rule) ?? 0) + 1)
     }
   }
-  for (const [version, presentedTs] of presentedHuman) {
-    const answeredTs = answeredAt.get(version)
-    if (answeredTs === undefined) continue
-    if (autoDecidedVersions.has(version)) continue
-    humanGates += 1
-    humanDwellsMs.push(Math.max(0, new Date(answeredTs).getTime() - new Date(presentedTs).getTime()))
-  }
+  const humanDwellsMs = gateDwellsMs(events)
   humanDwellsMs.sort((a, b) => a - b)
   const mid = Math.floor(humanDwellsMs.length / 2)
   const medianDwellMs: number | null =
@@ -139,7 +153,7 @@ function collectGains(events: readonly SddEvent[]): GainsFacts {
       : humanDwellsMs.length % 2 === 1
         ? (humanDwellsMs[mid] ?? 0)
         : Math.round(((humanDwellsMs[mid - 1] ?? 0) + (humanDwellsMs[mid] ?? 0)) / 2)
-  return { avoidedByRule, acceptItemsByRule, humanGates, medianDwellMs }
+  return { avoidedByRule, acceptItemsByRule, humanGates: humanDwellsMs.length, medianDwellMs }
 }
 
 function gainsLines(gains: GainsFacts): string[] {

@@ -13,7 +13,7 @@ import { readEvents } from '../../../afk-runner/src/events.js'
 import type { EventInput, SddEvent } from '../../../afk-runner/src/events.js'
 import { startRun } from '../../../afk-runner/src/run.js'
 import type { RunDeps } from '../../../afk-runner/src/run.js'
-import { buildReport } from '../../../afk-runner/src/work/report.js'
+import { buildReport, gateDwellsMs } from '../../../afk-runner/src/work/report.js'
 import type { ChangeDirSummary, ReportInput } from '../../../afk-runner/src/work/report.js'
 import { makeFakePipeline, TASK_TEXT } from '../fixtures/fake-pipeline.js'
 
@@ -108,6 +108,27 @@ function makeInput(events: readonly SddEvent[], overrides: Partial<ReportInput> 
     ...overrides,
   }
 }
+
+describe('gateDwellsMs (U9 cross-run accounting seam)', () => {
+  it('returns the presented→answered distance of human-settled gates', () => {
+    // v1 presented at base+9, answered at base+240000 → 239991ms (the median-dwell fixture shape)
+    expect(gateDwellsMs(stamped(COMPLETED_INPUTS))).toEqual([239_991])
+  })
+
+  it('excludes auto-decided gates and unanswered presentations', () => {
+    const events = stamped([
+      { altitude: 'L2', type: 'gate', action: 'presented', mode: 'early', version: 1 },
+      { altitude: 'L2', type: 'auto_decision', rule: 'R1', decision: 'approve', evidenceDigest: 'x', gateVersion: 1 },
+      { altitude: 'L2', type: 'gate', action: 'answered', mode: 'final', version: 1, outcome: 'approve' },
+      { altitude: 'L2', type: 'gate', action: 'presented', mode: 'final', version: 2 },
+    ])
+    expect(gateDwellsMs(events)).toEqual([])
+  })
+
+  it('returns [] when no gate history exists', () => {
+    expect(gateDwellsMs([])).toEqual([])
+  })
+})
 
 describe('buildReport (sdd-runner/src/report.ts work copy)', () => {
   it('renders the pipeline facts: depth, review verdict, gate versions, skeptic lens', async () => {

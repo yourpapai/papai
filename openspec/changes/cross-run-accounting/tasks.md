@@ -3,8 +3,8 @@
 
 ## 1. Shared extraction seams (test-first)
 
-- [ ] 1.1 Write failing tests for `usageTotalsOf(events)` in a new `tests/afk-runner/work/gate-signals.test.ts` (token sum across `done` events; `costKnown: false` on tokens>0 ∧ costUsd=0; priced+unpriced mix; empty log), then implement it in `afk-runner/src/work/gate-signals.ts` with `costSummaryOf` delegating to it — its existing consumers' shapes are unchanged. Verify: `bun test tests/afk-runner/work/gate-signals.test.ts`
-- [ ] 1.2 Write failing tests for `gateDwellsMs(events)` (human-gate presented→answered distances, auto-decided gates excluded, unanswered presentations excluded), extract it from `collectGains` in `afk-runner/src/work/report.ts` preserving the median inputs exactly, and have `collectGains` use it. Verify: `bun test tests/afk-runner/work/report.test.ts`
+- [x] 1.1 Write failing tests for `usageTotalsOf(events)` in a new `tests/afk-runner/work/gate-signals.test.ts` (token sum across `done` events; `costKnown: false` on tokens>0 ∧ costUsd=0; priced+unpriced mix; empty log), then implement it in `afk-runner/src/work/gate-signals.ts` with `costSummaryOf` delegating to it — its existing consumers' shapes are unchanged. Verify: `bun test tests/afk-runner/work/gate-signals.test.ts`
+- [x] 1.2 Write failing tests for `gateDwellsMs(events)` (human-gate presented→answered distances, auto-decided gates excluded, unanswered presentations excluded), extract it from `collectGains` in `afk-runner/src/work/report.ts` preserving the median inputs exactly, and have `collectGains` use it. Verify: `bun test tests/afk-runner/work/report.test.ts`
 
 ## 2. Pure aggregation core
 

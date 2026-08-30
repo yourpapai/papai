@@ -42,25 +42,38 @@ export interface CostSummary {
   readonly costKnown: boolean
 }
 
+export interface UsageTotals extends CostSummary {
+  readonly tokens: number
+}
+
 /**
  * Spend over the run's `done` events (usage-aggregate copy, resolve seam
  * omitted — afk-runner has no pricing DB): an agent that finished with
  * tokens but a zero cost is unknown spend, fail-closed for the ladder (R4).
+ * Tokens ride the same fold (U9 cross-run accounting) — cost stays the
+ * summary's shape so its render consumers are unchanged.
  */
-export function costSummaryOf(events: readonly SddEvent[]): CostSummary {
+export function usageTotalsOf(events: readonly SddEvent[]): UsageTotals {
   let costUsd = 0
   let costKnown = true
+  let tokens = 0
   for (const event of events) {
     if (event.type !== 'done') continue
     costUsd += event.usage.costUsd
-    const tokens =
+    const eventTokens =
       event.usage.inputTokens +
       event.usage.outputTokens +
       event.usage.reasoningTokens +
       event.usage.cachedReadTokens +
       event.usage.cachedWriteTokens
-    if (event.usage.costUsd === 0 && tokens > 0) costKnown = false
+    tokens += eventTokens
+    if (event.usage.costUsd === 0 && eventTokens > 0) costKnown = false
   }
+  return { costUsd, costKnown, tokens }
+}
+
+export function costSummaryOf(events: readonly SddEvent[]): CostSummary {
+  const { costUsd, costKnown } = usageTotalsOf(events)
   return { costUsd, costKnown }
 }
 
