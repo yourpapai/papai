@@ -30,22 +30,26 @@ const makeDeps = (gitOutput: string, isGateableImpl: ChangedFilesDeps['isGateabl
   isGateableImpl,
 })
 
-const scored = (sourceFile: string, scoreValue: number): PerFileScore => ({
-  sourceFile,
-  merged: {
-    killed: 0,
-    survived: 0,
-    noCoverage: 0,
-    timeout: 0,
-    compileError: 0,
-    ignored: 0,
-    runtimeError: 0,
-    pending: 0,
-    total: 1,
-    scored: 1,
-    score: scoreValue,
-  },
-})
+/** Measurement-derived counts (killed = round(score * 10)) so written records pass arithmetic validation. */
+const scored = (sourceFile: string, scoreValue: number): PerFileScore => {
+  const killed = Math.round(scoreValue * 10)
+  return {
+    sourceFile,
+    merged: {
+      killed,
+      survived: 10 - killed,
+      noCoverage: 0,
+      timeout: 0,
+      compileError: 0,
+      ignored: 0,
+      runtimeError: 0,
+      pending: 0,
+      total: 10,
+      scored: 10,
+      score: scoreValue,
+    },
+  }
+}
 
 const unscored = (sourceFile: string): PerFileScore => ({
   sourceFile,
@@ -429,7 +433,7 @@ describe('changedFilesRun', () => {
 })
 
 describe('seedBaseline', () => {
-  test('preserves untouched baseline entries and adds changed entries via seedMerge', () => {
+  test('preserves untouched baseline entries and adds changed entries as rich records via seedMerge', () => {
     const baselinePath = tmpBaselinePath()
     fs.writeFileSync(baselinePath, JSON.stringify({ 'src/untouched.ts': 0.8 }))
 
@@ -437,19 +441,19 @@ describe('seedBaseline', () => {
 
     const written = readBaseline(baselinePath)
     expect(written['src/untouched.ts']).toBe(0.8)
-    expect(written['src/changed.ts']).toBe(0.5)
-    expect(written['src/new.ts']).toBe(0.3)
+    expect(written['src/changed.ts']).toEqual({ score: 0.5, killed: 5, timeout: 0, scored: 10 })
+    expect(written['src/new.ts']).toEqual({ score: 0.3, killed: 3, timeout: 0, scored: 10 })
     expect(count).toBe(3)
   })
 
-  test('keeps the higher score when latest exceeds existing (seedMerge max)', () => {
+  test('keeps the higher score when latest exceeds existing, carrying the measurement counts (seedMerge max)', () => {
     const baselinePath = tmpBaselinePath()
     fs.writeFileSync(baselinePath, JSON.stringify({ 'src/raised.ts': 0.7 }))
 
     seedBaseline(baselinePath, [scored('src/raised.ts', 0.9)])
 
     const written = readBaseline(baselinePath)
-    expect(written['src/raised.ts']).toBe(0.9)
+    expect(written['src/raised.ts']).toEqual({ score: 0.9, killed: 9, timeout: 0, scored: 10 })
   })
 
   test('never lowers an existing score (seedMerge, not ratchetMerge)', () => {
@@ -470,7 +474,7 @@ describe('seedBaseline', () => {
 
     expect(count).toBe(1)
     const written = readBaseline(baselinePath)
-    expect(written['src/fresh.ts']).toBe(0.5)
+    expect(written['src/fresh.ts']).toEqual({ score: 0.5, killed: 5, timeout: 0, scored: 10 })
   })
 
   test('skips entries with no scoreable mutants', () => {
@@ -496,8 +500,13 @@ describe('runUpdateBaseline', () => {
     })
 
     expect(count).toBe(2)
-    expect(readBaseline(baselinePath)).toEqual({ 'src/a.ts': 0.5, 'src/old.ts': 0.6 })
-    expect(readBaseline(path.join(reportDir, 'scores.json'))).toEqual({ 'src/a.ts': 0.5 })
+    expect(readBaseline(baselinePath)).toEqual({
+      'src/a.ts': { score: 0.5, killed: 5, timeout: 0, scored: 10 },
+      'src/old.ts': 0.6,
+    })
+    expect(readBaseline(path.join(reportDir, 'scores.json'))).toEqual({
+      'src/a.ts': { score: 0.5, killed: 5, timeout: 0, scored: 10 },
+    })
   })
 
   test('writes an empty scores file and preserves the baseline when no files were measured', () => {

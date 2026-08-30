@@ -25,8 +25,8 @@ discipline; CI is the hard gate.
 
 ## 3. Seed snapshot record-awareness (`scripts/mutation/seed-from.ts`)
 
-- [ ] 3.1 Write failing tests in `tests/scripts/mutation/seed-from.test.ts`: `writeScoresFile` emits rich records; `seedFromScores`/`seedBaseline` round-trip a rich `scores.json` and merge it over a mixed legacy/rich baseline without loosening floors or mixing score/counts provenance. Verify: `bun test tests/scripts/mutation/seed-from.test.ts` (red).
-- [ ] 3.2 Confirm/adjust `scripts/mutation/seed-from.ts` so the snapshot path is record-aware through the shared `buildBaselineFromPerFile`/`loadBaseline`/`seedMerge` helpers. Verify: `bun test tests/scripts/mutation/seed-from.test.ts` (green — completes 3.1).
+- [x] 3.1 Write failing tests in `tests/scripts/mutation/seed-from.test.ts`: `writeScoresFile` emits rich records; `seedFromScores`/`seedBaseline` round-trip a rich `scores.json` and merge it over a mixed legacy/rich baseline without loosening floors or mixing score/counts provenance. Verify: `bun test tests/scripts/mutation/seed-from.test.ts` (red).
+- [x] 3.2 Confirm/adjust `scripts/mutation/seed-from.ts` so the snapshot path is record-aware through the shared `buildBaselineFromPerFile`/`loadBaseline`/`seedMerge` helpers. Verify: `bun test tests/scripts/mutation/seed-from.test.ts` (green — completes 3.1).
 
 ## 4. Runner: record-level bump + measurement path (`mutation-improve/src/`)
 
