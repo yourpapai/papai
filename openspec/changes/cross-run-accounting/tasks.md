@@ -21,7 +21,7 @@
 
 ## 5. Live-lane aggregate assertion
 
-- [ ] 5.1 Extend `tests/afk-runner/fixtures/live/inventory.test.ts` with an aggregate-over-all-lanes describe: run count equals the lane count, Σtokens > 0, unpriced count matches the corpus, Σdwell ≥ 0, every row status valid — so the footer stays honest as C8's second live cycle adds lanes. Verify: `bun test tests/afk-runner/fixtures/live/inventory.test.ts`
+- [x] 5.1 Extend `tests/afk-runner/fixtures/live/inventory.test.ts` with an aggregate-over-all-lanes describe: run count equals the lane count, Σtokens > 0, unpriced count matches the corpus, Σdwell ≥ 0, every row status valid — so the footer stays honest as C8's second live cycle adds lanes. Verify: `bun test tests/afk-runner/fixtures/live/inventory.test.ts`
 
 ## 6. Docs and full verification
 

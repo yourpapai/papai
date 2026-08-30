@@ -7,12 +7,15 @@ import { describe, expect, it } from 'bun:test'
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { aggregate } from '../../../../afk-runner/src/accounting.js'
+import type { RunAccountingInput } from '../../../../afk-runner/src/accounting.js'
 import { SddEventSchema } from '../../../../afk-runner/src/event-schemas.js'
 import { readEvents } from '../../../../afk-runner/src/events.js'
 import type { SddEvent } from '../../../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../../../afk-runner/src/kernel/fold.js'
 import { memoFieldsOf } from '../../../../afk-runner/src/memo-project.js'
+import { readLiteRecord } from '../../../../afk-runner/src/run-lite.js'
 import { PersistedRunStateSchema } from '../../../../afk-runner/src/run-state.js'
 
 const LIVE_ROOT = import.meta.dir
@@ -49,6 +52,36 @@ function memoField<T>(value: T | undefined, fallback: T): T {
 describe('live corpus lane marking', () => {
   it('holds exactly the recorded live lanes', () => {
     expect(liveLanes()).toEqual(['mutation-floor-hardening-live'])
+  })
+})
+
+const VALID_ROW_STATUS = /^(completed|aborted|failed|stopped|running|gate:(early|final|plan|escalation) v\d+)$/u
+
+/** Roster row + folded log per lane — what `summarizeWorkDir` would feed aggregate() over these runs. */
+function laneAccountingInputs(): readonly RunAccountingInput[] {
+  return liveLanes().map((lane) => {
+    const record = readLiteRecord(readFileSync(path.join(LIVE_ROOT, lane, 'state.json'), 'utf8'))
+    if (record === null) throw new Error(`unreadable lane memo: ${lane}`)
+    return { runId: lane, ...record, events: readEvents(path.join(LIVE_ROOT, lane, 'events.ndjson')) }
+  })
+}
+
+/**
+ * The footer stays honest as C8's second live cycle adds lanes (U9 report
+ * half): run count, tokens-first spend, the wholly-unpriced corpus shape,
+ * dwell, and valid row statuses — asserted over every lane, whatever the
+ * corpus grows to.
+ */
+describe('aggregate over all live lanes', () => {
+  it('keeps run count, spend, unpriced count, dwell, and row statuses honest', () => {
+    const lanes = liveLanes()
+    const { rows, totals } = aggregate(laneAccountingInputs())
+    expect(totals.runs).toBe(lanes.length)
+    expect(rows).toHaveLength(lanes.length)
+    expect(totals.tokens).toBeGreaterThan(0)
+    expect(totals.unpricedCount).toBe(lanes.length)
+    expect(totals.dwellMs).toBeGreaterThanOrEqual(0)
+    for (const row of rows) expect(row.status).toMatch(VALID_ROW_STATUS)
   })
 })
 
