@@ -25,9 +25,9 @@
 
 ## 5. Docs + ledger
 
-- [ ] 5.1 Update the CLAUDE.md doc-index rows (`sdd-pipeline.md` row: workspace deleted, process sections canonical; `afk-runner.md` row: fallback retired), the `sdd-pipeline.md` historical banner (workspace deleted at R5), and the TDD-hook scope line in `docs/architecture/commands.md` (drop `sdd-runner/src/`). Verify: `rg -n "sdd-runner" CLAUDE.md docs/architecture/commands.md` matches only historical/canonical mentions
-- [ ] 5.2 Update `docs/architecture/afk-runner.md`: U9 ledger row → delivered (retirement half), the retirement-sequence paragraph → past tense with the revert-is-rollback note, the relaxation-window section → the jscpd re-tighten performed, and the R4 "one-line-revert fallback" claim retired. Verify: read-through of the four sections
-- [ ] 5.3 Add the CHANGELOG entry. Verify: `bun run format:check`
+- [x] 5.1 Update the CLAUDE.md doc-index rows (`sdd-pipeline.md` row: workspace deleted, process sections canonical; `afk-runner.md` row: fallback retired), the `sdd-pipeline.md` historical banner (workspace deleted at R5), and the TDD-hook scope line in `docs/architecture/commands.md` (drop `sdd-runner/src/`). Verify: `rg -n "sdd-runner" CLAUDE.md docs/architecture/commands.md` matches only historical/canonical mentions
+- [x] 5.2 Update `docs/architecture/afk-runner.md`: U9 ledger row → delivered (retirement half), the retirement-sequence paragraph → past tense with the revert-is-rollback note, the relaxation-window section → the jscpd re-tighten performed, and the R4 "one-line-revert fallback" claim retired. Verify: read-through of the four sections
+- [x] 5.3 Add the CHANGELOG entry. Verify: `bun run format:check`
 
 ## 6. Full verification
 
