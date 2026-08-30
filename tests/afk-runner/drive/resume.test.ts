@@ -302,8 +302,8 @@ const realWorkFor = createPipelineWorkFor(
 
 describe('resume decision — pure function of folded context + session ledger (design D6)', () => {
   it('a run with no opened round starts fresh at round 1 with the depth cap', () => {
-    expect(reviewResumeEntry(initialKernelContext({}), [], null)).toEqual({ startRound: 1, cap: 1 })
-    expect(reviewResumeEntry(initialKernelContext({}), [], 'M')).toEqual({ startRound: 1, cap: 3 })
+    expect(reviewResumeEntry(initialKernelContext({}), [], null)).toEqual({ startRound: 1, cap: 1, foldRound: null })
+    expect(reviewResumeEntry(initialKernelContext({}), [], 'M')).toEqual({ startRound: 1, cap: 3, foldRound: null })
   })
 
   it('the interrupted round re-runs from the ledger continuation session when one is in flight', () => {
@@ -316,6 +316,7 @@ describe('resume decision — pure function of folded context + session ledger (
     expect(withSession).toEqual({
       startRound: 2,
       cap: 4,
+      foldRound: { current: 2, cap: 4 },
       resumeSession: { label: 'reviewer', opencodeSessionId: 'ses-9', round: 2 },
     })
   })
@@ -323,7 +324,7 @@ describe('resume decision — pure function of folded context + session ledger (
   it('no in-flight session for the round re-runs it fresh (no continuation)', () => {
     const context = pipelineContextOf([resumeStamp({ altitude: 'L2', type: 'round_open', round: 3, cap: 5 }, 1)])
     const settled = reviewResumeEntry(context, [ledgerLine({ round: 1, status: 'done' })], 'M')
-    expect(settled).toEqual({ startRound: 3, cap: 5 })
+    expect(settled).toEqual({ startRound: 3, cap: 5, foldRound: { current: 3, cap: 5 } })
   })
 
   it('a round with a recorded verdict completed: the resume enters the next round fresh', () => {
@@ -341,7 +342,7 @@ describe('resume decision — pure function of folded context + session ledger (
       ),
     ])
     const next = reviewResumeEntry(context, [ledgerLine({ round: 1, status: 'spawned' })], 'M')
-    expect(next).toEqual({ startRound: 2, cap: 3 })
+    expect(next).toEqual({ startRound: 2, cap: 3, foldRound: { current: 1, cap: 3 } })
   })
 
   it('parked reporting is data: converged reports drivable (the tail owes work), presented gate reports gate-pending', () => {

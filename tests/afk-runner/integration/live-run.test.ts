@@ -317,9 +317,10 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
       'round_close:1',
       'round_open:2',
     ])
-    expect(tokens.slice(secondEnter, secondEnter + 6)).toEqual([
+    // the resume re-enters the already-open round 2 — no second round_open
+    // (the log-fidelity owedness invariant); its work-shaped events still land
+    expect(tokens.slice(secondEnter, secondEnter + 5)).toEqual([
       'stage_enter:review',
-      'round_open:2',
       'convergence:2:converged',
       'artifact',
       'artifact',
@@ -360,13 +361,13 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
     const declared = events.filter((event) => event.type === 'stage_failed')
     expect(declared).toHaveLength(1)
     expect(declared[0]).toMatchObject({ stage: 'review', kind: 'exhausted' })
-    // the failed bracket stayed open: no stage exit between the failure and the re-run's round
+    // the failed bracket stayed open: no stage exit between the failure and the re-run's round;
+    // the in-place re-run owes no second round_open (the owedness invariant)
     const tokens = skeletonTokens(path.join(pipeline.runDirOf(result.runId), 'events.ndjson'))
     const failedAt = tokens.indexOf('stage_failed:review')
-    expect(tokens.slice(failedAt - 1, failedAt + 3)).toEqual([
+    expect(tokens.slice(failedAt - 1, failedAt + 2)).toEqual([
       'round_open:1',
       'stage_failed:review',
-      'round_open:1',
       'convergence:1:converged',
     ])
   })

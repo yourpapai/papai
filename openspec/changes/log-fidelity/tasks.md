@@ -7,13 +7,13 @@ See LICENSE in the project root for details.
 
 ## 1. Round-open owedness (spec: "Round-open emission owedness", design D1/D2/D6)
 
-- [ ] 1.1 Red: emission-count test in the fake-pipeline harness — an extend-at-final cycle appends exactly one `round_open` per round (the mover's, not a second from review re-entry; the live-log seq 605/607 shape) — `bun test tests/afk-runner/round-open-owedness.test.ts`
-- [ ] 1.2 Red: same-round resume drill (in-process kill/resume, the seq 195/202 shape) appends no fresh `round_open` — `bun test tests/afk-runner/round-open-owedness.test.ts`
-- [ ] 1.3 Red: under-budget escalation retry re-entering an open round appends no fresh `round_open` — `bun test tests/afk-runner/round-open-owedness.test.ts`
-- [ ] 1.4 Red: pure-predicate unit — cap amendment on an already-open round still emits; identical round+cap does not — `bun test tests/afk-runner/round-open-owedness.test.ts`
-- [ ] 1.5 Red: re-run round still emits findings, convergence, `round_close` (spec: "Work-shaped events are never suppressed") — `bun test tests/afk-runner/round-open-owedness.test.ts`
-- [ ] 1.6 Green: `ReviewEntry` carries the fold's round snapshot out of `reviewResumeEntry`; `runRound` guards emission by `context.round?.current !== round || context.round?.cap !== effectiveCap` — `bun test tests/afk-runner/round-open-owedness.test.ts`
-- [ ] 1.7 Guard check: frozen corpus unchanged — golden replay, parity, memo-parity, resume-equivalence all green — `bun test tests/afk-runner`
+- [x] 1.1 Red: emission-count test in the fake-pipeline harness — an extend-at-final cycle appends exactly one `round_open` per round (the mover's, not a second from review re-entry; the live-log seq 605/607 shape) — `bun test tests/afk-runner/round-open-owedness.test.ts`
+- [x] 1.2 Red: same-round resume drill (in-process kill/resume, the seq 195/202 shape) appends no fresh `round_open` — `bun test tests/afk-runner/round-open-owedness.test.ts`
+- [x] 1.3 Red: under-budget escalation retry re-entering an open round appends no fresh `round_open` — `bun test tests/afk-runner/round-open-owedness.test.ts`
+- [x] 1.4 Red: pure-predicate unit — cap amendment on an already-open round still emits; identical round+cap does not — `bun test tests/afk-runner/round-open-owedness.test.ts`
+- [x] 1.5 Red: re-run round still emits findings, convergence, `round_close` (spec: "Work-shaped events are never suppressed") — `bun test tests/afk-runner/round-open-owedness.test.ts`
+- [x] 1.6 Green: `ReviewEntry` carries the fold's round snapshot out of `reviewResumeEntry`; `runRound` guards emission by `context.round?.current !== round || context.round?.cap !== effectiveCap` — `bun test tests/afk-runner/round-open-owedness.test.ts`
+- [x] 1.7 Guard check: frozen corpus unchanged — golden replay, parity, memo-parity, resume-equivalence all green — `bun test tests/afk-runner`
 
 ## 2. Resume event producer (spec: "Resume-invocation event production", design D3/D4/D5)
 

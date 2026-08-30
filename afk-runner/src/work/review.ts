@@ -126,7 +126,7 @@ export async function runReviewWork(input: ReviewWorkInput, io: WorkIO): Promise
       taskText: input.taskText,
       conventions: input.conventions,
     },
-    { startRound: entry.startRound, cap: entry.cap },
+    { startRound: entry.startRound, cap: entry.cap, foldRound: entry.foldRound },
   )
   if (presentsGate(result)) {
     await presentEarlyGate(input, io, { sidecarDir, changeDir, logPath, emit, runDir }, result)

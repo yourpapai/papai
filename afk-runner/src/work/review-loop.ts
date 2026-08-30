@@ -213,6 +213,24 @@ async function runLenses(
   return mergeLensFindings(...perLens)
 }
 
+/**
+ * Round-open owedness (log-fidelity D2): the state-shaped `round_open` is
+ * owed iff it changes the folded round state — the round being opened is not
+ * the entry fold's current round, or the effective cap differs from the
+ * fold's recorded cap. Same-round re-entries (resume, extend re-entry,
+ * escalation retry) owe nothing; recursion into round n+1 always clears the
+ * comparison; a cap amendment on an open round still emits (defensive — the
+ * steer wiring reads the entry fold, so within-invocation cap changes cannot
+ * occur today).
+ */
+export function roundOpenOwed(
+  foldRound: { readonly current: number; readonly cap: number } | null | undefined,
+  round: number,
+  effectiveCap: number,
+): boolean {
+  return foldRound?.current !== round || foldRound?.cap !== effectiveCap
+}
+
 async function runRound(
   deps: ReviewLoopDeps,
   options: ReviewLoopOptions,
@@ -220,9 +238,12 @@ async function runRound(
   cap: number,
   prevOpenBlockers: number,
   resumeSession?: ReviewLoopDeps['resumeSession'],
+  entryFoldRound?: { readonly current: number; readonly cap: number } | null,
 ): Promise<ReviewLoopResult> {
   const effectiveCap = applySteerAtBoundary(deps, cap)
-  deps.emit({ altitude: 'L2', type: 'round_open', round, cap: effectiveCap })
+  if (roundOpenOwed(entryFoldRound, round, effectiveCap)) {
+    deps.emit({ altitude: 'L2', type: 'round_open', round, cap: effectiveCap })
+  }
   // The resumed session continues once: whichever agent the ledger recorded
   // consumes it, and later rounds/spawns are fresh by design (D2).
   const consumedSession = consumeResumeSession(resumeSession, round)
@@ -262,9 +283,13 @@ async function runRound(
 export function runReviewLoop(
   deps: ReviewLoopDeps,
   options: ReviewLoopOptions,
-  entry: { readonly startRound?: number; readonly cap?: number } = {},
+  entry: {
+    readonly startRound?: number
+    readonly cap?: number
+    readonly foldRound?: { readonly current: number; readonly cap: number } | null
+  } = {},
 ): Promise<ReviewLoopResult> {
   const startRound = entry.startRound ?? 1
   const cap = entry.cap ?? ROUND_CAPS[options.depth]
-  return runRound(deps, options, startRound, cap, 0, deps.resumeSession)
+  return runRound(deps, options, startRound, cap, 0, deps.resumeSession, entry.foldRound ?? null)
 }

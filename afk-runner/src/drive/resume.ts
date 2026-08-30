@@ -10,7 +10,7 @@ import type { DepthProfile, EventInput } from '../events.js'
 import { readEvents } from '../events.js'
 import { pipelineMachine } from '../graph/pipeline.js'
 import { foldEvents } from '../kernel/fold.js'
-import type { KernelContext } from '../kernel/machine.js'
+import type { KernelContext, RoundStatus } from '../kernel/machine.js'
 import { ROUND_CAPS } from '../run-state.js'
 import type { SessionLedgerLine } from '../session-ledger.js'
 import { escalationOwed, escalationStageOf } from './failure-budget.js'
@@ -26,6 +26,13 @@ export interface ReviewEntry {
   readonly startRound: number
   readonly cap: number
   readonly resumeSession?: ResumeSession
+  /**
+   * The fold's round snapshot at work entry (log-fidelity D2): the
+   * `round_open` owedness baseline. A round already open at exactly this cap
+   * in the entry fold owes no fresh emission — resume, extend re-entry, and
+   * escalation retry re-run the work without re-opening the round.
+   */
+  readonly foldRound: RoundStatus | null
 }
 
 function latestInFlight(ledger: readonly SessionLedgerLine[], round: number): SessionLedgerLine | null {
@@ -52,13 +59,14 @@ export function reviewResumeEntry(
   depth: DepthProfile | null,
 ): ReviewEntry {
   const round = context.round
-  if (round === null) return { startRound: 1, cap: ROUND_CAPS[depth ?? 'S'] }
+  if (round === null) return { startRound: 1, cap: ROUND_CAPS[depth ?? 'S'], foldRound: null }
   const recorded = context.perRound.some((record) => record.round === round.current)
-  if (recorded) return { startRound: round.current + 1, cap: round.cap }
+  if (recorded) return { startRound: round.current + 1, cap: round.cap, foldRound: round }
   const inFlight = latestInFlight(ledger, round.current)
   return {
     startRound: round.current,
     cap: round.cap,
+    foldRound: round,
     ...(inFlight === null
       ? {}
       : {
