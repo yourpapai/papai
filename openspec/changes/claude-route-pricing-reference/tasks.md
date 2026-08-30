@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 ## 1. Pin the failing behaviour
 
-- [ ] 1.1 In `tests/opencode-agent/provider-proxy.test.ts`, inside the existing
+- [x] 1.1 In `tests/opencode-agent/provider-proxy.test.ts`, inside the existing
       `contain (claude route)` block, extend the factory-options test to assert
       `options.pricing.provider === 'anthropic'` and
       `options.pricing.model === 'claude-sonnet-5'` — the block already loads
@@ -15,30 +15,30 @@ See LICENSE in the project root for details.
       (`openai` / `anthropic/claude-sonnet-5`). Verify:
       `bun test tests/opencode-agent/provider-proxy.test.ts` fails on exactly
       those two assertions.
-- [ ] 1.2 Add a case to the same block with `LLM_PROVIDER: 'zai-coding-plan'` in
+- [x] 1.2 Add a case to the same block with `LLM_PROVIDER: 'zai-coding-plan'` in
       `CLAUDE_ENV`, asserting the pricing provider is still `anthropic` and that
       the gateway id appears nowhere in `options.pricing`. Verify: red on the
       provider assertion, `bun test tests/opencode-agent/provider-proxy.test.ts`.
-- [ ] 1.3 Add a case with an unprefixed `LLM_MODEL` (`claude-sonnet-5`),
+- [x] 1.3 Add a case with an unprefixed `LLM_MODEL` (`claude-sonnet-5`),
       asserting the model id passes through unchanged — the strip must not
       mangle the ordinary spelling. Verify:
       `bun test tests/opencode-agent/provider-proxy.test.ts`.
 
 ## 2. Derive the claude route's pricing reference
 
-- [ ] 2.1 Export `modelIdForCli` from `opencode-agent/src/claude-argv.ts`
+- [x] 2.1 Export `modelIdForCli` from `opencode-agent/src/claude-argv.ts`
       (design D2), unchanged in behaviour, with a doc line saying it is now the
       shared definition of "the id the CLI was invoked with". Verify:
       `bun run typecheck`, and the argv suites
       (`bun test tests/opencode-agent/claude-contract.test.ts tests/opencode-agent/claude-doctrine.test.ts`)
       stay green.
-- [ ] 2.2 In `opencode-agent/src/claude-spend.ts`, add the exported derivation
+- [x] 2.2 In `opencode-agent/src/claude-spend.ts`, add the exported derivation
       (a named constant for the `anthropic` catalogue id plus a function
       returning the settings spread with `provider` and `model` replaced), with
       the reason recorded in its doc comment: `LLM_PROVIDER` is the gateway
       route's catalogue key and the CLI reaches Anthropic. Verify:
       `bun run typecheck`.
-- [ ] 2.3 In `opencode-agent/src/contain.ts`, replace
+- [x] 2.3 In `opencode-agent/src/contain.ts`, replace
       `pricing: contained.openai` with the derived settings and add the one
       import. Keep the edit to one expression plus one import — the file is at
       297 of 300 `max-lines`. Verify: tasks 1.1–1.3 go green

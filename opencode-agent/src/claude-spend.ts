@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { RunSpend } from './agent-session.js'
+import { modelIdForCli } from './claude-argv.js'
 import type { ClaudeStreamLine } from './claude-contract.js'
 import type { Logger } from './logger.js'
 import type { OpenAiSettings } from './openai-config.js'
@@ -44,6 +45,39 @@ export interface ClaudeAccounting {
    */
   rateLimitLines: ClaudeStreamLine[]
 }
+
+/**
+ * The models.dev provider this route's runs are resolved under.
+ *
+ * A constant rather than a knob: the claude route runs the Anthropic CLI, and
+ * `LLM_PROVIDER` is the *other* route's catalogue key — the id OpenCode
+ * resolves its own model row under, which reaches an Anthropic turn only as a
+ * name nothing on it produced. A leftover gateway id there priced a run under a
+ * provider its turns never touched, and cost the catalogue rung its primary row.
+ */
+export const CLAUDE_CATALOGUE_PROVIDER = 'anthropic'
+
+/**
+ * The settings the catalogue is asked about for a claude-route run.
+ *
+ * Both halves of the reference are corrected here, and each fixes its own
+ * defect: the provider, so the lookup finds Anthropic's own row instead of a
+ * median across every provider publishing a model of that name; and the model
+ * id, stripped by the same {@link modelIdForCli} the CLI is invoked through,
+ * because a `provider/model` spelling would otherwise compose
+ * `<provider>/<provider>/<model>` — which splits at the first slash into an id
+ * no catalogue carries, and reports the run unpriced.
+ *
+ * A derived copy rather than a mutation: the settings object is the run's
+ * config, read elsewhere on its own terms. Only the two fields the reference is
+ * composed from are replaced, and the placeholder credential it carries stays
+ * exactly as contained.
+ */
+export const claudePricingSettings = (settings: OpenAiSettings): OpenAiSettings => ({
+  ...settings,
+  provider: CLAUDE_CATALOGUE_PROVIDER,
+  model: modelIdForCli(settings.model),
+})
 
 export const emptyAccounting = (): ClaudeAccounting => ({
   tokensTotal: 0,
