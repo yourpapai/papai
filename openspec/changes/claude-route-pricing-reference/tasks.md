@@ -71,10 +71,21 @@ See LICENSE in the project root for details.
 
 ## 5. Verification
 
-- [ ] 5.1 Run `bun run test`, `bun run typecheck`, `bun run lint` and
+- [x] 5.1 Run `bun run test`, `bun run typecheck`, `bun run lint` and
       `bun run test:mutate:changed` for the touched files; read failures from
       `reports/` rather than re-running. All green, mutation score at or above
-      the per-file baseline.
-- [ ] 5.2 Confirm no `docs/architecture/*.md` page describes the pricing
+      the per-file baseline. **Outcome:** 17728 pass / 4 skip / 1 fail across
+      1601 files; typecheck and lint clean. The one failure,
+      `tests/git-init-hint.test.ts:68`, pins a Bun ≥ 1.4 env-propagation fix and
+      fails identically on `origin/master` under this container's Bun 1.3.11 —
+      pre-existing and environmental, not this change's.
+      `test:mutate:changed` reports no targets: `stryker.config.json`'s `mutate`
+      globs cover `src/`, `plugins/task-provider-*` and named `src/*.ts` files
+      only, so `opencode-agent/` is outside the gate's scope by configuration.
+- [x] 5.2 Confirm no `docs/architecture/*.md` page describes the pricing
       reference (the accounting ladder is documented in this change's specs and
       in `opencode-agent/README.md`); update none if none applies, and say so.
+      **Outcome:** none applies. The three pages naming `models.dev` cover
+      magi's sandbox egress (`coding-sessions.md`, `coding-stack-overview.md`)
+      and the SDD runner's own repricing pass (`sdd-pipeline.md`), a separate
+      consumer of `pricing.ts` this change does not touch. No page updated.
