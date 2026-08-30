@@ -21,7 +21,7 @@
 
 ## 4. Naming honesty (D4)
 
-- [ ] 4.1 Test-first: update the two header pins in `tests/afk-runner/work/materialize.test.ts` to the new producer string (red), then reword the two header constants in `afk-runner/src/work/materialize.ts` and the four "sdd-runner materializes"/GENERATED strings in `openspec/schemas/auto-sdd/schema.yaml` + `templates/{review,assumptions}.md`. Frozen fixtures stay byte-identical. Verify: `bun test tests/afk-runner/work/materialize.test.ts`
+- [x] 4.1 Test-first: update the two header pins in `tests/afk-runner/work/materialize.test.ts` to the new producer string (red), then reword the two header constants in `afk-runner/src/work/materialize.ts` and the four "sdd-runner materializes"/GENERATED strings in `openspec/schemas/auto-sdd/schema.yaml` + `templates/{review,assumptions}.md`. Frozen fixtures stay byte-identical. Verify: `bun test tests/afk-runner/work/materialize.test.ts`
 
 ## 5. Docs + ledger
 
