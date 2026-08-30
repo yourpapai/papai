@@ -511,6 +511,30 @@ Seven bounds, each on a different kind of runaway.
 | Rounds           | `AGENT_MAX_ATTEMPTS`, `AGENT_CI_FIX_MAX_ROUNDS`, `AGENT_MAX_REVIEW_ATTEMPTS`, `AGENT_COMMIT_REPAIR_MAX_ROUNDS`, `AGENT_SYNC_REPAIR_MAX_ROUNDS` | An agent and CI bouncing off each other, a review nothing else bounds, a tree the repository will never accept, and a `/sync` conflict whose markers never clear |
 | Total spend      | `AGENT_MAX_TOKENS`, per **issue**                                                                                                              | An issue quietly costing more than it is worth                                                                                                                   |
 
+What that ceiling **counts** is one definition on both routes: uncached input,
+output, reasoning and cache **writes** — every token that entered the
+conversation once. Cache **reads** are excluded and priced. A cache read is the
+conversation re-sent to the provider on the next step of a turn, and a provider
+sums it across every step before reporting it, so counting it makes the figure
+grow as _steps × context_ — the same content charged once per assistant step —
+and the ceiling ends up measuring how hard a turn thought rather than what it
+spent. Issue #385 parked at 6,835,879 of 5,000,000 having cost $9.23 and used a
+tenth of a five-hour window. A cache write is content arriving for the first
+time, which is what an uncached input token is, so it counts.
+
+The `**Cost:**` line is unaffected: cache reads are priced at their own rate and
+are in every dollar figure the run reports. That asymmetry is the point — the
+ceiling and the price are asked different questions of the same buckets, which
+is also why an absent bucket counts as zero here and still reports unpriced
+there.
+
+Because the two definitions were once different per backend, a state block
+records which one produced its figure (`tokenScale`). A carried total on the
+superseded scale is reset to zero once, on the next job's restore, so no issue's
+total is the sum of two definitions; nothing else in the block moves, the cost
+totals included. It is not a `STATE_VERSION` bump — that means stranding, and
+this is a counter.
+
 The prompt caps are on the **finished prompt**, not on any one input: a per-input
 cap bounds one log and nothing else, and three red checks at 8k each still put
 24k into a repair prompt that then gets re-sent every round. When several
@@ -1647,7 +1671,7 @@ cannot drift.
 | `AGENT_JOB_TIMEOUT_MINUTES`                | no                                   | unset here; `300` from the workflow                                             | The job's own ceiling, shared with `timeout-minutes:`                                                                                                                                                                                                                                     |
 | `AGENT_TEARDOWN_RESERVE_MS`                | no                                   | `180000`                                                                        | Held back from the job so a time stop can report                                                                                                                                                                                                                                          |
 | `AGENT_WRAP_UP_MS`                         | no                                   | `120000`                                                                        | The model's slice of a stop: finish up and hand over                                                                                                                                                                                                                                      |
-| `AGENT_MAX_TOKENS`                         | no                                   | `5000000`                                                                       | Model tokens one issue may spend, across all its jobs                                                                                                                                                                                                                                     |
+| `AGENT_MAX_TOKENS`                         | no                                   | `5000000`                                                                       | Model tokens one issue may spend, across all its jobs — input, output, reasoning and cache writes; cache reads are priced but not counted                                                                                                                                                 |
 | `AGENT_MODEL_CONTEXT`                      | no                                   | unset — ask the catalogue                                                       | Context window, for a model no catalogue carries                                                                                                                                                                                                                                          |
 | `AGENT_MODEL_OUTPUT`                       | no                                   | unset — ask the catalogue                                                       | Output cap, same case                                                                                                                                                                                                                                                                     |
 | `AGENT_MODEL_REASONING`                    | no                                   | unset — ask the catalogue                                                       | `true`/`false`: does this model support reasoning                                                                                                                                                                                                                                         |
@@ -1722,6 +1746,16 @@ The route's trade-offs, so an operator sees them before choosing:
   `result` line has no usage carrier on this route — unlike the OpenCode
   server, whose session usage survives an abort — so deadline-looping issues
   burn spend `AGENT_MAX_TOKENS` never sees.
+- **A turn's `result` line reports usage per invocation, aggregated across every
+  API iteration inside it.** So its `cache_read_input_tokens` is the turn's
+  context multiplied by its step count, which is why the ceiling excludes that
+  bucket (see _Budgets_ above). Accumulation **across** turns is a plain sum:
+  `--resume` does not make the CLI report cumulatively, recorded by the
+  credential-free `claude-stub` lane rather than assumed.
+- **Sub-agent spend is under-counted.** The CLI's top-level `result.usage` omits
+  what a `Task` sub-agent spent, though its own `modelUsage` map reports it —
+  an under-count in the opposite direction to the killed-turn one above, and
+  unmeasured.
 - **The review loop rides the same route.** `/review` hands the loop its own
   claude backend (design D9): the generated loop config stamps
   `backend: "claude"` into every agent block, and the loop's env carries

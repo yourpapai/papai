@@ -35,8 +35,8 @@
 
 ## 6. Docs, doctrine and full verification
 
-- [ ] 6.1 Update `opencode-agent/README.md`: the budgets table's `AGENT_MAX_TOKENS` row and the environment table's description say what the ceiling counts; add the claude-route note that cache reads are priced but not counted, and why. Verify: `bun run lint`
-- [ ] 6.2 Update `opencode-agent/CLAUDE.md` with the ceiling's definition and the scale-marker mechanism, so the next backend author reads it before writing a third `tokensUsed()`. Verify: `bun run lint`
-- [ ] 6.3 Re-run the credential-free CLI recorder to confirm the pinned CLI still reports per-invocation usage on `--resume`, so the accumulation this change leaves in place stays pinned by a recording rather than by inspection. Verify: `bun run opencode-agent:test:claude-stub`
-- [ ] 6.4 Validate the change artifacts. Verify: `bunx openspec validate token-ceiling-excludes-cache-reads --strict`
-- [ ] 6.5 Run the full suite and the checks, and refresh any `docs/architecture/*.md` page a changed file maps to. Verify: `bun test && bun run typecheck && bun run lint`
+- [x] 6.1 Update `opencode-agent/README.md`: the budgets table's `AGENT_MAX_TOKENS` row and the environment table's description say what the ceiling counts; add the claude-route note that cache reads are priced but not counted, and why. Verify: `bun run lint`
+- [x] 6.2 Update `opencode-agent/CLAUDE.md` with the ceiling's definition and the scale-marker mechanism, so the next backend author reads it before writing a third `tokensUsed()`. Verify: `bun run lint`
+- [x] 6.3 Re-run the credential-free CLI recorder to confirm the pinned CLI still reports per-invocation usage on `--resume`, so the accumulation this change leaves in place stays pinned by a recording rather than by inspection. Verify: `bun run opencode-agent:test:claude-stub`
+- [x] 6.4 Validate the change artifacts. Verify: `bunx openspec validate token-ceiling-excludes-cache-reads --strict`
+- [x] 6.5 Run the full suite and the checks, and refresh any `docs/architecture/*.md` page a changed file maps to. Verify: `bun test && bun run typecheck && bun run lint`
