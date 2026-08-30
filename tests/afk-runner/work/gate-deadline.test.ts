@@ -225,7 +225,7 @@ function expiredGate(options: {
   fs.writeFileSync(path.join(runDir, 'gate-1.md'), `<!-- gate-1.md -->\n\n## Early gate (cap hit) — change add-thing\n`)
   fs.writeFileSync(path.join(runDir, 'gate-hashes-1.json'), '{}\n')
   if (options.preClaimed === true) {
-    fs.writeFileSync(path.join(runDir, 'gate-1.expiry-claim'), 'someone-else\n')
+    fs.writeFileSync(path.join(runDir, 'gate-1.settle-claim'), 'someone-else\n')
   }
   const clock = fakeClock()
   const warnings: string[] = []
@@ -263,7 +263,7 @@ describe('gate deadline — expiry (C4 9.2)', () => {
     await releaseTick(h.clock)
     const result = await waiter
     expect(result).toEqual({ kind: 'settled', outcome: 'extend' })
-    expect(fs.existsSync(path.join(h.runDir, 'gate-1.expiry-claim'))).toBe(true)
+    expect(fs.existsSync(path.join(h.runDir, 'gate-1.settle-claim'))).toBe(false)
     const events = readEvents(path.join(h.runDir, 'events.ndjson'))
     expect(answeredGateEvents(events).length).toBe(1)
   })
@@ -297,5 +297,38 @@ describe('gate deadline — expiry (C4 9.2)', () => {
     const waiter = h.start()
     await releaseTick(h.clock)
     await expect(waiter).resolves.toEqual({ kind: 'external' })
+  })
+})
+
+describe('gate deadline — natural sequence (D4 attempt-scoped claims)', () => {
+  it('first expiry (claim, rule-none, re-arm) releases the claim: a hand settle during the window succeeds', async () => {
+    const h = expiredGate({ trajectory: false })
+    const waiter = h.start()
+    // first expiry: no conservative branch → one re-arm, claim released
+    await releaseTick(h.clock)
+    await releaseTick(h.clock)
+    expect(rearmedEvents(readEvents(path.join(h.runDir, 'events.ndjson')))).toHaveLength(1)
+    expect(fs.existsSync(path.join(h.runDir, 'gate-1.settle-claim'))).toBe(false)
+    // the operator answers by hand during the re-arm window
+    fs.writeFileSync(path.join(h.runDir, 'gate-1.md'), '## Gate response\n\n- [x] T1 reviewed\nAPPROVE\n')
+    await releaseTick(h.clock)
+    await releaseTick(h.clock)
+    await releaseTick(h.clock)
+    const result = await waiter
+    expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
+    expect(answeredGateEvents(readEvents(path.join(h.runDir, 'events.ndjson')))).toHaveLength(1)
+  })
+
+  it('a second deadline after the re-arm re-runs the ladder instead of reporting an already-held claim', async () => {
+    const h = expiredGate({ trajectory: false, reArmed: true })
+    const waiter = h.start()
+    await releaseTick(h.clock)
+    await releaseTick(h.clock)
+    const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
+    expect(probe).toBe('still-waiting')
+    // the ladder ran again (the pending warning came from a fresh attempt, not a claim loss)
+    expect(h.warnings.some((line) => line.includes('gate stays pending'))).toBe(true)
+    expect(h.warnings.some((line) => line.includes('already claimed'))).toBe(false)
+    expect(answeredGateEvents(readEvents(path.join(h.runDir, 'events.ndjson')))).toHaveLength(0)
   })
 })

@@ -9,6 +9,7 @@ import path from 'node:path'
 import type { GateOutcome, StageId } from '../events.js'
 import { renderGateAnswers } from './gate-answers.js'
 import type { GateAnswers } from './gate-answers.js'
+import { responseFromAnswers } from './gate-answers.js'
 import { gatherAssumptions } from './gate-digest-extract.js'
 import type { GateDeps } from './gate-files.js'
 import { verifyGateIntegrity } from './gate-files.js'
@@ -37,6 +38,14 @@ export interface SettleResult {
   readonly answeredMode: 'early' | 'final' | 'escalation'
 }
 
+/** A contained settle rejection (D3): operator-input failure as data — the reason reaches the operator, nothing is appended. */
+export interface GateSettleRejection {
+  readonly kind: 'rejected'
+  readonly reason: string
+}
+
+export type SettleFileResult = SettleResult | GateSettleRejection
+
 /** The escalation gate's expected content: the trajectory ack, nothing else — no assumptions, no blockers, no veto (C6 D4). */
 export function escalationExpectedContent(): ExpectedGateContent {
   return { assumptions: [], blockers: [], requiredAck: 'T1', gateMode: 'escalation' }
@@ -50,14 +59,55 @@ export function outcomeOfResponse(response: GateResponse): SettleOutcome {
 }
 
 /**
+ * The render⇄parse roundtrip check (design D2/D5): the rendered text must
+ * parse back as exactly the decision the answers encode — compared as the
+ * full response shape, so a flipped outcome, a lost redirect, or a dropped
+ * veto all fail before anything is written.
+ */
+function preflightRoundtrip(md: string, answers: GateAnswers, expected: ExpectedGateContent): GateResponse {
+  const parsed = parseGateResponse(md, expected)
+  const intended = responseFromAnswers(answers)
+  if (
+    parsed.approved !== intended.approved ||
+    parsed.abort !== intended.abort ||
+    parsed.extend !== intended.extend ||
+    parsed.override !== intended.override ||
+    parsed.gateVetoRedirect !== intended.gateVetoRedirect ||
+    parsed.vetoes.length !== intended.vetoes.length ||
+    parsed.vetoes.some((veto, index) => {
+      const want = intended.vetoes[index]
+      return want === undefined || veto.id !== want.id || veto.redirect !== want.redirect
+    }) ||
+    parsed.answers.length !== intended.answers.length ||
+    parsed.answers.some((answer, index) => {
+      const want = intended.answers[index]
+      return want === undefined || answer.id !== want.id || answer.answer !== want.answer
+    })
+  ) {
+    throw new Error(
+      `producer settle round-trip failed: rendered ${answers.decision} answers parse as ${parsed.abort ? 'abort' : parsed.extend ? 'extend' : parsed.approved ? 'approve' : 'veto'} — nothing written`,
+    )
+  }
+  return parsed
+}
+
+/**
  * Settle from an answers object (TUI-shape producer, ladder, steer): render
  * the answers into the gate file, then run the file through the seam — the
- * rendered text must parse back as the same decision (design D5).
+ * rendered text must parse back as the same decision (design D5). The
+ * round-trip is pre-flighted in memory: a failed or flipped parse
+ * overwrites nothing and appends nothing (D2). Producer-lane failures stay
+ * crash-shaped: a rejection after the write rethrows as the refusal alarm.
  */
 export async function settleGateWithAnswers(input: SettleInput, answers: GateAnswers): Promise<SettleResult> {
   const md = renderGateAnswers(answers)
+  preflightRoundtrip(md, answers, input.expected)
   await writeFile(path.join(input.gate.runDir, `gate-${input.version}.md`), md)
-  return settleGateFile(input)
+  const result = await settleGateFile(input)
+  if ('kind' in result) {
+    throw new Error(`producer settle failed after write: ${result.reason}`)
+  }
+  return result
 }
 
 /**
@@ -67,6 +117,10 @@ export async function settleGateWithAnswers(input: SettleInput, answers: GateAns
  * event with its explicit outcome and the outcome's mover event through the
  * boundary — extend re-opens the review round (n+1, cap+1), approve on an
  * early gate enters decompose, veto re-enters draft, abort appends nothing.
+ *
+ * Total over operator input (D3): parse, integrity, and sidecar failures
+ * return a rejected-shape result carrying the reason instead of throwing —
+ * the waiter turns a rejection into feedback and keeps waiting.
  *
  * C5 outcome ordering (D3) at a FINAL gate, where the presentation entered
  * the gate stage in the map: approve appends the gate stage exit BEFORE the
@@ -78,7 +132,24 @@ export async function settleGateWithAnswers(input: SettleInput, answers: GateAns
  * aborted edge ignores the map). Early gates never entered the gate stage,
  * so no exit is appended there.
  */
-export async function settleGateFile(input: SettleInput): Promise<SettleResult> {
+export async function settleGateFile(input: SettleInput): Promise<SettleFileResult> {
+  try {
+    return await settleGateFileChecked(input)
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    return { kind: 'rejected', reason: withEmptyExpectedHint(reason, input.expected) }
+  }
+}
+
+/** The empty-expected hint (D3): an unknown-item rejection at a gate whose expected content is empty suggests a missing sidecar. */
+function withEmptyExpectedHint(reason: string, expected: ExpectedGateContent): string {
+  const expectedEmpty =
+    expected.assumptions.length === 0 && expected.blockers.length === 0 && (expected.findings ?? []).length === 0
+  if (!expectedEmpty || !/unknown (assumption|finding|blocker)/u.test(reason)) return reason
+  return `${reason} — the gate's expected content is empty; a missing sidecar can cause this`
+}
+
+async function settleGateFileChecked(input: SettleInput): Promise<SettleResult> {
   const gateMdPath = path.join(input.gate.runDir, `gate-${input.version}.md`)
   const md = await readFile(gateMdPath, 'utf8')
   const response = parseGateResponse(md, input.expected)

@@ -334,11 +334,11 @@ describe('parseGateResponse → RUN 1 MORE (extend directive)', () => {
     )
   })
 
-  it('ignores a mid-line marker like x → RUN 1 MORE instead of extending', () => {
+  it('ignores a mid-line marker like x → RUN 1 MORE instead of extending (it is prose, not signal)', () => {
     const md = '## Early gate\n\nx → RUN 1 MORE\n'
-    const response = parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'early' })
-    expect(response.extend).toBe(false)
-    expect(response.approved).toBe(true)
+    expect(() => parseGateResponse(md, { assumptions: [], blockers: [], gateMode: 'early' })).toThrow(
+      /no decision signal/u,
+    )
   })
 })
 
@@ -409,8 +409,10 @@ describe('parseGateResponse shape and anchor hardening', () => {
   it('ABORT is recognized only on its own line, indented or not', () => {
     expect(parseGateResponse('ABORT', { assumptions: [], blockers: [] }).abort).toBe(true)
     expect(parseGateResponse('  ABORT  ', { assumptions: [], blockers: [] }).abort).toBe(true)
-    expect(parseGateResponse('we ABORT now', { assumptions: [], blockers: [] }).abort).toBe(false)
-    expect(parseGateResponse('ABORTED', { assumptions: [], blockers: [] }).abort).toBe(false)
+    // Mid-line mentions are prose: no abort signal, and prose alone no longer
+    // settles an item-less gate as approve (D1 zero-signal rejection).
+    expect(() => parseGateResponse('we ABORT now', { assumptions: [], blockers: [] })).toThrow(/no decision signal/u)
+    expect(() => parseGateResponse('ABORTED', { assumptions: [], blockers: [] })).toThrow(/no decision signal/u)
   })
 
   it('accepts multi-digit assumption, blocker, and finding ids', () => {
@@ -524,6 +526,89 @@ describe('parseGateResponse shape and anchor hardening', () => {
         blockers: [],
       }),
     ).toThrow(/no preceding assumption or blocker/u)
+  })
+})
+
+describe('gate-level decision directives (D1)', () => {
+  const itemless = { assumptions: [], blockers: [], gateMode: 'final' as const }
+
+  it('APPROVE on its own line settles an item-less gate as an explicit approve', () => {
+    const response = parseGateResponse('## Final gate\n\nAPPROVE\n', itemless)
+    expect(response.approved).toBe(true)
+  })
+
+  it('VETO on its own line settles an item-less gate as a gate-level veto without redirect', () => {
+    const response = parseGateResponse('## Final gate\n\nVETO\n', itemless)
+    expect(response.approved).toBe(false)
+    expect(response.vetoes).toEqual([])
+    expect(response.gateVetoRedirect).toBe('')
+  })
+
+  it('VETO: <redirect> preserves the redirect text for the revision round', () => {
+    const response = parseGateResponse('## Final gate\n\nVETO: the approach is wrong\n', itemless)
+    expect(response.approved).toBe(false)
+    expect(response.gateVetoRedirect).toBe('the approach is wrong')
+  })
+
+  it('VETO precedes the required trajectory ack — a wholesale rejection owes no ack', () => {
+    const response = parseGateResponse('VETO: wrong direction\n', {
+      assumptions: [],
+      blockers: [],
+      requiredAck: 'T1',
+      gateMode: 'early',
+    })
+    expect(response.approved).toBe(false)
+    expect(response.gateVetoRedirect).toBe('wrong direction')
+  })
+
+  it('VETO is rejected at an escalation-mode gate stating veto is not valid there', () => {
+    expect(() =>
+      parseGateResponse('VETO\n', { assumptions: [], blockers: [], requiredAck: 'T1', gateMode: 'escalation' }),
+    ).toThrow(/veto is not valid at an escalation gate/u)
+    expect(() =>
+      parseGateResponse('VETO: nope\n', { assumptions: [], blockers: [], requiredAck: 'T1', gateMode: 'escalation' }),
+    ).toThrow(/veto is not valid at an escalation gate/u)
+  })
+
+  it('APPROVE with unchecked declared items is rejected naming the unchecked items', () => {
+    const md = '## Gate\n\nAPPROVE\n- [ ] A1 guests stay read-only\n- [x] A2 sqlite is enough\n'
+    expect(() =>
+      parseGateResponse(md, {
+        assumptions: [assumption(), assumption({ id: 'A2' })],
+        blockers: [],
+        gateMode: 'final',
+      }),
+    ).toThrow(/A1/u)
+  })
+
+  it('a zero-signal response at an item-less gate rejects with directive guidance instead of approving', () => {
+    const md = '## Final gate\n\nI read this and it mostly looks fine to me.\n'
+    expect(() => parseGateResponse(md, itemless)).toThrow(/APPROVE/u)
+  })
+
+  it('the zero-signal guidance names the VETO directive too', () => {
+    expect(() => parseGateResponse('prose only\n', itemless)).toThrow(/VETO/u)
+  })
+
+  it('directives are own-line only: mid-line mentions stay prose and settle nothing', () => {
+    expect(() => parseGateResponse('we APPROVE this and VETO nothing\n', itemless)).toThrow(/no decision signal/u)
+  })
+
+  it('an indented and trailing-space directive line is accepted', () => {
+    const response = parseGateResponse('  VETO:  redirect text  \n', itemless)
+    expect(response.gateVetoRedirect).toBe('redirect text')
+  })
+
+  it('a gate-level VETO outranks unchecked boxes at an item-carrying gate: no per-item vetoes recorded', () => {
+    const md = '## Gate\n\n- [ ] A1 guests stay read-only\nVETO: redo the approach\n'
+    const response = parseGateResponse(md, { assumptions: [assumption()], blockers: [], gateMode: 'final' })
+    expect(response.vetoes).toEqual([])
+    expect(response.gateVetoRedirect).toBe('redo the approach')
+  })
+
+  it('item-carrying gates keep boxes authoritative without any directive (back-compat)', () => {
+    const response = parseGateResponse('- [x] A1\n', { assumptions: [assumption()], blockers: [], gateMode: 'final' })
+    expect(response.approved).toBe(true)
   })
 })
 

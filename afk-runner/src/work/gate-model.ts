@@ -5,8 +5,18 @@
 
 import type { DigestRecord } from '../legacy-fold.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
+import { emptyParseState, expectedBlockerIds, expectedItemIds, processLine } from './gate-parse-lines.js'
+import type { ParseState } from './gate-parse-lines.js'
+import { stripPreviewSection } from './gate-preview.js'
 
 export { renderChangeDigest, writeGateDigest } from './gate-render.js'
+
+/** Own-line decision directives (D1) — shared by parse, render, and the waiter's answered-look probe so the grammar cannot drift. */
+export const APPROVE_DIRECTIVE = 'APPROVE'
+export const VETO_DIRECTIVE = 'VETO'
+export const APPROVE_DIRECTIVE_RE = /^\s*APPROVE\s*$/u
+export const VETO_DIRECTIVE_RE = /^\s*VETO\s*$/u
+export const VETO_REDIRECT_DIRECTIVE_RE = /^\s*VETO:\s*(\S.*?)\s*$/u
 
 export interface GateAssumption {
   readonly id: string
@@ -59,6 +69,13 @@ export interface GateResponse {
   readonly extend: boolean
   readonly vetoes: readonly GateVeto[]
   readonly answers: readonly GateAnswer[]
+  /**
+   * Whole-gate veto redirect (D1): `null` — no gate-level veto; `''` — a
+   * bare `VETO` (the revision round runs with an explicit no-redirect
+   * instruction); any other string — the `VETO: <redirect>` payload kept
+   * for the revision round.
+   */
+  readonly gateVetoRedirect: string | null
 }
 
 export interface ExpectedGateContent {
@@ -74,134 +91,65 @@ export interface ExpectedGateContent {
   readonly gateMode?: 'early' | 'final' | 'escalation'
 }
 
-const OVERRIDE_TOKEN = 'OVERRIDE'
-const RUN_DIRECTIVE_RE = /^\s*→\s*RUN 1 MORE\s*$/u
-const RUN_LIKE_RE = /^\s*→\s*RUN\b/u
-const DECIDED_BY_SUFFIX_RE = /\s*·\s*decided-by:\s*.+$/u
-const DECIDED_BY_LINE_RE = /^\s*decided-by:\s*\S.*$/u
-const PREVIEW_HEADER_RE = /^\s*###\s*Auto-decision preview\s*$/u
-const HEADER_RE = /^\s*(?:##|###)\s+/u
-const VETO_BOX_RE = /^\s*-\s*\[([^\]]+)\]\s*([AF]\d+)\b/u
-
-/**
- * Strip the `### Auto-decision preview` section (from its header to the next
- * `## `/`### ` header or EOF) before processing, so a hand-mangled preview
- * can never become gate input — the parse-inert guarantee's second layer.
- */
-function stripPreviewSection(markdown: string): string {
-  const lines = markdown.split('\n')
-  const start = lines.findIndex((line) => PREVIEW_HEADER_RE.test(line))
-  if (start === -1) return markdown
-  const end = lines.findIndex((line, index) => index > start && HEADER_RE.test(line))
-  const kept = end === -1 ? lines.slice(0, start) : [...lines.slice(0, start), ...lines.slice(end)]
-  return kept.join('\n')
+/** The gate-level veto branch (D1 precedence): wholesale rejection owes no ack and no per-item accounting. */
+function gateVetoResponse(state: ParseState, expected: ExpectedGateContent): GateResponse {
+  // Veto is not expressible at an escalation gate, whose only outcomes are
+  // retry, extend, and abort.
+  if (expected.gateMode === 'escalation') {
+    throw new Error(
+      'gate response: veto is not valid at an escalation gate — approve retries, extend clears the ledger, abort ends',
+    )
+  }
+  return {
+    approved: false,
+    abort: false,
+    override: false,
+    extend: false,
+    vetoes: [],
+    answers: [],
+    gateVetoRedirect: state.gateVetoRedirect ?? '',
+  }
 }
 
-function classifyBox(mark: string): boolean | null {
-  if (mark === '[x]' || mark === '[X]') return true
-  if (mark === '[ ]') return false
-  return null
-}
-
-interface ParseState {
-  vetoes: { id: string; redirect?: string }[]
-  answers: { id: string; answer: string }[]
-  checked: Set<string>
-  pendingRedirectFor: string | null
-  override: boolean
-  extend: boolean
-}
-
-function processVetoBox(state: ParseState, rawLine: string, lineNo: number, ids: Set<string>): boolean {
-  const line = rawLine.replace(DECIDED_BY_SUFFIX_RE, '')
-  const match = line.match(VETO_BOX_RE)
-  if (match === null) return false
-  const checked = classifyBox(`[${match[1] ?? ''}]`)
-  if (checked === null) throw new Error(`gate response line ${lineNo}: ambiguous checkbox mark`)
-  const id = match[2] ?? ''
-  if (!ids.has(id)) {
-    throw new Error(`gate response line ${lineNo}: unknown ${id.startsWith('A') ? 'assumption' : 'finding'} ${id}`)
+/** Zero-signal trap (D1): an item-less gate must never settle prose as approve — the vacuous all-checked computation is exactly what this guard turns into a rejection. Unreachable at item-carrying gates by construction: the presentation's own boxes are the signal. */
+function assertDecisionSignal(state: ParseState): void {
+  if (
+    !state.approve &&
+    state.checked.size === 0 &&
+    state.vetoes.length === 0 &&
+    state.answers.length === 0 &&
+    !state.override
+  ) {
+    throw new Error(
+      'gate response: no decision signal — write APPROVE or VETO: <redirect> on its own line (ABORT and → RUN 1 MORE also apply), or answer the presented items',
+    )
   }
-  if (checked) state.checked.add(id)
-  else state.vetoes.push({ id })
-  state.pendingRedirectFor = checked ? null : id
-  return true
-}
-
-function processArrowLine(
-  state: ParseState,
-  line: string,
-  lineNo: number,
-  prevLine: string,
-  payload: string,
-  blockerIds: Set<string>,
-  _gateMode: 'early' | 'final' | 'escalation' | undefined,
-): void {
-  if (RUN_DIRECTIVE_RE.test(line)) {
-    // C5: the extend directive is valid at a final gate too — a human asking
-    // for another round re-opens review and re-runs the tail (D3); the steer
-    // surface keeps its own final-gate extend guard (waiter-level).
-    state.extend = true
-    return
-  }
-  if (RUN_LIKE_RE.test(line)) {
-    throw new Error(`gate response line ${lineNo}: → RUN directive not recognized (only "→ RUN 1 MORE" is accepted)`)
-  }
-  if (payload === OVERRIDE_TOKEN) {
-    state.override = true
-    return
-  }
-  if (state.pendingRedirectFor !== null) {
-    const last = state.vetoes[state.vetoes.length - 1]
-    if (last !== undefined && last.id === state.pendingRedirectFor) last.redirect = payload
-    state.pendingRedirectFor = null
-    return
-  }
-  const blockerId = prevLine.match(/^\s*(B\d+)\b/u)?.[1] ?? ''
-  if (blockerIds.has(blockerId)) {
-    state.answers.push({ id: blockerId, answer: payload })
-    return
-  }
-  throw new Error(`gate response line ${lineNo}: → line with no preceding assumption or blocker`)
-}
-
-function processLine(
-  state: ParseState,
-  line: string,
-  lineNo: number,
-  prevLine: string,
-  itemIds: Set<string>,
-  blockerIds: Set<string>,
-  gateMode: 'early' | 'final' | 'escalation' | undefined,
-): void {
-  if (DECIDED_BY_LINE_RE.test(line)) return
-  // Membership routing: a box belongs to this gate when its id was declared in
-  // the expected content — never by id prefix, which a kind/id-mismatched item
-  // (e.g. an F-prefixed id carried in the assumptions list) would misroute.
-  if (processVetoBox(state, line, lineNo, itemIds)) return
-  const ackMatch = line.match(/^\s*-\s*\[([^\]]+)\]\s*(T\d+)\b/u)
-  if (ackMatch !== null) {
-    const checked = classifyBox(`[${ackMatch[1] ?? ''}]`)
-    if (checked === null) throw new Error(`gate response line ${lineNo}: ambiguous checkbox mark`)
-    const id = ackMatch[2] ?? ''
-    if (checked) state.checked.add(id)
-    return
-  }
-  const arrowMatch = line.match(/^\s*→\s*(.+)$/u)
-  if (arrowMatch !== null) {
-    processArrowLine(state, line, lineNo, prevLine, (arrowMatch[1] ?? '').trim(), blockerIds, gateMode)
-    return
-  }
-  state.pendingRedirectFor = null
 }
 
 function finalizeResponse(state: ParseState, expected: ExpectedGateContent): GateResponse {
+  if (state.gateVeto) return gateVetoResponse(state, expected)
   if (state.extend) {
-    return { approved: false, abort: false, override: false, extend: true, vetoes: [], answers: [] }
+    return {
+      approved: false,
+      abort: false,
+      override: false,
+      extend: true,
+      vetoes: [],
+      answers: [],
+      gateVetoRedirect: null,
+    }
   }
   if (expected.requiredAck !== undefined && !state.checked.has(expected.requiredAck)) {
     throw new Error(
       `gate response: required ack ${expected.requiredAck} not checked — check the trajectory-reviewed box to proceed`,
+    )
+  }
+  if (state.approve && state.vetoes.length > 0) {
+    // APPROVE contradicted by an explicitly unchecked box (D1): boxes stay
+    // authoritative at item-carrying gates — the contradiction is rejected
+    // rather than silently resolved either way.
+    throw new Error(
+      `gate response: APPROVE with unchecked items ${state.vetoes.map((veto) => veto.id).join(', ')} — check each box or veto instead`,
     )
   }
   const checkedAll = expected.assumptions.every((a) => state.checked.has(a.id))
@@ -212,6 +160,7 @@ function finalizeResponse(state: ParseState, expected: ExpectedGateContent): Gat
       `gate response: approved with open blockers ${unanswered.map((b) => b.id).join(', ')} — answer each with → <answer> or → OVERRIDE`,
     )
   }
+  assertDecisionSignal(state)
   const approved = checkedAll && unanswered.length === 0 && state.vetoes.length === 0
   return {
     approved,
@@ -220,27 +169,35 @@ function finalizeResponse(state: ParseState, expected: ExpectedGateContent): Gat
     extend: false,
     vetoes: state.vetoes,
     answers: state.answers,
+    gateVetoRedirect: null,
   }
 }
 
 export function parseGateResponse(markdown: string, expected: ExpectedGateContent): GateResponse {
   const stripped = stripPreviewSection(markdown)
   if (/^\s*ABORT\s*$/mu.test(stripped)) {
-    return { approved: false, abort: true, override: false, extend: false, vetoes: [], answers: [] }
+    return {
+      approved: false,
+      abort: true,
+      override: false,
+      extend: false,
+      vetoes: [],
+      answers: [],
+      gateVetoRedirect: null,
+    }
   }
   const lines = stripped.split('\n')
-  const itemIds = new Set([...expected.assumptions.map((a) => a.id), ...(expected.findings ?? []).map((f) => f.id)])
-  const blockerIds = new Set(expected.blockers.map((b) => b.id))
-  const state: ParseState = {
-    vetoes: [],
-    answers: [],
-    checked: new Set(),
-    pendingRedirectFor: null,
-    override: false,
-    extend: false,
-  }
+  const state = emptyParseState()
   lines.forEach((line, index) => {
-    processLine(state, line, index + 1, lines[index - 1] ?? '', itemIds, blockerIds, expected.gateMode)
+    processLine(
+      state,
+      line,
+      index + 1,
+      lines[index - 1] ?? '',
+      expectedItemIds(expected),
+      expectedBlockerIds(expected),
+      expected.gateMode,
+    )
   })
   return finalizeResponse(state, expected)
 }

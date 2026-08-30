@@ -20,6 +20,8 @@ export interface FakePipeline {
   readonly changeName: string
   readonly changeDir: string
   readonly spawnOrder: string[]
+  /** Every spawn's full prompt, keyed by output basename (append-only audit). */
+  readonly spawnPrompts: Record<string, string[]>
   readonly stdoutLines: string[]
   readonly runDirOf: (runId: string) => string
 }
@@ -97,6 +99,7 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
   const changeDir = path.join(repoRoot, 'openspec', 'changes', changeName)
   const workDir = path.join(repoRoot, '.sdd-runner')
   const spawnOrder: string[] = []
+  const spawnPrompts: Record<string, string[]> = {}
   const stdoutLines: string[] = []
   const sequenceWrites: Record<string, number> = {}
 
@@ -136,6 +139,7 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
     const match = prompt.match(/\.review-loop\/([\w-]+\.json)/u)
     const basename = match?.[1] ?? 'unknown.json'
     spawnOrder.push(basename)
+    ;(spawnPrompts[basename] ??= []).push(prompt)
     if (options.crashOn?.(basename) === true) {
       return Promise.reject(new Error(`simulated kill before ${basename}`))
     }
@@ -198,6 +202,7 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
     changeName,
     changeDir,
     spawnOrder,
+    spawnPrompts,
     stdoutLines,
     runDirOf: (runId: string): string => path.join(workDir, 'runs', runId),
   }

@@ -79,6 +79,8 @@ export function writeGateDigest(input: GateDigestInput): string {
     '',
     'Check every assumption box to approve. Leave a box unchecked to veto (optional `→ <redirect>` beneath).',
     'Answer a cap-hit blocker with `→ <answer>` beneath it, or `→ OVERRIDE` to override.',
+    'Write `APPROVE` on its own line to approve the change as a whole, or `VETO: <redirect>` to veto it as a whole.',
+    'A response with no decision signal is rejected — prose alone settles nothing.',
     'Write `ABORT` on its own line to abort.',
     '',
     ...renderDecisions(input.mode),
@@ -130,8 +132,8 @@ export function renderDecisions(mode: 'early' | 'final'): string[] {
   return [
     '### Decisions',
     '',
-    `- **approve** — ${c.approve}`,
-    '- **veto** (leave a box unchecked) — runs one resolver pass on the redirects, then re-gates',
+    `- **approve** (\`APPROVE\`, or every box checked) — ${c.approve}`,
+    '- **veto** (leave a box unchecked, or `VETO: <redirect>` for the whole change) — runs one resolver pass on the redirects, then re-gates',
     ...(c.extend === null ? [] : [`- **extend** (\`→ RUN 1 MORE\`) — ${c.extend} (early-gate only)`]),
     '- **abort** (`ABORT` on its own line) — ends the run without completing; the only early exit that spends nothing further',
   ]

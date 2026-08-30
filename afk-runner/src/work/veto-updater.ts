@@ -30,6 +30,12 @@ export interface VetoUpdaterPromptInput {
   readonly assumptions: readonly GateAssumption[]
   readonly findings: readonly GateFinding[]
   readonly vetoes: readonly VetoEntry[]
+  /**
+   * Whole-gate redirect (D6): `undefined` — item vetoes only; `''` — a bare
+   * gate-level veto (explicit no-redirect instruction); a string — the
+   * `VETO: <redirect>` payload.
+   */
+  readonly gateRedirect?: string | null
   readonly artifacts: VetoUpdaterArtifactContent
   readonly reportPath: string
 }
@@ -54,6 +60,14 @@ export function buildVetoUpdaterPrompt(input: VetoUpdaterPromptInput): string {
     `You are revising the "${input.changeName}" OpenSpec change. The human reviewed the gate and redirected.`,
     '',
   ]
+  if (input.gateRedirect !== undefined && input.gateRedirect !== null) {
+    parts.push(
+      input.gateRedirect === ''
+        ? 'Whole-gate redirect: the human rejected the change as a whole without a redirect — rework the artifacts to address what the gate presented.'
+        : `Whole-gate redirect: the human rejected the change as a whole with this redirect: "${input.gateRedirect}"`,
+      '',
+    )
+  }
   if (assumptionVetoes.length > 0) {
     parts.push('Vetoed assumptions:', ...formatVetoEntries(assumptionVetoes, assumptionLookup), '')
   }
@@ -181,6 +195,8 @@ export interface VetoUpdaterInput {
   readonly changeName: string
   readonly round: number
   readonly vetoes: readonly VetoEntry[]
+  /** Whole-gate redirect (D6): `null` — item vetoes only; `''` — bare gate veto; a string — the redirect payload. */
+  readonly gateRedirect?: string | null
 }
 
 export interface VetoUpdaterResult {
@@ -204,6 +220,7 @@ async function attemptVetoUpdater(
     assumptions,
     findings,
     vetoes: input.vetoes,
+    ...(input.gateRedirect === undefined ? {} : { gateRedirect: input.gateRedirect }),
     artifacts,
     reportPath: agentWritePath(deps.cwd, 'veto-updater.json'),
   })

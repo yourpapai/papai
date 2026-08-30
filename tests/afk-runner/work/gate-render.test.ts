@@ -131,14 +131,18 @@ describe('decisionConsequences and renderDecisions (13.4)', () => {
     const early = renderDecisions('early')
     const final = renderDecisions('final')
     expect(early[0]).toBe('### Decisions')
-    expect(early).toContain('- **approve** — continues to task decomposition, atomicity checking, and a final gate')
+    expect(early).toContain(
+      '- **approve** (`APPROVE`, or every box checked) — continues to task decomposition, atomicity checking, and a final gate',
+    )
     expect(early.join('\n')).toContain(
       '- **extend** (`→ RUN 1 MORE`) — runs one more review round, then re-gates (early-gate only)',
     )
-    expect(final).toContain('- **approve** — completes the run with the full artifact set')
+    expect(final).toContain(
+      '- **approve** (`APPROVE`, or every box checked) — completes the run with the full artifact set',
+    )
     expect(final.join('\n')).not.toContain('**extend**')
     expect(early).toContain(
-      '- **veto** (leave a box unchecked) — runs one resolver pass on the redirects, then re-gates',
+      '- **veto** (leave a box unchecked, or `VETO: <redirect>` for the whole change) — runs one resolver pass on the redirects, then re-gates',
     )
     expect(final).toContain(
       '- **abort** (`ABORT` on its own line) — ends the run without completing; the only early exit that spends nothing further',

@@ -17,9 +17,21 @@ import { renderGateAnswers } from '../../../afk-runner/src/work/gate-answers.js'
 import { presentGate } from '../../../afk-runner/src/work/gate-files.js'
 import type { ExpectedGateContent } from '../../../afk-runner/src/work/gate-model.js'
 import { settleGateFile, settleGateWithAnswers } from '../../../afk-runner/src/work/gate-settle.js'
-import type { SettleInput } from '../../../afk-runner/src/work/gate-settle.js'
+import type { SettleFileResult, SettleInput, SettleResult } from '../../../afk-runner/src/work/gate-settle.js'
 
 const NULL_DIGEST = { what: null, why: null, touches: null, hasTasks: false }
+
+/** Narrow a settle result to its settled shape — throws (failing the test) on a rejection. */
+function settledOf(result: SettleFileResult): SettleResult {
+  if ('kind' in result) throw new Error(`expected a settled result, got rejection: ${result.reason}`)
+  return result
+}
+
+/** Narrow a settle result to its rejected shape — throws (failing the test) on a settle. */
+function rejectionOf(result: SettleFileResult): { readonly reason: string } {
+  if (!('kind' in result)) throw new Error('expected a rejection, got a settled result')
+  return result
+}
 
 const EXPECTED: ExpectedGateContent = {
   assumptions: [{ id: 'A1', text: 'guests stay read-only', blast_radius: 'group replies' }],
@@ -169,16 +181,18 @@ describe('settle seam — answers render, parse back, verify, append', () => {
       decision: 'approve',
     }
     fs.writeFileSync(path.join(h.runDir, 'gate-1.md'), renderGateAnswers(answers))
-    const result = await h.settleFile()
+    const result = settledOf(await h.settleFile())
     expect(result.outcome).toBe('approve')
     expect(h.appended.length).toBeGreaterThan(0)
   })
 
-  it('an unparseable response appends nothing and surfaces the error', async () => {
+  it('an unparseable response appends nothing and returns the contained rejection (D3)', async () => {
     const h = await makePresentedGate()
     const before = h.appended.length
     fs.writeFileSync(path.join(h.runDir, 'gate-1.md'), '## Gate response\n\n- [x] A9 never declared\n')
-    await expect(h.settleFile()).rejects.toThrow(/unknown assumption A9/u)
+    const result = await h.settleFile()
+    expect(result).toMatchObject({ kind: 'rejected' })
+    expect(rejectionOf(result).reason).toMatch(/unknown assumption A9/u)
     expect(h.appended.length).toBe(before)
   })
 

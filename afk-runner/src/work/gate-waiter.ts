@@ -12,12 +12,14 @@ import { escalationStageOf } from '../drive/failure-budget.js'
 import { flattenPosition } from '../drive/loop.js'
 import type { EventInput, StageId } from '../events.js'
 import { foldLogOrInitial } from '../kernel/fold.js'
-import type { KernelMachine } from '../kernel/machine.js'
-import { claimGateSettle } from './gate-claims.js'
+import type { KernelContext, KernelMachine } from '../kernel/machine.js'
+import { claimGateSettle, releaseGateSettle } from './gate-claims.js'
 import { processExpiry } from './gate-expiry.js'
+import { APPROVE_DIRECTIVE_RE, VETO_DIRECTIVE_RE, VETO_REDIRECT_DIRECTIVE_RE } from './gate-model.js'
 import { settleGateWithAnswers } from './gate-settle.js'
 import { expectedContentFor, settleGateFile } from './gate-settle.js'
 import type { SettleInput, SettleOutcome } from './gate-settle.js'
+import { clearResponseError, readFailedDigest, writeResponseError } from './response-error.js'
 import { consumeSteerFile } from './steer.js'
 import { peekSteer, steerAnswers, translateSteer } from './waiter-steer.js'
 export type { SteerLanding } from './waiter-steer.js'
@@ -39,9 +41,18 @@ export function isStableEdit(digests: readonly string[]): boolean {
   return last.every((digest) => digest === last[0])
 }
 
-/** Whether a polled gate file parses as human-answered: a checked box or an answer section. */
+/** Whether a polled gate file parses as human-answered: a checked box, an answer section, or a decision directive (D1). */
 export function looksAnswered(md: string): boolean {
-  return /-\s\[x\]\s*[AFT]\d+/u.test(md) || md.includes('## Gate response')
+  return (
+    /-\s\[x\]\s*[AFT]\d+/u.test(md) ||
+    md.includes('## Gate response') ||
+    md
+      .split('\n')
+      .some(
+        (line) =>
+          APPROVE_DIRECTIVE_RE.test(line) || VETO_DIRECTIVE_RE.test(line) || VETO_REDIRECT_DIRECTIVE_RE.test(line),
+      )
+  )
 }
 
 export interface GateWaiterPorts {
@@ -65,6 +76,11 @@ export type GateWaiterResult =
   | { readonly kind: 'settled'; readonly outcome: SettleOutcome }
   | { readonly kind: 'external' }
 
+/** A contained settle rejection (D3): data for the feedback loop, not a waiter death. */
+type WaiterRejection = { readonly kind: 'rejected'; readonly reason: string }
+
+type AttemptOutcome = GateWaiterResult | WaiterRejection
+
 /** Escalation stays first-class (C6 D4); only the dormant plan mode collapses to final. */
 function narrowGateMode(mode: 'early' | 'final' | 'plan' | 'escalation'): 'early' | 'final' | 'escalation' {
   return mode === 'plan' ? 'final' : mode
@@ -78,16 +94,31 @@ function readGateMd(runDir: string, version: number): Promise<string | null> {
  * The foreground gate waiter (design D3): a run-level post-park continuation
  * polling the gate file, the steer file, and the log once per tick. A
  * hand-edited gate file settles through the seam after the 3-tick stability
- * guard; a steer directive is translated to its answer equivalent
- * (extend-at-final skipped with a warning); external settlement — another
- * process answered — exits cleanly; a lost settle claim exits as external.
- * Calm-stop against a parked gate is a no-op: the waiter never consults the
- * stop marker. Ctrl-C is the operator's exit.
+ * guard; a rejected settle becomes feedback — the sibling response-error
+ * artifact plus a stdout line — and the waiter keeps waiting, re-attempting
+ * only after the gate file's digest changes (D3). A steer directive is
+ * translated to its answer equivalent (extend-at-final skipped with a
+ * warning); external settlement — another process answered — exits cleanly;
+ * a lost settle claim exits as external. Calm-stop against a parked gate is
+ * a no-op: the waiter never consults the stop marker. Ctrl-C is the
+ * operator's exit.
  */
 export function awaitGateSettle(ports: GateWaiterPorts): Promise<GateWaiterResult> {
-  const digests: string[] = []
   const attemptSettle: AttemptSettleFn = (context, via) => attemptSettleOf(ports, context, via)
-  return step(ports, digests, attemptSettle)
+  return step(ports, emptyWaiterState(), attemptSettle)
+}
+
+/** Threading state across ticks: the stability window and the digest guard (D3). */
+interface WaiterState {
+  readonly digests: string[]
+  /** The digest of the last rejected gate file — an unchanged digest never re-attempts. */
+  failedDigest: string | null
+  /** The gate version the failedDigest was seeded for (resume reads the error artifact once per version). */
+  seededFor: number | null
+}
+
+function emptyWaiterState(): WaiterState {
+  return { digests: [], failedDigest: null, seededFor: null }
 }
 
 interface WaiterContext {
@@ -99,16 +130,17 @@ interface WaiterContext {
 
 type AttemptSettleFn = (
   context: WaiterContext,
-  via: (input: SettleInput) => Promise<{ outcome: SettleOutcome }>,
-) => Promise<GateWaiterResult>
+  via: (input: SettleInput) => Promise<{ outcome: SettleOutcome } | WaiterRejection>,
+) => Promise<AttemptOutcome>
 
-/** Claim-then-settle: first-writer-wins arbitration, then the seam. A lost claim exits as external. */
+/** Claim-then-settle (D4 attempt scoping): first-writer-wins arbitration, the seam, then release on the attempt's outcome — settled or rejected. A lost claim exits as external. */
 async function attemptSettleOf(
   ports: GateWaiterPorts,
   context: WaiterContext,
-  via: (input: SettleInput) => Promise<{ outcome: SettleOutcome }>,
-): Promise<GateWaiterResult> {
-  const claim = claimGateSettle(ports.runDir, context.version, `waiter-${process.pid}`)
+  via: (input: SettleInput) => Promise<{ outcome: SettleOutcome } | WaiterRejection>,
+): Promise<AttemptOutcome> {
+  const claimant = `waiter-${process.pid}`
+  const claim = claimGateSettle(ports.runDir, context.version, claimant)
   if (!claim.claimed) {
     ports.stdout?.(`gate ${context.version} settle already claimed by ${claim.winner ?? 'another process'}`)
     return { kind: 'external' }
@@ -126,32 +158,58 @@ async function attemptSettleOf(
     round: context.round,
     ...(context.failedStage === undefined ? {} : { failedStage: context.failedStage }),
   }
-  const result = await via(input)
-  return { kind: 'settled', outcome: result.outcome }
+  try {
+    const result = await via(input)
+    if ('kind' in result) return result
+    return { kind: 'settled', outcome: result.outcome }
+  } finally {
+    releaseGateSettle(ports.runDir, context.version, claimant)
+  }
 }
 
 /** The steer branch of one waiter tick: consume the directive, settle through the seam when valid, recurse otherwise. */
-function steerTick(
+async function steerTick(
   ports: GateWaiterPorts,
   context: WaiterContext,
-  digests: string[],
+  state: WaiterState,
   attemptSettle: AttemptSettleFn,
 ): Promise<GateWaiterResult> {
   const steer = peekSteer(ports.runDir)
-  if (steer === null) return step(ports, digests, attemptSettle)
+  if (steer === null) return step(ports, state, attemptSettle)
   const translated = translateSteer(steer, context.gateMode)
   consumeSteerFile(ports.runDir)
   if (translated.warn !== null) {
     ports.stdout?.(translated.warn)
-    return step(ports, digests, attemptSettle)
+    return step(ports, state, attemptSettle)
   }
-  return attemptSettle(context, (input) => settleGateWithAnswers(input, steerAnswers(steer)))
+  const result = await attemptSettle(context, (input) => settleGateWithAnswers(input, steerAnswers(steer)))
+  if (result.kind === 'rejected') return feedbackAndKeepWaiting(ports, context, state, attemptSettle, result.reason)
+  clearResponseError(ports.runDir, context.version)
+  state.failedDigest = null
+  return result
+}
+
+/** Record a rejection as operator feedback (D3): sibling artifact + stdout line, then keep waiting. */
+function feedbackAndKeepWaiting(
+  ports: GateWaiterPorts,
+  context: WaiterContext,
+  state: WaiterState,
+  attemptSettle: AttemptSettleFn,
+  reason: string,
+): Promise<GateWaiterResult> {
+  const digest = state.digests.at(-1)
+  if (digest !== undefined) {
+    state.failedDigest = digest
+    writeResponseError(ports.runDir, context.version, reason, digest)
+  }
+  ports.stdout?.(`gate ${context.version} settle rejected — see gate-${context.version}.response-error.md: ${reason}`)
+  return step(ports, state, attemptSettle)
 }
 
 /** One waiter tick: expiry, steer, then the gate file's stable hand-edit. */
 async function step(
   ports: GateWaiterPorts,
-  digests: string[],
+  state: WaiterState,
   attemptSettle: AttemptSettleFn,
 ): Promise<GateWaiterResult> {
   await ports.tick()
@@ -159,6 +217,17 @@ async function step(
   if (flattenPosition(snapshot.value) !== 'gate.awaiting') return { kind: 'external' }
   const gate = snapshot.context.gate
   if (gate === null) return { kind: 'external' }
+  // Already-answered guard (D5): an explicitly-outcome'd record at awaiting
+  // is another producer's settle (resume's owed movers heal the rest) —
+  // never re-settle it. A historical answered-no-outcome record still heals
+  // forward: the next settle appends the explicit outcome.
+  if (gate.answered && snapshot.context.gateOutcome !== null) return { kind: 'external' }
+  // Resume seeding (D3): an unchanged poisoned file must not re-attempt —
+  // the error artifact's failed digest initializes the guard once per version.
+  if (state.seededFor !== gate.version) {
+    state.seededFor = gate.version
+    state.failedDigest = readFailedDigest(ports.runDir, gate.version)
+  }
   const gateMode = narrowGateMode(gate.mode)
   // The escalation retry mover targets the still-active failed stage (C6 D4)
   const escalationStage = gateMode === 'escalation' ? escalationStageOf(snapshot.context) : null
@@ -169,27 +238,54 @@ async function step(
     ...(escalationStage === null ? {} : { failedStage: escalationStage }),
   }
 
-  const expiry = await processExpiry(
-    ports,
-    gate.version,
-    gateMode,
-    snapshot.context.round,
-    snapshot.context.gateDeadlineAt,
-    snapshot.context.gateDeadlineReArmed,
-    escalationStage,
-  )
+  const expiry = await expiryTick(ports, snapshot.context, gate.version, gateMode, escalationStage)
   if (expiry !== null) return expiry
 
-  if (peekSteer(ports.runDir) !== null) return steerTick(ports, context, digests, attemptSettle)
+  if (peekSteer(ports.runDir) !== null) return steerTick(ports, context, state, attemptSettle)
 
   const md = await readGateMd(ports.runDir, gate.version)
   if (md === null || !looksAnswered(md)) {
-    digests.length = 0
-    return step(ports, digests, attemptSettle)
+    state.digests.length = 0
+    return step(ports, state, attemptSettle)
   }
-  digests.push(digestOf(md))
-  if (isStableEdit(digests)) return attemptSettle(context, (input) => settleGateFile(input))
-  return step(ports, digests, attemptSettle)
+  state.digests.push(digestOf(md))
+  if (!isStableEdit(state.digests)) return step(ports, state, attemptSettle)
+  return settleStableFile(ports, context, state, attemptSettle)
+}
+
+/** The deadline face of one tick: null keeps waiting. */
+function expiryTick(
+  ports: GateWaiterPorts,
+  context: KernelContext,
+  version: number,
+  gateMode: 'early' | 'final' | 'escalation',
+  escalationStage: StageId | null,
+): Promise<GateWaiterResult | null> {
+  return processExpiry(
+    ports,
+    version,
+    gateMode,
+    context.round,
+    context.gateDeadlineAt,
+    context.gateDeadlineReArmed,
+    escalationStage,
+  )
+}
+
+/** The stable hand-edit's settle attempt, behind the digest guard (D3). */
+async function settleStableFile(
+  ports: GateWaiterPorts,
+  context: WaiterContext,
+  state: WaiterState,
+  attemptSettle: AttemptSettleFn,
+): Promise<GateWaiterResult> {
+  const digest = state.digests.at(-1)!
+  if (state.failedDigest === digest) return step(ports, state, attemptSettle)
+  const result = await attemptSettle(context, (input) => settleGateFile(input))
+  if (result.kind === 'rejected') return feedbackAndKeepWaiting(ports, context, state, attemptSettle, result.reason)
+  clearResponseError(ports.runDir, context.version)
+  state.failedDigest = null
+  return result
 }
 
 /** The production tick: one second between polls. */

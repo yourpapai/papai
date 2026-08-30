@@ -179,6 +179,106 @@ describe('renderGateAnswers → parseGateResponse round-trip', () => {
   })
 })
 
+describe('gate-level directives and item-less roundtrips (D1/D2)', () => {
+  const itemlessExpected = { assumptions: [], blockers: [], gateMode: 'final' as const }
+
+  function roundTripItemless(answers: GateAnswers): ReturnType<typeof parseGateResponse> {
+    return parseGateResponse(renderGateAnswers(answers), itemlessExpected)
+  }
+
+  it('a veto decision with zero items renders the VETO directive with the redirect preserved', () => {
+    const md = renderGateAnswers({
+      items: [],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'veto',
+      gateVetoRedirect: 'the approach is wrong',
+    })
+    expect(md).toContain('VETO: the approach is wrong')
+    const response = roundTripItemless({
+      items: [],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'veto',
+      gateVetoRedirect: 'the approach is wrong',
+    })
+    expect(response.approved).toBe(false)
+    expect(response.gateVetoRedirect).toBe('the approach is wrong')
+    expect(response.vetoes).toEqual([])
+  })
+
+  it('a bare veto decision with zero items renders VETO without a redirect', () => {
+    const md = renderGateAnswers({ items: [], blockerAnswers: [], acks: [], decision: 'veto' })
+    expect(md).toMatch(/^VETO$/mu)
+    expect(md).not.toMatch(/VETO:/u)
+    const response = roundTripItemless({ items: [], blockerAnswers: [], acks: [], decision: 'veto' })
+    expect(response.gateVetoRedirect).toBe('')
+    expect(response.approved).toBe(false)
+  })
+
+  it('an approve decision renders the APPROVE directive', () => {
+    const md = renderGateAnswers({ items: [], blockerAnswers: [], acks: [], decision: 'approve' })
+    expect(md).toMatch(/^APPROVE$/mu)
+    const response = roundTripItemless({ items: [], blockerAnswers: [], acks: [], decision: 'approve' })
+    expect(response.approved).toBe(true)
+  })
+
+  it('an approve decision at an item-carrying gate renders APPROVE alongside the checked boxes and roundtrips', () => {
+    const answers: GateAnswers = {
+      items: [
+        { kind: 'assumption', id: 'A1', text: 'guests stay read-only', accepted: true },
+        { kind: 'finding', id: 'F1', text: 'design lacks rollback', accepted: true },
+      ],
+      blockerAnswers: [],
+      acks: [{ id: 'T1', text: ACK_TEXT }],
+      decision: 'approve',
+    }
+    const md = renderGateAnswers(answers)
+    expect(md).toMatch(/^APPROVE$/mu)
+    expect(md).toContain('- [x] A1')
+    const response = parseGateResponse(md, {
+      assumptions: [assumption()],
+      blockers: [],
+      findings: [finding()],
+      requiredAck: 'T1',
+      gateMode: 'final',
+    })
+    expect(response.approved).toBe(true)
+    expect(response).toEqual(responseFromAnswers(answers))
+  })
+
+  it('renderAutoApproveAnswers roundtrips at an item-less gate with its policy attribution', async () => {
+    const { renderAutoApproveAnswers } = await import('../../../afk-runner/src/work/gate-prelude.js')
+    const answers = renderAutoApproveAnswers({ rule: 'R1', action: 'approve', evidenceDigest: 'digest' }, [])
+    const md = renderGateAnswers(answers)
+    expect(md).toMatch(/^APPROVE$/mu)
+    expect(md).toContain('decided-by: policy R1')
+    const response = roundTripItemless(answers)
+    expect(response.approved).toBe(true)
+    expect(response).toEqual(responseFromAnswers(answers))
+  })
+
+  it('an item veto keeps unchecked boxes with no gate-level directive', () => {
+    const answers: GateAnswers = {
+      items: [{ kind: 'finding', id: 'F1', text: 'design lacks rollback', accepted: false, redirect: 'restructure' }],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'veto',
+    }
+    const md = renderGateAnswers(answers)
+    expect(md).not.toMatch(/^VETO/mu)
+    expect(md).toContain('- [ ] F1')
+    const response = parseGateResponse(md, {
+      assumptions: [assumption()],
+      blockers: [],
+      findings: [finding()],
+      gateMode: 'final',
+    })
+    expect(response.vetoes).toEqual([{ id: 'F1', redirect: 'restructure' }])
+    expect(response.gateVetoRedirect).toBeNull()
+  })
+})
+
 describe('decided-by annotations (D4)', () => {
   it('renders an optional per-item decided-by suffix that parses back identically', () => {
     const answers: GateAnswers = {

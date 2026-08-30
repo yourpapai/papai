@@ -8,11 +8,49 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { claimGateSettle } from '../../../afk-runner/src/work/gate-claims.js'
+import { claimGateSettle, releaseGateSettle } from '../../../afk-runner/src/work/gate-claims.js'
 
 function tempRunDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'afk-claims-'))
 }
+
+describe('attempt-scoped claims (D4)', () => {
+  it('self-reclaim passes for the same holder', () => {
+    const runDir = tempRunDir()
+    expect(claimGateSettle(runDir, 1, 'waiter-A').claimed).toBe(true)
+    expect(claimGateSettle(runDir, 1, 'waiter-A')).toEqual({ claimed: true, winner: 'waiter-A' })
+  })
+
+  it('release removes the claim for its holder and is idempotent', () => {
+    const runDir = tempRunDir()
+    claimGateSettle(runDir, 1, 'waiter-A')
+    releaseGateSettle(runDir, 1, 'waiter-A')
+    expect(fs.existsSync(path.join(runDir, 'gate-1.settle-claim'))).toBe(false)
+    releaseGateSettle(runDir, 1, 'waiter-A')
+    expect(fs.existsSync(path.join(runDir, 'gate-1.settle-claim'))).toBe(false)
+  })
+
+  it('release never removes another holder\u2019s claim', () => {
+    const runDir = tempRunDir()
+    claimGateSettle(runDir, 1, 'waiter-A')
+    releaseGateSettle(runDir, 1, 'waiter-B')
+    expect(fs.readFileSync(path.join(runDir, 'gate-1.settle-claim'), 'utf8')).toContain('waiter-A')
+  })
+
+  it('after a release the gate is claimable again by anyone', () => {
+    const runDir = tempRunDir()
+    claimGateSettle(runDir, 1, 'waiter-A')
+    releaseGateSettle(runDir, 1, 'waiter-A')
+    expect(claimGateSettle(runDir, 1, 'waiter-B')).toEqual({ claimed: true, winner: 'waiter-B' })
+  })
+
+  it('a stale legacy expiry-claim stops blocking settles (retired honored-as-held check)', () => {
+    const runDir = tempRunDir()
+    fs.writeFileSync(path.join(runDir, 'gate-3.expiry-claim'), '2026-08-27T00:00:00.000Z\n')
+    const claim = claimGateSettle(runDir, 3, 'waiter-B')
+    expect(claim.claimed).toBe(true)
+  })
+})
 
 describe('first-writer-wins settle claims', () => {
   it('the first claimant exclusively creates gate-<n>.settle-claim and wins', () => {
@@ -29,14 +67,6 @@ describe('first-writer-wins settle claims', () => {
     expect(loser).toEqual({ claimed: false, winner: 'waiter-A' })
     const content = fs.readFileSync(path.join(runDir, 'gate-2.settle-claim'), 'utf8')
     expect(content).toContain('waiter-A')
-  })
-
-  it('a legacy gate-<n>.expiry-claim counts as a held claim', () => {
-    const runDir = tempRunDir()
-    fs.writeFileSync(path.join(runDir, 'gate-3.expiry-claim'), '2026-08-27T00:00:00.000Z\n')
-    const loser = claimGateSettle(runDir, 3, 'waiter-B')
-    expect(loser.claimed).toBe(false)
-    expect(loser.winner).toBe('2026-08-27T00:00:00.000Z')
   })
 
   it('claims are per gate version', () => {

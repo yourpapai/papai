@@ -205,7 +205,8 @@ describe('gate waiter — stability guard (C4 5.2)', () => {
     const events = readEvents(h.logPath)
     expect(events.at(-2)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'approve' })
     expect(events.at(-1)).toMatchObject({ type: 'stage_enter', stage: 'decompose' })
-    expect(fs.existsSync(path.join(h.runDir, 'gate-1.settle-claim'))).toBe(true)
+    // attempt-scoped (D4): the claim is released when the attempt ends
+    expect(fs.existsSync(path.join(h.runDir, 'gate-1.settle-claim'))).toBe(false)
   })
 
   it('content still changing between ticks never settles', async () => {
@@ -274,6 +275,185 @@ describe('gate waiter — steer translation (C4 5.2)', () => {
     const result = await waiter
     expect(result).toEqual({ kind: 'settled', outcome: 'veto' })
     expect(readEvents(h.logPath).at(-1)).toMatchObject({ type: 'stage_enter', stage: 'draft' })
+  })
+})
+
+describe('gate waiter — settle containment (D3)', () => {
+  it('a malformed hand edit yields a rejected settle, the waiter stays alive, and the error artifact names the reason', async () => {
+    const h = await makeAwaitingGate()
+    const waiter = h.start()
+    h.writeGateMd('## Gate response\n\n- [x] A9 never declared\n')
+    for (let i = 0; i < 4; i += 1) await releaseTick(h.clock)
+    const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
+    expect(probe).toBe('still-waiting')
+    expect(hasAnsweredGate(readEvents(h.logPath))).toBe(false)
+    const errorMd = fs.readFileSync(path.join(h.runDir, 'gate-1.response-error.md'), 'utf8')
+    expect(errorMd).toContain('unknown assumption A9')
+    expect(h.warnings.some((line) => line.includes('unknown assumption A9'))).toBe(true)
+  })
+
+  it('no re-attempt until the gate file digest changes; the corrected file settles', async () => {
+    const h = await makeAwaitingGate()
+    const waiter = h.start()
+    h.writeGateMd('## Gate response\n\n- [x] A9 never declared\n')
+    for (let i = 0; i < 8; i += 1) await releaseTick(h.clock)
+    // one rejection line only — an unchanged digest never re-attempts
+    expect(h.warnings.filter((line) => line.includes('unknown assumption A9'))).toHaveLength(1)
+    h.writeGateMd(APPROVE_MD)
+    await releaseTick(h.clock)
+    await releaseTick(h.clock)
+    await releaseTick(h.clock)
+    const result = await waiter
+    expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
+    expect(hasAnsweredGate(readEvents(h.logPath))).toBe(true)
+  })
+
+  it('a settled gate removes the stale error artifact', async () => {
+    const h = await makeAwaitingGate()
+    const waiter = h.start()
+    h.writeGateMd('## Gate response\n\n- [x] A9 never declared\n')
+    for (let i = 0; i < 4; i += 1) await releaseTick(h.clock)
+    expect(fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md'))).toBe(true)
+    h.writeGateMd(APPROVE_MD)
+    for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
+    await waiter
+    expect(fs.existsSync(path.join(h.runDir, 'gate-1.response-error.md'))).toBe(false)
+  })
+
+  it('an unchanged poisoned file on resume does not re-attempt', async () => {
+    const h = await makeAwaitingGate()
+    const poisoned = '## Gate response\n\n- [x] A9 never declared\n'
+    h.writeGateMd(poisoned)
+    // first waiter: rejects once
+    const first = h.start()
+    for (let i = 0; i < 4; i += 1) await releaseTick(h.clock)
+    await Promise.race([first.then((r) => r), Promise.resolve('still-waiting' as const)])
+    expect(h.warnings.filter((line) => line.includes('unknown assumption A9'))).toHaveLength(1)
+    // resumed waiter over the same unchanged file: seeds the digest guard from
+    // the error artifact and never re-attempts
+    const resumed = h.start()
+    for (let i = 0; i < 5; i += 1) await releaseTick(h.clock)
+    const probe = await Promise.race([resumed.then((r) => r), Promise.resolve('still-waiting' as const)])
+    expect(probe).toBe('still-waiting')
+    expect(h.warnings.filter((line) => line.includes('unknown assumption A9'))).toHaveLength(1)
+    expect(hasAnsweredGate(readEvents(h.logPath))).toBe(false)
+  })
+
+  it('the empty-expected rejection hints at a missing sidecar', async () => {
+    const h = await makeAwaitingGate()
+    fs.writeFileSync(
+      path.join(h.runDir, 'sidecars', 'resolutions-1.json'),
+      JSON.stringify({ resolutions: [], assumptions: [] }),
+    )
+    const waiter = h.start()
+    h.writeGateMd('## Gate response\n\n- [x] A1 guests stay read-only\n')
+    for (let i = 0; i < 4; i += 1) await releaseTick(h.clock)
+    const errorMd = fs.readFileSync(path.join(h.runDir, 'gate-1.response-error.md'), 'utf8')
+    expect(errorMd).toContain('expected content is empty')
+    expect(errorMd).toContain('sidecar')
+    const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
+    expect(probe).toBe('still-waiting')
+  })
+})
+
+describe('gate waiter — attempt-scoped claims (D4)', () => {
+  it('a rejected settle releases the claim and the corrected answer settles', async () => {
+    const h = await makeAwaitingGate()
+    const waiter = h.start()
+    h.writeGateMd('## Gate response\n\n- [x] A9 never declared\n')
+    for (let i = 0; i < 4; i += 1) await releaseTick(h.clock)
+    expect(fs.existsSync(path.join(h.runDir, 'gate-1.settle-claim'))).toBe(false)
+    h.writeGateMd(APPROVE_MD)
+    for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
+    const result = await waiter
+    expect(result).toEqual({ kind: 'settled', outcome: 'approve' })
+  })
+
+  it('a settled hand edit also releases the claim when the attempt ends', async () => {
+    const h = await makeAwaitingGate()
+    const waiter = h.start()
+    h.writeGateMd(APPROVE_MD)
+    for (let i = 0; i < 3; i += 1) await releaseTick(h.clock)
+    await waiter
+    expect(fs.existsSync(path.join(h.runDir, 'gate-1.settle-claim'))).toBe(false)
+  })
+})
+
+describe('gate waiter — already-answered guard (D5)', () => {
+  it('exits external on an already-answered gate record instead of re-settling', async () => {
+    const h = await makeAwaitingGate()
+    // another producer answered but its mover never landed — the record is
+    // answered while the position still awaits (the W3 crash window)
+    h.append({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'early', version: 1, outcome: 'approve' })
+    const answeredCount = answeredGateCount(h.logPath)
+    const waiter = h.start()
+    h.writeGateMd(APPROVE_MD)
+    h.clock.release()
+    await expect(waiter).resolves.toEqual({ kind: 'external' })
+    expect(answeredGateCount(h.logPath)).toBe(answeredCount)
+  })
+})
+
+function answeredGateCount(logPath: string): number {
+  return readEvents(logPath).filter((event) => event.type === 'gate' && event.action === 'answered').length
+}
+
+describe('gate waiter — steer grammar and hygiene (D7)', () => {
+  async function itemlessFinalGate(): Promise<WaiterHarness> {
+    const h = await makeAwaitingGate('final')
+    fs.writeFileSync(
+      path.join(h.runDir, 'sidecars', 'resolutions-1.json'),
+      JSON.stringify({ resolutions: [], assumptions: [] }),
+    )
+    return h
+  }
+
+  it('a bare veto steer settles an item-less final gate as a gate-level veto without crashing', async () => {
+    const h = await itemlessFinalGate()
+    const waiter = h.start()
+    h.writeSteer('veto\n')
+    h.clock.release()
+    const result = await waiter
+    expect(result).toEqual({ kind: 'settled', outcome: 'veto' })
+    const md = fs.readFileSync(path.join(h.runDir, 'gate-1.md'), 'utf8')
+    expect(md).toMatch(/^VETO$/mu)
+    expect(readEvents(h.logPath).at(-1)).toMatchObject({ type: 'stage_enter', stage: 'draft' })
+  })
+
+  it('a veto-text steer maps to a gate-level veto carrying the redirect', async () => {
+    const h = await itemlessFinalGate()
+    const waiter = h.start()
+    h.writeSteer('veto the approach is wrong\n')
+    h.clock.release()
+    const result = await waiter
+    expect(result).toEqual({ kind: 'settled', outcome: 'veto' })
+    expect(fs.readFileSync(path.join(h.runDir, 'gate-1.md'), 'utf8')).toContain('VETO: the approach is wrong')
+  })
+
+  it('veto <id>=<redirect> stays an item veto with an unchecked box', async () => {
+    const h = await makeAwaitingGate()
+    const waiter = h.start()
+    h.writeSteer('veto F1=drop the rollback promise\n')
+    h.clock.release()
+    const result = await waiter
+    expect(result).toEqual({ kind: 'settled', outcome: 'veto' })
+    const md = fs.readFileSync(path.join(h.runDir, 'gate-1.md'), 'utf8')
+    expect(md).toContain('- [ ] F1')
+    expect(md).toContain('→ drop the rollback promise')
+    expect(md).not.toMatch(/^VETO/mu)
+  })
+
+  it('an unparseable steer first line is warned and consumed; the gate stays pending', async () => {
+    const h = await makeAwaitingGate()
+    const waiter = h.start()
+    h.writeSteer('do the thing yourself\n')
+    await releaseTick(h.clock)
+    await releaseTick(h.clock)
+    const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
+    expect(probe).toBe('still-waiting')
+    expect(h.warnings.some((line) => line.includes('unrecognized steer directive'))).toBe(true)
+    expect(fs.existsSync(path.join(h.runDir, 'steer.consumed.1.md'))).toBe(true)
+    expect(hasAnsweredGate(readEvents(h.logPath))).toBe(false)
   })
 })
 

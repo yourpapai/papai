@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { APPROVE_DIRECTIVE, VETO_DIRECTIVE } from './gate-model.js'
 import type { GateResponse } from './gate-model.js'
 
 export type GateAnswerItem =
@@ -43,6 +44,11 @@ export interface GateAnswers {
   readonly decision: 'approve' | 'veto' | 'extend' | 'abort'
   /** Optional decision-level attribution (`decided-by: policy Rx`). */
   readonly decidedBy?: string
+  /**
+   * Gate-level veto redirect (D1/D6): rides a veto decision that names no
+   * item — rendered as the `VETO: <redirect>` directive.
+   */
+  readonly gateVetoRedirect?: string
 }
 
 const EXTEND_DIRECTIVE = '→ RUN 1 MORE'
@@ -50,10 +56,26 @@ const OVERRIDE_TOKEN = 'OVERRIDE'
 
 export function responseFromAnswers(answers: GateAnswers): GateResponse {
   if (answers.decision === 'abort') {
-    return { approved: false, abort: true, override: false, extend: false, vetoes: [], answers: [] }
+    return {
+      approved: false,
+      abort: true,
+      override: false,
+      extend: false,
+      vetoes: [],
+      answers: [],
+      gateVetoRedirect: null,
+    }
   }
   if (answers.decision === 'extend') {
-    return { approved: false, abort: false, override: false, extend: true, vetoes: [], answers: [] }
+    return {
+      approved: false,
+      abort: false,
+      override: false,
+      extend: true,
+      vetoes: [],
+      answers: [],
+      gateVetoRedirect: null,
+    }
   }
   const vetoes = answers.items
     .filter((item) => !item.accepted)
@@ -68,6 +90,7 @@ export function responseFromAnswers(answers: GateAnswers): GateResponse {
     extend: false,
     vetoes,
     answers: answered.map((blocker) => ({ id: blocker.id, answer: blocker.answer })),
+    gateVetoRedirect: answers.decision === 'veto' && vetoes.length === 0 ? (answers.gateVetoRedirect ?? '') : null,
   }
 }
 
@@ -77,6 +100,17 @@ export function renderGateAnswers(answers: GateAnswers): string {
   const lines: string[] = ['## Gate response', '']
   if (answers.decidedBy !== undefined) {
     lines.push(`decided-by: ${answers.decidedBy}`, '')
+  }
+  // Decision-level directives (D2): every machine-produced response names its
+  // decision on its own line, so an item-less gate can never settle by
+  // vacuous all-checked computation.
+  if (answers.decision === 'approve') {
+    lines.push(APPROVE_DIRECTIVE, '')
+  } else if (answers.decision === 'veto' && answers.items.length === 0) {
+    lines.push(
+      answers.gateVetoRedirect === undefined ? VETO_DIRECTIVE : `${VETO_DIRECTIVE}: ${answers.gateVetoRedirect}`,
+      '',
+    )
   }
   for (const ack of answers.acks) lines.push(`- [x] ${ack.id} ${ack.text}`)
   if (answers.acks.length > 0) lines.push('')

@@ -110,9 +110,12 @@ function agentOf(deps: PipelineWorkDeps, io: WorkIO): AgentLayerDeps {
 }
 
 /**
- * The veto-updater revision round (C4 D8): read the vetoes from the settled
- * gate file, fold them back into the resolver sidecar, and run one resolver
- * pass that applies the redirects to the existing artifacts.
+ * The veto-updater revision round (C4 D8, D6): read the vetoes from the
+ * settled gate file — per-item and whole-gate alike — fold the item vetoes
+ * back into the resolver sidecar, and run one resolver pass that applies
+ * the redirects to the existing artifacts. The no-op path requires an
+ * empty item-veto list AND no gate-level veto: a settled outcome of veto
+ * must never skip revision silently.
  */
 async function runVetoRevision(deps: PipelineWorkDeps, input: PipelineRunInput, io: WorkIO): Promise<void> {
   const runDir = io.runDir
@@ -123,7 +126,7 @@ async function runVetoRevision(deps: PipelineWorkDeps, input: PipelineRunInput, 
   const md = await fs.promises.readFile(path.join(runDir, `gate-${version}.md`), 'utf8')
   const expected = await expectedContentFor(sidecarDir, round, gateMode)
   const response = parseGateResponse(md, expected)
-  if (response.vetoes.length === 0) return
+  if (response.vetoes.length === 0 && response.gateVetoRedirect === null) return
   await updateAssumptionsFromVetoes(sidecarDir, round, response.vetoes)
   await runVetoUpdater(
     {
@@ -140,7 +143,12 @@ async function runVetoRevision(deps: PipelineWorkDeps, input: PipelineRunInput, 
       sidecarDir,
       cwd: deps.config.repoRoot,
     },
-    { changeName: input.changeName, round, vetoes: response.vetoes },
+    {
+      changeName: input.changeName,
+      round,
+      vetoes: response.vetoes,
+      ...(response.gateVetoRedirect === null ? {} : { gateRedirect: response.gateVetoRedirect }),
+    },
   )
 }
 

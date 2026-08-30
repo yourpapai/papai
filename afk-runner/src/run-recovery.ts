@@ -12,8 +12,9 @@ import { createAppendBoundary } from './drive/boundary.js'
 import type { WorkIO } from './drive/loop.js'
 import { owedEscalationPresentationOf, owedMoversOf, owedPresentationOf, refoldedContext } from './drive/resume.js'
 import type { EventInput, SddEvent } from './events.js'
-import { readEvents } from './events.js'
+import { readEvents, StageIdSchema } from './events.js'
 import { pipelineMachine } from './graph/pipeline.js'
+import type { KernelContext } from './kernel/machine.js'
 import { runGatePrelude } from './work/gate-prelude.js'
 import { readReviewResultFromSidecars } from './work/gate-settle.js'
 import { presentEscalationGate } from './work/present-escalation.js'
@@ -127,6 +128,63 @@ export async function recoverOwedEscalation(
   })
 }
 
+/**
+ * The mid-presentation crash window (D5): a gate presented-unanswered whose
+ * presenting stage's closing exit never landed — the process died after the
+ * presented event but before the loop's bracket close. Resume appends the
+ * owed stage exits before parking, so the log's brackets stay closed around
+ * the park and a later approve reaches the completed final. Two shapes:
+ * the map-visible orphan (an interstitial presenter — the early-gate review
+ * crash — leaves its stage active), and the final-gate tail crash (the
+ * presenter entered the gate compound, auto-closing its map entry, so the
+ * owed exit is detected from the log: no closing exit after the gate
+ * enter). An escalation gate's failed-stage bracket is deliberate (the
+ * retry mover targets it) and never an orphan.
+ */
+export function owedStageExitsOf(
+  context: KernelContext,
+  position: string,
+  events: readonly SddEvent[] = [],
+): readonly EventInput[] {
+  if (position !== 'gate.awaiting') return []
+  const gate = context.gate
+  if (gate === null || gate.answered) return []
+  if (gate.mode === 'escalation') return []
+  const owed = new Set(
+    Object.entries(context.stages)
+      .filter(([stage, status]) => stage !== 'gate' && status === 'active')
+      .map(([stage]) => stage),
+  )
+  const gateEnter = [...events].reverse().find(isEnterOf('gate'))
+  if (gateEnter !== undefined) {
+    const enterIndex = events.indexOf(gateEnter)
+    const presenting = events
+      .slice(0, enterIndex)
+      .reverse()
+      .find(
+        (event): event is SddEvent & { type: 'stage_enter' } => event.type === 'stage_enter' && event.stage !== 'gate',
+      )?.stage
+    const closedAfter =
+      presenting === undefined ||
+      events
+        .slice(enterIndex)
+        .some(
+          (event): event is SddEvent & { type: 'stage_exit' } =>
+            event.type === 'stage_exit' && event.stage === presenting,
+        )
+    if (presenting !== undefined && !closedAfter) owed.add(presenting)
+  }
+  return [...owed].map((stage) => ({
+    altitude: 'L2' as const,
+    type: 'stage_exit' as const,
+    stage: StageIdSchema.parse(stage),
+  }))
+}
+
+function isEnterOf(stage: string): (event: SddEvent) => boolean {
+  return (event) => event.type === 'stage_enter' && event.stage === stage
+}
+
 export interface FoldedRun {
   readonly context: ReturnType<typeof refoldedContext>
   readonly position: string
@@ -162,6 +220,12 @@ export async function applyOwedRecovery(
   if (owedEscalation !== null) {
     const changeNameForRecovery = await changeNameOf(runId, runDir)
     await recoverOwedEscalation(deps, runDir, logPath, changeNameForRecovery, owedEscalation)
+    current = foldAgain()
+  }
+  const owedExits = owedStageExitsOf(current.context, current.position, readEvents(logPath))
+  if (owedExits.length > 0) {
+    const boundary = createAppendBoundary(pipelineMachine, logPath, { now: deps.now })
+    for (const event of owedExits) boundary.append(event)
     current = foldAgain()
   }
   const owed = owedMoversOf(current.context, current.position)

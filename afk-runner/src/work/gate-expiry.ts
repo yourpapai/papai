@@ -3,15 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { writeFileSync } from 'node:fs'
-import path from 'node:path'
-
 import type { AutonomyConfig } from '../config.js'
 import type { EventInput, StageId } from '../events.js'
 import { readEvents } from '../events.js'
 import { foldLogOrInitial } from '../kernel/fold.js'
 import type { KernelMachine } from '../kernel/machine.js'
 import type { PolicyDecision } from './auto-policy.js'
+import { claimGateSettle, releaseGateSettle } from './gate-claims.js'
 import type { GateAssumption } from './gate-model.js'
 import { evaluateLadder, renderAutoApproveAnswers } from './gate-prelude.js'
 import { expectedContentFor, readReviewResultFromSidecars, settleGateWithAnswers } from './gate-settle.js'
@@ -31,23 +29,14 @@ export interface ExpiryPorts {
   readonly now?: () => Date
 }
 
-/** Exclusive-create claim for the deadline expiry path (legacy artifact name, D4). */
-export function claimGateExpiry(runDir: string, version: number): boolean {
-  try {
-    writeFileSync(path.join(runDir, `gate-${version}.expiry-claim`), `${new Date().toISOString()}\n`, { flag: 'wx' })
-    return true
-  } catch {
-    return false
-  }
-}
-
 /**
- * Deadline expiry (design D4): claim the gate exclusively under the legacy
- * `expiry-claim` name, re-run the ladder with expiry semantics (conservative
- * branches only — approve/extend, never abort), settle through the seam when
- * one applies, re-arm at most once via one additive `gate rearmed` event,
- * and otherwise leave the gate pending indefinitely. Returns null to keep
- * waiting.
+ * Deadline expiry (design D4, attempt-scoped): claim the gate under the same
+ * pid-carried `settle-claim` every producer uses, re-run the ladder with
+ * expiry semantics (conservative branches only — approve/extend, never
+ * abort), settle through the seam when one applies, release the claim at
+ * the attempt's end, re-arm at most once via one additive `gate rearmed`
+ * event, and otherwise leave the gate pending indefinitely. Returns null to
+ * keep waiting.
  */
 export async function processExpiry(
   ports: ExpiryPorts,
@@ -62,40 +51,73 @@ export async function processExpiry(
     return null
   }
   if (ports.now().getTime() < new Date(deadlineAt).getTime()) return null
-  if (!claimGateExpiry(ports.runDir, version)) {
+  const claimant = `waiter-${process.pid}`
+  const claim = claimGateSettle(ports.runDir, version, claimant)
+  if (!claim.claimed) {
     ports.stdout?.(`gate ${version} expiry already claimed by another process`)
     return { kind: 'external' }
   }
-  const events = readEvents(ports.logPath)
-  const currentRound = round?.current ?? 1
+  try {
+    const currentRound = round?.current ?? 1
+    const { decision, assumptions } = await evaluateExpiryLadder(
+      ports,
+      version,
+      gateMode,
+      currentRound,
+      ports.repoRoot,
+      ports.autonomy,
+    )
+    if (decision.action === 'approve' || decision.action === 'extend') {
+      return await settleExpiryDecision(
+        ports,
+        version,
+        gateMode,
+        round,
+        failedStage,
+        currentRound,
+        decision,
+        assumptions,
+      )
+    }
+    return reArmOrPark(ports, version, gateMode, reArmed)
+  } finally {
+    releaseGateSettle(ports.runDir, version, claimant)
+  }
+}
+
+/** Re-run the ladder with expiry semantics (conservative branches only — approve/extend, never abort). */
+async function evaluateExpiryLadder(
+  ports: ExpiryPorts,
+  version: number,
+  gateMode: 'early' | 'final' | 'escalation',
+  currentRound: number,
+  repoRoot: string,
+  autonomy: AutonomyConfig,
+): Promise<{ readonly decision: PolicyDecision; readonly assumptions: readonly GateAssumption[] }> {
   const reviewResult = await readReviewResultFromSidecars(
     ports.sidecarDir,
     currentRound,
     gateMode === 'early' ? 'cap-hit' : 'converged',
   )
-  const context = foldLogOrInitial(ports.machine, ports.logPath).snapshot.context
   const assumptions = (await expectedContentFor(ports.sidecarDir, currentRound, gateMode)).assumptions
   const decision = evaluateLadder(
     {
       version,
       mode: gateMode,
       reviewResult,
-      context,
-      events,
+      context: foldLogOrInitial(ports.machine, ports.logPath).snapshot.context,
+      events: readEvents(ports.logPath),
       sidecarDir: ports.sidecarDir,
       changeDir: ports.changeDir,
       runDir: ports.runDir,
-      repoRoot: ports.repoRoot,
+      repoRoot,
       emit: ports.emit,
-      autonomy: ports.autonomy,
+      autonomy,
     },
     assumptions,
     true,
   )
-  if (decision.action === 'approve' || decision.action === 'extend') {
-    return settleExpiryDecision(ports, version, gateMode, round, failedStage, currentRound, decision, assumptions)
-  }
-  return reArmOrPark(ports, version, gateMode, reArmed)
+  return { decision, assumptions }
 }
 
 /** Re-arm once via one additive `gate rearmed` event, then leave the gate pending indefinitely. */

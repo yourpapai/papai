@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 export interface SettleClaim {
@@ -43,15 +43,17 @@ function namesDeadWaiter(winner: string): boolean {
 /**
  * First-writer-wins settle claim (design D5/D10): cross-process arbitration
  * for concurrent settlers of one gate version — an exclusive-create
- * `gate-<n>.settle-claim` artifact whose content names the claimant. The
- * legacy `gate-<n>.expiry-claim` name counts as a held claim. Claims are
- * edge IPC, never truth: the appended settle events are.
+ * `gate-<n>.settle-claim` artifact whose content names the claimant. A
+ * holder re-claiming its own claim passes (D4 attempt scoping: the claim
+ * names the attempt's owner, not a lifetime lease). The legacy permanent
+ * `gate-<n>.expiry-claim` timestamp is no longer honored — stale files from
+ * in-flight runs simply stop blocking (that is the heal). Claims are edge
+ * IPC, never truth: the appended settle events are.
  */
 export function claimGateSettle(runDir: string, version: number, claimant: string): SettleClaim {
-  const legacyWinner = holderOf(path.join(runDir, `gate-${version}.expiry-claim`))
-  if (legacyWinner !== null) return { claimed: false, winner: legacyWinner }
   const claimPath = path.join(runDir, `gate-${version}.settle-claim`)
   const existing = holderOf(claimPath)
+  if (existing === claimant) return { claimed: true, winner: claimant }
   if (existing !== null && namesDeadWaiter(existing)) {
     writeFileSync(claimPath, `${claimant}\n`, { flag: 'w' })
     return { claimed: true, winner: claimant }
@@ -63,4 +65,20 @@ export function claimGateSettle(runDir: string, version: number, claimant: strin
     return { claimed: false, winner: holderOf(claimPath) }
   }
   return { claimed: true, winner: claimant }
+}
+
+/**
+ * Release a settle claim at the end of its attempt (D4): held for one
+ * attempt — claim → parse/integrity → append-or-reject → release. Only the
+ * holder releases; idempotent; never removes another holder's claim.
+ */
+export function releaseGateSettle(runDir: string, version: number, claimant: string): void {
+  const claimPath = path.join(runDir, `gate-${version}.settle-claim`)
+  if (holderOf(claimPath) === claimant) {
+    try {
+      rmSync(claimPath)
+    } catch {
+      /* already gone */
+    }
+  }
 }
