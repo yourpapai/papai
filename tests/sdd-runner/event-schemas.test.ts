@@ -32,6 +32,64 @@ describe('EventInputSchema variants', () => {
     })
   })
 
+  it('parses killed events with a real agent name and every cause, rejecting an unknown cause', () => {
+    for (const cause of ['timeout', 'inactivity', 'abort'] as const) {
+      expect(EventInputSchema.parse({ altitude: 'L1', type: 'killed', agent: 'drafter-2', cause })).toMatchObject({
+        type: 'killed',
+        agent: 'drafter-2',
+        cause,
+      })
+    }
+    expect(
+      EventInputSchema.safeParse({ altitude: 'L1', type: 'killed', agent: 'drafter-2', cause: 'crash' }).success,
+    ).toBe(false)
+  })
+
+  it('parses assumption events with every action and rejects an unknown one', () => {
+    for (const action of ['logged', 'confirmed', 'vetoed', 'applied'] as const) {
+      expect(
+        EventInputSchema.parse({ altitude: 'L2', type: 'assumption', action, id: 'A12', detail: 'why' }),
+      ).toMatchObject({ type: 'assumption', action, id: 'A12' })
+    }
+    expect(
+      EventInputSchema.safeParse({ altitude: 'L2', type: 'assumption', action: 'revoked', id: 'A1' }).success,
+    ).toBe(false)
+  })
+
+  it('parses depth events from every source', () => {
+    for (const source of ['override', 'estimator', 'prescreen'] as const) {
+      expect(
+        EventInputSchema.parse({ altitude: 'L2', type: 'depth', profile: 'M', rationale: 'multi-module', source }),
+      ).toMatchObject({ type: 'depth', source })
+    }
+  })
+
+  it('parses a human_edits event with multiple files and rejects an empty list', () => {
+    expect(
+      EventInputSchema.parse({ altitude: 'L2', type: 'human_edits', action: 'detected', files: ['a.ts', 'b.ts'] }),
+    ).toMatchObject({ type: 'human_edits', files: ['a.ts', 'b.ts'] })
+    expect(
+      EventInputSchema.safeParse({ altitude: 'L2', type: 'human_edits', action: 'detected', files: [] }).success,
+    ).toBe(false)
+  })
+
+  it('parses resume events with every path', () => {
+    for (const resumePath of ['artifact-skip', 'session-continuation', 'stage-rebuild'] as const) {
+      expect(
+        EventInputSchema.parse({ altitude: 'L2', type: 'resume', path: resumePath, stage: 'review' }),
+      ).toMatchObject({ type: 'resume', path: resumePath })
+    }
+    expect(
+      EventInputSchema.parse({
+        altitude: 'L2',
+        type: 'resume',
+        path: 'session-continuation',
+        stage: 'draft',
+        session: 'sess-9',
+      }),
+    ).toMatchObject({ session: 'sess-9' })
+  })
+
   it("parses a gate event carrying the 'plan' mode", () => {
     expect(
       EventInputSchema.parse({ altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 3 }),

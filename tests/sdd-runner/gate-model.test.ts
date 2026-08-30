@@ -189,6 +189,17 @@ describe('parseGateResponse', () => {
     expect(response.answers).toEqual([{ id: 'B1', answer: 'ship without rollback; track in a follow-up' }])
   })
 
+  it('a → answer binds only to a blocker line anchored at line start, including indented blocker lines', () => {
+    expect(() => parseGateResponse('## Gate\n\n- [x] A1\n- [x] A2\nnote B1 gap\n→ ship it\n', expected)).toThrow(
+      /no preceding/u,
+    )
+    const indented = parseGateResponse(
+      '## Gate\n\n- [x] A1\n- [x] A2\n   B12 no rollback path\n→ ship without rollback\n',
+      { assumptions: [assumption(), assumption({ id: 'A2' })], blockers: [blocker({ id: 'B12' })] },
+    )
+    expect(indented.answers).toEqual([{ id: 'B12', answer: 'ship without rollback' }])
+  })
+
   it('approves with an explicit OVERRIDE marker under an open blocker', () => {
     const md = '## Gate\n\n- [x] A1\n- [x] A2\n\nB1 no rollback path\n→ OVERRIDE\n'
     const response = parseGateResponse(md, expected)
@@ -203,7 +214,33 @@ describe('parseGateResponse', () => {
 
   it('rejects an ambiguous mark naming the offending line', () => {
     const md = '## Gate\n\n- [~] A1\n- [x] A2\n'
-    expect(() => parseGateResponse(md, expected)).toThrow(/line/u)
+    expect(() => parseGateResponse(md, expected)).toThrow('gate response line 3')
+  })
+
+  it('parses ack, finding, and redirect lines with padded or indented spacing', () => {
+    const padded = parseGateResponse('## Gate\n\n- [x]  T1 reviewed\n- [x]  F1 design lacks rollback\n', {
+      assumptions: [],
+      blockers: [],
+      findings: [finding()],
+      requiredAck: 'T1',
+    })
+    expect(padded.approved).toBe(true)
+    const indented = parseGateResponse('## Gate\n\n   - [x] T1 reviewed\n   - [x] F1 design lacks rollback\n', {
+      assumptions: [],
+      blockers: [],
+      findings: [finding()],
+      requiredAck: 'T1',
+    })
+    expect(indented.approved).toBe(true)
+    const paddedRedirect = parseGateResponse('## Gate\n\n- [ ] A1\n→  narrow it\n', { ...expected, blockers: [] })
+    expect(paddedRedirect.vetoes).toEqual([{ id: 'A1', redirect: 'narrow it' }])
+  })
+
+  it('a mid-line ABORT mention is not an abort marker', () => {
+    const md = '## Gate\n\n- [ ] A1\nnever ABORT\n'
+    const response = parseGateResponse(md, expected)
+    expect(response.abort).toBe(false)
+    expect(response.vetoes).toEqual([{ id: 'A1' }])
   })
 
   it('aborts on an explicit abort marker', () => {
@@ -261,6 +298,56 @@ describe('parseGateResponse', () => {
       requiredAck: 'T1',
     })
     expect(response.approved).toBe(true)
+  })
+
+  it('strips the appended auto-decision preview block — its noise boxes never vote', () => {
+    const md = [
+      '## Gate',
+      '',
+      '- [x] A1',
+      '- [x] A2',
+      '',
+      '### Auto-decision preview',
+      '',
+      '> rule: none',
+      '> decision: gate',
+      '',
+      '- [ ] A1 preview noise that must not vote',
+    ].join('\n')
+    const response = parseGateResponse(md, { ...expected, blockers: [] })
+    expect(response.approved).toBe(true)
+    expect(response.vetoes).toEqual([])
+  })
+
+  it('only a standalone preview header starts the stripped section, not an inline mention', () => {
+    const md = ['## Gate', '', '- [ ] A1', 'see ### Auto-decision preview below', '- [x] A2'].join('\n')
+    const response = parseGateResponse(md, expected)
+    expect(response.approved).toBe(false)
+    expect(response.vetoes).toEqual([{ id: 'A1' }])
+  })
+
+  it('a → RUN 1 MORE directive marks extend, tolerating padded spacing', () => {
+    const canonical = parseGateResponse('## Gate\n\n→ RUN 1 MORE\n', {
+      assumptions: [],
+      blockers: [],
+      gateMode: 'early',
+    })
+    expect(canonical.extend).toBe(true)
+    const padded = parseGateResponse('## Gate\n\n→  RUN 1 MORE\n', { assumptions: [], blockers: [], gateMode: 'early' })
+    expect(padded.extend).toBe(true)
+  })
+
+  it('a run-like arrow with extra words is rejected, not parsed as a redirect', () => {
+    const md = '## Gate\n\n- [ ] A1\n→ RUN 1 MORE rounds after this one\n'
+    expect(() => parseGateResponse(md, { ...expected, gateMode: 'early' })).toThrow(/not recognized/u)
+  })
+
+  it('decided-by annotations never create vetoes or answers', () => {
+    const md = ['## Gate', '', '- [x] A1 · decided-by: policy R3', '- [x] A2', 'decided-by: policy R1'].join('\n')
+    const response = parseGateResponse(md, { ...expected, blockers: [] })
+    expect(response.approved).toBe(true)
+    expect(response.vetoes).toEqual([])
+    expect(response.answers).toEqual([])
   })
 })
 

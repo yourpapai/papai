@@ -142,6 +142,7 @@ describe('TUI gate screen (4.4/4.5)', () => {
     const GateScreen = createGateScreen()
     const { lastFrame, unmount } = render(createElement(GateScreen, baseProps()))
     expect(lastFrame()).toContain('approve unavailable: T1 not affirmed, blocker B1 unanswered')
+    expect(lastFrame()).toContain('→ (unanswered)')
     unmount()
     const { lastFrame: frame2, unmount: u2 } = render(createElement(GateScreen, baseProps({ ackAffirmed: true })))
     expect(frame2()).toContain('approve unavailable: blocker B1 unanswered')
@@ -150,6 +151,7 @@ describe('TUI gate screen (4.4/4.5)', () => {
       createElement(GateScreen, baseProps({ ackAffirmed: true, blockerAnswers: { B1: 'covered by test x' } })),
     )
     expect(frame3()).not.toContain('approve unavailable')
+    expect(frame3()).toContain('→ covered by test x')
     u3()
   })
 })
@@ -277,6 +279,7 @@ describe('plan-mode screen and toggles (D10)', () => {
     expect(lastFrame()).toContain('╭─ Gate · plan')
     expect(lastFrame()).toContain('  [x] C1 auth-db — Ship the drafted slice.')
     expect(lastFrame()).toContain('❯ [x] C2 auth-api — Partition the remainder.')
+    expect(lastFrame()).toContain('· evidence: (none)')
     expect(lastFrame()).toContain('(a)pprove')
     expect(lastFrame()).toContain('(x)abort')
     expect(lastFrame()).not.toContain('(e)xtend')

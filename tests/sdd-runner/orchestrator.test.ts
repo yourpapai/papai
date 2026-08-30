@@ -730,6 +730,68 @@ describe('runResume', () => {
     expect(steerWarnings.join('\n')).toContain('unknown directive: nonsense directive')
   })
 
+  it('a review-stage resume without conventions or a stdout sink still reaches the gate with an empty conventions block', async () => {
+    const fixture = makeFixture()
+    const workDir = fixture.deps.config.workDir
+    const runId = 'seeded-review-bare'
+    const runDir = path.join(workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.mkdirSync(path.join(fixture.changeDir, 'specs', 'thing'), { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'), '## ADDED Requirements\n')
+    const now = '2026-01-01T00:00:00.000Z'
+    const events = [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake', seq: 1, ts: now },
+      { altitude: 'L2', type: 'depth', profile: 'M', rationale: 'override', source: 'override', seq: 2, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'intake', seq: 3, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'draft', seq: 4, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'draft', seq: 5, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'review', seq: 6, ts: now },
+    ]
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), events.map((e) => JSON.stringify(e)).join('\n') + '\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir,
+          changeName: fixture.changeName,
+          stage: 'draft',
+          depth: 'M',
+          round: 0,
+          gate: null,
+          status: 'running',
+          createdAt: now,
+          updatedAt: now,
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    fs.writeFileSync(path.join(runDir, 'steer.md'), 'nonsense directive\n')
+
+    const prompts: string[] = []
+    const settled = createSettledDriver(fixture)
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      driver: settled,
+      stdout: undefined,
+      spawn: (command, args, options) => {
+        prompts.push(String(args[args.length - 1]))
+        return fixture.deps.spawn(command, args, options)
+      },
+    }
+    const result = await runResume(deps, runId)
+    expect(result.halted).toBe('gate')
+    const reviewerSpawns = prompts.filter((p) => /findings-\d+\.json/u.test(p))
+    expect(reviewerSpawns.length).toBeGreaterThan(0)
+    expect(reviewerSpawns.every((p) => p.includes('## Conventions\n\n\n## Rubric'))).toBe(true)
+    const resolverPrompts = prompts.filter((p) => p.startsWith('You are the resolver'))
+    expect(resolverPrompts.length).toBeGreaterThan(0)
+    expect(resolverPrompts.every((p) => p.includes('## Task description\n\n\n## Conventions'))).toBe(true)
+  })
+
   it('re-enters at decompose after an interrupted post-review stage and continues to the final gate (task 3.3)', async () => {
     const fixture = makeFixture()
     const workDir = fixture.deps.config.workDir

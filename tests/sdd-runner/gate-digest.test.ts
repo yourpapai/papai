@@ -37,6 +37,14 @@ afterEach(() => {
   }
 })
 
+const CONVERGED_REVIEW: ReviewLoopResult = {
+  outcome: 'converged',
+  rounds: 0,
+  openBlockers: [],
+  openMaterial: [],
+  openNitpicks: [],
+}
+
 describe('blockersOf', () => {
   it('maps open blockers to gate blocker entries', () => {
     const result: ReviewLoopResult = {
@@ -388,13 +396,7 @@ describe('presentGateAt plan mode (D5)', () => {
     { id: 'C1', text: 'auth-db — Add the auth database schema.' },
     { id: 'C2', text: 'auth-api — Add the auth API endpoints.' },
   ]
-  const CONVERGED: ReviewLoopResult = {
-    outcome: 'converged',
-    rounds: 0,
-    openBlockers: [],
-    openMaterial: [],
-    openNitpicks: [],
-  }
+  const CONVERGED: ReviewLoopResult = CONVERGED_REVIEW
 
   interface PlanFixture {
     readonly repoRoot: string
@@ -491,6 +493,90 @@ describe('presentGateAt plan mode (D5)', () => {
     expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate' })
     expect(fixture.state.status).toBe('running')
   })
+
+  it('a plan gate never shows the parent review findings — the surrogate replaces them', async () => {
+    const fixture = await makePlanFixture()
+    const noisy: ReviewLoopResult = {
+      ...CONVERGED,
+      openBlockers: [{ id: 'F9', class: 'BLOCKER', resolution: 'assumed', outcome: 'parent-run blocker' }],
+    }
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, noisy, 1, 'plan', {
+      children: PLAN_CHILDREN,
+    })
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(md).toContain('## Plan gate')
+    expect(md).not.toContain('parent-run blocker')
+    expect(md).toContain('- [ ] C1 auth-db — Add the auth database schema.')
+  })
+})
+
+describe('presentGateAt early mode (cap-hit digest wiring)', () => {
+  const CONCERN_HISTORY = [
+    {
+      fingerprint: 'f'.repeat(16),
+      firstRound: 1,
+      lastRound: 2,
+      entries: [{ round: 1, id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'fixed' }],
+    },
+  ]
+
+  async function makeEarlyFixture(): Promise<{
+    readonly state: RunState
+    readonly deps: OrchestratorDeps
+    readonly ctx: StageContext
+  }> {
+    const repoRoot = makeDir()
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    const state = await createRunState({ workDir, repoRoot, changeName: 'solo' })
+    const logPath = path.join(state.runDir, 'events.ndjson')
+    appendEvent(logPath, { altitude: 'L2', type: 'stage_enter', stage: 'intake' })
+    const deps: OrchestratorDeps = {
+      config: { repoRoot, workDir, model: 'test-model', budget: 5 },
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      driver: createOpenSpecDriver({
+        exec: () => Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 }),
+        cwd: repoRoot,
+      }),
+      resolveCost: () => null,
+      now: () => new Date('2026-08-12T08:00:00.000Z'),
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true, deadlineMinutes: 10 },
+    }
+    const ctx: StageContext = {
+      cwd: repoRoot,
+      changeDir: path.join(repoRoot, 'openspec', 'changes', 'solo'),
+      sidecarDir: path.join(state.runDir, 'sidecars'),
+      emit: (event) => {
+        appendEvent(logPath, event)
+      },
+    }
+    return { state, deps, ctx }
+  }
+
+  it('an early converged gate presents to the human without cap-hit trajectory or extend directives', async () => {
+    const fixture = await makeEarlyFixture()
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, CONVERGED_REVIEW, 1, 'early')
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(result.halted).toBe('gate')
+    expect(md).not.toContain('### Trajectory reviewed')
+    expect(md).not.toContain('### Extend')
+    expect(fixture.state.status).toBe('running')
+  })
+
+  it('an early cap-hit gate carries the concern history into the digest and reviews the trajectory', async () => {
+    const fixture = await makeEarlyFixture()
+    const capHit: ReviewLoopResult = {
+      ...CONVERGED_REVIEW,
+      outcome: 'cap-hit',
+      recurringConcerns: CONCERN_HISTORY,
+    }
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, capHit, 1, 'early')
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(md).toContain('### Concern history')
+    expect(md).toContain('### Trajectory reviewed')
+    expect(md).toContain('- [ ] T1 I reviewed the trajectory and the open findings above')
+    expect(md).toContain('→ RUN 1 MORE')
+  })
 })
 
 describe('buildBus subscriber wiring', () => {
@@ -554,5 +640,26 @@ describe('buildBus subscriber wiring', () => {
     })
     expect(() => buildBus(deps, path.join(dir, 'events.ndjson'))(event)).not.toThrow()
     expect(lines).toEqual(['[event-bus] sink exploded'])
+  })
+
+  it('swallows a throwing subscriber silently when no stdout sink is wired', () => {
+    const dir = makeDir()
+    const deps = makeDeps([], {
+      stdout: undefined,
+      liveEvents: (): void => {
+        throw new Error('sink exploded')
+      },
+    })
+    expect(() => buildBus(deps, path.join(dir, 'events.ndjson'))(event)).not.toThrow()
+  })
+
+  it('wires no subscriber at all when neither liveEvents nor render is present', () => {
+    const dir = makeDir()
+    const lines: string[] = []
+    const deps = makeDeps(lines)
+    const emit = buildBus(deps, path.join(dir, 'events.ndjson'))
+    expect(() => emit(event)).not.toThrow()
+    expect(lines).toEqual([])
+    expect(fs.existsSync(path.join(dir, 'events.ndjson'))).toBe(true)
   })
 })
