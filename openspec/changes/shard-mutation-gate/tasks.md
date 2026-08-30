@@ -74,10 +74,10 @@ that. See design.md — Migration Plan.
 
 ## 5. CI wiring
 
-- [ ] 5.1 Replace the `mutation-testing` job with plan → matrix → gate, moving the `if: always()`
+- [x] 5.1 Replace the `mutation-testing` job with plan → matrix → gate, moving the `if: always()`
       score-cache save to the gate job and keeping the gate job as the sole cache writer; verify with
       `bun workflows:lint`
-- [ ] 5.2 Confirm the `mutation-baseline` job is untouched and still runs single-process; verify with
+- [x] 5.2 Confirm the `mutation-baseline` job is untouched and still runs single-process; verify with
       `bun workflows:lint` and by reading the job definition
 - [ ] 5.3 Validate end-to-end on a real branch: one run whose measurement set is below the threshold
       (expect exactly one shard) and one large enough to fan out (expect a sized matrix and a

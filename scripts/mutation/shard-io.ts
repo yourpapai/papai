@@ -7,6 +7,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import type { CoverageMap } from './coverage-map.js'
+import { SHARD_RESULT_VERSION } from './shard-measure.js'
+import type { ShardResult } from './shard-measure.js'
 import { SHARD_PLAN_VERSION } from './shard-plan.js'
 import type { ShardPlanManifest } from './shard-plan.js'
 
@@ -44,6 +46,32 @@ export const readShardPlan = (filePath: string): ShardPlanManifest | null => {
     if (!fs.existsSync(filePath)) return null
     const parsed: unknown = JSON.parse(fs.readFileSync(filePath, 'utf8'))
     return isShardPlanManifest(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Shape check for a shard result. The gate's entire job is to not trust these blindly: a result
+ * it cannot validate contributes nothing, and its targets then surface as missing rather than as
+ * a quietly narrower verdict.
+ */
+const isShardResult = (value: unknown): value is ShardResult => {
+  if (!isRecord(value)) return false
+  if (value['version'] !== SHARD_RESULT_VERSION) return false
+  if (typeof value['shardIndex'] !== 'number') return false
+  if (!isStringArray(value['targets'])) return false
+  if (!Array.isArray(value['perFile']) || !Array.isArray(value['skipped']) || !Array.isArray(value['errored'])) {
+    return false
+  }
+  return typeof value['durationSeconds'] === 'number' && typeof value['estimatedSeconds'] === 'number'
+}
+
+/** Read one shard result, or null when it is missing, unparseable, or not this version's shape. */
+export const readShardResult = (filePath: string): ShardResult | null => {
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+    return isShardResult(parsed) ? parsed : null
   } catch {
     return null
   }

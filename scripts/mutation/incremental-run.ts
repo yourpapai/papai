@@ -7,7 +7,7 @@ import path from 'node:path'
 
 import type { BaselineMap, PerFileScore } from './baseline.js'
 import type { GateInput } from './gates.js'
-import type { ErroredFile, PairedRunFileResult, PairedRunInput, PairedRunResult, SkippedFile } from './paired-run.js'
+import type { ErroredFile, PairedRunInput, PairedRunResult, SkippedFile } from './paired-run.js'
 import { openScoreCache, SCORE_CACHE_FILE } from './score-cache.js'
 import type { ScoreCache } from './score-cache.js'
 import {
@@ -54,7 +54,7 @@ export interface CombineInput {
 export interface IncrementalDeps {
   readonly plan: (targets: readonly string[]) => IncrementalPlan
   /** Record this run's measurements and persist. Never called with errored files. */
-  readonly record: (fresh: readonly PairedRunFileResult[]) => void
+  readonly record: (fresh: readonly PerFileScore[]) => void
 }
 
 /**
