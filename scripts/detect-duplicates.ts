@@ -50,13 +50,7 @@ async function runJscpd(): Promise<void> {
     '--output',
     reporterDir,
     '--ignore',
-    // afk-runner duplication ignores — re-timed to the sdd-runner retirement
-    // follow-up (U9, the ledger's `next`; see docs/architecture/afk-runner.md
-    // and openspec/changes/v1-live-proof/reflection.md): fixtures and ported
-    // substrate tests are near-identical to their sdd-runner sources by
-    // design — the duplication IS the parity oracle, and it can only die with
-    // sdd-runner itself. Removing these earlier would force re-adding them.
-    '**/node_modules/**,**/*.d.ts,**/e2e/**,**/tests/afk-runner/fixtures/**,**/tests/afk-runner/events.test.ts,**/tests/afk-runner/event-schemas.test.ts,**/tests/afk-runner/legacy-fold.test.ts,**/tests/afk-runner/run-state.test.ts,**/tests/afk-runner/stop-controller.test.ts,**/tests/afk-runner/session/**,**/tests/afk-runner/work/**,**/tests/afk-runner/config.test.ts,**/tests/afk-runner/config-strict.test.ts,**/tests/afk-runner/openspec-driver.test.ts',
+    '**/node_modules/**,**/*.d.ts,**/e2e/**',
     '--format',
     'typescript',
     // Allow up to 10% duplication before failing

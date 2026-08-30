@@ -16,8 +16,8 @@
 
 ## 3. Re-tighten (D3)
 
-- [ ] 3.1 Delete the afk-runner ignore block and its justification comment from `scripts/detect-duplicates.ts`, leaving the pre-afk ignore list. Verify: `bun run duplicates` runs (result adjudicated in 3.2)
-- [ ] 3.2 Adjudicate every duplication pair the un-ignored run surfaces: deduplicate tests honestly, or re-ignore the specific pair with its own frozen-corpus justification (never the old block's authority). Iterate until green. Verify: `bun run duplicates` exits 0
+- [x] 3.1 Delete the afk-runner ignore block and its justification comment from `scripts/detect-duplicates.ts`, leaving the pre-afk ignore list. Verify: `bun run duplicates` runs (result adjudicated in 3.2)
+- [x] 3.2 Adjudicate every duplication pair the un-ignored run surfaces: deduplicate tests honestly, or re-ignore the specific pair with its own frozen-corpus justification (never the old block's authority). Iterate until green. Verify: `bun run duplicates` exits 0
 
 ## 4. Naming honesty (D4)
 
