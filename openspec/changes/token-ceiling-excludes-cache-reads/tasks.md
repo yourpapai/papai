@@ -13,9 +13,9 @@
 
 ## 3. OpenCode route: cache writes join the ceiling
 
-- [ ] 3.1 Extend the `decodeSessionUsage` cases in `tests/opencode-agent/adapters.test.ts`: a reported `cache.write` contributes to the enforced figure; a reported `cache.read` does not; an **absent** `cache.write` contributes zero and still yields a figure; the unsummed `cacheRead`/`cacheWrite` fields stay `undefined` when absent so pricing can still refuse to price them. Verify: `bun test tests/opencode-agent/adapters.test.ts` (fails)
-- [ ] 3.2 Fold cache write into the enforced figure in `opencode-agent/src/sdk-contract.ts` via the shared function, leaving `cacheBucketSchema` and the optional-bucket split exactly as they are, and update the `SessionUsage.tokens` comment to name the new definition (design D3). Verify: `bun test tests/opencode-agent/adapters.test.ts && bun run typecheck`
-- [ ] 3.3 Assert both routes answer identically: add a case pinning that the same four buckets produce the same enforced figure through `decodeSessionUsage` and through the claude accounting. Verify: `bun test tests/opencode-agent/adapters.test.ts tests/opencode-agent/claude-adapter.test.ts`
+- [x] 3.1 Extend the `decodeSessionUsage` cases in `tests/opencode-agent/adapters.test.ts`: a reported `cache.write` contributes to the enforced figure; a reported `cache.read` does not; an **absent** `cache.write` contributes zero and still yields a figure; the unsummed `cacheRead`/`cacheWrite` fields stay `undefined` when absent so pricing can still refuse to price them. Verify: `bun test tests/opencode-agent/adapters.test.ts` (fails)
+- [x] 3.2 Fold cache write into the enforced figure in `opencode-agent/src/sdk-contract.ts` via the shared function, leaving `cacheBucketSchema` and the optional-bucket split exactly as they are, and update the `SessionUsage.tokens` comment to name the new definition (design D3). Verify: `bun test tests/opencode-agent/adapters.test.ts && bun run typecheck`
+- [x] 3.3 Assert both routes answer identically: add a case pinning that the same four buckets produce the same enforced figure through `decodeSessionUsage` and through the claude accounting. Verify: `bun test tests/opencode-agent/adapters.test.ts tests/opencode-agent/claude-adapter.test.ts`
 
 ## 4. A run that spent nothing is not a run that could not be priced
 
