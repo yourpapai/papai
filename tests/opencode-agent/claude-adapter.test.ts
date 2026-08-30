@@ -565,7 +565,10 @@ describe('token accounting', () => {
     expect(await agent.tokensUsed()).toBe(1112)
   })
 
-  test('degrades to 0 with a warn when no recognizable usage was seen', async () => {
+  test('a session that has not been prompted counts 0, and does not warn about it', async () => {
+    // The over-budget stop's own session: it refuses the phase before anything
+    // prompts, so 0 is the truth rather than a blind budget. Warning here read
+    // as "the ceiling cannot see this run" on a run that had not spent yet.
     const log = publicLog()
     const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(spawn.spawn, log.log))
@@ -573,7 +576,7 @@ describe('token accounting', () => {
     const beforeAnyTurn = await agent.tokensUsed()
 
     expect(beforeAnyTurn).toBe(0)
-    expect(log.rows.some((row) => row.message.includes('token'))).toBe(true)
+    expect(log.rows.some((row) => row.message.includes('No recognizable claude usage'))).toBe(false)
   })
 })
 
@@ -655,13 +658,35 @@ describe('createClaudeAgent · what the run spent', () => {
     ])
   })
 
-  test('a session that never prompted is unpriced, not free', async () => {
-    // The distinction `tokensUsed` cannot make — it answers 0 and warns — and
-    // this one can say outright.
+  test('a session that never prompted spent nothing, and says so', async () => {
+    // Not `unpriced`: nothing was asked of the model, so there is no spend to
+    // fail to price. The over-budget stop calls this on a session it refused to
+    // let prompt, and reading it as unknown turned every such stop into
+    // "≥ $9.23 (some turns unpriced)" on an issue whose every turn was priced.
     const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
 
-    expect(await agent.spend()).toEqual({ usd: null, source: 'none', windows: [] })
+    expect(await agent.spend()).toEqual({ usd: 0, source: 'unspent', windows: [] })
+  })
+
+  test('a turn whose usage could not be recognized is unpriced, and warns', async () => {
+    // The case the warning was written for, and the only one left holding it: a
+    // turn ran, so there is spend, and the pipeline could not see it.
+    const log = publicLog()
+    const unreadable = fixture('stub-rate-limit-turn.ndjson').replaceAll('"usage":', '"usageMoved":')
+    const spawn = scriptedSpawn([{ stdout: unreadable }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, log.log))
+
+    await agent.prompt({ prompt: 'first' }).catch(() => undefined)
+    const spent = await agent.spend()
+
+    expect(spent.usd).toBeNull()
+    expect(spent.source).toBe('none')
+    // The provider's standing is still reported: a run that spent nothing may
+    // still have been told how much of the week is gone.
+    expect(spent.windows).toMatchObject([{ window: 'five_hour' }, { window: 'seven_day' }])
+    expect(await agent.tokensUsed()).toBe(0)
+    expect(log.rows.some((row) => row.message.includes('No recognizable claude usage'))).toBe(true)
   })
 
   test('a stream carrying no rate-limit line reports no windows', async () => {

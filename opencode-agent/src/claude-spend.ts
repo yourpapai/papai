@@ -26,11 +26,26 @@ import { resolveRunCost } from './run-spend.js'
  */
 export interface ClaudeAccounting {
   /**
-   * Whether any usage was seen at all. Distinguishes a session that spent
-   * nothing from one whose usage the pipeline failed to recognize — the second
-   * must not report `$0`.
+   * Whether any usage was seen at all — half of the distinction between a
+   * session that spent nothing and one whose usage the pipeline failed to
+   * recognize. Only the second may report unpriced.
    */
   sawUsage: boolean
+  /**
+   * How many turns this session was asked to run — the other half, and the one
+   * fact here that the stream does not carry.
+   *
+   * It sits beside the stream facts rather than in the adapter's own state
+   * because {@link spendOf} needs both to answer, and both are read at the same
+   * instant by the same caller. That is `agent-session.ts`'s argument for
+   * `RunSpend` being one method rather than two: figures that can only ever be
+   * sampled together should not be sampled apart.
+   *
+   * Counted before the turn runs, so a turn that died mid-flight still counts.
+   * A turn was attempted, so spend may exist and simply be invisible — which is
+   * exactly the case that must report unpriced rather than `$0`.
+   */
+  turnsPrompted: number
   /** The CLI's own cost figure, summed across the run's turns. */
   costUsdTotal: number
   /**
@@ -56,6 +71,7 @@ export interface ClaudeAccounting {
 
 export const emptyAccounting = (): ClaudeAccounting => ({
   sawUsage: false,
+  turnsPrompted: 0,
   costUsdTotal: 0,
   buckets: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   rateLimitLines: [],
@@ -93,16 +109,21 @@ export const ceilingTokensOf = (accounting: ClaudeAccounting): number => counted
 /**
  * What the run cost, and the standing its provider reported.
  *
- * A session that saw no usage at all reports **unpriced**, not `$0`: the same
- * distinction `tokensUsed()` cannot make — it must return a number, so it
- * returns `0` and warns — except that here it can be said in the answer.
+ * Three answers, not two. A session that was **never prompted** spent `$0` and
+ * says so: nothing was asked of the model, so there is no spend that failed to
+ * price. A session that ran a turn and reported usage nobody could read is
+ * **unpriced**, which is what the `none` rung has always meant. Conflating them
+ * made every over-budget stop — which refuses the phase *before* it prompts —
+ * mark the issue's total as a floor, so an issue whose every turn was priced
+ * reported "≥ $9.23 (some turns unpriced)".
  *
- * The windows are reported either way. A run that failed before spending
+ * The windows are reported on all three. A run that failed before spending
  * anything may still have been told how much of the week is gone, and that is
  * exactly the run whose maintainer wants to know.
  */
 export const spendOf = (accounting: ClaudeAccounting, settings: OpenAiSettings, log: Logger): Promise<RunSpend> => {
   const windows = foldRateLimits(accounting.rateLimitLines)
+  if (accounting.turnsPrompted === 0) return Promise.resolve({ usd: 0, source: 'unspent', windows })
   if (!accounting.sawUsage) return Promise.resolve({ usd: null, source: 'none', windows })
 
   return resolveRunCost(

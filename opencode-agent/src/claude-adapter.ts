@@ -232,6 +232,9 @@ const claudeSession = (context: SessionContext, connection: TurnConnection): Age
     prompt: (current: AgentPromptRequest): Promise<AgentPromptResult> => {
       state.request = current
       state.outcome = null
+      // Before the turn, not after: a turn that dies mid-flight was still
+      // asked for, and its spend is unpriced rather than absent.
+      state.accounting.turnsPrompted += 1
       return runTurn(connection, context.bootSessionId, stubBody, options, context.tracker).then(() => {
         const outcome = state.outcome
         if (outcome === null) throw claudeResultError('the turn resolved without a captured outcome')
@@ -239,12 +242,14 @@ const claudeSession = (context: SessionContext, connection: TurnConnection): Age
       })
     },
     tokensUsed: (): Promise<number> => {
-      if (!state.accounting.sawUsage) {
+      // Only a session that ran a turn can have usage to miss. Warning on one
+      // that was never prompted — the over-budget stop's own session — reported
+      // a blind budget on a run that had simply not spent anything yet.
+      if (state.accounting.turnsPrompted > 0 && !state.accounting.sawUsage) {
         options.log.warn(
           { sessionId: context.bootSessionId },
           'No recognizable claude usage was seen; the token budget cannot see this run',
         )
-        return Promise.resolve(0)
       }
       return Promise.resolve(ceilingTokensOf(state.accounting))
     },
