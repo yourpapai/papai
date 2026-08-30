@@ -17,7 +17,7 @@
 
 ## 4. CLI verb
 
-- [ ] 4.1 Write a failing CLI test (`tests/afk-runner/cli.test.ts`) for `afk-runner runs` over a fixture work dir: roster + footer print, and a read-only assertion (no file content or mtime change under the work dir); update the usage text. Wire the `runs` command in `afk-runner/src/cli.ts` (named-command dispatch before the bare-positional form; no flags). Verify: `bun test tests/afk-runner/cli.test.ts`
+- [x] 4.1 Write a failing CLI test (`tests/afk-runner/cli.test.ts`) for `afk-runner runs` over a fixture work dir: roster + footer print, and a read-only assertion (no file content or mtime change under the work dir); update the usage text. Wire the `runs` command in `afk-runner/src/cli.ts` (named-command dispatch before the bare-positional form; no flags). Verify: `bun test tests/afk-runner/cli.test.ts`
 
 ## 5. Live-lane aggregate assertion
 

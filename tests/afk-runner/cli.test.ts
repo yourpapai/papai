@@ -3,13 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 import {
   runCli,
   runResumeCommand,
+  runRunsCommand,
   runStartCommand,
   runStatusCommand,
   fullStateSummary,
@@ -120,5 +122,101 @@ describe('afk-runner cli commands (fake agents)', () => {
     expect(summary).toContain('resumed: re-entered work')
 
     expect(reviewEnterCount(logPath)).toBe(2)
+  })
+})
+
+const cliTmpDirs: string[] = []
+
+afterEach(() => {
+  while (cliTmpDirs.length > 0) {
+    const dir = cliTmpDirs.pop()
+    if (dir !== undefined) fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+/** Content + mtime snapshot of every file under dir (the passive-read-only oracle). */
+function snapshotTree(dir: string): Record<string, { content: string; mtimeMs: number }> {
+  const snap: Record<string, { content: string; mtimeMs: number }> = {}
+  const walk = (current: string): void => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else {
+        const stat = fs.statSync(full)
+        snap[path.relative(dir, full)] = { content: fs.readFileSync(full, 'utf8'), mtimeMs: stat.mtimeMs }
+      }
+    }
+  }
+  walk(dir)
+  return snap
+}
+
+function writeRunsFixture(workDir: string): void {
+  const T0 = Date.parse('2026-01-01T00:00:00.000Z')
+  const usage = (inputTokens: number): string =>
+    JSON.stringify({
+      inputTokens,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cachedReadTokens: 0,
+      cachedWriteTokens: 0,
+      costUsd: 0,
+      wallMs: 0,
+    })
+  const runs: readonly {
+    readonly id: string
+    readonly state: Record<string, unknown>
+    readonly log: readonly string[]
+  }[] = [
+    {
+      id: 'done-run',
+      state: { status: 'completed', gate: null, changeName: 'done-run', updatedAt: '2026-01-01T02:00:00.000Z' },
+      log: [
+        `{"altitude":"L1","type":"done","agent":"impl","usage":${usage(12_000_000)},"seq":1,"ts":"2026-01-01T00:00:00.000Z"}`,
+        `{"altitude":"L1","type":"done","agent":"impl","usage":${usage(1_200_000)},"seq":2,"ts":"2026-01-01T01:00:00.000Z"}`,
+      ],
+    },
+    {
+      id: 'gate-run',
+      state: {
+        status: 'running',
+        gate: { mode: 'escalation', version: 2 },
+        changeName: 'gate-run',
+        updatedAt: '2026-01-01T03:00:00.000Z',
+      },
+      log: [
+        `{"altitude":"L2","type":"stage_enter","stage":"intake","seq":1,"ts":"2026-01-01T00:00:00.000Z"}`,
+        `{"altitude":"L2","type":"gate","action":"presented","mode":"escalation","version":2,"seq":2,"ts":"2026-01-01T00:10:00.000Z"}`,
+        `{"altitude":"L1","type":"done","agent":"impl","usage":${usage(5_000)},"seq":3,"ts":"2026-01-01T02:30:00.000Z"}`,
+      ],
+    },
+  ]
+  for (const run of runs) {
+    const runDir = path.join(workDir, 'runs', run.id)
+    fs.mkdirSync(runDir, { recursive: true })
+    fs.writeFileSync(path.join(runDir, 'state.json'), `${JSON.stringify({ runId: run.id, ...run.state }, null, 2)}\n`)
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), `${run.log.join('\n')}\n`)
+  }
+  void T0
+}
+
+describe('afk-runner runs command (cross-run accounting)', () => {
+  it('prints the roster and totals footer without touching any file under the work dir', async () => {
+    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'afk-runs-cli-'))
+    cliTmpDirs.push(workDir)
+    writeRunsFixture(workDir)
+    const pipeline = makeFakePipeline()
+    const deps = { ...pipeline.deps, config: { ...pipeline.deps.config, workDir } }
+
+    const before = snapshotTree(workDir)
+    const summary = await runRunsCommand(deps)
+
+    expect(summary).toContain('done-run')
+    expect(summary).toContain('gate-run')
+    expect(summary).toContain('gate:escalation v2')
+    expect(summary).toContain('totals: 2 runs')
+    expect(summary).toContain('gate-pending: 1')
+    expect(summary).toContain('cost: ≥ $0.00 (2 unpriced)')
+    expect(snapshotTree(workDir)).toEqual(before)
   })
 })

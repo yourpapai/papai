@@ -8,6 +8,7 @@ import path from 'node:path'
 
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { realSpawn } from '../../review-loop/src/spawn.js'
+import { renderRunsReport, summarizeWorkDir } from './accounting.js'
 import { typedSpawn } from './agent-seam.js'
 import type { ExecGitFn, RunnerConfig } from './config.js'
 import type { DepthProfile } from './events.js'
@@ -146,6 +147,13 @@ export async function runReportCommand(deps: RunDeps, args: readonly string[]): 
   return report
 }
 
+/** The passive cross-run roster (U9 report half): `runs` prints rows + totals without writing anything. */
+export async function runRunsCommand(deps: RunDeps): Promise<string> {
+  const report = renderRunsReport(await summarizeWorkDir(deps.config.workDir))
+  console.log(report)
+  return report
+}
+
 export async function runResumeCommand(deps: RunDeps, runId: string): Promise<string> {
   const result = await resumeRun(deps, runId)
   const lines = [
@@ -191,6 +199,7 @@ function printUsage(): void {
       '  afk-runner resume <runId>                     re-enter an interrupted or parked run',
       '  afk-runner stop <runId>                       calm-stop a live run; abort a dead one',
       '  afk-runner report <runId> [--pr]              print the passive run report',
+      '  afk-runner runs                               print the passive cross-run roster and totals',
       '  afk-runner <runDir>                           print the fold summary of a run dir',
     ].join('\n'),
   )
@@ -203,11 +212,13 @@ export function cliMain(argv: readonly string[]): Promise<string | undefined> {
     command === 'status' ||
     command === 'resume' ||
     command === 'report' ||
-    command === 'stop'
+    command === 'stop' ||
+    command === 'runs'
   ) {
     const deps = defaultCliDeps()
     if (command === 'start') return runStartCommand(deps, rest)
     if (command === 'report') return runReportCommand(deps, rest)
+    if (command === 'runs') return runRunsCommand(deps)
     if (command === 'stop') {
       const runId = rest[0]
       if (runId === undefined || runId.length === 0) throw new Error('usage: afk-runner stop <runId>')
