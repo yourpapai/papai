@@ -146,8 +146,11 @@ Staging: land the script-side split (plan / measure / combine as separately invo
 first, verified locally against a real branch diff; then switch the workflow. The script split is
 observable through its own tests before any CI topology changes.
 
-**Hook/TDD interaction.** New files under `scripts/mutation/` are gated by the Write/Edit TDD hook
-pipeline and need companion tests under `tests/scripts/mutation/` written first. The new modules
+**Hook/TDD interaction.** `isGateableImplFile` covers `src/`, `client/`, `plugins/`,
+`review-loop/src/` and `sdd-runner/src/` only, so new files under `scripts/mutation/` are neither
+gated by the Write/Edit TDD hook pipeline nor selected as mutation targets. Companion tests under
+`tests/scripts/mutation/` are still written first here — the work is worth doing test-first
+regardless of what enforces it — but nothing blocks a write that skips them. The new modules
 are pure enough to test directly: sizing and packing take a target list plus weights and return an
 assignment, and reconciliation takes a manifest plus results and returns a verdict — all without
 spawning Stryker. Note that adding files to `scripts/mutation/` changes the toolchain fingerprint

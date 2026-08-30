@@ -28,19 +28,19 @@ that. See design.md — Migration Plan.
 
 ## 2. Plan command
 
-- [ ] 2.1 Write failing tests for the plan manifest shape — planned targets, reused entries, per-shard
+- [x] 2.1 Write failing tests for the plan manifest shape — planned targets, reused entries, per-shard
       assignments, and the budget inputs used — including the nothing-to-measure case; verify with
       `bun test tests/scripts/mutation/shard-plan-command.test.ts`
-- [ ] 2.2 Implement a plan-only mode over the existing target selection and reuse split, emitting the
+- [x] 2.2 Implement a plan-only mode over the existing target selection and reuse split, emitting the
       manifest without invoking Stryker; verify with
       `bun test tests/scripts/mutation/shard-plan-command.test.ts`
-- [ ] 2.3 Write failing tests that the plan serializes the coverage map for shard consumption and
+- [x] 2.3 Write failing tests that the plan serializes the coverage map for shard consumption and
       that a shard injecting it performs no coverage spawning; verify with
       `bun test tests/scripts/mutation/shard-coverage-handoff.test.ts`
-- [ ] 2.4 Implement coverage-map publication and the shard-side reader over the existing
+- [x] 2.4 Implement coverage-map publication and the shard-side reader over the existing
       `PairedRunDeps.buildMap` seam, including the spec's fallback when the shared map is
       unavailable; verify with `bun test tests/scripts/mutation/shard-coverage-handoff.test.ts`
-- [ ] 2.5 Add estimated-versus-actual logging per shard assignment (design.md — Risks, estimate
+- [x] 2.5 Add estimated-versus-actual logging per shard assignment (design.md — Risks, estimate
       drift); verify with `bun test tests/scripts/mutation/shard-plan-command.test.ts`
 
 ## 3. Shard measurement command
