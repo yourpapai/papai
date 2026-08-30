@@ -60,12 +60,12 @@ See LICENSE in the project root for details.
 
 ## 4. Correct the documentation the code contradicted
 
-- [ ] 4.1 In `opencode-agent/README.md`, fix the backend-selection item that
+- [x] 4.1 In `opencode-agent/README.md`, fix the backend-selection item that
       says `LLM_PROVIDER` is unused because "the claude route skips the
       models.dev catalogue read": the route skips the boot-time *model-facts*
       read and prices under `anthropic`. Verify: the claimed behaviour matches
       the spec delta, and `bun run format:check` passes.
-- [ ] 4.2 In `opencode-agent/CLAUDE.md`, extend the "provider id is a catalogue
+- [x] 4.2 In `opencode-agent/CLAUDE.md`, extend the "provider id is a catalogue
       key" note to say the key is route-scoped: `LLM_PROVIDER` on the opencode
       route, `anthropic` on the claude route. Verify: `bun run format:check`.
 

@@ -633,7 +633,12 @@ findings: `ROADMAP.md`.
   The id may not contain a slash: `parseModelRef` splits at the **first** one
   and keeps the whole remainder as the model id, which is what lets a model id
   contain slashes. `createOpenCodeAgent` logs the resolved reference at `debug`,
-  names only — a CI log is world-readable on a public repository.
+  names only — a CI log is world-readable on a public repository. The key is
+  **route-scoped**, and the claude route is not this route: it runs the
+  Anthropic CLI, so `claude-spend.ts` prices it under `anthropic` and under
+  `modelIdForCli`'s stripped id — the one the CLI was invoked with — whatever
+  `LLM_PROVIDER` says. It read that variable once, which logged a provider the
+  run's turns never touched and cost the catalogue rung its primary row.
 - **A model no catalogue carries is described rather than guessed at, and the
   description is omitted rather than zeroed.** `model-metadata.ts` resolves what
   a run knows about its model on a four-rung ladder — `AGENT_MODEL_*` overrides,
