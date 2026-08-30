@@ -45,10 +45,10 @@ that. See design.md — Migration Plan.
 
 ## 3. Shard measurement command
 
-- [ ] 3.1 Write failing tests that a shard measures only its assigned targets and emits `perFile`,
+- [x] 3.1 Write failing tests that a shard measures only its assigned targets and emits `perFile`,
       `skipped` and `errored`, and that it exits 0 on a low score; verify with
       `bun test tests/scripts/mutation/shard-measure.test.ts`
-- [ ] 3.2 Implement the shard measurement entrypoint over `pairedRun`; verify with
+- [x] 3.2 Implement the shard measurement entrypoint over `pairedRun`; verify with
       `bun test tests/scripts/mutation/shard-measure.test.ts`
 
 ## 4. Gate combination and reconciliation
