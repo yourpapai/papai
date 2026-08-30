@@ -1,7 +1,7 @@
 ## 1. The shared definition
 
-- [ ] 1.1 Write the failing test for the enforced-figure function in `tests/opencode-agent/agent-session.test.ts`: it sums uncached input, output, reasoning and cache-write; it excludes cache read entirely (a run of 4/155/0/28,005 with 61,460 cache reads answers 28,164); an absent `reasoning`, `cacheWrite` or `cacheRead` contributes zero rather than throwing or returning `NaN`; the answer is a non-negative integer for fractional inputs. Verify: `bun test tests/opencode-agent/agent-session.test.ts` (fails)
-- [ ] 1.2 Export the function from `opencode-agent/src/agent-session.ts`, beside the `tokensUsed()` declaration, taking the same bucket shape both adapters already build for pricing (design D2). Verify: `bun test tests/opencode-agent/agent-session.test.ts && bun run typecheck`
+- [x] 1.1 Write the failing test for the enforced-figure function in `tests/opencode-agent/agent-session.test.ts`: it sums uncached input, output, reasoning and cache-write; it excludes cache read entirely (a run of 4/155/0/28,005 with 61,460 cache reads answers 28,164); an absent `reasoning`, `cacheWrite` or `cacheRead` contributes zero rather than throwing or returning `NaN`; the answer is a non-negative integer for fractional inputs. Verify: `bun test tests/opencode-agent/agent-session.test.ts` (fails)
+- [x] 1.2 Export the function from `opencode-agent/src/agent-session.ts`, beside the `tokensUsed()` declaration, taking the same bucket shape both adapters already build for pricing (design D2). Verify: `bun test tests/opencode-agent/agent-session.test.ts && bun run typecheck`
 
 ## 2. Claude route: buckets only, no derived total
 
