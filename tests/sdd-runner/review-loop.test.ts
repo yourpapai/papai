@@ -22,7 +22,7 @@ import {
   ResolverOutputSchema,
   runReviewLoop,
 } from '../../sdd-runner/src/review-loop.js'
-import type { ReviewLoopDeps } from '../../sdd-runner/src/review-loop.js'
+import type { ReviewLoopDeps, ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { evaluateConvergence, lensesForRound, mergeLensFindings } from '../../sdd-runner/src/review-model.js'
 
 const tmpDirs: string[] = []
@@ -58,7 +58,9 @@ function finding(overrides: Partial<Finding> = {}): Finding {
 describe('evaluateConvergence', () => {
   it('converges with zero blockers, zero materials, and at most three nitpicks', () => {
     const verdict = evaluateConvergence([resolution(), resolution({ id: 'F2' }), resolution({ id: 'F3' })])
-    expect(verdict).toEqual({ verdict: 'converged', counts: { blocker: 0, material: 0, nitpick: 3 } })
+    const counts = { blocker: 0, material: 0, nitpick: 3 }
+    // Without a context `open` mirrors `raised`: the pre-split reading exactly.
+    expect(verdict).toEqual({ verdict: 'converged', counts, raised: counts, open: counts })
   })
 
   it('stays open with any blocker or material, or more than three nitpicks', () => {
@@ -217,8 +219,14 @@ describe('runReviewLoop', () => {
       conventions: 'y',
     })
     expect(result.outcome).toBe('cap-hit')
+    // The blocker was `assumed` with no assumption logged against it, so nothing
+    // but a human can settle it: still open.
     expect(result.openBlockers).toEqual([blocker])
-    expect(result.openMaterial).toEqual([material])
+    // The material was edited. Round 1 has no prior snapshot to compare against,
+    // so the claim is taken at face value and the finding is not open — the
+    // verification round is where a static change folder gets caught.
+    expect(result.openMaterial).toEqual([])
+    expect(result.raised).toEqual({ blocker: 1, material: 1, nitpick: 0 })
   })
 
   it('feeds the resolutions ledger to the next round reviewer', async () => {
@@ -435,6 +443,103 @@ describe('round-boundary steering consumption (9.2-9.3)', () => {
       conventions: 'y',
     })
     expect(result.outcome).toBe('cap-hit')
+  })
+})
+
+describe('runReviewLoop — raised vs open', () => {
+  const options = {
+    changeName: 'add-thing',
+    depth: 'S' as const,
+    taskText: 't',
+    conventions: 'c',
+  }
+
+  /** A resolver script that edits the proposal, so the round's digests move. */
+  function editingResolver(cls: string): string {
+    return JSON.stringify({
+      resolutions: [{ id: 'F1', class: cls, resolution: 'edited', outcome: 'rewrote the why' }],
+      assumptions: [],
+    })
+  }
+
+  async function runOnce(
+    dir: string,
+    script: Record<string, string[]>,
+    mutate = true,
+  ): Promise<{ result: ReviewLoopResult; fixture: LoopFixture }> {
+    const fixture = makeLoopFixture(dir, script)
+    // The resolver claims an edit; when `mutate` is set, make the change folder
+    // actually move so the claim is genuine, the way a real resolver would.
+    const deps: ReviewLoopDeps = {
+      ...fixture.deps,
+      materialize: (round: number): Promise<void> => {
+        if (mutate) {
+          fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), `## Why\nrevision ${String(round)}\n`)
+        }
+        return Promise.resolve()
+      },
+    }
+    const result = await runReviewLoop(deps, { ...options, changeDir: fixture.changeDir })
+    return { result, fixture }
+  }
+
+  it('reports an empty open set when the round edited its way out of a material finding', async () => {
+    const { result } = await runOnce(makeDir(), {
+      reviewer: [JSON.stringify({ findings: [finding({ class: 'MATERIAL' })] })],
+      resolver: [editingResolver('MATERIAL')],
+    })
+    expect(result.openMaterial).toEqual([])
+    expect(result.verdict).toBe('needs-review')
+  })
+
+  it('still reports a dismissed material finding as open', async () => {
+    const { result } = await runOnce(makeDir(), {
+      reviewer: [JSON.stringify({ findings: [finding({ class: 'MATERIAL' })] })],
+      resolver: [
+        JSON.stringify({
+          resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'out of scope' }],
+          assumptions: [],
+        }),
+      ],
+    })
+    expect(result.openMaterial.map((r) => r.id)).toEqual(['F1'])
+    expect(result.verdict).toBe('open')
+  })
+
+  it('carries the raised counts alongside the open ones', async () => {
+    const { result } = await runOnce(makeDir(), {
+      reviewer: [JSON.stringify({ findings: [finding({ class: 'MATERIAL' })] })],
+      resolver: [editingResolver('MATERIAL')],
+    })
+    expect(result.raised).toEqual({ blocker: 0, material: 1, nitpick: 0 })
+  })
+
+  it('emits a convergence event carrying both count sets', async () => {
+    const { fixture } = await runOnce(makeDir(), {
+      reviewer: [JSON.stringify({ findings: [finding({ class: 'MATERIAL' })] })],
+      resolver: [editingResolver('MATERIAL')],
+    })
+    const event = fixture.emitted.find((e) => e.type === 'convergence')
+    expect(event).toMatchObject({
+      counts: { blocker: 0, material: 1, nitpick: 0 },
+      open: { blocker: 0, material: 0, nitpick: 0 },
+      verdict: 'needs-review',
+    })
+  })
+
+  it('treats an edit that moved nothing as still open', async () => {
+    const { result } = await runOnce(
+      makeDir(),
+      {
+        reviewer: [JSON.stringify({ findings: [finding({ class: 'MATERIAL' })] })],
+        resolver: [editingResolver('MATERIAL')],
+      },
+      false,
+    )
+    // Round 1 has no prior snapshot, so the claim is taken at face value; the
+    // second round is where a static folder is caught. At S the cap is 1, so
+    // this pins the round-1 leniency rather than the catch.
+    expect(result.verdict).toBe('needs-review')
   })
 })
 

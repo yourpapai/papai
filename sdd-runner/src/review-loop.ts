@@ -3,21 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { mkdir, writeFile } from 'node:fs/promises'
-import path from 'node:path'
-
 import { z } from 'zod'
 
 import { AssumptionRecordSchema, ResolutionSchema } from './agent-layer.js'
 import type { AgentLayerDeps, Finding, Resolution } from './agent-layer.js'
-import type { DepthProfile, EventInput } from './events.js'
+import type { DepthProfile, EventInput, FindingCounts } from './events.js'
 export { consumeSteerFile, parseSteerDirectives, reloadStagedSteer } from './steer.js'
 export type { ParsedSteer, StagedSteer, SteerDirective } from './steer.js'
-import { concernRecords, detectConcernThrash, fingerprintOf } from './concern-model.js'
+import { detectConcernThrash, fingerprintOf } from './concern-model.js'
 import type { ConcernRecord } from './concern-model.js'
 import { resolveRound, runLenses } from './review-agents.js'
-import { evaluateConvergence, readResolutionsLedger, ROUND_CAPS } from './review-model.js'
-import { consumeSteerFile } from './steer.js'
+import { applySteerAtBoundary, consumeResumeSession } from './review-boundary.js'
+import { ROUND_CAPS } from './review-model.js'
+import { closeRound } from './review-round.js'
+import type { ClosedRound } from './review-round.js'
 import type { SteerDirective } from './steer.js'
 
 export const ResolverOutputSchema = z
@@ -78,6 +77,10 @@ export interface ReviewLoopOptions {
 export interface ReviewLoopResult {
   readonly outcome: 'converged' | 'cap-hit'
   readonly rounds: number
+  /** The round's three-valued verdict over the open set. */
+  readonly verdict: 'converged' | 'needs-review' | 'open'
+  /** Every finding the round recorded, by class — the trajectory's number, not the gate's. */
+  readonly raised: FindingCounts
   readonly openBlockers: readonly Resolution[]
   readonly openMaterial: readonly Resolution[]
   readonly openNitpicks: readonly Resolution[]
@@ -85,57 +88,17 @@ export interface ReviewLoopResult {
   readonly recurringConcerns?: readonly ConcernRecord[]
 }
 
-/**
- * Round-boundary steer consumption (D6): at each round-cap evaluation point
- * consume `steer.md` (rename-on-consume, staged set persisted first), surface
- * unknown directives as warn lines, and re-read the persisted round cap so a
- * steered `extend` takes effect at this boundary — never consuming
- * `autoExtendsUsed`.
- */
-function applySteerAtBoundary(deps: ReviewLoopDeps, entryCap: number): number {
-  const steer = deps.steer
-  if (steer === undefined) return entryCap
-  const consumed = consumeSteerFile(steer.runDir)
-  for (const warning of consumed.warnings) steer.onWarning(warning)
-  if (consumed.valid.length > 0) steer.onDirectives?.(consumed.valid)
-  return steer.readRoundCap()
-}
-
-/**
- * The resumed session applies only to the round it was recorded in; a resume
- * entering an earlier round runs it fresh by design.
- */
-function consumeResumeSession(
-  resumeSession: ReviewLoopDeps['resumeSession'],
-  round: number,
-): ReviewLoopDeps['resumeSession'] {
-  if (resumeSession === undefined || resumeSession.round !== round) return undefined
-  return resumeSession
-}
-
-function openBucketsOf(resolved: ResolverOutput): {
-  openBlockers: readonly Resolution[]
-  openMaterial: readonly Resolution[]
-  openNitpicks: readonly Resolution[]
-} {
-  return {
-    openBlockers: resolved.resolutions.filter((entry) => entry.class === 'BLOCKER'),
-    openMaterial: resolved.resolutions.filter((entry) => entry.class === 'MATERIAL'),
-    openNitpicks: resolved.resolutions.filter((entry) => entry.class === 'NITPICK'),
-  }
-}
-
 function capHitWith(
   round: number,
-  open: ReturnType<typeof openBucketsOf>,
+  closed: ClosedRound,
   recurringConcerns?: readonly ConcernRecord[],
 ): ReviewLoopResult {
   return {
     outcome: 'cap-hit',
     rounds: round,
-    openBlockers: open.openBlockers,
-    openMaterial: open.openMaterial,
-    openNitpicks: open.openNitpicks,
+    verdict: closed.verdict,
+    raised: closed.raised,
+    ...closed.openLists,
     ...(recurringConcerns === undefined ? {} : { recurringConcerns }),
   }
 }
@@ -171,37 +134,27 @@ async function runRound(
   const merged = await runLenses(deps, options, round, prevOpenBlockers, consumedSession)
   emitClassified(deps, merged, round)
   const resolved = await resolveRound(deps, options, round, merged, consumedSession)
-  const { verdict, counts } = evaluateConvergence(resolved.resolutions)
-  deps.emit({ altitude: 'L2', type: 'convergence', round, verdict, counts })
-  await deps.materialize(round)
-  const concernHistory = await writeConcernSidecar(deps, round)
-  deps.emit({ altitude: 'L2', type: 'round_close', round, cap: effectiveCap })
-  const open = openBucketsOf(resolved)
-  if (verdict === 'converged') {
-    return { outcome: 'converged', rounds: round, openBlockers: [], openMaterial: [], openNitpicks: open.openNitpicks }
+  const closed = await closeRound(deps, options, resolved, round, effectiveCap)
+  const settled = { rounds: round, verdict: closed.verdict, raised: closed.raised } as const
+  if (closed.verdict === 'converged') {
+    const { openNitpicks } = closed.openLists
+    return { ...settled, outcome: 'converged', openBlockers: [], openMaterial: [], openNitpicks }
   }
-  const recurringConcerns = detectConcernThrash(concernHistory, merged, round)
+  const recurringConcerns = detectConcernThrash(closed.concernHistory, merged, round)
   if (recurringConcerns.length > 0) {
     // Concern-history gate (loop-memory D5): a thrashing concern stops the loop
     // with an early gate carrying its round-by-round history.
-    return capHitWith(round, open, recurringConcerns)
+    return capHitWith(round, closed, recurringConcerns)
   }
   if (deps.stop?.stopRequested() === true) {
     // Calm stop (D6): the in-flight round is fully recorded; do not enter the next.
-    return capHitWith(round, open)
+    return capHitWith(round, closed)
   }
   const nextCap = applySteerAtBoundary(deps, effectiveCap)
-  if (round >= nextCap) return capHitWith(round, open)
-  return runRound(deps, options, round + 1, nextCap, open.openBlockers.length)
-}
-
-/** Round-close concern sidecar (loop-memory D5): persist the cross-round concern history. */
-async function writeConcernSidecar(deps: ReviewLoopDeps, round: number): Promise<readonly ConcernRecord[]> {
-  const ledger = await readResolutionsLedger(deps.sidecarDir, round + 1)
-  const records = concernRecords(ledger)
-  await mkdir(path.dirname(path.join(deps.sidecarDir, 'concerns.json')), { recursive: true })
-  await writeFile(path.join(deps.sidecarDir, 'concerns.json'), `${JSON.stringify(records, null, 2)}\n`)
-  return records
+  if (round >= nextCap) return capHitWith(round, closed)
+  // Lens escalation asks "are blockers still being found", not "is one waiting
+  // for a human", so it carries the raised count forward — not the open one.
+  return runRound(deps, options, round + 1, nextCap, closed.raised.blocker)
 }
 
 export function runReviewLoop(

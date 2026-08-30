@@ -7,15 +7,28 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { FindingsSidecarSchema } from './agent-layer.js'
-import type { Finding } from './agent-layer.js'
+import type { Finding, Resolution } from './agent-layer.js'
 import type { ConcernRecord } from './concern-model.js'
+import type { FindingCounts } from './events.js'
+import { readRoundDigests } from './materialize.js'
 import { ResolverOutputSchema } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
+import { evaluateConvergence, isOpenResolution } from './review-model.js'
 
 const GAP_EXCERPT_MAX = 96
 
+/**
+ * A gap as a gate row can safely carry it: one line, no leading redirect marker,
+ * bounded length. The checkbox grammar anchors on `- [x] F3` at line start and a
+ * redirect is a line opening with an arrow, so an unsanitized multi-line gap
+ * could otherwise be parsed back as a decision it never was. Reduces to the
+ * empty string when nothing survives, and the caller then renders the id.
+ */
 function gapExcerpt(text: string): string {
-  const flat = text.replace(/\s+/gu, ' ').trim()
+  const flat = text
+    .replace(/\s+/gu, ' ')
+    .replace(/^[\s→]+/u, '')
+    .trim()
   return flat.length <= GAP_EXCERPT_MAX ? flat : `${flat.slice(0, GAP_EXCERPT_MAX - 1)}…`
 }
 
@@ -39,7 +52,10 @@ export async function findingsGapTextsFor(sidecarDir: string, round: number): Pr
   )
   const gaps = new Map<string, string>()
   for (const findings of perFile) {
-    for (const finding of findings) gaps.set(finding.id, gapExcerpt(finding.gap))
+    for (const finding of findings) {
+      const excerpt = gapExcerpt(finding.gap)
+      if (excerpt !== '') gaps.set(finding.id, excerpt)
+    }
   }
   return gaps
 }
@@ -69,23 +85,46 @@ export async function readConcernSidecar(sidecarDir: string): Promise<readonly C
   }
 }
 
-/** Rebuild a review result from a round's resolutions sidecar; missing or invalid → empty buckets. */
+const EMPTY_COUNTS: FindingCounts = { blocker: 0, material: 0, nitpick: 0 }
+
+/**
+ * Rebuild a round's review result from its sidecars, applying the same openness
+ * predicate the live loop used. A resumed run's gate must see the set the run
+ * would have seen; recomputing it by class alone would show a resumed operator
+ * findings the live one had already settled.
+ *
+ * An unreadable sidecar keeps the pre-change reading — empty buckets, treated as
+ * converged — rather than becoming a new gating condition here. The ladder's
+ * integrity cross-check is what fails closed on an unparseable sidecar;
+ * duplicating that in the reader would change resume routing.
+ */
 export async function readReviewResultFromSidecars(
   sidecarDir: string,
   round: number,
   outcome: 'converged' | 'cap-hit',
 ): Promise<ReviewLoopResult> {
+  const empty = { outcome, rounds: round, verdict: 'converged', raised: EMPTY_COUNTS } as const
   try {
     const raw = await readFile(path.join(sidecarDir, `resolutions-${round}.json`), 'utf8')
     const parsed = ResolverOutputSchema.parse(JSON.parse(raw))
+    const [current, previous] = await Promise.all([
+      readRoundDigests(sidecarDir, round),
+      readRoundDigests(sidecarDir, round - 1),
+    ])
+    const context = { assumptions: parsed.assumptions, digests: { previous, current: current ?? {} } }
+    const { verdict, raised } = evaluateConvergence(parsed.resolutions, context)
+    const openOf = (cls: Resolution['class']): Resolution[] =>
+      parsed.resolutions.filter((r) => r.class === cls && isOpenResolution(r, context.assumptions, context.digests))
     return {
       outcome,
       rounds: round,
-      openBlockers: parsed.resolutions.filter((r) => r.class === 'BLOCKER'),
-      openMaterial: parsed.resolutions.filter((r) => r.class === 'MATERIAL'),
-      openNitpicks: parsed.resolutions.filter((r) => r.class === 'NITPICK'),
+      verdict,
+      raised,
+      openBlockers: openOf('BLOCKER'),
+      openMaterial: openOf('MATERIAL'),
+      openNitpicks: openOf('NITPICK'),
     }
   } catch {
-    return { outcome, rounds: round, openBlockers: [], openMaterial: [], openNitpicks: [] }
+    return { ...empty, openBlockers: [], openMaterial: [], openNitpicks: [] }
   }
 }

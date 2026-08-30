@@ -12,9 +12,11 @@ import path from 'node:path'
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import type { LineSink, SpawnFn, SpawnResult } from '../../review-loop/src/agent-runner.js'
 import {
+  AssumptionRecordSchema,
   AssumptionsSidecarSchema,
   DepthClassificationSchema,
   FindingsSidecarSchema,
+  ResolutionSchema,
   ResolutionsSidecarSchema,
   runStageAgent,
   SkepticFindingsSidecarSchema,
@@ -75,7 +77,11 @@ interface FakeSpawn {
 
 function makeFakeSpawn(
   basename: string,
-  outcomes: Array<{ write?: string; result?: Partial<SpawnResult>; lines?: readonly string[] }>,
+  outcomes: Array<{
+    write?: string
+    result?: Partial<SpawnResult>
+    lines?: readonly string[]
+  }>,
 ): FakeSpawn {
   const prompts: string[] = []
   const args: string[][] = []
@@ -100,7 +106,12 @@ function makeFakeSpawn(
       const sink: LineSink = onLine
       for (const line of outcome.lines) sink(line)
     }
-    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '', ...outcome.result })
+    return Promise.resolve({
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      ...outcome.result,
+    })
   }
   return { spawn, prompts, args, models, inactivity, calls }
 }
@@ -165,18 +176,34 @@ describe('sidecar schemas', () => {
   it('accepts well-formed findings and rejects a finding without a gap quote', () => {
     const good = FindingsSidecarSchema.safeParse(JSON.parse(VALID_FINDINGS))
     expect(good.success).toBe(true)
-    const missingGap = { findings: [{ id: 'F1', class: 'BLOCKER', question: 'q', code_evidence_attempted: 'read x' }] }
+    const missingGap = {
+      findings: [
+        {
+          id: 'F1',
+          class: 'BLOCKER',
+          question: 'q',
+          code_evidence_attempted: 'read x',
+        },
+      ],
+    }
     expect(FindingsSidecarSchema.safeParse(missingGap).success).toBe(false)
   })
 
   it('requires a justification when a resolution dismisses', () => {
     const dismissed = {
       resolutions: [
-        { id: 'F1', class: 'NITPICK', resolution: 'dismissed', justification: 'answered verbatim in design D2' },
+        {
+          id: 'F1',
+          class: 'NITPICK',
+          resolution: 'dismissed',
+          justification: 'answered verbatim in design D2',
+        },
       ],
     }
     expect(ResolutionsSidecarSchema.safeParse(dismissed).success).toBe(true)
-    const unjustified = { resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'dismissed' }] }
+    const unjustified = {
+      resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'dismissed' }],
+    }
     const parsed = ResolutionsSidecarSchema.safeParse(unjustified)
     expect(parsed.success).toBe(false)
     assert(!parsed.success)
@@ -284,7 +311,16 @@ describe('sidecar schemas', () => {
     }
     expect(AssumptionsSidecarSchema.safeParse(withEvidence).success).toBe(true)
     const missing = {
-      assumptions: [{ id: 'A1', text: 't', basis: 'default', confidence: 'high', blast_radius: 'b', status: 'open' }],
+      assumptions: [
+        {
+          id: 'A1',
+          text: 't',
+          basis: 'default',
+          confidence: 'high',
+          blast_radius: 'b',
+          status: 'open',
+        },
+      ],
     }
     expect(AssumptionsSidecarSchema.safeParse(missing).success).toBe(false)
     const emptyFiles = {
@@ -321,7 +357,11 @@ describe('sidecar schemas', () => {
       signals: { ...classification.signals, novelty: 'new-subsystem' },
     })
     expect(newSubsystem.success).toBe(true)
-    const bad = { implicated_files: [], signals: { cross_module: 'yes' }, rationale: 'x' }
+    const bad = {
+      implicated_files: [],
+      signals: { cross_module: 'yes' },
+      rationale: 'x',
+    }
     expect(DepthClassificationSchema.safeParse(bad).success).toBe(false)
   })
 
@@ -388,7 +428,10 @@ describe('sidecar schemas', () => {
     const withoutCapabilities = DepthClassificationSchema.parse(base)
     expect(withoutCapabilities.capabilities).toBeUndefined()
 
-    const emptyString = DepthClassificationSchema.safeParse({ ...base, capabilities: [''] })
+    const emptyString = DepthClassificationSchema.safeParse({
+      ...base,
+      capabilities: [''],
+    })
     expect(emptyString.success).toBe(false)
   })
 
@@ -404,13 +447,19 @@ describe('sidecar schemas', () => {
       },
       rationale: 'single-module chat change',
     }
-    const withOversize = DepthClassificationSchema.parse({ ...base, oversize: true })
+    const withOversize = DepthClassificationSchema.parse({
+      ...base,
+      oversize: true,
+    })
     expect(withOversize.oversize).toBe(true)
 
     const withoutOversize = DepthClassificationSchema.parse(base)
     expect(withoutOversize.oversize).toBeUndefined()
 
-    const nonBoolean = DepthClassificationSchema.safeParse({ ...base, oversize: 'yes' })
+    const nonBoolean = DepthClassificationSchema.safeParse({
+      ...base,
+      oversize: 'yes',
+    })
     expect(nonBoolean.success).toBe(false)
   })
 
@@ -601,6 +650,67 @@ describe('runStageAgent', () => {
     await runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
     const toolUseEvents = emitted.filter((e): e is Extract<EventInput, { type: 'tool_use' }> => e.type === 'tool_use')
     expect(toolUseEvents.length).toBeGreaterThanOrEqual(1)
-    expect(toolUseEvents[0]).toMatchObject({ agent: 'reviewer-r1', tool: 'read', arg: 'foo.ts' })
+    expect(toolUseEvents[0]).toMatchObject({
+      agent: 'reviewer-r1',
+      tool: 'read',
+      arg: 'foo.ts',
+    })
+  })
+})
+
+describe('AssumptionRecordSchema findingId link', () => {
+  function assumption(extra: Record<string, unknown> = {}): unknown {
+    return {
+      id: 'A1',
+      text: 'guests stay read-only',
+      basis: 'default',
+      confidence: 'high',
+      blast_radius: 'b',
+      status: 'open',
+      evidence: { files: ['openspec/changes/foo/proposal.md'] },
+      ...extra,
+    }
+  }
+
+  it('accepts an assumption carrying the finding it was assumed against', () => {
+    expect(AssumptionRecordSchema.safeParse(assumption({ findingId: 'F3' })).success).toBe(true)
+  })
+
+  it('still accepts a pre-change assumption with no findingId', () => {
+    expect(AssumptionRecordSchema.safeParse(assumption()).success).toBe(true)
+  })
+
+  it('rejects an empty findingId rather than treating it as absent', () => {
+    expect(AssumptionRecordSchema.safeParse(assumption({ findingId: '' })).success).toBe(false)
+  })
+
+  it('leaves the A-prefix id convention unchanged', () => {
+    expect(AssumptionRecordSchema.safeParse(assumption({ id: 'F1', findingId: 'F1' })).success).toBe(false)
+  })
+})
+
+describe('ResolutionSchema resolution verbs', () => {
+  it('accepts every documented resolution verb, including evidence-answered', () => {
+    for (const resolution of ['edited', 'evidence-answered', 'assumed'] as const) {
+      expect(ResolutionSchema.safeParse({ id: 'R1', class: 'MATERIAL', resolution }).success).toBe(true)
+    }
+    expect(
+      ResolutionSchema.safeParse({
+        id: 'R1',
+        class: 'MATERIAL',
+        resolution: 'dismissed',
+        justification: 'why',
+      }).success,
+    ).toBe(true)
+  })
+
+  it('rejects an unknown resolution verb', () => {
+    expect(
+      ResolutionSchema.safeParse({
+        id: 'R1',
+        class: 'MATERIAL',
+        resolution: 'wished-away',
+      }).success,
+    ).toBe(false)
   })
 })

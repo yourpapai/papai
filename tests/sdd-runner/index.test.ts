@@ -58,6 +58,34 @@ describe('USAGE', () => {
   })
 })
 
+describe('sdd bin entry', () => {
+  // Every halt line the runner prints names `sdd <run-id>`. Without a bin entry
+  // resolving to a shebang'd, runnable file, that hint is a command the operator
+  // does not have — and the failure is silent until someone pastes it.
+  const packageDir = path.join(import.meta.dir, '..', '..', 'sdd-runner')
+
+  function fieldOf(value: unknown, key: string): unknown {
+    if (typeof value !== 'object' || value === null) return undefined
+    return Object.getOwnPropertyDescriptor(value, key)?.value
+  }
+
+  function binTarget(): string {
+    const manifest: unknown = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'))
+    const target = fieldOf(fieldOf(manifest, 'bin'), 'sdd')
+    expect(typeof target).toBe('string')
+    return path.resolve(packageDir, typeof target === 'string' ? target : '')
+  }
+
+  it('declares an sdd bin whose target exists', () => {
+    expect(fs.existsSync(binTarget())).toBe(true)
+  })
+
+  it('starts the bin target with a bun shebang so it runs when linked', () => {
+    const firstLine = fs.readFileSync(binTarget(), 'utf8').split('\n')[0]
+    expect(firstLine).toBe('#!/usr/bin/env bun')
+  })
+})
+
 describe('readChangeSummary', () => {
   it('counts checked and unchecked task checkboxes', async () => {
     const dir = makeDir()

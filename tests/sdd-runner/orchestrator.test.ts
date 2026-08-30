@@ -730,6 +730,71 @@ describe('runResume', () => {
     expect(steerWarnings.join('\n')).toContain('unknown directive: nonsense directive')
   })
 
+  it('a cap-hit needs-review resume buys exactly one verification round: the cap rises, round 2 runs, the tail follows', async () => {
+    const fixture = makeFixture({
+      'resolutions-1.json': JSON.stringify({
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'edited', justification: 'narrowed the gap' }],
+        assumptions: [],
+      }),
+      'findings-2.json': JSON.stringify({ findings: [] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [], assumptions: [] }),
+    })
+    const workDir = fixture.deps.config.workDir
+    const runId = 'seeded-cap-hit-verify'
+    const runDir = path.join(workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.mkdirSync(path.join(fixture.changeDir, 'specs', 'thing'), { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'), '## ADDED Requirements\n')
+    const now = '2026-01-01T00:00:00.000Z'
+    const events = [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake', seq: 1, ts: now },
+      { altitude: 'L2', type: 'depth', profile: 'S', rationale: 'override', source: 'override', seq: 2, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'intake', seq: 3, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'draft', seq: 4, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'draft', seq: 5, ts: now },
+    ]
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), events.map((e) => JSON.stringify(e)).join('\n') + '\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir,
+          changeName: fixture.changeName,
+          stage: 'draft',
+          depth: 'S',
+          round: 0,
+          gate: null,
+          status: 'running',
+          createdAt: now,
+          updatedAt: now,
+        },
+        null,
+        2,
+      )}\n`,
+    )
+
+    const calls: string[] = []
+    const trackingDriver = createTrackingDriver(fixture, calls)
+    const deps: OrchestratorDeps = { ...fixture.deps, driver: trackingDriver }
+    const result = await runResume(deps, runId)
+
+    expect(result.halted).toBe('gate')
+    // Round 1 closed needs-review (an edited artifact no reviewer has seen);
+    // the verification round is real spend: it raises the persisted cap and
+    // re-enters the loop at round 2 before the tail presents the final gate.
+    expect(fixture.spawnOrder).toContain('findings-1.json')
+    expect(fixture.spawnOrder).toContain('resolutions-1.json')
+    expect(fixture.spawnOrder).toContain('findings-2.json')
+    expect(fixture.spawnOrder).toContain('resolutions-2.json')
+    const persisted = await loadRunState(workDir, runId)
+    expect(persisted.roundCap).toBe(2)
+    expect(persisted.round).toBe(2)
+    expect(fixture.prompts.join('\n')).not.toContain('Stryker was here!')
+  })
+
   it('a review-stage resume without conventions or a stdout sink still reaches the gate with an empty conventions block', async () => {
     const fixture = makeFixture()
     const workDir = fixture.deps.config.workDir
@@ -802,7 +867,15 @@ describe('runResume', () => {
     fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nseeded\n')
     fs.writeFileSync(path.join(fixture.changeDir, 'design.md'), '## Context\nseeded\n')
     fs.writeFileSync(path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'), '## ADDED Requirements\n')
-    const materialResolution = { id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' }
+    // Dismissed, not edited: a dismissal is the one resolution only a human
+    // can settle, so R1 leaves the final gate presented rather than approving
+    // it — which is what this test is about.
+    const materialResolution = {
+      id: 'F1',
+      class: 'MATERIAL',
+      resolution: 'dismissed',
+      justification: 'accepted as-is for now',
+    }
     fs.writeFileSync(
       path.join(runDir, 'sidecars', 'resolutions-1.json'),
       JSON.stringify({ resolutions: [materialResolution], assumptions: [] }),
@@ -1428,6 +1501,7 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
     expect(result.outcome).toBe('veto')
     const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
     expect(gate2).toContain('### Open MATERIAL findings at cap (reviewed)')
+    // The row carries the reviewer's verbatim gap, not the finding id.
     expect(gate2).toContain('- [ ] F1 design lacks rollback')
     expect(gate2).toContain('resolver: edited — narrowed gap')
     expect(gate2).toContain('- [ ] T1 I reviewed the trajectory')
@@ -1660,8 +1734,8 @@ describe('runGateResume', () => {
     const materialResolution = {
       id: 'F1',
       class: 'MATERIAL',
-      resolution: 'edited',
-      outcome: 'narrowed gap',
+      resolution: 'dismissed',
+      justification: 'accepted as-is for now',
     }
     const fixture = makeFixture({
       'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
@@ -1723,8 +1797,8 @@ describe('runGateResume', () => {
     const materialResolution = {
       id: 'F1',
       class: 'MATERIAL',
-      resolution: 'edited',
-      outcome: 'narrowed gap',
+      resolution: 'dismissed',
+      justification: 'accepted as-is for now',
     }
     const fixture = makeFixture({
       'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
@@ -2090,8 +2164,8 @@ describe('runGateResume', () => {
     const materialResolution = {
       id: 'F1',
       class: 'MATERIAL',
-      resolution: 'edited',
-      outcome: 'narrowed gap',
+      resolution: 'dismissed',
+      justification: 'accepted as-is for now',
     }
     const fixture = makeFixture({
       'findings-1.json': JSON.stringify({ findings: [materialFinding] }),
@@ -2256,6 +2330,8 @@ describe('presentGateAt cost fallback', () => {
     }
     const reviewResult: ReviewLoopResult = {
       outcome: 'converged',
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       rounds: 1,
       openBlockers: [],
       openMaterial: [],
@@ -2333,6 +2409,8 @@ describe('presentGateAt change digest', () => {
 
   const reviewResult: ReviewLoopResult = {
     outcome: 'converged',
+    verdict: 'converged',
+    raised: { blocker: 0, material: 0, nitpick: 0 },
     rounds: 1,
     openBlockers: [],
     openMaterial: [],

@@ -8,21 +8,21 @@ import pLimit from 'p-limit'
 import { agentWritePath } from '../../review-loop/src/agent-runner.js'
 import { FindingsSidecarSchema, runStageAgent, SkepticFindingsSidecarSchema } from './agent-layer.js'
 import type { Finding } from './agent-layer.js'
+import { consistencyFindings } from './artifact-consistency.js'
 import { fingerprintOf } from './concern-model.js'
 import type { LedgerEntry } from './concern-model.js'
 import type { EventInput } from './events.js'
-import { consistencyFindings } from './materialize.js'
+import { sessionForLabel } from './review-boundary.js'
 import { ResolverOutputSchema } from './review-loop.js'
 import type { ResolverOutput, ReviewLoopDeps, ReviewLoopOptions } from './review-loop.js'
 import {
-  buildResolverPrompt,
-  buildReviewerPrompt,
   lensesForRound,
   mergeLensFindings,
   readResolutionsLedger,
   readReviewArtifactFiles,
   readReviewArtifacts,
 } from './review-model.js'
+import { buildResolverPrompt, buildReviewerPrompt } from './review-prompts.js'
 
 async function runLens(
   deps: ReviewLoopDeps,
@@ -111,16 +111,6 @@ function emitResolutionEvents(
       ...(fingerprint === undefined ? {} : { fingerprint }),
     })
   }
-}
-
-/** The resume session id for a given spawn label in this round, if it matches. */
-function sessionForLabel(
-  consumedSession: ReviewLoopDeps['resumeSession'],
-  label: string,
-  round: number,
-): string | undefined {
-  if (consumedSession === undefined) return undefined
-  return consumedSession.label === `${label}-r${round}` ? consumedSession.opencodeSessionId : undefined
 }
 
 /** Run this round's lenses (bounded 2-way) and merge their findings plus the deterministic consistency scan. */

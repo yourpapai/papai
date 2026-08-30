@@ -4,18 +4,20 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, it } from 'bun:test'
+import assert from 'node:assert'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import type { Resolution } from '../../sdd-runner/src/agent-layer.js'
 import type { AutonomyConfig } from '../../sdd-runner/src/config.js'
 import type { SddEvent } from '../../sdd-runner/src/events.js'
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import { blockersOf, buildBus, findingsOf, presentGateAt } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps, StageContext } from '../../sdd-runner/src/gate-digest.js'
-import type { GateChild } from '../../sdd-runner/src/gate-model.js'
+import type { GateChild, GateFinding } from '../../sdd-runner/src/gate-model.js'
 import { writeGateDigest } from '../../sdd-runner/src/gate-model.js'
-import { readReviewResultFromSidecars } from '../../sdd-runner/src/gate-sidecars.js'
+import { findingsGapTextsFor, readReviewResultFromSidecars } from '../../sdd-runner/src/gate-sidecars.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
@@ -40,6 +42,8 @@ afterEach(() => {
 const CONVERGED_REVIEW: ReviewLoopResult = {
   outcome: 'converged',
   rounds: 0,
+  verdict: 'converged',
+  raised: { blocker: 0, material: 0, nitpick: 0 },
   openBlockers: [],
   openMaterial: [],
   openNitpicks: [],
@@ -49,6 +53,8 @@ describe('blockersOf', () => {
   it('maps open blockers to gate blocker entries', () => {
     const result: ReviewLoopResult = {
       outcome: 'cap-hit',
+      verdict: 'open',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       rounds: 2,
       openBlockers: [
         { id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' },
@@ -68,6 +74,8 @@ describe('findingsOf', () => {
   it('maps open blockers and open material to gate finding entries', () => {
     const result: ReviewLoopResult = {
       outcome: 'cap-hit',
+      verdict: 'open',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       rounds: 3,
       openBlockers: [{ id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' }],
       openMaterial: [
@@ -91,6 +99,8 @@ describe('findingsOf gap join (loop-memory D7)', () => {
   const result: ReviewLoopResult = {
     outcome: 'cap-hit',
     rounds: 3,
+    verdict: 'open',
+    raised: { blocker: 0, material: 1, nitpick: 1 },
     openBlockers: [],
     openMaterial: [{ id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }],
     openNitpicks: [{ id: 'S1', class: 'NITPICK', resolution: 'dismissed', justification: 'j' }],
@@ -297,6 +307,8 @@ describe('findingsOf nitpicks (mutation kills)', () => {
   it('renders nitpick evidence as "resolution — outcome" with the justification fallback', () => {
     const result: ReviewLoopResult = {
       outcome: 'converged',
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       rounds: 1,
       openBlockers: [],
       openMaterial: [],
@@ -314,6 +326,8 @@ describe('findingsOf nitpicks (mutation kills)', () => {
   it('renders empty evidence when a nitpick has neither outcome nor justification', () => {
     const result: ReviewLoopResult = {
       outcome: 'converged',
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       rounds: 1,
       openBlockers: [],
       openMaterial: [],
@@ -339,23 +353,39 @@ describe('readReviewResultFromSidecars', () => {
     evidence: { files: ['openspec/changes/thing/proposal.md'] },
   }
 
-  it('buckets parsed resolutions by class, preserving round and outcome', async () => {
+  it('buckets open resolutions by class, preserving round and outcome', async () => {
     const sidecarDir = path.join(makeDir(), 'sidecars')
+    // Dismissed findings stay open whatever the digests say, so this exercises
+    // the bucketing itself rather than the openness predicate.
+    const dismissed = (id: string, cls: Resolution['class']): Resolution => ({
+      id,
+      class: cls,
+      resolution: 'dismissed',
+      justification: 'out of scope',
+    })
     writeResolutions(sidecarDir, 2, {
-      resolutions: [
-        { id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' },
-        { id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' },
-        { id: 'N1', class: 'NITPICK', resolution: 'edited', outcome: 'cosmetic' },
-      ],
+      resolutions: [dismissed('F1', 'BLOCKER'), dismissed('F2', 'MATERIAL'), dismissed('N1', 'NITPICK')],
       assumptions: [assumption],
     })
     expect(await readReviewResultFromSidecars(sidecarDir, 2, 'converged')).toEqual({
       outcome: 'converged',
       rounds: 2,
-      openBlockers: [{ id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' }],
-      openMaterial: [{ id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }],
-      openNitpicks: [{ id: 'N1', class: 'NITPICK', resolution: 'edited', outcome: 'cosmetic' }],
+      verdict: 'open',
+      raised: { blocker: 1, material: 1, nitpick: 1 },
+      openBlockers: [dismissed('F1', 'BLOCKER')],
+      openMaterial: [dismissed('F2', 'MATERIAL')],
+      openNitpicks: [dismissed('N1', 'NITPICK')],
     })
+  })
+
+  it('closes an assumed finding under the legacy fallback when the sidecar predates findingId', async () => {
+    const sidecarDir = path.join(makeDir(), 'sidecars')
+    writeResolutions(sidecarDir, 2, {
+      resolutions: [{ id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'defaulted' }],
+      assumptions: [assumption],
+    })
+    const result = await readReviewResultFromSidecars(sidecarDir, 2, 'converged')
+    expect(result.openBlockers).toEqual([])
   })
 
   it('falls back to empty buckets when the sidecar file is missing', async () => {
@@ -363,6 +393,11 @@ describe('readReviewResultFromSidecars', () => {
     expect(await readReviewResultFromSidecars(sidecarDir, 4, 'cap-hit')).toEqual({
       outcome: 'cap-hit',
       rounds: 4,
+      // The fallback deliberately keeps the pre-change reading rather than
+      // becoming a new gating condition; the ladder's integrity cross-check is
+      // what fails closed on an unreadable sidecar.
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       openBlockers: [],
       openMaterial: [],
       openNitpicks: [],
@@ -375,6 +410,8 @@ describe('readReviewResultFromSidecars', () => {
     fs.writeFileSync(path.join(broken, 'resolutions-1.json'), '{not json')
     expect(await readReviewResultFromSidecars(broken, 1, 'converged')).toEqual({
       outcome: 'converged',
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       rounds: 1,
       openBlockers: [],
       openMaterial: [],
@@ -492,6 +529,51 @@ describe('presentGateAt plan mode (D5)', () => {
     )
     expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate' })
     expect(fixture.state.status).toBe('running')
+  })
+
+  it('a plan gate evaluates the zero-activity surrogate, never the caller’s cap-hit review result', async () => {
+    const capHit: ReviewLoopResult = {
+      outcome: 'cap-hit',
+      verdict: 'needs-review',
+      raised: { blocker: 0, material: 2, nitpick: 1 },
+      rounds: 3,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    }
+    const fixture = await makePlanFixture()
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, capHit, 1, 'plan', {
+      children: PLAN_CHILDREN,
+    })
+    expect(result.halted).toBe('gate')
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(md).toContain('## Plan gate')
+    expect(md).not.toContain('RUN 1 MORE')
+    const autoDecisions = readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
+      (e) => e.type === 'auto_decision',
+    )
+    expect(autoDecisions).toHaveLength(1)
+    expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate' })
+  })
+
+  it('a plan gate presented with no children evaluates the empty child set in the R4 projection', async () => {
+    const fixture = await makePlanFixture({ level: 'assist', costCeilingUsd: 0.4, metered: true })
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, CONVERGED, 1, 'plan')
+    expect(result.halted).toBe('gate')
+    const autoDecisions = readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
+      (e) => e.type === 'auto_decision',
+    )
+    expect(autoDecisions).toHaveLength(1)
+    expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate' })
+  })
+
+  it('the deadline announcement tolerates a deps without a stdout sink', async () => {
+    const fixture = await makePlanFixture({ level: 'assist', costCeilingUsd: 5, deadlineMinutes: 30, metered: true })
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, CONVERGED, 1, 'plan', {
+      children: PLAN_CHILDREN,
+    })
+    expect(result.halted).toBe('gate')
+    expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('## Plan gate')
   })
 
   it('a plan gate never shows the parent review findings — the surrogate replaces them', async () => {
@@ -642,15 +724,17 @@ describe('buildBus subscriber wiring', () => {
     expect(lines).toEqual(['[event-bus] sink exploded'])
   })
 
-  it('swallows a throwing subscriber silently when no stdout sink is wired', () => {
+  it('with no stdout sink wired, a throwing subscriber neither crashes the emit nor drops the append', () => {
     const dir = makeDir()
+    const logPath = path.join(dir, 'events.ndjson')
     const deps = makeDeps([], {
       stdout: undefined,
       liveEvents: (): void => {
         throw new Error('sink exploded')
       },
     })
-    expect(() => buildBus(deps, path.join(dir, 'events.ndjson'))(event)).not.toThrow()
+    expect(() => buildBus(deps, logPath)(event)).not.toThrow()
+    expect(fs.readFileSync(logPath, 'utf8')).toContain('"type":"round_open"')
   })
 
   it('wires no subscriber at all when neither liveEvents nor render is present', () => {
@@ -661,5 +745,110 @@ describe('buildBus subscriber wiring', () => {
     expect(() => emit(event)).not.toThrow()
     expect(lines).toEqual([])
     expect(fs.existsSync(path.join(dir, 'events.ndjson'))).toBe(true)
+  })
+})
+
+describe('readReviewResultFromSidecars applies the openness predicate', () => {
+  function seed(round: number, resolutions: unknown[], assumptions: unknown[] = []): string {
+    const sidecarDir = path.join(makeDir(), 'sidecars')
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(sidecarDir, `resolutions-${String(round)}.json`),
+      JSON.stringify({ resolutions, assumptions }),
+    )
+    return sidecarDir
+  }
+
+  function seedDigests(sidecarDir: string, round: number, digests: Record<string, string>): void {
+    fs.writeFileSync(path.join(sidecarDir, `round-hashes-${String(round)}.json`), JSON.stringify(digests))
+  }
+
+  it('closes an edited finding whose round moved the change folder', async () => {
+    const sidecarDir = seed(2, [{ id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }])
+    seedDigests(sidecarDir, 1, { 'proposal.md': 'aaa' })
+    seedDigests(sidecarDir, 2, { 'proposal.md': 'bbb' })
+    const result = await readReviewResultFromSidecars(sidecarDir, 2, 'cap-hit')
+    expect(result.openMaterial).toEqual([])
+    expect(result.raised).toEqual({ blocker: 0, material: 1, nitpick: 0 })
+  })
+
+  it('keeps an edited finding open when the change folder did not move', async () => {
+    const sidecarDir = seed(2, [{ id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }])
+    seedDigests(sidecarDir, 1, { 'proposal.md': 'aaa' })
+    seedDigests(sidecarDir, 2, { 'proposal.md': 'aaa' })
+    const result = await readReviewResultFromSidecars(sidecarDir, 2, 'cap-hit')
+    expect(result.openMaterial.map((r) => r.id)).toEqual(['F1'])
+  })
+
+  it('keeps a dismissed finding open regardless of digests', async () => {
+    const sidecarDir = seed(2, [
+      { id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'out of scope' },
+    ])
+    seedDigests(sidecarDir, 1, { 'proposal.md': 'aaa' })
+    seedDigests(sidecarDir, 2, { 'proposal.md': 'bbb' })
+    const result = await readReviewResultFromSidecars(sidecarDir, 2, 'cap-hit')
+    expect(result.openMaterial.map((r) => r.id)).toEqual(['F1'])
+  })
+
+  it('reads a pre-change run with no recorded digests exactly as before', async () => {
+    // No round-hashes sidecars at all: the edited claim is taken at face value,
+    // the same reading that run's own event log recorded.
+    const sidecarDir = seed(2, [{ id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }])
+    const result = await readReviewResultFromSidecars(sidecarDir, 2, 'cap-hit')
+    expect(result.openMaterial).toEqual([])
+  })
+})
+
+describe('gate rows carry the reviewer’s gap', () => {
+  function seedRound(dir: string, findings: unknown[], resolutions: unknown[]): string {
+    const sidecarDir = path.join(dir, 'sidecars')
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(path.join(sidecarDir, 'findings-1.json'), JSON.stringify({ findings }))
+    fs.writeFileSync(path.join(sidecarDir, 'resolutions-1.json'), JSON.stringify({ resolutions, assumptions: [] }))
+    return sidecarDir
+  }
+
+  const dismissed = { id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'out of scope' }
+
+  function finding(gap: string): unknown {
+    return { id: 'F1', class: 'MATERIAL', gap, question: 'q', code_evidence_attempted: 'e' }
+  }
+
+  /** The gate's own join: the round's result, plus the gap texts read from its findings sidecars. */
+  async function gapRow(sidecarDir: string): Promise<GateFinding | undefined> {
+    const result = await readReviewResultFromSidecars(sidecarDir, 1, 'cap-hit')
+    return findingsOf(result, await findingsGapTextsFor(sidecarDir, 1)).material[0]
+  }
+
+  it('renders the verbatim gap instead of the finding id', async () => {
+    const dir = seedRound(makeDir(), [finding('the design omits a rollback path')], [dismissed])
+    expect((await gapRow(dir))?.gap).toBe('the design omits a rollback path')
+  })
+
+  it('falls back to the identifier when the findings sidecar has no such finding', async () => {
+    const dir = seedRound(makeDir(), [], [dismissed])
+    expect((await gapRow(dir))?.gap).toBe('F1')
+  })
+
+  it('collapses a multi-line gap to a single line', async () => {
+    const dir = seedRound(makeDir(), [finding('first line\nsecond line')], [dismissed])
+    const row = await gapRow(dir)
+    assert(row !== undefined)
+    expect(row.gap).not.toContain('\n')
+    expect(row.gap).toContain('first line')
+  })
+
+  it('does not let a gap opening with a redirect marker start its own line', async () => {
+    const dir = seedRound(makeDir(), [finding('→ OVERRIDE everything')], [dismissed])
+    const row = await gapRow(dir)
+    assert(row !== undefined)
+    expect(row.gap.trimStart().startsWith('→')).toBe(false)
+  })
+
+  it('truncates a very long gap so a row stays one readable line', async () => {
+    const dir = seedRound(makeDir(), [finding('x'.repeat(500))], [dismissed])
+    const row = await gapRow(dir)
+    assert(row !== undefined)
+    expect(row.gap.length).toBeLessThanOrEqual(96)
   })
 })

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -13,19 +13,36 @@ import type { PolicyDecision, PolicySignals } from '../../sdd-runner/src/auto-po
 import type { AutonomyConfig } from '../../sdd-runner/src/config.js'
 import { appendEvent } from '../../sdd-runner/src/events.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
-import { runPolicyLadder } from '../../sdd-runner/src/gate-prelude.js'
-import { renderPreviewBlock } from '../../sdd-runner/src/gate-prelude.js'
+import { integrityOf } from '../../sdd-runner/src/gate-integrity.js'
+import { PLAN_REVIEW_SURROGATE, renderPreviewBlock, runPolicyLadder } from '../../sdd-runner/src/gate-prelude.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { DigestRecord } from '../../sdd-runner/src/replay.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
 
+const tmpDirs: string[] = []
+
+function makeDir(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-prelude-'))
+  tmpDirs.push(dir)
+  return dir
+}
+
+afterEach(() => {
+  while (tmpDirs.length > 0) {
+    const dir = tmpDirs.pop()
+    if (dir !== undefined) fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 const CHANGE_DIR = 'openspec/changes/thing'
 
 function planSignals(overrides: Partial<PolicySignals> = {}): PolicySignals {
   const reviewResult: ReviewLoopResult = {
     outcome: 'converged',
+    verdict: 'converged',
+    raised: { blocker: 0, material: 0, nitpick: 0 },
     rounds: 2,
     openBlockers: [],
     openMaterial: [],
@@ -104,6 +121,8 @@ describe('evaluatePlanGate (D5: R4 only)', () => {
     const capHitSignals = planSignals({
       reviewResult: {
         outcome: 'cap-hit',
+        verdict: 'open',
+        raised: { blocker: 0, material: 0, nitpick: 0 },
         rounds: 3,
         openBlockers: [],
         openMaterial: [{ id: 'F1', class: 'MATERIAL', resolution: 'assumed', outcome: 'kept' }],
@@ -128,6 +147,8 @@ describe('runPolicyLadder unmetered seam (sdd-policy-metered-budget 2.3)', () =>
   const capHit: ReviewLoopResult = {
     outcome: 'cap-hit',
     rounds: 2,
+    verdict: 'open',
+    raised: { blocker: 0, material: 2, nitpick: 0 },
     openBlockers: [],
     openMaterial: [{ id: 'F1', class: 'MATERIAL', resolution: 'assumed', outcome: 'kept' }],
     openNitpicks: [],
@@ -237,5 +258,114 @@ describe('renderPreviewBlock', () => {
     expect(/^- \[/mu.test(block)).toBe(false)
     expect(/^\s*ABORT\s*$/mu.test(block)).toBe(false)
     expect(/^→/mu.test(block)).toBe(false)
+  })
+
+  it('quotes the decision evidence digest verbatim', () => {
+    const block = renderPreviewBlock({ rule: 'R1', action: 'approve', evidenceDigest: 'digest-abc123' })
+    expect(block).toContain('> evidence: digest-abc123')
+  })
+})
+
+describe('PLAN_REVIEW_SURROGATE', () => {
+  it('is the exact zero-activity review result a parent gate evaluates', () => {
+    expect(PLAN_REVIEW_SURROGATE).toEqual({
+      outcome: 'converged',
+      rounds: 0,
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    })
+  })
+})
+
+describe('integrity cross-check covers both count sets', () => {
+  function seed(dir: string, round: number, resolutions: unknown[], assumptions: unknown[] = []): string {
+    const sidecarDir = path.join(dir, 'sidecars')
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(sidecarDir, `resolutions-${String(round)}.json`),
+      JSON.stringify({ resolutions, assumptions }),
+    )
+    return sidecarDir
+  }
+
+  const dismissedMaterial = { id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'j' }
+
+  it('blocks the ladder when the logged raised counts disagree with the sidecar', () => {
+    const dir = makeDir()
+    const sidecarDir = seed(dir, 1, [dismissedMaterial])
+    const log = path.join(dir, 'events.ndjson')
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'convergence',
+      round: 1,
+      verdict: 'open',
+      counts: { blocker: 0, material: 9, nitpick: 0 },
+      open: { blocker: 0, material: 1, nitpick: 0 },
+    })
+    expect(integrityOf(sidecarDir, log, 1)).toBe('mismatch')
+  })
+
+  it('blocks the ladder when the logged open counts disagree with the sidecar', () => {
+    const dir = makeDir()
+    const sidecarDir = seed(dir, 1, [dismissedMaterial])
+    const log = path.join(dir, 'events.ndjson')
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'convergence',
+      round: 1,
+      verdict: 'open',
+      counts: { blocker: 0, material: 1, nitpick: 0 },
+      // The sidecar says one material is open; the log claims none.
+      open: { blocker: 0, material: 0, nitpick: 0 },
+    })
+    expect(integrityOf(sidecarDir, log, 1)).toBe('mismatch')
+  })
+
+  it('lets the ladder run when both sets agree', () => {
+    const dir = makeDir()
+    const sidecarDir = seed(dir, 1, [dismissedMaterial])
+    const log = path.join(dir, 'events.ndjson')
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'convergence',
+      round: 1,
+      verdict: 'open',
+      counts: { blocker: 0, material: 1, nitpick: 0 },
+      open: { blocker: 0, material: 1, nitpick: 0 },
+    })
+    expect(integrityOf(sidecarDir, log, 1)).toBe('clear')
+  })
+
+  it('accepts a pre-split log whose convergence line carries no open set', () => {
+    const dir = makeDir()
+    const sidecarDir = seed(dir, 1, [dismissedMaterial])
+    const log = path.join(dir, 'events.ndjson')
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'convergence',
+      round: 1,
+      verdict: 'open',
+      counts: { blocker: 0, material: 1, nitpick: 0 },
+    })
+    expect(integrityOf(sidecarDir, log, 1)).toBe('clear')
+  })
+
+  it('still fails closed on an unparseable sidecar', () => {
+    const dir = makeDir()
+    const sidecarDir = path.join(dir, 'sidecars')
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(path.join(sidecarDir, 'resolutions-1.json'), '{not json')
+    const log = path.join(dir, 'events.ndjson')
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'convergence',
+      round: 1,
+      verdict: 'open',
+      counts: { blocker: 0, material: 1, nitpick: 0 },
+    })
+    expect(integrityOf(sidecarDir, log, 1)).toBe('unparseable')
   })
 })

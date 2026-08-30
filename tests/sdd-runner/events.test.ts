@@ -533,3 +533,55 @@ describe('cached token fields', () => {
     expect(parsed).toMatchObject({ type: 'step_finish', tokens: { cacheRead: 0, cacheWrite: 0 } })
   })
 })
+
+describe('convergence event open counts', () => {
+  const raised = { blocker: 1, material: 2, nitpick: 3 }
+  const open = { blocker: 0, material: 1, nitpick: 0 }
+
+  it('stamps a convergence event carrying both count sets', () => {
+    const stamped = stampEvent(
+      { altitude: 'L2', type: 'convergence', round: 2, verdict: 'open', counts: raised, open },
+      4,
+      't',
+    )
+    expect(stamped).toMatchObject({ type: 'convergence', counts: raised, open })
+  })
+
+  it('accepts the needs-review verdict the split introduced', () => {
+    const stamped = stampEvent(
+      { altitude: 'L2', type: 'convergence', round: 1, verdict: 'needs-review', counts: raised, open },
+      1,
+      't',
+    )
+    expect(stamped).toMatchObject({ verdict: 'needs-review' })
+  })
+
+  it('parses a pre-change convergence line that carries no open set', () => {
+    const stamped = stampEvent(
+      { altitude: 'L2', type: 'convergence', round: 1, verdict: 'open', counts: raised },
+      1,
+      't',
+    )
+    expect(stamped).toMatchObject({ counts: raised })
+  })
+
+  it('round-trips both sets through append and read', () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'convergence', round: 1, verdict: 'converged', counts: raised, open })
+    expect(readEvents(log)[0]).toMatchObject({ type: 'convergence', counts: raised, open })
+  })
+
+  it('keeps the finding action values unchanged so the log stays as narrow as it was', () => {
+    // The verdict deliberately does not depend on distinguishing edited from
+    // assumed in the log — replay folds counts from the convergence event — so
+    // widening this enum would be scope the change decided against.
+    const actions = ['filed', 'classified', 'resolved', 'dismissed'] as const
+    for (const action of actions) {
+      expect(() => stampEvent({ altitude: 'L2', type: 'finding', action, id: 'F1', round: 1 }, 1, 't')).not.toThrow()
+    }
+    // A resolution kind the enum does not carry must still be rejected, so the
+    // narrowness this change relies on cannot be widened by accident later.
+    const widened = { altitude: 'L2', type: 'finding', action: 'edited', id: 'F1', round: 1 }
+    expect(EventInputSchema.safeParse(widened).success).toBe(false)
+  })
+})

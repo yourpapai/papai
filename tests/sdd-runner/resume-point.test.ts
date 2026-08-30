@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import type { DepthProfile } from '../../sdd-runner/src/events.js'
-import type { ReplayState } from '../../sdd-runner/src/replay.js'
+import type { DigestRecord, ReplayState } from '../../sdd-runner/src/replay.js'
 import { deriveResumePoint } from '../../sdd-runner/src/resume-point.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import type { PersistedRunState } from '../../sdd-runner/src/run-state.js'
@@ -444,5 +444,57 @@ describe('deriveResumePoint parent branch (3.2)', () => {
     expect(deriveResumePoint(parent, artifacts(), emptyReplay)).toEqual(
       deriveResumePoint(base, artifacts(), emptyReplay),
     )
+  })
+})
+
+describe('deriveResumePoint — the pending verification round', () => {
+  function replayWith(verdict: DigestRecord['verdict']): ReplayState {
+    return {
+      ...emptyReplay,
+      lastVerdict: {
+        round: 2,
+        verdict,
+        counts: { blocker: 0, material: 1, nitpick: 0 },
+        open: { blocker: 0, material: 0, nitpick: 0 },
+        resolved: 1,
+        dismissed: 0,
+      },
+    }
+  }
+
+  async function stateAfterReview(): Promise<Awaited<ReturnType<typeof createRunState>>> {
+    const workDir = makeWorkDir()
+    const created = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing' })
+    return { ...created, depth: 'M' as const, stage: 'review' as const, round: 2 }
+  }
+
+  const drafted = artifacts({ proposal: 'done', specs: 'done', design: 'done', review: 'done' })
+
+  it('re-enters review when the last verdict was needs-review', async () => {
+    // The verification round is real spend that had not happened yet; resuming
+    // past it would ship edits nothing reviewed.
+    const point = deriveResumePoint(await stateAfterReview(), drafted, replayWith('needs-review'))
+    expect(point.stage).toBe('review')
+  })
+
+  it('settles the loop when the last verdict was converged', async () => {
+    const point = deriveResumePoint(await stateAfterReview(), drafted, replayWith('converged'))
+    expect(point.stage).not.toBe('review')
+  })
+
+  it('re-enters review when the last verdict was open', async () => {
+    const point = deriveResumePoint(await stateAfterReview(), drafted, replayWith('open'))
+    expect(point.stage).toBe('review')
+  })
+
+  it('still settles a needs-review run once decompose has been entered', async () => {
+    // Entering decompose is the record that routing already dealt with the
+    // verdict — a resume must not re-run the round the tail already consumed.
+    const entered: ReplayState = {
+      ...replayWith('needs-review'),
+      stages: { ...emptyReplay.stages, decompose: 'done' },
+    }
+    const point = deriveResumePoint(await stateAfterReview(), drafted, entered)
+    expect(point.stage).not.toBe('review')
   })
 })

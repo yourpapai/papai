@@ -49,12 +49,28 @@ export function buildPipelineEnv(
 
 export type PostReviewTailInput = Parameters<typeof runPostReviewToGate>[0]
 
-/** Build the shared post-review tail input from the pipeline env. */
+/**
+ * Build the shared post-review tail input from the pipeline env. The
+ * verification seam is passed in rather than built here: it re-enters the
+ * review stage, which the orchestrator owns, and the tail treats its absence as
+ * "cannot spend the round" — so a caller that forgets it silently loses the
+ * one verification round a `needs-review` cap-hit is owed.
+ */
 export function tailInputOf(
   env: PipelineEnv,
   depth: DepthProfile,
   reviewResult: ReviewLoopResult,
   version: number = 1,
+  runVerification?: PostReviewTailInput['runVerification'],
 ): PostReviewTailInput {
-  return { deps: env.deps, state: env.state, ctx: env.ctx, agent: env.agent, depth, reviewResult, version }
+  return {
+    deps: env.deps,
+    state: env.state,
+    ctx: env.ctx,
+    agent: env.agent,
+    depth,
+    reviewResult,
+    version,
+    ...(runVerification === undefined ? {} : { runVerification }),
+  }
 }

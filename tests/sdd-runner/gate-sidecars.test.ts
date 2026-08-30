@@ -25,6 +25,17 @@ afterEach(() => {
   }
 })
 
+/** One reviewer finding at round 3 carrying the given gap text verbatim. */
+function writeGap(dir: string, gap: string): string {
+  const sidecarDir = path.join(dir, 'sidecars')
+  fs.mkdirSync(sidecarDir, { recursive: true })
+  fs.writeFileSync(
+    path.join(sidecarDir, 'findings-3.json'),
+    JSON.stringify({ findings: [{ id: 'F2', class: 'MATERIAL', gap, question: 'q', code_evidence_attempted: 'e' }] }),
+  )
+  return sidecarDir
+}
+
 function writeRound3Sidecars(dir: string): string {
   const sidecarDir = path.join(dir, 'sidecars')
   fs.mkdirSync(sidecarDir, { recursive: true })
@@ -93,6 +104,35 @@ describe('findingsGapTextsFor (loop-memory D7)', () => {
   it('returns an empty map when the sidecars are missing or invalid', async () => {
     const gaps = await findingsGapTextsFor(path.join(makeDir(), 'sidecars'), 3)
     expect(gaps.size).toBe(0)
+  })
+
+  it('lets the skeptic lens fill a gap the reviewer sidecar is missing', async () => {
+    const sidecarDir = path.join(makeDir(), 'sidecars')
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(sidecarDir, 'findings-skeptic-3.json'),
+      JSON.stringify({
+        findings: [
+          { id: 'S1', class: 'BLOCKER', gap: 'no migration path', question: 'q', code_evidence_attempted: 'e' },
+        ],
+      }),
+    )
+    const gaps = await findingsGapTextsFor(sidecarDir, 3)
+    expect(gaps.get('S1')).toBe('no migration path')
+  })
+
+  it('flattens a multi-line gap and strips a leading redirect marker, so the gate grammar still parses', async () => {
+    const sidecarDir = writeGap(makeDir(), '→ the design\nomits a\n  rollback path')
+    const gaps = await findingsGapTextsFor(sidecarDir, 3)
+    // A row opening with an arrow re-parses as a redirect, and a newline splits
+    // one checkbox row into two — neither may survive into the gate file.
+    expect(gaps.get('F2')).toBe('the design omits a rollback path')
+  })
+
+  it('omits a gap that sanitizes to nothing, so the row falls back to the finding id', async () => {
+    const sidecarDir = writeGap(makeDir(), '  →  \n ')
+    const gaps = await findingsGapTextsFor(sidecarDir, 3)
+    expect(gaps.has('F2')).toBe(false)
   })
 })
 

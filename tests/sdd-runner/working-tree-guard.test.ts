@@ -43,14 +43,36 @@ describe('guardWorkingTree', () => {
     await expect(guardWorkingTree(execReturning(' M src/a.ts\n'), '/repo', before)).resolves.toBeUndefined()
   })
 
-  it('allows new entries under the change-folder prefix', async () => {
+  it('allows new entries under the run’s own change folder', async () => {
     const before = await snapshotWorkingTree(execReturning(''), '/repo')
     await expect(
       guardWorkingTree(
         execReturning(' M openspec/changes/add-thing/specs/x/spec.md\n?? openspec/changes/add-thing/review.md\n'),
         '/repo',
         before,
+        'add-thing',
       ),
+    ).resolves.toBeUndefined()
+  })
+
+  it('flags an edit to a different change’s folder', async () => {
+    const before = await snapshotWorkingTree(execReturning(''), '/repo')
+    await expect(
+      guardWorkingTree(execReturning(' M openspec/changes/other-change/proposal.md\n'), '/repo', before, 'add-thing'),
+    ).rejects.toThrow('agent edited files outside the change folder: openspec/changes/other-change/proposal.md')
+  })
+
+  it('does not let a sibling change match by name prefix', async () => {
+    const before = await snapshotWorkingTree(execReturning(''), '/repo')
+    await expect(
+      guardWorkingTree(execReturning('?? openspec/changes/add-thing-2/proposal.md\n'), '/repo', before, 'add-thing'),
+    ).rejects.toThrow('openspec/changes/add-thing-2/proposal.md')
+  })
+
+  it('falls back to the whole changes tree when no change name is given', async () => {
+    const before = await snapshotWorkingTree(execReturning(''), '/repo')
+    await expect(
+      guardWorkingTree(execReturning(' M openspec/changes/any-change/proposal.md\n'), '/repo', before),
     ).resolves.toBeUndefined()
   })
 

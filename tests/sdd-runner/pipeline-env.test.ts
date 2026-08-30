@@ -95,6 +95,8 @@ describe('tailInputOf (pipeline-env)', () => {
     const reviewResult: ReviewLoopResult = {
       outcome: 'converged',
       rounds: 2,
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       openBlockers: [],
       openMaterial: [],
       openNitpicks: [],
@@ -109,5 +111,24 @@ describe('tailInputOf (pipeline-env)', () => {
       reviewResult,
       version: 3,
     })
+    // Key-absence, not toEqual: an inverted condition would always spread the
+    // shorthand key, and toEqual treats an undefined value as absent.
+    expect('runVerification' in tail).toBe(false)
+  })
+
+  it('carries a supplied runVerification seam through to the tail input', async () => {
+    const { env } = await makeEnv()
+    const reviewResult: ReviewLoopResult = {
+      outcome: 'cap-hit',
+      rounds: 1,
+      verdict: 'needs-review',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    }
+    const runVerification = (result: ReviewLoopResult): Promise<ReviewLoopResult> => Promise.resolve(result)
+    const tail = tailInputOf(env, 'L', reviewResult, 1, runVerification)
+    expect(tail.runVerification).toBe(runVerification)
   })
 })

@@ -81,6 +81,8 @@ function makeCtx(state: RunState, deps: OrchestratorDeps, emit: (e: unknown) => 
 
 const CONVERGED = {
   outcome: 'converged',
+  verdict: 'converged',
+  raised: { blocker: 0, material: 0, nitpick: 0 },
   rounds: 1,
   openBlockers: [],
   openMaterial: [],

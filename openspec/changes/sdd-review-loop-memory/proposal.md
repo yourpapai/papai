@@ -24,7 +24,7 @@ _None._
 
 ## Impact
 
-- Code: `sdd-runner/src/{review-model,review-loop,agent-layer,materialize,gate-digest,gate-render,events}.ts` and their tests under `tests/sdd-runner/`; the concern-cluster fold extends `replay.ts` (`ReplayState.concerns`, additive — old logs replay unchanged).
+- Code: `sdd-runner/src/{review-model,review-prompts,review-loop,review-round,review-agents,agent-layer,materialize,artifact-consistency,gate-digest,gate-sidecars,gate-render,post-review-tail,events}.ts` and their tests under `tests/sdd-runner/`; the concern-cluster fold extends `replay.ts` (`ReplayState.concerns`, additive — old logs replay unchanged).
 - Scope model: no chat surfaces, no platform/task instances, no config-context state; all new persisted state lives in the run dir keyed by run id (sidecar `concerns.json`, additive event fields).
 - Docs: `docs/architecture/sdd-pipeline.md` (review loop, convergence, event model sections).
 - Ordering: apply/archive `sdd-spec-repair` first — this change deltas into `sdd-runner-pipeline`'s neighboring specs, and the repair reconciles their parents.
@@ -36,4 +36,4 @@ _None._
 - Estimator oversize routing (separate change `sdd-oversize-estimator-signals`).
 - Changing gate checkbox grammar or TUI decision surfaces beyond rendering the concern-history section (existing grammar carries it as findings rows).
 - Reviewer/resolver model or prompt-lens redesign beyond the ledger digest and consistency-check inputs.
-- Per-round artifact snapshot retention (resolver "edited" claims stay auditable only via transcripts; snapshotting is declined as unbounded disk growth for n=1 measured need).
+- ~~Per-round artifact snapshot retention~~ — **superseded by `sdd-runner-open-vs-raised`.** This change declined snapshotting as unbounded disk growth for an n=1 measured need, leaving resolver "edited" claims auditable only via transcripts. That change needs the snapshots for a different reason: without them an `edited` resolution cannot be told from a claimed one, which is what its openness predicate turns on. It ships them as `sidecars/round-hashes-<n>.json`, written at round close, so the runner now retains them and this Non-goal no longer holds. The disk-growth objection was never answered on its merits — it was outweighed, not withdrawn.

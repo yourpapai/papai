@@ -105,6 +105,8 @@ export async function estimateDepth(
   prescreen: DepthProfile,
 ): Promise<{
   readonly profile: DepthProfile
+  /** The estimator's own reading, before the prescreen is folded in — named by the disagreement warning. */
+  readonly estimated: DepthProfile
   readonly disagreement: boolean
   readonly oversize: boolean
   readonly oversizeSignals: OversizeSignals
@@ -126,5 +128,5 @@ export async function estimateDepth(
   const { profile, disagreement } = resolveDepth(estimated, prescreen)
   const { oversize, oversizeSignals } = computeOversize(estimation.value.signals, estimation.value.implicated_files)
   await recordOversizeVerdict(deps.sidecarDir, oversize, oversizeSignals)
-  return { profile, disagreement, oversize, oversizeSignals, rationale: estimation.value.rationale }
+  return { profile, estimated, disagreement, oversize, oversizeSignals, rationale: estimation.value.rationale }
 }

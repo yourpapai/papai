@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -242,3 +242,38 @@ describe('main interactive dispatch (session loop)', () => {
     await expect(main([], harness)).rejects.toThrow(/sessionLoop/u)
   })
 })
+
+describe('/sdd:auto command documentation', () => {
+  // The command file is the front door CLAUDE.md routes newcomers to. It drifted
+  // once already (it advertised --wait and --verbosity, both of which error), and
+  // nothing caught it — prose about flags is only checkable against the parser.
+  const commandFile = path.join(import.meta.dir, '..', '..', '.claude', 'commands', 'sdd-auto.md')
+
+  function documentedFlags(): string[] {
+    const md = readFileSync(commandFile, 'utf8')
+    return [...new Set(md.match(/(?<![\w-])--[a-z][a-z-]*/gu) ?? [])]
+  }
+
+  it('documents at least one flag', () => {
+    expect(documentedFlags().length).toBeGreaterThan(0)
+  })
+
+  it('documents only flags the parser accepts', () => {
+    const rejected = documentedFlags().filter((flag) => {
+      try {
+        parseSddArgs(['task.md', flag, valueFor(flag)].filter((arg) => arg !== ''))
+        return false
+      } catch {
+        return true
+      }
+    })
+    expect(rejected).toEqual([])
+  })
+})
+
+/** A parser-satisfying value for a documented flag, or '' for a valueless one. */
+function valueFor(flag: string): string {
+  if (flag === '--depth') return 'S'
+  if (flag === '--config') return 'some.json'
+  return ''
+}

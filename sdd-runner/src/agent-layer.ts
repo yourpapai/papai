@@ -61,6 +61,13 @@ export const AssumptionRecordSchema = z.object({
   blast_radius: z.string().min(1),
   status: z.enum(['open', 'confirmed', 'vetoed']),
   evidence: z.object({ files: z.array(z.string().min(1)).min(1) }),
+  /**
+   * The finding this assumption was logged against, when it came from one. It
+   * is what lets an `assumed` resolution be closed as traceable rather than
+   * taken on trust; sidecars written before the link existed carry none, and
+   * the openness predicate falls back to a round-level check for those.
+   */
+  findingId: z.string().min(1).optional(),
 })
 export type AssumptionRecord = z.infer<typeof AssumptionRecordSchema>
 
@@ -198,7 +205,7 @@ async function attemptStageAgent<T>(
       continuation,
       attempt,
     })
-    await guardWorkingTree(deps.execGit, options.cwd, before)
+    await guardWorkingTree(deps.execGit, options.cwd, before, options.changeName)
     const parsed = options.outputSchema.safeParse(result.value)
     if (parsed.success) {
       deps.emit({ altitude: 'L1', type: 'done', agent: options.label, model, usage: result.usage })

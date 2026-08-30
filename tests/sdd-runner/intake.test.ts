@@ -25,7 +25,7 @@ import {
 } from '../../sdd-runner/src/intake.js'
 import type { IntakeDeps } from '../../sdd-runner/src/intake.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
-import type { ExecFn } from '../../sdd-runner/src/openspec-driver.js'
+import type { ExecFn, NewChangeResult } from '../../sdd-runner/src/openspec-driver.js'
 
 const tmpDirs: string[] = []
 
@@ -76,6 +76,10 @@ describe('mapSignalsToProfile', () => {
 describe('prescreenProfile', () => {
   it('classifies obviously-small keyword tasks as S', () => {
     expect(prescreenProfile('fix typo in the README')).toBe('S')
+  })
+
+  it('classifies the singular doc keyword as S', () => {
+    expect(prescreenProfile('polish the doc')).toBe('S')
   })
 
   it('classifies migration/credential keywords as L', () => {
@@ -183,9 +187,11 @@ interface IntakeFixture {
   readonly spawned: { count: number }
   readonly timeline: string[]
   readonly prompts: string[]
+  readonly warnings: string[]
 }
 
 function makeFixture(dir: string, outputs: Record<string, string | string[]> = {}): IntakeFixture {
+  const warnings: string[] = []
   const emitted: EventInput[] = []
   const agentEmitted: EventInput[] = []
   const spawned = { count: 0 }
@@ -236,8 +242,11 @@ function makeFixture(dir: string, outputs: Record<string, string | string[]> = {
     sidecarDir: path.join(dir, 'sidecars'),
     runDir: dir,
     cwd: dir,
+    stdout: (line) => {
+      warnings.push(line)
+    },
   }
-  return { deps, emitted, agentEmitted, spawned, timeline, prompts }
+  return { deps, emitted, agentEmitted, spawned, timeline, prompts, warnings }
 }
 
 describe('buildEstimatorPrompt', () => {
@@ -325,6 +334,49 @@ describe('runIntake', () => {
     expect(events[0]).toMatchObject({ type: 'depth', disagreement: true })
   })
 
+  it('warns on a two-level disagreement instead of only recording it in the event', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    await runIntake(fixture.deps, { changeName: 'fix-typo', taskText: 'fix typo in README' })
+    const warning = fixture.warnings.find((line) => line.includes('disagree'))
+    expect(warning).toBeDefined()
+    // Names both readings and the one that was taken, so the operator can
+    // judge the escalation without opening the event log.
+    expect(warning).toContain('S')
+    expect(warning).toContain('L')
+  })
+
+  it('stays quiet when the estimator and the prescreen agree within one level', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    await runIntake(fixture.deps, { changeName: 'add-sessions', taskText: 'add session storage' })
+    expect(fixture.warnings.filter((line) => line.includes('disagree'))).toEqual([])
+  })
+
+  it('warns that a depth override skips oversize detection', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    await runIntake(fixture.deps, {
+      changeName: 'fix-typo',
+      taskText: 'fix typo in README',
+      depthOverride: 'S',
+    })
+    // The estimator is the only source of the oversize verdict, so an override
+    // silently rules out decomposition — say so rather than letting an oversize
+    // task draft one outsized change.
+    const warning = fixture.warnings.find((line) => line.includes('oversize'))
+    expect(warning).toBeDefined()
+    expect(warning).toContain('--depth')
+    expect(fixture.spawned.count).toBe(0)
+  })
+
+  it('does not warn about oversize detection when the estimator runs', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    await runIntake(fixture.deps, { changeName: 'add-sessions', taskText: 'add session storage' })
+    expect(fixture.warnings.filter((line) => line.includes('oversize'))).toEqual([])
+  })
+
   it('returns a plan outcome with topo-ordered children and never scaffolds a change folder', async () => {
     const dir = makeDir()
     const fixture = makeFixture(dir, { 'depth.json': KB_ESTIMATION, 'plan-draft.json': PLAN })
@@ -408,6 +460,47 @@ describe('runIntake', () => {
     const sidecar: unknown = JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'depth.json'), 'utf8'))
     expect(sidecar).toMatchObject({ oversize: false })
   })
+
+  it('scaffolds the change and skips the oversize warning when deps carry no stdout at all', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    const newChangeCalls: [string, string][] = []
+    const baseNewChange = fixture.deps.driver.newChange.bind(fixture.deps.driver)
+    const driver = {
+      ...fixture.deps.driver,
+      newChange: (changeName: string, schema: string): Promise<NewChangeResult> => {
+        newChangeCalls.push([changeName, schema])
+        return baseNewChange(changeName, schema)
+      },
+    }
+    const depsNoStdout: IntakeDeps = { ...fixture.deps, driver, stdout: undefined }
+    const result = await runIntake(depsNoStdout, {
+      changeName: 'fix-typo',
+      taskText: 'fix typo in README',
+      depthOverride: 'S',
+    })
+    expect(result).toEqual({ kind: 'single', changeName: 'fix-typo', depth: 'S', disagreement: false })
+    expect(newChangeCalls).toEqual([['fix-typo', 'auto-sdd']])
+  })
+
+  it('flags a two-level disagreement without stdout, scaffolds auto-sdd, and never forces the plan route', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    const newChangeCalls: [string, string][] = []
+    const baseNewChange = fixture.deps.driver.newChange.bind(fixture.deps.driver)
+    const driver = {
+      ...fixture.deps.driver,
+      newChange: (changeName: string, schema: string): Promise<NewChangeResult> => {
+        newChangeCalls.push([changeName, schema])
+        return baseNewChange(changeName, schema)
+      },
+    }
+    const depsNoStdout: IntakeDeps = { ...fixture.deps, driver, stdout: undefined }
+    const result = await runIntake(depsNoStdout, { changeName: 'fix-typo', taskText: 'fix typo in README' })
+    expect(result).toEqual({ kind: 'single', changeName: 'fix-typo', depth: 'L', disagreement: true })
+    expect(newChangeCalls).toEqual([['fix-typo', 'auto-sdd']])
+    expect(fixture.emitted[0]).not.toHaveProperty('routeForced')
+  })
 })
 
 describe('runPlanner', () => {
@@ -452,6 +545,11 @@ describe('runPlanner', () => {
     expect(failure.message).toMatch(/dependency cycle/u)
     expect(failure.message).toMatch(/replan/u)
     expect(fixture.spawned.count).toBe(2)
+    // The last structural error rides along as `cause`, so callers can surface
+    // the topo failure without re-running the planner.
+    expect(failure.cause).toBeInstanceOf(Error)
+    assert(failure.cause instanceof Error)
+    expect(failure.cause.message).toMatch(/dependency cycle/u)
   })
 
   it('stages drafts at plan-draft.json, never overwriting plan.json with a structurally invalid draft', async () => {
@@ -471,5 +569,50 @@ describe('runPlanner', () => {
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'plan-draft.json'), 'utf8'))).toEqual(
       JSON.parse(CYCLIC_PLAN),
     )
+  })
+
+  it('spawns the planner with the exact base prompt and neither optional section', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir, { 'plan-draft.json': PLAN })
+    await runPlanner(fixture.deps, { changeName: 'composite', taskText: 'build the platform' })
+    const prompt = fixture.prompts[0]
+    expect(prompt).toContain('You are a read-only task planner for a spec-driven development pipeline.')
+    expect(prompt).toContain('Decompose the task into child runs that each fit one change. Do not edit anything.')
+    expect(prompt).toContain('pipeline.\nDecompose the task')
+    expect(prompt).toContain('Task:\nbuild the platform')
+    expect(prompt).toContain(`Write your plan as JSON to ${agentWritePath(dir, 'plan-draft.json')} with this shape:`)
+    expect(prompt).toContain(
+      '{"children": [{"id": string, "instruction": string, "deps": string[], "capabilities"?: string[]}]}',
+    )
+    expect(prompt).toContain('Every dep must reference another child id; order children so dependencies come first.')
+    expect(prompt).not.toContain('vetoed')
+    expect(prompt).not.toContain('Previous plan failed structural validation:')
+    expect(prompt).not.toContain('Stryker was here!')
+  })
+
+  it('appends the veto section naming each redirect when redirects are supplied', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir, { 'plan-draft.json': PLAN })
+    await runPlanner(fixture.deps, {
+      changeName: 'composite',
+      taskText: 'build the platform',
+      redirects: ['narrow the scope to auth'],
+    })
+    const prompt = fixture.prompts[0]
+    expect(prompt).toContain('The previous plan was vetoed. Revise it according to these redirects:')
+    expect(prompt).toContain('- narrow the scope to auth')
+    expect(prompt).not.toContain('Stryker was here!')
+    expect(prompt).not.toContain('Previous plan failed structural validation:')
+  })
+
+  it('appends the structural validation section on the replan pass', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir, { 'plan-draft.json': [DUPLICATE_IDS_PLAN, PLAN] })
+    await runPlanner(fixture.deps, { changeName: 'composite', taskText: 'build the platform' })
+    const prompt = fixture.prompts[1]
+    expect(prompt).toContain('Previous plan failed structural validation:')
+    expect(prompt).toContain('duplicate child ids')
+    expect(prompt).toContain('Fix these errors in the revised plan.')
+    expect(prompt).not.toContain('Stryker was here!')
   })
 })

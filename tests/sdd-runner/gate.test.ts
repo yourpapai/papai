@@ -269,6 +269,8 @@ describe('resumeGate', () => {
 describe('presentGateAt policy prelude (observe + integrity cross-checks)', () => {
   const CONVERGED = {
     outcome: 'converged' as const,
+    verdict: 'converged' as const,
+    raised: { blocker: 0, material: 0, nitpick: 0 },
     rounds: 1,
     openBlockers: [],
     openMaterial: [],

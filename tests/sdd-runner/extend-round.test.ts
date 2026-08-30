@@ -130,7 +130,15 @@ describe('settleApprovedGate export (7.1)', () => {
           emit,
         },
       },
-      { outcome: 'converged', rounds: 1, openBlockers: [], openMaterial: [], openNitpicks: [] },
+      {
+        outcome: 'converged',
+        verdict: 'converged',
+        raised: { blocker: 0, material: 0, nitpick: 0 },
+        rounds: 1,
+        openBlockers: [],
+        openMaterial: [],
+        openNitpicks: [],
+      },
     )
     expect(result.outcome).toBe('approved')
     expect(result.version).toBe(3)

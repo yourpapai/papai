@@ -196,6 +196,8 @@ describe('continued-session usage flows through accounting and the budget guard 
     }
     const reviewResult: ReviewLoopResult = {
       outcome: 'cap-hit',
+      verdict: 'open',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       rounds: 2,
       openBlockers: [],
       openMaterial: [{ id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'x' }],
@@ -253,6 +255,8 @@ describe('the persisted tree baseline reaches the ladder (D10)', () => {
     const ctx = { emit: (): void => undefined, cwd: dir, changeDir: dir, sidecarDir }
     const reviewResult: ReviewLoopResult = {
       outcome: 'converged',
+      verdict: 'converged' as const,
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       rounds: 2,
       openBlockers: [],
       openMaterial: [],
