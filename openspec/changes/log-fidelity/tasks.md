@@ -26,10 +26,10 @@ See LICENSE in the project root for details.
 
 ## 3. Fixtures, cross-checks, docs
 
-- [ ] 3.1 Add the honest synthetic scenario sibling (same-round resume without a duplicate `round_open`, carrying the `resume` event) + its inventory row — `bun test tests/afk-runner/fixtures/scenarios/inventory.test.ts`
-- [ ] 3.2 Flip the `under-budget-retry-synthetic` README row's meaning from "legitimate shape" to "tolerated history" — `bun test tests/afk-runner/fixtures/scenarios/inventory.test.ts`
-- [ ] 3.3 Re-read `openspec/changes/gate-settle-robustness/design.md`; confirm its re-present/extend shapes introduce no open-round re-entry the invariant misses; record the outcome in this change's design.md Risks — `openspec validate --strict`
-- [ ] 3.4 Update `docs/architecture/afk-runner.md` (log-fidelity: owedness invariant, resume producer, the F-A4 observation) — `bun run lint`
+- [x] 3.1 Add the honest synthetic scenario sibling (same-round resume without a duplicate `round_open`, carrying the `resume` event) + its inventory row — `bun test tests/afk-runner/fixtures/scenarios/inventory.test.ts`
+- [x] 3.2 Flip the `under-budget-retry-synthetic` README row's meaning from "legitimate shape" to "tolerated history" — `bun test tests/afk-runner/fixtures/scenarios/inventory.test.ts`
+- [x] 3.3 Re-read `openspec/changes/gate-settle-robustness/design.md`; confirm its re-present/extend shapes introduce no open-round re-entry the invariant misses; record the outcome in this change's design.md Risks — `openspec validate --strict`
+- [x] 3.4 Update `docs/architecture/afk-runner.md` (log-fidelity: owedness invariant, resume producer, the F-A4 observation) — `bun run lint`
 
 ## 4. Full verification
 

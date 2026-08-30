@@ -94,12 +94,18 @@ cycle to exercise and for a possible follow-up fixture proving it deliberate.
 
 ## Risks / Trade-offs
 
-- [R1's landed design adds a new re-entry-into-open-round shape (re-present → extend → mover → re-entry)] →
-  re-read `gate-settle-robustness/design.md` at apply start; the invariant should absorb it — verify, don't
-  assume.
-- [Terminal-row reachibility (recovery-completes-the-run) is untested] → apply-time drill: W3 heal with
-  autonomy R1 configured, ladder settles approve-at-final during `resumeInputs`; assert the
-  `artifact-skip, gate` event lands.
+- [R1's landed design adds a new re-entry-into-open-round shape (re-present → extend → re-entry)] →
+  **verified at apply time** (`gate-settle-robustness/design.md` re-read): the only round-opening producer in
+  its landed shapes is the extend mover — D5's owed-exit heal appends `stage_exit` events only, D4's deadline
+  ladder re-run settles through the same extend mover (the canonical absorbed shape: mover emits, review's
+  re-entry skips), re-presentation (v+1) touches no rounds, and the already-answered guard appends nothing.
+  Every `round_open` lands in the log before the drive invokes review work, so the entry fold always carries
+  it; no re-entry path bypasses the invariant.
+- [Terminal-row reachibility (recovery-completes-the-run) is untested] → landed as the apply-time drill:
+  W3 truncation + the default (R1-approving) shape; `resume-event.test.ts` asserts the `artifact-skip, gate`
+  event after the healed settle. Implementation note recorded with it: pre-existing terminals map to the same
+  `artifact-skip, gate` row (a completed run's terminal derives from `gate.answered`), so the table needs no
+  pre-recovery fold plumbing.
 - [Emission skip could hide a future cap bump] → the cap clause in the predicate emits on any cap change;
   defensive by D2.
 
