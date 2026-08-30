@@ -372,7 +372,13 @@ jobs:
       # Shards measure; they never judge. The command exits 0 on a low score by design — a shard
       # that failed here would stop the gate from ever rendering the whole-branch verdict.
       - name: Measure this shard
-        run: bun test:mutate:shard --index=${{ matrix.index }}
+        # The index rides in via `env` rather than inlined as `${{ matrix.index }}`: an expression
+        # interpolated straight into a `run:` block is shell injection surface, and semgrep's TS
+        # parser chokes on it, which escalates to exit 3 under `--strict` and fails Security Scan
+        # with zero findings. That is how this landed red the first time.
+        env:
+          SHARD_INDEX: ${{ matrix.index }}
+        run: bun test:mutate:shard --index="$SHARD_INDEX"
       - name: Upload this shard's results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
