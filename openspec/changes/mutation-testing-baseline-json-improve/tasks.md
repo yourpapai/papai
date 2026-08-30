@@ -1,0 +1,59 @@
+# Tasks: mutation-testing-baseline-json-improve
+
+Test-first order per design.md Project-rule notes: each test task must be red
+before its implementation edit. The Write/Edit TDD hook does not gate
+`scripts/mutation/` or `mutation-improve/` files — the test-first order is
+discipline; CI is the hard gate.
+
+## 1. Baseline record contract (`scripts/mutation/baseline.ts`)
+
+- [x] 1.1 Write failing tests in `tests/scripts/mutation/baseline.test.ts` covering: rich-record guard `{score, killed, timeout, scored}`; load-time arithmetic validation (counts finite non-negative integers, `scored > 0`, `score` finite in [0,1], `killed + timeout ≤ scored`, `score ≈ (killed + timeout) / scored` within 1e-9, error names file and expected relation); dual-shape parse/serialize with a bare legacy number and a rich record side by side in one sorted bare map; `buildBaselineFromPerFile` emitting rich records from `MergedScore` counts; `recordNumerator`/`measurementNumerator` helpers; monotonic merges with counts (strictly-higher score replaces the record wholesale; equal-or-lower over a rich record leaves score and counts untouched, same record object; a legacy bare entry measured at exactly its recorded score converts to a rich record at the unchanged floor; a below-floor measurement leaves a legacy entry untouched); `resolveRatchet` verdict classification (score ≥ floor passes silently; score < floor ∧ numerator < recorded → regression; score < floor ∧ numerator ≥ recorded → dilution warning; legacy score-only record judged by score alone with no dilution classification; first-touch and `scored === 0` files skipped) with `RatchetRegression` carrying measured and recorded numerators. Verify: `bun test tests/scripts/mutation/baseline.test.ts` (red).
+- [x] 1.2 Implement the `BaselineRecord` type, dual-shape `BaselineMap`, `isBaselineRecord` guard, and the `recordNumerator`/`measurementNumerator` helpers in `scripts/mutation/baseline.ts`. Verify: `bun test tests/scripts/mutation/baseline.test.ts` (guard and helper cases green; the rest of 1.1 stays red until 1.3–1.7).
+- [x] 1.3 Implement load-time arithmetic validation failing loud in `scripts/mutation/baseline.ts` (counts finite non-negative integers with `scored > 0`, `score` finite in [0,1], `killed + timeout ≤ scored`, `score ≈ (killed + timeout) / scored` within 1e-9; the error names the file and the expected relation). Verify: `bun test tests/scripts/mutation/baseline.test.ts` (validation cases green; the rest of 1.1 stays red until 1.4–1.7).
+- [x] 1.4 Make `loadBaseline`/`writeBaseline` dual-shape (read bare or rich, writers always emit rich records; top-level file stays a bare sorted map); `scripts/mutation/baseline.json` itself is NOT edited (lazy migration, D2). Verify: `bun test tests/scripts/mutation/baseline.test.ts` (dual-shape parse/serialize cases green; the rest of 1.1 stays red until 1.5–1.7).
+- [x] 1.5 Make `buildBaselineFromPerFile` emit rich records from `MergedScore` counts. Verify: `bun test tests/scripts/mutation/baseline.test.ts` (builder cases green; the rest of 1.1 stays red until 1.6–1.7).
+- [x] 1.6 Rework `resolveRatchet` to return `{ exitCode, regressions, dilutions }` per the D4 verdict order, with `RatchetRegression` carrying measured and recorded numerators. Verify: `bun test tests/scripts/mutation/baseline.test.ts` (verdict cases green; merge cases stay red until 1.7).
+- [x] 1.7 Rework `seedMerge`/`ratchetMerge` to per-key-max-with-counts, including the legacy equal-score conversion carve-out (a legacy bare entry measured at exactly its recorded score converts to a rich record at the unchanged floor; a below-floor measurement leaves it untouched). Verify: `bun test tests/scripts/mutation/baseline.test.ts` (green — completes 1.1).
+
+## 2. Gate verdict surface (`scripts/mutation/gates.ts`, `scripts/mutation/changed-files.ts`)
+
+- [ ] 2.1 Write failing tests in `tests/scripts/mutation/gates.test.ts`: `GateVerdict` gains `warnings: readonly string[]` defaulting to `[]`; a pass-with-dilution run exits 0 carrying warnings; the regression message renders kills in the form `file score < floor, kills m < n recorded`. Verify: `bun test tests/scripts/mutation/gates.test.ts` (red).
+- [ ] 2.2 Implement the warnings channel in `scripts/mutation/gates.ts`: `GateVerdict` gains `warnings: readonly string[]` defaulting to `[]`, and a pass-with-dilution run exits 0 carrying warnings (the failure surface stays one exit code; warnings ride in the verdict). Verify: `bun test tests/scripts/mutation/gates.test.ts` (warnings cases green; the kills-rendering message cases stay red until 2.3).
+- [ ] 2.3 Render the kills in the regression message in `scripts/mutation/gates.ts` in the form `file score < floor, kills m < n recorded`. Verify: `bun test tests/scripts/mutation/gates.test.ts` (green — completes 2.1).
+- [ ] 2.4 Write failing tests in `tests/scripts/mutation/changed-files.test.ts`: each dilution prints a `WARN` log line naming the file, its held kill count, and both scores; the existing verbatim regression-message pins updated to the kills-rendering form. Verify: `bun test tests/scripts/mutation/changed-files.test.ts` (red).
+- [ ] 2.5 Print the verdict's warnings as plain `WARN` log lines in `scripts/mutation/changed-files.ts` (no CI annotations). Verify: `bun test tests/scripts/mutation/changed-files.test.ts` (green — completes 2.4).
+
+## 3. Seed snapshot record-awareness (`scripts/mutation/seed-from.ts`)
+
+- [ ] 3.1 Write failing tests in `tests/scripts/mutation/seed-from.test.ts`: `writeScoresFile` emits rich records; `seedFromScores`/`seedBaseline` round-trip a rich `scores.json` and merge it over a mixed legacy/rich baseline without loosening floors or mixing score/counts provenance. Verify: `bun test tests/scripts/mutation/seed-from.test.ts` (red).
+- [ ] 3.2 Confirm/adjust `scripts/mutation/seed-from.ts` so the snapshot path is record-aware through the shared `buildBaselineFromPerFile`/`loadBaseline`/`seedMerge` helpers. Verify: `bun test tests/scripts/mutation/seed-from.test.ts` (green — completes 3.1).
+
+## 4. Runner: record-level bump + measurement path (`mutation-improve/src/`)
+
+- [ ] 4.1 Write failing tests in `tests/mutation-improve/baseline.test.ts`: `parseBaseline` accepts the dual shape using guards imported from `../../scripts/mutation/baseline.js` (identical interpretation with the PR gate); record-level `bumpScore(map, file, measurement)` (strictly-higher score replaces the record wholesale with the new counts; equal-or-lower over a rich record returns the same map with the previous record object untouched; a legacy bare entry at exactly its recorded score converts to a rich record at the unchanged floor; lower leaves it untouched); IO semantics unchanged (ENOENT → `{}`). Verify: `bun test tests/mutation-improve/baseline.test.ts` (red).
+- [ ] 4.2 Rewrite `mutation-improve/src/baseline.ts` to import the record type and parse guards from `scripts/mutation/baseline.ts` (same relative-import pattern as its existing `json-readers.js`/`score-merger.js` imports) and implement the record-level `bumpScore`. Verify: `bun test tests/mutation-improve/baseline.test.ts` (green — completes 4.1).
+- [ ] 4.3 Write failing tests in `tests/mutation-improve/score-reader.test.ts`: `MeasuredScore`/`measureMutationScore` carries `killed`, `timeout`, `scored` from the same report as the score. Verify: `bun test tests/mutation-improve/score-reader.test.ts` (red).
+- [ ] 4.4 Widen `MeasuredScore` in `mutation-improve/src/score-reader.ts` (keep the full `MergedScore` counts from `mergeReports` — no extra measurement or re-read). Verify: `bun test tests/mutation-improve/score-reader.test.ts` (green — completes 4.3).
+- [ ] 4.5 Write failing tests in `tests/mutation-improve/gate.test.ts`: `GateOutcome` carries those counts alongside `afterScore`. Verify: `bun test tests/mutation-improve/gate.test.ts` (red).
+- [ ] 4.6 Widen `GateOutcome` in `mutation-improve/src/gate.ts`. Verify: `bun test tests/mutation-improve/gate.test.ts` (green — completes 4.5).
+- [ ] 4.7 Write failing tests in `tests/mutation-improve/pipeline.test.ts`: `commitRatchet` passes the full measurement to the record-level `bumpScore`. Verify: `bun test tests/mutation-improve/pipeline.test.ts` (red).
+- [ ] 4.8 Update `commitRatchet` in `mutation-improve/src/pipeline.ts` to pass the full measurement through to `bumpScore`. Verify: `bun test tests/mutation-improve/pipeline.test.ts` (green — completes 4.7).
+- [ ] 4.9 Write failing tests in `tests/mutation-improve/skip-ratchet.test.ts`: `ratchetVerifiedSkip` passes the full measurement to the record-level `bumpScore`; the `bumped[file] === baseline[file]` early-return still suppresses a rich no-op commit (reference identity preserved) while a legacy shape-upgrade commits. Verify: `bun test tests/mutation-improve/skip-ratchet.test.ts` (red).
+- [ ] 4.10 Update `ratchetVerifiedSkip` in `mutation-improve/src/skip-ratchet.ts` to pass the full measurement through to `bumpScore`. Verify: `bun test tests/mutation-improve/baseline.test.ts tests/mutation-improve/score-reader.test.ts tests/mutation-improve/gate.test.ts tests/mutation-improve/pipeline.test.ts tests/mutation-improve/skip-ratchet.test.ts` (green — completes 4.1–4.9).
+
+## 5. SELECT prompt strings (`mutation-improve/src/prompt-templates.ts`)
+
+- [ ] 5.1 Write failing tests in `tests/mutation-improve/prompt-templates.test.ts` pinning the mixed-shape map description (entries are either a bare score number or a `{score, killed, timeout, scored}` record) and the updated `beforeScore` instruction (the bare number itself for a legacy entry, otherwise the entry's `score` field, 0..1). Verify: `bun test tests/mutation-improve/prompt-templates.test.ts` (red).
+- [ ] 5.2 Update the two stale strings in `mutation-improve/src/prompt-templates.ts` (`{filePath: score}` map line and `beforeScore:` schema line); `SelectionSchema` untouched. Verify: `bun test tests/mutation-improve/prompt-templates.test.ts` (green — completes 5.1).
+
+## 6. Docs and ADR
+
+- [ ] 6.1 Write the new ADR in `docs/adr/` (next sequential number, currently 0427): record shape and why counts are stored decomposed, the regression-vs-dilution verdict rule, lazy dual-shape migration, the code+data rollback pairing; references ADR-0342 (extends) and ADR-0424 (untouched fingerprinting). Verify: `bun run format:check` (and the new `docs/adr/0427-*` file exists).
+- [ ] 6.2 Update `scripts/mutation/README.md`: the committed record shape, the lazy migration story (mixed entries coexist; no reseed required), the optional one-time full-run conversion recipe (`bun test:mutate --update-baseline` full run or delete+regenerate), and the rollback rule (revert the commit AND restore the pre-change `baseline.json` blob together). Verify: `bun run format:check`.
+- [ ] 6.3 Update the mutation-gate sections of `docs/architecture/commands.md` to the new verdict rule and record shape; do not carry the `mutation-improve/AGENTS.md` resolver-mapping claim into `commands.md` (contradicts `.hooks/tdd/test-resolver.mjs`). Verify: `bun run format:check`.
+- [ ] 6.4 Update the AGENTS.md Testing Notes paragraph to the new verdict rule and record shape. Verify: `bun run format:check`.
+
+## 7. Verification
+
+- [ ] 7.1 Run `bun check:full` and the full targeted suites; confirm every 1.x–5.x test is green and no other suite regressed. Verify: `bun run check:full && bun run test tests/scripts/mutation tests/mutation-improve` (all green).
+- [ ] 7.2 Confirm enforcement never weakened during migration: a legacy bare entry still fails a below-floor score and the committed `scripts/mutation/baseline.json` still parses under the dual-shape loader (both pinned by the 1.x suites 7.1 ran), then exercise the live gate on the branch for ratchet + warning behavior. Verify: `bun run test:mutate:changed --base=master` (passes).

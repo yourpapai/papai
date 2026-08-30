@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { isBaselineMap } from '../../../scripts/mutation/baseline.js'
-import type { PerFileScore } from '../../../scripts/mutation/baseline.js'
+import type { BaselineMap, PerFileScore } from '../../../scripts/mutation/baseline.js'
 import {
   changedFilesRun,
   parseChangedFilesCliArgs,
@@ -71,7 +71,7 @@ const expectGateInput = (result: GateInput | null): GateInput => {
 
 const tmpBaselinePath = (): string => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'papai-seed-')), 'baseline.json')
 
-const readBaseline = (baselinePath: string): Record<string, number> => {
+const readBaseline = (baselinePath: string): BaselineMap => {
   const parsed: unknown = JSON.parse(fs.readFileSync(baselinePath, 'utf8'))
   if (!isBaselineMap(parsed)) throw new Error(`baseline at ${baselinePath} is not a BaselineMap`)
   return parsed
