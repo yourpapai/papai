@@ -8,11 +8,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { loadDb, lookupModel, ModelsDevDbSchema } from '../../sdd-runner/src/pricing.js'
-import { MODELS_DEV_FETCH_TIMEOUT_MS, MODELS_DEV_URL } from '../../sdd-runner/src/pricing.js'
-import { parseModelId } from '../../sdd-runner/src/pricing.js'
-import { resolveCost } from '../../sdd-runner/src/pricing.js'
-import type { ModelsDevDb } from '../../sdd-runner/src/pricing.js'
+import { loadDb, lookupModel, ModelsDevDbSchema } from '../../opencode-agent/src/pricing.js'
+import { MODELS_DEV_FETCH_TIMEOUT_MS, MODELS_DEV_URL } from '../../opencode-agent/src/pricing.js'
+import { parseModelId } from '../../opencode-agent/src/pricing.js'
+import { resolveCost } from '../../opencode-agent/src/pricing.js'
+import type { ModelsDevDb } from '../../opencode-agent/src/pricing.js'
 
 const tmpDirs: string[] = []
 

@@ -636,14 +636,13 @@ findings: `ROADMAP.md`.
   unknown `output` written as `0`, because OpenCode reads a zero output exactly
   as absent (`?? existingModel?.limit?.output ?? 0`) and `maxOutputTokens` falls
   back to its own ceiling — a zero _context_ is nothing like that.
-  The reader is **`sdd-runner/src/pricing.ts`**, imported across the workspace
-  boundary one function wide and one direction only: it is already a models.dev
-  client with a disk cache, a bounded fetch and two recorded incident fixes, and
-  the minimality ladder forbids a second copy of all that. Revisit the boundary
-  at a third consumer (papai's own `src/model-context.ts` is the candidate), not
-  before. The lookup runs **after the guardrail door** — a payload the pipeline
-  is about to drop must not pay for a network read — and `catalogueEntry` is the
-  one function permitted to swallow, per the feedback-channel rule above.
+  The reader is **`src/pricing.ts`**, this workspace's own models.dev client
+  with a disk cache, a bounded fetch and two recorded incident fixes — the
+  import crosses no workspace boundary, and the minimality ladder still forbids
+  a second copy of all that. The lookup runs **after the guardrail door** — a
+  payload the pipeline is about to drop must not pay for a network read — and
+  `catalogueEntry` is the one function permitted to swallow, per the
+  feedback-channel rule above.
   `buildOpencodeConfig` stays **synchronous** and takes the resolved facts as a
   field on the settings it already has: it is the single definition serving both
   the in-process session and the `OPENCODE_CONFIG_CONTENT` the review loop's

@@ -40,11 +40,11 @@ import type {
 } from '../../opencode-agent/src/openspec-driver.js'
 import type { IssueContext } from '../../opencode-agent/src/phase-context.js'
 import type { PhaseDeps, RunReview } from '../../opencode-agent/src/phase-context.js'
+import type { ModelsDevDb } from '../../opencode-agent/src/pricing.js'
 import type { ReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
 import { noopReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import type { CommandResult } from '../../opencode-agent/src/shell.js'
-import type { ModelsDevDb } from '../../sdd-runner/src/pricing.js'
 
 /**
  * An Octokit logger that discards every level.
