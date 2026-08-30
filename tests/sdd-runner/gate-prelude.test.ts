@@ -13,7 +13,7 @@ import type { PolicyDecision, PolicySignals } from '../../sdd-runner/src/auto-po
 import type { AutonomyConfig } from '../../sdd-runner/src/config.js'
 import { appendEvent } from '../../sdd-runner/src/events.js'
 import { integrityOf } from '../../sdd-runner/src/gate-integrity.js'
-import { renderPreviewBlock } from '../../sdd-runner/src/gate-prelude.js'
+import { PLAN_REVIEW_SURROGATE, renderPreviewBlock } from '../../sdd-runner/src/gate-prelude.js'
 import type { DigestRecord } from '../../sdd-runner/src/replay.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 
@@ -158,6 +158,25 @@ describe('renderPreviewBlock', () => {
     expect(/^- \[/mu.test(block)).toBe(false)
     expect(/^\s*ABORT\s*$/mu.test(block)).toBe(false)
     expect(/^→/mu.test(block)).toBe(false)
+  })
+
+  it('quotes the decision evidence digest verbatim', () => {
+    const block = renderPreviewBlock({ rule: 'R1', action: 'approve', evidenceDigest: 'digest-abc123' })
+    expect(block).toContain('> evidence: digest-abc123')
+  })
+})
+
+describe('PLAN_REVIEW_SURROGATE', () => {
+  it('is the exact zero-activity review result a parent gate evaluates', () => {
+    expect(PLAN_REVIEW_SURROGATE).toEqual({
+      outcome: 'converged',
+      rounds: 0,
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    })
   })
 })
 

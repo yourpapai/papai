@@ -482,6 +482,51 @@ describe('presentGateAt plan mode (D5)', () => {
     expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate' })
     expect(fixture.state.status).toBe('running')
   })
+
+  it('a plan gate evaluates the zero-activity surrogate, never the caller’s cap-hit review result', async () => {
+    const capHit: ReviewLoopResult = {
+      outcome: 'cap-hit',
+      verdict: 'needs-review',
+      raised: { blocker: 0, material: 2, nitpick: 1 },
+      rounds: 3,
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    }
+    const fixture = await makePlanFixture()
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, capHit, 1, 'plan', {
+      children: PLAN_CHILDREN,
+    })
+    expect(result.halted).toBe('gate')
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(md).toContain('## Plan gate')
+    expect(md).not.toContain('RUN 1 MORE')
+    const autoDecisions = readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
+      (e) => e.type === 'auto_decision',
+    )
+    expect(autoDecisions).toHaveLength(1)
+    expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate' })
+  })
+
+  it('a plan gate presented with no children evaluates the empty child set in the R4 projection', async () => {
+    const fixture = await makePlanFixture({ level: 'assist', costCeilingUsd: 0.4 })
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, CONVERGED, 1, 'plan')
+    expect(result.halted).toBe('gate')
+    const autoDecisions = readEvents(path.join(fixture.state.runDir, 'events.ndjson')).filter(
+      (e) => e.type === 'auto_decision',
+    )
+    expect(autoDecisions).toHaveLength(1)
+    expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate' })
+  })
+
+  it('the deadline announcement tolerates a deps without a stdout sink', async () => {
+    const fixture = await makePlanFixture({ level: 'assist', costCeilingUsd: 5, deadlineMinutes: 30 })
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, CONVERGED, 1, 'plan', {
+      children: PLAN_CHILDREN,
+    })
+    expect(result.halted).toBe('gate')
+    expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('## Plan gate')
+  })
 })
 
 describe('buildBus subscriber wiring', () => {
@@ -545,6 +590,19 @@ describe('buildBus subscriber wiring', () => {
     })
     expect(() => buildBus(deps, path.join(dir, 'events.ndjson'))(event)).not.toThrow()
     expect(lines).toEqual(['[event-bus] sink exploded'])
+  })
+
+  it('with no stdout sink wired, a throwing subscriber neither crashes the emit nor drops the append', () => {
+    const dir = makeDir()
+    const logPath = path.join(dir, 'events.ndjson')
+    const deps = makeDeps([], {
+      stdout: undefined,
+      liveEvents: (): void => {
+        throw new Error('sink exploded')
+      },
+    })
+    expect(() => buildBus(deps, logPath)(event)).not.toThrow()
+    expect(fs.readFileSync(logPath, 'utf8')).toContain('"type":"round_open"')
   })
 })
 

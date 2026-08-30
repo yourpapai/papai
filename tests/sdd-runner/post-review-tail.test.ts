@@ -3,7 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
+import type { Mock } from 'bun:test'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -19,6 +20,7 @@ import {
   isSeverityConverged,
   routeCapHit,
   runPostConvergenceTail,
+  runPostReviewToGate,
 } from '../../sdd-runner/src/post-review-tail.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState, loadRunState } from '../../sdd-runner/src/run-state.js'
@@ -548,5 +550,210 @@ describe('isSeverityConverged', () => {
         openNitpicks: [],
       }),
     ).toBe(false)
+  })
+})
+
+describe('runPostReviewToGate budget routing', () => {
+  /**
+   * The routing conditions are computed from real gate signals, so the
+   * verification round is bought only when the conservative projection says
+   * one more round is affordable. Each case pins one term of the projection —
+   * ceiling source, unknown-cost fail-closed, per-round division, sign
+   * arithmetic, and the persisted spend baseline — through the one observable
+   * that matters: whether the verification seam ran.
+   */
+  function needsReviewCapHit(rounds: number): ReviewLoopResult {
+    return {
+      outcome: 'cap-hit',
+      rounds,
+      verdict: 'needs-review',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
+      openBlockers: [],
+      openMaterial: [],
+      openNitpicks: [],
+    }
+  }
+
+  /** Unpriceable spend (tokens, no model, no resolver) → costKnown false. */
+  function appendUnpriceableSpend(logPath: string): void {
+    appendEvent(logPath, {
+      altitude: 'L1',
+      type: 'done',
+      agent: 'reviewer-r1',
+      usage: { inputTokens: 100, outputTokens: 10, reasoningTokens: 0, costUsd: 0, wallMs: 5 },
+    })
+  }
+
+  /** A priced done event → costKnown true at exactly `costUsd`. */
+  function appendPricedSpend(logPath: string, costUsd: number): void {
+    appendEvent(logPath, {
+      altitude: 'L1',
+      type: 'done',
+      agent: 'reviewer-r1',
+      usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, costUsd, wallMs: 5 },
+    })
+  }
+
+  function verificationMock(): Mock<(result: ReviewLoopResult) => Promise<ReviewLoopResult>> {
+    return mock((result: ReviewLoopResult) => Promise.resolve({ ...result, verdict: 'converged' as const }))
+  }
+
+  it('buys the verification round when the projection is under the ceiling — and its result routes to the tail', async () => {
+    const { deps, state, logPath, spawn } = await setup()
+    const ctx = makeCtx(deps, state, logPath)
+    const verify = verificationMock()
+    const result = await runPostReviewToGate({
+      deps,
+      state,
+      ctx,
+      agent: { spawn, config: deps.config, execGit: deps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(1),
+      version: 1,
+      runVerification: verify,
+    })
+    expect(verify).toHaveBeenCalledTimes(1)
+    expect(verify.mock.calls[0]?.[0]).toMatchObject({ verdict: 'needs-review' })
+    expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('Final gate')
+  })
+
+  it('declines the round when the projection reaches the config ceiling exactly', async () => {
+    const { deps, state, logPath, spawn } = await setup()
+    const noBudgetDeps: OrchestratorDeps = { ...deps, config: { ...deps.config, budget: 0 } }
+    const ctx = makeCtx(noBudgetDeps, state, logPath)
+    const verify = verificationMock()
+    await runPostReviewToGate({
+      deps: noBudgetDeps,
+      state,
+      ctx,
+      agent: { spawn, config: noBudgetDeps.config, execGit: noBudgetDeps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(1),
+      version: 1,
+      runVerification: verify,
+    })
+    expect(verify).not.toHaveBeenCalled()
+  })
+
+  it('fails closed on unknown cost — an unmeterable run buys no round', async () => {
+    const { deps, state, logPath, spawn } = await setup()
+    appendUnpriceableSpend(logPath)
+    const ctx = makeCtx(deps, state, logPath)
+    const verify = verificationMock()
+    await runPostReviewToGate({
+      deps,
+      state,
+      ctx,
+      agent: { spawn, config: deps.config, execGit: deps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(1),
+      version: 1,
+      runVerification: verify,
+    })
+    expect(verify).not.toHaveBeenCalled()
+  })
+
+  it('a zero-round loop projects the default per-round cost, not a division by zero', async () => {
+    const { deps, state, logPath } = await setup()
+    appendPricedSpend(logPath, 1)
+    const autonomyDeps: OrchestratorDeps = {
+      ...deps,
+      autonomy: { level: 'assist', costCeilingUsd: 2 },
+    }
+    const ctx = makeCtx(autonomyDeps, state, logPath)
+    const verify = verificationMock()
+    await runPostReviewToGate({
+      deps: autonomyDeps,
+      state,
+      ctx,
+      agent: { spawn: autonomyDeps.spawn, config: autonomyDeps.config, execGit: autonomyDeps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(0),
+      version: 1,
+      runVerification: verify,
+    })
+    expect(verify).toHaveBeenCalledTimes(1)
+  })
+
+  it('a multi-round loop projects its own average, which is what crosses the ceiling', async () => {
+    const { deps, state, logPath } = await setup()
+    appendPricedSpend(logPath, 3)
+    const autonomyDeps: OrchestratorDeps = {
+      ...deps,
+      autonomy: { level: 'assist', costCeilingUsd: 4 },
+    }
+    const ctx = makeCtx(autonomyDeps, state, logPath)
+    const verify = verificationMock()
+    await runPostReviewToGate({
+      deps: autonomyDeps,
+      state,
+      ctx,
+      agent: { spawn: autonomyDeps.spawn, config: autonomyDeps.config, execGit: autonomyDeps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(2),
+      version: 1,
+      runVerification: verify,
+    })
+    expect(verify).not.toHaveBeenCalled()
+  })
+
+  it('the projection adds the observed cost and one more round at the observed average', async () => {
+    const { deps, state, logPath } = await setup()
+    appendPricedSpend(logPath, 2)
+    const autonomyDeps: OrchestratorDeps = {
+      ...deps,
+      autonomy: { level: 'assist', costCeilingUsd: 2.5 },
+    }
+    const ctx = makeCtx(autonomyDeps, state, logPath)
+    const verify = verificationMock()
+    await runPostReviewToGate({
+      deps: autonomyDeps,
+      state,
+      ctx,
+      agent: { spawn: autonomyDeps.spawn, config: autonomyDeps.config, execGit: autonomyDeps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(1),
+      version: 1,
+      runVerification: verify,
+    })
+    expect(verify).not.toHaveBeenCalled()
+  })
+
+  it('the persisted spend baseline counts toward the projection', async () => {
+    const { deps, state, logPath } = await setup()
+    state.spendBaselineUsd = 4.9
+    const autonomyDeps: OrchestratorDeps = {
+      ...deps,
+      autonomy: { level: 'assist', costCeilingUsd: 4.5 },
+    }
+    const ctx = makeCtx(autonomyDeps, state, logPath)
+    const verify = verificationMock()
+    await runPostReviewToGate({
+      deps: autonomyDeps,
+      state,
+      ctx,
+      agent: { spawn: autonomyDeps.spawn, config: autonomyDeps.config, execGit: autonomyDeps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(1),
+      version: 1,
+      runVerification: verify,
+    })
+    expect(verify).not.toHaveBeenCalled()
+  })
+
+  it('a caller without the verification seam continues to the final gate with the unreviewed edits', async () => {
+    const { deps, state, logPath, spawn } = await setup()
+    const ctx = makeCtx(deps, state, logPath)
+    const result = await runPostReviewToGate({
+      deps,
+      state,
+      ctx,
+      agent: { spawn, config: deps.config, execGit: deps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(1),
+      version: 1,
+    })
+    expect(result.halted).toBe('gate')
+    expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('Final gate')
   })
 })
