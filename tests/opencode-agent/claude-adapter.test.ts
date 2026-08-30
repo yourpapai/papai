@@ -8,6 +8,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
+import { countedTokens } from '../../opencode-agent/src/agent-session.js'
 import { createClaudeAgent } from '../../opencode-agent/src/claude-adapter.js'
 import type { ClaudeAgentOptions } from '../../opencode-agent/src/claude-adapter.js'
 import type { SpawnClaude } from '../../opencode-agent/src/claude-connect.js'
@@ -520,8 +521,38 @@ describe('token accounting', () => {
     await agent.prompt({ prompt: 'second' })
     const afterSecond = await agent.tokensUsed()
 
+    // 1052 + 60, then 1210 + 28 — the resumed turn's 1052 cache reads are the
+    // first turn's context read back, and are not spent a second time.
     expect(afterFirst).toBe(1112)
-    expect(afterSecond).toBe(1112 + 2290)
+    expect(afterSecond).toBe(1112 + 1238)
+  })
+
+  test('cache reads never enter the figure the ceiling reads', async () => {
+    // The genuinely recorded stub turn is the only fixture with all four
+    // buckets populated: 12 in, 7 out, 3400 written, 5600 read.
+    const spawn = scriptedSpawn([{ stdout: fixture('stub-rate-limit-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'x' })
+
+    expect(await agent.tokensUsed()).toBe(3419)
+  })
+
+  test('the figure equals the shared definition over the accumulated buckets', async () => {
+    // Not a restatement of the arithmetic: the pin is that this route routes
+    // through the seam's function rather than keeping a sum of its own.
+    const spawn = scriptedSpawn([
+      { stdout: fixture('stub-rate-limit-turn.ndjson') },
+      { stdout: fixture('stub-rate-limit-turn.ndjson') },
+    ])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'first' })
+    await agent.prompt({ prompt: 'second' })
+
+    expect(await agent.tokensUsed()).toBe(
+      countedTokens({ input: 24, output: 14, reasoning: 0, cacheWrite: 6800, cacheRead: 11_200 }),
+    )
   })
 
   test('the cost figure never enters the total', async () => {

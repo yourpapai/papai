@@ -5,11 +5,11 @@
 
 ## 2. Claude route: buckets only, no derived total
 
-- [ ] 2.1 Rewrite the usage assertions in `tests/opencode-agent/claude-contract.test.ts:116,140,160` against the four decoded buckets rather than a `total` field, keeping the recorded fixture figures they assert on. Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (fails)
-- [ ] 2.2 Extend `tests/opencode-agent/claude-adapter.test.ts`: a session whose turns report cache reads answers `tokensUsed()` without them; two turns' buckets accumulate; the figure equals the shared definition applied to the accumulated buckets. Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (fails)
-- [ ] 2.3 Remove `total` from `ClaudeUsage` and its computation in `opencode-agent/src/claude-contract.ts` (design D1). Verify: `bun test tests/opencode-agent/claude-contract.test.ts`
-- [ ] 2.4 Remove `tokensTotal` from `ClaudeAccounting` and derive `tokensUsed()` from `accounting.buckets` via the shared function in `opencode-agent/src/claude-spend.ts` and `claude-adapter.ts`; update the struct's doc comment to say what the figure now counts and why cache reads are absent. Verify: `bun test tests/opencode-agent/claude-adapter.test.ts tests/opencode-agent/claude-contract.test.ts && bun run typecheck`
-- [ ] 2.5 Confirm the pricing path is untouched: `spendOf` still hands all four buckets to `resolveRunCost`, and `tests/opencode-agent/run-spend.test.ts` passes unchanged with no edits to it. Verify: `bun test tests/opencode-agent/run-spend.test.ts`
+- [x] 2.1 Rewrite the usage assertions in `tests/opencode-agent/claude-contract.test.ts:116,140,160` against the four decoded buckets rather than a `total` field, keeping the recorded fixture figures they assert on. Verify: `bun test tests/opencode-agent/claude-contract.test.ts` (fails)
+- [x] 2.2 Extend `tests/opencode-agent/claude-adapter.test.ts`: a session whose turns report cache reads answers `tokensUsed()` without them; two turns' buckets accumulate; the figure equals the shared definition applied to the accumulated buckets. Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` (fails)
+- [x] 2.3 Remove `total` from `ClaudeUsage` and its computation in `opencode-agent/src/claude-contract.ts` (design D1). Verify: `bun test tests/opencode-agent/claude-contract.test.ts`
+- [x] 2.4 Remove `tokensTotal` from `ClaudeAccounting` and derive `tokensUsed()` from `accounting.buckets` via the shared function in `opencode-agent/src/claude-spend.ts` and `claude-adapter.ts`; update the struct's doc comment to say what the figure now counts and why cache reads are absent. Verify: `bun test tests/opencode-agent/claude-adapter.test.ts tests/opencode-agent/claude-contract.test.ts && bun run typecheck`
+- [x] 2.5 Confirm the pricing path is untouched: `spendOf` still hands all four buckets to `resolveRunCost`, and `tests/opencode-agent/run-spend.test.ts` passes unchanged with no edits to it. Verify: `bun test tests/opencode-agent/run-spend.test.ts`
 
 ## 3. OpenCode route: cache writes join the ceiling
 

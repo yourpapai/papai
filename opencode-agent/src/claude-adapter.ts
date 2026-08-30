@@ -12,7 +12,7 @@ import type { ClaudeChild, GroupKillSeams, SpawnClaude, TeardownSeams } from './
 import { decodeClaudeLine, parseNdjsonStream } from './claude-contract.js'
 import type { ClaudeStreamLine } from './claude-contract.js'
 import { claudeTracker } from './claude-progress.js'
-import { emptyAccounting, recordLine, spendOf } from './claude-spend.js'
+import { ceilingTokensOf, emptyAccounting, recordLine, spendOf } from './claude-spend.js'
 import type { ClaudeAccounting } from './claude-spend.js'
 import { classifyTurn } from './claude-turn-classify.js'
 import type { TurnOutcome } from './claude-turn-classify.js'
@@ -246,7 +246,7 @@ const claudeSession = (context: SessionContext, connection: TurnConnection): Age
         )
         return Promise.resolve(0)
       }
-      return Promise.resolve(state.accounting.tokensTotal)
+      return Promise.resolve(ceilingTokensOf(state.accounting))
     },
     spend: (): Promise<RunSpend> => spendOf(state.accounting, options.pricing, options.log),
     abort: (): Promise<boolean> => {

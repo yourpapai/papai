@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { countedTokens } from './agent-session.js'
 import type { RunSpend } from './agent-session.js'
 import type { ClaudeStreamLine } from './claude-contract.js'
 import type { Logger } from './logger.js'
@@ -24,8 +25,6 @@ import { resolveRunCost } from './run-spend.js'
  * gone by the time anyone asks.
  */
 export interface ClaudeAccounting {
-  /** Every bucket summed — what the token ceiling reads. */
-  tokensTotal: number
   /**
    * Whether any usage was seen at all. Distinguishes a session that spent
    * nothing from one whose usage the pipeline failed to recognize — the second
@@ -34,7 +33,17 @@ export interface ClaudeAccounting {
   sawUsage: boolean
   /** The CLI's own cost figure, summed across the run's turns. */
   costUsdTotal: number
-  /** The same spend unsummed, for repricing when the CLI reports no figure. */
+  /**
+   * Every bucket the run's `result` lines reported, accumulated and never
+   * summed here.
+   *
+   * The two readers want different sums of it and must not share one: the
+   * **price** charges all four at their own rates, while the **ceiling** takes
+   * {@link countedTokens} over it and leaves the cache reads out. A running
+   * `tokensTotal` used to sit beside this and answer the ceiling; it was a
+   * second representation of the same fact, free to disagree with it, and the
+   * sum it held was the wrong one.
+   */
   buckets: { input: number; output: number; cacheRead: number; cacheWrite: number }
   /**
    * Every rate-limit line, kept raw so {@link foldRateLimits} decides the
@@ -46,7 +55,6 @@ export interface ClaudeAccounting {
 }
 
 export const emptyAccounting = (): ClaudeAccounting => ({
-  tokensTotal: 0,
   sawUsage: false,
   costUsdTotal: 0,
   buckets: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -61,7 +69,6 @@ export const recordLine = (accounting: ClaudeAccounting, line: ClaudeStreamLine)
   }
   if (line.kind !== 'result') return
 
-  accounting.tokensTotal += line.usage.total
   accounting.sawUsage = true
   // The CLI's own arithmetic over its own counts. On a subscription this is list
   // price for work the plan already paid for — a caveat for the render rather
@@ -72,6 +79,16 @@ export const recordLine = (accounting: ClaudeAccounting, line: ClaudeStreamLine)
   accounting.buckets.cacheRead += line.usage.cacheRead
   accounting.buckets.cacheWrite += line.usage.cacheWrite
 }
+
+/**
+ * What this session has spent against the ceiling: the seam's definition over
+ * the buckets accumulated so far.
+ *
+ * A function rather than a field for the reason the field was removed — there
+ * is one place the buckets live, and every sum of them is derived at the moment
+ * it is asked for.
+ */
+export const ceilingTokensOf = (accounting: ClaudeAccounting): number => countedTokens(accounting.buckets)
 
 /**
  * What the run cost, and the standing its provider reported.
