@@ -7,7 +7,7 @@ import path from 'node:path'
 
 import type { BaselineMap, PerFileScore } from './baseline.js'
 import type { GateInput } from './gates.js'
-import type { PairedRunFileResult, PairedRunInput, PairedRunResult } from './paired-run.js'
+import type { ErroredFile, PairedRunFileResult, PairedRunInput, PairedRunResult, SkippedFile } from './paired-run.js'
 import { openScoreCache, SCORE_CACHE_FILE } from './score-cache.js'
 import type { ScoreCache } from './score-cache.js'
 import {
@@ -33,8 +33,21 @@ export interface PlanInput {
   readonly fingerprintOf: (srcFile: string) => string
 }
 
+/**
+ * The parts of a run `combineIncrementalResult` actually reads. Deliberately narrower than
+ * `PairedRunResult`: a run measured across several shards arrives as per-file scores with no
+ * `testFiles`, `configPath` or `reportPath`, and synthesizing those would put fabricated paths
+ * into the structure the verdict is computed from — the same reason `GateInput` is
+ * `PerFileScore`-shaped. A whole `PairedRunResult` still satisfies this.
+ */
+export interface CombinableRun {
+  readonly perFile: readonly PerFileScore[]
+  readonly skipped: readonly SkippedFile[]
+  readonly errored: readonly ErroredFile[]
+}
+
 export interface CombineInput {
-  readonly fresh: PairedRunResult
+  readonly fresh: CombinableRun
   readonly reused: readonly ReusedScore[]
 }
 

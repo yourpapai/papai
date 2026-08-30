@@ -53,21 +53,22 @@ that. See design.md — Migration Plan.
 
 ## 4. Gate combination and reconciliation
 
-- [ ] 4.1 Write failing tests for the `mutation-gate` delta's reconciliation requirement — a lost
+- [x] 4.1 Write failing tests for the `mutation-gate` delta's reconciliation requirement — a lost
       shard fails naming its targets, a silently empty result set fails, and a complete set gates
       normally through the existing checks; verify with
       `bun test tests/scripts/mutation/shard-reconcile.test.ts`
-- [ ] 4.2 Implement reconciliation of the plan manifest against combined shard results, failing on
+- [x] 4.2 Implement reconciliation of the plan manifest against combined shard results, failing on
       any missing planned target; verify with
       `bun test tests/scripts/mutation/shard-reconcile.test.ts`
-- [ ] 4.3 Write failing tests for the persistence requirement — a failing verdict still records every
+- [x] 4.3 Write failing tests for the persistence requirement — a failing verdict still records every
       shard's measurements, one failed shard leaves the others' scores recorded and its own targets
       re-measurable, and the measured-versus-reused report spans the whole run; verify with
       `bun test tests/scripts/mutation/shard-reconcile.test.ts`
-- [ ] 4.4 Implement the combine-and-gate command reusing `combineIncrementalResult` and
-      `resolveChangedFilesGates` unmodified, recording before gating; verify with
+- [x] 4.4 Implement the combine-and-gate command reusing `combineIncrementalResult` (its `fresh`
+      input widened to the three fields it reads, so shard scores need no fabricated report paths)
+      and `resolveChangedFilesGates` unmodified, recording before gating; verify with
       `bun test tests/scripts/mutation/shard-reconcile.test.ts`
-- [ ] 4.5 Verify `--no-score-cache`, `--update-baseline` and the single-shard path are behaviourally
+- [x] 4.5 Verify `--no-score-cache`, `--update-baseline` and the single-shard path are behaviourally
       unchanged, including the baseline seed path; verify with
       `bun test tests/scripts/mutation/ tests/scripts/mutation/stryker-config.test.ts`
 
