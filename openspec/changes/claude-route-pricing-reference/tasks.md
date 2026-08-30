@@ -47,12 +47,12 @@ See LICENSE in the project root for details.
 
 ## 3. Pin the consuming side
 
-- [ ] 3.1 In `tests/opencode-agent/run-spend.test.ts`, add the leg proving a
+- [x] 3.1 In `tests/opencode-agent/run-spend.test.ts`, add the leg proving a
       reference whose model id still carries a provider prefix
       (`openai/anthropic/claude-sonnet-5`) resolves to no catalogue row and
       reports unpriced — the regression this change closes, pinned where it was
       observable. Verify: `bun test tests/opencode-agent/run-spend.test.ts`.
-- [ ] 3.2 Confirm the opencode route is untouched: the existing
+- [x] 3.2 Confirm the opencode route is untouched: the existing
       `modelRef`/adapter assertions in
       `tests/opencode-agent/openai-config.test.ts` and
       `tests/opencode-agent/adapters.test.ts` pass unchanged. Verify:
