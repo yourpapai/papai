@@ -31,4 +31,4 @@
 
 ## 6. Full verification
 
-- [ ] 6.1 Full suite with the parity and memo oracles inside the sweep, then the standard gates and change validation: `bun run test && bun run typecheck && bun run lint && bun run format:check && openspec validate sdd-runner-retirement --strict`. Confirm `afk-runner:start` remains the operator entry (`bun run afk-runner:start -- --help` or equivalent smoke)
+- [x] 6.1 Full suite with the parity and memo oracles inside the sweep, then the standard gates and change validation: `bun run test && bun run typecheck && bun run lint && bun run format:check && openspec validate sdd-runner-retirement --strict`. Confirm `afk-runner:start` remains the operator entry (`bun run afk-runner:start -- --help` or equivalent smoke)
