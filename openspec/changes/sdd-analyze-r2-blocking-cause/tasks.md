@@ -5,7 +5,7 @@
 
 ## 2. Report + JSON (design D2 + D3)
 
-- [ ] 2.1 Failing tests for the per-run line (`r2 eligibility: 2/5 (cost-unknown ×3)`, causes in fixed order, omitted when none) and the corpus aggregate's cause mix; JSON pins for additive `byCause` (nonzero causes only). Implement in `sdd-runner/src/analyze-report.ts` and `sdd-runner/src/analyze-corpus.ts`. Verify: `bun test tests/sdd-runner/analyze.test.ts`
+- [x] 2.1 Failing tests for the per-run line (`r2 eligibility: 2/5 (cost-unknown ×3)`, causes in fixed order, omitted when none) and the corpus aggregate's cause mix; JSON pins for additive `byCause` (nonzero causes only). Implement in `sdd-runner/src/analyze-report.ts` and `sdd-runner/src/analyze-corpus.ts`. Verify: `bun test tests/sdd-runner/analyze.test.ts`
 
 ## 3. Close-out
 

@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { CorpusReport, RunAnalysis } from './analyze-corpus.js'
+import type { R2CauseMix } from './analyze-findings.js'
 import type { Metric } from './analyze.js'
 
 /**
@@ -64,6 +65,22 @@ function ratioLine(numerator: number, denominator: number): string {
   return `${numerator}/${denominator}`
 }
 
+/**
+ * The gap causes explain the eligibility→fired split, so only they render;
+ * `trajectory-blocked` stays implicit as the ratio's complement (JSON carries
+ * it). Fixed cause order, ` ×N` counts, ` · ` separators, omitted when none.
+ */
+const R2_GAP_CAUSES = ['r2-fired', 'cost-unknown', 'over-ceiling', 'preview'] as const
+
+function r2CauseSuffix(byCause: R2CauseMix): string {
+  const parts: string[] = []
+  for (const cause of R2_GAP_CAUSES) {
+    const count = byCause[cause] ?? 0
+    if (count > 0) parts.push(`${cause} ×${count}`)
+  }
+  return parts.length === 0 ? '' : ` (${parts.join(' · ')})`
+}
+
 function runSection(run: RunAnalysis): readonly string[] {
   const identity = [run.changeName ?? 'unnamed', run.status ?? 'no state'].join(' · ')
   const lines = [
@@ -82,7 +99,12 @@ function runSection(run: RunAnalysis): readonly string[] {
     )}`,
   )
   lines.push(`  concern persistence: ${metricLine(run.concernPersistence, (rate) => rate.toFixed(2))}`)
-  lines.push(`  r2 eligibility: ${metricLine(run.r2Eligibility, (r2) => ratioLine(r2.eligible, r2.gateStates))}`)
+  lines.push(
+    `  r2 eligibility: ${metricLine(
+      run.r2Eligibility,
+      (r2) => `${ratioLine(r2.eligible, r2.gateStates)}${r2CauseSuffix(r2.byCause)}`,
+    )}`,
+  )
   lines.push(
     `  retries: ${metricLine(
       run.retries,
@@ -141,7 +163,9 @@ function corpusSection(report: CorpusReport): readonly string[] {
     `  r2 eligible: ${
       aggregates.r2Eligibility === null
         ? 'unknown'
-        : ratioLine(aggregates.r2Eligibility.eligible, aggregates.r2Eligibility.gateStates)
+        : `${ratioLine(aggregates.r2Eligibility.eligible, aggregates.r2Eligibility.gateStates)}${r2CauseSuffix(
+            aggregates.r2Eligibility.byCause,
+          )}`
     } cap-hit states`,
   )
   lines.push(`  gates never answered: ${aggregates.gatesNeverAnswered}`)

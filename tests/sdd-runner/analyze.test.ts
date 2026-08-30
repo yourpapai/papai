@@ -1207,3 +1207,129 @@ describe('corpus report (4.1)', () => {
     expect(unpricedRun.usage.costKnown).toBe(false)
   })
 })
+
+describe('r2 eligibility cause breakdown report (sdd-analyze-r2-blocking-cause)', () => {
+  const now = new Date(at(60))
+
+  /** Sequential event stamper so multi-state fixtures stay readable. */
+  function scripted(events: readonly EventInput[]): SddEvent[] {
+    return events.map((init, index) => ev(init, index + 1, at(index)))
+  }
+
+  /**
+   * Six cap-hit states on a cost-unknown run: r2-fired, cost-unknown ×2,
+   * preview among the four eligible; two ineligible (blocker, non-decreasing).
+   */
+  const mixedRun = bundleOf({
+    workDir: '/w-a',
+    runId: 'mixed',
+    events: scripted([
+      spawnedAs('a1', 'drafter'),
+      doneAs('a1', 0),
+      roundOpen(1, 2),
+      convergenceOf(1, 'open', { blocker: 0, material: 5, nitpick: 1 }),
+      roundOpen(2, 2),
+      convergenceOf(2, 'open', { blocker: 0, material: 4, nitpick: 1 }),
+      gatePresented(1, 'early'),
+      autoDecision('R2', 'extend', 1),
+      roundOpen(3, 3),
+      convergenceOf(3, 'open', { blocker: 0, material: 3, nitpick: 1 }),
+      gatePresented(2, 'early'),
+      autoDecision('R4', 'gate', 2),
+      roundOpen(4, 4),
+      convergenceOf(4, 'open', { blocker: 0, material: 2, nitpick: 1 }),
+      gatePresented(3, 'early'),
+      autoDecision('R4', 'gate', 3),
+      roundOpen(5, 5),
+      convergenceOf(5, 'open', { blocker: 0, material: 1, nitpick: 1 }),
+      gatePresented(4, 'early'),
+      autoDecision('R2', 'preview', 4),
+      roundOpen(6, 6),
+      convergenceOf(6, 'open', { blocker: 1, material: 1, nitpick: 1 }),
+      roundOpen(7, 7),
+      convergenceOf(7, 'open', { blocker: 0, material: 3, nitpick: 1 }),
+    ]),
+  })
+
+  it('the per-run line prints the cause mix in fixed order with counts', () => {
+    const text = renderCorpusReport(buildCorpusReport([mixedRun], [], { now }))
+    expect(text).toContain('r2 eligibility: 4/6 (r2-fired ×1 · cost-unknown ×2 · preview ×1)')
+  })
+
+  it('the breakdown is omitted when no eligible state carries a gap cause', () => {
+    const blocked = bundleOf({
+      workDir: '/w-b',
+      runId: 'blocked',
+      events: scripted([
+        roundOpen(1, 2),
+        convergenceOf(1, 'open', { blocker: 2, material: 1, nitpick: 0 }),
+        roundOpen(2, 2),
+        convergenceOf(2, 'open', { blocker: 1, material: 1, nitpick: 1 }),
+        roundOpen(3, 3),
+        convergenceOf(3, 'open', { blocker: 2, material: 0, nitpick: 1 }),
+      ]),
+    })
+    const text = renderCorpusReport(buildCorpusReport([blocked], [], { now }))
+    expect(text).toContain('r2 eligibility: 0/2\n')
+    expect(text).not.toContain('trajectory-blocked')
+  })
+
+  it('an unknown metric renders its reason verbatim', () => {
+    const text = renderCorpusReport(buildCorpusReport([bundleOf({ workDir: '/w-c', runId: 'no-states' })], [], { now }))
+    expect(text).toContain('r2 eligibility: unknown (no cap-hit convergence pairs)')
+  })
+
+  it('the corpus aggregate line mixes causes across runs and JSON carries additive byCause', () => {
+    const costUnknownRun = bundleOf({
+      workDir: '/w-a',
+      runId: 'cost-unknown-run',
+      events: scripted([
+        spawnedAs('a1', 'drafter'),
+        doneAs('a1', 0),
+        roundOpen(1, 2),
+        convergenceOf(1, 'open', { blocker: 0, material: 3, nitpick: 1 }),
+        roundOpen(2, 2),
+        convergenceOf(2, 'open', { blocker: 0, material: 2, nitpick: 1 }),
+        gatePresented(1, 'early'),
+        autoDecision('R4', 'gate', 1),
+        roundOpen(3, 3),
+        convergenceOf(3, 'open', { blocker: 1, material: 1, nitpick: 1 }),
+      ]),
+    })
+    const costKnownRun = bundleOf({
+      workDir: '/w-b',
+      runId: 'cost-known-run',
+      events: scripted([
+        spawnedAs('a1', 'drafter'),
+        doneAs('a1', 0.02),
+        roundOpen(1, 2),
+        convergenceOf(1, 'open', { blocker: 0, material: 3, nitpick: 1 }),
+        roundOpen(2, 2),
+        convergenceOf(2, 'open', { blocker: 0, material: 2, nitpick: 1 }),
+        gatePresented(1, 'early'),
+        autoDecision('R4', 'gate', 1),
+        roundOpen(3, 3),
+        convergenceOf(3, 'open', { blocker: 1, material: 1, nitpick: 1 }),
+      ]),
+    })
+
+    const report = buildCorpusReport([costUnknownRun, costKnownRun], [], { now })
+    const text = renderCorpusReport(report)
+    expect(text).toContain('r2 eligible: 2/4 (cost-unknown ×1 · over-ceiling ×1)')
+
+    const parsed = recordOf(JSON.parse(renderCorpusJson(report)))
+    const runs = arrayField(parsed, 'runs')
+    const runMetric = recordOf(recordOf(runs[0])['r2Eligibility'])
+    expect(runMetric['status']).toBe('known')
+    expect(recordOf(runMetric['value'])).toEqual({
+      eligible: 1,
+      gateStates: 2,
+      byCause: { 'cost-unknown': 1, 'trajectory-blocked': 1 },
+    })
+    expect(recordOf(recordOf(parsed['aggregates'])['r2Eligibility'])).toEqual({
+      eligible: 2,
+      gateStates: 4,
+      byCause: { 'cost-unknown': 1, 'over-ceiling': 1, 'trajectory-blocked': 2 },
+    })
+  })
+})
