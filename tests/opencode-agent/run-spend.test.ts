@@ -160,6 +160,44 @@ describe('resolveRunCost · the ladder', () => {
     expect(resolved).toEqual({ usd: null, source: 'none' })
   })
 
+  /**
+   * The defect `claude-route-pricing-reference` closed, pinned where it was
+   * observable. The claude route composed its reference from `LLM_PROVIDER`, so
+   * a model spelled `provider/model` — the form that route accepts and strips
+   * before invoking the CLI — reached here as three segments. `parseModelId`
+   * splits at the first slash and keeps the rest, leaving a model id no
+   * provider carries, and the run's cost vanished from the issue's total with
+   * no failure anywhere.
+   */
+  test('a model id that still carries a provider prefix prices under nothing', async () => {
+    const resolved = await resolveRunCost(
+      { backendUsd: 0, buckets: BUCKETS, settings: settings('anthropic/claude-sonnet-5', 'openai') },
+      { log: silent, loadDb: loadDb(DB) },
+    )
+
+    expect(resolved).toEqual({ usd: null, source: 'none' })
+  })
+
+  /**
+   * The other half of the same defect: a reference naming the wrong provider
+   * misses its primary row and falls back to the median across every provider
+   * publishing that model id — a figure that reads exact and is not. Naming the
+   * provider that served the run is what buys the row's own rates.
+   */
+  test('the provider named decides whether the run gets a row’s own rates or a median', async () => {
+    const own = await resolveRunCost(
+      { backendUsd: 0, buckets: BUCKETS, settings: settings('claude-sonnet-5', 'anthropic') },
+      { log: silent, loadDb: loadDb(DB) },
+    )
+    const median = await resolveRunCost(
+      { backendUsd: 0, buckets: BUCKETS, settings: settings('claude-sonnet-5', 'zai-coding-plan') },
+      { log: silent, loadDb: loadDb(DB) },
+    )
+
+    expect(own).toEqual({ usd: 18, source: 'catalogue' })
+    expect(median).toEqual({ usd: 18.3, source: 'catalogue' })
+  })
+
   test('names the rung that answered in the run log, so a figure needs no rerun to explain', async () => {
     const debugs: Array<{ meta: unknown; message: string }> = []
     const log: Logger = {

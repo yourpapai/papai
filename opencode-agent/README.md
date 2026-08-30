@@ -1801,7 +1801,8 @@ transport is unaffected either way: the emitted config pins
 `npm: "@ai-sdk/openai-compatible"`, which wins over the borrowed row's own
 package in OpenCode's resolution order, and the key still reaches the endpoint
 through the provider proxy. The run log names the reference it resolved at
-`debug`.
+`debug`. The variable is **route-scoped**: it is the catalogue key on this
+route only, and the claude route prices under `anthropic` whatever it says.
 
 A model no catalogue carries at all — a self-hosted alias, a fine-tune — has no
 id that helps here. The three `AGENT_MODEL_*` variables state those facts
@@ -2110,8 +2111,13 @@ not. To switch (Settings → Secrets and variables → Actions):
 4. `LLM_API_KEY` and `LLM_BASE_URL` can stay exactly as they are: the workflow
    forwards both empty on the claude route, and the route's guard never sees
    them.
-5. `LLM_PROVIDER` and the `AGENT_MODEL_*` overrides are unused here — the
-   claude route skips the models.dev catalogue read. `LLM_MODEL_LIGHT` and
+5. `LLM_PROVIDER` and the `AGENT_MODEL_*` overrides are ignored here — the
+   claude route skips the boot-time **model-facts** catalogue read, which is
+   what they feed. It does still price a run against models.dev when the CLI
+   reports no cost of its own, and there it resolves the model under
+   `anthropic` and under the same id the CLI was invoked with (the `provider/`
+   prefix stripped) — never under `LLM_PROVIDER`, whose value belongs to the
+   gateway route. A leftover id there is harmless. `LLM_MODEL_LIGHT` and
    `AGENT_EFFORT_PLAN` / `AGENT_EFFORT_BUILD` still apply, per profile.
 
 Read [Backend selection](#backend-selection-the-claude-cli-route) before

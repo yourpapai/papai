@@ -8,6 +8,7 @@ import type { AgentHandle } from './agent-handle.js'
 import type { AgentSession } from './agent-session.js'
 import { createClaudeAgent as defaultClaudeAgent } from './claude-adapter.js'
 import type { ClaudeAgentOptions } from './claude-adapter.js'
+import { claudePricingSettings } from './claude-spend.js'
 import type { MainOptions } from './cli-args.js'
 import type { PipelineConfig } from './config.js'
 import { assembleDeps, memoize } from './deps.js'
@@ -153,10 +154,10 @@ const claudeSessionOptions = ({
   const profiles = contained.openai.profiles
   return {
     directory: contained.repoRoot,
-    // The contained settings, carrying the placeholder key: only `provider` and
-    // `model` are read, and design D5's rule is that the *credential* never
-    // crosses this seam — not the model's name.
-    pricing: contained.openai,
+    // The contained settings with this route's own reference: the Anthropic
+    // catalogue and the id the CLI is invoked with, never `LLM_PROVIDER`.
+    // Design D5 bars the *credential* from this seam, not the model's name.
+    pricing: claudePricingSettings(contained.openai),
     knobs: {
       model: contained.openai.model,
       lightModel: profiles?.light ?? null,
