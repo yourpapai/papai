@@ -33,4 +33,4 @@ See LICENSE in the project root for details.
 
 ## 4. Full verification
 
-- [ ] 4.1 Run the full suite, typecheck, and lint; confirm no frozen fixture or parity oracle regressed — `bun test && bun run typecheck && bun run lint`
+- [x] 4.1 Run the full suite, typecheck, and lint; confirm no frozen fixture or parity oracle regressed — `bun test && bun run typecheck && bun run lint`
