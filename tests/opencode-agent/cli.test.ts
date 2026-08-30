@@ -16,6 +16,7 @@ import { createLogger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { REPLY_COMMENT_OUTPUT, REPORTED_OUTPUT } from '../../opencode-agent/src/step-output.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import { emptyCatalogue, silentOctokitLog } from './test-helpers.js'
 
 const workDir = await mkdtemp(path.join(tmpdir(), 'opencode-agent-cli-'))
@@ -645,6 +646,10 @@ describe('runCli', () => {
           v: 3,
           phase: 'DESIGN_SPEC',
           issueId: 42,
+          // The scale a block written by this deploy carries. Without it the
+          // orchestrator reads the figure as the superseded definition's and
+          // resets it — correctly — and the low ceiling below stops stopping.
+          tokenScale: TOKEN_SCALE,
           tokensSpent: 60_000,
           usdSpent: 0,
           usdUnpriced: false,
@@ -696,6 +701,10 @@ describe('runCli', () => {
           v: 3,
           phase: 'DESIGN_SPEC',
           issueId: 42,
+          // The scale a block written by this deploy carries. Without it the
+          // orchestrator reads the figure as the superseded definition's and
+          // resets it — correctly — and the low ceiling below stops stopping.
+          tokenScale: TOKEN_SCALE,
           tokensSpent: 60_000,
           usdSpent: 0,
           usdUnpriced: false,

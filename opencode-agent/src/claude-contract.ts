@@ -21,13 +21,23 @@ import { z } from 'zod'
  * adjusting a decoder by inspection.
  */
 
-/** Token usage as the CLI's `result` line reports it. `total` is every bucket summed. */
+/**
+ * Token usage as the CLI's `result` line reports it: the four buckets it named,
+ * and nothing derived from them.
+ *
+ * A `total` summed from all four used to live here and was what the ceiling
+ * read — wrongly, since the CLI has already accumulated each bucket across
+ * every API iteration of the turn (`countedTokens` records what that cost).
+ * It is deleted rather than corrected because the name was the trap: `total`
+ * promises every bucket, so the next reader would have re-added the missing one
+ * instead of finding the omission. What any of this buys is decided once, on
+ * the seam both backends implement.
+ */
 export interface ClaudeUsage {
   input: number
   output: number
   cacheWrite: number
   cacheRead: number
-  total: number
 }
 
 /** One decoded NDJSON line, reduced to the scalars the pipeline may consume. */
@@ -269,8 +279,6 @@ export const decodeClaudeLine = (raw: unknown): ClaudeStreamLine | null => {
       output: usage.output_tokens,
       cacheWrite: usage.cache_creation_input_tokens,
       cacheRead: usage.cache_read_input_tokens,
-      total:
-        usage.input_tokens + usage.output_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens,
     },
     costUsd: result.data.total_cost_usd,
   }

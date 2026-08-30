@@ -6,6 +6,7 @@
 import { z } from 'zod'
 
 import { phaseName } from './phase-names.js'
+import { STATE_VERSION } from './state-version.js'
 
 /**
  * The issue state block: what one issue remembers between jobs, and the schema
@@ -20,23 +21,12 @@ import { phaseName } from './phase-names.js'
  *
  * `types.ts` re-exports everything here, so not one existing import changed —
  * the arrangement `phase-names.ts` already uses, and for the same reason:
- * callers keep naming one module for the vocabulary.
+ * callers keep naming one module for the vocabulary. The versioning doctrine —
+ * `STATE_VERSION`, `TOKEN_SCALE`, and what changing either costs — split off
+ * again into `state-version.ts` on the same argument.
  */
 
-/**
- * Bumped when the persisted shape changes in a way old blocks cannot satisfy.
- *
- * v3 is a **deliberate stranding** (design D12): the opencode-agent rework
- * retires `AGENT_SPEC`/`AGENT_PLAN` artefact blocks outright and moves planning
- * onto a real `openspec/changes/<name>/` folder, so an in-flight issue's legacy
- * state describes a pipeline that no longer exists. Rather than carry a dual
- * format, v2 blocks are rejected by the schema, the restore scan finds nothing
- * valid, and the issue restarts at `INIT_OR_CLARIFY` under the compliant
- * pipeline (with its `agent/issue-<n>` branch reset — D12). The migration
- * precedent avoided bumps because stranding was the cost; here stranding is the
- * chosen behaviour, and restart-with-reset is the recovery path.
- */
-export const STATE_VERSION = 3
+export { STATE_VERSION, TOKEN_SCALE } from './state-version.js'
 
 /**
  * The durable state carried between ephemeral CI jobs. Serialized verbatim into
@@ -230,6 +220,23 @@ export const agentStateSchema = z.object({
    * be removed.
    */
   tokensSpent: z.number().int().min(0).default(0),
+  /**
+   * The scale {@link AgentState.tokensSpent} above was measured on.
+   *
+   * Defaults to `1` — every block written before this field existed carries a
+   * figure that counted cache reads, and saying so is the whole job. The
+   * orchestrator zeroes such a total once on restore and stamps
+   * {@link TOKEN_SCALE}; nothing else reads it.
+   *
+   * Needs no `STATE_VERSION` bump for the reason `tokensSpent` above and
+   * `changedLines` before it record: it defaults, so blocks written before it
+   * existed still parse, and a bump strands every issue in flight.
+   *
+   * Refused rather than defaulted when present and unrecognized: a `0` or a
+   * negative is a corrupted block, and guessing which definition it meant is
+   * the one thing this field exists to stop.
+   */
+  tokenScale: z.number().int().min(1).default(1),
   /**
    * What this issue has cost in US dollars, across every job it has run.
    *

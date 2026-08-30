@@ -9,6 +9,7 @@ import { applyClarifyIntent } from '../../opencode-agent/src/comment-intent.js'
 import type { PhaseInput } from '../../opencode-agent/src/phase-context.js'
 import type { PrMergedTriggerEvent, TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import { applyArchiveTrigger, applyTrigger } from '../../opencode-agent/src/triggers.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
 
@@ -40,6 +41,7 @@ const baseState = (over: Partial<AgentState> = {}): AgentState => ({
   stepsDone: 0,
   changeName: null,
   planRevision: 0,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 0,
   usdSpent: 0,
   usdUnpriced: false,

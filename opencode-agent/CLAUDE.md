@@ -1038,6 +1038,51 @@ not permitted to create or approve pull requests` is a repository or
   catalogue and is `0` for any model it does not price. Read the total from
   `session.get`, not by summing events — the check happens immediately after a
   prompt returns, and an event-derived total is whatever has arrived by then.
+- **What the ceiling counts is defined once, on the seam, and cache reads are
+  not in it.** `countedTokens` in `agent-session.ts` — uncached input, output,
+  reasoning, cache **writes** — is what every backend's `tokensUsed()` answers
+  with, and a third backend must route through it rather than summing its own
+  buckets. That is not a style rule: both existing routes were left to decide
+  and both decided differently, so one `AGENT_MAX_TOKENS` meant two budgets.
+  The claude route summed all four buckets, and a provider's `result` line has
+  already summed each across every API iteration of the turn — so `cache_read`
+  counted the same context once per assistant step and the figure grew as
+  _steps × context_. Issue #385 parked at 6,835,879 of 5,000,000 having cost
+  $9.23 and used a tenth of a five-hour window. The OpenCode route summed three
+  and left cache writes out, under-counting a cache-heavy run in the opposite
+  direction. Cache reads stay in the **price**, at their own rate — the
+  doctrine `sdk-contract.ts`'s `cacheBucketSchema` had already recorded and
+  only one route was following. The two questions also disagree about an absent
+  bucket on purpose: the ceiling counts it zero because a guardrail must return
+  a number, and `run-spend.ts` still refuses to price it.
+- **A redefinition of the count is a `tokenScale` bump, never a
+  `STATE_VERSION` one.** An issue's ceiling spans every job it has run, so a
+  carried total that adds a figure counted one way to a figure counted another
+  is enforceable against neither. `state-version.ts` holds both constants and
+  the reason they are not interchangeable: a `STATE_VERSION` bump means
+  **stranding** (D12) — the block is rejected, the restore scan finds nothing,
+  and the issue restarts at `INIT_OR_CLARIFY` with its branch reset, which is
+  right for a pipeline whose shape changed and wildly disproportionate for a
+  counter. `onCurrentScale` in `orchestrator.ts` zeroes a superseded total once
+  on the thread read — before `MachineInput` captures `carriedTokens` and
+  before `comment-intent.ts` reads the restored figure directly, which is why
+  it lives at the read and not at the capture. It moves `tokensSpent` and
+  nothing else: the cost totals were never on that scale, since the backend
+  priced each turn itself. Idempotent, because a job that corrects and then
+  dies before persisting corrects again.
+- **A run that spent nothing is not a run that could not be priced.** `spendOf`
+  used to key on `sawUsage` alone, which is false both when a turn ran and
+  reported unreadable usage and when no turn ran at all — and the over-budget
+  stop refuses a phase _before_ it prompts, so it always hit the second. The
+  sticky `usdUnpriced` flag then turned an exact total into
+  `≥ $9.23 (some turns unpriced)` on an issue whose every turn was priced. The
+  claude session counts turns it was asked to run (before each one, so a turn
+  that dies mid-flight still counts as spend that may exist); zero of them
+  answers `{ usd: 0, source: 'unspent' }`, and `'none'` keeps meaning "could
+  not be priced". `spendPatch` needs no branch — it flips on `usd === null`
+  alone. The OpenCode route needs no `unspent`: a never-prompted session
+  reports cost `0` with complete zero buckets and prices at `$0.00` through the
+  catalogue rung.
 - **Every state block a job writes records the running total**, through
   `recordSpend` in `token-budget.ts` — a phase that succeeded, one that threw,
   and one the budget refused to start, all three. Written separately they drifted

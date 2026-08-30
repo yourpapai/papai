@@ -33,8 +33,18 @@ import { errorMessage } from './types.js'
  * runtime.
  */
 
-/** Which rung answered, reported so a run log explains its own figure. */
-export type CostSource = 'backend' | 'catalogue' | 'none'
+/**
+ * Which rung answered, reported so a run log explains its own figure.
+ *
+ * `unspent` is not a rung: it is the case where nothing needed pricing because
+ * the model was never asked anything. It exists because `none` must keep
+ * meaning "could not be priced" — this module's whole reason for being is that
+ * a `0` standing in for unknown is worse than no figure, and a run that was
+ * stopped before it prompted has a `0` that is simply true. Reusing `none` for
+ * it made every over-budget stop report the issue's exact total as a lower
+ * bound, on issues whose every turn had been priced.
+ */
+export type CostSource = 'backend' | 'catalogue' | 'none' | 'unspent'
 
 export interface RunCost {
   /** The figure, or `null` when no rung could price the run. Never `0` for unknown. */

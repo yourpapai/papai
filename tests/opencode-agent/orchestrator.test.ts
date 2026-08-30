@@ -37,6 +37,7 @@ import {
   STATE_MARKER,
 } from '../../opencode-agent/src/state-manager.js'
 import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 import { fakeGit } from './fake-git.js'
 
@@ -3042,6 +3043,151 @@ describe('the retry budget', () => {
     const state = latestPostedState(harness)
     expect(state?.phase).toBe('FAILED')
     expect(state?.resumeFrom).toBe('PLANNING')
+  })
+})
+
+/**
+ * The carried total, when the definition of "a token" moved under it.
+ *
+ * An issue's ceiling spans every job it has run, so a total that adds a figure
+ * counted one way to a figure counted another is enforceable against neither.
+ * Issue #385 is the figure in question: 6,835,879 against a 5,000,000 ceiling,
+ * roughly four fifths of it cache reads the run never spent twice.
+ */
+describe('a carried total measured on the superseded scale', () => {
+  /** A block an earlier deploy wrote: a real figure, on the old definition. */
+  const seedOldScale = (harness: Harness, tokensSpent: number): void => {
+    const prior: AgentState = { ...initialState(ISSUE), phase: 'DESIGN_SPEC', tokenScale: 1, tokensSpent }
+    harness.io.thread.push({ id: 901, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+  }
+
+  test('is reset once, so the next job counts from this scale alone', async () => {
+    const harness = makeHarness()
+    seedOldScale(harness, 6_835_879)
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 41_200
+
+    await runPipeline({ event: comment('/changes tighten it up'), deps: harness.deps })
+
+    // This job's figure and nothing carried: 6,835,879 counted cache reads.
+    expect(latestPostedState(harness)?.tokensSpent).toBe(41_200)
+    expect(latestPostedState(harness)?.tokenScale).toBe(TOKEN_SCALE)
+  })
+
+  test('does not cost the issue anything else it was carrying', async () => {
+    // The reason this is a marker and not a STATE_VERSION bump: a bump strands
+    // the issue at INIT_OR_CLARIFY with its branch reset, to fix a counter.
+    //
+    // Asserted against a control rather than field by field, so the case cannot
+    // quietly start describing what the *transition* does — a forward move
+    // clears `attempts`, and pinning that here would be a claim about the reset
+    // that only holds by coincidence.
+    const carried = (tokenScale: number): Partial<AgentState> => ({
+      phase: 'DESIGN_SPEC',
+      changeName: CHANGE_NAME,
+      resumeFrom: 'PLANNING',
+      attempts: 2,
+      ciAttempts: 1,
+      reviewAttempts: 1,
+      planRevision: 3,
+      tokenScale,
+      // Under the ceiling on purpose: a control seeded over it parks in FAILED,
+      // which is the very difference the reset exists to make and would drown
+      // out everything this case is comparing.
+      tokensSpent: 900,
+      usdSpent: 9.23,
+      usdUnpriced: false,
+    })
+    const runWith = async (scale: number): Promise<AgentState | null> => {
+      const harness = makeHarness()
+      const prior: AgentState = { ...initialState(ISSUE), ...carried(scale) }
+      harness.io.thread.push({ id: 902, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+      harness.io.replies = [SPEC_REPLY]
+      harness.io.tokensUsed = 100
+      await runPipeline({ event: comment('/changes tighten it up'), deps: harness.deps })
+      return latestPostedState(harness)
+    }
+
+    const reset = await runWith(1)
+    const control = await runWith(TOKEN_SCALE)
+
+    // Everything but the two fields the correction exists to move.
+    expect({ ...reset, tokensSpent: 0, tokenScale: 0 }).toEqual({ ...control, tokensSpent: 0, tokenScale: 0 })
+    expect(reset?.tokensSpent).toBe(100)
+    expect(control?.tokensSpent).toBe(1_000)
+    // Money was never measured on the superseded scale — the CLI priced every
+    // turn itself — so resetting it would discard a correct figure.
+    expect(reset?.usdSpent).toBeCloseTo(9.23, 6)
+  })
+
+  test('a total already on this scale is carried forward untouched', async () => {
+    const harness = makeHarness()
+    const prior: AgentState = {
+      ...initialState(ISSUE),
+      phase: 'DESIGN_SPEC',
+      tokenScale: TOKEN_SCALE,
+      tokensSpent: 900,
+    }
+    harness.io.thread.push({ id: 903, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 100
+
+    await runPipeline({ event: comment('/changes tighten it up'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.tokensSpent).toBe(1_000)
+  })
+
+  test('the correction happens once, not once per job', async () => {
+    // Idempotent by construction — a second pass would re-zero a figure already
+    // on this scale, which is the one thing that would make spend unbounded.
+    const harness = makeHarness()
+    seedOldScale(harness, 6_835_879)
+
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    await runPipeline({ event: comment('/changes first'), deps: harness.deps })
+
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 2_500
+    await runPipeline({ event: comment('/changes second'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.tokensSpent).toBe(3_500)
+  })
+
+  test('the trigger layer sees the corrected total, not the carried one', async () => {
+    // `comment-intent.ts` reads the restored figure straight off the state
+    // rather than through `MachineInput`, which is why the correction happens
+    // at the thread read and not at the point `carriedTokens` is captured.
+    // Seeded here exactly as issue #385 stood: over its ceiling on a figure
+    // roughly four fifths cache reads, so the pre-correction pipeline refused
+    // to pay for a classifier turn it could easily afford.
+    const harness = makeHarness({ maxTokens: 5_000_000 })
+    const prior: AgentState = {
+      ...initialState(ISSUE),
+      phase: 'INIT_OR_CLARIFY',
+      changeName: null,
+      tokenScale: 1,
+      tokensSpent: 6_835_879,
+    }
+    harness.io.thread.push({ id: 904, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    const result = await runPipeline({ event: comment('thanks! 👍'), deps: harness.deps })
+
+    // The classifier ran and the comment was skipped as chatter — not refused
+    // by a ceiling on a total the issue had never really spent.
+    expect(harness.io.prompts.length).toBe(1)
+    expect(result.status).not.toBe('failed')
+    expect(latestPostedState(harness)?.phase).toBe('INIT_OR_CLARIFY')
+  })
+
+  test('a fresh issue is on this scale from its first block', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.tokenScale).toBe(TOKEN_SCALE)
   })
 })
 
