@@ -3,7 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import path from 'node:path'
+
+import pLimit from 'p-limit'
+
 import type { SddEvent } from './events.js'
+import { readEvents } from './events.js'
+import { readAllRunStates } from './run-index.js'
 import type { PersistedLite } from './run-lite.js'
 import { usageTotalsOf } from './work/gate-signals.js'
 import { gateDwellsMs } from './work/report.js'
@@ -19,6 +25,33 @@ import { gateDwellsMs } from './work/report.js'
 /** A roster row plus its folded log (null when the log is missing or unreadable — degraded). */
 export interface RunAccountingInput extends PersistedLite {
   readonly events: readonly SddEvent[] | null
+}
+
+/** Bounded concurrency for the per-run log scan (the unbounded-Promise.all convention). */
+const LOG_SCAN_CONCURRENCY = 4
+
+/**
+ * The fs tolerance shell (D5): roster from the run-index memos, numbers from
+ * one pass over each run's event log. Unreadable memos drop the row (index
+ * behavior); a missing or corrupt log degrades the row instead of failing
+ * the listing — a listing never dies on one run's data.
+ */
+export async function summarizeWorkDir(workDir: string): Promise<AccountingSummary> {
+  const roster = await readAllRunStates(workDir)
+  const limit = pLimit(LOG_SCAN_CONCURRENCY)
+  const inputs = await Promise.all(
+    roster.map((entry) =>
+      limit(async (): Promise<RunAccountingInput> => {
+        try {
+          const events = readEvents(path.join(workDir, 'runs', entry.runId, 'events.ndjson'), () => {})
+          return { ...entry, events }
+        } catch {
+          return { ...entry, events: null }
+        }
+      }),
+    ),
+  )
+  return aggregate(inputs)
 }
 
 export interface AccountedRow {

@@ -3,11 +3,35 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
-import { aggregate, formatDuration, formatTokens, renderRunsReport } from '../../afk-runner/src/accounting.js'
+import {
+  aggregate,
+  formatDuration,
+  formatTokens,
+  renderRunsReport,
+  summarizeWorkDir,
+} from '../../afk-runner/src/accounting.js'
 import type { RunAccountingInput } from '../../afk-runner/src/accounting.js'
 import type { AgentUsage, SddEvent } from '../../afk-runner/src/events.js'
+
+const tmpDirs: string[] = []
+
+function makeWorkDir(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'afk-accounting-'))
+  tmpDirs.push(dir)
+  return dir
+}
+
+afterEach(() => {
+  while (tmpDirs.length > 0) {
+    const dir = tmpDirs.pop()
+    if (dir !== undefined) fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 const T0 = '2026-01-01T00:00:00.000Z'
 
@@ -240,5 +264,108 @@ describe('formatting helpers', () => {
 
   it('unknown duration renders as an em dash', () => {
     expect(formatDuration(null)).toBe('—')
+  })
+})
+
+interface StateOverrides {
+  readonly status?: string
+  readonly gate?: { mode: string; version: number } | null
+  readonly changeName?: string
+  readonly updatedAt?: string
+}
+
+/** Write a run under the work dir: a routing-lite memo plus an optional event log. */
+function writeRun(workDir: string, runId: string, state: StateOverrides, events?: readonly SddEvent[] | string): void {
+  const runDir = path.join(workDir, 'runs', runId)
+  fs.mkdirSync(runDir, { recursive: true })
+  const memo = {
+    runId,
+    status: state.status ?? 'completed',
+    gate: state.gate ?? null,
+    changeName: state.changeName ?? runId,
+    updatedAt: state.updatedAt ?? at(0),
+  }
+  fs.writeFileSync(path.join(runDir, 'state.json'), `${JSON.stringify(memo, null, 2)}\n`)
+  if (events !== undefined) {
+    const body = typeof events === 'string' ? events : `${events.map((event) => JSON.stringify(event)).join('\n')}\n`
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), body)
+  }
+}
+
+describe('summarizeWorkDir (fs shell)', () => {
+  it('aggregates mixed-status runs from memos and logs, newest-first', async () => {
+    const workDir = makeWorkDir()
+    writeRun(
+      workDir,
+      'gate-run',
+      { status: 'running', gate: { mode: 'escalation', version: 2 }, updatedAt: at(9_000_000) },
+      [
+        stageEnterAt(0),
+        gateAt(10_000, 'presented', 2),
+        gateAt(250_000, 'answered', 2),
+        doneAt(250_000, usageOf({ inputTokens: 100, costUsd: 0.25 })),
+      ],
+    )
+    writeRun(workDir, 'done-run', { status: 'completed', updatedAt: at(6_000_000) }, [
+      doneAt(0, usageOf({ inputTokens: 12_000_000, outputTokens: 1_200_000 })),
+      doneAt(6_060_000, usageOf({ inputTokens: 1_000 })),
+    ])
+    writeRun(workDir, 'dead-run', { status: 'aborted', updatedAt: at(1_000) }, [stageEnterAt(0)])
+
+    const summary = await summarizeWorkDir(workDir)
+    expect(summary.rows.map((row) => row.runId)).toEqual(['gate-run', 'done-run', 'dead-run'])
+    expect(summary.totals).toMatchObject({
+      runs: 3,
+      gatePending: 1,
+      tokens: 13_201_100,
+      wallMs: 6_310_000,
+      dwellMs: 240_000,
+      costUsd: 0.25,
+      unpricedCount: 1,
+    })
+    const report = renderRunsReport(summary)
+    expect(report).toContain('gate-run  gate:escalation v2')
+    expect(report).toContain('cost: ≥ $0.25 (1 unpriced)')
+  })
+
+  it('skips a run whose memo is unreadable', async () => {
+    const workDir = makeWorkDir()
+    writeRun(workDir, 'healthy', { updatedAt: at(1) }, [stageEnterAt(0)])
+    fs.mkdirSync(path.join(workDir, 'runs', 'corrupt'), { recursive: true })
+    fs.writeFileSync(path.join(workDir, 'runs', 'corrupt', 'state.json'), '{not json\n')
+    const summary = await summarizeWorkDir(workDir)
+    expect(summary.rows.map((row) => row.runId)).toEqual(['healthy'])
+  })
+
+  it('keeps a memo-without-log row degraded: tokens —, wall —, counted unpriced', async () => {
+    const workDir = makeWorkDir()
+    writeRun(workDir, 'logless', { status: 'stopped', updatedAt: at(5) })
+    const summary = await summarizeWorkDir(workDir)
+    expect(summary.rows).toHaveLength(1)
+    expect(summary.rows[0]).toMatchObject({ runId: 'logless', tokens: null, wallMs: null })
+    expect(summary.totals.unpricedCount).toBe(1)
+    expect(renderRunsReport(summary)).toMatch(/logless\s+stopped\s+—\s+—/u)
+  })
+
+  it('derives numbers from the readable prefix of a torn final log line', async () => {
+    const workDir = makeWorkDir()
+    const prefix = [
+      doneAt(0, usageOf({ inputTokens: 7_000 })),
+      doneAt(120_000, usageOf({ inputTokens: 500, costUsd: 0.5 })),
+    ]
+    const torn = `${prefix.map((event) => JSON.stringify(event)).join('\n')}\n{"seq":3,"ts":`
+    writeRun(workDir, 'torn-run', { updatedAt: at(10) }, torn)
+    const summary = await summarizeWorkDir(workDir)
+    expect(summary.rows[0]).toMatchObject({ tokens: 7_500, wallMs: 120_000 })
+    expect(summary.totals.costUsd).toBe(0.5)
+  })
+
+  it('prints an empty summary when the runs dir is absent or empty, without error', async () => {
+    const absent = await summarizeWorkDir(makeWorkDir())
+    expect(absent.rows).toEqual([])
+    expect(absent.totals).toMatchObject({ runs: 0, tokens: 0, unpricedCount: 0 })
+    const workDir = makeWorkDir()
+    fs.mkdirSync(path.join(workDir, 'runs'), { recursive: true })
+    expect((await summarizeWorkDir(workDir)).rows).toEqual([])
   })
 })

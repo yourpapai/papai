@@ -13,7 +13,7 @@
 
 ## 3. fs shell with degradation tolerance
 
-- [ ] 3.1 Write failing fs tests in `tests/afk-runner/accounting.test.ts` over a temp work dir: mixed-status runs (scenario logs copied in), unreadable memo skipped, memo-without-log degraded row (`tokens —`/`wall —`, counted unpriced), torn final log line tolerated (numbers from the readable prefix), empty/absent runs dir → empty summary without error. Implement the shell: `readAllRunStates` roster + per-run log scan under bounded `p-limit` concurrency with a per-run catch feeding `aggregate()`. Verify: `bun test tests/afk-runner/accounting.test.ts`
+- [x] 3.1 Write failing fs tests in `tests/afk-runner/accounting.test.ts` over a temp work dir: mixed-status runs (scenario logs copied in), unreadable memo skipped, memo-without-log degraded row (`tokens —`/`wall —`, counted unpriced), torn final log line tolerated (numbers from the readable prefix), empty/absent runs dir → empty summary without error. Implement the shell: `readAllRunStates` roster + per-run log scan under bounded `p-limit` concurrency with a per-run catch feeding `aggregate()`. Verify: `bun test tests/afk-runner/accounting.test.ts`
 
 ## 4. CLI verb
 
