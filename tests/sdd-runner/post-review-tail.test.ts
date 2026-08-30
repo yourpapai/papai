@@ -277,6 +277,22 @@ describe('cap-hit routing by verdict', () => {
     expect(routeCapHit(capHit('needs-review'))).toEqual({ kind: 'verify' })
   })
 
+  it('never buys a verification round when a thrashing concern stopped the loop', () => {
+    // loop-memory D5: a recurring concern is why the loop stopped, so it can
+    // never be spent on a further round — routing goes straight to the tail.
+    const recurring = capHit('needs-review', {
+      recurringConcerns: [
+        {
+          fingerprint: 'scope id resurfaces',
+          firstRound: 1,
+          lastRound: 2,
+          entries: [{ round: 1, id: 'F1', class: 'MATERIAL', resolution: 'dismissed' }],
+        },
+      ],
+    })
+    expect(routeCapHit(recurring)).toEqual({ kind: 'tail' })
+  })
+
   it('does not buy a second verification round once one has been spent', () => {
     expect(routeCapHit(capHit('needs-review'), { verified: true })).toEqual({ kind: 'tail' })
   })
@@ -751,6 +767,108 @@ describe('runPostReviewToGate budget routing', () => {
       agent: { spawn, config: deps.config, execGit: deps.execGit, emit: ctx.emit },
       depth: 'S',
       reviewResult: needsReviewCapHit(1),
+      version: 1,
+    })
+    expect(result.halted).toBe('gate')
+    expect(fs.readFileSync(result.gateMdPath, 'utf8')).toContain('Final gate')
+  })
+
+  it('an explicitly unmetered config does not override the autonomy metered flag on unknown cost', async () => {
+    const { deps, state, logPath } = await setup()
+    appendUnpriceableSpend(logPath)
+    const autonomyDeps: OrchestratorDeps = {
+      ...deps,
+      config: { ...deps.config, metered: false },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
+    }
+    const ctx = makeCtx(autonomyDeps, state, logPath)
+    const verify = verificationMock()
+    await runPostReviewToGate({
+      deps: autonomyDeps,
+      state,
+      ctx,
+      agent: { spawn: autonomyDeps.spawn, config: autonomyDeps.config, execGit: autonomyDeps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(1),
+      version: 1,
+      runVerification: verify,
+    })
+    expect(verify).not.toHaveBeenCalled()
+  })
+
+  it('an unmetered run with no ceiling buys the round even when the cost is unknown', async () => {
+    const { deps, state, logPath } = await setup()
+    appendUnpriceableSpend(logPath)
+    const noBudgetDeps: OrchestratorDeps = { ...deps, config: { ...deps.config, budget: null, metered: false } }
+    const ctx = makeCtx(noBudgetDeps, state, logPath)
+    const verify = verificationMock()
+    await runPostReviewToGate({
+      deps: noBudgetDeps,
+      state,
+      ctx,
+      agent: { spawn: noBudgetDeps.spawn, config: noBudgetDeps.config, execGit: noBudgetDeps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(1),
+      version: 1,
+      runVerification: verify,
+    })
+    expect(verify).toHaveBeenCalledTimes(1)
+  })
+
+  it('a priced run with no ceiling never projects a budget breach', async () => {
+    const { deps, state, logPath } = await setup()
+    appendPricedSpend(logPath, 0)
+    const noBudgetDeps: OrchestratorDeps = { ...deps, config: { ...deps.config, budget: null, metered: false } }
+    const ctx = makeCtx(noBudgetDeps, state, logPath)
+    const verify = verificationMock()
+    await runPostReviewToGate({
+      deps: noBudgetDeps,
+      state,
+      ctx,
+      agent: { spawn: noBudgetDeps.spawn, config: noBudgetDeps.config, execGit: noBudgetDeps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(1),
+      version: 1,
+      runVerification: verify,
+    })
+    expect(verify).toHaveBeenCalledTimes(1)
+  })
+
+  it('the projection divides the observed cost across rounds, it does not multiply it', async () => {
+    // cost 4 over 2 rounds projects 4 + 2 = 6, under the 7 ceiling; a product
+    // would project 4 * 2 = 8 and wrongly decline the round.
+    const { deps, state, logPath } = await setup()
+    appendPricedSpend(logPath, 4)
+    const autonomyDeps: OrchestratorDeps = {
+      ...deps,
+      autonomy: { level: 'assist', costCeilingUsd: 7, metered: true },
+    }
+    const ctx = makeCtx(autonomyDeps, state, logPath)
+    const verify = verificationMock()
+    await runPostReviewToGate({
+      deps: autonomyDeps,
+      state,
+      ctx,
+      agent: { spawn: autonomyDeps.spawn, config: autonomyDeps.config, execGit: autonomyDeps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: needsReviewCapHit(2),
+      version: 1,
+      runVerification: verify,
+    })
+    expect(verify).toHaveBeenCalledTimes(1)
+  })
+
+  it('routes a non-needs-review cap-hit without touching gate signals — no events log needed', async () => {
+    const { deps, state, logPath, spawn } = await setup()
+    fs.rmSync(logPath)
+    const ctx = makeCtx(deps, state, logPath)
+    const result = await runPostReviewToGate({
+      deps,
+      state,
+      ctx,
+      agent: { spawn, config: deps.config, execGit: deps.execGit, emit: ctx.emit },
+      depth: 'S',
+      reviewResult: { ...needsReviewCapHit(1), verdict: 'converged' as const },
       version: 1,
     })
     expect(result.halted).toBe('gate')
