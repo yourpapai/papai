@@ -585,7 +585,7 @@ describe('changedFilesRun with carried-over scores', () => {
 
   const incrementalDeps = (
     plan: IncrementalPlan,
-    record = mock((_fresh: readonly PairedRunFileResult[]) => {}),
+    record = mock((_fresh: readonly PerFileScore[]) => {}),
   ): { deps: IncrementalDeps; record: typeof record } => ({
     deps: { plan: mock(() => plan), record },
     record,
