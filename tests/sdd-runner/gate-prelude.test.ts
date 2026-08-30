@@ -12,10 +12,14 @@ import { evaluateFinalGate, evaluatePlanGate } from '../../sdd-runner/src/auto-p
 import type { PolicyDecision, PolicySignals } from '../../sdd-runner/src/auto-policy.js'
 import type { AutonomyConfig } from '../../sdd-runner/src/config.js'
 import { appendEvent } from '../../sdd-runner/src/events.js'
+import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { integrityOf } from '../../sdd-runner/src/gate-integrity.js'
-import { PLAN_REVIEW_SURROGATE, renderPreviewBlock } from '../../sdd-runner/src/gate-prelude.js'
+import { PLAN_REVIEW_SURROGATE, renderPreviewBlock, runPolicyLadder } from '../../sdd-runner/src/gate-prelude.js'
+import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { DigestRecord } from '../../sdd-runner/src/replay.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
+import { createRunState } from '../../sdd-runner/src/run-state.js'
+import type { RunState } from '../../sdd-runner/src/run-state.js'
 
 const tmpDirs: string[] = []
 
@@ -48,7 +52,7 @@ function planSignals(overrides: Partial<PolicySignals> = {}): PolicySignals {
     { round: 1, counts: { blocker: 0, material: 3, nitpick: 0 }, resolved: 0, dismissed: 0, verdict: 'open' },
     { round: 2, counts: { blocker: 0, material: 1, nitpick: 0 }, resolved: 0, dismissed: 0, verdict: 'open' },
   ]
-  const config: AutonomyConfig = { level: 'assist', costCeilingUsd: 5 }
+  const config: AutonomyConfig = { level: 'assist', costCeilingUsd: 5, metered: true }
   return {
     reviewResult,
     trajectory,
@@ -128,6 +132,102 @@ describe('evaluatePlanGate (D5: R4 only)', () => {
     const planCapHit = evaluatePlanGate(capHitSignals)
     expect(planCapHit.action).toBe('gate')
     expect(planCapHit.rule).toBe('none')
+  })
+})
+
+describe('runPolicyLadder unmetered seam (sdd-policy-metered-budget 2.3)', () => {
+  const decreasing: DigestRecord[] = [
+    { round: 1, counts: { blocker: 0, material: 3, nitpick: 0 }, resolved: 0, dismissed: 0, verdict: 'open' },
+    { round: 2, counts: { blocker: 0, material: 1, nitpick: 0 }, resolved: 0, dismissed: 0, verdict: 'open' },
+  ]
+  const flat: DigestRecord[] = [
+    { round: 1, counts: { blocker: 0, material: 2, nitpick: 0 }, resolved: 0, dismissed: 0, verdict: 'open' },
+    { round: 2, counts: { blocker: 0, material: 2, nitpick: 0 }, resolved: 0, dismissed: 0, verdict: 'open' },
+  ]
+  const capHit: ReviewLoopResult = {
+    outcome: 'cap-hit',
+    rounds: 2,
+    verdict: 'open',
+    raised: { blocker: 0, material: 2, nitpick: 0 },
+    openBlockers: [],
+    openMaterial: [{ id: 'F1', class: 'MATERIAL', resolution: 'assumed', outcome: 'kept' }],
+    openNitpicks: [],
+  }
+
+  async function seedLadderFixture(): Promise<{
+    deps: OrchestratorDeps
+    state: RunState
+    run: (autonomy: AutonomyConfig, trajectory: readonly DigestRecord[]) => PolicyDecision
+  }> {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-prelude-'))
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    const state = await createRunState({ workDir, repoRoot, changeName: 'thing' })
+    fs.mkdirSync(path.join(state.runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(
+      path.join(state.runDir, 'sidecars', 'resolutions-2.json'),
+      JSON.stringify({
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'assumed', outcome: 'kept' }],
+        assumptions: [],
+      }),
+    )
+    const logPath = path.join(state.runDir, 'events.ndjson')
+    appendEvent(logPath, {
+      altitude: 'L2',
+      type: 'convergence',
+      round: 2,
+      verdict: 'open',
+      counts: { blocker: 0, material: 1, nitpick: 0 },
+    })
+    const deps: OrchestratorDeps = {
+      config: { repoRoot, workDir, model: 'test-model', budget: null },
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      driver: createOpenSpecDriver({
+        exec: () => Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 }),
+        cwd: repoRoot,
+      }),
+      resolveCost: () => null,
+      stdout: () => undefined,
+    }
+    const ctx = {
+      cwd: repoRoot,
+      changeDir: path.join(repoRoot, 'openspec', 'changes', 'thing'),
+      sidecarDir: path.join(state.runDir, 'sidecars'),
+      emit: (): void => undefined,
+    }
+    const run = (autonomy: AutonomyConfig, trajectory: readonly DigestRecord[]): PolicyDecision =>
+      runPolicyLadder({ ...deps, autonomy }, state, ctx, capHit, {
+        mode: 'early',
+        version: 1,
+        events: [],
+        costUsd: 0,
+        costKnown: false,
+        assumptions: [],
+        trajectory,
+      }).decision
+    return { deps, state, run }
+  }
+
+  it('unmetered cap-hit with unknown cost lets R2 extend — no R4 cost veto', async () => {
+    const { run } = await seedLadderFixture()
+    const decision = run({ level: 'assist', costCeilingUsd: null, metered: false }, decreasing)
+    expect(decision).toMatchObject({ rule: 'R2', action: 'extend' })
+  })
+
+  it('unmetered undecidable cap-hit previews without R4 cost evidence (rule none)', async () => {
+    const { run } = await seedLadderFixture()
+    const decision = run({ level: 'assist', costCeilingUsd: null, metered: false }, flat)
+    expect(decision).toMatchObject({ rule: 'none', action: 'gate' })
+    expect(renderPreviewBlock(decision)).toContain('> rule: none')
+    expect(renderPreviewBlock(decision)).not.toContain('R4')
+  })
+
+  it('metered numeric path is unchanged: unknown cost still gates through R4 with the identical preview', async () => {
+    const { run } = await seedLadderFixture()
+    const decision = run({ level: 'assist', costCeilingUsd: 5, metered: true }, decreasing)
+    expect(decision).toMatchObject({ rule: 'R4', action: 'gate' })
+    const again = run({ level: 'assist', costCeilingUsd: 5, metered: true }, decreasing)
+    expect(renderPreviewBlock(decision)).toBe(renderPreviewBlock(again))
   })
 })
 

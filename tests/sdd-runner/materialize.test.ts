@@ -11,12 +11,12 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import { consistencyFindings } from '../../sdd-runner/src/artifact-consistency.js'
 import {
   createMaterializer,
   materializeAssumptions,
   materializeReview,
   readRoundDigests,
-  readRoundGaps,
   recordRoundDigests,
 } from '../../sdd-runner/src/materialize.js'
 
@@ -459,57 +459,58 @@ describe('readRoundDigests', () => {
   })
 })
 
-describe('readRoundGaps', () => {
-  function seed(dir: string, name: string, payload: unknown): void {
-    fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(path.join(dir, name), JSON.stringify(payload))
-  }
+describe('consistencyFindings (loop-memory D6)', () => {
+  const files = (entries: Record<string, string>): readonly { path: string; content: string }[] =>
+    Object.entries(entries).map(([filePath, content]) => ({ path: filePath, content }))
 
-  const reviewerFinding = {
-    id: 'F1',
-    class: 'MATERIAL',
-    gap: 'the design omits a rollback path',
-    question: 'how do we roll back?',
-    code_evidence_attempted: 'read design.md',
-  }
-  const skepticFinding = {
-    id: 'F2',
-    class: 'BLOCKER',
-    gap: 'no migration path for existing rows',
-    question: 'what breaks on downgrade?',
-    code_evidence_attempted: 'read drizzle/',
-  }
-
-  it('keys each finding’s verbatim gap by its id', async () => {
-    const dir = path.join(makeDir(), 'sidecars')
-    seed(dir, 'findings-1.json', { findings: [reviewerFinding] })
-    expect(await readRoundGaps(dir, 1)).toEqual({ F1: 'the design omits a rollback path' })
+  it('flags migration-strategy disagreement as MATERIAL naming both files and renderings', () => {
+    const findings = consistencyFindings(
+      files({
+        'proposal.md': 'Storage lands via a drizzle migration under drizzle/.\n',
+        'specs/thing/spec.md': '### Requirement: Migrations\n\nThe schema SHALL ship as a hand-written migration.\n',
+      }),
+    )
+    expect(findings).toHaveLength(1)
+    const finding = findings[0]!
+    expect(finding.class).toBe('MATERIAL')
+    expect(finding.gap).toContain('proposal.md')
+    expect(finding.gap).toContain('specs/thing/spec.md')
+    expect(finding.gap).toContain('drizzle')
+    expect(finding.gap).toContain('hand-written')
   })
 
-  it('merges the skeptic lens, so an L-profile round does not lose half its gaps', async () => {
-    const dir = path.join(makeDir(), 'sidecars')
-    seed(dir, 'findings-1.json', { findings: [reviewerFinding] })
-    seed(dir, 'findings-skeptic-1.json', { findings: [skepticFinding] })
-    expect(await readRoundGaps(dir, 1)).toEqual({
-      F1: 'the design omits a rollback path',
-      F2: 'no migration path for existing rows',
-    })
+  it('flags interval-ms disagreement between artifacts', () => {
+    const findings = consistencyFindings(
+      files({
+        'design.md': 'The recompute loop ticks every 15*60*1000 ms.\n',
+        'specs/thing/spec.md': 'The loop SHALL tick every 30*60*1000 ms.\n',
+      }),
+    )
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.gap).toContain('15*60*1000')
+    expect(findings[0]!.gap).toContain('30*60*1000')
   })
 
-  it('answers an empty join when no sidecar exists rather than throwing', async () => {
-    expect(await readRoundGaps(path.join(makeDir(), 'absent'), 3)).toEqual({})
+  it('flags table-name spelling disagreement between artifacts', () => {
+    const findings = consistencyFindings(
+      files({
+        'proposal.md': 'Rows live in the `message_cache` table.\n',
+        'design.md': 'Writes target `messageCache` rows.\n',
+      }),
+    )
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.gap).toContain('message_cache')
+    expect(findings[0]!.gap).toContain('messageCache')
   })
 
-  it('answers an empty join for a malformed sidecar', async () => {
-    const dir = path.join(makeDir(), 'sidecars')
-    fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(path.join(dir, 'findings-1.json'), '{not json')
-    expect(await readRoundGaps(dir, 1)).toEqual({})
-  })
-
-  it('lets the skeptic lens fill a gap the reviewer sidecar is missing', async () => {
-    const dir = path.join(makeDir(), 'sidecars')
-    seed(dir, 'findings-skeptic-1.json', { findings: [skepticFinding] })
-    expect(await readRoundGaps(dir, 1)).toEqual({ F2: 'no migration path for existing rows' })
+  it('agreement across proposal, design, and specs yields no findings', () => {
+    const findings = consistencyFindings(
+      files({
+        'proposal.md': 'Storage lands via a drizzle migration; rows live in `message_cache`; ticks 15*60*1000 ms.\n',
+        'design.md': 'A drizzle migration creates `message_cache`; the loop ticks every 15*60*1000 ms.\n',
+        'specs/thing/spec.md': 'The drizzle migration SHALL create `message_cache` each 15*60*1000 ms.\n',
+      }),
+    )
+    expect(findings).toHaveLength(0)
   })
 })

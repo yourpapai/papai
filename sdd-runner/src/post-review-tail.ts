@@ -74,6 +74,12 @@ export function routeCapHit(reviewResult: ReviewLoopResult, conditions: RouteCon
   // routing on it would newly gate the nitpick-heavy cap-hits that used to
   // flow straight through.
   if (!isSeverityConverged(reviewResult)) return { kind: 'early-gate' }
+  // A thrashing concern stopped the loop precisely to stop further review spend
+  // (loop-memory D5), so it never buys the verification round a `needs-review`
+  // cap-hit would otherwise be owed. It does not newly gate on its own: the
+  // open set already decided that above, and the concern history rides the
+  // review result onto whichever gate comes next.
+  if ((reviewResult.recurringConcerns?.length ?? 0) > 0) return { kind: 'tail' }
   if (reviewResult.verdict !== 'needs-review') return { kind: 'tail' }
   if (conditions.verified === true || conditions.overBudget === true) return { kind: 'tail' }
   return { kind: 'verify' }
@@ -183,19 +189,24 @@ async function divertToSplitPlan(input: PostConvergenceTailInput): Promise<RunSt
  */
 /**
  * The budget question the verification round has to pass: would one more
- * round's conservative projection reach the configured ceiling? Unknown cost
- * fails closed the same way R4 does — an unmeterable run does not get to spend
- * a round it cannot account for.
+ * round's conservative projection reach the configured ceiling? The guard reads
+ * the same metered/unmetered split R4 does — an unmetered run (`budget: null` /
+ * `metered: false`) has no ceiling to breach and is not vetoed for unknown
+ * cost, while a metered run does not get to spend a round it cannot account for.
  */
 async function routeConditionsFor(input: PostConvergenceTailInput): Promise<RouteConditions> {
   if (input.reviewResult.verdict !== 'needs-review') return {}
   const signals = await gatherGateSignals(input.deps, input.state, input.ctx, input.reviewResult)
   const ceiling = input.deps.autonomy?.costCeilingUsd ?? input.deps.config.budget
+  // Same fallback `autonomyOf` uses: an unset `metered` means metered exactly
+  // when a numeric ceiling is configured.
+  const metered = input.deps.autonomy?.metered ?? input.deps.config.metered ?? ceiling !== null
+  if (!signals.costKnown) return { overBudget: metered }
+  if (ceiling === null) return { overBudget: false }
   const baseline = input.state.spendBaselineUsd ?? 0
   const rounds = input.reviewResult.rounds
   const perRound = rounds > 0 ? signals.costUsd / rounds : DEFAULT_ROUND_COST_USD
-  const projected = baseline + signals.costUsd + perRound
-  return { overBudget: !signals.costKnown || projected >= ceiling }
+  return { overBudget: baseline + signals.costUsd + perRound >= ceiling }
 }
 
 export async function runPostConvergenceTail(input: PostConvergenceTailInput): Promise<RunStartResult> {

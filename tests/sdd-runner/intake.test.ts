@@ -16,6 +16,7 @@ import type { RunnerConfig } from '../../sdd-runner/src/config.js'
 import { EventInputSchema } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
 import {
+  buildEstimatorPrompt,
   mapSignalsToProfile,
   prescreenProfile,
   resolveDepth,
@@ -128,6 +129,32 @@ const OVERSIZE_ESTIMATION = JSON.stringify({
   oversize: true,
 })
 
+const kbFiles = (count: number): string[] => Array.from({ length: count }, (_, i) => `src/kb/file-${i}.ts`)
+
+const KB_ESTIMATION = JSON.stringify({
+  implicated_files: kbFiles(36),
+  signals: {
+    cross_module: true,
+    db_migration: false,
+    provider_surface: false,
+    credentials: false,
+    novelty: 'new-subsystem',
+  },
+  rationale: 'new knowledge-base subsystem across chat, tools, and storage',
+})
+
+const CLAUDE_CLI_ESTIMATION = JSON.stringify({
+  implicated_files: kbFiles(19),
+  signals: {
+    cross_module: true,
+    db_migration: false,
+    provider_surface: false,
+    credentials: false,
+    novelty: 'new-subsystem',
+  },
+  rationale: 'new cli subsystem across chat and providers',
+})
+
 const PLAN = JSON.stringify({
   children: [
     { id: 'auth-api', instruction: 'Add the auth API endpoints.', deps: ['auth-db'] },
@@ -218,7 +245,50 @@ function makeFixture(dir: string, outputs: Record<string, string | string[]> = {
   return { deps, emitted, agentEmitted, spawned, timeline, prompts, warnings }
 }
 
+describe('buildEstimatorPrompt', () => {
+  it('asks for the raw signals, stays read-only, and never instructs oversize self-declaration', () => {
+    const prompt = buildEstimatorPrompt('build the knowledge base', '/repo')
+    expect(prompt).toContain('Do not edit anything')
+    expect(prompt).toMatch(/implicated_files/u)
+    expect(prompt).toMatch(/cross_module/u)
+    expect(prompt).toMatch(/novelty/u)
+    expect(prompt).not.toMatch(/declares scope too large/u)
+    expect(prompt).not.toMatch(/Set oversize/u)
+  })
+})
+
 describe('runIntake', () => {
+  it('a forced plan routes to the planner despite a non-routing verdict, recording routeForced', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir, { 'depth.json': ESTIMATION, 'plan-draft.json': PLAN })
+    const result = await runIntake(fixture.deps, {
+      changeName: 'forced',
+      taskText: 'small task the operator wants decomposed',
+      forcePlan: true,
+    })
+    expect(result.kind).toBe('plan')
+    expect(fixture.timeline).toEqual(['spawn:depth.json', 'spawn:plan-draft.json'])
+    expect(fixture.emitted[0]).toMatchObject({
+      type: 'depth',
+      oversize: false,
+      routeForced: 'plan',
+      oversizeSignals: { novelty: 'existing-modules', cross_module: true, implicatedFiles: 3 },
+    })
+  })
+
+  it('rejects forcePlan together with a depth override naming the conflict', async () => {
+    const fixture = makeFixture(makeDir())
+    const failure = await runIntake(fixture.deps, {
+      changeName: 'conflicted',
+      taskText: 'conflicting flags',
+      depthOverride: 'S',
+      forcePlan: true,
+    }).catch((error: unknown) => error)
+    expect(failure instanceof Error).toBe(true)
+    assert(failure instanceof Error)
+    expect(failure.message).toMatch(/--plan.*--depth/u)
+  })
+
   it('scaffolds the change and records an override depth event without spawning the estimator', async () => {
     const dir = makeDir()
     const fixture = makeFixture(dir)
@@ -231,7 +301,7 @@ describe('runIntake', () => {
     expect(fixture.spawned.count).toBe(0)
     expect(fixture.timeline).toEqual(['exec:new change'])
     const events = fixture.emitted
-    expect(events[0]).toMatchObject({ type: 'depth', profile: 'S', source: 'override' })
+    expect(events[0]).toMatchObject({ type: 'depth', profile: 'S', source: 'override', routeForced: 'depth' })
   })
 
   it('runs the estimator when no override is given and records the classification', async () => {
@@ -305,8 +375,8 @@ describe('runIntake', () => {
 
   it('returns a plan outcome with topo-ordered children and never scaffolds a change folder', async () => {
     const dir = makeDir()
-    const fixture = makeFixture(dir, { 'depth.json': OVERSIZE_ESTIMATION, 'plan-draft.json': PLAN })
-    const result = await runIntake(fixture.deps, { changeName: 'composite', taskText: 'build the whole platform' })
+    const fixture = makeFixture(dir, { 'depth.json': KB_ESTIMATION, 'plan-draft.json': PLAN })
+    const result = await runIntake(fixture.deps, { changeName: 'composite', taskText: 'build the knowledge base' })
     expect(result).toEqual({
       kind: 'plan',
       children: [
@@ -317,6 +387,74 @@ describe('runIntake', () => {
     expect(fixture.spawned.count).toBe(2)
     expect(fixture.timeline).toEqual(['spawn:depth.json', 'spawn:plan-draft.json'])
     expect(fixture.emitted[0]).toMatchObject({ type: 'depth', source: 'estimator', oversize: true })
+  })
+
+  it('records the weighed signals in the depth event and the sidecar when the conjunction routes', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir, { 'depth.json': KB_ESTIMATION, 'plan-draft.json': PLAN })
+    await runIntake(fixture.deps, { changeName: 'composite', taskText: 'build the knowledge base' })
+    expect(fixture.emitted[0]).toMatchObject({
+      type: 'depth',
+      oversizeSignals: { novelty: 'new-subsystem', cross_module: true, implicatedFiles: 36 },
+    })
+    const sidecar: unknown = JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'depth.json'), 'utf8'))
+    expect(sidecar).toMatchObject({
+      oversize: true,
+      oversize_signals: { novelty: 'new-subsystem', cross_module: true, implicatedFiles: 36 },
+    })
+  })
+
+  it('keeps the 19-file claude-cli-shaped estimation single-path (threshold at 30)', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir, { 'depth.json': CLAUDE_CLI_ESTIMATION })
+    const result = await runIntake(fixture.deps, { changeName: 'claude-cli', taskText: 'build the cli' })
+    expect(result).toEqual({ kind: 'single', changeName: 'claude-cli', depth: 'L', disagreement: false })
+    expect(fixture.timeline).toEqual(['spawn:depth.json', 'exec:new change'])
+    expect(fixture.emitted[0]).toMatchObject({ type: 'depth', oversize: false })
+  })
+
+  it('keeps any missing signal single-path: existing-modules or non-cross-module despite the file count', async () => {
+    const existingModules = makeFixture(makeDir(), {
+      'depth.json': JSON.stringify({
+        implicated_files: kbFiles(36),
+        signals: {
+          cross_module: true,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'existing-modules',
+        },
+        rationale: 'large but inside existing modules',
+      }),
+    })
+    const result = await runIntake(existingModules.deps, { changeName: 'wide', taskText: 'widen everything' })
+    expect(result.kind).toBe('single')
+    const singleModule = makeFixture(makeDir(), {
+      'depth.json': JSON.stringify({
+        implicated_files: kbFiles(36),
+        signals: {
+          cross_module: false,
+          db_migration: false,
+          provider_surface: false,
+          credentials: false,
+          novelty: 'new-subsystem',
+        },
+        rationale: 'new but one module',
+      }),
+    })
+    const narrow = await runIntake(singleModule.deps, { changeName: 'deep', taskText: 'one deep module' })
+    expect(narrow.kind).toBe('single')
+  })
+
+  it('overrides an agent-emitted oversize boolean with the computed verdict', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir, { 'depth.json': OVERSIZE_ESTIMATION })
+    const result = await runIntake(fixture.deps, { changeName: 'declared', taskText: 'task declaring its own size' })
+    expect(result.kind).toBe('single')
+    expect(fixture.timeline).toEqual(['spawn:depth.json', 'exec:new change'])
+    expect(fixture.emitted[0]).toMatchObject({ type: 'depth', oversize: false })
+    const sidecar: unknown = JSON.parse(fs.readFileSync(path.join(dir, 'sidecars', 'depth.json'), 'utf8'))
+    expect(sidecar).toMatchObject({ oversize: false })
   })
 })
 

@@ -10,6 +10,8 @@ import path from 'node:path'
 
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import type { Finding, Resolution } from '../../sdd-runner/src/agent-layer.js'
+import { SkepticFindingsSidecarSchema } from '../../sdd-runner/src/agent-layer.js'
+import { fingerprintOf } from '../../sdd-runner/src/concern-model.js'
 import type { RunnerConfig } from '../../sdd-runner/src/config.js'
 import { EventInputSchema } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
@@ -17,6 +19,7 @@ import {
   consumeSteerFile,
   parseSteerDirectives,
   reloadStagedSteer,
+  ResolverOutputSchema,
   runReviewLoop,
 } from '../../sdd-runner/src/review-loop.js'
 import type { ReviewLoopDeps, ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
@@ -281,7 +284,7 @@ describe('runReviewLoop', () => {
     const dir = makeDir()
     const fixture = makeLoopFixture(dir, {
       reviewer: [JSON.stringify({ findings: [finding()] })],
-      skeptic: [JSON.stringify({ findings: [finding({ id: 'F9' })] })],
+      skeptic: [JSON.stringify({ findings: [finding({ id: 'S9' })] })],
       resolver: [NO_BLOCKERS_RESOLUTIONS],
     })
     const result = await runReviewLoop(fixture.deps, {
@@ -537,5 +540,111 @@ describe('runReviewLoop — raised vs open', () => {
     // second round is where a static folder is caught. At S the cap is 1, so
     // this pins the round-1 leniency rather than the catch.
     expect(result.verdict).toBe('needs-review')
+  })
+})
+
+describe('sidecar id contracts (loop-memory)', () => {
+  const skepticFinding = (id: string): Finding => ({
+    id,
+    class: 'MATERIAL',
+    gap: 'g',
+    question: 'q',
+    code_evidence_attempted: 'e',
+  })
+
+  it('rejects duplicate resolution ids in a resolver sidecar', () => {
+    const dup = {
+      resolutions: [
+        { id: 'F1', class: 'NITPICK', resolution: 'edited', outcome: 'fixed' },
+        { id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'j' },
+      ],
+      assumptions: [],
+    }
+    expect(ResolverOutputSchema.safeParse(dup).success).toBe(false)
+  })
+
+  it('accepts a resolver sidecar with unique ids', () => {
+    const ok = {
+      resolutions: [
+        { id: 'F1', class: 'NITPICK', resolution: 'edited', outcome: 'fixed' },
+        { id: 'S1', class: 'MATERIAL', resolution: 'dismissed', justification: 'j' },
+      ],
+      assumptions: [],
+    }
+    expect(ResolverOutputSchema.safeParse(ok).success).toBe(true)
+  })
+
+  it('skeptic findings sidecar requires S-prefixed ids', () => {
+    expect(SkepticFindingsSidecarSchema.safeParse({ findings: [skepticFinding('S1')] }).success).toBe(true)
+    expect(SkepticFindingsSidecarSchema.safeParse({ findings: [skepticFinding('F1')] }).success).toBe(false)
+  })
+})
+
+describe('concern fingerprint emits and concerns.json (loop-memory 3.2)', () => {
+  function isFindingEvent(event: EventInput): event is Extract<EventInput, { type: 'finding' }> {
+    return event.type === 'finding'
+  }
+  it('emits fingerprinted classified/resolved events and maintains the concern sidecar at round close', async () => {
+    const dir = makeDir()
+    const fixture = makeLoopFixture(dir, {
+      reviewer: [JSON.stringify({ findings: [finding()] })],
+      skeptic: [JSON.stringify({ findings: [finding({ id: 'S1' })] })],
+      resolver: [NO_BLOCKERS_RESOLUTIONS],
+    })
+    const result = await runReviewLoop(fixture.deps, {
+      changeName: 'add-thing',
+      changeDir: fixture.changeDir,
+      depth: 'L',
+      taskText: 'x',
+      conventions: 'y',
+    })
+    expect(result.outcome).toBe('converged')
+    const fp = fingerprintOf('the proposal never names the scope id')
+    const findingEvents = fixture.emitted.filter(isFindingEvent)
+    const classified = findingEvents.filter((event) => event.action === 'classified')
+    expect(classified.length).toBeGreaterThan(0)
+    expect(classified.every((event) => event.fingerprint === fp)).toBe(true)
+    const resolved = findingEvents.find((event) => event.action === 'resolved')
+    expect(resolved?.fingerprint).toBe(fp)
+    const concernsJson = JSON.parse(
+      fs.readFileSync(path.join(fixture.deps.sidecarDir, 'concerns.json'), 'utf8'),
+    ) as unknown
+    expect(concernsJson).toEqual([
+      {
+        fingerprint: fp,
+        firstRound: 1,
+        lastRound: 1,
+        entries: [{ round: 1, id: 'F1', class: 'NITPICK', resolution: 'edited', outcome: 'specs clarified' }],
+      },
+    ])
+  })
+})
+
+describe('cross-artifact consistency injection (loop-memory 4.2)', () => {
+  it('injects a synthesized MATERIAL consistency finding into the round findings when artifacts disagree', async () => {
+    const dir = makeDir()
+    const fixture = makeLoopFixture(dir, {
+      reviewer: [JSON.stringify({ findings: [] })],
+      resolver: [NO_BLOCKERS_RESOLUTIONS],
+    })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nstorage lands via a drizzle migration\n')
+    fs.writeFileSync(
+      path.join(fixture.changeDir, 'design.md'),
+      '## Context\nschema ships as a hand-written migration\n',
+    )
+    const result = await runReviewLoop(fixture.deps, {
+      changeName: 'add-thing',
+      changeDir: fixture.changeDir,
+      depth: 'S',
+      taskText: 'x',
+      conventions: 'y',
+    })
+    expect(result.outcome).toBe('converged')
+    const resolverPrompt = promptOf(fixture, 'resolver-1')
+    expect(resolverPrompt).toContain('C1')
+    expect(resolverPrompt).toContain('drizzle migration')
+    expect(resolverPrompt).toContain('hand-written migration')
+    expect(resolverPrompt).toContain('proposal.md')
+    expect(resolverPrompt).toContain('design.md')
   })
 })

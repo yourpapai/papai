@@ -10,6 +10,11 @@ import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
 import { realSpawn } from '../../review-loop/src/spawn.js'
+import { buildCorpusReport } from './analyze-corpus.js'
+import { loadCorpus } from './analyze-io.js'
+import { nodeAnalyzeFs, readOnlyGit } from './analyze-io.js'
+import { renderCorpusJson, renderCorpusReport } from './analyze-report.js'
+import { groundTruthJoin } from './analyze-truth.js'
 import { main } from './cli.js'
 import type { CliHarness } from './cli.js'
 import { parseSddArgs } from './cli.js'
@@ -26,19 +31,16 @@ import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { runContinue, runResume, runStart } from './orchestrator.js'
 import { stdinIsInteractive } from './prompter.js'
-import { removeRun } from './remove-run.js'
 import { createRenderer } from './renderer.js'
 import type { Verbosity } from './renderer.js'
 import { buildReport } from './report.js'
 import type { ChangeDirSummary, ReportInput } from './report.js'
 import { resolveRunId } from './run-index.js'
 import { loadRunState, runDirOf } from './run-state.js'
-import { executeSessionTarget } from './session-flow.js'
-import type { SessionFlowDeps } from './session-flow.js'
+import { sessionLoopOf } from './session-harness.js'
 import { requestCalmStop, stopRun } from './stop-controller.js'
 import { registerTerminalTitle, TERMINAL_TITLE_RESTORE } from './terminal-title.js'
 import { createRunScreenSession } from './tui-run-session.js'
-import { runSessionPicker } from './tui-session-picker.js'
 import { buildResolveCost, childUsageOf } from './usage-aggregate.js'
 
 export const USAGE = [
@@ -47,6 +49,7 @@ export const USAGE = [
   'Usage:',
   '  sdd [<task-file> | <run-id>] [--depth S|M|L] [--pr] [--reopen [<n>]] [--config <path>]',
   '  sdd stop [<run-id>]',
+  '  sdd analyze [workdirs…] [--json] [--config <path>]',
   '',
   'A task file starts a run; a run id routes by its state (gate decision, resume, report).',
   'No target opens the session screen on a terminal — a loop, not a launcher: pick a run',
@@ -54,6 +57,8 @@ export const USAGE = [
   'description (n), and every finished action returns to the refreshed list; only an explicit',
   'quit (q) exits. Non-terminals keep the list-and-exit contract. Gate decisions: the TUI on',
   'a terminal; else hand-edit the gate file.',
+  'Analyze replays run artifacts read-only across workdirs (default: this worktree) and',
+  'prints a corpus report — it never routes into a run or disturbs pending gates.',
 ].join('\n')
 
 export async function readChangeSummary(repoRoot: string, changeName: string): Promise<ChangeDirSummary> {
@@ -179,58 +184,41 @@ function harnessMembers(
     runGateReopen: (runId, gateVersion) =>
       resolveAndCall(config.workDir, runId, (r) => runGateReopen(orchestratorDeps, config.workDir, r, gateVersion)),
     buildReport: (runId, pr) => buildRunReport(config, runId, pr, execGit),
+    runAnalysis: (workdirs, json) => runCorpusAnalysis(config, execGit, workdirs, json),
     stdout: harnessStdout,
     interactive: (): boolean => stdinIsInteractive(),
     latestSettledGateVersion: (runId) =>
       resolveAndCall(config.workDir, runId, (r) => latestSettledGateVersion(config.workDir, r)),
   }
-  return { ...members, sessionLoop: sessionLoopOf(config, orchestratorDeps, members, execGit) }
-}
-
-type DepthOverride = Parameters<typeof runStart>[1] extends { depthOverride?: infer D } ? D : never
-
-function sessionFlowDepsOf(members: CliHarness): SessionFlowDeps {
-  return {
-    runGateResume: (runId) => members.runGateResume(runId),
-    runResume: (runId) => members.runResume(runId),
-    buildReport: (runId) => members.buildReport(runId, false),
-    requestCalmStop: (runId) => members.requestCalmStop(runId),
-    reopenGate: async (runId) => {
-      const version = await members.latestSettledGateVersion?.(runId)
-      if (version === undefined || version === null) throw new Error(`run ${runId} has no settled gate to reopen`)
-      await members.runGateReopen(runId, version)
-    },
-    removeRun: (runId) => removeRun(members.workDir, runId),
-    stdout: members.stdout,
-  }
-}
-
-function sessionLoopOf(
-  config: { readonly workDir: string; readonly repoRoot: string },
-  orchestratorDeps: OrchestratorDeps,
-  members: CliHarness,
-  execGit: ExecGitFn,
-): (options: { readonly initial: 'list' | 'create'; readonly depth?: DepthOverride }) => Promise<void> {
-  return async (options): Promise<void> => {
-    await runSessionPicker({
-      workDir: config.workDir,
-      ...(options.initial === 'list' ? {} : { initial: options.initial }),
-      execute: (action) => executeSessionTarget(action, sessionFlowDepsOf(members)),
-      buildReport: (runId) => buildRunReport(config, runId, false, execGit),
-      createRun: async (taskText): Promise<void> => {
-        const started = await runStart(orchestratorDeps, {
-          taskText,
-          ...(options.depth === undefined ? {} : { depthOverride: options.depth }),
-        })
-        members.stdout(`started ${started.runId}`)
-      },
-      removeRun: (runId) => removeRun(config.workDir, runId),
-    })
-  }
+  return { ...members, sessionLoop: sessionLoopOf(config, orchestratorDeps, members) }
 }
 
 function harnessStdout(line: string): void {
   process.stdout.write(`${line}\n`)
+}
+
+/**
+ * The analyze verb's entry (analysis spec): load runs over the explicit
+ * workdirs (default: the config workDir), join each change folder to openspec
+ * and git through the read-only seams, and print the corpus report — JSON
+ * with `--json`. Reads only; the output is stdout.
+ */
+async function runCorpusAnalysis(
+  config: { readonly repoRoot: string; readonly workDir: string },
+  execGit: ExecGitFn,
+  workdirs: readonly string[],
+  json: boolean,
+): Promise<void> {
+  const dirs = workdirs.length > 0 ? workdirs.map((dir) => path.resolve(dir)) : [config.workDir]
+  const fs = nodeAnalyzeFs()
+  const bundles = await loadCorpus(fs, dirs)
+  const changeRefs = bundles.flatMap((bundle) =>
+    bundle.state === null ? [] : [{ repoRoot: bundle.state.repoRoot, changeName: bundle.state.changeName }],
+  )
+  const truth = await groundTruthJoin(fs, readOnlyGit(execGit), changeRefs)
+  const resolveCost = await buildResolveCost()
+  const report = buildCorpusReport(bundles, truth, { now: new Date(), resolveCost })
+  harnessStdout(json ? renderCorpusJson(report) : renderCorpusReport(report))
 }
 
 async function buildRunReport(

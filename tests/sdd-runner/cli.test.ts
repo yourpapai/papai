@@ -84,6 +84,10 @@ function captureHarness(workDir: string): { harness: CliHarness; calls: string[]
       calls.push(`reopen:${runId}:${version}`)
       return Promise.resolve({ runId, gateVersion: version })
     },
+    runAnalysis: (workdirs, json) => {
+      calls.push(`analyze:${workdirs.join(',')}:${json ? 'json' : 'text'}`)
+      return Promise.resolve()
+    },
     stdout: (line) => {
       calls.push(`out:${line}`)
     },

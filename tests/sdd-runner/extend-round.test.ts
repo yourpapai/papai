@@ -8,12 +8,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { settleApprovedGate } from '../../sdd-runner/src/extend-round.js'
+import { runEarlyFinalGateResume, settleApprovedGate } from '../../sdd-runner/src/extend-round.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
+import { prepareResumeInput } from '../../sdd-runner/src/gate-digest.js'
 import { runGateResume } from '../../sdd-runner/src/gate-resume-entry.js'
-import { prepareResumeInput } from '../../sdd-runner/src/gate-review-input.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
+import { holderPath } from '../../sdd-runner/src/stop-controller.js'
 
 function makeSidecarDir(): { dir: string; sidecarDir: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-ext-'))
@@ -380,6 +381,7 @@ describe('runGateResume waiter bypass flags (D11)', () => {
     expect(result.outcome).toBe('approved')
     const state = await loadRunState(fx.workDir, fx.runId)
     expect(state.status).toBe('completed')
+    expect(fs.existsSync(holderPath(path.join(fx.workDir, 'runs', fx.runId)))).toBe(false)
   })
 
   it('a veto flag bypasses the waiter and lands the veto', async () => {
@@ -445,6 +447,56 @@ describe('runGateResume waiter bypass flags (D11)', () => {
     expect(result.outcome).toBe('extend')
     expect(result.version).toBe(2)
   }, 15_000)
+
+  it('the extend round reviews with empty conventions and an empty task description, tolerating steer noise without stdout', async () => {
+    const fx = await makeBypassFixture()
+    const state = await loadRunState(fx.workDir, fx.runId)
+    state.gate = { mode: 'early', version: 1 }
+    await saveRunState(state)
+    fs.writeFileSync(path.join(fx.workDir, 'runs', fx.runId, 'steer.md'), 'nonsense directive\n')
+    const prompts: string[] = []
+    const { stdout: _omitted, ...depsWithoutStdout } = fx.deps
+    const deps: OrchestratorDeps = {
+      ...depsWithoutStdout,
+      spawn: (command, args, options) => {
+        prompts.push(String(args[args.length - 1]))
+        return fx.deps.spawn(command, args, options)
+      },
+    }
+    const result = await runGateResume(deps, fx.runId, { extend: true })
+    expect(result.outcome).toBe('extend')
+    expect(result.version).toBe(2)
+    const reviewerPrompts = prompts.filter((p) => /findings-\d+\.json/u.test(p))
+    expect(reviewerPrompts.length).toBeGreaterThan(0)
+    expect(reviewerPrompts.every((p) => p.includes('## Conventions\n\n\n## Rubric'))).toBe(true)
+    const resolverPrompts = prompts.filter((p) => p.startsWith('You are the resolver'))
+    expect(resolverPrompts.length).toBeGreaterThan(0)
+    expect(resolverPrompts.every((p) => p.includes('## Task description\n\n\n## Conventions'))).toBe(true)
+    expect(fs.existsSync(path.join(fx.workDir, 'runs', fx.runId, 'sidecars', 'concerns.json'))).toBe(true)
+  }, 15_000)
+
+  it('runEarlyFinalGateResume refuses a state without a pending gate', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-ext-guard-'))
+    const workDir = path.join(dir, 'work')
+    const state = await createRunState({ workDir, repoRoot: dir, changeName: 'thing' })
+    await saveRunState(state)
+    await expect(
+      runEarlyFinalGateResume(
+        {
+          config: { repoRoot: dir, workDir, model: 'm', budget: 5 },
+          spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+          execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+          driver: createOpenSpecDriver({
+            exec: () => Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 }),
+            cwd: dir,
+          }),
+        },
+        state,
+        {},
+        () => {},
+      ),
+    ).rejects.toThrow(/not gate-pending/u)
+  })
 
   it('mounts the running screen for the post-decision tail and unmounts at settle (tui wiring)', async () => {
     const fx = await makeBypassFixture()

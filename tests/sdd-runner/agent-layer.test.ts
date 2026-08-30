@@ -19,6 +19,7 @@ import {
   ResolutionSchema,
   ResolutionsSidecarSchema,
   runStageAgent,
+  SkepticFindingsSidecarSchema,
 } from '../../sdd-runner/src/agent-layer.js'
 import type { AgentLayerDeps, Finding, RunStageAgentOptions } from '../../sdd-runner/src/agent-layer.js'
 import { INACTIVITY_TIMEOUT_MS } from '../../sdd-runner/src/config.js'
@@ -68,6 +69,7 @@ const VALID_FINDINGS = JSON.stringify({
 interface FakeSpawn {
   readonly spawn: SpawnFn
   readonly prompts: string[]
+  readonly args: readonly string[][]
   readonly models: string[]
   readonly inactivity: Array<number | undefined>
   readonly calls: { count: number }
@@ -82,15 +84,17 @@ function makeFakeSpawn(
   }>,
 ): FakeSpawn {
   const prompts: string[] = []
+  const args: string[][] = []
   const models: string[] = []
   const inactivity: Array<number | undefined> = []
   const calls = { count: 0 }
-  const spawn: SpawnFn = (_command, args, options, onLine) => {
+  const spawn: SpawnFn = (_command, spawnArgs, options, onLine) => {
     const outcome = outcomes[Math.min(calls.count, outcomes.length - 1)] ?? {}
     calls.count += 1
-    prompts.push(String(args[args.length - 1]))
-    const modelIndex = args.indexOf('--model')
-    models.push(String(args[modelIndex + 1]))
+    prompts.push(String(spawnArgs[spawnArgs.length - 1]))
+    args.push([...spawnArgs])
+    const modelIndex = spawnArgs.indexOf('--model')
+    models.push(String(spawnArgs[modelIndex + 1]))
     inactivity.push(options.inactivityTimeoutMs)
     const write = outcome.write
     if (write !== undefined) {
@@ -109,7 +113,7 @@ function makeFakeSpawn(
       ...outcome.result,
     })
   }
-  return { spawn, prompts, models, inactivity, calls }
+  return { spawn, prompts, args, models, inactivity, calls }
 }
 
 function makeGitExec(
@@ -204,6 +208,36 @@ describe('sidecar schemas', () => {
     expect(parsed.success).toBe(false)
     assert(!parsed.success)
     expect(parsed.error.issues[0]?.message).toBe('dismissed resolutions require a justification')
+  })
+
+  it('accepts every resolution enum value, including evidence-answered', () => {
+    for (const resolution of ['edited', 'evidence-answered', 'assumed'] as const) {
+      const sidecar = { resolutions: [{ id: 'F1', class: 'MATERIAL', resolution, outcome: 'answered with evidence' }] }
+      expect(ResolutionsSidecarSchema.safeParse(sidecar).success).toBe(true)
+    }
+  })
+
+  it('pins the skeptic S-prefix convention: multi-digit ids pass, off-convention ids fail with the contract message', () => {
+    const skepticFinding = (id: string): unknown => ({
+      findings: [
+        {
+          id,
+          class: 'MATERIAL',
+          gap: 'the skeptic never saw the counterexample',
+          question: 'what breaks the invariant?',
+          code_evidence_attempted: 're-ran the failing scenario',
+        },
+      ],
+    })
+    expect(SkepticFindingsSidecarSchema.safeParse(skepticFinding('S12')).success).toBe(true)
+    const badSuffix = SkepticFindingsSidecarSchema.safeParse(skepticFinding('S1x'))
+    expect(badSuffix.success).toBe(false)
+    const noPrefix = SkepticFindingsSidecarSchema.safeParse(skepticFinding('xS1'))
+    expect(noPrefix.success).toBe(false)
+    assert(!badSuffix.success)
+    expect(badSuffix.error.issues[0]?.message).toBe(
+      'skeptic findings[].id must follow the S-prefix convention (S1, S2, …)',
+    )
   })
 
   it('validates assumption records with basis and status enums', () => {
@@ -331,6 +365,48 @@ describe('sidecar schemas', () => {
     expect(DepthClassificationSchema.safeParse(bad).success).toBe(false)
   })
 
+  it('accepts the optional oversize_signals record and keeps old sidecars parsing unchanged', () => {
+    const withSignals = DepthClassificationSchema.safeParse({
+      implicated_files: ['src/kb/a.ts'],
+      signals: {
+        cross_module: true,
+        db_migration: false,
+        provider_surface: false,
+        credentials: false,
+        novelty: 'new-subsystem',
+      },
+      rationale: 'new subsystem across modules',
+      oversize: true,
+      oversize_signals: { novelty: 'new-subsystem', cross_module: true, implicatedFiles: 36 },
+    })
+    expect(withSignals.success).toBe(true)
+    const withoutSignals = DepthClassificationSchema.safeParse({
+      implicated_files: ['src/chat/router.ts'],
+      signals: {
+        cross_module: false,
+        db_migration: false,
+        provider_surface: false,
+        credentials: false,
+        novelty: 'existing-modules',
+      },
+      rationale: 'plain change',
+    })
+    expect(withoutSignals.success).toBe(true)
+    const badSignals = DepthClassificationSchema.safeParse({
+      implicated_files: ['src/kb/a.ts'],
+      signals: {
+        cross_module: true,
+        db_migration: false,
+        provider_surface: false,
+        credentials: false,
+        novelty: 'new-subsystem',
+      },
+      rationale: 'new subsystem across modules',
+      oversize_signals: { novelty: 'new-subsystem', cross_module: 'yes', implicatedFiles: 36 },
+    })
+    expect(badSignals.success).toBe(false)
+  })
+
   it('validates the depth classification sidecar with and without capabilities', () => {
     const base = {
       implicated_files: ['src/chat/router.ts'],
@@ -387,9 +463,9 @@ describe('sidecar schemas', () => {
     expect(nonBoolean.success).toBe(false)
   })
 
-  it('estimator prompt teaches the oversize verdict field', () => {
+  it('estimator prompt omits the oversize field — the runner computes the verdict, not the agent', () => {
     const prompt = buildEstimatorPrompt('add a composite multi-run feature', '/repo')
-    expect(prompt).toContain('"oversize": boolean')
+    expect(prompt).not.toContain('"oversize": boolean')
   })
 })
 
@@ -548,8 +624,13 @@ describe('runStageAgent', () => {
     const info = await runStageAgent(agent, options)
     expect(info.attempts).toBe(1)
     expect(fake.prompts[0]).toContain('Continue the interrupted task in this session.')
+    expect(fake.prompts[0]).toContain('You were mid-run when the process died; finish the work you had in flight.')
     expect(fake.prompts[0]).toContain(`Write your JSON result to ${agentWritePath(dir, 'findings-1.json')}`)
     expect(fake.prompts[0]).toContain('now.')
+    expect(fake.prompts[0]?.split('\n')).toHaveLength(3)
+    expect(fake.args[0]?.includes('--session')).toBe(true)
+    expect(fake.args[0]?.includes('sess-1')).toBe(true)
+    expect(fake.args[1]?.join(' ')).not.toContain('--session')
     expect(fake.prompts[1]).toBe('Review the artifacts.')
     expect(retryings(emitted)).toEqual([{ reason: 'validation', attempt: 2 }])
   })

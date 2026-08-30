@@ -8,7 +8,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { completedFailedChildHandleOf, settleObservedChild } from '../../sdd-runner/src/child-settle.js'
+import {
+  completedFailedChildHandleOf,
+  settleObservedChild,
+  stopAtBudgetGuard,
+} from '../../sdd-runner/src/child-settle.js'
 import type { RunChildrenResult } from '../../sdd-runner/src/child-settle.js'
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import type { SddEvent } from '../../sdd-runner/src/events.js'
@@ -16,6 +20,7 @@ import type { OrchestratorDeps, StageContext } from '../../sdd-runner/src/gate-d
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
+import { createStopMarkerSeam } from '../../sdd-runner/src/stop-controller.js'
 import type { ResolveCostFn } from '../../sdd-runner/src/usage-aggregate.js'
 
 const tmpDirs: string[] = []
@@ -140,6 +145,12 @@ describe('completedFailedChildHandleOf (D9 ledger sync)', () => {
 
     expect(await completedFailedChildHandleOf(fixture.deps, fixture.state, 'auth-db')).toBeNull()
   })
+
+  it('returns null for a child id the plan never recorded, without crashing on the optional chains', async () => {
+    const fixture = await makeFixture()
+
+    expect(await completedFailedChildHandleOf(fixture.deps, fixture.state, 'never-planned')).toBeNull()
+  })
 })
 
 describe('settleObservedChild adoption of an operator-completed failed child', () => {
@@ -171,5 +182,79 @@ describe('settleObservedChild adoption of an operator-completed failed child', (
     expect(done[0]).toMatchObject({ outcome: 'done', usage: { costUsd: 0.25 } })
     const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
     expect(persisted.children?.['auth-db']).toEqual({ status: 'done' })
+  })
+})
+
+describe('stopAtBudgetGuard (D10 budget guard)', () => {
+  it('halts with the metered spend against the configured budget', async () => {
+    const fixture = await makeFixture()
+    const lines: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      stdout: (line: string): void => {
+        lines.push(line)
+      },
+    }
+    const result = await stopAtBudgetGuard(deps, fixture.state, 'auth-api', { costKnown: true, spentUsd: 2.5 })
+    expect(result).toEqual({ halted: 'stopped', child: 'auth-api', childStatus: 'budget-guard' })
+    expect(lines).toEqual([
+      'budget guard: tree spend $2.50 vs budget $5.00 — parent stopped before child auth-api (resumable)',
+    ])
+    expect((await loadRunState(fixture.deps.config.workDir, fixture.state.runId)).status).toBe('stopped')
+  })
+
+  it('names the budget unmetered when config.budget is null and stays silent without stdout or a now seam', async () => {
+    const fixture = await makeFixture()
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      config: { ...fixture.deps.config, budget: null },
+      now: undefined,
+      stdout: undefined,
+    }
+    const result = await stopAtBudgetGuard(deps, fixture.state, 'auth-api', { costKnown: false, spentUsd: 0 })
+    expect(result).toEqual({ halted: 'stopped', child: 'auth-api', childStatus: 'budget-guard' })
+    expect((await loadRunState(fixture.deps.config.workDir, fixture.state.runId)).status).toBe('stopped')
+  })
+})
+
+describe('settleObservedChild calm-stop and failure branches', () => {
+  it('calm stop with a completed child settles it done before the parent stops', async () => {
+    const fixture = await makeFixture()
+    const childState = await seedSpawnedChildRun(fixture, 'completed', true)
+    const stop = createStopMarkerSeam(fixture.state.runDir)
+    stop.request()
+    const result = await settleObservedChild(
+      fixture.deps,
+      fixture.state,
+      fixture.ctx,
+      stop,
+      'auth-db',
+      { runId: childState.runId },
+      (): null => null,
+      (): Promise<RunChildrenResult> => Promise.resolve({ halted: 'completed' }),
+    )
+    expect(result).toEqual({ runId: fixture.state.runId, halted: 'stopped' })
+    const persisted = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)
+    expect(persisted.children?.['auth-db']).toEqual({ status: 'done' })
+  })
+
+  it('stops at an unloadable child flight, books it failed, and persists without a now seam', async () => {
+    const fixture = await makeFixture()
+    const deps: OrchestratorDeps = { ...fixture.deps, now: undefined }
+    const result = await settleObservedChild(
+      deps,
+      fixture.state,
+      fixture.ctx,
+      undefined,
+      'auth-db',
+      { runId: 'ghost-run' },
+      (): null => null,
+      (): Promise<RunChildrenResult> => Promise.resolve({ halted: 'completed' }),
+    )
+    expect(result).toEqual({ halted: 'stopped', child: 'auth-db', childStatus: 'unloadable' })
+    expect((await loadRunState(fixture.deps.config.workDir, fixture.state.runId)).status).toBe('stopped')
+    const done = childDoneOf(fixture, 'auth-db')
+    expect(done).toHaveLength(1)
+    expect(done[0]).toMatchObject({ outcome: 'failed' })
   })
 })

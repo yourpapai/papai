@@ -12,7 +12,7 @@ import path from 'node:path'
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
 import type { OrchestratorDeps, StageContext } from '../../sdd-runner/src/gate-digest.js'
-import { readReviewResultFromSidecars } from '../../sdd-runner/src/gate-review-input.js'
+import { readReviewResultFromSidecars } from '../../sdd-runner/src/gate-sidecars.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { PlanSchema } from '../../sdd-runner/src/plan.js'
 import {
@@ -658,7 +658,7 @@ describe('runPostReviewToGate budget routing', () => {
     appendPricedSpend(logPath, 1)
     const autonomyDeps: OrchestratorDeps = {
       ...deps,
-      autonomy: { level: 'assist', costCeilingUsd: 2 },
+      autonomy: { level: 'assist', costCeilingUsd: 2, metered: true },
     }
     const ctx = makeCtx(autonomyDeps, state, logPath)
     const verify = verificationMock()
@@ -680,7 +680,7 @@ describe('runPostReviewToGate budget routing', () => {
     appendPricedSpend(logPath, 3)
     const autonomyDeps: OrchestratorDeps = {
       ...deps,
-      autonomy: { level: 'assist', costCeilingUsd: 4 },
+      autonomy: { level: 'assist', costCeilingUsd: 4, metered: true },
     }
     const ctx = makeCtx(autonomyDeps, state, logPath)
     const verify = verificationMock()
@@ -702,7 +702,7 @@ describe('runPostReviewToGate budget routing', () => {
     appendPricedSpend(logPath, 2)
     const autonomyDeps: OrchestratorDeps = {
       ...deps,
-      autonomy: { level: 'assist', costCeilingUsd: 2.5 },
+      autonomy: { level: 'assist', costCeilingUsd: 2.5, metered: true },
     }
     const ctx = makeCtx(autonomyDeps, state, logPath)
     const verify = verificationMock()
@@ -724,7 +724,7 @@ describe('runPostReviewToGate budget routing', () => {
     state.spendBaselineUsd = 4.9
     const autonomyDeps: OrchestratorDeps = {
       ...deps,
-      autonomy: { level: 'assist', costCeilingUsd: 4.5 },
+      autonomy: { level: 'assist', costCeilingUsd: 4.5, metered: true },
     }
     const ctx = makeCtx(autonomyDeps, state, logPath)
     const verify = verificationMock()

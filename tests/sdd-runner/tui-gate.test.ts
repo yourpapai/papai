@@ -42,6 +42,7 @@ const VIEW = {
   ],
   blockers: [{ id: 'B1', gap: 'migration untested', evidence: 'drizzle/0007 x.sql' }],
   requiredAck: { id: 'T1', text: 'trajectory is improving' },
+  concernHistory: [],
 }
 
 function baseProps(overrides: Partial<GateScreenProps> = {}): GateScreenProps {
@@ -65,6 +66,25 @@ describe('TUI gate screen (4.4/4.5)', () => {
     expect(frame).toContain('F1 proposal never names the scope id')
     expect(frame).toContain('evidence: proposal.md L5')
     expect(frame).toContain('B1 migration untested')
+    unmount()
+  })
+
+  it('renders the shared concern-history lines above the items (loop-memory 3.4)', () => {
+    const GateScreen = createGateScreen()
+    const { lastFrame, unmount } = render(
+      createElement(
+        GateScreen,
+        baseProps({
+          view: {
+            ...VIEW,
+            concernHistory: ['### Concern history', 'r1 [F2] MATERIAL edited — narrowed gap (seen r1..r3)'],
+          },
+        }),
+      ),
+    )
+    const frame = lastFrame()
+    expect(frame).toContain('### Concern history')
+    expect(frame).toContain('r1 [F2] MATERIAL edited — narrowed gap (seen r1..r3)')
     unmount()
   })
 
@@ -122,6 +142,7 @@ describe('TUI gate screen (4.4/4.5)', () => {
     const GateScreen = createGateScreen()
     const { lastFrame, unmount } = render(createElement(GateScreen, baseProps()))
     expect(lastFrame()).toContain('approve unavailable: T1 not affirmed, blocker B1 unanswered')
+    expect(lastFrame()).toContain('→ (unanswered)')
     unmount()
     const { lastFrame: frame2, unmount: u2 } = render(createElement(GateScreen, baseProps({ ackAffirmed: true })))
     expect(frame2()).toContain('approve unavailable: blocker B1 unanswered')
@@ -130,6 +151,7 @@ describe('TUI gate screen (4.4/4.5)', () => {
       createElement(GateScreen, baseProps({ ackAffirmed: true, blockerAnswers: { B1: 'covered by test x' } })),
     )
     expect(frame3()).not.toContain('approve unavailable')
+    expect(frame3()).toContain('→ covered by test x')
     u3()
   })
 })
@@ -257,6 +279,7 @@ describe('plan-mode screen and toggles (D10)', () => {
     expect(lastFrame()).toContain('╭─ Gate · plan')
     expect(lastFrame()).toContain('  [x] C1 auth-db — Ship the drafted slice.')
     expect(lastFrame()).toContain('❯ [x] C2 auth-api — Partition the remainder.')
+    expect(lastFrame()).toContain('· evidence: (none)')
     expect(lastFrame()).toContain('(a)pprove')
     expect(lastFrame()).toContain('(x)abort')
     expect(lastFrame()).not.toContain('(e)xtend')

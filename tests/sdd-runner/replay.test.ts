@@ -31,6 +31,52 @@ afterEach(() => {
 const at = (s: string): Date => new Date(`2026-08-10T10:00:${s}.000Z`)
 
 describe('replayEvents', () => {
+  it('reconstructs oversize routing decisions from the depth event alone', () => {
+    const log = makeLog()
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'depth',
+      profile: 'L',
+      rationale: 'new subsystem across chat, tools, storage',
+      source: 'estimator',
+      oversize: true,
+      oversizeSignals: { novelty: 'new-subsystem', cross_module: true, implicatedFiles: 36 },
+    })
+    const routed = replayEvents(log)
+    expect(routed.routing).toEqual({
+      oversize: true,
+      oversizeSignals: { novelty: 'new-subsystem', cross_module: true, implicatedFiles: 36 },
+    })
+    const forced = makeLog()
+    appendEvent(forced, {
+      altitude: 'L2',
+      type: 'depth',
+      profile: 'M',
+      rationale: 'forced by the operator',
+      source: 'estimator',
+      oversize: false,
+      oversizeSignals: { novelty: 'existing-modules', cross_module: false, implicatedFiles: 4 },
+      routeForced: 'plan',
+    })
+    expect(replayEvents(forced).routing).toEqual({
+      oversize: false,
+      oversizeSignals: { novelty: 'existing-modules', cross_module: false, implicatedFiles: 4 },
+      routeForced: 'plan',
+    })
+  })
+
+  it('leaves routing null on pre-change depth events (additive fold)', () => {
+    const log = makeLog()
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'depth',
+      profile: 'S',
+      rationale: 'old shape',
+      source: 'override',
+    })
+    expect(replayEvents(log).routing).toBeNull()
+  })
+
   it('rebuilds stage map, current round, and gate state from the log alone', () => {
     const log = makeLog()
     const seq: Array<Parameters<typeof appendEvent>[1]> = [
@@ -265,6 +311,132 @@ describe('children fold (3.3)', () => {
     expect(folder.state.children).toEqual({ alpha: { status: 'running' } })
     folder.fold({ altitude: 'L2', type: 'child_done', child: 'alpha', outcome: 'done' })
     expect(folder.state.children).toEqual({ alpha: { status: 'done' } })
+  })
+})
+
+describe('concerns fold (loop-memory D5)', () => {
+  it('the finding event schema accepts and preserves an optional fingerprint', () => {
+    const log = makeLog()
+    const stamped = appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'finding',
+        action: 'classified',
+        id: 'F1',
+        round: 1,
+        class: 'MATERIAL',
+        fingerprint: 'fp-a',
+      },
+      at('00'),
+    )
+    expect(stamped).toMatchObject({ type: 'finding', fingerprint: 'fp-a' })
+  })
+
+  it('folds per-fingerprint concern history from fingerprinted finding events', () => {
+    const log = makeLog()
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'finding',
+        action: 'classified',
+        id: 'F2',
+        round: 1,
+        class: 'MATERIAL',
+        fingerprint: 'fp-a',
+      },
+      at('00'),
+    )
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'finding',
+        action: 'resolved',
+        id: 'F2',
+        round: 1,
+        class: 'MATERIAL',
+        fingerprint: 'fp-a',
+      },
+      at('01'),
+    )
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'finding',
+        action: 'classified',
+        id: 'S1',
+        round: 2,
+        class: 'MATERIAL',
+        fingerprint: 'fp-a',
+      },
+      at('02'),
+    )
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'finding',
+        action: 'classified',
+        id: 'F9',
+        round: 2,
+        class: 'NITPICK',
+        fingerprint: 'fp-b',
+      },
+      at('03'),
+    )
+    const state = replayEvents(log)
+    expect(state.concerns).toMatchObject({
+      'fp-a': {
+        entries: [
+          { round: 1, id: 'F2', class: 'MATERIAL', action: 'classified' },
+          { round: 1, id: 'F2', class: 'MATERIAL', action: 'resolved' },
+          { round: 2, id: 'S1', class: 'MATERIAL', action: 'classified' },
+        ],
+      },
+      'fp-b': { entries: [{ round: 2, id: 'F9', class: 'NITPICK', action: 'classified' }] },
+    })
+  })
+
+  it('folds pre-change logs to empty concerns without touching any other fold', () => {
+    const log = makeLog()
+    appendEvent(
+      log,
+      { altitude: 'L2', type: 'finding', action: 'classified', id: 'F2', round: 1, class: 'MATERIAL' },
+      at('00'),
+    )
+    appendEvent(
+      log,
+      { altitude: 'L2', type: 'finding', action: 'resolved', id: 'F2', round: 1, class: 'NITPICK' },
+      at('01'),
+    )
+    appendEvent(
+      log,
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 1,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 1 },
+      },
+      at('02'),
+    )
+    const state = replayEvents(log)
+    expect(state.concerns).toEqual({})
+    // A pre-change log carries no `open`, and the fold reads its absence as
+    // equal to `counts` — the pre-split reading, reproduced exactly.
+    expect(state.perRound).toEqual([
+      {
+        round: 1,
+        counts: { blocker: 0, material: 0, nitpick: 1 },
+        open: { blocker: 0, material: 0, nitpick: 1 },
+        resolved: 1,
+        dismissed: 0,
+        verdict: 'converged',
+      },
+    ])
   })
 })
 

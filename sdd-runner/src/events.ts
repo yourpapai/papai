@@ -19,6 +19,7 @@ export {
   EventInputSchema,
   FindingClassSchema,
   FindingCountsSchema,
+  OversizeSignalsSchema,
   SddEventSchema,
   STAGE_ORDER,
   StageIdSchema,
@@ -32,6 +33,7 @@ export type {
   EventInput,
   FindingClass,
   FindingCounts,
+  OversizeSignals,
   SddEvent,
   StageId,
 } from './event-schemas.js'

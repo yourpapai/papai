@@ -6,13 +6,13 @@
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { AgentLayerDeps } from './agent-layer.js'
 import { runPlanBranch } from './children.js'
 import { autonomyOf } from './config.js'
-import type { DepthProfile, EventInput } from './events.js'
+import type { DepthProfile } from './events.js'
 import { buildBus, logPathFor, nowOf } from './gate-digest.js'
-import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
+import type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 import { resolveTaskSource } from './intake.js'
+import { buildPipelineEnv, tailInputOf } from './pipeline-env.js'
 import {
   isInterruptedPlanBranchResume,
   isPlanParentResume,
@@ -20,16 +20,12 @@ import {
   runContinuationStart,
 } from './plan-resume.js'
 import type { PlanChild } from './plan.js'
-import { runPlanningStages, runReviewStage } from './planning-stages.js'
-import type { FreshInput, PipelineEnv } from './planning-stages.js'
+import { runPlanningStages, runReviewStage, runVerificationRound } from './planning-stages.js'
 import { runPostReviewToGate } from './post-review-tail.js'
 import type { Verbosity } from './renderer.js'
 import { resumeFromPoint } from './resume-flow.js'
 import { deriveResumeDecision, reportResumeDecision, settleStoppedResult } from './resume-flow.js'
-import type { ReviewLoopResult } from './review-loop.js'
-import { createRunState, loadRunState, resolveRoundCap, saveRunState } from './run-state.js'
-import type { RunState } from './run-state.js'
-import { createStageMachine } from './stage-machine.js'
+import { createRunState, loadRunState } from './run-state.js'
 import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controller.js'
 
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
@@ -48,6 +44,8 @@ export interface StartOptions {
   /** Explicit session name; defaults to the first heading of inline text. */
   readonly changeName?: string
   readonly depthOverride?: DepthProfile
+  /** Operator routing override (D3): force the plan branch at intake. */
+  readonly forcePlan?: boolean
   readonly verbosity?: Verbosity
   readonly autonomy?: AutonomyOverrides
   /** Tree spend baseline (D10) a nested run adds before its single-ceiling compare. */
@@ -56,6 +54,14 @@ export interface StartOptions {
   readonly child?: PlanChild
   /** Reports the fresh run dir (D11) before stage work so a parent can propagate calm-stop. */
   readonly onRunDirReady?: (runDir: string) => void
+}
+
+export interface RunResumeResult {
+  readonly runId: string
+  readonly halted: 'gate' | 'gate-pending' | 'stopped' | 'completed'
+  readonly gateMdPath?: string
+  readonly version?: number
+  readonly childRunId?: string
 }
 
 export interface RunResumeResult {
@@ -91,13 +97,18 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
       taskText,
       changeName,
       depthOverride: options.depthOverride,
+      forcePlan: options.forcePlan,
       autonomy: autonomyOf(deps.config, options.autonomy?.deadlineMinutes),
     })
     const planned = await runPlanningStages(env, stop)
     const halted =
       planned.kind === 'plan'
         ? await runPlanBranch(env.deps, env.state, env.ctx, planned.children)
-        : await runPostReviewToGate(tailInputOf(env, planned.depth, planned.reviewResult))
+        : await runPostReviewToGate(
+            tailInputOf(env, planned.depth, planned.reviewResult, 1, (result) =>
+              runVerificationRound(env, planned.depth, result),
+            ),
+          )
     await settleStoppedResult(deps, state, stop, halted)
     return halted
   } finally {
@@ -141,7 +152,9 @@ export async function runResume(
       {
         runReviewStage: (d, entry) => runReviewStage(env, d, '', entry, stop),
         runPostReviewToGate: (d, reviewResult, version) =>
-          runPostReviewToGate(tailInputOf(env, d, reviewResult, version)),
+          runPostReviewToGate(
+            tailInputOf(env, d, reviewResult, version, (unverified) => runVerificationRound(env, d, unverified)),
+          ),
       },
       decision,
       depth,
@@ -151,59 +164,4 @@ export async function runResume(
     removeHolder(state.runDir)
     deps.unmountRunScreen?.()
   }
-}
-
-function buildPipelineEnv(
-  deps: OrchestratorDeps,
-  state: RunState,
-  emit: (event: EventInput) => void,
-  input: FreshInput,
-): PipelineEnv {
-  const cwd = deps.config.repoRoot
-  const sidecarDir = path.join(state.runDir, 'sidecars')
-  const changeDir = path.join(cwd, 'openspec', 'changes', input.changeName)
-  const machine = createStageMachine({ emit })
-  const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
-  const ctx: StageContext = { cwd, changeDir, sidecarDir, emit }
-  const resolved: OrchestratorDeps = { ...deps, autonomy: input.autonomy }
-  return { deps: resolved, state, machine, agent, ctx, input }
-}
-
-/** Build the shared post-review tail input from the pipeline env. */
-function tailInputOf(
-  env: PipelineEnv,
-  depth: DepthProfile,
-  reviewResult: ReviewLoopResult,
-  version: number = 1,
-): Parameters<typeof runPostReviewToGate>[0] {
-  return {
-    deps: env.deps,
-    state: env.state,
-    ctx: env.ctx,
-    agent: env.agent,
-    depth,
-    reviewResult,
-    version,
-    runVerification: (result) => runVerificationRound(env, depth, result),
-  }
-}
-
-/**
- * One further review round over edits no reviewer has seen. It raises the
- * persisted cap by one — the round is real spend and the trajectory must show
- * it — and re-enters the loop at the next round, exactly as an extend does.
- */
-async function runVerificationRound(
-  env: PipelineEnv,
-  depth: DepthProfile,
-  result: ReviewLoopResult,
-): Promise<ReviewLoopResult> {
-  env.state.roundCap = resolveRoundCap(env.state) + 1
-  const verified = await runReviewStage(env, depth, env.input.taskText, {
-    startRound: result.rounds + 1,
-    cap: env.state.roundCap,
-  })
-  env.state.round = verified.rounds
-  await saveRunState(env.state, nowOf(env.deps))
-  return verified
 }

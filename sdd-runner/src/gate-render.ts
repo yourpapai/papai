@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ConcernRecord } from './concern-model.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateChild, GateDigestInput, GateFinding } from './gate-model.js'
 import { formatTrajectoryBlock } from './renderer.js'
@@ -185,10 +186,31 @@ function appendBlockers(lines: string[], blockers: readonly GateBlocker[]): void
 
 function appendEarlyCapHitSections(lines: string[], input: GateDigestInput): void {
   if (input.openMaterial.length > 0) appendOpenMaterial(lines, input)
+  if (input.concernHistory !== undefined && input.concernHistory.length > 0) {
+    lines.push('', ...concernHistoryLines(input.concernHistory))
+  }
   if (input.blockers.length === 0 && input.capHitFired) {
     lines.push('', '### Trajectory reviewed', '', '- [ ] T1 I reviewed the trajectory and the open findings above')
   }
   if (input.capHitFired) appendExtendDirective(lines)
+}
+
+/**
+ * Concern-history copy source (loop-memory 3.4): one header line per
+ * thrashing concern (fingerprint excerpt + round span) with its round-by-round
+ * entries beneath — shared by the gate file and the TUI session view.
+ */
+export function concernHistoryLines(records: readonly ConcernRecord[]): string[] {
+  const lines = ['### Concern history', '']
+  for (const record of records) {
+    const excerpt = record.fingerprint.length > 48 ? `${record.fingerprint.slice(0, 48)}…` : record.fingerprint
+    lines.push(`- ${excerpt} (seen r${record.firstRound}..r${record.lastRound})`)
+    for (const entry of record.entries) {
+      const note = entry.outcome === undefined ? '' : ` — ${entry.outcome}`
+      lines.push(`  - r${entry.round} [${entry.id}] ${entry.class} ${entry.resolution}${note}`)
+    }
+  }
+  return lines
 }
 
 function appendOpenMaterial(lines: string[], input: GateDigestInput): void {

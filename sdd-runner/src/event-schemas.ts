@@ -13,6 +13,14 @@ export const STAGE_ORDER: readonly StageId[] = ['intake', 'draft', 'review', 'de
 export const DepthProfileSchema = z.enum(['S', 'M', 'L'])
 export type DepthProfile = z.infer<typeof DepthProfileSchema>
 
+/** The oversize-verdict inputs the runner weighed (auditable routing record). */
+export const OversizeSignalsSchema = z.object({
+  novelty: z.enum(['new-subsystem', 'existing-modules']),
+  cross_module: z.boolean(),
+  implicatedFiles: z.number().int().nonnegative(),
+})
+export type OversizeSignals = z.infer<typeof OversizeSignalsSchema>
+
 export const AgentUsageSchema = z.object({
   inputTokens: z.number().nonnegative(),
   outputTokens: z.number().nonnegative(),
@@ -121,6 +129,8 @@ const FindingEvent = z.object({
   round: z.number().int().positive(),
   class: FindingClassSchema.optional(),
   detail: z.string().optional(),
+  /** Concern fingerprint (loop-memory D5, additive): joins this event to its cross-round concern. */
+  fingerprint: z.string().min(1).optional(),
 })
 
 const AssumptionEvent = z.object({
@@ -161,6 +171,8 @@ const DepthEvent = z.object({
   source: z.enum(['override', 'estimator', 'prescreen']),
   disagreement: z.boolean().optional(),
   oversize: z.boolean().optional(),
+  oversizeSignals: OversizeSignalsSchema.optional(),
+  routeForced: z.enum(['plan', 'depth']).optional(),
 })
 
 const GateEvent = z.object({
@@ -211,7 +223,7 @@ const ResumeEvent = z.object({
 export const AutoDecisionRuleSchema = z.enum(['R1', 'R2', 'R3', 'R4', 'R5', 'none'])
 export type AutoDecisionRule = z.infer<typeof AutoDecisionRuleSchema>
 
-export const AutoDecisionKindSchema = z.enum(['preview', 'approve', 'extend', 'accept-items', 'gate'])
+export const AutoDecisionKindSchema = z.enum(['preview', 'approve', 'extend', 'accept-items', 'gate', 'pending'])
 export type AutoDecisionKind = z.infer<typeof AutoDecisionKindSchema>
 
 const AutoDecisionEvent = z.object({

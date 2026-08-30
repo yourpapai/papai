@@ -466,7 +466,7 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
       const fixture = await makePreludeFixture([])
       const deps: import('../../sdd-runner/src/gate-digest.js').OrchestratorDeps = {
         ...fixture.deps,
-        autonomy: { level: 'assist', costCeilingUsd: 5 },
+        autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
       }
       const first = await presentGateAt(deps, fixture.state, ctxOf(fixture), CONVERGED, 1, 'final')
       expect(first.halted).toBe('gate')
@@ -511,6 +511,7 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
         autonomy: {
           level: 'assist' as const,
           costCeilingUsd: 5,
+          metered: true,
           deadlineMinutes: 10,
         },
       }
@@ -532,6 +533,7 @@ describe('presentGateAt policy prelude (observe + integrity cross-checks)', () =
         autonomy: {
           level: 'assist' as const,
           costCeilingUsd: 5,
+          metered: true,
         },
       }
       const state = await loadRunState(fixture.deps.config.workDir, fixture.state.runId)

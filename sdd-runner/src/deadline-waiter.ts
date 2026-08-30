@@ -3,8 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -13,11 +12,16 @@ import { carriesDecision } from './gate-answered.js'
 import type { OrchestratorDeps } from './gate-digest.js'
 
 type ResumeGate = (deps: OrchestratorDeps, runId: string, options: GateResumeOptions) => Promise<RunGateResumeResult>
+import type { PolicyDecision } from './auto-policy.js'
+import { digestOf, processExpiry } from './expiry-settle.js'
 import type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
 import { nowOf } from './gate-digest.js'
+export { digestOf }
 import { runPolicyLadder } from './gate-prelude.js'
+import { readReviewResultFromSidecars } from './gate-sidecars.js'
+import { gatherGateSignals } from './gate-signals.js'
 import { consumeSteerFile } from './review-loop.js'
-import { loadRunState, narrowGateMode, saveRunState } from './run-state.js'
+import { loadRunState, narrowGateMode } from './run-state.js'
 import type { RunState } from './run-state.js'
 
 /**
@@ -38,10 +42,6 @@ export function shouldEnterWaiter(input: {
 
 export function isExternallySettled(state: RunState): boolean {
   return state.gate === null
-}
-
-export function digestOf(md: string): string {
-  return createHash('sha256').update(md).digest('hex')
 }
 
 /**
@@ -70,40 +70,6 @@ export function translateSteer(
     return { outcome: directive, warn: `steer: extend is not valid at a ${gateMode} gate — skipped` }
   }
   return { outcome: directive, warn: null }
-}
-
-/**
- * Deadline expiry handling (D11 / 12.3): reload state immediately before any
- * write, claim the gate via exclusive-create `gate-<n>.expiry-claim` (loser
- * exits), and re-arm at most once (`gateDeadlineReArmed` persisted before the
- * re-armed deadline is written). Never auto-aborts: with no conservative
- * branch available the gate stays pending; after one re-arm it stays pending
- * indefinitely. The claim file remains as an append-only audit artifact.
- */
-export async function processExpiry(
-  workDir: string,
-  runId: string,
-  reArmMinutes: number,
-  trySettle: (state: RunState) => Promise<boolean>,
-): Promise<'claimed-and-settled' | 'claimed-rearmed' | 'claimed-stay-pending' | 'lost-claim'> {
-  const state = await loadRunState(workDir, runId)
-  const version = state.gate?.version
-  if (state.gate === null || version === undefined || state.gateDeadlineAt === null) {
-    return 'lost-claim'
-  }
-  const claimPath = path.join(state.runDir, `gate-${version}.expiry-claim`)
-  try {
-    writeFileSync(claimPath, `${new Date().toISOString()}\n`, { flag: 'wx' })
-  } catch {
-    return 'lost-claim'
-  }
-  const settled = await trySettle(state)
-  if (settled) return 'claimed-and-settled'
-  if (state.gateDeadlineReArmed) return 'claimed-stay-pending'
-  state.gateDeadlineReArmed = true
-  state.gateDeadlineAt = new Date(Date.now() + reArmMinutes * 60_000).toISOString()
-  await saveRunState(state)
-  return 'claimed-rearmed'
 }
 
 /** Poll one gate file for a hand-edit answer (used by the 1s waiter loop). */
@@ -171,7 +137,7 @@ export function awaitGateDeadline(
     const resumed = await maybeResume(deps, state, runId, digests, resume)
     if (resumed !== null) return resumed
     if (expiryDue(state)) {
-      const handled = await handleExpiry(deps, state, runId, reArmMinutes)
+      const handled = await handleExpiry(deps, state, runId, reArmMinutes, resume)
       if (handled !== null) return handled
     }
     const next = await nextDigestsOf(state, digests)
@@ -211,11 +177,22 @@ async function handleExpiry(
   state: RunState,
   runId: string,
   reArmMinutes: number,
+  resume: ResumeGate,
 ): Promise<RunGateResumeResult | null> {
-  const outcome = await processExpiry(deps.config.workDir, runId, reArmMinutes, (claimed) =>
-    conservativeBranchApplies(deps, claimed),
-  )
-  if (outcome === 'claimed-and-settled' || outcome === 'lost-claim') {
+  let settled: RunGateResumeResult | null = null
+  const outcome = await processExpiry(deps.config.workDir, runId, reArmMinutes, async (claimed) => {
+    const decision = await conservativeBranchApplies(deps, claimed)
+    if (decision === null) return null
+    settled =
+      decision.action === 'extend'
+        ? await resume(deps, runId, { extend: true })
+        : await resume(deps, runId, { confirmAll: true })
+    return decision
+  })
+  if (outcome === 'claimed-and-settled') {
+    return settled ?? { runId, outcome: 'approved', version: state.gate?.version ?? 0 }
+  }
+  if (outcome === 'lost-claim') {
     return { runId, outcome: 'approved', version: state.gate?.version ?? 0 }
   }
   deps.stdout?.('\x07auto-deadline: no safe policy branch — gate stays pending')
@@ -257,40 +234,37 @@ function steerOptionsFor(steer: SteerLanding, state: RunState, deps: Orchestrato
 }
 
 /**
- * Expiry re-runs the ladder with `deadlineExpired` semantics permitting only
- * conservative branches (R1 approve, else R2 extend, else stay pending). A
- * plan gate has no conservative branch (the plan prelude can only gate — no
- * rule settles or extends at plan mode), so it stays pending.
+ * Expiry re-runs the ladder over the run's real gate state — sidecar review
+ * result, replayed trajectory, and gathered cost signals — through the same
+ * `runPolicyLadder` the gate prelude uses, so the two ladders cannot differ
+ * on what they may decide for the same gate (R4's metered treatment
+ * included). Conservative restriction at expiry: only R1 approve and R2
+ * extend may settle; everything else stays pending. A plan gate has no
+ * conservative branch, so it stays pending.
  */
-function conservativeBranchApplies(deps: OrchestratorDeps, claimed: RunState): Promise<boolean> {
-  if (claimed.gate?.mode === 'plan') return Promise.resolve(false)
-  const decision = runPolicyLadder(
+async function conservativeBranchApplies(deps: OrchestratorDeps, claimed: RunState): Promise<PolicyDecision | null> {
+  if (claimed.gate?.mode === 'plan') return null
+  const mode = narrowGateMode(claimed.gate?.mode ?? 'final')
+  const ctx = {
+    cwd: deps.config.repoRoot,
+    changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', claimed.changeName),
+    sidecarDir: path.join(claimed.runDir, 'sidecars'),
+    emit: (): void => undefined,
+  }
+  const reviewResult = await readReviewResultFromSidecars(
+    ctx.sidecarDir,
+    claimed.round,
+    mode === 'early' ? 'cap-hit' : 'converged',
+  )
+  const signals = await gatherGateSignals(deps, claimed, ctx, reviewResult)
+  const evaluation = runPolicyLadder(
     { ...deps, autonomy: { ...(deps.autonomy ?? AUTONOMY_DEFAULTS) } },
     claimed,
-    {
-      cwd: deps.config.repoRoot,
-      changeDir: path.join(deps.config.repoRoot, 'openspec', 'changes', claimed.changeName),
-      sidecarDir: path.join(claimed.runDir, 'sidecars'),
-      emit: (): void => undefined,
-    },
-    {
-      outcome: 'converged',
-      rounds: claimed.round,
-      verdict: 'converged',
-      raised: { blocker: 0, material: 0, nitpick: 0 },
-      openBlockers: [],
-      openMaterial: [],
-      openNitpicks: [],
-    },
-    {
-      mode: narrowGateMode(claimed.gate?.mode ?? 'final'),
-      version: claimed.gate?.version ?? 1,
-      events: [],
-      costUsd: 0,
-      costKnown: false,
-      assumptions: [],
-      trajectory: [],
-    },
+    ctx,
+    reviewResult,
+    { mode, version: claimed.gate?.version ?? 1, ...signals },
   )
-  return Promise.resolve(decision.decision.action === 'approve' || decision.decision.action === 'extend')
+  const action = evaluation.decision.action
+  if (action === 'approve' || action === 'extend') return evaluation.decision
+  return null
 }
