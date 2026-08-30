@@ -9,4 +9,4 @@
 
 ## 3. Close-out
 
-- [ ] 3.1 Full gates: `bun test`, `bun run typecheck`, `bun run lint`; then a live smoke over the 8-workdir corpus expecting `cost-unknown ×9 · preview ×2` for the 11 eligible states (acceptance: the breakdown reproduces the gap investigation's hand decomposition exactly). Verify: `bun run test:status`
+- [x] 3.1 Full gates: `bun test`, `bun run typecheck`, `bun run lint`; then a live smoke over the 8-workdir corpus expecting `cost-unknown ×9 · preview ×2` for the 11 eligible states (acceptance: the breakdown reproduces the gap investigation's hand decomposition exactly). Verify: `bun run test:status`
