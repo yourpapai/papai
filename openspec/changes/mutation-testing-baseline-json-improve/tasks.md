@@ -17,7 +17,7 @@ discipline; CI is the hard gate.
 
 ## 2. Gate verdict surface (`scripts/mutation/gates.ts`, `scripts/mutation/changed-files.ts`)
 
-- [ ] 2.1 Write failing tests in `tests/scripts/mutation/gates.test.ts`: `GateVerdict` gains `warnings: readonly string[]` defaulting to `[]`; a pass-with-dilution run exits 0 carrying warnings; the regression message renders kills in the form `file score < floor, kills m < n recorded`. Verify: `bun test tests/scripts/mutation/gates.test.ts` (red).
+- [x] 2.1 Write failing tests in `tests/scripts/mutation/gates.test.ts`: `GateVerdict` gains `warnings: readonly string[]` defaulting to `[]`; a pass-with-dilution run exits 0 carrying warnings; the regression message renders kills in the form `file score < floor, kills m < n recorded`. Verify: `bun test tests/scripts/mutation/gates.test.ts` (red).
 - [x] 2.2 Implement the warnings channel in `scripts/mutation/gates.ts`: `GateVerdict` gains `warnings: readonly string[]` defaulting to `[]`, and a pass-with-dilution run exits 0 carrying warnings (the failure surface stays one exit code; warnings ride in the verdict). Verify: `bun test tests/scripts/mutation/gates.test.ts` (warnings cases green; the kills-rendering message cases stay red until 2.3).
 - [x] 2.3 Render the kills in the regression message in `scripts/mutation/gates.ts` in the form `file score < floor, kills m < n recorded`. Verify: `bun test tests/scripts/mutation/gates.test.ts` (green — completes 2.1).
 - [x] 2.4 Write failing tests in `tests/scripts/mutation/changed-files.test.ts`: each dilution prints a `WARN` log line naming the file, its held kill count, and both scores; the existing verbatim regression-message pins updated to the kills-rendering form. Verify: `bun test tests/scripts/mutation/changed-files.test.ts` (red).
@@ -55,5 +55,5 @@ discipline; CI is the hard gate.
 
 ## 7. Verification
 
-- [ ] 7.1 Run `bun check:full` and the full targeted suites; confirm every 1.x–5.x test is green and no other suite regressed. Verify: `bun run check:full && bun run test tests/scripts/mutation tests/mutation-improve` (all green).
-- [ ] 7.2 Confirm enforcement never weakened during migration: a legacy bare entry still fails a below-floor score and the committed `scripts/mutation/baseline.json` still parses under the dual-shape loader (both pinned by the 1.x suites 7.1 ran), then exercise the live gate on the branch for ratchet + warning behavior. Verify: `bun run test:mutate:changed --base=master` (passes).
+- [x] 7.1 Run `bun check:full` and the full targeted suites; confirm every 1.x–5.x test is green and no other suite regressed. Verify: `bun run check:full && bun run test tests/scripts/mutation tests/mutation-improve` (all green).
+- [x] 7.2 Confirm enforcement never weakened during migration: a legacy bare entry still fails a below-floor score and the committed `scripts/mutation/baseline.json` still parses under the dual-shape loader (both pinned by the 1.x suites 7.1 ran), then exercise the live gate on the branch for ratchet + warning behavior. Verify: `bun run test:mutate:changed --base=master` (passes).
