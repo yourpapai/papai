@@ -5,7 +5,15 @@
 
 import { readEvents } from './events.js'
 import { STAGE_ORDER } from './events.js'
-import type { AutoDecisionRule, DepthProfile, EventInput, FindingCounts, StageId } from './events.js'
+import type {
+  AutoDecisionRule,
+  DepthProfile,
+  EventInput,
+  FindingClass,
+  FindingCounts,
+  OversizeSignals,
+  StageId,
+} from './events.js'
 
 export interface DigestRecord {
   readonly round: number
@@ -17,7 +25,7 @@ export interface DigestRecord {
 
 export interface AutoDecisionRecord {
   readonly rule: AutoDecisionRule
-  readonly decision: 'preview' | 'approve' | 'extend' | 'accept-items' | 'gate'
+  readonly decision: 'preview' | 'approve' | 'extend' | 'accept-items' | 'gate' | 'pending'
   readonly evidenceDigest: string
   readonly gateVersion: number
   readonly seq: number
@@ -37,6 +45,23 @@ export interface ReplayState {
   } | null
   readonly autoDecisions: readonly AutoDecisionRecord[]
   readonly children: Readonly<Record<string, { readonly status: 'pending' | 'running' | 'done' | 'failed' }>>
+  /** Per-fingerprint concern history (loop-memory D5, additive): old logs fold to {}. */
+  readonly concerns?: Readonly<Record<string, { readonly entries: readonly ConcernEntry[] }>>
+  /** Oversize routing record (estimator-signals, additive): replayed states always carry it; hand-built literals may omit. */
+  readonly routing?: RoutingRecord | null
+}
+
+export interface RoutingRecord {
+  readonly oversize: boolean
+  readonly oversizeSignals?: OversizeSignals
+  readonly routeForced?: 'plan' | 'depth'
+}
+
+export interface ConcernEntry {
+  readonly round: number
+  readonly id: string
+  readonly class: FindingClass | undefined
+  readonly action: 'filed' | 'classified' | 'resolved' | 'dismissed'
 }
 
 interface RoundDigest {
@@ -65,6 +90,24 @@ export function initialReplayState(): ReplayState {
     gate: null,
     autoDecisions: [],
     children: {},
+    concerns: {},
+    routing: null,
+  }
+}
+
+/** Depth fold: profile always; the routing record only when routing fields are present (additive). */
+function foldDepthEvent(state: ReplayState, event: Extract<EventInput, { type: 'depth' }>): ReplayState {
+  if (event.oversize === undefined && event.routeForced === undefined) {
+    return { ...state, depth: event.profile }
+  }
+  return {
+    ...state,
+    depth: event.profile,
+    routing: {
+      oversize: event.oversize === true,
+      ...(event.oversizeSignals === undefined ? {} : { oversizeSignals: event.oversizeSignals }),
+      ...(event.routeForced === undefined ? {} : { routeForced: event.routeForced }),
+    },
   }
 }
 
@@ -89,6 +132,29 @@ function foldChildEvent(state: ReplayState, event: EventInput): ReplayState | nu
   return null
 }
 
+function foldFindingEvent(
+  state: ReplayState,
+  event: Extract<EventInput, { type: 'finding' }>,
+  pending: Map<number, RoundDigest>,
+): ReplayState {
+  let folded: ReplayState | null = null
+  if (event.fingerprint !== undefined) {
+    const existing = state.concerns?.[event.fingerprint]?.entries ?? []
+    const entry: ConcernEntry = { round: event.round, id: event.id, class: event.class, action: event.action }
+    folded = {
+      ...state,
+      concerns: { ...state.concerns, [event.fingerprint]: { entries: [...existing, entry] } },
+    }
+  }
+  const target = folded ?? state
+  if (event.action === 'resolved' || event.action === 'dismissed') {
+    const entry = pending.get(event.round) ?? { resolved: 0, dismissed: 0 }
+    entry[event.action] += 1
+    pending.set(event.round, entry)
+  }
+  return target
+}
+
 function foldEvent(state: ReplayState, event: EventInput, pending: Map<number, RoundDigest>): ReplayState {
   if (event.type === 'stage_enter') {
     const stages = { ...state.stages }
@@ -97,16 +163,9 @@ function foldEvent(state: ReplayState, event: EventInput, pending: Map<number, R
     return { ...state, stages }
   }
   if (event.type === 'stage_exit') return { ...state, stages: { ...state.stages, [event.stage]: 'done' } }
-  if (event.type === 'depth') return { ...state, depth: event.profile }
+  if (event.type === 'depth') return foldDepthEvent(state, event)
   if (event.type === 'round_open') return { ...state, round: { current: event.round, cap: event.cap } }
-  if (event.type === 'finding') {
-    if (event.action === 'resolved' || event.action === 'dismissed') {
-      const entry = pending.get(event.round) ?? { resolved: 0, dismissed: 0 }
-      entry[event.action] += 1
-      pending.set(event.round, entry)
-    }
-    return state
-  }
+  if (event.type === 'finding') return foldFindingEvent(state, event, pending)
   if (event.type === 'convergence') {
     const counts = pending.get(event.round) ?? { resolved: 0, dismissed: 0 }
     pending.delete(event.round)

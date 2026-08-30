@@ -329,16 +329,15 @@ describe('holder lifecycle (process ownership)', () => {
   it('an oversize intake routes into the plan branch: no draft/review stages, no parent change folder', async () => {
     const fixture = makeFixture({
       'depth.json': JSON.stringify({
-        implicated_files: ['src/a.ts'],
+        implicated_files: Array.from({ length: 36 }, (_, i) => `src/kb/file-${i}.ts`),
         signals: {
-          cross_module: false,
+          cross_module: true,
           db_migration: false,
           provider_surface: false,
           credentials: false,
-          novelty: 'existing-modules',
+          novelty: 'new-subsystem',
         },
-        rationale: 'declared scope too large for one change',
-        oversize: true,
+        rationale: 'new knowledge-base subsystem across chat, tools, and storage',
       }),
       'plan-draft.json': JSON.stringify({
         children: [
@@ -729,6 +728,68 @@ describe('runResume', () => {
     expect(reviewerSpawns.every((p) => p.includes('convention sentinel XYZ'))).toBe(true)
     const steerWarnings = stdoutLines.filter((l) => l.startsWith('steer:'))
     expect(steerWarnings.join('\n')).toContain('unknown directive: nonsense directive')
+  })
+
+  it('a review-stage resume without conventions or a stdout sink still reaches the gate with an empty conventions block', async () => {
+    const fixture = makeFixture()
+    const workDir = fixture.deps.config.workDir
+    const runId = 'seeded-review-bare'
+    const runDir = path.join(workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.mkdirSync(path.join(fixture.changeDir, 'specs', 'thing'), { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'), '## ADDED Requirements\n')
+    const now = '2026-01-01T00:00:00.000Z'
+    const events = [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake', seq: 1, ts: now },
+      { altitude: 'L2', type: 'depth', profile: 'M', rationale: 'override', source: 'override', seq: 2, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'intake', seq: 3, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'draft', seq: 4, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'draft', seq: 5, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'review', seq: 6, ts: now },
+    ]
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), events.map((e) => JSON.stringify(e)).join('\n') + '\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir,
+          changeName: fixture.changeName,
+          stage: 'draft',
+          depth: 'M',
+          round: 0,
+          gate: null,
+          status: 'running',
+          createdAt: now,
+          updatedAt: now,
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    fs.writeFileSync(path.join(runDir, 'steer.md'), 'nonsense directive\n')
+
+    const prompts: string[] = []
+    const settled = createSettledDriver(fixture)
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      driver: settled,
+      stdout: undefined,
+      spawn: (command, args, options) => {
+        prompts.push(String(args[args.length - 1]))
+        return fixture.deps.spawn(command, args, options)
+      },
+    }
+    const result = await runResume(deps, runId)
+    expect(result.halted).toBe('gate')
+    const reviewerSpawns = prompts.filter((p) => /findings-\d+\.json/u.test(p))
+    expect(reviewerSpawns.length).toBeGreaterThan(0)
+    expect(reviewerSpawns.every((p) => p.includes('## Conventions\n\n\n## Rubric'))).toBe(true)
+    const resolverPrompts = prompts.filter((p) => p.startsWith('You are the resolver'))
+    expect(resolverPrompts.length).toBeGreaterThan(0)
+    expect(resolverPrompts.every((p) => p.includes('## Task description\n\n\n## Conventions'))).toBe(true)
   })
 
   it('re-enters at decompose after an interrupted post-review stage and continues to the final gate (task 3.3)', async () => {
@@ -1367,7 +1428,7 @@ describe('runGateResume flags + TTY wiring (tasks 4.5-4.6)', () => {
     expect(result.outcome).toBe('veto')
     const gate2 = fs.readFileSync(path.join(runDir, 'gate-2.md'), 'utf8')
     expect(gate2).toContain('### Open MATERIAL findings at cap (reviewed)')
-    expect(gate2).toContain('- [ ] F1 F1')
+    expect(gate2).toContain('- [ ] F1 design lacks rollback')
     expect(gate2).toContain('resolver: edited — narrowed gap')
     expect(gate2).toContain('- [ ] T1 I reviewed the trajectory')
   })
@@ -1734,7 +1795,7 @@ describe('runGateResume', () => {
       rounds[`findings-${round}.json`] = JSON.stringify({ findings: [blockerFinding] })
       rounds[`resolutions-${round}.json`] = JSON.stringify({ resolutions: [blockerResolution], assumptions: [] })
     }
-    rounds['findings-skeptic-3.json'] = JSON.stringify({ findings: [blockerFinding] })
+    rounds['findings-skeptic-3.json'] = JSON.stringify({ findings: [{ ...blockerFinding, id: 'S1' }] })
     const fixture = makeFixture(rounds)
     const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
 
@@ -1760,7 +1821,7 @@ describe('runGateResume', () => {
       rounds[`findings-${round}.json`] = JSON.stringify({ findings: [blockerFinding] })
       rounds[`resolutions-${round}.json`] = JSON.stringify({ resolutions: [blockerResolution], assumptions: [] })
     }
-    rounds['findings-skeptic-3.json'] = JSON.stringify({ findings: [blockerFinding] })
+    rounds['findings-skeptic-3.json'] = JSON.stringify({ findings: [{ ...blockerFinding, id: 'S1' }] })
     const fixture = makeFixture(rounds)
     const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
 
@@ -2475,7 +2536,7 @@ describe('assist auto-settle (7.2)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5 },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
 
@@ -2555,7 +2616,7 @@ describe('assist auto-settle (7.2)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5 },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
 
@@ -2635,7 +2696,7 @@ describe('R3 accept-items partial path (7.5)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5 },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
 
@@ -2680,7 +2741,7 @@ describe('R2 trajectory auto-extend (8.2)', () => {
   const materialFinding = (id: string): Record<string, string> => ({
     id,
     class: 'MATERIAL',
-    gap: 'gap grows',
+    gap: `gap grows for ${id}`,
     question: 'q',
     code_evidence_attempted: 'e',
   })
@@ -2711,7 +2772,7 @@ describe('R2 trajectory auto-extend (8.2)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5 },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
 
@@ -2740,7 +2801,7 @@ describe('R2 trajectory auto-extend (8.2)', () => {
     const deps: OrchestratorDeps = {
       ...fixture.deps,
       resolveCost: meteredCost,
-      autonomy: { level: 'assist', costCeilingUsd: 5 },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
     }
     const result = await runStart(deps, { taskFile: fixture.taskFile, depthOverride: 'M' })
     const events = readEvents(path.join(deps.config.workDir, 'runs', result.runId, 'events.ndjson'))
@@ -3338,16 +3399,15 @@ describe('runGateResume plan mode (D12)', () => {
       'findings-skeptic-1.json': JSON.stringify({ findings: [] }),
     })
     const oversizeDepth = JSON.stringify({
-      implicated_files: ['src/a.ts'],
+      implicated_files: Array.from({ length: 36 }, (_, i) => `src/kb/file-${i}.ts`),
       signals: {
-        cross_module: false,
+        cross_module: true,
         db_migration: false,
         provider_surface: false,
         credentials: false,
-        novelty: 'existing-modules',
+        novelty: 'new-subsystem',
       },
-      rationale: 'declared scope too large for one change',
-      oversize: true,
+      rationale: 'new knowledge-base subsystem across chat, tools, and storage',
     })
     const stdoutLines: string[] = []
     let runDir = ''
@@ -3620,5 +3680,47 @@ describe('settlePlanVeto — one re-plan per veto round, unbounded rounds (D6)',
     expect(parent.gate).toBe(null)
     const events = readEvents(path.join(parent.runDir, 'events.ndjson'))
     expect(events.filter((e) => e.type === 'child_spawned')).toHaveLength(0)
+  })
+})
+
+describe('concern-history gate routing (loop-memory 3.3)', () => {
+  const asRecords = (value: unknown): readonly unknown[] =>
+    Array.isArray(value) ? value.map((entry: unknown): unknown => entry) : []
+
+  it('stops a thrashing concern at round 3 with an early gate instead of burning to the L cap', async () => {
+    const recurring = JSON.stringify({
+      findings: [
+        {
+          id: 'F1',
+          class: 'MATERIAL',
+          gap: 'the migration strategy is named drizzle in the proposal only',
+          question: 'q',
+          code_evidence_attempted: 'e',
+        },
+      ],
+    })
+    const recurringResolved = JSON.stringify({
+      resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }],
+      assumptions: [],
+    })
+    const rounds: Record<string, string> = {}
+    for (const round of [1, 2, 3, 4]) {
+      rounds[`findings-${round}.json`] = recurring
+      rounds[`resolutions-${round}.json`] = recurringResolved
+      rounds[`findings-skeptic-${round}.json`] = JSON.stringify({ findings: [] })
+    }
+    const fixture = makeFixture(rounds)
+    const started = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'L' })
+
+    const state = await loadRunState(fixture.deps.config.workDir, started.runId)
+    expect(state.gate?.mode).toBe('early')
+    expect(fixture.spawnOrder).toContain('findings-3.json')
+    expect(fixture.spawnOrder).not.toContain('findings-4.json')
+    const gateMd = fs.readFileSync(started.gateMdPath, 'utf8')
+    expect(gateMd).toContain('### Concern history')
+    expect(gateMd).toContain('(seen r1..r3)')
+    const records = asRecords(JSON.parse(fs.readFileSync(path.join(state.runDir, 'sidecars', 'concerns.json'), 'utf8')))
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({ entries: [{ round: 1 }, { round: 2 }, { round: 3 }] })
   })
 })

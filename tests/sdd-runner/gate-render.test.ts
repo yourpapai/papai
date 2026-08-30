@@ -216,3 +216,148 @@ describe('plan mode (D4)', () => {
     )
   })
 })
+
+describe('writeGateDigest full-output pins', () => {
+  const richBase = {
+    version: 2,
+    changeName: 'add-thing',
+    runId: 'run-9',
+    summary: 'add a thing',
+    costUsd: 1.5,
+    costKnown: true,
+    durationMs: 65000,
+    changeDigest: { what: 'Adds a digest.', why: 'The slug is useless.', touches: ['src/a.ts'], hasTasks: true },
+  }
+
+  it('an early cap-hit gate renders every section byte-for-byte', () => {
+    const md = writeGateDigest({
+      ...richBase,
+      mode: 'early',
+      capHitFired: true,
+      assumptions: [
+        {
+          id: 'A1',
+          text: 'guests stay read-only',
+          blast_radius: 'group replies',
+          evidence: { files: ['src/guard.ts:12'] },
+        },
+      ],
+      blockers: [{ id: 'B1', gap: 'migration untested', evidence: 'drizzle/0007' }],
+      openMaterial: [{ id: 'F1', gap: 'proposal never names the scope id', evidence: 'resolver: edited — narrowed' }],
+      openNitpicks: [{ id: 'F2', gap: 'typo in readme', evidence: 'dismissed — cosmetic' }],
+      trajectory: [
+        { round: 1, verdict: 'open', counts: { blocker: 2, material: 3, nitpick: 1 }, resolved: 1, dismissed: 0 },
+        { round: 2, verdict: 'open', counts: { blocker: 1, material: 2, nitpick: 0 }, resolved: 2, dismissed: 1 },
+      ],
+    })
+    expect(md).toBe(
+      [
+        '<!-- gate-2.md -->',
+        '',
+        '## Early gate (cap hit) — change add-thing',
+        '',
+        'Check every assumption box to approve. Leave a box unchecked to veto (optional `→ <redirect>` beneath).',
+        'Answer a cap-hit blocker with `→ <answer>` beneath it, or `→ OVERRIDE` to override.',
+        'Write `ABORT` on its own line to abort.',
+        '',
+        '### Decisions',
+        '',
+        '- **approve** — continues to task decomposition, atomicity checking, and a final gate',
+        '- **veto** (leave a box unchecked) — runs one resolver pass on the redirects, then re-gates',
+        '- **extend** (`→ RUN 1 MORE`) — runs one more review round, then re-gates (early-gate only)',
+        '- **abort** (`ABORT` on its own line) — ends the run without completing; the only early exit that spends nothing further',
+        '',
+        '### Summary',
+        'add a thing',
+        '',
+        '### Change digest',
+        '',
+        '- **WHAT**: Adds a digest.',
+        '- **WHY**: The slug is useless.',
+        '- **TOUCHES**: src/a.ts',
+        '- **RISKS**: see "Open MATERIAL findings at cap" below',
+        '- **BLAST**: see "Assumptions (blast-ranked)" below',
+        '',
+        '### Cost / duration · $1.50 · 65s · metered',
+        '',
+        '### Cap-hit blockers (answer or override)',
+        '',
+        'B1 migration untested',
+        'evidence: drizzle/0007',
+        '→ <answer or OVERRIDE>',
+        '',
+        '### Cap-hit trajectory',
+        'round 1: 2b 3m 1n · 1 resolved · 0 dismissed · open',
+        'round 2: 1b 2m 0n · 2 resolved · 1 dismissed · open',
+        'sparkline: ▇▄',
+        '',
+        '### Open MATERIAL findings at cap (reviewed)',
+        '',
+        '- [ ] F1 proposal never names the scope id',
+        '  resolver: resolver: edited — narrowed',
+        '',
+        '### Extend',
+        '',
+        '`→ RUN 1 MORE` — runs one more review round, then re-gates (early-gate only; the depth profile stays fixed, only the cap bumps by 1)',
+        '',
+        '### Nitpicks (informational)',
+        '',
+        '- F2 typo in readme',
+        '  resolver: dismissed — cosmetic',
+        '',
+        '### Assumptions (blast-ranked)',
+        '',
+        '- [ ] A1 guests stay read-only',
+        '  blast radius: group replies',
+        '',
+        '### Resume',
+        'sdd run-9',
+      ].join('\n'),
+    )
+  })
+
+  it('a plan gate renders the child rows and shared decisions byte-for-byte', () => {
+    const md = writeGateDigest({
+      ...richBase,
+      blockers: [],
+      assumptions: [],
+      openMaterial: [],
+      openNitpicks: [],
+      trajectory: [],
+      mode: 'plan',
+      capHitFired: false,
+      children: [
+        { id: 'C1', text: 'auth-db — Add the auth database schema.' },
+        { id: 'C2', text: 'auth-api — Add the auth API endpoints.' },
+      ],
+    })
+    expect(md).toBe(
+      [
+        '<!-- gate-2.md -->',
+        '',
+        '## Plan gate — change add-thing',
+        '',
+        'Check every child box to approve the plan. Leave a child box unchecked to veto that child (`→ <redirect>` beneath steers the replan; vetoing every child needs at least one `→` line or `ABORT` — an all-unchecked file reads as no decision).',
+        'Write `ABORT` on its own line to abort.',
+        '',
+        '### Decisions',
+        '',
+        '- **approve** — executes the children sequentially as nested runs in plan order',
+        '- **veto** (leave a box unchecked) — revises the plan once with the redirects, then re-gates',
+        '- **abort** (`ABORT` on its own line) — aborts the parent before any child runs',
+        '',
+        '### Summary',
+        'add a thing',
+        '',
+        '### Cost / duration · $1.50 · 65s · metered',
+        '',
+        '### Children (topo order)',
+        '- [ ] C1 auth-db — Add the auth database schema.',
+        '- [ ] C2 auth-api — Add the auth API endpoints.',
+        '',
+        '### Resume',
+        'sdd run-9',
+      ].join('\n'),
+    )
+  })
+})

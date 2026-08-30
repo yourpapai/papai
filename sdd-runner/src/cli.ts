@@ -36,12 +36,19 @@ export interface CliHarness {
   /** A live terminal owns stdin — enables the interactive session screen paths. */
   readonly interactive?: () => boolean
   /**
+   * Read-only corpus analysis (analyze verb): replays run artifacts over the
+   * given workdirs (empty = the config default) and prints the report; never
+   * routes into any run, gate, or resume flow.
+   */
+  readonly runAnalysis: (workdirs: readonly string[], json: boolean) => Promise<void>
+  /**
    * The session screen loop: one call owns the whole interactive surface
    * (list ⇄ create, actions, notices) and resolves only on explicit quit.
    */
   readonly sessionLoop?: (options: {
     readonly initial: 'list' | 'create'
     readonly depth?: DepthProfile
+    readonly plan?: true
   }) => Promise<void>
   /** Version of the run's most recently answered gate, null when none settled. */
   readonly latestSettledGateVersion?: (runId: string) => Promise<number | null>
@@ -49,23 +56,59 @@ export interface CliHarness {
 
 export interface ParsedRoute {
   readonly target: string | undefined
-  readonly verb: 'route' | 'stop'
+  readonly verb: 'route' | 'stop' | 'analyze'
   readonly depth?: DepthProfile
+  /** Operator routing override (D3): force the plan branch at intake. */
+  readonly plan?: true
   readonly configPath?: string
   readonly pr: boolean
   readonly reopen?: true | number
+  /** analyze-verb payload: workdir positionals (empty = config default) and the JSON mode flag. */
+  readonly analyze?: { readonly workdirs: readonly string[]; readonly json: boolean }
 }
 
 const DEPTH_VALUES: Record<string, DepthProfile> = { S: 'S', M: 'M', L: 'L' }
 
 export function parseSddArgs(argv: readonly string[]): ParsedRoute {
   const args = [...argv]
+  if (args[0] === 'analyze') return parseAnalyzeArgs(args)
   const { verb, target, rest } = parseTargetArg(args)
   let i = rest
   for (; i < args.length && args[i]?.startsWith('-') !== true; i += 1) {
     rejectLegacyShape(verb, target, args[i] ?? '')
   }
   return { target, verb, ...parseFlagArgs(args, i) }
+}
+
+/**
+ * `analyze [workdirs…] [--json] [--config <path>]` — the read-only analysis
+ * invocation: remaining positionals are workdir paths (default: the config's
+ * workDir), and the only flags are `--json` and `--config`.
+ */
+function parseAnalyzeArgs(args: readonly string[]): ParsedRoute {
+  const workdirs: string[] = []
+  let json = false
+  let configPath: string | undefined
+  for (let i = 1; i < args.length; i += 1) {
+    const arg = args[i] ?? ''
+    if (arg === '--json') json = true
+    else if (arg === '--config') {
+      configPath = args[i + 1]
+      if (configPath === undefined) throw new Error('--config requires a path')
+      i += 1
+    } else if (arg.startsWith('-')) {
+      throw new Error(`unknown flag: ${arg} (valid for analyze: --json, --config <path>)`)
+    } else {
+      workdirs.push(arg)
+    }
+  }
+  return {
+    target: undefined,
+    verb: 'analyze',
+    pr: false,
+    ...(configPath === undefined ? {} : { configPath }),
+    analyze: { workdirs, json },
+  }
 }
 
 function parseTargetArg(args: readonly string[]): {
@@ -92,6 +135,7 @@ function rejectLegacyShape(verb: 'route' | 'stop', target: string | undefined, p
 
 interface FlagState {
   readonly depth?: DepthProfile
+  readonly plan?: true
   readonly configPath?: string
   readonly pr: boolean
   readonly reopen?: true | number
@@ -99,6 +143,7 @@ interface FlagState {
 
 function parseFlagArgs(args: readonly string[], start: number): FlagState {
   let depth: DepthProfile | undefined
+  let plan: true | undefined
   let configPath: string | undefined
   let pr = false
   let reopen: true | number | undefined
@@ -110,6 +155,8 @@ function parseFlagArgs(args: readonly string[], start: number): FlagState {
       if (depthValue === undefined) throw new Error(`invalid --depth: ${val} (S|M|L)`)
       depth = depthValue
       i += 1
+    } else if (arg === '--plan') {
+      plan = true
     } else if (arg === '--config') {
       configPath = args[i + 1]
       if (configPath === undefined) throw new Error('--config requires a path')
@@ -129,11 +176,15 @@ function parseFlagArgs(args: readonly string[], start: number): FlagState {
         `${arg} was removed: hand-edit the gate file (gate-<n>.md) as the non-interactive decision path, then rerun \`sdd <run-id>\``,
       )
     } else {
-      throw new Error(`unknown flag: ${arg} (valid: --depth S|M|L, --config <path>, --pr, --reopen [<n>])`)
+      throw new Error(`unknown flag: ${arg} (valid: --depth S|M|L, --plan, --config <path>, --pr, --reopen [<n>])`)
     }
+  }
+  if (plan !== undefined && depth !== undefined) {
+    throw new Error('--plan and --depth conflict: a forced plan branch cannot take an explicit depth')
   }
   return {
     ...(depth === undefined ? {} : { depth }),
+    ...(plan === undefined ? {} : { plan }),
     ...(configPath === undefined ? {} : { configPath }),
     pr,
     ...(reopen === undefined ? {} : { reopen }),
@@ -155,22 +206,35 @@ const REMOVED_FLAGS = new Set([
 
 function requireSessionLoop(
   harness: CliHarness,
-): (options: { readonly initial: 'list' | 'create'; readonly depth?: DepthProfile }) => Promise<void> {
+): (options: {
+  readonly initial: 'list' | 'create'
+  readonly depth?: DepthProfile
+  readonly plan?: true
+}) => Promise<void> {
   if (harness.sessionLoop === undefined) {
     throw new Error('interactive session screen requires a harness with sessionLoop (TTY only)')
   }
   return harness.sessionLoop
 }
 
-async function runInteractive(initial: 'list' | 'create', harness: CliHarness, depth?: DepthProfile): Promise<number> {
+async function runInteractive(
+  initial: 'list' | 'create',
+  harness: CliHarness,
+  depth?: DepthProfile,
+  plan?: true,
+): Promise<number> {
   const loop = requireSessionLoop(harness)
-  await loop({ initial, ...(depth === undefined ? {} : { depth }) })
+  await loop({ initial, ...(depth === undefined ? {} : { depth }), ...(plan === undefined ? {} : { plan }) })
   return 0
 }
 
 export async function main(argv: readonly string[], harness: CliHarness): Promise<number> {
   const parsed = parseSddArgs(argv)
   const tty = harness.interactive?.() === true
+  if (parsed.verb === 'analyze') {
+    await harness.runAnalysis(parsed.analyze?.workdirs ?? [], parsed.analyze?.json === true)
+    return 0
+  }
   if (parsed.verb === 'stop') {
     const action = await resolveTarget({ workDir: harness.workDir, target: parsed.target, verb: 'stop' })
     if (action.kind !== 'stop') throw new Error('stop requires an active run')
@@ -179,8 +243,8 @@ export async function main(argv: readonly string[], harness: CliHarness): Promis
     return 0
   }
   const action = await resolveTarget({ workDir: harness.workDir, target: parsed.target, tty })
-  if (action.kind === 'select') return runInteractive('list', harness, parsed.depth)
-  if (action.kind === 'create') return runInteractive('create', harness, parsed.depth)
+  if (action.kind === 'select') return runInteractive('list', harness, parsed.depth, parsed.plan)
+  if (action.kind === 'create') return runInteractive('create', harness, parsed.depth, parsed.plan)
   if (parsed.reopen !== undefined) {
     if (action.kind === 'start') rejectStartReopen()
     if (action.kind !== 'gate' && action.kind !== 'resume' && action.kind !== 'report') {
@@ -194,6 +258,7 @@ export async function main(argv: readonly string[], harness: CliHarness): Promis
     await harness.runStart({
       taskFile: action.taskFile,
       ...(parsed.depth === undefined ? {} : { depthOverride: parsed.depth }),
+      ...(parsed.plan === undefined ? {} : { forcePlan: true }),
     })
     return 0
   }

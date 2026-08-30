@@ -3,32 +3,31 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import pLimit from 'p-limit'
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+
 import { z } from 'zod'
 
-import { agentWritePath } from '../../review-loop/src/agent-runner.js'
-import { AssumptionRecordSchema, FindingsSidecarSchema, ResolutionSchema, runStageAgent } from './agent-layer.js'
+import { AssumptionRecordSchema, ResolutionSchema } from './agent-layer.js'
 import type { AgentLayerDeps, Finding, Resolution } from './agent-layer.js'
 import type { DepthProfile, EventInput } from './events.js'
 export { consumeSteerFile, parseSteerDirectives, reloadStagedSteer } from './steer.js'
 export type { ParsedSteer, StagedSteer, SteerDirective } from './steer.js'
-import {
-  buildResolverPrompt,
-  buildReviewerPrompt,
-  evaluateConvergence,
-  lensesForRound,
-  mergeLensFindings,
-  readResolutionsLedger,
-  readReviewArtifacts,
-  ROUND_CAPS,
-} from './review-model.js'
+import { concernRecords, detectConcernThrash, fingerprintOf } from './concern-model.js'
+import type { ConcernRecord } from './concern-model.js'
+import { resolveRound, runLenses } from './review-agents.js'
+import { evaluateConvergence, readResolutionsLedger, ROUND_CAPS } from './review-model.js'
 import { consumeSteerFile } from './steer.js'
 import type { SteerDirective } from './steer.js'
 
-export const ResolverOutputSchema = z.object({
-  resolutions: z.array(ResolutionSchema),
-  assumptions: z.array(AssumptionRecordSchema),
-})
+export const ResolverOutputSchema = z
+  .object({
+    resolutions: z.array(ResolutionSchema),
+    assumptions: z.array(AssumptionRecordSchema),
+  })
+  .refine((output) => new Set(output.resolutions.map((entry) => entry.id)).size === output.resolutions.length, {
+    message: 'resolutions must have unique finding ids within a round',
+  })
 export type ResolverOutput = z.infer<typeof ResolverOutputSchema>
 
 export interface ReviewLoopDeps {
@@ -82,75 +81,8 @@ export interface ReviewLoopResult {
   readonly openBlockers: readonly Resolution[]
   readonly openMaterial: readonly Resolution[]
   readonly openNitpicks: readonly Resolution[]
-}
-
-async function runLens(
-  deps: ReviewLoopDeps,
-  options: ReviewLoopOptions,
-  lens: 'reviewer' | 'skeptic',
-  round: number,
-  artifacts: string,
-  ledger: readonly Resolution[],
-  continueSessionId?: string,
-): Promise<Finding[]> {
-  const outputPath = lens === 'skeptic' ? `findings-skeptic-${round}.json` : `findings-${round}.json`
-  const result = await runStageAgent(deps.agent, {
-    role: lens,
-    changeName: options.changeName,
-    cwd: deps.cwd,
-    prompt: buildReviewerPrompt({
-      lens,
-      artifacts,
-      conventions: options.conventions,
-      ledger,
-      outputTarget: agentWritePath(deps.cwd, outputPath),
-    }),
-    outputPath,
-    outputSchema: FindingsSidecarSchema,
-    label: `${lens}-r${round}`,
-    runDir: deps.runDir,
-    round,
-    sidecarDir: deps.sidecarDir,
-    ...(continueSessionId === undefined ? {} : { continueSessionId }),
-  })
-  return result.value.findings
-}
-
-async function runResolver(
-  deps: ReviewLoopDeps,
-  options: ReviewLoopOptions,
-  round: number,
-  artifacts: string,
-  merged: readonly Finding[],
-  continueSessionId?: string,
-): Promise<ResolverOutput> {
-  const result = await runStageAgent(deps.agent, {
-    role: 'resolver',
-    changeName: options.changeName,
-    cwd: deps.cwd,
-    prompt: buildResolverPrompt({
-      artifacts,
-      findings: merged,
-      conventions: options.conventions,
-      taskText: options.taskText,
-      outputTarget: agentWritePath(deps.cwd, `resolutions-${round}.json`),
-    }),
-    outputPath: `resolutions-${round}.json`,
-    outputSchema: ResolverOutputSchema,
-    label: `resolver-r${round}`,
-    runDir: deps.runDir,
-    round,
-    sidecarDir: deps.sidecarDir,
-    ...(continueSessionId === undefined ? {} : { continueSessionId }),
-  })
-  for (const entry of result.value.resolutions) {
-    const action = entry.resolution === 'dismissed' ? 'dismissed' : 'resolved'
-    deps.emit({ altitude: 'L2', type: 'finding', action, id: entry.id, round, class: entry.class })
-  }
-  for (const assumption of result.value.assumptions) {
-    deps.emit({ altitude: 'L2', type: 'assumption', action: 'logged', id: assumption.id })
-  }
-  return result.value
+  /** Thrashing concerns that stopped the loop (loop-memory D5); present only on a concern-history cap-hit. */
+  readonly recurringConcerns?: readonly ConcernRecord[]
 }
 
 /**
@@ -181,36 +113,46 @@ function consumeResumeSession(
   return resumeSession
 }
 
-/** The resume session id for a given spawn label in this round, if it matches. */
-function sessionForLabel(
-  consumedSession: ReviewLoopDeps['resumeSession'],
-  label: string,
-  round: number,
-): string | undefined {
-  if (consumedSession === undefined) return undefined
-  return consumedSession.label === `${label}-r${round}` ? consumedSession.opencodeSessionId : undefined
+function openBucketsOf(resolved: ResolverOutput): {
+  openBlockers: readonly Resolution[]
+  openMaterial: readonly Resolution[]
+  openNitpicks: readonly Resolution[]
+} {
+  return {
+    openBlockers: resolved.resolutions.filter((entry) => entry.class === 'BLOCKER'),
+    openMaterial: resolved.resolutions.filter((entry) => entry.class === 'MATERIAL'),
+    openNitpicks: resolved.resolutions.filter((entry) => entry.class === 'NITPICK'),
+  }
 }
 
-/** Run this round's lenses (bounded 2-way) and merge their findings. */
-async function runLenses(
-  deps: ReviewLoopDeps,
-  options: ReviewLoopOptions,
+function capHitWith(
   round: number,
-  prevOpenBlockers: number,
-  consumedSession: ReviewLoopDeps['resumeSession'],
-): Promise<readonly Finding[]> {
-  const artifacts = await readReviewArtifacts(options.changeDir)
-  const ledger = await readResolutionsLedger(deps.sidecarDir, round)
-  const lenses = lensesForRound(options.depth, round, prevOpenBlockers)
-  const limit = pLimit(2)
-  const perLens = await Promise.all(
-    lenses.map((lens) =>
-      limit(() =>
-        runLens(deps, options, lens, round, artifacts, ledger, sessionForLabel(consumedSession, lens, round)),
-      ),
-    ),
-  )
-  return mergeLensFindings(...perLens)
+  open: ReturnType<typeof openBucketsOf>,
+  recurringConcerns?: readonly ConcernRecord[],
+): ReviewLoopResult {
+  return {
+    outcome: 'cap-hit',
+    rounds: round,
+    openBlockers: open.openBlockers,
+    openMaterial: open.openMaterial,
+    openNitpicks: open.openNitpicks,
+    ...(recurringConcerns === undefined ? {} : { recurringConcerns }),
+  }
+}
+
+/** Emit the round's classified findings with their concern fingerprints (loop-memory D5). */
+function emitClassified(deps: ReviewLoopDeps, merged: readonly Finding[], round: number): void {
+  for (const finding of merged) {
+    deps.emit({
+      altitude: 'L2',
+      type: 'finding',
+      action: 'classified',
+      id: finding.id,
+      round,
+      class: finding.class,
+      fingerprint: fingerprintOf(finding.gap),
+    })
+  }
 }
 
 async function runRound(
@@ -227,36 +169,39 @@ async function runRound(
   // consumes it, and later rounds/spawns are fresh by design (D2).
   const consumedSession = consumeResumeSession(resumeSession, round)
   const merged = await runLenses(deps, options, round, prevOpenBlockers, consumedSession)
-  for (const finding of merged) {
-    deps.emit({ altitude: 'L2', type: 'finding', action: 'classified', id: finding.id, round, class: finding.class })
-  }
-  const artifacts = await readReviewArtifacts(options.changeDir)
-  const resolved = await runResolver(
-    deps,
-    options,
-    round,
-    artifacts,
-    merged,
-    sessionForLabel(consumedSession, 'resolver', round),
-  )
+  emitClassified(deps, merged, round)
+  const resolved = await resolveRound(deps, options, round, merged, consumedSession)
   const { verdict, counts } = evaluateConvergence(resolved.resolutions)
   deps.emit({ altitude: 'L2', type: 'convergence', round, verdict, counts })
   await deps.materialize(round)
+  const concernHistory = await writeConcernSidecar(deps, round)
   deps.emit({ altitude: 'L2', type: 'round_close', round, cap: effectiveCap })
+  const open = openBucketsOf(resolved)
   if (verdict === 'converged') {
-    const openNitpicks = resolved.resolutions.filter((entry) => entry.class === 'NITPICK')
-    return { outcome: 'converged', rounds: round, openBlockers: [], openMaterial: [], openNitpicks }
+    return { outcome: 'converged', rounds: round, openBlockers: [], openMaterial: [], openNitpicks: open.openNitpicks }
   }
-  const openBlockers = resolved.resolutions.filter((entry) => entry.class === 'BLOCKER')
-  const openMaterial = resolved.resolutions.filter((entry) => entry.class === 'MATERIAL')
-  const openNitpicks = resolved.resolutions.filter((entry) => entry.class === 'NITPICK')
+  const recurringConcerns = detectConcernThrash(concernHistory, merged, round)
+  if (recurringConcerns.length > 0) {
+    // Concern-history gate (loop-memory D5): a thrashing concern stops the loop
+    // with an early gate carrying its round-by-round history.
+    return capHitWith(round, open, recurringConcerns)
+  }
   if (deps.stop?.stopRequested() === true) {
     // Calm stop (D6): the in-flight round is fully recorded; do not enter the next.
-    return { outcome: 'cap-hit', rounds: round, openBlockers, openMaterial, openNitpicks }
+    return capHitWith(round, open)
   }
   const nextCap = applySteerAtBoundary(deps, effectiveCap)
-  if (round >= nextCap) return { outcome: 'cap-hit', rounds: round, openBlockers, openMaterial, openNitpicks }
-  return runRound(deps, options, round + 1, nextCap, openBlockers.length)
+  if (round >= nextCap) return capHitWith(round, open)
+  return runRound(deps, options, round + 1, nextCap, open.openBlockers.length)
+}
+
+/** Round-close concern sidecar (loop-memory D5): persist the cross-round concern history. */
+async function writeConcernSidecar(deps: ReviewLoopDeps, round: number): Promise<readonly ConcernRecord[]> {
+  const ledger = await readResolutionsLedger(deps.sidecarDir, round + 1)
+  const records = concernRecords(ledger)
+  await mkdir(path.dirname(path.join(deps.sidecarDir, 'concerns.json')), { recursive: true })
+  await writeFile(path.join(deps.sidecarDir, 'concerns.json'), `${JSON.stringify(records, null, 2)}\n`)
+  return records
 }
 
 export function runReviewLoop(

@@ -264,7 +264,7 @@ describe('resumePlanParent interrupted plan-branch recovery', () => {
       (event) => {
         appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), event)
       },
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -298,7 +298,7 @@ describe('resumePlanParent decompose-split diversion recovery (D5 crash window)'
       (event) => {
         appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), event)
       },
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -328,7 +328,7 @@ describe('resumePlanParent decompose-split diversion recovery (D5 crash window)'
       (event) => {
         appendEvent(path.join(fixture.state.runDir, 'events.ndjson'), event)
       },
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       () => Promise.resolve({ runId: 'must-not-run' }),
     )
 
@@ -360,7 +360,7 @@ describe('resumePlanParent (D9 interception)', () => {
       fixture.deps,
       fixture.state,
       () => undefined,
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -399,7 +399,7 @@ describe('resumePlanParent (D9 interception)', () => {
       fixture.deps,
       fixture.state,
       () => undefined,
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -443,7 +443,7 @@ describe('resumePlanParent (D9 interception)', () => {
       fixture.deps,
       fixture.state,
       () => undefined,
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -470,7 +470,7 @@ describe('resumePlanParent (D9 interception)', () => {
       fixture.deps,
       fixture.state,
       () => undefined,
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -501,7 +501,7 @@ describe('resumePlanParent (D9 interception)', () => {
       fixture.deps,
       fixture.state,
       () => undefined,
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -540,7 +540,7 @@ describe('resumePlanParent plan-gate guard (D5 fail-closed resume)', () => {
       fixture.deps,
       fixture.state,
       appendingEmit(fixture.state),
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -564,7 +564,7 @@ describe('resumePlanParent plan-gate guard (D5 fail-closed resume)', () => {
       fixture.deps,
       fixture.state,
       appendingEmit(fixture.state),
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -585,7 +585,7 @@ describe('resumePlanParent plan-gate guard (D5 fail-closed resume)', () => {
       fixture.deps,
       fixture.state,
       appendingEmit(fixture.state),
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -614,7 +614,7 @@ describe('resumePlanParent plan-gate guard (D5 fail-closed resume)', () => {
       fixture.deps,
       fixture.state,
       appendingEmit(fixture.state),
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -641,7 +641,7 @@ describe('resumePlanParent plan-gate guard (D5 fail-closed resume)', () => {
       fixture.deps,
       fixture.state,
       appendingEmit(fixture.state),
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -657,7 +657,7 @@ describe('resumePlanParent plan-gate guard (D5 fail-closed resume)', () => {
       fixture.deps,
       fixture.state,
       appendingEmit(fixture.state),
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -675,7 +675,7 @@ describe('resumePlanParent plan-gate guard (D5 fail-closed resume)', () => {
       fixture.deps,
       fixture.state,
       appendingEmit(fixture.state),
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 
@@ -693,7 +693,7 @@ describe('resumePlanParent plan-gate guard (D5 fail-closed resume)', () => {
       fixture.deps,
       fixture.state,
       appendingEmit(fixture.state),
-      { level: 'assist', costCeilingUsd: 5 },
+      { level: 'assist', costCeilingUsd: 5, metered: true },
       startChildRun,
     )
 

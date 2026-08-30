@@ -11,16 +11,11 @@ import path from 'node:path'
 import type { AutonomyConfig } from '../../sdd-runner/src/config.js'
 import type { SddEvent } from '../../sdd-runner/src/events.js'
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
-import {
-  blockersOf,
-  buildBus,
-  findingsOf,
-  presentGateAt,
-  readReviewResultFromSidecars,
-} from '../../sdd-runner/src/gate-digest.js'
+import { blockersOf, buildBus, findingsOf, presentGateAt } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps, StageContext } from '../../sdd-runner/src/gate-digest.js'
 import type { GateChild } from '../../sdd-runner/src/gate-model.js'
 import { writeGateDigest } from '../../sdd-runner/src/gate-model.js'
+import { readReviewResultFromSidecars } from '../../sdd-runner/src/gate-sidecars.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
@@ -41,6 +36,14 @@ afterEach(() => {
     if (dir !== undefined) fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+const CONVERGED_REVIEW: ReviewLoopResult = {
+  outcome: 'converged',
+  rounds: 0,
+  openBlockers: [],
+  openMaterial: [],
+  openNitpicks: [],
+}
 
 describe('blockersOf', () => {
   it('maps open blockers to gate blocker entries', () => {
@@ -81,6 +84,21 @@ describe('findingsOf', () => {
       ],
       nitpicks: [],
     })
+  })
+})
+
+describe('findingsOf gap join (loop-memory D7)', () => {
+  const result: ReviewLoopResult = {
+    outcome: 'cap-hit',
+    rounds: 3,
+    openBlockers: [],
+    openMaterial: [{ id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed' }],
+    openNitpicks: [{ id: 'S1', class: 'NITPICK', resolution: 'dismissed', justification: 'j' }],
+  }
+
+  it('falls back to the id when no sidecar entry provides the gap', () => {
+    const findings = findingsOf(result, new Map())
+    expect(findings.material[0]?.gap).toBe('F2')
   })
 })
 
@@ -130,6 +148,38 @@ describe('writeGateDigest cost marker', () => {
     durationMs: 2607_000,
     changeDigest: { what: null, why: null, touches: null, hasTasks: false },
   }
+
+  it('renders the concern-history section round by round when a thrashing concern stopped the loop (loop-memory 3.4)', () => {
+    const md = writeGateDigest({
+      ...base,
+      mode: 'early',
+      costUsd: 0,
+      costKnown: false,
+      openMaterial: [
+        {
+          id: 'F1',
+          gap: 'the migration strategy is named drizzle in the proposal only',
+          evidence: 'edited — narrowed',
+        },
+      ],
+      concernHistory: [
+        {
+          fingerprint: 'migration strategy named drizzle proposal',
+          firstRound: 1,
+          lastRound: 3,
+          entries: [
+            { round: 1, id: 'F2', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' },
+            { round: 2, id: 'F5', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' },
+            { round: 3, id: 'S1', class: 'MATERIAL', resolution: 'edited', outcome: 'narrowed gap' },
+          ],
+        },
+      ],
+    })
+    expect(md).toContain('### Concern history')
+    expect(md).toContain('(seen r1..r3)')
+    expect(md).toContain('r1 [F2] MATERIAL edited — narrowed gap')
+    expect(md).toContain('r3 [S1] MATERIAL edited — narrowed gap')
+  })
 
   it('renders metered when costKnown is true', () => {
     const md = writeGateDigest({ ...base, costUsd: 1.23, costKnown: true })
@@ -346,13 +396,7 @@ describe('presentGateAt plan mode (D5)', () => {
     { id: 'C1', text: 'auth-db — Add the auth database schema.' },
     { id: 'C2', text: 'auth-api — Add the auth API endpoints.' },
   ]
-  const CONVERGED: ReviewLoopResult = {
-    outcome: 'converged',
-    rounds: 0,
-    openBlockers: [],
-    openMaterial: [],
-    openNitpicks: [],
-  }
+  const CONVERGED: ReviewLoopResult = CONVERGED_REVIEW
 
   interface PlanFixture {
     readonly repoRoot: string
@@ -417,7 +461,7 @@ describe('presentGateAt plan mode (D5)', () => {
   })
 
   it('a fired R4 writes the preview block, auto-policy.jsonl line, and auto_decision event with attribution', async () => {
-    const fixture = await makePlanFixture({ level: 'assist', costCeilingUsd: 1 })
+    const fixture = await makePlanFixture({ level: 'assist', costCeilingUsd: 1, metered: true })
     const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, CONVERGED, 1, 'plan', {
       children: PLAN_CHILDREN,
     })
@@ -448,6 +492,90 @@ describe('presentGateAt plan mode (D5)', () => {
     )
     expect(autoDecisions[0]).toMatchObject({ rule: 'none', decision: 'gate' })
     expect(fixture.state.status).toBe('running')
+  })
+
+  it('a plan gate never shows the parent review findings — the surrogate replaces them', async () => {
+    const fixture = await makePlanFixture()
+    const noisy: ReviewLoopResult = {
+      ...CONVERGED,
+      openBlockers: [{ id: 'F9', class: 'BLOCKER', resolution: 'assumed', outcome: 'parent-run blocker' }],
+    }
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, noisy, 1, 'plan', {
+      children: PLAN_CHILDREN,
+    })
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(md).toContain('## Plan gate')
+    expect(md).not.toContain('parent-run blocker')
+    expect(md).toContain('- [ ] C1 auth-db — Add the auth database schema.')
+  })
+})
+
+describe('presentGateAt early mode (cap-hit digest wiring)', () => {
+  const CONCERN_HISTORY = [
+    {
+      fingerprint: 'f'.repeat(16),
+      firstRound: 1,
+      lastRound: 2,
+      entries: [{ round: 1, id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'fixed' }],
+    },
+  ]
+
+  async function makeEarlyFixture(): Promise<{
+    readonly state: RunState
+    readonly deps: OrchestratorDeps
+    readonly ctx: StageContext
+  }> {
+    const repoRoot = makeDir()
+    const workDir = path.join(repoRoot, '.sdd-runner')
+    const state = await createRunState({ workDir, repoRoot, changeName: 'solo' })
+    const logPath = path.join(state.runDir, 'events.ndjson')
+    appendEvent(logPath, { altitude: 'L2', type: 'stage_enter', stage: 'intake' })
+    const deps: OrchestratorDeps = {
+      config: { repoRoot, workDir, model: 'test-model', budget: 5 },
+      spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+      execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+      driver: createOpenSpecDriver({
+        exec: () => Promise.resolve({ stdout: 'ok', stderr: '', exitCode: 0 }),
+        cwd: repoRoot,
+      }),
+      resolveCost: () => null,
+      now: () => new Date('2026-08-12T08:00:00.000Z'),
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true, deadlineMinutes: 10 },
+    }
+    const ctx: StageContext = {
+      cwd: repoRoot,
+      changeDir: path.join(repoRoot, 'openspec', 'changes', 'solo'),
+      sidecarDir: path.join(state.runDir, 'sidecars'),
+      emit: (event) => {
+        appendEvent(logPath, event)
+      },
+    }
+    return { state, deps, ctx }
+  }
+
+  it('an early converged gate presents to the human without cap-hit trajectory or extend directives', async () => {
+    const fixture = await makeEarlyFixture()
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, CONVERGED_REVIEW, 1, 'early')
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(result.halted).toBe('gate')
+    expect(md).not.toContain('### Trajectory reviewed')
+    expect(md).not.toContain('### Extend')
+    expect(fixture.state.status).toBe('running')
+  })
+
+  it('an early cap-hit gate carries the concern history into the digest and reviews the trajectory', async () => {
+    const fixture = await makeEarlyFixture()
+    const capHit: ReviewLoopResult = {
+      ...CONVERGED_REVIEW,
+      outcome: 'cap-hit',
+      recurringConcerns: CONCERN_HISTORY,
+    }
+    const result = await presentGateAt(fixture.deps, fixture.state, fixture.ctx, capHit, 1, 'early')
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(md).toContain('### Concern history')
+    expect(md).toContain('### Trajectory reviewed')
+    expect(md).toContain('- [ ] T1 I reviewed the trajectory and the open findings above')
+    expect(md).toContain('→ RUN 1 MORE')
   })
 })
 
@@ -512,5 +640,26 @@ describe('buildBus subscriber wiring', () => {
     })
     expect(() => buildBus(deps, path.join(dir, 'events.ndjson'))(event)).not.toThrow()
     expect(lines).toEqual(['[event-bus] sink exploded'])
+  })
+
+  it('swallows a throwing subscriber silently when no stdout sink is wired', () => {
+    const dir = makeDir()
+    const deps = makeDeps([], {
+      stdout: undefined,
+      liveEvents: (): void => {
+        throw new Error('sink exploded')
+      },
+    })
+    expect(() => buildBus(deps, path.join(dir, 'events.ndjson'))(event)).not.toThrow()
+  })
+
+  it('wires no subscriber at all when neither liveEvents nor render is present', () => {
+    const dir = makeDir()
+    const lines: string[] = []
+    const deps = makeDeps(lines)
+    const emit = buildBus(deps, path.join(dir, 'events.ndjson'))
+    expect(() => emit(event)).not.toThrow()
+    expect(lines).toEqual([])
+    expect(fs.existsSync(path.join(dir, 'events.ndjson'))).toBe(true)
   })
 })

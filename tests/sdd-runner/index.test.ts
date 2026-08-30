@@ -9,6 +9,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { z } from 'zod'
+
 import { appendEvent } from '../../sdd-runner/src/events.js'
 import { USAGE, readChangeSummary, runEntry } from '../../sdd-runner/src/index.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
@@ -42,6 +44,7 @@ describe('USAGE', () => {
       'Usage:',
       '  sdd [<task-file> | <run-id>] [--depth S|M|L] [--pr] [--reopen [<n>]] [--config <path>]',
       '  sdd stop [<run-id>]',
+      '  sdd analyze [workdirs…] [--json] [--config <path>]',
       '',
       'A task file starts a run; a run id routes by its state (gate decision, resume, report).',
       'No target opens the session screen on a terminal — a loop, not a launcher: pick a run',
@@ -49,6 +52,8 @@ describe('USAGE', () => {
       'description (n), and every finished action returns to the refreshed list; only an explicit',
       'quit (q) exits. Non-terminals keep the list-and-exit contract. Gate decisions: the TUI on',
       'a terminal; else hand-edit the gate file.',
+      'Analyze replays run artifacts read-only across workdirs (default: this worktree) and',
+      'prints a corpus report — it never routes into a run or disturbs pending gates.',
     ])
   })
 })
@@ -287,6 +292,57 @@ describe('runEntry wiring routes (in-process, mutation kills)', () => {
     expect(out).toContain('0/0 tasks complete')
     expect(out).toContain('### Commits on sdd-test-branch')
     expect(out).toContain(`transcripts: runs/${state.runId}/transcripts/`)
+    expect(fx.exitCodes).toEqual([0])
+  })
+
+  it('analyze over explicit workdirs and --json joins stateful runs to ground truth, skips stateless ones', async () => {
+    const fx = makeEntryFixture()
+    const otherDir = makeDir()
+    execFileSync('git', ['init', '-b', 'sdd-test-branch', fx.repoRoot], { stdio: 'ignore' })
+    const stateful = await createRunState({ workDir: fx.workDir, repoRoot: fx.repoRoot, changeName: 'add-thing' })
+    await saveRunState(stateful)
+    fs.writeFileSync(path.join(fx.workDir, 'runs', stateful.runId, 'events.ndjson'), '')
+    fs.mkdirSync(path.join(otherDir, 'runs', 'stateless-run'), { recursive: true })
+    fs.writeFileSync(path.join(otherDir, 'runs', 'stateless-run', 'events.ndjson'), '')
+    fs.mkdirSync(path.join(fx.repoRoot, 'openspec', 'changes', 'add-thing'), { recursive: true })
+    fs.writeFileSync(path.join(fx.repoRoot, 'openspec', 'changes', 'add-thing', 'tasks.md'), '- [x] one\n- [ ] two\n')
+    await expect(
+      runEntryAgainst(fx, ['analyze', fx.workDir, otherDir, '--json', '--config', fx.configPath]),
+    ).rejects.toThrow(/intercepted process\.exit\(0\)/u)
+    const report = z
+      .object({
+        workdirs: z.array(z.string()),
+        runs: z.array(z.object({ runId: z.string() })),
+        groundTruth: z.array(
+          z.object({
+            changeName: z.string(),
+            exists: z.boolean(),
+            tasksDone: z.number(),
+            tasksTotal: z.number(),
+          }),
+        ),
+      })
+      .parse(JSON.parse(fx.writes.join('')))
+    expect(report.workdirs).toEqual([fx.workDir, otherDir])
+    expect(report.runs.map((run) => run.runId).sort()).toEqual([stateful.runId, 'stateless-run'].sort())
+    expect(report.groundTruth).toHaveLength(1)
+    expect(report.groundTruth[0]).toMatchObject({ changeName: 'add-thing', exists: true, tasksDone: 1, tasksTotal: 2 })
+    expect(fx.exitCodes).toEqual([0])
+  })
+
+  it('analyze without positionals replays the config workdir and prints the text report', async () => {
+    const fx = makeEntryFixture()
+    const state = await createRunState({ workDir: fx.workDir, repoRoot: fx.repoRoot, changeName: 'add-thing' })
+    await saveRunState(state)
+    fs.writeFileSync(path.join(fx.workDir, 'runs', state.runId, 'events.ndjson'), '')
+    await expect(runEntryAgainst(fx, ['analyze', '--config', fx.configPath])).rejects.toThrow(
+      /intercepted process\.exit\(0\)/u,
+    )
+    const out = fx.writes.join('')
+    expect(out).toContain('sdd-runner corpus analysis')
+    expect(out).toContain(`workdirs: ${fx.workDir}`)
+    expect(out).toContain('runs: 1')
+    expect(out).toContain(`## run ${state.runId} (${fx.workDir}) — add-thing ·`)
     expect(fx.exitCodes).toEqual([0])
   })
 })

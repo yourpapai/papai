@@ -168,7 +168,9 @@ export async function runChildren(
     if (stop !== undefined && stop.stopRequested()) return calmSettle(deps, state, stop)
     const spend = treeSpend(readEvents(logPathFor(state)), resolve)
     const committed = (state.spendBaselineUsd ?? 0) + spend.spentUsd
-    if (!spend.costKnown || committed >= deps.config.budget) {
+    const metered = deps.config.metered ?? deps.config.budget !== null
+    const overCeiling = deps.config.budget !== null && committed >= deps.config.budget
+    if ((!spend.costKnown && metered) || overCeiling) {
       return stopAtBudgetGuard(deps, state, childId, { ...spend, spentUsd: committed })
     }
     const holder = await stopAtLiveChildHolder(deps, state, childId)

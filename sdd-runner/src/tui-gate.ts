@@ -108,6 +108,7 @@ function gateItemRows(
   wide: boolean,
 ): readonly GateRow[] {
   const rows: GateRow[] = []
+  for (const line of view.concernHistory ?? []) rows.push({ key: `ch-${line}`, text: line })
   for (const item of view.items) {
     const accepted = state.toggles[item.id] !== false
     const readOnly = item.decidedBy !== undefined

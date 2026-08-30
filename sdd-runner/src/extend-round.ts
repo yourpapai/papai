@@ -13,7 +13,9 @@ import type { EventInput } from './events.js'
 import { finalizeGate, findingsOf, logPathFor, nowOf, prepareResumeInput, presentGateAt } from './gate-digest.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import type { GateAssumption, GateFinding } from './gate-model.js'
+import { concernHistoryLines } from './gate-render.js'
 import { settleApprovedGate, settleVeto } from './gate-resume-tail.js'
+import { readConcernSidecar } from './gate-sidecars.js'
 export { settleApprovedGate } from './gate-resume-tail.js'
 import { desugarFlags } from './gate-session.js'
 import type { GateSessionView } from './gate-session.js'
@@ -128,6 +130,7 @@ function buildSessionView(
   assumptions: readonly GateAssumption[],
   findings: { blockers: GateFinding[]; material: GateFinding[] },
   requiredAck: string | undefined,
+  concernHistory: readonly string[],
 ): GateSessionView {
   return {
     gateMode,
@@ -149,10 +152,17 @@ function buildSessionView(
     ],
     blockers: state.gate?.mode === 'early' ? findings.blockers : [],
     requiredAck: buildAck(requiredAck),
+    concernHistory,
   }
 }
 
 const ACK_TEXT = 'I reviewed the trajectory and the open findings above'
+
+/** Shared concern-history copy for the session view: concerns spanning ≥2 rounds (loop-memory 3.4). */
+async function sessionConcernHistory(sidecarDir: string): Promise<string[]> {
+  const records = await readConcernSidecar(sidecarDir)
+  return concernHistoryLines(records.filter((record) => record.entries.length >= 2))
+}
 
 function buildAck(requiredAck: string | undefined): { id: string; text: string } | null {
   const ack = requiredAck === undefined ? null : { id: requiredAck, text: ACK_TEXT }
@@ -239,9 +249,16 @@ export async function runEarlyFinalGateResume(
   const sidecarDir = path.join(state.runDir, 'sidecars')
   const gateMdPath = path.join(state.runDir, `gate-${version}.md`)
   const gateMode = narrowGateMode(state.gate.mode)
-  const { assumptions, reviewResult, requiredAck } = await prepareResumeInput(sidecarDir, state.round, gateMode)
-  const findings = findingsOf(reviewResult)
-  const view = buildSessionView(state, gateMode, assumptions, findings, requiredAck)
+  const { assumptions, reviewResult, requiredAck, gaps } = await prepareResumeInput(sidecarDir, state.round, gateMode)
+  const findings = findingsOf(reviewResult, gaps)
+  const view = buildSessionView(
+    state,
+    gateMode,
+    assumptions,
+    findings,
+    requiredAck,
+    await sessionConcernHistory(sidecarDir),
+  )
   const proceed = await collectGateDecision(deps, options, view, gateMdPath)
   if (!proceed) return { runId: state.runId, outcome: 'abandoned', version }
   writeHolder(state.runDir)

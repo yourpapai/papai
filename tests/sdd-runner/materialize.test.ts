@@ -8,7 +8,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { createMaterializer, materializeAssumptions, materializeReview } from '../../sdd-runner/src/materialize.js'
+import {
+  consistencyFindings,
+  createMaterializer,
+  materializeAssumptions,
+  materializeReview,
+} from '../../sdd-runner/src/materialize.js'
 
 const tmpDirs: string[] = []
 
@@ -374,5 +379,61 @@ describe('createMaterializer', () => {
     const repoOnly = createMaterializer(sidecarDir, changeDir, undefined, dir)
     await repoOnly(1)
     expect(events).toHaveLength(0)
+  })
+})
+
+describe('consistencyFindings (loop-memory D6)', () => {
+  const files = (entries: Record<string, string>): readonly { path: string; content: string }[] =>
+    Object.entries(entries).map(([filePath, content]) => ({ path: filePath, content }))
+
+  it('flags migration-strategy disagreement as MATERIAL naming both files and renderings', () => {
+    const findings = consistencyFindings(
+      files({
+        'proposal.md': 'Storage lands via a drizzle migration under drizzle/.\n',
+        'specs/thing/spec.md': '### Requirement: Migrations\n\nThe schema SHALL ship as a hand-written migration.\n',
+      }),
+    )
+    expect(findings).toHaveLength(1)
+    const finding = findings[0]!
+    expect(finding.class).toBe('MATERIAL')
+    expect(finding.gap).toContain('proposal.md')
+    expect(finding.gap).toContain('specs/thing/spec.md')
+    expect(finding.gap).toContain('drizzle')
+    expect(finding.gap).toContain('hand-written')
+  })
+
+  it('flags interval-ms disagreement between artifacts', () => {
+    const findings = consistencyFindings(
+      files({
+        'design.md': 'The recompute loop ticks every 15*60*1000 ms.\n',
+        'specs/thing/spec.md': 'The loop SHALL tick every 30*60*1000 ms.\n',
+      }),
+    )
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.gap).toContain('15*60*1000')
+    expect(findings[0]!.gap).toContain('30*60*1000')
+  })
+
+  it('flags table-name spelling disagreement between artifacts', () => {
+    const findings = consistencyFindings(
+      files({
+        'proposal.md': 'Rows live in the `message_cache` table.\n',
+        'design.md': 'Writes target `messageCache` rows.\n',
+      }),
+    )
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.gap).toContain('message_cache')
+    expect(findings[0]!.gap).toContain('messageCache')
+  })
+
+  it('agreement across proposal, design, and specs yields no findings', () => {
+    const findings = consistencyFindings(
+      files({
+        'proposal.md': 'Storage lands via a drizzle migration; rows live in `message_cache`; ticks 15*60*1000 ms.\n',
+        'design.md': 'A drizzle migration creates `message_cache`; the loop ticks every 15*60*1000 ms.\n',
+        'specs/thing/spec.md': 'The drizzle migration SHALL create `message_cache` each 15*60*1000 ms.\n',
+      }),
+    )
+    expect(findings).toHaveLength(0)
   })
 })

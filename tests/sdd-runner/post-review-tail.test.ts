@@ -10,8 +10,8 @@ import path from 'node:path'
 
 import { appendEvent, readEvents } from '../../sdd-runner/src/events.js'
 import type { EventInput } from '../../sdd-runner/src/events.js'
-import { readReviewResultFromSidecars } from '../../sdd-runner/src/gate-digest.js'
 import type { OrchestratorDeps, StageContext } from '../../sdd-runner/src/gate-digest.js'
+import { readReviewResultFromSidecars } from '../../sdd-runner/src/gate-sidecars.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { PlanSchema } from '../../sdd-runner/src/plan.js'
 import {

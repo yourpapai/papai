@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ConcernRecord } from './concern-model.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
 import type { DigestRecord } from './replay.js'
 
@@ -42,6 +43,8 @@ export interface GateDigestInput {
   readonly costKnown: boolean
   readonly durationMs: number
   readonly changeDigest: ChangeDigest
+  /** Thrashing concerns with round-by-round history (loop-memory D5); early gates only. */
+  readonly concernHistory?: readonly ConcernRecord[]
 }
 
 export interface GateVeto {

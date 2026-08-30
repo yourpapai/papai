@@ -163,15 +163,22 @@ function gateDecision(rule: PolicyDecision['rule'], signals: PolicySignals, note
   }
 }
 
+/**
+ * R4 budget guard (D2 of sdd-policy-metered-budget): the cost-unknown branch
+ * applies only to metered runs — an unmetered run (`budget: null` /
+ * `metered: false`) is bounded by the round cap and the R2 trajectory alone.
+ * The explicit-exceedance branch predicates on numeric ceiling presence: an
+ * explicitly configured numeric budget is never bypassed by anything.
+ */
 function r4FailsClosed(signals: PolicySignals): PolicyDecision | null {
-  if (!signals.costKnown) {
+  if (!signals.costKnown && signals.config.metered) {
     return {
       rule: 'R4',
       action: 'gate',
       evidenceDigest: digestOf(['cost-unknown', signals.reviewResult.outcome]),
     }
   }
-  if (projectedSpend(signals) >= signals.config.costCeilingUsd) {
+  if (signals.config.costCeilingUsd !== null && projectedSpend(signals) >= signals.config.costCeilingUsd) {
     return {
       rule: 'R4',
       action: 'gate',
