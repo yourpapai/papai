@@ -19,6 +19,8 @@ export type ShardCliArgs =
       readonly baseRef: string
       readonly cap: number
       readonly noScoreCache: boolean
+      readonly minWorkSeconds: number | undefined
+      readonly targetWallSeconds: number | undefined
       readonly out: string
     }
   | {
@@ -40,7 +42,17 @@ export type ShardCliArgs =
 export const DEFAULT_PLAN_PATH = 'reports/paired/shard-plan.json'
 export const DEFAULT_RESULTS_DIR = 'reports/paired/shards'
 
-const VALUE_FLAGS = ['--base=', '--cap=', '--index=', '--plan=', '--out=', '--results=', '--threshold=']
+const VALUE_FLAGS = [
+  '--base=',
+  '--cap=',
+  '--index=',
+  '--min-work=',
+  '--plan=',
+  '--target-wall=',
+  '--out=',
+  '--results=',
+  '--threshold=',
+]
 const BOOLEAN_FLAGS = ['--no-score-cache', '--no-ratchet', '--verbose']
 const THRESHOLD_PATTERN = /^(0(?:\.\d+)?|1(?:\.0+)?)$/u
 const POSITIVE_INT_PATTERN = /^[1-9]\d*$/u
@@ -61,11 +73,21 @@ const parsePlan = (argv: readonly string[]): ShardCliArgs => {
   if (baseRef === '') return usage('base must not be empty')
   const capText = valueOf(argv, '--cap=')
   if (capText !== undefined && !POSITIVE_INT_PATTERN.test(capText)) return usage('cap must be a positive integer')
+  const minWorkText = valueOf(argv, '--min-work=')
+  if (minWorkText !== undefined && !NON_NEGATIVE_INT_PATTERN.test(minWorkText)) {
+    return usage('min-work must be a non-negative integer number of seconds')
+  }
+  const wallText = valueOf(argv, '--target-wall=')
+  if (wallText !== undefined && !POSITIVE_INT_PATTERN.test(wallText)) {
+    return usage('target-wall must be a positive integer number of seconds')
+  }
   return {
     kind: 'plan',
     baseRef,
     cap: capText === undefined ? DEFAULT_SHARD_CAP : Number(capText),
     noScoreCache: argv.includes('--no-score-cache'),
+    minWorkSeconds: minWorkText === undefined ? undefined : Number(minWorkText),
+    targetWallSeconds: wallText === undefined ? undefined : Number(wallText),
     out: valueOf(argv, '--out=') ?? DEFAULT_PLAN_PATH,
   }
 }
@@ -112,4 +134,4 @@ export const parseShardCliArgs = (argv: readonly string[]): ShardCliArgs => {
 }
 
 export const SHARD_CLI_USAGE =
-  'Usage: bun scripts/mutation/shard-cli.ts <plan|shard|gate> [--base=REF] [--cap=N] [--index=N] [--plan=PATH] [--out=PATH] [--results=DIR] [--threshold=N] [--no-score-cache] [--no-ratchet] [--verbose]'
+  'Usage: bun scripts/mutation/shard-cli.ts <plan|shard|gate> [--base=REF] [--cap=N] [--min-work=SECONDS] [--target-wall=SECONDS] [--index=N] [--plan=PATH] [--out=PATH] [--results=DIR] [--threshold=N] [--no-score-cache] [--no-ratchet] [--verbose]'

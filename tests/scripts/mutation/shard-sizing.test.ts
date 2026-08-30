@@ -70,6 +70,20 @@ describe('resolveShardCount', () => {
       expect(sized([total / 2, total / 2])).toBeGreaterThan(1)
     })
 
+    // A caller that explicitly asks for no floor must get no floor. Treating 0 as "unset" and
+    // restoring the default is the silently-ignored-flag failure the CLI parser exists to avoid.
+    test('a threshold of zero disables the floor rather than restoring the default', () => {
+      const weights = Array.from({ length: 4 }, () => 40)
+      expect(sized(weights, { singleShardThresholdSeconds: 330 })).toBe(1)
+      expect(sized(weights, { singleShardThresholdSeconds: 0, budgetSeconds: 60 })).toBeGreaterThan(1)
+    })
+
+    test('a negative or non-finite threshold falls back to the default', () => {
+      const weights = Array.from({ length: 4 }, () => 40)
+      expect(sized(weights, { singleShardThresholdSeconds: -1, budgetSeconds: 60 })).toBe(1)
+      expect(sized(weights, { singleShardThresholdSeconds: Number.NaN, budgetSeconds: 60 })).toBe(1)
+    })
+
     test('an empty measurement set asks for a single shard, not zero', () => {
       expect(sized([])).toBe(1)
     })

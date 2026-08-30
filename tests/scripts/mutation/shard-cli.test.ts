@@ -22,6 +22,15 @@ describe('parseShardCliArgs', () => {
     })
   })
 
+  test('parses a min-work override, so the single-shard floor can be lowered deliberately', () => {
+    expect(parseShardCliArgs(['plan', '--min-work=0'])).toMatchObject({ kind: 'plan', minWorkSeconds: 0 })
+    expect(parseShardCliArgs(['plan', '--min-work=600'])).toMatchObject({ kind: 'plan', minWorkSeconds: 600 })
+  })
+
+  test('parses a target-wall override, the other sizing constant', () => {
+    expect(parseShardCliArgs(['plan', '--target-wall=90'])).toMatchObject({ kind: 'plan', targetWallSeconds: 90 })
+  })
+
   test('parses a shard invocation', () => {
     expect(parseShardCliArgs(['shard', '--index=3'])).toMatchObject({ kind: 'shard', shardIndex: 3 })
   })
@@ -62,6 +71,16 @@ describe('parseShardCliArgs', () => {
 
     test('an out-of-range threshold', () => {
       expect(parseShardCliArgs(['gate', '--threshold=2'])).toMatchObject({ kind: 'usageError' })
+    })
+
+    test('a negative or non-numeric min-work', () => {
+      expect(parseShardCliArgs(['plan', '--min-work=-1'])).toMatchObject({ kind: 'usageError' })
+      expect(parseShardCliArgs(['plan', '--min-work=x'])).toMatchObject({ kind: 'usageError' })
+    })
+
+    test('a non-positive or non-numeric target-wall', () => {
+      expect(parseShardCliArgs(['plan', '--target-wall=0'])).toMatchObject({ kind: 'usageError' })
+      expect(parseShardCliArgs(['plan', '--target-wall=x'])).toMatchObject({ kind: 'usageError' })
     })
 
     test('a cap that is not a positive integer', () => {

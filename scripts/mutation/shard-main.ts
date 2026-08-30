@@ -37,6 +37,8 @@ const runPlan = (args: Extract<ShardCliArgs, { kind: 'plan' }>, projectRoot: str
     projectRoot,
     baseRef: args.baseRef,
     cap: args.cap,
+    singleShardThresholdSeconds: args.minWorkSeconds,
+    targetWallSeconds: args.targetWallSeconds,
     deps: {
       selectTargets: (baseRef, root) => selectChangedMutationTargets({ baseRef, projectRoot: root, deps: undefined }),
       planIncremental: incremental?.plan,

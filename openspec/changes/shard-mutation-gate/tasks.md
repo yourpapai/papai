@@ -79,7 +79,7 @@ that. See design.md — Migration Plan.
       `bun workflows:lint`
 - [x] 5.2 Confirm the `mutation-baseline` job is untouched and still runs single-process; verify with
       `bun workflows:lint` and by reading the job definition
-- [ ] 5.3 Validate end-to-end on a real branch: one run whose measurement set is below the threshold
+- [x] 5.3 Validate end-to-end on a real branch: one run whose measurement set is below the threshold
       (expect exactly one shard) and one large enough to fan out (expect a sized matrix and a
       combined whole-branch verdict); verify by comparing the gate verdict and per-file scores
       against a `k = 1` run of the same commit

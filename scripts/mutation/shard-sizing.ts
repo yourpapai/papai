@@ -79,7 +79,12 @@ export const resolveShardCount = (input: ShardSizingInput): number => {
   if (count <= 1) return 1
 
   const total = input.weights.reduce((sum, weight) => sum + (Number.isFinite(weight) ? Math.max(0, weight) : 0), 0)
-  const threshold = positiveOr(input.singleShardThresholdSeconds, DEFAULT_SINGLE_SHARD_THRESHOLD_SECONDS)
+  // Zero is a legitimate value meaning "no floor", so this cannot use `positiveOr`: silently
+  // restoring the default there would ignore a caller that explicitly asked to always divide.
+  const threshold =
+    Number.isFinite(input.singleShardThresholdSeconds) && input.singleShardThresholdSeconds >= 0
+      ? input.singleShardThresholdSeconds
+      : DEFAULT_SINGLE_SHARD_THRESHOLD_SECONDS
   if (total < threshold) return 1
 
   const slowest = input.weights.reduce((max, weight) => (Number.isFinite(weight) && weight > max ? weight : max), 0)
