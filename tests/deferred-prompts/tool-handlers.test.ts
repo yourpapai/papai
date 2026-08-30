@@ -20,6 +20,7 @@ import {
   executeGet,
   executeList,
   executeUpdate,
+  type CreateDeliveryContext,
 } from '../../src/deferred-prompts/tool-handlers.js'
 import type { AlertCondition, CreateResult } from '../../src/deferred-prompts/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -221,6 +222,92 @@ describe('executeCreate — alert task instance pinning', () => {
     const persisted = getAlertPrompt(expectCreatedPromptId(result), parentContextId)
     expect(persisted).toBeDefined()
     expect(persisted!.taskInstanceId).toBeNull()
+  })
+})
+
+describe('executeCreate — activity condition gating', () => {
+  const ACT_USER = 'activity-gate-user'
+  const activityCondition: AlertCondition = { kind: 'activity', taskId: 'task-1' }
+  const mixedCondition: AlertCondition = {
+    and: [
+      { kind: 'activity', taskId: 'task-1' },
+      { field: 'task.status', op: 'eq', value: 'done' },
+    ],
+  }
+
+  const deliveryCtx = (activityAlertsEnabled: boolean): CreateDeliveryContext => ({
+    userId: ACT_USER,
+    storageContextId: ACT_USER,
+    contextType: 'dm',
+    activityAlertsEnabled,
+  })
+
+  const seedInstance = (): void => {
+    const db = getDrizzleDb()
+    db.insert(platformInstances).values({ id: 'telegram-default', type: 'telegram', config: '{}' }).run()
+    db.insert(taskInstances).values({ id: 'ti-act', type: 'kaneo', config: '{}', status: 'active' }).run()
+    db.insert(contextSettings)
+      .values({ contextId: ACT_USER, taskInstanceId: 'ti-act', platformInstanceId: 'telegram-default' })
+      .run()
+  }
+
+  test('activity condition is refused with guidance when the capability flag is off', () => {
+    seedInstance()
+
+    const result = executeCreate(
+      ACT_USER,
+      { prompt: 'watch activity', condition: activityCondition },
+      deliveryCtx(false),
+    )
+
+    assert.ok('error' in result, 'expected an error result')
+    expect(result.error).toContain('activity')
+    expect(result.error).toContain('not available')
+  })
+
+  test('activity condition is refused when the delivery context has no task instance', () => {
+    const result = executeCreate(
+      ACT_USER,
+      { prompt: 'watch activity', condition: activityCondition },
+      deliveryCtx(true),
+    )
+
+    assert.ok('error' in result, 'expected an error result')
+    expect(result.error).toContain('task instance')
+  })
+
+  test('activity condition is accepted when the flag holds and a task instance is configured', () => {
+    seedInstance()
+
+    const result = executeCreate(
+      ACT_USER,
+      { prompt: 'watch activity', condition: activityCondition },
+      deliveryCtx(true),
+    )
+
+    expect(result).toMatchObject({ status: 'created', type: 'alert' })
+  })
+
+  test('mixed activity and field tree is refused at create', () => {
+    seedInstance()
+
+    const result = executeCreate(ACT_USER, { prompt: 'watch mixed', condition: mixedCondition }, deliveryCtx(true))
+
+    assert.ok('error' in result, 'expected an error result')
+    expect(result.error).toContain('cannot be combined')
+  })
+
+  test('mixed activity and field tree is refused at condition update', () => {
+    seedInstance()
+    const fieldCondition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = executeCreate(ACT_USER, { prompt: 'field alert', condition: fieldCondition }, deliveryCtx(true))
+    const id = expectCreatedPromptId(created)
+
+    const result = executeUpdate(ACT_USER, { id, condition: mixedCondition })
+
+    assert.ok('error' in result, 'expected an error result')
+    expect(result.error).toContain('cannot be combined')
+    expect(getAlertPrompt(id, ACT_USER)!.condition).toEqual(fieldCondition)
   })
 })
 

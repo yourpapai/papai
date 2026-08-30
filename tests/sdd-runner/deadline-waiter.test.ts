@@ -3,14 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
 import {
   awaitGateDeadline,
+  deadlineStampFor,
   digestOf,
+  isExternallySettled,
   isStableEdit,
   processExpiry,
   shouldEnterWaiter,
@@ -304,4 +306,66 @@ describe('plan-mode gates under the waiter', () => {
     }
     expect(calls).toEqual([{ noWait: true }])
   }, 15_000)
+})
+
+describe('waiter guards around the gate field', () => {
+  async function seedGateRun(gate: RunState['gate']): Promise<{ workDir: string; runId: string; runDir: string }> {
+    const workDir = path.join(makeDir(), '.sdd-runner')
+    const state = await createRunState({ workDir, repoRoot: workDir, changeName: 'thing' })
+    fs.mkdirSync(path.join(state.runDir, 'sidecars'), { recursive: true })
+    state.gate = gate
+    state.gateDeadlineAt = gate === null ? null : '2026-01-01T00:00:00.000Z'
+    await saveRunState(state)
+    return { workDir, runId: state.runId, runDir: state.runDir }
+  }
+
+  it('isExternallySettled reads exactly the gate field', async () => {
+    const settledRun = await seedGateRun(null)
+    const openRun = await seedGateRun({ mode: 'final', version: 1 })
+    expect(isExternallySettled(await loadRunState(settledRun.workDir, settledRun.runId))).toBe(true)
+    expect(isExternallySettled(await loadRunState(openRun.workDir, openRun.runId))).toBe(false)
+  })
+
+  it('an expired run whose gate vanished exits as lost-claim without writing a claim or settling', async () => {
+    const { workDir, runId, runDir } = await seedGateRun(null)
+    const settle = mock((): Promise<boolean> => Promise.resolve(true))
+    const outcome = await processExpiry(workDir, runId, 10, settle)
+    expect(outcome).toBe('lost-claim')
+    expect(settle).not.toHaveBeenCalled()
+    expect(fs.readdirSync(runDir).some((name) => name.endsWith('.expiry-claim'))).toBe(false)
+  })
+
+  it('the claim file records the claim instant as an ISO timestamp', async () => {
+    const { workDir, runId, runDir } = await seedGateRun({ mode: 'final', version: 2 })
+    const outcome = await processExpiry(workDir, runId, 10, (): Promise<boolean> => Promise.resolve(true))
+    expect(outcome).toBe('claimed-and-settled')
+    const claim = fs.readFileSync(path.join(runDir, 'gate-2.expiry-claim'), 'utf8').trim()
+    expect(Number.isNaN(new Date(claim).getTime())).toBe(false)
+  })
+})
+
+describe('deadlineStampFor', () => {
+  const base: OrchestratorDeps = {
+    config: { repoRoot: '/tmp', workDir: '/tmp/.sdd-runner', model: 'm', budget: 5 },
+    spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+    execGit: () => Promise.resolve({ stdout: '', stderr: '' }),
+    driver: createOpenSpecDriver({
+      exec: () => Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }),
+      cwd: '/tmp',
+    }),
+    now: (): Date => new Date('2026-08-12T08:00:00.000Z'),
+  }
+
+  it('arms the deadline exactly deadlineMinutes ahead of now and announces the instant', () => {
+    const stamp = deadlineStampFor({ ...base, autonomy: { level: 'assist', costCeilingUsd: 5, deadlineMinutes: 30 } })
+    expect(stamp.gateDeadlineAt).toBe('2026-08-12T08:30:00.000Z')
+    expect(stamp.notify).toContain('2026-08-12T08:30:00.000Z')
+    expect(stamp.notify).toContain('auto-deadline')
+  })
+
+  it('clears both deadline fields when no deadline is configured', () => {
+    const stamp = deadlineStampFor({ ...base, autonomy: { level: 'assist', costCeilingUsd: 5 } })
+    expect(stamp.gateDeadlineAt).toBeNull()
+    expect(stamp.notify).toBeNull()
+  })
 })

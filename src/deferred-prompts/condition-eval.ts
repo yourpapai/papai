@@ -5,6 +5,7 @@
 
 import { logger } from '../logger.js'
 import type { Task } from '../providers/types.js'
+import { sanitizeExternalData } from '../security/prompt-boundary.js'
 import type { AlertCondition, LeafCondition } from './types.js'
 
 const log = logger.child({ scope: 'deferred:condition-eval' })
@@ -74,6 +75,7 @@ export const evaluateCondition = (
 ): boolean => {
   if ('and' in condition) return condition.and.every((c) => evaluateCondition(c, task, snapshots, now))
   if ('or' in condition) return condition.or.some((c) => evaluateCondition(c, task, snapshots, now))
+  if ('kind' in condition) return false
   return evaluateLeaf(condition, task, snapshots, now)
 }
 
@@ -91,6 +93,7 @@ export const extractWatchedTaskIds = (condition: AlertCondition): string[] => {
       for (const child of node.or) walk(child)
       return
     }
+    if ('kind' in node) return
     if (isWatchLeaf(node)) ids.add(String(node.value))
   }
   walk(condition)
@@ -100,18 +103,48 @@ export const extractWatchedTaskIds = (condition: AlertCondition): string[] => {
 export const isPureWatchCondition = (condition: AlertCondition): boolean => {
   if ('and' in condition) return condition.and.every(isPureWatchCondition)
   if ('or' in condition) return condition.or.every(isPureWatchCondition)
+  if ('kind' in condition) return false
   return isWatchLeaf(condition)
 }
 
+export const extractActivityTaskIds = (condition: AlertCondition): string[] => {
+  const ids = new Set<string>()
+  const walk = (node: AlertCondition): void => {
+    if ('and' in node) {
+      for (const child of node.and) walk(child)
+      return
+    }
+    if ('or' in node) {
+      for (const child of node.or) walk(child)
+      return
+    }
+    if ('kind' in node) ids.add(node.taskId)
+  }
+  walk(condition)
+  return [...ids]
+}
+
+export const isPureActivityCondition = (condition: AlertCondition): boolean => {
+  if ('and' in condition) return condition.and.every(isPureActivityCondition)
+  if ('or' in condition) return condition.or.every(isPureActivityCondition)
+  return 'kind' in condition
+}
+
 const sanitizeValue = (value: string | number): string => {
-  const str = String(value)
-  const clean = str.replaceAll(/[\n\r]/gu, ' ').slice(0, 200)
+  const clean = sanitizeExternalData(String(value)).slice(0, 200)
   return `"${clean}"`
 }
 
 export const describeCondition = (condition: AlertCondition): string => {
   if ('and' in condition) return `(${condition.and.map(describeCondition).join(' AND ')})`
   if ('or' in condition) return `(${condition.or.map(describeCondition).join(' OR ')})`
+  if ('kind' in condition) {
+    const categories =
+      condition.categories === undefined
+        ? ''
+        : ` (categories: ${condition.categories.map((c) => sanitizeExternalData(c)).join(', ')})`
+    return `activity on task ${sanitizeValue(condition.taskId)}${categories}`
+  }
   const { field, op, value } = condition
   return value === undefined ? `${field} ${op}` : `${field} ${op} ${sanitizeValue(value)}`
 }

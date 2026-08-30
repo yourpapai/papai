@@ -121,6 +121,10 @@ describe('serializeState / extractState', () => {
       planRevision: 0,
       // Defaulted: a block is free to omit any field the schema can supply.
       tokensSpent: 0,
+      // The money beside the tokens, defaulted for the same reason — which is
+      // also what makes this change need no STATE_VERSION bump.
+      usdSpent: 0,
+      usdUnpriced: false,
       lastError: null,
       prUrl: null,
       prNumber: null,
@@ -755,5 +759,47 @@ describe('transition', () => {
 
     expect(before.phase).toBe('INIT_OR_CLARIFY')
     expect(after).not.toBe(before)
+  })
+})
+
+/**
+ * The accumulated cost, beside the accumulated tokens.
+ *
+ * Persisted for the reason `tokensSpent` is: the thing being accounted for is an
+ * *issue*, which bounces through retries and CI-fix rounds, each a fresh runner
+ * with no memory of what the last one spent.
+ */
+describe('accumulated cost', () => {
+  test('a block written before this field existed restores rather than failing', () => {
+    // The whole reason both fields default and STATE_VERSION does not move: an
+    // issue in flight must not be stranded by a deploy.
+    const block = `<!-- ${STATE_MARKER}: {"v":3,"phase":"PLANNING","issueId":5,"tokensSpent":900} -->`
+    const restored = extractState(block)
+
+    expect(restored?.tokensSpent).toBe(900)
+    expect(restored?.usdSpent).toBe(0)
+    expect(restored?.usdUnpriced).toBe(false)
+  })
+
+  test('an accumulated figure round-trips through a block', () => {
+    const state: AgentState = { ...initialState(5), usdSpent: 12.4, usdUnpriced: true }
+    const restored = extractState(serializeState(state))
+
+    expect(restored?.usdSpent).toBe(12.4)
+    expect(restored?.usdUnpriced).toBe(true)
+  })
+
+  test('a negative accumulated cost is refused — spend only ever grows', () => {
+    const block = `<!-- ${STATE_MARKER}: {"v":3,"phase":"PLANNING","issueId":5,"usdSpent":-1} -->`
+
+    expect(extractState(block)).toBeNull()
+  })
+
+  test('the flag is not an integer field — sub-cent figures survive', () => {
+    // `tokensSpent` is `.int()`; money must not be, or every run under a cent
+    // would round to nothing and an issue could spend indefinitely at $0.
+    const block = `<!-- ${STATE_MARKER}: {"v":3,"phase":"PLANNING","issueId":5,"usdSpent":0.009714} -->`
+
+    expect(extractState(block)?.usdSpent).toBe(0.009714)
   })
 })

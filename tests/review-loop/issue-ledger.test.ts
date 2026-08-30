@@ -14,11 +14,13 @@ import {
   createIssueLedger,
   loadIssueLedger,
   recordFixAttempt,
+  recordNeedsHuman,
   recordVerification,
   saveIssueLedger,
 } from '../../review-loop/src/issue-ledger.js'
 import { FixerResultSchema } from '../../review-loop/src/issue-schema.js'
-import type { IssueMatch, ReviewerIssue, VerifierDecision } from '../../review-loop/src/issue-schema.js'
+import type { FixerResult, IssueMatch, ReviewerIssue, VerifierDecision } from '../../review-loop/src/issue-schema.js'
+import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
 
 const tempDirs: string[] = []
 
@@ -50,6 +52,38 @@ afterEach(() => {
 })
 
 describe('issue ledger', () => {
+  test('recordNeedsHuman stores the manual-change reasoning untruncated in the ledger; the trace event stays bounded', async () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
+    tempDirs.push(runDir)
+
+    // 500 chars: past the trace event's 200-char bound, so one assertion can
+    // tell the two carriers apart.
+    const reasoning = `Exact change: ${'x'.repeat(480)} — end of description.`
+    expect(reasoning.length).toBeGreaterThan(200)
+
+    const ledger = await createIssueLedger(runDir)
+    const records = applyMatchedIssues(ledger, 1, [issue], [{ newIssueIndex: 0, existingId: null }])
+    const result: FixerResult = {
+      verdict: 'needs_human',
+      fixability: 'manual',
+      reasoning,
+      targetFiles: ['.github/workflows/ci.yml'],
+      fixed: false,
+    }
+    const { logger, events } = createCapturingTraceLogger()
+
+    recordNeedsHuman(ledger, logger, 1, records[0]!, reasoning, result)
+
+    const stored = ledger.snapshot.issues[records[0]!.id]!.verifierDecision
+    expect(stored?.verdict).toBe('needs_human')
+    expect(stored?.fixability).toBe('manual')
+    expect(stored?.reasoning).toBe(reasoning)
+
+    const traceEvent = events.find((e) => e.event === 'verify_complete')
+    expect(traceEvent?.event).toBe('verify_complete')
+    expect(traceEvent?.reasoning.length).toBeLessThanOrEqual(200)
+  })
+
   test('creates new records for unmatched issues', async () => {
     const runDir = mkdtempSync(path.join(tmpdir(), 'review-loop-ledger-'))
     tempDirs.push(runDir)

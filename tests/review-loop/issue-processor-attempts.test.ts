@@ -3,11 +3,30 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import path from 'node:path'
 
-import type { LedgerIssueRecord } from '../../review-loop/src/issue-ledger.js'
-import { buildAttemptPrompt, type AttemptPromptDeps } from '../../review-loop/src/issue-processor-attempts.js'
+import { createIssueLedger, type LedgerIssueRecord } from '../../review-loop/src/issue-ledger.js'
+import {
+  buildAttemptPrompt,
+  runFixerRaw,
+  type AttemptPromptDeps,
+} from '../../review-loop/src/issue-processor-attempts.js'
 import type { ReviewerIssue } from '../../review-loop/src/issue-schema.js'
+import { createRunState } from '../../review-loop/src/run-state.js'
+import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
+import {
+  claudeRecordingSpawn,
+  claudeRunContext,
+  claudeScratchResponder,
+  cleanupTempDirs,
+  createReviewLoopConfigFixture,
+  fakePool,
+  makeTempDir,
+  silentReporter,
+} from './test-helpers.js'
+
+afterEach(cleanupTempDirs)
 
 describe('buildAttemptPrompt', () => {
   test('builds inspector-rejection retry prompt', () => {
@@ -81,5 +100,49 @@ describe('buildAttemptPrompt', () => {
     const prompt = buildAttemptPrompt(deps, record, null)
 
     expect(prompt).toContain('/tmp/worktree/.review-loop/result.json')
+  })
+})
+
+describe('runFixerRaw backend threading', () => {
+  test('passes the resolved backend and claude context into the fixer spawn', async () => {
+    const repoRoot = makeTempDir('fixer-claude-')
+    const context = claudeRunContext()
+    const config = createReviewLoopConfigFixture(repoRoot, { backend: 'claude', claude: context })
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    const ledger = await createIssueLedger(runState.runDir)
+    const { logger } = createCapturingTraceLogger()
+    const { spawn, commands } = claudeRecordingSpawn(
+      claudeScratchResponder(() => ({
+        verdict: 'valid',
+        fixability: 'auto',
+        reasoning: 'r',
+        targetFiles: [],
+        fixed: true,
+      })),
+    )
+
+    const { pool, workers } = fakePool({ size: 1, worktreePaths: [runState.worktreePath] })
+    const worker = workers[0]!
+
+    const prompt = `Fix the issue. Write your result as JSON to: ${path.join(runState.worktreePath, '.review-loop', 'result.json')}`
+
+    const result = await runFixerRaw(
+      {
+        config,
+        runState,
+        ledger,
+        spawn,
+        exec: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+        log: silentReporter(),
+        trace: logger,
+        pool,
+      },
+      worker,
+      prompt,
+      'fixer-w1',
+    )
+
+    expect(result.value.fixed).toBe(true)
+    expect(commands[0]).toBe('claude')
   })
 })

@@ -3,16 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { Box, Text, render, useInput } from 'ink'
-import { createElement, useCallback, useEffect, useRef, useState } from 'react'
+import { Text, render, useInput, useStdout } from 'ink'
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { renderGateAnswers, responseFromAnswers } from './gate-answers.js'
 import type { GateAnswers } from './gate-answers.js'
 import { parseGateResponse } from './gate-model.js'
 import { decisionAnswers, reduceSession } from './gate-session-state.js'
 import type { Decision, KeyFlags, SessionState } from './gate-session-state.js'
+import { expectedGateContentOf } from './gate-session.js'
 import type { GateSessionView } from './gate-session.js'
+import { keyHints, reduceHelpOverlay, ScreenChrome } from './tui-chrome.js'
+import type { OverlayState } from './tui-chrome.js'
 import { createGateScreen } from './tui-gate.js'
+import { colorModeFromStdout } from './tui-tokens.js'
+import { useTerminalWidth } from './tui-width.js'
 
 export type { KeyFlags } from './gate-session-state.js'
 
@@ -61,8 +66,19 @@ export interface GateSessionTuiProps {
   readonly keys?: KeyFeed
 }
 
-export function GateSessionTui(props: GateSessionTuiProps): ReturnType<typeof createElement> {
-  const { view, onSettle, onAbandoned, keys } = props
+/** Instantiated once per module, not per render — the gate tree must keep a stable component identity so `Static` regions never re-emit (fancy-ui D6). */
+const GateScreen = createGateScreen()
+
+/** Keys + session state: overlay routing above `reduceSession`, settle/abandon out. */
+function useGateSessionKeys(
+  view: GateSessionView,
+  onSettle: (answers: GateAnswers) => void,
+  onAbandoned: () => void,
+): {
+  readonly handle: (input: string, key: KeyFlags) => void
+  readonly state: SessionState
+  readonly overlay: OverlayState
+} {
   const [state, setState] = useState<SessionState>({
     cursor: 0,
     toggles: {},
@@ -73,6 +89,8 @@ export function GateSessionTui(props: GateSessionTuiProps): ReturnType<typeof cr
     inputText: '',
   })
   const stateRef = useRef<SessionState>(state)
+  const [overlay, setOverlay] = useState<OverlayState>({ open: false })
+  const overlayRef = useRef<OverlayState>(overlay)
   const settle = useCallback(
     (decision: Decision) => {
       onSettle(decisionAnswers(stateRef.current, view, decision))
@@ -81,6 +99,13 @@ export function GateSessionTui(props: GateSessionTuiProps): ReturnType<typeof cr
   )
   const handle = useCallback(
     (input: string, key: KeyFlags) => {
+      const routing = reduceHelpOverlay(overlayRef.current, stateRef.current.input !== null, input, key)
+      if (routing.kind === 'state') {
+        overlayRef.current = routing.state
+        setOverlay(routing.state)
+        return
+      }
+      if (routing.kind === 'consume') return
       const action = reduceSession(stateRef.current, view, input, key)
       if (action.kind === 'state') {
         stateRef.current = action.state
@@ -90,6 +115,15 @@ export function GateSessionTui(props: GateSessionTuiProps): ReturnType<typeof cr
     },
     [view, settle, onAbandoned],
   )
+  return { handle, state, overlay }
+}
+
+export function GateSessionTui(props: GateSessionTuiProps): ReturnType<typeof createElement> {
+  const { view, onSettle, onAbandoned, keys } = props
+  const { stdout } = useStdout()
+  const width = useTerminalWidth()
+  const colorMode = useMemo(() => colorModeFromStdout(stdout), [stdout])
+  const { handle, state, overlay } = useGateSessionKeys(view, onSettle, onAbandoned)
   useInput(
     (input, key) => {
       handle(input, key)
@@ -100,16 +134,30 @@ export function GateSessionTui(props: GateSessionTuiProps): ReturnType<typeof cr
     if (keys === undefined) return undefined
     return keys.onKey(handle)
   }, [keys, handle])
-  const GateScreen = createGateScreen()
-  const screen = createElement(GateScreen, { view, ...state, width: 100 })
-  if (state.input === null) return screen
+  return gateFrame(view, state, overlay, width, colorMode)
+}
+
+/** The full gate frame: screen panels, the open input line, and the footer/overlay chrome. */
+function gateFrame(
+  view: GateSessionView,
+  state: SessionState,
+  overlay: OverlayState,
+  width: number,
+  colorMode: ReturnType<typeof colorModeFromStdout>,
+): ReturnType<typeof createElement> {
+  const screen = createElement(GateScreen, { view, ...state, width, colorMode })
+  const hints = keyHints({ screen: 'gate', gateMode: view.gateMode, inputOpen: state.input !== null })
+  if (state.input === null) {
+    return createElement(ScreenChrome, { overlay, screen: 'gate', hints, width, children: [screen] })
+  }
   const label = state.input.kind === 'redirect' ? `redirect for ${state.input.id}` : `answer for ${state.input.id}`
-  return createElement(
-    Box,
-    { flexDirection: 'column' },
-    screen,
-    createElement(Text, null, `${label}: ${state.inputText}`),
-  )
+  return createElement(ScreenChrome, {
+    overlay,
+    screen: 'gate',
+    hints,
+    width,
+    children: [screen, createElement(Text, { key: 'input' }, `${label}: ${state.inputText}`)],
+  })
 }
 
 export interface TuiGateSessionDeps {
@@ -123,27 +171,13 @@ export type TuiGateSessionResult =
   | { readonly status: 'answered'; readonly decision: GateAnswers['decision']; readonly gateMd: string }
   | { readonly status: 'abandoned' }
 
-function expectedContent(view: GateSessionView): Parameters<typeof parseGateResponse>[1] {
-  return {
-    assumptions: view.items
-      .filter((item) => item.kind === 'assumption')
-      .map((item) => ({ id: item.id, text: item.text, blast_radius: item.blastRadius })),
-    blockers: view.blockers.map((blocker) => ({ id: blocker.id, gap: blocker.gap, evidence: blocker.evidence })),
-    findings: view.items
-      .filter((item) => item.kind === 'finding')
-      .map((item) => ({ id: item.id, gap: item.text, evidence: item.evidence })),
-    ...(view.requiredAck === null ? {} : { requiredAck: view.requiredAck.id }),
-    gateMode: view.gateMode,
-  }
-}
-
 async function settleWithSelfCheck(
   answers: GateAnswers,
   view: GateSessionView,
   writeGateMd: (md: string) => Promise<void>,
 ): Promise<{ readonly gateMd: string }> {
   const md = renderGateAnswers(answers)
-  const parsed = parseGateResponse(md, expectedContent(view))
+  const parsed = parseGateResponse(md, expectedGateContentOf(view))
   if (JSON.stringify(parsed) !== JSON.stringify(responseFromAnswers(answers))) {
     throw new Error('answer self-check failed: rendered answers parse back as a different outcome')
   }

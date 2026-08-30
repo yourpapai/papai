@@ -408,3 +408,89 @@ describe('adversarial gap text cannot corrupt the round-trip', () => {
     expect(response.vetoes).toEqual([])
   })
 })
+
+describe('exact render grammar and direct response shapes', () => {
+  /**
+   * The round-trip assertions above compare a parsed file against
+   * `responseFromAnswers` — both sides flatten through the same code, so a
+   * broken `flatten` cancels out. These pin the rendered bytes and the
+   * response object directly, so the sanitizer itself is under test.
+   */
+  it('renders the full gate-response grammar byte-for-byte, flattening every free-text field', () => {
+    const answers: GateAnswers = {
+      items: [
+        { kind: 'assumption', id: 'A1', text: 'guests  stay\nread-only', accepted: true },
+        {
+          kind: 'assumption',
+          id: 'A2',
+          text: 'sqlite is enough',
+          accepted: true,
+          decidedBy: '  policy  R3\n',
+        },
+      ],
+      blockerAnswers: [{ id: 'B1', gap: 'no  rollback\npath', answer: 'ship  it\nnow' }],
+      acks: [{ id: 'T1', text: ACK_TEXT }],
+      decision: 'approve',
+      decidedBy: 'policy R1',
+    }
+    expect(renderGateAnswers(answers)).toBe(
+      [
+        '## Gate response',
+        '',
+        'decided-by: policy R1',
+        '',
+        `- [x] T1 ${ACK_TEXT}`,
+        '',
+        '- [x] A1 guests stay read-only',
+        '- [x] A2 sqlite is enough · decided-by: policy R3',
+        '',
+        'B1 no rollback path',
+        '→ ship it now',
+        '',
+      ].join('\n') + '\n',
+    )
+  })
+
+  it('emits no stray blank lines when every optional channel is empty', () => {
+    const answers: GateAnswers = { items: [], blockerAnswers: [], acks: [], decision: 'approve' }
+    expect(renderGateAnswers(answers)).toBe('## Gate response\n\n')
+  })
+
+  it('attaches the redirect to a veto in the response object itself, not only through the parser', () => {
+    const answers: GateAnswers = {
+      items: [{ kind: 'finding', id: 'F1', text: 'gap', accepted: false, redirect: 'dm-only' }],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'veto',
+    }
+    expect(responseFromAnswers(answers)).toEqual({
+      approved: false,
+      abort: false,
+      override: false,
+      extend: false,
+      vetoes: [{ id: 'F1', redirect: 'dm-only' }],
+      answers: [],
+    })
+  })
+
+  it('a veto decision never approves, even with nothing open', () => {
+    const answers: GateAnswers = {
+      items: [{ kind: 'assumption', id: 'A1', text: 'fine', accepted: true }],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'veto',
+    }
+    expect(responseFromAnswers(answers).approved).toBe(false)
+  })
+
+  it('a redirect that flattens to nothing is no redirect at all', () => {
+    const answers: GateAnswers = {
+      items: [{ kind: 'assumption', id: 'A1', text: 'fine', accepted: false, redirect: '   ' }],
+      blockerAnswers: [],
+      acks: [],
+      decision: 'veto',
+    }
+    expect(responseFromAnswers(answers).vetoes).toEqual([{ id: 'A1' }])
+    expect(renderGateAnswers(answers)).not.toContain('→')
+  })
+})

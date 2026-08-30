@@ -13,6 +13,7 @@ import { setConfig } from '../../src/config.testing.js'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { alertPrompts, scheduledPrompts } from '../../src/db/schema.js'
 import { getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
+import { alertConditionSchema } from '../../src/deferred-prompts/condition-schema.js'
 import { getStorageContextId } from '../../src/deferred-prompts/proactive-llm-helpers.js'
 import { getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import {
@@ -105,6 +106,25 @@ describe('makeReminderAndAlertTools', () => {
     expect(names).toContain('update_reminder')
     expect(names).toContain('cancel_reminder')
     expect(names).toHaveLength(6)
+  })
+})
+
+const descriptionOf = (schema: { description?: string | undefined }): string => schema.description ?? ''
+
+describe('create_alert — activity descriptions', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+    setConfig(USER_ID, 'timezone', 'UTC')
+  })
+
+  test('tool description mentions activity watching', () => {
+    const tools = getTools()
+    const createAlert = tools['create_alert']!
+    expect(createAlert.description).toContain('activity')
+  })
+
+  test('condition schema description mentions the activity kind', () => {
+    expect(descriptionOf(alertConditionSchema)).toContain('activity')
   })
 })
 

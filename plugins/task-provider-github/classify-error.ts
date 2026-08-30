@@ -7,6 +7,7 @@ import type { AppError } from 'papai/plugin-types'
 import { providerError, systemError } from 'papai/plugin-types'
 
 import { GitHubApiError, isRateLimitedError } from './client.js'
+import { GitHubGraphqlError } from './graphql-client.js'
 
 export class GitHubClassifiedError extends Error {
   constructor(
@@ -78,6 +79,35 @@ const classifyApiError = (error: GitHubApiError, context?: ClassificationContext
   return new GitHubClassifiedError(message, systemError.unexpected(error))
 }
 
+/**
+ * GraphQL-level failures carry a typed error instead of an HTTP status: the
+ * effective type (`extensions.type` ?? `type`, resolved by the transport)
+ * drives the mapping; anything untyped or unrecognized is a shape/validation
+ * complaint, not a system failure.
+ */
+const classifyGraphqlError = (error: GitHubGraphqlError, context?: ClassificationContext): GitHubClassifiedError => {
+  const message = error.message
+
+  if (error.type === 'FORBIDDEN' || error.type === 'INSUFFICIENT_SCOPES') {
+    return new GitHubClassifiedError(message, providerError.authFailed())
+  }
+
+  if (error.type === 'NOT_FOUND') {
+    // Same context contract as the REST 404 branch: one instance = one
+    // repository, so the context says which resource was sought.
+    if (context?.taskId !== undefined) {
+      return new GitHubClassifiedError(message, providerError.taskNotFound(context.taskId))
+    }
+    return new GitHubClassifiedError(message, providerError.projectNotFound(context?.projectId ?? 'unknown'))
+  }
+
+  if (error.type === 'RATE_LIMITED') {
+    return new GitHubClassifiedError(message, providerError.rateLimited())
+  }
+
+  return new GitHubClassifiedError(message, providerError.validationFailed('unknown', message))
+}
+
 const classifyGenericError = (error: Error): GitHubClassifiedError => {
   const msg = error.message.toLowerCase()
 
@@ -95,6 +125,10 @@ const classifyGenericError = (error: Error): GitHubClassifiedError => {
 export const classifyGitHubError = (error: unknown, context?: ClassificationContext): GitHubClassifiedError => {
   if (error instanceof GitHubClassifiedError) {
     return error
+  }
+
+  if (error instanceof GitHubGraphqlError) {
+    return classifyGraphqlError(error, context)
   }
 
   if (error instanceof GitHubApiError) {

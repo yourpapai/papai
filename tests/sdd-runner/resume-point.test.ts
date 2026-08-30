@@ -208,6 +208,25 @@ describe('deriveResumePoint', () => {
     expect(deriveResumePoint(state, arts, converged).stage).toBe('gate')
   })
 
+  it('resumes a continuation child at its persisted tail entry, not at review (D6/D8)', () => {
+    const workDir = makeWorkDir()
+    const state = {
+      ...createSeeded(workDir),
+      depth: 'M' as const,
+      stage: 'atomicity' as const,
+      round: 0,
+    }
+    // Drafted-and-reviewed artifacts per the driver, tasks.md not reported
+    // done — the tail entry must win regardless, since the slice is the
+    // split's re-scoped child #1 and the review evidence lives in the parent.
+    const arts = artifacts({ proposal: 'done', specs: 'done', design: 'done' })
+    const point = deriveResumePoint(state, arts, emptyReplay)
+    expect(point).toMatchObject({ stage: 'atomicity', round: 0 })
+    expect(point.reason).toBe('continuation child tail entry')
+    const sChild = { ...state, depth: 'S' as const, stage: 'gate' as const }
+    expect(deriveResumePoint(sChild, artifacts({ proposal: 'done', specs: 'done' }), emptyReplay).stage).toBe('gate')
+  })
+
   it('resumes at decompose when a settled review left tasks.md missing with no final gate presented (task 3.1)', () => {
     const workDir = makeWorkDir()
     const settled: ReplayState = {

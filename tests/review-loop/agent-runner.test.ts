@@ -14,6 +14,7 @@ import {
   agentWritePath,
   createLineHandler,
   runAgent,
+  type ClaudeRunContext,
   type SpawnFn,
 } from '../../review-loop/src/agent-runner.js'
 import { ReviewerIssuesSchema } from '../../review-loop/src/issue-schema.js'
@@ -24,29 +25,103 @@ afterEach(cleanupTempDirs)
 
 type MockSpawnResult = { exitCode: number; stdout: string; stderr: string; timedOut?: boolean; stalled?: boolean }
 
+type RecordedSpawnCall = {
+  command: string
+  args: readonly string[]
+  cwd: string
+  inactivityTimeoutMs?: number
+  stdin?: string
+  env?: Record<string, string>
+  onLine?: (line: string) => void
+}
+
 function createMockSpawn(results: MockSpawnResult[]): {
-  calls: Array<{ command: string; args: readonly string[]; cwd: string; inactivityTimeoutMs?: number }>
-  spawn: (
+  calls: RecordedSpawnCall[]
+  spawn: SpawnFn
+} {
+  const calls: RecordedSpawnCall[] = []
+  let index = 0
+  const spawn: SpawnFn = (
     command: string,
     args: readonly string[],
-    opts: { cwd: string; inactivityTimeoutMs?: number },
-  ) => Promise<MockSpawnResult>
-} {
-  const calls: Array<{ command: string; args: readonly string[]; cwd: string; inactivityTimeoutMs?: number }> = []
-  let index = 0
-  return {
-    calls,
-    spawn: (
-      command: string,
-      args: readonly string[],
-      opts: { cwd: string; inactivityTimeoutMs?: number },
-    ): Promise<MockSpawnResult> => {
-      calls.push({ command, args, cwd: opts.cwd, inactivityTimeoutMs: opts.inactivityTimeoutMs })
-      const result = results[index] ?? results[results.length - 1]!
-      index += 1
-      return Promise.resolve(result)
-    },
+    opts: { cwd: string; inactivityTimeoutMs?: number; stdin?: string; env?: Record<string, string> },
+    onLine?: (line: string) => void,
+  ): Promise<MockSpawnResult> => {
+    calls.push({
+      command,
+      args,
+      cwd: opts.cwd,
+      inactivityTimeoutMs: opts.inactivityTimeoutMs,
+      stdin: opts.stdin,
+      env: opts.env,
+      onLine,
+    })
+    const result = results[index] ?? results[results.length - 1]!
+    index += 1
+    return Promise.resolve(result)
   }
+  return { calls, spawn }
+}
+
+/** A spawn fake that drives `onLine` itself, then resolves a scripted result per call. */
+function scriptedSpawn(
+  scripts: ReadonlyArray<(onLine: (line: string) => void, opts: { cwd: string }) => MockSpawnResult>,
+): {
+  calls: RecordedSpawnCall[]
+  spawn: SpawnFn
+} {
+  const calls: RecordedSpawnCall[] = []
+  const spawn: SpawnFn = (command, args, opts, onLine): Promise<MockSpawnResult> => {
+    calls.push({ command, args, cwd: opts.cwd, stdin: opts.stdin, env: opts.env, onLine })
+    const script = scripts[Math.min(calls.length - 1, scripts.length - 1)]!
+    return Promise.resolve(script(onLine ?? (() => {}), opts))
+  }
+  return { calls, spawn }
+}
+
+function claudeContext(dir: string, overrides: Partial<ClaudeRunContext> = {}): ClaudeRunContext {
+  return {
+    profile: 'bare',
+    credentialName: 'ANTHROPIC_API_KEY',
+    credentialValue: 'sk-ant-secret-0123456789',
+    configDirRoot: path.join(dir, 'claude-root'),
+    envSource: { PATH: '/usr/bin' },
+    ...overrides,
+  }
+}
+
+const CLAUDE_RESULT_LINE = JSON.stringify({
+  type: 'result',
+  is_error: false,
+  stop_reason: 'end_turn',
+  session_id: 'sess-1',
+  total_cost_usd: 0.01,
+  usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+})
+
+/** The first recorded spawn call argv, empty when nothing was recorded. */
+function firstArgs(mock: { calls: { args: readonly string[] }[] }): string[] {
+  return [...(mock.calls[0]?.args ?? [])]
+}
+
+/** The first recorded spawn call env, empty when it carried none. */
+function firstEnv(mock: { calls: { env?: Record<string, string> }[] }): Record<string, string> {
+  return mock.calls[0]?.env ?? {}
+}
+
+/** The value following a flag in a composed argv; '' when the flag is absent. */
+function argvOfTool(argv: readonly string[], flag: string): string {
+  return argv[argv.indexOf(flag) + 1] ?? ''
+}
+
+/** The first call's CLAUDE_CONFIG_DIR, '' when absent. */
+function configDirOf(mock: { calls: { env?: Record<string, string> }[] }): string {
+  return firstEnv(mock)['CLAUDE_CONFIG_DIR'] ?? ''
+}
+
+function writeScratch(dir: string, outputPath: string, data: unknown): void {
+  mkdirSync(path.join(dir, '.review-loop'), { recursive: true })
+  writeFileSync(path.join(dir, '.review-loop', path.basename(outputPath)), JSON.stringify(data))
 }
 
 describe('agentWritePath', () => {
@@ -321,6 +396,50 @@ describe('agent-runner', () => {
     expect(mock.calls[0]?.inactivityTimeoutMs).toBe(123_000)
   })
 
+  test('child stderr is scrubbed once before it is embedded anywhere (claude route)', async () => {
+    const secret = 'sk-ant-secret-0123456789'
+    const dir = makeTempDir('agent-runner-scrub-')
+    const outputPath = path.join(dir, 'issues.json')
+    const logPath = path.join(dir, 'log.txt')
+    const mock = createMockSpawn([
+      { exitCode: 1, stdout: '', stderr: `env: ANTHROPIC_API_KEY=${secret}` },
+      { exitCode: 1, stdout: '', stderr: `env: ANTHROPIC_API_KEY=${secret}` },
+    ])
+
+    const run = runAgent({
+      spawn: mock.spawn,
+      model: 'test-model',
+      cwd: dir,
+      prompt: 'review the code',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath,
+      extraArgs: [],
+      backend: 'claude',
+      claude: {
+        profile: 'bare',
+        credentialName: 'ANTHROPIC_API_KEY',
+        credentialValue: secret,
+        configDirRoot: path.join(dir, 'claude-root'),
+        envSource: {},
+      },
+      createClaudeSpawnDir: (context) =>
+        Promise.resolve({
+          configDir: path.join(context.configDirRoot, 'spawn-1'),
+          mcpConfigPath: null,
+        }),
+    })
+    // The AttemptError message flows from the one scrubbed copy...
+    await expect(run).rejects.toBeInstanceOf(AgentRunError)
+    await expect(run).rejects.toThrow(/\[redacted\]/u)
+    await expect(run).rejects.not.toThrow(new RegExp(secret, 'u'))
+    // ...and so does the enqueued stderr line.
+    const logged = readFileSync(logPath, 'utf8')
+    expect(logged).toContain('[redacted]')
+    expect(logged).not.toContain(secret)
+  })
+
   test('retries once on non-timeout spawn failure', async () => {
     const dir = makeTempDir('agent-runner-')
     const outputPath = path.join(dir, 'issues.json')
@@ -470,6 +589,528 @@ function asAgentRunError(value: unknown): AgentRunError {
   }
   return value
 }
+
+describe('runAgent backend integration', () => {
+  test('both backend fields absent is the opencode default: argv byte-identical to today, no stdin, no env', async () => {
+    const dir = makeTempDir('agent-bare-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = createMockSpawn([{ exitCode: 0, stdout: 'done', stderr: '' }])
+    writeScratch(dir, outputPath, { issues: [] })
+
+    await runAgent({
+      spawn: mock.spawn,
+      model: 'test-model',
+      cwd: dir,
+      prompt: 'review the code',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+    })
+
+    expect(mock.calls[0]?.command).toBe('opencode')
+    expect(mock.calls[0]?.args).toEqual([
+      'run',
+      '--auto',
+      '--format',
+      'json',
+      '--model',
+      'test-model',
+      '--dir',
+      dir,
+      'review the code',
+    ])
+    expect(mock.calls[0]?.stdin).toBeUndefined()
+    expect(mock.calls[0]?.env).toBeUndefined()
+  })
+
+  test('the claude route spawns claude with the prompt on stdin and the composed env', async () => {
+    const dir = makeTempDir('agent-claude-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+    writeScratch(dir, outputPath, { issues: [] })
+
+    await runAgent({
+      spawn: mock.spawn,
+      model: 'test-model',
+      cwd: dir,
+      prompt: 'review the code',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      backend: 'claude',
+      claude: claudeContext(dir),
+      createClaudeSpawnDir: (context) =>
+        Promise.resolve({
+          configDir: path.join(context.configDirRoot, 'spawn-1'),
+          mcpConfigPath: null,
+        }),
+    })
+
+    expect(mock.calls[0]?.command).toBe('claude')
+    expect(mock.calls[0]?.stdin).toBe('review the code')
+    expect(mock.calls[0]?.env?.['CLAUDE_CONFIG_DIR']).toBe(path.join(dir, 'claude-root', 'spawn-1'))
+    expect(mock.calls[0]?.env?.['ANTHROPIC_API_KEY']).toBe('sk-ant-secret-0123456789')
+  })
+
+  test('backend claude without the claude context is refused with a named composition error', async () => {
+    const dir = makeTempDir('agent-claude-missing-ctx-')
+    await expect(
+      runAgent({
+        spawn: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+        model: 'm',
+        cwd: dir,
+        prompt: 'p',
+        outputPath: path.join(dir, 'out.json'),
+        outputSchema: ReviewerIssuesSchema,
+        label: 'reviewer',
+        logPath: path.join(dir, 'log.txt'),
+        extraArgs: [],
+        backend: 'claude',
+      }),
+    ).rejects.toThrow(/claude context/u)
+  })
+
+  test('the decoder is re-armed per attempt: a retry never reads the stalled attempt result line', async () => {
+    const dir = makeTempDir('agent-rearm-')
+    const outputPath = path.join(dir, 'issues.json')
+    // Attempt 1: a *successful* result line arrives, then the spawn stalls
+    // (soft failure → retried). Attempt 2: exit 0, valid output file, but no
+    // result line of its own. A stale decoder would pass the gate as an empty
+    // success; a re-armed one fails the attempt.
+    const mock = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        return { exitCode: 1, stdout: '', stderr: 'Process stalled', timedOut: true, stalled: true }
+      },
+      (_onLine: (line: string) => void): MockSpawnResult => {
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+
+    await expect(
+      runAgent({
+        spawn: mock.spawn,
+        model: 'm',
+        cwd: dir,
+        prompt: 'p',
+        outputPath,
+        outputSchema: ReviewerIssuesSchema,
+        label: 'reviewer',
+        logPath: path.join(dir, 'log.txt'),
+        extraArgs: [],
+        backend: 'claude',
+        claude: claudeContext(dir),
+        createClaudeSpawnDir: (context) =>
+          Promise.resolve({
+            configDir: path.join(context.configDirRoot, 'spawn-1'),
+            mcpConfigPath: null,
+          }),
+      }),
+    ).rejects.toThrow(/result/u)
+    expect(mock.calls).toHaveLength(2)
+  })
+
+  test('an exit-0 turn with a missing result line never resolves as an empty success', async () => {
+    const dir = makeTempDir('agent-no-result-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = scriptedSpawn([
+      (): MockSpawnResult => {
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+      (): MockSpawnResult => {
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+
+    await expect(
+      runAgent({
+        spawn: mock.spawn,
+        model: 'm',
+        cwd: dir,
+        prompt: 'p',
+        outputPath,
+        outputSchema: ReviewerIssuesSchema,
+        label: 'reviewer',
+        logPath: path.join(dir, 'log.txt'),
+        extraArgs: [],
+        backend: 'claude',
+        claude: claudeContext(dir),
+        createClaudeSpawnDir: (context) =>
+          Promise.resolve({
+            configDir: path.join(context.configDirRoot, 'spawn-1'),
+            mcpConfigPath: null,
+          }),
+      }),
+    ).rejects.toThrow(/result/u)
+  })
+
+  test('an exit-0 turn whose result line signals an error fails before the output is accepted', async () => {
+    const dir = makeTempDir('agent-error-result-')
+    const outputPath = path.join(dir, 'issues.json')
+    const errorResult = JSON.stringify({
+      type: 'result',
+      is_error: true,
+      stop_reason: 'stop_sequence',
+      session_id: 'sess-1',
+      total_cost_usd: 0,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    })
+    const mock = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(errorResult)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(errorResult)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+
+    await expect(
+      runAgent({
+        spawn: mock.spawn,
+        model: 'm',
+        cwd: dir,
+        prompt: 'p',
+        outputPath,
+        outputSchema: ReviewerIssuesSchema,
+        label: 'reviewer',
+        logPath: path.join(dir, 'log.txt'),
+        extraArgs: [],
+        backend: 'claude',
+        claude: claudeContext(dir),
+        createClaudeSpawnDir: (context) =>
+          Promise.resolve({
+            configDir: path.join(context.configDirRoot, 'spawn-1'),
+            mcpConfigPath: null,
+          }),
+      }),
+    ).rejects.toThrow(/result/u)
+  })
+
+  test('an exit-0 turn with a healthy result line accepts the output', async () => {
+    const dir = makeTempDir('agent-good-result-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+
+    const result = await runAgent({
+      spawn: mock.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      backend: 'claude',
+      claude: claudeContext(dir),
+      createClaudeSpawnDir: (context) =>
+        Promise.resolve({
+          configDir: path.join(context.configDirRoot, 'spawn-1'),
+          mcpConfigPath: null,
+        }),
+    })
+    expect(result.value).toEqual({ issues: [] })
+    expect(result.usage.inputTokens).toBe(10)
+  })
+
+  test('the claude route appends the worktree conventions via the system-prompt seam (12.3 remedy)', async () => {
+    // The pinned CLI loads no memory files under either profile (recorded
+    // census), so the reviewer prompt's "already in your context" premise is
+    // false on this route — the conventions ride --append-system-prompt instead.
+    const dir = makeTempDir('agent-conventions-')
+    const outputPath = path.join(dir, 'issues.json')
+    mkdirSync(path.join(dir, '.review-loop'), { recursive: true })
+    writeFileSync(path.join(dir, 'AGENTS.md'), 'RULE: never add lint-disable comments.')
+    const mock = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+
+    await runAgent({
+      spawn: mock.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      backend: 'claude',
+      claude: claudeContext(dir),
+      createClaudeSpawnDir: (context) =>
+        Promise.resolve({
+          configDir: path.join(context.configDirRoot, 'spawn-1'),
+          mcpConfigPath: null,
+        }),
+    })
+
+    const argv = firstArgs(mock)
+    const index = argv.indexOf('--append-system-prompt')
+    expect(index).toBeGreaterThan(-1)
+    expect(argv[index + 1]).toBe('RULE: never add lint-disable comments.')
+    // The prompt itself still rides stdin, never argv.
+    expect(mock.calls[0]?.stdin).toBe('p')
+  })
+
+  test('CLAUDE.md is the fallback when AGENTS.md is absent', async () => {
+    const dir = makeTempDir('agent-conventions-claude-md-')
+    const outputPath = path.join(dir, 'issues.json')
+    mkdirSync(path.join(dir, '.review-loop'), { recursive: true })
+    writeFileSync(path.join(dir, 'CLAUDE.md'), 'CLAUDE-MD-CONVENTIONS')
+    const mock = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+
+    await runAgent({
+      spawn: mock.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      backend: 'claude',
+      claude: claudeContext(dir),
+      createClaudeSpawnDir: (context) =>
+        Promise.resolve({
+          configDir: path.join(context.configDirRoot, 'spawn-1'),
+          mcpConfigPath: null,
+        }),
+    })
+
+    expect(firstArgs(mock)[firstArgs(mock).indexOf('--append-system-prompt') + 1]).toBe('CLAUDE-MD-CONVENTIONS')
+  })
+
+  test('no conventions file means no system-prompt argv entries', async () => {
+    const dir = makeTempDir('agent-no-conventions-')
+    const outputPath = path.join(dir, 'issues.json')
+    mkdirSync(path.join(dir, '.review-loop'), { recursive: true })
+    const mock = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+
+    await runAgent({
+      spawn: mock.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      backend: 'claude',
+      claude: claudeContext(dir),
+      createClaudeSpawnDir: (context) =>
+        Promise.resolve({
+          configDir: path.join(context.configDirRoot, 'spawn-1'),
+          mcpConfigPath: null,
+        }),
+    })
+
+    expect(firstArgs(mock).includes('--append-system-prompt')).toBe(false)
+  })
+
+  test('the opencode route never reads or appends conventions', async () => {
+    const dir = makeTempDir('agent-no-conventions-oc-')
+    const outputPath = path.join(dir, 'issues.json')
+    mkdirSync(path.join(dir, '.review-loop'), { recursive: true })
+    writeFileSync(path.join(dir, 'AGENTS.md'), 'RULE: opencode loads me itself.')
+    const mock = createMockSpawn([{ exitCode: 0, stdout: '', stderr: '' }])
+    writeScratch(dir, outputPath, { issues: [] })
+
+    await runAgent({
+      spawn: mock.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+    })
+
+    expect(firstArgs(mock).includes('--append-system-prompt')).toBe(false)
+  })
+
+  test('each spawn gets its own config-dir child under the run parent (injectable seam)', async () => {
+    const dir = makeTempDir('agent-spawndir-')
+    const outputPath = path.join(dir, 'issues.json')
+    const createdRoots: string[] = []
+    let counter = 0
+    const mock = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+
+    await runAgent({
+      spawn: mock.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      backend: 'claude',
+      claude: claudeContext(dir),
+      createClaudeSpawnDir: (context) => {
+        createdRoots.push(context.configDirRoot)
+        counter += 1
+        return Promise.resolve({ configDir: path.join(context.configDirRoot, `child-${counter}`), mcpConfigPath: null })
+      },
+    })
+    expect(createdRoots).toEqual([path.join(dir, 'claude-root')])
+
+    // A stall retry creates a second child of the same parent.
+    const mockRetry = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        return { exitCode: 1, stdout: '', stderr: 'stalled', timedOut: true, stalled: true }
+      },
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+    const seenDirs: string[] = []
+    await runAgent({
+      spawn: mockRetry.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      backend: 'claude',
+      claude: claudeContext(dir),
+      createClaudeSpawnDir: (context) => {
+        counter += 1
+        const child = path.join(context.configDirRoot, `child-${counter}`)
+        seenDirs.push(child)
+        return Promise.resolve({ configDir: child, mcpConfigPath: null })
+      },
+    })
+    expect(seenDirs).toHaveLength(2)
+    expect(seenDirs[0]).not.toBe(seenDirs[1])
+  })
+
+  test('the default seam creates a real mkdtemp child, stamped as CLAUDE_CONFIG_DIR, with the empty-MCP doc on native', async () => {
+    const dir = makeTempDir('agent-default-spawndir-')
+    const outputPath = path.join(dir, 'issues.json')
+    const mock = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+    const root = makeTempDir('agent-claude-root-')
+
+    await runAgent({
+      spawn: mock.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      backend: 'claude',
+      claude: claudeContext(dir, {
+        profile: 'native',
+        credentialName: 'CLAUDE_CODE_OAUTH_TOKEN',
+        credentialValue: 'oauth-token-0123456789',
+        configDirRoot: root,
+      }),
+    })
+
+    const configDir = configDirOf(mock)
+    expect(configDir.startsWith(root)).toBe(true)
+    expect(existsSync(configDir)).toBe(true)
+    const argv = firstArgs(mock)
+    const mcpPath = argvOfTool(argv, '--mcp-config')
+    expect(mcpPath).toBe(path.join(configDir, 'empty-mcp.json'))
+    expect(existsSync(mcpPath)).toBe(true)
+    expect(readFileSync(mcpPath, 'utf8')).toBe(`${JSON.stringify({ mcpServers: {} })}\n`)
+    // The bare profile creates the child but no document.
+    const mockBare = scriptedSpawn([
+      (onLine: (line: string) => void): MockSpawnResult => {
+        onLine(CLAUDE_RESULT_LINE)
+        writeScratch(dir, outputPath, { issues: [] })
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    ])
+    const bareRoot = makeTempDir('agent-claude-bare-root-')
+    await runAgent({
+      spawn: mockBare.spawn,
+      model: 'm',
+      cwd: dir,
+      prompt: 'p',
+      outputPath,
+      outputSchema: ReviewerIssuesSchema,
+      label: 'reviewer',
+      logPath: path.join(dir, 'log.txt'),
+      extraArgs: [],
+      backend: 'claude',
+      claude: claudeContext(dir, { configDirRoot: bareRoot }),
+    })
+    const bareDir = configDirOf(mockBare)
+    expect(bareDir.startsWith(bareRoot)).toBe(true)
+    expect(existsSync(bareDir)).toBe(true)
+    expect(existsSync(path.join(bareDir, 'empty-mcp.json'))).toBe(false)
+  })
+})
 
 describe('createLineHandler log draining', () => {
   test('dispose resolves only after every queued log write has hit disk', async () => {

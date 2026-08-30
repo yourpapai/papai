@@ -9,12 +9,17 @@ import path from 'node:path'
 import type { AgentLayerDeps } from './agent-layer.js'
 import { runPlanBranch } from './children.js'
 import { autonomyOf } from './config.js'
-import type { AutonomyConfig } from './config.js'
 import type { DepthProfile, EventInput } from './events.js'
 import { buildBus, logPathFor, nowOf } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
 import { resolveTaskSource } from './intake.js'
-import { isInterruptedPlanBranchResume, isPlanParentResume, resumePlanParent } from './plan-resume.js'
+import {
+  isInterruptedPlanBranchResume,
+  isPlanParentResume,
+  resumePlanParent,
+  runContinuationStart,
+} from './plan-resume.js'
+import type { PlanChild } from './plan.js'
 import { runPlanningStages, runReviewStage } from './planning-stages.js'
 import type { FreshInput, PipelineEnv } from './planning-stages.js'
 import { runPostReviewToGate } from './post-review-tail.js'
@@ -30,13 +35,10 @@ import { createStopMarkerSeam, removeHolder, writeHolder } from './stop-controll
 export type { OrchestratorDeps, RunStartResult } from './gate-digest.js'
 export type { GateResumeOptions, RunGateResumeResult } from './extend-round.js'
 export { runContinue } from './continue.js'
+export type { RunContinueResult } from './continue.js'
 
 export interface AutonomyOverrides {
   readonly deadlineMinutes?: number
-}
-
-function resolveAutonomy(deps: OrchestratorDeps, overrides: AutonomyOverrides = {}): AutonomyConfig {
-  return autonomyOf(deps.config, overrides.deadlineMinutes)
 }
 
 export interface StartOptions {
@@ -50,6 +52,8 @@ export interface StartOptions {
   readonly autonomy?: AutonomyOverrides
   /** Tree spend baseline (D10) a nested run adds before its single-ceiling compare. */
   readonly spendBaselineUsd?: number
+  /** The plan child this nested run executes (D6) — a `changeName`-carrier gets a continuation start. */
+  readonly child?: PlanChild
   /** Reports the fresh run dir (D11) before stage work so a parent can propagate calm-stop. */
   readonly onRunDirReady?: (runDir: string) => void
 }
@@ -59,16 +63,12 @@ export interface RunResumeResult {
   readonly halted: 'gate' | 'gate-pending' | 'stopped' | 'completed'
   readonly gateMdPath?: string
   readonly version?: number
-}
-
-export interface RunContinueResult {
-  readonly runId: string | null
-  readonly routed: 'gate' | 'resume' | 'report' | 'list'
-  readonly gateMdPath?: string
-  readonly version?: number
+  readonly childRunId?: string
 }
 
 export async function runStart(deps: OrchestratorDeps, options: StartOptions): Promise<RunStartResult> {
+  const adoptedChangeName = options.child?.changeName
+  if (adoptedChangeName !== undefined) return runContinuationStart(deps, options, adoptedChangeName)
   const { taskText, changeName } = await resolveTaskSource(options)
   const state = await createRunState(
     {
@@ -80,9 +80,7 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
     nowOf(deps),
   )
   options.onRunDirReady?.(state.runDir)
-  if (options.taskText !== undefined) {
-    await writeFile(path.join(state.runDir, 'task.md'), taskText, 'utf8')
-  }
+  await writeFile(path.join(state.runDir, 'task.md'), taskText, 'utf8')
   const emit = buildBus(deps, logPathFor(state))
   writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
@@ -93,7 +91,7 @@ export async function runStart(deps: OrchestratorDeps, options: StartOptions): P
       taskText,
       changeName,
       depthOverride: options.depthOverride,
-      autonomy: resolveAutonomy(deps, options.autonomy),
+      autonomy: autonomyOf(deps.config, options.autonomy?.deadlineMinutes),
     })
     const planned = await runPlanningStages(env, stop)
     const halted =
@@ -113,7 +111,7 @@ export async function runResume(
   runId: string,
   overrides: AutonomyOverrides = {},
 ): Promise<RunResumeResult> {
-  const autonomy = resolveAutonomy(deps, overrides)
+  const autonomy = autonomyOf(deps.config, overrides.deadlineMinutes)
   const state = await loadRunState(deps.config.workDir, runId)
   if (state.gate !== null) {
     deps.stdout?.(`run ${runId} awaits a gate decision (gate ${state.gate.version}, ${state.gate.mode})`)

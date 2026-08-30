@@ -144,6 +144,12 @@ export interface Git {
    */
   changedSince(sha: string): Promise<string[]>
   /**
+   * The patch `sha`..HEAD carries for `paths` — the diff the review push guard
+   * is about to revert, captured before the revert destroys it so the phase's
+   * report can hand it to a maintainer. Empty when no requested path moved.
+   */
+  diffSince(sha: string, paths: readonly string[]): Promise<string>
+  /**
    * Restores `paths` to their content at `sha` and commits that — the staging
    * guard's move for a change that is already history. See `git-revert.ts`.
    */

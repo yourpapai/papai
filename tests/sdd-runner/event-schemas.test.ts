@@ -15,18 +15,42 @@ import {
   StageIdSchema,
 } from '../../sdd-runner/src/event-schemas.js'
 
-const usage = { inputTokens: 120, outputTokens: 45, reasoningTokens: 8, costUsd: 0.4, wallMs: 900 }
+const usage = {
+  inputTokens: 120,
+  outputTokens: 45,
+  reasoningTokens: 8,
+  costUsd: 0.4,
+  wallMs: 900,
+}
 
 describe('EventInputSchema variants', () => {
   it('accepts one member per altitude tier', () => {
     expect(
-      EventInputSchema.parse({ altitude: 'L0', type: 'tool_use', agent: 'skeptic-1', tool: 'read_file' }),
+      EventInputSchema.parse({
+        altitude: 'L0',
+        type: 'tool_use',
+        agent: 'skeptic-1',
+        tool: 'read_file',
+      }),
     ).toMatchObject({ altitude: 'L0', type: 'tool_use' })
-    expect(EventInputSchema.parse({ altitude: 'L1', type: 'killed', agent: 'x', cause: 'timeout' })).toMatchObject({
+    expect(
+      EventInputSchema.parse({
+        altitude: 'L1',
+        type: 'killed',
+        agent: 'x',
+        cause: 'timeout',
+      }),
+    ).toMatchObject({
       type: 'killed',
       cause: 'timeout',
     })
-    expect(EventInputSchema.parse({ altitude: 'L2', type: 'stage_exit', stage: 'gate' })).toMatchObject({
+    expect(
+      EventInputSchema.parse({
+        altitude: 'L2',
+        type: 'stage_exit',
+        stage: 'gate',
+      }),
+    ).toMatchObject({
       type: 'stage_exit',
       stage: 'gate',
     })
@@ -34,13 +58,31 @@ describe('EventInputSchema variants', () => {
 
   it("parses a gate event carrying the 'plan' mode", () => {
     expect(
-      EventInputSchema.parse({ altitude: 'L2', type: 'gate', action: 'presented', mode: 'plan', version: 3 }),
+      EventInputSchema.parse({
+        altitude: 'L2',
+        type: 'gate',
+        action: 'presented',
+        mode: 'plan',
+        version: 3,
+      }),
     ).toMatchObject({ mode: 'plan', version: 3 })
   })
 
   it('rejects unknown event types, altitudes, and negative costs', () => {
-    expect(EventInputSchema.safeParse({ altitude: 'L2', type: 'teleport', stage: 'gate' }).success).toBe(false)
-    expect(EventInputSchema.safeParse({ altitude: 'L9', type: 'stage_enter', stage: 'gate' }).success).toBe(false)
+    expect(
+      EventInputSchema.safeParse({
+        altitude: 'L2',
+        type: 'teleport',
+        stage: 'gate',
+      }).success,
+    ).toBe(false)
+    expect(
+      EventInputSchema.safeParse({
+        altitude: 'L9',
+        type: 'stage_enter',
+        stage: 'gate',
+      }).success,
+    ).toBe(false)
     expect(
       EventInputSchema.safeParse({
         altitude: 'L0',
@@ -100,7 +142,13 @@ describe('EventInputSchema variants', () => {
 
 describe('SddEventSchema stamp contract', () => {
   it('rejects the unstamped event input shape', () => {
-    expect(SddEventSchema.safeParse({ altitude: 'L2', type: 'stage_enter', stage: 'intake' }).success).toBe(false)
+    expect(
+      SddEventSchema.safeParse({
+        altitude: 'L2',
+        type: 'stage_enter',
+        stage: 'intake',
+      }).success,
+    ).toBe(false)
   })
 
   it('round-trips a stamped variant and rejects a non-positive seq', () => {
@@ -112,7 +160,11 @@ describe('SddEventSchema stamp contract', () => {
       seq: 4,
       ts: '2026-08-23T08:00:00.000Z',
     })
-    expect(stamped).toMatchObject({ type: 'resume', path: 'stage-rebuild', seq: 4 })
+    expect(stamped).toMatchObject({
+      type: 'resume',
+      path: 'stage-rebuild',
+      seq: 4,
+    })
     expect(
       SddEventSchema.safeParse({
         altitude: 'L2',
@@ -132,10 +184,159 @@ describe('supporting schemas', () => {
   })
 
   it('AgentUsageSchema rejects negative counters', () => {
-    expect(AgentUsageSchema.parse({ ...usage, cachedReadTokens: 3, cachedWriteTokens: 1 })).toMatchObject({
+    expect(
+      AgentUsageSchema.parse({
+        ...usage,
+        cachedReadTokens: 3,
+        cachedWriteTokens: 1,
+      }),
+    ).toMatchObject({
       cachedReadTokens: 3,
       cachedWriteTokens: 1,
     })
     expect(AgentUsageSchema.safeParse({ ...usage, inputTokens: -1 }).success).toBe(false)
+  })
+})
+
+describe('variant strictness: every enum member and bound is load-bearing', () => {
+  it('killed events require an agent id and accept exactly the documented causes', () => {
+    expect(
+      EventInputSchema.parse({
+        altitude: 'L1',
+        type: 'killed',
+        agent: 'reviewer-r1',
+        cause: 'inactivity',
+      }),
+    ).toMatchObject({ cause: 'inactivity' })
+    expect(
+      EventInputSchema.parse({
+        altitude: 'L1',
+        type: 'killed',
+        agent: 'reviewer-r1',
+        cause: 'abort',
+      }),
+    ).toMatchObject({ cause: 'abort' })
+    expect(
+      EventInputSchema.safeParse({
+        altitude: 'L1',
+        type: 'killed',
+        agent: '',
+        cause: 'timeout',
+      }).success,
+    ).toBe(false)
+    expect(
+      EventInputSchema.safeParse({
+        altitude: 'L1',
+        type: 'killed',
+        agent: 'reviewer-r1',
+        cause: 'exploded',
+      }).success,
+    ).toBe(false)
+  })
+
+  it('assumption events pin the L2 altitude, the type literal, every action member, and a non-empty id', () => {
+    for (const action of ['logged', 'confirmed', 'vetoed', 'applied'] as const) {
+      expect(
+        EventInputSchema.parse({
+          altitude: 'L2',
+          type: 'assumption',
+          action,
+          id: 'A1',
+        }),
+      ).toMatchObject({
+        action,
+      })
+    }
+    expect(
+      EventInputSchema.safeParse({
+        altitude: 'L1',
+        type: 'assumption',
+        action: 'logged',
+        id: 'A1',
+      }).success,
+    ).toBe(false)
+    expect(
+      EventInputSchema.safeParse({
+        altitude: 'L2',
+        type: 'assumption2',
+        action: 'logged',
+        id: 'A1',
+      }).success,
+    ).toBe(false)
+    expect(
+      EventInputSchema.safeParse({
+        altitude: 'L2',
+        type: 'assumption',
+        action: 'pondered',
+        id: 'A1',
+      }).success,
+    ).toBe(false)
+    expect(
+      EventInputSchema.safeParse({
+        altitude: 'L2',
+        type: 'assumption',
+        action: 'logged',
+        id: '',
+      }).success,
+    ).toBe(false)
+  })
+
+  it('depth events accept the prescreen source and reject unknown sources', () => {
+    expect(
+      EventInputSchema.parse({
+        altitude: 'L2',
+        type: 'depth',
+        profile: 'M',
+        rationale: 'r',
+        source: 'prescreen',
+      }),
+    ).toMatchObject({ source: 'prescreen' })
+    expect(
+      EventInputSchema.safeParse({
+        altitude: 'L2',
+        type: 'depth',
+        profile: 'M',
+        rationale: 'r',
+        source: 'vibes',
+      }).success,
+    ).toBe(false)
+  })
+
+  it('human_edits events require at least one file', () => {
+    expect(
+      EventInputSchema.parse({
+        altitude: 'L2',
+        type: 'human_edits',
+        action: 'detected',
+        files: ['a.ts'],
+      }),
+    ).toMatchObject({ type: 'human_edits' })
+    expect(
+      EventInputSchema.safeParse({
+        altitude: 'L2',
+        type: 'human_edits',
+        action: 'detected',
+        files: [],
+      }).success,
+    ).toBe(false)
+  })
+
+  it('resume events accept the artifact-skip path and reject unknown paths', () => {
+    expect(
+      EventInputSchema.parse({
+        altitude: 'L2',
+        type: 'resume',
+        path: 'artifact-skip',
+        stage: 'draft',
+      }),
+    ).toMatchObject({ path: 'artifact-skip' })
+    expect(
+      EventInputSchema.safeParse({
+        altitude: 'L2',
+        type: 'resume',
+        path: 'artifact-skip2',
+        stage: 'draft',
+      }).success,
+    ).toBe(false)
   })
 })

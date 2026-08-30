@@ -4,13 +4,14 @@
 // See LICENSE in the project root for details.
 
 import { consumeSteerFile } from './steer.js'
+import type { SteerDirective } from './steer.js'
 
 /** What a round boundary consults: the steering seam and the resumed session. */
 export interface BoundaryDeps {
   readonly steer?: {
     readonly runDir: string
     readonly onWarning: (line: string) => void
-    readonly onDirectives?: (directives: readonly import('./steer.js').SteerDirective[]) => void
+    readonly onDirectives?: (directives: readonly SteerDirective[]) => void
     readonly readRoundCap: () => number
   }
 }

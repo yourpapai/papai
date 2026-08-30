@@ -33,6 +33,7 @@ function frameFor(bag: ReturnType<typeof emptyRunFold>, width = 100): string {
       state: bag.state,
       slots: bag.slots,
       findings: bag.findings,
+      history: bag.history,
       width,
       startedAt: START,
       now: NOW,
@@ -150,5 +151,35 @@ describe('TUI running screen (4.2/4.3)', () => {
     expect(frame).toContain('[retry 2]')
     expect(frame).toContain('in 8.0k out 2.0k')
     expect(frame).toContain('$0.0500')
+  })
+
+  it('done agents leave the live panel and live once in the history region (7.4)', () => {
+    const events = [
+      stamped(1, { altitude: 'L1', type: 'spawned', agent: 'resolver-r1', role: 'resolver', model: 'glm' }),
+      stamped(2, { altitude: 'L1', type: 'spawned', agent: 'fixer-r1', role: 'fixer', model: 'glm' }),
+      stamped(3, {
+        altitude: 'L1',
+        type: 'done',
+        agent: 'resolver-r1',
+        model: 'glm',
+        usage: {
+          inputTokens: 8000,
+          outputTokens: 2000,
+          reasoningTokens: 0,
+          cachedReadTokens: 0,
+          cachedWriteTokens: 0,
+          costUsd: 0.05,
+          wallMs: 30_000,
+        },
+      }),
+    ]
+    const frame = frameFor(foldAll(events))
+    expect(frame).toContain('resolver-r1 done')
+    expect(frame).toContain('fixer-r1')
+    const lines = frame.split('\n')
+    const agentsPanel = lines.slice(lines.findIndex((line) => line.includes('╭─ Agents')))
+    expect(agentsPanel.some((line) => line.includes('resolver-r1 done'))).toBe(false)
+    const historyRow = lines.find((line) => line.includes('resolver-r1 done'))
+    expect(historyRow).toContain('│')
   })
 })

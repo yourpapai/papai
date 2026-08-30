@@ -3,12 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
+import { ACTIVITY_UNAVAILABLE_ERROR } from '../../src/deferred-prompts/activity-gating.js'
 import { makeCreateAlertTool } from '../../src/tools/create-alert.js'
-import { schemaValidates } from '../utils/test-helpers.js'
+import { getToolExecutor, mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 
 const USER_ID = 'create-alert-user'
 const condition = { field: 'task.status', op: 'eq', value: 'Done' }
@@ -56,5 +57,19 @@ describe('makeCreateAlertTool', () => {
   test('accepts a condition', () => {
     const tool = makeCreateAlertTool(USER_ID, USER_ID, 'dm')
     expect(schemaValidates(tool, { prompt: 'x', condition })).toBe(true)
+  })
+})
+
+describe('makeCreateAlertTool — activity alert gating', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('refuses an activity condition with the unavailable guidance by default', async () => {
+    const tool = makeCreateAlertTool(USER_ID, USER_ID, 'dm')
+    const execute = getToolExecutor(tool)
+    const result = await execute({ prompt: 'Notify me', condition: { kind: 'activity', taskId: 'task-1' } })
+    expect(result).toEqual({ error: ACTIVITY_UNAVAILABLE_ERROR })
   })
 })

@@ -3,13 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { Box, Text } from 'ink'
 import { createElement } from 'react'
 
 import type { KeyFlags } from './gate-session-state.js'
 import { initialCreateForm, reduceCreateForm } from './session-create-form.js'
 import type { CreateFormState } from './session-create-form.js'
 import type { SessionRow } from './session-list.js'
+import { keyHints } from './tui-chrome.js'
+import type { HintsInput } from './tui-chrome.js'
+import { ScreenChrome } from './tui-chrome.js'
+import type { OverlayState } from './tui-chrome.js'
+import { displayWidth, FramedPanel, padDisplay, panelRow, truncateDisplay } from './tui-panels.js'
+import type { PanelRow } from './tui-panels.js'
+import { costToken } from './tui-tokens.js'
+import type { ColorMode } from './tui-tokens.js'
+import { useTerminalWidth } from './tui-width.js'
 
 /**
  * Session screen (D2): every run as one selectable row with derived progress;
@@ -152,61 +160,115 @@ function decisionLabel(row: SessionRow): string {
   return ''
 }
 
-export function sessionScreenLines(rows: readonly SessionRow[], state: SessionScreenState, now: Date): string[] {
-  if (state.screen === 'create') return createScreenLines(state.form)
-  if (state.screen === 'confirmDelete') return confirmDeleteLines(state)
-  const lines: string[] = ['## Sessions']
-  if (rows.length === 0) {
-    lines.push('(no sessions)')
-    return lines
+/** The footer/overlay hints for the current sub-screen (confirm-delete is an any-key surface: footer only). */
+export function sessionHintsInput(state: SessionScreenState, rows: readonly SessionRow[]): HintsInput {
+  if (state.screen === 'create') return { screen: 'session-create' }
+  if (state.screen === 'confirmDelete') return { screen: 'confirm-delete' }
+  const hover = rows[clampCursor(state.cursor, rows)]
+  return {
+    screen: 'session-list',
+    stoppableHover: hover !== undefined && hover.status === 'running',
+    reopenableHover: hover !== undefined && REOPENABLE.has(hover.status),
+    deletableHover: hover !== undefined,
   }
-  rows.forEach((row, index) => {
-    const mark = index === state.cursor ? '❯ ' : '  '
-    const parts = [
-      `${GLYPHS[row.status]} ${row.changeName}`,
-      `${row.stage} r${String(row.round)}/${String(row.roundCap)}`,
-      tokenLabel(row),
-      costLabel(row),
-      relativeAge(row.updatedAt, now),
-    ]
-    const decision = decisionLabel(row)
-    if (decision !== '') parts.push(decision)
-    lines.push(`${mark}${parts.join(' · ')}`)
-  })
-  lines.push('')
-  lines.push('(Enter) continue · (s)top active · (r)eopen gate · (d)elete · (n)ew session · (q)uit')
-  return lines
 }
 
-function confirmDeleteLines(state: Extract<SessionScreenState, { screen: 'confirmDelete' }>): string[] {
+function listRowParts(
+  row: SessionRow,
+  index: number,
+  cursor: number,
+  mode: ColorMode,
+  now: Date,
+  width: number,
+): PanelRow {
+  const mark = index === cursor ? '❯ ' : '  '
+  const head = `${mark}${GLYPHS[row.status]} ${row.changeName} · ${row.stage} r${String(row.round)}/${String(row.roundCap)} · ${tokenLabel(row)}`
+  const decision = decisionLabel(row)
+  const tail = ` · ${relativeAge(row.updatedAt, now)}${decision === '' ? '' : ` · ${decision}`}`
+  const cost = costLabel(row)
+  const contentWidth = Math.max(1, width - 4)
+  const headBudget = contentWidth - displayWidth(tail) - displayWidth(cost)
+  if (headBudget < 4) {
+    return panelRow(row.runId, truncateDisplay(`${head} · ${cost}${tail}`, contentWidth))
+  }
+  const tailBudget = contentWidth - headBudget - displayWidth(cost)
+  return {
+    key: row.runId,
+    parts: [
+      { text: padDisplay(truncateDisplay(head, headBudget), headBudget) },
+      { text: cost, tone: costToken(mode, row.costKnown ? 'known' : 'unknown') },
+      { text: padDisplay(truncateDisplay(tail, tailBudget), tailBudget) },
+    ],
+  }
+}
+
+function listPanelRows(
+  rows: readonly SessionRow[],
+  state: Extract<SessionScreenState, { screen: 'list' }>,
+  mode: ColorMode,
+  now: Date,
+  width: number,
+): readonly PanelRow[] {
+  if (rows.length === 0) return [panelRow('empty', '(no sessions)')]
+  return rows.map((row, index) => listRowParts(row, index, state.cursor, mode, now, width))
+}
+
+function createPanelRows(form: CreateFormState): readonly PanelRow[] {
+  const rows: PanelRow[] = [
+    panelRow('title', `${form.field === 'title' ? '❯' : ' '} Title: ${form.title}`),
+    panelRow('description', `${form.field === 'description' ? '❯' : ' '} Description: ${form.description}`),
+  ]
+  if (form.notice !== null) rows.push(panelRow('notice', `! ${form.notice}`))
+  return rows
+}
+
+function confirmDeletePanelRows(state: Extract<SessionScreenState, { screen: 'confirmDelete' }>): readonly PanelRow[] {
   return [
-    '## Delete session',
-    `Delete ${state.changeName} (${state.runId})?`,
-    'The run directory is removed permanently — state, events, and cost history go with it.',
-    '',
-    '(y) delete · (any other key) cancel',
+    panelRow('name', `Delete ${state.changeName} (${state.runId})?`),
+    panelRow('warn', 'The run directory is removed permanently — state, events, and cost history go with it.'),
+    panelRow('afford', '(y) delete · (any other key) cancel'),
   ]
 }
 
-function createScreenLines(form: CreateFormState): string[] {
-  const lines: string[] = ['## New session']
-  lines.push(`${form.field === 'title' ? '❯' : ' '} Title: ${form.title}`)
-  lines.push(`${form.field === 'description' ? '❯' : ' '} Description: ${form.description}`)
-  if (form.notice !== null) lines.push(`! ${form.notice}`)
-  lines.push('')
-  lines.push('(Tab) switch field · (Enter) start · (Esc) back')
-  return lines
-}
-
-export function SessionScreen(props: {
+export interface SessionScreenProps {
   readonly rows: readonly SessionRow[]
   readonly state: SessionScreenState
   readonly now?: Date
-}): ReturnType<typeof createElement> {
-  const lines = sessionScreenLines(props.rows, props.state, props.now ?? new Date())
-  return createElement(
-    Box,
-    { flexDirection: 'column' },
-    ...lines.map((line, index) => createElement(Text, { key: String(index) }, line)),
-  )
+  /** Injectable width override; the terminal width when absent. */
+  readonly width?: number
+  readonly colorMode?: ColorMode
+  /** Overlay state from the owning picker; the confirm-delete sub-screen never composes it. */
+  readonly overlay?: OverlayState
+}
+
+export function SessionScreen(props: SessionScreenProps): ReturnType<typeof createElement> {
+  const terminalWidth = useTerminalWidth()
+  const width = props.width ?? terminalWidth
+  const mode = props.colorMode ?? 'color'
+  const now = props.now ?? new Date()
+  const hints = sessionHintsInput(props.state, props.rows)
+  const overlay: OverlayState =
+    props.state.screen === 'confirmDelete' ? { open: false } : (props.overlay ?? { open: false })
+  const panel =
+    props.state.screen === 'create'
+      ? FramedPanelOf('New session', createPanelRows(props.state.form), width)
+      : props.state.screen === 'confirmDelete'
+        ? FramedPanelOf('Delete session', confirmDeletePanelRows(props.state), width)
+        : FramedPanelOf('Sessions', listPanelRows(props.rows, props.state, mode, now, width), width)
+  return createElement(ScreenChrome, {
+    overlay,
+    screen:
+      hints.screen === 'session-create'
+        ? 'session-create'
+        : hints.screen === 'confirm-delete'
+          ? 'confirm-delete'
+          : 'session-list',
+    hints: keyHints(hints),
+    width,
+    children: [panel],
+  })
+}
+
+function FramedPanelOf(title: string, rows: readonly PanelRow[], width: number): ReturnType<typeof createElement> {
+  return createElement(FramedPanel, { title, rows, width })
 }

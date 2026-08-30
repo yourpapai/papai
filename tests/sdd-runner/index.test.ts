@@ -9,6 +9,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { appendEvent } from '../../sdd-runner/src/events.js'
 import { USAGE, readChangeSummary, runEntry } from '../../sdd-runner/src/index.js'
 import { createRunState, loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import { writeHolder } from '../../sdd-runner/src/stop-controller.js'
@@ -315,5 +316,75 @@ describe('runEntry wiring routes (in-process, mutation kills)', () => {
     expect(out).toContain('### Commits on sdd-test-branch')
     expect(out).toContain(`transcripts: runs/${state.runId}/transcripts/`)
     expect(fx.exitCodes).toEqual([0])
+  })
+})
+
+describe('report pricing wiring (subprocess)', () => {
+  it('reprices the subtree total and per-child cost from the pricing cache, never unknown', async () => {
+    const dir = makeDir()
+    const workDir = path.join(dir, '.sdd-runner')
+    fs.writeFileSync(
+      path.join(dir, 'config.json'),
+      JSON.stringify({ repoRoot: dir, workDir, model: 'test/priced-model', budget: 5 }),
+    )
+    execFileSync('git', ['init', '-b', 'sdd-test-branch', dir], { stdio: 'ignore' })
+
+    const child = await createRunState({ workDir, repoRoot: dir, changeName: 'auth-db' })
+    const childLog = path.join(workDir, 'runs', child.runId, 'events.ndjson')
+    appendEvent(childLog, {
+      altitude: 'L1',
+      type: 'spawned',
+      agent: 'impl-1',
+      role: 'drafter',
+      model: 'test/priced-model',
+    })
+    appendEvent(childLog, {
+      altitude: 'L1',
+      type: 'done',
+      agent: 'impl-1',
+      usage: { inputTokens: 1_000_000, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+    })
+    await saveRunState({ ...child, status: 'completed' })
+
+    const parent = await createRunState({ workDir, repoRoot: dir, changeName: 'composite' })
+    const parentLog = path.join(workDir, 'runs', parent.runId, 'events.ndjson')
+    appendEvent(parentLog, {
+      altitude: 'L1',
+      type: 'spawned',
+      agent: 'planner-1',
+      role: 'planner',
+      model: 'test/priced-model',
+    })
+    appendEvent(parentLog, {
+      altitude: 'L1',
+      type: 'done',
+      agent: 'planner-1',
+      usage: { inputTokens: 2_000_000, outputTokens: 0, reasoningTokens: 0, costUsd: 0, wallMs: 0 },
+    })
+    appendEvent(parentLog, { altitude: 'L2', type: 'child_spawned', child: 'auth-db', runId: child.runId })
+    await saveRunState({
+      ...parent,
+      status: 'completed',
+      plan: { childIds: ['auth-db'], digest: 'd'.repeat(8) },
+      children: { 'auth-db': { status: 'done' } },
+    })
+
+    const home = makeDir()
+    fs.mkdirSync(path.join(home, '.cache', 'sdd-runner'), { recursive: true })
+    fs.writeFileSync(
+      path.join(home, '.cache', 'sdd-runner', 'models.json'),
+      JSON.stringify({ test: { models: { 'priced-model': { cost: { input: 3, output: 6 } } } } }),
+    )
+    const proc = Bun.spawnSync(
+      ['bun', 'sdd-runner/src/index.ts', parent.runId, '--config', path.join(dir, 'config.json')],
+      {
+        cwd: import.meta.dir + '/../../',
+        env: { ...process.env, HOME: home },
+      },
+    )
+    expect(proc.exitCode).toBe(0)
+    const out = new TextDecoder().decode(proc.stdout)
+    expect(out).toContain(`- auth-db · run ${child.runId} · completed · $3.00`)
+    expect(out).toContain('subtree total: $6.00')
   })
 })

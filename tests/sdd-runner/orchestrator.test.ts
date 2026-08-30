@@ -25,9 +25,10 @@ import type { OpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 import { runContinue, runResume, runStart } from '../../sdd-runner/src/orchestrator.js'
 import type { RunGateResumeResult } from '../../sdd-runner/src/orchestrator.js'
 import { materializeChildFiles, planDigest } from '../../sdd-runner/src/plan.js'
+import type { PlanChild } from '../../sdd-runner/src/plan.js'
 import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
-import { loadRunState } from '../../sdd-runner/src/run-state.js'
+import { loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
 import { readHolder, requestCalmStop, stopMarkerPath } from '../../sdd-runner/src/stop-controller.js'
 
@@ -84,6 +85,15 @@ function stopRequestingSpawn(
     return base(command, args, options)
   }
   return { spawn, markerArrived: (): boolean => markerArrived }
+}
+
+/** Crash-double: rejects the atomicity spawn, standing in for a hard crash mid-flight. */
+function crashOnAtomicitySpawn(base: SpawnFn): SpawnFn {
+  return (command, args, options) => {
+    const prompt = String(args[args.length - 1])
+    if (prompt.includes('atomicity.json')) return Promise.reject(new Error('hard crash mid-flight'))
+    return base(command, args, options)
+  }
 }
 
 /**
@@ -508,11 +518,11 @@ describe('runStart text source (inline session)', () => {
     expect(state.changeName).toBe('task')
   })
 
-  it('never writes a run-dir task.md when the task came from a file', async () => {
+  it('persists the resolved task text into the run dir when the task came from a file (D5 split re-entry)', async () => {
     const fixture = makeFixture()
     const result = await runStart(fixture.deps, { taskFile: fixture.taskFile, depthOverride: 'S' })
     const state = await loadRunState(fixture.deps.config.workDir, result.runId)
-    expect(fs.existsSync(path.join(state.runDir, 'task.md'))).toBe(false)
+    expect(fs.readFileSync(path.join(state.runDir, 'task.md'), 'utf8')).toBe('# Add thing\n\ndoes a thing\n')
   })
 })
 
@@ -719,6 +729,71 @@ describe('runResume', () => {
     expect(reviewerSpawns.every((p) => p.includes('convention sentinel XYZ'))).toBe(true)
     const steerWarnings = stdoutLines.filter((l) => l.startsWith('steer:'))
     expect(steerWarnings.join('\n')).toContain('unknown directive: nonsense directive')
+  })
+
+  it('a cap-hit needs-review resume buys exactly one verification round: the cap rises, round 2 runs, the tail follows', async () => {
+    const fixture = makeFixture({
+      'resolutions-1.json': JSON.stringify({
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'edited', justification: 'narrowed the gap' }],
+        assumptions: [],
+      }),
+      'findings-2.json': JSON.stringify({ findings: [] }),
+      'resolutions-2.json': JSON.stringify({ resolutions: [], assumptions: [] }),
+    })
+    const workDir = fixture.deps.config.workDir
+    const runId = 'seeded-cap-hit-verify'
+    const runDir = path.join(workDir, 'runs', runId)
+    fs.mkdirSync(path.join(runDir, 'sidecars'), { recursive: true })
+    fs.mkdirSync(path.join(fixture.changeDir, 'specs', 'thing'), { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\nseeded\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'specs', 'thing', 'spec.md'), '## ADDED Requirements\n')
+    const now = '2026-01-01T00:00:00.000Z'
+    const events = [
+      { altitude: 'L2', type: 'stage_enter', stage: 'intake', seq: 1, ts: now },
+      { altitude: 'L2', type: 'depth', profile: 'S', rationale: 'override', source: 'override', seq: 2, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'intake', seq: 3, ts: now },
+      { altitude: 'L2', type: 'stage_enter', stage: 'draft', seq: 4, ts: now },
+      { altitude: 'L2', type: 'stage_exit', stage: 'draft', seq: 5, ts: now },
+    ]
+    fs.writeFileSync(path.join(runDir, 'events.ndjson'), events.map((e) => JSON.stringify(e)).join('\n') + '\n')
+    fs.writeFileSync(
+      path.join(runDir, 'state.json'),
+      `${JSON.stringify(
+        {
+          runId,
+          repoRoot: fixture.repoRoot,
+          workDir,
+          changeName: fixture.changeName,
+          stage: 'draft',
+          depth: 'S',
+          round: 0,
+          gate: null,
+          status: 'running',
+          createdAt: now,
+          updatedAt: now,
+        },
+        null,
+        2,
+      )}\n`,
+    )
+
+    const calls: string[] = []
+    const trackingDriver = createTrackingDriver(fixture, calls)
+    const deps: OrchestratorDeps = { ...fixture.deps, driver: trackingDriver }
+    const result = await runResume(deps, runId)
+
+    expect(result.halted).toBe('gate')
+    // Round 1 closed needs-review (an edited artifact no reviewer has seen);
+    // the verification round is real spend: it raises the persisted cap and
+    // re-enters the loop at round 2 before the tail presents the final gate.
+    expect(fixture.spawnOrder).toContain('findings-1.json')
+    expect(fixture.spawnOrder).toContain('resolutions-1.json')
+    expect(fixture.spawnOrder).toContain('findings-2.json')
+    expect(fixture.spawnOrder).toContain('resolutions-2.json')
+    const persisted = await loadRunState(workDir, runId)
+    expect(persisted.roundCap).toBe(2)
+    expect(persisted.round).toBe(2)
+    expect(fixture.prompts.join('\n')).not.toContain('Stryker was here!')
   })
 
   it('re-enters at decompose after an interrupted post-review stage and continues to the final gate (task 3.3)', async () => {
@@ -2922,7 +2997,7 @@ describe('plan-parent resume interception (D9)', () => {
 
     const result = await runResume(deps, runId)
 
-    expect(result).toEqual({ runId, halted: 'gate-pending' })
+    expect(result).toEqual({ runId, halted: 'gate-pending', childRunId: 'db-schema' })
     const parent = await loadRunState(deps.config.workDir, runId)
     expect(parent.children?.['db-schema']).toEqual({ status: 'running' })
     expect(parent.children?.['db-api']).toEqual({ status: 'pending' })
@@ -2997,6 +3072,178 @@ describe('plan-parent resume interception (D9)', () => {
     const md = fs.readFileSync(path.join(parent.runDir, 'gate-1.md'), 'utf8')
     expect(md).toContain('- [ ] C1 db-schema — Rename the schema columns.')
     expect(fixture.spawnOrder).toEqual([])
+  })
+})
+
+describe('continuation start for a changeName-carrying child (D6)', () => {
+  const SPLIT_CHILDREN: PlanChild[] = [
+    { id: 'auth-db', instruction: 'Ship the drafted slice.', deps: [], changeName: 'add-thing' },
+    { id: 'auth-api', instruction: 'Partition the remainder.', deps: ['auth-db'] },
+  ]
+
+  /**
+   * A single-turned-plan parent (the decompose-split conversion): runId is the
+   * bare slug, live, depth classified; the change folder exists with reviewed
+   * artifacts and the re-scoped first-slice-only tasks.md.
+   */
+  async function seedSplitParent(
+    fixture: ReturnType<typeof makeFixture>,
+    depth: 'S' | 'M' | 'L',
+  ): Promise<{ readonly parentRunDir: string; readonly taskFile: string }> {
+    const parent = await createRunState({
+      workDir: fixture.deps.config.workDir,
+      repoRoot: fixture.repoRoot,
+      changeName: 'add-thing',
+      runId: 'add-thing',
+    })
+    parent.depth = depth
+    parent.stage = 'review'
+    parent.plan = { childIds: SPLIT_CHILDREN.map((child) => child.id), digest: planDigest(SPLIT_CHILDREN) }
+    parent.children = { 'auth-db': { status: 'pending' }, 'auth-api': { status: 'pending' } }
+    await saveRunState(parent)
+    fs.mkdirSync(path.join(parent.runDir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(path.join(parent.runDir, 'sidecars', 'plan.json'), JSON.stringify({ children: SPLIT_CHILDREN }))
+    await materializeChildFiles({ children: SPLIT_CHILDREN }, parent.runDir)
+    appendEvent(path.join(parent.runDir, 'events.ndjson'), {
+      altitude: 'L2',
+      type: 'stage_enter',
+      stage: 'review',
+    })
+    fs.mkdirSync(fixture.changeDir, { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\n\nship the slice safely\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'tasks.md'), '## 1. Slice\n\n- [ ] 1.1 a\n- [ ] 1.2 b\n')
+    return {
+      parentRunDir: parent.runDir,
+      taskFile: path.join(parent.runDir, 'children', '1-auth-db.md'),
+    }
+  }
+
+  it('skips intake/draft/review/decompose, inherits the parent depth, enters the tail at atomicity, gates over the surrogate', async () => {
+    const fixture = makeFixture()
+    const { parentRunDir, taskFile } = await seedSplitParent(fixture, 'M')
+    const parentLog = path.join(parentRunDir, 'events.ndjson')
+    const parentEventsBefore = readEvents(parentLog).length
+    const newChangeCalls: string[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      driver: {
+        ...fixture.deps.driver,
+        newChange: (name, schema) => {
+          newChangeCalls.push(name)
+          return fixture.deps.driver.newChange(name, schema)
+        },
+      },
+    }
+
+    const result = await runStart(deps, {
+      child: SPLIT_CHILDREN[0],
+      taskFile,
+      spendBaselineUsd: 1.25,
+    })
+
+    expect(result.halted).toBe('gate')
+    expect(result.version).toBe(1)
+    expect(result.runId).toBe('add-thing-2')
+    expect(fixture.spawnOrder).toEqual(['atomicity.json'])
+    expect(newChangeCalls).toEqual([])
+    const state = await loadRunState(deps.config.workDir, 'add-thing-2')
+    expect(state.changeName).toBe('add-thing')
+    expect(state.depth).toBe('M')
+    expect(state.spendBaselineUsd).toBe(1.25)
+    expect(state.gate).toEqual({ mode: 'final', version: 1 })
+    expect(state.stage).toBe('gate')
+    assert(result.gateMdPath !== undefined)
+    const md = fs.readFileSync(result.gateMdPath, 'utf8')
+    expect(md).toContain('Final gate')
+    expect(md).toContain('tasks: 0/2')
+    const events = readEvents(path.join(state.runDir, 'events.ndjson'))
+    const stages = events.filter((e) => e.type === 'stage_enter').map((e) => (e as { stage: string }).stage)
+    expect(stages).toEqual(['atomicity', 'gate'])
+    expect(events.filter((e) => e.type === 'done').map((e) => (e as { agent: string }).agent)).toEqual(['atomicity'])
+    expect(readEvents(parentLog)).toHaveLength(parentEventsBefore)
+  })
+
+  it('emits a depth event for the inherited profile, so the report fold never renders a continuation child as not classified', async () => {
+    const fixture = makeFixture()
+    const { taskFile } = await seedSplitParent(fixture, 'M')
+
+    await runStart(fixture.deps, { child: SPLIT_CHILDREN[0], taskFile })
+
+    const state = await loadRunState(fixture.deps.config.workDir, 'add-thing-2')
+    const depthEvents = readEvents(path.join(state.runDir, 'events.ndjson')).filter((event) => event.type === 'depth')
+    expect(depthEvents).toHaveLength(1)
+    expect(depthEvents[0]).toMatchObject({
+      profile: 'M',
+      source: 'override',
+      rationale: 'inherited from parent run add-thing',
+    })
+  })
+
+  it('the allocator yields the next free <slug>-<n> past an occupied suffix, and S gates without any spawn', async () => {
+    const fixture = makeFixture()
+    const { taskFile } = await seedSplitParent(fixture, 'S')
+    const taken = await createRunState({
+      workDir: fixture.deps.config.workDir,
+      repoRoot: fixture.repoRoot,
+      changeName: 'add-thing',
+      runId: 'add-thing-2',
+    })
+    taken.status = 'completed'
+    await saveRunState(taken)
+
+    const result = await runStart(fixture.deps, { child: SPLIT_CHILDREN[0], taskFile })
+
+    expect(result.runId).toBe('add-thing-3')
+    expect(fixture.spawnOrder).toEqual([])
+    const state = await loadRunState(fixture.deps.config.workDir, 'add-thing-3')
+    expect(state.changeName).toBe('add-thing')
+    expect(state.depth).toBe('S')
+    expect(state.gate).toEqual({ mode: 'final', version: 1 })
+    const stages = readEvents(path.join(state.runDir, 'events.ndjson'))
+      .filter((e) => e.type === 'stage_enter')
+      .map((e) => (e as { stage: string }).stage)
+    expect(stages).toEqual(['gate'])
+  })
+
+  it('a continuation start without a task file inherits depthOverride instead of failing to derive a parent run', async () => {
+    const fixture = makeFixture()
+    fs.mkdirSync(fixture.changeDir, { recursive: true })
+    fs.writeFileSync(path.join(fixture.changeDir, 'proposal.md'), '## Why\n\nship the slice safely\n')
+    fs.writeFileSync(path.join(fixture.changeDir, 'tasks.md'), '## 1. Slice\n\n- [ ] 1.1 a\n- [ ] 1.2 b\n')
+
+    const result = await runStart(fixture.deps, { child: SPLIT_CHILDREN[0], depthOverride: 'M' })
+
+    expect(result.halted).toBe('gate')
+    const state = await loadRunState(fixture.deps.config.workDir, 'add-thing-2')
+    expect(state.depth).toBe('M')
+    expect(state.stage).toBe('gate')
+  })
+
+  it('persists the inherited depth before the atomicity flight, so a crash mid-tail resumes instead of stranding (D8)', async () => {
+    const fixture = makeFixture()
+    const { taskFile } = await seedSplitParent(fixture, 'M')
+    // The adopted change reads drafted-and-reviewed, as it does in production.
+    const settled = createSettledDriver(fixture)
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      driver: settled,
+      spawn: crashOnAtomicitySpawn(fixture.deps.spawn),
+    }
+
+    await runStart(deps, { child: SPLIT_CHILDREN[0], taskFile }).catch(() => undefined)
+
+    const crashed = await loadRunState(fixture.deps.config.workDir, 'add-thing-2')
+    expect(crashed.depth).toBe('M')
+    expect(crashed.stage).toBe('atomicity')
+    expect(crashed.gate).toBe(null)
+
+    const result = await runResume({ ...fixture.deps, driver: settled }, 'add-thing-2')
+
+    expect(result.halted).toBe('gate')
+    // The resume re-enters at the persisted tail entry: no reviewer or
+    // decomposer spawn over the adopted change (its review evidence lives in
+    // the parent's log; its tasks.md is the split's re-scoped child-#1 slice).
+    expect(fixture.spawnOrder).toEqual(['atomicity.json'])
   })
 })
 

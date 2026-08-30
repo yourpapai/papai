@@ -59,6 +59,8 @@ const driftState = (over: Partial<AgentState> = {}): AgentState => ({
   changeName: 'localized-release-announcements',
   planRevision: 1,
   tokensSpent: 893_073,
+  usdSpent: 4.5,
+  usdUnpriced: false,
   lastError: null,
   prUrl: null,
   prNumber: null,
@@ -95,6 +97,8 @@ const failureFixture = (state: AgentState): { input: MachineInput; sections: Rep
       answer: false,
       posted: false,
       carriedTokens: state.tokensSpent,
+      carriedUsd: state.usdSpent,
+      carriedUnpriced: state.usdUnpriced,
     },
     sections: reply.sections,
   }
