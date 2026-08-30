@@ -42,7 +42,7 @@ mirrors the existing `depth`/`roundCap` split. Census in `design.md`.
 ## Impact
 
 - Specs: `openspec/specs/sdd-runner-{pipeline,autonomy}`
-- Code: `sdd-runner/src/{review-model,review-loop,post-review-tail,auto-policy,gate-prelude,gate-digest,materialize,agent-layer,event-schemas,replay,resume-point}.ts`
+- Code: `sdd-runner/src/{review-model,review-loop,review-round,post-review-tail,auto-policy,gate-prelude,gate-integrity,gate-digest,gate-sidecars,materialize,agent-layer,event-schemas,replay,resume-point,planning-stages,pipeline-env}.ts`
 - Docs: `docs/architecture/sdd-pipeline.md` (Stages, Gate protocol, Event model)
 - No chat platform instance, task instance, or config-context scope is involved:
   `sdd-runner/` is a developer workspace with no runtime chat surface.
