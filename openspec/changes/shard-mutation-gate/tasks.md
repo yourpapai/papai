@@ -6,23 +6,23 @@ that. See design.md — Migration Plan.
 
 ## 1. Cost estimation and division (pure)
 
-- [ ] 1.1 Write failing tests for per-file weight estimation — a line-count-derived weight, a
+- [x] 1.1 Write failing tests for per-file weight estimation — a line-count-derived weight, a
       documented default when the source cannot be read, and a floor so no weight is zero or
       negative; verify with `bun test tests/scripts/mutation/shard-weights.test.ts`
-- [ ] 1.2 Implement the weight estimator in `scripts/mutation/shard-plan.ts`; verify with
+- [x] 1.2 Implement the weight estimator in `scripts/mutation/shard-weights.ts`; verify with
       `bun test tests/scripts/mutation/shard-weights.test.ts`
-- [ ] 1.3 Write failing tests for shard-count sizing covering every bound in the
+- [x] 1.3 Write failing tests for shard-count sizing covering every bound in the
       `mutation-shard-planning` spec: work-proportional count, the `max(B, maxWeight)` term, the cap,
       never more shards than targets, the single-shard threshold, and the empty measurement set;
       verify with `bun test tests/scripts/mutation/shard-sizing.test.ts`
-- [ ] 1.4 Implement sizing as a pure function of (weights, budget, cap, threshold); verify with
+- [x] 1.4 Implement sizing as a pure function of (weights, budget, cap, threshold); verify with
       `bun test tests/scripts/mutation/shard-sizing.test.ts`
-- [ ] 1.5 Write failing tests for cost-weighted assignment — LPT balance when costs differ by an
+- [x] 1.5 Write failing tests for cost-weighted assignment — LPT balance when costs differ by an
       order of magnitude, every target assigned exactly once, no empty shard, deterministic output
       for a given input; verify with `bun test tests/scripts/mutation/shard-assign.test.ts`
-- [ ] 1.6 Implement the assignment function; verify with
+- [x] 1.6 Implement the assignment function; verify with
       `bun test tests/scripts/mutation/shard-assign.test.ts`
-- [ ] 1.7 Write and satisfy a test pinning the spec's verdict-independence property: the same target
+- [x] 1.7 Write and satisfy a test pinning the spec's verdict-independence property: the same target
       set assigned across 1 and across k shards yields the same union of targets and the same gate
       input; verify with `bun test tests/scripts/mutation/shard-assign.test.ts`
 
