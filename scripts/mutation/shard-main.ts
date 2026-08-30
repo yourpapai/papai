@@ -52,7 +52,7 @@ const runPlan = (args: Extract<ShardCliArgs, { kind: 'plan' }>, projectRoot: str
     },
   })
   writeShardPlan(path.resolve(projectRoot, args.out), manifest)
-  console.log(`Shard plan written to ${args.out} (${manifest.shardCount} shard(s))`)
+  console.log(`Shard plan written to ${args.out} (${manifest.shards.length} shard(s))`)
   return 0
 }
 
