@@ -86,12 +86,12 @@ that. See design.md — Migration Plan.
 
 ## 6. Documentation and full verification
 
-- [ ] 6.1 Document the division rule, its constants, and the plan/shard/gate topology in
+- [x] 6.1 Document the division rule, its constants, and the plan/shard/gate topology in
       `scripts/mutation/README.md`; verify by reading it back against the
       `mutation-shard-planning` spec
-- [ ] 6.2 Update the mutation-testing paragraph in `CLAUDE.md` — Testing Notes and note the
+- [x] 6.2 Update the mutation-testing paragraph in `CLAUDE.md` — Testing Notes and note the
       distributed-measurement contract in
       `docs/adr/0424-incremental-mutation-measurement-with-whole-branch-gate.md`; verify with
       `bun run format:check`
-- [ ] 6.3 Run `bun test`, `bun run typecheck`, `bun run lint` and `bun workflows:lint`; confirm all
+- [x] 6.3 Run `bun test`, `bun run typecheck`, `bun run lint` and `bun workflows:lint`; confirm all
       pass and that no `docs/architecture/*.md` page describing CI topology is left stale
