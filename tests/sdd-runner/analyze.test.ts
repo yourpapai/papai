@@ -610,9 +610,15 @@ describe('concern persistence and R2 eligibility (2.3)', () => {
         ev(convergenceOf(2, 'open', { blocker: 0, material: 4, nitpick: 1 }), 4, at(3)),
         ev(roundOpen(3, 3), 5, at(4)),
         ev(convergenceOf(3, 'open', { blocker: 0, material: 2, nitpick: 1 }), 6, at(5)),
+        ev(gatePresented(1, 'early'), 7, at(6)),
+        ev(autoDecision('R2', 'extend', 1), 8, at(6)),
       ],
     })
-    expect(knownValue(r2EligibilityRate(bundle))).toEqual({ eligible: 1, gateStates: 1 })
+    expect(knownValue(r2EligibilityRate(bundle))).toEqual({
+      eligible: 1,
+      gateStates: 1,
+      byCause: { 'r2-fired': 1 },
+    })
   })
 
   it('r2EligibilityRate: open blockers or a non-decreasing trajectory make the state ineligible', () => {
@@ -632,8 +638,16 @@ describe('concern persistence and R2 eligibility (2.3)', () => {
         ev(convergenceOf(2, 'open', { blocker: 0, material: 3, nitpick: 1 }), 4, at(3)),
       ],
     })
-    expect(knownValue(r2EligibilityRate(withBlocker))).toEqual({ eligible: 0, gateStates: 1 })
-    expect(knownValue(r2EligibilityRate(nonDecreasing))).toEqual({ eligible: 0, gateStates: 1 })
+    expect(knownValue(r2EligibilityRate(withBlocker))).toEqual({
+      eligible: 0,
+      gateStates: 1,
+      byCause: { 'trajectory-blocked': 1 },
+    })
+    expect(knownValue(r2EligibilityRate(nonDecreasing))).toEqual({
+      eligible: 0,
+      gateStates: 1,
+      byCause: { 'trajectory-blocked': 1 },
+    })
   })
 
   it('r2EligibilityRate is unknown without cap-hit convergence pairs', () => {
@@ -645,6 +659,160 @@ describe('concern persistence and R2 eligibility (2.3)', () => {
     })
     expect(r2EligibilityRate(converged).status).toBe('unknown')
     expect(r2EligibilityRate(bundleOf()).status).toBe('unknown')
+  })
+})
+
+describe('r2 blocking-cause attribution (sdd-analyze-r2-blocking-cause)', () => {
+  /** One eligible cap-hit state (r2) joined by an early gate carrying the given decision. */
+  const eligibleStateWith = (version: number, decision: EventInput): SddEvent[] => [
+    ev(roundOpen(1, 2), 1, at(0)),
+    ev(convergenceOf(1, 'open', { blocker: 0, material: 3, nitpick: 1 }), 2, at(1)),
+    ev(roundOpen(2, 2), 3, at(2)),
+    ev(convergenceOf(2, 'open', { blocker: 0, material: 2, nitpick: 1 }), 4, at(3)),
+    ev(gatePresented(version, 'early'), 5, at(4)),
+    ev(decision, 6, at(5)),
+  ]
+
+  it('an extend auto_decision naming R2 attributes r2-fired', () => {
+    const bundle = bundleOf({ events: eligibleStateWith(1, autoDecision('R2', 'extend', 1)) })
+    expect(knownValue(r2EligibilityRate(bundle))).toEqual({
+      eligible: 1,
+      gateStates: 1,
+      byCause: { 'r2-fired': 1 },
+    })
+  })
+
+  it('an R4 presentation attributes cost-unknown on a cost-unknown run and over-ceiling on a cost-known one', () => {
+    const r4Gate = autoDecision('R4', 'gate', 1)
+    expect(knownValue(r2EligibilityRate(bundleOf({ events: eligibleStateWith(1, r4Gate) }), false))).toEqual({
+      eligible: 1,
+      gateStates: 1,
+      byCause: { 'cost-unknown': 1 },
+    })
+    expect(knownValue(r2EligibilityRate(bundleOf({ events: eligibleStateWith(1, r4Gate) }), true))).toEqual({
+      eligible: 1,
+      gateStates: 1,
+      byCause: { 'over-ceiling': 1 },
+    })
+  })
+
+  it('a preview auto_decision attributes preview, distinct from r2-fired', () => {
+    const bundle = bundleOf({ events: eligibleStateWith(1, autoDecision('R2', 'preview', 1)) })
+    expect(knownValue(r2EligibilityRate(bundle))).toEqual({
+      eligible: 1,
+      gateStates: 1,
+      byCause: { preview: 1 },
+    })
+  })
+
+  it('an ineligible state is trajectory-blocked even when R4 named its gate (the complement bucket)', () => {
+    const bundle = bundleOf({
+      events: [
+        ev(roundOpen(1, 2), 1, at(0)),
+        ev(convergenceOf(1, 'open', { blocker: 0, material: 3, nitpick: 1 }), 2, at(1)),
+        ev(roundOpen(2, 2), 3, at(2)),
+        ev(convergenceOf(2, 'open', { blocker: 1, material: 2, nitpick: 0 }), 4, at(3)),
+        ev(gatePresented(1, 'early'), 5, at(4)),
+        ev(autoDecision('R4', 'gate', 1), 6, at(5)),
+      ],
+    })
+    expect(knownValue(r2EligibilityRate(bundle, false))).toEqual({
+      eligible: 0,
+      gateStates: 1,
+      byCause: { 'trajectory-blocked': 1 },
+    })
+  })
+
+  it('the join takes the first early presentation after the convergence; final-gate records never join', () => {
+    const bundle = bundleOf({
+      events: [
+        ev(roundOpen(1, 2), 1, at(0)),
+        ev(convergenceOf(1, 'open', { blocker: 0, material: 4, nitpick: 1 }), 2, at(1)),
+        ev(roundOpen(2, 2), 3, at(2)),
+        ev(convergenceOf(2, 'open', { blocker: 0, material: 3, nitpick: 1 }), 4, at(3)),
+        ev(gatePresented(1, 'final'), 5, at(6)),
+        ev(autoDecision('R2', 'extend', 1), 6, at(6)),
+        ev(gatePresented(2, 'early'), 7, at(7)),
+        ev(autoDecision('R4', 'gate', 2), 8, at(8)),
+        ev(roundOpen(3, 3), 9, at(9)),
+        ev(convergenceOf(3, 'open', { blocker: 0, material: 2, nitpick: 1 }), 10, at(10)),
+        ev(gatePresented(3, 'early'), 11, at(11)),
+        ev(autoDecision('R2', 'extend', 3), 12, at(12)),
+      ],
+    })
+    expect(knownValue(r2EligibilityRate(bundle, false))).toEqual({
+      eligible: 2,
+      gateStates: 2,
+      byCause: { 'r2-fired': 1, 'cost-unknown': 1 },
+    })
+  })
+
+  it('an era run with an eligible state but no supporting records degrades to unknown with its reason', () => {
+    const era = bundleOf({
+      events: [
+        ev(roundOpen(1, 2), 1, at(0)),
+        ev(convergenceOf(1, 'open', { blocker: 0, material: 3, nitpick: 1 }), 2, at(1)),
+        ev(roundOpen(2, 2), 3, at(2)),
+        ev(convergenceOf(2, 'open', { blocker: 0, material: 2, nitpick: 1 }), 4, at(3)),
+      ],
+    })
+    const metric = r2EligibilityRate(era)
+    expect(metric).toEqual({
+      status: 'unknown',
+      reason: 'no gate/auto-decision records for 1 eligible cap-hit state(s)',
+    })
+  })
+
+  it('an era run whose states all fail the predicate stays known on the trajectory-blocked complement', () => {
+    const era = bundleOf({
+      events: [
+        ev(roundOpen(1, 2), 1, at(0)),
+        ev(convergenceOf(1, 'open', { blocker: 2, material: 1, nitpick: 0 }), 2, at(1)),
+        ev(roundOpen(2, 2), 3, at(2)),
+        ev(convergenceOf(2, 'open', { blocker: 1, material: 1, nitpick: 1 }), 4, at(3)),
+        ev(roundOpen(3, 3), 5, at(4)),
+        ev(convergenceOf(3, 'open', { blocker: 2, material: 0, nitpick: 1 }), 6, at(5)),
+      ],
+    })
+    expect(knownValue(r2EligibilityRate(era))).toEqual({
+      eligible: 0,
+      gateStates: 2,
+      byCause: { 'trajectory-blocked': 2 },
+    })
+  })
+
+  it('a kiss-help-style preview pair attributes preview ×2', () => {
+    const bundle = bundleOf({
+      events: [
+        ev(roundOpen(1, 2), 1, at(0)),
+        ev(convergenceOf(1, 'open', { blocker: 1, material: 10, nitpick: 0 }), 2, at(1)),
+        ev(roundOpen(2, 2), 3, at(2)),
+        ev(convergenceOf(2, 'open', { blocker: 0, material: 6, nitpick: 1 }), 4, at(3)),
+        ev(gatePresented(2, 'early'), 5, at(4)),
+        ev(autoDecision('R2', 'preview', 2), 6, at(5)),
+        ev(roundOpen(3, 3), 7, at(6)),
+        ev(convergenceOf(3, 'open', { blocker: 0, material: 4, nitpick: 2 }), 8, at(7)),
+        ev(gatePresented(5, 'early'), 9, at(8)),
+        ev(autoDecision('R2', 'preview', 5), 10, at(9)),
+      ],
+    })
+    expect(knownValue(r2EligibilityRate(bundle))).toEqual({
+      eligible: 2,
+      gateStates: 2,
+      byCause: { preview: 2 },
+    })
+  })
+
+  it('cost-unknown extend-by-human rows attribute cost-unknown', () => {
+    const bundle = bundleOf({
+      events: [...eligibleStateWith(1, autoDecision('R4', 'gate', 1)), ev(gateAnswered(1, 'early'), 7, at(30))],
+      gateFiles: [{ version: 1, md: '→ RUN 1 MORE\n' }],
+    })
+    expect(knownValue(r2EligibilityRate(bundle, false))).toEqual({
+      eligible: 1,
+      gateStates: 1,
+      byCause: { 'cost-unknown': 1 },
+    })
   })
 })
 
@@ -949,9 +1117,9 @@ describe('corpus report (4.1)', () => {
         ev(convergenceOf(1, 'open', { blocker: 0, material: 3, nitpick: 1 }), 2, at(1)),
         ev(roundOpen(2, 2), 3, at(2)),
         ev(convergenceOf(2, 'open', { blocker: 0, material: 2, nitpick: 0 }), 4, at(3)),
-        ev(gatePresented(1, 'final'), 5, at(5)),
+        ev(gatePresented(1, 'early'), 5, at(5)),
         ev(autoDecision('R4', 'gate', 1), 6, at(6)),
-        ev(gateAnswered(1, 'final'), 7, at(7)),
+        ev(gateAnswered(1, 'early'), 7, at(7)),
         ev(gatePresented(2, 'final'), 8, at(10)),
       ],
       resolutions: [
@@ -984,7 +1152,11 @@ describe('corpus report (4.1)', () => {
     expect(report.aggregates.eraContaminated).toEqual(['trilogy'])
     expect(report.aggregates.autoDecisionsByRule).toEqual({ R4: 1 })
     expect(report.aggregates.duplicateResolutionEntries).toBe(1)
-    expect(report.aggregates.r2Eligibility).toEqual({ eligible: 1, gateStates: 1 })
+    expect(report.aggregates.r2Eligibility).toEqual({
+      eligible: 1,
+      gateStates: 1,
+      byCause: { 'over-ceiling': 1 },
+    })
     expect(report.aggregates.gatesNeverAnswered).toBe(1)
   })
 
