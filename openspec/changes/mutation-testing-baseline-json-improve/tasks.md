@@ -18,10 +18,10 @@ discipline; CI is the hard gate.
 ## 2. Gate verdict surface (`scripts/mutation/gates.ts`, `scripts/mutation/changed-files.ts`)
 
 - [ ] 2.1 Write failing tests in `tests/scripts/mutation/gates.test.ts`: `GateVerdict` gains `warnings: readonly string[]` defaulting to `[]`; a pass-with-dilution run exits 0 carrying warnings; the regression message renders kills in the form `file score < floor, kills m < n recorded`. Verify: `bun test tests/scripts/mutation/gates.test.ts` (red).
-- [ ] 2.2 Implement the warnings channel in `scripts/mutation/gates.ts`: `GateVerdict` gains `warnings: readonly string[]` defaulting to `[]`, and a pass-with-dilution run exits 0 carrying warnings (the failure surface stays one exit code; warnings ride in the verdict). Verify: `bun test tests/scripts/mutation/gates.test.ts` (warnings cases green; the kills-rendering message cases stay red until 2.3).
-- [ ] 2.3 Render the kills in the regression message in `scripts/mutation/gates.ts` in the form `file score < floor, kills m < n recorded`. Verify: `bun test tests/scripts/mutation/gates.test.ts` (green — completes 2.1).
-- [ ] 2.4 Write failing tests in `tests/scripts/mutation/changed-files.test.ts`: each dilution prints a `WARN` log line naming the file, its held kill count, and both scores; the existing verbatim regression-message pins updated to the kills-rendering form. Verify: `bun test tests/scripts/mutation/changed-files.test.ts` (red).
-- [ ] 2.5 Print the verdict's warnings as plain `WARN` log lines in `scripts/mutation/changed-files.ts` (no CI annotations). Verify: `bun test tests/scripts/mutation/changed-files.test.ts` (green — completes 2.4).
+- [x] 2.2 Implement the warnings channel in `scripts/mutation/gates.ts`: `GateVerdict` gains `warnings: readonly string[]` defaulting to `[]`, and a pass-with-dilution run exits 0 carrying warnings (the failure surface stays one exit code; warnings ride in the verdict). Verify: `bun test tests/scripts/mutation/gates.test.ts` (warnings cases green; the kills-rendering message cases stay red until 2.3).
+- [x] 2.3 Render the kills in the regression message in `scripts/mutation/gates.ts` in the form `file score < floor, kills m < n recorded`. Verify: `bun test tests/scripts/mutation/gates.test.ts` (green — completes 2.1).
+- [x] 2.4 Write failing tests in `tests/scripts/mutation/changed-files.test.ts`: each dilution prints a `WARN` log line naming the file, its held kill count, and both scores; the existing verbatim regression-message pins updated to the kills-rendering form. Verify: `bun test tests/scripts/mutation/changed-files.test.ts` (red).
+- [x] 2.5 Print the verdict's warnings as plain `WARN` log lines in `scripts/mutation/changed-files.ts` (no CI annotations). Verify: `bun test tests/scripts/mutation/changed-files.test.ts` (green — completes 2.4).
 
 ## 3. Seed snapshot record-awareness (`scripts/mutation/seed-from.ts`)
 

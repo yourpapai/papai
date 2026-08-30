@@ -13,6 +13,7 @@ import type { BaselineMap, PerFileScore } from '../../../scripts/mutation/baseli
 import {
   changedFilesRun,
   parseChangedFilesCliArgs,
+  reportGateVerdict,
   selectChangedMutationTargets,
   type ChangedFilesDeps,
   type ChangedFilesRunDeps,
@@ -515,7 +516,7 @@ describe('runUpdateBaseline', () => {
 
 describe('resolveErroredGate', () => {
   test('passes when no file errored', () => {
-    expect(resolveErroredGate([])).toEqual({ exitCode: 0, message: null })
+    expect(resolveErroredGate([])).toEqual({ exitCode: 0, message: null, warnings: [] })
   })
 
   test('fails and names every errored file', () => {
@@ -546,6 +547,13 @@ describe('changedFilesRun with carried-over scores', () => {
     scored: scoredCount,
     score,
   })
+
+  // Rich floor 0.9 from 9 kills of a 10-mutant population — the record shape the
+  // ratchet needs to render kills in the regression message and classify dilution.
+  const richBaseline: BaselineMap = {
+    'src/x.ts': { score: 0.9, killed: 9, timeout: 0, scored: 10 },
+    'src/y.ts': { score: 0.9, killed: 9, timeout: 0, scored: 10 },
+  }
 
   const fileResult = (sourceFile: string, score: number): PairedRunFileResult => ({
     sourceFile,
@@ -593,7 +601,7 @@ describe('changedFilesRun with carried-over scores', () => {
       projectRoot: '/repo',
       reportDir: '/repo/reports/paired',
       baseRef: 'origin/master',
-      baseline: { 'src/x.ts': 0.9, 'src/y.ts': 0.9 },
+      baseline: richBaseline,
       verbose: false,
       incremental,
       deps: { selectTargets: () => ['src/x.ts', 'src/y.ts'], runPaired, log: () => {} },
@@ -607,10 +615,10 @@ describe('changedFilesRun with carried-over scores', () => {
       result: expectGateInput(result),
       threshold: 0,
       noRatchet: false,
-      baseline: { 'src/x.ts': 0.9, 'src/y.ts': 0.9 },
+      baseline: richBaseline,
     })
     expect(verdict.exitCode).toBe(1)
-    expect(verdict.message).toBe('Mutation ratchet regression: src/x.ts 0.5000 < 0.9000')
+    expect(verdict.message).toBe('Mutation ratchet regression: src/x.ts 0.5000 < 0.9000, kills 5 < 9 recorded')
   })
 
   test('passes when the carried-over score still clears its floor', async () => {
@@ -821,5 +829,85 @@ describe('parseChangedFilesCliArgs --no-score-cache', () => {
 
   test('still rejects unknown flags', () => {
     expect(parseChangedFilesCliArgs(['--no-score-caches'])).toMatchObject({ kind: 'usageError' })
+  })
+})
+
+describe('reportGateVerdict', () => {
+  const merged = (score: number, scoredCount = 10): PerFileScore['merged'] => ({
+    killed: Math.round(score * scoredCount),
+    survived: scoredCount - Math.round(score * scoredCount),
+    noCoverage: 0,
+    timeout: 0,
+    compileError: 0,
+    ignored: 0,
+    runtimeError: 0,
+    pending: 0,
+    total: scoredCount,
+    scored: scoredCount,
+    score,
+  })
+
+  const dilutionVerdict = (): ReturnType<typeof resolveChangedFilesGates> =>
+    resolveChangedFilesGates({
+      result: {
+        merged: merged(1),
+        perFile: [
+          // kills held at 9 while the population grew 10 → 20: dilution, not regression
+          { sourceFile: 'src/x.ts', merged: { ...merged(0.45, 20), killed: 9, survived: 11 } },
+        ],
+        skipped: [],
+        errored: [],
+      },
+      threshold: 0,
+      noRatchet: false,
+      baseline: { 'src/x.ts': { score: 0.9, killed: 9, timeout: 0, scored: 10 } },
+    })
+
+  test('prints each dilution as a WARN log line naming the file, its held kills, and both scores', () => {
+    const lines: string[] = []
+    reportGateVerdict(dilutionVerdict(), (line) => {
+      lines.push(line)
+    })
+    expect(lines).toEqual([
+      'WARN Mutation ratchet dilution: src/x.ts score 0.4500 < recorded 0.9000 but kills held (9 >= 9)',
+    ])
+  })
+
+  test('prints the failure message and keeps WARN lines for dilutions when the run also regresses', () => {
+    const lines: string[] = []
+    const errors: string[] = []
+    reportGateVerdict(
+      {
+        exitCode: 1,
+        message: 'Mutation ratchet regression: src/y.ts 0.5000 < 0.9000, kills 5 < 9 recorded',
+        warnings: ['Mutation ratchet dilution: src/x.ts score 0.4500 < recorded 0.9000 but kills held (9 >= 9)'],
+      },
+      (line) => {
+        lines.push(line)
+      },
+      (line) => {
+        errors.push(line)
+      },
+    )
+    expect(lines).toEqual([
+      'WARN Mutation ratchet dilution: src/x.ts score 0.4500 < recorded 0.9000 but kills held (9 >= 9)',
+    ])
+    expect(errors).toEqual(['Mutation ratchet regression: src/y.ts 0.5000 < 0.9000, kills 5 < 9 recorded'])
+  })
+
+  test('prints nothing for a clean pass', () => {
+    const lines: string[] = []
+    const errors: string[] = []
+    reportGateVerdict(
+      { exitCode: 0, message: null, warnings: [] },
+      (line) => {
+        lines.push(line)
+      },
+      (line) => {
+        errors.push(line)
+      },
+    )
+    expect(lines).toEqual([])
+    expect(errors).toEqual([])
   })
 })
