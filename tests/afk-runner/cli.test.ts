@@ -45,6 +45,48 @@ function firstRunOf(pipeline: ReturnType<typeof makeFakePipeline>): string {
   return entries[0] ?? ''
 }
 
+/** Fake clock: each tick resolves only when the test releases it. */
+function fakeClock(): { readonly tick: () => Promise<void>; readonly release: () => void } {
+  const queue: Array<() => void> = []
+  return {
+    tick: () =>
+      new Promise<void>((resolve) => {
+        queue.push(resolve)
+      }),
+    release: () => {
+      const resolve = queue.shift()
+      if (resolve !== undefined) resolve()
+    },
+  }
+}
+
+/** Release one tick and let the waiter's continuation run before the next. */
+async function releaseTick(clock: { readonly release: () => void }): Promise<void> {
+  clock.release()
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0)
+  })
+}
+
+/** Release ticks (bounded) until the path exists on disk. */
+async function ticksUntilFile(
+  clock: { readonly release: () => void },
+  filePath: string,
+  budget = 30,
+): Promise<boolean> {
+  for (let i = 0; i < budget; i += 1) {
+    await releaseTick(clock)
+    if (fs.existsSync(filePath)) return true
+  }
+  return fs.existsSync(filePath)
+}
+
+/** Answer a cap-hit blocker gate by hand: override the blocker, approve the gate. */
+function overrideCapHitBlocker(gateMd: string): void {
+  const md = fs.readFileSync(gateMd, 'utf8').replace('→ <answer or OVERRIDE>', '→ OVERRIDE')
+  fs.writeFileSync(gateMd, `${md}\nAPPROVE\n`)
+}
+
 const FIXTURE_RUN = path.join(import.meta.dir, 'fixtures', 'real', '2026-08-21T19-44-19-770Z-2f6e644a')
 
 describe('afk-runner cli', () => {
@@ -122,6 +164,63 @@ describe('afk-runner cli commands (fake agents)', () => {
     expect(summary).toContain('resumed: re-entered work')
 
     expect(reviewEnterCount(logPath)).toBe(2)
+  })
+})
+
+describe('afk-runner cli attach policy (start parks, resume attends)', () => {
+  it('start parks and exits at a gate: zero gateWait ticks, pointer names the gate file and the resume command', async () => {
+    const pipeline = makeFakePipeline({ sidecarOverrides: BLOCKER_ROUND })
+    const taskFile = path.join(pipeline.repoRoot, 'task.md')
+    fs.writeFileSync(taskFile, TASK_TEXT)
+    let ticks = 0
+    const gateWait = {
+      tick: (): Promise<void> => {
+        ticks += 1
+        return Promise.reject(new Error('start must not attach the gate waiter (R4 D2)'))
+      },
+    }
+
+    const summary = await runStartCommand({ ...pipeline.deps, gateWait }, [taskFile])
+
+    expect(summary).toContain('halted: gate-pending')
+    expect(ticks).toBe(0)
+    const runId = firstRunOf(pipeline)
+    const gatePath = path.join(pipeline.runDirOf(runId), 'gate-1.md')
+    expect(fs.existsSync(gatePath)).toBe(true)
+    expect(summary).toContain(gatePath)
+    expect(summary).toContain(`resume ${runId}`)
+  })
+
+  it('resume attaches the foreground waiter at a gate-pending park and settles through released ticks', async () => {
+    const pipeline = makeFakePipeline({ sidecarOverrides: BLOCKER_ROUND })
+    const taskFile = path.join(pipeline.repoRoot, 'task.md')
+    fs.writeFileSync(taskFile, TASK_TEXT)
+    await runStartCommand(pipeline.deps, [taskFile])
+    const runId = firstRunOf(pipeline)
+    const runDir = pipeline.runDirOf(runId)
+    overrideCapHitBlocker(path.join(runDir, 'gate-1.md'))
+
+    const clock = fakeClock()
+    const resumed = runResumeCommand({ ...pipeline.deps, gateWait: { tick: clock.tick } }, runId)
+
+    // attached: the resume holds in the waiter instead of reporting the park
+    const beforeTick = await Promise.race([
+      resumed.then((): string => 'returned'),
+      new Promise((resolve) => {
+        setTimeout((): void => resolve('pending'), 25)
+      }),
+    ])
+    expect(beforeTick).toBe('pending')
+
+    // released ticks settle v1; the re-drive presents the final gate (gate-2.md)
+    expect(await ticksUntilFile(clock, path.join(runDir, 'gate-2.md'))).toBe(true)
+    // the waiter holds for the v2 answer — Ctrl-C is the operator's exit
+    void resumed
+  })
+
+  it('bare-arg miss error names the replacement verbs', () => {
+    expect(() => runCli([import.meta.dir])).toThrow('start <taskFile>')
+    expect(() => runCli([import.meta.dir])).toThrow('resume <runId>')
   })
 })
 

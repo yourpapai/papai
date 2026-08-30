@@ -30,7 +30,17 @@ function doneEvent(seq: number, usage: AgentUsage): SddEvent {
 describe('usageTotalsOf (U9 cross-run accounting seam)', () => {
   it('sums every token flavor and cost across done events, ignoring noise', () => {
     const events: readonly SddEvent[] = [
-      doneEvent(1, usageOf({ inputTokens: 1_000_000, outputTokens: 200_000, reasoningTokens: 100_000, cachedReadTokens: 50_000, cachedWriteTokens: 50_000, costUsd: 0.25 })),
+      doneEvent(
+        1,
+        usageOf({
+          inputTokens: 1_000_000,
+          outputTokens: 200_000,
+          reasoningTokens: 100_000,
+          cachedReadTokens: 50_000,
+          cachedWriteTokens: 50_000,
+          costUsd: 0.25,
+        }),
+      ),
       { altitude: 'L2', type: 'stage_enter', stage: 'intake', seq: 2, ts: TS },
       doneEvent(3, usageOf({ inputTokens: 500_000, costUsd: 0.5 })),
     ]

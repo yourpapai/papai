@@ -75,7 +75,7 @@ The compatibility proof is a **behavioral and seam-API proof**, not purely behav
 
 Every `Write`/`Edit`/`MultiEdit` on an implementation file in `src/` or `client/` triggers an automated hook pipeline that **steers** toward Red → Green → Refactor. Local hooks are advisory — the hard gate is CI (`test:mutate:changed` + coverage ratchet).
 
-**Scope** — only implementation files: path starts with `src/`/`client/`/`plugins/`/`review-loop/src/`/`sdd-runner/src/`, extension `.ts`/`.js`/`.tsx`/`.jsx`, not a test (`*.test.*`/`*.spec.*`). Everything else passes through. The `client/` tree mirrors `src/` for test resolution (`client/debug/foo.ts` → `tests/client/debug/foo.test.ts`).
+**Scope** — only implementation files: path starts with `src/`/`client/`/`plugins/`/`review-loop/src/`/`sdd-runner/src/`/`afk-runner/src/`, extension `.ts`/`.js`/`.tsx`/`.jsx`, not a test (`*.test.*`/`*.spec.*`). Everything else passes through. The `client/` tree mirrors `src/` for test resolution (`client/debug/foo.ts` → `tests/client/debug/foo.test.ts`).
 
 **Pipeline** — before write: (1) write-policy gate. After write: (2) test-first nudge (advisory, once per file per session), (3) test tracker for new tests, (4) import gate for tests under `tests/`.
 

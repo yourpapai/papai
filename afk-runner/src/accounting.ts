@@ -41,9 +41,9 @@ export async function summarizeWorkDir(workDir: string): Promise<AccountingSumma
   const limit = pLimit(LOG_SCAN_CONCURRENCY)
   const inputs = await Promise.all(
     roster.map((entry) =>
-      limit(async (): Promise<RunAccountingInput> => {
+      limit((): RunAccountingInput => {
         try {
-          const events = readEvents(path.join(workDir, 'runs', entry.runId, 'events.ndjson'), () => {})
+          const events = readEvents(path.join(workDir, 'runs', entry.runId, 'events.ndjson'))
           return { ...entry, events }
         } catch {
           return { ...entry, events: null }
@@ -102,46 +102,59 @@ function wallMsOf(events: readonly SddEvent[]): number | null {
   return Math.max(0, Date.parse(last.ts) - Date.parse(first.ts))
 }
 
+/** The rendered row shape shared by every accountRun outcome (tokens/wall null on a degraded row). */
+function rowOf(input: RunAccountingInput, tokens: number | null, wallMs: number | null): AccountedRow {
+  return {
+    runId: input.runId,
+    identity: identityOf(input.runId, input.changeName),
+    status: statusOf(input),
+    tokens,
+    wallMs,
+    updatedAt: input.updatedAt,
+  }
+}
+
+/** One run's accounting: the rendered row plus its contributions to the totals (D5 degraded rows never fabricate zeros). */
+function accountRun(input: RunAccountingInput): {
+  readonly row: AccountedRow
+  readonly dwellMs: number
+  readonly costUsd: number
+  readonly unpriced: 0 | 1
+} {
+  if (input.events === null) {
+    return { row: rowOf(input, null, null), dwellMs: 0, costUsd: 0, unpriced: 1 }
+  }
+  let dwellMs = 0
+  for (const dwell of gateDwellsMs(input.events)) dwellMs += dwell
+  const usage = usageTotalsOf(input.events)
+  return {
+    row: rowOf(input, usage.tokens, wallMsOf(input.events)),
+    dwellMs,
+    costUsd: usage.costUsd,
+    unpriced: usage.costKnown ? 0 : 1,
+  }
+}
+
 /** The pure aggregation core: roster rows + per-run logs → rendered rows and honest totals. */
 export function aggregate(inputs: readonly RunAccountingInput[]): AccountingSummary {
   const ordered = [...inputs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   const rows: AccountedRow[] = []
   const byStatus: Record<string, number> = {}
   let gatePending = 0
-  let tokensTotal = 0
-  let wallTotal = 0
   let dwellTotal = 0
   let costTotal = 0
   let unpriced = 0
   for (const input of ordered) {
     byStatus[input.status] = (byStatus[input.status] ?? 0) + 1
     if (input.gate !== null) gatePending += 1
-    let tokens: number | null = null
-    let wallMs: number | null = null
-    if (input.events !== null) {
-      const usage = usageTotalsOf(input.events)
-      tokens = usage.tokens
-      costTotal += usage.costUsd
-      if (!usage.costKnown) unpriced += 1
-      for (const dwell of gateDwellsMs(input.events)) dwellTotal += dwell
-      wallMs = wallMsOf(input.events)
-    } else {
-      // Degraded row (D5): spend unknown — never a fabricated zero.
-      unpriced += 1
-    }
-    rows.push({
-      runId: input.runId,
-      identity: identityOf(input.runId, input.changeName),
-      status: statusOf(input),
-      tokens,
-      wallMs,
-      updatedAt: input.updatedAt,
-    })
+    const accounted = accountRun(input)
+    rows.push(accounted.row)
+    dwellTotal += accounted.dwellMs
+    costTotal += accounted.costUsd
+    unpriced += accounted.unpriced
   }
-  for (const row of rows) {
-    if (row.tokens !== null) tokensTotal += row.tokens
-    if (row.wallMs !== null) wallTotal += row.wallMs
-  }
+  const tokensTotal = rows.reduce((sum, row) => sum + (row.tokens ?? 0), 0)
+  const wallTotal = rows.reduce((sum, row) => sum + (row.wallMs ?? 0), 0)
   return {
     rows,
     totals: {

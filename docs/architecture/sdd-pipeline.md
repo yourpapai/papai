@@ -7,6 +7,8 @@ See LICENSE in the project root for details.
 
 # SDD Pipeline
 
+> **Historical surface (frozen off-primary).** The `sdd-runner/` workspace described here is frozen as of the R4 cut-over — the live engine and its runner commands are [`afk-runner.md`](afk-runner.md). The process sections below (stages, event model, depth profiles, gate protocol, admission vs division) stay canonical: `afk-runner/` implements the same pipeline.
+
 The `sdd-runner/` workspace automates the outer loop of spec-driven development: a runner sub-project orchestrates drafting, fresh-eyes review, convergence, and decomposition across spawned `opencode run` agents inside one OpenSpec change, reporting progress at pipeline altitude and concentrating human attention at a single gate. The stages compose end-to-end via `src/orchestrator.ts` (`runStart`/`runResume`/`runGateResume`); `src/report.ts` synthesizes evidence-backed run/PR reports from `events.ndjson`, the change folder, and the branch git log.
 
 ## Stages
@@ -205,6 +207,8 @@ When the loop converges with surviving nitpicks (≤3 NITPICK findings), the fin
 
 ## Commands
 
+> Historical: the `sdd-runner` CLI surface below (bare-arg routing, session screen) retired with the R4 cut-over — the live verbs are `afk-runner`'s (`start`/`resume`/`status`/`stop`/`report`/`runs`), see [`afk-runner.md`](afk-runner.md).
+
 ```bash
 bun run sdd-runner:start -- [<task-file> | <run-id>] [--depth S|M|L] [--pr] [--reopen [<n>]] [--config <path>]
 bun run sdd-runner:start -- stop [<run-id>]
@@ -217,6 +221,8 @@ Sessions are named for humans: a new run's id is the slugified change name (`run
 `sdd stop [<id>]` is liveness-aware: a process driving a run records itself in `runs/<id>/holder.json` (pid + start time, written before stage work, removed on every exit path — only a hard process death leaves it behind), and stop checks it. A live owner gets the calm-stop marker, honored at the next stage or round boundary, leaving the run resumable; a dead owner (no holder, or a holder whose pid is gone — every pre-holder legacy run qualifies) settles immediately instead: a run that died mid-pipeline records `stopped` (resumable exactly like a live calm stop), a run that died before intake classification (`depth: null`, nothing to resume) records `aborted`, and a stale stop marker is consumed so a later resume is clean. Gate-pending and non-running runs are honest no-ops. The session screen's `s` key routes through the same seam and prints the same outcome line. Several active runs without an id fail listing them. `--depth` is the only run-shaping start flag; `--config` overrides the config path (else `SDD_RUNNER_CONFIG`); `--pr` flavors a completed run's report; `--reopen [<n>]` re-presents a settled auto-decided gate (latest when `n` is omitted) and refuses while a gate is pending. The removed subcommand shapes (`start`/`resume`/`gate`/`continue`/`report`/`audit`/`watch`) and decision flags (`--confirm-all`/`--extend`/`--veto`/`--abort`/`--wait-deadline`/`--no-wait`/`--autonomy`) fail with an error naming the replacement; the non-interactive decision path is the hand-edited `gate-<n>.md`.
 
 ## Live rendering
+
+> Historical: these rendering surfaces belong to the frozen `sdd-runner/` TUI; the afk runner is line-rendered and parks at gates instead.
 
 Two surfaces, picked once at startup (`wireLiveView` over `render-mode.ts`): the **Ink TUI** only when a live terminal owns both stdio streams and neither `CI` nor `TERM=dumb` overrides it; everything else — pipes, redirects, CI — gets the append-only **LineRenderer** (`renderer.ts`, the CI / log-file contract; the TTY check is hard-gated so a redirect never gets ANSI escapes). `SDD_DEBUG=1` raises the line renderer's altitude (L0 tool-call/step lines) but never forces the TUI. The choice is exclusive per process: in TUI mode the LineRenderer is not subscribed to the event bus, and every route that drives stages (task-file start, state-routed resume, continue, a gate-resume's post-decision tail — after the gate screen has closed) mounts the running screen (`tui-run-session.ts`); on attach it first re-folds the run's `events.ndjson` so a re-entered run opens at current state.
 

@@ -14,6 +14,7 @@ import type { ExecGitFn, RunnerConfig } from './config.js'
 import type { DepthProfile } from './events.js'
 import { pipelineMachine } from './graph/pipeline.js'
 import { foldLog } from './kernel/fold.js'
+import { foldRun, logPathOf } from './memo-project.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { ExecFn } from './openspec-driver.js'
 import { resumeRun } from './run-resume.js'
@@ -31,7 +32,9 @@ export function runCli(argv: readonly string[]): string {
   }
   const logPath = path.join(runDir, 'events.ndjson')
   if (!existsSync(logPath)) {
-    throw new Error(`events.ndjson not found: ${logPath}`)
+    throw new Error(
+      `events.ndjson not found: ${logPath} — pass 'start <taskFile>' to drive a run, 'resume <runId>' to attend a parked one, or 'status'/'report' to inspect`,
+    )
   }
   const { snapshot, accounting } = foldLog(pipelineMachine, logPath)
   const value = typeof snapshot.value === 'string' ? snapshot.value : JSON.stringify(snapshot.value)
@@ -102,8 +105,8 @@ export function defaultCliDeps(cwd: string = process.cwd()): CliDeps {
     spawn: typedSpawn(realSpawn),
     execGit: EXEC_GIT,
     driver: createOpenSpecDriver({ exec: EXEC_OPENSPEC, cwd: config.repoRoot }),
-    // The operator runs the CLI interactively — gate-pending parks keep the
-    // process alive in the foreground waiter (C4 design D3).
+    // The waiter rides the resume verb only (R4 D2): start parks and exits,
+    // resume attends a gate-pending park in the foreground.
     gateWait: { tick: oneSecondTick },
   }
 }
@@ -121,8 +124,15 @@ export async function runStartCommand(deps: RunDeps, args: readonly string[]): P
   }
   const depthFlag = args.indexOf('--depth')
   const depthOverride = parseDepth(depthFlag === -1 ? undefined : args[depthFlag + 1])
-  const result = await startRun(deps, { taskFile, depthOverride })
+  // Never-on-start (R4 D2): start drives to park and exits — the foreground
+  // waiter belongs to resume, so a machine-invoked start never blocks a shell.
+  const result = await startRun({ ...deps, gateWait: undefined }, { taskFile, depthOverride })
   const lines = [`run: ${result.runId}`, `halted: ${result.halted}`, `position: ${result.position}`]
+  if (result.halted === 'gate-pending') {
+    const runDir = path.join(deps.config.workDir, 'runs', result.runId)
+    const version = foldRun(logPathOf(runDir)).context.gate?.version ?? 1
+    lines.push(`resume: afk-runner resume ${result.runId} — answer ${path.join(runDir, `gate-${version}.md`)}`)
+  }
   const summary = lines.join('\n')
   console.log(summary)
   return summary
