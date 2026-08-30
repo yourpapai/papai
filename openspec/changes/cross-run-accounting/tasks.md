@@ -25,5 +25,5 @@
 
 ## 6. Docs and full verification
 
-- [ ] 6.1 Update `docs/architecture/afk-runner.md`: layout row for `accounting.ts`, the `runs` verb in the CLI section (passive, report-family), and the U9 note that cross-run accounting's report half landed (enforcement still parked with U5). Verify: `openspec validate cross-run-accounting --strict`
-- [ ] 6.2 Run the full gate: `bun run test`, `bun run typecheck`, `bun run lint` — all green before commit.
+- [x] 6.1 Update `docs/architecture/afk-runner.md`: layout row for `accounting.ts`, the `runs` verb in the CLI section (passive, report-family), and the U9 note that cross-run accounting's report half landed (enforcement still parked with U5). Verify: `openspec validate cross-run-accounting --strict`
+- [x] 6.2 Run the full gate: `bun run test`, `bun run typecheck`, `bun run lint` — all green before commit.
