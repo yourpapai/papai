@@ -8,10 +8,11 @@ import {
   concernPersistence,
   duplicateIdRate,
   lensOverlapRate,
+  R2_CAUSES,
   r2EligibilityRate,
   resolverActionMix,
 } from './analyze-findings.js'
-import type { R2Eligibility, ResolverActionMix } from './analyze-findings.js'
+import type { R2Cause, R2CauseMix, R2Eligibility, ResolverActionMix } from './analyze-findings.js'
 import { decisionConsistency, gateForensics } from './analyze-gates.js'
 import type { DecisionConsistency, GateForensics } from './analyze-gates.js'
 import type { RunBundle } from './analyze-io.js'
@@ -71,6 +72,7 @@ export interface RunAnalysis {
 
 export function analyzeRun(bundle: RunBundle, now: Date, resolveCost: ResolveCostFn): RunAnalysis {
   const consistency = decisionConsistency(bundle)
+  const usage = usageOf(bundle.events, resolveCost)
   return {
     workDir: bundle.workDir,
     runId: bundle.runId,
@@ -85,9 +87,9 @@ export function analyzeRun(bundle: RunBundle, now: Date, resolveCost: ResolveCos
     classChurn: classChurn(bundle),
     resolverActionMix: resolverActionMix(bundle),
     concernPersistence: concernPersistence(bundle),
-    r2Eligibility: r2EligibilityRate(bundle),
+    r2Eligibility: r2EligibilityRate(bundle, usage.costKnown),
     consistency,
-    usage: usageOf(bundle.events, resolveCost),
+    usage,
   }
 }
 
@@ -123,6 +125,16 @@ function duplicateEntriesOf(bundle: RunBundle): number {
   )
 }
 
+/** Per-cause sums across runs with a known metric, fixed cause order, nonzero entries only. */
+function r2CauseMixOf(parts: readonly R2Eligibility[]): R2CauseMix {
+  const mix: Partial<Record<R2Cause, number>> = {}
+  for (const cause of R2_CAUSES) {
+    const total = parts.reduce((acc, part) => acc + (part.byCause[cause] ?? 0), 0)
+    if (total > 0) mix[cause] = total
+  }
+  return mix
+}
+
 function aggregatesOf(
   bundles: readonly RunBundle[],
   runs: readonly RunAnalysis[],
@@ -151,6 +163,7 @@ function aggregatesOf(
         : {
             eligible: r2Parts.reduce((acc, part) => acc + part.eligible, 0),
             gateStates: r2Parts.reduce((acc, part) => acc + part.gateStates, 0),
+            byCause: r2CauseMixOf(r2Parts),
           },
     gatesNeverAnswered: clean.reduce(
       (acc, run) => acc + (run.gates.status === 'known' ? run.gates.value.neverAnswered.length : 0),
