@@ -8,8 +8,8 @@
 
 ## 2. Pure aggregation core
 
-- [ ] 2.1 Write failing unit tests for the pure `aggregate()` in a new `tests/afk-runner/accounting.test.ts`: roster rows + per-run numbers → rendered rows and totals (gate-pending status marker `gate:<mode> v<version>`; tokens/Σtokens; wall = last−first event ts; Σdwell from `gateDwellsMs`; cost lower bound with unpriced count incl. degraded rows; empty roster → zeroed totals). Implement `aggregate()` in the new `afk-runner/src/accounting.ts`. Verify: `bun test tests/afk-runner/accounting.test.ts`
-- [ ] 2.2 Write failing tests for the formatting helpers (tokens → `13.2M`-style, ms → `101m`-style, unknown → `—`), then implement them in `afk-runner/src/accounting.ts` as pure functions the renderer composes. Verify: `bun test tests/afk-runner/accounting.test.ts`
+- [x] 2.1 Write failing unit tests for the pure `aggregate()` in a new `tests/afk-runner/accounting.test.ts`: roster rows + per-run numbers → rendered rows and totals (gate-pending status marker `gate:<mode> v<version>`; tokens/Σtokens; wall = last−first event ts; Σdwell from `gateDwellsMs`; cost lower bound with unpriced count incl. degraded rows; empty roster → zeroed totals). Implement `aggregate()` in the new `afk-runner/src/accounting.ts`. Verify: `bun test tests/afk-runner/accounting.test.ts`
+- [x] 2.2 Write failing tests for the formatting helpers (tokens → `13.2M`-style, ms → `101m`-style, unknown → `—`), then implement them in `afk-runner/src/accounting.ts` as pure functions the renderer composes. Verify: `bun test tests/afk-runner/accounting.test.ts`
 
 ## 3. fs shell with degradation tolerance
 
