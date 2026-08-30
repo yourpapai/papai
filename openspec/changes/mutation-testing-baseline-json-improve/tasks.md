@@ -43,8 +43,8 @@ discipline; CI is the hard gate.
 
 ## 5. SELECT prompt strings (`mutation-improve/src/prompt-templates.ts`)
 
-- [ ] 5.1 Write failing tests in `tests/mutation-improve/prompt-templates.test.ts` pinning the mixed-shape map description (entries are either a bare score number or a `{score, killed, timeout, scored}` record) and the updated `beforeScore` instruction (the bare number itself for a legacy entry, otherwise the entry's `score` field, 0..1). Verify: `bun test tests/mutation-improve/prompt-templates.test.ts` (red).
-- [ ] 5.2 Update the two stale strings in `mutation-improve/src/prompt-templates.ts` (`{filePath: score}` map line and `beforeScore:` schema line); `SelectionSchema` untouched. Verify: `bun test tests/mutation-improve/prompt-templates.test.ts` (green — completes 5.1).
+- [x] 5.1 Write failing tests in `tests/mutation-improve/prompt-templates.test.ts` pinning the mixed-shape map description (entries are either a bare score number or a `{score, killed, timeout, scored}` record) and the updated `beforeScore` instruction (the bare number itself for a legacy entry, otherwise the entry's `score` field, 0..1). Verify: `bun test tests/mutation-improve/prompt-templates.test.ts` (red).
+- [x] 5.2 Update the two stale strings in `mutation-improve/src/prompt-templates.ts` (`{filePath: score}` map line and `beforeScore:` schema line); `SelectionSchema` untouched. Verify: `bun test tests/mutation-improve/prompt-templates.test.ts` (green — completes 5.1).
 
 ## 6. Docs and ADR
 
