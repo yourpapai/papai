@@ -8,11 +8,11 @@
 
 ## 2. Deletion sweep (D2)
 
-- [ ] 2.1 Pre-flight gate — re-run the repo-wide reader search and confirm the inventory: `rg -ln "sdd-runner" --glob '!sdd-runner/**' --glob '!tests/sdd-runner/**' --glob '!reports/**'` shows no code reader outside the files this change edits (the one known reader closed by 1.1). Verify: the command's output matches the change's inventory
-- [ ] 2.2 Drop the `sdd-runner` workspaces entry and all five `sdd-runner:*` aliases from `package.json`; regenerate the lockfile. Verify: `bun install && bun install --frozen-lockfile`
-- [ ] 2.3 `git rm -r sdd-runner tests/sdd-runner`. Verify: `bun run typecheck && bun run lint`
-- [ ] 2.4 Remove the two `COPY sdd-runner/package.json` lines from `Dockerfile` (deps + prod-deps stages). Verify: `rg -n "sdd-runner" Dockerfile` returns nothing
-- [ ] 2.5 Sweep the script/config surfaces: `knip.config.ts` ignore entry, the `sdd-runner/src` mapping branch in `scripts/mutation/coverage-map.ts` (test-first: update `tests/scripts/mutation/coverage-map.test.ts` expectations to red before the branch goes), the `sdd-runner/src/session-create-form.ts` key in `scripts/mutation/baseline.json`, the workspace list comment in `scripts/check.sh` (and `tests/scripts/check.test.ts` if it pins it). Verify: `bun run knip && bun test tests/scripts/`
+- [x] 2.1 Pre-flight gate — re-run the repo-wide reader search and confirm the inventory: `rg -ln "sdd-runner" --glob '!sdd-runner/**' --glob '!tests/sdd-runner/**' --glob '!reports/**'` shows no code reader outside the files this change edits (the one known reader closed by 1.1). Verify: the command's output matches the change's inventory
+- [x] 2.2 Drop the `sdd-runner` workspaces entry and all five `sdd-runner:*` aliases from `package.json`; regenerate the lockfile. Verify: `bun install && bun install --frozen-lockfile`
+- [x] 2.3 `git rm -r sdd-runner tests/sdd-runner`. Verify: `bun run typecheck && bun run lint`
+- [x] 2.4 Remove the two `COPY sdd-runner/package.json` lines from `Dockerfile` (deps + prod-deps stages). Verify: `rg -n "sdd-runner" Dockerfile` returns nothing
+- [x] 2.5 Sweep the script/config surfaces: `knip.config.ts` ignore entry, the `sdd-runner/src` mapping branch in `scripts/mutation/coverage-map.ts` (test-first: update `tests/scripts/mutation/coverage-map.test.ts` expectations to red before the branch goes), the `sdd-runner/src/session-create-form.ts` key in `scripts/mutation/baseline.json`, the workspace list comment in `scripts/check.sh` (and `tests/scripts/check.test.ts` if it pins it). Verify: `bun run knip && bun test tests/scripts/`
 
 ## 3. Re-tighten (D3)
 

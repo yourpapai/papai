@@ -1,7 +1,0 @@
-{
-  "repoRoot": "..",
-  "workDir": ".sdd-runner",
-  "model": "anthropic/claude-opus-4-1",
-  "budget": 5,
-  "deadline": 90
-}

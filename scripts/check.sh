@@ -329,7 +329,7 @@ if [ "$STAGED_MODE" = true ]; then
   fi
 else
   # Original behavior: run all checks. Workspace code (review-loop/, mutation-improve/,
-  # sdd-runner/, opencode-agent/) is enforced by these root checks alone: root lint/
+  # opencode-agent/) is enforced by these root checks alone: root lint/
   # typecheck/format:check walk the workspace dirs, and the default test sweep runs
   # tests/<workspace>/. Per-workspace proxy scripts stay local-only conveniences.
   checks=("lint" "typecheck" "format:check" "license-headers" "knip" "test" "test:client" "duplicates")

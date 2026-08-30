@@ -28,8 +28,10 @@ describe('samePackageTestDir — src↔tests package mapping (all roots)', () =>
     ['plugins/task-provider-kaneo/client.ts', 'tests/plugins/task-provider-kaneo'],
     ['review-loop/src/index.ts', 'tests/review-loop'],
     ['review-loop/src/lib/util.ts', 'tests/review-loop/lib'],
-    ['sdd-runner/src/index.ts', 'tests/sdd-runner'],
-    ['sdd-runner/src/stages/intake.ts', 'tests/sdd-runner/stages'],
+    // The sdd-runner workspace is deleted; its paths fall to the generic
+    // fallback like any other unknown root, and a re-added special case must
+    // consciously update this pin.
+    ['sdd-runner/src/index.ts', 'tests'],
     ['scripts/foo.ts', 'tests'],
   ]
   for (const [input, expected] of cases) {

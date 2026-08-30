@@ -307,9 +307,7 @@ describe('check.sh --skip-tests', () => {
       // Aggregate gates enforce workspace code through the root checks only;
       // no per-workspace proxy script may appear in any mode.
       const workspaceProxyCalls = calls.filter((call) =>
-        ['review-loop:', 'mutation-improve:', 'sdd-runner:', 'opencode-agent:'].some((prefix) =>
-          call.startsWith(`bun run ${prefix}`),
-        ),
+        ['review-loop:', 'mutation-improve:', 'opencode-agent:'].some((prefix) => call.startsWith(`bun run ${prefix}`)),
       )
       expect(workspaceProxyCalls).toEqual([])
     } finally {
@@ -610,7 +608,7 @@ describe('check.sh full mode', () => {
       expect(calls).not.toContain('--max-concurrency')
       expect(calls).not.toContain('bun run test:client')
       expect(calls).not.toContain('bun run review-loop:test')
-      for (const prefix of ['review-loop:', 'mutation-improve:', 'sdd-runner:', 'opencode-agent:']) {
+      for (const prefix of ['review-loop:', 'mutation-improve:', 'opencode-agent:']) {
         expect(calls).not.toContain(`bun run ${prefix}`)
       }
     } finally {

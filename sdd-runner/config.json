@@ -1,7 +1,0 @@
-{
-  "repoRoot": ".",
-  "workDir": ".sdd-runner",
-  "model": "zai-coding-plan/glm-5.3",
-  "budget": 10,
-  "deadline": 90
-}

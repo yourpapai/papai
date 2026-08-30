@@ -145,7 +145,6 @@
   "plugins/task-provider-youtrack/schemas/work-item.ts": 1,
   "plugins/task-provider-youtrack/task-helpers.ts": 0.5,
   "plugins/task-provider-youtrack/validate-config.ts": 1,
-  "sdd-runner/src/session-create-form.ts": 0.9484536082474226,
   "src/coding-sessions/configure.ts": 0.6666666666666666,
   "src/config.ts": 0.6535433070866141,
   "src/conversation.ts": 0.6231884057971014,
