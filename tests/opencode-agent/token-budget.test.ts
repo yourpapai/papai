@@ -12,6 +12,7 @@ import type { ReportSection } from '../../opencode-agent/src/reply-comment.js'
 import type { RunResult } from '../../opencode-agent/src/run-result.js'
 import { stopIfOverBudget } from '../../opencode-agent/src/token-budget.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
 
@@ -58,6 +59,7 @@ const spentState = (over: Partial<AgentState> = {}): AgentState => ({
   stepsDone: 0,
   changeName: 'token-ceiling-excludes-cache-reads',
   planRevision: 1,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 5_000_000,
   usdSpent: 9.23,
   usdUnpriced: false,

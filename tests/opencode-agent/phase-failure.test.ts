@@ -11,6 +11,7 @@ import { failRun } from '../../opencode-agent/src/phase-failure.js'
 import type { ReplyBuffer } from '../../opencode-agent/src/reply-buffer.js'
 import type { ReportSection } from '../../opencode-agent/src/reply-comment.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
 
@@ -58,6 +59,7 @@ const driftState = (over: Partial<AgentState> = {}): AgentState => ({
   stepsDone: 4,
   changeName: 'localized-release-announcements',
   planRevision: 1,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 893_073,
   usdSpent: 4.5,
   usdUnpriced: false,

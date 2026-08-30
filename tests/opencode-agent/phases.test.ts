@@ -28,6 +28,7 @@ import type { ReportSection } from '../../opencode-agent/src/reply-comment.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import { serializeState } from '../../opencode-agent/src/state-manager.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
 import type { StubIo } from './test-helpers.js'
@@ -64,6 +65,7 @@ const baseState = (issueId = 42, over: Partial<AgentState> = {}): AgentState => 
   stepsDone: 0,
   changeName: null,
   planRevision: 0,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 0,
   usdSpent: 0,
   usdUnpriced: false,
@@ -551,6 +553,7 @@ const planningState = (over: Partial<AgentState> = {}): AgentState => ({
   stepsDone: 0,
   changeName: CHANGE,
   planRevision: 0,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 0,
   usdSpent: 0,
   usdUnpriced: false,
