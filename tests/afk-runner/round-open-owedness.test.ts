@@ -9,7 +9,8 @@ import path from 'node:path'
 
 import { readEvents } from '../../afk-runner/src/events.js'
 import type { SddEvent } from '../../afk-runner/src/events.js'
-import { resumeRun, startRun } from '../../afk-runner/src/run.js'
+import { resumeRun } from '../../afk-runner/src/run-resume.js'
+import { startRun } from '../../afk-runner/src/run.js'
 import { roundOpenOwed } from '../../afk-runner/src/work/review-loop.js'
 import { M_MULTI_ROUND, TASK_TEXT, makeFakePipeline } from './fixtures/fake-pipeline.js'
 

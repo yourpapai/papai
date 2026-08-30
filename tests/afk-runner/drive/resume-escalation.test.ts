@@ -14,8 +14,8 @@ import type { EventInput, SddEvent } from '../../../afk-runner/src/events.js'
 import { readEvents } from '../../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../../afk-runner/src/kernel/fold.js'
+import { resumeRun } from '../../../afk-runner/src/run-resume.js'
 import { PersistedRunStateSchema } from '../../../afk-runner/src/run-state.js'
-import { resumeRun } from '../../../afk-runner/src/run.js'
 import { TASK_TEXT, makeFakePipeline } from '../fixtures/fake-pipeline.js'
 
 const STAMP = new Date('2026-08-29T00:00:00.000Z')

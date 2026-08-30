@@ -37,6 +37,12 @@ export interface FakePipelineOptions {
   readonly sidecarSequences?: Record<string, readonly string[]>
   /** When given, a spawn whose output basename matches crashes (rejected spawn) — kill drill. */
   readonly crashOn?: (basename: string) => boolean
+  /**
+   * When given, a spawn reports this opencode session id as its first event
+   * line before running (or crashing) — the session-continuation ledger
+   * shape: `latestInFlight` sees a `spawned`/`killed` id-bearing line.
+   */
+  readonly sessionIdOf?: (basename: string) => string | undefined
 }
 
 export const TASK_TEXT = '# Add thing\n\nfixes a typo in the readme\n'
@@ -134,12 +140,14 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
     'decompose-tasks.json': path.join(changeDir, 'tasks.md'),
   }
 
-  const spawn: SpawnFn = (_command, args, spawnOptions) => {
+  const spawn: SpawnFn = (_command, args, spawnOptions, onLine) => {
     const prompt = String(args[args.length - 1])
     const match = prompt.match(/\.review-loop\/([\w-]+\.json)/u)
     const basename = match?.[1] ?? 'unknown.json'
     spawnOrder.push(basename)
     ;(spawnPrompts[basename] ??= []).push(prompt)
+    const sessionId = options.sessionIdOf?.(basename)
+    if (sessionId !== undefined) onLine?.(JSON.stringify({ sessionID: sessionId }))
     if (options.crashOn?.(basename) === true) {
       return Promise.reject(new Error(`simulated kill before ${basename}`))
     }

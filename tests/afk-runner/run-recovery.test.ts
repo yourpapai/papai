@@ -12,7 +12,8 @@ import { readEvents, stampEvent } from '../../afk-runner/src/events.js'
 import { initialKernelContext } from '../../afk-runner/src/kernel/machine.js'
 import type { KernelContext } from '../../afk-runner/src/kernel/machine.js'
 import { owedStageExitsOf } from '../../afk-runner/src/run-recovery.js'
-import { resumeRun, startRun } from '../../afk-runner/src/run.js'
+import { resumeRun } from '../../afk-runner/src/run-resume.js'
+import { startRun } from '../../afk-runner/src/run.js'
 import { makeFakePipeline, TASK_TEXT } from './fixtures/fake-pipeline.js'
 
 const NITPICK_ROUND = {

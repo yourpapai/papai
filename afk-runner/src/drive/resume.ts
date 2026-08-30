@@ -7,7 +7,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
 import type { DepthProfile, EventInput } from '../events.js'
-import { readEvents } from '../events.js'
+import { readEvents, StageIdSchema } from '../events.js'
 import { pipelineMachine } from '../graph/pipeline.js'
 import { foldEvents } from '../kernel/fold.js'
 import type { KernelContext, RoundStatus } from '../kernel/machine.js'
@@ -87,6 +87,49 @@ export function reviewResumeEntry(
  * budget check is consulted here symmetrically — an over-budget stage owes an
  * escalation gate, not another work re-entry.
  */
+
+/**
+ * The resume-invocation event (log-fidelity D3/D5): one `resume` per
+ * invocation, classified from the post-recovery fold plus the session
+ * ledger. Presented gates — including runs the resume's own recovery just
+ * completed through a gate settle — report `artifact-skip, gate`; review
+ * splits by round state (never started → artifact-skip, unrecorded round →
+ * the ledger session when in flight, else a fresh re-run); every other work
+ * position rebuilds its stage. A `start` fold has nothing to continue and
+ * boots from intake.
+ */
+export function resumeEventOf(
+  context: KernelContext,
+  position: string,
+  ledger: readonly SessionLedgerLine[],
+): EventInput {
+  if (position === 'gate.awaiting' || position === 'completed' || position === 'aborted') {
+    return { altitude: 'L2', type: 'resume', path: 'artifact-skip', stage: 'gate' }
+  }
+  if (position === 'review') {
+    const round = context.round
+    if (round === null) return { altitude: 'L2', type: 'resume', path: 'artifact-skip', stage: 'review' }
+    const recorded = context.perRound.some((record) => record.round === round.current)
+    const inFlight = recorded ? null : latestInFlight(ledger, round.current)
+    if (inFlight !== null) {
+      return {
+        altitude: 'L2',
+        type: 'resume',
+        path: 'session-continuation',
+        stage: 'review',
+        session: inFlight.opencodeSessionId!,
+      }
+    }
+    return { altitude: 'L2', type: 'resume', path: 'stage-rebuild', stage: 'review' }
+  }
+  return {
+    altitude: 'L2',
+    type: 'resume',
+    path: 'stage-rebuild',
+    stage: StageIdSchema.parse(position === 'start' ? 'intake' : position),
+  }
+}
+
 export function parkedReasonOf(context: KernelContext, position: string, workFor: WorkFor): ParkedReason | 'drivable' {
   const module = workFor(position)
   if (module === null) return 'final'

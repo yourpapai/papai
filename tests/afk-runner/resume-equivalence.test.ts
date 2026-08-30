@@ -14,7 +14,8 @@ import type { SddEvent } from '../../afk-runner/src/events.js'
 import { readEvents } from '../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../afk-runner/src/kernel/fold.js'
-import { resumeRun, startRun } from '../../afk-runner/src/run.js'
+import { resumeRun } from '../../afk-runner/src/run-resume.js'
+import { startRun } from '../../afk-runner/src/run.js'
 import { TASK_TEXT, makeFakePipeline } from './fixtures/fake-pipeline.js'
 
 const MemoShapeSchema = z.object({

@@ -9,7 +9,7 @@ import path from 'node:path'
 
 import { appendEvent, readEvents } from '../../../afk-runner/src/events.js'
 import type { EventInput, SddEvent } from '../../../afk-runner/src/events.js'
-import { resumeRun } from '../../../afk-runner/src/run.js'
+import { resumeRun } from '../../../afk-runner/src/run-resume.js'
 import { makeFakePipeline, TASK_TEXT } from '../fixtures/fake-pipeline.js'
 
 interface CrashRun {

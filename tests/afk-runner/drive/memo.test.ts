@@ -8,8 +8,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { readEvents } from '../../../afk-runner/src/events.js'
+import { resumeRun } from '../../../afk-runner/src/run-resume.js'
 import { PersistedRunStateSchema } from '../../../afk-runner/src/run-state.js'
-import { resumeRun, startRun, statusRun } from '../../../afk-runner/src/run.js'
+import { startRun, statusRun } from '../../../afk-runner/src/run.js'
 import { BLOCKER_ROUND, TASK_TEXT, makeFakePipeline } from '../fixtures/fake-pipeline.js'
 
 describe('state.json is a derived memo, never truth (design D6)', () => {
@@ -50,8 +51,12 @@ describe('state.json is a derived memo, never truth (design D6)', () => {
     expect(resumeWithout).toEqual(resumeWithMemo)
     expect(resumeWithout).toMatchObject({ halted: 'final', position: 'completed', drove: false })
 
-    // the resume rewrote the memo from the fold — identical body
-    expect(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8')).toBe(memoBody)
+    // the resume rewrote the memo from the fold — identical fields except
+    // `updatedAt`, which tracks the log's last event: each invocation appends
+    // its own resume event (log-fidelity), so the stamp legitimately moves
+    const before = PersistedRunStateSchema.parse(JSON.parse(memoBody))
+    const after = PersistedRunStateSchema.parse(JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8')))
+    expect({ ...after, updatedAt: before.updatedAt }).toEqual(before)
   })
 
   it('a stale memo is overwritten from the fold on the next status/resume', async () => {

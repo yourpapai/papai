@@ -12,7 +12,7 @@ import { appendEvent, readEvents } from '../../../afk-runner/src/events.js'
 import type { EventInput, SddEvent } from '../../../afk-runner/src/events.js'
 import { initialKernelContext } from '../../../afk-runner/src/kernel/machine.js'
 import type { KernelContext } from '../../../afk-runner/src/kernel/machine.js'
-import { resumeRun } from '../../../afk-runner/src/run.js'
+import { resumeRun } from '../../../afk-runner/src/run-resume.js'
 import { startRun } from '../../../afk-runner/src/run.js'
 import { makeFakePipeline, TASK_TEXT } from '../fixtures/fake-pipeline.js'
 
@@ -152,12 +152,14 @@ describe('resume gate — owed movers and historical parks', () => {
     expect(presentedGates(events).at(-1)).toMatchObject({ mode: 'final', version: 2 })
   })
 
-  it('a historical answered-no-outcome log parks awaiting settlement with nothing appended', async () => {
+  it('a historical answered-no-outcome log parks awaiting settlement, appending only the resume event', async () => {
     const h = await parkedGateRun()
     h.append({ altitude: 'L2', type: 'gate', action: 'answered', mode: 'early', version: 1 })
     const before = readLog(h.runDir).length
     const resumed = await resumeRun(h.pipeline.deps, h.runId)
     expect(resumed).toMatchObject({ halted: 'gate-pending', drove: false })
-    expect(readLog(h.runDir).length).toBe(before)
+    const appended = readLog(h.runDir).slice(before)
+    expect(appended).toHaveLength(1)
+    expect(appended[0]).toMatchObject({ type: 'resume', path: 'artifact-skip', stage: 'gate' })
   })
 })

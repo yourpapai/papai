@@ -9,9 +9,10 @@ import path from 'node:path'
 
 import { appendEvent, readEvents } from '../../afk-runner/src/events.js'
 import type { EventInput } from '../../afk-runner/src/events.js'
+import { resumeRun } from '../../afk-runner/src/run-resume.js'
 import { createRunState, PersistedRunStateSchema } from '../../afk-runner/src/run-state.js'
 import type { PersistedRunState } from '../../afk-runner/src/run-state.js'
-import { resumeRun, startRun } from '../../afk-runner/src/run.js'
+import { startRun } from '../../afk-runner/src/run.js'
 import { makeFakePipeline, TASK_TEXT } from './fixtures/fake-pipeline.js'
 
 function memoOf(runDir: string): PersistedRunState {
@@ -94,7 +95,7 @@ describe('finals end the run cleanly (C5 D6)', () => {
     expect(memoOf(h.pipeline.runDirOf(h.runId))['status']).toBe('aborted')
   })
 
-  it('resume of a terminal run prints the report pointer and appends nothing', async () => {
+  it('resume of a terminal run prints the report pointer and appends exactly its one resume event', async () => {
     const pipeline = makeFakePipeline()
     const started = await startRun(pipeline.deps, { taskText: TASK_TEXT })
     const runDir = pipeline.runDirOf(started.runId)
@@ -104,7 +105,10 @@ describe('finals end the run cleanly (C5 D6)', () => {
     const resumed = await resumeRun(pipeline.deps, started.runId)
 
     expect(resumed).toMatchObject({ halted: 'final', position: 'completed', drove: false })
-    expect(readEvents(logPath)).toHaveLength(before)
+    // per-invocation honesty (log-fidelity D3): one resume event, nothing else
+    const appended = readEvents(logPath).slice(before)
+    expect(appended).toHaveLength(1)
+    expect(appended[0]).toMatchObject({ type: 'resume', path: 'artifact-skip', stage: 'gate' })
     expect(pipeline.stdoutLines.some((line: string) => line.includes('afk-runner report'))).toBe(true)
   })
 })

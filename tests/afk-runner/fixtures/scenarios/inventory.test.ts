@@ -10,7 +10,7 @@ import path from 'node:path'
 import { readEvents } from '../../../../afk-runner/src/events.js'
 import { pipelineMachine } from '../../../../afk-runner/src/graph/pipeline.js'
 import { foldEvents } from '../../../../afk-runner/src/kernel/fold.js'
-import { replayEvents } from '../../../../afk-runner/src/legacy-fold.js'
+import { createReplayFolder, replayEvents } from '../../../../afk-runner/src/legacy-fold.js'
 
 const SCENARIO_ROOT = import.meta.dir
 
@@ -50,8 +50,16 @@ function roundOpensOf(events: readonly FixtureEvent[], round: number): FixtureEv
   return events.filter((event) => event.type === 'round_open' && event.round === round)
 }
 
+function hasRoundEvent(
+  events: readonly FixtureEvent[],
+  type: 'finding' | 'convergence' | 'round_close',
+  round: number,
+): boolean {
+  return events.some((event) => event.type === type && event.round === round)
+}
+
 describe('scenario corpus inventory', () => {
-  it('holds exactly the sixteen recorded scenario fixtures', () => {
+  it('holds exactly the seventeen recorded scenario fixtures', () => {
     expect(scenarioFiles()).toEqual([
       'abort-at-final-synthetic.ndjson',
       'children-plan-synthetic.ndjson',
@@ -63,6 +71,7 @@ describe('scenario corpus inventory', () => {
       'resume-artifact-skip-gate.ndjson',
       's-depth-calm-stop-resume.ndjson',
       's-final-tail-synthetic.ndjson',
+      'same-round-resume-honest-synthetic.ndjson',
       'steer-extend-round.ndjson',
       'tail-crash-resume-healed-synthetic.ndjson',
       'tail-crash-resume-synthetic.ndjson',
@@ -248,12 +257,39 @@ describe('scenario corpus inventory', () => {
     expect(events).toHaveLength(19)
     expect(events.filter((event) => event.type === 'stage_failed')).toHaveLength(1)
     expect(escalationPresentations(events)).toHaveLength(0)
-    // the failed bracket stayed open: exactly one review enter, one exit, two round_opens
+    // the failed bracket stayed open: exactly one review enter, one exit —
+    // the double round_open(1) is TOLERATED HISTORY (last-write-wins in both
+    // folds): the log-fidelity owedness invariant stopped emitting it
     expect(stageEvents(events, 'stage_enter', 'review')).toHaveLength(1)
     expect(stageEvents(events, 'stage_exit', 'review')).toHaveLength(1)
     expect(roundOpensOf(events, 1)).toHaveLength(2)
     const kernel = foldEvents(pipelineMachine, events).snapshot
     expect(kernel.value).toBe('completed')
     expect(kernel.context.failures).toEqual({})
+  })
+
+  it('same-round-resume-honest-synthetic: the honest resume shape — one round_open, the resume event, re-run work-shaped events', () => {
+    const events = readEvents(logOf('same-round-resume-honest-synthetic.ndjson'))
+    expect(events).toHaveLength(21)
+    // the re-entered round owes no second round_open (the owedness invariant)
+    expect(roundOpensOf(events, 1)).toHaveLength(1)
+    expect(events.filter((event) => event.type === 'resume')).toHaveLength(1)
+    // ...but its work-shaped facts are never suppressed
+    expect(hasRoundEvent(events, 'finding', 1)).toBe(true)
+    expect(hasRoundEvent(events, 'convergence', 1)).toBe(true)
+    expect(hasRoundEvent(events, 'round_close', 1)).toBe(true)
+    const state = replayEvents(logOf('same-round-resume-honest-synthetic.ndjson'))
+    expect(state.round).toEqual({ current: 1, cap: 3 })
+    expect(state.lastVerdict).toMatchObject({ round: 1, verdict: 'converged' })
+    const kernel = foldEvents(pipelineMachine, events).snapshot
+    expect(kernel.value).toBe('completed')
+    // the folds tolerate the resume event: kernel accounting counts it as
+    // tolerated, and the legacy fold replays it as a strict no-op
+    expect(foldEvents(pipelineMachine, events).accounting.tolerated).toBeGreaterThanOrEqual(1)
+    const withoutResume = createReplayFolder()
+    for (const event of events.filter((candidate) => candidate.type !== 'resume')) {
+      withoutResume.fold(event)
+    }
+    expect(withoutResume.state).toEqual(state)
   })
 })

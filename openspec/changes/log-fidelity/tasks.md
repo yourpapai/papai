@@ -17,12 +17,12 @@ See LICENSE in the project root for details.
 
 ## 2. Resume event producer (spec: "Resume-invocation event production", design D3/D4/D5)
 
-- [ ] 2.1 Red: resume invocation appends exactly one `resume` event after owed-recovery and before any drive event (session-continuation row with the ledger session id) — `bun test tests/afk-runner/resume-event.test.ts`
-- [ ] 2.2 Red: path-table rows — `stage-rebuild` for an open round with no in-flight session and for a non-review work stage; `artifact-skip, review` for a never-started round — `bun test tests/afk-runner/resume-event.test.ts`
-- [ ] 2.3 Red: parked-gate resume emits `artifact-skip, gate`; terminal row — a W3 heal whose ladder (autonomy R1) completes the run during `resumeInputs` still emits `artifact-skip, gate` — `bun test tests/afk-runner/resume-event.test.ts`
-- [ ] 2.4 Red: per-invocation honesty — a second resume on the same run appends its own event — `bun test tests/afk-runner/resume-event.test.ts`
-- [ ] 2.5 Green: pure path table over post-recovery fold + ledger in `drive/resume.ts`; the emit in `resumeRun` after `resumeInputs`, before the parked/drivable branch — `bun test tests/afk-runner/resume-event.test.ts`
-- [ ] 2.6 Kernel accounting counts `resume` as tolerated; legacy fold replays it as a no-op (scenario replay carries the assertion) — `bun test tests/afk-runner`
+- [x] 2.1 Red: resume invocation appends exactly one `resume` event after owed-recovery and before any drive event (session-continuation row with the ledger session id) — `bun test tests/afk-runner/resume-event.test.ts`
+- [x] 2.2 Red: path-table rows — `stage-rebuild` for an open round with no in-flight session and for a non-review work stage; `artifact-skip, review` for a never-started round — `bun test tests/afk-runner/resume-event.test.ts`
+- [x] 2.3 Red: parked-gate resume emits `artifact-skip, gate`; terminal row — a W3 heal whose ladder (autonomy R1) completes the run during `resumeInputs` still emits `artifact-skip, gate` — `bun test tests/afk-runner/resume-event.test.ts`
+- [x] 2.4 Red: per-invocation honesty — a second resume on the same run appends its own event — `bun test tests/afk-runner/resume-event.test.ts`
+- [x] 2.5 Green: pure path table over post-recovery fold + ledger in `drive/resume.ts`; the emit in `resumeRun` after `resumeInputs`, before the parked/drivable branch — `bun test tests/afk-runner/resume-event.test.ts`
+- [x] 2.6 Kernel accounting counts `resume` as tolerated; legacy fold replays it as a no-op (scenario replay carries the assertion) — `bun test tests/afk-runner`
 
 ## 3. Fixtures, cross-checks, docs
 
