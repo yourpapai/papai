@@ -3,25 +3,23 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { findTestFile } from '../../.hooks/tdd/test-resolver.mjs'
 import { buildPairedConfig } from './config-builder.js'
 import type { StrykerConfig } from './config-builder.js'
 import { buildCoverageMap, createDefaultCoverageMapDeps } from './coverage-map.js'
 import type { CoverageMap } from './coverage-map.js'
-import { readJsonRecord, readStrykerReport } from './json-readers.js'
 import { parsePairedRunCliArgs, resolvePairedRunCliUsageExitCode, resolvePairedRunExitCode } from './paired-run-cli.js'
+import { defaultPairedRunDeps } from './paired-run-deps.js'
 import { appendProcessFailure } from './process-error.js'
 import { mergeReports } from './score-merger.js'
 import type { MergedScore, StrykerReport } from './score-merger.js'
-import { resolveNodeModulesBin } from './stryker-bin.js'
 import { runStrykerWithCapturedFailure } from './stryker-run.js'
-import { loadOverrides as loadOverridesFile, resolveTestFiles } from './test-overrides.js'
+import { resolveTestFiles } from './test-overrides.js'
 import type { OverridesMap } from './test-overrides.js'
 
+export { defaultPairedRunDeps, defaultRunStryker } from './paired-run-deps.js'
 export { parsePairedRunCliArgs, resolvePairedRunCliUsageExitCode, resolvePairedRunExitCode } from './paired-run-cli.js'
 export type { PairedRunCliArgs } from './paired-run-cli.js'
 
@@ -84,30 +82,6 @@ type BunLike = {
 }
 
 const DEFAULT_REPORT_DIR = 'reports/paired'
-const STRYKER_TIMEOUT_MS = 30 * 60 * 1000
-
-export const defaultRunStryker = (configPath: string, projectRoot: string, options: PairedRunStrykerOptions): void => {
-  execFileSync(resolveNodeModulesBin(projectRoot, 'stryker'), ['run', configPath], {
-    cwd: projectRoot,
-    stdio: options.verbose ? 'inherit' : 'pipe',
-    timeout: STRYKER_TIMEOUT_MS,
-    maxBuffer: 20 * 1024 * 1024,
-  })
-}
-
-const defaultDeps: PairedRunDeps = {
-  readBaseConfig: (projectRoot) => {
-    const configPath = path.join(projectRoot, 'stryker.config.json')
-    return readJsonRecord(configPath)
-  },
-  resolveCompanion: (srcFile, projectRoot) => findTestFile(path.join(projectRoot, srcFile), projectRoot),
-  loadOverrides: (projectRoot) => loadOverridesFile(path.join(projectRoot, 'scripts/mutation/overrides.json')),
-  runStryker: defaultRunStryker,
-  readReport: readStrykerReport,
-  log: (message) => {
-    console.log(message)
-  },
-}
 
 const toProjectRelativePath = (filePath: string, projectRoot: string): string =>
   path.isAbsolute(filePath) ? path.relative(projectRoot, filePath) : filePath
@@ -195,7 +169,7 @@ const formatFileSummary = (result: PairedRunFileResult): string =>
   `${result.sourceFile}: killed=${result.merged.killed} survived=${result.merged.survived} noCoverage=${result.merged.noCoverage} pending=${result.merged.pending} score=${result.merged.score}`
 
 const resolveDeps = (deps: PairedRunDeps | undefined): PairedRunDeps => {
-  if (deps === undefined) return defaultDeps
+  if (deps === undefined) return defaultPairedRunDeps
   return deps
 }
 

@@ -130,10 +130,71 @@ override, or widening the candidate heuristics in `coverage-map.ts`.
 - `bun test:mutate` — accurate full paired run over the configured
   `stryker.config.json` `mutate` scope.
 - `bun test:mutate:changed` — accurate paired run over files changed vs the
-  selected base branch. The CI gate uses this command.
+  selected base branch, measured and gated in one process. Still the local
+  command; CI now runs the three-stage form below.
 - `bun test:mutate:file` — accurate paired run for explicitly listed files.
 - `bun test:mutate:changed-paired` — descriptive alias for
   `bun test:mutate:changed`.
+- `bun test:mutate:plan` / `:shard` / `:gate` — the three stages CI runs. See
+  **Sharded CI runs** below.
+
+## Sharded CI runs (plan → k × shard → gate)
+
+The gate was the CI wall clock: on
+[run 33292465702](https://github.com/yourpapai/papai/actions/runs/33292465702) every other job
+finished in 5 minutes while mutation testing ran 73m21s, at 81% of its own 90-minute timeout.
+Work is linear in changed-file count (~107s/file over 252 measurements) and each file is an
+independent Stryker process, so it divides cleanly. CI now runs three jobs:
+
+```bash
+# 1. Decide what to measure and how to divide it. Measures nothing itself.
+bun test:mutate:plan --base=origin/master     # -> reports/paired/shard-plan.json
+
+# 2. Measure one slice. Runs once per matrix entry. Never judges: always exits 0.
+bun test:mutate:shard --index=0               # -> reports/paired/shards/shard-0.json
+
+# 3. Combine every slice into the whole-branch verdict. This is the gate.
+bun test:mutate:gate
+```
+
+**The matrix is sized from estimated work, not from a constant.**
+`k = clamp(ceil(ΣW / max(B, maxW)), 1, cap)`, where `B = targetWall − orchestration − preparation`
+and `W` is a per-file weight of `≈12s + 0.505s/line` (fitted on 226 measured per-file runs). Below
+`--min-work` (default 330s) of estimated work the plan emits **no shards at all** and the gate runs
+on carried-over scores alone, so a one-to-three-file pull request never spawns a matrix. The cap
+defaults to 12 — the measured knee, past which the slowest single file floors the makespan.
+
+The `max(B, maxW)` term is easy to omit and expensive to omit: an LPT makespan is bounded below by
+the largest single item, so shards past `ΣW / maxW` cannot make the run finish sooner. Dropping it
+oversizes the 38-target runs by roughly 40%.
+
+Tunables for experimenting with the two constants design.md records as analytic rather than fitted:
+`--cap=N`, `--min-work=SECONDS` (0 disables the floor), `--target-wall=SECONDS`.
+
+**Why a plan job rather than each shard selecting for itself.** Hash-partitioning needs no
+artifacts, but every shard would rebuild the coverage map (+9% wall) and the split would be
+cost-blind — weighting the packing is worth as much as sizing (−8.5m vs −8.6m across 16 measured
+runs; −17.7m together). The plan builds the map once and publishes it; shards consume it through
+the existing `PairedRunDeps.buildMap` seam and spawn no coverage runs of their own.
+
+**A lost shard fails the gate.** This is the property the whole shape hangs on. The gate reconciles
+the plan's `toMeasure` against what actually came back, accounting per _target_ rather than per
+shard — which catches both a shard that never reported and one that died partway through its list.
+A target is accounted for once it appears in some shard's scores, skips or errors; an unmeasurable
+file is a known outcome the gate acts on, an absent one is not. Without this, a dead shard drops
+its files, the ratchet finds nothing to fail on, and a blocking gate goes green. Shard result files
+are validated on read for the same reason: one the gate cannot parse contributes nothing, so its
+targets surface as missing rather than as a quietly narrower verdict.
+
+Ordering inside the gate is load-bearing twice: measurements are recorded **before** the verdict
+(a failing run must not forget what it measured — see ADR-0424), and the missing-target check runs
+**before** the score checks (absence of evidence is not a low score).
+
+CI caching splits by producer: the plan job writes `coverage-map.cache.json`, the gate job writes
+`score-cache.json`. They shared one `actions/cache` key when one job wrote both, and entries are
+immutable per key. The gate is the sole writer of the score cache, so shards never race for it.
+
+The master `mutation-baseline` seed job is unchanged and still runs single-process.
 
 ## Generated modules are not targets
 
