@@ -12,7 +12,7 @@ import type { MergedScore } from './score-merger.js'
 // The record contract lives in baseline-record.ts (max-lines split) and is
 // re-exported here: baseline.ts stays the single import point both consumers
 // (PR gate, improvement runner) read the record type and guards from.
-export { isBaselineRecord, measurementNumerator, recordNumerator } from './baseline-record.js'
+export { isBaselineRecord, measurementNumerator, parseBaselineEntry, recordNumerator } from './baseline-record.js'
 export type { BaselineRecord } from './baseline-record.js'
 
 /**
@@ -103,9 +103,10 @@ export const buildBaselineFromPerFile = (perFile: readonly PerFileScore[]): Base
  * converts to a rich record carrying that measurement's counts at the unchanged
  * floor — a shape upgrade, not a floor change. A below-floor measurement leaves
  * the bare entry: the floor must not drop, and counts cannot be paired with a
- * score they did not produce.
+ * score they did not produce. Shared with the improvement runner's record-level
+ * `bumpScore` so both baseline writers merge identically by construction.
  */
-const mergeEntry = (
+export const mergeBaselineEntry = (
   prev: number | BaselineRecord | undefined,
   next: number | BaselineRecord,
 ): number | BaselineRecord => {
@@ -130,7 +131,7 @@ const mergeEntry = (
 export const ratchetMerge = (existing: BaselineMap, latest: BaselineMap): BaselineMap => {
   const out: BaselineMap = {}
   for (const [key, next] of Object.entries(latest)) {
-    out[key] = mergeEntry(existing[key], next)
+    out[key] = mergeBaselineEntry(existing[key], next)
   }
   return out
 }
@@ -139,13 +140,13 @@ export const ratchetMerge = (existing: BaselineMap, latest: BaselineMap): Baseli
  * Merge a changed-files run into the baseline, PRESERVING existing keys (unlike
  * {@link ratchetMerge}, which drops keys absent from `latest` — correct for a
  * full run, wrong for a changed-files seed where most baseline files aren't
- * re-measured). Each key merges monotonically per {@link mergeEntry}; new keys
+ * re-measured). Each key merges monotonically per {@link mergeBaselineEntry}; new keys
  * are added.
  */
 export const seedMerge = (existing: BaselineMap, latest: BaselineMap): BaselineMap => {
   const out: BaselineMap = { ...existing }
   for (const [key, next] of Object.entries(latest)) {
-    out[key] = mergeEntry(out[key], next)
+    out[key] = mergeBaselineEntry(out[key], next)
   }
   return out
 }
