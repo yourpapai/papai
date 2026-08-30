@@ -48,10 +48,10 @@ discipline; CI is the hard gate.
 
 ## 6. Docs and ADR
 
-- [ ] 6.1 Write the new ADR in `docs/adr/` (next sequential number, currently 0427): record shape and why counts are stored decomposed, the regression-vs-dilution verdict rule, lazy dual-shape migration, the code+data rollback pairing; references ADR-0342 (extends) and ADR-0424 (untouched fingerprinting). Verify: `bun run format:check` (and the new `docs/adr/0427-*` file exists).
-- [ ] 6.2 Update `scripts/mutation/README.md`: the committed record shape, the lazy migration story (mixed entries coexist; no reseed required), the optional one-time full-run conversion recipe (`bun test:mutate --update-baseline` full run or delete+regenerate), and the rollback rule (revert the commit AND restore the pre-change `baseline.json` blob together). Verify: `bun run format:check`.
-- [ ] 6.3 Update the mutation-gate sections of `docs/architecture/commands.md` to the new verdict rule and record shape; do not carry the `mutation-improve/AGENTS.md` resolver-mapping claim into `commands.md` (contradicts `.hooks/tdd/test-resolver.mjs`). Verify: `bun run format:check`.
-- [ ] 6.4 Update the AGENTS.md Testing Notes paragraph to the new verdict rule and record shape. Verify: `bun run format:check`.
+- [x] 6.1 Write the new ADR in `docs/adr/` (next sequential number, currently 0427): record shape and why counts are stored decomposed, the regression-vs-dilution verdict rule, lazy dual-shape migration, the code+data rollback pairing; references ADR-0342 (extends) and ADR-0424 (untouched fingerprinting). Verify: `bun run format:check` (and the new `docs/adr/0427-*` file exists).
+- [x] 6.2 Update `scripts/mutation/README.md`: the committed record shape, the lazy migration story (mixed entries coexist; no reseed required), the optional one-time full-run conversion recipe (`bun test:mutate --update-baseline` full run or delete+regenerate), and the rollback rule (revert the commit AND restore the pre-change `baseline.json` blob together). Verify: `bun run format:check`.
+- [x] 6.3 Update the mutation-gate sections of `docs/architecture/commands.md` to the new verdict rule and record shape; do not carry the `mutation-improve/AGENTS.md` resolver-mapping claim into `commands.md` (contradicts `.hooks/tdd/test-resolver.mjs`). Verify: `bun run format:check`.
+- [x] 6.4 Update the AGENTS.md Testing Notes paragraph to the new verdict rule and record shape. Verify: `bun run format:check`.
 
 ## 7. Verification
 

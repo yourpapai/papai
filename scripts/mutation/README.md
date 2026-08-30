@@ -215,26 +215,41 @@ unmeasurable file can never be carried over into a pass.
 
 ## Ratchet gate (`scripts/mutation/baseline.json`)
 
-A committed per-file baseline of mutation scores backs a monotonic ratchet:
+A committed per-file baseline of mutation scores backs a monotonic ratchet.
+Each entry is a **record**: the score plus the absolute counts behind it —
+`{ "score": 0.85, "killed": 16, "timeout": 1, "scored": 20 }` — so the gate can
+compare killing power (`killed + timeout`, the score formula's numerator)
+against what was actually achieved before, not just a percentage of a population
+that changes size. Legacy entries may still be a bare score number (see
+Migration below); the two shapes coexist in the one committed sorted map.
 
-- **PR gate** (`test:mutate:changed`): a changed file fails only when it has a
-  recorded baseline entry and its score drops below it. Files with no baseline
-  entry (new or never-baselined) are not regressions — the gate is
-  regression-only, so the overall score ratchets upward as files improve without
-  blocking routine work on currently-low-scoring or newly-added code. Disable
-  with `--no-ratchet`.
+- **PR gate** (`test:mutate:changed`): a baselined file fails only when its
+  measurement both scores below the recorded score **and** kills fewer mutants
+  than the record — a true regression, meaning killing power dropped, reported
+  as `file score < floor, kills m < n recorded`. When the score falls below the
+  recorded score but kills held (the mutant population grew — new-code
+  dilution), the run exits 0 and prints a `WARN` line naming the file, its held
+  kill count, and both scores. A score-only legacy record is judged by score
+  alone and cannot classify dilution, so it keeps the stricter judgment. Files
+  with no baseline entry (new or never-baselined) are not regressions — the
+  gate is regression-only, so the overall score ratchets upward as files
+  improve without blocking routine work on currently-low-scoring or
+  newly-added code. Disable with `--no-ratchet`.
 - **Master seed** (`test:mutate:changed --base=HEAD~1 --update-baseline`): on
   push to `master`, the CI `mutation-baseline` job measures the files changed
   since the previous master commit and merges them into `baseline.json` via
   `seedMerge`, which takes the per-key max and PRESERVES existing entries
   (unlike the full-run `ratchetMerge`, which drops keys no longer in scope).
-  First-touch files — new or never-baselined — get seeded after merge, so the
-  baseline accumulates floors for every touched file over time. The committed
-  baseline is the floor the PR gate enforces. The run also writes its per-file
-  scores to `reports/paired/scores.json` so the commit step can re-seed without
-  re-running Stryker. The scores file is always written — even when the run
-  measured no gateable files (e.g. a docs- or scripts-only merge) — so the
-  commit step no-ops gracefully instead of failing on a missing artifact.
+  A strictly-higher score replaces the record wholesale — the new score
+  together with that measurement's counts, never a mix of old and new; an
+  equal-or-lower measurement over a record leaves it untouched. First-touch
+  files — new or never-baselined — get seeded after merge, so the baseline
+  accumulates floors for every touched file over time. The committed baseline
+  is the floor the PR gate enforces. The run also writes its per-file scores
+  to `reports/paired/scores.json` (as records) so the commit step can re-seed
+  without re-running Stryker. The scores file is always written — even when
+  the run measured no gateable files (e.g. a docs- or scripts-only merge) — so
+  the commit step no-ops gracefully instead of failing on a missing artifact.
 - **Commit-step re-seed** (`test:mutate:seed --scores=reports/paired/scores.json
 [--fresh-base=SHA]`): master can move while mutation testing runs (e.g. a
   release bump push), which would reject a naive push and lose the seed. The CI
@@ -245,10 +260,38 @@ A committed per-file baseline of mutation scores backs a monotonic ratchet:
   is never recorded for content master no longer has; those files are seeded by
   the commit that changed them.
 
+Records are validated at load: the counts must be finite non-negative integers
+with `scored > 0`, `score` finite in [0, 1], `killed + timeout <= scored`, and
+`score` equal to `(killed + timeout) / scored` within 1e-9. A record that fails
+this aborts the run with the file and the expected relation named — a corrupt
+floor must never silently gate on nonsense. A hand-tuned floor must therefore
+keep its counts consistent (compute them from the intended score, or re-measure).
+
 Re-generate the baseline from scratch (discards history) by deleting
 `scripts/mutation/baseline.json` and running `bun test:mutate --update-baseline`
 (a full run; its `ratchetMerge` drops keys no longer in scope, which is what you
 want when rebuilding).
+
+### Migration (record shape — lazy, no reseed required)
+
+Baseline entries are migrating from bare score numbers to rich records. Mixed
+entries coexist in the one committed file; no reseed is required. A legacy
+bare entry keeps its score-only floor and is judged by score alone (the
+stricter rule — it cannot classify dilution), and converts to a record the
+next time a seeding or bumping run measures its file at or above its recorded
+score — the ordinary case, since mutation scoring is deterministic and
+marginal merges tie. A below-floor measurement leaves the legacy entry
+untouched (the floor must not drop, and counts cannot be paired with a score
+they did not produce). To convert everything at once, run the optional one-time
+full-run conversion: `bun test:mutate --update-baseline` as a full run, or the
+delete-and-regenerate recipe above.
+
+**Rollback pairs code and data:** the pre-record loader rejects rich entries,
+so reverting the code while keeping the new `baseline.json` bricks the gate.
+Revert the commit AND restore the pre-change `baseline.json` blob together
+(`git checkout <pre-change> -- scripts/mutation/baseline.json`). A
+partially-converted baseline rolls back cleanly to score-only floors — scores
+are identical in both shapes, so no floor is lost. See ADR-0427.
 
 ### Migration (one-time catch-up)
 
