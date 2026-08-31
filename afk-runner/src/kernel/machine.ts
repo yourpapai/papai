@@ -106,8 +106,10 @@ export type KernelEvent =
   | {
       readonly type: 'convergence'
       readonly round: number
-      readonly verdict: 'converged' | 'open'
+      readonly verdict: 'converged' | 'needs-review' | 'open'
       readonly counts: FindingCounts
+      /** Only what a human must settle; absent on a pre-split line, folding as `counts`. */
+      readonly open?: FindingCounts
     }
   | {
       readonly type: 'gate.presented'
@@ -199,6 +201,7 @@ export const kernelSetup = setup({
       const record: DigestRecord = {
         round: event.round,
         counts: event.counts,
+        open: event.open ?? event.counts,
         resolved: counts.resolved,
         dismissed: counts.dismissed,
         verdict: event.verdict,

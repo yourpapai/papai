@@ -311,6 +311,7 @@ describe('kernel fold', () => {
         {
           round: 1,
           counts: { blocker: 1, material: 0, nitpick: 2 },
+          open: { blocker: 1, material: 0, nitpick: 2 },
           resolved: 1,
           dismissed: 1,
           verdict: 'open',
@@ -319,6 +320,7 @@ describe('kernel fold', () => {
       lastVerdict: {
         round: 1,
         counts: { blocker: 1, material: 0, nitpick: 2 },
+        open: { blocker: 1, material: 0, nitpick: 2 },
         resolved: 1,
         dismissed: 1,
         verdict: 'open',
@@ -367,7 +369,14 @@ describe('kernel fold', () => {
     for (const event of events) legacy.fold(event)
     const kernel = foldEvents(pipelineMachine, events)
     expect(kernel.snapshot.context.perRound).toEqual([
-      { round: 2, counts: { blocker: 0, material: 0, nitpick: 0 }, resolved: 2, dismissed: 0, verdict: 'converged' },
+      {
+        round: 2,
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+        open: { blocker: 0, material: 0, nitpick: 0 },
+        resolved: 2,
+        dismissed: 0,
+        verdict: 'converged',
+      },
     ])
     expect(legacy.state.perRound).toEqual(kernel.snapshot.context.perRound)
     expect(kernel.snapshot.context.tally).toEqual({ 1: { resolved: 1, dismissed: 1 } })
@@ -441,5 +450,34 @@ describe('kernel fold', () => {
     }
     expect(folded.context).toEqual(manual.context)
     expect(folded.value).toEqual(manual.value)
+  })
+})
+
+describe('convergence carries both count sets through the kernel fold', () => {
+  const raised = { blocker: 1, material: 2, nitpick: 0 }
+  const open = { blocker: 0, material: 1, nitpick: 0 }
+
+  it('translates the open set onto the kernel event', () => {
+    expect(
+      toKernelEvent(
+        stamp({ altitude: 'L2', type: 'convergence', round: 1, verdict: 'needs-review', counts: raised, open }, 1),
+      ),
+    ).toEqual({ type: 'convergence', round: 1, verdict: 'needs-review', counts: raised, open })
+  })
+
+  it('omits the open set for a pre-change line, folding it as equal to counts', () => {
+    const { snapshot } = foldEvents(pipelineMachine, [
+      stamp({ altitude: 'L2', type: 'convergence', round: 1, verdict: 'open', counts: raised }, 1),
+    ])
+    expect(snapshot.context.lastVerdict).toMatchObject({ counts: raised, open: raised })
+  })
+
+  it('stamps the open set on perRound records and lastVerdict', () => {
+    const { snapshot } = foldEvents(pipelineMachine, [
+      stamp({ altitude: 'L2', type: 'round_open', round: 1, cap: 3 }, 1),
+      stamp({ altitude: 'L2', type: 'convergence', round: 1, verdict: 'needs-review', counts: raised, open }, 2),
+    ])
+    expect(snapshot.context.perRound[0]).toMatchObject({ verdict: 'needs-review', counts: raised, open })
+    expect(snapshot.context.lastVerdict).toMatchObject({ open })
   })
 })

@@ -9,7 +9,8 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { appendEvent } from '../../afk-runner/src/events.js'
-import { createReplayFolder, initialReplayState, replayEvents } from '../../afk-runner/src/legacy-fold.js'
+import { createReplayFolder, initialReplayState, openCountsOf, replayEvents } from '../../afk-runner/src/legacy-fold.js'
+import type { DigestRecord } from '../../afk-runner/src/legacy-fold.js'
 
 const tmpDirs: string[] = []
 
@@ -82,6 +83,8 @@ describe('replayEvents', () => {
       round: 2,
       verdict: 'converged',
       counts: { blocker: 0, material: 0, nitpick: 1 },
+      // Pre-split log line: open folds as equal to counts.
+      open: { blocker: 0, material: 0, nitpick: 1 },
       resolved: 0,
       dismissed: 0,
     })
@@ -121,6 +124,8 @@ describe('replayEvents', () => {
     const expected = {
       round: 1,
       counts: { blocker: 1, material: 1, nitpick: 0 },
+      // The log line carries no open set, so it folds as equal to counts.
+      open: { blocker: 1, material: 1, nitpick: 0 },
       resolved: 1,
       dismissed: 1,
       verdict: 'open' as const,
@@ -266,3 +271,47 @@ function makeLogNoWrite(): string {
   tmpDirs.push(dir)
   return path.join(dir, 'events.ndjson')
 }
+
+describe('replay folds both convergence count sets', () => {
+  const raised = { blocker: 1, material: 2, nitpick: 0 }
+  const open = { blocker: 0, material: 1, nitpick: 0 }
+
+  it('carries the open set through to the digest record', () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'convergence', round: 1, verdict: 'open', counts: raised, open })
+    const record = replayEvents(log).lastVerdict
+    expect(record).not.toBeNull()
+    expect(record?.counts).toEqual(raised)
+    expect(record?.open).toEqual(open)
+  })
+
+  it("reads a pre-change line's absent open set as equal to its raised set", () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'convergence', round: 1, verdict: 'open', counts: raised })
+    const record = replayEvents(log).lastVerdict
+    expect(record?.open).toEqual(raised)
+  })
+
+  it('folds the needs-review verdict', () => {
+    const log = makeLog()
+    appendEvent(log, {
+      altitude: 'L2',
+      type: 'convergence',
+      round: 1,
+      verdict: 'needs-review',
+      counts: raised,
+      open: { blocker: 0, material: 0, nitpick: 0 },
+    })
+    expect(replayEvents(log).lastVerdict?.verdict).toBe('needs-review')
+  })
+
+  it('exposes the open set through the shared openCountsOf reader', () => {
+    const log = makeLog()
+    appendEvent(log, { altitude: 'L2', type: 'convergence', round: 1, verdict: 'open', counts: raised, open })
+    const record = replayEvents(log).lastVerdict
+    expect(record).not.toBeNull()
+    expect(openCountsOf(record!)).toEqual(open)
+    const preSplit: DigestRecord = { round: 1, counts: raised, resolved: 0, dismissed: 0, verdict: 'open' }
+    expect(openCountsOf(preSplit)).toEqual(raised)
+  })
+})

@@ -30,7 +30,13 @@ export function toKernelEvent(event: SddEvent): KernelEvent | null {
   if (event.type === 'round_close') return { type: 'round.close', round: event.round, cap: event.cap }
   if (event.type === 'finding') return { type: 'finding', action: event.action, round: event.round }
   if (event.type === 'convergence') {
-    return { type: 'convergence', round: event.round, verdict: event.verdict, counts: event.counts }
+    return {
+      type: 'convergence',
+      round: event.round,
+      verdict: event.verdict,
+      counts: event.counts,
+      ...(event.open === undefined ? {} : { open: event.open }),
+    }
   }
   if (event.type === 'gate' && event.action === 'presented') {
     return {

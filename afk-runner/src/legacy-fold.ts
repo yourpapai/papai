@@ -9,10 +9,23 @@ import type { AutoDecisionKind, AutoDecisionRule, DepthProfile, EventInput, Find
 
 export interface DigestRecord {
   readonly round: number
+  /** Every finding the round recorded — what the trajectory and burndown read. */
   readonly counts: FindingCounts
+  /**
+   * Only what a human must settle. Optional for the same reason the event field
+   * is: a pre-split log carries no open set. The fold normalizes it to `counts`
+   * when the line omits it, so a record that came from replay always has one —
+   * read it through `openCountsOf` rather than assuming either way.
+   */
+  readonly open?: FindingCounts
   readonly resolved: number
   readonly dismissed: number
-  readonly verdict: 'converged' | 'open'
+  readonly verdict: 'converged' | 'needs-review' | 'open'
+}
+
+/** A record's open counts, falling back to its raised counts for a pre-split record. */
+export function openCountsOf(record: DigestRecord): FindingCounts {
+  return record.open ?? record.counts
 }
 
 export interface AutoDecisionRecord {
@@ -113,6 +126,7 @@ function foldEvent(state: ReplayState, event: EventInput, pending: Map<number, R
     const record: DigestRecord = {
       round: event.round,
       counts: event.counts,
+      open: event.open ?? event.counts,
       resolved: counts.resolved,
       dismissed: counts.dismissed,
       verdict: event.verdict,
