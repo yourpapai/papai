@@ -162,6 +162,7 @@ const claudeSessionOptions = ({
       model: contained.openai.model,
       lightModel: profiles?.light ?? null,
       planEffort: profiles?.planEffort ?? null,
+      proposeEffort: profiles?.proposeEffort ?? null,
       buildEffort: profiles?.buildEffort ?? null,
     },
     credential,

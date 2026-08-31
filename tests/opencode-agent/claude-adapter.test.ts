@@ -122,7 +122,7 @@ const transcriptCapture = (): TranscriptCapture => {
 
 const baseOptions = (spawn: SpawnClaude, log: Logger, extra: Partial<ClaudeAgentOptions> = {}): ClaudeAgentOptions => ({
   directory: '/repo',
-  knobs: { model: 'claude-sonnet-5', lightModel: null, planEffort: null, buildEffort: null },
+  knobs: { model: 'claude-sonnet-5', lightModel: null, planEffort: null, proposeEffort: null, buildEffort: null },
   pricing: {
     apiKey: 'placeholder',
     baseUrl: 'https://unused.test/v1',
@@ -294,6 +294,67 @@ describe('the turn outcome contract', () => {
     const reply = await agent.prompt({ prompt: 'x', tools: { bash: false } })
 
     expect(reply.text).toContain('papai')
+  })
+})
+
+/**
+ * The model knobs on the spawned argv, wired through the real adapter.
+ *
+ * The builder's composition is pinned flag-for-flag in `claude-contract.test.ts`;
+ * these two assert what the pipeline actually spawns when the run resolved a
+ * tier: the propose turn carries its tier too (design D7), positioned exactly
+ * where the doctrine pin looks for it — immediately after `--model` (D6) — and
+ * an unresolved tier composes no flag at all.
+ */
+describe('the model knobs on the spawned argv', () => {
+  test('a propose turn carries --effort immediately after --model when a tier resolves (D6, D7)', async () => {
+    const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
+    // The knobs literal is deliberately left unannotated — a structural
+    // superset — so this assertion states the argv contract directly rather
+    // than through the `ClaudeModelKnobs` type.
+    const knobs = {
+      model: 'claude-sonnet-5',
+      lightModel: null,
+      planEffort: null,
+      buildEffort: null,
+      proposeEffort: 'high',
+    }
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log, { knobs }))
+
+    await agent.prompt({ prompt: 'x', agent: 'propose' })
+
+    const argv = argvOf(spawn.calls, 0)
+    const model = argv.indexOf('--model')
+    expect(argv[model + 1]).toBe('claude-sonnet-5')
+    expect(argv[model + 2]).toBe('--effort')
+    expect(argv[model + 3]).toBe('high')
+  })
+
+  test('no propose tier, no --effort — and plan and build are unchanged', async () => {
+    const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
+    const agent = await createClaudeAgent(
+      baseOptions(spawn.spawn, publicLog().log, {
+        knobs: {
+          model: 'claude-sonnet-5',
+          lightModel: null,
+          planEffort: 'low',
+          proposeEffort: null,
+          buildEffort: 'high',
+        },
+      }),
+    )
+
+    await agent.prompt({ prompt: 'x', agent: 'propose' })
+    await agent.prompt({ prompt: 'x', agent: 'plan' })
+    await agent.prompt({ prompt: 'x', agent: 'build' })
+
+    expect(argvOf(spawn.calls, 0).includes('--effort')).toBe(false)
+    const plan = argvOf(spawn.calls, 1)
+    const build = argvOf(spawn.calls, 2)
+    const planModel = plan.indexOf('--model')
+    const buildModel = build.indexOf('--model')
+    expect(plan.slice(planModel + 2, planModel + 4)).toEqual(['--effort', 'low'])
+    expect(build.slice(buildModel + 2, buildModel + 4)).toEqual(['--effort', 'high'])
   })
 })
 

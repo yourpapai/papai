@@ -1676,8 +1676,10 @@ cannot drift.
 | `AGENT_MODEL_OUTPUT`                       | no                                   | unset — ask the catalogue                                                       | Output cap, same case                                                                                                                                                                                                                                                                     |
 | `AGENT_MODEL_REASONING`                    | no                                   | unset — ask the catalogue                                                       | `true`/`false`: does this model support reasoning                                                                                                                                                                                                                                         |
 | `LLM_MODEL_LIGHT`                          | no                                   | unset — the main model                                                          | Cheaper model for the read-only phases; see below                                                                                                                                                                                                                                         |
-| `AGENT_EFFORT_PLAN`                        | no                                   | unset — OpenCode's default                                                      | Reasoning effort for the read-only profile                                                                                                                                                                                                                                                |
-| `AGENT_EFFORT_BUILD`                       | no                                   | unset — OpenCode's default                                                      | Reasoning effort for implement / CI-fix / review                                                                                                                                                                                                                                          |
+| `AGENT_EFFORT`                             | no                                   | unset — no shared tier                                                          | Shared reasoning effort for every profile that names none of its own; a tier only reaches a model that reasons (see below)                                                                                                                                                                |
+| `AGENT_EFFORT_PLAN`                        | no                                   | unset — falls back to `AGENT_EFFORT`                                            | Reasoning effort for the read-only profile                                                                                                                                                                                                                                                |
+| `AGENT_EFFORT_PROPOSE`                     | no                                   | unset — falls back to `AGENT_EFFORT`                                            | Reasoning effort for the drafting profile                                                                                                                                                                                                                                                 |
+| `AGENT_EFFORT_BUILD`                       | no                                   | unset — falls back to `AGENT_EFFORT`                                            | Reasoning effort for implement / CI-fix / review                                                                                                                                                                                                                                          |
 | `AGENT_COMMIT_NAME` / `AGENT_COMMIT_EMAIL` | no                                   | `github-actions[bot]` / `41898282+github-actions[bot]@users.noreply.github.com` | Commit identity — explicit pin wins per field; otherwise author is the per-run actor (`issue`/`pull-request` → `senderLogin` via `GET /users/:login`, `id+login` noreply) and committer is `github-actions[bot]`; `ci`/`pr-merged` and lookup failures fall back to `github-actions[bot]` |
 | `AGENT_LABEL_PREFIX`                       | no                                   | `agent:`                                                                        | Namespace for the status labels; `none` disables them                                                                                                                                                                                                                                     |
 | `AGENT_LOG_LEVEL`                          | no                                   | `info`                                                                          | `debug`, `info`, `warn`, `error`                                                                                                                                                                                                                                                          |
@@ -1925,11 +1927,11 @@ never compact" is a log read rather than a rerun.
 The pipeline runs three **agent profiles**, which already differ by what they
 may do and now differ by what they cost:
 
-| Profile   | Phases                                                          | Model             | Effort               |
-| --------- | --------------------------------------------------------------- | ----------------- | -------------------- |
-| `plan`    | triage, comment classification, `/ask`, both review gates       | `LLM_MODEL_LIGHT` | `AGENT_EFFORT_PLAN`  |
-| `propose` | drafting proposal / spec / design / tasks                       | `LLM_MODEL`       | —                    |
-| `build`   | implement, CI fix, and the review loop's `opencode run` workers | `LLM_MODEL`       | `AGENT_EFFORT_BUILD` |
+| Profile   | Phases                                                    | Model             | Effort                 |
+| --------- | --------------------------------------------------------- | ----------------- | ---------------------- |
+| `plan`    | triage, comment classification, `/ask`, both review gates | `LLM_MODEL_LIGHT` | `AGENT_EFFORT_PLAN`    |
+| `propose` | drafting proposal / spec / design / tasks                 | `LLM_MODEL`       | `AGENT_EFFORT_PROPOSE` |
+| `build`   | implement, CI fix, and the review loop's workers          | `LLM_MODEL`       | `AGENT_EFFORT_BUILD`   |
 
 `LLM_MODEL_LIGHT` is a model on the **same** endpoint and key — not a second
 provider — and it reaches `plan` and OpenCode's `small_model` (title and summary
@@ -1945,12 +1947,20 @@ and be wrong on the next model. A malformed value is refused at load; an
 unknown-but-well-formed one is refused by OpenCode at the first prompt, which is
 where that knowledge lives. An effort tier only exists at all when the model is
 known to support reasoning — see `LLM_PROVIDER` and `AGENT_MODEL_REASONING`
-above.
+above. That caveat applies to the shared variable exactly as to the per-profile
+ones: a catalogue row with `reasoning: false` empties every profile's variants,
+whatever variable named the tier.
 
-Both are set as `agent.<name>.variant` in the generated config rather than per
-call, which is what makes them reach the review loop: it shells out to
-`opencode run` with no `--agent`, so its workers resolve to `build` and pick the
-variant up from the same config the in-process session reads.
+One variable serves every profile: `AGENT_EFFORT` sets a shared tier, and each
+per-profile variable — `AGENT_EFFORT_PLAN`, `AGENT_EFFORT_PROPOSE`,
+`AGENT_EFFORT_BUILD` — wins over it where that profile is named. The fold
+happens once, at config load, so nothing downstream knows a shared variable
+exists; every emit site reads a resolved tier or none.
+
+Each resolved tier is set as `agent.<name>.variant` in the generated config
+rather than per call, which is what makes them reach the review loop: it shells
+out to `opencode run` with no `--agent`, so its workers resolve to `build` and
+pick the variant up from the same config the in-process session reads.
 
 ### MCP servers
 
@@ -2201,14 +2211,18 @@ not. To switch (Settings → Secrets and variables → Actions):
 4. `LLM_API_KEY` and `LLM_BASE_URL` can stay exactly as they are: the workflow
    forwards both empty on the claude route, and the route's guard never sees
    them.
-5. `LLM_PROVIDER` and the `AGENT_MODEL_*` overrides are ignored here — the
+5. `LLM_PROVIDER` and the `AGENT_MODEL_*` overrides are unused here — the
    claude route skips the boot-time **model-facts** catalogue read, which is
    what they feed. It does still price a run against models.dev when the CLI
    reports no cost of its own, and there it resolves the model under
    `anthropic` and under the same id the CLI was invoked with (the `provider/`
    prefix stripped) — never under `LLM_PROVIDER`, whose value belongs to the
-   gateway route. A leftover id there is harmless. `LLM_MODEL_LIGHT` and
-   `AGENT_EFFORT_PLAN` / `AGENT_EFFORT_BUILD` still apply, per profile.
+   gateway route. A leftover id there is harmless. `LLM_MODEL_LIGHT` and the
+   effort variables still apply, per profile (`AGENT_EFFORT` shared,
+   `AGENT_EFFORT_PLAN` / `AGENT_EFFORT_PROPOSE` / `AGENT_EFFORT_BUILD` winning
+   per profile): a resolved tier composes `--effort` immediately after
+   `--model`, and the review loop's claude subprocesses carry it the same way
+   through the per-role config this pipeline writes them.
 
 Read [Backend selection](#backend-selection-the-claude-cli-route) before
 pointing a credential at it — the route's trade-offs (no retry layer, the

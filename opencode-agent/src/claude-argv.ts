@@ -93,6 +93,8 @@ export interface ClaudeModelKnobs {
   lightModel: string | null
   /** `AGENT_EFFORT_PLAN`, passed through when set. */
   planEffort: string | null
+  /** `AGENT_EFFORT_PROPOSE`, passed through when set (design D7). */
+  proposeEffort: string | null
   /** `AGENT_EFFORT_BUILD`, passed through when set. */
   buildEffort: string | null
 }
@@ -147,7 +149,7 @@ const profileSelection = (
   if (agent === 'plan') {
     return { allowlist: ALLOWLISTS.plan, model: knobs.lightModel ?? knobs.model, effort: knobs.planEffort }
   }
-  if (agent === 'propose') return { allowlist: ALLOWLISTS.propose, model: knobs.model, effort: null }
+  if (agent === 'propose') return { allowlist: ALLOWLISTS.propose, model: knobs.model, effort: knobs.proposeEffort }
   if (agent === 'build') return { allowlist: ALLOWLISTS.build, model: knobs.model, effort: knobs.buildEffort }
 
   // The weaker profile is the default, so an agent this pipeline does not name

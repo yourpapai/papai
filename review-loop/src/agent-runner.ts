@@ -53,6 +53,8 @@ export class AgentRunError extends Error {
 export interface RunAgentOptions<T> {
   spawn: SpawnFn
   model: string
+  /** The role's reasoning-effort tier, composed as `--effort` on the claude branch (D4); absent is no flag (D6). */
+  effort?: string
   cwd: string
   prompt: string
   outputPath: string
@@ -135,6 +137,7 @@ function attemptRun<T>(
   const command = buildAgentCommand({
     backend: options.backend,
     model: options.model,
+    effort: options.effort,
     cwd: options.cwd,
     prompt: options.prompt,
     extraArgs: options.extraArgs,

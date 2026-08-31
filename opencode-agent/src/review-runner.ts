@@ -78,6 +78,31 @@ export interface ReviewLoopSettings {
   backend: BackendSelection
 }
 
+/**
+ * The per-role agent block: one shape for every role, differing only by route
+ * (design D9). The tier the loop's role subprocesses run at rides here too
+ * (design D4): every worker resolves to the primary `build` agent on the
+ * opencode route — where the tier reaches it as `agent.build.variant` inside
+ * `OPENCODE_CONFIG_CONTENT` — so on the claude route the same fact is written
+ * into the role config each spawn reads, and the opencode branch is left alone.
+ * Absent stays absent, never `null`: the loop's schema types the tier as an
+ * optional string, and a written null would refuse the whole config.
+ */
+const roleAgentBlock = (settings: ReviewLoopSettings, subprocessTimeoutMs: number): Record<string, unknown> => {
+  if (settings.backend !== 'claude') {
+    return { model: modelRef(settings.openai), extraArgs: [], timeoutMs: subprocessTimeoutMs }
+  }
+
+  const effort = settings.openai.profiles?.buildEffort ?? null
+  return {
+    model: settings.openai.model,
+    backend: 'claude',
+    extraArgs: [],
+    timeoutMs: subprocessTimeoutMs,
+    ...(effort === null ? {} : { effort }),
+  }
+}
+
 export const buildReviewLoopConfig = (settings: ReviewLoopSettings): Record<string, unknown> => {
   // No subprocess may outlive the run it is part of. The loop honours its stop
   // *between* issues, so a fixer already running when the budget expires is
@@ -85,10 +110,7 @@ export const buildReviewLoopConfig = (settings: ReviewLoopSettings): Record<stri
   // for an hour past the point the loop agreed to stop, which is the whole
   // budget spent on one subprocess nobody will read the result of.
   const subprocessTimeoutMs = Math.min(settings.agentTimeoutMs, settings.softStopMs)
-  const agent =
-    settings.backend === 'claude'
-      ? { model: settings.openai.model, backend: 'claude', extraArgs: [], timeoutMs: subprocessTimeoutMs }
-      : { model: modelRef(settings.openai), extraArgs: [], timeoutMs: subprocessTimeoutMs }
+  const agent = roleAgentBlock(settings, subprocessTimeoutMs)
 
   return {
     repoRoot: settings.repoRoot,

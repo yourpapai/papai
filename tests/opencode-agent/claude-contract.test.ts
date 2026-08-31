@@ -85,6 +85,7 @@ const KNOBS: ClaudeModelKnobs = {
   model: 'claude-sonnet-5',
   lightModel: null,
   planEffort: null,
+  proposeEffort: null,
   buildEffort: null,
 }
 
@@ -690,18 +691,18 @@ describe('buildClaudeArgv', () => {
   })
 
   test('effort is passed when the profile has one and omitted when it does not', () => {
-    const knobs: ClaudeModelKnobs = { ...KNOBS, planEffort: 'low', buildEffort: 'high' }
+    const knobs: ClaudeModelKnobs = { ...KNOBS, planEffort: 'low', proposeEffort: 'medium', buildEffort: 'high' }
 
     const plan = buildClaudeArgv({ prompt: 'x', agent: 'plan' }, knobs, silent).argv
     const build = buildClaudeArgv({ prompt: 'x', agent: 'build' }, knobs, silent).argv
     const propose = buildClaudeArgv({ prompt: 'x', agent: 'propose' }, knobs, silent).argv
 
     expect(flagValue(plan, '--effort')).toBe('low')
+    expect(flagValue(propose, '--effort')).toBe('medium')
     expect(flagValue(build, '--effort')).toBe('high')
-    // `propose` carries no effort on either backend; an unset one is omitted,
-    // never invented.
-    expect(flagValue(propose, '--effort')).toBeNull()
+    // An unset tier is omitted, never invented — on every profile.
     expect(flagValue(buildClaudeArgv({ prompt: 'x', agent: 'plan' }, KNOBS, silent).argv, '--effort')).toBeNull()
+    expect(flagValue(buildClaudeArgv({ prompt: 'x', agent: 'propose' }, KNOBS, silent).argv, '--effort')).toBeNull()
   })
 })
 

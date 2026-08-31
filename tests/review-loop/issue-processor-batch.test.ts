@@ -392,9 +392,10 @@ describe('processBatched deferral', () => {
  * reading the prompt off stdin and emitting a healthy claude result line. The
  * conditionals live here, at module level, not inside the test body.
  */
-function claudeBatchSpawn(commands: string[]): SpawnFn {
-  return (_cmd, _args, spawnOpts, onLine) => {
+function claudeBatchSpawn(commands: string[], argvs?: string[][]): SpawnFn {
+  return (_cmd, args, spawnOpts, onLine) => {
     commands.push(_cmd)
+    argvs?.push([...args])
     const prompt = spawnOpts.stdin ?? ''
     const outputPath = prompt.match(/as JSON to:\s*(\S+)/u)?.[1]
     if (outputPath === undefined) return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' } satisfies SpawnResult)
@@ -451,5 +452,26 @@ describe('processBatched backend threading', () => {
     expect(fixed).toBe(1)
     expect(commands.length).toBeGreaterThan(0)
     expect(commands.every((command) => command === 'claude')).toBe(true)
+  })
+
+  test('the batch fixer effort rides the spawn as --effort after --model (D4, D6)', async () => {
+    const recA = buildRecord('rec-a', 'src/a.ts')
+    const commands: string[] = []
+    const argvs: string[][] = []
+
+    const { run } = await setupBatch([recA], {
+      spawn: claudeBatchSpawn(commands, argvs),
+      configOverrides: {
+        backend: 'claude',
+        claude: claudeRunContext(),
+        fixer: { model: 'opencode/claude-sonnet-4-6', extraArgs: [], effort: 'medium' },
+      },
+    })
+    const fixed = await run()
+
+    expect(fixed).toBe(1)
+    const argv = argvs[0]!
+    const model = argv.indexOf('--model')
+    expect(argv.slice(model + 2, model + 4)).toEqual(['--effort', 'medium'])
   })
 })

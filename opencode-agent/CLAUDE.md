@@ -669,10 +669,13 @@ findings: `ROADMAP.md`.
   read-only phases — and `small_model`, and deliberately **not** `propose` or
   `build`: a weak spec is the input to every later phase, and the gates that would
   catch one cost wall clock rather than tokens. `AGENT_EFFORT_PLAN` /
-  `AGENT_EFFORT_BUILD` become `agent.<name>.variant`, and config-level is forced
-  rather than preferred — the pinned SDK's prompt body has **no** `variant` field,
-  and the review loop's `opencode run` workers carry no `--agent` and so resolve
-  to `build`, which a per-call setting could never reach. Note the two pins are
+  `AGENT_EFFORT_PROPOSE` / `AGENT_EFFORT_BUILD` become `agent.<name>.variant`,
+  and config-level is forced rather than preferred — the pinned SDK's prompt
+  body has **no** `variant` field, and the review loop's `opencode run` workers
+  carry no `--agent` and so resolve to `build`, which a per-call setting could
+  never reach. `AGENT_EFFORT` is the shared tier: every profile gets it unless
+  its own variable names one, and the fold happens once at config load, so
+  nothing downstream knows a shared variable exists. Note the two pins are
   different versions: `@opencode-ai/sdk@1.18.12` types the config, `opencode-ai@1.18.7`
   reads it, and it is the **server's** version that decides which agent keys are
   honoured — its loader merges `model`, `variant`, `options`, `temperature`,

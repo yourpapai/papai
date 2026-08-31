@@ -124,4 +124,26 @@ describe('runReviewStep backend threading', () => {
     expect(commands[0]).toBe('claude')
     expect(envs[0]?.['CLAUDE_CONFIG_DIR']).toContain(context.configDirRoot)
   })
+
+  test('the reviewer role effort rides the spawn as --effort after --model (D4, D6)', async () => {
+    const repoRoot = makeTempDir('round-effort-')
+    const context = claudeRunContext()
+    const config = createReviewLoopConfigFixture(repoRoot, {
+      backend: 'claude',
+      claude: context,
+      reviewer: { model: 'opencode/claude-sonnet-4-6', extraArgs: [], effort: 'high' },
+    })
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    mkdirSync(runState.worktreePath, { recursive: true })
+    const ledger = await createIssueLedger(runState.runDir)
+    const { logger } = createCapturingTraceLogger()
+
+    const { spawn, args } = claudeRecordingSpawn(claudeScratchResponder(() => ({ issues: [] })))
+
+    await runReviewStep({ config, runState, ledger, spawn, log: silentReporter(), trace: logger }, newCollector())
+
+    const argv = args[0]!
+    const model = argv.indexOf('--model')
+    expect(argv.slice(model + 2, model + 4)).toEqual(['--effort', 'high'])
+  })
 })

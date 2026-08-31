@@ -102,6 +102,7 @@ export async function runReviewStep(
   const reviewResult = await runAgent({
     spawn: deps.spawn,
     model: deps.config.reviewer.model,
+    effort: deps.config.reviewer.effort,
     backend: deps.config.backend,
     claude: deps.config.claude,
     cwd: deps.runState.worktreePath,
@@ -143,6 +144,7 @@ export async function runMatchAndRecord(
     logPath: deps.runState.logPath,
     cwd: deps.runState.worktreePath,
     model: deps.config.matcher.model,
+    effort: deps.config.matcher.effort,
     extraArgs: deps.config.matcher.extraArgs,
     backend: deps.config.backend,
     claude: deps.config.claude,
