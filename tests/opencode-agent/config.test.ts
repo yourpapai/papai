@@ -491,3 +491,48 @@ describe('the claude route config shape', () => {
     expect(env['ANTHROPIC_API_KEY']).toBeUndefined()
   })
 })
+
+/**
+ * `AGENT_CLAUDE_ENV` — the claude route's custom child-environment knob, the
+ * third non-scalar one.
+ *
+ * Parsed at load on **both** routes (design D1: an operator flipping
+ * `AGENT_BACKEND` later must not inherit a document that was never validated)
+ * but *applied* on the claude route only, and carried on `PipelineConfig` —
+ * never on `OpenAiSettings`, the one object the knob must not contaminate
+ * (design D2 of `claude-route-custom-env`).
+ */
+describe('AGENT_CLAUDE_ENV', () => {
+  test('loadConfig carries the parsed entries on the claude route', () => {
+    const config = loadConfig(
+      {
+        ...CLAUDE_ENV,
+        ANTHROPIC_API_KEY: ANTHROPIC_KEY,
+        AGENT_CLAUDE_ENV: '{"CLAUDE_CODE_SUBAGENT_MODEL":"claude-haiku-4-5"}',
+      },
+      '/repo',
+    )
+
+    expect(config.claudeEnv).toEqual({ CLAUDE_CODE_SUBAGENT_MODEL: 'claude-haiku-4-5' })
+  })
+
+  test('is null when unset or blank, on either route', () => {
+    expect(loadConfig(ENV, '/repo').claudeEnv).toBeNull()
+    expect(loadConfig({ ...ENV, AGENT_CLAUDE_ENV: '   ' }, '/repo').claudeEnv).toBeNull()
+    expect(loadConfig({ ...CLAUDE_ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY }, '/repo').claudeEnv).toBeNull()
+  })
+
+  test('a malformed value fails at load on the opencode route too', () => {
+    // Route-scoping makes the knob inert off the claude route — it never
+    // defers the knob's validation to a spawn: a document that was never
+    // validated must not survive a later `AGENT_BACKEND` flip.
+    expect(() => loadConfig({ ...ENV, AGENT_CLAUDE_ENV: 'not json' }, '/repo')).toThrow(ConfigError)
+    expect(() => loadConfig({ ...ENV, AGENT_CLAUDE_ENV: '{"X":1}' }, '/repo')).toThrow('AGENT_CLAUDE_ENV')
+  })
+
+  test('a malformed value fails at load on the claude route as well', () => {
+    expect(() =>
+      loadConfig({ ...CLAUDE_ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY, AGENT_CLAUDE_ENV: '{"X":1}' }, '/repo'),
+    ).toThrow('AGENT_CLAUDE_ENV')
+  })
+})

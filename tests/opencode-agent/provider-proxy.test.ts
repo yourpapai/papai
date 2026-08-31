@@ -378,6 +378,7 @@ describe('contain', () => {
     githubToken: 'ghp_0123456789abcdefghij',
     backend: 'opencode',
     claudeCredential: null,
+    claudeEnv: null,
     selfLoginOverride: 'agent-bot',
     selfWorkflowName: 'OpenCode Issue Agent',
     openai: SETTINGS,

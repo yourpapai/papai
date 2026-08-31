@@ -18,7 +18,7 @@ follows `design.md` — Capability gating, scope model, dependencies, hooks.
 
 ## 2. Config plumbing (`config-shape.ts` / `config.ts`, test-first)
 
-- [ ] 2.1 Write failing tests in `tests/opencode-agent/config.test.ts`: `loadConfig` carries `claudeEnv` parsed from `AGENT_CLAUDE_ENV` on the claude route; `null` when unset or blank; malformed value fails at load on the **opencode** route too. Verify: `bun test tests/opencode-agent/config.test.ts` (red)
+- [x] 2.1 Write failing tests in `tests/opencode-agent/config.test.ts`: `loadConfig` carries `claudeEnv` parsed from `AGENT_CLAUDE_ENV` on the claude route; `null` when unset or blank; malformed value fails at load on the **opencode** route too. Verify: `bun test tests/opencode-agent/config.test.ts` (red)
 - [ ] 2.2 Add `claudeEnv: Record<string, string> | null` to `PipelineConfig` in `config-shape.ts` (with the field's why-prose) and read it in `loadConfig`'s backend block in `config.ts`; `config-backend-values.ts` needs no edit. Verify: `bun test tests/opencode-agent/config.test.ts` (green) && `bun run typecheck`
 
 ## 3. Child-environment merge (`claude-connect.ts`, test-first)
