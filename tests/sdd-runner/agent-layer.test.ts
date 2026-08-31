@@ -751,14 +751,21 @@ function firstEnv(calls: readonly SpawnCall[]): Record<string, string> {
   return calls[0]?.env ?? {}
 }
 
+/** The first recorded spawn call's argv, empty when nothing was recorded. */
+function firstArgs(calls: readonly SpawnCall[]): readonly string[] {
+  return calls[0]?.args ?? []
+}
+
 const CLAUDE_MODEL = 'anthropic/claude-opus-4-1'
 
-function claudeDeps(dir: string, spawn: SpawnFn): AgentLayerDeps {
+function claudeDeps(dir: string, spawn: SpawnFn, emitted: EventInput[] = []): AgentLayerDeps {
   return {
     spawn,
     config: { ...makeConfig(dir), model: CLAUDE_MODEL, backend: 'claude' },
     execGit: makeGitExec(''),
-    emit: () => {},
+    emit: (event) => {
+      emitted.push(EventInputSchema.parse(event))
+    },
     claude: {
       profile: 'bare',
       credentialName: 'ANTHROPIC_API_KEY',
@@ -845,5 +852,49 @@ describe('spawn composition by backend route', () => {
     // The other route's carrier and the endpoint switch never ride along.
     expect('LLM_API_KEY' in env).toBe(false)
     expect('ANTHROPIC_BASE_URL' in env).toBe(false)
+  })
+})
+
+describe('resume continuation by backend route', () => {
+  it('attempts no continuation spawn on the claude route and re-spawns from the rebuilt prompt', async () => {
+    const dir = makeDir()
+    const emitted: EventInput[] = []
+    const { spawn, calls } = recordingSpawn('findings.json', [CLAUDE_RESULT_LINE])
+    const options = { ...makeOptions(dir, 'findings.json'), continueSessionId: 'sess-old' }
+    await runStageAgent(claudeDeps(dir, spawn, emitted), options)
+    // One announced attempt, not two: the claude CLI has no session-continuation
+    // flag, so composing one only to have it refused would book a killed attempt
+    // and a spawn the route can never serve.
+    expect(emitted.filter((event) => event.type === 'spawned')).toHaveLength(1)
+    expect(calls).toHaveLength(1)
+    // extraArgs stays empty — a claude invocation refuses opencode-shaped argv,
+    // and that refusal is exactly the argument-composition error never raised here.
+    expect(calls[0]?.args).not.toContain('--session')
+    expect(calls[0]?.args).not.toContain('sess-old')
+    // The rebuild spawn carries the original prompt, not the continuation one.
+    expect(calls[0]?.stdin).toBe('Review the artifacts.')
+    // The fallback is still reported, so a reader sees why no session resumed.
+    expect(retryings(emitted)).toEqual([{ reason: 'validation', attempt: 2 }])
+  })
+
+  it('still composes and reports the continuation path on the opencode route', async () => {
+    const dir = makeDir()
+    const emitted: EventInput[] = []
+    const { spawn, calls } = recordingSpawn('findings.json')
+    const deps: AgentLayerDeps = {
+      spawn,
+      config: makeConfig(dir),
+      execGit: makeGitExec(''),
+      emit: (event) => {
+        emitted.push(EventInputSchema.parse(event))
+      },
+    }
+    const options = { ...makeOptions(dir, 'findings.json'), continueSessionId: 'sess-old' }
+    await runStageAgent(deps, options)
+    expect(calls).toHaveLength(1)
+    const args = firstArgs(calls)
+    expect(args.slice(args.indexOf('--session'), args.indexOf('--session') + 2)).toEqual(['--session', 'sess-old'])
+    // A continuation that works needs no fallback signal.
+    expect(retryings(emitted)).toEqual([])
   })
 })
