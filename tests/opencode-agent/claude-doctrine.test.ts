@@ -37,6 +37,13 @@ function tailOf(argv: readonly string[]): readonly string[] {
   return argv.slice(start, start + STREAMING_TAIL.length)
 }
 
+/** Everything from `--model` onward — the region the effort tier rides — as a comparable array. */
+function modelOnwardOf(argv: readonly string[]): readonly string[] {
+  const start = argv.indexOf('--model')
+  expect(start).toBeGreaterThan(-1)
+  return argv.slice(start)
+}
+
 describe('the claude argv doctrine has one definition across the workspaces', () => {
   test('MAX_ARG_STRLEN is equal', () => {
     expect(LOOP_MAX_ARG_STRLEN).toBe(MAX_ARG_STRLEN)
@@ -88,5 +95,37 @@ describe('the claude argv doctrine has one definition across the workspaces', ()
     // allowlist-only pin while degrading the route to result-only lines.
     expect(tailOf(loop.args)).toEqual([...tailOf(parent.argv)])
     expect(tailOf(loop.args)).toEqual([...STREAMING_TAIL])
+
+    // The tier-set half of the pin (design D6): with a tier resolved on both
+    // sides, everything from `--model` onward must still compose identically,
+    // so a one-sided `--effort` change — added, dropped or moved on either
+    // side of the boundary — fails here instead of degrading the route.
+    const tieredParent = buildClaudeArgv(
+      { prompt: 'p' },
+      { model: 'm', lightModel: null, planEffort: 'low', proposeEffort: null, buildEffort: null },
+      silentLogger,
+    )
+    const tieredLoop = buildAgentCommand({
+      backend: 'claude',
+      model: 'm',
+      cwd: '/repo/.review-loop/worktrees/1',
+      prompt: 'p',
+      extraArgs: [],
+      label: 'reviewer',
+      effort: 'low',
+      claude: {
+        profile: 'bare',
+        credentialName: 'ANTHROPIC_API_KEY',
+        credentialValue: 'sk-ant-secret-0123456789',
+        configDir: '/tmp/review-loop-claude-run/spawn-1',
+        mcpConfigPath: null,
+        envSource: {},
+      },
+    })
+
+    expect(modelOnwardOf(tieredLoop.args)).toEqual([...modelOnwardOf(tieredParent.argv)])
+    // The position itself is the doctrine, so it is pinned absolutely too: a
+    // `--effort` both sides moved together fails here just the same.
+    expect(modelOnwardOf(tieredLoop.args)).toEqual(['--model', 'm', '--effort', 'low'])
   })
 })

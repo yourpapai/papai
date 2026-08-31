@@ -20,7 +20,7 @@
 - [x] 4.3 Add the optional `effort` string to `AgentConfigSchema` (`review-loop/src/config.ts:23-37`) as a Zod refinement duplicating the `effortTier` shape check across the documented workspace boundary — `bun test tests/review-loop/config.test.ts`
 - [x] 4.4 Add `effort?: string` to `AgentCommandOptions` and append `'--effort', effort` after `--model` in `claudeCommand` (`review-loop/src/agent-command.ts:207-226`); `opencodeCommand` ignores the field — `bun test tests/review-loop/agent-command.test.ts`
 - [x] 4.5 Thread `effort` through `RunAgentOptions` and `attemptRun` (`review-loop/src/agent-runner.ts:53,135`) and the role call sites that build it from their role config: `review-round.ts:104,145`, `issue-processor-attempts.ts:57`, `issue-processor-batch.ts:113`, `issue-matcher.ts`, `issue-inspector.ts` — `bun run review-loop:test`
-- [ ] 4.6 Extend `tests/opencode-agent/claude-doctrine.test.ts`'s tail-equality case to a set tier on both sides, so a one-sided `--effort` change fails the pin — `bun test tests/opencode-agent/claude-doctrine.test.ts`
+- [x] 4.6 Extend `tests/opencode-agent/claude-doctrine.test.ts`'s tail-equality case to a set tier on both sides, so a one-sided `--effort` change fails the pin — `bun test tests/opencode-agent/claude-doctrine.test.ts`
 
 ## 5. The pipeline writes the tier into the loop's role config (design D4)
 
