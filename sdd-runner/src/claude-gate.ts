@@ -45,7 +45,16 @@ export function claudeGateOf(deps: OrchestratorDeps): ClaudeGate {
       // Throws before the assignment on a refused environment, so a later
       // member re-runs the guard rather than inheriting a rejected promise.
       opened ??= openClaudeContext(deps, resolveAgentBackend('claude', process.env), CLAUDE_TMP_PREFIX)
-      await opened
+      try {
+        await opened
+      } catch (error) {
+        // A failed open (mkdtemp under a broken tmp root) is retryable, and
+        // nothing was created — the holder is stamped only after mkdtemp
+        // succeeds — so drop the memo rather than let every later verb
+        // inherit the rejection for the rest of the process.
+        opened = null
+        throw error
+      }
     },
     close: async (): Promise<void> => {
       if (opened === null) return

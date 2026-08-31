@@ -24,6 +24,12 @@ function setCredentials(values: Partial<Record<(typeof CREDENTIAL_NAMES)[number]
   }
 }
 
+/** Same save/restore convention as `setCredentials`, for the tmp root the open reads. */
+function setTmpdir(value: string | undefined): void {
+  if (value === undefined) Reflect.deleteProperty(process.env, 'TMPDIR')
+  else process.env['TMPDIR'] = value
+}
+
 afterEach(() => {
   for (const [name, value] of saved) {
     if (value === undefined) Reflect.deleteProperty(process.env, name)
@@ -101,5 +107,30 @@ describe('claudeGateOf', () => {
     const gate = claudeGateOf(deps)
     await expect(gate.ensure()).rejects.toThrow(/\[CLAUDE_CREDENTIALS\]/u)
     await expect(gate.ensure()).rejects.toThrow(/\[CLAUDE_CREDENTIALS\]/u)
+  })
+
+  it('retries the open after a transient failure instead of caching the rejection', async () => {
+    setCredentials({ ANTHROPIC_API_KEY: 'sk-ant-key-0123456789' })
+    const deps = makeDeps('claude')
+    const gate = claudeGateOf(deps)
+    const before = parentsInTmp()
+    // A tmp root that mkdtemp cannot create under — the transient-failure
+    // shape (ENOENT now, recovered later), not a credential refusal.
+    const savedTmpdir = process.env['TMPDIR']
+    setTmpdir(path.join(os.tmpdir(), 'sdd-claude-gate-missing-root'))
+    try {
+      await expect(gate.ensure()).rejects.toThrow()
+      expect(deps.claude).toBeUndefined()
+      // A later member re-runs the open rather than inheriting the rejected
+      // promise: with the memo poisoned, this await would rethrow ENOENT.
+      setTmpdir(undefined)
+      await gate.ensure()
+      expect(deps.claude?.configDirRoot).toBeDefined()
+      expect(parentsInTmp()).toHaveLength(before.length + 1)
+    } finally {
+      setTmpdir(savedTmpdir)
+      await gate.close()
+    }
+    expect(parentsInTmp()).toEqual(before)
   })
 })
