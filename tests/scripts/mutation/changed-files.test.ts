@@ -9,10 +9,11 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { isBaselineMap } from '../../../scripts/mutation/baseline.js'
-import type { PerFileScore } from '../../../scripts/mutation/baseline.js'
+import type { BaselineMap, PerFileScore } from '../../../scripts/mutation/baseline.js'
 import {
   changedFilesRun,
   parseChangedFilesCliArgs,
+  reportGateVerdict,
   selectChangedMutationTargets,
   type ChangedFilesDeps,
   type ChangedFilesRunDeps,
@@ -29,22 +30,26 @@ const makeDeps = (gitOutput: string, isGateableImpl: ChangedFilesDeps['isGateabl
   isGateableImpl,
 })
 
-const scored = (sourceFile: string, scoreValue: number): PerFileScore => ({
-  sourceFile,
-  merged: {
-    killed: 0,
-    survived: 0,
-    noCoverage: 0,
-    timeout: 0,
-    compileError: 0,
-    ignored: 0,
-    runtimeError: 0,
-    pending: 0,
-    total: 1,
-    scored: 1,
-    score: scoreValue,
-  },
-})
+/** Measurement-derived counts (killed = round(score * 10)) so written records pass arithmetic validation. */
+const scored = (sourceFile: string, scoreValue: number): PerFileScore => {
+  const killed = Math.round(scoreValue * 10)
+  return {
+    sourceFile,
+    merged: {
+      killed,
+      survived: 10 - killed,
+      noCoverage: 0,
+      timeout: 0,
+      compileError: 0,
+      ignored: 0,
+      runtimeError: 0,
+      pending: 0,
+      total: 10,
+      scored: 10,
+      score: scoreValue,
+    },
+  }
+}
 
 const unscored = (sourceFile: string): PerFileScore => ({
   sourceFile,
@@ -71,7 +76,7 @@ const expectGateInput = (result: GateInput | null): GateInput => {
 
 const tmpBaselinePath = (): string => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'papai-seed-')), 'baseline.json')
 
-const readBaseline = (baselinePath: string): Record<string, number> => {
+const readBaseline = (baselinePath: string): BaselineMap => {
   const parsed: unknown = JSON.parse(fs.readFileSync(baselinePath, 'utf8'))
   if (!isBaselineMap(parsed)) throw new Error(`baseline at ${baselinePath} is not a BaselineMap`)
   return parsed
@@ -428,7 +433,7 @@ describe('changedFilesRun', () => {
 })
 
 describe('seedBaseline', () => {
-  test('preserves untouched baseline entries and adds changed entries via seedMerge', () => {
+  test('preserves untouched baseline entries and adds changed entries as rich records via seedMerge', () => {
     const baselinePath = tmpBaselinePath()
     fs.writeFileSync(baselinePath, JSON.stringify({ 'src/untouched.ts': 0.8 }))
 
@@ -436,19 +441,19 @@ describe('seedBaseline', () => {
 
     const written = readBaseline(baselinePath)
     expect(written['src/untouched.ts']).toBe(0.8)
-    expect(written['src/changed.ts']).toBe(0.5)
-    expect(written['src/new.ts']).toBe(0.3)
+    expect(written['src/changed.ts']).toEqual({ score: 0.5, killed: 5, timeout: 0, scored: 10 })
+    expect(written['src/new.ts']).toEqual({ score: 0.3, killed: 3, timeout: 0, scored: 10 })
     expect(count).toBe(3)
   })
 
-  test('keeps the higher score when latest exceeds existing (seedMerge max)', () => {
+  test('keeps the higher score when latest exceeds existing, carrying the measurement counts (seedMerge max)', () => {
     const baselinePath = tmpBaselinePath()
     fs.writeFileSync(baselinePath, JSON.stringify({ 'src/raised.ts': 0.7 }))
 
     seedBaseline(baselinePath, [scored('src/raised.ts', 0.9)])
 
     const written = readBaseline(baselinePath)
-    expect(written['src/raised.ts']).toBe(0.9)
+    expect(written['src/raised.ts']).toEqual({ score: 0.9, killed: 9, timeout: 0, scored: 10 })
   })
 
   test('never lowers an existing score (seedMerge, not ratchetMerge)', () => {
@@ -469,7 +474,7 @@ describe('seedBaseline', () => {
 
     expect(count).toBe(1)
     const written = readBaseline(baselinePath)
-    expect(written['src/fresh.ts']).toBe(0.5)
+    expect(written['src/fresh.ts']).toEqual({ score: 0.5, killed: 5, timeout: 0, scored: 10 })
   })
 
   test('skips entries with no scoreable mutants', () => {
@@ -495,8 +500,13 @@ describe('runUpdateBaseline', () => {
     })
 
     expect(count).toBe(2)
-    expect(readBaseline(baselinePath)).toEqual({ 'src/a.ts': 0.5, 'src/old.ts': 0.6 })
-    expect(readBaseline(path.join(reportDir, 'scores.json'))).toEqual({ 'src/a.ts': 0.5 })
+    expect(readBaseline(baselinePath)).toEqual({
+      'src/a.ts': { score: 0.5, killed: 5, timeout: 0, scored: 10 },
+      'src/old.ts': 0.6,
+    })
+    expect(readBaseline(path.join(reportDir, 'scores.json'))).toEqual({
+      'src/a.ts': { score: 0.5, killed: 5, timeout: 0, scored: 10 },
+    })
   })
 
   test('writes an empty scores file and preserves the baseline when no files were measured', () => {
@@ -515,7 +525,7 @@ describe('runUpdateBaseline', () => {
 
 describe('resolveErroredGate', () => {
   test('passes when no file errored', () => {
-    expect(resolveErroredGate([])).toEqual({ exitCode: 0, message: null })
+    expect(resolveErroredGate([])).toEqual({ exitCode: 0, message: null, warnings: [] })
   })
 
   test('fails and names every errored file', () => {
@@ -546,6 +556,13 @@ describe('changedFilesRun with carried-over scores', () => {
     scored: scoredCount,
     score,
   })
+
+  // Rich floor 0.9 from 9 kills of a 10-mutant population — the record shape the
+  // ratchet needs to render kills in the regression message and classify dilution.
+  const richBaseline: BaselineMap = {
+    'src/x.ts': { score: 0.9, killed: 9, timeout: 0, scored: 10 },
+    'src/y.ts': { score: 0.9, killed: 9, timeout: 0, scored: 10 },
+  }
 
   const fileResult = (sourceFile: string, score: number): PairedRunFileResult => ({
     sourceFile,
@@ -593,7 +610,7 @@ describe('changedFilesRun with carried-over scores', () => {
       projectRoot: '/repo',
       reportDir: '/repo/reports/paired',
       baseRef: 'origin/master',
-      baseline: { 'src/x.ts': 0.9, 'src/y.ts': 0.9 },
+      baseline: richBaseline,
       verbose: false,
       incremental,
       deps: { selectTargets: () => ['src/x.ts', 'src/y.ts'], runPaired, log: () => {} },
@@ -607,10 +624,10 @@ describe('changedFilesRun with carried-over scores', () => {
       result: expectGateInput(result),
       threshold: 0,
       noRatchet: false,
-      baseline: { 'src/x.ts': 0.9, 'src/y.ts': 0.9 },
+      baseline: richBaseline,
     })
     expect(verdict.exitCode).toBe(1)
-    expect(verdict.message).toBe('Mutation ratchet regression: src/x.ts 0.5000 < 0.9000')
+    expect(verdict.message).toBe('Mutation ratchet regression: src/x.ts 0.5000 < 0.9000, kills 5 < 9 recorded')
   })
 
   test('passes when the carried-over score still clears its floor', async () => {
@@ -821,5 +838,85 @@ describe('parseChangedFilesCliArgs --no-score-cache', () => {
 
   test('still rejects unknown flags', () => {
     expect(parseChangedFilesCliArgs(['--no-score-caches'])).toMatchObject({ kind: 'usageError' })
+  })
+})
+
+describe('reportGateVerdict', () => {
+  const merged = (score: number, scoredCount = 10): PerFileScore['merged'] => ({
+    killed: Math.round(score * scoredCount),
+    survived: scoredCount - Math.round(score * scoredCount),
+    noCoverage: 0,
+    timeout: 0,
+    compileError: 0,
+    ignored: 0,
+    runtimeError: 0,
+    pending: 0,
+    total: scoredCount,
+    scored: scoredCount,
+    score,
+  })
+
+  const dilutionVerdict = (): ReturnType<typeof resolveChangedFilesGates> =>
+    resolveChangedFilesGates({
+      result: {
+        merged: merged(1),
+        perFile: [
+          // kills held at 9 while the population grew 10 → 20: dilution, not regression
+          { sourceFile: 'src/x.ts', merged: { ...merged(0.45, 20), killed: 9, survived: 11 } },
+        ],
+        skipped: [],
+        errored: [],
+      },
+      threshold: 0,
+      noRatchet: false,
+      baseline: { 'src/x.ts': { score: 0.9, killed: 9, timeout: 0, scored: 10 } },
+    })
+
+  test('prints each dilution as a WARN log line naming the file, its held kills, and both scores', () => {
+    const lines: string[] = []
+    reportGateVerdict(dilutionVerdict(), (line) => {
+      lines.push(line)
+    })
+    expect(lines).toEqual([
+      'WARN Mutation ratchet dilution: src/x.ts score 0.4500 < recorded 0.9000 but kills held (9 >= 9)',
+    ])
+  })
+
+  test('prints the failure message and keeps WARN lines for dilutions when the run also regresses', () => {
+    const lines: string[] = []
+    const errors: string[] = []
+    reportGateVerdict(
+      {
+        exitCode: 1,
+        message: 'Mutation ratchet regression: src/y.ts 0.5000 < 0.9000, kills 5 < 9 recorded',
+        warnings: ['Mutation ratchet dilution: src/x.ts score 0.4500 < recorded 0.9000 but kills held (9 >= 9)'],
+      },
+      (line) => {
+        lines.push(line)
+      },
+      (line) => {
+        errors.push(line)
+      },
+    )
+    expect(lines).toEqual([
+      'WARN Mutation ratchet dilution: src/x.ts score 0.4500 < recorded 0.9000 but kills held (9 >= 9)',
+    ])
+    expect(errors).toEqual(['Mutation ratchet regression: src/y.ts 0.5000 < 0.9000, kills 5 < 9 recorded'])
+  })
+
+  test('prints nothing for a clean pass', () => {
+    const lines: string[] = []
+    const errors: string[] = []
+    reportGateVerdict(
+      { exitCode: 0, message: null, warnings: [] },
+      (line) => {
+        lines.push(line)
+      },
+      (line) => {
+        errors.push(line)
+      },
+    )
+    expect(lines).toEqual([])
+    expect(errors).toEqual([])
   })
 })

@@ -165,7 +165,23 @@ const startStub = (): { stop: () => Promise<void> } => {
  * request the stub could not reach until its own 90s timeout killed it —
  * recorded here because the failure looks exactly like an unreachable endpoint.
  */
-const recordTurn = async (): Promise<{ stdout: string; exitCode: number }> => {
+/**
+ * A throwaway HOME, config dir and workspace, made once and reused by every
+ * turn of one recording.
+ *
+ * Shared rather than per-turn because `--resume` reads the session transcript
+ * out of `CLAUDE_CONFIG_DIR`: a fresh dir per invocation makes every resume
+ * find nothing, which reads as the CLI reporting zero usage rather than as the
+ * lane having asked the wrong question.
+ */
+interface StubHome {
+  readonly home: string
+  readonly configDir: string
+  readonly workspace: string
+  readonly mcpConfig: string
+}
+
+const makeHome = (): StubHome => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-stub-'))
   const configDir = path.join(home, 'cfg')
   const workspace = path.join(home, 'work')
@@ -173,8 +189,13 @@ const recordTurn = async (): Promise<{ stdout: string; exitCode: number }> => {
   fs.mkdirSync(workspace)
   const mcpConfig = path.join(configDir, 'empty-mcp.json')
   fs.writeFileSync(mcpConfig, JSON.stringify({ mcpServers: {} }))
+  return { home, configDir, workspace, mcpConfig }
+}
 
-  try {
+const recordTurn = async (where: StubHome, resumeSessionId?: string): Promise<{ stdout: string; exitCode: number }> => {
+  const { home, configDir, workspace, mcpConfig } = where
+
+  {
     const child = Bun.spawn(
       [
         'claude',
@@ -183,6 +204,7 @@ const recordTurn = async (): Promise<{ stdout: string; exitCode: number }> => {
         '--strict-mcp-config',
         '--mcp-config',
         mcpConfig,
+        ...(resumeSessionId === undefined ? [] : ['--resume', resumeSessionId]),
         '-p',
         '--output-format',
         'stream-json',
@@ -210,22 +232,62 @@ const recordTurn = async (): Promise<{ stdout: string; exitCode: number }> => {
     const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited])
     clearTimeout(timer)
     return { stdout, exitCode }
-  } finally {
-    fs.rmSync(home, { recursive: true, force: true })
   }
+}
+
+/** The four token buckets a `result` line reported, as the CLI spelled them. */
+const bucketsOf = (text: string): Record<string, number> | null => {
+  const schema = z.object({
+    type: z.literal('result'),
+    usage: z.looseObject({
+      input_tokens: z.number(),
+      output_tokens: z.number(),
+      cache_creation_input_tokens: z.number(),
+      cache_read_input_tokens: z.number(),
+    }),
+  })
+  for (const raw of parseNdjsonStream(text)) {
+    const seen = schema.safeParse(raw)
+    if (seen.success) {
+      const { input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens } = seen.data.usage
+      return { input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens }
+    }
+  }
+  return null
+}
+
+/** The session id the init line named, which the next turn resumes. */
+const sessionIdOf = (text: string): string | undefined => {
+  const schema = z.object({ type: z.literal('system'), subtype: z.literal('init'), session_id: z.string() })
+  for (const raw of parseNdjsonStream(text)) {
+    const seen = schema.safeParse(raw)
+    if (seen.success) return seen.data.session_id
+  }
+  return undefined
 }
 
 const main = async (): Promise<void> => {
   const stub = startStub()
+  const where = makeHome()
   let results: boolean[] = []
   let stdout = ''
+  let resumed = ''
 
   try {
-    const turn = await recordTurn()
+    const turn = await recordTurn(where)
     stdout = turn.stdout
     results.push(check('the CLI completed a turn against the stub', turn.exitCode === 0, `exit ${turn.exitCode}`))
+
+    // The second invocation exists for one question, asked below: does
+    // `--resume` make the CLI report the session's running total, or this
+    // invocation's own? `claude-spend.ts` sums across turns, which is only
+    // correct under the second — and the difference is quadratic, so it is
+    // recorded rather than assumed.
+    const first = sessionIdOf(stdout)
+    if (first !== undefined) resumed = (await recordTurn(where, first)).stdout
   } finally {
     await stub.stop()
+    fs.rmSync(where.home, { recursive: true, force: true })
   }
 
   /**
@@ -316,6 +378,18 @@ const main = async (): Promise<void> => {
       'the result line carries every cache bucket, so the ladder can reprice it',
       tokenCount('cache_creation_input_tokens') > 0 && tokenCount('cache_read_input_tokens') > 0,
       `usage was ${JSON.stringify(rawResult?.usage)}`,
+    ),
+    // The pin behind `recordLine`'s `+=`. The stub answers every request
+    // identically, so a resumed turn reporting the same buckets means the CLI
+    // reports **per invocation**; doubled figures would mean it reports the
+    // session's running total and that summing across turns double-counts,
+    // quadratically, over a run's worth of turns.
+    check(
+      'a resumed turn reports its own usage, not the session’s running total',
+      resumed !== '' && JSON.stringify(bucketsOf(resumed)) === JSON.stringify(bucketsOf(stdout)),
+      resumed === ''
+        ? 'no resumed turn was recorded — the first turn named no session'
+        : `first ${JSON.stringify(bucketsOf(stdout))} vs resumed ${JSON.stringify(bucketsOf(resumed))}`,
     ),
   )
 

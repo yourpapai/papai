@@ -13,7 +13,7 @@ import { bumpScore, type BaselineMap } from './baseline.js'
 import type { CappedRegistryStore } from './capped-registry.js'
 import type { MutationImproveConfig } from './config.js'
 import { recordFailure, type FailureEntry } from './failure-recorder.js'
-import { gatePhase, type PhaseResult } from './gate.js'
+import { gatePhase, measurementOf, type GateOutcome, type PhaseResult } from './gate.js'
 import { formatIterLine, ITER_SLOT_KEY } from './iter-line.js'
 import { branchFor, runIdFor, worktreeFor } from './iter-paths.js'
 import { reportMergeDiff } from './merge-stats.js'
@@ -161,10 +161,10 @@ async function finalizePhase(
   file: string,
   baseline: BaselineMap,
   beforeScore: number,
-  gate: { afterScore: number; result: Result; capped: boolean },
+  gate: GateOutcome,
 ): Promise<IterationResult> {
   const { afterScore, result } = gate
-  await commitRatchet(deps, worktreePath, file, afterScore, bumpScore(baseline, file, afterScore))
+  await commitRatchet(deps, worktreePath, file, afterScore, bumpScore(baseline, file, measurementOf(gate)))
   const beforeSha = await headSha(deps.execGit, deps.config.repoRoot)
   const merge = await deps.mergeWorktree(deps.config.repoRoot, branchFor(deps, iter))
   if (!merge.ok) {
@@ -247,7 +247,7 @@ export async function runIteration(deps: PipelineDeps, iter: number): Promise<It
     const beforeScore = before.score
     if (beforeScore >= deps.config.threshold) {
       deps.runState.doneSet.push(selection.file)
-      await ratchetVerifiedSkip(deps, baseline, selection.file, beforeScore)
+      await ratchetVerifiedSkip(deps, baseline, selection.file, before)
       return await skipIter(deps, iter, worktreePath, selection.file, beforeScore)
     }
 

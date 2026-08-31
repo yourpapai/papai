@@ -17,6 +17,7 @@ import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import type { TurnStall } from '../../opencode-agent/src/turn-stall.js'
 import { stopPartWayThrough } from '../../opencode-agent/src/turn-stop.js'
 import type { PartWayInput } from '../../opencode-agent/src/turn-stop.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
 
@@ -59,6 +60,7 @@ const reviewState = (): AgentState => ({
   stepsDone: 0,
   changeName: 'add-retries',
   planRevision: 1,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 0,
   usdSpent: 0,
   usdUnpriced: false,

@@ -627,9 +627,15 @@ untouched — pinned by `tests/scripts/mutation/stryker-config.test.ts`; each
 source file paired with the test set that actually covers it — coverage-derived
 via `scripts/mutation/coverage-map.ts`, with the companion as fallback). The CI
 `mutation-testing` job is a
-**blocking per-file ratchet** on PRs: a changed file fails only if it has a
-recorded entry in `scripts/mutation/baseline.json` and its score drops below it;
-files with no recorded entry (new or never-baselined) are not regressions. The
+**blocking per-file ratchet** on PRs judged against
+`scripts/mutation/baseline.json`, whose entries are records — the score plus the
+counts behind it, `{score, killed, timeout, scored}` (bare legacy score numbers
+still coexist during the lazy migration, judged by score alone). A baselined
+file fails only when its measurement both scores below the recorded score **and**
+kills fewer mutants than the record — a true regression, meaning killing power
+dropped; a below-floor score with kills held (the mutant population grew) is
+new-code dilution and prints a `WARN` instead of failing. Files with no recorded
+entry (new or never-baselined) are not regressions. The
 `mutation-testing` job **gates the whole branch diff on every push** but only
 **measures** the files whose content changed since the previous run — the rest
 carry over scores recorded earlier on the branch, guarded by a content
@@ -642,7 +648,8 @@ scope, `seedMerge` preserves existing entries — not a full run) on push to
 `master`; its commit step replays the persisted per-file scores onto the latest
 master (`test:mutate:seed`), so a master update landing mid-run cannot lose the
 seed. See `scripts/mutation/README.md` for flags (`--no-ratchet`), the
-override/companion resolution, and the one-time migration catch-up note.
+override/companion resolution, the record validation rules, the lazy
+record-shape migration, and the one-time migration catch-up note.
 Toolchain: Stryker 10 — the CLI host is Node (≥ 22; only test children run on
 Bun), and `@hughescr/stryker-bun-runner` installs via a Bun patch until
 upstream accepts core 10 (details and deletion condition in
