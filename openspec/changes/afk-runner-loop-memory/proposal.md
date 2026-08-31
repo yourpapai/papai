@@ -32,7 +32,10 @@ burned 10 rounds without converging while gates showed counts, never identities.
   with their round-by-round history — instead of silently running another round.
 - Materialization gains a cross-artifact **consistency check**: one decision
   term rendered differently across `proposal.md`/`design.md`/`specs/` becomes a
-  MATERIAL finding with file references, before the resolver runs.
+  MATERIAL finding naming both files and both renderings, injected into the
+  next round's findings — the check runs at round close (master's shape), so
+  synthesized findings ride the normal lens→resolver path instead of widening
+  the resolver's same-round contract.
 
 ## Capabilities
 
@@ -61,8 +64,13 @@ _None._
 - Docs: `afk-runner.md`, `sdd-pipeline.md` (review loop, convergence, events).
 - Instances/scope: none — offline runner workspace; no DB, no chat surfaces, no
   per-user / group-shared / thread-isolated state; no new dependencies.
-- Depends on `afk-runner-spec-home`; lands after `afk-runner-run-analysis` so
-  cluster thresholds calibrate from afk's own corpus, not the ancestor's.
+- Depends on `afk-runner-spec-home`; lands after `afk-runner-run-analysis`,
+  which owes this change two corpus measurements: **fingerprint separation**
+  (re-raised concerns vs distinct findings under exact token-set equality on
+  afk's own runs — the ≥2-prior-resolved threshold and the token-set rule are
+  master's compiled constants, confirmed here, not re-derived) and a
+  **seeded-term dry-run** of the consistency check (false-positive and
+  false-negative rates on afk's corpus, gating any vocabulary widening).
 
 ## Non-goals
 
@@ -71,5 +79,10 @@ _None._
 - Gate checkbox grammar or decision surfaces beyond the concern-history section
   (the existing grammar carries it as findings rows); reviewer/resolver model
   or prompt-lens redesign beyond the digest and consistency-check inputs.
+- Scanning `tasks.md` or re-running the consistency check at the final gate:
+  master's motivating case (proposal vs tasks.md migration wording) is
+  uncatchable at round time by construction — tasks.md is authored at
+  decompose, after review rounds end. Declined with master (D6); widen only if
+  the dry-run measures the miss.
 - The decomposition/plan branch — measured never-executed on master (0 `plan`
   events in 14 runs); U2 stays parked pending afk's own evidence.
