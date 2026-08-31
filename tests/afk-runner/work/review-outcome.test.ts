@@ -102,3 +102,118 @@ describe('review outcome — answered gates release continuation (marathon regre
     },
   )
 })
+
+describe('review outcome — needs-review and the open set', () => {
+  const base = { current: 1, cap: 1 }
+
+  it('a needs-review verdict at the base cap leaves review unsettled — the verification round is still owed', () => {
+    const context = contextOf([
+      stamp({ altitude: 'L2', type: 'depth', profile: 'S', rationale: 'r', source: 'estimator' }, 1),
+      stamp({ altitude: 'L2', type: 'round_open', round: 1, cap: 1 }, 2),
+      stamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'needs-review',
+          counts: { blocker: 0, material: 1, nitpick: 0 },
+          open: { blocker: 0, material: 0, nitpick: 0 },
+        },
+        3,
+      ),
+    ])
+    expect(context.round).toEqual(base)
+    expect(reviewOutcomeOf(context)).toBe('incomplete')
+  })
+
+  it('a needs-review verdict from a round opened above the base cap settles — the verification round ran', () => {
+    const context = contextOf([
+      stamp({ altitude: 'L2', type: 'depth', profile: 'S', rationale: 'r', source: 'estimator' }, 1),
+      stamp({ altitude: 'L2', type: 'round_open', round: 1, cap: 1 }, 2),
+      stamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'needs-review',
+          counts: { blocker: 0, material: 1, nitpick: 0 },
+          open: { blocker: 0, material: 0, nitpick: 0 },
+        },
+        3,
+      ),
+      stamp({ altitude: 'L2', type: 'round_open', round: 2, cap: 2 }, 4),
+      stamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 2,
+          verdict: 'needs-review',
+          counts: { blocker: 0, material: 1, nitpick: 0 },
+          open: { blocker: 0, material: 0, nitpick: 0 },
+        },
+        5,
+      ),
+    ])
+    expect(reviewOutcomeOf(context)).toBe('converged')
+  })
+
+  it('severity convergence reads the open set, not the raised one', () => {
+    const openCleared = contextOf([
+      stamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'open',
+          counts: { blocker: 1, material: 1, nitpick: 0 },
+          open: { blocker: 0, material: 0, nitpick: 2 },
+        },
+        1,
+      ),
+    ])
+    expect(reviewOutcomeOf(openCleared)).toBe('converged')
+    const openBlocker = contextOf([
+      stamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'open',
+          counts: { blocker: 0, material: 0, nitpick: 2 },
+          open: { blocker: 1, material: 0, nitpick: 2 },
+        },
+        1,
+      ),
+    ])
+    expect(reviewOutcomeOf(openBlocker)).toBe('incomplete')
+  })
+
+  it('a pre-change line with no open set folds its severity exactly as before', () => {
+    const pre = contextOf([
+      stamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'open',
+          counts: { blocker: 0, material: 0, nitpick: 2 },
+        },
+        1,
+      ),
+    ])
+    expect(reviewOutcomeOf(pre)).toBe('converged')
+    const preOpen = contextOf([
+      stamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'open',
+          counts: { blocker: 1, material: 0, nitpick: 0 },
+        },
+        1,
+      ),
+    ])
+    expect(reviewOutcomeOf(preOpen)).toBe('incomplete')
+  })
+})

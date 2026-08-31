@@ -7,7 +7,12 @@ import { describe, expect, it } from 'bun:test'
 
 import type { AutonomyConfig } from '../../../afk-runner/src/config.js'
 import type { DigestRecord } from '../../../afk-runner/src/legacy-fold.js'
-import { evaluateCapHit, evaluateEscalationGate, evaluateFinalGate } from '../../../afk-runner/src/work/auto-policy.js'
+import {
+  evaluateCapHit,
+  evaluateEscalationGate,
+  evaluateFinalGate,
+  projectedSpend,
+} from '../../../afk-runner/src/work/auto-policy.js'
 import type { PolicySignals } from '../../../afk-runner/src/work/auto-policy.js'
 import type { ReviewLoopResult } from '../../../afk-runner/src/work/review-loop.js'
 
@@ -308,5 +313,15 @@ describe('ladder evidence digest', () => {
     const c = evaluateFinalGate(signals({ spentUsd: 1.5 }))
     expect(a.evidenceDigest).toBe(b.evidenceDigest)
     expect(a.evidenceDigest).not.toBe(c.evidenceDigest)
+  })
+})
+
+describe('projectedSpend (exported for the verification-round guard)', () => {
+  it('projects one more round at the median cost of a completed round', () => {
+    expect(projectedSpend({ spentUsd: 0.6, rounds: 3 })).toBeCloseTo(0.8)
+  })
+
+  it('falls back to the conservative constant when no rounds are recorded', () => {
+    expect(projectedSpend({ spentUsd: 0.2, rounds: 0 })).toBeCloseTo(0.7)
   })
 })

@@ -53,12 +53,12 @@ function strictlyDecreasingLastK(trajectory: readonly DigestRecord[], k: number)
 /**
  * Projected spend after one more round: current spend plus the median cost of
  * a completed round (spend spread evenly over recorded rounds; a conservative
- * constant when none are recorded).
+ * constant when none are recorded). Exported for the verification-round budget
+ * guard, which asks the same question R4 does.
  */
-function projectedSpend(signals: PolicySignals): number {
-  const rounds = signals.reviewResult.rounds
-  if (rounds <= 0) return signals.spentUsd + DEFAULT_ROUND_COST_USD
-  return signals.spentUsd + signals.spentUsd / rounds
+export function projectedSpend(input: { readonly spentUsd: number; readonly rounds: number }): number {
+  if (input.rounds <= 0) return input.spentUsd + DEFAULT_ROUND_COST_USD
+  return input.spentUsd + input.spentUsd / input.rounds
 }
 
 function gateDecision(rule: PolicyDecision['rule'], signals: PolicySignals, note: string): PolicyDecision {
@@ -84,7 +84,10 @@ function r4FailsClosed(signals: PolicySignals): PolicyDecision | null {
       evidenceDigest: digestOf(['cost-unknown', signals.reviewResult.outcome]),
     }
   }
-  if (signals.config.costCeilingUsd !== null && projectedSpend(signals) >= signals.config.costCeilingUsd) {
+  if (
+    signals.config.costCeilingUsd !== null &&
+    projectedSpend({ spentUsd: signals.spentUsd, rounds: signals.reviewResult.rounds }) >= signals.config.costCeilingUsd
+  ) {
     return {
       rule: 'R4',
       action: 'gate',

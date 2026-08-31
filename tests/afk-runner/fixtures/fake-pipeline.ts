@@ -43,6 +43,17 @@ export interface FakePipelineOptions {
    * shape: `latestInFlight` sees a `spawned`/`killed` id-bearing line.
    */
   readonly sessionIdOf?: (basename: string) => string | undefined
+  /**
+   * When given, a spawn emits a step_finish usage line with these counters
+   * before running — feeding the `done` events' usage (spend, cost-known).
+   */
+  readonly usageOf?: (basename: string) => { readonly input: number; readonly cost: number } | undefined
+  /**
+   * When given, invoked before each spawn's sidecar write — lets a test move
+   * the change folder between rounds so an `edited` claim has real movement
+   * behind it.
+   */
+  readonly onSpawn?: (basename: string) => void
 }
 
 export const TASK_TEXT = '# Add thing\n\nfixes a typo in the readme\n'
@@ -151,6 +162,16 @@ export function makeFakePipeline(options: FakePipelineOptions = {}): FakePipelin
     ;(spawnPrompts[basename] ??= []).push(prompt)
     const sessionId = options.sessionIdOf?.(basename)
     if (sessionId !== undefined) onLine?.(JSON.stringify({ sessionID: sessionId }))
+    options.onSpawn?.(basename)
+    const usage = options.usageOf?.(basename)
+    if (usage !== undefined) {
+      onLine?.(
+        JSON.stringify({
+          type: 'step_finish',
+          part: { type: 'step_finish', reason: 'stop', tokens: { input: usage.input, output: 1 }, cost: usage.cost },
+        }),
+      )
+    }
     if (options.crashOn?.(basename) === true) {
       return Promise.reject(new Error(`simulated kill before ${basename}`))
     }
