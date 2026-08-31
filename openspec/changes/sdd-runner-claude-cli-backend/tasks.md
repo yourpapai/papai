@@ -14,7 +14,7 @@
 ## 3. Run-context seam (design D4)
 
 - [x] 3.1 Extend `tests/review-loop/backend-select.test.ts`: `openClaudeContext` accepts a structural `{ claude?: ClaudeRunContext }` holder, honours an optional tmp-prefix argument, defaults to today's prefix, and creates the parent under the OS tmp root. Verify: `bun test tests/review-loop/backend-select.test.ts`
-- [ ] 3.2 Widen `openClaudeContext`'s first parameter and add the optional prefix argument in `review-loop/src/backend-select.ts`, leaving the loop's own call site unchanged. Verify: `bun test tests/review-loop/backend-select.test.ts && bun run typecheck`
+- [x] 3.2 Widen `openClaudeContext`'s first parameter and add the optional prefix argument in `review-loop/src/backend-select.ts`, leaving the loop's own call site unchanged. Verify: `bun test tests/review-loop/backend-select.test.ts && bun run typecheck`
 
 ## 4. Threading the route to the agent layer (design D2)
 
