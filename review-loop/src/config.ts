@@ -30,8 +30,8 @@ export type AgentBackend = 'opencode' | 'claude'
  * reject tiers that work — the model refuses the rest. If either side ever
  * loosens its shape, the doctrine test is where the two get pinned equal.
  */
-const EFFORT_MAX_LENGTH = 16
-const EFFORT_PATTERN = /^[a-z][a-z0-9-]*$/u
+export const EFFORT_MAX_LENGTH = 16
+export const EFFORT_PATTERN = /^[a-z][a-z0-9-]*$/u
 
 const AgentConfigSchema = z.object({
   model: z.string().min(1),

@@ -76,10 +76,12 @@ export const boolOrNull = (env: Env, key: string): boolean | null => {
  *
  * The cost, accepted deliberately: a typo surfaces at the first prompt rather
  * than at load, which is the opposite of what this file prefers everywhere else.
- * A hardcoded list makes that *more* likely, not less.
+ * A hardcoded list makes that *more* likely, not less. Exported only as the
+ * cross-workspace pin's subject (`tests/opencode-agent/claude-doctrine.test.ts`),
+ * not as a second import path — `config-values.ts` stays the caller's door.
  */
-const EFFORT_MAX_LENGTH = 16
-const EFFORT_PATTERN = /^[a-z][a-z0-9-]*$/u
+export const EFFORT_MAX_LENGTH = 16
+export const EFFORT_PATTERN = /^[a-z][a-z0-9-]*$/u
 
 /**
  * Reads a reasoning-effort tier, or `null` when the operator named none.

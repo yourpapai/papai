@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { ALLOWLISTS, buildClaudeArgv, MAX_ARG_STRLEN } from '../../opencode-agent/src/claude-argv.js'
+import { EFFORT_MAX_LENGTH, EFFORT_PATTERN } from '../../opencode-agent/src/config-model-values.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 import { buildAgentCommand } from '../../review-loop/src/agent-command.js'
 import {
@@ -13,6 +14,10 @@ import {
   analysisAllowlist,
   MAX_ARG_STRLEN as LOOP_MAX_ARG_STRLEN,
 } from '../../review-loop/src/claude-argv.js'
+import {
+  EFFORT_MAX_LENGTH as LOOP_EFFORT_MAX_LENGTH,
+  EFFORT_PATTERN as LOOP_EFFORT_PATTERN,
+} from '../../review-loop/src/config.js'
 
 /**
  * Two workspaces, one claude-CLI doctrine. `review-loop` duplicates the argv
@@ -47,6 +52,18 @@ function modelOnwardOf(argv: readonly string[]): readonly string[] {
 describe('the claude argv doctrine has one definition across the workspaces', () => {
   test('MAX_ARG_STRLEN is equal', () => {
     expect(LOOP_MAX_ARG_STRLEN).toBe(MAX_ARG_STRLEN)
+  })
+
+  test('the duplicated effort-tier shape check is equal', () => {
+    // The shape check gates the tier before it ever reaches the argv builder on
+    // both routes (`review-loop/src/config.ts` duplicates the pipeline side's
+    // `effortTier` constants rather than importing them), so a one-sided
+    // loosening — a raised length bound, a widened character class — admits a
+    // tier one side then refuses. Source and flags both, so every way the
+    // pattern can move is caught here.
+    expect(LOOP_EFFORT_MAX_LENGTH).toBe(EFFORT_MAX_LENGTH)
+    expect(LOOP_EFFORT_PATTERN.source).toBe(EFFORT_PATTERN.source)
+    expect(LOOP_EFFORT_PATTERN.flags).toBe(EFFORT_PATTERN.flags)
   })
 
   test('the fixer allowlist string is equal to the parent build set', () => {
