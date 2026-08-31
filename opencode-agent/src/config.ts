@@ -95,12 +95,13 @@ export const loadOpenAiSettings = (env: Env, backend: BackendSelection = 'openco
     output: boundedIntOrNull(env, 'AGENT_MODEL_OUTPUT', OUTPUT_RANGE),
     reasoning: boolOrNull(env, 'AGENT_MODEL_REASONING'),
   },
-  // Which profile gets which model and how much effort. All three absent by
+  // Which profile gets which model and how much effort. All four absent by
   // default, so a repository that sets none of them emits the config it always
   // did — the light model is only the read-only profile's, never `build`'s.
   profiles: {
     light: optionalOrNull(env, 'LLM_MODEL_LIGHT'),
     planEffort: effortTier(env, 'AGENT_EFFORT_PLAN'),
+    proposeEffort: effortTier(env, 'AGENT_EFFORT_PROPOSE'),
     buildEffort: effortTier(env, 'AGENT_EFFORT_BUILD'),
   },
   // The second non-scalar knob, read here so an unloadable value fails at job

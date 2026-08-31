@@ -165,7 +165,14 @@ describe('model metadata overrides', () => {
  */
 describe('per-profile model and effort', () => {
   test('are absent when unset, so the emitted config is exactly today', () => {
-    expect(loadOpenAiSettings(ENV).profiles).toEqual({ light: null, planEffort: null, buildEffort: null })
+    // `proposeEffort` joins the shape with the shared tier (design D3); a null
+    // keeps every emit site silent, so the wire format stays byte-identical.
+    expect(loadOpenAiSettings(ENV).profiles).toEqual({
+      light: null,
+      planEffort: null,
+      proposeEffort: null,
+      buildEffort: null,
+    })
   })
 
   test('are read and trimmed when set', () => {
@@ -176,7 +183,12 @@ describe('per-profile model and effort', () => {
       AGENT_EFFORT_BUILD: 'xhigh',
     })
 
-    expect(settings.profiles).toEqual({ light: 'gpt-5-mini', planEffort: 'low', buildEffort: 'xhigh' })
+    expect(settings.profiles).toEqual({
+      light: 'gpt-5-mini',
+      planEffort: 'low',
+      proposeEffort: null,
+      buildEffort: 'xhigh',
+    })
   })
 
   test.each([
@@ -201,6 +213,49 @@ describe('per-profile model and effort', () => {
     const config = loadConfig({ ...ENV, LLM_MODEL_LIGHT: 'gpt-5-mini' }, '/repo')
 
     expect(config.openai.profiles?.light).toBe('gpt-5-mini')
+  })
+})
+
+/**
+ * `AGENT_EFFORT` — one shared tier for every profile (design D1, D2).
+ *
+ * A "shared" knob that silently skipped a profile would be the wrong knob, so
+ * the fold happens once, at config load: `AGENT_EFFORT_<PROFILE>` wins where it
+ * is set, `AGENT_EFFORT` fills the rest, and `null` keeps a profile's tier out
+ * of the emitted config entirely. Nothing below `config.ts` ever learns a
+ * shared variable exists — every emit site reads a resolved `string | null`.
+ */
+describe('AGENT_EFFORT (the shared tier)', () => {
+  test('alone resolves all three profile tiers', () => {
+    const settings = loadOpenAiSettings({ ...ENV, AGENT_EFFORT: 'high' })
+
+    expect(settings.profiles).toEqual({
+      light: null,
+      planEffort: 'high',
+      proposeEffort: 'high',
+      buildEffort: 'high',
+    })
+  })
+
+  test('a per-profile variable overrides it for that profile only', () => {
+    const settings = loadOpenAiSettings({ ...ENV, AGENT_EFFORT: 'high', AGENT_EFFORT_PLAN: 'low' })
+
+    expect(settings.profiles).toEqual({
+      light: null,
+      planEffort: 'low',
+      proposeEffort: 'high',
+      buildEffort: 'high',
+    })
+  })
+
+  test.each([
+    ['whitespace inside', 'very high'],
+    ['uppercase', 'HIGH'],
+    ['a slash', 'openai/high'],
+    ['over-length', 'a'.repeat(17)],
+  ])('refuses %s, naming the variable', (_case, value) => {
+    expect(() => loadOpenAiSettings({ ...ENV, AGENT_EFFORT: value })).toThrow(ConfigError)
+    expect(() => loadOpenAiSettings({ ...ENV, AGENT_EFFORT: value })).toThrow('AGENT_EFFORT')
   })
 })
 
@@ -456,7 +511,12 @@ describe('the claude route config shape', () => {
       '/repo',
     )
 
-    expect(config.openai.profiles).toEqual({ light: 'claude-haiku-5', planEffort: 'low', buildEffort: 'high' })
+    expect(config.openai.profiles).toEqual({
+      light: 'claude-haiku-5',
+      planEffort: 'low',
+      proposeEffort: null,
+      buildEffort: 'high',
+    })
   })
 
   test('AGENT_MCP_SERVERS is still parsed for the secrets list on this route', () => {

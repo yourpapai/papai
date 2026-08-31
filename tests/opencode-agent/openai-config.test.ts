@@ -256,7 +256,9 @@ describe('buildOpencodeConfig · per-profile model and effort', () => {
   })
 
   it('emits a variant per profile only when that variable is set', () => {
-    const config = buildOpencodeConfig(withProfiles({ light: null, planEffort: 'low', buildEffort: 'xhigh' }))
+    const config = buildOpencodeConfig(
+      withProfiles({ light: null, planEffort: 'low', proposeEffort: null, buildEffort: 'xhigh' }),
+    )
 
     expect(config.agent?.['plan']?.['variant']).toBe('low')
     expect(config.agent?.['build']?.['variant']).toBe('xhigh')
@@ -276,6 +278,7 @@ describe('buildOpencodeConfig · per-profile model and effort', () => {
       withProfiles({
         light: 'gpt-5-mini',
         planEffort: 'low',
+        proposeEffort: null,
         buildEffort: 'high',
       }),
     )

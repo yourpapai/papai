@@ -49,11 +49,17 @@ export interface ModelProfiles {
    */
   light: string | null
   planEffort: string | null
+  proposeEffort: string | null
   buildEffort: string | null
 }
 
 /** Nothing configured: the ordinary case, and the shape an absent block takes. */
-export const NO_MODEL_PROFILES: ModelProfiles = { light: null, planEffort: null, buildEffort: null }
+export const NO_MODEL_PROFILES: ModelProfiles = {
+  light: null,
+  planEffort: null,
+  proposeEffort: null,
+  buildEffort: null,
+}
 
 /**
  * What this run knows about its model, in the shape OpenCode's own config accepts.
