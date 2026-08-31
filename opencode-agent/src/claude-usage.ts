@@ -63,8 +63,11 @@ type ModelUsageRecord = Record<string, z.infer<typeof modelUsageEntrySchema>> | 
  * The per-model split as published: every entry the record still vouches for,
  * buckets renamed to the usage idiom, `costUSD` riding along when recorded. A
  * record that is absent publishes no split, an empty one publishes an empty
- * split — the recorded fact that the backend billed no model — and a bent
- * entry is dropped whole rather than published half-read.
+ * split — the recorded fact that the backend billed no model — a bent entry is
+ * dropped whole rather than published half-read, and a record that still names
+ * models but vouches for no entry at all publishes no split either: every
+ * entry having moved is shape drift, not a zero bill, and the empty split's
+ * recorded meaning would be false.
  */
 const modelsOf = (modelUsage: ModelUsageRecord): Record<string, ClaudeModelUsage> | undefined => {
   if (modelUsage === undefined) return undefined
@@ -79,6 +82,7 @@ const modelsOf = (modelUsage: ModelUsageRecord): Record<string, ClaudeModelUsage
       ...(entry.costUSD === undefined ? {} : { costUsd: entry.costUSD }),
     }
   }
+  if (Object.keys(models).length === 0 && Object.keys(modelUsage).length > 0) return undefined
   return models
 }
 

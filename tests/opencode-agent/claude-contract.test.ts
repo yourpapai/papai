@@ -343,6 +343,31 @@ describe('the modelUsage tolerance (design D3 of the run-accounting change)', ()
     })
   })
 
+  test('a record whose every entry is bent publishes no split, not an empty one', () => {
+    // Every entry failing the entry schema leaves its key in the record with
+    // an `undefined` value — the debris of a bent one. Reading that as the
+    // empty split would state the empty record's falsehood ("billed no
+    // model") over what is shape drift, the same conflation the session-tree
+    // twin stopped reporting as an empty tree; the split is omitted instead,
+    // and the top-level usage still carries the figure.
+    const line = decodeClaudeLine({
+      ...RESULT_LINE,
+      modelUsage: {
+        'claude-sonnet-5': {
+          inputToken: 4,
+          outputTokens: 155,
+          cacheCreationInputTokens: 28005,
+          cacheReadInputTokens: 61460,
+        },
+        'claude-haiku-4-5-20251001': 'not an entry',
+      },
+    })
+
+    expect(line).toMatchObject({ kind: 'result', isError: false, text: 'the answer', sessionId: 'session-1' })
+    expect(line).not.toHaveProperty('models')
+    expect(line).toHaveProperty('usage', { input: 4, output: 155, cacheWrite: 28005, cacheRead: 61460, total: 89624 })
+  })
+
   test('a modelUsage that is not an object degrades the whole split, never the line', () => {
     // This pin predates the split and must survive it: the regression the
     // schema work could introduce is a modelUsage shape failing the line the
