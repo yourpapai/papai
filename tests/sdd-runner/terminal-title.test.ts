@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 
 import { TERMINAL_TITLE_RESTORE, registerTerminalTitle, terminalTitleFor } from '../../sdd-runner/src/terminal-title.js'
 import type { TerminalTitleHandle } from '../../sdd-runner/src/terminal-title.js'
@@ -13,6 +13,14 @@ import type { TerminalTitleHandle } from '../../sdd-runner/src/terminal-title.js
 // into process.exit(143) — the exact failure mode that killed CI's Checks
 // job after this suite ran.
 const handles: TerminalTitleHandle[] = []
+
+/** Records the exit code, then throws the interception sentinel — the exit must not actually happen. */
+function recordExitInto(exits: unknown[]): (code: string | number | null | undefined) => never {
+  return (code) => {
+    exits.push(code)
+    throw new Error(`intercepted process.exit(${String(code)})`)
+  }
+}
 
 afterEach(() => {
   while (handles.length > 0) {
@@ -60,5 +68,43 @@ describe('terminalTitleFor (13.6)', () => {
     expect(process.listenerCount('exit')).toBe(before.exit)
     expect(process.listenerCount('SIGINT')).toBe(before.SIGINT)
     expect(process.listenerCount('SIGTERM')).toBe(before.SIGTERM)
+  })
+
+  it('an interrupt hook replaces the bare exit and receives the signal code', () => {
+    const codes: number[] = []
+    const written: string[] = []
+    const handle = registerTerminalTitle(
+      (chunk: string): void => {
+        written.push(chunk)
+      },
+      (): string => TERMINAL_TITLE_RESTORE,
+      (code: number): void => {
+        codes.push(code)
+      },
+    )
+    handles.push(handle)
+    // With the hook in place nothing exits — if the hook were ignored, the
+    // bare default exit would throw its interception sentinel right here.
+    expect(() => process.emit('SIGINT')).not.toThrow()
+    expect(() => process.emit('SIGTERM')).not.toThrow()
+    expect(codes).toEqual([130, 143])
+    expect(written).toEqual([TERMINAL_TITLE_RESTORE, TERMINAL_TITLE_RESTORE])
+  })
+
+  it('without a hook the interrupt handlers still exit with the signal codes', () => {
+    const exits: unknown[] = []
+    const spy = spyOn(process, 'exit').mockImplementation(recordExitInto(exits))
+    const handle = registerTerminalTitle(
+      (): void => undefined,
+      (): string => TERMINAL_TITLE_RESTORE,
+    )
+    handles.push(handle)
+    try {
+      expect(() => process.emit('SIGINT')).toThrow('intercepted process.exit(130)')
+      expect(() => process.emit('SIGTERM')).toThrow('intercepted process.exit(143)')
+      expect(exits).toEqual([130, 143])
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

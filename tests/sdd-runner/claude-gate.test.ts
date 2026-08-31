@@ -3,17 +3,25 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { CLAUDE_TMP_PREFIX, claudeGateOf } from '../../sdd-runner/src/claude-gate.js'
+import { CLAUDE_TMP_PREFIX, claudeGateOf, exitAfterClose } from '../../sdd-runner/src/claude-gate.js'
 import type { OrchestratorDeps } from '../../sdd-runner/src/gate-digest.js'
 import { createOpenSpecDriver } from '../../sdd-runner/src/openspec-driver.js'
 
 const CREDENTIAL_NAMES = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'LLM_API_KEY'] as const
 const saved = new Map<string, string | undefined>()
+
+/** Records the exit code, then throws the interception sentinel — the exit must not actually happen. */
+function recordExitInto(exits: unknown[]): (code: string | number | null | undefined) => never {
+  return (code) => {
+    exits.push(code)
+    throw new Error(`intercepted process.exit(${String(code)})`)
+  }
+}
 
 function setCredentials(values: Partial<Record<(typeof CREDENTIAL_NAMES)[number], string>>): void {
   for (const name of CREDENTIAL_NAMES) {
@@ -129,6 +137,79 @@ describe('claudeGateOf', () => {
       expect(parentsInTmp()).toHaveLength(before.length + 1)
     } finally {
       setTmpdir(savedTmpdir)
+      await gate.close()
+    }
+    expect(parentsInTmp()).toEqual(before)
+  })
+})
+
+describe('exitAfterClose', () => {
+  /** Records `process.exit` calls instead of performing them. */
+  function recordExits(): { readonly exits: unknown[]; readonly restore: () => void } {
+    const exits: unknown[] = []
+    const spy = spyOn(process, 'exit').mockImplementation(recordExitInto(exits))
+    return {
+      exits,
+      restore: (): void => {
+        spy.mockRestore()
+      },
+    }
+  }
+
+  /** The opened config-dir parent, '' before the open (module-level: keeps the `??` out of test bodies). */
+  function parentOf(deps: OrchestratorDeps): string {
+    return deps.claude?.configDirRoot ?? ''
+  }
+
+  /** Lets the close → exit microtask chain settle. */
+  const settled = (): Promise<void> =>
+    new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+
+  it('closes before the abrupt exit and passes the signal code through', async () => {
+    const order: string[] = []
+    const recorder = recordExits()
+    try {
+      exitAfterClose((): Promise<void> => {
+        order.push('close')
+        return Promise.resolve()
+      })(130)
+      await settled()
+      expect(order).toEqual(['close'])
+      expect(recorder.exits).toEqual([130])
+    } finally {
+      recorder.restore()
+    }
+  })
+
+  it('still exits when the close fails, and the failure is swallowed', async () => {
+    const recorder = recordExits()
+    try {
+      exitAfterClose((): Promise<void> => Promise.reject(new Error('rm failed')))(143)
+      await settled()
+      expect(recorder.exits).toEqual([143])
+    } finally {
+      recorder.restore()
+    }
+  })
+
+  it('the interrupt teardown removes the opened config-dir parent before exiting', async () => {
+    setCredentials({ ANTHROPIC_API_KEY: 'sk-ant-key-0123456789' })
+    const deps = makeDeps('claude')
+    const gate = claudeGateOf(deps)
+    const before = parentsInTmp()
+    await gate.ensure()
+    const parent = parentOf(deps)
+    expect(parent).not.toBe('')
+    const recorder = recordExits()
+    try {
+      exitAfterClose((): Promise<void> => gate.close())(130)
+      await settled()
+      expect(recorder.exits).toEqual([130])
+      expect(fs.existsSync(parent)).toBe(false)
+    } finally {
+      recorder.restore()
       await gate.close()
     }
     expect(parentsInTmp()).toEqual(before)

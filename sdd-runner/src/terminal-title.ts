@@ -30,21 +30,30 @@ export interface TerminalTitleHandle {
 
 /**
  * Register best-effort title restoration: `process.on('exit')` plus
- * SIGINT/SIGTERM handlers. Returns a handle whose `restore()` can be called
- * directly (used by tests and explicit teardown) and whose `dispose()`
- * removes the global listeners.
+ * SIGINT/SIGTERM handlers. The interrupt handlers restore the title, then
+ * hand the signal code to `onInterrupt` — a bare `process.exit` unless the
+ * caller passes its own abrupt-exit teardown, which is how the composition
+ * root closes the claude config-dir parent before an interrupt exits.
+ * Returns a handle whose `restore()` can be called directly (used by tests
+ * and explicit teardown) and whose `dispose()` removes the global listeners.
  */
-export function registerTerminalTitle(write: (chunk: string) => void, defaultTitle: () => string): TerminalTitleHandle {
+export function registerTerminalTitle(
+  write: (chunk: string) => void,
+  defaultTitle: () => string,
+  onInterrupt: (code: number) => void = (code: number): void => {
+    process.exit(code)
+  },
+): TerminalTitleHandle {
   const restore = (): void => {
     write(defaultTitle())
   }
   const onSigint = (): void => {
     restore()
-    process.exit(130)
+    onInterrupt(130)
   }
   const onSigterm = (): void => {
     restore()
-    process.exit(143)
+    onInterrupt(143)
   }
   process.on('exit', restore)
   process.on('SIGINT', onSigint)

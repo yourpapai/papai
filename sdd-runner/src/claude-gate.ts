@@ -81,3 +81,24 @@ export function withClaude<A extends readonly unknown[], R>(
     return member(...args)
   }
 }
+
+/**
+ * The abrupt-exit teardown (composition-root seam): `process.exit` runs no
+ * `finally`, so the paths that end the process without returning through
+ * `runEntry` — the run screen's second Ctrl-C and a TTY SIGINT/SIGTERM — must
+ * close what they opened before exiting. Same best-effort contract as
+ * `ClaudeGate.close` itself: a failed close is swallowed, and the exit still
+ * happens, carrying the signal code the shell expects. Nothing after the
+ * exit call can be surfaced — the process is leaving — so the chain ends in
+ * a catch.
+ */
+export function exitAfterClose(close: () => Promise<void>): (code: number) => void {
+  return (code: number): void => {
+    close()
+      .catch((): undefined => undefined)
+      .then((): void => {
+        process.exit(code)
+      })
+      .catch((): undefined => undefined)
+  }
+}

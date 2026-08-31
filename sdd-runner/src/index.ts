@@ -15,19 +15,17 @@ import { loadCorpus } from './analyze-io.js'
 import { nodeAnalyzeFs, readOnlyGit } from './analyze-io.js'
 import { renderCorpusJson, renderCorpusReport } from './analyze-report.js'
 import { groundTruthJoin } from './analyze-truth.js'
-import { claudeGateOf, withClaude, type ClaudeGate } from './claude-gate.js'
+import { claudeGateOf, exitAfterClose, withClaude, type ClaudeGate } from './claude-gate.js'
 import { main } from './cli.js'
 import type { CliHarness } from './cli.js'
 import { parseSddArgs } from './cli.js'
 import { discoverBranch, loadRunnerConfig } from './config.js'
 import type { ExecGitFn } from './config.js'
 import { readEvents } from './events.js'
-import type { EventInput } from './events.js'
 import type { OrchestratorDeps } from './gate-digest.js'
 import { runGateResume } from './gate-resume-entry.js'
 import { runGateReopen, latestSettledGateVersion } from './gate.js'
-import type { LiveViewWiring } from './live-view.js'
-import { wireLiveView } from './live-view.js'
+import { harnessLiveView, registerTitleIfTty } from './harness-view.js'
 import { createOpenSpecDriver } from './openspec-driver.js'
 import type { OpenSpecDriver } from './openspec-driver.js'
 import { runContinue, runResume, runStart } from './orchestrator.js'
@@ -39,9 +37,7 @@ import type { ChangeDirSummary, ReportInput } from './report.js'
 import { resolveRunId } from './run-index.js'
 import { loadRunState, runDirOf } from './run-state.js'
 import { sessionLoopOf } from './session-harness.js'
-import { requestCalmStop, stopRun } from './stop-controller.js'
-import { registerTerminalTitle, TERMINAL_TITLE_RESTORE } from './terminal-title.js'
-import { createRunScreenSession } from './tui-run-session.js'
+import { stopRun } from './stop-controller.js'
 import { buildResolveCost, childUsageOf } from './usage-aggregate.js'
 
 export const USAGE = [
@@ -108,25 +104,6 @@ function makeExecGit(): ExecGitFn {
     })
 }
 
-/** Mode-decided live view for this process: Ink run screen on a TTY, lines otherwise. */
-function harnessLiveView(lineRender: (event: EventInput) => void): LiveViewWiring {
-  return wireLiveView(
-    { stdout: { isTTY: process.stdout.isTTY }, stdin: { isTTY: process.stdin.isTTY } },
-    process.env,
-    lineRender,
-    ({ runDir, logPath }) =>
-      createRunScreenSession({
-        logPath,
-        requestCalmStop: (): void => {
-          requestCalmStop(runDir)
-        },
-        hardExit: (code): void => {
-          process.exit(code)
-        },
-      }),
-  )
-}
-
 function shellExec(
   driverCwd: string,
 ): (args: readonly string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -150,8 +127,16 @@ async function buildHarness(
   const execGit = makeExecGit()
   const resolveCost = await buildResolveCost()
   const renderer = createRenderer(process.stdout, verbosity, { resolveCost })
-  const live = harnessLiveView(renderer.renderEvent)
-  registerTitleIfTty(process.stdout)
+  // The gate is created below — it needs the deps the live view feeds — but
+  // the abrupt exits (the run screen's second Ctrl-C, a TTY SIGINT/SIGTERM)
+  // must already name it: `process.exit` runs no `finally`, so this teardown
+  // is the only chance those paths get. Both registrations and the binding
+  // below share one synchronous block, so no signal can arrive before the
+  // closer is bound; until then there is nothing to close.
+  let closeGate: () => Promise<void> = (): Promise<void> => Promise.resolve()
+  const teardownExit = exitAfterClose((): Promise<void> => closeGate())
+  const live = harnessLiveView(renderer.renderEvent, teardownExit)
+  registerTitleIfTty(process.stdout, teardownExit)
   const orchestratorDeps: OrchestratorDeps = {
     config,
     spawn: realSpawn,
@@ -168,6 +153,7 @@ async function buildHarness(
     interactive: (): boolean => stdinIsInteractive(),
   }
   const claude = claudeGateOf(orchestratorDeps)
+  closeGate = (): Promise<void> => claude.close()
   return { harness: harnessMembers(config, orchestratorDeps, execGit, claude), claude }
 }
 
@@ -260,16 +246,6 @@ async function buildRunReport(
         }),
   }
   return buildReport(input)
-}
-
-function registerTitleIfTty(stream: { readonly isTTY?: boolean; write(chunk: string): boolean }): void {
-  if (stream.isTTY !== true) return
-  registerTerminalTitle(
-    (chunk: string): void => {
-      stream.write(chunk)
-    },
-    (): string => TERMINAL_TITLE_RESTORE,
-  )
 }
 
 async function resolveAndCall<T>(workDir: string, runId: string, fn: (resolved: string) => Promise<T>): Promise<T> {
