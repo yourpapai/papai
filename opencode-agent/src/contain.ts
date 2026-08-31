@@ -138,7 +138,7 @@ const sessionOptions = ({
   transcript: input.transcript,
 })
 
-/** The claude session's options — plain values crossing the seam (design D5). */
+/** The claude session's options — plain values crossing the seam (design D5); the custom env only when set. */
 const claudeSessionOptions = ({
   input,
   contained,
@@ -166,6 +166,7 @@ const claudeSessionOptions = ({
       buildEffort: profiles?.buildEffort ?? null,
     },
     credential,
+    ...(contained.claudeEnv === null ? {} : { claudeEnv: contained.claudeEnv }),
     env: input.options.env,
     log: input.log,
     transcript: input.transcript,

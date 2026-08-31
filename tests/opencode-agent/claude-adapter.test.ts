@@ -12,6 +12,9 @@ import { countedTokens } from '../../opencode-agent/src/agent-session.js'
 import { createClaudeAgent } from '../../opencode-agent/src/claude-adapter.js'
 import type { ClaudeAgentOptions } from '../../opencode-agent/src/claude-adapter.js'
 import type { SpawnClaude } from '../../opencode-agent/src/claude-connect.js'
+import { decodeClaudeLine, parseNdjsonStream } from '../../opencode-agent/src/claude-contract.js'
+import { emptyAccounting, recordLine } from '../../opencode-agent/src/claude-spend.js'
+import type { ClaudeAccounting } from '../../opencode-agent/src/claude-spend.js'
 import { isClaudeExit, isClaudeResult, PipelineError } from '../../opencode-agent/src/errors.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 
@@ -155,6 +158,16 @@ const withoutInit = (text: string): string =>
     .filter((line) => !line.includes('"subtype":"init"'))
     .join('\n')
 
+/** The accounting one fixture's stream folds into, driven by the adapter's own fold. */
+const accountingOf = (name: string): ClaudeAccounting => {
+  const accounting = emptyAccounting()
+  for (const raw of parseNdjsonStream(fixture(name))) {
+    const line = decodeClaudeLine(raw)
+    if (line !== null) recordLine(accounting, line)
+  }
+  return accounting
+}
+
 describe('the turn outcome contract', () => {
   test('a successful turn resolves with the result line text and the init session id', async () => {
     const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
@@ -252,6 +265,26 @@ describe('the turn outcome contract', () => {
     expect(error.message).toContain('--nope')
     // The tail is redacted by credential value before it is quoted.
     expect(error.message).not.toContain(CREDENTIAL.value)
+  })
+
+  test('the failure tail is redacted by a knob value too, not only by the credential', async () => {
+    // The knob's values join the session's redaction list (design D4): a value
+    // the CLI echoes into stderr must leave the same way the credential does.
+    const knobValue = 'knob-secret-value-123'
+    const spawn = scriptedSpawn([{ stdout: '', stderr: `bad flag --nope (${knobValue})\n`, exitCode: 2 }])
+    const agent = await createClaudeAgent(
+      baseOptions(spawn.spawn, publicLog().log, { claudeEnv: { CLAUDE_CODE_TRACE: knobValue } }),
+    )
+
+    const raised = await agent.prompt({ prompt: 'x' }).then(
+      () => null,
+      (error: unknown) => error,
+    )
+
+    const error = asPipelineError(raised)
+    expect(isClaudeExit(error)).toBe(true)
+    expect(error.message).toContain('--nope')
+    expect(error.message).not.toContain(knobValue)
   })
 
   test('the per-call tools field is accepted and ignored', async () => {
@@ -484,6 +517,28 @@ describe('credential carrier by spelling — the profile derivation', () => {
   })
 })
 
+describe('the custom child environment', () => {
+  test('the spawn seam records the knob entries through ClaudeSpawnRequest on every turn', async () => {
+    // The knob crosses the adapter seam as a plain value and is forwarded on
+    // each request — every turn of the job, not just the first.
+    const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }, { stdout: fixture('resume-turn.ndjson') }])
+    const agent = await createClaudeAgent(
+      baseOptions(spawn.spawn, publicLog().log, {
+        claudeEnv: { CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: '1', CLAUDE_CODE_SUBAGENT_MODEL: 'claude-haiku-4-5' },
+      }),
+    )
+
+    await agent.prompt({ prompt: 'first' })
+    await agent.prompt({ prompt: 'second' })
+
+    expect(spawn.calls).toHaveLength(2)
+    for (const call of spawn.calls) {
+      expect(call.env['CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING']).toBe('1')
+      expect(call.env['CLAUDE_CODE_SUBAGENT_MODEL']).toBe('claude-haiku-4-5')
+    }
+  })
+})
+
 describe('stop and teardown', () => {
   test('abort() escalates to the live group and reports that the kill landed', async () => {
     const signals: Array<[number, string]> = []
@@ -616,6 +671,20 @@ describe('token accounting', () => {
     )
   })
 
+  test('the two-model native turn folds the complete figure, side model included', async () => {
+    const spawn = scriptedSpawn([{ stdout: fixture('native-success-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'x' })
+
+    // The ceiling's count leaves the cache reads out: 916 in + 166 out +
+    // 28005 cache write, the side model's 912 in / 11 out now counted.
+    // Before the models split this read 28164 (4 + 155 + 28005) — the side
+    // model was invisible to the ceiling; the all-buckets account is what
+    // moved 89624 -> 90547.
+    expect(await agent.tokensUsed()).toBe(29_087)
+  })
+
   test('the cost figure never enters the total', async () => {
     const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
@@ -674,6 +743,56 @@ describe('progress translation', () => {
     // Unabridged beside the redaction: the rest of the line survives.
     expect(detail).toContain('the credential is')
   })
+
+  test('content-bearing lines are redacted by a knob value too, not only by the credential', async () => {
+    // The transcript is the one place a knob value could survive on this route
+    // if only the credential sat on the redaction list (design D4).
+    const transcript = transcriptCapture()
+    const knobValue = 'knob-trace-value-long'
+    const leaking = fixture('success-turn.ndjson').replace(
+      '"result":"The README describes papai, a chat bot that manages tasks via LLM tool-calling."',
+      `"result":"the knob value is ${knobValue} and here is the answer"`,
+    )
+    const spawn = scriptedSpawn([{ stdout: leaking }])
+    const agent = await createClaudeAgent(
+      baseOptions(spawn.spawn, publicLog().log, {
+        transcript: transcript.sink,
+        claudeEnv: { CLAUDE_CODE_TRACE: knobValue },
+      }),
+    )
+
+    await agent.prompt({ prompt: 'x' })
+    const detail = JSON.stringify(transcript.rows.map((row) => row.detail))
+
+    expect(detail).not.toContain(knobValue)
+    expect(detail).toContain('[redacted]')
+    expect(detail).toContain('the knob value is')
+  })
+
+  test('the turn result record carries the per-model split alongside its tokens', async () => {
+    const log = publicLog()
+    const spawn = scriptedSpawn([{ stdout: fixture('native-success-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, log.log))
+
+    await agent.prompt({ prompt: 'x' })
+
+    // The split is the one consumer of the decoded `models` — model ids and
+    // counts, the names-only rule intact: no content rides on it.
+    const said = log.rows.find((row) => row.message === 'claude: turn result')
+    expect(said?.meta).toEqual({
+      tokens: 29_087,
+      models: {
+        'claude-sonnet-5': { input: 4, output: 155, cacheWrite: 28005, cacheRead: 61460, costUsd: 0.12586999999999998 },
+        'claude-haiku-4-5-20251001': {
+          input: 912,
+          output: 11,
+          cacheWrite: 0,
+          cacheRead: 0,
+          costUsd: 0.0009670000000000001,
+        },
+      },
+    })
+  })
 })
 
 /**
@@ -705,6 +824,54 @@ describe('createClaudeAgent · what the run spent', () => {
     await agent.prompt({ prompt: 'second' })
 
     expect((await agent.spend()).usd).toBeCloseTo(0.009714 * 2, 6)
+  })
+
+  test('the two-model native turn folds the buckets the reprice ladder reads, side model included', () => {
+    // `total_cost_usd` on this turn spans both models, so the backend rung
+    // answers and the buckets are never repriced — but when the CLI reports
+    // no figure of its own, these buckets are what the catalogue rung prices,
+    // and the side model's 912 in / 11 out must ride in them rather than
+    // vanish. Driven at the fold the adapter itself uses.
+    const accounting = accountingOf('native-success-turn.ndjson')
+
+    expect(accounting.buckets).toEqual({ input: 916, output: 166, cacheRead: 61460, cacheWrite: 28005 })
+    expect(
+      accounting.buckets.input +
+        accounting.buckets.output +
+        accounting.buckets.cacheRead +
+        accounting.buckets.cacheWrite,
+    ).toBe(90_547)
+  })
+
+  test('the two-model native turn prices at the backend rung — the CLI cost figure, folding unchanged', async () => {
+    const spawn = scriptedSpawn([{ stdout: fixture('native-success-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'x' })
+
+    // The CLI's own `total_cost_usd` — which already spans both models —
+    // taken as-is at the rung that sees the per-model split a single model
+    // reference cannot reproduce. The ladder never reprices a stated figure.
+    const spent = await agent.spend()
+    expect(spent.source).toBe('backend')
+    expect(spent.usd).toBeCloseTo(0.126837, 6)
+  })
+
+  test('an auth-error turn still folds the account it always had — recognized, and zero to the bucket', () => {
+    // Both auth recordings: the failed turn's result line is recognized usage
+    // — zero of it — and its `modelUsage: {}` decodes to the empty split,
+    // which contributes nothing. `costUsdTotal` staying 0 is what keeps the
+    // backend rung out of the answer; the models-split change left this
+    // account byte-identical.
+    const bare = accountingOf('auth-error-turn.ndjson')
+    expect(bare.sawUsage).toBe(true)
+    expect(bare.costUsdTotal).toBe(0)
+    expect(bare.buckets).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+
+    const native = accountingOf('native-auth-error.ndjson')
+    expect(native.sawUsage).toBe(true)
+    expect(native.costUsdTotal).toBe(0)
+    expect(native.buckets).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
   })
 
   test('reports the provider’s standing for every window the run saw', async () => {
@@ -748,6 +915,36 @@ describe('createClaudeAgent · what the run spent', () => {
     expect(spent.windows).toMatchObject([{ window: 'five_hour' }, { window: 'seven_day' }])
     expect(await agent.tokensUsed()).toBe(0)
     expect(log.rows.some((row) => row.message.includes('No recognizable claude usage'))).toBe(true)
+  })
+
+  test('a run that saw a rate-limit line but no result is unpriced — and still reports its windows', async () => {
+    // The recorded 2.1.239 rate-limit line alone: no result line ever folds,
+    // so no usage was recognized and the run reports unpriced — while the
+    // window the provider stated folds anyway, independent of usage.
+    const spawn = scriptedSpawn([
+      {
+        stdout:
+          '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1787644800,"rateLimitType":"five_hour","overageStatus":"allowed","overageResetsAt":1788220800,"isUsingOverage":false},"session_id":"02f52ec0-3fb5-4f3f-a702-66661e2a502c"}\n',
+      },
+    ])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'x' }).catch(() => 'expected failure')
+
+    expect(await agent.spend()).toEqual({
+      usd: null,
+      source: 'none',
+      windows: [
+        {
+          window: 'five_hour',
+          resetsAt: 1_787_644_800,
+          status: 'allowed',
+          overageStatus: 'allowed',
+          overageResetsAt: 1_788_220_800,
+          isUsingOverage: false,
+        },
+      ],
+    })
   })
 
   test('a stream carrying no rate-limit line reports no windows', async () => {

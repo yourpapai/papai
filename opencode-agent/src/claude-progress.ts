@@ -64,7 +64,12 @@ export const claudeTracker = (log: Logger): ProgressTracker => {
       // The figure the ceiling reads, not every bucket summed: a progress line
       // quoting a bigger number than the budget it is spending against is a
       // reader's problem, not a richer log.
-      log.info({ tokens: countedTokens(line.usage) }, 'claude: turn result')
+      // The one consumer of the decoded split: model ids and counts only, so
+      // the names-only rule holds — no content rides on it.
+      log.info(
+        { tokens: countedTokens(line.usage), ...(line.models === undefined ? {} : { models: line.models }) },
+        'claude: turn result',
+      )
     },
     snapshot: (): ProgressSnapshot => ({ ...state }),
     stall: () => null,

@@ -49,6 +49,7 @@ const config = (overrides: Partial<PipelineConfig> = {}): PipelineConfig => ({
   githubToken: 'token',
   backend: 'opencode',
   claudeCredential: null,
+  claudeEnv: null,
   selfLoginOverride: AGENT_LOGIN,
   selfWorkflowName: 'OpenCode Issue Agent',
   openai: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5', provider: 'openai' },

@@ -27,6 +27,7 @@ import {
   optional,
   optionalOrNull,
   OUTPUT_RANGE,
+  parseClaudeEnv,
   parseMcpServers,
   POOL_RANGE,
   providerId,
@@ -181,11 +182,22 @@ const buildJobDeadline = (env: Env): number | null => {
  * config loads ahead of the logger, the scrub, every GitHub call and every
  * spawn.
  */
-const loadBackend = (env: Env): { backend: BackendSelection; claudeCredential: ClaudeCredential | null } => {
+const loadBackend = (
+  env: Env,
+): {
+  backend: BackendSelection
+  claudeCredential: ClaudeCredential | null
+  claudeEnv: Record<string, string> | null
+} => {
   const backend = backendSelection(env, 'AGENT_BACKEND')
-  if (backend !== 'claude') return { backend, claudeCredential: null }
+  // Parsed on both routes (design D1 of `claude-route-custom-env`: parse
+  // always, apply on the claude route only) — the knob's one validation point,
+  // ahead of every spawn and every model spend, beside the reads it is scoped
+  // like. `undefined` for unset converts to the house absence shape.
+  const claudeEnv = parseClaudeEnv(env['AGENT_CLAUDE_ENV']) ?? null
+  if (backend !== 'claude') return { backend, claudeCredential: null, claudeEnv }
 
-  return { backend, claudeCredential: claudeCredential(env) }
+  return { backend, claudeCredential: claudeCredential(env), claudeEnv }
 }
 
 /** Builds the pipeline config from the runner environment. */
@@ -203,6 +215,7 @@ export const loadConfig = (env: Env, repoRoot: string): PipelineConfig => {
     githubToken: required(env, 'GITHUB_TOKEN'),
     backend: backend.backend,
     claudeCredential: backend.claudeCredential,
+    claudeEnv: backend.claudeEnv,
     selfLoginOverride: optionalOrNull(env, 'AGENT_SELF_LOGIN'),
     selfWorkflowName: optional(env, 'AGENT_WORKFLOW_NAME', 'OpenCode Issue Agent'),
     openai: loadOpenAiSettings(env, backend.backend),
