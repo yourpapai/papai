@@ -26,6 +26,8 @@ export const MAX_ARG_STRLEN = 131_072
 export const ALLOWLISTS = {
   /** Analysis base set — mirrors the parent route's `plan` string verbatim, unscoped reads included. */
   analysis: 'Read,Glob,Grep',
+  /** Artifact-writing set — mirrors the parent route's `propose` string verbatim: edits the tree, no execute. */
+  author: 'Read,Edit,Write,Glob,Grep',
   /** The fixing role: edits the tree and runs the check command. */
   fixer: 'Read,Edit,Write,Bash,Glob,Grep',
 } as const

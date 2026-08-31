@@ -8,7 +8,7 @@
 ## 2. Role → allowlist mapping (design D6)
 
 - [x] 2.1 Extend `tests/review-loop/claude-argv.test.ts`: `drafter-<artifact>`, `resolver-r<n>`, `decomposer` and `atomicity` resolve to the artifact-writing set; `reviewer-r<n>`, `skeptic-r<n>`, `estimator` and `planner` resolve to the analysis set with its `Write(<cwd>/.review-loop/**)` scratch rule and log no unmapped-label warning; no runner label's set contains `Bash` or a wildcard entry; `fixer*`, `matcher*` and `inspector*` keep byte-identical answers. Verify: `bun test tests/review-loop/claude-argv.test.ts`
-- [ ] 2.2 Add the third per-key doctrine pin in `tests/opencode-agent/claude-doctrine.test.ts`: review-loop's `ALLOWLISTS.author` equals `opencode-agent`'s `ALLOWLISTS.propose`. Verify: `bun test tests/opencode-agent/claude-doctrine.test.ts`
+- [x] 2.2 Add the third per-key doctrine pin in `tests/opencode-agent/claude-doctrine.test.ts`: review-loop's `ALLOWLISTS.author` equals `opencode-agent`'s `ALLOWLISTS.propose`. Verify: `bun test tests/opencode-agent/claude-doctrine.test.ts`
 - [ ] 2.3 Add `ALLOWLISTS.author = 'Read,Edit,Write,Glob,Grep'` and the runner's label prefixes to `allowlistForLabel` in `review-loop/src/claude-argv.ts`. Verify: `bun test tests/review-loop/claude-argv.test.ts tests/opencode-agent/claude-doctrine.test.ts`
 
 ## 3. Run-context seam (design D4)

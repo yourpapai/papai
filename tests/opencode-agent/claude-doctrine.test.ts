@@ -46,6 +46,10 @@ describe('the claude argv doctrine has one definition across the workspaces', ()
     expect(LOOP_ALLOWLISTS.fixer).toBe(ALLOWLISTS.build)
   })
 
+  test('the author allowlist string is equal to the parent propose set', () => {
+    expect(LOOP_ALLOWLISTS.author).toBe(ALLOWLISTS.propose)
+  })
+
   test('the analysis set is the parent plan set plus the scoped Write', () => {
     const cwd = '/repo/.review-loop/worktrees/1'
     const analysis = analysisAllowlist(cwd)
