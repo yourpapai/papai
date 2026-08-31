@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { z } from 'zod'
 
+import { countedTokens } from '../../opencode-agent/src/agent-session.js'
 import { renderBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
 import type { CheckFailure } from '../../opencode-agent/src/check-loop.js'
@@ -240,7 +241,8 @@ describe('the recorded SDK contract', () => {
     }
 
     expect(decodeSessionUsage(usage)).toEqual({
-      tokens: 350,
+      // 100 + 200 + 50 + 400: the write counts, the 900 reads do not.
+      tokens: 750,
       cost: 0.014425,
       input: 100,
       output: 200,
@@ -248,6 +250,65 @@ describe('the recorded SDK contract', () => {
       cacheRead: 900,
       cacheWrite: 400,
     })
+  })
+
+  test('a cache write counts against the ceiling — it is content arriving once', () => {
+    const written = (write: number): unknown => ({
+      ...LIVE_SESSION_USAGE,
+      data: { ...LIVE_SESSION_USAGE.data, tokens: { input: 10, output: 5, reasoning: 0, cache: { read: 0, write } } },
+    })
+
+    expect(decodeSessionUsage(written(0))?.tokens).toBe(15)
+    expect(decodeSessionUsage(written(1000))?.tokens).toBe(1015)
+  })
+
+  test('a cache read does not, however large', () => {
+    // The bucket that grows with the number of steps a turn takes rather than
+    // with the work it does. A ceiling over it stops a run for thinking.
+    const read = (value: number): unknown => ({
+      ...LIVE_SESSION_USAGE,
+      data: {
+        ...LIVE_SESSION_USAGE.data,
+        tokens: { input: 10, output: 5, reasoning: 0, cache: { read: value, write: 0 } },
+      },
+    })
+
+    expect(decodeSessionUsage(read(0))?.tokens).toBe(15)
+    expect(decodeSessionUsage(read(5_000_000))?.tokens).toBe(15)
+  })
+
+  test('an absent cache write still yields a figure, counting as zero', () => {
+    // The ceiling must return a number, so here "did not say" and "said none"
+    // are the same answer — the opposite of what the price does with the same
+    // envelope two cases below.
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: { ...LIVE_SESSION_USAGE.data, tokens: { input: 10, output: 5, reasoning: 0, cache: { read: 900 } } },
+    }
+    const decoded = decodeSessionUsage(usage)
+
+    expect(decoded?.tokens).toBe(15)
+    expect(decoded?.cacheWrite).toBeUndefined()
+  })
+
+  test('both routes answer the same question about the same buckets', () => {
+    // The drift this whole definition exists to end: one AGENT_MAX_TOKENS
+    // meaning two budgets depending on which backend was configured.
+    const buckets = { input: 12, output: 7, reasoning: 0, cacheWrite: 3400, cacheRead: 5600 }
+    const usage = {
+      ...LIVE_SESSION_USAGE,
+      data: {
+        ...LIVE_SESSION_USAGE.data,
+        tokens: {
+          input: buckets.input,
+          output: buckets.output,
+          reasoning: buckets.reasoning,
+          cache: { read: buckets.cacheRead, write: buckets.cacheWrite },
+        },
+      },
+    }
+
+    expect(decodeSessionUsage(usage)?.tokens).toBe(countedTokens(buckets))
   })
 
   /**
@@ -303,7 +364,8 @@ describe('the recorded SDK contract', () => {
     }
     const decoded = decodeSessionUsage(usage)
 
-    expect(decoded?.tokens).toBe(2)
+    // The write it could read still counts; only the bucket that moved is lost.
+    expect(decoded?.tokens).toBe(402)
     expect(decoded?.cacheRead).toBeUndefined()
     expect(decoded?.cacheWrite).toBe(400)
   })

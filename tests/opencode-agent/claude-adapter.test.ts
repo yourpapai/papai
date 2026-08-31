@@ -8,6 +8,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
+import { countedTokens } from '../../opencode-agent/src/agent-session.js'
 import { createClaudeAgent } from '../../opencode-agent/src/claude-adapter.js'
 import type { ClaudeAgentOptions } from '../../opencode-agent/src/claude-adapter.js'
 import type { SpawnClaude } from '../../opencode-agent/src/claude-connect.js'
@@ -533,8 +534,38 @@ describe('token accounting', () => {
     await agent.prompt({ prompt: 'second' })
     const afterSecond = await agent.tokensUsed()
 
+    // 1052 + 60, then 1210 + 28 — the resumed turn's 1052 cache reads are the
+    // first turn's context read back, and are not spent a second time.
     expect(afterFirst).toBe(1112)
-    expect(afterSecond).toBe(1112 + 2290)
+    expect(afterSecond).toBe(1112 + 1238)
+  })
+
+  test('cache reads never enter the figure the ceiling reads', async () => {
+    // The genuinely recorded stub turn is the only fixture with all four
+    // buckets populated: 12 in, 7 out, 3400 written, 5600 read.
+    const spawn = scriptedSpawn([{ stdout: fixture('stub-rate-limit-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'x' })
+
+    expect(await agent.tokensUsed()).toBe(3419)
+  })
+
+  test('the figure equals the shared definition over the accumulated buckets', async () => {
+    // Not a restatement of the arithmetic: the pin is that this route routes
+    // through the seam's function rather than keeping a sum of its own.
+    const spawn = scriptedSpawn([
+      { stdout: fixture('stub-rate-limit-turn.ndjson') },
+      { stdout: fixture('stub-rate-limit-turn.ndjson') },
+    ])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'first' })
+    await agent.prompt({ prompt: 'second' })
+
+    expect(await agent.tokensUsed()).toBe(
+      countedTokens({ input: 24, output: 14, reasoning: 0, cacheWrite: 6800, cacheRead: 11_200 }),
+    )
   })
 
   test('the two-model native turn folds the complete figure, side model included', async () => {
@@ -559,7 +590,10 @@ describe('token accounting', () => {
     expect(await agent.tokensUsed()).toBe(1112)
   })
 
-  test('degrades to 0 with a warn when no recognizable usage was seen', async () => {
+  test('a session that has not been prompted counts 0, and does not warn about it', async () => {
+    // The over-budget stop's own session: it refuses the phase before anything
+    // prompts, so 0 is the truth rather than a blind budget. Warning here read
+    // as "the ceiling cannot see this run" on a run that had not spent yet.
     const log = publicLog()
     const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(spawn.spawn, log.log))
@@ -567,7 +601,7 @@ describe('token accounting', () => {
     const beforeAnyTurn = await agent.tokensUsed()
 
     expect(beforeAnyTurn).toBe(0)
-    expect(log.rows.some((row) => row.message.includes('token'))).toBe(true)
+    expect(log.rows.some((row) => row.message.includes('No recognizable claude usage'))).toBe(false)
   })
 })
 
@@ -719,13 +753,35 @@ describe('createClaudeAgent · what the run spent', () => {
     ])
   })
 
-  test('a session that never prompted is unpriced, not free', async () => {
-    // The distinction `tokensUsed` cannot make — it answers 0 and warns — and
-    // this one can say outright.
+  test('a session that never prompted spent nothing, and says so', async () => {
+    // Not `unpriced`: nothing was asked of the model, so there is no spend to
+    // fail to price. The over-budget stop calls this on a session it refused to
+    // let prompt, and reading it as unknown turned every such stop into
+    // "≥ $9.23 (some turns unpriced)" on an issue whose every turn was priced.
     const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
 
-    expect(await agent.spend()).toEqual({ usd: null, source: 'none', windows: [] })
+    expect(await agent.spend()).toEqual({ usd: 0, source: 'unspent', windows: [] })
+  })
+
+  test('a turn whose usage could not be recognized is unpriced, and warns', async () => {
+    // The case the warning was written for, and the only one left holding it: a
+    // turn ran, so there is spend, and the pipeline could not see it.
+    const log = publicLog()
+    const unreadable = fixture('stub-rate-limit-turn.ndjson').replaceAll('"usage":', '"usageMoved":')
+    const spawn = scriptedSpawn([{ stdout: unreadable }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, log.log))
+
+    await agent.prompt({ prompt: 'first' }).catch(() => undefined)
+    const spent = await agent.spend()
+
+    expect(spent.usd).toBeNull()
+    expect(spent.source).toBe('none')
+    // The provider's standing is still reported: a run that spent nothing may
+    // still have been told how much of the week is gone.
+    expect(spent.windows).toMatchObject([{ window: 'five_hour' }, { window: 'seven_day' }])
+    expect(await agent.tokensUsed()).toBe(0)
+    expect(log.rows.some((row) => row.message.includes('No recognizable claude usage'))).toBe(true)
   })
 
   test('a run that saw a rate-limit line but no result is unpriced — and still reports its windows', async () => {

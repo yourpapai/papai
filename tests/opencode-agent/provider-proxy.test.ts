@@ -770,9 +770,10 @@ describe('contain (claude route)', () => {
 
   const claudeContain = (
     createClaudeAgent: (options: ClaudeAgentOptions) => Promise<AgentSession>,
+    env: Record<string, string> = CLAUDE_ENV,
   ): Promise<Contained> =>
     contain({
-      config: loadConfig(CLAUDE_ENV, '/repo'),
+      config: loadConfig(env, '/repo'),
       event: claudeEvent,
       log: silentLog,
       run: () => Promise.resolve({ command: '', exitCode: 0, stdout: '', stderr: '' }),
@@ -808,6 +809,39 @@ describe('contain (claude route)', () => {
     })
     expect(options.credential).toEqual({ name: 'ANTHROPIC_API_KEY', value: 'sk-ant-api03-the-chosen-credential' })
     expect(options.env).toEqual({ POST_SCRUB: 'yes' })
+    // The reference the catalogue is asked about names the provider that served
+    // the turns and the id the CLI was invoked with — not the gateway route's
+    // catalogue key, and not a model id still carrying a provider prefix.
+    expect(options.pricing.provider).toBe('anthropic')
+    expect(options.pricing.model).toBe('claude-sonnet-5')
+  })
+
+  /** The pricing settings one environment hands the claude factory. */
+  const pricingFor = async (env: Record<string, string>): Promise<OpenAiSettings> => {
+    const seen: ClaudeAgentOptions[] = []
+    const run = await claudeContain((options) => {
+      seen.push(options)
+      return Promise.resolve(fakeSession())
+    }, env)
+    await run.agent.get()
+    return firstOptions(seen).pricing
+  }
+
+  test('LLM_PROVIDER never reaches the reference this route is priced under', async () => {
+    // The reported shape: a gateway catalogue id left over from the other route,
+    // which priced a Claude CLI run under a provider its turns never touched.
+    const pricing = await pricingFor({ ...CLAUDE_ENV, LLM_PROVIDER: 'zai-coding-plan' })
+
+    expect(pricing.provider).toBe('anthropic')
+    expect(pricing.model).toBe('claude-sonnet-5')
+    expect(JSON.stringify(pricing)).not.toContain('zai-coding-plan')
+  })
+
+  test('a model id spelled without a provider prefix is priced as written', async () => {
+    const pricing = await pricingFor({ ...CLAUDE_ENV, LLM_MODEL: 'claude-sonnet-5' })
+
+    expect(pricing.provider).toBe('anthropic')
+    expect(pricing.model).toBe('claude-sonnet-5')
   })
 
   test('the phases see the claude-route config: empty gateway reads, shared knobs', async () => {

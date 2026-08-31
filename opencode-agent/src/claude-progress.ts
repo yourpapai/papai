@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { countedTokens } from './agent-session.js'
 import type { ClaudeStreamLine } from './claude-contract.js'
 import type { Logger } from './logger.js'
 import type { ProgressSnapshot, ProgressTracker } from './progress.js'
@@ -60,10 +61,13 @@ export const claudeTracker = (log: Logger): ProgressTracker => {
       // it, ignored everywhere the pipeline acts.
       if (line.kind === 'rate-limit-event') return
       state.lastAction = 'claude: turn result'
+      // The figure the ceiling reads, not every bucket summed: a progress line
+      // quoting a bigger number than the budget it is spending against is a
+      // reader's problem, not a richer log.
       // The one consumer of the decoded split: model ids and counts only, so
       // the names-only rule holds — no content rides on it.
       log.info(
-        { tokens: line.usage.total, ...(line.models === undefined ? {} : { models: line.models }) },
+        { tokens: countedTokens(line.usage), ...(line.models === undefined ? {} : { models: line.models }) },
         'claude: turn result',
       )
     },

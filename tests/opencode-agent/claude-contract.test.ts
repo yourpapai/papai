@@ -113,7 +113,7 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     const result = resultOf('auth-error-turn.ndjson')
     expect(result.isError).toBe(true)
     expect(result.text).toContain('Not logged in')
-    expect(result.usage.total).toBe(0)
+    expect(result.usage).toEqual({ input: 0, output: 0, cacheWrite: 0, cacheRead: 0 })
     expect(result.costUsd).toBe(0)
     expect(result.sessionId).toBe(initSessionIdOf('auth-error-turn.ndjson'))
   })
@@ -137,7 +137,10 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     expect(result.isError).toBe(false)
     expect(result.text).toContain('papai')
     expect(result.sessionId).toBe('0d9f2a55-7b3a-4c1e-9f0a-2f7c8d11ab02')
-    expect(result.usage).toEqual({ input: 1052, output: 60, cacheWrite: 0, cacheRead: 0, total: 1112 })
+    // The four buckets the CLI reported and nothing derived: what the ceiling
+    // counts is decided on the seam, not by a `total` field here whose name
+    // promises every bucket and would go on inviting cache reads back in.
+    expect(result.usage).toEqual({ input: 1052, output: 60, cacheWrite: 0, cacheRead: 0 })
     // Decoded, and never read as a budget — asserted by the adapter's tests.
     expect(result.costUsd).toBe(0.0123)
   })
@@ -238,7 +241,9 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     const result = resultOf('resume-turn.ndjson')
 
     expect(result.sessionId).toBe('5e1c7d33-2a44-4b5e-8c6a-7d3e9f20bc31')
-    expect(result.usage.total).toBe(2290)
+    // A resumed turn re-reads the whole prior conversation out of cache; the
+    // decoder reports that read, and the ceiling declines to charge for it.
+    expect(result.usage).toEqual({ input: 1210, output: 28, cacheWrite: 0, cacheRead: 1052 })
   })
 
   test('the init line carries the credential source as an optional fact — recorded as "none" on the env-less route', () => {

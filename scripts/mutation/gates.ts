@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { resolveRatchet } from './baseline.js'
-import type { BaselineMap, PerFileScore } from './baseline.js'
+import type { BaselineMap, PerFileScore, RatchetDilution, RatchetRegression } from './baseline.js'
 import { resolvePairedRunExitCode } from './paired-run-cli.js'
 import type { ErroredFile, SkippedFile } from './paired-run.js'
 import type { MergedScore } from './score-merger.js'
@@ -25,6 +25,12 @@ export interface GateInput {
 export interface GateVerdict {
   readonly exitCode: 0 | 1
   readonly message: string | null
+  /**
+   * New-code dilution warnings, one formatted line per diluting file. The failure
+   * surface stays one exit code: warnings ride in the verdict whether the run
+   * passes (exit 0) or fails on an unrelated regression.
+   */
+  readonly warnings: readonly string[]
 }
 
 export interface GateInputOptions {
@@ -34,7 +40,13 @@ export interface GateInputOptions {
   readonly baseline: BaselineMap
 }
 
-const PASS: GateVerdict = { exitCode: 0, message: null }
+const PASS: GateVerdict = { exitCode: 0, message: null, warnings: [] }
+
+/** One warning per diluting file: names the file, its held kill count, and both scores. */
+const dilutionWarning = (d: RatchetDilution): string =>
+  `Mutation ratchet dilution: ${d.sourceFile} score ${d.score.toFixed(4)} < recorded ${d.threshold.toFixed(
+    4,
+  )} but kills held (${d.measuredNumerator} >= ${d.recordedNumerator})`
 
 /**
  * Gate on files whose Stryker run errored. Such a file produces no per-file score, so it
@@ -49,6 +61,7 @@ export const resolveErroredGate = (errored: readonly ErroredFile[]): GateVerdict
   return {
     exitCode: 1,
     message: `Mutation run errored for ${errored.length} file(s), so they were never scored: ${detail}`,
+    warnings: [],
   }
 }
 
@@ -62,13 +75,27 @@ export const resolveChangedFilesGates = (input: GateInputOptions): GateVerdict =
   const errored = resolveErroredGate(result.errored)
   if (errored.exitCode === 1) return errored
   if (resolvePairedRunExitCode(result.merged, threshold) === 1) {
-    return { exitCode: 1, message: `Mutation score ${result.merged.score} is below threshold ${threshold}` }
+    return {
+      exitCode: 1,
+      message: `Mutation score ${result.merged.score} is below threshold ${threshold}`,
+      warnings: [],
+    }
   }
   if (noRatchet) return PASS
   const ratchet = resolveRatchet(result.perFile, baseline)
-  if (ratchet.exitCode === 0) return PASS
-  const detail = ratchet.regressions
-    .map((r) => `${r.sourceFile} ${r.score.toFixed(4)} < ${r.threshold.toFixed(4)}`)
-    .join(', ')
-  return { exitCode: 1, message: `Mutation ratchet regression: ${detail}` }
+  const warnings = ratchet.dilutions.map(dilutionWarning)
+  if (ratchet.exitCode === 0) return { exitCode: 0, message: null, warnings }
+  const detail = ratchet.regressions.map(regressionDetail).join(', ')
+  return { exitCode: 1, message: `Mutation ratchet regression: ${detail}`, warnings }
+}
+
+/**
+ * A failing run names the file with its measured score and kill count against the
+ * recorded ones. A legacy score-only record has no recorded kills to compare, so
+ * its clause stays score-only.
+ */
+const regressionDetail = (r: RatchetRegression): string => {
+  const scores = `${r.sourceFile} ${r.score.toFixed(4)} < ${r.threshold.toFixed(4)}`
+  if (r.recordedNumerator === null) return scores
+  return `${scores}, kills ${r.measuredNumerator} < ${r.recordedNumerator} recorded`
 }

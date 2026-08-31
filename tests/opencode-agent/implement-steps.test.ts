@@ -10,6 +10,7 @@ import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { walkPlanSteps } from '../../opencode-agent/src/phases/implement-steps.js'
 import { checkBoxText, planBoxes } from '../../opencode-agent/src/plan-steps.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
 
@@ -38,6 +39,7 @@ const reviewState = (over: Partial<AgentState> = {}): AgentState => ({
   stepsDone: 0,
   changeName: 'add-retries',
   planRevision: 1,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 0,
   usdSpent: 0,
   usdUnpriced: false,

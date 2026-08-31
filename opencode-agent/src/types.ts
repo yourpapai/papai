@@ -17,7 +17,7 @@ import type { Phase } from './phase-names.js'
 export type { Phase } from './phase-names.js'
 // The persisted half, split out when this file passed `max-lines` and
 // re-exported so every existing import still resolves here.
-export { agentStateSchema, STATE_VERSION } from './agent-state.js'
+export { agentStateSchema, STATE_VERSION, TOKEN_SCALE } from './agent-state.js'
 export type { AgentState } from './agent-state.js'
 export { LEGACY_PHASE_NAMES, PHASES, WAITING_PHASES } from './phase-names.js'
 
