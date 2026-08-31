@@ -8,11 +8,17 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { z } from 'zod'
+
 import {
   createMaterializer,
   materializeAssumptions,
   materializeReview,
+  readRoundDigests,
+  recordRoundDigests,
 } from '../../../afk-runner/src/work/materialize.js'
+
+const DigestsShape = z.record(z.string(), z.string())
 
 const tmpDirs: string[] = []
 
@@ -380,3 +386,71 @@ describe('createMaterializer', () => {
     expect(events).toHaveLength(0)
   })
 })
+
+describe('recordRoundDigests', () => {
+  function changeFolder(): { changeDir: string; sidecarDir: string } {
+    const root = makeDir()
+    const changeDir = path.join(root, 'change')
+    fs.mkdirSync(path.join(changeDir, 'specs', 'cap'), { recursive: true })
+    fs.writeFileSync(path.join(changeDir, 'proposal.md'), '# why\n')
+    fs.writeFileSync(path.join(changeDir, 'specs', 'cap', 'spec.md'), '# spec\n')
+    return { changeDir, sidecarDir: path.join(root, 'sidecars') }
+  }
+
+  function readSnapshot(sidecarDir: string, round: number): Record<string, string> {
+    const raw: unknown = JSON.parse(
+      fs.readFileSync(path.join(sidecarDir, `round-hashes-${String(round)}.json`), 'utf8'),
+    )
+    return DigestsShape.parse(raw)
+  }
+
+  it('writes a snapshot of the agent-authored artifacts for the round', async () => {
+    const { changeDir, sidecarDir } = changeFolder()
+    await recordRoundDigests(sidecarDir, changeDir, 1)
+    expect(Object.keys(readSnapshot(sidecarDir, 1)).sort()).toEqual(['proposal.md', 'specs/cap/spec.md'])
+  })
+
+  it('excludes the runner-generated views, which change every round by construction', async () => {
+    const { changeDir, sidecarDir } = changeFolder()
+    fs.writeFileSync(path.join(changeDir, 'review.md'), '# round 1\n')
+    fs.writeFileSync(path.join(changeDir, 'assumptions.md'), '# a\n')
+    await recordRoundDigests(sidecarDir, changeDir, 1)
+    const keys = Object.keys(readSnapshot(sidecarDir, 1))
+    // Including these would make every round look "moved" and the edited-claim
+    // guard would never fire.
+    expect(keys).not.toContain('review.md')
+    expect(keys).not.toContain('assumptions.md')
+  })
+
+  it('produces an identical snapshot when the change folder did not move', async () => {
+    const { changeDir, sidecarDir } = changeFolder()
+    await recordRoundDigests(sidecarDir, changeDir, 1)
+    await recordRoundDigests(sidecarDir, changeDir, 2)
+    expect(readSnapshot(sidecarDir, 2)).toEqual(readSnapshot(sidecarDir, 1))
+  })
+
+  it('produces a different snapshot once an artifact changes', async () => {
+    const { changeDir, sidecarDir } = changeFolder()
+    await recordRoundDigests(sidecarDir, changeDir, 1)
+    fs.writeFileSync(path.join(changeDir, 'proposal.md'), '# why, revised\n')
+    await recordRoundDigests(sidecarDir, changeDir, 2)
+    expect(readSnapshot(sidecarDir, 2)).not.toEqual(readSnapshot(sidecarDir, 1))
+  })
+
+  it('reads a missing prior snapshot as null and tolerates round zero', async () => {
+    const { changeDir, sidecarDir } = changeFolder()
+    await recordRoundDigests(sidecarDir, changeDir, 2)
+    expect(await readRoundDigests(sidecarDir, 1)).toBeNull()
+    expect(await readRoundDigests(sidecarDir, 0)).toBeNull()
+  })
+
+  it('reads back the snapshot a round just wrote', async () => {
+    const { changeDir, sidecarDir } = changeFolder()
+    await recordRoundDigests(sidecarDir, changeDir, 2)
+    expect(keysOf(await readRoundDigests(sidecarDir, 2))).toContain('proposal.md')
+  })
+})
+
+function keysOf(snapshot: Record<string, string> | null): string[] {
+  return snapshot === null ? [] : Object.keys(snapshot)
+}

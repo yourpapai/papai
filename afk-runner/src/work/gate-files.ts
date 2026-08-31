@@ -57,7 +57,13 @@ export interface PresentGateResult {
   readonly version: number
 }
 
-function listAgentArtifacts(changeDir: string): string[] {
+/**
+ * The agent-authored artifacts of a change: proposal, design, tasks and every
+ * spec delta. Deliberately excludes `review.md` and `assumptions.md`, which the
+ * runner regenerates wholesale each round — including them would make every
+ * round look changed.
+ */
+export function listAgentArtifacts(changeDir: string): string[] {
   const rels = [...AGENT_ARTIFACT_GLOBS]
   const specsDir = path.join(changeDir, 'specs')
   if (existsSync(specsDir)) {

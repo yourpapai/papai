@@ -16,12 +16,12 @@ import { ROUND_CAPS } from '../run-state.js'
 import {
   buildResolverPrompt,
   buildReviewerPrompt,
-  evaluateConvergence,
   lensesForRound,
   mergeLensFindings,
   readResolutionsLedger,
   readReviewArtifacts,
 } from './review-model.js'
+import { closeRound } from './review-round.js'
 import { consumeSteerFile } from './steer.js'
 import type { SteerDirective } from './steer.js'
 
@@ -260,10 +260,7 @@ async function runRound(
     merged,
     sessionForLabel(consumedSession, 'resolver', round),
   )
-  const { verdict, counts } = evaluateConvergence(resolved.resolutions)
-  deps.emit({ altitude: 'L2', type: 'convergence', round, verdict, counts })
-  await deps.materialize(round)
-  deps.emit({ altitude: 'L2', type: 'round_close', round, cap: effectiveCap })
+  const { verdict } = await closeRound(deps, options, resolved, round, effectiveCap)
   if (verdict === 'converged') {
     const openNitpicks = resolved.resolutions.filter((entry) => entry.class === 'NITPICK')
     return { outcome: 'converged', rounds: round, openBlockers: [], openMaterial: [], openNitpicks }
