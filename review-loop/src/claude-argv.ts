@@ -78,18 +78,35 @@ export function modelIdForCli(raw: string): string {
 }
 
 /**
+ * The sdd-runner roles that write the change's artifacts or the tracked files
+ * a round settles: the drafters, the round resolvers (`drift` and
+ * `veto-updater` spawn under that same role), and the decomposition pair.
+ */
+const AUTHOR_LABEL_PREFIXES = ['drafter', 'resolver', 'decomposer', 'atomicity', 'drift', 'veto-updater'] as const
+
+/**
+ * The read-and-judge roles across both callers: the loop's own `reviewer*` /
+ * `matcher*` / `inspector*` (`-w<n>`, `-aggregated`, bare) and the runner's
+ * review lenses, estimator and planner.
+ */
+const ANALYSIS_LABEL_PREFIXES = ['reviewer', 'matcher', 'inspector', 'skeptic', 'estimator', 'planner'] as const
+
+/**
  * The per-spawn allowlist, keyed on the label by documented prefix: `fixer*`
  * (pooled `fixer-w<n>[-retry]`, batched `fixer-batch-<cluster.id>`, bare
- * pooled-less `fixer`) maps to the fixer set; `reviewer*` / `matcher*` /
- * `inspector*` (`-w<n>`, `-aggregated`, bare) to the analysis set. Any other
- * label inherits the analysis (weakest) set and the condition is logged —
- * the weaker-profile-is-the-default doctrine.
+ * pooled-less `fixer`) maps to the fixer set, the artifact writers to the
+ * author set and the analysts to the analysis set. Any other label inherits
+ * the analysis (weakest) set and the condition is logged — the
+ * weaker-profile-is-the-default doctrine.
  */
 export function allowlistForLabel(label: string, cwd: string, log: (message: string) => void = console.warn): string {
   if (label.startsWith('fixer')) {
     return ALLOWLISTS.fixer
   }
-  if (label.startsWith('reviewer') || label.startsWith('matcher') || label.startsWith('inspector')) {
+  if (AUTHOR_LABEL_PREFIXES.some((prefix) => label.startsWith(prefix))) {
+    return ALLOWLISTS.author
+  }
+  if (ANALYSIS_LABEL_PREFIXES.some((prefix) => label.startsWith(prefix))) {
     return analysisAllowlist(cwd)
   }
   log(

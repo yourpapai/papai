@@ -121,6 +121,10 @@ describe('allowlistForLabel — the sdd-runner role labels', () => {
     'resolver-r12',
     'decomposer',
     'atomicity',
+    // Both spawn under the runner's `resolver` role and edit tracked files —
+    // `drift` rewrites tasks.md, `veto-updater` the artifacts a veto names.
+    'drift',
+    'veto-updater',
   ] as const
   const analysts = ['reviewer-r1', 'reviewer-r12', 'skeptic-r1', 'skeptic-r12', 'estimator', 'planner'] as const
 
