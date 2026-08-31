@@ -15,6 +15,7 @@ import { loadCorpus } from './analyze-io.js'
 import { nodeAnalyzeFs, readOnlyGit } from './analyze-io.js'
 import { renderCorpusJson, renderCorpusReport } from './analyze-report.js'
 import { groundTruthJoin } from './analyze-truth.js'
+import { claudeGateOf, withClaude, type ClaudeGate } from './claude-gate.js'
 import { main } from './cli.js'
 import type { CliHarness } from './cli.js'
 import { parseSddArgs } from './cli.js'
@@ -138,7 +139,10 @@ function shellExec(
     })
 }
 
-async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: string): Promise<CliHarness> {
+async function buildHarness(
+  verbosity: Verbosity = 'normal',
+  configOverride?: string,
+): Promise<{ harness: CliHarness; claude: ClaudeGate }> {
   const configPath =
     configOverride ?? process.env['SDD_RUNNER_CONFIG'] ?? path.join(import.meta.dir, '..', 'config.json')
   const config = await loadRunnerConfig(configPath)
@@ -163,26 +167,30 @@ async function buildHarness(verbosity: Verbosity = 'normal', configOverride?: st
     stdout: harnessStdout,
     interactive: (): boolean => stdinIsInteractive(),
   }
-  return harnessMembers(config, orchestratorDeps, execGit)
+  const claude = claudeGateOf(orchestratorDeps)
+  return { harness: harnessMembers(config, orchestratorDeps, execGit, claude), claude }
 }
 
+/** Every run-driving (spending) verb goes through `withClaude`; the read-only ones deliberately do not. */
 function harnessMembers(
   config: { readonly workDir: string; readonly repoRoot: string },
   orchestratorDeps: OrchestratorDeps,
   execGit: ExecGitFn,
+  claude: ClaudeGate,
 ): CliHarness {
   const members: CliHarness = {
     workDir: config.workDir,
-    runStart: (options) => runStart(orchestratorDeps, options),
-    runResume: (runId, autonomy) => runResume(orchestratorDeps, runId, autonomy),
-    runGateResume: async (runId) => {
+    runStart: withClaude(claude, (options) => runStart(orchestratorDeps, options)),
+    runResume: withClaude(claude, (runId, autonomy) => runResume(orchestratorDeps, runId, autonomy)),
+    runGateResume: withClaude(claude, async (runId) => {
       const resolved = await resolveRunId(config.workDir, runId)
       return runGateResume(orchestratorDeps, resolved, {})
-    },
-    runContinue: (runId, autonomy) => runContinue(orchestratorDeps, runId, autonomy),
+    }),
+    runContinue: withClaude(claude, (runId, autonomy) => runContinue(orchestratorDeps, runId, autonomy)),
     requestCalmStop: (runId) => stopRun(config.workDir, runId),
-    runGateReopen: (runId, gateVersion) =>
+    runGateReopen: withClaude(claude, (runId, gateVersion) =>
       resolveAndCall(config.workDir, runId, (r) => runGateReopen(orchestratorDeps, config.workDir, r, gateVersion)),
+    ),
     buildReport: (runId, pr) => buildRunReport(config, runId, pr, execGit),
     runAnalysis: (workdirs, json) => runCorpusAnalysis(config, execGit, workdirs, json),
     stdout: harnessStdout,
@@ -276,8 +284,14 @@ export async function runEntry(): Promise<void> {
     return
   }
   const parsed = parseSddArgs(argv)
-  const harness = await buildHarness('normal', parsed.configPath)
-  const code = await main(argv, harness)
+  const { harness, claude } = await buildHarness('normal', parsed.configPath)
+  let code: number
+  // Teardown before the exit, not after it: `process.exit` runs no `finally`.
+  try {
+    code = await main(argv, harness)
+  } finally {
+    await claude.close()
+  }
   process.exit(code)
 }
 
