@@ -84,9 +84,21 @@ additions. When either side fails to parse, both sides are scanned lexically.
 ### D4 — Wire the hook lane into CI as its own leg
 
 `.hooks/tests/**` is invisible to bun's default discovery (dot-directory), so it needs an explicit
-path. Add `test:hooks` = `bun test ./.hooks/tests/` and call it from `scripts/check.sh`. The whole
-lane is 183 tests in 1.8s, so it belongs in both the full and `--staged` modes — it is cheaper than
-`format:check`.
+path. Add `test:hooks` = `bun test ./.hooks/tests/` and call it from `scripts/check.sh`'s full
+mode, which is what CI runs. The lane is 185 tests in ~1.3s.
+
+**Full mode only — narrowed during implementation.** The plan first said "both full and `--staged`
+modes". Implementation found staged mode does not classify `.mjs` at all: its `relevant_files`
+filter is `*.ts|*.tsx|*.js|*.jsx|*.json|*.md`, and the mode exits early with "No relevant staged
+files to check" when nothing else is staged. So staging only hook files is *already* a complete
+no-op locally, and wiring the lane in there would mean first rewriting that classification —
+a separate concern from restoring a security guard, and one that changes pre-commit semantics for
+every `.mjs` in the repo. The spec requirement is about CI, and full mode satisfies it. The `.mjs`
+classification gap is left as a known, unrelated hole.
+
+**`test:hooks` survives `--skip-tests`**, unlike `test` and `test:client`. That flag exists to skip
+the multi-minute suite; this lane is ~1.3s, and skipping it would disable the one check that
+catches hook rot in exactly the fast local loop where a hook is most likely being edited.
 
 **Rejected: moving `.hooks/tests/` under `tests/`.** It would put hook tests into the mutation
 gate's and coverage floor's field of view, and `tests/` maps to impl paths by convention

@@ -334,10 +334,17 @@ else
   # openspec/changes/dedupe-lint-typecheck), format:check walk the workspace dirs,
   # and the default test sweep runs tests/<workspace>/. Per-workspace proxy scripts
   # stay local-only conveniences.
-  checks=("lint" "format:check" "license-headers" "knip" "test" "test:client" "duplicates")
+  # test:hooks needs its own leg because .hooks/ is a dot-directory: bun's default discovery
+  # never reaches it, so the lane rides in the default `test` sweep for exactly zero files. It
+  # went unrun long enough for the TypeScript 7 upgrade to leave enforceWritePolicy failing open
+  # for four days (openspec/changes/fix-write-policy-suppression-guard). 185 tests, ~1.3s.
+  checks=("lint" "format:check" "license-headers" "knip" "test" "test:hooks" "test:client" "duplicates")
   if [ "$SKIP_TESTS" = true ]; then
     filtered_checks=()
     for check in "${checks[@]}"; do
+      # test:hooks deliberately survives --skip-tests. The flag exists to skip the multi-minute
+      # suite; this lane is ~1.3s and guards write-time policy, so skipping it buys nothing and
+      # costs the one check that catches hook rot.
       case "$check" in
         test|test:client)
           continue
