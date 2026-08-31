@@ -510,6 +510,34 @@ describe('the session tree usage walk', () => {
     },
   })
 
+  /**
+   * The same stubbed client with one session's children listing gone the given
+   * way — a throw, a hang, a foreign payload — for the degradation tests.
+   */
+  const breakingChildrenClient = (
+    usage: ReadonlyMap<string, unknown>,
+    children: ReadonlyMap<string, unknown>,
+    breakId: string,
+    instead: () => Promise<unknown>,
+  ): TreeClient => ({
+    session: {
+      get: ({ path }) => Promise.resolve(usage.get(path.id) ?? { data: undefined }),
+      children: ({ path }) =>
+        path.id === breakId ? instead() : Promise.resolve(children.get(path.id) ?? { data: [] }),
+    },
+  })
+
+  /** The parent's own account, exactly — what every degraded walk answers. */
+  const parentUsage = (): SessionUsage => ({
+    tokens: 3602,
+    cost: 0.125,
+    input: 2468,
+    output: 1134,
+    reasoning: 0,
+    cacheRead: 900,
+    cacheWrite: 400,
+  })
+
   /** A chain of a given depth, every node one token and one quarter — the depth cap's fixture. */
   const chainTree = (depth: number): { usage: Map<string, unknown>; children: Map<string, unknown> } => {
     const usage = new Map<string, unknown>()
@@ -681,6 +709,77 @@ describe('the session tree usage walk', () => {
       cacheRead: 0,
       cacheWrite: 0,
     })
+  })
+
+  test('a children call that throws degrades to the parent-only figure, warning but never failing', async () => {
+    const sessionTreeUsage = await walkOf()
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // The child's subtree cannot be read whole, so the walk reports the
+    // parent's own account — the figure the budget already knew — and says
+    // so. The walk decorates the spend read; it does not get to fail it.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      ['ses_child_1', usageEnvelope('ses_child_1', { input: 100, output: 200, cost: 0.0625 })],
+    ])
+    const children = new Map<string, unknown>([['ses_parent', childrenEnvelope(['ses_child_1'])]])
+    const client = breakingChildrenClient(usage, children, 'ses_child_1', () =>
+      Promise.reject(new Error('the children listing broke')),
+    )
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
+  })
+
+  test('a children call that never settles degrades at the walk deadline, parent-only', async () => {
+    const sessionTreeUsage = await walkOf()
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // The whole walk is bounded by one deadline: a server that answers the
+    // usage read but wedges on the tree costs the bound, not the run. The
+    // walk still resolves, degraded, and the run moves on.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+    ])
+    const client = breakingChildrenClient(usage, new Map(), 'ses_parent', () => new Promise<unknown>(() => {}))
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
+  })
+
+  test('a children payload that decodes as unrecognised degrades to the parent-only figure', async () => {
+    const sessionTreeUsage = await walkOf()
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // Unrecognised is not empty: the walk cannot tell what it failed to read,
+    // so it cannot price the subtree without under-charging a run whose
+    // subagents spent — the parent's own account, and the warn.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      ['ses_child_1', usageEnvelope('ses_child_1', { input: 100, output: 200, cost: 0.0625 })],
+    ])
+    const children = new Map<string, unknown>([['ses_parent', childrenEnvelope(['ses_child_1'])]])
+    const client = breakingChildrenClient(usage, children, 'ses_child_1', () =>
+      Promise.resolve({ data: 'not an array' }),
+    )
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
   })
 })
 
