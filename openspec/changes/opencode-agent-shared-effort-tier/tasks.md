@@ -1,7 +1,7 @@
 ## 1. Shared tier resolution at config load (design D1, D2)
 
 - [x] 1.1 Red-first `tests/opencode-agent/config.test.ts`: `AGENT_EFFORT=high` alone resolves all three profile tiers to `high`; a per-profile variable (`AGENT_EFFORT_PLAN=low`) overrides it for that profile only; everything unset leaves `planEffort`/`proposeEffort`/`buildEffort` `null`; a malformed `AGENT_EFFORT` raises `ConfigError` naming the key — `bun test tests/opencode-agent/config.test.ts`
-- [ ] 1.2 Implement the resolution in `opencode-agent/src/config.ts:101-105` — read `AGENT_EFFORT` once through the existing `effortTier` (`config-model-values.ts`), fold it into the three profile fields as `AGENT_EFFORT_<PROFILE> ?? AGENT_EFFORT ?? null`; no new module, no tier enum — `bun test tests/opencode-agent/config.test.ts`
+- [x] 1.2 Implement the resolution in `opencode-agent/src/config.ts:101-105` — read `AGENT_EFFORT` once through the existing `effortTier` (`config-model-values.ts`), fold it into the three profile fields as `AGENT_EFFORT_<PROFILE> ?? AGENT_EFFORT ?? null`; no new module, no tier enum — `bun test tests/opencode-agent/config.test.ts`
 
 ## 2. Emit the tier on the opencode route (design D3, D7)
 
