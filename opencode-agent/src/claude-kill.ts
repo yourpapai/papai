@@ -91,15 +91,15 @@ export interface SeamOptions {
 
 /** The abort-path seams, as the options injected them. */
 export const killSeamsOf = ({ killSignal, killSleep }: SeamOptions): GroupKillSeams => ({
-  ...(killSignal === undefined ? {} : { signal: killSignal }),
-  ...(killSleep === undefined ? {} : { sleep: killSleep }),
+  signal: killSignal,
+  sleep: killSleep,
 })
 
 /** The teardown-path seams, as the options injected them. */
 export const teardownSeamsOf = ({ teardownSignal, teardownSleep, teardownRemove }: SeamOptions): TeardownSeams => ({
-  ...(teardownSignal === undefined ? {} : { signal: teardownSignal }),
-  ...(teardownSleep === undefined ? {} : { sleep: teardownSleep }),
-  ...(teardownRemove === undefined ? {} : { removeDir: teardownRemove }),
+  signal: teardownSignal,
+  sleep: teardownSleep,
+  removeDir: teardownRemove,
 })
 
 /**
