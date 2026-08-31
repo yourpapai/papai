@@ -412,6 +412,14 @@ describe('the recorded SDK contract', () => {
       ).toEqual(['ses_child_1'])
     })
 
+    test('a non-empty listing that vouches for no entry reports unrecognised, not an empty tree', () => {
+      // Every entry failing the `{ id }` schema is the shape drift the design
+      // names — the generated types trailing the server. Reading it as `[]`
+      // would tell the walk the subtree is absent with no degradation warning;
+      // `null` routes it through the walk's degrade-and-warn path instead.
+      expect(decodeSessionChildren({ data: [{ title: 'the id moved' }] })).toBeNull()
+    })
+
     test.each([
       [{ data: undefined, error: { message: 'no such session' } }],
       [{ data: 'not an array' }],
@@ -840,6 +848,31 @@ describe('the session tree usage walk', () => {
     const children = new Map<string, unknown>([['ses_parent', childrenEnvelope(['ses_child_1'])]])
     const client = breakingChildrenClient(usage, children, 'ses_child_1', () =>
       Promise.resolve({ data: 'not an array' }),
+    )
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
+  })
+
+  test('a children listing whose every entry lost its id degrades to the parent-only figure, warning', async () => {
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // An array whose every entry fails the `{ id }` schema is not an empty
+    // tree: it is the same shape drift as a foreign payload, and the walk must
+    // say the subtree could not be read rather than publish the parent alone
+    // with the incompleteness undiscoverable from the run.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      ['ses_child_1', usageEnvelope('ses_child_1', { input: 100, output: 200, cost: 0.0625 })],
+    ])
+    const children = new Map<string, unknown>([['ses_parent', childrenEnvelope(['ses_child_1'])]])
+    const client = breakingChildrenClient(usage, children, 'ses_child_1', () =>
+      Promise.resolve({ data: [{ title: 'the id moved' }] }),
     )
 
     expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())

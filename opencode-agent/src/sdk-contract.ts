@@ -181,7 +181,9 @@ export const decodeAbort = (aborted: unknown): boolean => {
  * whole — one bent child must not fail the list — and an unrecognised payload
  * reports `null` on the `decodeSessionUsage` doctrine: the walk decorates the
  * spend read, and an SDK that moved this list must not fail the turn or the
- * phase.
+ * phase. A listing that parses as an array but vouches for no entry at all is
+ * the unrecognised case, not an empty tree: every `id` having moved is shape
+ * drift, and the walk must read the subtree as absent loudly, never silently.
  */
 const sessionChildSchema = z
   .object({ id: z.string().min(1) })
@@ -197,7 +199,13 @@ export const decodeSessionChildren = (fetched: unknown): readonly string[] | nul
   const parsed = sessionChildrenSchema.safeParse(fetched)
   if (!parsed.success || parsed.data.data === undefined) return null
 
-  return parsed.data.data.flatMap((entry) => (entry === undefined ? [] : [entry.id]))
+  const ids = parsed.data.data.flatMap((entry) => (entry === undefined ? [] : [entry.id]))
+  // A non-empty listing that vouches for no entry is shape drift, not an empty
+  // tree: report it unrecognised so the walk degrades loudly (readNode throws,
+  // sessionTreeUsage warns and answers parent-only) instead of silently
+  // reading the subtree as absent.
+  if (parsed.data.data.length > 0 && ids.length === 0) return null
+  return ids
 }
 
 /**
