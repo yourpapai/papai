@@ -10,9 +10,10 @@ See LICENSE in the project root for details.
 > **Historical surface (deleted at R5).** The `sdd-runner/` workspace described here was deleted by
 > the retirement (`sdd-runner-retirement`) after the R4 cut-over had moved every operator entry
 > point to afk-runner; rollback is `git revert` of the deletion commit. The live engine and its
-> runner commands are [`afk-runner.md`](afk-runner.md). The process sections below (stages, event
-> model, depth profiles, gate protocol, admission vs division) stay canonical: `afk-runner/`
-> implements the same pipeline.
+> runner commands are [`afk-runner.md`](afk-runner.md); afk-runner's spec coverage is the umbrella
+> capabilities `afk-runner-{pipeline,autonomy,cli,output}` (born by `afk-runner-spec-home`). The
+> process sections below (stages, event model, depth profiles, gate protocol, admission vs
+> division) stay canonical: `afk-runner/` implements the same pipeline.
 
 The `sdd-runner/` workspace automates the outer loop of spec-driven development: a runner sub-project orchestrates drafting, fresh-eyes review, convergence, and decomposition across spawned `opencode run` agents inside one OpenSpec change, reporting progress at pipeline altitude and concentrating human attention at a single gate. The stages compose end-to-end via `src/orchestrator.ts` (`runStart`/`runResume`/`runGateResume`); `src/report.ts` synthesizes evidence-backed run/PR reports from `events.ndjson`, the change folder, and the branch git log.
 
