@@ -242,3 +242,49 @@ describe('ResolverOutputSchema evidence contract', () => {
     expect(ResolverOutputSchema.safeParse(emptyEvidence).success).toBe(false)
   })
 })
+
+describe('mergeLensFindings — fingerprint merge (loop-memory D3)', () => {
+  it('dedupes differently-quoted copies of one gap, keeping first-wins content', () => {
+    const merged = mergeLensFindings(
+      [finding({ id: 'F1', gap: 'the proposal never names the scope id' })],
+      [finding({ id: 'S1', gap: 'The proposal never names the scope ID.' })],
+    )
+    expect(merged).toHaveLength(1)
+    expect(merged[0]?.id).toBe('F1')
+  })
+
+  it('merges to the most severe class across lens copies', () => {
+    const merged = mergeLensFindings(
+      [finding({ id: 'F1', class: 'NITPICK', gap: 'no migration path for the flags table' })],
+      [finding({ id: 'S1', class: 'BLOCKER', gap: 'No migration path for the `flags` table!' })],
+    )
+    expect(merged).toHaveLength(1)
+    expect(merged[0]?.class).toBe('BLOCKER')
+    // First-wins content: the reviewer copy's id and gap survive.
+    expect(merged[0]?.id).toBe('F1')
+    expect(merged[0]?.gap).toBe('no migration path for the flags table')
+  })
+
+  it('keeps distinct concerns side by side', () => {
+    const merged = mergeLensFindings(
+      [finding({ id: 'F1', gap: 'no migration path for the flags table' })],
+      [finding({ id: 'S1', gap: 'queue backpressure is unbounded under load' })],
+    )
+    expect(merged.map((entry) => entry.id)).toEqual(['F1', 'S1'])
+  })
+
+  it('keeps convergence invariant to how many lenses quoted a gap (loop-memory D3)', () => {
+    const singleLens = mergeLensFindings([finding({ id: 'F1', gap: 'the proposal never names the scope id' })])
+    const bothLenses = mergeLensFindings(
+      [finding({ id: 'F1', gap: 'the proposal never names the scope id' })],
+      [finding({ id: 'S1', gap: 'THE PROPOSAL never names the scope id' })],
+    )
+    const resolveAll = (findings: readonly Finding[]): readonly Resolution[] =>
+      findings.map((entry) => resolution({ id: entry.id, class: entry.class }))
+    const one = evaluateConvergence(resolveAll(singleLens))
+    const two = evaluateConvergence(resolveAll(bothLenses))
+    expect(two.raised).toEqual(one.raised)
+    expect(two.open).toEqual(one.open)
+    expect(two.verdict).toBe(one.verdict)
+  })
+})

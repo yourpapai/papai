@@ -22,6 +22,15 @@ export type Finding = z.infer<typeof FindingSchema>
 
 export const FindingsSidecarSchema = z.object({ findings: z.array(FindingSchema) })
 
+/**
+ * Skeptic spawn contract (loop-memory D2): ids are namespaced `S<n>` so the
+ * two lens id spaces cannot collide after the fingerprint merge.
+ */
+export const SkepticFindingsSidecarSchema = FindingsSidecarSchema.refine(
+  (sidecar) => sidecar.findings.every((finding) => /^S\d+$/u.test(finding.id)),
+  { message: 'skeptic findings[].id must follow the S-prefix convention (S1, S2, …)' },
+)
+
 export const ResolutionSchema = z
   .object({
     id: z.string().min(1),

@@ -36,6 +36,7 @@ export function toKernelEvent(event: SddEvent): KernelEvent | null {
       verdict: event.verdict,
       counts: event.counts,
       ...(event.open === undefined ? {} : { open: event.open }),
+      ...(event.concerns === undefined ? {} : { concerns: event.concerns }),
     }
   }
   if (event.type === 'gate' && event.action === 'presented') {

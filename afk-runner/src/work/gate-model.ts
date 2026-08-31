@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { DigestRecord } from '../legacy-fold.js'
+import type { ConcernRecord } from './concern-model.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
 import { emptyParseState, expectedBlockerIds, expectedItemIds, processLine } from './gate-parse-lines.js'
 import type { ParseState } from './gate-parse-lines.js'
@@ -50,6 +51,11 @@ export interface GateDigestInput {
   readonly costKnown: boolean
   readonly durationMs: number
   readonly changeDigest: ChangeDigest
+  /**
+   * Thrashing concerns riding whichever gate follows a concern-history end
+   * (loop-memory D6); optional so non-thrash gates omit it.
+   */
+  readonly concernHistory?: readonly ConcernRecord[]
 }
 
 export interface GateVeto {

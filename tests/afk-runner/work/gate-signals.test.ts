@@ -4,6 +4,9 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, it } from 'bun:test'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
 import type { AgentUsage, SddEvent } from '../../../afk-runner/src/events.js'
 import { costSummaryOf, findingsOf, usageTotalsOf } from '../../../afk-runner/src/work/gate-signals.js'
@@ -136,5 +139,44 @@ describe('findingsOf carries the sanitized verbatim gap', () => {
   it('degrades to the identifier when the result carries no gaps at all', () => {
     const findings = findingsOf(resultWith(undefined))
     expect(findings.material[0]?.gap).toBe('F2')
+  })
+})
+
+describe('concernHistoryOf gathers the thrash clusters from the sidecar (loop-memory D6)', () => {
+  it('reads sidecars/concerns.json filtered by the folded lastVerdict concerns', async () => {
+    const { concernHistoryOf } = await import('../../../afk-runner/src/work/gate-signals.js')
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-concerns-'))
+    fs.mkdirSync(path.join(dir, 'sidecars'), { recursive: true })
+    fs.writeFileSync(
+      path.join(dir, 'sidecars', 'concerns.json'),
+      JSON.stringify([
+        {
+          fingerprint: 'lacks proposal rollback story',
+          firstRound: 1,
+          lastRound: 3,
+          entries: [{ round: 3, id: 'F3', class: 'MATERIAL', resolution: 'edited' }],
+        },
+        {
+          fingerprint: 'unrelated concern',
+          firstRound: 1,
+          lastRound: 1,
+          entries: [{ round: 1, id: 'F9', class: 'NITPICK', resolution: 'dismissed' }],
+        },
+      ]),
+    )
+    const gathered = await concernHistoryOf(path.join(dir, 'sidecars'), {
+      concerns: ['lacks proposal rollback story'],
+    })
+    expect(gathered).toHaveLength(1)
+    expect(gathered[0]?.fingerprint).toBe('lacks proposal rollback story')
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('a missing sidecar or empty clusters yield nothing', async () => {
+    const { concernHistoryOf } = await import('../../../afk-runner/src/work/gate-signals.js')
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-concerns-'))
+    expect(await concernHistoryOf(path.join(dir, 'sidecars'), { concerns: ['x'] })).toEqual([])
+    expect(await concernHistoryOf(path.join(dir, 'sidecars'), {})).toEqual([])
+    fs.rmSync(dir, { recursive: true, force: true })
   })
 })

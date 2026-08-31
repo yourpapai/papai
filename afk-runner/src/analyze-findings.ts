@@ -7,12 +7,50 @@ import type { RunBundle } from './analyze-io.js'
 import { knownMetric, unknownMetric } from './analyze.js'
 import type { Metric } from './analyze.js'
 import type { SddEvent } from './events.js'
+import { fingerprintOf } from './work/concern-model.js'
 
 /** Finding-lifecycle metrics over the findings/resolutions sidecar joins (D3). */
 
-/** The lens-overlap gap key: a skeptic finds the same concern, asks a different question — the gap joins, not the question. */
-function gapKey(gap: string): string {
-  return gap.trim().toLowerCase()
+/**
+ * Lens overlap: skeptic findings whose gap fingerprint matches a reviewer
+ * finding of the same round, over all skeptic findings — the gap joins, not
+ * the question (a second lens asks a different question about the same
+ * concern). The fingerprint is loop-memory's `fingerprintOf` — imported from
+ * its one home, never copied.
+ */
+export function lensOverlapRate(bundle: RunBundle): Metric<number> {
+  const reviewerByRound = new Map(bundle.findings.map((round) => [round.round, round.items]))
+  let skepticTotal = 0
+  let matches = 0
+  for (const round of bundle.skepticFindings) {
+    const reviewerKeys = new Set((reviewerByRound.get(round.round) ?? []).map((finding) => fingerprintOf(finding.gap)))
+    for (const finding of round.items) {
+      skepticTotal += 1
+      if (reviewerKeys.has(fingerprintOf(finding.gap))) matches += 1
+    }
+  }
+  if (skepticTotal === 0) return unknownMetric('no skeptic findings sidecars')
+  return knownMetric(matches / skepticTotal)
+}
+
+/**
+ * Cross-round concern-cluster persistence (loop-memory D1 handoff): the share
+ * of gap-fingerprint clusters that span ≥2 rounds over all clusters in the
+ * run's findings sidecars — the corpus measurement the thrash threshold
+ * calibrates against.
+ */
+export function concernPersistence(bundle: RunBundle): Metric<number> {
+  const roundsOf = new Map<string, Set<number>>()
+  for (const round of [...bundle.findings, ...bundle.skepticFindings]) {
+    for (const finding of round.items) {
+      const rounds = roundsOf.get(fingerprintOf(finding.gap)) ?? new Set<number>()
+      rounds.add(round.round)
+      roundsOf.set(fingerprintOf(finding.gap), rounds)
+    }
+  }
+  if (roundsOf.size === 0) return unknownMetric('no findings sidecars')
+  const persisting = [...roundsOf.values()].filter((rounds) => rounds.size >= 2).length
+  return knownMetric(persisting / roundsOf.size)
 }
 
 /**
@@ -29,28 +67,6 @@ export function duplicateIdRate(bundle: RunBundle): Metric<number> {
     0,
   )
   return knownMetric(duplicates / entries)
-}
-
-/**
- * Lens overlap: skeptic findings whose normalized gap matches a reviewer
- * finding of the same round, over all skeptic findings — the gap joins, not
- * the question (a second lens asks a different question about the same
- * concern). Master's fingerprint join approximated by gap normalization
- * until loop-memory's `fingerprintOf` lands.
- */
-export function lensOverlapRate(bundle: RunBundle): Metric<number> {
-  const reviewerByRound = new Map(bundle.findings.map((round) => [round.round, round.items]))
-  let skepticTotal = 0
-  let matches = 0
-  for (const round of bundle.skepticFindings) {
-    const reviewerKeys = new Set((reviewerByRound.get(round.round) ?? []).map((finding) => gapKey(finding.gap)))
-    for (const finding of round.items) {
-      skepticTotal += 1
-      if (reviewerKeys.has(gapKey(finding.gap))) matches += 1
-    }
-  }
-  if (skepticTotal === 0) return unknownMetric('no skeptic findings sidecars')
-  return knownMetric(matches / skepticTotal)
 }
 
 export function classChurn(bundle: RunBundle): Metric<number> {
@@ -85,15 +101,6 @@ export function resolverActionMix(bundle: RunBundle): Metric<ResolverActionMix> 
   }
   if (total === 0) return unknownMetric('no resolutions sidecars')
   return knownMetric(mix)
-}
-
-/**
- * Cross-round concern-cluster persistence. Reports unknown until
- * `afk-runner-loop-memory` lands its `fingerprintOf` — imported then, never
- * copied (the duplicates gate); a sidecar-gap join is not the same metric.
- */
-export function concernPersistence(_bundle: RunBundle): Metric<number> {
-  return unknownMetric('concern fingerprints not yet available (afk-runner-loop-memory)')
 }
 
 export const R2_CAUSES = ['r2-fired', 'cost-unknown', 'over-ceiling', 'preview', 'trajectory-blocked'] as const

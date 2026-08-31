@@ -3,32 +3,28 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import pLimit from 'p-limit'
 import { z } from 'zod'
 
-import { agentWritePath } from '../../../review-loop/src/agent-runner.js'
-import { AssumptionRecordSchema, FindingsSidecarSchema, ResolutionSchema, runStageAgent } from '../agent-layer.js'
-import type { AgentLayerDeps, Finding, Resolution } from '../agent-layer.js'
+import { AssumptionRecordSchema, ResolutionSchema } from '../agent-layer.js'
+import type { AgentLayerDeps, Resolution } from '../agent-layer.js'
 import type { DepthProfile, EventInput, FindingCounts } from '../events.js'
 export { consumeSteerFile, parseSteerDirectives, reloadStagedSteer } from './steer.js'
 export type { ParsedSteer, StagedSteer, SteerDirective } from './steer.js'
 import { ROUND_CAPS } from '../run-state.js'
-import { applySteerAtBoundary, consumeResumeSession, sessionForLabel } from './review-boundary.js'
-import {
-  buildResolverPrompt,
-  buildReviewerPrompt,
-  lensesForRound,
-  mergeLensFindings,
-  readResolutionsLedger,
-  readReviewArtifacts,
-} from './review-model.js'
+import type { ConcernRecord } from './concern-model.js'
+import { emitClassified, resolveRound, runLenses } from './review-agents.js'
+import { applySteerAtBoundary, consumeResumeSession } from './review-boundary.js'
 import { closeRound } from './review-round.js'
 import type { SteerDirective } from './steer.js'
 
-export const ResolverOutputSchema = z.object({
-  resolutions: z.array(ResolutionSchema),
-  assumptions: z.array(AssumptionRecordSchema),
-})
+export const ResolverOutputSchema = z
+  .object({
+    resolutions: z.array(ResolutionSchema),
+    assumptions: z.array(AssumptionRecordSchema),
+  })
+  .refine((output) => new Set(output.resolutions.map((entry) => entry.id)).size === output.resolutions.length, {
+    message: 'resolutions must have unique finding ids within a round',
+  })
 export type ResolverOutput = z.infer<typeof ResolverOutputSchema>
 
 export interface ReviewLoopDeps {
@@ -98,97 +94,11 @@ export interface ReviewLoopResult {
    * to the id.
    */
   readonly gaps?: Record<string, string>
-}
-
-async function runLens(
-  deps: ReviewLoopDeps,
-  options: ReviewLoopOptions,
-  lens: 'reviewer' | 'skeptic',
-  round: number,
-  artifacts: string,
-  ledger: readonly Resolution[],
-  continueSessionId?: string,
-): Promise<Finding[]> {
-  const outputPath = lens === 'skeptic' ? `findings-skeptic-${round}.json` : `findings-${round}.json`
-  const result = await runStageAgent(deps.agent, {
-    role: lens,
-    changeName: options.changeName,
-    cwd: deps.cwd,
-    prompt: buildReviewerPrompt({
-      lens,
-      artifacts,
-      conventions: options.conventions,
-      ledger,
-      outputTarget: agentWritePath(deps.cwd, outputPath),
-    }),
-    outputPath,
-    outputSchema: FindingsSidecarSchema,
-    label: `${lens}-r${round}`,
-    runDir: deps.runDir,
-    round,
-    sidecarDir: deps.sidecarDir,
-    ...(continueSessionId === undefined ? {} : { continueSessionId }),
-  })
-  return result.value.findings
-}
-
-async function runResolver(
-  deps: ReviewLoopDeps,
-  options: ReviewLoopOptions,
-  round: number,
-  artifacts: string,
-  merged: readonly Finding[],
-  continueSessionId?: string,
-): Promise<ResolverOutput> {
-  const result = await runStageAgent(deps.agent, {
-    role: 'resolver',
-    changeName: options.changeName,
-    cwd: deps.cwd,
-    prompt: buildResolverPrompt({
-      artifacts,
-      findings: merged,
-      conventions: options.conventions,
-      taskText: options.taskText,
-      outputTarget: agentWritePath(deps.cwd, `resolutions-${round}.json`),
-    }),
-    outputPath: `resolutions-${round}.json`,
-    outputSchema: ResolverOutputSchema,
-    label: `resolver-r${round}`,
-    runDir: deps.runDir,
-    round,
-    sidecarDir: deps.sidecarDir,
-    ...(continueSessionId === undefined ? {} : { continueSessionId }),
-  })
-  for (const entry of result.value.resolutions) {
-    const action = entry.resolution === 'dismissed' ? 'dismissed' : 'resolved'
-    deps.emit({ altitude: 'L2', type: 'finding', action, id: entry.id, round, class: entry.class })
-  }
-  for (const assumption of result.value.assumptions) {
-    deps.emit({ altitude: 'L2', type: 'assumption', action: 'logged', id: assumption.id })
-  }
-  return result.value
-}
-
-/** Run this round's lenses (bounded 2-way) and merge their findings. */
-async function runLenses(
-  deps: ReviewLoopDeps,
-  options: ReviewLoopOptions,
-  round: number,
-  prevOpenBlockers: number,
-  consumedSession: ReviewLoopDeps['resumeSession'],
-): Promise<readonly Finding[]> {
-  const artifacts = await readReviewArtifacts(options.changeDir)
-  const ledger = await readResolutionsLedger(deps.sidecarDir, round)
-  const lenses = lensesForRound(options.depth, round, prevOpenBlockers)
-  const limit = pLimit(2)
-  const perLens = await Promise.all(
-    lenses.map((lens) =>
-      limit(() =>
-        runLens(deps, options, lens, round, artifacts, ledger, sessionForLabel(consumedSession, lens, round)),
-      ),
-    ),
-  )
-  return mergeLensFindings(...perLens)
+  /**
+   * Thrashing concerns that stopped the loop (loop-memory D5); present only on
+   * a concern-history cap-hit.
+   */
+  readonly recurringConcerns?: readonly ConcernRecord[]
 }
 
 /**
@@ -226,23 +136,26 @@ async function runRound(
   // consumes it, and later rounds/spawns are fresh by design (D2).
   const consumedSession = consumeResumeSession(resumeSession, round)
   const merged = await runLenses(deps, options, round, prevOpenBlockers, consumedSession)
-  for (const finding of merged) {
-    deps.emit({ altitude: 'L2', type: 'finding', action: 'classified', id: finding.id, round, class: finding.class })
-  }
-  const artifacts = await readReviewArtifacts(options.changeDir)
-  const resolved = await runResolver(
+  emitClassified(deps, merged, round)
+  const resolved = await resolveRound(deps, options, round, merged, consumedSession)
+  const { verdict, raised, openLists, gaps, recurringConcerns } = await closeRound(
     deps,
     options,
-    round,
-    artifacts,
+    resolved,
     merged,
-    sessionForLabel(consumedSession, 'resolver', round),
+    round,
+    effectiveCap,
   )
-  const { verdict, raised, openLists, gaps } = await closeRound(deps, options, resolved, round, effectiveCap)
   const settled = { rounds: round, verdict, raised, gaps } as const
   if (verdict === 'converged') {
     const openNitpicks = openLists.openNitpicks
     return { ...settled, outcome: 'converged', openBlockers: [], openMaterial: [], openNitpicks }
+  }
+  if (recurringConcerns.length > 0) {
+    // Concern-history end (loop-memory D6): a thrashing concern stops the loop
+    // instead of silently burning another round; whichever gate follows
+    // carries its round-by-round history.
+    return { ...settled, outcome: 'cap-hit', ...openLists, recurringConcerns }
   }
   if (deps.stop?.stopRequested() === true) {
     // Calm stop (D6): the in-flight round is fully recorded; do not enter the next.

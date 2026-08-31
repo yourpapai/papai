@@ -89,6 +89,8 @@ const FindingEvent = z.object({
   round: z.number().int().positive(),
   class: FindingClassSchema.optional(),
   detail: z.string().optional(),
+  /** Concern fingerprint (loop-memory D5, additive): joins this event to its cross-round concern. */
+  fingerprint: z.string().min(1).optional(),
 })
 
 const AssumptionEvent = z.object({
@@ -112,6 +114,12 @@ const ConvergenceEvent = z.object({
    * equal to `counts`, reproducing the pre-split verdicts exactly.
    */
   open: FindingCountsSchema.optional(),
+  /**
+   * Thrashing concern cluster ids (loop-memory D5, additive): present only on
+   * the convergence that ended the loop as a concern-history cap-hit. Absent
+   * lines fold as `[]`.
+   */
+  concerns: z.array(z.string().min(1)).optional(),
 })
 
 const ArtifactEvent = z.object({

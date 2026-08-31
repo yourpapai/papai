@@ -44,6 +44,10 @@ export function reviewOutcomeOf(context: KernelContext): ReviewOutcome {
   const verdict = context.lastVerdict
   if (verdict !== null && verdict.verdict === 'converged') return 'converged'
   if (verdict !== null && verdict.verdict === 'needs-review') {
+    // A thrash-ended round settles (loop-memory D6): the verification round it
+    // would have owed is denied by the concern clusters it carries, so review
+    // flows to the tail and the final gate shows the unreviewed edits.
+    if ((verdict.concerns ?? []).length > 0) return 'converged'
     // The round this verdict came from sits at the depth's base cap: the one
     // verification round it owes has not been opened. Once a round above the
     // base cap records any verdict (the verification round, or a human

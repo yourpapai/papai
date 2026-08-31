@@ -85,6 +85,8 @@ describe('replayEvents', () => {
       counts: { blocker: 0, material: 0, nitpick: 1 },
       // Pre-split log line: open folds as equal to counts.
       open: { blocker: 0, material: 0, nitpick: 1 },
+      // Pre-loop-memory log line: concerns fold as [].
+      concerns: [],
       resolved: 0,
       dismissed: 0,
     })
@@ -126,6 +128,8 @@ describe('replayEvents', () => {
       counts: { blocker: 1, material: 1, nitpick: 0 },
       // The log line carries no open set, so it folds as equal to counts.
       open: { blocker: 1, material: 1, nitpick: 0 },
+      // And no concern clusters — loop-memory D5 normalizes absence to [].
+      concerns: [],
       resolved: 1,
       dismissed: 1,
       verdict: 'open' as const,
@@ -313,5 +317,38 @@ describe('replay folds both convergence count sets', () => {
     expect(openCountsOf(record!)).toEqual(open)
     const preSplit: DigestRecord = { round: 1, counts: raised, resolved: 0, dismissed: 0, verdict: 'open' }
     expect(openCountsOf(preSplit)).toEqual(raised)
+  })
+})
+
+describe('loop-memory additive fold fields (D5)', () => {
+  it('a convergence event with concerns lands on the DigestRecord; a pre-change line folds concerns as []', () => {
+    const log = makeLog()
+    const seq: Array<Parameters<typeof appendEvent>[1]> = [
+      { altitude: 'L2', type: 'round_open', round: 3, cap: 3 },
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 3,
+        verdict: 'open',
+        counts: { blocker: 0, material: 1, nitpick: 0 },
+        concerns: ['fingerprint a'],
+      },
+      { altitude: 'L2', type: 'round_open', round: 4, cap: 4 },
+      {
+        altitude: 'L2',
+        type: 'convergence',
+        round: 4,
+        verdict: 'converged',
+        counts: { blocker: 0, material: 0, nitpick: 0 },
+      },
+    ]
+    seq.forEach((event, i) => {
+      appendEvent(log, event, at(String(i).padStart(2, '0')))
+    })
+    const state = replayEvents(log)
+    expect(state.perRound[0]?.concerns).toEqual(['fingerprint a'])
+    // A pre-change line omits concerns entirely; the fold normalizes to [].
+    expect(state.perRound[1]?.concerns).toEqual([])
+    expect(state.lastVerdict?.concerns).toEqual([])
   })
 })

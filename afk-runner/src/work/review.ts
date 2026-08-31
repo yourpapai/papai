@@ -33,12 +33,20 @@ export type { ReviewOutcome, ReviewWorkAgents, ReviewWorkInput } from './review-
  * human can settle, but an edit above a nitpick no reviewer has seen. A round
  * already opened above the base cap (the verification round itself, or a
  * human extend) means the chain spent its round: no second one is bought.
+ * A thrash-ended round never buys one (loop-memory D6): its `concerns` cluster
+ * ids are fold state, so the denial re-derives after a crash mid-thrash and
+ * sits ahead of the budget question — a denied round makes it moot.
  */
 export function owesVerificationRound(context: KernelContext, depth: DepthProfile): boolean {
   const round = context.round
   if (round === null || round.cap !== ROUND_CAPS[depth]) return false
   const last = context.lastVerdict
-  return last !== null && last.round === round.current && last.verdict === 'needs-review'
+  return (
+    last !== null &&
+    last.round === round.current &&
+    last.verdict === 'needs-review' &&
+    (last.concerns ?? []).length === 0
+  )
 }
 
 /**

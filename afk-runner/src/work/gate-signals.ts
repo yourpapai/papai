@@ -3,11 +3,35 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+
+import { z } from 'zod'
+
 import type { AgentUsage, SddEvent } from '../events.js'
 import type { KernelContext } from '../kernel/machine.js'
+import type { ConcernRecord } from './concern-model.js'
 import { gatherAssumptions } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
 import type { ReviewLoopResult } from './review-loop.js'
+
+/** The persisted `sidecars/concerns.json` shape (loop-memory D5) — parse, never trust. */
+const ConcernHistorySchema = z.array(
+  z.object({
+    fingerprint: z.string().min(1),
+    firstRound: z.number().int().positive(),
+    lastRound: z.number().int().positive(),
+    entries: z.array(
+      z.object({
+        round: z.number().int().positive(),
+        id: z.string().min(1),
+        class: z.string().min(1),
+        resolution: z.string().min(1),
+        outcome: z.string().optional(),
+      }),
+    ),
+  }),
+)
 
 /** Row width that keeps a checkbox line readable and the grammar intact. */
 const MAX_GAP_LEN = 200
@@ -146,5 +170,27 @@ export async function gatherGateSignals(
     costUsd,
     costKnown,
     durationMs: Math.max(0, now.getTime() - new Date(createdAt).getTime()),
+  }
+}
+
+/**
+ * The thrash clusters a gate should carry (loop-memory D6): the persisted
+ * concern history filtered to the cluster ids on the folded last verdict —
+ * fold-derived, so a resumed run gathers the same block after a crash.
+ */
+export async function concernHistoryOf(
+  sidecarDir: string,
+  lastVerdict: { readonly concerns?: readonly string[] } | null,
+): Promise<readonly ConcernRecord[]> {
+  const clusters = lastVerdict?.concerns ?? []
+  if (clusters.length === 0) return []
+  try {
+    const parsed: unknown = JSON.parse(await readFile(path.join(sidecarDir, 'concerns.json'), 'utf8'))
+    if (!Array.isArray(parsed)) return []
+    const wanted = new Set(clusters)
+    const records: readonly ConcernRecord[] = ConcernHistorySchema.parse(parsed)
+    return records.filter((record) => wanted.has(record.fingerprint))
+  } catch {
+    return []
   }
 }

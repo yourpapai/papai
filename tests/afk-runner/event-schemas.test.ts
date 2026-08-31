@@ -249,3 +249,46 @@ describe('convergence event open counts', () => {
     expect(EventInputSchema.safeParse(widened).success).toBe(false)
   })
 })
+
+describe('loop-memory additive fields (D5)', () => {
+  it('a finding event carries an optional fingerprint; the action enum is unchanged', () => {
+    const stamped = EventInputSchema.parse({ ...baseFindingEvent(), fingerprint: 'id names never proposal scope' })
+    expect(stamped).toMatchObject({ type: 'finding', fingerprint: 'id names never proposal scope' })
+    expect(EventInputSchema.parse(baseFindingEvent())).not.toHaveProperty('fingerprint')
+    expect(EventInputSchema.safeParse({ ...baseFindingEvent(), action: 'merged' }).success).toBe(false)
+  })
+
+  it('a convergence event carries optional concerns cluster ids', () => {
+    const base = {
+      altitude: 'L2',
+      type: 'convergence',
+      round: 3,
+      verdict: 'open',
+      counts: { blocker: 0, material: 1, nitpick: 0 },
+    } as const
+    expect(EventInputSchema.parse({ ...base, concerns: ['id names never proposal scope'] })).toMatchObject({
+      type: 'convergence',
+      concerns: ['id names never proposal scope'],
+    })
+    expect(EventInputSchema.parse(base)).not.toHaveProperty('concerns')
+    expect(EventInputSchema.safeParse({ ...base, concerns: [] }).success).toBe(true)
+  })
+})
+
+function baseFindingEvent(): {
+  altitude: 'L2'
+  type: 'finding'
+  action: 'classified'
+  id: string
+  round: number
+  class: 'MATERIAL'
+} {
+  return {
+    altitude: 'L2',
+    type: 'finding',
+    action: 'classified',
+    id: 'F1',
+    round: 1,
+    class: 'MATERIAL',
+  } as const
+}

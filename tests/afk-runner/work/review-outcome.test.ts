@@ -217,3 +217,43 @@ describe('review outcome — needs-review and the open set', () => {
     expect(reviewOutcomeOf(preOpen)).toBe('incomplete')
   })
 })
+
+describe('review outcome — the thrash end settles (loop-memory D6)', () => {
+  it('a needs-review at the base cap with concern clusters is converged, not incomplete', () => {
+    const thrashed = contextOf([
+      stamp({ altitude: 'L2', type: 'round_open', round: 3, cap: 3 }, 1),
+      stamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 3,
+          verdict: 'needs-review',
+          counts: { blocker: 0, material: 1, nitpick: 0 },
+          open: { blocker: 0, material: 0, nitpick: 0 },
+          concerns: ['lacks proposal rollback story'],
+        },
+        2,
+      ),
+    ])
+    expect(reviewOutcomeOf(thrashed)).toBe('converged')
+  })
+
+  it('a plain needs-review at the base cap stays incomplete — the verification round is still owed', () => {
+    const plain = contextOf([
+      stamp({ altitude: 'L2', type: 'depth', profile: 'M', rationale: 'r', source: 'estimator' }, 1),
+      stamp({ altitude: 'L2', type: 'round_open', round: 3, cap: 3 }, 2),
+      stamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 3,
+          verdict: 'needs-review',
+          counts: { blocker: 0, material: 1, nitpick: 0 },
+          open: { blocker: 0, material: 0, nitpick: 0 },
+        },
+        3,
+      ),
+    ])
+    expect(reviewOutcomeOf(plain)).toBe('incomplete')
+  })
+})

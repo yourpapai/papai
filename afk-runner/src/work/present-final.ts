@@ -17,7 +17,7 @@ import { readChangeDigest } from './gate-digest-extract.js'
 import { writeGateFiles } from './gate-files.js'
 import { runGatePrelude } from './gate-prelude.js'
 import { readReviewResultFromSidecars } from './gate-settle.js'
-import { findingsOf, gatherGateSignals } from './gate-signals.js'
+import { concernHistoryOf, findingsOf, gatherGateSignals } from './gate-signals.js'
 import type { ReviewLoopResult } from './review-loop.js'
 
 export interface PresentFinalDeps {
@@ -52,6 +52,7 @@ async function finalGateContext(
   readonly changeDir: string
   readonly version: number
   readonly round: number
+  readonly settled: KernelContext
   readonly emit: (event: EventInput) => void
   readonly signals: Awaited<ReturnType<typeof gatherGateSignals>>
   readonly autonomy: ReturnType<typeof autonomyOf>
@@ -81,33 +82,59 @@ async function finalGateContext(
     autonomy.deadlineMinutes === undefined
       ? undefined
       : new Date(Date.now() + autonomy.deadlineMinutes * 60_000).toISOString()
-  return { runDir, logPath, sidecarDir, changeDir, version, round, emit, signals, autonomy, deadlineAt }
+  return { runDir, logPath, sidecarDir, changeDir, version, round, settled, emit, signals, autonomy, deadlineAt }
+}
+
+/** The final gate's digest input — findings, signals, and the thrash history when the fold carries one. */
+async function finalDigestInput(
+  deps: PresentFinalDeps,
+  bound: {
+    readonly runDir: string
+    readonly sidecarDir: string
+    readonly changeDir: string
+    readonly version: number
+    readonly settled: KernelContext
+    readonly signals: Awaited<ReturnType<typeof gatherGateSignals>>
+    readonly findings: ReturnType<typeof findingsOf>
+  },
+): Promise<Parameters<typeof writeGateFiles>[1]> {
+  return {
+    version: bound.version,
+    mode: 'final',
+    changeName: deps.changeName,
+    runId: path.basename(bound.runDir),
+    assumptions: bound.signals.assumptions,
+    blockers: bound.findings.blockers,
+    openMaterial: bound.findings.material,
+    openNitpicks: bound.findings.nitpicks,
+    trajectory: bound.signals.trajectory,
+    capHitFired: false,
+    summary: deps.changeName,
+    costUsd: bound.signals.costUsd,
+    costKnown: bound.signals.costKnown,
+    durationMs: bound.signals.durationMs,
+    changeDigest: await readChangeDigest(bound.changeDir),
+    ...(bound.settled.lastVerdict !== null && (bound.settled.lastVerdict.concerns ?? []).length > 0
+      ? { concernHistory: await concernHistoryOf(bound.sidecarDir, bound.settled.lastVerdict) }
+      : {}),
+  }
 }
 
 export async function presentFinalGate(deps: PresentFinalDeps, io: WorkIO): Promise<PresentFinalResult> {
-  const { runDir, logPath, sidecarDir, changeDir, version, round, emit, signals, autonomy, deadlineAt } =
+  const { runDir, logPath, sidecarDir, changeDir, version, round, emit, settled, signals, autonomy, deadlineAt } =
     await finalGateContext(deps, io)
   const reviewResult: ReviewLoopResult = await readReviewResultFromSidecars(sidecarDir, round, 'converged')
-  const findings = findingsOf(reviewResult)
   await writeGateFiles(
     { emit: (): void => undefined, runDir, changeDir, driftCheck: () => Promise.resolve() },
-    {
+    await finalDigestInput(deps, {
+      runDir,
+      sidecarDir,
+      changeDir,
       version,
-      mode: 'final',
-      changeName: deps.changeName,
-      runId: path.basename(runDir),
-      assumptions: signals.assumptions,
-      blockers: findings.blockers,
-      openMaterial: findings.material,
-      openNitpicks: findings.nitpicks,
-      trajectory: signals.trajectory,
-      capHitFired: false,
-      summary: deps.changeName,
-      costUsd: signals.costUsd,
-      costKnown: signals.costKnown,
-      durationMs: signals.durationMs,
-      changeDigest: await readChangeDigest(changeDir),
-    },
+      settled,
+      signals,
+      findings: findingsOf(reviewResult),
+    }),
   )
   io.append({ altitude: 'L2', type: 'stage_enter', stage: 'gate' })
   io.append({

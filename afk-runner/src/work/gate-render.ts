@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { DigestRecord } from '../legacy-fold.js'
+import type { ConcernRecord } from './concern-model.js'
 import { formatDigestBody } from './digest-format.js'
 import type { ChangeDigest } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateDigestInput, GateFinding } from './gate-model.js'
@@ -142,8 +143,29 @@ export function renderDecisions(mode: 'early' | 'final'): string[] {
 function appendGateSections(lines: string[], input: GateDigestInput, ranked: readonly GateAssumption[]): void {
   appendBlockers(lines, input.blockers)
   if (input.mode === 'early') appendEarlyCapHitSections(lines, input)
+  if (input.concernHistory !== undefined && input.concernHistory.length > 0) {
+    lines.push('', ...concernHistoryLines(input.concernHistory))
+  }
   appendNitpicks(lines, input.openNitpicks)
   appendAssumptions(lines, ranked, input.runId)
+}
+
+/**
+ * Concern-history copy source (loop-memory D6): one header line per thrashing
+ * concern (fingerprint excerpt + round span) with its round-by-round entries
+ * beneath, inside the existing findings-rows grammar.
+ */
+export function concernHistoryLines(records: readonly ConcernRecord[]): string[] {
+  const lines = ['### Concern history', '']
+  for (const record of records) {
+    const excerpt = record.fingerprint.length > 48 ? `${record.fingerprint.slice(0, 48)}…` : record.fingerprint
+    lines.push(`- ${excerpt} (seen r${record.firstRound}..r${record.lastRound})`)
+    for (const entry of record.entries) {
+      const note = entry.outcome === undefined ? '' : ` — ${entry.outcome}`
+      lines.push(`  - r${entry.round} [${entry.id}] ${entry.class} ${entry.resolution}${note}`)
+    }
+  }
+  return lines
 }
 
 function appendBlockers(lines: string[], blockers: readonly GateBlocker[]): void {

@@ -16,6 +16,7 @@ import {
   consumeSteerFile,
   parseSteerDirectives,
   reloadStagedSteer,
+  ResolverOutputSchema,
   runReviewLoop,
 } from '../../../afk-runner/src/work/review-loop.js'
 import type { ReviewLoopDeps } from '../../../afk-runner/src/work/review-loop.js'
@@ -281,7 +282,7 @@ describe('runReviewLoop', () => {
     const dir = makeDir()
     const fixture = makeLoopFixture(dir, {
       reviewer: [JSON.stringify({ findings: [finding()] })],
-      skeptic: [JSON.stringify({ findings: [finding({ id: 'F9' })] })],
+      skeptic: [JSON.stringify({ findings: [finding({ id: 'S1' })] })],
       resolver: [NO_BLOCKERS_RESOLUTIONS],
     })
     const result = await runReviewLoop(fixture.deps, {
@@ -554,5 +555,146 @@ describe('runReviewLoop — raised vs open', () => {
     expect(result.rounds).toBe(3)
     expect(result.verdict).toBe('open')
     expect(result.openMaterial.map((r) => r.id)).toEqual(['F1'])
+  })
+})
+
+describe('namespacing and resolver uniqueness (loop-memory D2)', () => {
+  it('rejects a skeptic sidecar with mis-namespaced ids and accepts the corrected retry', async () => {
+    const dir = makeDir()
+    const bad = JSON.stringify({ findings: [finding({ id: 'F1' })] })
+    const good = JSON.stringify({
+      findings: [finding({ id: 'S1', gap: 'the proposal never names the scope id' })],
+    })
+    const fixture = makeLoopFixture(dir, {
+      reviewer: [JSON.stringify({ findings: [finding()] })],
+      skeptic: [bad, good],
+      resolver: [NO_BLOCKERS_RESOLUTIONS],
+    })
+    const result = await runReviewLoop(fixture.deps, {
+      changeName: 'add-thing',
+      changeDir: fixture.changeDir,
+      depth: 'L',
+      taskText: 'x',
+      conventions: 'y',
+    })
+    expect(result.outcome).toBe('converged')
+    expect(fixture.spawnCounts.get('skeptic')).toBeGreaterThanOrEqual(2)
+  })
+
+  it('ResolverOutputSchema rejects duplicate resolution ids within a round', () => {
+    const duplicated = {
+      resolutions: [resolution({ id: 'F1' }), resolution({ id: 'F1', class: 'BLOCKER' })],
+      assumptions: [],
+    }
+    expect(ResolverOutputSchema.safeParse(duplicated).success).toBe(false)
+    expect(ResolverOutputSchema.safeParse({ resolutions: [resolution({ id: 'F1' })], assumptions: [] }).success).toBe(
+      true,
+    )
+  })
+})
+
+describe('concern-history end (loop-memory D6)', () => {
+  it('a third-strike re-raise ends the loop with the cluster ids on the convergence event and recurringConcerns on the result', async () => {
+    const dir = makeDir()
+    const gap = 'the proposal never names the scope id'
+    const findingRound = (id: string): string =>
+      JSON.stringify({
+        findings: [finding({ id, class: 'MATERIAL', gap })],
+      })
+    const openAssumed = (id: string): string =>
+      JSON.stringify({
+        resolutions: [{ id, class: 'MATERIAL', resolution: 'assumed', outcome: 'defaulted' }],
+        assumptions: [],
+      })
+    const fixture = makeLoopFixture(dir, {
+      reviewer: [findingRound('F1'), findingRound('F2'), findingRound('F3')],
+      resolver: [openAssumed('F1'), openAssumed('F2'), openAssumed('F3')],
+    })
+    const result = await runReviewLoop(fixture.deps, {
+      changeName: 'add-thing',
+      changeDir: fixture.changeDir,
+      depth: 'M',
+      taskText: 'x',
+      conventions: 'y',
+    })
+    expect(result.outcome).toBe('cap-hit')
+    expect(result.rounds).toBe(3)
+    expect(result.recurringConcerns).toHaveLength(1)
+    expect(result.recurringConcerns?.[0]?.firstRound).toBe(1)
+    const convergences = fixture.emitted.filter((event) => event.type === 'convergence')
+    const convergence = convergences.find((event) => event.round === 3)
+    const cluster = result.recurringConcerns?.[0]?.fingerprint
+    expect(cluster).toBeDefined()
+    expect(convergence?.concerns).toContain(cluster)
+  })
+})
+
+describe('consistency injection (loop-memory D7/D8)', () => {
+  it('synthesized C<n> findings join the round and a twice-dismissed disagreement ends the loop as thrash on the third raise', async () => {
+    const dir = makeDir()
+    const fixture = makeLoopFixture(dir, {
+      // The reviewer re-raises the disagreement each round — the synthesized
+      // C1 rides beside it, and the re-raised fingerprint feeds the detector.
+      reviewer: [
+        JSON.stringify({
+          findings: [finding({ id: 'F1', class: 'MATERIAL', gap: 'Migrations use drizzle kit.' })],
+        }),
+        JSON.stringify({
+          findings: [finding({ id: 'F2', class: 'MATERIAL', gap: 'Migrations use drizzle kit.' })],
+        }),
+        JSON.stringify({
+          findings: [finding({ id: 'F3', class: 'MATERIAL', gap: 'Migrations use drizzle kit.' })],
+        }),
+      ],
+      // The resolver dismisses both copies twice; round 3's re-raise trips the
+      // thrash detector.
+      resolver: [
+        JSON.stringify({
+          resolutions: [
+            { id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'wording is fine' },
+            { id: 'C1', class: 'MATERIAL', resolution: 'dismissed', justification: 'wording is fine' },
+          ],
+          assumptions: [],
+        }),
+        JSON.stringify({
+          resolutions: [
+            { id: 'F2', class: 'MATERIAL', resolution: 'dismissed', justification: 'still fine' },
+            { id: 'C1', class: 'MATERIAL', resolution: 'dismissed', justification: 'still fine' },
+          ],
+          assumptions: [],
+        }),
+        JSON.stringify({
+          resolutions: [
+            { id: 'F3', class: 'MATERIAL', resolution: 'dismissed', justification: 'third strike' },
+            { id: 'C1', class: 'MATERIAL', resolution: 'dismissed', justification: 'third strike' },
+          ],
+          assumptions: [],
+        }),
+      ],
+    })
+    // Seed a cross-artifact disagreement the scan must catch every round.
+    fs.writeFileSync(
+      path.join(fixture.changeDir, 'proposal.md'),
+      '## Why\nimprove things\n\nMigrations use drizzle kit.\n',
+    )
+    fs.writeFileSync(
+      path.join(fixture.changeDir, 'design.md'),
+      '## Context\nhow\n\nThe migration path is hand-written SQL.\n',
+    )
+    const result = await runReviewLoop(fixture.deps, {
+      changeName: 'add-thing',
+      changeDir: fixture.changeDir,
+      depth: 'M',
+      taskText: 'x',
+      conventions: 'y',
+    })
+    // The synthesized finding rode the resolver prompt beside the lens copy.
+    expect(promptOf(fixture, 'resolver-1')).toContain('C1')
+    expect(result.rounds).toBe(3)
+    expect(result.outcome).toBe('cap-hit')
+    expect(result.recurringConcerns).toHaveLength(1)
+    expect(result.recurringConcerns?.[0]?.entries.map((entry) => entry.id)).toEqual(['F1', 'F2', 'F3'])
+    const convergences = fixture.emitted.filter((event) => event.type === 'convergence')
+    expect(convergences.find((event) => event.round === 3)?.concerns).toHaveLength(1)
   })
 })

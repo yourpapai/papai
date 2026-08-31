@@ -282,3 +282,94 @@ describe('cap-hit routing by three verdicts (open-vs-raised 5.1/5.2)', () => {
     expect(presentedEvents(runDir)[0]).toMatchObject({ mode: 'final' })
   })
 })
+
+describe('concern-history routing (loop-memory D6)', () => {
+  /**
+   * Moves the change folder before each round-2/3 lens run, so the rounds'
+   * `edited` claims have real movement behind them (the needs-review shape).
+   * The root is read lazily — the pipeline that will own it does not exist yet
+   * at wiring, the `moveFolderBeforeRound2` precedent one describe over.
+   */
+  function moveFolderBeforeRounds(rootOf: () => string): (basename: string) => void {
+    return (basename): void => {
+      if (!/^findings-[23]\.json$/u.test(basename)) return
+      fs.writeFileSync(
+        path.join(rootOf(), 'openspec', 'changes', 'add-thing', 'proposal.md'),
+        `<!-- revision ${basename} -->\n`,
+      )
+    }
+  }
+
+  /** Round/convergence tokens from the log — the verification-round assertions' vocabulary. */
+  function roundTokensOf(runDir: string): string[] {
+    return readEvents(path.join(runDir, 'events.ndjson')).flatMap((event) => {
+      if (event.type === 'round_open') return [`round_open:${event.round}:${event.cap}`]
+      if (event.type === 'convergence') return [`convergence:${event.round}:${event.verdict}`]
+      return []
+    })
+  }
+
+  it('a thrash-ended needs-review run buys no verification round and settles into the tail', async () => {
+    const gap = 'proposal lacks a rollback story'
+    const roundFinding = (id: string): string =>
+      JSON.stringify({
+        findings: [
+          {
+            id,
+            class: 'MATERIAL',
+            gap,
+            question: 'how do we roll back?',
+            code_evidence_attempted: 'searched the repo, none found',
+          },
+        ],
+      })
+    const edited = (id: string): string =>
+      JSON.stringify({
+        resolutions: [{ id, class: 'MATERIAL', resolution: 'edited', outcome: 'added a rollback section' }],
+        assumptions: [],
+      })
+    const rootRef: { root: string } = { root: '' }
+    const pipeline = makeFakePipeline({
+      sidecarOverrides: {
+        'depth.json': JSON.stringify({
+          implicated_files: ['src/a.ts', 'src/b.ts'],
+          signals: {
+            cross_module: true,
+            db_migration: false,
+            provider_surface: false,
+            credentials: false,
+            novelty: 'existing-modules',
+          },
+          rationale: 'two modules',
+        }),
+        'draft-design.json': JSON.stringify({ files_written: ['openspec/changes/add-thing/design.md'] }),
+        'findings-1.json': roundFinding('F1'),
+        'resolutions-1.json': edited('F1'),
+        'findings-2.json': roundFinding('F2'),
+        'resolutions-2.json': edited('F2'),
+        'findings-3.json': roundFinding('F3'),
+        'resolutions-3.json': edited('F3'),
+      },
+      onSpawn: moveFolderBeforeRounds(() => rootRef.root),
+    })
+    rootRef.root = pipeline.repoRoot
+    const taskFile = path.join(pipeline.repoRoot, 'task.md')
+    fs.writeFileSync(taskFile, TASK_TEXT)
+    const halted = await startRun(pipeline.deps, { taskFile })
+    const runDir = pipeline.runDirOf(halted.runId)
+    // The loop ended on the round-3 thrash, not the cap: no round 4.
+    expect(pipeline.spawnOrder).not.toContain('findings-4.json')
+    const tokens = roundTokensOf(runDir)
+    expect(tokens.filter((token) => token.startsWith('round_open:'))).toHaveLength(3)
+    const events = readEvents(path.join(runDir, 'events.ndjson'))
+    const lastConvergence = events.filter((event) => event.type === 'convergence').at(-1)
+    expect(lastConvergence).toMatchObject({ round: 3, verdict: 'needs-review' })
+    expect((lastConvergence as { concerns?: readonly string[] } | undefined)?.concerns).toEqual([
+      'lacks proposal rollback story',
+    ])
+    expect(halted.halted).toBe('final')
+    const presented = presentedEvents(runDir)
+    expect(presented).toHaveLength(1)
+    expect(presented[0]).toMatchObject({ mode: 'final' })
+  })
+})

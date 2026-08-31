@@ -15,6 +15,7 @@ import type {
   GateOutcome,
 } from '../events.js'
 import type { AutoDecisionRecord, DigestRecord } from '../legacy-fold.js'
+import { digestRecordOf } from '../legacy-fold.js'
 
 export type StageStatus = 'pending' | 'active' | 'done'
 
@@ -110,6 +111,8 @@ export type KernelEvent =
       readonly counts: FindingCounts
       /** Only what a human must settle; absent on a pre-split line, folding as `counts`. */
       readonly open?: FindingCounts
+      /** Thrashing concern cluster ids (loop-memory D5); absent lines fold as `[]`. */
+      readonly concerns?: readonly string[]
     }
   | {
       readonly type: 'gate.presented'
@@ -198,14 +201,7 @@ export const kernelSetup = setup({
       const rest: RoundTally = Object.fromEntries(
         Object.entries(context.tally).filter(([round]) => Number(round) !== event.round),
       )
-      const record: DigestRecord = {
-        round: event.round,
-        counts: event.counts,
-        open: event.open ?? event.counts,
-        resolved: counts.resolved,
-        dismissed: counts.dismissed,
-        verdict: event.verdict,
-      }
+      const record = digestRecordOf(event, counts)
       return { tally: rest, perRound: [...context.perRound, record], lastVerdict: record }
     }),
     presentGate: assign(({ event }) => {

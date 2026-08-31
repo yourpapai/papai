@@ -131,9 +131,14 @@ cluster ids and `runRound` returns `outcome: 'cap-hit'` with
 `review.ts`, `owesVerificationRound` gains the conjunct that the last
 verdict's `concerns` is empty — a thrash end never buys the verification
 round, and the denial sits before `verificationBudgetRefuses` (a denied round
-makes the budget question moot). `presentsGate`/`reviewOutcomeOf` are
-untouched: the genuinely-open set decides gate versus tail, so a nitpick-only
-thrash end flows through exactly as its spec requires. Calm-stop keeps its
+makes the budget question moot). `presentsGate` stays untouched: the
+genuinely-open set decides gate versus tail, so a nitpick-only thrash end
+flows through exactly as its spec requires. *Implementation note
+(discovered red-first):* `reviewOutcomeOf` did gain one conjunct — a
+thrash-ended `needs-review` at the base cap otherwise reads `incomplete`
+there (that predicate owns the same owed-verification question) and
+re-enters the review stage forever; concerns non-empty ⇒ settled as
+converged, the denial's second fold-derived face. Calm-stop keeps its
 position (parks after the in-flight round records). `concernHistory` rides
 `presentGate` regardless of mode — whichever gate follows carries the
 round-by-round block (gate-signals gathers it; gate-render renders it inside

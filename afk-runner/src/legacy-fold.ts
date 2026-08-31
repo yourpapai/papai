@@ -18,6 +18,13 @@ export interface DigestRecord {
    * read it through `openCountsOf` rather than assuming either way.
    */
   readonly open?: FindingCounts
+  /**
+   * Thrashing concern cluster ids (loop-memory D5, additive): non-empty only on
+   * the convergence that ended the loop as a concern-history cap-hit. Both
+   * folds always stamp it (absence normalizes to `[]`); readers use
+   * `concerns ?? []` so hand-built records may omit it.
+   */
+  readonly concerns?: readonly string[]
   readonly resolved: number
   readonly dismissed: number
   readonly verdict: 'converged' | 'needs-review' | 'open'
@@ -26,6 +33,32 @@ export interface DigestRecord {
 /** A record's open counts, falling back to its raised counts for a pre-split record. */
 export function openCountsOf(record: DigestRecord): FindingCounts {
   return record.open ?? record.counts
+}
+
+/**
+ * The convergence record both folds stamp — one shape, so the kernel and the
+ * legacy replay can never disagree on what a flushed round looks like
+ * (concerns normalized to `[]` for a pre-loop-memory line).
+ */
+export function digestRecordOf(
+  event: {
+    readonly round: number
+    readonly verdict: DigestRecord['verdict']
+    readonly counts: FindingCounts
+    readonly open?: FindingCounts
+    readonly concerns?: readonly string[]
+  },
+  counts: { readonly resolved: number; readonly dismissed: number },
+): DigestRecord {
+  return {
+    round: event.round,
+    counts: event.counts,
+    open: event.open ?? event.counts,
+    concerns: event.concerns ?? [],
+    resolved: counts.resolved,
+    dismissed: counts.dismissed,
+    verdict: event.verdict,
+  }
 }
 
 export interface AutoDecisionRecord {
@@ -123,14 +156,7 @@ function foldEvent(state: ReplayState, event: EventInput, pending: Map<number, R
   if (event.type === 'convergence') {
     const counts = pending.get(event.round) ?? { resolved: 0, dismissed: 0 }
     pending.delete(event.round)
-    const record: DigestRecord = {
-      round: event.round,
-      counts: event.counts,
-      open: event.open ?? event.counts,
-      resolved: counts.resolved,
-      dismissed: counts.dismissed,
-      verdict: event.verdict,
-    }
+    const record = digestRecordOf(event, counts)
     const perRound = [...state.perRound, record]
     return { ...state, perRound, lastVerdict: record }
   }

@@ -439,6 +439,7 @@ describe('analyze — Metric shape and the kernel-fold trajectory', () => {
           round: 1,
           counts: { blocker: 1, material: 2, nitpick: 0 },
           open: { blocker: 0, material: 1, nitpick: 0 },
+          concerns: [],
           resolved: 0,
           dismissed: 0,
           verdict: 'open',
@@ -447,6 +448,7 @@ describe('analyze — Metric shape and the kernel-fold trajectory', () => {
           round: 2,
           counts: { blocker: 0, material: 0, nitpick: 0 },
           open: { blocker: 0, material: 0, nitpick: 0 },
+          concerns: [],
           resolved: 0,
           dismissed: 0,
           verdict: 'converged',
@@ -687,7 +689,7 @@ describe('analyze-findings — finding lifecycle over sidecar joins', () => {
     expect(duplicateIdRate(bundle)).toEqual({ status: 'known', value: 0.25 })
   })
 
-  it('lensOverlapRate matches skeptic findings against the reviewer lens by normalized gap', async () => {
+  it('lensOverlapRate matches skeptic findings against the reviewer lens by gap fingerprint (loop-memory D1 handoff)', async () => {
     const bundle = await lifecycleBundle()
     expect(lensOverlapRate(bundle)).toEqual({ status: 'known', value: 0.5 })
   })
@@ -705,9 +707,11 @@ describe('analyze-findings — finding lifecycle over sidecar joins', () => {
     })
   })
 
-  it('concernPersistence reports unknown with its reason until loop-memory lands fingerprintOf', async () => {
+  it('concernPersistence measures cross-round re-raises by gap fingerprint (loop-memory D1 handoff)', async () => {
     const bundle = await lifecycleBundle()
-    expect(unknownReasonOf(concernPersistence(bundle))).toContain('afk-runner-loop-memory')
+    // Clusters: 'rollback story missing' spans r1..r2; 'no tests', 'typo',
+    // 'auth never expires' are single-round — one of four persists.
+    expect(concernPersistence(bundle)).toEqual({ status: 'known', value: 0.25 })
   })
 
   it('every lifecycle metric is unknown with its reason over a run without sidecars', async () => {
@@ -718,7 +722,7 @@ describe('analyze-findings — finding lifecycle over sidecar joins', () => {
     expect(lensOverlapRate(bundle)).toEqual({ status: 'unknown', reason: 'no skeptic findings sidecars' })
     expect(classChurn(bundle)).toEqual({ status: 'unknown', reason: 'no finding id spans multiple rounds' })
     expect(resolverActionMix(bundle)).toEqual({ status: 'unknown', reason: 'no resolutions sidecars' })
-    expect(concernPersistence(bundle).status).toBe('unknown')
+    expect(concernPersistence(bundle)).toEqual({ status: 'unknown', reason: 'no findings sidecars' })
   })
 })
 

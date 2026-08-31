@@ -312,6 +312,7 @@ describe('kernel fold', () => {
           round: 1,
           counts: { blocker: 1, material: 0, nitpick: 2 },
           open: { blocker: 1, material: 0, nitpick: 2 },
+          concerns: [],
           resolved: 1,
           dismissed: 1,
           verdict: 'open',
@@ -321,6 +322,7 @@ describe('kernel fold', () => {
         round: 1,
         counts: { blocker: 1, material: 0, nitpick: 2 },
         open: { blocker: 1, material: 0, nitpick: 2 },
+        concerns: [],
         resolved: 1,
         dismissed: 1,
         verdict: 'open',
@@ -373,6 +375,7 @@ describe('kernel fold', () => {
         round: 2,
         counts: { blocker: 0, material: 0, nitpick: 0 },
         open: { blocker: 0, material: 0, nitpick: 0 },
+        concerns: [],
         resolved: 2,
         dismissed: 0,
         verdict: 'converged',
@@ -479,5 +482,51 @@ describe('convergence carries both count sets through the kernel fold', () => {
     ])
     expect(snapshot.context.perRound[0]).toMatchObject({ verdict: 'needs-review', counts: raised, open })
     expect(snapshot.context.lastVerdict).toMatchObject({ open })
+  })
+})
+
+describe('kernel fold — loop-memory additive concerns (D5)', () => {
+  const concernsCounts = { blocker: 1, material: 2, nitpick: 0 }
+  it('translates concerns onto the kernel convergence event and stamps the record; a pre-change line folds []', () => {
+    expect(
+      toKernelEvent(
+        stamp(
+          {
+            altitude: 'L2',
+            type: 'convergence',
+            round: 3,
+            verdict: 'open',
+            counts: concernsCounts,
+            concerns: ['fingerprint a'],
+          },
+          1,
+        ),
+      ),
+    ).toEqual({
+      type: 'convergence',
+      round: 3,
+      verdict: 'open',
+      counts: concernsCounts,
+      concerns: ['fingerprint a'],
+    })
+    const { snapshot } = foldEvents(pipelineMachine, [
+      stamp({ altitude: 'L2', type: 'round_open', round: 3, cap: 3 }, 1),
+      stamp(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 3,
+          verdict: 'open',
+          counts: concernsCounts,
+          concerns: ['fingerprint a'],
+        },
+        2,
+      ),
+      stamp({ altitude: 'L2', type: 'round_open', round: 4, cap: 4 }, 3),
+      stamp({ altitude: 'L2', type: 'convergence', round: 4, verdict: 'converged', counts: concernsCounts }, 4),
+    ])
+    expect(snapshot.context.perRound[0]).toMatchObject({ concerns: ['fingerprint a'] })
+    expect(snapshot.context.perRound[1]).toMatchObject({ concerns: [] })
+    expect(snapshot.context.lastVerdict).toMatchObject({ concerns: [] })
   })
 })

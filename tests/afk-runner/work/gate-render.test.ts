@@ -177,3 +177,36 @@ describe('gate rows carry the sanitized gap (open-vs-raised 7.2)', () => {
     expect(row?.split('F2 ')[1]).toBe(sanitized)
   })
 })
+
+describe('concern-history block (loop-memory D6)', () => {
+  const history = [
+    {
+      fingerprint: 'lacks proposal rollback story',
+      firstRound: 1,
+      lastRound: 3,
+      entries: [
+        { round: 1, id: 'F1', class: 'MATERIAL', resolution: 'edited', outcome: 'added a rollback section' },
+        { round: 2, id: 'F2', class: 'MATERIAL', resolution: 'edited' },
+        { round: 3, id: 'F3', class: 'MATERIAL', resolution: 'edited', outcome: 'reworded again' },
+      ],
+    },
+  ]
+
+  it('renders the round-by-round block inside the early gate', () => {
+    const md = writeGateDigest({ ...decisionBase, mode: 'early', capHitFired: true, concernHistory: history })
+    expect(md).toContain('### Concern history')
+    expect(md).toContain('- lacks proposal rollback story (seen r1..r3)')
+    expect(md).toContain('  - r1 [F1] MATERIAL edited — added a rollback section')
+    expect(md).toContain('  - r2 [F2] MATERIAL edited')
+  })
+
+  it('rides the final gate the same way — whichever gate follows a thrash end', () => {
+    const md = writeGateDigest({ ...decisionBase, mode: 'final', capHitFired: false, concernHistory: history })
+    expect(md).toContain('### Concern history')
+    expect(md).toContain('  - r3 [F3] MATERIAL edited — reworded again')
+  })
+
+  it('no history, no block', () => {
+    expect(writeGateDigest({ ...decisionBase, mode: 'early', capHitFired: true })).not.toContain('### Concern history')
+  })
+})

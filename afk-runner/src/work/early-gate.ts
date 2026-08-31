@@ -16,7 +16,7 @@ import type { KernelContext } from '../kernel/machine.js'
 import { readChangeDigest } from './gate-digest-extract.js'
 import { presentGate } from './gate-files.js'
 import { runGatePrelude } from './gate-prelude.js'
-import { findingsOf, gatherGateSignals } from './gate-signals.js'
+import { concernHistoryOf, findingsOf, gatherGateSignals } from './gate-signals.js'
 import type { ReviewLoopResult } from './review-loop.js'
 
 /** Cap-hit presentation paths shared by the review work module (design D5/D6). */
@@ -63,6 +63,38 @@ async function earlyGateContext(
   return { version, settled, events, signals, autonomy, deadlineAt }
 }
 
+/** The early gate's digest input — findings, signals, and the thrash history a concern end carries. */
+async function earlyDigestInput(
+  input: { readonly changeName: string },
+  paths: EarlyGatePaths,
+  version: number,
+  settled: KernelContext,
+  signals: Awaited<ReturnType<typeof gatherGateSignals>>,
+  result: ReviewLoopResult,
+): Promise<Parameters<typeof presentGate>[1]> {
+  const findings = findingsOf(result)
+  return {
+    version,
+    mode: 'early',
+    changeName: input.changeName,
+    runId: path.basename(paths.runDir),
+    assumptions: signals.assumptions,
+    blockers: findings.blockers,
+    openMaterial: findings.material,
+    openNitpicks: findings.nitpicks,
+    trajectory: signals.trajectory,
+    capHitFired: true,
+    summary: input.changeName,
+    costUsd: signals.costUsd,
+    costKnown: signals.costKnown,
+    durationMs: signals.durationMs,
+    changeDigest: await readChangeDigest(paths.changeDir),
+    ...(result.recurringConcerns === undefined || result.recurringConcerns.length === 0
+      ? {}
+      : { concernHistory: await concernHistoryOf(paths.sidecarDir, settled.lastVerdict) }),
+  }
+}
+
 /** Cap-hit presentation: full gate digest + hashes sidecar + presented event + the ladder prelude (design D5/D6). */
 export async function presentEarlyGate(
   input: { readonly agent: { readonly config: RunnerConfig }; readonly changeName: string; readonly repoRoot: string },
@@ -76,26 +108,9 @@ export async function presentEarlyGate(
     paths,
     result,
   )
-  const findings = findingsOf(result)
   await presentGate(
     { emit: paths.emit, runDir: paths.runDir, changeDir: paths.changeDir, driftCheck: () => Promise.resolve() },
-    {
-      version,
-      mode: 'early',
-      changeName: input.changeName,
-      runId: path.basename(paths.runDir),
-      assumptions: signals.assumptions,
-      blockers: findings.blockers,
-      openMaterial: findings.material,
-      openNitpicks: findings.nitpicks,
-      trajectory: signals.trajectory,
-      capHitFired: true,
-      summary: input.changeName,
-      costUsd: signals.costUsd,
-      costKnown: signals.costKnown,
-      durationMs: signals.durationMs,
-      changeDigest: await readChangeDigest(paths.changeDir),
-    },
+    await earlyDigestInput(input, paths, version, settled, signals, result),
     ...(deadlineAt === undefined ? [{}] : [{ deadlineAt }]),
   )
   await runGatePrelude({
