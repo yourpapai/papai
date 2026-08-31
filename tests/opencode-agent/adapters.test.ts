@@ -317,6 +317,75 @@ describe('the recorded SDK contract', () => {
     expect(decodeSessionUsage(fetched)).toBeNull()
   })
 
+  describe('the session children envelope', () => {
+    /**
+     * Read by name until the decoder step publishes the export (change task
+     * 3.3): the type system cannot name a member that does not exist yet, and
+     * these tests exist to say exactly what that member must answer. The
+     * predicate is that answer, stated as a type.
+     */
+    const isDecoder = (value: unknown): value is (fetched: unknown) => readonly string[] | null =>
+      typeof value === 'function'
+
+    const decodeOf = async (): Promise<(fetched: unknown) => readonly string[] | null> => {
+      const contract = await import('../../opencode-agent/src/sdk-contract.js')
+      if (!('decodeSessionChildren' in contract)) {
+        throw new Error('the session children decoder is not published yet')
+      }
+      if (!isDecoder(contract.decodeSessionChildren)) {
+        throw new Error('the session children decoder is not a function')
+      }
+      return contract.decodeSessionChildren
+    }
+
+    /**
+     * `GET /session/{id}/children` answers `200: Array<Session>` under the same
+     * `{ data, error }` envelope every other response above uses — the recorded
+     * convention applied to a list. The decoder reads only `id` from each
+     * entry: the walk it feeds needs addresses, nothing else.
+     */
+    test('reads only the id of each child entry', async () => {
+      const decodeSessionChildren = await decodeOf()
+
+      expect(
+        decodeSessionChildren({
+          data: [
+            { id: 'ses_child_1', title: 'first', directory: '/repo' },
+            { id: 'ses_child_2', parentID: 'ses_parent' },
+          ],
+          request: {},
+          response: {},
+        }),
+      ).toEqual(['ses_child_1', 'ses_child_2'])
+      expect(decodeSessionChildren({ data: [] })).toEqual([])
+    })
+
+    test('a child entry with no id is dropped, not fatal', async () => {
+      const decodeSessionChildren = await decodeOf()
+
+      expect(
+        decodeSessionChildren({
+          data: [{ id: 'ses_child_1' }, { title: 'the id moved' }, 'junk', null],
+          error: undefined,
+        }),
+      ).toEqual(['ses_child_1'])
+    })
+
+    test.each([
+      [{ data: undefined, error: { message: 'no such session' } }],
+      [{ data: 'not an array' }],
+      [{}],
+      ['nope'],
+    ])('reports %p as unknown rather than throwing', async (fetched) => {
+      const decodeSessionChildren = await decodeOf()
+
+      // The `decodeSessionUsage` doctrine, one envelope over: the walk this
+      // feeds decorates the spend read, and an SDK that moved it must not fail
+      // the turn or the phase.
+      expect(decodeSessionChildren(fetched)).toBeNull()
+    })
+  })
+
   /**
    * The abort envelope.
    *
