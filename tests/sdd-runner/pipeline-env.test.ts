@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -132,6 +132,18 @@ describe('agentDepsOf (pipeline-env)', () => {
     const { env, deps, emit } = await makeEnv({}, CLAUDE)
     expect(env.agent).toEqual(agentDepsOf(deps, emit))
     expect(env.agent.claude).toBe(CLAUDE)
+  })
+
+  it('is the only place the runner builds an AgentLayerDeps literal', () => {
+    // Each stage entry point needs this projection, and a hand-copied literal
+    // silently omits whatever the seam grew since it was copied — the claude
+    // run context today. A structural pin is the only guard that survives a
+    // sixth entry point being added by someone who never read this file.
+    const srcDir = path.join(import.meta.dir, '..', '..', 'sdd-runner', 'src')
+    const offenders = readdirSync(srcDir)
+      .filter((name) => name.endsWith('.ts'))
+      .filter((name) => readFileSync(path.join(srcDir, name), 'utf8').includes(': AgentLayerDeps = {'))
+    expect(offenders).toEqual([])
   })
 })
 

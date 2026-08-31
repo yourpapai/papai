@@ -6,13 +6,13 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { AgentLayerDeps } from './agent-layer.js'
 import { runPlanBranch } from './children.js'
 import { buildDriftCheck } from './drift.js'
 import type { GateResumeContext, RunGateResumeResult } from './extend-round.js'
 import type { OrchestratorDeps, StageContext } from './gate-digest.js'
 import { finalizeGate, presentGateAt } from './gate-digest.js'
 import { runPlanner } from './intake.js'
+import { agentDepsOf } from './pipeline-env.js'
 import { PlanSchema } from './plan.js'
 import type { PlanChild } from './plan.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
@@ -142,7 +142,7 @@ export async function settlePlanVeto(
   vetoes: readonly { readonly id: string; readonly redirect?: string }[],
   version: number,
 ): Promise<RunGateResumeResult> {
-  const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit: ctx.emit }
+  const agent = agentDepsOf(deps, ctx.emit)
   const current = PlanSchema.parse(JSON.parse(await readFile(path.join(ctx.sidecarDir, 'plan.json'), 'utf8')))
   const redirects = redirectLines(vetoes, childIdsOf(state))
   const ordered = await runPlanner(

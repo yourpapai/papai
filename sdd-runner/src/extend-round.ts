@@ -22,6 +22,7 @@ import type { GateSessionView } from './gate-session.js'
 import { resumeGate, vetoRedirects } from './gate.js'
 import type { GateOutcome } from './gate.js'
 import { createMaterializer } from './materialize.js'
+import { agentDepsOf } from './pipeline-env.js'
 import { runPostConvergenceTail } from './post-review-tail.js'
 import type { Verbosity } from './renderer.js'
 import { runReviewLoop } from './review-loop.js'
@@ -264,7 +265,7 @@ export async function runEarlyFinalGateResume(
   writeHolder(state.runDir)
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
   try {
-    const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
+    const agent = agentDepsOf(deps, emit)
     const ctx: GateResumeContext = { deps, state, emit, version, changeDir, sidecarDir, agent }
     const outcome = await collectGateOutcome(ctx, gateMode, assumptions, findings, requiredAck)
     if (outcome.kind === 'aborted') return await finalizeGate(deps, state, 'aborted', version)

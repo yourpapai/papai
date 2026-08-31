@@ -6,7 +6,6 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 
-import type { AgentLayerDeps } from './agent-layer.js'
 import { runChildren, runPlanBranch, planChildrenOf } from './children.js'
 import type { RunChildRun } from './children.js'
 import { autonomyOf } from './config.js'
@@ -16,6 +15,7 @@ import { readEvents } from './events.js'
 import { buildBus, logPathFor, nowOf, presentGateAt } from './gate-digest.js'
 import type { OrchestratorDeps, RunStartResult, StageContext } from './gate-digest.js'
 import { PLAN_REVIEW_SURROGATE } from './gate-prelude.js'
+import { agentDepsOf } from './pipeline-env.js'
 import { planGateRows } from './plan-gate-resume.js'
 import type { PlanChild } from './plan.js'
 import { runTailFromAtomicity } from './post-review-tail.js'
@@ -147,7 +147,7 @@ export async function runContinuationStart(
   deps.mountRunScreen?.({ runDir: state.runDir, logPath: logPathFor(state) })
   const stop = createStopMarkerSeam(state.runDir)
   try {
-    const agent: AgentLayerDeps = { spawn: deps.spawn, config: deps.config, execGit: deps.execGit, emit }
+    const agent = agentDepsOf(deps, emit)
     const halted = await runTailFromAtomicity({
       deps: { ...deps, autonomy: autonomyOf(deps.config, options.autonomy?.deadlineMinutes) },
       state,
