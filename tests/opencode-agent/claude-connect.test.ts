@@ -137,6 +137,7 @@ describe('the spawn contract', () => {
         LLM_BASE_URL: 'https://gateway.example/v1',
         AGENT_MCP_SERVERS: '{"index":{"headers":{"authorization":"Bearer mcp"}}}',
         CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token-not-the-chosen-one',
+        AGENT_CLAUDE_ENV: '{"CLAUDE_CODE_MAX_OUTPUT_TOKENS":"16000"}',
       }),
       { spawn: recordingSpawn(recorded, 4242) },
     )
@@ -149,6 +150,9 @@ describe('the spawn contract', () => {
     // The whole-value scrub removes each embedded MCP credential but can never
     // remove the JSON carrier — and the knob is inert here (--bare runs no MCP).
     expect(recorded.options.env['AGENT_MCP_SERVERS']).toBeUndefined()
+    // The knob's own raw document is the same carrier class: a value embedded
+    // inside it is invisible to the whole-value scrub, so the name is stripped.
+    expect(recorded.options.env['AGENT_CLAUDE_ENV']).toBeUndefined()
     // Only the chosen spelling is present, never the other one.
     expect(recorded.options.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
     expect(child.env).toEqual(recorded.options.env)

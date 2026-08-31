@@ -67,6 +67,7 @@ describe('parseClaudeEnv', () => {
     'DISABLE_AUTOUPDATER',
     'LLM_BASE_URL',
     'AGENT_MCP_SERVERS',
+    'AGENT_CLAUDE_ENV',
   ])('refuses the route-owned %s, naming the rule', (name) => {
     const knob = JSON.stringify({ [name]: 'x' })
 

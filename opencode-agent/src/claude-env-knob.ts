@@ -43,11 +43,12 @@ import { ConfigError } from './config-values.js'
  * lists honest: drift in either fails there the day it happens.
  */
 export const REFUSED_NAMES: readonly string[] = [
-  // The four the child env is name-stripped of, in `STRIPPED_NAMES` order.
+  // The five the child env is name-stripped of, in `STRIPPED_NAMES` order.
   'LLM_BASE_URL',
   'AGENT_MCP_SERVERS',
   'ANTHROPIC_API_KEY',
   'CLAUDE_CODE_OAUTH_TOKEN',
+  'AGENT_CLAUDE_ENV',
   // The two the route writes into the child env after the merge.
   'CLAUDE_CONFIG_DIR',
   'DISABLE_AUTOUPDATER',

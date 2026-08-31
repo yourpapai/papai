@@ -27,6 +27,7 @@ export const STRIPPED_NAMES = [
   'AGENT_MCP_SERVERS',
   'ANTHROPIC_API_KEY',
   'CLAUDE_CODE_OAUTH_TOKEN',
+  'AGENT_CLAUDE_ENV',
 ] as const
 
 /** The CLI child as this layer sees it: a pid, a stdin, two streams, an exit. */
@@ -108,8 +109,9 @@ export interface ClaudeChild {
  *
  * The scrub matched by *value* and already removed the credentials; the
  * name-strip exists for the carriers value-matching cannot see — `LLM_BASE_URL`
- * (a non-secret URL), `AGENT_MCP_SERVERS` (a JSON document with credentials
- * embedded *inside* it) — and for the two Anthropic spellings, so the one
+ * (a non-secret URL), `AGENT_MCP_SERVERS` and `AGENT_CLAUDE_ENV` (JSON documents
+ * with credentials embedded *inside* them) — and for the two Anthropic
+ * spellings, so the one
  * the profile claims can be re-added alone (design D3): the API key on bare,
  * the OAuth token on native. The operator's custom entries fold in between
  * the strip and the re-add; the route's own writes come after the fold, which
