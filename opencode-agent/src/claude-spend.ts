@@ -53,7 +53,14 @@ export const emptyAccounting = (): ClaudeAccounting => ({
   rateLimitLines: [],
 })
 
-/** Folds one decoded line into the run's account. Lines it does not price are ignored. */
+/**
+ * Folds one decoded line into the run's account. Lines it does not price are
+ * ignored. The arithmetic here is only the summing across turns: per turn,
+ * `line.usage` is already the complete account — the per-bucket maximum
+ * `claude-usage.ts` publishes from the CLI's two readings — so a side model a
+ * `modelUsage` split bills arrives in these buckets without this module
+ * reading the split itself.
+ */
 export const recordLine = (accounting: ClaudeAccounting, line: ClaudeStreamLine): void => {
   if (line.kind === 'rate-limit-event') {
     accounting.rateLimitLines.push(line)
