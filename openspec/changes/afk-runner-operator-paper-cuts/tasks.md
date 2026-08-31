@@ -20,5 +20,5 @@ green before moving on. No prerequisites — the change is independent of
 
 ## 4. Docs and full gate
 
-- [ ] 4.1 Update `docs/architecture/afk-runner.md`: the intake note (the two `intake:` warn lines with their exact wording sources — round caps, S tail — and the per-execution re-warn on resumed overrides) and the write-guard note (own-change-folder scoping, prefix-sharing sibling, the stated no-fallback rule from design D1). Same commit as the final code. Verify: `bun run lint`
+- [x] 4.1 Update `docs/architecture/afk-runner.md`: the intake note (the two `intake:` warn lines with their exact wording sources — round caps, S tail — and the per-execution re-warn on resumed overrides) and the write-guard note (own-change-folder scoping, prefix-sharing sibling, the stated no-fallback rule from design D1). Same commit as the final code. Verify: `bun run lint`
 - [ ] 4.2 Full gates: `bun run test`, `bun run typecheck`, `bun run lint` — all green; `openspec validate --strict` green; every tasks.md box checked. Verify: `bun run test:status`
