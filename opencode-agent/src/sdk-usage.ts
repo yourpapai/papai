@@ -76,26 +76,21 @@ export interface SessionUsage {
 }
 
 /**
- * What a session has spent so far, as the server itself accounts for it.
- *
- * Read back from `session.get` rather than summed from the event stream. Both
- * numbers exist and agree, but only this one is free of a race: a total summed
- * from events is whatever has arrived by the time it is asked for, and the
- * budget is checked immediately after a prompt returns. Verified against a real
- * server — two prompts of 1234/567 tokens each read back as exactly 2468/1134.
- *
- * `cost` is decoded and reported, never enforced on. It is derived from
- * OpenCode's model catalogue, and a model the catalogue does not price reports
- * the right token counts and a cost of **0**.
- */
-/**
- * Decodes a session's running totals.
+ * Decodes a session's running totals — what the server itself accounts for, read
+ * back from `session.get` rather than summed from the event stream (a summed
+ * total is whatever has arrived by the time the budget, checked immediately
+ * after a prompt returns, asks for it).
  *
  * Unlike the other decoders here this one does **not** throw on a shape it does
  * not recognise. A budget is a guardrail on the work, not part of it, and an SDK
  * upgrade that moves these fields must not turn every phase into a failure. It
  * reports zero and says so at the call site, which is visible in the log and in
  * the totals the run reports.
+ *
+ * Verified against a real server — two prompts of 1234/567 tokens each read
+ * back as exactly 2468/1134. `cost` is decoded and reported, never enforced on:
+ * it is derived from OpenCode's model catalogue, and a model the catalogue does
+ * not price reports the right token counts and a cost of **0**.
  */
 export const decodeSessionUsage = (fetched: unknown): SessionUsage | null => {
   const parsed = sessionUsageSchema.safeParse(fetched)
