@@ -4,15 +4,13 @@
 // See LICENSE in the project root for details.
 
 import type { CliHarness } from './cli.js'
-import type { OrchestratorDeps } from './gate-digest.js'
-import { runStart } from './orchestrator.js'
 import type { StartOptions } from './orchestrator.js'
 import { removeRun } from './remove-run.js'
 import { executeSessionTarget } from './session-flow.js'
 import type { SessionFlowDeps } from './session-flow.js'
 import { runSessionPicker } from './tui-session-picker.js'
 
-export type DepthOverride = NonNullable<Parameters<typeof runStart>[1]['depthOverride']>
+export type DepthOverride = NonNullable<StartOptions['depthOverride']>
 
 /** Adapt a CLI harness member set into the session-flow dependency surface. */
 export function sessionFlowDepsOf(members: CliHarness): SessionFlowDeps {
@@ -34,7 +32,6 @@ export function sessionFlowDepsOf(members: CliHarness): SessionFlowDeps {
 /** The interactive session loop wiring: picker + create-run threading of --depth/--plan. */
 export function sessionLoopOf(
   config: { readonly workDir: string; readonly repoRoot: string },
-  orchestratorDeps: OrchestratorDeps,
   members: CliHarness,
 ): (options: {
   readonly initial: 'list' | 'create'
@@ -53,7 +50,7 @@ export function sessionLoopOf(
           ...(options.depth === undefined ? {} : { depthOverride: options.depth }),
           ...(options.plan === undefined ? {} : { forcePlan: true }),
         }
-        const started = await runStart(orchestratorDeps, start)
+        const started = await members.runStart(start)
         members.stdout(`started ${started.runId}`)
       },
       removeRun: (runId) => removeRun(config.workDir, runId),

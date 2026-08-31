@@ -198,7 +198,7 @@ function harnessMembers(
     latestSettledGateVersion: (runId) =>
       resolveAndCall(config.workDir, runId, (r) => latestSettledGateVersion(config.workDir, r)),
   }
-  return { ...members, sessionLoop: sessionLoopOf(config, orchestratorDeps, members) }
+  return { ...members, sessionLoop: sessionLoopOf(config, members) }
 }
 
 function harnessStdout(line: string): void {

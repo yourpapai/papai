@@ -136,11 +136,17 @@ interface EntryFixture {
   readonly writes: string[]
 }
 
-function makeEntryFixture(): EntryFixture {
+function makeEntryFixture(backend?: 'claude'): EntryFixture {
   const dir = makeDir()
   fs.writeFileSync(
     path.join(dir, 'config.json'),
-    JSON.stringify({ repoRoot: dir, workDir: '.sdd-runner', model: 'test-model', budget: 5 }),
+    JSON.stringify({
+      repoRoot: dir,
+      workDir: '.sdd-runner',
+      model: 'test-model',
+      budget: 5,
+      ...(backend === undefined ? {} : { backend }),
+    }),
   )
   return {
     repoRoot: dir,
@@ -158,6 +164,23 @@ const saved: { argv: string[]; config: string | undefined; stdinTty: PropertyDes
   argv: [],
   config: undefined,
   stdinTty: undefined,
+}
+
+/**
+ * The three names the claude-route guard reads. Every credential test sets all
+ * three explicitly: the process running this suite may itself carry a real
+ * one, and an inherited spelling would decide the test's outcome.
+ */
+const CREDENTIAL_NAMES = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'LLM_API_KEY'] as const
+const savedCredentials = new Map<string, string | undefined>()
+
+function setCredentials(values: Partial<Record<(typeof CREDENTIAL_NAMES)[number], string>>): void {
+  for (const name of CREDENTIAL_NAMES) {
+    savedCredentials.set(name, process.env[name])
+    const value = values[name]
+    if (value === undefined) Reflect.deleteProperty(process.env, name)
+    else process.env[name] = value
+  }
 }
 
 beforeEach(() => {
@@ -180,6 +203,11 @@ afterEach(() => {
   process.argv = saved.argv
   if (saved.config === undefined) delete process.env['SDD_RUNNER_CONFIG']
   else process.env['SDD_RUNNER_CONFIG'] = saved.config
+  for (const [name, value] of savedCredentials) {
+    if (value === undefined) Reflect.deleteProperty(process.env, name)
+    else process.env[name] = value
+  }
+  savedCredentials.clear()
   if (saved.stdinTty === undefined) Reflect.deleteProperty(process.stdin, 'isTTY')
   else Object.defineProperty(process.stdin, 'isTTY', saved.stdinTty)
   writeSpy.mockRestore()
@@ -252,6 +280,15 @@ describe('runEntry session-loop wiring (interactive)', () => {
     await runEntryAgainst(fx, [])
     await pickerCalls[0]?.createRun('plain text\n')
     expect(startOptions).toStrictEqual([{ taskText: 'plain text\n' }])
+  })
+
+  it('the creation seam refuses a claude route with no credential, before any run directory exists', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({})
+    await runEntryAgainst(fx, [])
+    const message = await errorMessageOf(pickerCalls[0]?.createRun('plain text\n'))
+    expect(message).toMatch(/\[CLAUDE_CREDENTIALS\]/u)
+    expect(fs.existsSync(path.join(fx.workDir, 'runs'))).toBe(false)
   })
 
   it('gate and resume decisions forward to the orchestrator verbs with the resolved id', async () => {
