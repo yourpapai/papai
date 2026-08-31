@@ -30,7 +30,7 @@ import type { ReviewLoopResult } from '../../sdd-runner/src/review-loop.js'
 import { createRunState } from '../../sdd-runner/src/run-state.js'
 import { loadRunState, saveRunState } from '../../sdd-runner/src/run-state.js'
 import type { RunState } from '../../sdd-runner/src/run-state.js'
-import { readHolder, requestCalmStop, stopMarkerPath } from '../../sdd-runner/src/stop-controller.js'
+import { holderPath, readHolder, requestCalmStop, stopMarkerPath } from '../../sdd-runner/src/stop-controller.js'
 
 const tmpDirs: string[] = []
 
@@ -3305,6 +3305,34 @@ describe('continuation start for a changeName-carrying child (D6)', () => {
     // decomposer spawn over the adopted change (its review evidence lives in
     // the parent's log; its tasks.md is the split's re-scoped child-#1 slice).
     expect(fixture.spawnOrder).toEqual(['atomicity.json'])
+  })
+
+  it('records the process-ownership holder before the tail flies and hands it back on exit (D1)', async () => {
+    const fixture = makeFixture()
+    const { taskFile } = await seedSplitParent(fixture, 'M')
+    let childRunDir = ''
+    const holdersDuringFlight: boolean[] = []
+    const deps: OrchestratorDeps = {
+      ...fixture.deps,
+      spawn: (command, args, options) => {
+        holdersDuringFlight.push(fs.existsSync(holderPath(childRunDir)))
+        return fixture.deps.spawn(command, args, options)
+      },
+    }
+
+    await runStart(deps, {
+      child: SPLIT_CHILDREN[0],
+      taskFile,
+      onRunDirReady: (runDir) => {
+        childRunDir = runDir
+      },
+    })
+
+    // The atomicity flight is the only spawn: the holder must already cover
+    // that flight (a stop-dead-runs probe mid-flight reads a live owner), and
+    // a clean exit gives the ownership record back so the run reads ownerless.
+    expect(holdersDuringFlight).toEqual([true])
+    expect(fs.existsSync(holderPath(childRunDir))).toBe(false)
   })
 })
 
