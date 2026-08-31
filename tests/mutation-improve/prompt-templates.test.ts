@@ -23,6 +23,31 @@ describe('prompt-templates', () => {
     expect(prompt).toContain('baseline.json')
   })
 
+  // Under the lazy migration the agent sees a mixed-shape map: legacy bare
+  // numbers beside {score, killed, timeout, scored} records. The prompt states
+  // that shape and the dual beforeScore reading — a stale shape statement here
+  // costs a whole iteration to a validation error.
+  test('buildSelectPrompt describes the mixed-shape baseline map and the dual beforeScore reading', () => {
+    const prompt = buildSelectPrompt({
+      doneSet: [],
+      failedFiles: [],
+      cappedFiles: [],
+      baselineSummary: '{"src/legacy.ts":0.2,"src/rich.ts":{"score":0.9,"killed":9,"timeout":0,"scored":10}}',
+      outputPath: '/run/iter/1/selection.json',
+    })
+    expect(prompt).toContain('a {score, killed, timeout, scored} record')
+    expect(prompt).toContain('bare score number')
+    expect(prompt).toContain('not-yet-converted')
+    expect(prompt).toContain('legacy entry')
+    expect(prompt).not.toContain('{filePath: score}')
+    // Pin the instruction wording regardless of the prompt's line wrapping.
+    const flat = prompt.replaceAll('\n', ' ')
+    expect(flat).toContain(
+      "beforeScore: number (your read of the entry's score — the bare number itself for a legacy entry, otherwise the entry's score field, 0..1)",
+    )
+    expect(flat).not.toContain('your read of baseline[file], 0..1')
+  })
+
   test('buildSelectPrompt lists failed-this-run and capped files as do-not-pick, with ceilings', () => {
     const prompt = buildSelectPrompt({
       doneSet: [],

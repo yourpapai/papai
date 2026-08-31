@@ -5,6 +5,7 @@
 
 import { bumpScore, type BaselineMap } from './baseline.js'
 import type { PipelineDeps } from './pipeline.js'
+import type { MeasuredScore } from './score-reader.js'
 
 type SkipRatchetDeps = Pick<PipelineDeps, 'writeBaseline' | 'execGit'> & {
   config: { repoRoot: string }
@@ -14,20 +15,24 @@ type SkipRatchetDeps = Pick<PipelineDeps, 'writeBaseline' | 'execGit'> & {
 // baseline floor lags behind. Ratchet the floor directly on the integration
 // branch (repoRoot) so future runs don't re-select the file and burn a full
 // mutation run rediscovering it. Only baseline.json is staged, so a dirty
-// repoRoot working tree is safe.
+// repoRoot working tree is safe. The full measurement rides into the
+// record-level bump, so a converted or raised entry carries the counts that
+// produced its score; the bumped[file] === baseline[file] early-return keeps
+// suppressing the no-op commit (the bump returns the same map when the
+// measurement does not strictly raise a rich record).
 export async function ratchetVerifiedSkip(
   deps: SkipRatchetDeps,
   baseline: BaselineMap,
   file: string,
-  score: number,
+  measurement: MeasuredScore,
 ): Promise<void> {
-  const bumped = bumpScore(baseline, file, score)
+  const bumped = bumpScore(baseline, file, measurement)
   if (bumped[file] === baseline[file]) return
   await deps.writeBaseline(deps.config.repoRoot, bumped)
   await deps.execGit(deps.config.repoRoot, ['add', 'scripts/mutation/baseline.json'])
   await deps.execGit(deps.config.repoRoot, [
     'commit',
     '-m',
-    `chore(mutation): ratchet ${file} baseline to ${score} (verified at threshold)`,
+    `chore(mutation): ratchet ${file} baseline to ${measurement.score} (verified at threshold)`,
   ])
 }

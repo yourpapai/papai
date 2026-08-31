@@ -97,6 +97,9 @@ export const runShardedGate = (input: ShardGateInput): GateVerdict => {
     return {
       exitCode: 1,
       message: `Mutation run never reported a result for ${reconciliation.missing.length} planned target(s), so they were never scored: ${reconciliation.missing.join(', ')}`,
+      // A lost shard is the absence of evidence, not dilution — the verdict carries no warnings;
+      // the ratchet verdict below is where dilution warnings ride.
+      warnings: [],
     }
   }
 
