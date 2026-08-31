@@ -6,7 +6,7 @@
 ## 2. Emit the tier on the opencode route (design D3, D7)
 
 - [x] 2.1 Red-first `tests/opencode-agent/openai-config.test.ts`: the `propose` profile carries `variant` when a tier resolves; the emitted config has no `variant` key anywhere when none does; the `reasoning: false` catalogue gate still empties the variants (pin the unchanged behaviour) — `bun test tests/opencode-agent/openai-config.test.ts`
-- [ ] 2.2 Add `proposeEffort` to `ModelProfiles` (`opencode-agent/src/openai-config.ts:41-56`) and its `null` to `NO_MODEL_PROFILES`; emit `variant: profiles.proposeEffort` on the `propose` profile at `:250` — `bun test tests/opencode-agent/openai-config.test.ts`
+- [x] 2.2 Add `proposeEffort` to `ModelProfiles` (`opencode-agent/src/openai-config.ts:41-56`) and its `null` to `NO_MODEL_PROFILES`; emit `variant: profiles.proposeEffort` on the `propose` profile at `:250` — `bun test tests/opencode-agent/openai-config.test.ts`
 
 ## 3. Carry the tier on the claude route (design D3, D6, D7)
 
