@@ -284,6 +284,102 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
   })
 })
 
+describe('the modelUsage tolerance (design D3 of the run-accounting change)', () => {
+  /**
+   * A hand-built result line shaped like the native recording's, so every
+   * tolerance case below starts from a line that decodes cleanly — the cases
+   * bend only the `modelUsage` record, never the fields the adapter ends a
+   * turn on.
+   */
+  const RESULT_LINE = {
+    type: 'result',
+    is_error: false,
+    result: 'the answer',
+    session_id: 'session-1',
+    usage: {
+      input_tokens: 4,
+      output_tokens: 155,
+      cache_creation_input_tokens: 28005,
+      cache_read_input_tokens: 61460,
+    },
+    total_cost_usd: 0.126837,
+  }
+
+  test('an entry with a renamed or absent token field degrades that entry only', () => {
+    // Three entries, two bent differently — one field renamed, one absent —
+    // and the well-formed one between them.
+    const line = decodeClaudeLine({
+      ...RESULT_LINE,
+      modelUsage: {
+        'claude-sonnet-5': {
+          inputTokens: 4,
+          outputTokens: 155,
+          cacheCreationInputTokens: 28005,
+          cacheReadInputTokens: 61460,
+          costUSD: 0.12587,
+        },
+        'claude-haiku-4-5-20251001': {
+          inputToken: 912,
+          outputTokens: 11,
+          cacheCreationInputTokens: 0,
+          cacheReadInputTokens: 0,
+        },
+        'claude-opus-4-6': { inputTokens: 50, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
+      },
+    })
+
+    // The line still decodes, keeping the text, session id and error flag the
+    // adapter reads to end a turn.
+    expect(line).toMatchObject({ kind: 'result', isError: false, text: 'the answer', sessionId: 'session-1' })
+
+    // Of the three entries, only the well-formed one is published.
+    expect(line).toHaveProperty('models', {
+      'claude-sonnet-5': { input: 4, output: 155, cacheWrite: 28005, cacheRead: 61460, costUsd: 0.12587 },
+    })
+  })
+
+  test('a modelUsage that is not an object degrades the whole split, never the line', () => {
+    // This pin predates the split and must survive it: the regression the
+    // schema work could introduce is a modelUsage shape failing the line the
+    // adapter needs, so the guard holds before and after the change on purpose.
+    const line = decodeClaudeLine({ ...RESULT_LINE, modelUsage: 'not an object' })
+
+    expect(line).toMatchObject({ kind: 'result', isError: false, text: 'the answer', sessionId: 'session-1' })
+    expect(line).not.toHaveProperty('models')
+  })
+
+  test('a partial split below the top-level usage still publishes the top-level figure', () => {
+    // The maximum is per bucket, and `total` is those published buckets
+    // summed: a split that bills less than the top-level reading can never
+    // drag the published figure below it — a plain fold would report 765.
+    const line = decodeClaudeLine({
+      ...RESULT_LINE,
+      usage: {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_creation_input_tokens: 200,
+        cache_read_input_tokens: 400,
+      },
+      modelUsage: {
+        'claude-haiku-4-5-20251001': {
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheCreationInputTokens: 0,
+          cacheReadInputTokens: 0,
+          costUSD: 0.0001,
+        },
+      },
+    })
+
+    expect(line).toHaveProperty('usage', { input: 100, output: 50, cacheWrite: 200, cacheRead: 400, total: 750 })
+
+    // The partial split is still published — small, not dropped.
+    expect(line).toHaveProperty('models', {
+      'claude-haiku-4-5-20251001': { input: 10, output: 5, cacheWrite: 0, cacheRead: 0, costUsd: 0.0001 },
+    })
+  })
+})
+
 /**
  * Whether a decoded line's first window actually carries a utilization key.
  *
