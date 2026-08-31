@@ -191,6 +191,36 @@ describe('check.sh --staged', () => {
     }
   })
 
+  // A commit made while `check:full` is running must not destroy that run's evidence. check.sh
+  // cleared reports/checks/ as unconditional top-of-script setup, but ONLY full mode writes
+  // there — staged mode keeps its per-check output in $TMPDIR. So the pre-commit hook's --staged
+  // run deleted the logs of an in-flight full run, whose summary then pointed at files that no
+  // longer existed. Observed 2026-08-31: seven leg logs written by 10:53, gone by 10:55.
+  test('leaves an in-flight full run reports/checks logs intact', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const checksDir = path.join(repoDir, 'reports', 'checks')
+      mkdirSync(checksDir, { recursive: true })
+      const inFlightLog = path.join(checksDir, 'test.log')
+      writeFileSync(inFlightLog, 'output of a full run still in progress\n')
+
+      writeFileSync(path.join(repoDir, 'README.md'), '# Docs\n')
+      expectSuccess(runCommand(repoDir, ['git', 'add', 'README.md']))
+
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      expect(runCommand(repoDir, ['bash', 'scripts/check.sh', '--staged'], env).exitCode).toBe(0)
+
+      expect(existsSync(inFlightLog)).toBe(true)
+      expect(readFileSync(inFlightLog, 'utf8')).toBe('output of a full run still in progress\n')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
   test('skips oxlint when staged files are hook-only TypeScript files outside lint scope', () => {
     const { repoDir, binDir, logFile } = createTempRepo()
 

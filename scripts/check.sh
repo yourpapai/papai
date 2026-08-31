@@ -30,9 +30,14 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # and for `test` that is a multi-minute round trip to re-read bytes this script
 # already paid for. Cleared at the start rather than deleted at the end so the
 # newest run's output is what is on disk, with nothing stale beside it.
+#
+# The clearing itself lives in the FULL-mode branch below, not here. Only full mode reads or
+# writes this directory; staged mode keeps its per-check output in $TMPDIR and cats from there.
+# As unconditional top-of-script setup this meant the pre-commit hook's `--staged` run deleted
+# the logs of any `check:full` still in flight: the full run kept going and still printed
+# "-> reports/checks/<name>.log" for files it no longer had. Silently destroying the evidence a
+# verification run exists to produce is the one failure this directory must not have.
 CHECKS_REPORT_DIR="reports/checks"
-rm -rf "$CHECKS_REPORT_DIR"
-mkdir -p "$CHECKS_REPORT_DIR" || { echo "Failed to create $CHECKS_REPORT_DIR" >&2; exit 1; }
 
 # Sanitize check names for safe temp filenames (replace : with _)
 safe_name() { echo "${1//:/_}"; }
@@ -338,6 +343,11 @@ else
   # never reaches it, so the lane rides in the default `test` sweep for exactly zero files. It
   # went unrun long enough for the TypeScript 7 upgrade to leave enforceWritePolicy failing open
   # for four days (openspec/changes/fix-write-policy-suppression-guard). 185 tests, ~1.3s.
+  # Full mode is the only writer of the report dir, so it is the only clearer of it. See the
+  # CHECKS_REPORT_DIR comment at the top for why this is not top-of-script setup.
+  rm -rf "$CHECKS_REPORT_DIR"
+  mkdir -p "$CHECKS_REPORT_DIR" || { echo "Failed to create $CHECKS_REPORT_DIR" >&2; exit 1; }
+
   checks=("lint" "format:check" "license-headers" "knip" "test" "test:hooks" "test:client" "duplicates")
   if [ "$SKIP_TESTS" = true ]; then
     filtered_checks=()
