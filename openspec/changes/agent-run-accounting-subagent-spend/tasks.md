@@ -38,7 +38,7 @@ See LICENSE in the project root for details.
 ## 5. Whole-suite verification and docs
 
 - [x] 5.1 Confirm the downstream ladder is unmoved: no change to rung ordering, the `unpriced` state, or the rate-limit fold. Verify: `bun test tests/opencode-agent/run-spend.test.ts tests/opencode-agent/rate-limit-windows.test.ts`.
-- [ ] 5.2 Confirm no cross-workspace drift gate trips — `review-loop/src/claude-stream.ts` keeps its own independent decoder and is out of scope for this change. Verify: `bun test tests/review-loop/claude-stream.test.ts tests/opencode-agent/claude-doctrine.test.ts tests/opencode-agent/minimality-rule.test.ts`.
+- [x] 5.2 Confirm no cross-workspace drift gate trips — `review-loop/src/claude-stream.ts` keeps its own independent decoder and is out of scope for this change. Verify: `bun test tests/review-loop/claude-stream.test.ts tests/opencode-agent/claude-doctrine.test.ts tests/opencode-agent/minimality-rule.test.ts`.
 - [ ] 5.3 Confirm the mutation gate still passes with the new arithmetic pinned by exact-value assertions (not comparisons). Verify: the repo's configured mutation gate script for the changed files, and `bun test tests/opencode-agent/claude-contract.test.ts`.
 - [ ] 5.4 Update the affected prose: `opencode-agent/CLAUDE.md` (a run's account covers every model the backend billed, on both routes) and `docs/architecture/sdd-pipeline.md` where run spend and the unpriced marker are described; note in `tests/opencode-agent/fixtures/claude-cli/README.md` that `native-success-turn.ndjson` is now the two-model fixture. Verify: `bun run lint`.
 - [ ] 5.5 Run the full gates. Verify: `bun test`, `bun run typecheck`, `bun run lint`.
