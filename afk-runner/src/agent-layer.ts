@@ -54,11 +54,13 @@ export interface AgentRunInfo<T> {
 
 export class DiffGuardViolationError extends Error {
   readonly violations: readonly string[]
+  readonly allowedPrefix: string
 
-  constructor(violations: readonly string[]) {
-    super(`agent edited files outside the change folder: ${violations.join(', ')}`)
+  constructor(violations: readonly string[], allowedPrefix: string) {
+    super(`agent edited files outside the change folder ${allowedPrefix}: ${violations.join(', ')}`)
     this.name = 'DiffGuardViolationError'
     this.violations = violations
+    this.allowedPrefix = allowedPrefix
   }
 }
 
@@ -66,7 +68,6 @@ export { AgentValidationError } from './errors.js'
 import { AgentValidationError } from './errors.js'
 
 const MAX_VALIDATION_ATTEMPTS = 2
-const ALLOWED_PREFIX = 'openspec/changes/'
 
 function parseDirty(stdout: string): string[] {
   return stdout
@@ -81,10 +82,24 @@ async function snapshotWorkingTree(execGit: ExecGitFn, cwd: string): Promise<Set
   return new Set(parseDirty(stdout))
 }
 
-async function guardWorkingTree(execGit: ExecGitFn, cwd: string, before: Set<string>): Promise<void> {
+/**
+ * The write set an agent of this run may dirty: exactly its own change folder
+ * (`openspec/changes/<changeName>/`, trailing slash load-bearing — it is what
+ * makes a prefix-sharing sibling a violation). No tree-wide fallback branch:
+ * `changeName` is required on every spawn seam and validated by construction
+ * (openspec scaffolds it before any later stage can spawn). If a spawn seam
+ * without a change name ever emerges, re-widen explicitly in that seam's terms
+ * and re-pin the guard tests — do not resurrect a silent tree-wide default.
+ */
+async function guardWorkingTree(
+  execGit: ExecGitFn,
+  cwd: string,
+  before: Set<string>,
+  allowedPrefix: string,
+): Promise<void> {
   const after = await snapshotWorkingTree(execGit, cwd)
-  const violations = [...after].filter((entry) => !before.has(entry) && !entry.startsWith(ALLOWED_PREFIX))
-  if (violations.length > 0) throw new DiffGuardViolationError(violations)
+  const violations = [...after].filter((entry) => !before.has(entry) && !entry.startsWith(allowedPrefix))
+  if (violations.length > 0) throw new DiffGuardViolationError(violations, allowedPrefix)
 }
 
 interface ContinuationSpawn {
@@ -164,7 +179,7 @@ async function attemptStageAgent<T>(
       continuation,
       attempt,
     })
-    await guardWorkingTree(deps.execGit, options.cwd, before)
+    await guardWorkingTree(deps.execGit, options.cwd, before, `openspec/changes/${options.changeName}/`)
     const parsed = options.outputSchema.safeParse(result.value)
     if (parsed.success) {
       deps.emit({ altitude: 'L1', type: 'done', agent: options.label, model, usage: result.usage })

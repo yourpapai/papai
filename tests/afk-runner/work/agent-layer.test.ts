@@ -520,7 +520,41 @@ describe('runStageAgent', () => {
       },
     }
     const run = runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
-    await expect(run).rejects.toThrow('agent edited files outside the change folder: src/chat/router.ts, task.md')
+    await expect(run).rejects.toThrow(
+      'agent edited files outside the change folder openspec/changes/add-thing/: src/chat/router.ts, task.md',
+    )
+  })
+
+  it('fails the guard when the agent dirties a sibling change folder, naming the offending path and the allowed folder', async () => {
+    const dir = makeDir()
+    const execGit = sequencedExecGit(['', '?? openspec/changes/other-change/x.md\n'])
+    const fake = makeFakeSpawn('findings-1.json', [{ write: VALID_FINDINGS }])
+    const agent: AgentLayerDeps = {
+      spawn: fake.spawn,
+      config: makeConfig(dir),
+      execGit,
+      emit: () => undefined,
+    }
+    const run = runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
+    await expect(run).rejects.toThrow(
+      'agent edited files outside the change folder openspec/changes/add-thing/: openspec/changes/other-change/x.md',
+    )
+  })
+
+  it('fails the guard on a prefix-sharing sibling — a shared name prefix does not widen the allowed folder', async () => {
+    const dir = makeDir()
+    const execGit = sequencedExecGit(['', '?? openspec/changes/add-thing-extra/spec.md\n'])
+    const fake = makeFakeSpawn('findings-1.json', [{ write: VALID_FINDINGS }])
+    const agent: AgentLayerDeps = {
+      spawn: fake.spawn,
+      config: makeConfig(dir),
+      execGit,
+      emit: () => undefined,
+    }
+    const run = runStageAgent(agent, makeOptions(dir, 'findings-1.json'))
+    await expect(run).rejects.toThrow(
+      'agent edited files outside the change folder openspec/changes/add-thing/: openspec/changes/add-thing-extra/spec.md',
+    )
   })
 
   it('falls back to a fresh prompt-rebuild spawn when the continuation fails', async () => {

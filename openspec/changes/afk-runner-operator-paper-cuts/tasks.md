@@ -6,7 +6,7 @@ green before moving on. No prerequisites — the change is independent of
 
 ## 1. Write-guard scoping (pipeline delta)
 
-- [ ] 1.1 Red-first in `tests/afk-runner/work/agent-layer.test.ts`: an agent that dirties a sibling change folder (`openspec/changes/other-change/x.md`, run's change `add-thing`) fails with the diff-guard error naming the offending path **and the allowed folder**; an agent that dirties a prefix-sharing sibling (`openspec/changes/add-thing-extra/spec.md`) also fails — the shared prefix does not widen the guard; the existing own-folder green test stays untouched and green. Then scope the guard in `afk-runner/src/agent-layer.ts`: allowed prefix `` `openspec/changes/${options.changeName}/` `` threaded from the spawn options (trailing slash load-bearing), no fallback branch (design D1), violation message names the allowed folder. Verify: `bun test tests/afk-runner/work/agent-layer.test.ts`
+- [x] 1.1 Red-first in `tests/afk-runner/work/agent-layer.test.ts`: an agent that dirties a sibling change folder (`openspec/changes/other-change/x.md`, run's change `add-thing`) fails with the diff-guard error naming the offending path **and the allowed folder**; an agent that dirties a prefix-sharing sibling (`openspec/changes/add-thing-extra/spec.md`) also fails — the shared prefix does not widen the guard; the existing own-folder green test stays untouched and green. Then scope the guard in `afk-runner/src/agent-layer.ts`: allowed prefix `` `openspec/changes/${options.changeName}/` `` threaded from the spawn options (trailing slash load-bearing), no fallback branch (design D1), violation message names the allowed folder. Verify: `bun test tests/afk-runner/work/agent-layer.test.ts`
 
 ## 2. Intake warns (cli delta, sink + wording)
 
