@@ -22,6 +22,8 @@ export type AgentBackend = 'opencode' | 'claude'
 
 const AgentConfigSchema = z.object({
   model: z.string().min(1),
+  /** The reasoning-effort tier this role's subprocess runs at (design D4); absent names none. */
+  effort: z.string().optional(),
   /**
    * See {@link AgentBackend}; omit-or-agree per role, resolved run-wide. The
    * error names the received value because a bare expected-one-of message does
