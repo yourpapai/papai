@@ -19,7 +19,7 @@ See LICENSE in the project root for details.
 - [x] 2.2 Add failing assertions to the same file that the `unpriced` path is untouched: an auth-error turn still reports `sawUsage === false` → `{ usd: null, source: 'none' }`, and the rate-limit windows still fold independently of usage. Verify: `bun test tests/opencode-agent/claude-adapter.test.ts`.
 - [x] 2.3 Confirm `opencode-agent/src/claude-spend.ts` needs no arithmetic change and update only its doc comment to state that `line.usage` is now the complete per-turn account. Verify: `bun test tests/opencode-agent/claude-adapter.test.ts`.
 - [x] 2.4 Add a failing assertion for the progress log line (`tests/opencode-agent/progress.test.ts` or `claude-adapter.test.ts`, wherever the claude progress reporter is already driven): the `claude: turn result` record carries the per-model split alongside `tokens`. Verify: `bun test tests/opencode-agent/progress.test.ts tests/opencode-agent/claude-adapter.test.ts` — fails, the field is absent.
-- [ ] 2.5 Extend `opencode-agent/src/claude-progress.ts` to log the split on the existing result line, giving `models` its one consumer. Verify: `bun test tests/opencode-agent/progress.test.ts tests/opencode-agent/claude-adapter.test.ts && bun run typecheck`.
+- [x] 2.5 Extend `opencode-agent/src/claude-progress.ts` to log the split on the existing result line, giving `models` its one consumer. Verify: `bun test tests/opencode-agent/progress.test.ts tests/opencode-agent/claude-adapter.test.ts && bun run typecheck`.
 
 ## 3. OpenCode: decode children and sum a session tree (design D5, D6)
 

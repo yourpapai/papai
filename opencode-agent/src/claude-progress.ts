@@ -60,7 +60,12 @@ export const claudeTracker = (log: Logger): ProgressTracker => {
       // it, ignored everywhere the pipeline acts.
       if (line.kind === 'rate-limit-event') return
       state.lastAction = 'claude: turn result'
-      log.info({ tokens: line.usage.total }, 'claude: turn result')
+      // The one consumer of the decoded split: model ids and counts only, so
+      // the names-only rule holds — no content rides on it.
+      log.info(
+        { tokens: line.usage.total, ...(line.models === undefined ? {} : { models: line.models }) },
+        'claude: turn result',
+      )
     },
     snapshot: (): ProgressSnapshot => ({ ...state }),
     stall: () => null,
