@@ -30,6 +30,6 @@
 ## 6. Docs, workflow hand-off, full verification
 
 - [x] 6.1 Update `opencode-agent/README.md`: the env table (`:1655-1656`) gains `AGENT_EFFORT` and `AGENT_EFFORT_PROPOSE` with the per-profile-wins precedence rule and the `reasoning: false` catalogue caveat; the profile table (`:1837-1841`) gains the `propose` tier and drops the backend caveat implied at `:1841`; the claude-route note (`:2113-2115`) records that the loop's claude subprocesses now carry `--effort` — `bun run lint`
-- [ ] 6.2 Add one line on the shared variable and its precedence to `opencode-agent/CLAUDE.md:664-668` — `bun run lint`
+- [x] 6.2 Add one line on the shared variable and its precedence to `opencode-agent/CLAUDE.md:664-668` — `bun run lint`
 - [ ] 6.3 Record the workflow hand-off (it cannot be applied from this pipeline — `.github/workflows/` edits cannot be pushed by the agent's token): write the exact two `env:` forwarding lines for `AGENT_EFFORT` and `AGENT_EFFORT_PROPOSE`, sited beside the existing pair at `.github/workflows/agent-pipeline.yml:529-530`, into the PR body for a maintainer to apply by hand — verify by reading `.github/workflows/agent-pipeline.yml:520-540` and confirming the anchor lines and indentation quoted in the hand-off match the file
 - [ ] 6.4 One full `bun run test`, `bun run typecheck`, `bun run lint` — all green; then review `docs/architecture/sdd-pipeline.md` and `docs/architecture/commands.md` and update them in the same commit if either documents the effort knobs
