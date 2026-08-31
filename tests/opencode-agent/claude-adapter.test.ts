@@ -663,6 +663,25 @@ describe('createClaudeAgent · what the run spent', () => {
     expect(spent.usd).toBeCloseTo(0.126837, 6)
   })
 
+  test('an auth-error turn still folds the account it always had — recognized, and zero to the bucket', () => {
+    // Both auth recordings: the failed turn's result line is recognized usage
+    // — zero of it — and its `modelUsage: {}` decodes to the empty split,
+    // which contributes nothing. `costUsdTotal` staying 0 is what keeps the
+    // backend rung out of the answer; the models-split change left this
+    // account byte-identical.
+    const bare = accountingOf('auth-error-turn.ndjson')
+    expect(bare.sawUsage).toBe(true)
+    expect(bare.tokensTotal).toBe(0)
+    expect(bare.costUsdTotal).toBe(0)
+    expect(bare.buckets).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+
+    const native = accountingOf('native-auth-error.ndjson')
+    expect(native.sawUsage).toBe(true)
+    expect(native.tokensTotal).toBe(0)
+    expect(native.costUsdTotal).toBe(0)
+    expect(native.buckets).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+  })
+
   test('reports the provider’s standing for every window the run saw', async () => {
     const spawn = scriptedSpawn([{ stdout: fixture('stub-rate-limit-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
@@ -682,6 +701,36 @@ describe('createClaudeAgent · what the run spent', () => {
     const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
 
     expect(await agent.spend()).toEqual({ usd: null, source: 'none', windows: [] })
+  })
+
+  test('a run that saw a rate-limit line but no result is unpriced — and still reports its windows', async () => {
+    // The recorded 2.1.239 rate-limit line alone: no result line ever folds,
+    // so no usage was recognized and the run reports unpriced — while the
+    // window the provider stated folds anyway, independent of usage.
+    const spawn = scriptedSpawn([
+      {
+        stdout:
+          '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1787644800,"rateLimitType":"five_hour","overageStatus":"allowed","overageResetsAt":1788220800,"isUsingOverage":false},"session_id":"02f52ec0-3fb5-4f3f-a702-66661e2a502c"}\n',
+      },
+    ])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'x' }).catch(() => 'expected failure')
+
+    expect(await agent.spend()).toEqual({
+      usd: null,
+      source: 'none',
+      windows: [
+        {
+          window: 'five_hour',
+          resetsAt: 1_787_644_800,
+          status: 'allowed',
+          overageStatus: 'allowed',
+          overageResetsAt: 1_788_220_800,
+          isUsingOverage: false,
+        },
+      ],
+    })
   })
 
   test('a stream carrying no rate-limit line reports no windows', async () => {
