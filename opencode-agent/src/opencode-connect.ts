@@ -154,8 +154,19 @@ export const sessionTreeUsage = async (
   } catch (error) {
     // The degraded figure is the session's own account, re-read rather than
     // remembered: whatever the walk gathered is discarded, and the one read
-    // the budget has always made is the one the answer keeps.
-    const parent = decodeSessionUsage(await client.session.get({ path: { id: sessionId }, query: { directory } }))
+    // the budget has always made is the one the answer keeps. Bounded like
+    // every other read on this path — the wedge the walk deadline exists for
+    // would otherwise hang the degradation itself, and a hang is not a
+    // rejection, so the callers' `.catch(() => null)` never fires. Expired or
+    // unreadable, the answer is absent, which the callers already warn on.
+    const parent = await withDeadline(
+      client.session.get({ path: { id: sessionId }, query: { directory } }),
+      SESSION_TREE_TIMEOUT_MS,
+      (elapsedMs) => new Error(`the degraded usage read did not settle within ${elapsedMs}ms`),
+    ).then(
+      (fetched) => decodeSessionUsage(fetched),
+      () => null,
+    )
     if (parent === null) return null
     log.warn(
       { sessionId, error: errorMessage(error) },

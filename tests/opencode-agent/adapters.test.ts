@@ -566,6 +566,32 @@ describe('the session tree usage walk', () => {
     },
   })
 
+  /**
+   * A client whose `session.get` answers the first read and hangs on every
+   * later one, with the children listing gone the given way — the wedged
+   * server the degraded re-read has to be bounded against. `reads` counts
+   * `session.get` calls, so a test can tell a re-read that was attempted from
+   * one that never happened.
+   */
+  const wedgedGetClient = (
+    usage: ReadonlyMap<string, unknown>,
+    children: () => Promise<unknown>,
+  ): { client: TreeClient; reads: () => number } => {
+    let gets = 0
+    return {
+      client: {
+        session: {
+          get: ({ path }) => {
+            gets += 1
+            return gets === 1 ? Promise.resolve(usage.get(path.id)) : new Promise<unknown>(() => {})
+          },
+          children,
+        },
+      },
+      reads: () => gets,
+    }
+  }
+
   /** The parent's own account, exactly — what every degraded walk answers. */
   const parentUsage = (): SessionUsage => ({
     tokens: 4002,
@@ -806,6 +832,28 @@ describe('the session tree usage walk', () => {
     expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toContain('tree')
+  })
+
+  test('a degraded re-read that never settles is bounded too, answering absent', async () => {
+    // The wedge the walk deadline exists for does not end at the walk's own
+    // expiry: the degraded figure is a fresh read of the same server, so the
+    // catch's re-read carries a bound of its own. A hang is not a rejection,
+    // so only the deadline can end it — the walk expiring must hand the
+    // budget path an answer (absent, which its callers warn on), never the
+    // same wedged socket back.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+    ])
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+    const { client, reads } = wedgedGetClient(usage, () => Promise.reject(new Error('the children listing broke')))
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toBeNull()
+    expect(reads()).toBe(2)
+    expect(warnings).toHaveLength(0)
   })
 })
 
