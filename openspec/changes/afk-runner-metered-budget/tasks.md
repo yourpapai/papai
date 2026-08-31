@@ -13,8 +13,8 @@
 
 ## 3. Event schema: pending decision kind
 
-- [ ] 3.1 Failing tests in `tests/afk-runner/event-schemas.test.ts`: an `auto_decision` event with `decision: 'pending'` parses; a folded pending record does not change `autoExtendsUsed` (fold inertness). Verify: `bun test tests/afk-runner/event-schemas.test.ts`
-- [ ] 3.2 Add `'pending'` to `AutoDecisionKindSchema` in `afk-runner/src/event-schemas.ts`. Verify: `bun test tests/afk-runner/event-schemas.test.ts`
+- [x] 3.1 Failing tests in `tests/afk-runner/event-schemas.test.ts`: an `auto_decision` event with `decision: 'pending'` parses; a folded pending record does not change `autoExtendsUsed` (fold inertness). Verify: `bun test tests/afk-runner/event-schemas.test.ts`
+- [x] 3.2 Add `'pending'` to `AutoDecisionKindSchema` in `afk-runner/src/event-schemas.ts`. Verify: `bun test tests/afk-runner/event-schemas.test.ts`
 
 ## 4. Waiter emission protocol
 

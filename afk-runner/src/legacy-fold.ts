@@ -5,7 +5,7 @@
 
 import { readEvents } from './events.js'
 import { STAGE_ORDER } from './events.js'
-import type { AutoDecisionRule, DepthProfile, EventInput, FindingCounts, StageId } from './events.js'
+import type { AutoDecisionKind, AutoDecisionRule, DepthProfile, EventInput, FindingCounts, StageId } from './events.js'
 
 export interface DigestRecord {
   readonly round: number
@@ -17,7 +17,7 @@ export interface DigestRecord {
 
 export interface AutoDecisionRecord {
   readonly rule: AutoDecisionRule
-  readonly decision: 'preview' | 'approve' | 'extend' | 'accept-items' | 'gate'
+  readonly decision: AutoDecisionKind
   readonly evidenceDigest: string
   readonly gateVersion: number
   readonly seq: number

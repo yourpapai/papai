@@ -14,6 +14,10 @@ import {
   STAGE_ORDER,
   StageIdSchema,
 } from '../../afk-runner/src/event-schemas.js'
+import { stampEvent } from '../../afk-runner/src/events.js'
+import { pipelineMachine } from '../../afk-runner/src/graph/pipeline.js'
+import { foldEvents } from '../../afk-runner/src/kernel/fold.js'
+import { autoExtendsUsedOf } from '../../afk-runner/src/work/gate-prelude.js'
 
 const usage = { inputTokens: 120, outputTokens: 45, reasoningTokens: 8, costUsd: 0.4, wallMs: 900 }
 
@@ -54,7 +58,7 @@ describe('EventInputSchema variants', () => {
 
   it('auto_decision accepts known rule ids and kinds, rejects the rest', () => {
     expect(AutoDecisionRuleSchema.options).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'none'])
-    expect(AutoDecisionKindSchema.options).toEqual(['preview', 'approve', 'extend', 'accept-items', 'gate'])
+    expect(AutoDecisionKindSchema.options).toEqual(['preview', 'approve', 'extend', 'accept-items', 'gate', 'pending'])
     expect(
       EventInputSchema.parse({
         altitude: 'L2',
@@ -95,6 +99,51 @@ describe('EventInputSchema variants', () => {
         gateVersion: 0,
       }).success,
     ).toBe(false)
+  })
+
+  it("parses a waiter's pending auto_decision (decision: 'pending')", () => {
+    expect(
+      EventInputSchema.parse({
+        altitude: 'L2',
+        type: 'auto_decision',
+        rule: 'none',
+        decision: 'pending',
+        evidenceDigest: 'd',
+        gateVersion: 1,
+      }),
+    ).toMatchObject({ rule: 'none', decision: 'pending', gateVersion: 1 })
+  })
+
+  it('a folded pending record never inflates the auto-extend bound (fold inertness)', () => {
+    const pending = stampEvent(
+      {
+        altitude: 'L2',
+        type: 'auto_decision',
+        rule: 'none',
+        decision: 'pending',
+        evidenceDigest: 'd',
+        gateVersion: 1,
+      },
+      1,
+      '2026-08-27T00:00:00.000Z',
+    )
+    const extend = stampEvent(
+      {
+        altitude: 'L2',
+        type: 'auto_decision',
+        rule: 'R2',
+        decision: 'extend',
+        evidenceDigest: 'd',
+        gateVersion: 1,
+      },
+      2,
+      '2026-08-27T00:00:00.000Z',
+    )
+    const pendingOnly = foldEvents(pipelineMachine, [pending]).snapshot.context
+    expect(pendingOnly.autoDecisions).toHaveLength(1)
+    expect(autoExtendsUsedOf(pendingOnly)).toBe(0)
+    const withExtend = foldEvents(pipelineMachine, [pending, extend]).snapshot.context
+    expect(autoExtendsUsedOf(withExtend)).toBe(1)
   })
 })
 
