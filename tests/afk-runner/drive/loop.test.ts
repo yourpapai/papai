@@ -13,12 +13,15 @@ import { drive } from '../../../afk-runner/src/drive/loop.js'
 import type { StateModule, WorkIO } from '../../../afk-runner/src/drive/loop.js'
 import { appendEvent, readEvents } from '../../../afk-runner/src/events.js'
 import type { EventInput, SddEvent } from '../../../afk-runner/src/events.js'
+import { workForOf } from '../../../afk-runner/src/graph/pipeline-work.js'
+import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
 import {
   initialKernelContext,
   createKernelMachine,
   kernelRootHandlers,
   kernelSetup,
 } from '../../../afk-runner/src/kernel/machine.js'
+import { makeFakePipeline, TASK_TEXT } from '../fixtures/fake-pipeline.js'
 
 function appendEvents(logPath: string, inputs: readonly EventInput[]): void {
   for (const input of inputs) appendEvent(logPath, input, new Date('2026-08-27T00:00:00.000Z'))
@@ -415,5 +418,21 @@ describe('drive loop — compound positions (C4 gate.awaiting)', () => {
       'convergence',
       'stage_exit:review',
     ])
+  })
+})
+
+describe('drive loop — pipeline intake wiring', () => {
+  it('surfaces a depth-override intake warn on RunDeps.stdout prefixed intake:', async () => {
+    const pipeline = makeFakePipeline()
+    const runDir = tempRunDir()
+    const logPath = path.join(runDir, 'events.ndjson')
+    const result = await drive(
+      { machine: pipelineMachine, logPath },
+      workForOf(pipeline.deps, { taskText: TASK_TEXT, changeName: 'add-thing', depthOverride: 'S' }),
+    )
+    expect(result.parked).toBe('final')
+    expect(pipeline.stdoutLines).toContain(
+      'intake: --depth S skips scope estimation — the forced profile sets the review round cap (S: 1) and skips the atomicity stage (decompose presents the final gate)',
+    )
   })
 })

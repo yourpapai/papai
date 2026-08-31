@@ -11,6 +11,7 @@ import { DepthClassificationSchema, runStageAgent } from '../agent-layer.js'
 import type { AgentLayerDeps, DepthSignals } from '../agent-layer.js'
 import type { DepthProfile, EventInput } from '../events.js'
 import type { OpenSpecDriver } from '../openspec-driver.js'
+import { ROUND_CAPS } from '../run-state.js'
 
 const PROFILE_RANK: Record<DepthProfile, number> = { S: 0, M: 1, L: 2 }
 
@@ -47,6 +48,8 @@ export interface IntakeDeps {
   readonly sidecarDir: string
   readonly runDir: string
   readonly cwd: string
+  /** Operator warn sink for classification caveats; omitted → silent (tests, embedders). */
+  readonly stdout?: (line: string) => void
 }
 
 export interface IntakeOptions {
@@ -78,6 +81,29 @@ export function buildEstimatorPrompt(taskText: string, cwd: string): string {
   ].join('\n')
 }
 
+/**
+ * The cost of a `--depth` override: the early return precedes both readings
+ * (prescreen and estimator), so scope estimation is skipped entirely, and the
+ * forced profile sizes exactly two things — the review round caps and, for S,
+ * the tail (`runsAtomicity = depth !== 'S'`: atomicity skipped, decompose
+ * presents the final gate). The tail clause is conditional so an M/L warn
+ * never claims a consequence that run does not get; the cap number is
+ * interpolated because a number beats a noun for operator judgment.
+ */
+function warnOverrideSkipsEstimation(deps: IntakeDeps, depth: DepthProfile): void {
+  const tail = depth === 'S' ? ' and skips the atomicity stage (decompose presents the final gate)' : ''
+  deps.stdout?.(
+    `--depth ${depth} skips scope estimation — the forced profile sets the review round cap (${depth}: ${ROUND_CAPS[depth]})${tail}`,
+  )
+}
+
+/** A two-level split between the readings is worth an operator's attention, not just an event field. */
+function warnDepthDisagreement(deps: IntakeDeps, estimator: DepthProfile, prescreen: DepthProfile): void {
+  deps.stdout?.(
+    `depth readings disagree by two levels (estimator ${estimator}, prescreen ${prescreen}) — taking the higher`,
+  )
+}
+
 export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promise<IntakeResult> {
   // Resume re-entry into intake must be idempotent: the scaffold already
   // exists after any earlier attempt, and `openspec new change` fails on an
@@ -93,6 +119,7 @@ export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promi
       rationale: 'override via --depth',
       source: 'override',
     })
+    warnOverrideSkipsEstimation(deps, options.depthOverride)
     return { changeName: options.changeName, depth: options.depthOverride, disagreement: false }
   }
   const prescreen = prescreenProfile(options.taskText)
@@ -110,6 +137,7 @@ export async function runIntake(deps: IntakeDeps, options: IntakeOptions): Promi
   })
   const estimated = mapSignalsToProfile(estimation.value.signals)
   const { profile, disagreement } = resolveDepth(estimated, prescreen)
+  if (disagreement) warnDepthDisagreement(deps, estimated, prescreen)
   deps.emit({
     altitude: 'L2',
     type: 'depth',

@@ -206,3 +206,54 @@ describe('runIntake', () => {
     expect(events[0]).toMatchObject({ type: 'depth', disagreement: true })
   })
 })
+
+describe('runIntake warn sink', () => {
+  it('warns exactly once on an S override: skipped estimation, the S round cap, and the S tail clause', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    const lines: string[] = []
+    const result = await runIntake(
+      { ...fixture.deps, stdout: (line: string) => void lines.push(line) },
+      { changeName: 'fix-typo', taskText: 'fix typo in README', depthOverride: 'S' },
+    )
+    expect(lines).toEqual([
+      '--depth S skips scope estimation — the forced profile sets the review round cap (S: 1) and skips the atomicity stage (decompose presents the final gate)',
+    ])
+    expect(result).toEqual({ changeName: 'fix-typo', depth: 'S', disagreement: false })
+  })
+
+  it('warns on an M override with the M round cap and makes no atomicity claim', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    const lines: string[] = []
+    await runIntake(
+      { ...fixture.deps, stdout: (line: string) => void lines.push(line) },
+      { changeName: 'fix-typo', taskText: 'fix typo in README', depthOverride: 'M' },
+    )
+    expect(lines).toEqual(['--depth M skips scope estimation — the forced profile sets the review round cap (M: 3)'])
+  })
+
+  it('warns on a two-level disagreement naming both readings and the higher taken; event and result keep their shapes', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    const lines: string[] = []
+    const result = await runIntake(
+      { ...fixture.deps, stdout: (line: string) => void lines.push(line) },
+      { changeName: 'fix-typo', taskText: 'fix typo in README' },
+    )
+    expect(lines).toEqual(['depth readings disagree by two levels (estimator L, prescreen S) — taking the higher'])
+    expect(result).toEqual({ changeName: 'fix-typo', depth: 'L', disagreement: true })
+    expect(fixture.emitted[0]).toMatchObject({ type: 'depth', profile: 'L', disagreement: true })
+  })
+
+  it('stays silent without a sink on the deps — no warn, no throw', async () => {
+    const dir = makeDir()
+    const fixture = makeFixture(dir)
+    const result = await runIntake(fixture.deps, {
+      changeName: 'fix-typo',
+      taskText: 'fix typo in README',
+      depthOverride: 'S',
+    })
+    expect(result).toEqual({ changeName: 'fix-typo', depth: 'S', disagreement: false })
+  })
+})

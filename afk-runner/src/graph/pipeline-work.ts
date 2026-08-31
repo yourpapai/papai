@@ -189,6 +189,7 @@ function intakeModule(deps: PipelineWorkDeps, input: PipelineRunInput): StateMod
             sidecarDir: sidecarDirOf(io),
             runDir: io.runDir,
             cwd: deps.config.repoRoot,
+            stdout: (line) => deps.stdout?.(`intake: ${line}`),
           },
           { changeName: input.changeName, taskText: input.taskText, depthOverride: input.depthOverride },
         ).then(() => undefined),
