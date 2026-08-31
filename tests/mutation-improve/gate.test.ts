@@ -100,7 +100,9 @@ const gateDeps = (
     },
     measureScore: () => {
       calls.measures += 1
-      return Promise.resolve(overrides.measured ?? { score: 0.97, survivingMutantIds: [] })
+      return Promise.resolve(
+        overrides.measured ?? { score: 0.97, killed: 97, timeout: 0, scored: 100, survivingMutantIds: [] },
+      )
     },
     readBaseline: () => Promise.resolve({}),
     writeBaseline: () => Promise.resolve(),
@@ -145,16 +147,23 @@ describe('gatePhase', () => {
 
   test('caps when the score improved and declared mutant ids equal the surviving set', async () => {
     const { deps, iterPath, worktreePath } = gateDeps({
-      measured: { score: 0.85, survivingMutantIds: ['s1', 's2'] },
+      measured: { score: 0.85, killed: 85, timeout: 0, scored: 100, survivingMutantIds: ['s1', 's2'] },
     })
     const improved = withResiduals([{ loc: 'src/foo.ts:1', why: 'equivalent', mutantIds: ['s1', 's2'] }])
     const outcome = await gatePhase(deps, iterPath, worktreePath, 'src/foo.ts', 0.4, improved)
-    expect(expectOk(outcome).value).toEqual({ afterScore: 0.85, result: improved, capped: true })
+    expect(expectOk(outcome).value).toEqual({
+      afterScore: 0.85,
+      killed: 85,
+      timeout: 0,
+      scored: 100,
+      result: improved,
+      capped: true,
+    })
   })
 
   test('fails the score gate when declared ids are a strict subset of survivors', async () => {
     const { deps, iterPath, worktreePath } = gateDeps({
-      measured: { score: 0.85, survivingMutantIds: ['s1', 's2'] },
+      measured: { score: 0.85, killed: 85, timeout: 0, scored: 100, survivingMutantIds: ['s1', 's2'] },
     })
     const improved = withResiduals([{ loc: 'src/foo.ts:1', why: 'equivalent', mutantIds: ['s1'] }])
     const outcome = await gatePhase(deps, iterPath, worktreePath, 'src/foo.ts', 0.4, improved)
@@ -163,7 +172,7 @@ describe('gatePhase', () => {
 
   test('does not cap when the score did not improve, even with full coverage', async () => {
     const { deps, iterPath, worktreePath } = gateDeps({
-      measured: { score: 0.85, survivingMutantIds: ['s1'] },
+      measured: { score: 0.85, killed: 85, timeout: 0, scored: 100, survivingMutantIds: ['s1'] },
     })
     const improved = withResiduals([{ loc: 'src/foo.ts:1', why: 'equivalent', mutantIds: ['s1'] }])
     const outcome = await gatePhase(deps, iterPath, worktreePath, 'src/foo.ts', 0.85, improved)
@@ -172,10 +181,17 @@ describe('gatePhase', () => {
 
   test('at-threshold score passes uncapped even with full residual coverage', async () => {
     const { deps, iterPath, worktreePath } = gateDeps({
-      measured: { score: 0.97, survivingMutantIds: ['s1'] },
+      measured: { score: 0.97, killed: 97, timeout: 0, scored: 100, survivingMutantIds: ['s1'] },
     })
     const improved = withResiduals([{ loc: 'src/foo.ts:1', why: 'equivalent', mutantIds: ['s1'] }])
     const outcome = await gatePhase(deps, iterPath, worktreePath, 'src/foo.ts', 0.4, improved)
-    expect(expectOk(outcome).value).toEqual({ afterScore: 0.97, result: improved, capped: false })
+    expect(expectOk(outcome).value).toEqual({
+      afterScore: 0.97,
+      killed: 97,
+      timeout: 0,
+      scored: 100,
+      result: improved,
+      capped: false,
+    })
   })
 })

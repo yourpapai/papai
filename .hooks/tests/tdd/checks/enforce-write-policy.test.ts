@@ -203,6 +203,51 @@ describe('enforceWritePolicy', () => {
     expect(result).toBeNull()
   })
 
+  // The fallback path scans raw edit fragments, which routinely begin mid-block and do not parse
+  // as a standalone program. oxc-parser drops comments from text it cannot parse (returns
+  // `comments: []`), so extraction that trusts the parser alone reads "no suppression added" and
+  // allows the write — the exact fail-open this guard exists to prevent. Extraction must fall
+  // back to a lexical scan whenever the parse reports errors.
+  test('blocks an unparseable fragment that carries a suppression comment', () => {
+    fs.mkdirSync(path.join(tempDir, 'src'), { recursive: true })
+    fs.writeFileSync(path.join(tempDir, 'src', 'example.ts'), 'callThing()\n')
+
+    const result = enforceWritePolicy(
+      createCtx({
+        tool_name: 'edit',
+        tool_input: {
+          file_path: 'src/example.ts',
+          oldString: 'missingCall()',
+          newString: `  } else {\n    ${lineComment(tsExpectErrorDirective)}\n    return null`,
+        },
+      }),
+    )
+
+    expect(result?.decision).toBe('block')
+    expect(result?.reason).toContain(tsExpectErrorDirective)
+  })
+
+  // The other half of the same decision: falling back to a lexical scan must not cost the
+  // string-literal exemption on content that DOES parse. Pinned beside the case above so an edit
+  // cannot satisfy one by breaking the other.
+  test('still exempts a directive in a string literal when the content parses', () => {
+    fs.mkdirSync(path.join(tempDir, 'src'), { recursive: true })
+    fs.writeFileSync(path.join(tempDir, 'src', 'example.ts'), 'callThing()\n')
+
+    const result = enforceWritePolicy(
+      createCtx({
+        tool_name: 'edit',
+        tool_input: {
+          file_path: 'src/example.ts',
+          oldString: 'callThing()',
+          newString: `const label = '${tsExpectErrorDirective}'\ncallThing()`,
+        },
+      }),
+    )
+
+    expect(result).toBeNull()
+  })
+
   test('falls back to scanning the payload when the edit cannot be reconstructed', () => {
     fs.mkdirSync(path.join(tempDir, 'src'), { recursive: true })
     fs.writeFileSync(path.join(tempDir, 'src', 'example.ts'), 'callThing()\n')

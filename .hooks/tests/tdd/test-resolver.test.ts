@@ -93,8 +93,19 @@ describe('test-resolver', () => {
       expect(isGateableImplFile('scripts/foo.ts', projectRoot)).toBe(false)
     })
 
-    test('returns true for review-loop/src/cli.ts', () => {
-      expect(isGateableImplFile('review-loop/src/cli.ts', projectRoot)).toBe(true)
+    test('returns true for plugins/task-provider-kaneo/classify-error.ts', () => {
+      expect(isGateableImplFile('plugins/task-provider-kaneo/classify-error.ts', projectRoot)).toBe(true)
+    })
+
+    test('returns false for plugin test files', () => {
+      expect(isGateableImplFile('plugins/task-provider-kaneo/classify-error.test.ts', projectRoot)).toBe(false)
+    })
+
+    // The gate measures product code. review-loop/ is internal infrastructure: it keeps its own
+    // suite under tests/review-loop/, but nothing gates it per-file. See
+    // openspec/changes/narrow-mutation-gate-scope.
+    test('returns false for review-loop/src/cli.ts (internal infrastructure, not product code)', () => {
+      expect(isGateableImplFile('review-loop/src/cli.ts', projectRoot)).toBe(false)
     })
 
     test('returns false for review-loop/src/cli.test.ts', () => {
@@ -253,6 +264,24 @@ describe('test-resolver', () => {
 
     test('tests/review-loop/cli.test.ts -> review-loop/src/cli.ts', () => {
       expect(resolveImplPath('tests/review-loop/cli.test.ts')).toBe(path.join('review-loop', 'src', 'cli.ts'))
+    })
+  })
+
+  // Gateability and mappability are separate questions. `bun run test:affected` and the mutation
+  // score fingerprint resolve tests for workspaces the gate does not measure, so narrowing
+  // isGateableImplFile must never narrow the mappers. Pinned together here so an edit that
+  // "finishes the job" by deleting the review-loop branches fails on intent, not just on a
+  // scattered assertion. See openspec/changes/narrow-mutation-gate-scope design.md D2.
+  describe('non-gateable workspaces stay mappable', () => {
+    test('review-loop/src/cli.ts is not gateable yet still maps to its test and back', () => {
+      expect(isGateableImplFile('review-loop/src/cli.ts', '/project')).toBe(false)
+      expect(suggestTestPath('review-loop/src/cli.ts')).toBe('tests/review-loop/cli.test.ts')
+      expect(resolveImplPath('tests/review-loop/cli.test.ts')).toBe(path.join('review-loop', 'src', 'cli.ts'))
+    })
+
+    test('scripts/build-client.ts is not gateable yet still maps back from its test', () => {
+      expect(isGateableImplFile('scripts/build-client.ts', '/project')).toBe(false)
+      expect(resolveImplPath('tests/scripts/build-client.test.ts')).toBe(path.join('scripts', 'build-client.ts'))
     })
   })
 })

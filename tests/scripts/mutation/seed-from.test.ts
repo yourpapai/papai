@@ -30,22 +30,30 @@ const readMap = (filePath: string): BaselineMap => {
   return parsed
 }
 
-const scored = (sourceFile: string, scoreValue: number): PerFileScore => ({
-  sourceFile,
-  merged: {
-    killed: 0,
-    survived: 0,
-    noCoverage: 0,
-    timeout: 0,
-    compileError: 0,
-    ignored: 0,
-    runtimeError: 0,
-    pending: 0,
-    total: 1,
-    scored: 1,
-    score: scoreValue,
-  },
-})
+/**
+ * A measurement-derived PerFileScore with counts that satisfy the score formula:
+ * killed = round(score * 10), survived the rest — so the rich record a seed writes
+ * for it passes the load-time arithmetic validation it pins.
+ */
+const scored = (sourceFile: string, scoreValue: number): PerFileScore => {
+  const killed = Math.round(scoreValue * 10)
+  return {
+    sourceFile,
+    merged: {
+      killed,
+      survived: 10 - killed,
+      noCoverage: 0,
+      timeout: 0,
+      compileError: 0,
+      ignored: 0,
+      runtimeError: 0,
+      pending: 0,
+      total: 10,
+      scored: 10,
+      score: scoreValue,
+    },
+  }
+}
 
 const unscored = (sourceFile: string): PerFileScore => ({
   sourceFile,
@@ -143,13 +151,74 @@ describe('writeScoresFile', () => {
     expect(SCORES_FILE).toBe('scores.json')
   })
 
-  test('writes a sorted BaselineMap excluding entries with no scoreable mutants', () => {
+  test('writes rich records, sorted, excluding entries with no scoreable mutants', () => {
     const scoresPath = path.join(tmpDir(), 'nested', SCORES_FILE)
 
     writeScoresFile(scoresPath, [scored('src/z.ts', 0.3), scored('src/a.ts', 0.9), unscored('src/u.ts')])
 
-    expect(readMap(scoresPath)).toEqual({ 'src/a.ts': 0.9, 'src/z.ts': 0.3 })
+    expect(readMap(scoresPath)).toEqual({
+      'src/a.ts': { score: 0.9, killed: 9, timeout: 0, scored: 10 },
+      'src/z.ts': { score: 0.3, killed: 3, timeout: 0, scored: 10 },
+    })
     expect(Object.keys(readMap(scoresPath))).toEqual(['src/a.ts', 'src/z.ts'])
+  })
+})
+
+describe('seedFromScores with rich records', () => {
+  test('round-trips a rich scores.json and replaces a lower rich record wholesale (never mixing provenance)', () => {
+    const dir = tmpDir()
+    const scoresPath = path.join(dir, SCORES_FILE)
+    const baselinePath = path.join(dir, 'baseline.json')
+    writeJson(scoresPath, { 'src/a.ts': { score: 0.8, killed: 7, timeout: 1, scored: 10 } })
+    writeJson(baselinePath, {
+      'src/a.ts': { score: 0.5, killed: 4, timeout: 1, scored: 10 },
+      'src/untouched.ts': { score: 0.7, killed: 6, timeout: 1, scored: 10 },
+    })
+
+    const count = seedFromScores({ baselinePath, scoresPath, freshBase: undefined, deps: undefined })
+
+    expect(readMap(baselinePath)).toEqual({
+      // strictly higher: the record is replaced wholesale with the measurement's own counts
+      'src/a.ts': { score: 0.8, killed: 7, timeout: 1, scored: 10 },
+      'src/untouched.ts': { score: 0.7, killed: 6, timeout: 1, scored: 10 },
+    })
+    expect(count).toBe(2)
+  })
+
+  test('merging over a mixed legacy/rich baseline never loosens floors', () => {
+    const dir = tmpDir()
+    const scoresPath = path.join(dir, SCORES_FILE)
+    const baselinePath = path.join(dir, 'baseline.json')
+    // scores for src/legacy.ts measure BELOW its bare floor, and src/rich.ts below its record
+    writeJson(scoresPath, {
+      'src/legacy.ts': { score: 0.4, killed: 4, timeout: 0, scored: 10 },
+      'src/rich.ts': { score: 0.4, killed: 4, timeout: 0, scored: 10 },
+    })
+    writeJson(baselinePath, {
+      'src/legacy.ts': 0.5,
+      'src/rich.ts': { score: 0.6, killed: 5, timeout: 1, scored: 10 },
+    })
+
+    seedFromScores({ baselinePath, scoresPath, freshBase: undefined, deps: undefined })
+
+    expect(readMap(baselinePath)).toEqual({
+      // below-floor measurement leaves the legacy bare entry untouched
+      'src/legacy.ts': 0.5,
+      // equal-or-lower over a rich record leaves score and counts untouched
+      'src/rich.ts': { score: 0.6, killed: 5, timeout: 1, scored: 10 },
+    })
+  })
+
+  test('a rich score measured at exactly a legacy floor converts the entry at the unchanged floor', () => {
+    const dir = tmpDir()
+    const scoresPath = path.join(dir, SCORES_FILE)
+    const baselinePath = path.join(dir, 'baseline.json')
+    writeJson(scoresPath, { 'src/legacy.ts': { score: 0.5, killed: 4, timeout: 1, scored: 10 } })
+    writeJson(baselinePath, { 'src/legacy.ts': 0.5 })
+
+    seedFromScores({ baselinePath, scoresPath, freshBase: undefined, deps: undefined })
+
+    expect(readMap(baselinePath)).toEqual({ 'src/legacy.ts': { score: 0.5, killed: 4, timeout: 1, scored: 10 } })
   })
 })
 

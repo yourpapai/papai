@@ -17,6 +17,7 @@ import { findLatestState, initialState } from './state-manager.js'
 import type { TriggerEvent } from './trigger-events.js'
 import type { TriggerOutcome } from './trigger-outcome.js'
 import { applyTrigger } from './triggers.js'
+import { TOKEN_SCALE } from './types.js'
 import type { AgentState } from './types.js'
 
 export interface RunOptions {
@@ -133,8 +134,40 @@ const readThread = async (event: TriggerEvent, deps: PhaseDeps): Promise<Restore
  * statements about the *run*: one marker goes on when work starts and comes off
  * when it ends, whatever the outcome, and neither fact is known to a phase.
  */
+/**
+ * The restored block with its carried token total brought onto the current
+ * counting scale — once per issue, and a no-op for every block already on it.
+ *
+ * Here rather than in `state-manager.ts` because the schema's job is to say what
+ * a block *is*, and a block written by an earlier deploy is perfectly valid: its
+ * figure was true of the definition that produced it. What is not valid is
+ * adding it to a figure counted the other way, and this is the one place every
+ * reader of that sum passes through — `MachineInput` captures `carriedTokens`
+ * from here, and `triggers.ts` reads the restored figure straight off it.
+ *
+ * Only the tokens. Every other field the block carries — the phase, the resume
+ * point, the attempt counters, the branch, the pull request — is untouched by
+ * how tokens were counted, and the cost totals were never on this scale at all:
+ * the backend priced each turn itself and those figures were right throughout.
+ * Resetting them would discard a correct number to fix a wrong one.
+ *
+ * Idempotent, which matters because a job that corrects and then dies before
+ * persisting will correct again: the second pass re-zeroes a figure still on the
+ * old scale. Safe to repeat, unsafe to skip.
+ */
+const onCurrentScale = (restored: AgentState, deps: PhaseDeps): AgentState => {
+  if (restored.tokenScale >= TOKEN_SCALE) return restored
+
+  deps.log.info(
+    { issue: restored.issueId, discarded: restored.tokensSpent, was: restored.tokenScale, now: TOKEN_SCALE },
+    'Resetting a carried token total measured on a superseded scale',
+  )
+  return { ...restored, tokensSpent: 0, tokenScale: TOKEN_SCALE }
+}
+
 const runAccepted = async (event: TriggerEvent, deps: PhaseDeps): Promise<RunResult> => {
-  const { thread, restored } = await readThread(event, deps)
+  const { thread, restored: carried } = await readThread(event, deps)
+  const restored = onCurrentScale(carried, deps)
   const issue = await resolveIssue(event, deps)
   const command = triggerCommand(event)
 

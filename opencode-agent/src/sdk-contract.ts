@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { countedTokens } from './agent-session.js'
 import { openCodeError } from './errors.js'
 import type { AgentPromptRequest } from './opencode-adapter.js'
 
@@ -217,7 +218,16 @@ const sessionUsageSchema = z.object({
 })
 
 export interface SessionUsage {
-  /** Every counted bucket summed — what the token ceiling reads. */
+  /**
+   * What the token ceiling reads: uncached input, output, reasoning and cache
+   * writes, decided by `agent-session.ts`'s `countedTokens` rather than here.
+   *
+   * Cache writes used to be missing from it, which under-counted a cache-heavy
+   * run in the same breath as the claude route over-counted one — the two
+   * backends summing different buckets is exactly how one `AGENT_MAX_TOKENS`
+   * came to mean two budgets. Cache reads stay out: the doctrine
+   * `cacheBucketSchema` records below is that they feed the price.
+   */
   tokens: number
   cost: number
   /**
@@ -249,7 +259,9 @@ export const decodeSessionUsage = (fetched: unknown): SessionUsage | null => {
 
   const { tokens, cost } = parsed.data.data
   return {
-    tokens: Math.round(tokens.input + tokens.output + tokens.reasoning),
+    // An absent cache bucket counts as zero here and is still refused a price
+    // below: one read of one envelope, two honest answers.
+    tokens: countedTokens({ ...tokens, cacheWrite: tokens.cache?.write }),
     cost,
     input: tokens.input,
     output: tokens.output,

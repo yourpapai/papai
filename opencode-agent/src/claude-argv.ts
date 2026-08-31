@@ -114,8 +114,13 @@ export const claudeProfileError = (): PipelineError =>
 /**
  * Only the model id crosses: one `LLM_MODEL` knob serves either backend, and a
  * value spelled `provider/model` (the OpenCode form) keeps its model id here.
+ *
+ * Exported as the one definition of *the id the CLI was invoked with*, which
+ * `claude-spend.ts` prices the run under. Two functions agreeing would be a
+ * reference that can drift from the invocation; one function is a reference
+ * that cannot.
  */
-const modelIdForCli = (raw: string): string => (raw.includes('/') ? parseModelRef(raw).modelID : raw)
+export const modelIdForCli = (raw: string): string => (raw.includes('/') ? parseModelRef(raw).modelID : raw)
 
 /** Which allowlist, model and effort a profile's turn runs with. */
 const profileSelection = (

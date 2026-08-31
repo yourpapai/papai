@@ -14,20 +14,32 @@ export function isTestFile(filePath) {
 }
 
 /**
- * Check if a file is a gateable implementation file (src/)
+ * Check if a file is a gateable implementation file.
+ *
+ * Gateable means PRODUCT CODE: the application source tree, the client app, and the plugins that
+ * ship with them. Everything else in the repo is internal infrastructure or tooling —
+ * `scripts/`, `opencode-agent/`, `mutation-improve/`, `review-loop/`, `sdd-runner/` — and is
+ * deliberately not gated, per file, by either the mutation gate or the Write/Edit hook checks.
+ * Those workspaces keep their own suites under `tests/`; what they do not get is a per-file
+ * mutation floor, because measuring them spent 84% of the gate's budget on code no user runs.
+ * See openspec/changes/narrow-mutation-gate-scope.
+ *
+ * Gateability is a policy question and lives only here. It is NOT the same question as how a
+ * source maps to its test file: `suggestTestPath`, `findTestFile` and `resolveImplPath` below
+ * still map the non-gateable workspaces, because `bun run test:affected` and the mutation score
+ * fingerprint depend on those mappings. Narrowing this predicate must not narrow those.
+ *
  * @param {string} filePath - File path to check
  * @param {string} projectRoot - Project root directory
  * @returns {boolean} True if this is a gateable implementation file
  */
 export function isGateableImplFile(filePath, projectRoot) {
-  // Must be under src/, client/, plugins/, review-loop/src/, or sdd-runner/src/, match IMPL_PATTERN, and NOT match TEST_PATTERN
+  // Must be under a product root, match IMPL_PATTERN, and NOT match TEST_PATTERN
   const rel = path.relative(projectRoot, path.resolve(projectRoot, filePath))
   const isSrc = rel.startsWith('src/') || rel.startsWith('src\\')
   const isClient = rel.startsWith('client/') || rel.startsWith('client\\')
   const isPlugins = rel.startsWith('plugins/') || rel.startsWith('plugins\\')
-  const isReviewLoop = rel.startsWith('review-loop/src/') || rel.startsWith('review-loop\\src\\')
-  const isSddRunner = rel.startsWith('sdd-runner/src/') || rel.startsWith('sdd-runner\\src\\')
-  if (!isSrc && !isClient && !isPlugins && !isReviewLoop && !isSddRunner) return false
+  if (!isSrc && !isClient && !isPlugins) return false
   if (!IMPL_PATTERN.test(rel)) return false
   if (TEST_PATTERN.test(rel)) return false
   return true

@@ -12,7 +12,7 @@ import {
   SLASH_COMMANDS,
 } from '../../opencode-agent/src/commands.js'
 import { renderRefusedCommand } from '../../opencode-agent/src/run-report.js'
-import { PHASES } from '../../opencode-agent/src/types.js'
+import { PHASES, TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
 
 /**
@@ -47,6 +47,7 @@ const state = (phase: Phase, over: Partial<AgentState> = {}): AgentState => ({
   stepsDone: 0,
   changeName: 'add-x',
   planRevision: 1,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 0,
   usdSpent: 0,
   usdUnpriced: false,
