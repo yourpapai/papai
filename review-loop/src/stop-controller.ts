@@ -90,6 +90,10 @@ export interface StopControllerOptions {
  * spells "no budget at all", so a run whose setup outlived its budget would come
  * back unbounded instead of stopping at once.
  */
+import type { ReviewLoopConfig } from './config.js'
+import type { ProgressReporter } from './progress-log.js'
+import type { RunState } from './run-state.js'
+
 export const remainingBudget = (runTimeoutMs: number, elapsedMs: number): number =>
   runTimeoutMs <= 0 ? 0 : Math.max(1, runTimeoutMs - elapsedMs)
 
@@ -152,4 +156,58 @@ export function createStopController(options: StopControllerOptions): StopContro
       for (const signal of SIGNALS) host.off(signal, onSignal)
     },
   }
+}
+
+/**
+ * What a stopped run does *instead of* finalizing, and why it does nothing.
+ *
+ * `finalizeRun` is a full build check and then a merge — minutes of work whose
+ * whole purpose is to gate a merge that has not happened yet. A run that stopped
+ * because it is out of time has neither the minutes nor anything left to gate:
+ * under `mergeEachFix` every accepted fix is already in the checkout, and
+ * without it they are on the loop's branch, which is exactly where a merge that
+ * failed its gate would have left them anyway. Spending the last of the clock on
+ * a check whose only possible outcome is to throw is how a stop loses the work
+ * it stopped in order to keep.
+ *
+ * So the branch is left alone, deliberately, and the run says where it is.
+ */
+export function reportStop(config: ReviewLoopConfig, runState: RunState, log: ProgressReporter): void {
+  const branch = `review-loop/${runState.runId}`
+  log.event(
+    config.mergeEachFix
+      ? `${STOP_MARKER} every accepted fix is already on the working branch; skipping the final build gate`
+      : `${STOP_MARKER} accepted fixes are on ${branch}; merge it by hand — the final build gate was skipped`,
+  )
+}
+
+/** The line a stopped run prints, and the prefix its caller can match on. */
+export const STOP_MARKER = '[review-loop] stopped:'
+
+const STOP_NOTICE: Record<StopReason, string> = {
+  budget: 'out of time for this run — finishing what is in hand and stopping',
+  signal: 'asked to stop — finishing what is in hand and stopping',
+}
+
+/**
+ * The run's stop controller, split from `runCli` when the claude seams pushed
+ * it past `max-lines-per-function`. The budget is measured from when the
+ * process started, not from here: cutting the worktrees is minutes of
+ * `bun install` on a cold runner, and a budget that ignored them would expire
+ * after the caller's kill rather than before.
+ */
+export function createRunStopController(
+  config: ReviewLoopConfig,
+  log: { event: (line: string) => void },
+  startedAt: number,
+): StopController {
+  return createStopController({
+    runTimeoutMs: remainingBudget(config.runTimeoutMs, Date.now() - startedAt),
+    onStop: (reason) => {
+      log.event(`${STOP_MARKER} ${STOP_NOTICE[reason]}`)
+    },
+    // The handler this installs is what makes a first Ctrl-C graceful; a second
+    // one has to mean now, and 130 is what a shell reports for a SIGINT death.
+    onRepeatedSignal: () => process.exit(130),
+  })
 }

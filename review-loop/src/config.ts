@@ -8,16 +8,35 @@ import path from 'node:path'
 
 import { z } from 'zod'
 
+import type { ClaudeRunContext } from './agent-runner.js'
 import { PricingTableSchema } from './cost.js'
 import { detectGitRoot } from './worktree.js'
 
+/**
+ * Which subprocess backend serves the run's agent roles. One backend per run —
+ * per-role placement makes a mixed config representable so validation can
+ * refuse it by name, rather than a top-level key silently stripping a stray
+ * per-role spelling and proceeding on the wrong backend.
+ */
+export type AgentBackend = 'opencode' | 'claude'
+
 const AgentConfigSchema = z.object({
   model: z.string().min(1),
+  /**
+   * See {@link AgentBackend}; omit-or-agree per role, resolved run-wide. The
+   * error names the received value because a bare expected-one-of message does
+   * not say which knob the bad spelling came from.
+   */
+  backend: z
+    .enum(['opencode', 'claude'], {
+      error: (iss) => `backend must be "opencode" or "claude", got ${JSON.stringify(iss.input) ?? 'unknown'}`,
+    })
+    .optional(),
   extraArgs: z.array(z.string()).default([]),
   timeoutMs: z.number().int().min(0).optional(),
 })
 
-export const ReviewLoopConfigSchema = z.object({
+const ReviewLoopConfigShape = z.object({
   repoRoot: z.string().min(1).optional(),
   workDir: z.string().min(1),
   maxRounds: z.number().int().positive().default(10),
@@ -62,9 +81,58 @@ export const ReviewLoopConfigSchema = z.object({
   pricing: PricingTableSchema.optional(),
 })
 
+/** The per-role backend spellings a config names, in role order, `undefined`s dropped. */
+function namedBackends(config: {
+  reviewer: { backend?: AgentBackend }
+  fixer: { backend?: AgentBackend }
+  matcher: { backend?: AgentBackend }
+  inspector?: { backend?: AgentBackend }
+}): AgentBackend[] {
+  return [config.reviewer, config.fixer, config.matcher, config.inspector].flatMap((agent) =>
+    agent?.backend === undefined ? [] : [agent.backend],
+  )
+}
+
+/**
+ * The one backend a parsed config resolves to: the single non-`undefined`
+ * per-role value, else the pre-change default. Callers read this instead of
+ * re-deriving it, so every spawn of the run agrees on one answer.
+ */
+export function effectiveBackend(config: {
+  reviewer: { backend?: AgentBackend }
+  fixer: { backend?: AgentBackend }
+  matcher: { backend?: AgentBackend }
+  inspector?: { backend?: AgentBackend }
+}): AgentBackend {
+  return namedBackends(config)[0] ?? 'opencode'
+}
+
+/**
+ * Refuses per-role backend disagreement at load, before any subprocess starts.
+ * The refinement runs after the enum has vetted each value individually.
+ */
+export const ReviewLoopConfigSchema = ReviewLoopConfigShape.superRefine((config, ctx) => {
+  const unique = [...new Set(namedBackends(config))]
+  if (unique.length > 1) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['backend'],
+      message: `Invalid config: one backend per run — every role that names a backend must agree (found ${unique.join(', ')}).`,
+    })
+  }
+})
+
 export interface ReviewLoopConfig extends z.infer<typeof ReviewLoopConfigSchema> {
   repoRoot: string
   workDir: string
+  /** The one effective backend every role of this run spawns (D1). */
+  backend: AgentBackend
+  /**
+   * The claude route's run-wide context, assembled once in `runCli` after the
+   * resolver answers and joined with the run-scoped config-dir root (D4), and
+   * ridden on the resolved config to every spawn. Absent on the opencode route.
+   */
+  claude?: ClaudeRunContext
 }
 
 export interface ConfigLoadInput {
@@ -85,6 +153,7 @@ export async function loadReviewLoopConfig(input: ConfigLoadInput): Promise<Revi
 
   return {
     ...parsed,
+    backend: effectiveBackend(parsed),
     repoRoot,
     workDir,
   }

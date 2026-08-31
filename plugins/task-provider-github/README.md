@@ -82,6 +82,40 @@ None.
 (See `prompt-addendum.ts` for the full GitHub-specific guidance injected into
 the system prompt.)
 
+## GraphQL API support
+
+A GraphQL transport (`graphql-client.ts`) sits beside the REST client with
+the same guarantees: resolved-and-confined endpoint, authenticated POST,
+metadata-only logging, observation-boundary emission, and classified errors
+(a 200 carrying `errors[]` maps by GraphQL type: `FORBIDDEN` /
+`INSUFFICIENT_SCOPES` → auth failure, `NOT_FOUND` → task/project not found,
+`RATE_LIMITED` → rate-limited, anything else → validation failure). It has no
+production caller yet — the `github-provider-projects` follow-up (Projects
+V2) is its first consumer — so its exports stay knip-ignored until that lands.
+
+### Endpoint derivation
+
+The GraphQL endpoint is derived per call from the instance's REST `baseUrl`
+(empty means the public default; trailing slashes are stripped, and a GHES
+`/api/v3` suffix is replaced, not appended to):
+
+| Configured REST base                                   | GraphQL endpoint                                     |
+| ------------------------------------------------------ | ---------------------------------------------------- |
+| empty or `https://api.github.com` (the public default) | `https://api.github.com/graphql`                     |
+| GHES `…/api/v3`, including sub-path prefixes           | same origin + `/api/graphql` (the suffix is swapped) |
+| anything else (GHES bare origin)                       | base + `/api/graphql`                                |
+
+The derived endpoint's host is always the configured REST base's host, so the
+manifest's declared hosts are unchanged. A reverse-proxied GHES whose REST
+path does not end in `/api/v3` derives base + `/api/graphql` — fix via the
+existing `baseUrl` config, same as REST misconfiguration today.
+
+### Token scopes
+
+The transport itself needs no scope beyond today's. Later GraphQL surfaces
+(Projects V2) require the classic-PAT `project` scope, or the fine-grained
+Projects read/write permission.
+
 ## Enabling
 
 1. Create a GitHub task instance in `/admin#instances` and set `repo`

@@ -29,3 +29,6 @@ export const GITHUB_TRAITS: ReadonlySet<TaskProviderTrait> = new Set<TaskProvide
 
 /** Public GitHub REST API base; GHES instances override it via the `baseUrl` instance config. */
 export const GITHUB_DEFAULT_BASE_URL = 'https://api.github.com'
+
+/** Public GitHub GraphQL endpoint; GHES instances derive theirs from the REST `baseUrl`. */
+export const GITHUB_DEFAULT_GRAPHQL_URL = 'https://api.github.com/graphql'

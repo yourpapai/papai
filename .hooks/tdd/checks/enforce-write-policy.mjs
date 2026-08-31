@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import * as ts from 'typescript'
+import { parseSync } from 'oxc-parser'
 
 const EDIT_TOOLS = new Set(['write', 'edit', 'multiedit'])
 const COMMENTABLE_FILE_PATTERN = /\.(?:[cm]?[jt]s|[jt]sx)$/u
@@ -71,52 +71,73 @@ function isCommentableFile(filePath) {
 }
 
 /**
- * @param {string} filePath
- * @returns {ts.LanguageVariant}
- */
-function getLanguageVariant(filePath) {
-  const normalized = filePath.toLowerCase()
-  if (normalized.endsWith('.jsx') || normalized.endsWith('.tsx')) {
-    return ts.LanguageVariant.JSX
-  }
-  return ts.LanguageVariant.Standard
-}
-
-/**
+ * Comment texts, plus whether the parse that produced them can be trusted to be complete.
+ *
+ * `oxc-parser` is a parser, not the lexer this check used before TypeScript 7 removed the
+ * standalone scanner. It drops comments from text it cannot parse — a fragment beginning
+ * mid-block yields `comments: []` with an error — so an empty list from an erroring parse is
+ * NOT evidence that no suppression was added. Callers must treat `reliable: false` as
+ * "re-measure lexically", never as "nothing found".
+ *
  * @param {string} source
  * @param {string} filePath
- * @returns {string[]}
+ * @returns {{ comments: string[], reliable: boolean }}
  */
 function extractComments(source, filePath) {
-  const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, getLanguageVariant(filePath), source)
-  const comments = []
-
-  for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
-    if (token === ts.SyntaxKind.SingleLineCommentTrivia || token === ts.SyntaxKind.MultiLineCommentTrivia) {
-      comments.push(scanner.getTokenText())
+  try {
+    const result = parseSync(filePath, source)
+    return {
+      comments: result.comments.map((comment) => comment.value),
+      reliable: result.errors.length === 0,
     }
+  } catch {
+    return { comments: [], reliable: false }
   }
+}
 
-  return comments
+/**
+ * Add every directive occurrence in `text` into `counts`, in place.
+ *
+ * @param {string} text
+ * @param {Record<string, number>} counts
+ * @returns {Record<string, number>}
+ */
+function countMatchesIn(text, counts) {
+  for (const { label, pattern } of suppressionMatchers) {
+    const matches = text.match(new RegExp(pattern.source, 'gu'))
+    counts[label] += matches?.length ?? 0
+  }
+  return counts
+}
+
+/**
+ * Count directives anywhere in the raw text, comment or not.
+ *
+ * Deliberately biased toward blocking: it is only reached for text the parser could not analyse,
+ * where a false positive costs the author one rephrase and a false negative costs the repo an
+ * unnoticed suppression.
+ *
+ * @param {string} source
+ * @returns {Record<string, number>}
+ */
+function countLexically(source) {
+  return countMatchesIn(source, createEmptyCounts())
 }
 
 /**
  * @param {string} source
  * @param {string} filePath
- * @returns {Record<string, number>}
+ * @returns {{ counts: Record<string, number>, reliable: boolean }}
  */
-function countSuppressions(source, filePath) {
+function analyzeSuppressions(source, filePath) {
+  if (!source) return { counts: createEmptyCounts(), reliable: true }
+
+  const { comments, reliable } = extractComments(source, filePath)
+  if (!reliable) return { counts: countLexically(source), reliable: false }
+
   const counts = createEmptyCounts()
-  if (!source) return counts
-
-  for (const comment of extractComments(source, filePath)) {
-    for (const { label, pattern } of suppressionMatchers) {
-      const matches = comment.match(new RegExp(pattern.source, 'gu'))
-      counts[label] += matches?.length ?? 0
-    }
-  }
-
-  return counts
+  for (const comment of comments) countMatchesIn(comment, counts)
+  return { counts, reliable: true }
 }
 
 /**
@@ -270,13 +291,32 @@ function findPayloadLabels(toolName, toolInput, filePath) {
   const counts = createEmptyCounts()
 
   for (const fragment of getPayloadFragments(toolName, toolInput)) {
-    const fragmentCounts = countSuppressions(fragment, filePath)
+    const { counts: fragmentCounts } = analyzeSuppressions(fragment, filePath)
     for (const { label } of suppressionMatchers) {
       counts[label] += fragmentCounts[label] ?? 0
     }
   }
 
   return suppressionMatchers.filter(({ label }) => (counts[label] ?? 0) > 0).map(({ label }) => label)
+}
+
+/**
+ * Suppression labels the edit ADDS, comparing the file on disk against the reconstructed result.
+ *
+ * Both sides must be measured the same way. A cleanly-parsed "before" compared against a
+ * lexically-scanned "after" would report every directive the lexical scan sees in a string
+ * literal as newly added, so when either side is unreliable both are re-measured lexically.
+ *
+ * @param {string} existingContent
+ * @param {string} nextContent
+ * @param {string} filePath
+ * @returns {string[]}
+ */
+function findAddedLabelsForEdit(existingContent, nextContent, filePath) {
+  const before = analyzeSuppressions(existingContent, filePath)
+  const after = analyzeSuppressions(nextContent, filePath)
+  if (before.reliable && after.reliable) return findAddedLabels(before.counts, after.counts)
+  return findAddedLabels(countLexically(existingContent), countLexically(nextContent))
 }
 
 /**
@@ -321,7 +361,7 @@ export function enforceWritePolicy(ctx) {
     const addedLabels =
       nextContent === null
         ? findPayloadLabels(resolvedToolName, tool_input, absPath)
-        : findAddedLabels(countSuppressions(existingContent, absPath), countSuppressions(nextContent, absPath))
+        : findAddedLabelsForEdit(existingContent, nextContent, absPath)
 
     if (addedLabels.length === 0) return null
 

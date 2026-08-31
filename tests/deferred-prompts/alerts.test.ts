@@ -17,10 +17,12 @@ import {
   getAlertPrompt,
   getEligibleAlertPrompts,
   listAlertPrompts,
+  updateAlertActivityState,
   updateAlertMatchState,
   updateAlertMatchedTaskIds,
   updateAlertPrompt,
 } from '../../src/deferred-prompts/alerts.js'
+import { extractWatchedTaskIds, isPureWatchCondition } from '../../src/deferred-prompts/condition-eval.js'
 import type { AlertCondition } from '../../src/deferred-prompts/types.js'
 import type { Task } from '../../src/providers/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -258,6 +260,45 @@ describe('alert prompt CRUD', () => {
     const eligible = getEligibleAlertPrompts()
     expect(eligible).toHaveLength(1)
     expect(eligible[0]!.prompt).toBe('Past cooldown alert')
+  })
+})
+
+describe('alert activity cursor persistence', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  test('createAlertPrompt returns a null lastActivityCursor that round-trips through toAlertPrompt', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', condition)
+
+    expect(created.lastActivityCursor).toBeNull()
+    expect(getAlertPrompt(created.id, 'user1')?.lastActivityCursor).toBeNull()
+  })
+
+  test('updateAlertActivityState writes the cursor and lastTriggeredAt', () => {
+    const condition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', condition)
+    const firedAt = '2026-08-27T10:00:00.000Z'
+    const cursor = '2026-08-27T09:59:00.000Z'
+
+    updateAlertActivityState(created.id, 'user1', firedAt, cursor)
+
+    const reloaded = getAlertPrompt(created.id, 'user1')
+    expect(reloaded?.lastActivityCursor).toBe(cursor)
+    expect(reloaded?.lastTriggeredAt).toBe(firedAt)
+  })
+
+  test('condition update through updateAlertPrompt resets the cursor to null', () => {
+    const oldCondition: AlertCondition = { field: 'task.status', op: 'eq', value: 'done' }
+    const created = createAlertPrompt('user1', 'Alert', oldCondition)
+    updateAlertActivityState(created.id, 'user1', '2026-08-27T10:00:00.000Z', '2026-08-27T09:59:00.000Z')
+
+    const newCondition: AlertCondition = { field: 'task.priority', op: 'eq', value: 'high' }
+    const updated = updateAlertPrompt(created.id, 'user1', { condition: newCondition })
+
+    expect(updated?.lastActivityCursor).toBeNull()
+    expect(updated?.matchedTaskIds).toEqual([])
   })
 })
 
@@ -634,6 +675,91 @@ describe('evaluateCondition', () => {
     const condition: AlertCondition = { field: 'task.labels', op: 'not_contains', value: 'bug' }
     const task = makeTask({ labels: [] })
     expect(evaluateCondition(condition, task, emptySnapshots)).toBe(true)
+  })
+
+  test('task.id eq matches exactly the task with the watched id and no other', () => {
+    const condition: AlertCondition = { field: 'task.id', op: 'eq', value: 'task-1' }
+    expect(evaluateCondition(condition, makeTask({ id: 'task-1' }), emptySnapshots)).toBe(true)
+    expect(evaluateCondition(condition, makeTask({ id: 'task-2' }), emptySnapshots)).toBe(false)
+  })
+})
+
+// --- Watch classification (task.id) tests ---
+
+describe('extractWatchedTaskIds', () => {
+  test('collects task.id eq values across nested and/or trees with dedupe', () => {
+    const condition: AlertCondition = {
+      and: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        {
+          or: [
+            { field: 'task.id', op: 'eq', value: 't2' },
+            { field: 'task.id', op: 'eq', value: 't1' },
+          ],
+        },
+      ],
+    }
+    expect(extractWatchedTaskIds(condition)).toEqual(['t1', 't2'])
+  })
+
+  test('returns empty for non-watch trees', () => {
+    const condition: AlertCondition = {
+      or: [
+        { field: 'task.status', op: 'eq', value: 'done' },
+        { field: 'task.dueDate', op: 'overdue' },
+      ],
+    }
+    expect(extractWatchedTaskIds(condition)).toEqual([])
+  })
+
+  test('collects only task.id leaves from a mixed tree', () => {
+    const condition: AlertCondition = {
+      and: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        { field: 'task.status', op: 'eq', value: 'done' },
+      ],
+    }
+    expect(extractWatchedTaskIds(condition)).toEqual(['t1'])
+  })
+})
+
+describe('isPureWatchCondition', () => {
+  test('true for a single task.id eq leaf', () => {
+    expect(isPureWatchCondition({ field: 'task.id', op: 'eq', value: 't1' })).toBe(true)
+  })
+
+  test('true for any all-task.id-eq tree', () => {
+    const condition: AlertCondition = {
+      or: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        {
+          and: [
+            { field: 'task.id', op: 'eq', value: 't2' },
+            { field: 'task.id', op: 'eq', value: 't3' },
+          ],
+        },
+      ],
+    }
+    expect(isPureWatchCondition(condition)).toBe(true)
+  })
+
+  test('false when a non-watch leaf appears', () => {
+    const condition: AlertCondition = {
+      and: [
+        { field: 'task.id', op: 'eq', value: 't1' },
+        { field: 'task.status', op: 'eq', value: 'done' },
+      ],
+    }
+    expect(isPureWatchCondition(condition)).toBe(false)
+  })
+
+  test('false for a tree without any task.id leaf', () => {
+    expect(isPureWatchCondition({ field: 'task.status', op: 'eq', value: 'done' })).toBe(false)
+  })
+
+  test('false when a task.id leaf uses a non-eq operator', () => {
+    const rogue = { field: 'task.id', op: 'neq', value: 't1' } as AlertCondition
+    expect(isPureWatchCondition(rogue)).toBe(false)
   })
 })
 

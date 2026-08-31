@@ -235,6 +235,7 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       return Promise.resolve({ text: replies.shift() ?? '', sessionId: 's' })
     },
     tokensUsed: (): Promise<number> => Promise.resolve(0),
+    spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
     abort: (): Promise<boolean> => Promise.resolve(true),
     close: (): Promise<void> => Promise.resolve(),
   }
@@ -363,6 +364,10 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
       io.gitCalls.push(`changedSince:${sha}`)
       return Promise.resolve([])
     },
+    diffSince: (sha: string, paths: readonly string[]): Promise<string> => {
+      io.gitCalls.push(`diffSince:${sha}:${paths.join(',')}`)
+      return Promise.resolve('')
+    },
     revertPaths: (sha: string, paths: readonly string[]): Promise<void> => {
       io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
       return Promise.resolve()
@@ -410,6 +415,7 @@ export const stubPhaseDeps = (options: StubPhaseDepsOptions = {}): { deps: Phase
     runReview,
     agent: (): Promise<OpenCodeAgent> => Promise.resolve(agent),
     tokensUsed: (): Promise<number> => Promise.resolve(0),
+    spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
     skills: (): Promise<SkillDocument[]> => Promise.resolve([...(options.skills ?? [])]),
     writeFile: (filePath: string, content: string): Promise<void> => {
       io.writes.push({ path: filePath, content })

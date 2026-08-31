@@ -10,7 +10,8 @@ import path from 'node:path'
 import { createRunState } from '../../review-loop/src/run-state.js'
 import { createWorkerPool } from '../../review-loop/src/worker-pool.js'
 import { execGit, createWorktree } from '../../review-loop/src/worktree.js'
-import { createReviewLoopConfigFixture, cleanupTempDirs, makeTempDir } from './test-helpers.js'
+import { makeGitFixture } from './git-fixture.js'
+import { createReviewLoopConfigFixture, cleanupTempDirs } from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
@@ -19,20 +20,14 @@ function getConflictFiles(result: { ok: true } | { ok: false; conflictFiles: str
 }
 
 async function setupPrimary(repoRoot: string, runId: string, runStatePath: string): Promise<void> {
-  mkdirSync(repoRoot, { recursive: true })
-  await execGit(repoRoot, ['init'])
-  await execGit(repoRoot, ['config', 'user.email', 't@t.com'])
-  await execGit(repoRoot, ['config', 'user.name', 'T'])
-  writeFileSync(path.join(repoRoot, 'README.md'), 'init')
-  await execGit(repoRoot, ['add', '.'])
-  await execGit(repoRoot, ['commit', '-m', 'init'])
-  // Create the primary worktree (mimics cli.ts setup)
+  // repoRoot arrives from makeGitFixture with identity, history, and gc.auto=0;
+  // create the primary worktree (mimics cli.ts setup) as the only real-git setup.
   await createWorktree(repoRoot, runStatePath, runId)
 }
 
 describe('WorkerPool', () => {
   test('creates K worker worktrees + branches at construction; closes cleanly', async () => {
-    const repoRoot = makeTempDir('pool-')
+    const repoRoot = makeGitFixture('pool-')
     const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 3 })
     const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
     await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
@@ -51,7 +46,7 @@ describe('WorkerPool', () => {
   })
 
   test('acquire returns a free worker; release makes it available again', async () => {
-    const repoRoot = makeTempDir('pool-')
+    const repoRoot = makeGitFixture('pool-')
     const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 3 })
     const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
     await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
@@ -67,7 +62,7 @@ describe('WorkerPool', () => {
 
   test('acquire blocks when all busy; resolves on release', async () => {
     // K=1 pool; second acquire blocks until first releases.
-    const repoRoot = makeTempDir('pool-')
+    const repoRoot = makeGitFixture('pool-')
     const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 1 })
     const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
     await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
@@ -87,7 +82,7 @@ describe('WorkerPool', () => {
   })
 
   test('acquire prefers workers whose peers are not touching the requested file', async () => {
-    const repoRoot = makeTempDir('pool-')
+    const repoRoot = makeGitFixture('pool-')
     const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 2 })
     const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
     await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
@@ -106,7 +101,7 @@ describe('WorkerPool', () => {
   })
 
   test('mergeWorkerIntoPrimary fast-forwards when primary has not moved', async () => {
-    const repoRoot = makeTempDir('pool-')
+    const repoRoot = makeGitFixture('pool-')
     const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 3 })
     const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
     await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
@@ -125,7 +120,7 @@ describe('WorkerPool', () => {
   test('mergeWorkerIntoPrimary rebases when primary moved, then ff-merges', async () => {
     // Worker commits to its branch, then primary advances (another worker merges),
     // then this worker merges — should succeed via rebase.
-    const repoRoot = makeTempDir('pool-')
+    const repoRoot = makeGitFixture('pool-')
     const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 2 })
     const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
     await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
@@ -151,7 +146,7 @@ describe('WorkerPool', () => {
 
   test('mergeWorkerIntoPrimary returns conflictFiles on overlapping edit', async () => {
     // Both workers edit the SAME file at the SAME line → rebase conflict.
-    const repoRoot = makeTempDir('pool-')
+    const repoRoot = makeGitFixture('pool-')
     const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 2 })
     const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
     await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
@@ -183,7 +178,7 @@ describe('WorkerPool', () => {
 })
 
 test('mergeWorkerIntoPrimary reports numstat diff via onMergeDiff hook', async () => {
-  const repoRoot = makeTempDir('pool-')
+  const repoRoot = makeGitFixture('pool-')
   const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 1 })
   const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
   await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
@@ -206,7 +201,7 @@ test('mergeWorkerIntoPrimary reports numstat diff via onMergeDiff hook', async (
 })
 
 test('mergeWorkerIntoPrimary publishes the primary branch under the same lock', async () => {
-  const repoRoot = makeTempDir('pool-')
+  const repoRoot = makeGitFixture('pool-')
   const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 1 })
   const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
   await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
@@ -230,7 +225,7 @@ test('mergeWorkerIntoPrimary publishes the primary branch under the same lock', 
 })
 
 test('a merge that conflicts publishes nothing', async () => {
-  const repoRoot = makeTempDir('pool-')
+  const repoRoot = makeGitFixture('pool-')
   const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 2 })
   const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
   await setupPrimary(repoRoot, runState.runId, runState.worktreePath)
@@ -262,7 +257,7 @@ test('a merge that conflicts publishes nothing', async () => {
 })
 
 test('mergeWorkerIntoPrimary without hooks still merges', async () => {
-  const repoRoot = makeTempDir('pool-')
+  const repoRoot = makeGitFixture('pool-')
   const config = createReviewLoopConfigFixture(repoRoot, { poolSize: 1 })
   const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
   await setupPrimary(repoRoot, runState.runId, runState.worktreePath)

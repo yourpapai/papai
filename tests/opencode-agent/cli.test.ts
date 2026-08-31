@@ -9,12 +9,14 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { memoizeAgent } from '../../opencode-agent/src/agent-handle.js'
+import type { RunSpend } from '../../opencode-agent/src/agent-session.js'
 import type { FetchLike } from '../../opencode-agent/src/github.js'
 import { parseArgs, runCli, UsageError } from '../../opencode-agent/src/index.js'
 import { createLogger } from '../../opencode-agent/src/logger.js'
 import type { OpenCodeAgent } from '../../opencode-agent/src/opencode-adapter.js'
 import type { CommandRunner } from '../../opencode-agent/src/shell.js'
 import { REPLY_COMMENT_OUTPUT, REPORTED_OUTPUT } from '../../opencode-agent/src/step-output.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import { emptyCatalogue, silentOctokitLog } from './test-helpers.js'
 
 const workDir = await mkdtemp(path.join(tmpdir(), 'opencode-agent-cli-'))
@@ -92,10 +94,12 @@ describe('parseArgs', () => {
 })
 
 describe('memoizeAgent', () => {
-  const fakeAgent = (closed: { count: number }, tokens = 0): OpenCodeAgent => ({
+  const fakeAgent = (closed: { count: number }, tokens = 0, usd: number | null = 1.25): OpenCodeAgent => ({
     sessionId: 'session-1',
     prompt: (): Promise<{ text: string; sessionId: string }> => Promise.resolve({ text: '', sessionId: 'session-1' }),
     tokensUsed: (): Promise<number> => Promise.resolve(tokens),
+    spend: (): Promise<RunSpend> =>
+      Promise.resolve({ usd, source: usd === null ? 'none' : 'backend', windows: [{ window: 'five_hour' }] }),
     abort: (): Promise<boolean> => Promise.resolve(true),
     close: (): Promise<void> => {
       closed.count += 1
@@ -133,6 +137,31 @@ describe('memoizeAgent', () => {
     await handle.get()
 
     expect(await handle.tokensUsed()).toBe(3602)
+  })
+
+  test('an unopened session is unpriced rather than free, and reports no windows', async () => {
+    // The one place this deliberately differs from `tokensUsed`'s zero: no
+    // tokens is the truth for a job that never prompted, but zero *dollars*
+    // would be a priced claim about work that was never done.
+    let booted = 0
+    const handle = memoizeAgent(() => {
+      booted += 1
+      return Promise.resolve(fakeAgent({ count: 0 }, 900))
+    })
+
+    expect(await handle.spend()).toEqual({ usd: null, source: 'none', windows: [] })
+    expect(booted).toBe(0)
+  })
+
+  test('reports the session’s cost and standing once one has been booted', async () => {
+    const handle = memoizeAgent(() => Promise.resolve(fakeAgent({ count: 0 }, 3602)))
+    await handle.get()
+
+    expect(await handle.spend()).toEqual({
+      usd: 1.25,
+      source: 'backend',
+      windows: [{ window: 'five_hour' }],
+    })
   })
 
   test('boots at most once, however many phases ask for it', async () => {
@@ -617,7 +646,13 @@ describe('runCli', () => {
           v: 3,
           phase: 'DESIGN_SPEC',
           issueId: 42,
+          // The scale a block written by this deploy carries. Without it the
+          // orchestrator reads the figure as the superseded definition's and
+          // resets it — correctly — and the low ceiling below stops stopping.
+          tokenScale: TOKEN_SCALE,
           tokensSpent: 60_000,
+          usdSpent: 0,
+          usdUnpriced: false,
         })} -->`,
       },
     ]
@@ -666,7 +701,13 @@ describe('runCli', () => {
           v: 3,
           phase: 'DESIGN_SPEC',
           issueId: 42,
+          // The scale a block written by this deploy carries. Without it the
+          // orchestrator reads the figure as the superseded definition's and
+          // resets it — correctly — and the low ceiling below stops stopping.
+          tokenScale: TOKEN_SCALE,
           tokensSpent: 60_000,
+          usdSpent: 0,
+          usdUnpriced: false,
         })} -->`,
       },
     ]

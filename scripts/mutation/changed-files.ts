@@ -11,7 +11,7 @@ import { loadBaseline } from './baseline.js'
 import type { BaselineMap } from './baseline.js'
 import { isGeneratedSourceFile, isInstrumentationIncompatibleFile } from './exclusions.js'
 import { resolveChangedFilesGates } from './gates.js'
-import type { GateInput } from './gates.js'
+import type { GateInput, GateVerdict } from './gates.js'
 import {
   combineIncrementalResult,
   formatIncrementalPlan,
@@ -222,6 +222,25 @@ export const changedFilesRun = async (input: ChangedFilesRunInput): Promise<Gate
   return result
 }
 
+/**
+ * Print the gate verdict: each dilution warning as a plain `WARN` log line (no
+ * CI annotations — the gate's failure surface stays one exit code), then the
+ * failure message, if any, to the error channel. Exported so the WARN surface
+ * is testable without driving main().
+ */
+export const reportGateVerdict = (
+  verdict: GateVerdict,
+  log: (message: string) => void = (message) => {
+    console.log(message)
+  },
+  error: (message: string) => void = (message) => {
+    console.error(message)
+  },
+): void => {
+  for (const warning of verdict.warnings) log(`WARN ${warning}`)
+  if (verdict.message !== null) error(verdict.message)
+}
+
 const main = async (bun: BunLike): Promise<number> => {
   const parsed = parseChangedFilesCliArgs(bun.argv.slice(2))
   if (parsed.kind === 'usageError') {
@@ -265,7 +284,7 @@ const main = async (bun: BunLike): Promise<number> => {
     noRatchet: parsed.noRatchet,
     baseline,
   })
-  if (verdict.message !== null) console.error(verdict.message)
+  reportGateVerdict(verdict)
   return verdict.exitCode
 }
 

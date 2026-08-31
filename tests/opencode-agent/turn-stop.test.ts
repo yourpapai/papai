@@ -17,6 +17,7 @@ import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
 import type { TurnStall } from '../../opencode-agent/src/turn-stall.js'
 import { stopPartWayThrough } from '../../opencode-agent/src/turn-stop.js'
 import type { PartWayInput } from '../../opencode-agent/src/turn-stop.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
 
@@ -59,7 +60,10 @@ const reviewState = (): AgentState => ({
   stepsDone: 0,
   changeName: 'add-retries',
   planRevision: 1,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 0,
+  usdSpent: 0,
+  usdUnpriced: false,
   lastError: null,
   prUrl: null,
   prNumber: null,
@@ -103,6 +107,7 @@ const scriptedAgent = (outcomeFor: (index: number) => Promise<string>): Scripted
         prompts.push(request)
         return outcomeFor(prompts.length - 1).then((text) => ({ text, sessionId: 's' }))
       },
+      spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
       tokensUsed: (): Promise<number> => Promise.resolve(0),
       abort: (): Promise<boolean> => {
         state.aborts += 1

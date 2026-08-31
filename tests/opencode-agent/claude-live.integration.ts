@@ -76,7 +76,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -194,11 +194,13 @@ const rawRun = (
   env: NodeJS.ProcessEnv,
   input = '',
   timeoutMs?: number,
+  cwd?: string,
 ): { code: number; stdout: string; stderr: string } => {
   const child = spawnSync('claude', [...argv], {
     encoding: 'utf8',
     env,
     input,
+    ...(cwd === undefined ? {} : { cwd }),
     ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
   })
   return {
@@ -219,6 +221,8 @@ const agentFor = async (credential: ClaudeCredential | null, env: NodeJS.Process
   const options: ClaudeAgentOptions = {
     directory: process.cwd(),
     knobs: recorderKnobs(),
+    // Only `provider`/`model` are read here, for the cost catalogue lookup.
+    pricing: { apiKey: 'unused', baseUrl: 'unused', model: recorderKnobs().model, provider: 'anthropic' },
     ...(credential === null ? {} : { credential }),
     env,
     log: silentLog,
@@ -548,7 +552,10 @@ const nativeProofLeg = (token: string, facts: Record<string, string>): { checks:
   const result = decodeClaudeLine(lineOfKind(parsed, 'result'))
   const windows = parsed
     .map((raw) => decodeClaudeLine(raw))
-    .flatMap((line) => (line !== null && line.kind === 'rate-limit-event' ? [line.window] : []))
+    // One line can name several windows since 2.1.251 (`unifiedWindows`), so
+    // this flattens rather than taking a single name — the older CLI's
+    // single-window line still yields exactly one.
+    .flatMap((line) => (line !== null && line.kind === 'rate-limit-event' ? line.windows.map((w) => w.window) : []))
   const text = result !== null && result.kind === 'result' ? result.text : ''
   // An answered turn, not merely a wordy failure: the recorded 401 shape
   // carries non-empty result text too, and must not pass for a reply.
@@ -640,6 +647,124 @@ const nativeAdapterLegs = async (token: string, facts: Record<string, string>): 
   ]
 }
 
+/**
+ * The bare-profile memory census (design D10/Migration step 3 of
+ * `using-claude-code-in-review-loop`, task 12.3): the pinned CLI auto-loads no
+ * `AGENTS.md`/`CLAUDE.md` project memory in headless `-p` mode under `--bare`
+ * either — the native side is `nativeCensusLeg`'s standing fact — so the
+ * reviewer brief's "already in your context" premise is false on both profiles
+ * and the D3 system-prompt seam remedy (the conventions ride
+ * `--append-system-prompt`) is applied in the loop. Free and un-credentialed
+ * like the native census: `/context` is answered locally, zero spend, and this
+ * leg runs in **both** recorder modes.
+ */
+const bareMemoryCensusLeg = (facts: Record<string, string>): boolean[] => {
+  const censusDir = createClaudeConfigDir(tmpdir())
+  const env = nativeLegEnv(null)
+  env['CLAUDE_CONFIG_DIR'] = censusDir
+
+  const argv = [
+    '--bare',
+    '-p',
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--permission-mode',
+    'default',
+    '--allowedTools',
+    'Read,Glob,Grep',
+    '--model',
+    process.env['LLM_MODEL'] ?? 'sonnet',
+  ] as const
+  const contextOutcome = rawRun([...argv], env, '/context', 120_000)
+  const contextParsed = parseNdjsonStream(contextOutcome.stdout)
+  const contextUsage =
+    contextParsed
+      .map((raw) => rawField(raw, 'context_usage'))
+      .find((usage): usage is Record<string, unknown> => typeof usage === 'object' && usage !== null) ?? null
+  const memoryFiles = contextUsage === null ? null : contextUsage['memory_files']
+  facts['bareCensusMemoryFiles'] = JSON.stringify(memoryFiles)
+
+  return [
+    check(
+      'the bare profile loads no memory files either — the conventions ride --append-system-prompt (the D3 remedy)',
+      Array.isArray(memoryFiles) && memoryFiles.length === 0,
+      `memory_files: ${JSON.stringify(memoryFiles)} (exit ${contextOutcome.code}); a non-empty row means a pin move started loading memory and the loop-side remedy should be re-decided`,
+    ),
+  ]
+}
+
+/**
+ * The two permission legs the review loop's claude route rests on (design D10,
+ * tasks 12.1–12.2): the analysis allowlist under headless `-p` with
+ * `--permission-mode default`, composed exactly as the loop composes it —
+ * `Read,Glob,Grep` plus the cwd-absolute `Write(<cwd>/.review-loop/**)` rule.
+ * Both are credentialed turns (permission evaluation happens on a model-authored
+ * tool call), so they live in the API-key branch and gate the credentialed
+ * merge. A refusal here fails the leg loudly naming the remedy ladder (a
+ * scoped `Read` rule, an `--add-dir` composition, or the loop copying the plan
+ * into the role's worktree).
+ */
+const analysisPermissionLegs = (apiKey: string, facts: Record<string, string>): boolean[] => {
+  const legEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    ANTHROPIC_API_KEY: apiKey,
+    DISABLE_AUTOUPDATER: '1',
+    CLAUDE_CONFIG_DIR: createClaudeConfigDir(tmpdir()),
+  }
+  Reflect.deleteProperty(legEnv, 'CLAUDE_CODE_OAUTH_TOKEN')
+  const model = process.env['LLM_MODEL'] ?? 'sonnet'
+  const head = ['--bare', '-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'default'] as const
+
+  // 12.1 — the absolute-form scoped Write rule approves the scratch write.
+  const writeWorkspace = mkdtempSync(path.join(tmpdir(), 'review-loop-write-leg-'))
+  mkdirSync(path.join(writeWorkspace, '.review-loop'), { recursive: true })
+  const scratch = path.join(writeWorkspace, '.review-loop', 'issues.json')
+  const writeOutcome = rawRun(
+    [...head, '--allowedTools', `Read,Glob,Grep,Write(${writeWorkspace}/.review-loop/**)`, '--model', model],
+    legEnv,
+    `Write exactly this JSON to the file ${scratch}: {"issues": []}. Use the Write tool exactly as asked; do not reply instead.`,
+    300_000,
+    writeWorkspace,
+  )
+  const scratchLanded = existsSync(scratch)
+  facts['scopedWriteRuleApproved'] = String(scratchLanded)
+
+  // 12.2 — the bare Read entry approves an absolute-path read outside the cwd
+  // (the reviewer's mandatory plan read; the plan sits outside the worktree).
+  const planDir = mkdtempSync(path.join(tmpdir(), 'review-loop-plan-leg-'))
+  const planMarker = 'PLAN-FIRST-LINE-MARKER-7f3a'
+  const planPath = path.join(planDir, 'plan.md')
+  writeFileSync(planPath, `${planMarker}\n`)
+  const readWorkspace = mkdtempSync(path.join(tmpdir(), 'review-loop-read-leg-'))
+  const readOutcome = rawRun(
+    [...head, '--allowedTools', 'Read,Glob,Grep', '--model', model],
+    legEnv,
+    `Read the file ${planPath} and reply with its exact first line, nothing else.`,
+    300_000,
+    readWorkspace,
+  )
+  const resultText =
+    parseNdjsonStream(readOutcome.stdout)
+      .map((raw) => rawField(raw, 'result'))
+      .find((text): text is string => typeof text === 'string') ?? ''
+  const readApproved = resultText.includes(planMarker)
+  facts['outsideCwdReadApproved'] = String(readApproved)
+
+  return [
+    check(
+      'the absolute scoped Write rule approves the scratch write on the analysis allowlist',
+      scratchLanded,
+      `no file at ${scratch} (exit ${writeOutcome.code}); the remedy ladder is a scoped Write rule re-spelling, or the loop writing the scratch itself`,
+    ),
+    check(
+      'the bare Read entry approves an absolute-path read outside the spawn cwd',
+      readApproved,
+      `reply was "${resultText.slice(0, 120)}" (exit ${readOutcome.code}); the remedy ladder is a scoped Read rule, an --add-dir composition, or the loop copying the plan into the worktree`,
+    ),
+  ]
+}
+
 const run = async (): Promise<number> => {
   const mode = readMode()
   if (mode === null) return 1
@@ -657,6 +782,7 @@ const run = async (): Promise<number> => {
   // land in facts.json whatever the corpus does.
 
   results.push(...negativeHelperLeg(facts))
+  results.push(...bareMemoryCensusLeg(facts))
 
   if (mode.mode === 'oauth') {
     // ---- The native profile's recording (design D5, cheapest first) -------
@@ -777,6 +903,7 @@ const run = async (): Promise<number> => {
       secondSpend > firstSpend,
       `${firstSpend} then ${secondSpend}`,
     ),
+    ...analysisPermissionLegs(mode.value, facts),
   )
 
   // The error-signalling result: a deliberately un-credentialed turn — the

@@ -89,6 +89,36 @@ export interface ResolvedCost extends Cost {
   readonly source: 'primary' | 'fallback'
 }
 
+/** Per-million-token rates, the shape the resolved cost publishes. */
+export type TokenRates = { input: number; output: number; cache_read?: number; cache_write?: number }
+
+export interface UsageBuckets {
+  readonly input: number
+  readonly output: number
+  readonly reasoning?: number
+  readonly cacheRead?: number
+  readonly cacheWrite?: number
+}
+
+const TOKEN_SCALE = 1_000_000
+
+/**
+ * What a set of token counts costs at a set of published rates.
+ *
+ * Everything the arithmetic knows lives here: the per-million scale, cache
+ * tokens charged at their own rate or not at all, and reasoning tokens charged
+ * at the *input* rate — which is a convention rather than an arithmetic fact,
+ * and so exactly the kind of thing that must not be re-decided by a second
+ * implementation. Homed here (with the rates) since the sdd-runner workspace
+ * that once published it was deleted at R5; afk-runner keeps no pricing seam.
+ */
+export function costOfUsage(buckets: UsageBuckets, cost: TokenRates): number {
+  const { input, output, reasoning = 0, cacheRead = 0, cacheWrite = 0 } = buckets
+  const cacheReadCost = (cacheRead / TOKEN_SCALE) * (cost.cache_read ?? 0)
+  const cacheWriteCost = (cacheWrite / TOKEN_SCALE) * (cost.cache_write ?? 0)
+  return ((input + reasoning) * cost.input + output * cost.output) / TOKEN_SCALE + cacheReadCost + cacheWriteCost
+}
+
 export interface LoadDbDeps {
   readonly cachePath?: string
   readonly now?: () => Date

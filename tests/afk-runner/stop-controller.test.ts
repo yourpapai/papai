@@ -106,6 +106,7 @@ interface SeedInput {
   readonly holderPid?: number
   readonly stopMarker?: boolean
   readonly updatedAt?: string
+  readonly plan?: { childCount: number; digest: string }
 }
 
 function seedRun(overrides: SeedInput = {}): { workDir: string; runId: string; runDir: string } {
@@ -129,6 +130,7 @@ function seedRun(overrides: SeedInput = {}): { workDir: string; runId: string; r
         status: overrides.status ?? 'running',
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt,
+        ...(overrides.plan === undefined ? {} : { plan: overrides.plan }),
       },
       null,
       2,
@@ -185,6 +187,13 @@ describe('stopRun (liveness-aware stop seam)', () => {
     const result = await stopRun(seed.workDir, seed.runId, { isAlive: DEAD })
     expect(result).toEqual({ kind: 'settled', runId: seed.runId, to: 'aborted' })
     expect((await loadRunState(seed.workDir, seed.runId)).status).toBe('aborted')
+  })
+
+  it('settles a dead plan parent (depth null, plan recorded) as stopped — resumable, not aborted', async () => {
+    const seed = seedRun({ stage: 'decompose', depth: null, plan: { childCount: 2, digest: 'd' } })
+    const result = await stopRun(seed.workDir, seed.runId, { isAlive: DEAD })
+    expect(result).toEqual({ kind: 'settled', runId: seed.runId, to: 'stopped' })
+    expect((await loadRunState(seed.workDir, seed.runId)).status).toBe('stopped')
   })
 
   it('settles a legacy zombie (no holder file) as dead', async () => {

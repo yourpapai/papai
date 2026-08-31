@@ -113,7 +113,7 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     const result = resultOf('auth-error-turn.ndjson')
     expect(result.isError).toBe(true)
     expect(result.text).toContain('Not logged in')
-    expect(result.usage.total).toBe(0)
+    expect(result.usage).toEqual({ input: 0, output: 0, cacheWrite: 0, cacheRead: 0 })
     expect(result.costUsd).toBe(0)
     expect(result.sessionId).toBe(initSessionIdOf('auth-error-turn.ndjson'))
   })
@@ -137,7 +137,10 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     expect(result.isError).toBe(false)
     expect(result.text).toContain('papai')
     expect(result.sessionId).toBe('0d9f2a55-7b3a-4c1e-9f0a-2f7c8d11ab02')
-    expect(result.usage).toEqual({ input: 1052, output: 60, cacheWrite: 0, cacheRead: 0, total: 1112 })
+    // The four buckets the CLI reported and nothing derived: what the ceiling
+    // counts is decided on the seam, not by a `total` field here whose name
+    // promises every bucket and would go on inviting cache reads back in.
+    expect(result.usage).toEqual({ input: 1052, output: 60, cacheWrite: 0, cacheRead: 0 })
     // Decoded, and never read as a budget — asserted by the adapter's tests.
     expect(result.costUsd).toBe(0.0123)
   })
@@ -157,7 +160,9 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     const result = resultOf('resume-turn.ndjson')
 
     expect(result.sessionId).toBe('5e1c7d33-2a44-4b5e-8c6a-7d3e9f20bc31')
-    expect(result.usage.total).toBe(2290)
+    // A resumed turn re-reads the whole prior conversation out of cache; the
+    // decoder reports that read, and the ceiling declines to charge for it.
+    expect(result.usage).toEqual({ input: 1210, output: 28, cacheWrite: 0, cacheRead: 1052 })
   })
 
   test('the init line carries the credential source as an optional fact — recorded as "none" on the env-less route', () => {
@@ -203,6 +208,21 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
   })
 })
 
+/**
+ * Whether a decoded line's first window actually carries a utilization key.
+ *
+ * A helper rather than an inline check because the decoder *omits* what it does
+ * not know, so "absent" and "present but undefined" are different outcomes and
+ * only `in` tells them apart — and because a conditional belongs outside a test
+ * body.
+ */
+const statesUtilization = (line: ReturnType<typeof decodeClaudeLine>): boolean =>
+  line?.kind === 'rate-limit-event' && line.windows[0] !== undefined && 'utilization' in line.windows[0]
+
+/** Every window named across a decoded stream, flattened — one line may name several. */
+const windowNames = (lines: ReturnType<typeof decodeClaudeLine>[]): string[] =>
+  lines.flatMap((line) => (line?.kind === 'rate-limit-event' ? line.windows.map((entry) => entry.window) : []))
+
 describe('the rate-limit signature (design D4 of the native-OAuth change)', () => {
   // The native profile's proof of authentication is the subscription-shaped
   // rate-limit fact, because `apiKeySource` reads `none` on that path. The
@@ -226,16 +246,117 @@ describe('the rate-limit signature (design D4 of the native-OAuth change)', () =
   test('a rate_limit_event line decodes to the subscription fact: the window inside rate_limit_info', () => {
     // The recorded shape is a TOP-LEVEL `rate_limit_event` line — not a
     // system/subtype envelope — with the window nested in `rate_limit_info`.
-    expect(decodeClaudeLine(RATE_LIMIT_LINE)).toEqual({ kind: 'rate-limit-event', window: 'five_hour' })
+    expect(decodeClaudeLine(RATE_LIMIT_LINE)).toMatchObject({
+      kind: 'rate-limit-event',
+      windows: [{ window: 'five_hour' }],
+    })
   })
 
   test('the recorded native success turn carries the five-hour signature — the corpus pin', () => {
     // The genuine credentialed recording: an answered native turn whose
     // stream carries the subscription fact the recorder's proof leg reads.
-    expect(decoded('native-success-turn.ndjson')).toContainEqual({ kind: 'rate-limit-event', window: 'five_hour' })
+    expect(windowNames(decoded('native-success-turn.ndjson'))).toContain('five_hour')
     const result = resultOf('native-success-turn.ndjson')
     expect(result.isError).toBe(false)
     expect(result.text.length).toBeGreaterThan(0)
+  })
+
+  /**
+   * The 2.1.251 line, quoted from `stub-rate-limit-turn.ndjson` — recorded
+   * hermetically against a stub Anthropic endpoint, so the bytes are the CLI's
+   * own serializer's at zero cost (`claude-stub.integration.ts`).
+   *
+   * Two differences from the 2.1.239 line above, and the first is a *break*
+   * rather than an addition: there is **no `rateLimitType` at all**. A schema
+   * that requires one does not lose a field here — it fails the line and skips
+   * the whole fact, which is how a rate-limit render would report nothing while
+   * looking correctly implemented.
+   */
+  const UNIFIED_LINE = {
+    type: 'rate_limit_event',
+    rate_limit_info: {
+      status: 'allowed',
+      resetsAt: 1_788_005_782,
+      overageStatus: 'allowed',
+      overageResetsAt: 1_788_426_982,
+      isUsingOverage: false,
+      unifiedWindows: {
+        five_hour: { utilization: 0.235, resetsAt: 1_788_005_782 },
+        seven_day: { utilization: 0.412, resetsAt: 1_788_426_982 },
+      },
+    },
+    session_id: '2737467a-46c1-49d4-8807-3e224677dcc4',
+  }
+
+  test('a line carrying no rateLimitType still decodes — the 2.1.251 shape', () => {
+    expect(decodeClaudeLine(UNIFIED_LINE)).not.toBeNull()
+  })
+
+  test('every window the line carries is decoded, each with its own utilization and reset', () => {
+    const decodedLine = decodeClaudeLine(UNIFIED_LINE)
+
+    expect(decodedLine).toMatchObject({
+      kind: 'rate-limit-event',
+      windows: [
+        { window: 'five_hour', utilization: 0.235, resetsAt: 1_788_005_782 },
+        { window: 'seven_day', utilization: 0.412, resetsAt: 1_788_426_982 },
+      ],
+    })
+  })
+
+  test('the account-level status and overage ride on the line, not on a window', () => {
+    expect(decodeClaudeLine(UNIFIED_LINE)).toMatchObject({
+      status: 'allowed',
+      overageStatus: 'allowed',
+      overageResetsAt: 1_788_426_982,
+      isUsingOverage: false,
+    })
+  })
+
+  test('the recorded 2.1.251 turn decodes its windows — the corpus pin', () => {
+    const lines = decoded('stub-rate-limit-turn.ndjson')
+    const rate = lines.find((line) => line?.kind === 'rate-limit-event')
+
+    expect(rate).toBeDefined()
+    expect(rate).toMatchObject({
+      windows: [
+        { window: 'five_hour', utilization: 0.235 },
+        { window: 'seven_day', utilization: 0.412 },
+      ],
+    })
+  })
+
+  test('the older shape still decodes, with its window and no utilization', () => {
+    // 2.1.239 named one window at the top level and published no figure for it.
+    // The decoder reads both shapes because the corpus carries both. The absent
+    // key is asserted as absent rather than as `undefined`: the decoder omits
+    // what it does not know, which is this workspace's idiom everywhere an
+    // optional field is emitted.
+    const line = decodeClaudeLine(RATE_LIMIT_LINE)
+
+    expect(line?.kind).toBe('rate-limit-event')
+    expect(line).toMatchObject({ windows: [{ window: 'five_hour', resetsAt: 1_787_644_800 }] })
+    expect(statesUtilization(line)).toBe(false)
+  })
+
+  test('a malformed field degrades to unknown rather than failing its line', () => {
+    // `unifiedWindows` describes itself `@internal` in the CLI's own schema, so
+    // leniency here is load-bearing rather than defensive: a moved field must
+    // cost that field, never the account-level fact beside it.
+    const bent = decodeClaudeLine({
+      type: 'rate_limit_event',
+      rate_limit_info: {
+        status: 'allowed',
+        rateLimitType: 'five_hour',
+        resetsAt: 'tuesday',
+        unifiedWindows: { seven_day: { utilization: 'most of it', resetsAt: 1_788_426_982 } },
+      },
+    })
+
+    expect(bent).toMatchObject({ kind: 'rate-limit-event', status: 'allowed' })
+    expect(bent).toMatchObject({ windows: [{ window: 'seven_day', resetsAt: 1_788_426_982 }] })
+    // The bent field, and only it, is gone: the window survives with its reset.
+    expect(statesUtilization(bent)).toBe(false)
   })
 
   test('the window passes through as a string, never enumerated — other plans carry other windows', () => {
@@ -244,7 +365,7 @@ describe('the rate-limit signature (design D4 of the native-OAuth change)', () =
       rate_limit_info: { status: 'allowed', rateLimitType: 'weekly' },
     })
 
-    expect(weekly).toEqual({ kind: 'rate-limit-event', window: 'weekly' })
+    expect(weekly).toMatchObject({ kind: 'rate-limit-event', windows: [{ window: 'weekly' }] })
   })
 
   test('a stream without one stays valid — the fact is optional evidence, never a gate', () => {

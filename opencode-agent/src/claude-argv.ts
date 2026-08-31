@@ -23,8 +23,15 @@ import { parseModelRef } from './sdk-contract.js'
  */
 export const MAX_ARG_STRLEN = 131_072
 
-/** The profile → allowlist mapping, pinned by the spec. No wildcard exists here. */
-const ALLOWLISTS = {
+/**
+ * The profile → allowlist mapping, pinned by the spec. No wildcard exists here.
+ *
+ * Exported additively so the review-loop workspace's duplicated doctrine can
+ * be pinned equal to this one by `tests/opencode-agent/claude-doctrine.test.ts`
+ * — a test-time import across the subprocess boundary, the same seam
+ * `minimality-rule.test.ts` already uses.
+ */
+export const ALLOWLISTS = {
   plan: 'Read,Glob,Grep',
   propose: 'Read,Edit,Write,Glob,Grep',
   build: 'Read,Edit,Write,Bash,Glob,Grep',
@@ -105,8 +112,13 @@ export const claudeProfileError = (): PipelineError =>
 /**
  * Only the model id crosses: one `LLM_MODEL` knob serves either backend, and a
  * value spelled `provider/model` (the OpenCode form) keeps its model id here.
+ *
+ * Exported as the one definition of *the id the CLI was invoked with*, which
+ * `claude-spend.ts` prices the run under. Two functions agreeing would be a
+ * reference that can drift from the invocation; one function is a reference
+ * that cannot.
  */
-const modelIdForCli = (raw: string): string => (raw.includes('/') ? parseModelRef(raw).modelID : raw)
+export const modelIdForCli = (raw: string): string => (raw.includes('/') ? parseModelRef(raw).modelID : raw)
 
 /** Which allowlist, model and effort a profile's turn runs with. */
 const profileSelection = (

@@ -28,6 +28,7 @@ import type { ReportSection } from '../../opencode-agent/src/reply-comment.js'
 import type { ReviewRunResult } from '../../opencode-agent/src/review-runner.js'
 import { serializeState } from '../../opencode-agent/src/state-manager.js'
 import type { TriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState } from '../../opencode-agent/src/types.js'
 import { stubPhaseDeps } from './test-helpers.js'
 import type { StubIo } from './test-helpers.js'
@@ -64,7 +65,10 @@ const baseState = (issueId = 42, over: Partial<AgentState> = {}): AgentState => 
   stepsDone: 0,
   changeName: null,
   planRevision: 0,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 0,
+  usdSpent: 0,
+  usdUnpriced: false,
   lastError: null,
   prUrl: null,
   prNumber: null,
@@ -549,7 +553,10 @@ const planningState = (over: Partial<AgentState> = {}): AgentState => ({
   stepsDone: 0,
   changeName: CHANGE,
   planRevision: 0,
+  tokenScale: TOKEN_SCALE,
   tokensSpent: 0,
+  usdSpent: 0,
+  usdUnpriced: false,
   lastError: null,
   prUrl: null,
   prNumber: null,
@@ -1023,6 +1030,36 @@ const queued = (values: readonly string[]): (() => string) => {
   }
 }
 
+/**
+ * `changedSince` answers for the guarded-push scenario (run 32992114904):
+ * the loop's fix since `base`, and — under the defective bookkeeping the test
+ * exists to catch — the guard's own revert since `fix1`, the pre-revert head.
+ * Since `post-revert` there is nothing protected to see. Unlisted shas changed
+ * nothing.
+ */
+const protectedSince: Record<string, readonly string[]> = {
+  base: ['.github/workflows/ci.yml'],
+  fix1: ['.github/workflows/ci.yml'],
+  'post-revert': [],
+}
+
+const protectedSinceAnswer = (sha: string): Promise<string[]> => Promise.resolve([...(protectedSince[sha] ?? [])])
+
+/**
+ * Lookup-shaped answers for the guarded-push tests below: the fake `changedSince`
+ * and `diffSince` members read a table rather than branching inline, which is
+ * what `protectedSinceAnswer` does for the run-32992114904 test above.
+ */
+const changedPathsFor =
+  (answers: Record<string, readonly string[]>) =>
+  (sha: string): Promise<string[]> =>
+    Promise.resolve([...(answers[sha] ?? [])])
+
+const diffAnswerFor = (answers: Record<string, string>, fallback: string): ((sha: string) => Promise<string>) => {
+  const table = answers
+  return (sha: string): Promise<string> => Promise.resolve(table[sha] ?? fallback)
+}
+
 describe('handleReview · pushes what the loop merged', () => {
   const reviewInput = (
     passing: boolean,
@@ -1067,7 +1104,10 @@ describe('handleReview · pushes what the loop merged', () => {
   it('pushes each fix as the loop publishes it, not only at the end', async () => {
     const built = reviewInput(true)
     built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
-    const heads = queued(['start', 'fix-1', 'fix-2', 'fix-2'])
+    // A push reads the head twice: once to decide whether it moved, once to
+    // record the head the remote accepted. Between two markers nothing moves,
+    // so each fix's sha appears as both the comparison and the record.
+    const heads = queued(['start', 'fix-1', 'fix-1', 'fix-2', 'fix-2'])
     built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
     built.input.deps.runReview = async (_plan: string, onFixMerged?: () => void): Promise<ReviewRunResult> => {
       onFixMerged?.()
@@ -1101,6 +1141,209 @@ describe('handleReview · pushes what the loop merged', () => {
     expect(reconciled).toBeGreaterThanOrEqual(0)
     expect(changedSince).toBeGreaterThanOrEqual(0)
     expect(reconciled).toBeLessThan(changedSince)
+  })
+
+  it('hands the maintainer the diff it reverted, not just the path', async () => {
+    // PR #362: the guard reverted the loop's correct ci.yml fix and the run
+    // could only say so; the verified patch survived only as git-history
+    // archaeology. The guard captures what it is about to destroy, before the
+    // revert destroys it, and the report carries it as an apply-by-hand patch.
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
+    const heads = queued(['base', 'fix1', 'post-revert', 'post-revert'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+    built.input.deps.git.changedSince = (sha: string): Promise<string[]> => {
+      built.io.gitCalls.push(`changedSince:${sha}`)
+      return changedPathsFor({ base: ['.github/workflows/ci.yml'] })(sha)
+    }
+    built.input.deps.git.diffSince = (sha: string, paths: readonly string[]): Promise<string> => {
+      built.io.gitCalls.push(`diffSince:${sha}:${paths.join(',')}`)
+      return diffAnswerFor(
+        {
+          base: 'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n+    plus ~30s of lint/knip/format\n',
+        },
+        '',
+      )(sha)
+    }
+    built.input.deps.git.revertPaths = (sha: string, paths: readonly string[]): Promise<void> => {
+      built.io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
+      return Promise.resolve()
+    }
+    built.input.deps.runReview = async (_plan: string, onFixMerged?: () => void): Promise<ReviewRunResult> => {
+      onFixMerged?.()
+      await Promise.resolve()
+      return { outcome: 'passed', summary: '', exitCode: 0, failure: null }
+    }
+
+    const outcome = await handleReview(built.input)
+
+    const diffCall = built.io.gitCalls.indexOf('diffSince:base:.github/workflows/ci.yml')
+    const revertCall = built.io.gitCalls.indexOf('revertPaths:base:.github/workflows/ci.yml')
+    expect(diffCall).toBeGreaterThanOrEqual(0)
+    expect(revertCall).toBeGreaterThanOrEqual(0)
+    // Captured before the revert, which is the last moment the diff exists.
+    expect(diffCall).toBeLessThan(revertCall)
+    expect(outcome.comment).toContain('```diff')
+    expect(outcome.comment).toContain('+    plus ~30s of lint/knip/format')
+    expect(outcome.comment).toContain('Apply by hand')
+  })
+
+  it('a diff the guard cannot read degrades to the path-only report and still pushes', async () => {
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
+    const heads = queued(['base', 'fix1', 'post-revert', 'post-revert'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+    built.input.deps.git.changedSince = (sha: string): Promise<string[]> => {
+      built.io.gitCalls.push(`changedSince:${sha}`)
+      return changedPathsFor({ base: ['.github/workflows/ci.yml'] })(sha)
+    }
+    built.input.deps.git.diffSince = (): Promise<string> => Promise.reject(new Error('diff failed: dirty tree'))
+    built.input.deps.runReview = async (_plan: string, onFixMerged?: () => void): Promise<ReviewRunResult> => {
+      onFixMerged?.()
+      await Promise.resolve()
+      return { outcome: 'passed', summary: '', exitCode: 0, failure: null }
+    }
+
+    const outcome = await handleReview(built.input)
+
+    // The revert still happens, the push still happens, and the report is the
+    // path-only wording this behavior had before the patch capture existed.
+    expect(built.io.gitCalls).toContain('revertPaths:base:.github/workflows/ci.yml')
+    expect(built.pushes()).toEqual(['push:agent/issue-42'])
+    expect(outcome.comment).toContain('`.github/workflows/ci.yml`')
+    expect(outcome.comment).not.toContain('```diff')
+  })
+
+  it('reports a twice-reverted path once, with the newest diff', async () => {
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
+    const heads = queued(['base', 'fix1', 'post-revert', 'fix2', 'post-revert-2', 'final'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+    built.input.deps.git.changedSince = (sha: string): Promise<string[]> => {
+      built.io.gitCalls.push(`changedSince:${sha}`)
+      return changedPathsFor({ base: ['.github/workflows/ci.yml'], 'post-revert': ['.github/workflows/ci.yml'] })(sha)
+    }
+    built.input.deps.git.diffSince = diffAnswerFor({ base: '+patch one\n', 'post-revert': '+patch two\n' }, '')
+    built.input.deps.runReview = async (_plan: string, onFixMerged?: () => void): Promise<ReviewRunResult> => {
+      onFixMerged?.()
+      onFixMerged?.()
+      await Promise.resolve()
+      return { outcome: 'passed', summary: '', exitCode: 0, failure: null }
+    }
+
+    const outcome = await handleReview(built.input)
+
+    expect(outcome.comment).toContain('+patch two')
+    expect(outcome.comment).not.toContain('+patch one')
+    expect(outcome.comment.match(/Reverted before pushing/gu)).toHaveLength(1)
+  })
+
+  it('bounds a long reverted patch and names how to recover the whole', async () => {
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
+    const heads = queued(['base', 'fix1', 'post-revert', 'post-revert'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+    built.input.deps.git.changedSince = (sha: string): Promise<string[]> => {
+      built.io.gitCalls.push(`changedSince:${sha}`)
+      return changedPathsFor({ base: ['.github/workflows/ci.yml'] })(sha)
+    }
+    built.input.deps.git.diffSince = (): Promise<string> => Promise.resolve(`+${'x'.repeat(10_000)}\n`)
+    built.input.deps.runReview = async (_plan: string, onFixMerged?: () => void): Promise<ReviewRunResult> => {
+      onFixMerged?.()
+      await Promise.resolve()
+      return { outcome: 'passed', summary: '', exitCode: 0, failure: null }
+    }
+
+    const outcome = await handleReview(built.input)
+
+    expect(outcome.comment).toContain('```diff')
+    expect(outcome.comment).toContain('truncated')
+    expect(outcome.comment).toContain('git log -p')
+    expect(outcome.comment.length).toBeLessThan(20_000)
+  })
+
+  it('never restores its own revert: the push point is the head the remote accepted', async () => {
+    // Run 32992114904 (issue #360). The first guarded push reverted the loop's
+    // workflow edit and pushed, but the recorded push point was the head read
+    // *before* that revert — so the next guard pass treated the revert commit
+    // itself as a protected-path change, restored the content it had removed,
+    // and GitHub refused the whole push. `pushedAt` must name the head the
+    // remote actually accepted, read after the revert.
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
+    // base → fix1 is the loop's protected edit landing; the guard's revert
+    // moves HEAD to post-revert; a second fix follows; the final push finds
+    // nothing new.
+    const heads = queued(['base', 'fix1', 'post-revert', 'fix2', 'final'])
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(heads())
+    built.input.deps.git.changedSince = (sha: string): Promise<string[]> => {
+      built.io.gitCalls.push(`changedSince:${sha}`)
+      return protectedSinceAnswer(sha)
+    }
+    built.input.deps.runReview = async (_plan: string, onFixMerged?: () => void): Promise<ReviewRunResult> => {
+      onFixMerged?.()
+      onFixMerged?.()
+      await Promise.resolve()
+      return { outcome: 'passed', summary: '', exitCode: 0, failure: null }
+    }
+
+    await handleReview(built.input)
+
+    // The guard ran on the first push and reverted the loop's protected edit…
+    expect(built.io.gitCalls).toContain('revertPaths:base:.github/workflows/ci.yml')
+    // …the second push's guard pass asked since the post-revert head…
+    expect(built.io.gitCalls).toContain('changedSince:post-revert')
+    // …never since the pre-revert one…
+    expect(built.io.gitCalls).not.toContain('changedSince:fix1')
+    // …and was never asked to restore the guard's own revert.
+    expect(built.io.gitCalls.filter((call) => call.startsWith('revertPaths:'))).toHaveLength(1)
+    expect(built.pushes()).toHaveLength(2)
+  })
+
+  it('pushes a fix that lands while an earlier push is still in flight', async () => {
+    // The loop's child merges each accepted fix into this checkout as it
+    // lands (review-loop/src/publish-fix.ts), and nothing serializes the next
+    // merge against this phase's push: a push carries the ref as git read it
+    // when it started, so a fix merged mid-push is not on the remote when the
+    // push returns. Recording the head read *after* the push named that
+    // unpushed fix — the next comparison and the final one both saw
+    // `last === head` and skipped the push, and the fix died with the runner
+    // while the report said the findings were pushed. The record must be read
+    // before the push, where it can only fall short of what was carried and
+    // the worst case is a redundant push.
+    const built = reviewInput(true)
+    built.input.deps.git.commitAll = (): Promise<CommitOutcome> => Promise.resolve({ kind: 'clean' })
+    // The child's first merge lands before its marker; the second lands while
+    // the first push is in flight, modeled by the push itself moving the head
+    // before it resolves.
+    let head = 'before'
+    let mergeInFlight: (() => void) | null = null
+    built.input.deps.git.headSha = (): Promise<string> => Promise.resolve(head)
+    built.input.deps.git.push = (branch: string): Promise<void> => {
+      built.io.gitCalls.push(`push:${branch}`)
+      mergeInFlight?.()
+      mergeInFlight = null
+      return Promise.resolve()
+    }
+    built.input.deps.runReview = async (_plan: string, onFixMerged?: () => void): Promise<ReviewRunResult> => {
+      head = 'fix-1'
+      onFixMerged?.()
+      // The second merge lands while the first push is in flight, and its
+      // marker is read while the loop is still running — resolved here by the
+      // push itself, so the child never exits before the marker arrived.
+      await new Promise<void>((resolve) => {
+        mergeInFlight = (): void => {
+          head = 'fix-2'
+          onFixMerged?.()
+          resolve()
+        }
+      })
+      return { outcome: 'passed', summary: '', exitCode: 0, failure: null }
+    }
+
+    await handleReview(built.input)
+
+    expect(built.pushes()).toEqual(['push:agent/issue-42', 'push:agent/issue-42'])
   })
 
   it('reports a loop that stopped at its budget as stopped, not as a failure', async () => {
@@ -1338,6 +1581,7 @@ const syncFixture = (over: {
   // the model edits the marked file in the working tree and nothing else.
   const inner: OpenCodeAgent = {
     sessionId: 's',
+    spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
     prompt: (request: AgentPromptRequest): Promise<{ text: string; sessionId: string }> => {
       recording.io.prompts.push(request)
       if (over.repair !== undefined) recording.io.readContents['/repo/src/same.txt'] = over.repair
@@ -1384,6 +1628,8 @@ const syncFixture = (over: {
       answer: false,
       posted: false,
       carriedTokens: state.tokensSpent,
+      carriedUsd: state.usdSpent,
+      carriedUnpriced: state.usdUnpriced,
       sync: true,
     },
     io: recording.io,

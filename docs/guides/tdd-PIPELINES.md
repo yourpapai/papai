@@ -46,6 +46,18 @@ Output:  { decision: 'block', reason: '...' } | null
 
 Returning `null` means "pass". Side-effect-only checks ([2] and [4]) always return `null`.
 
+**`null` is a decision, never a shrug.** Because "pass" and "I could not analyse this" share one
+return value, a check that fails internally is indistinguishable from a clean write. Check [1]
+(write-policy) demonstrated the cost: after the TypeScript 7 upgrade removed `ts.createScanner`,
+its comment extractor threw, its outer `catch` returned `null`, and it allowed every inline
+suppression for four days. A check must resolve its own failures — falling back to a coarser but
+working analysis — before returning `null`. The outer `try/catch` is a last resort for genuinely
+unexpected faults, not a routine path.
+
+**These checks are tested by `bun run test:hooks`, not `bun run test`.** `.hooks/` is a
+dot-directory and bun's default discovery skips it, so the lane needs an explicit path. It runs as
+its own `scripts/check.sh` full-mode leg. Nothing else covers these files.
+
 ### Short-circuit rules
 
 **PreToolUse:** `[1]` runs first. If it returns a block, the orchestrator emits it
@@ -67,7 +79,10 @@ Double-layered: a crash in any check never blocks work.
 Checks [1], [2], [5], and [6] only activate for **gateable implementation files**
 (`isGateableImplFile` in `test-resolver.mjs`):
 
-- Path starts with `src/` (relative to `cwd`)
+- Path starts with a product root — `src/`, `client/` or `plugins/` (relative to `cwd`).
+  Internal workspaces (`scripts/`, `opencode-agent/`, `mutation-improve/`, `review-loop/`,
+  `sdd-runner/`) are deliberately excluded; they keep their suites under `tests/` but are gated
+  per file by neither these hooks nor the mutation gate, which shares this predicate.
 - Extension matches `*.ts`, `*.js`, `*.tsx`, `*.jsx`
 - Is NOT a test file (`*.test.*` / `*.spec.*`)
 

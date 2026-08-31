@@ -186,6 +186,7 @@ export const createGit = (options: GitOptions): Git => {
           .map((line) => line.trim())
           .filter((line) => line.length > 0),
       ),
+    diffSince: (sha, paths) => gitOrThrow('diff', sha, '--', ...paths).then((result) => result.stdout),
     revertPaths: (sha, paths) => revertPaths(gitOrThrow, options, sha, paths),
     mergeBase: (base) => mergeBase(git, gitOrThrow, options, base),
     completeMerge: (message) => completeMerge(gitOrThrow, options, message),

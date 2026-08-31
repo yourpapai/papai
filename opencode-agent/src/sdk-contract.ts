@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { countedTokens } from './agent-session.js'
 import { openCodeError } from './errors.js'
 import type { AgentPromptRequest } from './opencode-adapter.js'
 
@@ -184,10 +185,32 @@ export const decodeAbort = (aborted: unknown): boolean => {
  * OpenCode's model catalogue, and a model the catalogue does not price reports
  * the right token counts and a cost of **0**.
  */
+/**
+ * A cache bucket, and the one field in this file that is deliberately **not**
+ * `.default(0)`.
+ *
+ * `reasoning` beside it defaults and is right to: it is a count the budget adds
+ * up, where "reported none" and "did not say" spend the same. A cache bucket
+ * feeds the *price* instead, and there the two are different answers — cache
+ * reads and writes are charged at their own rates, so a bucket the server never
+ * reported cannot be priced at all. Defaulting it to `0` would quietly
+ * under-charge a cache-heavy run rather than reporting it unpriced, which is
+ * the failure this whole surface exists to avoid.
+ *
+ * `.catch(undefined)` for the same reason the decoder below returns `null`
+ * rather than throwing: a moved field costs that field, never the whole read.
+ */
+const cacheBucketSchema = z.number().optional().catch(undefined)
+
 const sessionUsageSchema = z.object({
   data: z
     .object({
-      tokens: z.object({ input: z.number(), output: z.number(), reasoning: z.number().default(0) }),
+      tokens: z.object({
+        input: z.number(),
+        output: z.number(),
+        reasoning: z.number().default(0),
+        cache: z.object({ read: cacheBucketSchema, write: cacheBucketSchema }).optional().catch(undefined),
+      }),
       cost: z.number().default(0),
     })
     .optional(),
@@ -195,8 +218,30 @@ const sessionUsageSchema = z.object({
 })
 
 export interface SessionUsage {
+  /**
+   * What the token ceiling reads: uncached input, output, reasoning and cache
+   * writes, decided by `agent-session.ts`'s `countedTokens` rather than here.
+   *
+   * Cache writes used to be missing from it, which under-counted a cache-heavy
+   * run in the same breath as the claude route over-counted one — the two
+   * backends summing different buckets is exactly how one `AGENT_MAX_TOKENS`
+   * came to mean two budgets. Cache reads stay out: the doctrine
+   * `cacheBucketSchema` records below is that they feed the price.
+   */
   tokens: number
   cost: number
+  /**
+   * The same spend, unsummed, because the sum cannot be repriced: folding cache
+   * reads and writes into one number loses the split their own rates need. Both
+   * come from one read of one envelope, so the ceiling and the price cannot be
+   * measured at different moments.
+   */
+  input: number
+  output: number
+  reasoning: number
+  /** Absent when the server did not report the bucket — never conflated with `0`. */
+  cacheRead?: number
+  cacheWrite?: number
 }
 
 /**
@@ -213,5 +258,15 @@ export const decodeSessionUsage = (fetched: unknown): SessionUsage | null => {
   if (!parsed.success || parsed.data.data === undefined) return null
 
   const { tokens, cost } = parsed.data.data
-  return { tokens: Math.round(tokens.input + tokens.output + tokens.reasoning), cost }
+  return {
+    // An absent cache bucket counts as zero here and is still refused a price
+    // below: one read of one envelope, two honest answers.
+    tokens: countedTokens({ ...tokens, cacheWrite: tokens.cache?.write }),
+    cost,
+    input: tokens.input,
+    output: tokens.output,
+    reasoning: tokens.reasoning,
+    ...(tokens.cache?.read === undefined ? {} : { cacheRead: tokens.cache.read }),
+    ...(tokens.cache?.write === undefined ? {} : { cacheWrite: tokens.cache.write }),
+  }
 }

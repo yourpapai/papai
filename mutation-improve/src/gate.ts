@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { BaselineRecord } from './baseline.js'
 import { runBuildGateWithRetries } from './build-gate.js'
 import { runDiffGuard } from './diff-guard.js'
 import type { PipelineDeps } from './pipeline.js'
@@ -14,9 +15,28 @@ export type PhaseResult<T> = PhaseOk<T> | PhaseFail
 
 export interface GateOutcome {
   afterScore: number
+  // The counts behind afterScore, from the same measurement — the record-level
+  // baseline bump writes them beside the score so the committed record stays
+  // arithmetically consistent with what was measured.
+  killed: number
+  timeout: number
+  scored: number
   result: Result
   capped: boolean
 }
+
+/**
+ * The record-level bump measurement for an outcome: the after-score plus the
+ * killed/timeout/scored counts from the same report it was computed from —
+ * never a bare number, so the committed record stays arithmetically consistent
+ * with what was measured.
+ */
+export const measurementOf = (gate: GateOutcome): BaselineRecord => ({
+  score: gate.afterScore,
+  killed: gate.killed,
+  timeout: gate.timeout,
+  scored: gate.scored,
+})
 
 // Set equality, not subset: a declared id that is not an actual survivor means
 // the agent's bookkeeping is wrong (or padded) — fail closed. An empty
@@ -60,13 +80,14 @@ export async function gatePhase(
   if (!buildGate.ok) return buildGate
   const result = buildGate.value
   const measured = await deps.measureScore(worktreePath, file)
-  const afterScore = measured.score
+  const { score: afterScore, killed, timeout, scored } = measured
+  const counts = { killed, timeout, scored }
   const justified = result.residuals.length > 0 && afterScore >= deps.config.threshold - deps.config.epsilon
   if (afterScore >= deps.config.threshold || justified) {
-    return { ok: true, value: { afterScore, result, capped: false } }
+    return { ok: true, value: { afterScore, ...counts, result, capped: false } }
   }
   if (afterScore > beforeScore && coversAllSurvivors(result, measured.survivingMutantIds)) {
-    return { ok: true, value: { afterScore, result, capped: true } }
+    return { ok: true, value: { afterScore, ...counts, result, capped: true } }
   }
   return { ok: false, gate: 'score', reason: `afterScore ${afterScore} < threshold ${deps.config.threshold}` }
 }

@@ -447,6 +447,15 @@ findings: `ROADMAP.md`.
   path that arrived via the human line is reverted before the push instead of
   riding the merge into a GitHub refusal of the whole push (the issue #240
   class); `push()`'s own internal reconcile is then an idempotent no-op.
+  **The push point `pushIfMoved` records is the head the remote accepted, read
+  after the push — never the head captured at the top of the call.** Run
+  32992114904 (issue #360): the guard reverted the loop's workflow edit and
+  pushed, but `pushedAt` still named the pre-revert head, so the next guard
+  pass saw the guard's **own revert** as a protected change since that base and
+  `revertPaths`'d it — restoring the very content it had removed — and GitHub
+  refused the whole push. The fresh `readHead` fails open exactly like the
+  comparison read, so a checkout that cannot answer degrades to pushing, never
+  to a skipped push.
   It also pushes **as each fix lands**, on the `[review-loop] published` marker
   the loop prints: `mergeEachFix` in the generated config makes the loop merge per
   fix instead of once at the end behind its build gate, and the push stays on this
@@ -624,7 +633,12 @@ findings: `ROADMAP.md`.
   The id may not contain a slash: `parseModelRef` splits at the **first** one
   and keeps the whole remainder as the model id, which is what lets a model id
   contain slashes. `createOpenCodeAgent` logs the resolved reference at `debug`,
-  names only — a CI log is world-readable on a public repository.
+  names only — a CI log is world-readable on a public repository. The key is
+  **route-scoped**, and the claude route is not this route: it runs the
+  Anthropic CLI, so `claude-spend.ts` prices it under `anthropic` and under
+  `modelIdForCli`'s stripped id — the one the CLI was invoked with — whatever
+  `LLM_PROVIDER` says. It read that variable once, which logged a provider the
+  run's turns never touched and cost the catalogue rung its primary row.
 - **A model no catalogue carries is described rather than guessed at, and the
   description is omitted rather than zeroed.** `model-metadata.ts` resolves what
   a run knows about its model on a four-rung ladder — `AGENT_MODEL_*` overrides,
@@ -1023,6 +1037,51 @@ not permitted to create or approve pull requests` is a repository or
   catalogue and is `0` for any model it does not price. Read the total from
   `session.get`, not by summing events — the check happens immediately after a
   prompt returns, and an event-derived total is whatever has arrived by then.
+- **What the ceiling counts is defined once, on the seam, and cache reads are
+  not in it.** `countedTokens` in `agent-session.ts` — uncached input, output,
+  reasoning, cache **writes** — is what every backend's `tokensUsed()` answers
+  with, and a third backend must route through it rather than summing its own
+  buckets. That is not a style rule: both existing routes were left to decide
+  and both decided differently, so one `AGENT_MAX_TOKENS` meant two budgets.
+  The claude route summed all four buckets, and a provider's `result` line has
+  already summed each across every API iteration of the turn — so `cache_read`
+  counted the same context once per assistant step and the figure grew as
+  _steps × context_. Issue #385 parked at 6,835,879 of 5,000,000 having cost
+  $9.23 and used a tenth of a five-hour window. The OpenCode route summed three
+  and left cache writes out, under-counting a cache-heavy run in the opposite
+  direction. Cache reads stay in the **price**, at their own rate — the
+  doctrine `sdk-contract.ts`'s `cacheBucketSchema` had already recorded and
+  only one route was following. The two questions also disagree about an absent
+  bucket on purpose: the ceiling counts it zero because a guardrail must return
+  a number, and `run-spend.ts` still refuses to price it.
+- **A redefinition of the count is a `tokenScale` bump, never a
+  `STATE_VERSION` one.** An issue's ceiling spans every job it has run, so a
+  carried total that adds a figure counted one way to a figure counted another
+  is enforceable against neither. `state-version.ts` holds both constants and
+  the reason they are not interchangeable: a `STATE_VERSION` bump means
+  **stranding** (D12) — the block is rejected, the restore scan finds nothing,
+  and the issue restarts at `INIT_OR_CLARIFY` with its branch reset, which is
+  right for a pipeline whose shape changed and wildly disproportionate for a
+  counter. `onCurrentScale` in `orchestrator.ts` zeroes a superseded total once
+  on the thread read — before `MachineInput` captures `carriedTokens` and
+  before `comment-intent.ts` reads the restored figure directly, which is why
+  it lives at the read and not at the capture. It moves `tokensSpent` and
+  nothing else: the cost totals were never on that scale, since the backend
+  priced each turn itself. Idempotent, because a job that corrects and then
+  dies before persisting corrects again.
+- **A run that spent nothing is not a run that could not be priced.** `spendOf`
+  used to key on `sawUsage` alone, which is false both when a turn ran and
+  reported unreadable usage and when no turn ran at all — and the over-budget
+  stop refuses a phase _before_ it prompts, so it always hit the second. The
+  sticky `usdUnpriced` flag then turned an exact total into
+  `≥ $9.23 (some turns unpriced)` on an issue whose every turn was priced. The
+  claude session counts turns it was asked to run (before each one, so a turn
+  that dies mid-flight still counts as spend that may exist); zero of them
+  answers `{ usd: 0, source: 'unspent' }`, and `'none'` keeps meaning "could
+  not be priced". `spendPatch` needs no branch — it flips on `usd === null`
+  alone. The OpenCode route needs no `unspent`: a never-prompted session
+  reports cost `0` with complete zero buckets and prices at `$0.00` through the
+  catalogue rung.
 - **Every state block a job writes records the running total**, through
   `recordSpend` in `token-budget.ts` — a phase that succeeded, one that threw,
   and one the budget refused to start, all three. Written separately they drifted
@@ -1035,6 +1094,46 @@ not permitted to create or approve pull requests` is a repository or
   `carriedTokens` (the restored block, captured once) plus the job's session
   total, never a per-phase sum: one job's session is already cumulative across
   the phases it cascades through.
+- **Cost is reported, never enforced on, and "unknown" is a value it can take.**
+  `run-spend.ts` resolves what a run cost on a ladder: the backend's own figure
+  when non-zero (`total_cost_usd` on the claude route, `session.get`'s `cost` on
+  the other), else the token buckets repriced through models.dev via
+  `sdd-runner/src/pricing.ts`, else **unpriced**. A `0` and an absent figure both
+  fall through the first rung deliberately — OpenCode reports a literal `0` for a
+  model it cannot price, so treating `0` as an answer pins exactly the wrong
+  number; a genuinely free run still reaches `$0` through the catalogue rung,
+  having actually been priced. A bucket the backend never reported fails the
+  whole reprice rather than pricing the rest, which would under-charge a
+  cache-heavy run while looking exact. Nothing here may fail a phase: an
+  unreadable catalogue and a model reference `resolveCost` cannot split both
+  degrade to unpriced.
+- **`usdSpent` and `usdUnpriced` ride beside `tokensSpent`, and the ceiling does
+  not read them.** Both default, so no `STATE_VERSION` bump. `usdSpent` is not
+  `.int()` unlike the tokens — a turn can cost less than a cent, and rounding
+  those to zero lets an issue spend indefinitely at `$0`. `usdUnpriced` is
+  sticky, and it is what makes the total honest: an unpriced run adds nothing, so
+  without the flag `$12.40` cannot be told apart from "at least $12.40". Set, the
+  run detail renders `≥ $12.40 (some turns unpriced)`.
+- **`total_cost_usd` on the subscription route is list price, not billed spend.**
+  A Max/Pro turn is paid for by the plan; the CLI still computes what it would
+  have cost on the API, and that is the figure reported. The honest reading of
+  the `**Cost:**` line on that route is "what this would have cost on the API".
+- **The rate-limit line reports only what the provider stated.** `remaining` is
+  the complement of a **consumed share** the provider published
+  (`100 − utilization × 100`, clamped at zero, derived at the render and nowhere
+  else). Nothing is inferred from a reset timestamp, from elapsed window time, or
+  from the overage window — `overageResetsAt` sits about a week out and is _not_
+  the weekly limit. A window the stream did not carry gets no row, and a window
+  reported without a share renders its status and reset with no percentage.
+- **The claude CLI pin is a floor, not a routine version.** 2.1.239 emits no
+  `unifiedWindows` on its `rate_limit_event` line and names one window as
+  `rateLimitType`; 2.1.251 carries per-window `utilization` and **no
+  `rateLimitType` at all**. A decoder requiring one skips the whole fact against
+  the newer CLI, so the rate-limit report would be silently empty while looking
+  correctly implemented. Both shapes decode. The recording behind this is
+  credential-free — `claude-stub.integration.ts` drives the real binary against a
+  stub Anthropic endpoint over `ANTHROPIC_BASE_URL` — which pins the line's
+  _shape_ and never authentication: that remains the credentialed lane's job.
 - **Do not pay to classify a comment the budget cannot act on.** `applyIntent`
   asks `withinBudget` before `classifyComment` and routes an over-budget comment
   to the answer path, where the cascade's one stop reports it. The classifier is
@@ -1176,7 +1275,16 @@ not permitted to create or approve pull requests` is a repository or
   (`git-revert.ts`, driven from `review-push.ts`): its fixes are commits it makes
   in a worktree of its own and merges, so they never pass through an index
   `stageAllowed` sees, and a protected path there fails the **push** rather than
-  being dropped.
+  being dropped. The guard also captures each path's diff through `Git.diffSince`
+  **before the revert destroys it** — the patch is the fix the pipeline wrote and
+  verified, and the phase report is the only place a maintainer can still reach
+  it — and `renderReport` carries those patches as fenced apply-by-hand blocks
+  beside the path note, bounded per path and in total with a `git log -p`
+  recovery reference, newest diff per path when one path is reverted twice. A
+  capture that fails degrades to the path-only note and never blocks the push.
+  PR #362 is the cost of the old paths-only report: the loop's correct ci.yml
+  fix (`df1025cb5`) was reverted by the guard (`e2b213562`) and survived only as
+  `git log -S` archaeology.
 - **A process artefact is not a deliverable, and that is enforced at staging
   too.** `stray-paths.ts` names `*.pid`, `*.sock` and `nohup.out`, and
   `stageAllowed` takes them back out of the index alongside the protected paths.
@@ -1326,7 +1434,10 @@ container, and the Dockerfile's `prod-deps` stage installs with `--production`.
 The Actions workflow runs a plain `bun install --frozen-lockfile`, so both are
 present there.
 
-The workflow additionally installs the `opencode` CLI (the review-loop workspace
-shells out to `opencode run`) and checks out `obra/superpowers` to `.superpowers/`.
+The workflow additionally installs the CLIs the job's route needs — `opencode`
+by default, plus the pinned `@anthropic-ai/claude-code` on the claude route
+(the review-loop workspace shells out to whichever backend the job's config
+selects, so a claude-route `/review` runs through the loop's own claude
+subprocess contract) — and checks out `obra/superpowers` to `.superpowers/`.
 Both of those paths, plus the generated `.opencode-agent/` run inputs, are
 gitignored — `git add --all` in the implement phase would otherwise commit them.

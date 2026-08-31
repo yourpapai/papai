@@ -35,6 +35,7 @@ const toAlertPrompt = (row: AlertPromptRow): AlertPrompt => ({
   status: parseStatus(row.status),
   createdAt: row.createdAt,
   lastTriggeredAt: row.lastTriggeredAt,
+  lastActivityCursor: row.lastActivityCursor,
   cooldownMinutes: row.cooldownMinutes,
   executionMetadata: parseExecutionMetadata(row.executionMetadata),
   matchedTaskIds: parseMatchedTaskIds(row.matchedTaskIds),
@@ -143,6 +144,7 @@ export const updateAlertPrompt = (
     alertConditionSchema.parse(updates.condition)
     set.condition = JSON.stringify(updates.condition)
     set.matchedTaskIds = '[]'
+    set.lastActivityCursor = null
   }
   if (updates.cooldownMinutes !== undefined) set.cooldownMinutes = updates.cooldownMinutes
   if (updates.executionMetadata !== undefined) set.executionMetadata = JSON.stringify(updates.executionMetadata)
@@ -202,6 +204,28 @@ export const updateAlertMatchState = (
     .where(and(eq(alertPrompts.id, id), eq(alertPrompts.createdByUserId, userId)))
     .run()
   log.info({ id, userId }, 'Alert match state updated')
+}
+
+export const updateAlertActivityState = (
+  id: string,
+  userId: string,
+  lastTriggeredAt: string | null,
+  lastActivityCursor: string,
+): void => {
+  log.debug({ id, userId, lastTriggeredAt, lastActivityCursor }, 'updateAlertActivityState called')
+  const db = getDrizzleDb()
+  db.update(alertPrompts)
+    .set({ lastTriggeredAt, lastActivityCursor })
+    .where(and(eq(alertPrompts.id, id), eq(alertPrompts.createdByUserId, userId)))
+    .run()
+  log.info({ id, userId }, 'Alert activity state updated')
+}
+
+export const getActiveAlertPrompts = (): AlertPrompt[] => {
+  log.debug('getActiveAlertPrompts called')
+  const db = getDrizzleDb()
+  const rows = db.select().from(alertPrompts).where(eq(alertPrompts.status, 'active')).all()
+  return rows.map(toAlertPrompt)
 }
 
 export const getEligibleAlertPrompts = (): AlertPrompt[] => {

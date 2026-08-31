@@ -61,6 +61,7 @@ export const alertPrompts = sqliteTable(
     taskInstanceId: text('task_instance_id').references(() => taskInstances.id, {
       onDelete: 'cascade',
     }),
+    lastActivityCursor: text('last_activity_cursor'),
   },
   (table) => [
     index('idx_alert_prompts_creator').on(table.createdByUserId),

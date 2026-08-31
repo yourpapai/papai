@@ -100,3 +100,6 @@ opencode.json
 # Written by the context-vault-indexer story scenario when it runs outside the
 # hermetic sandbox (the sandbox confines it to the session temp mount).
 vault-indexer/
+
+# figma:sync dev-plugin build output, rebuilt by `bun figma:sync`
+scripts/figma-sync-plugin/dist/

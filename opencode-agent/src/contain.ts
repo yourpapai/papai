@@ -8,6 +8,7 @@ import type { AgentHandle } from './agent-handle.js'
 import type { AgentSession } from './agent-session.js'
 import { createClaudeAgent as defaultClaudeAgent } from './claude-adapter.js'
 import type { ClaudeAgentOptions } from './claude-adapter.js'
+import { claudePricingSettings } from './claude-spend.js'
 import type { MainOptions } from './cli-args.js'
 import type { PipelineConfig } from './config.js'
 import { assembleDeps, memoize } from './deps.js'
@@ -21,6 +22,7 @@ import type { TranscriptSink } from './progress.js'
 import { proxiedSettings, startProviderProxy } from './provider-proxy.js'
 import type { ProviderProxy } from './provider-proxy.js'
 import { createReplyBuffer } from './reply-buffer.js'
+import type { ReplyDeps } from './reply-buffer.js'
 import { pipelineSecrets } from './secrets.js'
 import type { CommandRunner } from './shell.js'
 import { turnTimeoutMs } from './time-budget.js'
@@ -152,6 +154,10 @@ const claudeSessionOptions = ({
   const profiles = contained.openai.profiles
   return {
     directory: contained.repoRoot,
+    // The contained settings with this route's own reference: the Anthropic
+    // catalogue and the id the CLI is invoked with, never `LLM_PROVIDER`.
+    // Design D5 bars the *credential* from this seam, not the model's name.
+    pricing: claudePricingSettings(contained.openai),
     knobs: {
       model: contained.openai.model,
       lightModel: profiles?.light ?? null,
@@ -170,6 +176,68 @@ const claudeSessionOptions = ({
     now: clock,
   }
 }
+
+/**
+ * The memoized session for whichever backend this run selected.
+ *
+ * Memoized *before* the reply buffer, where the note in {@link contain} used to
+ * say the order did not matter. It still does not for the reason that note gives
+ * — the buffer is handed to every phase and the session needs none of it — but
+ * the buffer's `windows` thunk reads the session, so the reference has to exist
+ * first. Nothing is booted by being named: `memoizeAgent` starts nothing until
+ * something asks, and a run that never prompts answers without a server.
+ */
+const sessionFor = ({
+  input,
+  contained,
+  clock,
+  create,
+  createClaude,
+}: {
+  input: ContainInput
+  contained: PipelineConfig
+  clock: () => number
+  create: (options: OpenCodeAgentOptions) => Promise<AgentSession>
+  createClaude: (options: ClaudeAgentOptions) => Promise<AgentSession>
+}): AgentHandle =>
+  memoizeAgent(() =>
+    contained.backend === 'claude'
+      ? createClaude(claudeSessionOptions({ input, contained, clock }))
+      : create(sessionOptions({ input, contained, clock })),
+  )
+
+/**
+ * The reply channel's collaborators, with the rate-limit thunk bound to the
+ * session.
+ *
+ * Its own function because {@link contain} is an assembly sequence and this is
+ * the one member of it that reaches back into another — inlined, it pushed that
+ * function past `max-lines-per-function`, which is the seam declaring itself.
+ *
+ * `windows` reads the whole `spend()` and keeps one field of it. Cheap and
+ * deliberate: a session that never opened answers without booting one, and a
+ * second seam method for the other half would be two samples of one accumulating
+ * state — the thing `RunSpend` exists to avoid.
+ */
+const replyDeps = ({
+  github,
+  log,
+  config,
+  selfLogin,
+  agent,
+}: {
+  github: GitHubApi
+  log: Logger
+  config: PipelineConfig
+  selfLogin: () => Promise<string>
+  agent: AgentHandle
+}): ReplyDeps => ({
+  github,
+  log,
+  config,
+  selfLogin,
+  windows: async () => (await agent.spend()).windows,
+})
 
 /**
  * Assembles the run with the provider credential held back.
@@ -205,13 +273,10 @@ export const contain = async (input: ContainInput): Promise<Contained> => {
   // against this same answer, and two memoizations would be two `GET /user`
   // calls that could disagree.
   const selfLogin = memoize(() => resolveSelfLogin({ override: contained.selfLoginOverride, api: github, log }))
-  const reply = createReplyBuffer({ github, log, config: contained, selfLogin }, clock())
 
-  const agent = memoizeAgent(() =>
-    contained.backend === 'claude'
-      ? createClaude(claudeSessionOptions({ input, contained, clock }))
-      : create(sessionOptions({ input, contained, clock })),
-  )
+  const agent = sessionFor({ input, contained, clock, create, createClaude })
+
+  const reply = createReplyBuffer(replyDeps({ github, log, config: contained, selfLogin, agent }), clock())
 
   const env = options.env
   const deps = await assembleDeps({

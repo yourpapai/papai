@@ -87,6 +87,9 @@ const result: Result = {
 // trips vitest/no-conditional-in-test). Plain numbers map to empty surviving ids.
 const measured = (score: number, survivingMutantIds: readonly string[] = []): MeasuredScore => ({
   score,
+  killed: Math.round(score * 100),
+  timeout: 0,
+  scored: 100,
   survivingMutantIds,
 })
 
@@ -164,7 +167,7 @@ const sequenceImprove = (
 
 const happyDeps = (): PipelineDeps => {
   const repoRoot = makeTempDir('pipe-')
-  let baseline: Record<string, number> = {
+  let baseline: BaselineMap = {
     'src/live-status/tool-status-labels.ts': 0.46,
     'src/tools/memory.ts': 0.5,
   }
@@ -180,7 +183,7 @@ const happyDeps = (): PipelineDeps => {
     runBuildCheck: () => Promise.resolve({ passed: true, stdout: '', stderr: '' }),
     measureScore: sequenceMeasure([0.46, 0.97]),
     readBaseline: () => Promise.resolve(baseline),
-    writeBaseline: (_root: string, map: Record<string, number>) => {
+    writeBaseline: (_root: string, map: BaselineMap) => {
       baseline = map
       return Promise.resolve()
     },
@@ -207,9 +210,14 @@ describe('pipeline runIteration', () => {
     expect(deps.runState.merged).toHaveLength(1)
     expect(deps.runState.merged[0]?.afterScore).toBe(0.97)
     expect(deps.runState.doneSet).toContain('src/live-status/tool-status-labels.ts')
-    // baseline bump is runner-owned
+    // baseline bump is runner-owned and carries the AFTER measurement's counts
     const bumped = await deps.readBaseline(deps.config.repoRoot)
-    expect(bumped['src/live-status/tool-status-labels.ts']).toBe(0.97)
+    expect(bumped['src/live-status/tool-status-labels.ts']).toEqual({
+      score: 0.97,
+      killed: 97,
+      timeout: 0,
+      scored: 100,
+    })
   })
 
   // The runner reads agent output ONLY from agentWritePath(worktree, outputPath)
@@ -531,7 +539,12 @@ describe('pipeline runIteration', () => {
       beforeScore: 0.97,
     })
     const baseline = await deps.readBaseline(deps.config.repoRoot)
-    expect(baseline['src/live-status/tool-status-labels.ts']).toBe(0.97)
+    expect(baseline['src/live-status/tool-status-labels.ts']).toEqual({
+      score: 0.97,
+      killed: 97,
+      timeout: 0,
+      scored: 100,
+    })
     const repoRoot = deps.config.repoRoot
     expect(gitCalls).toContain(`${repoRoot} add scripts/mutation/baseline.json`)
     const commitPrefix = `${repoRoot} commit -m chore(mutation): ratchet src/live-status/tool-status-labels.ts baseline to 0.97`
@@ -599,7 +612,12 @@ describe('pipeline capped gate', () => {
     expect(deps.runState.doneSet).toContain('src/live-status/tool-status-labels.ts')
     expect(deps.runState.failed).toHaveLength(0)
     const bumped = await deps.readBaseline(deps.config.repoRoot)
-    expect(bumped['src/live-status/tool-status-labels.ts']).toBe(0.85)
+    expect(bumped['src/live-status/tool-status-labels.ts']).toEqual({
+      score: 0.85,
+      killed: 85,
+      timeout: 0,
+      scored: 100,
+    })
     expect(recorded).toEqual([['src/live-status/tool-status-labels.ts', 0.85]])
   })
 

@@ -40,71 +40,10 @@ export const deliveryPolicySchema = z
 
 // --- Condition fields and operators ---
 
-export const CONDITION_FIELDS = [
-  'task.status',
-  'task.priority',
-  'task.assignee',
-  'task.dueDate',
-  'task.project',
-  'task.labels',
-] as const
+import type { AlertCondition } from './condition-schema.js'
 
-export type ConditionField = (typeof CONDITION_FIELDS)[number]
-
-export const FIELD_OPERATORS: Record<ConditionField, readonly string[]> = {
-  'task.status': ['eq', 'neq', 'changed_to'],
-  'task.priority': ['eq', 'neq', 'changed_to'],
-  'task.assignee': ['eq', 'neq', 'changed_to'],
-  'task.dueDate': ['eq', 'lt', 'gt', 'overdue'],
-  'task.project': ['eq', 'neq'],
-  'task.labels': ['contains', 'not_contains'],
-}
-
-// --- Alert condition schema (recursive) ---
-
-const conditionFieldSchema = z.enum(CONDITION_FIELDS)
-
-const leafConditionSchema = z
-  .object({
-    field: conditionFieldSchema,
-    op: z.string(),
-    value: z.union([z.string(), z.number()]).optional(),
-  })
-  .superRefine((data, ctx) => {
-    const validOps = FIELD_OPERATORS[data.field]
-    if (!validOps.includes(data.op)) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `Invalid operator '${data.op}' for field '${data.field}'. Valid operators: ${validOps.join(', ')}`,
-        path: ['op'],
-      })
-    }
-    const valuelessOps = new Set(['overdue'])
-    if (!valuelessOps.has(data.op) && data.value === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `Operator '${data.op}' requires a value.`,
-        path: ['value'],
-      })
-    }
-  })
-
-export type LeafCondition = z.infer<typeof leafConditionSchema>
-
-type AndCondition = { and: AlertCondition[] }
-type OrCondition = { or: AlertCondition[] }
-
-export type AlertCondition = LeafCondition | AndCondition | OrCondition
-
-export const alertConditionSchema: z.ZodType<AlertCondition> = z.union([
-  leafConditionSchema,
-  z.object({
-    and: z.lazy(() => z.array(alertConditionSchema).min(1)),
-  }),
-  z.object({
-    or: z.lazy(() => z.array(alertConditionSchema).min(1)),
-  }),
-])
+export { alertConditionSchema } from './condition-schema.js'
+export type { AlertCondition, LeafCondition } from './condition-schema.js'
 
 // --- Execution metadata ---
 
@@ -211,7 +150,7 @@ export const cooldownSchema = z
   .int()
   .min(1)
   .optional()
-  .describe('Minimum minutes between alert triggers (default: 60)')
+  .describe('Minimum minutes between alert triggers, including per-task watches (default: 60)')
 
 export const executionInputSchema = z
   .object({
@@ -258,6 +197,7 @@ export type AlertPrompt = {
   status: 'active' | 'cancelled'
   createdAt: string
   lastTriggeredAt: string | null
+  lastActivityCursor: string | null
   cooldownMinutes: number
   executionMetadata: ExecutionMetadata
   matchedTaskIds: string[]

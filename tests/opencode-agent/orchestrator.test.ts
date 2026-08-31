@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import type { RunSpend } from '../../opencode-agent/src/agent-session.js'
 import { findHandoff, HANDOFF_MARKER, renderArtifact } from '../../opencode-agent/src/artifacts.js'
 import { readBlock } from '../../opencode-agent/src/blocks.js'
 import type { IssueComment } from '../../opencode-agent/src/blocks.js'
@@ -36,7 +37,9 @@ import {
   STATE_MARKER,
 } from '../../opencode-agent/src/state-manager.js'
 import type { CiTriggerEvent, IssueTriggerEvent } from '../../opencode-agent/src/trigger-events.js'
+import { TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState, Phase } from '../../opencode-agent/src/types.js'
+import { fakeGit } from './fake-git.js'
 
 const AGENT_LOGIN = 'agent-bot'
 const ISSUE = 42
@@ -258,6 +261,8 @@ interface PipelineIo {
   replies: string[]
   /** Tokens the fake session reports as spent this job. */
   tokensUsed: number
+  /** What the fake session reports having spent. Unpriced unless a test says otherwise. */
+  spend: RunSpend
   reviewResult: ReviewRunResult
   /** What `git rev-parse HEAD` answers; constant unless a test moves it. */
   headSha: string
@@ -418,6 +423,20 @@ const PLAN_REPLY = JSON.stringify({
 const OK_CHECK: CommandResult = { command: 'check', exitCode: 0, stdout: '', stderr: '' }
 
 const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
+  // The shared `Git` double (see `fake-git.ts`). Every scripted answer reads
+  // `io` inside a function so a test that moves a harness field after
+  // construction — `headSha`, `syncOutcome`, `salvageError`, … — is still a
+  // live read, exactly as the local object this replaced was. `io.gitCalls` is
+  // the double's own `calls` array, so every existing assertion keeps reading
+  // the same log it always did.
+  const fake = fakeGit({
+    commitAll: () => asOutcome(io.committedTotals),
+    salvageAll: () => io.salvageError ?? io.salvaged,
+    defaultBranch: () => io.detectedBranch,
+    headSha: () => io.headSha,
+    changedSince: () => [...io.changedPaths],
+    mergeBase: () => io.syncOutcome ?? { kind: 'up-to-date' },
+  })
   const io: PipelineIo = {
     thread: [],
     posted: [],
@@ -429,13 +448,14 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     aborts: 0,
     abortAccepted: true,
     agentClosed: false,
-    gitCalls: [],
+    gitCalls: fake.calls,
     checkResults: new Map(),
     runJobs: [],
     jobLogs: {},
     refCheckRuns: [],
     replies: [],
     tokensUsed: 0,
+    spend: { usd: null, source: 'none', windows: [] },
     reviewResult: { outcome: 'passed', summary: 'no issues found', exitCode: 0, failure: null },
     headSha: 'head-sha',
     changedPaths: [],
@@ -629,61 +649,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     listCheckRunsForRef: (): Promise<readonly RefCheckRun[]> => Promise.resolve([...io.refCheckRuns]),
   }
 
-  const git: Git = {
-    ensureBranch: (branch, base) => {
-      io.gitCalls.push(`ensureBranch:${branch}:${base}`)
-      return Promise.resolve()
-    },
-    resetBranchToBase: (branch, base) => {
-      io.gitCalls.push(`ensureBranch:${branch}:${base}`)
-      return Promise.resolve()
-    },
-    deleteRemoteBranch: (branch) => {
-      io.gitCalls.push(`deleteRemoteBranch:${branch}`)
-      return Promise.resolve()
-    },
-    commitAll: (message) => {
-      io.gitCalls.push(`commit:${message.split('\n')[0]}`)
-      return Promise.resolve(asOutcome(io.committedTotals))
-    },
-    salvageAll: (message) => {
-      io.gitCalls.push(`salvage:${message.split('\n')[0]}`)
-      return io.salvageError === null ? Promise.resolve(io.salvaged) : Promise.reject(io.salvageError)
-    },
-    push: (branch, options) => {
-      io.gitCalls.push(`push:${branch}${options?.noVerify === true ? ':no-verify' : ''}`)
-      return Promise.resolve()
-    },
-    reconcile: (branch) => {
-      io.gitCalls.push(`reconcile:${branch}`)
-      return Promise.resolve()
-    },
-    defaultBranch: () => Promise.resolve(io.detectedBranch),
-    // Constant, which is the ordinary case: the review loop is a fake here, so
-    // nothing moves the branch behind the pipeline's back. A test that wants the
-    // opposite overrides this — see the review-phase tests in `phases.test.ts`.
-    headSha: () => Promise.resolve(io.headSha),
-    changedSince: (sha) => {
-      io.gitCalls.push(`changedSince:${sha}`)
-      return Promise.resolve([...io.changedPaths])
-    },
-    revertPaths: (sha, paths) => {
-      io.gitCalls.push(`revertPaths:${sha}:${paths.join(',')}`)
-      return Promise.resolve()
-    },
-    mergeBase: (base) => {
-      io.gitCalls.push(`mergeBase:${base}`)
-      return Promise.resolve(io.syncOutcome ?? { kind: 'up-to-date' as const })
-    },
-    completeMerge: (message) => {
-      io.gitCalls.push(`completeMerge:${message.split('\n')[0]}`)
-      return Promise.resolve()
-    },
-    abortMerge: () => {
-      io.gitCalls.push('abortMerge')
-      return Promise.resolve()
-    },
-  }
+  const git: Git = fake.git
 
   const agent: OpenCodeAgent = {
     sessionId: 'session-1',
@@ -698,6 +664,10 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // cannot answer — which is what makes "record the spend before anything closes
     // the server" a testable claim rather than a comment.
     tokensUsed: () => Promise.resolve(io.agentClosed ? 0 : io.tokensUsed),
+    // Unpriced by default: the harness drives the state machine, not the
+    // accounting, and a stub that reported dollars would make every phase test
+    // silently assert a cost nobody wrote.
+    spend: () => Promise.resolve(io.spend),
     abort: () => {
       io.aborts += 1
       return Promise.resolve(io.abortAccepted)
@@ -717,7 +687,13 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
     // default config (`runUrl: null`) hands back the no-op, so every test that
     // is not about this channel drives exactly what it drove before.
     reply: createReplyBuffer(
-      { github, log, config: pipelineConfig, selfLogin: () => Promise.resolve(AGENT_LOGIN) },
+      {
+        github,
+        log,
+        config: pipelineConfig,
+        selfLogin: () => Promise.resolve(AGENT_LOGIN),
+        windows: () => Promise.resolve(io.spend.windows),
+      },
       RUN_NOW_MS,
     ),
     git,
@@ -727,6 +703,7 @@ const makeHarness = (overrides: Partial<PipelineConfig> = {}): Harness => {
       return io.reviewError === null ? Promise.resolve(io.reviewResult) : Promise.reject(io.reviewError)
     },
     agent: () => Promise.resolve(agent),
+    spend: () => Promise.resolve(io.spend),
     // Through the session, the way `memoizeAgent` wires it, so a run that closed
     // the server reads what a closed server answers.
     tokensUsed: () => agent.tokensUsed(),
@@ -811,6 +788,7 @@ const hostileGit = (): Git => {
     defaultBranch: (): Promise<string | null> => refuse('symbolic-ref'),
     headSha: (): Promise<string> => refuse('rev-parse'),
     changedSince: (): Promise<string[]> => refuse('diff --name-only'),
+    diffSince: (): Promise<string> => refuse('diff'),
     revertPaths: (): Promise<void> => refuse('revert'),
     mergeBase: (): Promise<never> => refuse('merge'),
     completeMerge: (): Promise<void> => refuse('commit'),
@@ -3068,6 +3046,151 @@ describe('the retry budget', () => {
   })
 })
 
+/**
+ * The carried total, when the definition of "a token" moved under it.
+ *
+ * An issue's ceiling spans every job it has run, so a total that adds a figure
+ * counted one way to a figure counted another is enforceable against neither.
+ * Issue #385 is the figure in question: 6,835,879 against a 5,000,000 ceiling,
+ * roughly four fifths of it cache reads the run never spent twice.
+ */
+describe('a carried total measured on the superseded scale', () => {
+  /** A block an earlier deploy wrote: a real figure, on the old definition. */
+  const seedOldScale = (harness: Harness, tokensSpent: number): void => {
+    const prior: AgentState = { ...initialState(ISSUE), phase: 'DESIGN_SPEC', tokenScale: 1, tokensSpent }
+    harness.io.thread.push({ id: 901, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+  }
+
+  test('is reset once, so the next job counts from this scale alone', async () => {
+    const harness = makeHarness()
+    seedOldScale(harness, 6_835_879)
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 41_200
+
+    await runPipeline({ event: comment('/changes tighten it up'), deps: harness.deps })
+
+    // This job's figure and nothing carried: 6,835,879 counted cache reads.
+    expect(latestPostedState(harness)?.tokensSpent).toBe(41_200)
+    expect(latestPostedState(harness)?.tokenScale).toBe(TOKEN_SCALE)
+  })
+
+  test('does not cost the issue anything else it was carrying', async () => {
+    // The reason this is a marker and not a STATE_VERSION bump: a bump strands
+    // the issue at INIT_OR_CLARIFY with its branch reset, to fix a counter.
+    //
+    // Asserted against a control rather than field by field, so the case cannot
+    // quietly start describing what the *transition* does — a forward move
+    // clears `attempts`, and pinning that here would be a claim about the reset
+    // that only holds by coincidence.
+    const carried = (tokenScale: number): Partial<AgentState> => ({
+      phase: 'DESIGN_SPEC',
+      changeName: CHANGE_NAME,
+      resumeFrom: 'PLANNING',
+      attempts: 2,
+      ciAttempts: 1,
+      reviewAttempts: 1,
+      planRevision: 3,
+      tokenScale,
+      // Under the ceiling on purpose: a control seeded over it parks in FAILED,
+      // which is the very difference the reset exists to make and would drown
+      // out everything this case is comparing.
+      tokensSpent: 900,
+      usdSpent: 9.23,
+      usdUnpriced: false,
+    })
+    const runWith = async (scale: number): Promise<AgentState | null> => {
+      const harness = makeHarness()
+      const prior: AgentState = { ...initialState(ISSUE), ...carried(scale) }
+      harness.io.thread.push({ id: 902, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+      harness.io.replies = [SPEC_REPLY]
+      harness.io.tokensUsed = 100
+      await runPipeline({ event: comment('/changes tighten it up'), deps: harness.deps })
+      return latestPostedState(harness)
+    }
+
+    const reset = await runWith(1)
+    const control = await runWith(TOKEN_SCALE)
+
+    // Everything but the two fields the correction exists to move.
+    expect({ ...reset, tokensSpent: 0, tokenScale: 0 }).toEqual({ ...control, tokensSpent: 0, tokenScale: 0 })
+    expect(reset?.tokensSpent).toBe(100)
+    expect(control?.tokensSpent).toBe(1_000)
+    // Money was never measured on the superseded scale — the CLI priced every
+    // turn itself — so resetting it would discard a correct figure.
+    expect(reset?.usdSpent).toBeCloseTo(9.23, 6)
+  })
+
+  test('a total already on this scale is carried forward untouched', async () => {
+    const harness = makeHarness()
+    const prior: AgentState = {
+      ...initialState(ISSUE),
+      phase: 'DESIGN_SPEC',
+      tokenScale: TOKEN_SCALE,
+      tokensSpent: 900,
+    }
+    harness.io.thread.push({ id: 903, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 100
+
+    await runPipeline({ event: comment('/changes tighten it up'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.tokensSpent).toBe(1_000)
+  })
+
+  test('the correction happens once, not once per job', async () => {
+    // Idempotent by construction — a second pass would re-zero a figure already
+    // on this scale, which is the one thing that would make spend unbounded.
+    const harness = makeHarness()
+    seedOldScale(harness, 6_835_879)
+
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    await runPipeline({ event: comment('/changes first'), deps: harness.deps })
+
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 2_500
+    await runPipeline({ event: comment('/changes second'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.tokensSpent).toBe(3_500)
+  })
+
+  test('the trigger layer sees the corrected total, not the carried one', async () => {
+    // `comment-intent.ts` reads the restored figure straight off the state
+    // rather than through `MachineInput`, which is why the correction happens
+    // at the thread read and not at the point `carriedTokens` is captured.
+    // Seeded here exactly as issue #385 stood: over its ceiling on a figure
+    // roughly four fifths cache reads, so the pre-correction pipeline refused
+    // to pay for a classifier turn it could easily afford.
+    const harness = makeHarness({ maxTokens: 5_000_000 })
+    const prior: AgentState = {
+      ...initialState(ISSUE),
+      phase: 'INIT_OR_CLARIFY',
+      changeName: null,
+      tokenScale: 1,
+      tokensSpent: 6_835_879,
+    }
+    harness.io.thread.push({ id: 904, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+    harness.io.replies = [JSON.stringify({ intent: 'none' })]
+
+    const result = await runPipeline({ event: comment('thanks! 👍'), deps: harness.deps })
+
+    // The classifier ran and the comment was skipped as chatter — not refused
+    // by a ceiling on a total the issue had never really spent.
+    expect(harness.io.prompts.length).toBe(1)
+    expect(result.status).not.toBe('failed')
+    expect(latestPostedState(harness)?.phase).toBe('INIT_OR_CLARIFY')
+  })
+
+  test('a fresh issue is on this scale from its first block', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.tokenScale).toBe(TOKEN_SCALE)
+  })
+})
+
 describe('the token budget', () => {
   /** A prior job's state block, carrying what that job spent. */
   const seedSpend = (harness: Harness, tokensSpent: number): void => {
@@ -3169,6 +3292,7 @@ describe('the token budget', () => {
         sessionId: 'session-1',
         prompt: () => Promise.reject(new Error('the model timed out')),
         tokensUsed: () => Promise.resolve(harness.io.tokensUsed),
+        spend: () => Promise.resolve({ usd: null, source: 'none' as const, windows: [] }),
         abort: () => Promise.resolve(true),
         close: () => Promise.resolve(),
       })
@@ -5676,5 +5800,100 @@ describe('the pull request carries the run, record included', () => {
 
     expect(fresh.io.prNotes).toHaveLength(0)
     expect(fresh.io.posted.length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * The ceiling and the cost report share a state patch now, and this is the group
+ * of claims that says the sharing changed nothing about the ceiling.
+ *
+ * `types.ts` records why the budget counts tokens: a model the catalogue cannot
+ * price reports a cost of `0`, and a ceiling that silently never fires is worse
+ * than no ceiling. Writing money into the same patch is only safe while the
+ * money cannot reach the decision.
+ */
+describe('the token ceiling is unaffected by what pricing can or cannot say', () => {
+  const seedSpend = (harness: Harness, tokensSpent: number): void => {
+    const prior: AgentState = { ...initialState(ISSUE), phase: 'DESIGN_SPEC', tokensSpent }
+    harness.io.thread.push({ id: 900, body: `earlier\n\n${serializeState(prior)}`, authorLogin: AGENT_LOGIN })
+  }
+
+  test('an unpriceable run is still stopped by the token ceiling', async () => {
+    const harness = makeHarness({ maxTokens: 50_000 })
+    seedSpend(harness, 60_000)
+    harness.io.spend = { usd: null, source: 'none', windows: [] }
+
+    const result = await runPipeline({ event: comment('/changes again'), deps: harness.deps })
+
+    expect(result.status).toBe('failed')
+    expect(result.reason).toContain('Token budget spent')
+  })
+
+  test('a run that cost more dollars than the ceiling has tokens is not stopped', async () => {
+    // A figure far larger than the ceiling's number, deliberately: if the two
+    // were ever compared this run would stop, and it must not.
+    const harness = makeHarness({ maxTokens: 5_000_000 })
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    harness.io.spend = { usd: 9_000_000, source: 'backend', windows: [] }
+
+    const result = await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(result.reason).not.toContain('budget')
+  })
+
+  test('an unpriced run adds nothing to the issue’s total but marks it a floor', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    harness.io.spend = { usd: null, source: 'none', windows: [] }
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.usdSpent).toBe(0)
+    expect(latestPostedState(harness)?.usdUnpriced).toBe(true)
+  })
+
+  test('a priced run records its figure beside the tokens', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    harness.io.spend = { usd: 1.5, source: 'backend', windows: [] }
+
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.usdSpent).toBe(1.5)
+    expect(latestPostedState(harness)?.usdUnpriced).toBe(false)
+  })
+
+  test('a second job adds to what the first spent, as the tokens do', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    harness.io.spend = { usd: 1.5, source: 'backend', windows: [] }
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.spend = { usd: 2.25, source: 'backend', windows: [] }
+    await runPipeline({ event: comment('/changes tighten it up'), deps: harness.deps })
+
+    expect(latestPostedState(harness)?.usdSpent).toBeCloseTo(3.75, 10)
+  })
+
+  test('one unpriced job in a priced issue makes the whole total a floor, permanently', async () => {
+    const harness = makeHarness()
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.tokensUsed = 1_000
+    harness.io.spend = { usd: null, source: 'none', windows: [] }
+    await runPipeline({ event: issueEvent(), deps: harness.deps })
+
+    harness.io.replies = [SPEC_REPLY]
+    harness.io.spend = { usd: 2.25, source: 'backend', windows: [] }
+    await runPipeline({ event: comment('/changes tighten it up'), deps: harness.deps })
+
+    // The flag is sticky: a later priced turn cannot un-spend an earlier
+    // unpriced one, so the total stays a floor.
+    expect(latestPostedState(harness)?.usdSpent).toBe(2.25)
+    expect(latestPostedState(harness)?.usdUnpriced).toBe(true)
   })
 })

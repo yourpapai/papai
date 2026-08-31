@@ -7,6 +7,8 @@ import type { PipelineConfig } from './config.js'
 import { branchNameFor } from './git.js'
 import { PRESENTATION, presentationFor } from './presentation.js'
 import type { PresentationKey } from './presentation.js'
+import type { RateLimitStanding } from './rate-limit-windows.js'
+import { costLine, limitsLine } from './run-cost-lines.js'
 import type { AgentState, Phase } from './types.js'
 
 /**
@@ -91,6 +93,13 @@ const PARKED_PHASES: ReadonlySet<Phase> = new Set<Phase>(['FAILED', 'INCOMPLETE'
 /** Everything the run detail is a function of. */
 export interface RunDetailView {
   state: AgentState
+  /**
+   * The state the run *entered* on, so this run's own spend is the difference
+   * between the two rather than a third figure that could disagree with them.
+   */
+  entry: AgentState
+  /** The provider's rate-limit standing, empty on any route that reported none. */
+  windows: readonly RateLimitStanding[]
   /** `null` on a local `--event-path` run, which has no job to link to. */
   runUrl: string | null
   startedMs: number
@@ -243,6 +252,8 @@ export const renderRunDetail = (view: RunDetailView): readonly string[] => [
   ...table(view),
   '',
   budgetLine(view),
+  ...costLine(view.state.usdSpent - view.entry.usdSpent, view.state.usdSpent, view.state.usdUnpriced),
+  ...limitsLine(view.windows, view.startedMs),
   '',
   '</details>',
 ]

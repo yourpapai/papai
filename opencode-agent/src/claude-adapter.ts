@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { AgentPromptRequest, AgentPromptResult, AgentSession } from './agent-session.js'
+import type { AgentPromptRequest, AgentPromptResult, AgentSession, RunSpend } from './agent-session.js'
 import { buildClaudeArgv } from './claude-argv.js'
 import type { ClaudeInvocationProfile, ClaudeModelKnobs } from './claude-argv.js'
 import { createClaudeConfigDir, writeClaudeEmptyMcpConfig } from './claude-config-dir.js'
@@ -12,11 +12,14 @@ import type { ClaudeChild, GroupKillSeams, SpawnClaude, TeardownSeams } from './
 import { decodeClaudeLine, parseNdjsonStream } from './claude-contract.js'
 import type { ClaudeStreamLine } from './claude-contract.js'
 import { claudeTracker } from './claude-progress.js'
+import { ceilingTokensOf, emptyAccounting, recordLine, spendOf } from './claude-spend.js'
+import type { ClaudeAccounting } from './claude-spend.js'
 import { classifyTurn } from './claude-turn-classify.js'
 import type { TurnOutcome } from './claude-turn-classify.js'
 import type { ClaudeCredential } from './config-values.js'
 import { claudeResultError } from './errors.js'
 import type { Logger } from './logger.js'
+import type { OpenAiSettings } from './openai-config.js'
 import type { ProgressTracker, TranscriptSink } from './progress.js'
 import { redactSecrets } from './secrets.js'
 import { runTurn } from './turn-run.js'
@@ -36,6 +39,15 @@ export interface ClaudeAgentOptions extends TurnBounds {
   directory: string
   /** The model knobs as plain values — never the `OpenAiSettings` object (design D5). */
   knobs: ClaudeModelKnobs
+  /**
+   * The model reference the cost catalogue is asked about.
+   *
+   * The one place this route needs the settings object rather than plain knobs,
+   * and it is handed the *contained* settings — the ones carrying the placeholder
+   * key — because only `provider` and `model` are read. Design D5's rule is that
+   * the credential never crosses this seam, not that the model's name cannot.
+   */
+  pricing: OpenAiSettings
   /**
    * The chosen Anthropic credential, when this session holds one. Its
    * spelling selects the invocation profile (design D1): the API key runs
@@ -65,9 +77,11 @@ export interface ClaudeAgentOptions extends TurnBounds {
 interface SessionState {
   /** The memoized init id (design D1): chained into the next turn's `--resume`. */
   cliSessionId: string | null
-  /** Token totals captured from `result` lines as they arrive (design D8). */
-  tokensTotal: number
-  sawUsage: boolean
+  /**
+   * What the run spent, folded from `result` and `rate_limit_event` lines as
+   * they arrive — before any teardown can race them (design D8).
+   */
+  accounting: ClaudeAccounting
   /** The most recent spawned child: the abort target and the teardown subject. */
   active: ClaudeChild | null
   /** The last turn's outcome, handed from `sendPrompt` to `prompt`. */
@@ -104,11 +118,7 @@ interface SessionContext {
  */
 const foldLine = (context: SessionContext, line: ClaudeStreamLine, raw: unknown): void => {
   if (line.kind === 'init') context.state.cliSessionId = line.sessionId
-  if (line.kind === 'result') {
-    // Captured as it arrives — before any teardown can race it (design D8).
-    context.state.tokensTotal += line.usage.total
-    context.state.sawUsage = true
-  }
+  recordLine(context.state.accounting, line)
   context.tracker.observe(line)
   if (context.options.transcript !== undefined) {
     context.options.transcript.write({
@@ -222,6 +232,9 @@ const claudeSession = (context: SessionContext, connection: TurnConnection): Age
     prompt: (current: AgentPromptRequest): Promise<AgentPromptResult> => {
       state.request = current
       state.outcome = null
+      // Before the turn, not after: a turn that dies mid-flight was still
+      // asked for, and its spend is unpriced rather than absent.
+      state.accounting.turnsPrompted += 1
       return runTurn(connection, context.bootSessionId, stubBody, options, context.tracker).then(() => {
         const outcome = state.outcome
         if (outcome === null) throw claudeResultError('the turn resolved without a captured outcome')
@@ -229,15 +242,18 @@ const claudeSession = (context: SessionContext, connection: TurnConnection): Age
       })
     },
     tokensUsed: (): Promise<number> => {
-      if (!state.sawUsage) {
+      // Only a session that ran a turn can have usage to miss. Warning on one
+      // that was never prompted — the over-budget stop's own session — reported
+      // a blind budget on a run that had simply not spent anything yet.
+      if (state.accounting.turnsPrompted > 0 && !state.accounting.sawUsage) {
         options.log.warn(
           { sessionId: context.bootSessionId },
           'No recognizable claude usage was seen; the token budget cannot see this run',
         )
-        return Promise.resolve(0)
       }
-      return Promise.resolve(state.tokensTotal)
+      return Promise.resolve(ceilingTokensOf(state.accounting))
     },
+    spend: (): Promise<RunSpend> => spendOf(state.accounting, options.pricing, options.log),
     abort: (): Promise<boolean> => {
       if (state.active === null) return Promise.resolve(false)
       return killGroup(state.active.process.pid, killSeams(options))
@@ -269,8 +285,7 @@ export const createClaudeAgent = (options: ClaudeAgentOptions): Promise<AgentSes
     tracker: claudeTracker(options.log),
     state: {
       cliSessionId: null,
-      tokensTotal: 0,
-      sawUsage: false,
+      accounting: emptyAccounting(),
       active: null,
       outcome: null,
       spawnFailed: false,

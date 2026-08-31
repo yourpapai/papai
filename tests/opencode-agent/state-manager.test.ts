@@ -18,7 +18,7 @@ import {
   STATE_MARKER,
 } from '../../opencode-agent/src/state-manager.js'
 import { canTransition, transition } from '../../opencode-agent/src/transitions.js'
-import { InvalidTransitionError, PHASES, STATE_VERSION } from '../../opencode-agent/src/types.js'
+import { InvalidTransitionError, PHASES, STATE_VERSION, TOKEN_SCALE } from '../../opencode-agent/src/types.js'
 import type { AgentState, Phase, TransitionSignal } from '../../opencode-agent/src/types.js'
 
 const comment = (authorLogin: string, body: string, id = 1): IssueComment => ({ id, body, authorLogin })
@@ -121,6 +121,14 @@ describe('serializeState / extractState', () => {
       planRevision: 0,
       // Defaulted: a block is free to omit any field the schema can supply.
       tokensSpent: 0,
+      // The superseded scale, and the one default that is a *claim*: a block
+      // written before the marker existed carried a figure that counted cache
+      // reads, and 0 of them is still 0 either way.
+      tokenScale: 1,
+      // The money beside the tokens, defaulted for the same reason — which is
+      // also what makes this change need no STATE_VERSION bump.
+      usdSpent: 0,
+      usdUnpriced: false,
       lastError: null,
       prUrl: null,
       prNumber: null,
@@ -755,5 +763,90 @@ describe('transition', () => {
 
     expect(before.phase).toBe('INIT_OR_CLARIFY')
     expect(after).not.toBe(before)
+  })
+})
+
+/**
+ * The accumulated cost, beside the accumulated tokens.
+ *
+ * Persisted for the reason `tokensSpent` is: the thing being accounted for is an
+ * *issue*, which bounces through retries and CI-fix rounds, each a fresh runner
+ * with no memory of what the last one spent.
+ */
+describe('accumulated cost', () => {
+  test('a block written before this field existed restores rather than failing', () => {
+    // The whole reason both fields default and STATE_VERSION does not move: an
+    // issue in flight must not be stranded by a deploy.
+    const block = `<!-- ${STATE_MARKER}: {"v":3,"phase":"PLANNING","issueId":5,"tokensSpent":900} -->`
+    const restored = extractState(block)
+
+    expect(restored?.tokensSpent).toBe(900)
+    expect(restored?.usdSpent).toBe(0)
+    expect(restored?.usdUnpriced).toBe(false)
+  })
+
+  test('an accumulated figure round-trips through a block', () => {
+    const state: AgentState = { ...initialState(5), usdSpent: 12.4, usdUnpriced: true }
+    const restored = extractState(serializeState(state))
+
+    expect(restored?.usdSpent).toBe(12.4)
+    expect(restored?.usdUnpriced).toBe(true)
+  })
+
+  test('a negative accumulated cost is refused — spend only ever grows', () => {
+    const block = `<!-- ${STATE_MARKER}: {"v":3,"phase":"PLANNING","issueId":5,"usdSpent":-1} -->`
+
+    expect(extractState(block)).toBeNull()
+  })
+
+  test('the flag is not an integer field — sub-cent figures survive', () => {
+    // `tokensSpent` is `.int()`; money must not be, or every run under a cent
+    // would round to nothing and an issue could spend indefinitely at $0.
+    const block = `<!-- ${STATE_MARKER}: {"v":3,"phase":"PLANNING","issueId":5,"usdSpent":0.009714} -->`
+
+    expect(extractState(block)?.usdSpent).toBe(0.009714)
+  })
+})
+
+/**
+ * Which definition produced the carried token figure.
+ *
+ * An issue's ceiling spans every job it has run, so a total that adds a figure
+ * measured one way to a figure measured another is enforceable against neither.
+ * The marker is what lets the correction happen exactly once per issue — and it
+ * defaults, so no block written before it is rejected.
+ */
+describe('the token counting scale', () => {
+  test('a block written before the marker existed reads as the superseded scale', () => {
+    const block = `<!-- ${STATE_MARKER}: {"v":3,"phase":"PLANNING","issueId":5,"tokensSpent":6835879} -->`
+    const restored = extractState(block)
+
+    expect(restored?.tokenScale).toBe(1)
+    // Restored, not rejected: the correction is the orchestrator's, and a
+    // schema that refused the block would strand the issue instead.
+    expect(restored?.tokensSpent).toBe(6_835_879)
+  })
+
+  test('the current scale round-trips through a block', () => {
+    const restored = extractState(serializeState({ ...initialState(5), tokenScale: TOKEN_SCALE, tokensSpent: 900 }))
+
+    expect(restored?.tokenScale).toBe(TOKEN_SCALE)
+    expect(restored?.tokensSpent).toBe(900)
+  })
+
+  test('a fresh issue starts on the current scale', () => {
+    expect(initialState(5).tokenScale).toBe(TOKEN_SCALE)
+  })
+
+  test('the marker needs no STATE_VERSION bump — a bump is a stranding (D12)', () => {
+    // v3 blocks written by every deploy before this one must keep restoring:
+    // bumping would restart each in-flight issue at INIT_OR_CLARIFY with its
+    // branch reset, to correct a counter.
+    expect(STATE_VERSION).toBe(3)
+    expect(extractState(`<!-- ${STATE_MARKER}: {"v":3,"phase":"PLANNING","issueId":5} -->`)).not.toBeNull()
+  })
+
+  test('a scale the code does not know is refused rather than guessed at', () => {
+    expect(extractState(`<!-- ${STATE_MARKER}: {"v":3,"phase":"PLANNING","issueId":5,"tokenScale":0} -->`)).toBeNull()
   })
 })

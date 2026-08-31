@@ -191,6 +191,36 @@ describe('check.sh --staged', () => {
     }
   })
 
+  // A commit made while `check:full` is running must not destroy that run's evidence. check.sh
+  // cleared reports/checks/ as unconditional top-of-script setup, but ONLY full mode writes
+  // there — staged mode keeps its per-check output in $TMPDIR. So the pre-commit hook's --staged
+  // run deleted the logs of an in-flight full run, whose summary then pointed at files that no
+  // longer existed. Observed 2026-08-31: seven leg logs written by 10:53, gone by 10:55.
+  test('leaves an in-flight full run reports/checks logs intact', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const checksDir = path.join(repoDir, 'reports', 'checks')
+      mkdirSync(checksDir, { recursive: true })
+      const inFlightLog = path.join(checksDir, 'test.log')
+      writeFileSync(inFlightLog, 'output of a full run still in progress\n')
+
+      writeFileSync(path.join(repoDir, 'README.md'), '# Docs\n')
+      expectSuccess(runCommand(repoDir, ['git', 'add', 'README.md']))
+
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      expect(runCommand(repoDir, ['bash', 'scripts/check.sh', '--staged'], env).exitCode).toBe(0)
+
+      expect(existsSync(inFlightLog)).toBe(true)
+      expect(readFileSync(inFlightLog, 'utf8')).toBe('output of a full run still in progress\n')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
   test('skips oxlint when staged files are hook-only TypeScript files outside lint scope', () => {
     const { repoDir, binDir, logFile } = createTempRepo()
 
@@ -298,6 +328,11 @@ describe('check.sh --skip-tests', () => {
         .filter((entry) => entry.length > 0)
 
       expect(calls).toContain('bun run lint')
+      // Full mode dropped the redundant typecheck leg (lint's tsgolint pass
+      // reports every tsgo diagnostic class over a superset scope —
+      // openspec/changes/dedupe-lint-typecheck); --skip-tests filters the
+      // full-mode array and inherits that.
+      expect(calls).not.toContain('bun run typecheck')
       expect(calls).not.toContain('bun run review-loop:lint')
       expect(calls).not.toContain('bun run test')
       expect(calls).not.toContain('bun run test:client')
@@ -507,7 +542,7 @@ describe('check.sh full mode', () => {
       expect(result.exitCode).toBe(0)
       const written = readdirSync(path.join(repoDir, 'reports', 'checks')).sort()
       expect(written).toContain('lint.log')
-      expect(written).toContain('typecheck.log')
+      expect(written).not.toContain('typecheck.log')
       // `:` is not a filename, and safe_name() has always mapped it to `_`.
       expect(written).toContain('format_check.log')
       expect(written).not.toContain('review-loop_lint.log')
@@ -523,14 +558,14 @@ describe('check.sh full mode', () => {
       const env = createEnv({
         PATH: `${binDir}:${basePath}`,
         CHECK_LOG_FILE: logFile,
-        CHECK_FAIL_MATCH: 'run typecheck',
+        CHECK_FAIL_MATCH: 'run knip',
       })
       const result = runCommand(repoDir, ['bash', 'scripts/check.sh'], env)
 
       expect(result.exitCode).toBe(1)
-      expect(result.stdout).toContain('✗ typecheck failed')
-      expect(result.stdout).toContain('→ reports/checks/typecheck.log')
-      expect(existsSync(path.join(repoDir, 'reports', 'checks', 'typecheck.log'))).toBe(true)
+      expect(result.stdout).toContain('✗ knip failed')
+      expect(result.stdout).toContain('→ reports/checks/knip.log')
+      expect(existsSync(path.join(repoDir, 'reports', 'checks', 'knip.log'))).toBe(true)
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }
@@ -614,5 +649,58 @@ describe('check.sh full mode', () => {
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('check surface composition (check.sh vs check:verbose)', () => {
+  // R1 (openspec/changes/dedupe-lint-typecheck): full mode and check:verbose
+  // dropped the redundant typecheck leg — lint's tsgolint pass reports every
+  // tsgo diagnostic class over a superset file scope. Staged mode keeps it:
+  // oxlint runs on staged files only there, so the project-wide typecheck leg
+  // is the only one that can catch an unstaged file broken by a staged edit.
+  // The pairing must stay symmetric across the two full surfaces: re-adding
+  // typecheck to one but not the other re-derives the dedup by accident.
+  const readVerboseChecks = (): readonly string[] => {
+    const packageJsonText = readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')
+    const verboseMatch = packageJsonText.match(/"check:verbose": "([^"]*)"/u)
+    if (verboseMatch === null) {
+      throw new Error('check:verbose script not found in package.json')
+    }
+    const command = verboseMatch[1]
+    if (command === undefined) {
+      throw new Error('check:verbose script match captured no command')
+    }
+    return command
+      .replace(/^bun run --parallel /u, '')
+      .split(/\s+/u)
+      .filter((name) => name.length > 0)
+  }
+
+  const parseChecksArray = (arrayBody: string): readonly string[] =>
+    [...arrayBody.matchAll(/"([^"]+)"/gu)]
+      .map((match) => match[1])
+      .filter((name): name is string => typeof name === 'string')
+
+  const readCheckShArrays = (): readonly (readonly string[])[] => {
+    const checkSh = readFileSync(CHECK_SCRIPT_PATH, 'utf8')
+    return [...checkSh.matchAll(/checks=\(([^)]*)\)/gu)].map((match) => parseChecksArray(match[1] ?? ''))
+  }
+
+  test('full mode and check:verbose agree on the lint/typecheck pairing', () => {
+    const verboseChecks = readVerboseChecks()
+    const checkArrays = readCheckShArrays()
+    const fullMode = checkArrays.find((checks) => checks.includes('duplicates'))
+    const staged = checkArrays.find((checks) => !checks.includes('duplicates'))
+    expect(fullMode).toBeDefined()
+    expect(staged).toBeDefined()
+
+    expect(fullMode).toContain('lint')
+    expect(fullMode).not.toContain('typecheck')
+    expect(verboseChecks).toContain('lint')
+    expect(verboseChecks).not.toContain('typecheck')
+
+    // The staged array is the load-bearing exception and must keep typecheck.
+    expect(staged).toContain('lint')
+    expect(staged).toContain('typecheck')
   })
 })

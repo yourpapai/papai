@@ -43,3 +43,31 @@ describe('build-checker', () => {
     expect(result.exitCode).toBe(0)
   })
 })
+
+describe('build-checker credential scrub', () => {
+  const SECRET = 'sk-ant-secret-0123456789'
+
+  test('the single BuildCheckResult producer scrubs stdout and stderr once', async () => {
+    const exec = createMockExec([
+      { exitCode: 1, stdout: `echo ran with ${SECRET}`, stderr: `error: env ${SECRET} rejected` },
+    ])
+    const result = await runBuildCheck({ exec, credentialValue: SECRET })
+    expect(result.stdout).toContain('[redacted]')
+    expect(result.stdout).not.toContain(SECRET)
+    expect(result.stderr).toContain('[redacted]')
+    expect(result.stderr).not.toContain(SECRET)
+  })
+
+  test('the scrub is absent on the opencode route (no credentialValue field)', async () => {
+    const exec = createMockExec([{ exitCode: 0, stdout: `says ${SECRET}`, stderr: '' }])
+    const result = await runBuildCheck({ exec })
+    expect(result.stdout).toContain(SECRET)
+  })
+
+  test('a sub-floor credential value is not scrubbed', async () => {
+    const short = 'short-token'
+    const exec = createMockExec([{ exitCode: 0, stdout: `says ${short}`, stderr: '' }])
+    const result = await runBuildCheck({ exec, credentialValue: short })
+    expect(result.stdout).toContain(short)
+  })
+})

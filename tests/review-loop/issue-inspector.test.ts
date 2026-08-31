@@ -18,7 +18,15 @@ import { newCollector } from '../../review-loop/src/round-collector.js'
 import { createRunState } from '../../review-loop/src/run-state.js'
 import { createCapturingTraceLogger } from '../../review-loop/src/trace-log.js'
 import { execGit } from '../../review-loop/src/worktree.js'
-import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir, silentReporter } from './test-helpers.js'
+import {
+  claudeRecordingSpawn,
+  claudeRunContext,
+  claudeScratchResponder,
+  cleanupTempDirs,
+  createReviewLoopConfigFixture,
+  makeTempDir,
+  silentReporter,
+} from './test-helpers.js'
 
 afterEach(cleanupTempDirs)
 
@@ -393,5 +401,79 @@ describe('runAggregatedInspectorOrTreatAsRejection', () => {
     expect(result.results.every((r) => !r.addresses)).toBe(true)
     expect(collector.inspector.runs).toBe(2)
     expect(collector.inspector.rejected).toBe(2)
+  })
+})
+
+describe('issue-inspector backend threading', () => {
+  test('runInspector passes the resolved backend and claude context into the inspector spawn', async () => {
+    const repoRoot = makeTempDir('inspector-claude-')
+    const context = claudeRunContext()
+    const config = createReviewLoopConfigFixture(repoRoot, { backend: 'claude', claude: context })
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    await setupRepo(runState.worktreePath)
+    const { logger } = createCapturingTraceLogger()
+    const { spawn, commands } = claudeRecordingSpawn(
+      claudeScratchResponder(() => ({ addresses: true, reasoning: 'ok', confidence: 0.9 })),
+    )
+
+    const result = await runInspector(
+      {
+        spawn,
+        cwd: runState.worktreePath,
+        issue,
+        baselineSha: 'HEAD',
+        fixerReasoning: 'mock reasoning',
+        outputPath: path.join(runState.runDir, 'inspect.json'),
+        logPath: runState.logPath,
+        reporter: silentReporter(),
+        model: 'm',
+        extraArgs: [],
+        label: 'inspector-w1',
+        backend: 'claude',
+        claude: context,
+      },
+      1,
+      'rec-claude',
+      logger,
+    )
+
+    expect(result.addresses).toBe(true)
+    expect(commands[0]).toBe('claude')
+  })
+
+  test('runAggregatedInspector threads the backend through its deps plumbing', async () => {
+    const repoRoot = makeTempDir('inspector-claude-agg-')
+    const context = claudeRunContext()
+    const config = createReviewLoopConfigFixture(repoRoot, { backend: 'claude', claude: context })
+    const runState = await createRunState(config, path.join(repoRoot, 'plan.md'))
+    await setupRepo(runState.worktreePath)
+    const { logger } = createCapturingTraceLogger()
+    const { spawn, commands } = claudeRecordingSpawn(
+      claudeScratchResponder(() => ({
+        results: [{ id: 'rec-agg', addresses: true, reasoning: 'ok', confidence: 0.9 }],
+      })),
+    )
+
+    const result = await runAggregatedInspector(
+      {
+        spawn,
+        cwd: runState.worktreePath,
+        issues: [{ id: 'rec-agg', issue }],
+        baselineSha: 'HEAD',
+        outputPath: path.join(runState.runDir, 'inspect-aggregated.json'),
+        logPath: runState.logPath,
+        reporter: silentReporter(),
+        model: 'm',
+        extraArgs: [],
+        label: 'inspector-aggregated',
+        backend: 'claude',
+        claude: context,
+      },
+      1,
+      logger,
+    )
+
+    expect(result.results[0]?.addresses).toBe(true)
+    expect(commands[0]).toBe('claude')
   })
 })

@@ -3,6 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+// Extracted, not inline: oxlint's pedantic max-lines rule caps this file at
+// 300 lines, and the scoped graphql-client ignore below
+// (github-provider-graphql-api) pushed the inline form to 301. Re-inline only
+// alongside an equal size reduction here.
+import { svelteCompiler } from './knip-svelte-compiler.js'
+
 // GUARDRAIL: keep the ignore surface minimal. New ignores require an inline
 // justification comment naming the dynamic mechanism knip cannot trace, and a
 // linked task when the gap is temporary. Prefer code fixes (moving dead code,
@@ -13,17 +19,6 @@
 // repoint test imports to the concrete module, or prune the dead binding)
 // instead of adding an ignore. See
 // docs/superpowers/specs/2026-08-04-knip-facade-import-triage-design.md.
-
-// knip's built-in Svelte plugin enables but never registers its compiler:
-// its hasDependency('svelte') probe fails under bun's node_modules-less
-// install layout. Register an equivalent script-body extractor here.
-const svelteCompiler = (source: string): string => {
-  const scripts: string[] = []
-  for (const m of source.matchAll(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>/gmu)) {
-    if (m[1] !== undefined && m[1] !== '') scripts.push(m[1])
-  }
-  return scripts.join(';\n')
-}
 
 export default {
   // The review-loop, mutation-improve, opencode-agent and
@@ -173,6 +168,9 @@ export default {
     // exist but stay unwired — TaskProvider declares no such methods (design
     // non-goal); a later session adds the consuming surface.
     'plugins/task-provider-github/operations/labels.ts': ['exports', 'types'],
+    // github-provider-graphql-api: graphql-client exports stay unwired until
+    // github-provider-projects lands as the production consumer; remove then.
+    'plugins/task-provider-github/graphql-client.ts': ['exports'],
     // acp bridge modules are consumed by plugins/acp/index.ts through
     // import.meta.require() (entry-graph containment for their src/analytics
     // imports, same pattern as the kaneo bridges above); knip cannot trace

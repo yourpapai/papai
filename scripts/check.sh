@@ -30,9 +30,14 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # and for `test` that is a multi-minute round trip to re-read bytes this script
 # already paid for. Cleared at the start rather than deleted at the end so the
 # newest run's output is what is on disk, with nothing stale beside it.
+#
+# The clearing itself lives in the FULL-mode branch below, not here. Only full mode reads or
+# writes this directory; staged mode keeps its per-check output in $TMPDIR and cats from there.
+# As unconditional top-of-script setup this meant the pre-commit hook's `--staged` run deleted
+# the logs of any `check:full` still in flight: the full run kept going and still printed
+# "-> reports/checks/<name>.log" for files it no longer had. Silently destroying the evidence a
+# verification run exists to produce is the one failure this directory must not have.
 CHECKS_REPORT_DIR="reports/checks"
-rm -rf "$CHECKS_REPORT_DIR"
-mkdir -p "$CHECKS_REPORT_DIR" || { echo "Failed to create $CHECKS_REPORT_DIR" >&2; exit 1; }
 
 # Sanitize check names for safe temp filenames (replace : with _)
 safe_name() { echo "${1//:/_}"; }
@@ -329,13 +334,27 @@ if [ "$STAGED_MODE" = true ]; then
   fi
 else
   # Original behavior: run all checks. Workspace code (review-loop/, mutation-improve/,
-  # opencode-agent/) is enforced by these root checks alone: root lint/
-  # typecheck/format:check walk the workspace dirs, and the default test sweep runs
-  # tests/<workspace>/. Per-workspace proxy scripts stay local-only conveniences.
-  checks=("lint" "typecheck" "format:check" "license-headers" "knip" "test" "test:client" "duplicates")
+  # opencode-agent/) is enforced by these root checks alone: root lint
+  # (whose tsgolint type-check pass reports every tsgo diagnostic class — see
+  # openspec/changes/dedupe-lint-typecheck), format:check walk the workspace dirs,
+  # and the default test sweep runs tests/<workspace>/. Per-workspace proxy scripts
+  # stay local-only conveniences.
+  # test:hooks needs its own leg because .hooks/ is a dot-directory: bun's default discovery
+  # never reaches it, so the lane rides in the default `test` sweep for exactly zero files. It
+  # went unrun long enough for the TypeScript 7 upgrade to leave enforceWritePolicy failing open
+  # for four days (openspec/changes/fix-write-policy-suppression-guard). 185 tests, ~1.3s.
+  # Full mode is the only writer of the report dir, so it is the only clearer of it. See the
+  # CHECKS_REPORT_DIR comment at the top for why this is not top-of-script setup.
+  rm -rf "$CHECKS_REPORT_DIR"
+  mkdir -p "$CHECKS_REPORT_DIR" || { echo "Failed to create $CHECKS_REPORT_DIR" >&2; exit 1; }
+
+  checks=("lint" "format:check" "license-headers" "knip" "test" "test:hooks" "test:client" "duplicates")
   if [ "$SKIP_TESTS" = true ]; then
     filtered_checks=()
     for check in "${checks[@]}"; do
+      # test:hooks deliberately survives --skip-tests. The flag exists to skip the multi-minute
+      # suite; this lane is ~1.3s and guards write-time policy, so skipping it buys nothing and
+      # costs the one check that catches hook rot.
       case "$check" in
         test|test:client)
           continue
