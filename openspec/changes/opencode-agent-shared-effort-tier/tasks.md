@@ -15,7 +15,7 @@
 
 ## 4. Gap 1 — effort on the review loop's claude subprocesses (design D4, D5, D6)
 
-- [ ] 4.1 Red-first `tests/review-loop/agent-command.test.ts`: the claude branch emits `--effort <tier>` adjacent to `--model`, emits nothing when the field is absent, and the opencode branch's argv is byte-identical in both cases — `bun test tests/review-loop/agent-command.test.ts`
+- [x] 4.1 Red-first `tests/review-loop/agent-command.test.ts`: the claude branch emits `--effort <tier>` adjacent to `--model`, emits nothing when the field is absent, and the opencode branch's argv is byte-identical in both cases — `bun test tests/review-loop/agent-command.test.ts`
 - [ ] 4.2 Red-first for the loop-side validation: a role config with a malformed `effort` is refused at config load with an error naming the field, and a well-shaped one parses — `bun test tests/review-loop/config.test.ts`
 - [ ] 4.3 Add the optional `effort` string to `AgentConfigSchema` (`review-loop/src/config.ts:23-37`) as a Zod refinement duplicating the `effortTier` shape check across the documented workspace boundary — `bun test tests/review-loop/config.test.ts`
 - [ ] 4.4 Add `effort?: string` to `AgentCommandOptions` and append `'--effort', effort` after `--model` in `claudeCommand` (`review-loop/src/agent-command.ts:207-226`); `opencodeCommand` ignores the field — `bun test tests/review-loop/agent-command.test.ts`
