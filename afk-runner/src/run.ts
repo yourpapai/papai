@@ -7,7 +7,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
-import { deriveChangeName } from './config.js'
+import { deriveChangeName, autonomyOf } from './config.js'
 import type { ExecGitFn, RunnerConfig } from './config.js'
 import { drive } from './drive/loop.js'
 import type { DriveResult, ParkedReason, StopSeam } from './drive/loop.js'
@@ -99,7 +99,15 @@ export async function startRun(deps: RunDeps, options: StartOptions): Promise<Ru
     changeName = options.changeName ?? deriveChangeName(options.taskFile, taskText)
   }
   const now = nowOf(deps)
-  const state = await createRunState({ workDir: deps.config.workDir, repoRoot: deps.config.repoRoot, changeName }, now)
+  const state = await createRunState(
+    {
+      workDir: deps.config.workDir,
+      repoRoot: deps.config.repoRoot,
+      changeName,
+      metered: autonomyOf(deps.config).metered,
+    },
+    now,
+  )
   await writeFile(path.join(state.runDir, 'task.md'), taskText, 'utf8')
   return driveRun(deps, state, { taskText, changeName, depthOverride: options.depthOverride })
 }

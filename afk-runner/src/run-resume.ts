@@ -6,7 +6,7 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { deriveChangeName } from './config.js'
+import { autonomyOf, deriveChangeName } from './config.js'
 import { createAppendBoundary } from './drive/boundary.js'
 import { drive } from './drive/loop.js'
 import type { DriveResult, ParkedReason, WorkFor } from './drive/loop.js'
@@ -86,6 +86,7 @@ function seedOf(deps: RunDeps, runId: string, changeName: string, createdAt: str
     repoRoot: deps.config.repoRoot,
     changeName,
     createdAt: createdAt ?? (deps.now?.() ?? new Date()).toISOString(),
+    metered: autonomyOf(deps.config).metered,
   }
 }
 

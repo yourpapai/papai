@@ -14,6 +14,8 @@ import {
   runRunsCommand,
   runStartCommand,
   runStatusCommand,
+  runAnalyzeCommand,
+  cliMain,
   fullStateSummary,
 } from '../../afk-runner/src/cli.js'
 import { readEvents } from '../../afk-runner/src/events.js'
@@ -317,5 +319,67 @@ describe('afk-runner runs command (cross-run accounting)', () => {
     expect(summary).toContain('gate-pending: 1')
     expect(summary).toContain('cost: ≥ $0.00 (2 unpriced)')
     expect(snapshotTree(workDir)).toEqual(before)
+  })
+})
+
+describe('afk-runner analyze command (read-only corpus report)', () => {
+  it('routes by workdir paths, completes a gate-pending corpus byte-unchanged, and prints the report', async () => {
+    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'afk-analyze-cli-'))
+    cliTmpDirs.push(workDir)
+    writeRunsFixture(workDir)
+    const pipeline = makeFakePipeline()
+    const deps = { ...pipeline.deps, config: { ...pipeline.deps.config, workDir } }
+
+    const before = snapshotTree(workDir)
+    const summary = await runAnalyzeCommand(deps, [workDir])
+
+    expect(summary).toContain('afk-runner corpus analysis')
+    expect(summary).toContain('## run gate-run')
+    expect(summary).toContain('never-answered')
+    expect(summary).toContain('## corpus')
+    // the gate-pending run is neither presented, settled, nor routed anywhere
+    expect(snapshotTree(workDir)).toEqual(before)
+  })
+
+  it('defaults to the configured workdir when no workdir args are given', async () => {
+    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'afk-analyze-def-'))
+    cliTmpDirs.push(workDir)
+    writeRunsFixture(workDir)
+    const pipeline = makeFakePipeline()
+    const deps = { ...pipeline.deps, config: { ...pipeline.deps.config, workDir } }
+
+    const summary = await runAnalyzeCommand(deps, [])
+    expect(summary).toContain('## run gate-run')
+    expect(summary).toContain('## run done-run')
+  })
+
+  it('--json emits the same structure machine-readably', async () => {
+    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'afk-analyze-json-'))
+    cliTmpDirs.push(workDir)
+    writeRunsFixture(workDir)
+    const pipeline = makeFakePipeline()
+    const deps = { ...pipeline.deps, config: { ...pipeline.deps.config, workDir } }
+
+    const raw = await runAnalyzeCommand(deps, [workDir, '--json'])
+    const parsed: unknown = JSON.parse(raw)
+    expect(parsed).toMatchObject({
+      runs: [{ runId: 'done-run' }, { runId: 'gate-run' }],
+      aggregates: { runsAggregated: 2 },
+    })
+  })
+
+  it('the usage inventory names the analyze verb', async () => {
+    const lines: string[] = []
+    const original = console.log
+    console.log = (line: string): void => {
+      lines.push(line)
+    }
+    try {
+      await cliMain(['help'])
+    } finally {
+      console.log = original
+    }
+    const usage = lines.join('\n')
+    expect(usage).toContain('analyze [workdirs…] [--json]')
   })
 })

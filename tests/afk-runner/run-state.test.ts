@@ -9,7 +9,10 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { appendEvent } from '../../afk-runner/src/events.js'
+import { pipelineMachine } from '../../afk-runner/src/graph/pipeline.js'
+import { foldEvents } from '../../afk-runner/src/kernel/fold.js'
 import { replayEvents } from '../../afk-runner/src/legacy-fold.js'
+import { writeRunMemo } from '../../afk-runner/src/memo-project.js'
 import { listPendingGates } from '../../afk-runner/src/run-index.js'
 import {
   ROUND_CAPS,
@@ -261,5 +264,70 @@ describe('memo shape (C5 D7 — parity complete)', () => {
     expect(loaded.gate).toEqual({ mode: 'plan', version: 1 })
     const pending = await listPendingGates(workDir)
     expect(pending[0]).toMatchObject({ runId: created.runId, gateMode: 'plan', gateVersion: 1 })
+  })
+})
+
+describe('memo metered field (run-analysis D5)', () => {
+  it('a park-written memo carries metered threaded from the seed, like repoRoot', async () => {
+    const workDir = makeWorkDir()
+    const runId = 'metered-run'
+    fs.mkdirSync(path.join(workDir, 'runs', runId), { recursive: true })
+    const logPath = path.join(workDir, 'runs', runId, 'events.ndjson')
+    appendEvent(logPath, { altitude: 'L2', type: 'stage_enter', stage: 'intake' })
+
+    await writeRunMemo(
+      {
+        runId,
+        workDir,
+        repoRoot: '/the-repo',
+        changeName: 'add-thing',
+        createdAt: '2026-09-01T00:00:00.000Z',
+        metered: false,
+      },
+      'gate-pending',
+      'gate.awaiting',
+      foldEvents(pipelineMachine, []).snapshot.context,
+      logPath,
+    )
+    const memo = PersistedRunStateSchema.parse(
+      JSON.parse(fs.readFileSync(path.join(workDir, 'runs', runId, 'state.json'), 'utf8')),
+    )
+    expect(memo.repoRoot).toBe('/the-repo')
+    expect(memo.metered).toBe(false)
+
+    await writeRunMemo(
+      {
+        runId,
+        workDir,
+        repoRoot: '/the-repo',
+        changeName: 'add-thing',
+        createdAt: '2026-09-01T00:00:00.000Z',
+        metered: true,
+      },
+      'gate-pending',
+      'gate.awaiting',
+      foldEvents(pipelineMachine, []).snapshot.context,
+      logPath,
+    )
+    const flipped = PersistedRunStateSchema.parse(
+      JSON.parse(fs.readFileSync(path.join(workDir, 'runs', runId, 'state.json'), 'utf8')),
+    )
+    expect(flipped.metered).toBe(true)
+  })
+
+  it('a legacy memo without the field parses unchanged (metered undefined)', () => {
+    const base: Record<string, unknown> = { ...createSeeded('/w') }
+    expect(PersistedRunStateSchema.parse({ ...base }).metered).toBeUndefined()
+    expect(PersistedRunStateSchema.safeParse({ ...base, metered: 'yes' }).success).toBe(false)
+  })
+
+  it('createRunState persists metered from birth like repoRoot', async () => {
+    const workDir = makeWorkDir()
+    const state = await createRunState({ workDir, repoRoot: '/repo', changeName: 'add-thing', metered: true })
+    expect(state.metered).toBe(true)
+    const onDisk = PersistedRunStateSchema.parse(JSON.parse(fs.readFileSync(state.statePath, 'utf8')))
+    expect(onDisk.metered).toBe(true)
+    const bare = await createRunState({ workDir, repoRoot: '/repo', changeName: 'other-thing' })
+    expect(bare.metered).toBeUndefined()
   })
 })

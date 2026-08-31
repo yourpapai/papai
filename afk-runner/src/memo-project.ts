@@ -23,6 +23,8 @@ interface MemoSeed {
   readonly repoRoot: string
   readonly changeName: string
   readonly createdAt: string
+  /** Run-analysis D5: a runtime input riding the seed — never a fold projection. */
+  readonly metered?: boolean
 }
 
 export function logPathOf(runDir: string): string {
@@ -133,6 +135,7 @@ export async function writeRunMemo(
     repoRoot: seed.repoRoot,
     workDir: seed.workDir,
     changeName: seed.changeName,
+    ...(seed.metered === undefined ? {} : { metered: seed.metered }),
     ...memoFieldsOf(events, context, halted, position),
     createdAt: events[0]?.ts ?? seed.createdAt,
     updatedAt: events[events.length - 1]?.ts ?? seed.createdAt,

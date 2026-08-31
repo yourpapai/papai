@@ -61,7 +61,15 @@ function autoDecisionEvents(events: readonly SddEvent[]): Extract<SddEvent, { ty
 }
 
 function answeredGateIndexOf(events: readonly SddEvent[]): number {
-  return events.findIndex((event) => event.type === 'gate' && event.action === 'answered')
+  return events.findIndex(isAnsweredGateEvent)
+}
+
+function isAnsweredGateEvent(event: SddEvent): boolean {
+  return event.type === 'gate' && event.action === 'answered'
+}
+
+function isSettleKindDecision(event: Extract<SddEvent, { type: 'auto_decision' }>): boolean {
+  return event.decision === 'extend' || event.decision === 'approve'
 }
 
 function sha256Of(input: string): string {
@@ -348,6 +356,19 @@ describe('gate deadline — waiter auto_decision protocol (D3)', () => {
     const answeredAt = answeredGateIndexOf(events)
     expect(answeredAt).toBeGreaterThanOrEqual(0)
     expect(events.indexOf(decisions[0]!)).toBeGreaterThan(answeredAt)
+  })
+
+  it('emission-order pin (run-analysis D4): the waiter’s settle auto_decision lands after its answered event, opposite of the prelude', async () => {
+    const h = expiredGate({ trajectory: true })
+    const waiter = h.start()
+    await releaseTick(h.clock)
+    await waiter
+    const events = readEvents(path.join(h.runDir, 'events.ndjson'))
+    const settleDecision = autoDecisionEvents(events).find(isSettleKindDecision)
+    const answered = events.find(isAnsweredGateEvent)
+    expect(settleDecision).toBeDefined()
+    expect(answered).toBeDefined()
+    expect(events.indexOf(settleDecision!)).toBeGreaterThan(events.indexOf(answered!))
   })
 
   it('re-arm appends none/pending after the rearmed event; the rearmed flow itself is unchanged', async () => {

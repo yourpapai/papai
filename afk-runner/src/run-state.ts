@@ -34,6 +34,13 @@ export const PersistedRunStateSchema = z.object({
     .object({ mode: z.enum(['early', 'final', 'plan', 'escalation']), version: z.number().int().positive() })
     .nullable(),
   status: z.enum(['running', 'completed', 'aborted', 'failed', 'stopped']),
+  /**
+   * Run-analysis D5: metered-ness persisted as one optional boolean so the
+   * r2 cause table can close its cost-unknown cell — a runtime input riding
+   * the seed (like repoRoot), not a fold projection. Optional so legacy
+   * memos parse unchanged.
+   */
+  metered: z.boolean().optional(),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
   /** C5 D7 pure projections — optional so legacy memos parse unchanged. */
@@ -89,6 +96,8 @@ export interface CreateRunStateInput {
   readonly repoRoot: string
   readonly changeName: string
   readonly runId?: string
+  /** Run-analysis D5: persisted from birth so the memo can answer metered-ness. */
+  readonly metered?: boolean
 }
 
 function makeRunId(now: Date): string {
@@ -150,6 +159,7 @@ export async function createRunState(input: CreateRunStateInput, now: Date = new
     roundCap: ROUND_CAPS.S,
     gate: null,
     status: 'running',
+    ...(input.metered === undefined ? {} : { metered: input.metered }),
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
     runDir,

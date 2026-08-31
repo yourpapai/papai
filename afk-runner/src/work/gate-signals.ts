@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { SddEvent } from '../events.js'
+import type { AgentUsage, SddEvent } from '../events.js'
 import type { KernelContext } from '../kernel/machine.js'
 import { gatherAssumptions } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
@@ -66,30 +66,55 @@ export interface UsageTotals extends CostSummary {
   readonly tokens: number
 }
 
+/** The zero usage every accumulation starts from (one home: accounting and the analyzer both import it). */
+export const EMPTY_USAGE: AgentUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  reasoningTokens: 0,
+  cachedReadTokens: 0,
+  cachedWriteTokens: 0,
+  costUsd: 0,
+  wallMs: 0,
+}
+
+/** Sum two usages field by field. */
+export function plusUsage(acc: AgentUsage, add: AgentUsage): AgentUsage {
+  return {
+    inputTokens: acc.inputTokens + add.inputTokens,
+    outputTokens: acc.outputTokens + add.outputTokens,
+    reasoningTokens: acc.reasoningTokens + add.reasoningTokens,
+    cachedReadTokens: acc.cachedReadTokens + add.cachedReadTokens,
+    cachedWriteTokens: acc.cachedWriteTokens + add.cachedWriteTokens,
+    costUsd: acc.costUsd + add.costUsd,
+    wallMs: acc.wallMs + add.wallMs,
+  }
+}
+
+/** Every token bucket of a usage record, summed. */
+export function tokensOf(usage: AgentUsage): number {
+  return (
+    usage.inputTokens + usage.outputTokens + usage.reasoningTokens + usage.cachedReadTokens + usage.cachedWriteTokens
+  )
+}
+
 /**
  * Spend over the run's `done` events (usage-aggregate copy, resolve seam
  * omitted — afk-runner has no pricing DB): an agent that finished with
  * tokens but a zero cost is unknown spend, fail-closed for the ladder (R4).
  * Tokens ride the same fold (U9 cross-run accounting) — cost stays the
- * summary's shape so its render consumers are unchanged.
+ * summary's shape so its render consumers are unchanged. The accumulation
+ * itself is `EMPTY_USAGE`/`plusUsage` (master `bfa4ebedf` shape) — one home,
+ * shared with the analyzer's per-role/per-round fold.
  */
 export function usageTotalsOf(events: readonly SddEvent[]): UsageTotals {
-  let costUsd = 0
+  let usage: AgentUsage = EMPTY_USAGE
   let costKnown = true
-  let tokens = 0
   for (const event of events) {
     if (event.type !== 'done') continue
-    costUsd += event.usage.costUsd
-    const eventTokens =
-      event.usage.inputTokens +
-      event.usage.outputTokens +
-      event.usage.reasoningTokens +
-      event.usage.cachedReadTokens +
-      event.usage.cachedWriteTokens
-    tokens += eventTokens
-    if (event.usage.costUsd === 0 && eventTokens > 0) costKnown = false
+    usage = plusUsage(usage, event.usage)
+    if (event.usage.costUsd === 0 && tokensOf(event.usage) > 0) costKnown = false
   }
-  return { costUsd, costKnown, tokens }
+  return { costUsd: usage.costUsd, costKnown, tokens: tokensOf(usage) }
 }
 
 export function costSummaryOf(events: readonly SddEvent[]): CostSummary {

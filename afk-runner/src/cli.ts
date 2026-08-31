@@ -10,6 +10,12 @@ import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { realSpawn } from '../../review-loop/src/spawn.js'
 import { renderRunsReport, summarizeWorkDir } from './accounting.js'
 import { typedSpawn } from './agent-seam.js'
+import { buildCorpusReport } from './analyze-corpus.js'
+import { loadCorpus } from './analyze-io.js'
+import { nodeAnalyzeFs } from './analyze-io.js'
+import { readOnlyGit } from './analyze-io.js'
+import { renderCorpusJson, renderCorpusReport } from './analyze-report.js'
+import { groundTruthJoin } from './analyze-truth.js'
 import type { ExecGitFn, RunnerConfig } from './config.js'
 import type { DepthProfile } from './events.js'
 import { pipelineMachine } from './graph/pipeline.js'
@@ -164,6 +170,29 @@ export async function runRunsCommand(deps: RunDeps): Promise<string> {
   return report
 }
 
+/**
+ * The corpus-analysis verb (run-analysis D8): `analyze [workdirs…] [--json]`
+ * over the read-only seams — it never attends, presents, or settles any
+ * gate, and writes nothing but its own stdout.
+ */
+export async function runAnalyzeCommand(deps: RunDeps, args: readonly string[]): Promise<string> {
+  const json = args.includes('--json')
+  const workdirs = args.filter((arg) => arg !== '--json')
+  const dirs = workdirs.length > 0 ? workdirs : [deps.config.workDir]
+  const fs = nodeAnalyzeFs()
+  const bundles = await loadCorpus(fs, dirs)
+  const changes = bundles.flatMap((bundle): readonly { repoRoot: string; changeName: string }[] => {
+    const changeName = bundle.state?.changeName
+    if (changeName === undefined) return []
+    return [{ repoRoot: bundle.state?.repoRoot ?? deps.config.repoRoot, changeName }]
+  })
+  const groundTruth = await groundTruthJoin(fs, readOnlyGit(deps.execGit), changes)
+  const report = buildCorpusReport(bundles, groundTruth, { now: new Date() })
+  const output = json ? renderCorpusJson(report) : renderCorpusReport(report)
+  console.log(output)
+  return output
+}
+
 export async function runResumeCommand(deps: RunDeps, runId: string): Promise<string> {
   const result = await resumeRun(deps, runId)
   const lines = [
@@ -210,6 +239,7 @@ function printUsage(): void {
       '  afk-runner stop <runId>                       calm-stop a live run; abort a dead one',
       '  afk-runner report <runId> [--pr]              print the passive run report',
       '  afk-runner runs                               print the passive cross-run roster and totals',
+      '  afk-runner analyze [workdirs…] [--json]       print the read-only corpus report',
       '  afk-runner <runDir>                           print the fold summary of a run dir',
     ].join('\n'),
   )
@@ -223,12 +253,14 @@ export function cliMain(argv: readonly string[]): Promise<string | undefined> {
     command === 'resume' ||
     command === 'report' ||
     command === 'stop' ||
-    command === 'runs'
+    command === 'runs' ||
+    command === 'analyze'
   ) {
     const deps = defaultCliDeps()
     if (command === 'start') return runStartCommand(deps, rest)
     if (command === 'report') return runReportCommand(deps, rest)
     if (command === 'runs') return runRunsCommand(deps)
+    if (command === 'analyze') return runAnalyzeCommand(deps, rest)
     if (command === 'stop') {
       const runId = rest[0]
       if (runId === undefined || runId.length === 0) throw new Error('usage: afk-runner stop <runId>')

@@ -55,7 +55,7 @@ changes make about afk's own runs stays unmeasurable.
 ## Impact
 
 - Code: new `afk-runner/src/analyze*.ts` folds plus CLI routing over the
-  existing fold, pricing, and accounting seams; tests under `tests/afk-runner/`.
+  existing fold, usage-cost, and accounting seams; tests under `tests/afk-runner/`.
   No new dependencies. Docs: `afk-runner.md` analysis section. Usage folds
   share one `AgentUsage` sum helper (`EMPTY_USAGE`/`plusUsage`, master
   `bfa4ebedf`) instead of duplicating the accumulation.

@@ -97,6 +97,14 @@ function typesOf(events: readonly { readonly type: string }[]): string[] {
   return events.map((event) => event.type)
 }
 
+function isApproveDecision(event: EventInput): boolean {
+  return event.type === 'auto_decision' && event.decision === 'approve'
+}
+
+function isAnsweredGate(event: EventInput): boolean {
+  return event.type === 'gate' && event.action === 'answered'
+}
+
 describe('gate prelude — the autonomy ladder as producer', () => {
   it('always appends an auto_decision, rule none included (open BLOCKER never-cut)', async () => {
     const h = await makePreludeHarness()
@@ -178,6 +186,16 @@ describe('gate prelude — the autonomy ladder as producer', () => {
     expect(h.emitted.at(-1)).toMatchObject({ type: 'gate', action: 'answered', outcome: 'approve' })
     const md = fs.readFileSync(path.join(h.runDir, 'gate-1.md'), 'utf8')
     expect(md).toContain('decided-by: policy R1')
+  })
+
+  it('emission-order pin (run-analysis D4): the approve auto_decision precedes the settle seam’s answered event', async () => {
+    const h = await makePreludeHarness()
+    await h.prelude({ mode: 'final', reviewResult: reviewResult({ outcome: 'converged' }) })
+    const decisionIndex = h.emitted.findIndex(isApproveDecision)
+    const answeredIndex = h.emitted.findIndex(isAnsweredGate)
+    expect(decisionIndex).toBeGreaterThanOrEqual(0)
+    expect(answeredIndex).toBeGreaterThanOrEqual(0)
+    expect(decisionIndex).toBeLessThan(answeredIndex)
   })
 
   it('the auto-extend allowance derives from folded auto-decision records', () => {

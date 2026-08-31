@@ -6,7 +6,7 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { deriveChangeName } from './config.js'
+import { autonomyOf, deriveChangeName } from './config.js'
 import type { RunnerConfig } from './config.js'
 import { createAppendBoundary } from './drive/boundary.js'
 import { pipelineMachine } from './graph/pipeline.js'
@@ -74,5 +74,6 @@ function seedOf(deps: StopDeps, runId: string, changeName: string, createdAt: st
     repoRoot: deps.config.repoRoot,
     changeName,
     createdAt: createdAt ?? (deps.now?.() ?? new Date()).toISOString(),
+    metered: autonomyOf(deps.config).metered,
   }
 }
