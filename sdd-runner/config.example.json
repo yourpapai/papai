@@ -4,6 +4,8 @@
   "model": "anthropic/claude-opus-4-1",
   "budget": 5,
   "deadline": 90,
+  "backend": "opencode",
   "_budget": "USD spend ceiling (default 5). null = unmetered (subscription providers): the cost-unknown auto-decision guard is disabled; the round cap and the trajectory bound are the sole spend guards.",
-  "_metered": "optional boolean overriding derived metered-ness (derived: true unless budget is null). metered: false with a numeric budget keeps the ceiling but skips the cost-unknown guard."
+  "_metered": "optional boolean overriding derived metered-ness (derived: true unless budget is null). metered: false with a numeric budget keeps the ceiling but skips the cost-unknown guard.",
+  "_backend": "which agent CLI drives the run: 'opencode' (default) or 'claude'. The claude route needs the claude CLI installed locally and exactly one of ANTHROPIC_API_KEY (bare profile) or CLAUDE_CODE_OAUTH_TOKEN (native profile) exported, with LLM_API_KEY unset; a wrong credential environment fails at run entry before any spend. The model keeps its provider/model prefix here either way."
 }
