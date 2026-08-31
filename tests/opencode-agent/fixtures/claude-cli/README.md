@@ -53,7 +53,12 @@ opencode-agent:test:claude-live`): the whole stream of a neutralized native
   (`apiKeySource` reads `none` on that path and cannot serve). The line
   arrives even with `status: "allowed"` — every credentialed subscription
   turn carries it. A re-run that answers without it fails the recorder
-  loudly.
+  loudly. **It is also the corpus's two-model fixture**: the `result` line
+  carries `modelUsage` naming both `claude-sonnet-5` (the main model the
+  top-level `usage` already spans, its four buckets summing to 89624) and
+  `claude-haiku-4-5-20251001` (912 in / 11 out, invisible to the top-level
+  figure) — the recording the decoders' complete-figure reading, the
+  per-bucket maximum of the CLI's two readings, is pinned against.
 - `stub-rate-limit-turn.ndjson` + `stub-facts.json` — **genuinely recorded,
   and credential-free**, by `claude-stub.integration.ts`
   (`bun run opencode-agent:test:claude-stub`) on 2.1.251. The CLI honours

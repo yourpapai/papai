@@ -236,7 +236,7 @@ const checkTheStop = async (openai: OpenAiSettings): Promise<boolean[]> => {
  * and numeric after one billed turn.
  */
 const checkTheUsageShape = async (openai: OpenAiSettings): Promise<boolean[]> => {
-  const connection = await connectSdk(process.cwd(), openai)
+  const connection = await connectSdk(process.cwd(), openai, silentLog)
   try {
     const sessionId = await connection.createSession('live-usage-shape')
     await connection.sendPrompt(sessionId, buildBody(parseModelRef(modelRef(openai)), { prompt: 'hello' }))

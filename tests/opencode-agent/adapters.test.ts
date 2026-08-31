@@ -42,6 +42,7 @@ import {
 import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
 import { createOpenCodeAgent, parseModelRef } from '../../opencode-agent/src/opencode-adapter.js'
 import type { OpenCodeAgent, OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
+import { sessionTreeUsage } from '../../opencode-agent/src/opencode-connect.js'
 import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { renderThread, shareBudget } from '../../opencode-agent/src/prompt-budget.js'
 import { buildCiFixPrompt, createEnvelope } from '../../opencode-agent/src/prompts.js'
@@ -51,8 +52,10 @@ import {
   collectText,
   decodeAbort,
   decodeReply,
+  decodeSessionChildren,
   decodeSessionId,
   decodeSessionUsage,
+  sumSessionUsage,
 } from '../../opencode-agent/src/sdk-contract.js'
 import type { SessionUsage } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
@@ -379,6 +382,95 @@ describe('the recorded SDK contract', () => {
     expect(decodeSessionUsage(fetched)).toBeNull()
   })
 
+  describe('the session children envelope', () => {
+    /**
+     * `GET /session/{id}/children` answers `200: Array<Session>` under the same
+     * `{ data, error }` envelope every other response above uses — the recorded
+     * convention applied to a list. The decoder reads only `id` from each
+     * entry: the walk it feeds needs addresses, nothing else.
+     */
+    test('reads only the id of each child entry', () => {
+      expect(
+        decodeSessionChildren({
+          data: [
+            { id: 'ses_child_1', title: 'first', directory: '/repo' },
+            { id: 'ses_child_2', parentID: 'ses_parent' },
+          ],
+          request: {},
+          response: {},
+        }),
+      ).toEqual(['ses_child_1', 'ses_child_2'])
+      expect(decodeSessionChildren({ data: [] })).toEqual([])
+    })
+
+    test('a child entry with no id is dropped, not fatal', () => {
+      expect(
+        decodeSessionChildren({
+          data: [{ id: 'ses_child_1' }, { title: 'the id moved' }, 'junk', null],
+          error: undefined,
+        }),
+      ).toEqual(['ses_child_1'])
+    })
+
+    test('a non-empty listing that vouches for no entry reports unrecognised, not an empty tree', () => {
+      // Every entry failing the `{ id }` schema is the shape drift the design
+      // names — the generated types trailing the server. Reading it as `[]`
+      // would tell the walk the subtree is absent with no degradation warning;
+      // `null` routes it through the walk's degrade-and-warn path instead.
+      expect(decodeSessionChildren({ data: [{ title: 'the id moved' }] })).toBeNull()
+    })
+
+    test.each([
+      [{ data: undefined, error: { message: 'no such session' } }],
+      [{ data: 'not an array' }],
+      [{}],
+      ['nope'],
+    ])('reports %p as unknown rather than throwing', (fetched) => {
+      // The `decodeSessionUsage` doctrine, one envelope over: the walk this
+      // feeds decorates the spend read, and an SDK that moved it must not fail
+      // the turn or the phase.
+      expect(decodeSessionChildren(fetched)).toBeNull()
+    })
+  })
+
+  describe('the session usage sum', () => {
+    test('adds tokens, cost and every bucket across sessions', () => {
+      // The tree's total is the sessions' own accounts, added — the same
+      // shape one `session.get` read answers, so the ceiling and the price
+      // read the summed tree exactly as they read a single session.
+      expect(
+        sumSessionUsage([
+          { tokens: 3602, cost: 0.014425, input: 2468, output: 1134, reasoning: 0, cacheRead: 900, cacheWrite: 400 },
+          { tokens: 350, cost: 0.002575, input: 100, output: 200, reasoning: 50, cacheRead: 30, cacheWrite: 20 },
+        ]),
+      ).toEqual({
+        tokens: 3952,
+        cost: 0.017,
+        input: 2568,
+        output: 1334,
+        reasoning: 50,
+        cacheRead: 930,
+        cacheWrite: 420,
+      })
+    })
+
+    test('a cache bucket any summand leaves absent stays absent on the sum', () => {
+      // Absent is not zero (the one rule `decodeSessionUsage` exists for): a
+      // summand that does not report a bucket makes the tree's bucket absent,
+      // so `run-spend` reports the tree unpriced rather than pricing the rest
+      // and under-charging a cache-heavy run.
+      const summed = sumSessionUsage([
+        { tokens: 300, cost: 0.01, input: 100, output: 150, reasoning: 50, cacheRead: 900, cacheWrite: 400 },
+        { tokens: 30, cost: 0.001, input: 10, output: 15, reasoning: 5 },
+      ])
+
+      expect(summed.tokens).toBe(330)
+      expect(summed.cost).toBe(0.011)
+      expect(summed.cacheRead).toBeUndefined()
+      expect(summed.cacheWrite).toBeUndefined()
+    })
+  })
+
   /**
    * The abort envelope.
    *
@@ -416,6 +508,398 @@ describe('the recorded SDK contract', () => {
     // wall-clock stop into "nothing pushed". The adapter catches it and reports
     // `false` anyway — with the contract named in the log rather than nowhere.
     expect(() => decodeAbort('true')).toThrow('Unexpected')
+  })
+})
+
+describe('the session tree usage walk', () => {
+  interface TreeClient {
+    session: {
+      get: (args: { path: { id: string } }) => Promise<unknown>
+      children: (args: { path: { id: string } }) => Promise<unknown>
+    }
+  }
+
+  /** A recorded `session.get` answer for one node of a stubbed tree. */
+  const usageEnvelope = (
+    id: string,
+    usage: {
+      input: number
+      output?: number
+      reasoning?: number
+      cacheRead?: number
+      cacheWrite?: number
+      cost: number
+    },
+  ): unknown => ({
+    data: {
+      id,
+      title: id,
+      tokens: {
+        input: usage.input,
+        output: usage.output ?? 0,
+        reasoning: usage.reasoning ?? 0,
+        cache: { read: usage.cacheRead ?? 0, write: usage.cacheWrite ?? 0 },
+      },
+      cost: usage.cost,
+    },
+    request: {},
+    response: {},
+  })
+
+  /** A recorded `session.children` answer: the ids of one node's children. */
+  const childrenEnvelope = (ids: readonly string[]): unknown => ({ data: ids.map((id) => ({ id })) })
+
+  /** A stubbed client over a tree: usage and children answers keyed by session id. */
+  const treeClient = (usage: ReadonlyMap<string, unknown>, children: ReadonlyMap<string, unknown>): TreeClient => ({
+    session: {
+      get: ({ path }) => Promise.resolve(usage.get(path.id) ?? { data: undefined }),
+      children: ({ path }) => Promise.resolve(children.get(path.id) ?? { data: [] }),
+    },
+  })
+
+  /**
+   * The same stubbed client with one session's children listing gone the given
+   * way — a throw, a hang, a foreign payload — for the degradation tests.
+   */
+  const breakingChildrenClient = (
+    usage: ReadonlyMap<string, unknown>,
+    children: ReadonlyMap<string, unknown>,
+    breakId: string,
+    instead: () => Promise<unknown>,
+  ): TreeClient => ({
+    session: {
+      get: ({ path }) => Promise.resolve(usage.get(path.id) ?? { data: undefined }),
+      children: ({ path }) =>
+        path.id === breakId ? instead() : Promise.resolve(children.get(path.id) ?? { data: [] }),
+    },
+  })
+
+  /**
+   * A client whose `session.get` answers the first read and hangs on every
+   * later one, with the children listing gone the given way — the wedged
+   * server the degraded re-read has to be bounded against. `reads` counts
+   * `session.get` calls, so a test can tell a re-read that was attempted from
+   * one that never happened.
+   */
+  const wedgedGetClient = (
+    usage: ReadonlyMap<string, unknown>,
+    children: () => Promise<unknown>,
+  ): { client: TreeClient; reads: () => number } => {
+    let gets = 0
+    return {
+      client: {
+        session: {
+          get: ({ path }) => {
+            gets += 1
+            return gets === 1 ? Promise.resolve(usage.get(path.id)) : new Promise<unknown>(() => {})
+          },
+          children,
+        },
+      },
+      reads: () => gets,
+    }
+  }
+
+  /** The parent's own account, exactly — what every degraded walk answers. */
+  const parentUsage = (): SessionUsage => ({
+    tokens: 4002,
+    cost: 0.125,
+    input: 2468,
+    output: 1134,
+    reasoning: 0,
+    cacheRead: 900,
+    cacheWrite: 400,
+  })
+
+  /** A chain of a given depth, every node one token and one quarter — the depth cap's fixture. */
+  const chainTree = (depth: number): { usage: Map<string, unknown>; children: Map<string, unknown> } => {
+    const usage = new Map<string, unknown>()
+    const children = new Map<string, unknown>()
+    for (let at = 0; at < depth; at += 1) {
+      const id = `ses_deep_${at}`
+      usage.set(id, usageEnvelope(id, { input: 1, cost: 0.25 }))
+      if (at < depth - 1) children.set(id, childrenEnvelope([`ses_deep_${at + 1}`]))
+    }
+    return { usage, children }
+  }
+
+  test('a parent with two children reports the summed tokens and cost', async () => {
+    const usage = new Map([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      [
+        'ses_child_1',
+        usageEnvelope('ses_child_1', {
+          input: 100,
+          output: 200,
+          reasoning: 50,
+          cacheRead: 30,
+          cacheWrite: 20,
+          cost: 0.0625,
+        }),
+      ],
+      [
+        'ses_child_2',
+        usageEnvelope('ses_child_2', { input: 11, output: 100, cacheRead: 3, cacheWrite: 2, cost: 0.03125 }),
+      ],
+    ])
+    const children = new Map([['ses_parent', childrenEnvelope(['ses_child_1', 'ses_child_2'])]])
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
+      tokens: 4485,
+      cost: 0.21875,
+      input: 2579,
+      output: 1434,
+      reasoning: 50,
+      cacheRead: 933,
+      cacheWrite: 422,
+    })
+  })
+
+  test('a grandchild is included in the sum', async () => {
+    const usage = new Map([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      [
+        'ses_child_1',
+        usageEnvelope('ses_child_1', {
+          input: 100,
+          output: 200,
+          reasoning: 50,
+          cacheRead: 30,
+          cacheWrite: 20,
+          cost: 0.0625,
+        }),
+      ],
+      ['ses_grand', usageEnvelope('ses_grand', { input: 3, output: 4, cacheRead: 1, cost: 0.015625 })],
+    ])
+    const children = new Map([
+      ['ses_parent', childrenEnvelope(['ses_child_1'])],
+      ['ses_child_1', childrenEnvelope(['ses_grand'])],
+    ])
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
+      tokens: 4379,
+      cost: 0.203125,
+      input: 2571,
+      output: 1338,
+      reasoning: 50,
+      cacheRead: 931,
+      cacheWrite: 420,
+    })
+  })
+
+  test('a cycle or a repeated id is counted once', async () => {
+    // The same three accounts as the two-children tree, wired into a cycle —
+    // the parent lists the same child twice, and that child lists the parent
+    // back — so the exact figure proves the duplicates added nothing.
+    const usage = new Map([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      [
+        'ses_child_1',
+        usageEnvelope('ses_child_1', {
+          input: 100,
+          output: 200,
+          reasoning: 50,
+          cacheRead: 30,
+          cacheWrite: 20,
+          cost: 0.0625,
+        }),
+      ],
+      [
+        'ses_child_2',
+        usageEnvelope('ses_child_2', { input: 11, output: 100, cacheRead: 3, cacheWrite: 2, cost: 0.03125 }),
+      ],
+    ])
+    const children = new Map([
+      ['ses_parent', childrenEnvelope(['ses_child_1', 'ses_child_1', 'ses_child_2'])],
+      ['ses_child_1', childrenEnvelope(['ses_parent'])],
+    ])
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
+      tokens: 4485,
+      cost: 0.21875,
+      input: 2579,
+      output: 1434,
+      reasoning: 50,
+      cacheRead: 933,
+      cacheWrite: 422,
+    })
+  })
+
+  test('the traversal stops at the depth cap, warning that the walk was truncated', async () => {
+    // A chain fifteen deep, every node costing 0.25 and one token: the walk
+    // reads the parent plus the first seven descendants — depths 0 through 7 —
+    // and stops, so the figure is exactly eight nodes' worth, never the chain's.
+    // The cap is the one stop that keeps the sessions it read rather than
+    // degrading — the sum cannot fall below the parent-only figure — but it
+    // says so, like every other read that ended short of the whole tree.
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+    const { usage, children } = chainTree(15)
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_deep_0', log)).toEqual({
+      tokens: 8,
+      cost: 2,
+      input: 8,
+      output: 0,
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('cap')
+  })
+
+  test('the traversal stops at the node cap, warning that the walk was truncated', async () => {
+    // A star of forty children: the walk reads the parent and thirty-one of
+    // them — thirty-two sessions — and stops, so the figure is exactly
+    // thirty-two nodes' worth, never the star's forty-one. Truncated, and
+    // warning of it: the figure rides to the budget and the price ladder
+    // looking exact, so the log is where the incompleteness lives.
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+    const usage = new Map<string, unknown>([['ses_parent', usageEnvelope('ses_parent', { input: 1, cost: 0.25 })]])
+    const children = new Map<string, unknown>([
+      ['ses_parent', childrenEnvelope(Array.from({ length: 40 }, (_, at) => `ses_wide_${at}`))],
+    ])
+    for (let at = 0; at < 40; at += 1) {
+      usage.set(`ses_wide_${at}`, usageEnvelope(`ses_wide_${at}`, { input: 1, cost: 0.25 }))
+    }
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', log)).toEqual({
+      tokens: 32,
+      cost: 8,
+      input: 32,
+      output: 0,
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('cap')
+  })
+
+  test('a children call that throws degrades to the parent-only figure, warning but never failing', async () => {
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // The child's subtree cannot be read whole, so the walk reports the
+    // parent's own account — the figure the budget already knew — and says
+    // so. The walk decorates the spend read; it does not get to fail it.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      ['ses_child_1', usageEnvelope('ses_child_1', { input: 100, output: 200, cost: 0.0625 })],
+    ])
+    const children = new Map<string, unknown>([['ses_parent', childrenEnvelope(['ses_child_1'])]])
+    const client = breakingChildrenClient(usage, children, 'ses_child_1', () =>
+      Promise.reject(new Error('the children listing broke')),
+    )
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
+  })
+
+  test('a children call that never settles degrades at the walk deadline, parent-only', async () => {
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // The whole walk is bounded by one deadline: a server that answers the
+    // usage read but wedges on the tree costs the bound, not the run. The
+    // walk still resolves, degraded, and the run moves on.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+    ])
+    const client = breakingChildrenClient(usage, new Map(), 'ses_parent', () => new Promise<unknown>(() => {}))
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
+  })
+
+  test('a children payload that decodes as unrecognised degrades to the parent-only figure', async () => {
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // Unrecognised is not empty: the walk cannot tell what it failed to read,
+    // so it cannot price the subtree without under-charging a run whose
+    // subagents spent — the parent's own account, and the warn.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      ['ses_child_1', usageEnvelope('ses_child_1', { input: 100, output: 200, cost: 0.0625 })],
+    ])
+    const children = new Map<string, unknown>([['ses_parent', childrenEnvelope(['ses_child_1'])]])
+    const client = breakingChildrenClient(usage, children, 'ses_child_1', () =>
+      Promise.resolve({ data: 'not an array' }),
+    )
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
+  })
+
+  test('a children listing whose every entry lost its id degrades to the parent-only figure, warning', async () => {
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+
+    // An array whose every entry fails the `{ id }` schema is not an empty
+    // tree: it is the same shape drift as a foreign payload, and the walk must
+    // say the subtree could not be read rather than publish the parent alone
+    // with the incompleteness undiscoverable from the run.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      ['ses_child_1', usageEnvelope('ses_child_1', { input: 100, output: 200, cost: 0.0625 })],
+    ])
+    const children = new Map<string, unknown>([['ses_parent', childrenEnvelope(['ses_child_1'])]])
+    const client = breakingChildrenClient(usage, children, 'ses_child_1', () =>
+      Promise.resolve({ data: [{ title: 'the id moved' }] }),
+    )
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toEqual(parentUsage())
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('tree')
+  })
+
+  test('a degraded re-read that never settles is bounded too, answering absent', async () => {
+    // The wedge the walk deadline exists for does not end at the walk's own
+    // expiry: the degraded figure is a fresh read of the same server, so the
+    // catch's re-read carries a bound of its own. A hang is not a rejection,
+    // so only the deadline can end it — the walk expiring must hand the
+    // budget path an answer (absent, which its callers warn on), never the
+    // same wedged socket back.
+    const usage = new Map<string, unknown>([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+    ])
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
+    const { client, reads } = wedgedGetClient(usage, () => Promise.reject(new Error('the children listing broke')))
+
+    expect(await sessionTreeUsage(client, '/repo', 'ses_parent', log)).toBeNull()
+    expect(reads()).toBe(2)
+    expect(warnings).toHaveLength(0)
   })
 })
 
