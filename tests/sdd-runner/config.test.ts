@@ -128,6 +128,36 @@ describe('unmetered budget semantics', () => {
   })
 })
 
+describe('backend selection', () => {
+  it('defaults to the opencode route when the key is absent', async () => {
+    const dir = makeDir()
+    const configPath = writeConfig(dir, { repoRoot: dir, model: 'anthropic/claude-opus-4-1' })
+    const config = await loadRunnerConfig(configPath)
+    expect(config.backend).toBe('opencode')
+  })
+
+  it("loads 'claude' as the claude route", async () => {
+    const dir = makeDir()
+    const configPath = writeConfig(dir, {
+      repoRoot: dir,
+      model: 'anthropic/claude-opus-4-1',
+      backend: 'claude',
+    })
+    const config = await loadRunnerConfig(configPath)
+    expect(config.backend).toBe('claude')
+  })
+
+  it('keeps the provider/model prefix on the model id on both routes', async () => {
+    const dir = makeDir()
+    const defaulted = await loadRunnerConfig(writeConfig(dir, { repoRoot: dir, model: 'anthropic/claude-opus-4-1' }))
+    expect(defaulted.model).toBe('anthropic/claude-opus-4-1')
+    const claude = await loadRunnerConfig(
+      writeConfig(dir, { repoRoot: dir, model: 'anthropic/claude-opus-4-1', backend: 'claude' }),
+    )
+    expect(claude.model).toBe('anthropic/claude-opus-4-1')
+  })
+})
+
 describe('modelFor', () => {
   it('the single model serves every role', async () => {
     const dir = makeDir()

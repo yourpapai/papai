@@ -1,6 +1,6 @@
 ## 1. Config surface (design D1)
 
-- [ ] 1.1 Extend `tests/sdd-runner/config.test.ts`: a config with no `backend` key loads as `opencode`, `"backend": "claude"` loads as `claude`, and the `model` value keeps its `provider/model` prefix on both. Verify: `bun test tests/sdd-runner/config.test.ts`
+- [x] 1.1 Extend `tests/sdd-runner/config.test.ts`: a config with no `backend` key loads as `opencode`, `"backend": "claude"` loads as `claude`, and the `model` value keeps its `provider/model` prefix on both. Verify: `bun test tests/sdd-runner/config.test.ts`
 - [ ] 1.2 Extend `tests/sdd-runner/config-strict.test.ts`: a `backend` value outside `opencode|claude` fails load naming the key and its accepted values, and the removed-key pointers (`autonomy`, `models`, `timeouts`, `budgetUsd`) still fail as before. Verify: `bun test tests/sdd-runner/config-strict.test.ts`
 - [ ] 1.3 Add `backend: z.enum(['opencode','claude']).default('opencode')` to `RunnerConfigSchema` and the field to `RunnerConfig` in `sdd-runner/src/config.ts`. Verify: `bun test tests/sdd-runner/config.test.ts tests/sdd-runner/config-strict.test.ts && bun run typecheck`
 - [ ] 1.4 Document the key in `sdd-runner/config.example.json`: a real `"backend": "opencode"` entry plus a `_backend` prose line beside `_budget`/`_metered`, naming the two credential spellings and their profiles. Verify: `bun run lint`
