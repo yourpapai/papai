@@ -26,7 +26,7 @@
 ## 5. Resume continuation on the claude route (design D5)
 
 - [x] 5.1 Extend `tests/sdd-runner/agent-layer.test.ts`: with `continueSessionId` set on the claude route, no continuation spawn is attempted, `extraArgs` is empty, the stage re-spawns from the rebuilt prompt, the fallback is reported, and no argument-composition error surfaces; the opencode route still composes `['--session', id]` and reports the continuation path. Verify: `bun test tests/sdd-runner/agent-layer.test.ts`
-- [ ] 5.2 Skip the continuation attempt in `runStageAgent` when the resolved route is `claude`, emitting the existing fallback signal before the rebuild spawn. Verify: `bun test tests/sdd-runner/agent-layer.test.ts && bun run sdd-runner:test`
+- [x] 5.2 Skip the continuation attempt in `runStageAgent` when the resolved route is `claude`, emitting the existing fallback signal before the rebuild spawn. Verify: `bun test tests/sdd-runner/agent-layer.test.ts && bun run sdd-runner:test`
 
 ## 6. Harness wiring and credential guard (design D3)
 

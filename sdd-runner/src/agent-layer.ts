@@ -13,84 +13,22 @@ import type { AgentUsage, ClaudeRunContext, SpawnFn } from '../../review-loop/sr
 import { createAgentReporter } from './agent-reporter.js'
 import { INACTIVITY_TIMEOUT_MS, WALL_CLOCK_TIMEOUT_MS, modelFor } from './config.js'
 import type { AgentRole, ExecGitFn, RunnerConfig } from './config.js'
-import { OversizeSignalsSchema } from './event-schemas.js'
 import type { EventInput } from './events.js'
 import { nextSessionAttempt, recordSessionId, settleSessionAttempt, transcriptPathFor } from './session-ledger.js'
 import { guardWorkingTree, snapshotWorkingTree } from './working-tree-guard.js'
 
-export const FindingSchema = z.object({
-  id: z.string().min(1),
-  class: z.enum(['BLOCKER', 'MATERIAL', 'NITPICK']),
-  gap: z.string().min(1),
-  question: z.string().min(1),
-  code_evidence_attempted: z.string().min(1),
-})
-export type Finding = z.infer<typeof FindingSchema>
-
-export const FindingsSidecarSchema = z.object({ findings: z.array(FindingSchema) })
-
-/**
- * Skeptic spawn contract (loop-memory D2): ids are namespaced `S<n>` so the
- * two lens id spaces cannot collide after the fingerprint merge.
- */
-export const SkepticFindingsSidecarSchema = FindingsSidecarSchema.refine(
-  (sidecar) => sidecar.findings.every((finding) => /^S\d+$/u.test(finding.id)),
-  { message: 'skeptic findings[].id must follow the S-prefix convention (S1, S2, …)' },
-)
-
-export const ResolutionSchema = z
-  .object({
-    id: z.string().min(1),
-    class: z.enum(['BLOCKER', 'MATERIAL', 'NITPICK']),
-    resolution: z.enum(['edited', 'evidence-answered', 'assumed', 'dismissed']),
-    outcome: z.string().min(1).optional(),
-    justification: z.string().min(1).optional(),
-  })
-  .refine((record) => record.resolution !== 'dismissed' || record.justification !== undefined, {
-    message: 'dismissed resolutions require a justification',
-  })
-export type Resolution = z.infer<typeof ResolutionSchema>
-
-export const ResolutionsSidecarSchema = z.object({ resolutions: z.array(ResolutionSchema) })
-
-export const AssumptionRecordSchema = z.object({
-  id: z.string().regex(/^A\d+$/u, 'assumptions[].id must follow the A-prefix convention (A1, A2, …)'),
-  text: z.string().min(1),
-  basis: z.enum(['code-evidence', 'convention', 'default']),
-  confidence: z.enum(['high', 'medium', 'low']),
-  blast_radius: z.string().min(1),
-  status: z.enum(['open', 'confirmed', 'vetoed']),
-  evidence: z.object({ files: z.array(z.string().min(1)).min(1) }),
-  /**
-   * The finding this assumption was logged against, when it came from one. It
-   * is what lets an `assumed` resolution be closed as traceable rather than
-   * taken on trust; sidecars written before the link existed carry none, and
-   * the openness predicate falls back to a round-level check for those.
-   */
-  findingId: z.string().min(1).optional(),
-})
-export type AssumptionRecord = z.infer<typeof AssumptionRecordSchema>
-
-export const AssumptionsSidecarSchema = z.object({ assumptions: z.array(AssumptionRecordSchema) })
-
-export const DepthSignalsSchema = z.object({
-  cross_module: z.boolean(),
-  db_migration: z.boolean(),
-  provider_surface: z.boolean(),
-  credentials: z.boolean(),
-  novelty: z.enum(['new-subsystem', 'existing-modules']),
-})
-export type DepthSignals = z.infer<typeof DepthSignalsSchema>
-
-export const DepthClassificationSchema = z.object({
-  implicated_files: z.array(z.string().min(1)),
-  signals: DepthSignalsSchema,
-  rationale: z.string().min(1),
-  capabilities: z.array(z.string().min(1)).optional(),
-  oversize: z.boolean().optional(),
-  oversize_signals: OversizeSignalsSchema.optional(),
-})
-export type DepthClassification = z.infer<typeof DepthClassificationSchema>
+export {
+  AssumptionRecordSchema,
+  AssumptionsSidecarSchema,
+  DepthClassificationSchema,
+  DepthSignalsSchema,
+  FindingSchema,
+  FindingsSidecarSchema,
+  ResolutionSchema,
+  ResolutionsSidecarSchema,
+  SkepticFindingsSidecarSchema,
+} from './agent-sidecars.js'
+export type { AssumptionRecord, DepthClassification, DepthSignals, Finding, Resolution } from './agent-sidecars.js'
 
 export interface AgentLayerDeps {
   readonly spawn: SpawnFn
@@ -284,9 +222,16 @@ export async function runStageAgent<T>(
   if (options.continueSessionId !== undefined) {
     // D2: any continuation failure (session pruned, provider error, invalid
     // sidecar) falls back to the prompt-rebuild spawn — never worse than today.
-    const continued = await attemptStageAgent(deps, options, 1, null, before, {
-      sessionId: options.continueSessionId,
-    }).catch(() => null)
+    // D5: the claude route skips the attempt outright. The CLI has no
+    // session-continuation flag, so composing one would only raise the
+    // opencode-argv refusal, booking a killed ledger attempt for a spawn that
+    // route can never serve. The fallback signal below still rides.
+    const continued =
+      deps.config.backend === 'claude'
+        ? null
+        : await attemptStageAgent(deps, options, 1, null, before, {
+            sessionId: options.continueSessionId,
+          }).catch(() => null)
     if (continued !== null) return continued
     deps.emit({
       altitude: 'L1',
