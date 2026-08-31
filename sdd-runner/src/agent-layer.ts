@@ -253,6 +253,9 @@ function runSpawn<T>(
 ): Promise<{ value: unknown; usage: AgentUsage }> {
   return runAgent({
     spawn: deps.spawn,
+    backend: deps.config.backend,
+    claude: deps.claude,
+    createClaudeSpawnDir: deps.createClaudeSpawnDir,
     model: inputs.model,
     cwd: options.cwd,
     prompt: inputs.prompt,
