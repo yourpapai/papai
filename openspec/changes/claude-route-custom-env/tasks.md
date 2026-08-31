@@ -44,4 +44,4 @@ follows `design.md` — Capability gating, scope model, dependencies, hooks.
 ## 7. Full verification
 
 - [x] 7.1 Run the mutation ratchet over the touched files. Verify: `bun run test:mutate:changed --base=HEAD~1` passes the per-file floor
-- [ ] 7.2 Run the full suite, typecheck and lint; confirm affected docs: `docs/architecture/*.md` pages describe no claude-route child-env composition (grep verifies — none name it), so `opencode-agent/README.md` is the only doc change. Verify: `bun test` && `bun run typecheck` && `bun run lint` && `bun run format:check`
+- [x] 7.2 Run the full suite, typecheck and lint; confirm affected docs: `docs/architecture/*.md` pages describe no claude-route child-env composition (grep verifies — none name it), so `opencode-agent/README.md` is the only doc change. Verify: `bun test` && `bun run typecheck` && `bun run lint` && `bun run format:check`
