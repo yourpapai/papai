@@ -41,6 +41,7 @@ import {
 import type { OpenAiSettings } from '../../opencode-agent/src/openai-config.js'
 import { createOpenCodeAgent, parseModelRef } from '../../opencode-agent/src/opencode-adapter.js'
 import type { OpenCodeAgent, OpenCodeConnection, SdkPromptBody } from '../../opencode-agent/src/opencode-adapter.js'
+import { sessionTreeUsage } from '../../opencode-agent/src/opencode-connect.js'
 import { mintEnvelope } from '../../opencode-agent/src/phases/envelope.js'
 import { renderThread, shareBudget } from '../../opencode-agent/src/prompt-budget.js'
 import { buildCiFixPrompt, createEnvelope } from '../../opencode-agent/src/prompts.js'
@@ -441,35 +442,11 @@ describe('the recorded SDK contract', () => {
 })
 
 describe('the session tree usage walk', () => {
-  /**
-   * Read by name until the walk step publishes the export (change task 4.4):
-   * the type system cannot name a member that does not exist yet, and these
-   * tests exist to say exactly what that member must answer. The predicate is
-   * that answer, stated as a type.
-   */
   interface TreeClient {
     session: {
       get: (args: { path: { id: string } }) => Promise<unknown>
       children: (args: { path: { id: string } }) => Promise<unknown>
     }
-  }
-
-  const isWalker = (
-    value: unknown,
-  ): value is (client: TreeClient, directory: string, sessionId: string, log: Logger) => Promise<SessionUsage | null> =>
-    typeof value === 'function'
-
-  const walkOf = async (): Promise<
-    (client: TreeClient, directory: string, sessionId: string, log: Logger) => Promise<SessionUsage | null>
-  > => {
-    const connect = await import('../../opencode-agent/src/opencode-connect.js')
-    if (!('sessionTreeUsage' in connect)) {
-      throw new Error('the session tree walk is not published yet')
-    }
-    if (!isWalker(connect.sessionTreeUsage)) {
-      throw new Error('the session tree walk is not a function')
-    }
-    return connect.sessionTreeUsage
   }
 
   /** A recorded `session.get` answer for one node of a stubbed tree. */
@@ -551,8 +528,6 @@ describe('the session tree usage walk', () => {
   }
 
   test('a parent with two children reports the summed tokens and cost', async () => {
-    const sessionTreeUsage = await walkOf()
-
     const usage = new Map([
       [
         'ses_parent',
@@ -580,7 +555,7 @@ describe('the session tree usage walk', () => {
       tokens: 4063,
       cost: 0.21875,
       input: 2579,
-      output: 1433,
+      output: 1434,
       reasoning: 50,
       cacheRead: 933,
       cacheWrite: 422,
@@ -588,8 +563,6 @@ describe('the session tree usage walk', () => {
   })
 
   test('a grandchild is included in the sum', async () => {
-    const sessionTreeUsage = await walkOf()
-
     const usage = new Map([
       [
         'ses_parent',
@@ -625,8 +598,6 @@ describe('the session tree usage walk', () => {
   })
 
   test('a cycle or a repeated id is counted once', async () => {
-    const sessionTreeUsage = await walkOf()
-
     // The same three accounts as the two-children tree, wired into a cycle —
     // the parent lists the same child twice, and that child lists the parent
     // back — so the exact figure proves the duplicates added nothing.
@@ -660,7 +631,7 @@ describe('the session tree usage walk', () => {
       tokens: 4063,
       cost: 0.21875,
       input: 2579,
-      output: 1433,
+      output: 1434,
       reasoning: 50,
       cacheRead: 933,
       cacheWrite: 422,
@@ -668,8 +639,6 @@ describe('the session tree usage walk', () => {
   })
 
   test('the traversal stops at the depth cap', async () => {
-    const sessionTreeUsage = await walkOf()
-
     // A chain fifteen deep, every node costing 0.25 and one token: the walk
     // reads the parent plus the first seven descendants — depths 0 through 7 —
     // and stops, so the figure is exactly eight nodes' worth, never the chain's.
@@ -687,8 +656,6 @@ describe('the session tree usage walk', () => {
   })
 
   test('the traversal stops at the node cap', async () => {
-    const sessionTreeUsage = await walkOf()
-
     // A star of forty children: the walk reads the parent and thirty-one of
     // them — thirty-two sessions — and stops, so the figure is exactly
     // thirty-two nodes' worth, never the star's forty-one.
@@ -712,7 +679,6 @@ describe('the session tree usage walk', () => {
   })
 
   test('a children call that throws degrades to the parent-only figure, warning but never failing', async () => {
-    const sessionTreeUsage = await walkOf()
     const warnings: string[] = []
     const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
 
@@ -737,7 +703,6 @@ describe('the session tree usage walk', () => {
   })
 
   test('a children call that never settles degrades at the walk deadline, parent-only', async () => {
-    const sessionTreeUsage = await walkOf()
     const warnings: string[] = []
     const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
 
@@ -758,7 +723,6 @@ describe('the session tree usage walk', () => {
   })
 
   test('a children payload that decodes as unrecognised degrades to the parent-only figure', async () => {
-    const sessionTreeUsage = await walkOf()
     const warnings: string[] = []
     const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
 
