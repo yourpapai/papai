@@ -48,37 +48,54 @@ sufficient to replay why it fired.
 
 ### Requirement: R1 converged-final-approve
 
-A final gate with zero findings of any severity SHALL be auto-approved by rule
-R1. The auto-decided gate SHALL still write its gate file, consume a gate
-version, and annotate each decided line with the deciding rule.
+A final gate whose review left zero open findings of any severity — open by
+the round's openness predicate, so a finding the resolver fixed with
+hash-verified edits no longer blocks approval while a dismissed one still
+does — and whose surviving assumptions are all classified low-blast SHALL be
+auto-approved by rule R1. The auto-decided gate SHALL still write its gate
+file, consume a gate version, and annotate each decided line with the
+deciding rule.
 
 #### Scenario: Zero-findings final gate completes without a prompt
 
 - **WHEN** a run converges with zero findings and presents its final gate
 - **THEN** rule R1 auto-approves, the gate file exists with pre-checked boxes and rule annotations, and the run reaches `completed` with zero human prompts
 
+#### Scenario: Raised-and-fixed findings no longer block R1
+
+- **WHEN** a final gate's review round raised findings above a nitpick and every one was edited with hash-verified changes, backed by a linked assumption, or evidence-answered
+- **THEN** R1 fires
+
 #### Scenario: Any finding blocks R1
 
-- **WHEN** a final gate carries any finding, however resolved
+- **WHEN** a final gate carries any finding that is open under the openness predicate — a dismissed finding of any severity included — however it was raised
 - **THEN** R1 does not fire
 
 ### Requirement: R2 trajectory-auto-extend
 
-When a round cap is hit with zero open BLOCKERs, at least one open MATERIAL
-finding, a strictly decreasing findings count across the last two rounds, and
-projected remaining spend under the ceiling, rule R2 SHALL auto-extend exactly
-one round. Auto-extends per run SHALL be bounded; if the extended round does
-not converge or improve, the early gate SHALL be presented.
+When a round cap is hit with zero open BLOCKERs and at least one open
+MATERIAL finding — both read from the open set, so a blocker the resolver
+fixed with hash-verified edits no longer blocks eligibility while a dismissed
+one still does — a strictly decreasing raised-finding count across the last
+two rounds, and projected remaining spend under the ceiling, rule R2 SHALL
+auto-extend exactly one round. Auto-extends per run SHALL be bounded; if the
+extended round does not converge or improve, the early gate SHALL be
+presented.
 
 #### Scenario: Strictly decreasing burndown auto-extends once
 
-- **WHEN** a cap-hit run has zero open BLOCKERs, open MATERIALs, strictly decreasing findings across the last two rounds, and projected spend under the ceiling
+- **WHEN** a cap-hit run has zero open BLOCKERs, open MATERIALs, strictly decreasing raised-finding counts across the last two rounds, and projected spend under the ceiling
 - **THEN** the run auto-extends exactly one round, appending an `auto_decision` event, without prompting
 
 #### Scenario: Flat trajectory does not auto-extend
 
-- **WHEN** a cap-hit run's findings count is flat or increasing across the last two rounds
+- **WHEN** a cap-hit run's raised-finding count is flat or increasing across the last two rounds
 - **THEN** R2 does not fire and the cap-hit gate is presented to the human
+
+#### Scenario: Fixed blocker no longer blocks eligibility
+
+- **WHEN** a cap-hit run's only BLOCKER was edited with hash-verified changes and an open MATERIAL finding remains
+- **THEN** R2 evaluates its trajectory and budget predicates without the fixed blocker counting against eligibility
 
 ### Requirement: R3 assumption blast-radius triage
 
@@ -103,19 +120,35 @@ items no rule can decide remain, the gate SHALL still be presented for them.
 
 ### Requirement: R4 budget guard
 
-All auto-decisions in a run SHALL be bounded by the configured budget. Any
+The run config's budget SHALL accept a number or null, alongside an optional
+explicit metered flag that defaults to whether the budget is a number. All
+auto-decisions in a run with a numeric budget SHALL be bounded by it: any
 projected or actual exceedance SHALL cause the gate to wait for a human
-regardless of any other rule's predicate. When the run's cumulative cost is
-unknown, the guard SHALL fail closed: no auto-decision SHALL settle the gate.
+regardless of any other rule's predicate, and no configuration SHALL bypass
+an explicitly configured numeric ceiling. When a metered run's cumulative
+cost is unknown, the guard SHALL fail closed: no auto-decision SHALL settle
+the gate. An unmetered run — budget null, or metered explicitly false —
+SHALL disable only the cost-unknown branch: its auto-decisions are bounded
+by the round cap and the R2 trajectory bound alone.
 
 #### Scenario: Budget exceedance gates despite other rules
 
-- **WHEN** a rule's predicate matches but the run's projected spend crosses the configured budget
+- **WHEN** a rule's predicate matches but the run's projected spend crosses the configured numeric budget
 - **THEN** the gate waits for a human and is not auto-decided
 
 #### Scenario: Unknown cost fails closed
 
-- **WHEN** a rule's predicate matches but the run's cumulative cost cannot be determined
+- **WHEN** a metered run's rule predicate matches but the run's cumulative cost cannot be determined
+- **THEN** the gate waits for a human and is not auto-decided
+
+#### Scenario: Unmetered run is bounded by round cap and trajectory alone
+
+- **WHEN** an unmetered run's cumulative cost is unknown and another rule's predicate matches
+- **THEN** R4's cost-unknown branch does not fire and the matching rule decides the gate
+
+#### Scenario: Explicit numeric budget is never bypassed
+
+- **WHEN** a run declares a numeric budget with metered explicitly false and its projected spend crosses the budget
 - **THEN** the gate waits for a human and is not auto-decided
 
 ### Requirement: R5 escalation rung
@@ -123,7 +156,8 @@ unknown, the guard SHALL fail closed: no auto-decision SHALL settle the gate.
 At an escalation gate — presented when a stage exhausts its per-stage failure
 budget — rule R5 SHALL settle only when spend is over the ceiling or unknown,
 and extend SHALL be suppressed from the rendered gate; otherwise the ladder
-records rule none and the gate waits for a human.
+records rule none and the gate waits for a human. The unknown-cost test SHALL
+NOT be disabled by an unmetered configuration.
 
 #### Scenario: Over-ceiling escalation auto-settles without extend
 
@@ -134,6 +168,11 @@ records rule none and the gate waits for a human.
 
 - **WHEN** an escalation gate is presented and spend is within the ceiling
 - **THEN** the ladder records rule none and the gate waits for a human
+
+#### Scenario: Unmetered escalation keeps extend suppressed on unknown cost
+
+- **WHEN** an unmetered run presents an escalation gate and its cumulative cost is unknown
+- **THEN** R5 settles the gate with extend suppressed and the human decides
 
 ### Requirement: Never-cut invariants
 
@@ -161,13 +200,34 @@ replay-sufficient.
 
 One `auto_decision` event SHALL be appended for every ladder evaluation —
 including undecided evaluations and deadline-waiter settles — carrying the
-rule, decision, evidence digest, and gate version. Replaying the event log
-alone SHALL rebuild every evaluation and its outcome.
+rule, decision, evidence digest, and gate version. A deadline waiter that
+claims a gate SHALL append exactly one event for every claimed outcome: a
+settle names the deciding rule with decision approve or extend; a re-arm and
+a stay-pending record rule none with decision pending. A waiter that loses
+the claim SHALL append nothing, and a human settle SHALL append no
+`auto_decision` beyond the evaluations already recorded, so replaying the
+event log alone rebuilds every evaluation, its outcome, and who settled the
+gate.
 
 #### Scenario: Replay rebuilds evaluations from the log alone
 
 - **WHEN** a run's event log is replayed without any other run artifacts
 - **THEN** every ladder evaluation is reconstructible from the `auto_decision` events
+
+#### Scenario: Waiter settle names its rule
+
+- **WHEN** a claiming waiter's expiry ladder settles the gate
+- **THEN** an `auto_decision` event carrying the deciding rule and decision approve or extend is appended with the settle
+
+#### Scenario: Waiter re-arm and stay-pending record pending
+
+- **WHEN** a claiming waiter's expiry ladder finds no conservative branch and the deadline re-arms or stays pending
+- **THEN** an `auto_decision` event records rule none with decision pending
+
+#### Scenario: Lost claim and human settles stay silent
+
+- **WHEN** the waiter loses the settle claim, or a human settles the gate without any waiter evaluation
+- **THEN** no additional `auto_decision` event is appended for that outcome
 
 ### Requirement: Deadline waiter
 
@@ -200,3 +260,29 @@ queued human word beats the policy.
 
 - **WHEN** a queued `veto` directive exists and the ladder is about to auto-approve
 - **THEN** the veto takes effect instead of the auto-decision
+
+### Requirement: Counts integrity cross-check
+
+Before the ladder evaluates, the convergence event's recorded counts for the
+gate's round — raised and open — SHALL be recomputed from the resolver
+sidecar and the round's hash snapshots and compared against the event log. A
+mismatch in either set, or an unparseable sidecar, SHALL fail closed: the
+ladder SHALL see an open BLOCKER finding naming the integrity failure, so no
+rule can auto-decide and the gate waits for a human. A pre-change convergence
+event that carries no open set SHALL fold its open set equal to its raised
+set for the comparison.
+
+#### Scenario: Open-set drift blocks the ladder
+
+- **WHEN** the sidecar-recomputed open counts disagree with the convergence event's open counts
+- **THEN** the ladder sees an open integrity BLOCKER and no rule auto-decides the gate
+
+#### Scenario: Agreement lets the ladder run
+
+- **WHEN** both recomputed count sets agree with the convergence event
+- **THEN** the ladder evaluates over the recorded review result unchanged
+
+#### Scenario: Unparseable sidecar fails closed
+
+- **WHEN** the gate's round resolver sidecar fails to parse
+- **THEN** the ladder sees an open integrity BLOCKER and the gate waits for a human
