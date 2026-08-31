@@ -488,8 +488,9 @@ describe('issue-inspector backend threading', () => {
       claudeScratchResponder(() => ({ addresses: true, reasoning: 'ok', confidence: 0.9 })),
     )
 
-    // `effort` is not on `RunInspectorDeps` yet: built unannotated — a
-    // structural superset — so this red test states the contract first.
+    // The deps are deliberately built unannotated — a structural superset —
+    // so this assertion states the spawn contract directly rather than
+    // through the deps interface.
     const deps = {
       spawn,
       cwd: runState.worktreePath,

@@ -225,8 +225,9 @@ describe('issue-matcher backend threading', () => {
       claudeScratchResponder(() => ({ matches: [{ newIssueIndex: 0, existingId: 'existing-001' }] })),
     )
 
-    // `effort` is not on `MatchIssuesDeps` yet: the deps are built unannotated
-    // — a structural superset — so this red test states the contract first.
+    // The deps are deliberately built unannotated — a structural superset —
+    // so this assertion states the spawn contract directly rather than
+    // through the deps interface.
     const deps = {
       spawn,
       newIssues: [newIssue],

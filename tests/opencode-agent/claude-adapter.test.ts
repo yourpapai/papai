@@ -276,9 +276,9 @@ describe('the turn outcome contract', () => {
 describe('the model knobs on the spawned argv', () => {
   test('a propose turn carries --effort immediately after --model when a tier resolves (D6, D7)', async () => {
     const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
-    // `proposeEffort` is not on `ClaudeModelKnobs` yet: the knobs are built
-    // unannotated — a structural superset — so this red test states the
-    // contract first and the interface grows to carry it in the next step.
+    // The knobs literal is deliberately left unannotated — a structural
+    // superset — so this assertion states the argv contract directly rather
+    // than through the `ClaudeModelKnobs` type.
     const knobs = {
       model: 'claude-sonnet-5',
       lightModel: null,
