@@ -5,6 +5,9 @@
 
 import { z } from 'zod'
 
+import { usageAccountOf, modelUsageEntrySchema, usageSchema } from './claude-usage.js'
+import type { ClaudeModelUsage, ClaudeUsage } from './claude-usage.js'
+
 /**
  * The contract with the `claude` CLI, as recorded rather than assumed — the
  * `sdk-contract.ts` doctrine carried to the second backend. This file is what
@@ -18,17 +21,10 @@ import { z } from 'zod'
  * `tests/opencode-agent/fixtures/claude-cli/` — its README records the
  * provenance of each file. When the pinned CLI version moves, re-run
  * `bun run opencode-agent:test:claude-live` and re-record rather than
- * adjusting a decoder by inspection.
+ * adjusting a decoder by inspection. The usage half — the token buckets, the
+ * per-model split and the per-bucket maximum — lives in `claude-usage.ts`,
+ * split when this file reached `max-lines` again.
  */
-
-/** Token usage as the CLI's `result` line reports it. `total` is every bucket summed. */
-export interface ClaudeUsage {
-  input: number
-  output: number
-  cacheWrite: number
-  cacheRead: number
-  total: number
-}
 
 /** One decoded NDJSON line, reduced to the scalars the pipeline may consume. */
 export type ClaudeStreamLine =
@@ -43,6 +39,7 @@ export type ClaudeStreamLine =
       readonly sessionId: string
       readonly usage: ClaudeUsage
       readonly costUsd: number
+      readonly models?: Readonly<Record<string, ClaudeModelUsage>>
     }
   | ({ readonly kind: 'rate-limit-event' } & RateLimitFact)
 
@@ -187,13 +184,6 @@ const streamEventLineSchema = z.object({
   event: z.object({ content_block: blockSchema.optional() }).optional(),
 })
 
-const usageSchema = z.object({
-  input_tokens: z.number(),
-  output_tokens: z.number(),
-  cache_creation_input_tokens: z.number().default(0),
-  cache_read_input_tokens: z.number().default(0),
-})
-
 const resultLineSchema = z.object({
   type: z.literal('result'),
   is_error: z.boolean(),
@@ -201,6 +191,7 @@ const resultLineSchema = z.object({
   session_id: z.string().min(1),
   usage: usageSchema,
   total_cost_usd: z.number().default(0),
+  modelUsage: z.record(z.string(), modelUsageEntrySchema).optional().catch(undefined),
 })
 
 /**
@@ -221,6 +212,23 @@ const rateLimitFactOf = (
   ...(info.overageResetsAt === undefined ? {} : { overageResetsAt: info.overageResetsAt }),
   ...(info.isUsingOverage === undefined ? {} : { isUsingOverage: info.isUsingOverage }),
 })
+
+/**
+ * The result line as published, its usage read by `claude-usage.ts` as the
+ * per-bucket maximum of the top-level reading and the decoded split.
+ */
+const resultLineOf = (data: z.infer<typeof resultLineSchema>): Extract<ClaudeStreamLine, { kind: 'result' }> => {
+  const { usage, models } = usageAccountOf(data.usage, data.modelUsage)
+  return {
+    kind: 'result',
+    isError: data.is_error,
+    text: data.result,
+    sessionId: data.session_id,
+    usage,
+    costUsd: data.total_cost_usd,
+    ...(models === undefined ? {} : { models }),
+  }
+}
 
 /**
  * Decodes one NDJSON line, or `null` when its shape is not recognized.
@@ -258,22 +266,7 @@ export const decodeClaudeLine = (raw: unknown): ClaudeStreamLine | null => {
 
   const result = resultLineSchema.safeParse(raw)
   if (!result.success) return null
-  const usage = result.data.usage
-  return {
-    kind: 'result',
-    isError: result.data.is_error,
-    text: result.data.result,
-    sessionId: result.data.session_id,
-    usage: {
-      input: usage.input_tokens,
-      output: usage.output_tokens,
-      cacheWrite: usage.cache_creation_input_tokens,
-      cacheRead: usage.cache_read_input_tokens,
-      total:
-        usage.input_tokens + usage.output_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens,
-    },
-    costUsd: result.data.total_cost_usd,
-  }
+  return resultLineOf(result.data)
 }
 
 /** Splits a stream into parsed lines, skipping blanks and undecodable JSON. */
