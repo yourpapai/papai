@@ -5,7 +5,7 @@
 
 import path from 'node:path'
 
-import type { SpawnFn } from '../../review-loop/src/agent-runner.js'
+import type { ClaudeRunContext, SpawnFn } from '../../review-loop/src/agent-runner.js'
 import type { ConcernRecord } from './concern-model.js'
 import type { AutonomyConfig, ExecGitFn, RunnerConfig } from './config.js'
 import { deadlineStampFor } from './deadline-waiter.js'
@@ -40,6 +40,11 @@ export interface OrchestratorDeps {
   readonly config: RunnerConfig
   readonly spawn: SpawnFn
   readonly execGit: ExecGitFn
+  /**
+   * The claude route's run-wide context, opened once by the harness when the
+   * config selected that route. Absent on the opencode default.
+   */
+  readonly claude?: ClaudeRunContext
   readonly driver: OpenSpecDriver
   readonly render?: (event: EventInput) => void
   /** Live-view sink (tui mode); when present it replaces `render` on the bus. */

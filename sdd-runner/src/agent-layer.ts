@@ -9,7 +9,7 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import { agentWritePath, runAgent } from '../../review-loop/src/agent-runner.js'
-import type { AgentUsage, SpawnFn } from '../../review-loop/src/agent-runner.js'
+import type { AgentUsage, ClaudeRunContext, SpawnFn } from '../../review-loop/src/agent-runner.js'
 import { createAgentReporter } from './agent-reporter.js'
 import { INACTIVITY_TIMEOUT_MS, WALL_CLOCK_TIMEOUT_MS, modelFor } from './config.js'
 import type { AgentRole, ExecGitFn, RunnerConfig } from './config.js'
@@ -97,6 +97,12 @@ export interface AgentLayerDeps {
   readonly config: RunnerConfig
   readonly execGit: ExecGitFn
   readonly emit: (event: EventInput) => void
+  /**
+   * The claude route's run-wide context, present only when the run resolved
+   * that route. Absent on the opencode default, which is what keeps that
+   * route's composition byte-identical.
+   */
+  readonly claude?: ClaudeRunContext
 }
 
 export interface RunStageAgentOptions<T> {
