@@ -102,10 +102,15 @@ export interface ClaudeUsageAccount {
 
 /**
  * Reads the line's complete usage account out of the two places the CLI
- * reports it. `usage` is the per-bucket maximum of the top-level reading and
- * the split's sums: the CLI's top-level figure names only its main model, so
- * a split can only raise a bucket, never lower one — and a partial split must
- * never drag the published figure below the reading the CLI stated outright.
+ * reports it. The figure is a per-bucket **maximum**, never a plain fold,
+ * because the corpus records both coverage arrangements: the native
+ * recording's top-level `usage` names only its main model — the side model
+ * rides in `modelUsage` alone — while the single-model recordings' top-level
+ * figure already spans the account the split's one entry also names. A fold
+ * double-counts whichever reading covers the other; the maximum publishes the
+ * larger reading of each bucket, which is the complete figure under either
+ * arrangement, and sets the floor besides: a split degraded by entry drift
+ * can never drag the published figure below the one the CLI stated outright.
  * `total` is the four published buckets summed.
  */
 export const usageAccountOf = (

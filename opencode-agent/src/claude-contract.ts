@@ -184,6 +184,14 @@ const streamEventLineSchema = z.object({
   event: z.object({ content_block: blockSchema.optional() }).optional(),
 })
 
+/**
+ * The stream's last line, and the one the adapter resolves a turn from, so
+ * nothing riding on it may fail it: `modelUsage` is optional and caught at
+ * every level because it is accounting evidence on a turn-ending line, and a
+ * shape the CLI moved must cost the split, never the line. The tolerance
+ * tests pin the order — a bent entry drops, a bent record drops the whole
+ * split, and the line survives both.
+ */
 const resultLineSchema = z.object({
   type: z.literal('result'),
   is_error: z.boolean(),
