@@ -29,7 +29,7 @@ follows `design.md` — Capability gating, scope model, dependencies, hooks.
 ## 4. Adapter and containment plumbing (test-first)
 
 - [x] 4.1 Write failing tests: in `tests/opencode-agent/claude-adapter.test.ts`, the spawn seam records the merged env arriving through `ClaudeSpawnRequest` (adapter passes the knob to every turn's spawn); in `tests/opencode-agent/contain.test.ts` coverage of `claudeSessionOptions` (or the existing `contain` suite), `contained.claudeEnv` crosses as a plain value and `null` crosses as absent — never the config object. Verify: `bun test tests/opencode-agent/claude-adapter.test.ts tests/opencode-agent/contain.test.ts` (red)
-- [ ] 4.2 Plumb in `contain.ts` (`claudeSessionOptions` gains the field) and `claude-adapter.ts` (`ClaudeAgentOptions` gains it; `spawnTurn` forwards it on each request). Verify: same command (green) && `bun run typecheck`
+- [x] 4.2 Plumb in `contain.ts` (`claudeSessionOptions` gains the field) and `claude-adapter.ts` (`ClaudeAgentOptions` gains it; `spawnTurn` forwards it on each request). Verify: same command (green) && `bun run typecheck`
 
 ## 5. Credential wiring (`secrets.ts` + adapter redaction, test-first)
 
