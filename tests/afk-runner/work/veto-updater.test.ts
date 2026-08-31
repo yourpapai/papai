@@ -28,7 +28,10 @@ const NITPICK_ROUND = {
     ],
   }),
   'resolutions-1.json': JSON.stringify({
-    resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'evidence-answered', outcome: 'kept as informational' }],
+    // Dismissed nitpicks stay genuinely open under the raised-vs-open split —
+    // open nitpicks still converge the round but block R1's zero-open approve,
+    // so the final gate stays human and parks for this veto revision flow.
+    resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'dismissed', justification: 'kept as informational' }],
     assumptions: [],
   }),
   'findings-2.json': JSON.stringify({
@@ -43,7 +46,10 @@ const NITPICK_ROUND = {
     ],
   }),
   'resolutions-2.json': JSON.stringify({
-    resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'evidence-answered', outcome: 'kept as informational' }],
+    // Dismissed nitpicks stay genuinely open under the raised-vs-open split —
+    // open nitpicks still converge the round but block R1's zero-open approve,
+    // so the final gate stays human and parks for this veto revision flow.
+    resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'dismissed', justification: 'kept as informational' }],
     assumptions: [],
   }),
   'veto-updater.json': JSON.stringify({ files_updated: ['openspec/changes/add-thing/proposal.md'] }),

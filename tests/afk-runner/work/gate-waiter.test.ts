@@ -67,7 +67,9 @@ async function makeAwaitingGate(mode: 'early' | 'final' = 'early'): Promise<Wait
   fs.writeFileSync(
     path.join(sidecarDir, 'resolutions-1.json'),
     JSON.stringify({
-      resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'evidence-answered', outcome: 'kept as documented' }],
+      // Dismissed stays genuinely open under the raised-vs-open split, so the
+      // presented rows and the sidecar re-read agree on F1 being a finding row.
+      resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'kept as documented' }],
       assumptions: [
         {
           id: 'A1',
@@ -110,7 +112,7 @@ async function makeAwaitingGate(mode: 'early' | 'final' = 'early'): Promise<Wait
         { id: 'A1', text: 'guests stay read-only', blast_radius: 'group replies', evidence: { files: ['src/a.ts'] } },
       ],
       blockers: [],
-      openMaterial: [{ id: 'F1', gap: 'F1', evidence: 'evidence-answered — kept as documented' }],
+      openMaterial: [{ id: 'F1', gap: 'F1', evidence: 'dismissed — kept as documented' }],
       openNitpicks: [],
       trajectory: [],
       capHitFired: mode === 'early',
@@ -472,7 +474,9 @@ describe('gate waiter as run-level continuation (C4 5.1)', () => {
         ],
       }),
       'resolutions-1.json': JSON.stringify({
-        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'evidence-answered', outcome: 'kept as documented' }],
+        // Dismissed stays genuinely open under the raised-vs-open split, so the
+        // presented rows and the sidecar re-read agree on F1 being a finding row.
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'kept as documented' }],
         assumptions: [],
       }),
       'findings-2.json': JSON.stringify({ findings: [] }),

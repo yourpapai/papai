@@ -33,7 +33,9 @@ const MATERIAL_ROUND = {
     ],
   }),
   'resolutions-1.json': JSON.stringify({
-    resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'evidence-answered', outcome: 'kept as documented' }],
+    // Dismissed stays genuinely open under the raised-vs-open split, so the
+    // round keeps an open MATERIAL — R2's eligibility — instead of converging.
+    resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'kept as documented' }],
     assumptions: [],
   }),
 }

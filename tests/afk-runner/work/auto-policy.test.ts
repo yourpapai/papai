@@ -18,13 +18,24 @@ function autonomy(overrides: Partial<AutonomyConfig> = {}): AutonomyConfig {
 }
 
 function converged(overrides: Partial<ReviewLoopResult> = {}): ReviewLoopResult {
-  return { outcome: 'converged', rounds: 2, openBlockers: [], openMaterial: [], openNitpicks: [], ...overrides }
+  return {
+    outcome: 'converged',
+    rounds: 2,
+    verdict: 'converged',
+    raised: { blocker: 0, material: 0, nitpick: 0 },
+    openBlockers: [],
+    openMaterial: [],
+    openNitpicks: [],
+    ...overrides,
+  }
 }
 
 function capHit(overrides: Partial<ReviewLoopResult> = {}): ReviewLoopResult {
   return {
     outcome: 'cap-hit',
     rounds: 3,
+    verdict: 'open',
+    raised: { blocker: 0, material: 1, nitpick: 0 },
     openBlockers: [],
     openMaterial: [{ id: 'F1', class: 'MATERIAL', resolution: 'assumed', outcome: 'kept' }],
     openNitpicks: [],

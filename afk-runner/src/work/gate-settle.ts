@@ -6,7 +6,9 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import type { Resolution } from '../agent-layer.js'
 import type { GateOutcome, StageId } from '../events.js'
+import type { FindingCounts } from '../events.js'
 import { renderGateAnswers } from './gate-answers.js'
 import type { GateAnswers } from './gate-answers.js'
 import { responseFromAnswers } from './gate-answers.js'
@@ -15,8 +17,12 @@ import type { GateDeps } from './gate-files.js'
 import { verifyGateIntegrity } from './gate-files.js'
 import type { ExpectedGateContent, GateResponse } from './gate-model.js'
 import { parseGateResponse } from './gate-model.js'
+import { readRoundDigests } from './materialize.js'
 import { ResolverOutputSchema } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
+import { evaluateConvergence, isOpenResolution } from './review-model.js'
+
+const EMPTY_COUNTS: FindingCounts = { blocker: 0, material: 0, nitpick: 0 }
 
 export type SettleOutcome = GateOutcome
 
@@ -212,24 +218,44 @@ function appendMover(input: SettleInput, outcome: SettleOutcome): void {
   }
 }
 
-/** Review result from a round's resolver sidecar (gate-digest copy, fail-empty). */
+/**
+ * Rebuild a round's review result from its sidecars, applying the same openness
+ * predicate the live loop used. A resumed run's gate must see the set the run
+ * would have seen; recomputing it by class alone would show a resumed operator
+ * findings the live one had already settled.
+ */
 export async function readReviewResultFromSidecars(
   sidecarDir: string,
   round: number,
   outcome: 'converged' | 'cap-hit',
 ): Promise<ReviewLoopResult> {
+  // An unreadable sidecar keeps the pre-change reading — empty buckets, treated
+  // as converged — rather than becoming a new gating condition here. The
+  // ladder's integrity cross-check is what fails closed on an unparseable
+  // sidecar; duplicating that in the reader would change resume routing.
+  const empty = { outcome, rounds: round, verdict: 'converged', raised: EMPTY_COUNTS } as const
   try {
     const raw = await readFile(path.join(sidecarDir, `resolutions-${round}.json`), 'utf8')
     const parsed = ResolverOutputSchema.parse(JSON.parse(raw))
+    const [current, previous] = await Promise.all([
+      readRoundDigests(sidecarDir, round),
+      readRoundDigests(sidecarDir, round - 1),
+    ])
+    const context = { assumptions: parsed.assumptions, digests: { previous, current: current ?? {} } }
+    const { verdict, raised } = evaluateConvergence(parsed.resolutions, context)
+    const openOf = (cls: Resolution['class']): Resolution[] =>
+      parsed.resolutions.filter((r) => r.class === cls && isOpenResolution(r, context.assumptions, context.digests))
     return {
       outcome,
       rounds: round,
-      openBlockers: parsed.resolutions.filter((entry) => entry.class === 'BLOCKER'),
-      openMaterial: parsed.resolutions.filter((entry) => entry.class === 'MATERIAL'),
-      openNitpicks: parsed.resolutions.filter((entry) => entry.class === 'NITPICK'),
+      verdict,
+      raised,
+      openBlockers: openOf('BLOCKER'),
+      openMaterial: openOf('MATERIAL'),
+      openNitpicks: openOf('NITPICK'),
     }
   } catch {
-    return { outcome, rounds: round, openBlockers: [], openMaterial: [], openNitpicks: [] }
+    return { ...empty, openBlockers: [], openMaterial: [], openNitpicks: [] }
   }
 }
 

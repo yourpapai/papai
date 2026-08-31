@@ -81,7 +81,9 @@ describe('veto revision as draft re-entry work (integration)', () => {
         ],
       }),
       'resolutions-1.json': JSON.stringify({
-        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'evidence-answered', outcome: 'kept as documented' }],
+        // Dismissed stays genuinely open under the raised-vs-open split, so the
+        // round-1 cap-hit still presents the early gate this test vetoes.
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'kept as documented' }],
         assumptions: [],
       }),
       'findings-2.json': JSON.stringify({ findings: [] }),

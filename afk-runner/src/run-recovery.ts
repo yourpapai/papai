@@ -111,6 +111,8 @@ export async function recoverOwedEscalation(
     reviewResult: {
       outcome: 'converged',
       rounds: context.round?.current ?? 1,
+      verdict: 'converged',
+      raised: { blocker: 0, material: 0, nitpick: 0 },
       openBlockers: [],
       openMaterial: [],
       openNitpicks: [],

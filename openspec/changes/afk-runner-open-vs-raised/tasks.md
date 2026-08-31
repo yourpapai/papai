@@ -23,7 +23,7 @@ commits before §1 starts.
 ## 4. Review loop wiring
 
 - [ ] 4.1 `ReviewLoopResult` carries verdict, raised, and the genuinely-open lists. Red-first in `tests/afk-runner/work/review-loop.test.ts`: the result exposes `verdict` and `raised` alongside per-class open findings computed by §1's predicate (reading the round's assumptions and hash snapshots); the convergence event emitted per round carries both sets; a round whose findings were all edited-with-changes reports an empty open set and a `needs-review` verdict; round close writes the §2.2 snapshot before the `round_close` event. Then wire `review-loop.ts`. Verify: `bun test tests/afk-runner/work/review-loop.test.ts`
-- [ ] 4.2 Sidecar re-read agrees with the live loop. Red-first in the gate-settle tests: `readReviewResultFromSidecars` applies the identical predicate, so a resumed run's gate sees the same open set the live run would have. Then update `gate-settle.ts`. Verify: `bun test tests/afk-runner/work/gate-settle.test.ts tests/afk-runner/work/gate-settle-final.test.ts`
+- [x] 4.2 Sidecar re-read agrees with the live loop. Red-first in the gate-settle tests: `readReviewResultFromSidecars` applies the identical predicate, so a resumed run's gate sees the same open set the live run would have. Then update `gate-settle.ts`. Verify: `bun test tests/afk-runner/work/gate-settle.test.ts tests/afk-runner/work/gate-settle-final.test.ts`
 
 ## 5. Cap-hit routing and the verification round
 

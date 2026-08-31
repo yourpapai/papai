@@ -21,14 +21,17 @@ const NITPICK_ROUND = {
     findings: [{ id: 'F1', class: 'NITPICK', gap: 'typo', question: 'q', code_evidence_attempted: 'a' }],
   }),
   'resolutions-1.json': JSON.stringify({
-    resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'evidence-answered', outcome: 'kept as informational' }],
+    // Dismissed nitpicks stay genuinely open under the raised-vs-open split —
+    // open nitpicks (≤3) still converge the round but block R1's zero-open
+    // approve, so the final gate stays human and parks for this heal test.
+    resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'dismissed', justification: 'kept as informational' }],
     assumptions: [],
   }),
   'findings-2.json': JSON.stringify({
     findings: [{ id: 'F1', class: 'NITPICK', gap: 'typo', question: 'q', code_evidence_attempted: 'a' }],
   }),
   'resolutions-2.json': JSON.stringify({
-    resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'evidence-answered', outcome: 'kept as informational' }],
+    resolutions: [{ id: 'F1', class: 'NITPICK', resolution: 'dismissed', justification: 'kept as informational' }],
     assumptions: [],
   }),
 }
@@ -51,14 +54,19 @@ const M_ATOMICITY_ROUND = {
     findings: [{ id: 'F1', class: 'BLOCKER', gap: 'no rollback story', question: 'q', code_evidence_attempted: 'a' }],
   }),
   'resolutions-1.json': JSON.stringify({
-    resolutions: [{ id: 'F1', class: 'BLOCKER', resolution: 'edited', outcome: 'added a rollback section' }],
+    // Assumed with no backing assumption stays genuinely open under the
+    // raised-vs-open split, so round 1 keeps the open verdict the M-shaped
+    // multi-round flow expects.
+    resolutions: [{ id: 'F1', class: 'BLOCKER', resolution: 'assumed', outcome: 'added a rollback section' }],
     assumptions: [],
   }),
   'findings-2.json': JSON.stringify({
     findings: [{ id: 'F2', class: 'NITPICK', gap: 'typo', question: 'q', code_evidence_attempted: 'a' }],
   }),
   'resolutions-2.json': JSON.stringify({
-    resolutions: [{ id: 'F2', class: 'NITPICK', resolution: 'evidence-answered', outcome: 'kept as informational' }],
+    // A dismissed nitpick is open under the split, which blocks R1's
+    // zero-open-findings approve — the final gate stays human and parks.
+    resolutions: [{ id: 'F2', class: 'NITPICK', resolution: 'dismissed', justification: 'kept as informational' }],
     assumptions: [],
   }),
 }

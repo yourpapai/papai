@@ -387,7 +387,9 @@ describe('live-shaped think-half integration (stubbed agents)', () => {
         ],
       }),
       'resolutions-1.json': JSON.stringify({
-        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'evidence-answered', outcome: 'kept as documented' }],
+        // Dismissed stays genuinely open under the raised-vs-open split, so the
+        // cap-hit early gate this heal test settles stays presented.
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'kept as documented' }],
         assumptions: [],
       }),
     }

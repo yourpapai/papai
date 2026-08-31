@@ -95,7 +95,9 @@ async function parkedGateRun(): Promise<DrillHarness> {
       ],
     }),
     'resolutions-1.json': JSON.stringify({
-      resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'evidence-answered', outcome: 'kept as documented' }],
+      // Dismissed stays genuinely open under the raised-vs-open split, so the
+      // early-gate movers these resume tests drive stay owed.
+      resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'kept as documented' }],
       assumptions: [],
     }),
     'findings-2.json': JSON.stringify({ findings: [] }),

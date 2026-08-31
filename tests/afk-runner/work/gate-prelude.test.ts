@@ -22,7 +22,16 @@ import { makeFakePipeline, TASK_TEXT } from '../fixtures/fake-pipeline.js'
 const NULL_DIGEST = { what: null, why: null, touches: null, hasTasks: false }
 
 function reviewResult(overrides: Partial<ReviewLoopResult> = {}): ReviewLoopResult {
-  return { outcome: 'cap-hit', rounds: 1, openBlockers: [], openMaterial: [], openNitpicks: [], ...overrides }
+  return {
+    outcome: 'cap-hit',
+    rounds: 1,
+    verdict: 'open',
+    raised: { blocker: 0, material: 0, nitpick: 0 },
+    openBlockers: [],
+    openMaterial: [],
+    openNitpicks: [],
+    ...overrides,
+  }
 }
 
 interface PreludeHarness {
@@ -202,11 +211,14 @@ describe('gate prelude wired into the live presentation (integration)', () => {
         })),
       }),
       [`resolutions-${round}.json`]: JSON.stringify({
+        // Dismissed materials stay genuinely open under the raised-vs-open
+        // split, so every round cap-hits with open MATERIALs — the trajectory
+        // R2 reads — instead of converging on closed evidence answers.
         resolutions: Array.from({ length: count }, (_, i) => ({
           id: `F${i + 1}`,
           class: 'MATERIAL',
-          resolution: 'evidence-answered',
-          outcome: 'kept',
+          resolution: 'dismissed',
+          justification: 'kept',
         })),
         assumptions: [],
       }),

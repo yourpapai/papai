@@ -62,9 +62,12 @@ const BLOCKER_ROUND = {
   'resolutions-1.json': JSON.stringify({
     resolutions: [
       {
+        // Assumed with no backing assumption stays genuinely open under the
+        // raised-vs-open split, so the round-1 cap-hit keeps presenting the
+        // early gate these fixtures exercise.
         id: 'F1',
         class: 'BLOCKER',
-        resolution: 'edited',
+        resolution: 'assumed',
         outcome: 'added a rollback section',
       },
     ],
