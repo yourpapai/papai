@@ -226,11 +226,17 @@ describe('runEntry wiring routes (in-process, mutation kills)', () => {
   let exitSpy: { mockRestore(): void }
   const saved: { argv: string[]; config: string | undefined } = { argv: [], config: undefined }
 
-  function makeEntryFixture(): EntryFixture {
+  function makeEntryFixture(backend?: 'claude'): EntryFixture {
     const dir = makeDir()
     fs.writeFileSync(
       path.join(dir, 'config.json'),
-      JSON.stringify({ repoRoot: dir, workDir: '.sdd-runner', model: 'test-model', budget: 5 }),
+      JSON.stringify({
+        repoRoot: dir,
+        workDir: '.sdd-runner',
+        model: 'test-model',
+        budget: 5,
+        ...(backend === undefined ? {} : { backend }),
+      }),
     )
     return {
       repoRoot: dir,
@@ -252,10 +258,32 @@ describe('runEntry wiring routes (in-process, mutation kills)', () => {
     })
   })
 
+  /**
+   * The three names the claude-route guard reads. Every credential test sets
+   * all three explicitly: the process running this suite may itself carry a
+   * real one, and an inherited spelling would decide the test's outcome.
+   */
+  const CREDENTIAL_NAMES = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'LLM_API_KEY'] as const
+  const savedCredentials = new Map<string, string | undefined>()
+
+  function setCredentials(values: Partial<Record<(typeof CREDENTIAL_NAMES)[number], string>>): void {
+    for (const name of CREDENTIAL_NAMES) {
+      savedCredentials.set(name, process.env[name])
+      const value = values[name]
+      if (value === undefined) Reflect.deleteProperty(process.env, name)
+      else process.env[name] = value
+    }
+  }
+
   afterEach(() => {
     process.argv = saved.argv
     if (saved.config === undefined) delete process.env['SDD_RUNNER_CONFIG']
     else process.env['SDD_RUNNER_CONFIG'] = saved.config
+    for (const [name, value] of savedCredentials) {
+      if (value === undefined) Reflect.deleteProperty(process.env, name)
+      else process.env[name] = value
+    }
+    savedCredentials.clear()
     writeSpy.mockRestore()
     exitSpy.mockRestore()
     fixture = null
@@ -372,6 +400,56 @@ describe('runEntry wiring routes (in-process, mutation kills)', () => {
     expect(out).toContain('runs: 1')
     expect(out).toContain(`## run ${state.runId} (${fx.workDir}) — add-thing ·`)
     expect(fx.exitCodes).toEqual([0])
+  })
+
+  /**
+   * The claude route's credential guard (D3). `--reopen` is the run-driving
+   * verb these cases drive: it is not one of the read-only verbs, and it fails
+   * on its own terms (`no settled gate`) without spawning — so the refusal
+   * being a credential one, rather than that, is the ordering evidence.
+   */
+  async function reopenClaudeRun(fx: EntryFixture): Promise<void> {
+    const state = await createRunState({ workDir: fx.workDir, repoRoot: fx.repoRoot, changeName: 'add-thing' })
+    await saveRunState(state)
+    fs.writeFileSync(path.join(fx.workDir, 'runs', state.runId, 'events.ndjson'), '')
+    await runEntryAgainst(fx, [state.runId, '--reopen', '1', '--config', fx.configPath])
+  }
+
+  it('the claude route refuses an empty credential environment before any run directory exists', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({})
+    const taskFile = path.join(fx.repoRoot, 'task.md')
+    fs.writeFileSync(taskFile, '# Add a thing\n')
+    await expect(runEntryAgainst(fx, [taskFile, '--config', fx.configPath])).rejects.toThrow(/\[CLAUDE_CREDENTIALS\]/u)
+    // No run directory means no spawn: the pipeline's first agent starts only
+    // after `runStart` has allocated one.
+    expect(fs.existsSync(path.join(fx.workDir, 'runs'))).toBe(false)
+  })
+
+  it('the claude route refuses both Anthropic spellings set', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({ ANTHROPIC_API_KEY: 'sk-ant-key-0123456789', CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token-0123456789' })
+    await expect(reopenClaudeRun(fx)).rejects.toThrow(/\[CLAUDE_CREDENTIALS\]/u)
+  })
+
+  it("the claude route refuses a set LLM_API_KEY, the other route's carrier", async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({ ANTHROPIC_API_KEY: 'sk-ant-key-0123456789', LLM_API_KEY: 'gateway-key' })
+    await expect(reopenClaudeRun(fx)).rejects.toThrow(/\[LLM_CREDENTIALS\]/u)
+  })
+
+  it('ANTHROPIC_API_KEY alone passes the guard and the verb does its own work', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({ ANTHROPIC_API_KEY: 'sk-ant-key-0123456789' })
+    // Past the guard, so the failure is the verb's own. Which profile that
+    // spelling buys is pinned on `resolveAgentBackend` itself.
+    await expect(reopenClaudeRun(fx)).rejects.toThrow(/no settled gate to reopen/u)
+  })
+
+  it('CLAUDE_CODE_OAUTH_TOKEN alone passes the guard and the verb does its own work', async () => {
+    const fx = makeEntryFixture('claude')
+    setCredentials({ CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token-0123456789' })
+    await expect(reopenClaudeRun(fx)).rejects.toThrow(/no settled gate to reopen/u)
   })
 })
 
