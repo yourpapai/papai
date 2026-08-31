@@ -98,11 +98,13 @@ export interface AgentLayerDeps {
   readonly execGit: ExecGitFn
   readonly emit: (event: EventInput) => void
   /**
-   * The claude route's run-wide context, present only when the run resolved
-   * that route. Absent on the opencode default, which is what keeps that
-   * route's composition byte-identical.
+   * The claude route's run-wide context; absent on the opencode default,
+   * which is what keeps that route's composition byte-identical. The
+   * `createClaudeSpawnDir` seam beside it is injectable so a test can compose
+   * a claude invocation without a filesystem; absent takes the loop's default.
    */
   readonly claude?: ClaudeRunContext
+  readonly createClaudeSpawnDir?: import('../../review-loop/src/agent-runner.js').CreateClaudeSpawnDir
 }
 
 export interface RunStageAgentOptions<T> {
