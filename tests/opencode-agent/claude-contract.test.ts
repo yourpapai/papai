@@ -142,6 +142,53 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     expect(result.costUsd).toBe(0.0123)
   })
 
+  test('decodes the native success corpus: the result line reads the complete two-model figure', () => {
+    const result = resultOf('native-success-turn.ndjson')
+
+    expect(result.isError).toBe(false)
+
+    // Designs D2/D3: the CLI's top-level `usage` names the main model only —
+    // its four buckets sum to 89624 — while `modelUsage` carries the side
+    // model's marginal 923 tokens (912 in / 11 out). The published buckets are
+    // the per-bucket maximum of the top-level reading and the decoded split
+    // (here exactly the split's sums), and `total` is those buckets summed:
+    // input 4 + 912, output 155 + 11, cacheWrite 28005 + 0, cacheRead 61460 + 0.
+    expect(result.usage).toEqual({
+      input: 916,
+      output: 166,
+      cacheWrite: 28005,
+      cacheRead: 61460,
+      total: 90547,
+    })
+  })
+
+  test('decodes the native success corpus: the result line publishes the models split', () => {
+    const result = resultOf('native-success-turn.ndjson')
+
+    // Read by name rather than off the typed line — the split is the decoder
+    // step's field to publish (change task 1.4), so today it exists on no type
+    // this file imports. Every model the backend billed, keyed by the CLI's
+    // own model id; the side model is visible nowhere else on the line, and
+    // its recorded cost rides along as the top-level `costUsd` does — never a
+    // budget input.
+    expect(result).toHaveProperty('models', {
+      'claude-sonnet-5': {
+        input: 4,
+        output: 155,
+        cacheWrite: 28005,
+        cacheRead: 61460,
+        costUsd: 0.12586999999999998,
+      },
+      'claude-haiku-4-5-20251001': {
+        input: 912,
+        output: 11,
+        cacheWrite: 0,
+        cacheRead: 0,
+        costUsd: 0.0009670000000000001,
+      },
+    })
+  })
+
   test('decodes the adversarial plan fixture: the Bash call comes back refused, not run', () => {
     // The permission-effect pin: a `Bash` call under the `plan` allowlist is
     // refused — `is_error: true` on the tool result — so the effective toolset
