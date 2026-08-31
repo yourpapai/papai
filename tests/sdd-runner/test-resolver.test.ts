@@ -26,10 +26,13 @@ afterEach(() => {
 })
 
 describe('test-resolver sdd-runner mapping', () => {
-  it('treats sdd-runner/src files as gateable implementation files', () => {
+  // The gate measures product code. sdd-runner/ is internal infrastructure: it keeps its own
+  // suite under tests/sdd-runner/, but nothing gates it per-file. See
+  // openspec/changes/narrow-mutation-gate-scope.
+  it('does not treat sdd-runner/src files as gateable implementation files', () => {
     const root = makeTmpRoot()
-    expect(isGateableImplFile('sdd-runner/src/events.ts', root)).toBe(true)
-    expect(isGateableImplFile('sdd-runner/src/stages/intake.ts', root)).toBe(true)
+    expect(isGateableImplFile('sdd-runner/src/events.ts', root)).toBe(false)
+    expect(isGateableImplFile('sdd-runner/src/stages/intake.ts', root)).toBe(false)
   })
 
   it('does not treat sdd-runner test files or non-src files as gateable', () => {
@@ -37,6 +40,17 @@ describe('test-resolver sdd-runner mapping', () => {
     expect(isGateableImplFile('sdd-runner/src/events.test.ts', root)).toBe(false)
     expect(isGateableImplFile('sdd-runner/package.json', root)).toBe(false)
     expect(isGateableImplFile('sdd-runner/README.md', root)).toBe(false)
+  })
+
+  // Gateability and mappability are separate questions: `bun run test:affected` and the mutation
+  // score fingerprint resolve tests for workspaces the gate does not measure. Narrowing
+  // isGateableImplFile must not narrow the mappers below. See
+  // openspec/changes/narrow-mutation-gate-scope design.md D2.
+  it('is not gateable yet still maps to its test file and back', () => {
+    const root = makeTmpRoot()
+    expect(isGateableImplFile('sdd-runner/src/events.ts', root)).toBe(false)
+    expect(suggestTestPath('sdd-runner/src/events.ts')).toBe(path.join('tests', 'sdd-runner', 'events.test.ts'))
+    expect(resolveImplPath('tests/sdd-runner/events.test.ts')).toBe(path.join('sdd-runner', 'src', 'events.ts'))
   })
 
   it('suggests tests/sdd-runner paths for sdd-runner/src files', () => {
