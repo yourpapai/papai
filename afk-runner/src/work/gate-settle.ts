@@ -17,7 +17,8 @@ import type { GateDeps } from './gate-files.js'
 import { verifyGateIntegrity } from './gate-files.js'
 import type { ExpectedGateContent, GateResponse } from './gate-model.js'
 import { parseGateResponse } from './gate-model.js'
-import { readRoundDigests } from './materialize.js'
+import { sanitizeRowGap } from './gate-signals.js'
+import { readRoundDigests, readRoundGaps } from './materialize.js'
 import { ResolverOutputSchema } from './review-loop.js'
 import type { ReviewLoopResult } from './review-loop.js'
 import { evaluateConvergence, isOpenResolution } from './review-model.js'
@@ -237,9 +238,10 @@ export async function readReviewResultFromSidecars(
   try {
     const raw = await readFile(path.join(sidecarDir, `resolutions-${round}.json`), 'utf8')
     const parsed = ResolverOutputSchema.parse(JSON.parse(raw))
-    const [current, previous] = await Promise.all([
+    const [current, previous, gaps] = await Promise.all([
       readRoundDigests(sidecarDir, round),
       readRoundDigests(sidecarDir, round - 1),
+      readRoundGaps(sidecarDir, round),
     ])
     const context = { assumptions: parsed.assumptions, digests: { previous, current: current ?? {} } }
     const { verdict, raised } = evaluateConvergence(parsed.resolutions, context)
@@ -250,6 +252,7 @@ export async function readReviewResultFromSidecars(
       rounds: round,
       verdict,
       raised,
+      gaps,
       openBlockers: openOf('BLOCKER'),
       openMaterial: openOf('MATERIAL'),
       openNitpicks: openOf('NITPICK'),
@@ -269,16 +272,17 @@ export async function expectedContentFor(
   const assumptions = await gatherAssumptions(sidecarDir, round)
   const capHitFired = gateMode === 'early'
   const reviewResult = await readReviewResultFromSidecars(sidecarDir, round, capHitFired ? 'cap-hit' : 'converged')
+  const gaps = reviewResult.gaps
   const blockerIds = new Set(reviewResult.openBlockers.map((entry) => entry.id))
   return {
     assumptions,
-    blockers: [...blockerIds].map((id) => ({ id, gap: id, evidence: '' })),
+    blockers: [...blockerIds].map((id) => ({ id, gap: sanitizeRowGap(id, gaps), evidence: '' })),
     ...(reviewResult.openMaterial.length === 0
       ? {}
       : {
           findings: reviewResult.openMaterial.map((entry) => ({
             id: entry.id,
-            gap: entry.id,
+            gap: sanitizeRowGap(entry.id, gaps),
             evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
           })),
         }),

@@ -15,6 +15,7 @@ import {
   materializeAssumptions,
   materializeReview,
   readRoundDigests,
+  readRoundGaps,
   recordRoundDigests,
 } from '../../../afk-runner/src/work/materialize.js'
 
@@ -454,3 +455,53 @@ describe('recordRoundDigests', () => {
 function keysOf(snapshot: Record<string, string> | null): string[] {
   return snapshot === null ? [] : Object.keys(snapshot)
 }
+
+describe('readRoundGaps — the findings/resolutions joiner', () => {
+  function seedFindings(sidecarDir: string, name: string, findings: readonly unknown[]): void {
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(path.join(sidecarDir, name), JSON.stringify({ findings }))
+  }
+
+  const finding = (id: string, gap: string): unknown => ({
+    id,
+    class: 'MATERIAL',
+    gap,
+    question: 'q',
+    code_evidence_attempted: 'e',
+  })
+
+  it('joins both lens sidecars, the reviewer winning a duplicate id', async () => {
+    const sidecarDir = path.join(makeDir(), 'sidecars')
+    seedFindings(sidecarDir, 'findings-1.json', [finding('F1', 'reviewer gap')])
+    seedFindings(sidecarDir, 'findings-skeptic-1.json', [
+      finding('F2', 'skeptic gap'),
+      finding('F1', 'skeptic duplicate'),
+    ])
+    expect(await readRoundGaps(sidecarDir, 1)).toEqual({ F1: 'reviewer gap', F2: 'skeptic gap' })
+  })
+
+  it('answers an empty join when a sidecar is missing', async () => {
+    const sidecarDir = path.join(makeDir(), 'absent')
+    expect(await readRoundGaps(sidecarDir, 4)).toEqual({})
+  })
+
+  it('answers an empty join when a sidecar is malformed', async () => {
+    const sidecarDir = path.join(makeDir(), 'sidecars')
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(path.join(sidecarDir, 'findings-1.json'), '{not json')
+    expect(await readRoundGaps(sidecarDir, 1)).toEqual({})
+  })
+
+  it('leaves review.md bytes unchanged — the joiner reads, it never renders', async () => {
+    const root = makeDir()
+    const changeDir = path.join(root, 'change')
+    const sidecarDir = path.join(root, 'sidecars')
+    fs.mkdirSync(changeDir, { recursive: true })
+    writeJson(sidecarDir, 'findings-1.json', FINDINGS_R1)
+    writeJson(sidecarDir, 'resolutions-1.json', RESOLUTIONS_R1)
+    await materializeReview(changeDir, sidecarDir, 1)
+    const before = fs.readFileSync(path.join(changeDir, 'review.md'), 'utf8')
+    await readRoundGaps(sidecarDir, 1)
+    expect(fs.readFileSync(path.join(changeDir, 'review.md'), 'utf8')).toBe(before)
+  })
+})

@@ -18,7 +18,7 @@ import { presentGate } from '../../../afk-runner/src/work/gate-files.js'
 import type { ExpectedGateContent } from '../../../afk-runner/src/work/gate-model.js'
 import { settleGateFile, settleGateWithAnswers } from '../../../afk-runner/src/work/gate-settle.js'
 import type { SettleFileResult, SettleInput, SettleResult } from '../../../afk-runner/src/work/gate-settle.js'
-import { readReviewResultFromSidecars } from '../../../afk-runner/src/work/gate-settle.js'
+import { expectedContentFor, readReviewResultFromSidecars } from '../../../afk-runner/src/work/gate-settle.js'
 
 const NULL_DIGEST = { what: null, why: null, touches: null, hasTasks: false }
 
@@ -340,5 +340,62 @@ describe('readReviewResultFromSidecars applies the openness predicate', () => {
       openMaterial: [{ id: 'F2' }],
       openNitpicks: [{ id: 'N1' }],
     })
+  })
+})
+
+describe('expectedContentFor carries the sanitized joined gap', () => {
+  function seed(sidecarDir: string, round: number, resolutions: readonly unknown[]): void {
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(sidecarDir, `resolutions-${String(round)}.json`),
+      JSON.stringify({ resolutions, assumptions: [] }),
+    )
+    fs.writeFileSync(
+      path.join(sidecarDir, `findings-${String(round)}.json`),
+      JSON.stringify({
+        findings: [
+          {
+            id: 'F1',
+            class: 'BLOCKER',
+            gap: 'no rollback path\nsecond line',
+            question: 'q',
+            code_evidence_attempted: 'e',
+          },
+          {
+            id: 'F2',
+            class: 'MATERIAL',
+            gap: '→ typo everywhere and a very long explanation ' + 'a'.repeat(250),
+            question: 'q',
+            code_evidence_attempted: 'e',
+          },
+        ],
+      }),
+    )
+  }
+
+  it('renders blocker and finding rows with the joined gap, sanitized', async () => {
+    const sidecarDir = fs.mkdtempSync(path.join(os.tmpdir(), 'afk-settle-gap-'))
+    seed(sidecarDir, 1, [
+      { id: 'F1', class: 'BLOCKER', resolution: 'dismissed', justification: 'out of scope' },
+      { id: 'F2', class: 'MATERIAL', resolution: 'dismissed', justification: 'out of scope' },
+    ])
+    const expected = await expectedContentFor(sidecarDir, 1, 'early')
+    expect(expected.blockers[0]?.gap).toBe('no rollback path second line')
+    expect(expected.findings?.[0]?.gap).toHaveLength(200)
+    expect(expected.findings?.[0]?.gap?.endsWith('…')).toBe(true)
+  })
+
+  it('degrades to the identifier when the findings sidecar is absent', async () => {
+    const sidecarDir = fs.mkdtempSync(path.join(os.tmpdir(), 'afk-settle-nogap-'))
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(sidecarDir, 'resolutions-1.json'),
+      JSON.stringify({
+        resolutions: [{ id: 'F1', class: 'BLOCKER', resolution: 'dismissed', justification: 'out of scope' }],
+        assumptions: [],
+      }),
+    )
+    const expected = await expectedContentFor(sidecarDir, 1, 'early')
+    expect(expected.blockers[0]?.gap).toBe('F1')
   })
 })

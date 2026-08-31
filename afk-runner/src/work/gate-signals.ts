@@ -9,10 +9,30 @@ import { gatherAssumptions } from './gate-digest-extract.js'
 import type { GateAssumption, GateBlocker, GateFinding } from './gate-model.js'
 import type { ReviewLoopResult } from './review-loop.js'
 
+/** Row width that keeps a checkbox line readable and the grammar intact. */
+const MAX_GAP_LEN = 200
+
 /**
- * Open findings as the gate digest renders them (sdd-runner `findingsOf`
- * copy): the id doubles as the gap line; the resolver sidecar's outcome or
- * justification is the evidence.
+ * A gap as a gate row can safely carry it: one line, no leading redirect
+ * marker, bounded length. The checkbox grammar anchors on `- [x] F3` at line
+ * start and a redirect is a line opening with an arrow, so an unsanitized
+ * multi-line gap could otherwise be parsed back as a decision it never was.
+ */
+export function sanitizeRowGap(id: string, gaps: Record<string, string> | undefined): string {
+  const raw = gaps?.[id]
+  if (raw === undefined || raw.trim() === '') return id
+  const flat = raw
+    .replace(/\s+/gu, ' ')
+    .replace(/^[\s→]+/u, '')
+    .trim()
+  if (flat === '') return id
+  return flat.length > MAX_GAP_LEN ? `${flat.slice(0, MAX_GAP_LEN - 1)}…` : flat
+}
+
+/**
+ * Open findings as the gate digest renders them: the row carries the finding's
+ * verbatim gap (joined from the round's findings sidecars, sanitized); the
+ * resolver sidecar's outcome or justification is the evidence.
  */
 export function findingsOf(result: ReviewLoopResult): {
   blockers: GateBlocker[]
@@ -21,17 +41,17 @@ export function findingsOf(result: ReviewLoopResult): {
 } {
   const blockers = result.openBlockers.map((entry) => ({
     id: entry.id,
-    gap: entry.id,
+    gap: sanitizeRowGap(entry.id, result.gaps),
     evidence: entry.outcome ?? entry.justification ?? '',
   }))
   const material = result.openMaterial.map((entry) => ({
     id: entry.id,
-    gap: entry.id,
+    gap: sanitizeRowGap(entry.id, result.gaps),
     evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
   }))
   const nitpicks = result.openNitpicks.map((entry) => ({
     id: entry.id,
-    gap: entry.id,
+    gap: sanitizeRowGap(entry.id, result.gaps),
     evidence: `${entry.resolution} — ${entry.outcome ?? entry.justification ?? ''}`,
   }))
   return { blockers, material, nitpicks }

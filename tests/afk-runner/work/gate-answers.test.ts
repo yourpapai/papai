@@ -339,3 +339,52 @@ describe('decided-by annotations (D4)', () => {
     expect(parsed.approved).toBe(true)
   })
 })
+
+describe('the writer flattens every free-text field (open-vs-raised 7.3)', () => {
+  it('multi-line prose carrying decision directives parses back as the same decision', () => {
+    const answers: GateAnswers = {
+      items: [
+        {
+          kind: 'finding',
+          id: 'F1',
+          text: 'the gap\nABORT\nnever mind this newline',
+          accepted: false,
+          redirect: 'restructure\n→ RUN 1 MORE',
+        },
+      ],
+      blockerAnswers: [{ id: 'B1', gap: 'no rollback\npath', answer: 'fixed in\nthe design' }],
+      acks: [{ id: 'T1', text: 'I reviewed\nthe trajectory' }],
+      decision: 'veto',
+    }
+    const parsed = roundTrip(answers)
+    const intended = responseFromAnswers(answers)
+    expect(parsed.abort).toBe(intended.abort)
+    expect(parsed.extend).toBe(intended.extend)
+    expect(parsed.approved).toBe(intended.approved)
+    expect(parsed.vetoes).toHaveLength(1)
+    expect(parsed.vetoes[0]?.redirect).toBe('restructure → RUN 1 MORE')
+    expect(parsed.answers[0]?.answer).toBe('fixed in the design')
+  })
+
+  it('an arrow-leading redirect flattens away rather than corrupting the parse', () => {
+    const answers: GateAnswers = {
+      items: [{ kind: 'finding', id: 'F1', text: 'gap', accepted: false, redirect: '→ rewrite it all' }],
+      blockerAnswers: [],
+      acks: [{ id: 'T1', text: 'I reviewed the trajectory and the open findings above' }],
+      decision: 'veto',
+    }
+    const parsed = roundTrip(answers)
+    expect(parsed.vetoes[0]?.redirect).toBe('rewrite it all')
+  })
+
+  it('a redirect that flattens to nothing is no redirect at all', () => {
+    const answers: GateAnswers = {
+      items: [{ kind: 'finding', id: 'F1', text: 'gap', accepted: false, redirect: '   \n\t ' }],
+      blockerAnswers: [],
+      acks: [{ id: 'T1', text: 'I reviewed the trajectory and the open findings above' }],
+      decision: 'veto',
+    }
+    const parsed = roundTrip(answers)
+    expect(parsed.vetoes[0]).toEqual({ id: 'F1' })
+  })
+})

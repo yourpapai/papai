@@ -91,6 +91,13 @@ export interface ReviewLoopResult {
   readonly openBlockers: readonly Resolution[]
   readonly openMaterial: readonly Resolution[]
   readonly openNitpicks: readonly Resolution[]
+  /**
+   * The verbatim gap each finding quoted, keyed by id, so a gate row can carry
+   * the evidence rather than an identifier. Optional: a result assembled
+   * without the findings sidecars in reach carries none and the gate falls back
+   * to the id.
+   */
+  readonly gaps?: Record<string, string>
 }
 
 async function runLens(
@@ -231,8 +238,8 @@ async function runRound(
     merged,
     sessionForLabel(consumedSession, 'resolver', round),
   )
-  const { verdict, raised, openLists } = await closeRound(deps, options, resolved, round, effectiveCap)
-  const settled = { rounds: round, verdict, raised } as const
+  const { verdict, raised, openLists, gaps } = await closeRound(deps, options, resolved, round, effectiveCap)
+  const settled = { rounds: round, verdict, raised, gaps } as const
   if (verdict === 'converged') {
     const openNitpicks = openLists.openNitpicks
     return { ...settled, outcome: 'converged', openBlockers: [], openMaterial: [], openNitpicks }

@@ -149,3 +149,31 @@ describe('decisionConsequences and renderDecisions (13.4)', () => {
     )
   })
 })
+
+describe('gate rows carry the sanitized gap (open-vs-raised 7.2)', () => {
+  it('a blocker row renders the one-line sanitized gap, not the identifier', () => {
+    const md = writeGateDigest({
+      ...decisionBase,
+      mode: 'early',
+      capHitFired: true,
+      blockers: [{ id: 'F1', gap: 'no rollback path second line', evidence: 'searched design.md' }],
+    })
+    expect(md).toContain('F1 no rollback path second line')
+    expect(md).not.toContain('F1 F1')
+  })
+
+  it('a finding row renders the sanitized one-line gap the producers hand it', () => {
+    // Sanitization lives in the row producers (findingsOf/expectedContentFor);
+    // the renderer's contract is to carry the row verbatim on one line.
+    const sanitized = `typo ${'a'.repeat(196)}…`
+    const md = writeGateDigest({
+      ...decisionBase,
+      mode: 'early',
+      capHitFired: true,
+      openMaterial: [{ id: 'F2', gap: sanitized, evidence: 'edited — narrowed' }],
+    })
+    const row = md.split('\n').find((line) => line.startsWith('- [ ] F2'))
+    expect(row).toBeDefined()
+    expect(row?.split('F2 ')[1]).toBe(sanitized)
+  })
+})

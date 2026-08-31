@@ -5,7 +5,7 @@
 
 import type { Resolution } from '../agent-layer.js'
 import type { FindingCounts } from '../events.js'
-import { readRoundDigests, recordRoundDigests } from './materialize.js'
+import { readRoundDigests, readRoundGaps, recordRoundDigests } from './materialize.js'
 import type { ResolverOutput, ReviewLoopDeps, ReviewLoopOptions, ReviewLoopResult } from './review-loop.js'
 import { evaluateConvergence, isOpenResolution } from './review-model.js'
 import type { ConvergenceContext } from './review-model.js'
@@ -14,6 +14,7 @@ export interface ClosedRound {
   readonly verdict: ReviewLoopResult['verdict']
   readonly raised: FindingCounts
   readonly openLists: Pick<ReviewLoopResult, 'openBlockers' | 'openMaterial' | 'openNitpicks'>
+  readonly gaps: Record<string, string>
 }
 
 /**
@@ -47,6 +48,7 @@ export async function closeRound(
       openMaterial: openOf('MATERIAL'),
       openNitpicks: openOf('NITPICK'),
     },
+    gaps: await readRoundGaps(deps.sidecarDir, round),
   }
 }
 
