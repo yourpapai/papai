@@ -50,8 +50,10 @@ import {
   collectText,
   decodeAbort,
   decodeReply,
+  decodeSessionChildren,
   decodeSessionId,
   decodeSessionUsage,
+  sumSessionUsage,
 } from '../../opencode-agent/src/sdk-contract.js'
 import type { SessionUsage } from '../../opencode-agent/src/sdk-contract.js'
 import { redactSecrets, scrubSecrets } from '../../opencode-agent/src/secrets.js'
@@ -319,34 +321,12 @@ describe('the recorded SDK contract', () => {
 
   describe('the session children envelope', () => {
     /**
-     * Read by name until the decoder step publishes the export (change task
-     * 3.3): the type system cannot name a member that does not exist yet, and
-     * these tests exist to say exactly what that member must answer. The
-     * predicate is that answer, stated as a type.
-     */
-    const isDecoder = (value: unknown): value is (fetched: unknown) => readonly string[] | null =>
-      typeof value === 'function'
-
-    const decodeOf = async (): Promise<(fetched: unknown) => readonly string[] | null> => {
-      const contract = await import('../../opencode-agent/src/sdk-contract.js')
-      if (!('decodeSessionChildren' in contract)) {
-        throw new Error('the session children decoder is not published yet')
-      }
-      if (!isDecoder(contract.decodeSessionChildren)) {
-        throw new Error('the session children decoder is not a function')
-      }
-      return contract.decodeSessionChildren
-    }
-
-    /**
      * `GET /session/{id}/children` answers `200: Array<Session>` under the same
      * `{ data, error }` envelope every other response above uses — the recorded
      * convention applied to a list. The decoder reads only `id` from each
      * entry: the walk it feeds needs addresses, nothing else.
      */
-    test('reads only the id of each child entry', async () => {
-      const decodeSessionChildren = await decodeOf()
-
+    test('reads only the id of each child entry', () => {
       expect(
         decodeSessionChildren({
           data: [
@@ -360,9 +340,7 @@ describe('the recorded SDK contract', () => {
       expect(decodeSessionChildren({ data: [] })).toEqual([])
     })
 
-    test('a child entry with no id is dropped, not fatal', async () => {
-      const decodeSessionChildren = await decodeOf()
-
+    test('a child entry with no id is dropped, not fatal', () => {
       expect(
         decodeSessionChildren({
           data: [{ id: 'ses_child_1' }, { title: 'the id moved' }, 'junk', null],
@@ -376,9 +354,7 @@ describe('the recorded SDK contract', () => {
       [{ data: 'not an array' }],
       [{}],
       ['nope'],
-    ])('reports %p as unknown rather than throwing', async (fetched) => {
-      const decodeSessionChildren = await decodeOf()
-
+    ])('reports %p as unknown rather than throwing', (fetched) => {
       // The `decodeSessionUsage` doctrine, one envelope over: the walk this
       // feeds decorates the spend read, and an SDK that moved it must not fail
       // the turn or the phase.
@@ -387,24 +363,7 @@ describe('the recorded SDK contract', () => {
   })
 
   describe('the session usage sum', () => {
-    /** Read by name until the decoder step publishes the export (change task 3.3). */
-    const isSummer = (value: unknown): value is (usages: readonly SessionUsage[]) => SessionUsage =>
-      typeof value === 'function'
-
-    const sumOf = async (): Promise<(usages: readonly SessionUsage[]) => SessionUsage> => {
-      const contract = await import('../../opencode-agent/src/sdk-contract.js')
-      if (!('sumSessionUsage' in contract)) {
-        throw new Error('the session usage sum is not published yet')
-      }
-      if (!isSummer(contract.sumSessionUsage)) {
-        throw new Error('the session usage sum is not a function')
-      }
-      return contract.sumSessionUsage
-    }
-
-    test('adds tokens, cost and every bucket across sessions', async () => {
-      const sumSessionUsage = await sumOf()
-
+    test('adds tokens, cost and every bucket across sessions', () => {
       // The tree's total is the sessions' own accounts, added — the same
       // shape one `session.get` read answers, so the ceiling and the price
       // read the summed tree exactly as they read a single session.
@@ -424,9 +383,7 @@ describe('the recorded SDK contract', () => {
       })
     })
 
-    test('a cache bucket any summand leaves absent stays absent on the sum', async () => {
-      const sumSessionUsage = await sumOf()
-
+    test('a cache bucket any summand leaves absent stays absent on the sum', () => {
       // Absent is not zero (the one rule `decodeSessionUsage` exists for): a
       // summand that does not report a bucket makes the tree's bucket absent,
       // so `run-spend` reports the tree unpriced rather than pricing the rest

@@ -25,7 +25,7 @@ See LICENSE in the project root for details.
 
 - [x] 3.1 Add failing assertions to `tests/opencode-agent/adapters.test.ts` for a children decoder that reads only `id` from each entry: a well-formed array yields its ids, an entry missing `id` is dropped, and a payload of an unrecognised shape yields `null` rather than throwing. Verify: `bun test tests/opencode-agent/adapters.test.ts`.
 - [x] 3.2 Add failing assertions to the same file for summing `SessionUsage` values: `tokens` and `cost` add across sessions, and an absent `cacheRead`/`cacheWrite` on any summand leaves that bucket absent on the sum (so `run-spend` reports unpriced rather than under-charging). Verify: `bun test tests/opencode-agent/adapters.test.ts`.
-- [ ] 3.3 Implement the children decoder and the usage sum in `opencode-agent/src/sdk-contract.ts`, beside `decodeSessionUsage` and following its non-throwing doctrine. Verify: `bun test tests/opencode-agent/adapters.test.ts && bun run typecheck`.
+- [x] 3.3 Implement the children decoder and the usage sum in `opencode-agent/src/sdk-contract.ts`, beside `decodeSessionUsage` and following its non-throwing doctrine. Verify: `bun test tests/opencode-agent/adapters.test.ts && bun run typecheck`.
 
 ## 4. OpenCode: walk the tree behind `usage()` (design D5, D7)
 

@@ -172,89 +172,38 @@ export const decodeAbort = (aborted: unknown): boolean => {
 }
 
 /**
- * What a session has spent so far, as the server itself accounts for it.
+ * The children envelope: `GET /session/{id}/children` answers
+ * `200: Array<Session>` under the same `{ data, error }` envelope every other
+ * response here uses — the recorded convention applied to a list.
  *
- * Read back from `session.get` rather than summed from the event stream. Both
- * numbers exist and agree, but only this one is free of a race: a total summed
- * from events is whatever has arrived by the time it is asked for, and the
- * budget is checked immediately after a prompt returns. Verified against a real
- * server — two prompts of 1234/567 tokens each read back as exactly 2468/1134.
- *
- * `cost` is decoded and reported, never enforced on. It is derived from
- * OpenCode's model catalogue, and a model the catalogue does not price reports
- * the right token counts and a cost of **0**.
+ * Only `id` is read from each entry: the session-tree walk this feeds needs
+ * addresses and nothing else. An entry whose `id` has moved or gone is dropped
+ * whole — one bent child must not fail the list — and an unrecognised payload
+ * reports `null` on the `decodeSessionUsage` doctrine: the walk decorates the
+ * spend read, and an SDK that moved this list must not fail the turn or the
+ * phase.
  */
-/**
- * A cache bucket, and the one field in this file that is deliberately **not**
- * `.default(0)`.
- *
- * `reasoning` beside it defaults and is right to: it is a count the budget adds
- * up, where "reported none" and "did not say" spend the same. A cache bucket
- * feeds the *price* instead, and there the two are different answers — cache
- * reads and writes are charged at their own rates, so a bucket the server never
- * reported cannot be priced at all. Defaulting it to `0` would quietly
- * under-charge a cache-heavy run rather than reporting it unpriced, which is
- * the failure this whole surface exists to avoid.
- *
- * `.catch(undefined)` for the same reason the decoder below returns `null`
- * rather than throwing: a moved field costs that field, never the whole read.
- */
-const cacheBucketSchema = z.number().optional().catch(undefined)
+const sessionChildSchema = z
+  .object({ id: z.string().min(1) })
+  .optional()
+  .catch(undefined)
 
-const sessionUsageSchema = z.object({
-  data: z
-    .object({
-      tokens: z.object({
-        input: z.number(),
-        output: z.number(),
-        reasoning: z.number().default(0),
-        cache: z.object({ read: cacheBucketSchema, write: cacheBucketSchema }).optional().catch(undefined),
-      }),
-      cost: z.number().default(0),
-    })
-    .optional(),
+const sessionChildrenSchema = z.object({
+  data: z.array(sessionChildSchema).optional().catch(undefined),
   error: z.unknown().optional(),
 })
 
-export interface SessionUsage {
-  /** Every counted bucket summed — what the token ceiling reads. */
-  tokens: number
-  cost: number
-  /**
-   * The same spend, unsummed, because the sum cannot be repriced: folding cache
-   * reads and writes into one number loses the split their own rates need. Both
-   * come from one read of one envelope, so the ceiling and the price cannot be
-   * measured at different moments.
-   */
-  input: number
-  output: number
-  reasoning: number
-  /** Absent when the server did not report the bucket — never conflated with `0`. */
-  cacheRead?: number
-  cacheWrite?: number
+export const decodeSessionChildren = (fetched: unknown): readonly string[] | null => {
+  const parsed = sessionChildrenSchema.safeParse(fetched)
+  if (!parsed.success || parsed.data.data === undefined) return null
+
+  return parsed.data.data.flatMap((entry) => (entry === undefined ? [] : [entry.id]))
 }
 
 /**
- * Decodes a session's running totals.
- *
- * Unlike the other decoders here this one does **not** throw on a shape it does
- * not recognise. A budget is a guardrail on the work, not part of it, and an SDK
- * upgrade that moves these fields must not turn every phase into a failure. It
- * reports zero and says so at the call site, which is visible in the log and in
- * the totals the run reports.
+ * The usage half — the `session.get` account and the tree sum — lives in
+ * `sdk-usage.ts`, split when this file reached `max-lines` again. Re-exported
+ * so the contract's consumers keep naming this module for what the SDK says.
  */
-export const decodeSessionUsage = (fetched: unknown): SessionUsage | null => {
-  const parsed = sessionUsageSchema.safeParse(fetched)
-  if (!parsed.success || parsed.data.data === undefined) return null
-
-  const { tokens, cost } = parsed.data.data
-  return {
-    tokens: Math.round(tokens.input + tokens.output + tokens.reasoning),
-    cost,
-    input: tokens.input,
-    output: tokens.output,
-    reasoning: tokens.reasoning,
-    ...(tokens.cache?.read === undefined ? {} : { cacheRead: tokens.cache.read }),
-    ...(tokens.cache?.write === undefined ? {} : { cacheWrite: tokens.cache.write }),
-  }
-}
+export { decodeSessionUsage, sumSessionUsage } from './sdk-usage.js'
+export type { SessionUsage } from './sdk-usage.js'
