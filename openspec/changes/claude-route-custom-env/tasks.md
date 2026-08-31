@@ -24,7 +24,7 @@ follows `design.md` — Capability gating, scope model, dependencies, hooks.
 ## 3. Child-environment merge (`claude-connect.ts`, test-first)
 
 - [x] 3.1 Write failing tests in `tests/opencode-agent/claude-connect.test.ts`: a `ClaudeSpawnRequest` with `customEnv` produces a child env carrying the entries; the route's own values win for `DISABLE_AUTOUPDATER`, `CLAUDE_CONFIG_DIR` and the profile credential (merge order proven); a request without `customEnv` yields an env byte-identical to the pre-change build. Verify: `bun test tests/opencode-agent/claude-connect.test.ts` (red)
-- [ ] 3.2 Implement in `claude-connect.ts`: optional `customEnv: Record<string, string>` on `ClaudeSpawnRequest`, folded in `childEnv` after the `STRIPPED_NAMES` strip and before the profile credential re-add. Verify: `bun test tests/opencode-agent/claude-connect.test.ts` (green) && `bun run typecheck`
+- [x] 3.2 Implement in `claude-connect.ts`: optional `customEnv: Record<string, string>` on `ClaudeSpawnRequest`, folded in `childEnv` after the `STRIPPED_NAMES` strip and before the profile credential re-add. Verify: `bun test tests/opencode-agent/claude-connect.test.ts` (green) && `bun run typecheck`
 
 ## 4. Adapter and containment plumbing (test-first)
 
