@@ -52,4 +52,9 @@ edit from over-applying it. See design.md.
       `docs/architecture/commands.md`, `docs/guides/tdd-PIPELINES.md` — state the product-code rule
       and that the dropped workspaces keep their unit suites. Verify with
       `bun run format:check`
-- [ ] 5.2 Run `bun test`, `bun run typecheck`, `bun run lint` and confirm all green
+- [x] 5.2 Run `bun test`, `bun run typecheck`, `bun run lint` and confirm all green — typecheck and
+      lint clean; suite 17811 pass / 4 skip / 1 fail. The single failure is
+      `tests/git-init-hint.test.ts:68`, which pins a bun 1.4 env-propagation fix and fails on any
+      bun 1.3 host (this container: 1.3.11; CI pins 1.4.0). Unrelated to this change and not among
+      its files. Note `.hooks/tests/**` is outside default `bun test` discovery — run it separately
+      with `bun test ./.hooks/tests/tdd/`
