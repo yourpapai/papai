@@ -255,22 +255,46 @@ describe('buildOpencodeConfig · per-profile model and effort', () => {
     expect(config.small_model).toBeUndefined()
   })
 
-  it('emits a variant per profile only when that variable is set', () => {
+  it('emits a variant per profile only when that tier resolves (D7)', () => {
     const config = buildOpencodeConfig(
-      withProfiles({ light: null, planEffort: 'low', proposeEffort: null, buildEffort: 'xhigh' }),
+      withProfiles({ light: null, planEffort: 'low', proposeEffort: 'high', buildEffort: 'xhigh' }),
     )
 
     expect(config.agent?.['plan']?.['variant']).toBe('low')
+    // A "shared" variable that silently skipped a profile would be the wrong
+    // knob: the drafting turns get a tier too (D7).
+    expect(config.agent?.['propose']?.['variant']).toBe('high')
     expect(config.agent?.['build']?.['variant']).toBe('xhigh')
-    // `propose` is never given one: it has no variable of its own.
-    expect(config.agent?.['propose']?.['variant']).toBeUndefined()
   })
 
-  it('emits no variant key at all when neither variable is set', () => {
+  it('emits no variant key anywhere when no tier resolves', () => {
     const config = buildOpencodeConfig(withProfiles(NO_MODEL_PROFILES))
 
     expect(config.agent?.['plan']?.['variant']).toBeUndefined()
+    expect(config.agent?.['propose']?.['variant']).toBeUndefined()
     expect(config.agent?.['build']?.['variant']).toBeUndefined()
+    // "Anywhere", not just the three profiles — the strongest form of the
+    // additive guarantee is the whole document, unchanged to the byte.
+    expect(JSON.stringify(config)).toBe(BASELINE_CONFIG)
+  })
+
+  it('still emits the tiers under a reasoning:false catalogue row — the gate is OpenCode’s', () => {
+    // The pre-existing gate that empties the effort variants on a
+    // `reasoning: false` row lives in OpenCode's transform, past this builder:
+    // the tier resolves and is emitted verbatim, and this pipeline never
+    // strips it here. Duplicating the gate would desynchronize the two the
+    // day OpenCode's rule moves (design Non-Goals).
+    const gated: OpenAiSettings = {
+      ...settings,
+      profiles: { light: null, planEffort: 'low', proposeEffort: 'high', buildEffort: 'xhigh' },
+      facts: { reasoning: false },
+    }
+    const config = buildOpencodeConfig(gated)
+
+    expect(config.provider?.[gated.provider]?.models?.[gated.model]?.reasoning).toBe(false)
+    expect(config.agent?.['plan']?.['variant']).toBe('low')
+    expect(config.agent?.['propose']?.['variant']).toBe('high')
+    expect(config.agent?.['build']?.['variant']).toBe('xhigh')
   })
 
   it('keeps the three permission profiles byte-identical either way', () => {
