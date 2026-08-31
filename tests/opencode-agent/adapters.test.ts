@@ -568,7 +568,7 @@ describe('the session tree usage walk', () => {
 
   /** The parent's own account, exactly — what every degraded walk answers. */
   const parentUsage = (): SessionUsage => ({
-    tokens: 3602,
+    tokens: 4002,
     cost: 0.125,
     input: 2468,
     output: 1134,
@@ -614,7 +614,7 @@ describe('the session tree usage walk', () => {
     const children = new Map([['ses_parent', childrenEnvelope(['ses_child_1', 'ses_child_2'])]])
 
     expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
-      tokens: 4063,
+      tokens: 4485,
       cost: 0.21875,
       input: 2579,
       output: 1434,
@@ -649,7 +649,7 @@ describe('the session tree usage walk', () => {
     ])
 
     expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
-      tokens: 3959,
+      tokens: 4379,
       cost: 0.203125,
       input: 2571,
       output: 1338,
@@ -690,7 +690,7 @@ describe('the session tree usage walk', () => {
     ])
 
     expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
-      tokens: 4063,
+      tokens: 4485,
       cost: 0.21875,
       input: 2579,
       output: 1434,

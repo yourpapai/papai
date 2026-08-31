@@ -574,10 +574,12 @@ describe('token accounting', () => {
 
     await agent.prompt({ prompt: 'x' })
 
-    // The contract's per-bucket maximum read as one turn's account: the main
-    // model's 89624 plus the side model's 912 in / 11 out. Before the models
-    // split this read 89624 — the side model was invisible to the ceiling.
-    expect(await agent.tokensUsed()).toBe(90547)
+    // The ceiling's count leaves the cache reads out: 916 in + 166 out +
+    // 28005 cache write, the side model's 912 in / 11 out now counted.
+    // Before the models split this read 28164 (4 + 155 + 28005) — the side
+    // model was invisible to the ceiling; the all-buckets account is what
+    // moved 89624 -> 90547.
+    expect(await agent.tokensUsed()).toBe(29_087)
   })
 
   test('the cost figure never enters the total', async () => {
@@ -650,7 +652,7 @@ describe('progress translation', () => {
     // counts, the names-only rule intact: no content rides on it.
     const said = log.rows.find((row) => row.message === 'claude: turn result')
     expect(said?.meta).toEqual({
-      tokens: 90547,
+      tokens: 29_087,
       models: {
         'claude-sonnet-5': { input: 4, output: 155, cacheWrite: 28005, cacheRead: 61460, costUsd: 0.12586999999999998 },
         'claude-haiku-4-5-20251001': {
@@ -705,7 +707,12 @@ describe('createClaudeAgent · what the run spent', () => {
     const accounting = accountingOf('native-success-turn.ndjson')
 
     expect(accounting.buckets).toEqual({ input: 916, output: 166, cacheRead: 61460, cacheWrite: 28005 })
-    expect(accounting.tokensTotal).toBe(90547)
+    expect(
+      accounting.buckets.input +
+        accounting.buckets.output +
+        accounting.buckets.cacheRead +
+        accounting.buckets.cacheWrite,
+    ).toBe(90_547)
   })
 
   test('the two-model native turn prices at the backend rung — the CLI cost figure, folding unchanged', async () => {
@@ -730,13 +737,11 @@ describe('createClaudeAgent · what the run spent', () => {
     // account byte-identical.
     const bare = accountingOf('auth-error-turn.ndjson')
     expect(bare.sawUsage).toBe(true)
-    expect(bare.tokensTotal).toBe(0)
     expect(bare.costUsdTotal).toBe(0)
     expect(bare.buckets).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
 
     const native = accountingOf('native-auth-error.ndjson')
     expect(native.sawUsage).toBe(true)
-    expect(native.tokensTotal).toBe(0)
     expect(native.costUsdTotal).toBe(0)
     expect(native.buckets).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
   })
