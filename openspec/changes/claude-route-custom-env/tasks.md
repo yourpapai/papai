@@ -38,7 +38,7 @@ follows `design.md` — Capability gating, scope model, dependencies, hooks.
 
 ## 6. Documentation and the maintainer hand-edit
 
-- [ ] 6.1 Document the knob in `opencode-agent/README.md`'s claude-route section: route-scoped, JSON shape, refused names, values readable by the CLI's `Bash` children (the documented residual), secrets do not belong in a repository variable, review-loop claude subprocesses excluded, inert until the workflow forwarding line lands. Verify: `bun run format:check` && `bun run lint`
+- [x] 6.1 Document the knob in `opencode-agent/README.md`'s claude-route section: route-scoped, JSON shape, refused names, values readable by the CLI's `Bash` children (the documented residual), secrets do not belong in a repository variable, review-loop claude subprocesses excluded, inert until the workflow forwarding line lands. Verify: `bun run format:check` && `bun run lint`
 - [ ] 6.2 Surface the maintainer hand-edit — do **not** edit `.github/workflows/` (protected path; the agent's token cannot push one): the phase report must carry the exact line `AGENT_CLAUDE_ENV: ${{ vars.AGENT_CLAUDE_ENV }}` for the pipeline step's `env:` block, beside `AGENT_EFFORT_PLAN`, with the note that `tests/opencode-agent/workflow.test.ts` and `bun run workflows:lint` must stay green across it. Verify: report contains the line; `bun run workflows:lint` passes (no workflow change made by the agent)
 
 ## 7. Full verification
