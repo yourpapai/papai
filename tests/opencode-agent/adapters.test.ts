@@ -386,6 +386,63 @@ describe('the recorded SDK contract', () => {
     })
   })
 
+  describe('the session usage sum', () => {
+    /** Read by name until the decoder step publishes the export (change task 3.3). */
+    const isSummer = (value: unknown): value is (usages: readonly SessionUsage[]) => SessionUsage =>
+      typeof value === 'function'
+
+    const sumOf = async (): Promise<(usages: readonly SessionUsage[]) => SessionUsage> => {
+      const contract = await import('../../opencode-agent/src/sdk-contract.js')
+      if (!('sumSessionUsage' in contract)) {
+        throw new Error('the session usage sum is not published yet')
+      }
+      if (!isSummer(contract.sumSessionUsage)) {
+        throw new Error('the session usage sum is not a function')
+      }
+      return contract.sumSessionUsage
+    }
+
+    test('adds tokens, cost and every bucket across sessions', async () => {
+      const sumSessionUsage = await sumOf()
+
+      // The tree's total is the sessions' own accounts, added — the same
+      // shape one `session.get` read answers, so the ceiling and the price
+      // read the summed tree exactly as they read a single session.
+      expect(
+        sumSessionUsage([
+          { tokens: 3602, cost: 0.014425, input: 2468, output: 1134, reasoning: 0, cacheRead: 900, cacheWrite: 400 },
+          { tokens: 350, cost: 0.002575, input: 100, output: 200, reasoning: 50, cacheRead: 30, cacheWrite: 20 },
+        ]),
+      ).toEqual({
+        tokens: 3952,
+        cost: 0.017,
+        input: 2568,
+        output: 1334,
+        reasoning: 50,
+        cacheRead: 930,
+        cacheWrite: 420,
+      })
+    })
+
+    test('a cache bucket any summand leaves absent stays absent on the sum', async () => {
+      const sumSessionUsage = await sumOf()
+
+      // Absent is not zero (the one rule `decodeSessionUsage` exists for): a
+      // summand that does not report a bucket makes the tree's bucket absent,
+      // so `run-spend` reports the tree unpriced rather than pricing the rest
+      // and under-charging a cache-heavy run.
+      const summed = sumSessionUsage([
+        { tokens: 300, cost: 0.01, input: 100, output: 150, reasoning: 50, cacheRead: 900, cacheWrite: 400 },
+        { tokens: 30, cost: 0.001, input: 10, output: 15, reasoning: 5 },
+      ])
+
+      expect(summed.tokens).toBe(330)
+      expect(summed.cost).toBe(0.011)
+      expect(summed.cacheRead).toBeUndefined()
+      expect(summed.cacheWrite).toBeUndefined()
+    })
+  })
+
   /**
    * The abort envelope.
    *
