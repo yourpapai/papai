@@ -67,7 +67,10 @@ Double-layered: a crash in any check never blocks work.
 Checks [1], [2], [5], and [6] only activate for **gateable implementation files**
 (`isGateableImplFile` in `test-resolver.mjs`):
 
-- Path starts with `src/` (relative to `cwd`)
+- Path starts with a product root — `src/`, `client/` or `plugins/` (relative to `cwd`).
+  Internal workspaces (`scripts/`, `opencode-agent/`, `mutation-improve/`, `review-loop/`,
+  `sdd-runner/`) are deliberately excluded; they keep their suites under `tests/` but are gated
+  per file by neither these hooks nor the mutation gate, which shares this predicate.
 - Extension matches `*.ts`, `*.js`, `*.tsx`, `*.jsx`
 - Is NOT a test file (`*.test.*` / `*.spec.*`)
 

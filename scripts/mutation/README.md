@@ -196,6 +196,34 @@ immutable per key. The gate is the sole writer of the score cache, so shards nev
 
 The master `mutation-baseline` seed job is unchanged and still runs single-process.
 
+## The gate measures product code
+
+`test:mutate:changed` selects a changed file only when `isGateableImplFile`
+(`.hooks/tdd/test-resolver.mjs`) accepts it, which means an implementation source under `src/`,
+`client/` or `plugins/`. `stryker.config.json`'s `mutate` globs do not narrow this further — the
+paired runner overwrites `mutate` with the single target file — so that predicate is the gate's
+only scoping authority.
+
+Everything else is internal infrastructure or tooling and is deliberately **not** gated per file:
+`scripts/`, `opencode-agent/`, `mutation-improve/`, `review-loop/`, `sdd-runner/`. They keep their
+suites under `tests/` and run in CI like any other test; what they do not get is a per-file
+mutation floor. The reason is cost — measured over the 32 first-parent commits before this rule
+landed, 118 of the gate's 141 selected targets (84%) were `sdd-runner/src/` or `review-loop/src/`,
+at roughly 107s per file.
+
+Two consequences worth stating, because both look like bugs otherwise:
+
+- **A branch that touches only non-gateable roots selects zero targets and passes.** That is the
+  correct verdict, not a lost measurement. The plan job emits an empty shard matrix and the gate
+  renders its verdict from carried-over scores.
+- **Non-gateable is not unmappable.** `suggestTestPath` / `findTestFile` / `resolveImplPath` and
+  `coverage-map.ts`'s `samePackageTestDir` still map `review-loop/src/` and `sdd-runner/src/` to
+  their `tests/` directories, because `bun run test:affected` and the score fingerprint depend on
+  those mappings. Narrowing the gate must never narrow the mappers.
+
+The same predicate gates the Write/Edit TDD hook checks, so the two surfaces always agree on what
+"gateable" means.
+
 ## Generated modules are not targets
 
 `test:mutate:changed` drops anything under a `generated/` directory. Stryker instruments the file
