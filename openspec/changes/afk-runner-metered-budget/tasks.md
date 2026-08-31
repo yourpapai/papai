@@ -24,5 +24,5 @@
 
 ## 5. Docs + full gate
 
-- [ ] 5.1 Update `docs/architecture/afk-runner.md` and `docs/architecture/sdd-pipeline.md`: unmetered budget semantics, metered flag derivation, waiter `auto_decision` protocol, pending decision kind. Verify: `bun run format:check`
+- [x] 5.1 Update `docs/architecture/afk-runner.md` and `docs/architecture/sdd-pipeline.md`: unmetered budget semantics, metered flag derivation, waiter `auto_decision` protocol, pending decision kind. Verify: `bun run format:check`
 - [ ] 5.2 Full gate: `bun test`, `bun run typecheck`, `bun run lint`, parity harness + memo oracle green inside the sweep, `openspec validate "afk-runner-metered-budget" --strict`.
