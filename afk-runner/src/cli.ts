@@ -123,13 +123,24 @@ function parseDepth(raw: string | undefined): DepthProfile | undefined {
   throw new Error(`invalid --depth '${raw}' (expected S, M, or L)`)
 }
 
-export async function runStartCommand(deps: RunDeps, args: readonly string[]): Promise<string> {
+export interface StartArgs {
+  readonly taskFile: string
+  readonly depthOverride?: DepthProfile
+}
+
+/** Pure start-verb argument parsing — the seam the command-doc flag pin runs against. */
+export function parseStartArgs(args: readonly string[]): StartArgs {
   const taskFile = args[0]
   if (taskFile === undefined || taskFile.length === 0) {
     throw new Error('usage: afk-runner start <taskFile> [--depth S|M|L]')
   }
   const depthFlag = args.indexOf('--depth')
   const depthOverride = parseDepth(depthFlag === -1 ? undefined : args[depthFlag + 1])
+  return depthOverride === undefined ? { taskFile } : { taskFile, depthOverride }
+}
+
+export async function runStartCommand(deps: RunDeps, args: readonly string[]): Promise<string> {
+  const { taskFile, depthOverride } = parseStartArgs(args)
   // Never-on-start (R4 D2): start drives to park and exits — the foreground
   // waiter belongs to resume, so a machine-invoked start never blocks a shell.
   const result = await startRun({ ...deps, gateWait: undefined }, { taskFile, depthOverride })

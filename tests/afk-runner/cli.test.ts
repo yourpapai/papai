@@ -17,6 +17,7 @@ import {
   runAnalyzeCommand,
   cliMain,
   fullStateSummary,
+  parseStartArgs,
 } from '../../afk-runner/src/cli.js'
 import { readEvents } from '../../afk-runner/src/events.js'
 import { BLOCKER_ROUND, TASK_TEXT, makeFakePipeline } from './fixtures/fake-pipeline.js'
@@ -166,6 +167,77 @@ describe('afk-runner cli commands (fake agents)', () => {
     expect(summary).toContain('resumed: re-entered work')
 
     expect(reviewEnterCount(logPath)).toBe(2)
+  })
+})
+
+describe('afk-runner cli start args (parseStartArgs)', () => {
+  it('parses a task file with and without a --depth override', () => {
+    expect(parseStartArgs(['task.md', '--depth', 'S'])).toEqual({ taskFile: 'task.md', depthOverride: 'S' })
+    expect(parseStartArgs(['task.md'])).toEqual({ taskFile: 'task.md' })
+  })
+
+  it('keeps the invalid --depth error', () => {
+    expect(() => parseStartArgs(['task.md', '--depth', 'X'])).toThrow("invalid --depth 'X' (expected S, M, or L)")
+  })
+
+  it('keeps the usage error on a missing task file', () => {
+    expect(() => parseStartArgs([])).toThrow('usage: afk-runner start <taskFile> [--depth S|M|L]')
+  })
+})
+
+/** A documented flag token with its value form, from the doc's backticked `--flag value` prose. */
+interface DocFlag {
+  readonly flag: string
+  readonly valueForm: string
+}
+
+/** Extract every backticked `--flag value-form` token the doc names. */
+function documentedFlags(doc: string): DocFlag[] {
+  return [...doc.matchAll(/`(--[a-z][a-z0-9-]*(?: [^`]*)?)`/gu)].map((m) => {
+    const text = m[1] ?? ''
+    const space = text.indexOf(' ')
+    return space === -1
+      ? { flag: text, valueForm: '' }
+      : { flag: text.slice(0, space), valueForm: text.slice(space + 1) }
+  })
+}
+
+/** The argv a documented value form implies: the flag plus its first alternative (`S|M|L` → `S`). */
+function argvFor(entry: DocFlag): readonly string[] {
+  const first = entry.valueForm.split('|')[0]?.trim() ?? ''
+  return first === '' ? ['task.md', entry.flag] : ['task.md', entry.flag, first]
+}
+
+/**
+ * Accepted = parses without error AND is not silently ignored: the result must
+ * differ from the no-flag baseline, so an unknown flag the lenient parser would
+ * drop on the floor still trips the pin.
+ */
+function acceptedByStartParsing(entry: DocFlag): boolean {
+  const baseline = JSON.stringify(parseStartArgs(['task.md']))
+  try {
+    return JSON.stringify(parseStartArgs(argvFor(entry))) !== baseline
+  } catch {
+    return false
+  }
+}
+
+describe('sdd-auto command doc flag pin', () => {
+  it('every documented flag parses through the start argument parsing with its documented value form', () => {
+    const doc = fs.readFileSync(new URL('../../.claude/commands/sdd-auto.md', import.meta.url), 'utf8')
+    const flags = documentedFlags(doc)
+    // Today's inventory is exactly --depth; a doc that adds or renames a flag
+    // fails here until the pin (and parser) consciously follow.
+    expect(flags.map((entry) => entry.flag)).toEqual(['--depth'])
+    for (const entry of flags) {
+      expect(acceptedByStartParsing(entry)).toBe(true)
+    }
+  })
+
+  it('flags a documented flag the start parsing ignores (doctored-doc tripwire)', () => {
+    const doctored = 'Pass the optional `--depth S|M|L` flag, or `--wait 5` to stall.'
+    const rejected = documentedFlags(doctored).filter((entry) => !acceptedByStartParsing(entry))
+    expect(rejected.map((entry) => entry.flag)).toEqual(['--wait'])
   })
 })
 

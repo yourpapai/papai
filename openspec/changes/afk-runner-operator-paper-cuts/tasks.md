@@ -15,8 +15,8 @@ green before moving on. No prerequisites — the change is independent of
 
 ## 3. Doc pin (cli delta, parser seam)
 
-- [ ] 3.1 Red-first in `tests/afk-runner/cli.test.ts`: `parseStartArgs` pins the current inline behavior — `['task.md', '--depth', 'S']` → `{ taskFile: 'task.md', depthOverride: 'S' }`; invalid depth value keeps the `invalid --depth` error; missing task file keeps the usage error. Then extract the parsing from `runStartCommand` in `afk-runner/src/cli.ts` verbatim into the exported pure `parseStartArgs` and consume it (design D4). Verify: `bun test tests/afk-runner/cli.test.ts`
-- [ ] 3.2 Red-first in `tests/afk-runner/cli.test.ts`: the pin — every `--<flag>` token documented in `.claude/commands/sdd-auto.md` parses through `parseStartArgs` with its documented value form (today: `--depth S`); the tripwire is demonstrated red once against a doctored doc fixture carrying a bogus `--wait` (in-test string, never the real file). Nothing to implement beyond 3.1 — the test is the deliverable. Verify: `bun test tests/afk-runner/cli.test.ts`
+- [x] 3.1 Red-first in `tests/afk-runner/cli.test.ts`: `parseStartArgs` pins the current inline behavior — `['task.md', '--depth', 'S']` → `{ taskFile: 'task.md', depthOverride: 'S' }`; invalid depth value keeps the `invalid --depth` error; missing task file keeps the usage error. Then extract the parsing from `runStartCommand` in `afk-runner/src/cli.ts` verbatim into the exported pure `parseStartArgs` and consume it (design D4). Verify: `bun test tests/afk-runner/cli.test.ts`
+- [x] 3.2 Red-first in `tests/afk-runner/cli.test.ts`: the pin — every `--<flag>` token documented in `.claude/commands/sdd-auto.md` parses through `parseStartArgs` with its documented value form (today: `--depth S`); the tripwire is demonstrated red once against a doctored doc fixture carrying a bogus `--wait` (in-test string, never the real file). Nothing to implement beyond 3.1 — the test is the deliverable. Verify: `bun test tests/afk-runner/cli.test.ts`
 
 ## 4. Docs and full gate
 
