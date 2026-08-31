@@ -189,6 +189,40 @@ describe('decodeClaudeLine (recorded and documented shapes)', () => {
     })
   })
 
+  test('the single-model corpus: the split agrees with the top-level reading, so no total moves', () => {
+    // The older recordings carry one modelUsage entry apiece, reading exactly
+    // what the top-level `usage` reads — the per-bucket maximum is the
+    // top-level figure, and today's totals survive the models split verbatim.
+    // Those entries predate `costUSD`, so no per-model cost is published: an
+    // absent field stays absent.
+    const success = resultOf('success-turn.ndjson')
+    expect(success.usage.total).toBe(1112)
+    expect(success).toHaveProperty('models', {
+      'claude-sonnet-5': { input: 1052, output: 60, cacheWrite: 0, cacheRead: 0 },
+    })
+
+    const resume = resultOf('resume-turn.ndjson')
+    expect(resume.usage.total).toBe(2290)
+    expect(resume).toHaveProperty('models', {
+      'claude-sonnet-5': { input: 1210, output: 28, cacheWrite: 0, cacheRead: 1052 },
+    })
+  })
+
+  test('the auth corpus: an empty modelUsage publishes an empty split and keeps today’s total', () => {
+    // Both auth failures bill no model — `modelUsage: {}` — and the split says
+    // so without inventing a figure: the maximum of the top-level reading and
+    // an empty record is the top-level reading.
+    const auth = resultOf('auth-error-turn.ndjson')
+    expect(auth.isError).toBe(true)
+    expect(auth.usage.total).toBe(0)
+    expect(auth).toHaveProperty('models', {})
+
+    const native = resultOf('native-auth-error.ndjson')
+    expect(native.isError).toBe(true)
+    expect(native.usage.total).toBe(0)
+    expect(native).toHaveProperty('models', {})
+  })
+
   test('decodes the adversarial plan fixture: the Bash call comes back refused, not run', () => {
     // The permission-effect pin: a `Bash` call under the `plan` allowlist is
     // refused — `is_error: true` on the tool result — so the effective toolset
