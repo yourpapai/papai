@@ -8,6 +8,7 @@ import { createServer } from 'node:net'
 import { createOpencodeClient, createOpencodeServer } from '@opencode-ai/sdk'
 
 import { withDeadline } from './deadline.js'
+import type { Logger } from './logger.js'
 import { buildOpencodeConfig } from './openai-config.js'
 import type { OpenAiSettings } from './openai-config.js'
 import type { OpenCodeConnection } from './opencode-adapter.js'
@@ -92,7 +93,13 @@ const probeAlive = (
     () => false,
   )
 
-export const connectSdk = async (directory: string, openai: OpenAiSettings): Promise<OpenCodeConnection> => {
+export const connectSdk = async (
+  directory: string,
+  openai: OpenAiSettings,
+  // The degradation channel for the session-tree usage walk (change task 4.4);
+  // underscored until that walk lands, under noUnusedParameters.
+  _log: Logger,
+): Promise<OpenCodeConnection> => {
   // The provider, endpoint and model are pinned in the server's own config, so
   // the session cannot fall back to whatever credentials happen to be in env.
   // The SDK delivers this to `opencode serve` through OPENCODE_CONFIG_CONTENT —
