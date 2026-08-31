@@ -440,6 +440,250 @@ describe('the recorded SDK contract', () => {
   })
 })
 
+describe('the session tree usage walk', () => {
+  /**
+   * Read by name until the walk step publishes the export (change task 4.4):
+   * the type system cannot name a member that does not exist yet, and these
+   * tests exist to say exactly what that member must answer. The predicate is
+   * that answer, stated as a type.
+   */
+  interface TreeClient {
+    session: {
+      get: (args: { path: { id: string } }) => Promise<unknown>
+      children: (args: { path: { id: string } }) => Promise<unknown>
+    }
+  }
+
+  const isWalker = (
+    value: unknown,
+  ): value is (client: TreeClient, directory: string, sessionId: string, log: Logger) => Promise<SessionUsage | null> =>
+    typeof value === 'function'
+
+  const walkOf = async (): Promise<
+    (client: TreeClient, directory: string, sessionId: string, log: Logger) => Promise<SessionUsage | null>
+  > => {
+    const connect = await import('../../opencode-agent/src/opencode-connect.js')
+    if (!('sessionTreeUsage' in connect)) {
+      throw new Error('the session tree walk is not published yet')
+    }
+    if (!isWalker(connect.sessionTreeUsage)) {
+      throw new Error('the session tree walk is not a function')
+    }
+    return connect.sessionTreeUsage
+  }
+
+  /** A recorded `session.get` answer for one node of a stubbed tree. */
+  const usageEnvelope = (
+    id: string,
+    usage: {
+      input: number
+      output?: number
+      reasoning?: number
+      cacheRead?: number
+      cacheWrite?: number
+      cost: number
+    },
+  ): unknown => ({
+    data: {
+      id,
+      title: id,
+      tokens: {
+        input: usage.input,
+        output: usage.output ?? 0,
+        reasoning: usage.reasoning ?? 0,
+        cache: { read: usage.cacheRead ?? 0, write: usage.cacheWrite ?? 0 },
+      },
+      cost: usage.cost,
+    },
+    request: {},
+    response: {},
+  })
+
+  /** A recorded `session.children` answer: the ids of one node's children. */
+  const childrenEnvelope = (ids: readonly string[]): unknown => ({ data: ids.map((id) => ({ id })) })
+
+  /** A stubbed client over a tree: usage and children answers keyed by session id. */
+  const treeClient = (usage: ReadonlyMap<string, unknown>, children: ReadonlyMap<string, unknown>): TreeClient => ({
+    session: {
+      get: ({ path }) => Promise.resolve(usage.get(path.id) ?? { data: undefined }),
+      children: ({ path }) => Promise.resolve(children.get(path.id) ?? { data: [] }),
+    },
+  })
+
+  /** A chain of a given depth, every node one token and one quarter — the depth cap's fixture. */
+  const chainTree = (depth: number): { usage: Map<string, unknown>; children: Map<string, unknown> } => {
+    const usage = new Map<string, unknown>()
+    const children = new Map<string, unknown>()
+    for (let at = 0; at < depth; at += 1) {
+      const id = `ses_deep_${at}`
+      usage.set(id, usageEnvelope(id, { input: 1, cost: 0.25 }))
+      if (at < depth - 1) children.set(id, childrenEnvelope([`ses_deep_${at + 1}`]))
+    }
+    return { usage, children }
+  }
+
+  test('a parent with two children reports the summed tokens and cost', async () => {
+    const sessionTreeUsage = await walkOf()
+
+    const usage = new Map([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      [
+        'ses_child_1',
+        usageEnvelope('ses_child_1', {
+          input: 100,
+          output: 200,
+          reasoning: 50,
+          cacheRead: 30,
+          cacheWrite: 20,
+          cost: 0.0625,
+        }),
+      ],
+      [
+        'ses_child_2',
+        usageEnvelope('ses_child_2', { input: 11, output: 100, cacheRead: 3, cacheWrite: 2, cost: 0.03125 }),
+      ],
+    ])
+    const children = new Map([['ses_parent', childrenEnvelope(['ses_child_1', 'ses_child_2'])]])
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
+      tokens: 4063,
+      cost: 0.21875,
+      input: 2579,
+      output: 1433,
+      reasoning: 50,
+      cacheRead: 933,
+      cacheWrite: 422,
+    })
+  })
+
+  test('a grandchild is included in the sum', async () => {
+    const sessionTreeUsage = await walkOf()
+
+    const usage = new Map([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      [
+        'ses_child_1',
+        usageEnvelope('ses_child_1', {
+          input: 100,
+          output: 200,
+          reasoning: 50,
+          cacheRead: 30,
+          cacheWrite: 20,
+          cost: 0.0625,
+        }),
+      ],
+      ['ses_grand', usageEnvelope('ses_grand', { input: 3, output: 4, cacheRead: 1, cost: 0.015625 })],
+    ])
+    const children = new Map([
+      ['ses_parent', childrenEnvelope(['ses_child_1'])],
+      ['ses_child_1', childrenEnvelope(['ses_grand'])],
+    ])
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
+      tokens: 3959,
+      cost: 0.203125,
+      input: 2571,
+      output: 1338,
+      reasoning: 50,
+      cacheRead: 931,
+      cacheWrite: 420,
+    })
+  })
+
+  test('a cycle or a repeated id is counted once', async () => {
+    const sessionTreeUsage = await walkOf()
+
+    // The same three accounts as the two-children tree, wired into a cycle —
+    // the parent lists the same child twice, and that child lists the parent
+    // back — so the exact figure proves the duplicates added nothing.
+    const usage = new Map([
+      [
+        'ses_parent',
+        usageEnvelope('ses_parent', { input: 2468, output: 1134, cacheRead: 900, cacheWrite: 400, cost: 0.125 }),
+      ],
+      [
+        'ses_child_1',
+        usageEnvelope('ses_child_1', {
+          input: 100,
+          output: 200,
+          reasoning: 50,
+          cacheRead: 30,
+          cacheWrite: 20,
+          cost: 0.0625,
+        }),
+      ],
+      [
+        'ses_child_2',
+        usageEnvelope('ses_child_2', { input: 11, output: 100, cacheRead: 3, cacheWrite: 2, cost: 0.03125 }),
+      ],
+    ])
+    const children = new Map([
+      ['ses_parent', childrenEnvelope(['ses_child_1', 'ses_child_1', 'ses_child_2'])],
+      ['ses_child_1', childrenEnvelope(['ses_parent'])],
+    ])
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
+      tokens: 4063,
+      cost: 0.21875,
+      input: 2579,
+      output: 1433,
+      reasoning: 50,
+      cacheRead: 933,
+      cacheWrite: 422,
+    })
+  })
+
+  test('the traversal stops at the depth cap', async () => {
+    const sessionTreeUsage = await walkOf()
+
+    // A chain fifteen deep, every node costing 0.25 and one token: the walk
+    // reads the parent plus the first seven descendants — depths 0 through 7 —
+    // and stops, so the figure is exactly eight nodes' worth, never the chain's.
+    const { usage, children } = chainTree(15)
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_deep_0', silentLog)).toEqual({
+      tokens: 8,
+      cost: 2,
+      input: 8,
+      output: 0,
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    })
+  })
+
+  test('the traversal stops at the node cap', async () => {
+    const sessionTreeUsage = await walkOf()
+
+    // A star of forty children: the walk reads the parent and thirty-one of
+    // them — thirty-two sessions — and stops, so the figure is exactly
+    // thirty-two nodes' worth, never the star's forty-one.
+    const usage = new Map<string, unknown>([['ses_parent', usageEnvelope('ses_parent', { input: 1, cost: 0.25 })]])
+    const children = new Map<string, unknown>([
+      ['ses_parent', childrenEnvelope(Array.from({ length: 40 }, (_, at) => `ses_wide_${at}`))],
+    ])
+    for (let at = 0; at < 40; at += 1) {
+      usage.set(`ses_wide_${at}`, usageEnvelope(`ses_wide_${at}`, { input: 1, cost: 0.25 }))
+    }
+
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
+      tokens: 32,
+      cost: 8,
+      input: 32,
+      output: 0,
+      reasoning: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    })
+  })
+})
+
 describe('the turn deadline as a failure the phase can recognise', () => {
   const stopped = turnDeadlineError(1_800_000, {
     lastAction: 'ran bash',
