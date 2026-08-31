@@ -83,6 +83,20 @@ const mcpSecrets = (config: PipelineConfig): readonly string[] => {
 }
 
 /**
+ * Every value the `AGENT_CLAUDE_ENV` knob carries.
+ *
+ * The values reach a child environment the CLI's `Bash` children inherit, so
+ * each is a credential by policy — the same argument that put the MCP headers
+ * and environment values on this list (design D4 of `claude-route-custom-env`).
+ * The `MIN_SECRET_LENGTH` filter each consumer applies still governs: a short
+ * value is not made dangerous by being listed, and the empty-string values the
+ * parser accepts are dropped by the length guard below, so the value-based
+ * scrub never starts matching empty strings.
+ */
+const claudeEnvSecrets = (config: PipelineConfig): readonly string[] =>
+  config.claudeEnv === null ? [] : Object.values(config.claudeEnv)
+
+/**
  * Every credential the pipeline holds, in one place.
  *
  * Both consumers read from here — the environment scrub and the outbound
@@ -102,4 +116,5 @@ export const pipelineSecrets = (config: PipelineConfig): readonly string[] =>
     // would otherwise survive both.
     ...(config.logKey === null ? [] : [Buffer.from(config.logKey).toString('base64')]),
     ...mcpSecrets(config),
+    ...claudeEnvSecrets(config),
   ].filter((value) => value.length > 0)

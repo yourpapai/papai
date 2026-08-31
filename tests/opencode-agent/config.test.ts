@@ -535,4 +535,24 @@ describe('AGENT_CLAUDE_ENV', () => {
       loadConfig({ ...CLAUDE_ENV, ANTHROPIC_API_KEY: ANTHROPIC_KEY, AGENT_CLAUDE_ENV: '{"X":1}' }, '/repo'),
     ).toThrow('AGENT_CLAUDE_ENV')
   })
+
+  test('every knob value joins the pipeline secrets, empty strings apart', () => {
+    // The scrub and the outbound redaction match by **value**, and the values
+    // reach a child environment the CLI's `Bash` children inherit — so each is
+    // a credential by policy, collected beside the `mcpSecrets` case. An
+    // explicitly empty value is accepted by the parser and dropped here: the
+    // value-based scrub must never start matching empty strings.
+    const config = loadConfig(
+      {
+        ...CLAUDE_ENV,
+        ANTHROPIC_API_KEY: ANTHROPIC_KEY,
+        AGENT_CLAUDE_ENV: JSON.stringify({ CLAUDE_CODE_TRACE: 'a-knob-value-long-enough', CLAUDE_CODE_MAX: '' }),
+      },
+      '/repo',
+    )
+    const secrets = pipelineSecrets(config)
+
+    expect(secrets).toContain('a-knob-value-long-enough')
+    expect(secrets).not.toContain('')
+  })
 })

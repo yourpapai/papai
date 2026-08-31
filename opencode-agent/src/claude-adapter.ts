@@ -273,7 +273,13 @@ export const createClaudeAgent = (options: ClaudeAgentOptions): Promise<AgentSes
     profile,
     mcpConfigPath: profile === 'native' ? writeClaudeEmptyMcpConfig(configDir) : null,
     bootSessionId: `claude-job-${crypto.randomUUID()}`,
-    credentialValues: options.credential === undefined ? [] : [options.credential.value],
+    // The redaction list for transcript lines and the stderr tail: the chosen
+    // credential's value, plus the knob's — the one place a knob value could
+    // otherwise survive on this route (design D4 of `claude-route-custom-env`).
+    credentialValues: [
+      ...(options.credential === undefined ? [] : [options.credential.value]),
+      ...Object.values(options.claudeEnv ?? {}),
+    ],
     tracker: claudeTracker(options.log),
     state: {
       cliSessionId: null,
