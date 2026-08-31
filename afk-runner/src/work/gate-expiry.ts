@@ -108,7 +108,7 @@ async function evaluateExpiryLadder(
     gateMode === 'early' ? 'cap-hit' : 'converged',
   )
   const assumptions = (await expectedContentFor(ports.sidecarDir, currentRound, gateMode)).assumptions
-  const decision = evaluateLadder(
+  const decision = await evaluateLadder(
     {
       version,
       mode: gateMode,

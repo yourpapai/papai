@@ -10,6 +10,8 @@ import path from 'node:path'
 
 import { readEvents, stampEvent } from '../../../afk-runner/src/events.js'
 import type { EventInput, SddEvent } from '../../../afk-runner/src/events.js'
+import { pipelineMachine } from '../../../afk-runner/src/graph/pipeline.js'
+import { foldEvents } from '../../../afk-runner/src/kernel/fold.js'
 import type { KernelContext } from '../../../afk-runner/src/kernel/machine.js'
 import { initialKernelContext } from '../../../afk-runner/src/kernel/machine.js'
 import { startRun } from '../../../afk-runner/src/run.js'
@@ -128,12 +130,28 @@ describe('gate prelude — the autonomy ladder as producer', () => {
 
   it('R2 at an early gate auto-extends through the seam', async () => {
     const h = await makePreludeHarness()
+    // Seed the gate round's sidecar to match its convergence record — the
+    // counts integrity cross-check must read clear for the ladder to run.
+    fs.writeFileSync(
+      path.join(h.runDir, 'sidecars', 'resolutions-3.json'),
+      JSON.stringify({
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'out of scope' }],
+        assumptions: [],
+      }),
+    )
     const context: KernelContext = {
       ...initialKernelContext({}),
       perRound: [
         { round: 1, counts: { blocker: 0, material: 3, nitpick: 0 }, resolved: 0, dismissed: 0, verdict: 'open' },
         { round: 2, counts: { blocker: 0, material: 2, nitpick: 0 }, resolved: 0, dismissed: 0, verdict: 'open' },
-        { round: 3, counts: { blocker: 0, material: 1, nitpick: 0 }, resolved: 0, dismissed: 0, verdict: 'open' },
+        {
+          round: 3,
+          counts: { blocker: 0, material: 1, nitpick: 0 },
+          open: { blocker: 0, material: 1, nitpick: 0 },
+          resolved: 0,
+          dismissed: 1,
+          verdict: 'open',
+        },
       ],
       round: { current: 3, cap: 3 },
     }
@@ -264,5 +282,94 @@ describe('gate prelude wired into the live presentation (integration)', () => {
     expect(pipeline.spawnOrder).toContain('decompose-tasks.json')
     expect(pipeline.spawnOrder).toContain('atomicity.json')
     expect(presentedGates(events).at(-1)).toMatchObject({ mode: 'final' })
+  })
+})
+
+describe('the counts integrity cross-check guards the ladder', () => {
+  it('an open-set drift substitutes an integrity BLOCKER so no rule auto-decides', async () => {
+    const h = await makePreludeHarness()
+    const sidecarDir = path.join(h.runDir, 'sidecars')
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(sidecarDir, 'resolutions-1.json'),
+      JSON.stringify({
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'out of scope' }],
+        assumptions: [],
+      }),
+    )
+    // The convergence record claims nothing is open; the sidecar recomputes one
+    // open material — drift in exactly the set R1 reads.
+    const drifted = foldEvents(pipelineMachine, [
+      stampEvent({ altitude: 'L2', type: 'round_open', round: 1, cap: 1 }, 1, '2026-08-27T00:00:00.000Z'),
+      stampEvent(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'converged',
+          counts: { blocker: 0, material: 1, nitpick: 0 },
+          open: { blocker: 0, material: 0, nitpick: 0 },
+        },
+        2,
+        '2026-08-27T00:00:00.000Z',
+      ),
+    ]).snapshot.context
+    const result = await h.prelude({
+      context: drifted,
+      reviewResult: {
+        outcome: 'converged',
+        rounds: 1,
+        verdict: 'converged',
+        raised: { blocker: 0, material: 1, nitpick: 0 },
+        openBlockers: [],
+        openMaterial: [],
+        openNitpicks: [],
+      },
+      mode: 'final',
+    })
+    expect(result).toMatchObject({ rule: 'none', action: 'gate' })
+  })
+
+  it('agreement lets the ladder decide on the recorded result', async () => {
+    const h = await makePreludeHarness()
+    const sidecarDir = path.join(h.runDir, 'sidecars')
+    fs.mkdirSync(sidecarDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(sidecarDir, 'resolutions-1.json'),
+      JSON.stringify({
+        resolutions: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'out of scope' }],
+        assumptions: [],
+      }),
+    )
+    const agreed = foldEvents(pipelineMachine, [
+      stampEvent({ altitude: 'L2', type: 'round_open', round: 1, cap: 1 }, 1, '2026-08-27T00:00:00.000Z'),
+      stampEvent(
+        {
+          altitude: 'L2',
+          type: 'convergence',
+          round: 1,
+          verdict: 'converged',
+          counts: { blocker: 0, material: 1, nitpick: 0 },
+          open: { blocker: 0, material: 1, nitpick: 0 },
+        },
+        2,
+        '2026-08-27T00:00:00.000Z',
+      ),
+    ]).snapshot.context
+    const result = await h.prelude({
+      context: agreed,
+      reviewResult: {
+        outcome: 'converged',
+        rounds: 1,
+        verdict: 'converged',
+        raised: { blocker: 0, material: 1, nitpick: 0 },
+        openBlockers: [],
+        openMaterial: [{ id: 'F1', class: 'MATERIAL', resolution: 'dismissed', justification: 'out of scope' }],
+        openNitpicks: [],
+      },
+      mode: 'final',
+    })
+    // R1 cannot fire over an open material — but the integrity guard adds nothing.
+    expect(result).toMatchObject({ rule: 'none', action: 'gate' })
   })
 })

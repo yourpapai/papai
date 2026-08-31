@@ -13,6 +13,7 @@ import { evaluateCapHit, evaluateEscalationGate, evaluateFinalGate } from './aut
 import type { PolicyDecision, PolicySignals } from './auto-policy.js'
 import { renderGateAnswers } from './gate-answers.js'
 import type { GateAnswers } from './gate-answers.js'
+import { guardedReviewResult } from './gate-integrity.js'
 import type { GateAssumption } from './gate-model.js'
 import { expectedContentFor } from './gate-settle.js'
 import { settleGateWithAnswers } from './gate-settle.js'
@@ -69,11 +70,11 @@ export function renderAutoApproveAnswers(
   }
 }
 
-function signalsOf(
+async function signalsOf(
   input: GatePreludeInput,
   assumptions: readonly GateAssumption[],
   deadlineExpired: boolean,
-): PolicySignals {
+): Promise<PolicySignals> {
   const recordedPaths = input.events
     .filter((event) => event.type === 'artifact')
     .map((event) => (event as { path: string }).path)
@@ -84,7 +85,11 @@ function signalsOf(
     (event) => event.type !== 'done' || event.usage.costUsd > 0 || sumTokens(event.usage) === 0,
   )
   return {
-    reviewResult: input.reviewResult,
+    // The counts integrity cross-check (D7): the ladder decides on the
+    // recorded result only when the sidecars recompute both count sets the
+    // gate round's convergence record claims; a drift or an unparseable
+    // sidecar substitutes an open BLOCKER so no rule can auto-decide.
+    reviewResult: await guardedReviewResult(input.reviewResult, input.context.perRound, input.sidecarDir),
     trajectory: input.context.perRound,
     assumptions: classifyAssumptions(assumptions, {
       changeDir: path.relative(input.repoRoot, input.changeDir),
@@ -120,7 +125,7 @@ function sumTokens(usage: {
 export async function runGatePrelude(input: GatePreludeInput): Promise<GatePreludeResult> {
   const round = input.context.round?.current ?? input.reviewResult.rounds
   const assumptions = await expectedAssumptionsOf(input, round)
-  const decision = evaluateLadder(input, assumptions, false)
+  const decision = await evaluateLadder(input, assumptions, false)
   input.emit({
     altitude: 'L2',
     type: 'auto_decision',
@@ -152,12 +157,12 @@ export async function runGatePrelude(input: GatePreludeInput): Promise<GatePrelu
 }
 
 /** Assemble the ladder signals and run the mode's ladder (shared with deadline expiry). */
-export function evaluateLadder(
+export async function evaluateLadder(
   input: GatePreludeInput,
   assumptions: readonly GateAssumption[],
   deadlineExpired: boolean,
-): PolicyDecision {
-  const signals = signalsOf(input, assumptions, deadlineExpired)
+): Promise<PolicyDecision> {
+  const signals = await signalsOf(input, assumptions, deadlineExpired)
   if (input.mode === 'early') return evaluateCapHit(signals)
   if (input.mode === 'escalation') {
     return evaluateEscalationGate({

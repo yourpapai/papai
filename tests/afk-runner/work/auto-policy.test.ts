@@ -325,3 +325,156 @@ describe('projectedSpend (exported for the verification-round guard)', () => {
     expect(projectedSpend({ spentUsd: 0.2, rounds: 0 })).toBeCloseTo(0.7)
   })
 })
+
+describe('the ladder reads the set each question needs', () => {
+  const dismissed = (
+    id: string,
+    cls: 'BLOCKER' | 'MATERIAL' | 'NITPICK',
+  ): {
+    id: string
+    class: 'BLOCKER' | 'MATERIAL' | 'NITPICK'
+    resolution: 'dismissed'
+    justification: string
+  } => ({ id, class: cls, resolution: 'dismissed', justification: 'out of scope' })
+
+  it('R1 approves a round that raised findings and genuinely resolved every one', () => {
+    // The open lists are what R1 reads; a round can have raised plenty and
+    // still leave nothing for a human.
+    const decision = evaluateFinalGate(
+      signals({ reviewResult: converged({ raised: { blocker: 2, material: 3, nitpick: 1 } }) }),
+    )
+    expect(decision).toMatchObject({ rule: 'R1', action: 'approve' })
+  })
+
+  it('R1 is blocked by a dismissed blocker', () => {
+    const result = converged({ openBlockers: [dismissed('F1', 'BLOCKER')] })
+    expect(evaluateFinalGate(signals({ reviewResult: result })).action).toBe('gate')
+  })
+
+  it('R1 is blocked by a dismissed material finding', () => {
+    const result = converged({ openMaterial: [dismissed('F1', 'MATERIAL')] })
+    expect(evaluateFinalGate(signals({ reviewResult: result })).action).toBe('gate')
+  })
+
+  it('R1 is blocked by a dismissed nitpick', () => {
+    const result = converged({ openNitpicks: [dismissed('F1', 'NITPICK')] })
+    expect(evaluateFinalGate(signals({ reviewResult: result })).action).toBe('gate')
+  })
+
+  it('a fixed blocker no longer forces the gate while a dismissed one still does', () => {
+    // A blocker the resolver fixed (hash-verified) left the open list in §4,
+    // so the never-cut pre-check reads only genuinely open blockers.
+    const fixed = converged({ raised: { blocker: 1, material: 0, nitpick: 0 } })
+    expect(evaluateFinalGate(signals({ reviewResult: fixed })).action).toBe('approve')
+    const dismissedBlocker = converged({ openBlockers: [dismissed('B1', 'BLOCKER')] })
+    expect(evaluateFinalGate(signals({ reviewResult: dismissedBlocker }))).toMatchObject({
+      rule: 'none',
+      action: 'gate',
+    })
+  })
+
+  it('R2 judges eligibility on the open set and its trajectory on the raised set', () => {
+    // Raised totals fall 3 -> 2 while the open set stays flat: the trajectory
+    // question is "are reviewers running out of things to say", so R2 fires.
+    const burndown: DigestRecord[] = [
+      {
+        round: 1,
+        counts: { blocker: 0, material: 3, nitpick: 0 },
+        open: { blocker: 0, material: 1, nitpick: 0 },
+        resolved: 2,
+        dismissed: 1,
+        verdict: 'open' as const,
+      },
+      {
+        round: 2,
+        counts: { blocker: 0, material: 2, nitpick: 0 },
+        open: { blocker: 0, material: 1, nitpick: 0 },
+        resolved: 1,
+        dismissed: 1,
+        verdict: 'open' as const,
+      },
+    ]
+    const decision = evaluateCapHit(
+      signals({ reviewResult: capHit({ openMaterial: [dismissed('F1', 'MATERIAL')] }), trajectory: burndown }),
+    )
+    expect(decision).toMatchObject({ rule: 'R2', action: 'extend' })
+  })
+
+  it('a fixed blocker no longer blocks R2 eligibility while an open material keeps it applicable', () => {
+    const burndown: DigestRecord[] = [
+      {
+        round: 1,
+        counts: { blocker: 1, material: 3, nitpick: 0 },
+        open: { blocker: 0, material: 1, nitpick: 0 },
+        resolved: 3,
+        dismissed: 1,
+        verdict: 'open' as const,
+      },
+      {
+        round: 2,
+        counts: { blocker: 0, material: 2, nitpick: 0 },
+        open: { blocker: 0, material: 1, nitpick: 0 },
+        resolved: 2,
+        dismissed: 0,
+        verdict: 'open' as const,
+      },
+    ]
+    const decision = evaluateCapHit(
+      signals({ reviewResult: capHit({ raised: { blocker: 1, material: 2, nitpick: 0 } }), trajectory: burndown }),
+    )
+    expect(decision).toMatchObject({ rule: 'R2', action: 'extend' })
+  })
+
+  it('R2 is inapplicable when nothing material is open, however much was raised', () => {
+    const burndown: DigestRecord[] = [
+      {
+        round: 1,
+        counts: { blocker: 0, material: 3, nitpick: 0 },
+        resolved: 3,
+        dismissed: 0,
+        verdict: 'open' as const,
+      },
+      {
+        round: 2,
+        counts: { blocker: 0, material: 2, nitpick: 0 },
+        resolved: 2,
+        dismissed: 0,
+        verdict: 'open' as const,
+      },
+    ]
+    const decision = evaluateCapHit(signals({ reviewResult: capHit({ openMaterial: [] }), trajectory: burndown }))
+    expect(decision.rule).not.toBe('R2')
+  })
+
+  it('R2 stays silent on a flat raised trajectory even with eligible open findings', () => {
+    const flat: DigestRecord[] = [
+      {
+        round: 1,
+        counts: { blocker: 0, material: 2, nitpick: 0 },
+        open: { blocker: 0, material: 1, nitpick: 0 },
+        resolved: 1,
+        dismissed: 1,
+        verdict: 'open' as const,
+      },
+      {
+        round: 2,
+        counts: { blocker: 0, material: 2, nitpick: 0 },
+        open: { blocker: 0, material: 1, nitpick: 0 },
+        resolved: 1,
+        dismissed: 1,
+        verdict: 'open' as const,
+      },
+    ]
+    const decision = evaluateCapHit(
+      signals({ reviewResult: capHit({ openMaterial: [dismissed('F1', 'MATERIAL')] }), trajectory: flat }),
+    )
+    expect(decision.rule).not.toBe('R2')
+  })
+
+  it('the budget guard is unchanged: R4 gates before the rules on an over-ceiling projection', () => {
+    const decision = evaluateFinalGate(
+      signals({ spentUsd: 4.8, config: autonomy({ costCeilingUsd: 5, metered: true }) }),
+    )
+    expect(decision).toMatchObject({ rule: 'R4', action: 'gate' })
+  })
+})
