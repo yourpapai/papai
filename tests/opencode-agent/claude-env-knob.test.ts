@@ -76,6 +76,16 @@ describe('parseClaudeEnv', () => {
     expect(() => parseClaudeEnv(knob)).toThrow('not operator-settable')
   })
 
+  test('refuses __proto__, which cannot survive the child-environment fold', () => {
+    // Not route-owned, so it stays out of the refused set above — but both the
+    // zod record output and the claude-connect.ts child-env fold assign the
+    // name onto a plain object, where the prototype setter silently drops it.
+    // A vanished entry must not read as accepted, so the knob refuses it.
+    expect(() => parseClaudeEnv('{"__proto__":"x"}')).toThrow(ConfigError)
+    expect(() => parseClaudeEnv('{"__proto__":"x"}')).toThrow('AGENT_CLAUDE_ENV')
+    expect(() => parseClaudeEnv('{"__proto__":"x"}')).toThrow('cannot survive the child-environment fold')
+  })
+
   test('refuses every name the route strips, walking STRIPPED_NAMES from claude-connect.ts', () => {
     // The behaviour pin, not just a constant comparison: a member added to the
     // strip list must join the refused set and be refused, or this fails.

@@ -87,6 +87,12 @@ export const parseClaudeEnv = (raw: string | undefined): ClaudeEnv | undefined =
  * environment is not operator-settable — the entry could never take effect,
  * and a silently ignored one reads as accepted.
  *
+ * The same doctrine refuses `__proto__`: no route owns it, but no fold can
+ * carry it either — the Zod record output and the child-environment merge both
+ * assign onto a plain object, where the name hits the prototype setter and the
+ * entry vanishes. It stays out of `REFUSED_NAMES`, which is the route-owned set
+ * the `claude-connect.ts` pin walks, and its refusal names the fold.
+ *
  * A non-object document is left to the schema: its own refusal is the clearer
  * one, and there is no name to judge.
  */
@@ -94,6 +100,11 @@ const refuseRouteOwned = (document: unknown): void => {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) return
 
   for (const name of Object.keys(document)) {
+    if (name === '__proto__') {
+      throw new ConfigError(
+        `AGENT_CLAUDE_ENV refuses ${JSON.stringify(name)}: the name cannot survive the child-environment fold, and a silently dropped entry reads as accepted`,
+      )
+    }
     if (REFUSED_NAMES.includes(name)) {
       throw new ConfigError(
         `AGENT_CLAUDE_ENV refuses ${JSON.stringify(name)}: the claude route strips or injects this name itself, and route-owned names are not operator-settable`,
