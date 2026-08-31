@@ -222,10 +222,11 @@ export async function runStageAgent<T>(
   if (options.continueSessionId !== undefined) {
     // D2: any continuation failure (session pruned, provider error, invalid
     // sidecar) falls back to the prompt-rebuild spawn — never worse than today.
-    // D5: the claude route skips the attempt outright. The CLI has no
-    // session-continuation flag, so composing one would only raise the
-    // opencode-argv refusal, booking a killed ledger attempt for a spawn that
-    // route can never serve. The fallback signal below still rides.
+    // D5: the claude route skips the attempt outright. Each spawn's
+    // CLAUDE_CONFIG_DIR is a fresh mkdtemp removed with the process, so no
+    // earlier session is addressable by --resume; composing one would only
+    // raise the opencode-argv refusal, booking a killed ledger attempt for a
+    // spawn that route can never serve. The fallback signal below still rides.
     const continued =
       deps.config.backend === 'claude'
         ? null

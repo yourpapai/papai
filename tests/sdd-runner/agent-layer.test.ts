@@ -862,9 +862,10 @@ describe('resume continuation by backend route', () => {
     const { spawn, calls } = recordingSpawn('findings.json', [CLAUDE_RESULT_LINE])
     const options = { ...makeOptions(dir, 'findings.json'), continueSessionId: 'sess-old' }
     await runStageAgent(claudeDeps(dir, spawn, emitted), options)
-    // One announced attempt, not two: the claude CLI has no session-continuation
-    // flag, so composing one only to have it refused would book a killed attempt
-    // and a spawn the route can never serve.
+    // One announced attempt, not two: each spawn's CLAUDE_CONFIG_DIR is a
+    // fresh mkdtemp removed with the process, so no earlier session is
+    // addressable by --resume — composing one only to have it refused would
+    // book a killed attempt and a spawn the route can never serve.
     expect(emitted.filter((event) => event.type === 'spawned')).toHaveLength(1)
     expect(calls).toHaveLength(1)
     // extraArgs stays empty — a claude invocation refuses opencode-shaped argv,
