@@ -41,7 +41,7 @@
 
 ## 8. Docs, proof and full verification
 
-- [ ] 8.1 Update `docs/architecture/sdd-pipeline.md`: the `backend` key, the two credential spellings and their invocation profiles, per-role allowlists, the operator-installed CLI (no CI step), and the route's carried-over trade-offs — no retry layer, killed-turn token under-count, no session continuation. Verify: `bun run lint`
+- [x] 8.1 Update `docs/architecture/sdd-pipeline.md`: the `backend` key, the two credential spellings and their invocation profiles, per-role allowlists, the operator-installed CLI (no CI step), and the route's carried-over trade-offs — no retry layer, killed-turn token under-count, no session continuation. Verify: `bun run lint`
 - [ ] 8.2 Record one credentialed manual run (`bun run sdd-runner:start` against a small task with `"backend": "claude"`) reaching the gate, noting argv, spend and gate digest in the change folder — never in CI. Verify: the run reaches its gate and the notes land in `openspec/changes/sdd-runner-claude-cli-backend/`
 - [ ] 8.3 Validate the change artifacts. Verify: `bunx openspec validate sdd-runner-claude-cli-backend --strict`
 - [ ] 8.4 Run the full suite and refresh any other affected `docs/architecture/*.md` page. Verify: `bun test && bun run typecheck && bun run lint`
