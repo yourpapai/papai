@@ -15,7 +15,7 @@ See LICENSE in the project root for details.
 
 ## 2. Claude accounting and progress read the complete figure (design D1, D4)
 
-- [ ] 2.1 Add failing assertions to `tests/opencode-agent/claude-adapter.test.ts`: a run over `native-success-turn.ndjson` reports `tokensTotal === 90547` and repriced buckets that include the haiku tokens, while `total_cost_usd` folding is unchanged. Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` — fails at `89624`.
+- [x] 2.1 Add failing assertions to `tests/opencode-agent/claude-adapter.test.ts`: a run over `native-success-turn.ndjson` reports `tokensTotal === 90547` and repriced buckets that include the haiku tokens, while `total_cost_usd` folding is unchanged. Verify: `bun test tests/opencode-agent/claude-adapter.test.ts` — fails at `89624`.
 - [ ] 2.2 Add failing assertions to the same file that the `unpriced` path is untouched: an auth-error turn still reports `sawUsage === false` → `{ usd: null, source: 'none' }`, and the rate-limit windows still fold independently of usage. Verify: `bun test tests/opencode-agent/claude-adapter.test.ts`.
 - [ ] 2.3 Confirm `opencode-agent/src/claude-spend.ts` needs no arithmetic change and update only its doc comment to state that `line.usage` is now the complete per-turn account. Verify: `bun test tests/opencode-agent/claude-adapter.test.ts`.
 - [ ] 2.4 Add a failing assertion for the progress log line (`tests/opencode-agent/progress.test.ts` or `claude-adapter.test.ts`, wherever the claude progress reporter is already driven): the `claude: turn result` record carries the per-model split alongside `tokens`. Verify: `bun test tests/opencode-agent/progress.test.ts tests/opencode-agent/claude-adapter.test.ts` — fails, the field is absent.

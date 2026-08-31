@@ -11,6 +11,9 @@ import type { TranscriptRow } from '../../opencode-agent/src/activity-detail.js'
 import { createClaudeAgent } from '../../opencode-agent/src/claude-adapter.js'
 import type { ClaudeAgentOptions } from '../../opencode-agent/src/claude-adapter.js'
 import type { SpawnClaude } from '../../opencode-agent/src/claude-connect.js'
+import { decodeClaudeLine, parseNdjsonStream } from '../../opencode-agent/src/claude-contract.js'
+import { emptyAccounting, recordLine } from '../../opencode-agent/src/claude-spend.js'
+import type { ClaudeAccounting } from '../../opencode-agent/src/claude-spend.js'
 import { isClaudeExit, isClaudeResult, PipelineError } from '../../opencode-agent/src/errors.js'
 import type { Logger } from '../../opencode-agent/src/logger.js'
 
@@ -153,6 +156,16 @@ const withoutInit = (text: string): string =>
     .split('\n')
     .filter((line) => !line.includes('"subtype":"init"'))
     .join('\n')
+
+/** The accounting one fixture's stream folds into, driven by the adapter's own fold. */
+const accountingOf = (name: string): ClaudeAccounting => {
+  const accounting = emptyAccounting()
+  for (const raw of parseNdjsonStream(fixture(name))) {
+    const line = decodeClaudeLine(raw)
+    if (line !== null) recordLine(accounting, line)
+  }
+  return accounting
+}
 
 describe('the turn outcome contract', () => {
   test('a successful turn resolves with the result line text and the init session id', async () => {
@@ -524,6 +537,18 @@ describe('token accounting', () => {
     expect(afterSecond).toBe(1112 + 2290)
   })
 
+  test('the two-model native turn folds the complete figure, side model included', async () => {
+    const spawn = scriptedSpawn([{ stdout: fixture('native-success-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'x' })
+
+    // The contract's per-bucket maximum read as one turn's account: the main
+    // model's 89624 plus the side model's 912 in / 11 out. Before the models
+    // split this read 89624 — the side model was invisible to the ceiling.
+    expect(await agent.tokensUsed()).toBe(90547)
+  })
+
   test('the cost figure never enters the total', async () => {
     const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
@@ -610,6 +635,32 @@ describe('createClaudeAgent · what the run spent', () => {
     await agent.prompt({ prompt: 'second' })
 
     expect((await agent.spend()).usd).toBeCloseTo(0.009714 * 2, 6)
+  })
+
+  test('the two-model native turn folds the buckets the reprice ladder reads, side model included', () => {
+    // `total_cost_usd` on this turn spans both models, so the backend rung
+    // answers and the buckets are never repriced — but when the CLI reports
+    // no figure of its own, these buckets are what the catalogue rung prices,
+    // and the side model's 912 in / 11 out must ride in them rather than
+    // vanish. Driven at the fold the adapter itself uses.
+    const accounting = accountingOf('native-success-turn.ndjson')
+
+    expect(accounting.buckets).toEqual({ input: 916, output: 166, cacheRead: 61460, cacheWrite: 28005 })
+    expect(accounting.tokensTotal).toBe(90547)
+  })
+
+  test('the two-model native turn prices at the backend rung — the CLI cost figure, folding unchanged', async () => {
+    const spawn = scriptedSpawn([{ stdout: fixture('native-success-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
+
+    await agent.prompt({ prompt: 'x' })
+
+    // The CLI's own `total_cost_usd` — which already spans both models —
+    // taken as-is at the rung that sees the per-model split a single model
+    // reference cannot reproduce. The ladder never reprices a stated figure.
+    const spent = await agent.spend()
+    expect(spent.source).toBe('backend')
+    expect(spent.usd).toBeCloseTo(0.126837, 6)
   })
 
   test('reports the provider’s standing for every window the run saw', async () => {
