@@ -50,5 +50,13 @@ accidentally-passing. See design.md D1/D3.
 - [x] 4.1 Record in `docs/guides/tdd-PIPELINES.md` and `docs/architecture/commands.md` that the
       hook lane runs in CI via `test:hooks`, that it needs an explicit path because `.hooks/` is
       outside default discovery, and that the guard fails closed. Verify with `bun run format:check`
-- [ ] 4.2 Run `bun test`, `bun run typecheck`, `bun run lint`, `bun run check:full` and confirm
-      green
+- [x] 4.2 Run `bun test`, `bun run typecheck`, `bun run lint`, `bun run check:full` and confirm
+      green — `check:full` legs lint, format:check, license-headers, knip, test:client (1998 pass),
+      test:hooks (185 pass) and duplicates all green; `test` is 17811 pass / 4 skip / 1 fail. The
+      one failure is `tests/git-init-hint.test.ts:68`, which pins a bun 1.4 env-propagation fix and
+      fails on any bun 1.3 host (this container: 1.3.11; CI pins 1.4.0) — identical to the
+      pre-change baseline and not among this change's files. Standalone typecheck and lint clean.
+
+      Hazard found while verifying: `git commit` runs `check.sh --staged`, which clears the shared
+      `reports/checks/` dir out from under an in-flight `check:full`. The first run was discarded
+      and re-run clean rather than reported from. Unrelated to this change; worth a follow-up.
