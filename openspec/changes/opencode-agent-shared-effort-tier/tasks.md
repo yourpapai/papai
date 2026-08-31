@@ -25,7 +25,7 @@
 ## 5. The pipeline writes the tier into the loop's role config (design D4)
 
 - [x] 5.1 Red-first `tests/opencode-agent/review-runner.test.ts`: the role `agent` object the pipeline writes carries `effort` from `buildEffort` on the claude backend, omits it when no tier resolves, and is unchanged on the opencode backend — `bun test tests/opencode-agent/review-runner.test.ts`
-- [ ] 5.2 Set `effort: settings.openai.profiles?.buildEffort ?? null` on the claude branch of the role `agent` object (`opencode-agent/src/review-runner.ts:88-92`), leaving the opencode branch alone so the tier keeps riding `OPENCODE_CONFIG_CONTENT` — `bun test tests/opencode-agent/review-runner.test.ts`
+- [x] 5.2 Set `effort: settings.openai.profiles?.buildEffort ?? null` on the claude branch of the role `agent` object (`opencode-agent/src/review-runner.ts:88-92`), leaving the opencode branch alone so the tier keeps riding `OPENCODE_CONFIG_CONTENT` — `bun test tests/opencode-agent/review-runner.test.ts`
 
 ## 6. Docs, workflow hand-off, full verification
 
