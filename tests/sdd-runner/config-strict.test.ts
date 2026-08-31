@@ -38,6 +38,23 @@ describe('strict five-key config schema (5.1/5.2)', () => {
     }
   })
 
+  it('rejects a backend outside opencode|claude, naming the key and both accepted values', async () => {
+    dir = mkdtempSync(path.join(tmpdir(), 'sdd-config-'))
+    try {
+      const p = write('backend.json', {
+        repoRoot: dir,
+        workDir: '.sdd-runner',
+        model: 'glm/glm-5',
+        backend: 'codex',
+      })
+      await expect(loadRunnerConfig(p)).rejects.toThrow(/backend/su)
+      await expect(loadRunnerConfig(p)).rejects.toThrow(/opencode/su)
+      await expect(loadRunnerConfig(p)).rejects.toThrow(/claude/su)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('rejects each removed key by name with a replacement pointer', async () => {
     dir = mkdtempSync(path.join(tmpdir(), 'sdd-config-'))
     try {
