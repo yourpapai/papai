@@ -62,7 +62,7 @@ describe('the claude argv doctrine has one definition across the workspaces', ()
   test('the streaming argv tail equals buildClaudeArgv composition', () => {
     const parent = buildClaudeArgv(
       { prompt: 'p' },
-      { model: 'm', lightModel: null, planEffort: null, buildEffort: null },
+      { model: 'm', lightModel: null, planEffort: null, proposeEffort: null, buildEffort: null },
       silentLogger,
     )
 

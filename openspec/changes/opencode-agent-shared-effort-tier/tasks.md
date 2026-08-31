@@ -11,7 +11,7 @@
 ## 3. Carry the tier on the claude route (design D3, D6, D7)
 
 - [x] 3.1 Red-first `tests/opencode-agent/claude-adapter.test.ts`: a `propose` turn emits `--effort <tier>` immediately after `--model` when a tier resolves and emits no `--effort` when it does not; `plan`/`build` unchanged — `bun test tests/opencode-agent/claude-adapter.test.ts`
-- [ ] 3.2 Add `proposeEffort` to `ClaudeModelKnobs` and return it from `profileSelection`'s `propose` branch (`opencode-agent/src/claude-argv.ts:127`) instead of the hardcoded `null`; carry it through `opencode-agent/src/contain.ts:162-165`; update every `ClaudeModelKnobs` fixture, including `tests/opencode-agent/claude-doctrine.test.ts:62`'s and `tests/opencode-agent/provider-proxy.test.ts`'s — `bun test tests/opencode-agent/claude-adapter.test.ts tests/opencode-agent/provider-proxy.test.ts tests/opencode-agent/claude-doctrine.test.ts`
+- [x] 3.2 Add `proposeEffort` to `ClaudeModelKnobs` and return it from `profileSelection`'s `propose` branch (`opencode-agent/src/claude-argv.ts:127`) instead of the hardcoded `null`; carry it through `opencode-agent/src/contain.ts:162-165`; update every `ClaudeModelKnobs` fixture, including `tests/opencode-agent/claude-doctrine.test.ts:62`'s and `tests/opencode-agent/provider-proxy.test.ts`'s — `bun test tests/opencode-agent/claude-adapter.test.ts tests/opencode-agent/provider-proxy.test.ts tests/opencode-agent/claude-doctrine.test.ts`
 
 ## 4. Gap 1 — effort on the review loop's claude subprocesses (design D4, D5, D6)
 

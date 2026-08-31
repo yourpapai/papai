@@ -118,7 +118,7 @@ const transcriptCapture = (): TranscriptCapture => {
 
 const baseOptions = (spawn: SpawnClaude, log: Logger, extra: Partial<ClaudeAgentOptions> = {}): ClaudeAgentOptions => ({
   directory: '/repo',
-  knobs: { model: 'claude-sonnet-5', lightModel: null, planEffort: null, buildEffort: null },
+  knobs: { model: 'claude-sonnet-5', lightModel: null, planEffort: null, proposeEffort: null, buildEffort: null },
   pricing: {
     apiKey: 'placeholder',
     baseUrl: 'https://unused.test/v1',
@@ -300,7 +300,13 @@ describe('the model knobs on the spawned argv', () => {
     const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(
       baseOptions(spawn.spawn, publicLog().log, {
-        knobs: { model: 'claude-sonnet-5', lightModel: null, planEffort: 'low', buildEffort: 'high' },
+        knobs: {
+          model: 'claude-sonnet-5',
+          lightModel: null,
+          planEffort: 'low',
+          proposeEffort: null,
+          buildEffort: 'high',
+        },
       }),
     )
 

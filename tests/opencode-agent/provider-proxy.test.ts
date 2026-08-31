@@ -706,7 +706,7 @@ const firstOptions = (seen: readonly ClaudeAgentOptions[]): ClaudeAgentOptions =
   return (
     options ?? {
       directory: '',
-      knobs: { model: '', lightModel: null, planEffort: null, buildEffort: null },
+      knobs: { model: '', lightModel: null, planEffort: null, proposeEffort: null, buildEffort: null },
       pricing: { apiKey: '', baseUrl: '', model: '', provider: '' },
       credential: { name: 'ANTHROPIC_API_KEY', value: '' },
       env: {},
@@ -804,6 +804,7 @@ describe('contain (claude route)', () => {
       model: 'anthropic/claude-sonnet-5',
       lightModel: 'claude-haiku-5',
       planEffort: 'low',
+      proposeEffort: null,
       buildEffort: 'high',
     })
     expect(options.credential).toEqual({ name: 'ANTHROPIC_API_KEY', value: 'sk-ant-api03-the-chosen-credential' })
