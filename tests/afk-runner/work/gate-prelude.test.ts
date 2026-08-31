@@ -73,7 +73,7 @@ async function makePreludeHarness(): Promise<PreludeHarness> {
     runDir,
     repoRoot: runDir,
     emit,
-    autonomy: { level: 'assist', costCeilingUsd: 5 },
+    autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
   }
   return {
     runDir,

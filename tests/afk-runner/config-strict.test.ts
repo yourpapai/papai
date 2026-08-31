@@ -38,6 +38,39 @@ describe('strict five-key config schema (5.1/5.2)', () => {
     }
   })
 
+  it('accepts the new unmetered shapes and still rejects unknown keys alongside them', async () => {
+    dir = mkdtempSync(path.join(tmpdir(), 'sdd-config-'))
+    try {
+      const unmetered = await loadRunnerConfig(
+        write('null-budget.json', { repoRoot: dir, workDir: '.sdd-runner', model: 'glm/glm-5', budget: null }),
+      )
+      expect(unmetered.budget).toBeNull()
+      const flagged = await loadRunnerConfig(
+        write('metered.json', {
+          repoRoot: dir,
+          workDir: '.sdd-runner',
+          model: 'glm/glm-5',
+          budget: 9,
+          metered: false,
+        }),
+      )
+      expect(flagged.metered).toBe(false)
+      await expect(
+        loadRunnerConfig(
+          write('unknown.json', {
+            repoRoot: dir,
+            workDir: '.sdd-runner',
+            model: 'glm/glm-5',
+            budget: null,
+            ceiling: 5,
+          }),
+        ),
+      ).rejects.toThrow()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('rejects each removed key by name with a replacement pointer', async () => {
     dir = mkdtempSync(path.join(tmpdir(), 'sdd-config-'))
     try {

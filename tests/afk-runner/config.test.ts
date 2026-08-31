@@ -85,7 +85,7 @@ describe('autonomy derivation', () => {
     const dir = makeDir()
     const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model', budget: 7 })
     const config = await loadRunnerConfig(configPath)
-    expect(autonomyOf(config)).toEqual({ level: 'assist', costCeilingUsd: 7 })
+    expect(autonomyOf(config)).toEqual({ level: 'assist', costCeilingUsd: 7, metered: true })
   })
 
   it('deadline keys arm the wait; an explicit override wins', async () => {
@@ -94,6 +94,37 @@ describe('autonomy derivation', () => {
     const config = await loadRunnerConfig(configPath)
     expect(autonomyOf(config).deadlineMinutes).toBe(10)
     expect(autonomyOf(config, 25).deadlineMinutes).toBe(25)
+  })
+})
+
+describe('unmetered budget semantics', () => {
+  it('parses budget: null as unmetered — no ceiling, metered derived false', async () => {
+    const dir = makeDir()
+    const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model', budget: null })
+    const config = await loadRunnerConfig(configPath)
+    expect(config.budget).toBeNull()
+    expect(autonomyOf(config)).toEqual({ level: 'assist', costCeilingUsd: null, metered: false })
+  })
+
+  it('an absent budget stays the default 5 and derives metered', async () => {
+    const dir = makeDir()
+    const configPath = writeConfig(dir, { repoRoot: dir, model: 'test-model' })
+    const config = await loadRunnerConfig(configPath)
+    expect(config.budget).toBe(5)
+    expect(autonomyOf(config).metered).toBe(true)
+  })
+
+  it('an explicit metered flag overrides derivation in both directions', async () => {
+    const dir = makeDir()
+    const unmetered = await loadRunnerConfig(
+      writeConfig(dir, { repoRoot: dir, model: 'test-model', budget: 7, metered: false }),
+    )
+    expect(unmetered.budget).toBe(7)
+    expect(autonomyOf(unmetered)).toEqual({ level: 'assist', costCeilingUsd: 7, metered: false })
+    const declaredMetered = await loadRunnerConfig(
+      writeConfig(dir, { repoRoot: dir, model: 'test-model', budget: null, metered: true }),
+    )
+    expect(autonomyOf(declaredMetered)).toEqual({ level: 'assist', costCeilingUsd: null, metered: true })
   })
 })
 
@@ -176,6 +207,13 @@ describe('RunnerConfigSchema (strict five keys)', () => {
     expect(RunnerConfigSchema.safeParse({ ...fiveKeys, maxChildren: 8 }).success).toBe(false)
     expect(RunnerConfigSchema.safeParse({ ...fiveKeys, planReplanPasses: 1 }).success).toBe(false)
     expect(RunnerConfigSchema.safeParse({ ...fiveKeys, planner: 'm' }).success).toBe(false)
+  })
+
+  it('accepts the optional metered key and a null budget; rejects a non-boolean metered', () => {
+    const base = { repoRoot: '/repo', model: 'm' }
+    expect(RunnerConfigSchema.safeParse({ ...base, budget: null }).success).toBe(true)
+    expect(RunnerConfigSchema.safeParse({ ...base, budget: 5, metered: false }).success).toBe(true)
+    expect(RunnerConfigSchema.safeParse({ ...base, budget: 5, metered: 'no' }).success).toBe(false)
   })
 })
 

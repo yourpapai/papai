@@ -243,7 +243,7 @@ function expiredGate(options: {
       warnings.push(line)
     },
     repoRoot: runDir,
-    autonomy: { level: 'assist', costCeilingUsd: 5 },
+    autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
     now: () => new Date('2026-08-27T00:01:00.000Z'),
   }
   return { runDir, start: () => awaitGateSettle(ports), clock, warnings }

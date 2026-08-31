@@ -237,7 +237,7 @@ describe('deadline expiry at an escalation gate inherits the standard path (C6 D
         warnings.push(line)
       },
       repoRoot: runDir,
-      autonomy: { level: 'assist', costCeilingUsd: 5 },
+      autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
       now: () => new Date('2026-08-29T00:01:00.000Z'),
     }
     return { runDir, start: () => awaitGateSettle(ports), clock, warnings }
