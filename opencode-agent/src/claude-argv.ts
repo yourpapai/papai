@@ -47,6 +47,24 @@ export const ALLOWLISTS = {
  */
 export type ClaudeInvocationProfile = 'bare' | 'native'
 
+/**
+ * The credential spelling each profile re-adds — one rule, spelled twice
+ * (design D3 of the native-OAuth change): bare carries the API key, native
+ * the OAuth token. A credential whose spelling does not match the profile
+ * injects nothing at all, so a mismatched pair can never smuggle the other
+ * spelling through.
+ *
+ * Lives beside the profile type rather than beside its only consumer in
+ * `claude-connect.ts`: it is a property of the profile, the same shape as
+ * `ALLOWLISTS` above.
+ */
+export const PROFILE_CREDENTIAL: Readonly<
+  Record<ClaudeInvocationProfile, 'ANTHROPIC_API_KEY' | 'CLAUDE_CODE_OAUTH_TOKEN'>
+> = {
+  bare: 'ANTHROPIC_API_KEY',
+  native: 'CLAUDE_CODE_OAUTH_TOKEN',
+}
+
 export interface ClaudeTurnRequest {
   prompt: string
   system?: string

@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { rmSync } from 'node:fs'
 
+import { PROFILE_CREDENTIAL } from './claude-argv.js'
 import type { ClaudeInvocationProfile } from './claude-argv.js'
 import type { ClaudeCredential } from './config-values.js'
 
@@ -31,19 +32,13 @@ export const CLAUDE_BINARY = 'claude'
  */
 export const KILL_GRACE_MS = 5_000
 
-/** The environment names the child must never carry, whatever scrubbing missed. */
-const STRIPPED_NAMES = ['LLM_BASE_URL', 'AGENT_MCP_SERVERS', 'ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'] as const
-
-/**
- * The credential spelling each profile re-adds — one rule, spelled twice
- * (design D3): bare carries the API key, native the OAuth token. A
- * credential whose spelling does not match the profile injects nothing at
- * all, so a mismatched pair can never smuggle the other spelling through.
- */
-const PROFILE_CREDENTIAL: Readonly<Record<ClaudeInvocationProfile, 'ANTHROPIC_API_KEY' | 'CLAUDE_CODE_OAUTH_TOKEN'>> = {
-  bare: 'ANTHROPIC_API_KEY',
-  native: 'CLAUDE_CODE_OAUTH_TOKEN',
-}
+/** The environment names the child must never carry, whatever scrubbing missed. Exported for the `AGENT_CLAUDE_ENV` pin in `claude-env-knob.test.ts`: a name added here must join the knob's refused set there. */
+export const STRIPPED_NAMES = [
+  'LLM_BASE_URL',
+  'AGENT_MCP_SERVERS',
+  'ANTHROPIC_API_KEY',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+] as const
 
 /** The CLI child as this layer sees it: a pid, a stdin, two streams, an exit. */
 export interface ClaudeChildProcess {
