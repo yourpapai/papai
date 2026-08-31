@@ -36,7 +36,7 @@
 
 ## 7. Cost and usage accounting (design D7)
 
-- [ ] 7.1 Add a test covering the claude-route cost chain: a decoded `result` line's four token buckets and `total_cost_usd` reach the `done` event once with cache counters unfolded, a CLI-reported cost survives repricing untouched, a zero-cost turn reprices from the provider-prefixed config model id, and an unpriceable model yields `costKnown: false` so the ladder reads unknown spend. Verify: `bun test tests/sdd-runner/usage-aggregate.test.ts tests/sdd-runner/pricing.test.ts`
+- [x] 7.1 Add a test covering the claude-route cost chain: a decoded `result` line's four token buckets and `total_cost_usd` reach the `done` event once with cache counters unfolded, a CLI-reported cost survives repricing untouched, a zero-cost turn reprices from the provider-prefixed config model id, and an unpriceable model yields `costKnown: false` so the ladder reads unknown spend. Verify: `bun test tests/sdd-runner/usage-aggregate.test.ts tests/sdd-runner/pricing.test.ts`
 - [ ] 7.2 Make the chain pass without changing pricing semantics — expected to be test-only; if any wiring gap appears, fix it in `sdd-runner/src/usage-aggregate.ts` without touching the opencode route's numbers. Verify: `bun run sdd-runner:test`
 
 ## 8. Docs, proof and full verification
