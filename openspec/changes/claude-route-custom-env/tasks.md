@@ -34,7 +34,7 @@ follows `design.md` — Capability gating, scope model, dependencies, hooks.
 ## 5. Credential wiring (`secrets.ts` + adapter redaction, test-first)
 
 - [x] 5.1 Write failing tests: in `tests/opencode-agent/config.test.ts`, `pipelineSecrets` includes every knob value (the `mcpSecrets` collection case beside it); in `tests/opencode-agent/claude-adapter.test.ts`, transcript lines and stderr are redacted by a knob value, not only by the credential value. Verify: `bun test tests/opencode-agent/config.test.ts tests/opencode-agent/claude-adapter.test.ts` (red)
-- [ ] 5.2 Implement: `claudeEnvSecrets` collector in `secrets.ts` appended in `pipelineSecrets` (the `MIN_SECRET_LENGTH` filter keeps governing); the claude session's redaction list (`credentialValues` site) gains the knob values. Verify: same command (green) && `bun run typecheck`
+- [x] 5.2 Implement: `claudeEnvSecrets` collector in `secrets.ts` appended in `pipelineSecrets` (the `MIN_SECRET_LENGTH` filter keeps governing); the claude session's redaction list (`credentialValues` site) gains the knob values. Verify: same command (green) && `bun run typecheck`
 
 ## 6. Documentation and the maintainer hand-edit
 
