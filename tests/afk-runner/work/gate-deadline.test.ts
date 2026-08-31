@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { describe, expect, it } from 'bun:test'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -51,6 +52,18 @@ function answeredGateEvents(events: readonly SddEvent[]): SddEvent[] {
 
 function rearmedEvents(events: readonly SddEvent[]): SddEvent[] {
   return events.filter((event) => event.type === 'gate' && event.action === 'rearmed')
+}
+
+function autoDecisionEvents(events: readonly SddEvent[]): Extract<SddEvent, { type: 'auto_decision' }>[] {
+  return events.flatMap((event) => (event.type === 'auto_decision' ? [event] : []))
+}
+
+function answeredGateIndexOf(events: readonly SddEvent[]): number {
+  return events.findIndex((event) => event.type === 'gate' && event.action === 'answered')
+}
+
+function sha256Of(input: string): string {
+  return createHash('sha256').update(input).digest('hex')
 }
 
 function gateDeadlineOf(event: SddEvent | undefined): string | null {
@@ -156,6 +169,8 @@ function expiredGate(options: {
   readonly trajectory?: boolean
   readonly preClaimed?: boolean
   readonly reArmed?: boolean
+  readonly unmetered?: boolean
+  readonly costUnknown?: boolean
 }): ExpiryHarness {
   const runDir = fs.mkdtempSync(path.join(os.tmpdir(), 'afk-deadline-'))
   const changeDir = path.join(runDir, 'change')
@@ -203,6 +218,20 @@ function expiredGate(options: {
   for (const event of [...prelude, ...trajectory]) {
     appendEvent(logPath, event, new Date('2026-08-27T00:00:00.000Z'))
   }
+  if (options.costUnknown === true) {
+    // subscription shape: a done agent with tokens moved but costUsd 0 —
+    // repricing falls through to unknown, so costKnown folds false
+    appendEvent(
+      logPath,
+      {
+        altitude: 'L1',
+        type: 'done',
+        agent: 'drafter',
+        usage: { inputTokens: 100, outputTokens: 10, reasoningTokens: 0, costUsd: 0, wallMs: 1_000 },
+      },
+      new Date('2026-08-27T00:00:00.000Z'),
+    )
+  }
   const past = '2026-08-27T00:00:01.000Z'
   appendEvent(logPath, {
     altitude: 'L2',
@@ -243,7 +272,10 @@ function expiredGate(options: {
       warnings.push(line)
     },
     repoRoot: runDir,
-    autonomy: { level: 'assist', costCeilingUsd: 5, metered: true },
+    autonomy:
+      options.unmetered === true
+        ? { level: 'assist', costCeilingUsd: null, metered: false }
+        : { level: 'assist', costCeilingUsd: 5, metered: true },
     now: () => new Date('2026-08-27T00:01:00.000Z'),
   }
   return { runDir, start: () => awaitGateSettle(ports), clock, warnings }
@@ -297,6 +329,93 @@ describe('gate deadline — expiry (C4 9.2)', () => {
     const waiter = h.start()
     await releaseTick(h.clock)
     await expect(waiter).resolves.toEqual({ kind: 'external' })
+  })
+})
+
+describe('gate deadline — waiter auto_decision protocol (D3)', () => {
+  it('a claiming waiter settle appends auto_decision naming the deciding rule after the settle write', async () => {
+    const h = expiredGate({ trajectory: true })
+    const waiter = h.start()
+    await releaseTick(h.clock)
+    const result = await waiter
+    expect(result).toEqual({ kind: 'settled', outcome: 'extend' })
+    const events = readEvents(path.join(h.runDir, 'events.ndjson'))
+    const decisions = autoDecisionEvents(events)
+    expect(decisions).toHaveLength(1)
+    expect(decisions[0]).toMatchObject({ rule: 'R2', decision: 'extend', gateVersion: 1 })
+    const answeredAt = answeredGateIndexOf(events)
+    expect(answeredAt).toBeGreaterThanOrEqual(0)
+    expect(events.indexOf(decisions[0]!)).toBeGreaterThan(answeredAt)
+  })
+
+  it('re-arm appends none/pending after the rearmed event; the rearmed flow itself is unchanged', async () => {
+    const h = expiredGate({ trajectory: false })
+    const waiter = h.start()
+    await releaseTick(h.clock)
+    await releaseTick(h.clock)
+    await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
+    const events = readEvents(path.join(h.runDir, 'events.ndjson'))
+    const rearmed = rearmedEvents(events)
+    expect(rearmed).toHaveLength(1)
+    const decisions = autoDecisionEvents(events)
+    expect(decisions).toHaveLength(1)
+    expect(decisions[0]).toMatchObject({ rule: 'none', decision: 'pending', gateVersion: 1 })
+    expect(decisions[0]!.evidenceDigest).toBe(sha256Of('expiry-pending:1'))
+    expect(events.indexOf(decisions[0]!)).toBeGreaterThan(events.indexOf(rearmed[0]!))
+  })
+
+  it('stay-pending after the one re-arm appends none/pending and never a second re-arm', async () => {
+    const h = expiredGate({ trajectory: false, reArmed: true })
+    const waiter = h.start()
+    // one expiry attempt only — the seeded re-arm left the deadline in the
+    // past, so every further tick would append another pending record
+    h.clock.release()
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+    const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
+    expect(probe).toBe('still-waiting')
+    const events = readEvents(path.join(h.runDir, 'events.ndjson'))
+    expect(rearmedEvents(events)).toHaveLength(1)
+    const decisions = autoDecisionEvents(events)
+    expect(decisions).toHaveLength(1)
+    expect(decisions[0]).toMatchObject({ rule: 'none', decision: 'pending', gateVersion: 1 })
+  })
+
+  it('a lost claim appends nothing — another producer owns the gate', async () => {
+    const h = expiredGate({ trajectory: true, preClaimed: true })
+    const waiter = h.start()
+    await releaseTick(h.clock)
+    await expect(waiter).resolves.toEqual({ kind: 'external' })
+    expect(autoDecisionEvents(readEvents(path.join(h.runDir, 'events.ndjson')))).toHaveLength(0)
+  })
+})
+
+describe('gate deadline — expiry ladder metered semantics (D5)', () => {
+  it('unmetered + unknown cost: the shared expiry ladder passes R4 and R2 settles extend', async () => {
+    const h = expiredGate({ trajectory: true, unmetered: true, costUnknown: true })
+    const waiter = h.start()
+    await releaseTick(h.clock)
+    const result = await waiter
+    expect(result).toEqual({ kind: 'settled', outcome: 'extend' })
+    const events = readEvents(path.join(h.runDir, 'events.ndjson'))
+    expect(answeredGateEvents(events)).toHaveLength(1)
+    expect(autoDecisionEvents(events).at(-1)).toMatchObject({ rule: 'R2', decision: 'extend' })
+  })
+
+  it('metered + unknown cost: R4 still gates at expiry — re-arm, no settle', async () => {
+    const h = expiredGate({ trajectory: true, costUnknown: true })
+    const waiter = h.start()
+    await releaseTick(h.clock)
+    await releaseTick(h.clock)
+    const probe = await Promise.race([waiter.then((r) => r), Promise.resolve('still-waiting' as const)])
+    expect(probe).toBe('still-waiting')
+    const events = readEvents(path.join(h.runDir, 'events.ndjson'))
+    expect(rearmedEvents(events)).toHaveLength(1)
+    expect(answeredGateEvents(events)).toHaveLength(0)
   })
 })
 

@@ -18,9 +18,9 @@
 
 ## 4. Waiter emission protocol
 
-- [ ] 4.1 Failing tests in `tests/afk-runner/work/gate-deadline.test.ts`: a claiming waiter settle appends `auto_decision` naming the deciding rule after the settle write; re-arm and stay-pending each append `{ rule: 'none', decision: 'pending' }`; a lost claim appends nothing; the `gate rearmed` event flow is unchanged. Verify: `bun test tests/afk-runner/work/gate-deadline.test.ts`
-- [ ] 4.2 Failing test (design D5) in `tests/afk-runner/work/gate-deadline.test.ts`: with unmetered autonomy and unknown cost, the expiry ladder passes R4 through the shared `evaluateLadder` — metered semantics reach the waiter with no waiter-side ladder code. Verify: `bun test tests/afk-runner/work/gate-deadline.test.ts`
-- [ ] 4.3 Implement in `afk-runner/src/work/gate-expiry.ts`: emit per design D3 — settle → deciding rule with approve/extend after the settle; re-arm/stay-pending → `none`/`pending` with `sha256('expiry-pending:<version>')` digest; lost claim silent. Verify: `bun test tests/afk-runner/work/gate-deadline.test.ts tests/afk-runner/work/gate-waiter.test.ts`
+- [x] 4.1 Failing tests in `tests/afk-runner/work/gate-deadline.test.ts`: a claiming waiter settle appends `auto_decision` naming the deciding rule after the settle write; re-arm and stay-pending each append `{ rule: 'none', decision: 'pending' }`; a lost claim appends nothing; the `gate rearmed` event flow is unchanged. Verify: `bun test tests/afk-runner/work/gate-deadline.test.ts`
+- [x] 4.2 Failing test (design D5) in `tests/afk-runner/work/gate-deadline.test.ts`: with unmetered autonomy and unknown cost, the expiry ladder passes R4 through the shared `evaluateLadder` — metered semantics reach the waiter with no waiter-side ladder code. Verify: `bun test tests/afk-runner/work/gate-deadline.test.ts`
+- [x] 4.3 Implement in `afk-runner/src/work/gate-expiry.ts`: emit per design D3 — settle → deciding rule with approve/extend after the settle; re-arm/stay-pending → `none`/`pending` with `sha256('expiry-pending:<version>')` digest; lost claim silent. Verify: `bun test tests/afk-runner/work/gate-deadline.test.ts tests/afk-runner/work/gate-waiter.test.ts`
 
 ## 5. Docs + full gate
 

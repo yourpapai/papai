@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { createHash } from 'node:crypto'
+
 import type { AutonomyConfig } from '../config.js'
 import type { EventInput, StageId } from '../events.js'
 import { readEvents } from '../events.js'
@@ -37,6 +39,12 @@ export interface ExpiryPorts {
  * the attempt's end, re-arm at most once via one additive `gate rearmed`
  * event, and otherwise leave the gate pending indefinitely. Returns null to
  * keep waiting.
+ *
+ * Every claimed outcome appends the standard `auto_decision` L2 event after
+ * its write — settle names the deciding rule, re-arm and stay-pending
+ * record `none`/`pending` — so replay alone distinguishes waiter-settled
+ * gates from human-settled ones (which emit nothing). A lost claim appends
+ * nothing: another producer owns the gate.
  */
 export async function processExpiry(
   ports: ExpiryPorts,
@@ -129,6 +137,7 @@ function reArmOrPark(
 ): null {
   if (reArmed) {
     ports.stdout?.('auto-deadline: no safe policy branch — gate stays pending')
+    emitPendingExpiryDecision(ports, version)
     return null
   }
   const reArmMinutes = ports.autonomy?.deadlineMinutes ?? 10
@@ -143,7 +152,20 @@ function reArmOrPark(
     deadlineAt: nextDeadline,
   })
   ports.stdout?.(`auto-deadline: no safe policy branch — re-armed once at ${nextDeadline}`)
+  emitPendingExpiryDecision(ports, version)
   return null
+}
+
+/** The waiter's pending record: rule none, decision pending, version-keyed digest. */
+function emitPendingExpiryDecision(ports: ExpiryPorts, version: number): void {
+  ports.emit({
+    altitude: 'L2',
+    type: 'auto_decision',
+    rule: 'none',
+    decision: 'pending',
+    evidenceDigest: createHash('sha256').update(`expiry-pending:${version}`).digest('hex'),
+    gateVersion: version,
+  })
 }
 
 /** Settle through the seam when the expiry ladder picked a conservative branch (approve/extend, never abort). */
@@ -175,5 +197,13 @@ async function settleExpiryDecision(
       ? renderAutoApproveAnswers(decision, assumptions)
       : { items: [], blockerAnswers: [], acks: [], decision: 'extend' },
   )
+  ports.emit({
+    altitude: 'L2',
+    type: 'auto_decision',
+    rule: decision.rule,
+    decision: decision.action === 'extend' ? 'extend' : 'approve',
+    evidenceDigest: decision.evidenceDigest,
+    gateVersion: version,
+  })
   return { kind: 'settled', outcome: result.outcome }
 }
