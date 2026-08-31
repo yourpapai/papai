@@ -11,7 +11,7 @@ import { collectChild, spawnClaude } from './claude-connect.js'
 import type { ClaudeChild, SpawnClaude } from './claude-connect.js'
 import { decodeClaudeLine, parseNdjsonStream } from './claude-contract.js'
 import type { ClaudeStreamLine } from './claude-contract.js'
-import { killGroup, teardownClaude } from './claude-kill.js'
+import { killGroup, killSeamsOf, teardownClaude, teardownSeamsOf } from './claude-kill.js'
 import type { GroupKillSeams, TeardownSeams } from './claude-kill.js'
 import { claudeTracker } from './claude-progress.js'
 import { ceilingTokensOf, emptyAccounting, recordLine, spendOf } from './claude-spend.js'
@@ -59,6 +59,8 @@ export interface ClaudeAgentOptions extends TurnBounds {
    * and injects nothing — the recorder's census and negative legs.
    */
   credential?: ClaudeCredential
+  /** The operator's `AGENT_CLAUDE_ENV` entries, forwarded to every spawn; absent when unset. */
+  claudeEnv?: Record<string, string>
   /** The post-scrub `process.env` the child inherits. */
   env: Record<string, string | undefined>
   log: Logger
@@ -142,6 +144,7 @@ const spawnTurn = (context: SessionContext, invocation: ReturnType<typeof buildC
         stdinPrompt: invocation.stdinPrompt,
         credential: context.options.credential,
         ...(context.profile === 'bare' ? {} : { profile: context.profile }),
+        customEnv: context.options.claudeEnv,
         workspace: context.options.directory,
         configDir: context.configDir,
         env: context.options.env,
@@ -209,19 +212,6 @@ const claudeConnection = (context: SessionContext): TurnConnection => ({
   alive: (_sessionId: string): Promise<boolean> => Promise.resolve(!context.state.spawnFailed),
 })
 
-/** The abort-path kill seams, as the options injected them. */
-const killSeams = (options: ClaudeAgentOptions): GroupKillSeams => ({
-  ...(options.killSignal === undefined ? {} : { signal: options.killSignal }),
-  ...(options.killSleep === undefined ? {} : { sleep: options.killSleep }),
-})
-
-/** The teardown-path seams, as the options injected them. */
-const teardownSeamsOf = (options: ClaudeAgentOptions): TeardownSeams => ({
-  ...(options.teardownSignal === undefined ? {} : { signal: options.teardownSignal }),
-  ...(options.teardownSleep === undefined ? {} : { sleep: options.teardownSleep }),
-  ...(options.teardownRemove === undefined ? {} : { removeDir: options.teardownRemove }),
-})
-
 /** The session object the pipeline holds, over the connection `runTurn` drives. */
 const claudeSession = (context: SessionContext, connection: TurnConnection): AgentSession => {
   // The claude shim ignores both arguments; the body exists to satisfy the
@@ -258,7 +248,7 @@ const claudeSession = (context: SessionContext, connection: TurnConnection): Age
     spend: (): Promise<RunSpend> => spendOf(state.accounting, options.pricing, options.log),
     abort: (): Promise<boolean> => {
       if (state.active === null) return Promise.resolve(false)
-      return killGroup(state.active.process.pid, killSeams(options))
+      return killGroup(state.active.process.pid, killSeamsOf(options))
     },
     close: (): Promise<void> => {
       if (state.active === null) return Promise.resolve()

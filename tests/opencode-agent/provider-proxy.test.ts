@@ -853,4 +853,35 @@ describe('contain (claude route)', () => {
     expect(run.deps.config.openai.baseUrl).toBe('')
     expect(run.deps.config.openai.model).toBe('anthropic/claude-sonnet-5')
   })
+
+  test('claudeEnv crosses as a plain value when set — never the config object', async () => {
+    // Design D2: the knob rides the seam as values, because a settings-shaped
+    // object is one spread away from OPENCODE_CONFIG_CONTENT and the
+    // review-loop subprocesses the spec forbids it from reaching.
+    const seen: ClaudeAgentOptions[] = []
+    const run = await claudeContain(
+      (options) => {
+        seen.push(options)
+        return Promise.resolve(fakeSession())
+      },
+      { ...CLAUDE_ENV, AGENT_CLAUDE_ENV: '{"CLAUDE_CODE_SUBAGENT_MODEL":"claude-haiku-4-5"}' },
+    )
+    await run.agent.get()
+
+    expect(firstOptions(seen).claudeEnv).toEqual({ CLAUDE_CODE_SUBAGENT_MODEL: 'claude-haiku-4-5' })
+    expect(firstOptions(seen).claudeEnv).not.toHaveProperty('backend')
+  })
+
+  test('a null knob crosses as absent, not as a null field', async () => {
+    // The unset case is the spawn layer's absence shape: the options carry no
+    // field at all, so nothing downstream can mistake it for a set-empty env.
+    const seen: ClaudeAgentOptions[] = []
+    const run = await claudeContain((options) => {
+      seen.push(options)
+      return Promise.resolve(fakeSession())
+    })
+    await run.agent.get()
+
+    expect(Object.hasOwn(firstOptions(seen), 'claudeEnv')).toBe(false)
+  })
 })

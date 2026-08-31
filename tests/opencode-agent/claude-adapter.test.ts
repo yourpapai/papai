@@ -423,6 +423,28 @@ describe('credential carrier by spelling — the profile derivation', () => {
   })
 })
 
+describe('the custom child environment', () => {
+  test('the spawn seam records the knob entries through ClaudeSpawnRequest on every turn', async () => {
+    // The knob crosses the adapter seam as a plain value and is forwarded on
+    // each request — every turn of the job, not just the first.
+    const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }, { stdout: fixture('resume-turn.ndjson') }])
+    const agent = await createClaudeAgent(
+      baseOptions(spawn.spawn, publicLog().log, {
+        claudeEnv: { CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: '1', CLAUDE_CODE_SUBAGENT_MODEL: 'claude-haiku-4-5' },
+      }),
+    )
+
+    await agent.prompt({ prompt: 'first' })
+    await agent.prompt({ prompt: 'second' })
+
+    expect(spawn.calls).toHaveLength(2)
+    for (const call of spawn.calls) {
+      expect(call.env['CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING']).toBe('1')
+      expect(call.env['CLAUDE_CODE_SUBAGENT_MODEL']).toBe('claude-haiku-4-5')
+    }
+  })
+})
+
 describe('stop and teardown', () => {
   test('abort() escalates to the live group and reports that the kill landed', async () => {
     const signals: Array<[number, string]> = []

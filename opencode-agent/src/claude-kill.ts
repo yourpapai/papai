@@ -78,6 +78,31 @@ export interface TeardownSeams extends GroupKillSeams {
 }
 
 /**
+ * The optional seams an options object carries, keyed as the claude adapter
+ * names them — the input both builders below fold into a seam set.
+ */
+export interface SeamOptions {
+  killSignal?: (target: number, signal: 'SIGTERM' | 'SIGKILL') => void
+  killSleep?: (ms: number) => Promise<void>
+  teardownSignal?: (target: number, signal: 'SIGTERM' | 'SIGKILL') => void
+  teardownSleep?: (ms: number) => Promise<void>
+  teardownRemove?: (dir: string) => void
+}
+
+/** The abort-path seams, as the options injected them. */
+export const killSeamsOf = ({ killSignal, killSleep }: SeamOptions): GroupKillSeams => ({
+  ...(killSignal === undefined ? {} : { signal: killSignal }),
+  ...(killSleep === undefined ? {} : { sleep: killSleep }),
+})
+
+/** The teardown-path seams, as the options injected them. */
+export const teardownSeamsOf = ({ teardownSignal, teardownSleep, teardownRemove }: SeamOptions): TeardownSeams => ({
+  ...(teardownSignal === undefined ? {} : { signal: teardownSignal }),
+  ...(teardownSleep === undefined ? {} : { sleep: teardownSleep }),
+  ...(teardownRemove === undefined ? {} : { removeDir: teardownRemove }),
+})
+
+/**
  * Teardown: never a stop, never a fallback for a kill that did not land, and
  * it reports nothing. What it does is make sure nothing outlives the job —
  * a live group found here (a turn deadline-abandoned outside the implement
