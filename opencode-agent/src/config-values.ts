@@ -263,6 +263,8 @@ export const stallTimeoutMs = (env: Env, key: string, fallback: number, range: I
 }
 
 export { parseMcpServers } from './mcp-servers.js'
+// The claude route's custom child-environment knob, re-exported like `parseMcpServers`
+export { parseClaudeEnv } from './claude-env-knob.js'
 
 // The backend-selection reads (AGENT_BACKEND and the claude route's credential
 // demands), split off for the same reason and reachable from here for the same

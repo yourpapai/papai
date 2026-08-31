@@ -13,13 +13,10 @@ import {
   EMPTY_MCP_CONFIG_NAME,
   writeClaudeEmptyMcpConfig,
 } from '../../opencode-agent/src/claude-config-dir.js'
-import { KILL_GRACE_MS, killGroup, spawnClaude, teardownClaude } from '../../opencode-agent/src/claude-connect.js'
-import type {
-  ClaudeChild,
-  ClaudeChildProcess,
-  GroupKillSeams,
-  SpawnClaude,
-} from '../../opencode-agent/src/claude-connect.js'
+import { spawnClaude } from '../../opencode-agent/src/claude-connect.js'
+import type { ClaudeChild, ClaudeChildProcess, SpawnClaude } from '../../opencode-agent/src/claude-connect.js'
+import { KILL_GRACE_MS, killGroup, teardownClaude } from '../../opencode-agent/src/claude-kill.js'
+import type { GroupKillSeams } from '../../opencode-agent/src/claude-kill.js'
 
 /**
  * How the CLI is started and addressed: the spawn contract, the child
@@ -140,6 +137,7 @@ describe('the spawn contract', () => {
         LLM_BASE_URL: 'https://gateway.example/v1',
         AGENT_MCP_SERVERS: '{"index":{"headers":{"authorization":"Bearer mcp"}}}',
         CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token-not-the-chosen-one',
+        AGENT_CLAUDE_ENV: '{"CLAUDE_CODE_MAX_OUTPUT_TOKENS":"16000"}',
       }),
       { spawn: recordingSpawn(recorded, 4242) },
     )
@@ -152,6 +150,9 @@ describe('the spawn contract', () => {
     // The whole-value scrub removes each embedded MCP credential but can never
     // remove the JSON carrier — and the knob is inert here (--bare runs no MCP).
     expect(recorded.options.env['AGENT_MCP_SERVERS']).toBeUndefined()
+    // The knob's own raw document is the same carrier class: a value embedded
+    // inside it is invisible to the whole-value scrub, so the name is stripped.
+    expect(recorded.options.env['AGENT_CLAUDE_ENV']).toBeUndefined()
     // Only the chosen spelling is present, never the other one.
     expect(recorded.options.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
     expect(child.env).toEqual(recorded.options.env)
@@ -242,6 +243,68 @@ describe('the spawn contract', () => {
     expect(recorded.options.env['ANTHROPIC_API_KEY']).toBeUndefined()
     expect(recorded.options.env['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
     expect(child.env['PATH']).toBe('/usr/bin')
+  })
+})
+
+describe('the custom child environment', () => {
+  test('customEnv entries ride the child environment', () => {
+    const recorded = blankRecording()
+    const child = spawnClaude(
+      {
+        ...request(),
+        customEnv: { CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: '1', CLAUDE_CODE_SUBAGENT_MODEL: 'claude-haiku-4-5' },
+      },
+      { spawn: recordingSpawn(recorded, 4242) },
+    )
+
+    expect(recorded.options.env['CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING']).toBe('1')
+    expect(recorded.options.env['CLAUDE_CODE_SUBAGENT_MODEL']).toBe('claude-haiku-4-5')
+    expect(child.env).toEqual(recorded.options.env)
+  })
+
+  test('the route’s own values win for the injected names — the merge order proven', () => {
+    // The knob's refused set makes these entries unreachable through the
+    // parser; the fold sits between the name strip and the credential re-add
+    // so the route's values win by construction anyway — the defence in depth
+    // behind the rule (design D3 of `claude-route-custom-env`).
+    const req = request()
+    const recorded = blankRecording()
+    spawnClaude(
+      {
+        ...req,
+        customEnv: {
+          DISABLE_AUTOUPDATER: '0',
+          CLAUDE_CONFIG_DIR: '/operator/chosen/dir',
+          ANTHROPIC_API_KEY: 'operator-chosen-credential',
+        },
+      },
+      { spawn: recordingSpawn(recorded, 4242) },
+    )
+
+    expect(recorded.options.env['DISABLE_AUTOUPDATER']).toBe('1')
+    expect(recorded.options.env['CLAUDE_CONFIG_DIR']).toBe(req.configDir)
+    expect(recorded.options.env['ANTHROPIC_API_KEY']).toBe(CREDENTIAL.value)
+  })
+
+  test('a request without customEnv yields an env byte-identical to the pre-change build', () => {
+    // The unset knob is the ordinary case: the exact key set and values the
+    // route always built, and nothing more.
+    const recorded = blankRecording()
+    const child = spawnClaude(
+      request({
+        LLM_BASE_URL: 'https://gateway.example/v1',
+        AGENT_MCP_SERVERS: '{"index":{"headers":{"authorization":"Bearer mcp"}}}',
+        CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token-not-the-chosen-one',
+      }),
+      { spawn: recordingSpawn(recorded, 4242) },
+    )
+
+    expect(recorded.options.env).toEqual({
+      PATH: '/usr/bin',
+      ANTHROPIC_API_KEY: CREDENTIAL.value,
+      DISABLE_AUTOUPDATER: '1',
+      CLAUDE_CONFIG_DIR: child.configDir,
+    })
   })
 })
 

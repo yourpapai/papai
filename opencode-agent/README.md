@@ -1804,6 +1804,62 @@ The route's trade-offs, so an operator sees them before choosing:
 The claude fixtures and their provenance live under
 `tests/opencode-agent/fixtures/claude-cli/`; the recorder is the only writer.
 
+### The custom child environment: `AGENT_CLAUDE_ENV`
+
+On this route — and only on this route — the repository **variable**
+`AGENT_CLAUDE_ENV` carries a JSON object mapping environment-variable names to
+string values, validated at job start before any turn, and every entry reaches
+every `claude -p` child environment of the job:
+
+```json
+{
+  "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
+  "CLAUDE_CODE_SUBAGENT_MODEL": "claude-haiku-4-5"
+}
+```
+
+Names the route strips from or injects into the child environment itself are
+refused at startup, whichever backend the job selected: `ANTHROPIC_API_KEY` and
+`CLAUDE_CODE_OAUTH_TOKEN` (a custom entry can never shadow the credential that
+selects the invocation profile), `CLAUDE_CONFIG_DIR` and `DISABLE_AUTOUPDATER`
+(the route writes both itself), `LLM_BASE_URL` and `AGENT_MCP_SERVERS`.
+Everything else is passed through as spelled — the pipeline refuses only the
+names it owns, and which `CLAUDE_CODE_*` variables the pinned CLI honours is
+the CLI's business; the two examples above are guidance, not an allowlist.
+
+Three boundaries to read before using it:
+
+- **The values are readable by the CLI's `Bash` children.** Every value joins
+  the pipeline's credential list — scrubbed from every other spawned
+  environment, and redacted from everything the pipeline posts and from the
+  debug transcript — but the `claude` child receives them through its
+  environment by design, and that child's `Bash` tool children inherit it. The
+  model can read them with one `env`: the same residual the credential itself
+  carries above.
+- **Secrets do not belong here.** Only the Actions **variable** spelling
+  reaches the job — a same-named Actions secret is never forwarded — and
+  anything placed in a variable is readable by every maintainer and rides the
+  run's own environment. Credentials keep their dedicated secret spellings.
+- **The review loop's claude subprocesses are out of scope.** A claude-route
+  `/review` runs its roles as `claude -p` children whose environments carry
+  exactly what they carry today; the knob reaches this route's turn spawns
+  alone, and extending it there is a later change's decision.
+
+Until the workflow forwards the variable, the knob is unset and the route is
+byte-identical to the pipeline before it existed. A maintainer applies the one
+line this pipeline cannot write itself, beside the other `vars.*` forwardings
+in the pipeline step's `env:` block:
+
+```yaml
+env:
+  AGENT_EFFORT_PLAN: ${{ vars.AGENT_EFFORT_PLAN }}
+  AGENT_CLAUDE_ENV: ${{ vars.AGENT_CLAUDE_ENV }}
+```
+
+Parsing is route-independent: a malformed document fails startup on the
+OpenCode backend too, so an operator flipping `AGENT_BACKEND` later cannot
+inherit a document that was never validated.
+
 `LLM_MODEL` and `LLM_BASE_URL` are both required rather than defaulted (on the
 claude route both become optional-empty and the gateway credential is refused
 instead — see [Backend selection](#backend-selection-the-claude-cli-route)); with a

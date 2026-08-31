@@ -267,6 +267,26 @@ describe('the turn outcome contract', () => {
     expect(error.message).not.toContain(CREDENTIAL.value)
   })
 
+  test('the failure tail is redacted by a knob value too, not only by the credential', async () => {
+    // The knob's values join the session's redaction list (design D4): a value
+    // the CLI echoes into stderr must leave the same way the credential does.
+    const knobValue = 'knob-secret-value-123'
+    const spawn = scriptedSpawn([{ stdout: '', stderr: `bad flag --nope (${knobValue})\n`, exitCode: 2 }])
+    const agent = await createClaudeAgent(
+      baseOptions(spawn.spawn, publicLog().log, { claudeEnv: { CLAUDE_CODE_TRACE: knobValue } }),
+    )
+
+    const raised = await agent.prompt({ prompt: 'x' }).then(
+      () => null,
+      (error: unknown) => error,
+    )
+
+    const error = asPipelineError(raised)
+    expect(isClaudeExit(error)).toBe(true)
+    expect(error.message).toContain('--nope')
+    expect(error.message).not.toContain(knobValue)
+  })
+
   test('the per-call tools field is accepted and ignored', async () => {
     const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
     const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log))
@@ -433,6 +453,28 @@ describe('credential carrier by spelling — the profile derivation', () => {
     const dir = configDirOfCall(probed.calls, 0)
     expect(dir).not.toBe('')
     expect(readdirSync(dir)).toEqual([])
+  })
+})
+
+describe('the custom child environment', () => {
+  test('the spawn seam records the knob entries through ClaudeSpawnRequest on every turn', async () => {
+    // The knob crosses the adapter seam as a plain value and is forwarded on
+    // each request — every turn of the job, not just the first.
+    const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }, { stdout: fixture('resume-turn.ndjson') }])
+    const agent = await createClaudeAgent(
+      baseOptions(spawn.spawn, publicLog().log, {
+        claudeEnv: { CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: '1', CLAUDE_CODE_SUBAGENT_MODEL: 'claude-haiku-4-5' },
+      }),
+    )
+
+    await agent.prompt({ prompt: 'first' })
+    await agent.prompt({ prompt: 'second' })
+
+    expect(spawn.calls).toHaveLength(2)
+    for (const call of spawn.calls) {
+      expect(call.env['CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING']).toBe('1')
+      expect(call.env['CLAUDE_CODE_SUBAGENT_MODEL']).toBe('claude-haiku-4-5')
+    }
   })
 })
 
@@ -639,6 +681,31 @@ describe('progress translation', () => {
     expect(detail).toContain('[redacted]')
     // Unabridged beside the redaction: the rest of the line survives.
     expect(detail).toContain('the credential is')
+  })
+
+  test('content-bearing lines are redacted by a knob value too, not only by the credential', async () => {
+    // The transcript is the one place a knob value could survive on this route
+    // if only the credential sat on the redaction list (design D4).
+    const transcript = transcriptCapture()
+    const knobValue = 'knob-trace-value-long'
+    const leaking = fixture('success-turn.ndjson').replace(
+      '"result":"The README describes papai, a chat bot that manages tasks via LLM tool-calling."',
+      `"result":"the knob value is ${knobValue} and here is the answer"`,
+    )
+    const spawn = scriptedSpawn([{ stdout: leaking }])
+    const agent = await createClaudeAgent(
+      baseOptions(spawn.spawn, publicLog().log, {
+        transcript: transcript.sink,
+        claudeEnv: { CLAUDE_CODE_TRACE: knobValue },
+      }),
+    )
+
+    await agent.prompt({ prompt: 'x' })
+    const detail = JSON.stringify(transcript.rows.map((row) => row.detail))
+
+    expect(detail).not.toContain(knobValue)
+    expect(detail).toContain('[redacted]')
+    expect(detail).toContain('the knob value is')
   })
 
   test('the turn result record carries the per-model split alongside its tokens', async () => {
