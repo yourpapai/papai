@@ -263,6 +263,61 @@ describe('the turn outcome contract', () => {
   })
 })
 
+/**
+ * The model knobs on the spawned argv, wired through the real adapter.
+ *
+ * The builder's composition is pinned flag-for-flag in `claude-contract.test.ts`;
+ * these two assert what the pipeline actually spawns when the run resolved a
+ * tier: the propose turn carries its tier too (design D7), positioned exactly
+ * where the doctrine pin looks for it — immediately after `--model` (D6) — and
+ * an unresolved tier composes no flag at all.
+ */
+describe('the model knobs on the spawned argv', () => {
+  test('a propose turn carries --effort immediately after --model when a tier resolves (D6, D7)', async () => {
+    const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
+    // `proposeEffort` is not on `ClaudeModelKnobs` yet: the knobs are built
+    // unannotated — a structural superset — so this red test states the
+    // contract first and the interface grows to carry it in the next step.
+    const knobs = {
+      model: 'claude-sonnet-5',
+      lightModel: null,
+      planEffort: null,
+      buildEffort: null,
+      proposeEffort: 'high',
+    }
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, publicLog().log, { knobs }))
+
+    await agent.prompt({ prompt: 'x', agent: 'propose' })
+
+    const argv = argvOf(spawn.calls, 0)
+    const model = argv.indexOf('--model')
+    expect(argv[model + 1]).toBe('claude-sonnet-5')
+    expect(argv[model + 2]).toBe('--effort')
+    expect(argv[model + 3]).toBe('high')
+  })
+
+  test('no propose tier, no --effort — and plan and build are unchanged', async () => {
+    const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }])
+    const agent = await createClaudeAgent(
+      baseOptions(spawn.spawn, publicLog().log, {
+        knobs: { model: 'claude-sonnet-5', lightModel: null, planEffort: 'low', buildEffort: 'high' },
+      }),
+    )
+
+    await agent.prompt({ prompt: 'x', agent: 'propose' })
+    await agent.prompt({ prompt: 'x', agent: 'plan' })
+    await agent.prompt({ prompt: 'x', agent: 'build' })
+
+    expect(argvOf(spawn.calls, 0).includes('--effort')).toBe(false)
+    const plan = argvOf(spawn.calls, 1)
+    const build = argvOf(spawn.calls, 2)
+    const planModel = plan.indexOf('--model')
+    const buildModel = build.indexOf('--model')
+    expect(plan.slice(planModel + 2, planModel + 4)).toEqual(['--effort', 'low'])
+    expect(build.slice(buildModel + 2, buildModel + 4)).toEqual(['--effort', 'high'])
+  })
+})
+
 describe('session continuity', () => {
   test('the second turn resumes the memoized init id', async () => {
     const spawn = scriptedSpawn([{ stdout: fixture('success-turn.ndjson') }, { stdout: fixture('resume-turn.ndjson') }])
