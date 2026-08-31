@@ -128,8 +128,10 @@ interface SessionTreeClient {
  * one `session.get` read answers, so nothing downstream changes.
  *
  * A visited set counts a cycle or a repeated id once, and the depth and node
- * caps end a walk a pathological graph would keep going. Anything that stops
- * the tree being read whole — a children call that throws, one that never
+ * caps end a walk a pathological graph would keep going — keeping the sessions
+ * already gathered, a figure that cannot sum below the parent-only one, behind
+ * one warning of their own. Anything else that stops the tree being read
+ * whole — a children call that throws, one that never
  * settles (the whole walk sits under one deadline), one that decodes as
  * unrecognised — degrades the answer to the parent's own figure, the one the
  * budget already knew, behind one warning and no failure: the walk decorates
@@ -145,11 +147,14 @@ export const sessionTreeUsage = async (
   log: Logger,
 ): Promise<SessionUsage | null> => {
   try {
+    const truncated = { value: false }
     const usages = await withDeadline(
-      gatherTree(client, directory, [{ id: sessionId, depth: 0 }], new Set<string>([sessionId]), []),
+      gatherTree(client, directory, [{ id: sessionId, depth: 0 }], new Set<string>([sessionId]), [], truncated),
       SESSION_TREE_TIMEOUT_MS,
       (elapsedMs) => new Error(`the session tree walk did not settle within ${elapsedMs}ms`),
     )
+    if (truncated.value)
+      log.warn({ sessionId }, 'the session tree walk hit its depth or node cap; this run reports the sessions it read')
     return sumSessionUsage(usages)
   } catch (error) {
     // The degraded figure is the session's own account, re-read rather than
@@ -197,7 +202,9 @@ interface TreeNode {
 
 /**
  * The walk itself: breadth-first from the root, the visited set counting a
- * cycle or a repeated id once, the caps ending it. Any degradation throws to
+ * cycle or a repeated id once, the caps ending it — recording the truncation
+ * rather than degrading, since the sessions already gathered cannot sum below
+ * the parent-only figure. Any other degradation throws to
  * {@link sessionTreeUsage}'s catch, which degrades to parent-only. The queue
  * is walked by recursion rather than a loop — one node per step, so the caps
  * are checked between requests and nothing reads ahead of them.
@@ -208,10 +215,14 @@ const gatherTree = async (
   queue: readonly TreeNode[],
   visited: Set<string>,
   usages: SessionUsage[],
+  truncated: { value: boolean },
 ): Promise<SessionUsage[]> => {
   const head = queue[0]
   if (head === undefined) return usages
-  if (usages.length >= SESSION_TREE_MAX_NODES || head.depth >= SESSION_TREE_MAX_DEPTH) return usages
+  if (usages.length >= SESSION_TREE_MAX_NODES || head.depth >= SESSION_TREE_MAX_DEPTH) {
+    truncated.value = true
+    return usages
+  }
 
   const { usage, childIds } = await readNode(client, directory, head.id)
   usages.push(usage)
@@ -223,7 +234,7 @@ const gatherTree = async (
       enqueued.push({ id: childId, depth: head.depth + 1 })
     }
   }
-  return gatherTree(client, directory, [...queue.slice(1), ...enqueued], visited, usages)
+  return gatherTree(client, directory, [...queue.slice(1), ...enqueued], visited, usages, truncated)
 }
 
 export const connectSdk = async (

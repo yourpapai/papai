@@ -726,13 +726,18 @@ describe('the session tree usage walk', () => {
     })
   })
 
-  test('the traversal stops at the depth cap', async () => {
+  test('the traversal stops at the depth cap, warning that the walk was truncated', async () => {
     // A chain fifteen deep, every node costing 0.25 and one token: the walk
     // reads the parent plus the first seven descendants — depths 0 through 7 —
     // and stops, so the figure is exactly eight nodes' worth, never the chain's.
+    // The cap is the one stop that keeps the sessions it read rather than
+    // degrading — the sum cannot fall below the parent-only figure — but it
+    // says so, like every other read that ended short of the whole tree.
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
     const { usage, children } = chainTree(15)
 
-    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_deep_0', silentLog)).toEqual({
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_deep_0', log)).toEqual({
       tokens: 8,
       cost: 2,
       input: 8,
@@ -741,12 +746,18 @@ describe('the session tree usage walk', () => {
       cacheRead: 0,
       cacheWrite: 0,
     })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('cap')
   })
 
-  test('the traversal stops at the node cap', async () => {
+  test('the traversal stops at the node cap, warning that the walk was truncated', async () => {
     // A star of forty children: the walk reads the parent and thirty-one of
     // them — thirty-two sessions — and stops, so the figure is exactly
-    // thirty-two nodes' worth, never the star's forty-one.
+    // thirty-two nodes' worth, never the star's forty-one. Truncated, and
+    // warning of it: the figure rides to the budget and the price ladder
+    // looking exact, so the log is where the incompleteness lives.
+    const warnings: string[] = []
+    const log: Logger = { ...silentLog, warn: (_meta, message): void => void warnings.push(message) }
     const usage = new Map<string, unknown>([['ses_parent', usageEnvelope('ses_parent', { input: 1, cost: 0.25 })]])
     const children = new Map<string, unknown>([
       ['ses_parent', childrenEnvelope(Array.from({ length: 40 }, (_, at) => `ses_wide_${at}`))],
@@ -755,7 +766,7 @@ describe('the session tree usage walk', () => {
       usage.set(`ses_wide_${at}`, usageEnvelope(`ses_wide_${at}`, { input: 1, cost: 0.25 }))
     }
 
-    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', silentLog)).toEqual({
+    expect(await sessionTreeUsage(treeClient(usage, children), '/repo', 'ses_parent', log)).toEqual({
       tokens: 32,
       cost: 8,
       input: 32,
@@ -764,6 +775,8 @@ describe('the session tree usage walk', () => {
       cacheRead: 0,
       cacheWrite: 0,
     })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('cap')
   })
 
   test('a children call that throws degrades to the parent-only figure, warning but never failing', async () => {
