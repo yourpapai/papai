@@ -31,7 +31,7 @@
 ## 6. Harness wiring and credential guard (design D3)
 
 - [x] 6.1 Extend `tests/sdd-runner/index.test.ts`: on the claude route a bad credential environment (both spellings set, neither set, a set `LLM_API_KEY`) fails a run-driving verb with the code-prefixed `BackendSelectionError` before any run directory is created and before any spawn; `ANTHROPIC_API_KEY` alone resolves the bare profile and `CLAUDE_CODE_OAUTH_TOKEN` alone the native one. Verify: `bun test tests/sdd-runner/index.test.ts`
-- [ ] 6.2 Extend `tests/sdd-runner/index.test.ts`: read-only verbs (`stop`, `analyze`, report) run on a claude-route config with no credential set; the opencode route never reads a credential nor creates a config-dir parent; the parent is created under the OS tmp root and inside neither `repoRoot` nor `workDir`, is removed at teardown, and a removal failure changes neither the outcome nor the exit status. Verify: `bun test tests/sdd-runner/index.test.ts`
+- [x] 6.2 Extend `tests/sdd-runner/index.test.ts`: read-only verbs (`stop`, `analyze`, report) run on a claude-route config with no credential set; the opencode route never reads a credential nor creates a config-dir parent; the parent is created under the OS tmp root and inside neither `repoRoot` nor `workDir`, is removed at teardown, and a removal failure changes neither the outcome nor the exit status. Verify: `bun test tests/sdd-runner/index.test.ts`
 - [ ] 6.3 Add the memoized `withClaude` wrapper around the run-driving harness members in `sdd-runner/src/index.ts` (guard + `openClaudeContext` on first use) and the best-effort teardown in `runEntry`'s `finally`. Verify: `bun test tests/sdd-runner/index.test.ts && bun run typecheck`
 
 ## 7. Cost and usage accounting (design D7)
