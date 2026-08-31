@@ -604,6 +604,31 @@ describe('progress translation', () => {
     // Unabridged beside the redaction: the rest of the line survives.
     expect(detail).toContain('the credential is')
   })
+
+  test('the turn result record carries the per-model split alongside its tokens', async () => {
+    const log = publicLog()
+    const spawn = scriptedSpawn([{ stdout: fixture('native-success-turn.ndjson') }])
+    const agent = await createClaudeAgent(baseOptions(spawn.spawn, log.log))
+
+    await agent.prompt({ prompt: 'x' })
+
+    // The split is the one consumer of the decoded `models` — model ids and
+    // counts, the names-only rule intact: no content rides on it.
+    const said = log.rows.find((row) => row.message === 'claude: turn result')
+    expect(said?.meta).toEqual({
+      tokens: 90547,
+      models: {
+        'claude-sonnet-5': { input: 4, output: 155, cacheWrite: 28005, cacheRead: 61460, costUsd: 0.12586999999999998 },
+        'claude-haiku-4-5-20251001': {
+          input: 912,
+          output: 11,
+          cacheWrite: 0,
+          cacheRead: 0,
+          costUsd: 0.0009670000000000001,
+        },
+      },
+    })
+  })
 })
 
 /**
