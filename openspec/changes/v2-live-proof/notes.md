@@ -154,7 +154,91 @@ scratch burn is S-scale — M drafters read more (4 src files + the increment-1 
 favoring the crossing; if the ceiling is never crossed (or crossed early), both are recorded findings per
 D7, never-cut invariants bound the damage, and recalibration + re-drill is the operator's option.
 
+### Operator decision (mid-cycle, 2026-09-01): model switch to `zai-coding-plan/glm-5.3`
+
+The synthetic Flash endpoint went hard-down mid-cycle (Run A's estimator stalled 3×, ~10 min each, zero
+output; a trivial probe confirmed the outage) and stayed down for >1h. The operator switched the cycle's
+model to **`zai-coding-plan/glm-5.3`** (probe-verified responsive) — the design's pre-registered fallback
+(D1 risk table: "any priced fallback preserves the cost-known design; a free-tier fallback would flip the
+branch back to cost-unknown and the reflection would note the narrowed contrast"). Consequences, recorded
+per that risk note:
+
+- **Cost becomes unknown** (free tier: done events carry costUsd 0 with tokens > 0 → `costKnown: false`).
+  On **Run A (metered)** the live refusal evidence flips from the numeric-ceiling exceedance to the
+  **metered cost-unknown R4 branch** — the tight `budget: 0.5` ceiling stays configured but a $0 spend can
+  never cross it; that is now a **known-in-advance ceiling-miss** (D7's recorded-finding shape), and the
+  numeric-exceedance branch stays fixture-proven (the proposal's Non-goal, now by circumstance rather than
+  by price). On **Run B (unmetered)** nothing changes: the cost-unknown branch is metered-only and the
+  verify round remains purchasable — the scratch already bought one live.
+- **Scratch C's evidence stands as-is** (it ran on the priced synthetic model to completion — F-A4 report
+  and calibration basis unchanged, historical fact).
+- The outage attempt on Run A (`event-driven-suggestion-payloads-for-the-task-tracker-tools`, 11 events,
+  3 estimator stalls → `stage_failed{intake, exhausted}` ×2 → escalation v1 → steer `abort` → memo
+  `failed`) stays in target-a's workdir as honest outage-handling evidence; it feeds `analyze` via the
+  workdir but harvests no lane (not a productive run).
+
+### Run A — completed 2026-09-01 (run `event-driven-suggestion-payloads-for-the-task-tracker-tools-2`,
+target `v2-live-proof-target-a`, 793 events, terminal memo `completed`, `zai-coding-plan/glm-5.3`, cost
+$0.00 → cost-unknown, metered ceiling 0.5 configured)
+
+**Outage prelude** (recorded above under the model switch): first attempt (base slug, 11 events) burned 3
+estimator stalls ×10 min on the down synthetic endpoint → `stage_failed{intake, exhausted}` ×2 → escalation
+v1 → steer `abort` → memo `failed`. The restart (suffix `-2`; intake's scaffold-skip idempotence held —
+crash-fix #3's behavior on a fresh run) classified **M** honestly (estimator rationale: cross-module in the
+four named files, existing-modules novelty; prescreen had said M — no misclassification).
+
+**Drill (a) — holder kill mid-review-round — all assertions landed.** Round 1 opened seq 246
+(`round_open{1, cap 3}`) with reviewer-r1 in flight (child 76466, own pgid — C7's premise re-confirmed);
+killed the holder pid 57489 **and its pgid 57486**; the orphan survived ~15 s reparented to ppid 1 (observed
+mid-flight, still emitting pre-kill output into no consumer), then died by its own group. `resume` appended
+**exactly one classified `resume{path: session-continuation, stage: review, session: ses_fa322420…}`** (seq
+296) and **no second `round_open`** for round 1 — F-A1/F-A2 live. The ledger's retry (attempt 2) continued
+the **same** opencode session id — cross-process continuation works and is now log-visible through the
+resume event.
+
+**Drill (b) — directive grammar at the final gate.** Final gate v1 presented seq 655; the always-logging
+ladder recorded `auto_decision{rule: R4, decision: gate}` seq 656 — **the metered cost-unknown R4 branch,
+live** (free-tier costUsd 0 + tokens > 0 → costKnown false; the branch the proposal had parked as a
+non-goal, arrived via the model switch). The gate carried an **empty** assumptions section (the drafter
+logged none — the drill ran at the item-less gate, which is exactly F-B1's historically-unreachable shape):
+- **Zero-signal probe — passed**: prose-only `## Gate response` section rejected with directive guidance
+  ("no decision signal — write APPROVE or VETO: <redirect> …"), the `gate-1.response-error.md` artifact
+  written, nothing settled, waiter alive.
+- **Steer foreign-id probe — FAILED LIVE, finding F-C1**: `veto Z9=steer probe with a foreign id` was
+  consumed (steer.md removed) and **crashed the waiter** — `steerAnswers` renders the foreign item id,
+  `preflightRoundtrip` throws ("→ line with no preceding assumption or blocker", full stack through
+  `settleGateWithAnswers` → `steerTick` gate-waiter.ts:185), and the steer branch handles `{rejected}`
+  results but not **throws** — F-B2's containment covered the gate-file settle path only. The settle claim
+  was released (attempt-scoped finally — no F-B3 wedge) and the run was not blocked (resume re-attaches a
+  waiter; event-sourced recovery). **Not escape-clause-eligible under D5** (not run-blocking, not
+  log-honesty) → recorded for a follow-up change; the drill's "waiter survived" assertion is recorded as
+  failed with the log as evidence.
+- **Veto directive — passed**: `VETO: <redirect>` settled `gate answered{final, v1, veto}` seq 659 — veto
+  reachable at an item-less gate, live. Revision: `stage_enter draft` seq 661/662 (settle mover + the fresh
+  drive's designed self-loop enter), `veto-updater` spawn seq 663; the redirect landed — the artifacts now
+  carry `EVENT_PAYLOAD_CAP = 3` as a named decision **rendered identically in proposal, design, and spec
+  delta** (the `C<n>` vocabulary's raw material), tasks 10→12. Final gate re-presented **v2** seq 789 +
+  R4 record seq 790; `APPROVE` seq 793 → `completed`; `openspec validate --strict` green in the target.
+- **Spec-vs-live observation**: the veto revision did **not** open a new review round — the "Veto at a
+  final gate" scenario's middle clause ("the review loop opens a new round over the existing cap") diverges:
+  the folded round state (3/3 converged) routes review straight through, the revision rides the tail re-run
+  (decompose/atomicity re-ran over the revised artifacts) and no round reviews the revision — an
+  unreviewed-revision shape visible at v2. Recorded for the reflection; the scenario's outer clauses (draft
+  re-entry, v2 re-presentation) held.
+
+**Task 3.4 — needs-review refusal: NOT-ARISEN.** Round 3 converged at cap (seq 573, counts 0b/0m/2n, open
+0/0/0) — no needs-review cap-hit ever arose, so the refusal branch had no window; and the ceiling itself
+($0.5) is uncrossable at $0 spend after the model switch (known-in-advance ceiling miss, recorded under the
+model-switch note). Fixture evidence stands for both refusal branches (`verificationBudgetRefuses`:
+cost-unknown and numeric-exceedance are test-pinned); the scratch run live-bought the round on a metered
+run with known cost; Run B (unmetered) carries the bought-round assertion next.
+
+**Resume-event accounting**: exactly 2 `resume` events for 2 invocations (seq 296 session-continuation; the
+post-crash waiter restart artifact-skip/gate) — one per invocation, none deduplicated.
+
 ### Operator missteps (recorded for honesty; neither is an engine finding)
+
+
 
 - Worktrees initially created at a nested relative path so the config's `repoRoot` pointed at a phantom dir
   holding only `.sdd-runner/`; the first launch then failed at `openspec new change` with "Schema 'auto-sdd'
