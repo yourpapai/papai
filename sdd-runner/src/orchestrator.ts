@@ -64,14 +64,6 @@ export interface RunResumeResult {
   readonly childRunId?: string
 }
 
-export interface RunResumeResult {
-  readonly runId: string
-  readonly halted: 'gate' | 'gate-pending' | 'stopped' | 'completed'
-  readonly gateMdPath?: string
-  readonly version?: number
-  readonly childRunId?: string
-}
-
 export async function runStart(deps: OrchestratorDeps, options: StartOptions): Promise<RunStartResult> {
   const adoptedChangeName = options.child?.changeName
   if (adoptedChangeName !== undefined) return runContinuationStart(deps, options, adoptedChangeName)

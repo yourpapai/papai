@@ -174,7 +174,7 @@ export function captureStream(): RendererStream & { chunks: string[]; text: () =
 
 export function silentTrace(): TraceLogger {
   return {
-    append(_: TraceEvent): Promise<void> {
+    append(_event: TraceEvent): Promise<void> {
       return Promise.resolve()
     },
   }
