@@ -63,7 +63,10 @@ const buildIcs = (args: CompiledRecurrence): string => {
 
 export const parseRrule = (args: CompiledRecurrence): ParseResult => {
   try {
-    const iter = new RRuleTemporal({ rruleString: buildIcs(args) })
+    // strict: enforce RFC 5545 constraints (COUNT+UNTIL, DATE UNTIL vs
+    // DATE-TIME DTSTART, ...) — violations must fail parse and degrade through
+    // the null/[] contract below, never produce undefined occurrence semantics.
+    const iter = new RRuleTemporal({ rruleString: buildIcs(args), strict: true })
     return { ok: true, iter }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, it, expect } from 'bun:test'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 
 import {
   nextOccurrence,
@@ -12,6 +12,7 @@ import {
   recurrenceSpecToRrule,
 } from '../../src/recurrence/recurrence.js'
 import type { RecurrenceSpec } from '../../src/types/recurrence.js'
+import { createTrackedLoggerMock } from '../utils/logger-mock.js'
 
 describe('recurrenceSpecToRrule', () => {
   it('serialises a WEEKLY MO/WE/FR at 09:00 spec', () => {
@@ -320,5 +321,77 @@ describe('occurrencesBetween', () => {
       3,
     )
     expect(occ.length).toBe(3)
+  })
+})
+
+describe('strict RFC 5545 parsing', () => {
+  // The parse-failure warn goes through the module-level child logger, so
+  // asserting it needs a tracked logger installed before a fresh module load
+  // (a static import would already have bound the real logger). mock.module
+  // is process-wide; tests/mock-reset.ts restores the real logger in its
+  // global beforeEach — same pattern as tests/plugins/task-provider-youtrack.
+  const COUNT_UNTIL = 'FREQ=DAILY;COUNT=5;UNTIL=20260601T000000Z'
+
+  // The module binds `logger.child({ scope: 'recurrence' })` at load, so each
+  // test imports a fresh copy (cache-busted) against its own mocks.
+  let loadCount = 0
+  const freshModule = (): Promise<typeof import('../../src/recurrence/recurrence.js')> => {
+    loadCount++
+    return import(`../../src/recurrence/recurrence.js?strict=${loadCount}`)
+  }
+
+  let tracked: ReturnType<typeof createTrackedLoggerMock>
+  let strictRecurrence: typeof import('../../src/recurrence/recurrence.js')
+
+  beforeEach(async () => {
+    tracked = createTrackedLoggerMock()
+    void mock.module('../../src/logger.js', () => ({
+      getLogLevel: tracked.getLogLevel,
+      logger: tracked.logger,
+    }))
+    strictRecurrence = await freshModule()
+  })
+
+  it('rejects COUNT combined with UNTIL at parse time', () => {
+    const res = strictRecurrence.parseRrule({
+      rrule: COUNT_UNTIL,
+      dtstartUtc: '2026-04-20T09:00:00Z',
+      timezone: 'UTC',
+    })
+    expect(res).toEqual({ ok: false, reason: 'COUNT and UNTIL MUST NOT occur in the same recurrence rule' })
+  })
+
+  it('rejects a DATE-valued UNTIL against a DATE-TIME DTSTART', () => {
+    const res = strictRecurrence.parseRrule({
+      rrule: 'FREQ=DAILY;UNTIL=20260601',
+      dtstartUtc: '2026-04-20T09:00:00Z',
+      timezone: 'UTC',
+    })
+    expect(res).toEqual({ ok: false, reason: 'UNTIL rule part MUST have the same value type as DTSTART' })
+  })
+
+  it('degrades COUNT+UNTIL nextOccurrence to null with a warn naming the rule', () => {
+    const next = strictRecurrence.nextOccurrence(
+      { rrule: COUNT_UNTIL, dtstartUtc: '2026-04-20T09:00:00Z', timezone: 'UTC' },
+      new Date('2026-04-21T00:00:00Z'),
+    )
+    expect(next).toBeNull()
+    const warns = tracked.getCallsByLevel('warn')
+    expect(warns.length).toBeGreaterThanOrEqual(1)
+    expect(warns[0]?.args[0]).toMatchObject({
+      rrule: COUNT_UNTIL,
+      reason: 'COUNT and UNTIL MUST NOT occur in the same recurrence rule',
+    })
+  })
+
+  it('degrades COUNT+UNTIL occurrencesBetween to [] without throwing', () => {
+    const occ = strictRecurrence.occurrencesBetween(
+      { rrule: COUNT_UNTIL, dtstartUtc: '2026-04-20T09:00:00Z', timezone: 'UTC' },
+      new Date('2026-04-20T00:00:00Z'),
+      new Date('2026-04-24T00:00:00Z'),
+    )
+    expect(occ).toEqual([])
+    const warns = tracked.getCallsByLevel('warn')
+    expect(warns.length).toBeGreaterThanOrEqual(1)
   })
 })
