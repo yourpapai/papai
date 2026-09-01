@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import {
+  appendProofJsonLine,
   appendProofRecord,
   defaultProofStorePath,
   loadProofRecords,
@@ -150,6 +151,21 @@ describe('proof store', () => {
       expect(Array.isArray(record.observations)).toBe(true)
     }
     expect(readdirSync(dir)).toEqual([FILE_NAME])
+  })
+
+  test('appends raw JSON lines verbatim for non-run records and keeps the file capped', async () => {
+    const line = {
+      runId: 'run-raw-1',
+      responseText: 'echo',
+      delivered: true,
+      at: new Date(CLOCK_BASE_MS).toISOString(),
+    }
+
+    await appendProofJsonLine(line, deps())
+
+    const raw = readFileSync(path, 'utf8').trim()
+    expect(JSON.parse(raw)).toEqual(line)
+    expect(await loadProofRecords(deps())).toEqual([])
   })
 
   test('derives the default path next to DB_PATH', () => {

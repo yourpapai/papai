@@ -89,12 +89,15 @@ const trimToFit = (path: string, now: () => Date): void => {
   renameSync(tempPath, path)
 }
 
-export const appendProofRecord = (record: ProofCheckRecord, deps?: ProofStoreDeps): Promise<void> =>
+export const appendProofJsonLine = (line: unknown, deps?: ProofStoreDeps): Promise<void> =>
   enqueue(() => {
     const path = deps?.path ?? defaultProofStorePath()
-    appendFileSync(path, `${JSON.stringify(record)}\n`)
+    appendFileSync(path, `${JSON.stringify(line)}\n`)
     trimToFit(path, deps?.now ?? defaultNow)
   })
+
+export const appendProofRecord = (record: ProofCheckRecord, deps?: ProofStoreDeps): Promise<void> =>
+  appendProofJsonLine(record, deps)
 
 export const loadProofRecords = (deps?: ProofStoreDeps): Promise<ProofCheckRecord[]> =>
   enqueue(() => {
