@@ -46,6 +46,22 @@ describe('tool metadata', () => {
     })
   })
 
+  test('registers the proof-check runner as a diagnostics write with the create operation', () => {
+    expect(getToolMetadata('run_proof_check')).toEqual({
+      domain: 'diagnostics',
+      operation: 'create',
+      risk: 'write',
+    })
+  })
+
+  test('registers the proof-results reader as a diagnostics read tool', () => {
+    expect(getToolMetadata('read_proof_results')).toEqual({
+      domain: 'diagnostics',
+      operation: 'read',
+      risk: 'read',
+    })
+  })
+
   test('identifies read-only tools', () => {
     expect(getToolRisk('list_tasks')).toBe('read')
     expect(getToolRisk('create_task')).toBe('write')
@@ -227,6 +243,8 @@ const EXPECTED_STATIC: Readonly<Record<string, ToolClassification>> = {
   read_llm_traces: { domain: 'diagnostics', operation: 'read', risk: 'read' },
   read_recent_turns: { domain: 'diagnostics', operation: 'read', risk: 'read' },
   read_recent_tool_failures: { domain: 'diagnostics', operation: 'read', risk: 'read' },
+  run_proof_check: { domain: 'diagnostics', operation: 'create', risk: 'write' },
+  read_proof_results: { domain: 'diagnostics', operation: 'read', risk: 'read' },
 }
 
 describe('static tool classification table', () => {
