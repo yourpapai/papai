@@ -32,7 +32,7 @@ const PROOF_CONDITION_NEVER_VALUE = '__proof_check_never__'
 
 export const proofMarker = (runId: string): string => `${MARKER_PREFIX}${runId}]]`
 
-const parseProofMarker = (text: string): string | null => {
+export const parseProofMarker = (text: string): string | null => {
   if (!text.startsWith(MARKER_PREFIX)) return null
   const end = text.indexOf(']]', MARKER_PREFIX.length)
   if (end < 0) return null
