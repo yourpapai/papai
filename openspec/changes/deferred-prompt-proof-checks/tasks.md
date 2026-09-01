@@ -22,5 +22,5 @@ Test-first order per design.md D12 (red before each implementation). Verificatio
 
 ## 4. Docs and full verification
 
-- [ ] 4.1 Add one bullet each, marked disposable (to be removed with the module), to `src/tools/CLAUDE.md` (diagnostics readers section) and `docs/architecture/tools.md` describing the two tools, the shared gate, the write/read risk tiers, and the poller record line. Verify: `bun run format:check` && `bun run lint`
+- [x] 4.1 Add one bullet each, marked disposable (to be removed with the module), to `src/tools/CLAUDE.md` (diagnostics readers section) and `docs/architecture/tools.md` describing the two tools, the shared gate, the write/read risk tiers, and the poller record line. Verify: `bun run format:check` && `bun run lint`
 - [ ] 4.2 Final gate: run full `bun test`, `bun run typecheck`, and `bun run lint`; then `bun run test:mutate:changed` to confirm the mutation ratchet over the branch diff (new `src/` files covered by the three new test suites; `poller.ts` holds its floor) and `bun check:full` as the pre-finish check. All green before handoff.
